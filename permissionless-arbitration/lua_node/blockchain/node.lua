@@ -10,7 +10,8 @@ end
 local function start_blockchain()
     print(string.format("Starting blockchain with %d accounts...", default_account_number))
 
-    local cmd = string.format([[sh -c "echo $$ ; exec anvil --block-time 1 -a %d > anvil.log 2>&1"]], default_account_number)
+    local cmd = string.format([[sh -c "echo $$ ; exec anvil --block-time 1 -a %d > anvil.log 2>&1"]],
+        default_account_number)
 
     local reader = io.popen(cmd)
     assert(reader, "`popen` returned nil reader")
@@ -40,13 +41,11 @@ local function deploy_contracts(endpoint, deployer, initial_hash)
     print "Deploying Single Level factory..."
 
     local cmd_sl = string.format(
-        [[sh -c "forge create SingleLevelTournamentFactory --rpc-url=%s --private-key=%s"]],
+        [[sh -c "cd contracts && forge create SingleLevelTournamentFactory --rpc-url=%s --private-key=%s"]],
         endpoint, deployer
     )
 
-    local handle_sl = io.popen(cmd_sl)
-    assert(handle_sl, "`popen` returned nil handle")
-
+    local handle_sl = assert(io.popen(cmd_sl), "`popen` returned nil handle")
     local _, _, sl_factory_address = handle_sl:read("*a"):find("Deployed to: (0x%x+)")
     assert(sl_factory_address, "deployment failed, factory_address is nil")
     print("Single Level factory deployed at: " .. sl_factory_address)
@@ -57,7 +56,7 @@ local function deploy_contracts(endpoint, deployer, initial_hash)
     print "Deploying Top factory..."
 
     local cmd_top = string.format(
-        [[sh -c "forge create TopTournamentFactory --rpc-url=%s --private-key=%s"]],
+        [[sh -c "cd contracts && forge create TopTournamentFactory --rpc-url=%s --private-key=%s"]],
         endpoint, deployer
     )
 
@@ -74,7 +73,7 @@ local function deploy_contracts(endpoint, deployer, initial_hash)
     print "Deploying Middle factory..."
 
     local cmd_mid = string.format(
-        [[sh -c "forge create MiddleTournamentFactory --rpc-url=%s --private-key=%s"]],
+        [[sh -c "cd contracts && forge create MiddleTournamentFactory --rpc-url=%s --private-key=%s"]],
         endpoint, deployer
     )
 
@@ -91,7 +90,7 @@ local function deploy_contracts(endpoint, deployer, initial_hash)
     print "Deploying Bottom factory..."
 
     local cmd_bot = string.format(
-        [[sh -c "forge create BottomTournamentFactory --rpc-url=%s --private-key=%s"]],
+        [[sh -c "cd contracts && forge create BottomTournamentFactory --rpc-url=%s --private-key=%s"]],
         endpoint, deployer
     )
 
@@ -109,7 +108,7 @@ local function deploy_contracts(endpoint, deployer, initial_hash)
     print "Deploying Tournament factory..."
 
     local cmd_tournament = string.format(
-        [[sh -c "forge create TournamentFactory --rpc-url=%s --private-key=%s --constructor-args %s %s %s %s"]],
+        [[sh -c "cd contracts && forge create TournamentFactory --rpc-url=%s --private-key=%s --constructor-args %s %s %s %s"]],
         endpoint, deployer, sl_factory_address, top_factory_address, mid_factory_address, bot_factory_address
     )
 

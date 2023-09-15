@@ -17,7 +17,7 @@ function HonestStrategy:new(commitment_builder, machine_path, sender)
     return honest_strategy
 end
 
-function HonestStrategy:_join_tournament(state, tournament, commitment)
+function HonestStrategy:_join_tournament(tournament, commitment)
     local f, left, right = commitment:children(commitment.root_hash)
     assert(f)
     local last, proof = commitment:last()
@@ -242,7 +242,7 @@ function HonestStrategy:_react_tournament(state, tournament)
     end
 
     if not tournament.commitments[commitment.root_hash] then
-        self:_join_tournament(state, tournament, commitment)
+        self:_join_tournament(tournament, commitment)
     else
         local latest_match = tournament.commitments[commitment.root_hash].latest_match
         if latest_match then

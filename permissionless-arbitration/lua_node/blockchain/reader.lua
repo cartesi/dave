@@ -1,5 +1,5 @@
 local Hash = require "cryptography.hash"
-local eth_ebi = require "utils.eth_ebi"
+local eth_abi = require "utils.eth_abi"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -19,7 +19,7 @@ local function parse_data(json, sig)
         [==["data":"(0x%x+)"]==]
     )
 
-    local decoded_data = eth_ebi.decode_event_data(sig, data)
+    local decoded_data = eth_abi.decode_event_data(sig, data)
     return decoded_data
 end
 
@@ -127,7 +127,7 @@ cast rpc -r "%s" eth_getLogs \
 
 function Reader:_read_logs(tournament_address, sig, topics, data_sig)
     topics = topics or { false, false, false }
-    local encoded_sig = eth_ebi.encode_sig(sig)
+    local encoded_sig = eth_abi.encode_sig(sig)
     table.insert(topics, 1, encoded_sig)
     assert(#topics == 4, "topics doesn't have four elements")
 
@@ -202,7 +202,7 @@ function Reader:_call(address, sig, args)
     return ret
 end
 
-function Reader:read_match_created(tournament_address, commitment_hash)
+function Reader:read_match_created(tournament_address)
     local sig = "matchCreated(bytes32,bytes32,bytes32)"
     local data_sig = "(bytes32)"
 

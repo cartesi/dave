@@ -2,7 +2,7 @@ local cast_advance_template = [[
 cast rpc -r "%s" evm_increaseTime %d
 ]]
 
-function advance_time(seconds, endpoint)
+local function advance_time(seconds, endpoint)
     local cmd = string.format(
         cast_advance_template,
         endpoint,

@@ -1,0 +1,6 @@
+[submodule "machine-emulator-sdk"]
+	path = machine-emulator-sdk
+	url = https://github.com/cartesi/machine-emulator-sdk
+[submodule "permissionless-arbitration/contracts/lib/forge-std"]
+	path = permissionless-arbitration/contracts/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
