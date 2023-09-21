@@ -24,7 +24,6 @@ abstract contract NonRootTournament is Tournament {
     //
     // Constructor
     //
-
     constructor(
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
@@ -45,37 +44,41 @@ abstract contract NonRootTournament is Tournament {
     }
 
     /// @notice get the dangling commitment at current level and then retrieve the winner commitment
-    function innerTournamentWinner() external view returns (bool, Tree.Node) {
+    /// @return (bool, Tree.Node, Tree.Node)
+    /// - if the tournament is finished
+    /// - the contested parent commitment
+    /// - the dangling commitment
+    function innerTournamentWinner()
+        external
+        view
+        returns (bool, Tree.Node, Tree.Node)
+    {
         if (!isFinished()) {
-            return (false, Tree.ZERO_NODE);
+            return (false, Tree.ZERO_NODE, Tree.ZERO_NODE);
         }
 
-        (
-            bool _hasDanglingCommitment,
-            Tree.Node _danglingCommitment
-        ) = hasDanglingCommitment();
+        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
+            hasDanglingCommitment();
         assert(_hasDanglingCommitment);
 
         Machine.Hash _finalState = finalStates[_danglingCommitment];
 
         if (_finalState.eq(contestedFinalStateOne)) {
-            return (true, contestedCommitmentOne);
+            return (true, contestedCommitmentOne, _danglingCommitment);
         } else {
             assert(_finalState.eq(contestedFinalStateTwo));
-            return (true, contestedCommitmentTwo);
+            return (true, contestedCommitmentTwo, _danglingCommitment);
         }
     }
 
-    function updateParentTournamentDelay(
-        Time.Instant _delay
-    ) internal override {
-        parentTournament.updateTournamentDelay(_delay);
-    }
-
     /// @notice a final state is valid if it's equal to ContestedFinalStateOne or ContestedFinalStateTwo
-    function validContestedFinalState(
-        Machine.Hash _finalState
-    ) internal view override returns (bool) {
-        return contestedFinalStateOne.eq(_finalState) || contestedFinalStateTwo.eq(_finalState);
+    function validContestedFinalState(Machine.Hash _finalState)
+        internal
+        view
+        override
+        returns (bool)
+    {
+        return contestedFinalStateOne.eq(_finalState)
+            || contestedFinalStateTwo.eq(_finalState);
     }
 }

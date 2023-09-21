@@ -73,78 +73,63 @@ abstract contract LeafTournament is Tournament {
             Machine.Hash _finalStateTwo
         ) = _matchState.getDivergence(startCycle);
 
-        Machine.Hash _finalState = runMetaStep(
-            _agreeHash,
-            _agreeCycle,
-            proofs
-        );
+        Machine.Hash _finalState = runMetaStep(_agreeHash, _agreeCycle, proofs);
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
             require(
-                _finalState.eq(_finalStateOne),
-                "final state one doesn't match"
+                _finalState.eq(_finalStateOne), "final state one doesn't match"
             );
 
-            _clockOne.addValidatorEffort(Time.ZERO_DURATION);
+            _clockOne.deduct(_clockTwo.timeSinceTimeout());
             pairCommitment(
-                _matchId.commitmentOne,
-                _clockOne,
-                _leftNode,
-                _rightNode
+                _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
             require(
-                _finalState.eq(_finalStateTwo),
-                "final state two doesn't match"
+                _finalState.eq(_finalStateTwo), "final state two doesn't match"
             );
 
-            _clockTwo.addValidatorEffort(Time.ZERO_DURATION);
+            _clockTwo.deduct(_clockOne.timeSinceTimeout());
             pairCommitment(
-                _matchId.commitmentTwo,
-                _clockTwo,
-                _leftNode,
-                _rightNode
+                _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
         } else {
             revert("wrong left/right nodes for step");
         }
 
-        delete matches[_matchId.hashFromId()];
+        // delete storage
+        deleteMatch(_matchId.hashFromId());
     }
 
-    function runMetaStep(Machine.Hash machineState, uint256 counter, bytes memory proofs)
-         internal
-         pure
-         returns (Machine.Hash)
-    {
-        return Machine.Hash.wrap(metaStep(
-            Machine.Hash.unwrap(machineState),
-            counter,
-            proofs
-        ));
+    function runMetaStep(
+        Machine.Hash machineState,
+        uint256 counter,
+        bytes memory proofs
+    ) internal pure returns (Machine.Hash) {
+        return Machine.Hash.wrap(
+            metaStep(Machine.Hash.unwrap(machineState), counter, proofs)
+        );
     }
 
     // TODO: move to step repo
     // TODO: add ureset
-    function metaStep(bytes32 machineState, uint256 counter, bytes memory proofs)
-         internal
-         pure
-         returns (bytes32)
-    {
+    function metaStep(
+        bytes32 machineState,
+        uint256 counter,
+        bytes memory proofs
+    ) internal pure returns (bytes32) {
         // TODO: create a more convinient constructor.
-        AccessLogs.Context memory accessLogs = AccessLogs.Context(
-            machineState,
-            Buffer.Context(proofs, 0)
-        );
+        AccessLogs.Context memory accessLogs =
+            AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-         uint256 mask = (1 << 64) - 1;
-         if (counter & mask == mask) {
-             // reset
-             revert("RESET UNIMPLEMENTED");
-         } else {
-             UArchStep.step(accessLogs);
-             bytes32 newMachineState = accessLogs.currentRootHash;
-             return newMachineState;
-         }
+        uint256 mask = (1 << 64) - 1;
+        if (counter & mask == mask) {
+            // reset
+            revert("RESET UNIMPLEMENTED");
+        } else {
+            UArchStep.step(accessLogs);
+            bytes32 newMachineState = accessLogs.currentRootHash;
+            return newMachineState;
+        }
     }
 }

@@ -20,7 +20,6 @@ library Clock {
     //
     // View/Pure methods
     //
-
     function notInitialized(State memory state) internal pure returns (bool) {
         return state.allowance.isZero();
     }
@@ -35,31 +34,22 @@ library Clock {
 
     function hasTimeLeft(State memory state) internal view returns (bool) {
         if (state.startInstant.isZero()) {
+            // a paused clock is always considered having time left
             return true;
         } else {
-            return
-                state.allowance.gt(
-                    Time.timeSpan(Time.currentTime(), state.startInstant)
-                );
+            // otherwise the allowance must be greater than the timespan from current time to start instant
+            return state.allowance.gt(
+                Time.timeSpan(Time.currentTime(), state.startInstant)
+            );
         }
     }
 
-    /// @return deadline of the two clocks should be the tolerances combined
-    function deadline(
-        State memory freshState1,
-        State memory freshState2
-    ) internal view returns (Time.Instant) {
-        Time.Duration duration = freshState1.allowance.add(
-            freshState2.allowance
-        );
-        return Time.currentTime().add(duration);
-    }
-
-    /// @return max tolerance of the two clocks
-    function max(
-        State memory pausedState1,
-        State memory pausedState2
-    ) internal pure returns (Time.Duration) {
+    /// @return max allowance of two paused clocks
+    function max(State memory pausedState1, State memory pausedState2)
+        internal
+        pure
+        returns (Time.Duration)
+    {
         if (pausedState1.allowance.gt(pausedState2.allowance)) {
             return pausedState1.allowance;
         } else {
@@ -68,34 +58,40 @@ library Clock {
     }
 
     /// @return duration of time has elapsed since the clock timeout
-    function timeSinceTimeout(
-        State memory state
-    ) internal view returns (Time.Duration) {
-        return
-            Time.timeSpan(Time.currentTime(), state.startInstant).monus(
-                state.allowance
-            );
+    function timeSinceTimeout(State memory state)
+        internal
+        view
+        returns (Time.Duration)
+    {
+        if (state.startInstant.isZero()) {
+            revert("a paused clock can't timeout");
+        }
+
+        return Time.timeSpan(Time.currentTime(), state.startInstant).monus(
+            state.allowance
+        );
     }
 
     //
     // Storage methods
     //
 
+    /// @notice re-initialize a clock with new state
+    function reInitialized(State storage state, State memory newState)
+        internal
+    {
+        Time.Duration _allowance = timeLeft(newState);
+        _setNewPaused(state, _allowance);
+    }
+
     function setNewPaused(
         State storage state,
         Time.Instant checkinInstant,
         Time.Duration initialAllowance
     ) internal {
-        Time.Duration allowance = initialAllowance.monus(
-            Time.currentTime().timeSpan(checkinInstant)
-        );
-
-        if (allowance.isZero()) {
-            revert("can't create clock with zero time");
-        }
-
-        state.allowance = allowance;
-        state.startInstant = Time.ZERO_INSTANT;
+        Time.Duration _allowance =
+            initialAllowance.monus(Time.currentTime().timeSpan(checkinInstant));
+        _setNewPaused(state, _allowance);
     }
 
     /// @notice Resume the clock from pause state, or pause a clock and update the allowance
@@ -110,22 +106,26 @@ library Clock {
         state.allowance = _timeLeft;
     }
 
-    function addValidatorEffort(State storage state, Time.Duration deduction) internal {
-        Time.Duration _timeLeft = state.allowance.monus(
-            deduction
-        );
+    /// @notice Deduct duration from a clock and set it to paused.
+    /// The clock must have time left after deduction.
+    function deduct(State storage state, Time.Duration deduction) internal {
+        Time.Duration _timeLeft = state.allowance.monus(deduction);
+        _setNewPaused(state, _timeLeft);
+    }
 
-        if (_timeLeft.isZero()) {
-            revert("can't reset clock with no time left");
-        }
+    /// @notice Add `MATCH_EFFORT` to a clock and set it to paused.
+    /// The new clock allowance is capped by `DISPUTE_TIMEOUT`. // TODO: do we need this?
+    function addMatchEffort(State storage state) internal {
+        Time.Duration _timeLeft = timeLeft(state);
 
-        Time.Duration _allowance = _timeLeft.add(ArbitrationConstants.VALIDATOR_EFFORT);
-        if (_allowance.gt(ArbitrationConstants.DISPUTE_TIMEOUT)) {
-            _allowance = ArbitrationConstants.DISPUTE_TIMEOUT;
-        }
+        Time.Duration _allowance =
+            _timeLeft.add(ArbitrationConstants.MATCH_EFFORT);
+        // TODO: do we need this cap check?
+        // if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
+        //     _allowance = ArbitrationConstants.MAX_ALLOWANCE;
+        // }
 
-        state.allowance = _allowance;
-        state.startInstant = Time.ZERO_INSTANT;
+        _setNewPaused(state, _allowance);
     }
 
     function setPaused(State storage state) internal {
@@ -137,15 +137,17 @@ library Clock {
     //
     // Private
     //
-
-    function timeLeft(State memory state) private view returns (Time.Duration) {
+    function timeLeft(State memory state)
+        private
+        view
+        returns (Time.Duration)
+    {
         if (state.startInstant.isZero()) {
             return state.allowance;
         } else {
-            return
-                state.allowance.monus(
-                    Time.timeSpan(Time.currentTime(), state.startInstant)
-                );
+            return state.allowance.monus(
+                Time.timeSpan(Time.currentTime(), state.startInstant)
+            );
         }
     }
 
@@ -155,5 +157,16 @@ library Clock {
         } else {
             state.startInstant = Time.ZERO_INSTANT;
         }
+    }
+
+    function _setNewPaused(State storage state, Time.Duration allowance)
+        private
+    {
+        if (allowance.isZero()) {
+            revert("can't create clock with zero time");
+        }
+
+        state.allowance = allowance;
+        state.startInstant = Time.ZERO_INSTANT;
     }
 }

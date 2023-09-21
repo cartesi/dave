@@ -10,25 +10,25 @@ abstract contract RootTournament is Tournament {
     //
     // Constructor
     //
+    constructor(Machine.Hash _initialHash)
+        Tournament(_initialHash, ArbitrationConstants.CENSORSHIP_TOLERANCE, 0, 0)
+    {}
 
-    constructor(
-        Machine.Hash _initialHash
-    ) Tournament(_initialHash, ArbitrationConstants.CENSORSHIP_TOLERANCE, 0, 0) {}
-
-    function updateParentTournamentDelay(
-        Time.Instant _delay
-    ) internal override {
-        // do nothing, the root tournament has no parent to update
-    }
-
-    function validContestedFinalState(
-        Machine.Hash
-    ) internal pure override returns (bool) {
+    function validContestedFinalState(Machine.Hash)
+        internal
+        pure
+        override
+        returns (bool)
+    {
         // always returns true in root tournament
         return true;
     }
 
-    function arbitrationResult() external view returns (bool, Tree.Node, Machine.Hash) {
+    function arbitrationResult()
+        external
+        view
+        returns (bool, Tree.Node, Machine.Hash)
+    {
         if (!isFinished()) {
             return (false, Tree.ZERO_NODE, Machine.ZERO_STATE);
         }
