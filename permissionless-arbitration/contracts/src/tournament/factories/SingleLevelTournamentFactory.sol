@@ -8,9 +8,10 @@ import "../concretes/SingleLevelTournament.sol";
 contract SingleLevelTournamentFactory {
     constructor() {}
 
-    function instantiate(
-        Machine.Hash _initialHash
-    ) external returns (SingleLevelTournament) {
+    function instantiate(Machine.Hash _initialHash)
+        external
+        returns (SingleLevelTournament)
+    {
         SingleLevelTournament _tournament = new SingleLevelTournament(
             _initialHash
         );

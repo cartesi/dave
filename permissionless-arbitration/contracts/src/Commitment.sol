@@ -21,16 +21,13 @@ library Commitment {
         bytes32[] calldata hashProof
     ) internal pure {
         uint64 treeHeight = ArbitrationConstants.height(level);
-        Tree.Node expectedCommitment = getRoot(
-            Machine.Hash.unwrap(state),
-            treeHeight,
-            position,
-            hashProof
+        Tree.Node expectedCommitment =
+            getRoot(Machine.Hash.unwrap(state), treeHeight, position, hashProof);
+
+        require(
+            commitment.eq(expectedCommitment), "commitment state doesn't match"
         );
-
-        require(commitment.eq(expectedCommitment), "commitment state doesn't match");
     }
-
 
     function isEven(uint256 x) private pure returns (bool) {
         return x % 2 == 0;
@@ -42,22 +39,19 @@ library Commitment {
         uint256 position,
         bytes32[] calldata siblings
     ) internal pure returns (Tree.Node) {
-        uint nodesCount = treeHeight - 1;
+        uint256 nodesCount = treeHeight - 1;
         assert(nodesCount == siblings.length);
 
-        for (uint i = 0; i < nodesCount; i++) {
+        for (uint256 i = 0; i < nodesCount; i++) {
             if (isEven(position >> i)) {
-                leaf =
-                    keccak256(abi.encodePacked(leaf, siblings[i]));
+                leaf = keccak256(abi.encodePacked(leaf, siblings[i]));
             } else {
-                leaf =
-                    keccak256(abi.encodePacked(siblings[i], leaf));
+                leaf = keccak256(abi.encodePacked(siblings[i], leaf));
             }
         }
 
         return Tree.Node.wrap(leaf);
     }
-
 
     function requireFinalState(
         Tree.Node commitment,
@@ -67,14 +61,14 @@ library Commitment {
     ) internal pure {
         uint64 treeHeight = ArbitrationConstants.height(level);
         Tree.Node expectedCommitment = getRootForLastLeaf(
-            treeHeight,
-            Machine.Hash.unwrap(finalState),
-            hashProof
+            treeHeight, Machine.Hash.unwrap(finalState), hashProof
         );
 
-        require(commitment.eq(expectedCommitment), "commitment last state doesn't match");
+        require(
+            commitment.eq(expectedCommitment),
+            "commitment last state doesn't match"
+        );
     }
-
 
     function getRootForLastLeaf(
         uint64 treeHeight,
@@ -83,7 +77,7 @@ library Commitment {
     ) internal pure returns (Tree.Node) {
         assert(treeHeight == siblings.length);
 
-        for (uint i = 0; i < treeHeight; i++) {
+        for (uint256 i = 0; i < treeHeight; i++) {
             leaf = keccak256(abi.encodePacked(siblings[i], leaf));
         }
 

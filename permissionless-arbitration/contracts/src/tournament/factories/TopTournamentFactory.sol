@@ -8,9 +8,10 @@ import "../concretes/TopTournament.sol";
 contract TopTournamentFactory {
     constructor() {}
 
-    function instantiate(
-        Machine.Hash _initialHash
-    ) external returns (TopTournament) {
+    function instantiate(Machine.Hash _initialHash)
+        external
+        returns (TopTournament)
+    {
         TopTournament _tournament = new TopTournament(
             _initialHash,
             TournamentFactory(msg.sender)

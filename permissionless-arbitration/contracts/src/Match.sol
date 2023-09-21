@@ -20,14 +20,11 @@ library Match {
     //
     // Events
     //
-
     event matchAdvanced(Match.IdHash indexed, Tree.Node parent, Tree.Node left);
-
 
     //
     // Id
     //
-
     struct Id {
         Tree.Node commitmentOne;
         Tree.Node commitmentTwo;
@@ -65,7 +62,6 @@ library Match {
     //
     // State
     //
-
     struct State {
         Tree.Node otherParent;
         Tree.Node leftNode;
@@ -74,7 +70,6 @@ library Match {
         // and contains contested final states.
         uint256 runningLeafPosition;
         uint64 currentHeight;
-
         uint64 level; // constant
     }
 
@@ -119,11 +114,7 @@ library Match {
             state._goDownRightTree(newLeftNode, newRightNode);
         }
 
-        emit matchAdvanced(
-            id.hashFromId(),
-            state.otherParent,
-            state.leftNode
-        );
+        emit matchAdvanced(id.hashFromId(), state.otherParent, state.leftNode);
     }
 
     function sealMatch(
@@ -136,19 +127,16 @@ library Match {
         bytes32[] calldata agreeStateProof
     )
         internal
-        returns (
-            Machine.Hash divergentStateOne,
-            Machine.Hash divergentStateTwo
-        )
+        returns (Machine.Hash divergentStateOne, Machine.Hash divergentStateTwo)
     {
         if (!state.agreesOnLeftNode(leftLeaf)) {
             // Divergence is in the left leaf!
-            (divergentStateOne, divergentStateTwo) = state
-                ._setDivergenceOnLeftLeaf(leftLeaf);
+            (divergentStateOne, divergentStateTwo) =
+                state._setDivergenceOnLeftLeaf(leftLeaf);
         } else {
             // Divergence is in the right leaf!
-            (divergentStateOne, divergentStateTwo) = state
-                ._setDivergenceOnRightLeaf(rightLeaf);
+            (divergentStateOne, divergentStateTwo) =
+                state._setDivergenceOnRightLeaf(rightLeaf);
         }
 
         // Prove initial hash is in commitment
@@ -166,11 +154,9 @@ library Match {
         state._setAgreeState(agreeState);
     }
 
-
     //
     // View methods
     //
-
     function exists(State memory state) internal pure returns (bool) {
         return !state.otherParent.isZero();
     }
@@ -187,31 +173,28 @@ library Match {
         return state.currentHeight > 1;
     }
 
-    function agreesOnLeftNode(
-        State memory state,
-        Tree.Node newLeftNode
-    ) internal pure returns (bool) {
+    function agreesOnLeftNode(State memory state, Tree.Node newLeftNode)
+        internal
+        pure
+        returns (bool)
+    {
         return newLeftNode.eq(state.leftNode);
     }
 
-    function toCycle(
-        State memory state,
-        uint256 startCycle
-    ) internal pure returns (uint256) {
+    function toCycle(State memory state, uint256 startCycle)
+        internal
+        pure
+        returns (uint256)
+    {
         uint64 log2step = ArbitrationConstants.log2step(state.level);
         return _toCycle(state, startCycle, log2step);
     }
 
-    function height(
-        State memory state
-    ) internal pure returns (uint64) {
+    function height(State memory state) internal pure returns (uint64) {
         return ArbitrationConstants.height(state.level);
     }
 
-    function getDivergence(
-        State memory state,
-        uint256 startCycle
-    )
+    function getDivergence(State memory state, uint256 startCycle)
         internal
         pure
         returns (
@@ -246,11 +229,9 @@ library Match {
         }
     }
 
-
     //
     // Requires
     //
-
     function requireExist(State memory state) internal pure {
         require(state.exists(), "match does not exist");
     }
@@ -275,11 +256,9 @@ library Match {
         state.otherParent.requireChildren(leftNode, rightNode);
     }
 
-
     //
     // Private
     //
-
     function _goDownLeftTree(
         State storage state,
         Tree.Node newLeftNode,
@@ -307,10 +286,7 @@ library Match {
         state.runningLeafPosition += 1 << state.currentHeight;
     }
 
-    function _setDivergenceOnLeftLeaf(
-        State storage state,
-        Tree.Node leftLeaf
-    )
+    function _setDivergenceOnLeftLeaf(State storage state, Tree.Node leftLeaf)
         internal
         returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
     {
@@ -327,10 +303,7 @@ library Match {
         }
     }
 
-    function _setDivergenceOnRightLeaf(
-        State storage state,
-        Tree.Node rightLeaf
-    )
+    function _setDivergenceOnRightLeaf(State storage state, Tree.Node rightLeaf)
         internal
         returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
     {
@@ -348,19 +321,18 @@ library Match {
         }
     }
 
-    function _setAgreeState(
-        State storage state,
-        Machine.Hash initialState
-    ) internal {
+    function _setAgreeState(State storage state, Machine.Hash initialState)
+        internal
+    {
         assert(state.currentHeight == 0);
         state.otherParent = Tree.Node.wrap(Machine.Hash.unwrap(initialState));
     }
 
-    function _toCycle(
-        State memory state,
-        uint256 base,
-        uint64 log2step
-    ) internal pure returns (uint256) {
+    function _toCycle(State memory state, uint256 base, uint64 log2step)
+        internal
+        pure
+        returns (uint256)
+    {
         uint256 step = 1 << log2step;
         uint256 leafPosition = state.runningLeafPosition;
         return base + (leafPosition * step);

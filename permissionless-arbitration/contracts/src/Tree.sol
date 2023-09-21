@@ -25,15 +25,18 @@ library Tree {
         return Node.wrap(p);
     }
 
-    function verify(
-        Node parent,
-        Node left,
-        Node right
-    ) internal pure returns (bool) {
+    function verify(Node parent, Node left, Node right)
+        internal
+        pure
+        returns (bool)
+    {
         return parent.eq(left.join(right));
     }
 
-    function requireChildren(Node parent, Node left, Node right) internal pure {
+    function requireChildren(Node parent, Node left, Node right)
+        internal
+        pure
+    {
         require(parent.verify(left, right), "child nodes don't match parent");
     }
 
