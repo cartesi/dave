@@ -10,19 +10,21 @@ library ArbitrationConstants {
     // Time.Duration constant CENSORSHIP_TOLERANCE =
     //     Time.Duration.wrap(60 * 60 * 24 * 7);
 
-    // maximum time for replaying the computation offchain
-    // Time.Duration constant VALIDATOR_EFFORT =
-    //     Time.Duration.wrap(60 * 60 * 24 * 7); // TODO
+    // maximum time for computing the commitments offchain
+    // Time.Duration constant COMMITMENT_EFFORT =
+    //     Time.Duration.wrap(60 * 60 * 4); // TODO
+
+    // maximum time for interacting with a divergence search (match)
+    // Time.Duration constant MATCH_EFFORT =
+    //     Time.Duration.wrap(60 * 60); // TODO
+
+    // Time.Duration constant MAX_ALLOWANCE =
+    //     Time.Duration.wrap(Time.Duration.unwrap(CENSORSHIP_TOLERANCE) + Time.Duration.unwrap(COMMITMENT_EFFORT));
 
     // Dummy
-    Time.Duration constant VALIDATOR_EFFORT = Time.Duration.wrap(0);
-    Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(210);
-
-    Time.Duration constant DISPUTE_TIMEOUT =
-        Time.Duration.wrap(
-            Time.Duration.unwrap(CENSORSHIP_TOLERANCE) +
-                Time.Duration.unwrap(VALIDATOR_EFFORT)
-        );
+    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(0);
+    Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(60 * 5);
+    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(60 * 2);
 
     // 4-level tournament
     uint64 constant LEVELS = 3;
@@ -30,21 +32,13 @@ library ArbitrationConstants {
 
     /// @return log2step gap of each leaf in the tournament[level]
     function log2step(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [
-            uint64(31),
-            uint64(16),
-            uint64(0)
-        ];
+        uint64[LEVELS] memory arr = [uint64(31), uint64(16), uint64(0)];
         return arr[level];
     }
 
     /// @return height of the tournament[level] tree which is calculated by subtracting the log2step[level] from the log2step[level - 1]
     function height(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [
-            uint64(32),
-            uint64(15),
-            uint64(16)
-        ];
+        uint64[LEVELS] memory arr = [uint64(32), uint64(15), uint64(16)];
         return arr[level];
     }
 }

@@ -37,7 +37,6 @@ abstract contract Tournament {
     //
     // Constants
     //
-
     Machine.Hash immutable initialHash;
 
     uint256 immutable startCycle;
@@ -49,9 +48,8 @@ abstract contract Tournament {
     //
     // Storage
     //
-
-    Time.Instant public maximumEnforceableDelay;
     Tree.Node danglingCommitment;
+    uint256 matchCount;
 
     mapping(Tree.Node => Clock.State) clocks;
     mapping(Tree.Node => Machine.Hash) finalStates;
@@ -61,19 +59,14 @@ abstract contract Tournament {
     //
     // Events
     //
-
     event matchCreated(
-        Tree.Node indexed one,
-        Tree.Node indexed two,
-        Tree.Node leftOfTwo
+        Tree.Node indexed one, Tree.Node indexed two, Tree.Node leftOfTwo
     );
     event commitmentJoined(Tree.Node root);
-
 
     //
     // Modifiers
     //
-
     modifier tournamentNotFinished() {
         require(!isFinished(), "tournament is finished");
 
@@ -89,7 +82,6 @@ abstract contract Tournament {
     //
     // Constructor
     //
-
     constructor(
         Machine.Hash _initialHash,
         Time.Duration _allowance,
@@ -102,27 +94,22 @@ abstract contract Tournament {
         startInstant = Time.currentTime();
         allowance = _allowance;
 
-        if (_allowance.gt(ArbitrationConstants.CENSORSHIP_TOLERANCE)) {
-            maximumEnforceableDelay = Time.currentTime().add(
-                ArbitrationConstants.CENSORSHIP_TOLERANCE
-            );
-        } else {
-            maximumEnforceableDelay = Time.currentTime().add(_allowance);
-        }
+        // TODO: do we need this cap check?
+        // if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
+        //     _allowance = ArbitrationConstants.MAX_ALLOWANCE;
+        // }
     }
-
 
     //
     // Virtual Methods
     //
 
-    function updateParentTournamentDelay(Time.Instant _delay) internal virtual;
-
     /// @return bool if commitment with _finalState is allowed to join the tournament
-    function validContestedFinalState(
-        Machine.Hash _finalState
-    ) internal view virtual returns (bool);
-
+    function validContestedFinalState(Machine.Hash _finalState)
+        internal
+        view
+        virtual
+        returns (bool);
 
     //
     // Methods
@@ -167,11 +154,7 @@ abstract contract Tournament {
         _matchState.requireParentHasChildren(_leftNode, _rightNode);
 
         _matchState.advanceMatch(
-            _matchId,
-            _leftNode,
-            _rightNode,
-            _newLeftNode,
-            _newRightNode
+            _matchId, _leftNode, _rightNode, _newLeftNode, _newRightNode
         );
 
         // advance clocks
@@ -197,12 +180,9 @@ abstract contract Tournament {
                 "child nodes do not match parent (commitmentOne)"
             );
 
-            _clockOne.addValidatorEffort(_clockTwo.timeSinceTimeout());
+            _clockOne.deduct(_clockTwo.timeSinceTimeout());
             pairCommitment(
-                _matchId.commitmentOne,
-                _clockOne,
-                _leftNode,
-                _rightNode
+                _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
         } else if (!_clockOne.hasTimeLeft() && _clockTwo.hasTimeLeft()) {
             require(
@@ -210,49 +190,53 @@ abstract contract Tournament {
                 "child nodes do not match parent (commitmentTwo)"
             );
 
-            _clockTwo.addValidatorEffort(_clockOne.timeSinceTimeout());
+            _clockTwo.deduct(_clockOne.timeSinceTimeout());
             pairCommitment(
-                _matchId.commitmentTwo,
-                _clockTwo,
-                _leftNode,
-                _rightNode
+                _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
         } else {
             revert("cannot win by timeout");
         }
 
-        delete matches[_matchId.hashFromId()];
+        // delete storage
+        deleteMatch(_matchId.hashFromId());
     }
-
 
     //
     // View methods
     //
-
-    function canWinMatchByTimeout(
-        Match.Id calldata _matchId
-    ) external view returns (bool) {
+    function canWinMatchByTimeout(Match.Id calldata _matchId)
+        external
+        view
+        returns (bool)
+    {
         Clock.State memory _clockOne = clocks[_matchId.commitmentOne];
         Clock.State memory _clockTwo = clocks[_matchId.commitmentTwo];
 
         return !_clockOne.hasTimeLeft() || !_clockTwo.hasTimeLeft();
     }
 
-    function getCommitment(
-        Tree.Node _commitmentRoot
-    ) external view returns (Clock.State memory, Machine.Hash) {
+    function getCommitment(Tree.Node _commitmentRoot)
+        external
+        view
+        returns (Clock.State memory, Machine.Hash)
+    {
         return (clocks[_commitmentRoot], finalStates[_commitmentRoot]);
     }
 
-    function getMatch(
-        Match.IdHash _matchIdHash
-    ) public view returns (Match.State memory) {
+    function getMatch(Match.IdHash _matchIdHash)
+        public
+        view
+        returns (Match.State memory)
+    {
         return matches[_matchIdHash];
     }
 
-    function getMatchCycle(
-        Match.IdHash _matchIdHash
-    ) external view returns (uint256) {
+    function getMatchCycle(Match.IdHash _matchIdHash)
+        external
+        view
+        returns (uint256)
+    {
         Match.State memory _m = getMatch(_matchIdHash);
         return _m.toCycle(startCycle);
     }
@@ -270,10 +254,10 @@ abstract contract Tournament {
     //
     // Helper functions
     //
-
-    function requireValidContestedFinalState(
-        Machine.Hash _finalState
-    ) internal view {
+    function requireValidContestedFinalState(Machine.Hash _finalState)
+        internal
+        view
+    {
         require(
             validContestedFinalState(_finalState),
             "tournament doesn't have contested final state"
@@ -302,47 +286,43 @@ abstract contract Tournament {
 
     function pairCommitment(
         Tree.Node _rootHash,
-        Clock.State memory _newClock,
+        Clock.State storage _newClock,
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) internal {
         assert(_leftNode.join(_rightNode).eq(_rootHash));
-        (
-            bool _hasDanglingCommitment,
-            Tree.Node _danglingCommitment
-        ) = hasDanglingCommitment();
+        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
+            hasDanglingCommitment();
 
         if (_hasDanglingCommitment) {
             (Match.IdHash _matchId, Match.State memory _matchState) = Match
                 .createMatch(
-                    _danglingCommitment,
-                    _rootHash,
-                    _leftNode,
-                    _rightNode,
-                    level
-                );
+                _danglingCommitment, _rootHash, _leftNode, _rightNode, level
+            );
 
             matches[_matchId] = _matchState;
 
             Clock.State storage _firstClock = clocks[_danglingCommitment];
-            Time.Instant _delay = Clock.deadline(_firstClock, _newClock);
-            Time.Duration _maxDuration = Clock.max(_firstClock, _newClock);
 
-            setMaximumDelay(_delay);
-            updateParentTournamentDelay(_delay.add(_maxDuration)); // TODO hack
+            // grant extra match effort for both clocks
+            _firstClock.addMatchEffort();
+            _newClock.addMatchEffort();
 
             _firstClock.advanceClock();
 
             clearDanglingCommitment();
-            updateParentTournamentDelay(_delay);
+            matchCount++;
 
             emit matchCreated(_danglingCommitment, _rootHash, _leftNode);
         } else {
-            updateParentTournamentDelay(maximumEnforceableDelay.add(_newClock.allowance));
             setDanglingCommitment(_rootHash);
         }
     }
 
+    function deleteMatch(Match.IdHash _matchIdHash) internal {
+        matchCount--;
+        delete matches[_matchIdHash];
+    }
 
     //
     // Clock methods
@@ -350,27 +330,11 @@ abstract contract Tournament {
 
     /// @return bool if the tournament is still open to join
     function isClosed() internal view returns (bool) {
-        if (allowance.gt(ArbitrationConstants.CENSORSHIP_TOLERANCE)) {
-            return
-                startInstant.timeoutElapsed(
-                    ArbitrationConstants.CENSORSHIP_TOLERANCE
-                );
-        } else {
-            return startInstant.timeoutElapsed(allowance);
-        }
+        return startInstant.timeoutElapsed(allowance);
     }
 
     /// @return bool if the tournament is over
     function isFinished() internal view returns (bool) {
-        return Time.currentTime().gt(maximumEnforceableDelay);
-    }
-
-    function setMaximumDelay(Time.Instant _delay) internal returns (bool) {
-        if (_delay.gt(maximumEnforceableDelay)) {
-            maximumEnforceableDelay = _delay;
-            return true;
-        } else {
-            return false;
-        }
+        return isClosed() && matchCount == 0;
     }
 }

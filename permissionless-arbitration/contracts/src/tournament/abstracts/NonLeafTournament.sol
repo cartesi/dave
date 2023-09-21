@@ -21,7 +21,6 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Constants
     //
-
     ITournamentFactory immutable tournamentFactory;
 
     //
@@ -32,17 +31,14 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Events
     //
-
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     //
     // Modifiers
     //
-
     modifier onlyInnerTournament() {
-        Match.IdHash matchIdHash = matchIdFromInnerTournaments[
-            NonRootTournament(msg.sender)
-        ];
+        Match.IdHash matchIdHash =
+            matchIdFromInnerTournaments[NonRootTournament(msg.sender)];
         matches[matchIdHash].requireExist();
         _;
     }
@@ -50,7 +46,6 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Constructor
     //
-
     constructor(ITournamentFactory _tournamentFactory) {
         tournamentFactory = _tournamentFactory;
     }
@@ -76,10 +71,8 @@ abstract contract NonLeafTournament is Tournament {
             _maxDuration = Clock.max(_clock1, _clock2);
         }
 
-        (
-            Machine.Hash _finalStateOne,
-            Machine.Hash _finalStateTwo
-        ) = _matchState.sealMatch(
+        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
+            .sealMatch(
             _matchId,
             initialHash,
             _leftLeaf,
@@ -108,48 +101,33 @@ abstract contract NonLeafTournament is Tournament {
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) external tournamentNotFinished {
-        Match.IdHash _matchIdHash = matchIdFromInnerTournaments[_childTournament];
+        Match.IdHash _matchIdHash =
+            matchIdFromInnerTournaments[_childTournament];
         _matchIdHash.requireExist();
 
         Match.State storage _matchState = matches[_matchIdHash];
         _matchState.requireExist();
         _matchState.requireIsFinished();
 
-        (bool finished, Tree.Node _winner) = _childTournament.innerTournamentWinner();
+        (bool finished, Tree.Node _winner, Tree.Node _innerWinner) =
+            _childTournament.innerTournamentWinner();
         require(finished, "child tournament is not finished");
         _winner.requireExist();
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
         require(_commitmentRoot.eq(_winner), "tournament winner is different");
 
+        (Clock.State memory _innerClock,) =
+            _childTournament.getCommitment(_innerWinner);
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.requireInitialized();
-        _clock.addValidatorEffort(
-            Time
-                .currentTime()
-                .timeSpan(_childTournament.maximumEnforceableDelay())
-        );
+        _clock.reInitialized(_innerClock);
 
-        pairCommitment(
-            _commitmentRoot,
-            _clock,
-            _leftNode,
-            _rightNode
-        );
+        pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
 
         // delete storage
-        delete matches[_matchIdHash];
+        deleteMatch(_matchIdHash);
         matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
-    }
-
-
-    function updateTournamentDelay(
-        Time.Instant _delay
-    ) external onlyInnerTournament {
-        bool overrode = setMaximumDelay(_delay);
-        if (overrode) {
-            updateParentTournamentDelay(_delay);
-        }
     }
 
     function instantiateInner(
