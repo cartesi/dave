@@ -17,10 +17,11 @@ library Time {
         return Instant.wrap(uint64(block.timestamp));
     }
 
-    function add(
-        Instant timestamp,
-        Duration duration
-    ) internal pure returns (Instant) {
+    function add(Instant timestamp, Duration duration)
+        internal
+        pure
+        returns (Instant)
+    {
         uint64 t = Instant.unwrap(timestamp);
         uint64 d = Duration.unwrap(duration);
         return Instant.wrap(t + d);
@@ -48,37 +49,41 @@ library Time {
         return d == 0;
     }
 
-    function add(
-        Duration left,
-        Duration right
-    ) internal pure returns (Duration) {
+    function add(Duration left, Duration right)
+        internal
+        pure
+        returns (Duration)
+    {
         uint64 l = Duration.unwrap(left);
         uint64 r = Duration.unwrap(right);
         return Duration.wrap(l + r);
     }
 
-    function sub(
-        Duration left,
-        Duration right
-    ) internal pure returns (Duration) {
+    function sub(Duration left, Duration right)
+        internal
+        pure
+        returns (Duration)
+    {
         uint64 l = Duration.unwrap(left);
         uint64 r = Duration.unwrap(right);
         return Duration.wrap(l - r);
     }
 
-    function monus(
-        Duration left,
-        Duration right
-    ) internal pure returns (Duration) {
+    function monus(Duration left, Duration right)
+        internal
+        pure
+        returns (Duration)
+    {
         uint64 l = Duration.unwrap(left);
         uint64 r = Duration.unwrap(right);
         return Duration.wrap(l < r ? 0 : l - r);
     }
 
-    function timeSpan(
-        Instant left,
-        Instant right
-    ) internal pure returns (Duration) {
+    function timeSpan(Instant left, Instant right)
+        internal
+        pure
+        returns (Duration)
+    {
         uint64 l = Instant.unwrap(left);
         uint64 r = Instant.unwrap(right);
         return Duration.wrap(l - r);
@@ -92,10 +97,11 @@ library Time {
         return !timestamp.add(duration).gt(current);
     }
 
-    function timeoutElapsed(
-        Instant timestamp,
-        Duration duration
-    ) internal view returns (bool) {
+    function timeoutElapsed(Instant timestamp, Duration duration)
+        internal
+        view
+        returns (bool)
+    {
         return timestamp.timeoutElapsedSince(duration, currentTime());
     }
 }

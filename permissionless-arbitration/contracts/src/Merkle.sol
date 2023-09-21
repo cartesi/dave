@@ -35,8 +35,7 @@ library Merkle {
 
         require(((_size - 1) & _position) == 0, "Position is not aligned");
         require(
-            _siblings.length == 64 - _logOfSize,
-            "Proof length does not match"
+            _siblings.length == 64 - _logOfSize, "Proof length does not match"
         );
 
         for (uint64 _i = 0; _i < _siblings.length; _i++) {

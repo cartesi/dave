@@ -8,13 +8,13 @@ import "../abstracts/Tournament.sol";
 interface ITournamentFactory {
     event rootCreated(Tournament);
 
-    function instantiateSingleLevel(
-        Machine.Hash _initialHash
-    ) external returns (Tournament);
+    function instantiateSingleLevel(Machine.Hash _initialHash)
+        external
+        returns (Tournament);
 
-    function instantiateTop(
-        Machine.Hash _initialHash
-    ) external returns (Tournament);
+    function instantiateTop(Machine.Hash _initialHash)
+        external
+        returns (Tournament);
 
     function instantiateMiddle(
         Machine.Hash _initialHash,

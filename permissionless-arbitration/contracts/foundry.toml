@@ -7,3 +7,7 @@ allow_paths = ['../../machine-emulator-sdk/solidity-step/']
 remappings = [
     'step/=../../machine-emulator-sdk/solidity-step/',
 ]
+
+[fmt]
+line_length = 80
+tab_width = 4

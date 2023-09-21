@@ -31,23 +31,24 @@ contract TournamentFactory is ITournamentFactory {
         singleLevelFactory = _singleLevelFactory;
     }
 
-    function instantiateSingleLevel(
-        Machine.Hash _initialHash
-    ) external override returns (Tournament) {
-        SingleLevelTournament _tournament = singleLevelFactory.instantiate(
-            _initialHash
-        );
+    function instantiateSingleLevel(Machine.Hash _initialHash)
+        external
+        override
+        returns (Tournament)
+    {
+        SingleLevelTournament _tournament =
+            singleLevelFactory.instantiate(_initialHash);
         emit rootCreated(_tournament);
 
         return _tournament;
     }
 
-    function instantiateTop(
-        Machine.Hash _initialHash
-    ) external override returns (Tournament) {
-        TopTournament _tournament = topFactory.instantiate(
-            _initialHash
-        );
+    function instantiateTop(Machine.Hash _initialHash)
+        external
+        override
+        returns (Tournament)
+    {
+        TopTournament _tournament = topFactory.instantiate(_initialHash);
         emit rootCreated(_tournament);
 
         return _tournament;
