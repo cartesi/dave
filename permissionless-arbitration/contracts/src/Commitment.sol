@@ -39,10 +39,9 @@ library Commitment {
         uint256 position,
         bytes32[] calldata siblings
     ) internal pure returns (Tree.Node) {
-        uint256 nodesCount = treeHeight - 1;
-        assert(nodesCount == siblings.length);
+        assert(treeHeight == siblings.length);
 
-        for (uint256 i = 0; i < nodesCount; i++) {
+        for (uint256 i = 0; i < treeHeight; i++) {
             if (isEven(position >> i)) {
                 leaf = keccak256(abi.encodePacked(leaf, siblings[i]));
             } else {

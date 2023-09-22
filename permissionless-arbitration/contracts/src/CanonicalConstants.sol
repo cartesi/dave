@@ -18,8 +18,10 @@ library ArbitrationConstants {
     // Time.Duration constant MATCH_EFFORT =
     //     Time.Duration.wrap(60 * 60); // TODO
 
-    // Time.Duration constant MAX_ALLOWANCE =
-    //     Time.Duration.wrap(Time.Duration.unwrap(CENSORSHIP_TOLERANCE) + Time.Duration.unwrap(COMMITMENT_EFFORT));
+    Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(
+        Time.Duration.unwrap(CENSORSHIP_TOLERANCE)
+            + Time.Duration.unwrap(COMMITMENT_EFFORT)
+    );
 
     // Dummy
     Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(0);

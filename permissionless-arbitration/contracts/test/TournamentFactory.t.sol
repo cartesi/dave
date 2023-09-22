@@ -21,7 +21,7 @@ import "./Util.sol";
 
 pragma solidity ^0.8.0;
 
-contract TournamentFactoryTest is Test {
+contract TournamentFactoryTest is Util, Test {
     TournamentFactory factory;
 
     function setUp() public {
@@ -29,12 +29,12 @@ contract TournamentFactoryTest is Test {
     }
 
     function testRootTournament() public {
-        RootTournament rootTournament = RootTournament(address(factory.instantiateSingleLevel(
-            Machine.ZERO_STATE
-        )));
+        RootTournament rootTournament = RootTournament(
+            address(factory.instantiateSingleLevel(Util.ONE_STATE))
+        );
 
-        (uint64 _level, uint64 _log2step, uint64 _height) = rootTournament
-            .tournamentLevelConstants();
+        (uint64 _level, uint64 _log2step, uint64 _height) =
+            rootTournament.tournamentLevelConstants();
 
         assertEq(_level, 0, "level should be 0");
         assertEq(
@@ -43,17 +43,13 @@ contract TournamentFactoryTest is Test {
             "log2step should match"
         );
         assertEq(
-            _height,
-            ArbitrationConstants.height(_level),
-            "height should match"
+            _height, ArbitrationConstants.height(_level), "height should match"
         );
 
-        rootTournament = RootTournament(address(factory.instantiateTop(
-            Machine.ZERO_STATE
-        )));
+        rootTournament =
+            RootTournament(address(factory.instantiateTop(Util.ONE_STATE)));
 
-        (_level, _log2step, _height) = rootTournament
-            .tournamentLevelConstants();
+        (_level, _log2step, _height) = rootTournament.tournamentLevelConstants();
 
         assertEq(_level, 0, "level should be 0");
         assertEq(
@@ -62,9 +58,7 @@ contract TournamentFactoryTest is Test {
             "log2step should match"
         );
         assertEq(
-            _height,
-            ArbitrationConstants.height(_level),
-            "height should match"
+            _height, ArbitrationConstants.height(_level), "height should match"
         );
     }
 }

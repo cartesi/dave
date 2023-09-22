@@ -60,7 +60,6 @@ abstract contract NonLeafTournament is Tournament {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireCanBeFinalized();
         _matchState.requireParentHasChildren(_leftLeaf, _rightLeaf);
-
         // Pause clocks
         Time.Duration _maxDuration;
         {
@@ -70,7 +69,6 @@ abstract contract NonLeafTournament is Tournament {
             _clock2.setPaused();
             _maxDuration = Clock.max(_clock1, _clock2);
         }
-
         (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
             .sealMatch(
             _matchId,
@@ -80,7 +78,6 @@ abstract contract NonLeafTournament is Tournament {
             _agreeHash,
             _agreeHashProof
         );
-
         NonRootTournament _inner = instantiateInner(
             _agreeHash,
             _matchId.commitmentOne,
