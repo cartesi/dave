@@ -19,24 +19,18 @@ import "src/CanonicalConstants.sol";
 
 pragma solidity ^0.8.0;
 
-contract MultiTournamentTest is Test {
+contract MultiTournamentTest is Util, Test {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
     using Machine for Machine.Hash;
-
-    // players' commitment node at different height
-    // player 0, player 1, and player 2
-    Tree.Node[][3] playerNodes;
 
     TournamentFactory immutable factory;
     TopTournament topTournament;
     MiddleTournament middleTournament;
 
     event matchCreated(
-        Tree.Node indexed one,
-        Tree.Node indexed two,
-        Tree.Node leftOfTwo
+        Tree.Node indexed one, Tree.Node indexed two, Tree.Node leftOfTwo
     );
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
@@ -44,182 +38,113 @@ contract MultiTournamentTest is Test {
         factory = Util.instantiateTournamentFactory();
     }
 
-    function setUp() public {
-        playerNodes[0] = new Tree.Node[](ArbitrationConstants.height(0) + 1);
-        playerNodes[1] = new Tree.Node[](ArbitrationConstants.height(0) + 1);
-        playerNodes[2] = new Tree.Node[](ArbitrationConstants.height(0) + 1);
-
-        playerNodes[0][0] = Tree.ZERO_NODE;
-        playerNodes[1][0] = Util.ONE_NODE;
-        playerNodes[2][0] = Util.ONE_NODE;
-
-        for (uint256 _i = 1; _i <= ArbitrationConstants.height(0); _i++) {
-            // player 0 is all zero leaf node
-            playerNodes[0][_i] = playerNodes[0][_i - 1].join(
-                playerNodes[0][_i - 1]
-            );
-            // player 1 is all 1
-            playerNodes[1][_i] = playerNodes[1][_i - 1].join(
-                playerNodes[1][_i - 1]
-            );
-            // player 2 is all 0 but right most leaf node is 1
-            playerNodes[2][_i] = playerNodes[0][_i - 1].join(
-                playerNodes[2][_i - 1]
-            );
-        }
-    }
+    function setUp() public {}
 
     function testRootWinner() public {
-        topTournament = Util.initializePlayer0Tournament(
-            playerNodes,
-            factory
-        );
+        topTournament = Util.initializePlayer0Tournament(factory);
 
         // no winner before tournament finished
-        (bool _finished, Tree.Node _winner, Machine.Hash _finalState) = topTournament
-            .arbitrationResult();
+        (bool _finished, Tree.Node _winner, Machine.Hash _finalState) =
+            topTournament.arbitrationResult();
 
         assertTrue(_winner.isZero(), "winner should be zero node");
         assertFalse(_finished, "tournament shouldn't be finished");
         assertTrue(
-            _finalState.eq(Machine.ZERO_STATE),
-            "final state should be zero"
+            _finalState.eq(Machine.ZERO_STATE), "final state should be zero"
         );
 
         // player 0 should win after fast forward time to tournament finishes
         uint256 _t = block.timestamp;
-        uint256 _tournamentFinish = _t +
-            1 +
-            Time.Duration.unwrap(ArbitrationConstants.CENSORSHIP_TOLERANCE);
-
-        // the delay is doubled when a match is created
-        uint256 _tournamentFinishWithMatch = _tournamentFinish +
-            Time.Duration.unwrap(ArbitrationConstants.CENSORSHIP_TOLERANCE);
+        uint256 _tournamentFinish =
+            _t + 1 + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
 
         vm.warp(_tournamentFinish);
         (_finished, _winner, _finalState) = topTournament.arbitrationResult();
 
+        uint256 _winnerPlayer = 0;
         assertTrue(
-            _winner.eq(playerNodes[0][ArbitrationConstants.height(0)]),
+            _winner.eq(
+                playerNodes[_winnerPlayer][ArbitrationConstants.height(0)]
+            ),
             "winner should be player 0"
         );
         assertTrue(_finished, "tournament should be finished");
         assertTrue(
-            _finalState.eq(Tree.ZERO_NODE.toMachineHash()),
-            "final state should be zero"
+            _finalState.eq(Util.finalStates[_winnerPlayer]),
+            "final state should match"
         );
 
         // rewind time in half and pair commitment, expect a match
         vm.warp(_t);
         // player 1 joins tournament
-        Util.joinTopTournament(playerNodes, topTournament, 1);
+        Util.joinTopTournament(topTournament, 1);
 
         // no dangling commitment available, should revert
-        vm.warp(_tournamentFinishWithMatch);
-        vm.expectRevert();
-        topTournament.arbitrationResult();
+        vm.warp(_tournamentFinish);
+        (_finished, _winner, _finalState) = topTournament.arbitrationResult();
+
+        // tournament not finished when still match going on
+        assertTrue(_winner.isZero(), "winner should be zero node");
+        assertFalse(_finished, "tournament shouldn't be finished");
+        assertTrue(
+            _finalState.eq(Machine.ZERO_STATE), "final state should be zero"
+        );
     }
 
     function testInner() public {
-        topTournament = Util.initializePlayer0Tournament(
-            playerNodes,
-            factory
-        );
+        topTournament = Util.initializePlayer0Tournament(factory);
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTopTournament(playerNodes, topTournament, 1);
+        Util.joinTopTournament(topTournament, 1);
 
-        Match.Id memory _matchId = Util.matchId(playerNodes, 1, 0);
+        Match.Id memory _matchId = Util.matchId(1, 0);
 
         // advance match to end, this match will always advance to left tree
-        uint256 _playerToSeal = Util.advanceMatch01AtLevel(
-            playerNodes,
-            topTournament,
-            _matchId,
-            0
-        );
+        uint256 _playerToSeal =
+            Util.advanceMatch01AtLevel(topTournament, _matchId, 0);
 
         // seal match
-        topTournament.sealInnerMatchAndCreateInnerTournament(
-            _matchId,
-            playerNodes[_playerToSeal][0],
-            playerNodes[_playerToSeal][0],
-            Machine.ZERO_STATE,
-            Util.generateProof(
-                playerNodes,
-                _playerToSeal,
-                ArbitrationConstants.height(1)
-            )
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
         );
 
-        topTournament = Util.initializePlayer0Tournament(
-            playerNodes,
-            factory
-        );
+        topTournament = Util.initializePlayer0Tournament(factory);
 
         // pair commitment, expect a match
         // player 2 joins tournament
-        Util.joinTopTournament(playerNodes, topTournament, 2);
+        Util.joinTopTournament(topTournament, 2);
 
-        _matchId = Util.matchId(playerNodes, 2, 0);
+        _matchId = Util.matchId(2, 0);
 
         // advance match to end, this match will always advance to right tree
-        _playerToSeal = Util.advanceMatch02AtLevel(
-            playerNodes,
-            topTournament,
-            _matchId,
-            0
-        );
+        _playerToSeal = Util.advanceMatch02AtLevel(topTournament, _matchId, 0);
 
         // seal match
-        topTournament.sealInnerMatchAndCreateInnerTournament(
-            _matchId,
-            playerNodes[0][0],
-            playerNodes[_playerToSeal][0],
-            Machine.ZERO_STATE,
-            Util.generateProof(
-                playerNodes,
-                _playerToSeal,
-                ArbitrationConstants.height(1)
-            )
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
         );
     }
 
     function testInnerWinner() public {
-        topTournament = Util.initializePlayer0Tournament(
-            playerNodes,
-            factory
-        );
+        topTournament = Util.initializePlayer0Tournament(factory);
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTopTournament(playerNodes, topTournament, 1);
+        Util.joinTopTournament(topTournament, 1);
 
-        Match.Id memory _matchId = Util.matchId(playerNodes, 1, 0);
+        Match.Id memory _matchId = Util.matchId(1, 0);
 
         // advance match to end, this match will always advance to left tree
-        uint256 _playerToSeal = Util.advanceMatch01AtLevel(
-            playerNodes,
-            topTournament,
-            _matchId,
-            0
-        );
+        uint256 _playerToSeal =
+            Util.advanceMatch01AtLevel(topTournament, _matchId, 0);
 
         // expect new inner created
         vm.recordLogs();
 
         // seal match
-        topTournament.sealInnerMatchAndCreateInnerTournament(
-            _matchId,
-            playerNodes[_playerToSeal][0],
-            playerNodes[_playerToSeal][0],
-            Machine.ZERO_STATE,
-            Util.generateProof(
-                playerNodes,
-                _playerToSeal,
-                ArbitrationConstants.height(1)
-            )
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
         );
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
@@ -229,27 +154,27 @@ contract MultiTournamentTest is Test {
             keccak256("newInnerTournament(bytes32,address)")
         );
         assertEq(
-            _entries[0].topics[1],
-            Match.IdHash.unwrap(_matchId.hashFromId())
+            _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
         middleTournament = MiddleTournament(
             address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
         );
 
-        (bool _finished, Tree.Node _winner) = middleTournament.innerTournamentWinner();
+        (bool _finished, Tree.Node _winner,) =
+            middleTournament.innerTournamentWinner();
         assertFalse(_finished, "winner should be zero node");
 
         // player 0 should win after fast forward time to inner tournament finishes
         uint256 _t = block.timestamp;
-        // the delay is doubled when a match is created
-        uint256 _rootTournamentFinish = _t +
-            2 *
-            Time.Duration.unwrap(ArbitrationConstants.CENSORSHIP_TOLERANCE);
-        Util.joinMiddleTournament(playerNodes, middleTournament, 0, 1);
+        // the delay is increased when a match is created
+        uint256 _rootTournamentFinish = _t + 1
+            + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
+            + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
+        Util.joinMiddleTournament(middleTournament, 0, 1);
 
-        vm.warp(_rootTournamentFinish - 1);
-        (_finished, _winner) = middleTournament.innerTournamentWinner();
+        vm.warp(_rootTournamentFinish);
+        (_finished, _winner,) = middleTournament.innerTournamentWinner();
         topTournament.winInnerMatch(
             middleTournament,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
@@ -257,55 +182,41 @@ contract MultiTournamentTest is Test {
         );
 
         {
-        vm.warp(_rootTournamentFinish + 1);
-        (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) = topTournament
-            .arbitrationResult();
+            (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState)
+            = topTournament.arbitrationResult();
 
-        assertTrue(
-            _commitment.eq(playerNodes[0][ArbitrationConstants.height(0)]),
-            "winner should be player 0"
-        );
-        assertTrue(_finishedTop, "tournament should be finished");
-        assertTrue(
-            _finalState.eq(Tree.ZERO_NODE.toMachineHash()),
-            "final state should be zero"
-        );
+            uint256 _winnerPlayer = 0;
+            assertTrue(
+                _commitment.eq(
+                    playerNodes[_winnerPlayer][ArbitrationConstants.height(0)]
+                ),
+                "winner should be player 0"
+            );
+            assertTrue(_finishedTop, "tournament should be finished");
+            assertTrue(
+                _finalState.eq(Util.finalStates[_winnerPlayer]),
+                "final state should match"
+            );
         }
 
         //create another tournament for other test
-        topTournament = Util.initializePlayer0Tournament(
-            playerNodes,
-            factory
-        );
+        topTournament = Util.initializePlayer0Tournament(factory);
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTopTournament(playerNodes, topTournament, 1);
+        Util.joinTopTournament(topTournament, 1);
 
-        _matchId = Util.matchId(playerNodes, 1, 0);
+        _matchId = Util.matchId(1, 0);
 
         // advance match to end, this match will always advance to left tree
-        _playerToSeal = Util.advanceMatch01AtLevel(
-            playerNodes,
-            topTournament,
-            _matchId,
-            0
-        );
+        _playerToSeal = Util.advanceMatch01AtLevel(topTournament, _matchId, 0);
 
         // expect new inner created
         vm.recordLogs();
 
         // seal match
-        topTournament.sealInnerMatchAndCreateInnerTournament(
-            _matchId,
-            playerNodes[_playerToSeal][0],
-            playerNodes[_playerToSeal][0],
-            Machine.ZERO_STATE,
-            Util.generateProof(
-                playerNodes,
-                _playerToSeal,
-                ArbitrationConstants.height(1)
-            )
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
         );
 
         _entries = vm.getRecordedLogs();
@@ -315,34 +226,29 @@ contract MultiTournamentTest is Test {
             keccak256("newInnerTournament(bytes32,address)")
         );
         assertEq(
-            _entries[0].topics[1],
-            Match.IdHash.unwrap(_matchId.hashFromId())
+            _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
         middleTournament = MiddleTournament(
             address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
         );
 
-        (_finished, _winner) = middleTournament.innerTournamentWinner();
+        (_finished, _winner,) = middleTournament.innerTournamentWinner();
         assertTrue(_winner.isZero(), "winner should be zero node");
 
         _t = block.timestamp;
-        // the delay is doubled when a match is created
-        uint256 _middleTournamentFinish = _t +
-            1 +
-            2 *
-            Time.Duration.unwrap(ArbitrationConstants.CENSORSHIP_TOLERANCE);
+        // the delay is increased when a match is created
         _rootTournamentFinish =
-            _middleTournamentFinish +
-            2 *
-            Time.Duration.unwrap(ArbitrationConstants.CENSORSHIP_TOLERANCE);
+            _t + 1 + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+        uint256 _middleTournamentFinish = _rootTournamentFinish
+            + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
-        Util.joinMiddleTournament(playerNodes, middleTournament, 0, 1);
+        Util.joinMiddleTournament(middleTournament, 0, 1);
 
         //let player 1 join, then timeout player 0
-        Util.joinMiddleTournament(playerNodes, middleTournament, 1, 1);
+        Util.joinMiddleTournament(middleTournament, 1, 1);
 
-        (Clock.State memory _player0Clock, ) = middleTournament.getCommitment(
+        (Clock.State memory _player0Clock,) = middleTournament.getCommitment(
             playerNodes[0][ArbitrationConstants.height(1)]
         );
         vm.warp(
@@ -350,7 +256,7 @@ contract MultiTournamentTest is Test {
                 _player0Clock.startInstant.add(_player0Clock.allowance)
             )
         );
-        _matchId = Util.matchId(playerNodes, 1, 1);
+        _matchId = Util.matchId(1, 1);
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
@@ -358,7 +264,7 @@ contract MultiTournamentTest is Test {
         );
 
         vm.warp(_middleTournamentFinish);
-        (_finished, _winner) = middleTournament.innerTournamentWinner();
+        (_finished, _winner,) = middleTournament.innerTournamentWinner();
         topTournament.winInnerMatch(
             middleTournament,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
@@ -366,19 +272,22 @@ contract MultiTournamentTest is Test {
         );
 
         {
-        vm.warp(_rootTournamentFinish);
-        (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) = topTournament
-            .arbitrationResult();
+            vm.warp(_rootTournamentFinish);
+            (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState)
+            = topTournament.arbitrationResult();
 
-        assertTrue(
-            _commitment.eq(playerNodes[1][ArbitrationConstants.height(0)]),
-            "winner should be player 1"
-        );
-        assertTrue(_finishedTop, "tournament should be finished");
-        assertTrue(
-            _finalState.eq(Util.ONE_NODE.toMachineHash()),
-            "final state should be 1"
-        );
+            uint256 _winnerPlayer = 1;
+            assertTrue(
+                _commitment.eq(
+                    playerNodes[_winnerPlayer][ArbitrationConstants.height(0)]
+                ),
+                "winner should be player 1"
+            );
+            assertTrue(_finishedTop, "tournament should be finished");
+            assertTrue(
+                _finalState.eq(Util.finalStates[_winnerPlayer]),
+                "final state should match"
+            );
         }
     }
 }
