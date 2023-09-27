@@ -84,7 +84,7 @@ contract Util {
 
     // advance match between player 0 and player 1
     function advanceMatch01AtLevel(
-        TopTournament _topTournament,
+        Tournament _tournament,
         Match.Id memory _matchId,
         uint64 _level
     ) internal returns (uint256 _playerToSeal) {
@@ -93,7 +93,7 @@ contract Util {
             if (_playerToSeal == 0) {
                 // advance match alternately until it can be sealed
                 // starts with player 0
-                _topTournament.advanceMatch(
+                _tournament.advanceMatch(
                     _matchId,
                     playerNodes[0][_current - 1],
                     playerNodes[0][_current - 1],
@@ -102,7 +102,7 @@ contract Util {
                 );
                 _playerToSeal = 1;
             } else {
-                _topTournament.advanceMatch(
+                _tournament.advanceMatch(
                     _matchId,
                     playerNodes[1][_current - 1],
                     playerNodes[1][_current - 1],
@@ -116,7 +116,7 @@ contract Util {
 
     // advance match between player 0 and player 2
     function advanceMatch02AtLevel(
-        TopTournament _topTournament,
+        Tournament _tournament,
         Match.Id memory _matchId,
         uint64 _level
     ) internal returns (uint256 _playerToSeal) {
@@ -125,7 +125,7 @@ contract Util {
             if (_playerToSeal == 0) {
                 // advance match alternately until it can be sealed
                 // starts with player 0
-                _topTournament.advanceMatch(
+                _tournament.advanceMatch(
                     _matchId,
                     playerNodes[0][_current - 1],
                     playerNodes[0][_current - 1],
@@ -134,7 +134,7 @@ contract Util {
                 );
                 _playerToSeal = 2;
             } else {
-                _topTournament.advanceMatch(
+                _tournament.advanceMatch(
                     _matchId,
                     playerNodes[0][_current - 1],
                     playerNodes[2][_current - 1],
@@ -154,59 +154,31 @@ contract Util {
         _topTournament =
             TopTournament(address(_factory.instantiateTop(ONE_STATE)));
         // player 0 joins tournament
-        joinTopTournament(_topTournament, 0);
+        joinTournament(_topTournament, 0, 0);
     }
 
-    // _player joins _topTournament
-    function joinTopTournament(TopTournament _topTournament, uint256 _player)
-        internal
-    {
-        if (_player == 0) {
-            _topTournament.joinTournament(
-                ONE_STATE,
-                generateProof(_player, ArbitrationConstants.height(0)),
-                playerNodes[0][ArbitrationConstants.height(0) - 1],
-                playerNodes[0][ArbitrationConstants.height(0) - 1]
-            );
-        } else if (_player == 1) {
-            _topTournament.joinTournament(
-                TWO_STATE,
-                generateProof(_player, ArbitrationConstants.height(0)),
-                playerNodes[1][ArbitrationConstants.height(0) - 1],
-                playerNodes[1][ArbitrationConstants.height(0) - 1]
-            );
-        } else if (_player == 2) {
-            _topTournament.joinTournament(
-                TWO_STATE,
-                generateProof(_player, ArbitrationConstants.height(0)),
-                playerNodes[0][ArbitrationConstants.height(0) - 1],
-                playerNodes[2][ArbitrationConstants.height(0) - 1]
-            );
-        }
-    }
-
-    // _player joins _middleTournament at _level
-    function joinMiddleTournament(
-        MiddleTournament _middleTournament,
+    // _player joins _tournament at _level
+    function joinTournament(
+        Tournament _tournament,
         uint256 _player,
         uint64 _level
     ) internal {
         if (_player == 0) {
-            _middleTournament.joinTournament(
+            _tournament.joinTournament(
                 ONE_STATE,
                 generateProof(_player, ArbitrationConstants.height(_level)),
                 playerNodes[0][ArbitrationConstants.height(_level) - 1],
                 playerNodes[0][ArbitrationConstants.height(_level) - 1]
             );
         } else if (_player == 1) {
-            _middleTournament.joinTournament(
+            _tournament.joinTournament(
                 TWO_STATE,
                 generateProof(_player, ArbitrationConstants.height(_level)),
                 playerNodes[1][ArbitrationConstants.height(_level) - 1],
                 playerNodes[1][ArbitrationConstants.height(_level) - 1]
             );
         } else if (_player == 2) {
-            _middleTournament.joinTournament(
+            _tournament.joinTournament(
                 TWO_STATE,
                 generateProof(_player, ArbitrationConstants.height(_level)),
                 playerNodes[0][ArbitrationConstants.height(_level) - 1],
@@ -215,8 +187,8 @@ contract Util {
         }
     }
 
-    function sealInnerMatchAndCreateInnerTournament(
-        TopTournament _topTournament,
+    function sealLeafMatch(
+        LeafTournament _tournament,
         Match.Id memory _matchId,
         uint256 _player
     ) internal {
@@ -224,12 +196,42 @@ contract Util {
         Tree.Node _right = playerNodes[_player][0];
         // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
 
-        _topTournament.sealInnerMatchAndCreateInnerTournament(
+        _tournament.sealLeafMatch(
             _matchId,
             _left,
             _right,
             ONE_STATE,
-            Util.generateProof(_player, ArbitrationConstants.height(0))
+            generateProof(_player, ArbitrationConstants.height(0))
+        );
+    }
+
+    function winLeafMatch(
+        LeafTournament _tournament,
+        Match.Id memory _matchId,
+        uint256 _player
+    ) internal {
+        Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
+        Tree.Node _right = playerNodes[_player][0];
+        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
+
+        _tournament.winLeafMatch(_matchId, _left, _right, new bytes(0));
+    }
+
+    function sealInnerMatchAndCreateInnerTournament(
+        NonLeafTournament _tournament,
+        Match.Id memory _matchId,
+        uint256 _player
+    ) internal {
+        Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
+        Tree.Node _right = playerNodes[_player][0];
+        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
+
+        _tournament.sealInnerMatchAndCreateInnerTournament(
+            _matchId,
+            _left,
+            _right,
+            ONE_STATE,
+            generateProof(_player, ArbitrationConstants.height(0))
         );
     }
 

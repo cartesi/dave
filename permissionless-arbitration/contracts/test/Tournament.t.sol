@@ -45,7 +45,7 @@ contract TournamentTest is Util, Test {
 
         // duplicate commitment should be reverted
         vm.expectRevert("clock is initialized");
-        Util.joinTopTournament(topTournament, 0);
+        Util.joinTournament(topTournament, 0, 0);
 
         // pair commitment, expect a match
         vm.expectEmit(true, true, false, true, address(topTournament));
@@ -55,7 +55,7 @@ contract TournamentTest is Util, Test {
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
         // player 1 joins tournament
-        Util.joinTopTournament(topTournament, 1);
+        Util.joinTournament(topTournament, 1, 0);
     }
 
     function testTimeout() public {
@@ -63,12 +63,12 @@ contract TournamentTest is Util, Test {
 
         uint256 _t = block.timestamp;
         // the delay is increased when a match is created
-        uint256 _tournamentFinishWithMatch = _t + 1
+        uint256 _tournamentFinishWithMatch = _t
             + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
         // player 1 joins tournament
-        Util.joinTopTournament(topTournament, 1);
+        Util.joinTournament(topTournament, 1, 0);
 
         Match.Id memory _matchId = Util.matchId(1, 0);
         assertFalse(
@@ -117,12 +117,12 @@ contract TournamentTest is Util, Test {
         _t = block.timestamp;
 
         // the delay is increased when a match is created
-        _tournamentFinishWithMatch = _t + 1
+        _tournamentFinishWithMatch = _t
             + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
         // player 1 joins tournament
-        Util.joinTopTournament(topTournament, 1);
+        Util.joinTournament(topTournament, 1, 0);
 
         // player 0 should win after fast forward time to player 1 timeout
         // player 1 timeout first because he's supposed to advance match after player 0 advanced
