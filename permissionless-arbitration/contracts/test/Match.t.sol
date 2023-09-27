@@ -21,6 +21,7 @@ pragma solidity ^0.8.0;
 // TODO: we cannot set the height of a match anymore
 // To properly test, we'll need to swap the implementation of
 // ArbitrationConstants.
+// Or wait until `mockCall` works on internal calls `https://github.com/foundry-rs/foundry/issues/432`
 
 /*
 contract MatchTest is Test {

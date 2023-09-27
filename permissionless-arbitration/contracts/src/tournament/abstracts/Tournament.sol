@@ -232,6 +232,7 @@ abstract contract Tournament {
         return matches[_matchIdHash];
     }
 
+    // TODO: do we need this?
     function getMatchCycle(Match.IdHash _matchIdHash)
         external
         view
