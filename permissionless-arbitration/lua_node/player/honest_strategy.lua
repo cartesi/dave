@@ -1,5 +1,6 @@
 local constants = require "constants"
-local helper = require 'utils.helper'
+local helper = require "utils.helper"
+local time = require "utils.time"
 
 local Machine = require "computation.machine"
 
@@ -244,6 +245,8 @@ function HonestStrategy:_react_tournament(state, tournament)
     if not tournament.commitments[commitment.root_hash] then
         self:_join_tournament(tournament, commitment)
     else
+        helper.log(self.sender.index, time.prettify_clock(tournament.commitments[commitment.root_hash].status))
+
         local latest_match = tournament.commitments[commitment.root_hash].latest_match
         if latest_match then
             return self:_react_match(state, latest_match, commitment)

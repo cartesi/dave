@@ -9,7 +9,7 @@ local Sender = require "blockchain.sender"
 local HonestStrategy = require "player.honest_strategy"
 
 local time = require "utils.time"
-local helper = require 'utils.helper'
+local helper = require "utils.helper"
 
 local player_index = tonumber(arg[1])
 local tournament = arg[2]

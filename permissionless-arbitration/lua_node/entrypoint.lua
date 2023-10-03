@@ -8,7 +8,7 @@ local FF_TIME = 30
 local IDLE_LIMIT = 5
 local INACTIVE_LIMIT = 10
 
-local helper = require 'utils.helper'
+local helper = require "utils.helper"
 local blockchain_utils = require "blockchain.utils"
 local time = require "utils.time"
 local blockchain_constants = require "blockchain.constants"

@@ -163,6 +163,33 @@ function Reader:_read_logs(tournament_address, sig, topics, data_sig)
     return ret
 end
 
+function Reader:_block(block)
+    local cmd = string.format("cast block " .. block .. " 2>&1")
+
+    local handle = io.popen(cmd)
+    assert(handle)
+
+    local ret
+    local str = handle:read()
+    while str do
+        if str:find "Error" or str:find "error" then
+            local err_str = handle:read "*a"
+            handle:close()
+            error(string.format("Cast block failed:\n%s", err_str))
+        end
+
+        ret = str:match("timestamp            (%d+)")
+        if ret then
+            break
+        end
+
+        str = handle:read()
+    end
+    handle:close()
+
+    return ret
+end
+
 local cast_call_template = [==[
 cast call --rpc-url "%s" "%s" "%s" %s 2>&1
 ]==]
@@ -250,17 +277,20 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     local call_ret = self:_call(tournament_address, sig, { commitment_hash:hex_string() })
     assert(#call_ret == 2)
 
+    local last_block = self:_block("latest")
+
     local allowance, last_resume = call_ret[1]:match "%((%d+),(%d+)%)"
     assert(allowance)
     assert(last_resume)
     local clock = {
         allowance = tonumber(allowance),
-        last_resume = tonumber(last_resume)
+        last_resume = tonumber(last_resume),
     }
 
     local ret = {
         clock = clock,
-        final_state = Hash:from_digest_hex(call_ret[2])
+        final_state = Hash:from_digest_hex(call_ret[2]),
+        last_block = last_block
     }
 
     return ret
@@ -295,9 +325,10 @@ function Reader:match(address, match_id_hash)
 end
 
 function Reader:inner_tournament_winner(address)
-    local sig = "innerTournamentWinner()(bool,bytes32)"
+    local sig = "innerTournamentWinner()(bool,bytes32,bytes32)"
     local ret = self:_call(address, sig, {})
     ret[2] = Hash:from_digest_hex(ret[2])
+    ret[3] = Hash:from_digest_hex(ret[3])
 
     return ret
 end
@@ -316,27 +347,6 @@ function Reader:maximum_delay(address)
     local ret = self:_call(address, sig, {})
 
     return ret
-end
-
-local cast_advance_template = [[
-cast rpc -r "%s" evm_increaseTime %d
-]]
-
-function Reader:advance_time(seconds)
-    local cmd = string.format(
-        cast_advance_template,
-        self.endpoint,
-        seconds
-    )
-
-    local handle = io.popen(cmd)
-    assert(handle)
-    local ret = handle:read "*a"
-    handle:close()
-
-    if ret:find "Error" then
-        error(string.format("Advance time `%d`s failed:\n%s", seconds, ret))
-    end
 end
 
 return Reader
