@@ -104,6 +104,19 @@ function Sender:tx_advance_match(
     )
 end
 
+function Sender:eliminate_match(
+    tournament_address, commitment_one, commitment_two
+)
+    local sig = [[eliminateMatchByTimeout((bytes32,bytes32))]]
+    return pcall(
+        self._send_tx,
+        self,
+        tournament_address,
+        sig,
+        { { commitment_one, commitment_two, _tag = "tuple" } }
+    )
+end
+
 function Sender:tx_seal_inner_match(
     tournament_address, commitment_one, commitment_two, left, right, initial_hash, proof
 )

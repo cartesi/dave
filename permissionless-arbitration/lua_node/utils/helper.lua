@@ -7,7 +7,8 @@ local ps_template = [[ps %s | grep defunct | wc -l]]
 local function log(player_index, msg)
     local color_index = (player_index - 1) % #names + 1
     local timestamp = os.date("%m/%d/%Y %X")
-    print(color.reset .. color.fg[names[color_index]] .. string.format("[#%d][%s] %s", player_index, timestamp, msg) .. color.reset)
+    print(color.reset .. color.fg[names[color_index]] ..
+        string.format("[#%d][%s] %s", player_index, timestamp, msg) .. color.reset)
 end
 
 local function log_to_ts(reader, last_ts)
@@ -37,7 +38,7 @@ end
 
 local function is_zombie(pid)
     local reader = io.popen(string.format(ps_template, pid))
-    ret = reader:read()
+    local ret = reader:read()
     reader:close()
     return tonumber(ret) == 1
 end
@@ -57,7 +58,7 @@ end
 
 local function is_player_idle(player_index)
     local reader = io.popen(string.format(idle_template, player_index, player_index))
-    ret = reader:read()
+    local ret = reader:read()
     reader:close()
     return tonumber(ret) == 1
 end
@@ -67,7 +68,7 @@ local function rm_player_idle(player_index)
 end
 
 local function all_players_idle(pid_player)
-    for pid, player in pairs(pid_player) do
+    for _, player in pairs(pid_player) do
         if not is_player_idle(player) then
             return false
         end
@@ -76,7 +77,7 @@ local function all_players_idle(pid_player)
 end
 
 local function rm_all_players_idle(pid_player)
-    for pid, player in pairs(pid_player) do
+    for _, player in pairs(pid_player) do
         rm_player_idle(player)
     end
     return true

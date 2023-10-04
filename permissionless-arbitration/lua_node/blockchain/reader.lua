@@ -1,6 +1,33 @@
 local Hash = require "cryptography.hash"
 local eth_abi = require "utils.eth_abi"
 
+local function latest_block(block)
+    local cmd = string.format("cast block " .. block .. " 2>&1")
+
+    local handle = io.popen(cmd)
+    assert(handle)
+
+    local ret
+    local str = handle:read()
+    while str do
+        if str:find "Error" or str:find "error" then
+            local err_str = handle:read "*a"
+            handle:close()
+            error(string.format("Cast block failed:\n%s", err_str))
+        end
+
+        ret = str:match("timestamp            (%d+)")
+        if ret then
+            break
+        end
+
+        str = handle:read()
+    end
+    handle:close()
+
+    return ret
+end
+
 local function parse_topics(json)
     local _, _, topics = json:find(
         [==["topics":%[([^%]]*)%]]==]
@@ -53,54 +80,6 @@ local function parse_logs(logs, data_sig)
         local decoded_data = parse_data(k, data_sig)
         local meta = parse_meta(k)
         table.insert(ret, { emited_topics = emited_topics, decoded_data = decoded_data, meta = meta })
-    end
-
-    return ret
-end
-
-local function join_tables(...)
-    local function join(ret, t, ...)
-        if not t then return ret end
-
-        for k, v in ipairs(t) do
-            ret[k] = v
-        end
-
-        return join(ret, ...)
-    end
-
-    local ret = join({}, ...)
-    return ret
-end
-
-local function sort_and_dedup(t)
-    table.sort(t, function(a, b)
-        local m1, m2 = a.meta, b.meta
-
-        if m1.block_number < m2.block_number then
-            return true
-        elseif m1.block_number > m2.block_number then
-            return false
-        else
-            if m1.log_index <= m2.log_index then
-                return true
-            else
-                return false
-            end
-        end
-    end)
-
-    local ret = {}
-    for k, v in ipairs(t) do
-        local v2 = t[k + 1]
-        if not v2 then
-            table.insert(ret, v)
-        else
-            local m1, m2 = v.meta, v2.meta
-            if not (m1.block_number == m2.block_number and m1.log_index == m2.log_index) then
-                table.insert(ret, v)
-            end
-        end
     end
 
     return ret
@@ -160,33 +139,6 @@ function Reader:_read_logs(tournament_address, sig, topics, data_sig)
     end
 
     local ret = parse_logs(logs, data_sig)
-    return ret
-end
-
-function Reader:_block(block)
-    local cmd = string.format("cast block " .. block .. " 2>&1")
-
-    local handle = io.popen(cmd)
-    assert(handle)
-
-    local ret
-    local str = handle:read()
-    while str do
-        if str:find "Error" or str:find "error" then
-            local err_str = handle:read "*a"
-            handle:close()
-            error(string.format("Cast block failed:\n%s", err_str))
-        end
-
-        ret = str:match("timestamp            (%d+)")
-        if ret then
-            break
-        end
-
-        str = handle:read()
-    end
-    handle:close()
-
     return ret
 end
 
@@ -277,7 +229,7 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     local call_ret = self:_call(tournament_address, sig, { commitment_hash:hex_string() })
     assert(#call_ret == 2)
 
-    local last_block = self:_block("latest")
+    local last_block = latest_block("latest")
 
     local allowance, last_resume = call_ret[1]:match "%((%d+),(%d+)%)"
     assert(allowance)
@@ -290,7 +242,7 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     local ret = {
         clock = clock,
         final_state = Hash:from_digest_hex(call_ret[2]),
-        last_block = last_block
+        last_block = tonumber(last_block)
     }
 
     return ret
