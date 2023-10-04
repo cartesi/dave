@@ -404,4 +404,34 @@ contract MultiTournamentTest is Util, Test {
             );
         }
     }
+
+    function testEliminateByTimeout() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+
+        // pair commitment, expect a match
+        // player 1 joins tournament
+        Util.joinTournament(topTournament, 1, 0);
+
+        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.State memory _match =
+            topTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        uint256 _t = block.timestamp;
+        // the delay is increased when a match is created
+        uint256 _rootTournamentFinish = _t
+            + 2
+                * (
+                    Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
+                        + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT)
+                );
+
+        vm.warp(_rootTournamentFinish - 1);
+        // cannot eliminate match when both blocks still have time
+        vm.expectRevert("cannot eliminate by timeout");
+        topTournament.eliminateMatchByTimeout(_matchId);
+
+        vm.warp(_rootTournamentFinish);
+        topTournament.eliminateMatchByTimeout(_matchId);
+    }
 }
