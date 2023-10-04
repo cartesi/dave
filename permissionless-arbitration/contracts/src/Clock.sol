@@ -72,6 +72,20 @@ library Clock {
         );
     }
 
+    function timeLeft(State memory state)
+        internal
+        view
+        returns (Time.Duration)
+    {
+        if (state.startInstant.isZero()) {
+            return state.allowance;
+        } else {
+            return state.allowance.monus(
+                Time.timeSpan(Time.currentTime(), state.startInstant)
+            );
+        }
+    }
+
     //
     // Storage methods
     //
@@ -137,20 +151,6 @@ library Clock {
     //
     // Private
     //
-    function timeLeft(State memory state)
-        private
-        view
-        returns (Time.Duration)
-    {
-        if (state.startInstant.isZero()) {
-            return state.allowance;
-        } else {
-            return state.allowance.monus(
-                Time.timeSpan(Time.currentTime(), state.startInstant)
-            );
-        }
-    }
-
     function toggleClock(State storage state) private {
         if (state.startInstant.isZero()) {
             state.startInstant = Time.currentTime();

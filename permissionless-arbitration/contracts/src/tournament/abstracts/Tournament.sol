@@ -202,6 +202,35 @@ abstract contract Tournament {
         deleteMatch(_matchId.hashFromId());
     }
 
+    function eliminateMatchByTimeout(Match.Id calldata _matchId)
+        external
+        tournamentNotFinished
+    {
+        matches[_matchId.hashFromId()].requireExist();
+        Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
+        Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
+
+        _clockOne.requireInitialized();
+        _clockTwo.requireInitialized();
+
+        // check if both clocks are out of time
+        if (
+            (
+                !_clockOne.hasTimeLeft()
+                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout())
+            )
+                || (
+                    !_clockTwo.hasTimeLeft()
+                        && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout())
+                )
+        ) {
+            // delete storage
+            deleteMatch(_matchId.hashFromId());
+        } else {
+            revert("cannot eliminate by timeout");
+        }
+    }
+
     //
     // View methods
     //
