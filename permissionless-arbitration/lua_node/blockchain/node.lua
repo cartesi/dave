@@ -108,7 +108,8 @@ local function deploy_contracts(endpoint, deployer, initial_hash)
     print "Deploying Tournament factory..."
 
     local cmd_tournament = string.format(
-        [[sh -c "cd contracts && forge create TournamentFactory --rpc-url=%s --private-key=%s --constructor-args %s %s %s %s"]],
+        [[sh -c "cd contracts && forge create TournamentFactory \
+        --rpc-url=%s --private-key=%s --constructor-args %s %s %s %s"]],
         endpoint, deployer, sl_factory_address, top_factory_address, mid_factory_address, bot_factory_address
     )
 

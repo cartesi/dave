@@ -7,6 +7,26 @@ local Machine = require "computation.machine"
 local HonestStrategy = {}
 HonestStrategy.__index = HonestStrategy
 
+local function clock_has_time(clock_status)
+    local clock = clock_status.clock
+    if clock.last_resume == 0 then
+        return true
+    else
+        local current = clock_status.last_block
+        return (clock.last_resume + clock.allowance) > current
+    end
+end
+
+local function time_since_timeout(clock_status)
+    local clock = clock_status.clock
+    if clock.last_resume == 0 then
+        return
+    else
+        local current = clock_status.last_block
+        return current - (clock.last_resume + clock.allowance)
+    end
+end
+
 function HonestStrategy:new(commitment_builder, machine_path, sender)
     local honest_strategy = {
         commitment_builder = commitment_builder,
@@ -239,6 +259,37 @@ function HonestStrategy:_react_tournament(state, tournament)
                 ))
             end
             return
+        end
+    end
+
+    for _, match in ipairs(tournament.matches) do
+        if match then
+            local status_1 = tournament.commitments[match.commitment_one].status
+            local status_2 = tournament.commitments[match.commitment_two].status
+
+            -- try to eliminate matches that both clocks are out of time
+            if (not clock_has_time(status_1) and (time_since_timeout(status_1) > status_2.clock.allowance)) or
+            (not clock_has_time(status_2) and (time_since_timeout(status_2) > status_1.clock.allowance)) then
+                helper.log(self.sender.index, string.format(
+                    "eliminate match for commitment %s and %s at tournament %s of level %d",
+                    match.commitment_one,
+                    match.commitment_two,
+                    tournament.address,
+                    tournament.level
+                ))
+
+                local ok, e = self.sender:eliminate_match(
+                    tournament.address,
+                    match.commitment_one,
+                    match.commitment_two
+                )
+                if not ok then
+                    helper.log(self.sender.index, string.format(
+                        "eliminate match reverted: %s",
+                        e
+                    ))
+                end
+            end
         end
     end
 

@@ -29,7 +29,12 @@ local cmds = {
     string.format([[sh -c "echo $$ ; exec ./lua_node/player/honest_player.lua %d %s %s | tee honest.log"]], 1, contract,
         machine_path),
     string.format([[sh -c "echo $$ ; exec ./lua_node/player/dishonest_player.lua %d %s %s %s | tee dishonest.log"]], 2,
-        contract, machine_path, initial_hash)
+        contract, machine_path, initial_hash),
+    -- enable below for two extra idle players
+    -- string.format([[sh -c "echo $$ ; exec ./lua_node/player/idle_player.lua %d %s %s %s | tee idle_1.log"]], 3,
+    --     contract, machine_path, initial_hash),
+    -- string.format([[sh -c "echo $$ ; exec ./lua_node/player/idle_player.lua %d %s %s %s | tee idle_2.log"]], 4,
+    --     contract, machine_path, initial_hash)
 }
 local pid_reader = {}
 local pid_player = {}
@@ -39,6 +44,7 @@ for i, cmd in ipairs(cmds) do
     local pid = assert(reader):read()
     pid_reader[pid] = reader
     pid_player[pid] = i
+    time.sleep(3)
 end
 
 -- gracefully end children processes
@@ -55,7 +61,7 @@ while true do
     local players = 0
 
     for pid, reader in pairs(pid_reader) do
-        local msg_out = 0
+        local msg_out
         players = players + 1
         last_ts, msg_out = helper.log_to_ts(reader, last_ts)
 
