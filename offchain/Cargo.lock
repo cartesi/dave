@@ -69,6 +69,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-recursion"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd55a5ba1179988837d24ab4c7cc8ed6efdeff578ede0416b4225a5fca35bd0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.38",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -684,6 +695,16 @@ name = "data-encoding"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2e66c9d817f1720209181c316d28635c050fa304f9c79e47a520882661b7308"
+
+[[package]]
+name = "dave-input-reader"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "ethers",
+ "futures",
+ "tokio",
+]
 
 [[package]]
 name = "der"
