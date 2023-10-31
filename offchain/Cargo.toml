@@ -1,8 +1,30 @@
 [workspace]
-
+resolver = "2"
 members = [
     "machine-json-rpc",
     "core",
     "coordinator",
+    "input-reader",
     "simulator",
 ]
+
+[workspace.package]
+version = "0.1.0"
+
+authors = [
+  "Gabriel Coutinho de Paula <gcdepaula@protonmail.io>",
+  "Algebraic Sofia <sofia@algebraic.dev>",
+  "Stephen Chen <stephenx747@gmail.com>",
+]
+description = "A Cartesi validator reference implementation"
+edition = "2021"
+homepage = "https://github.com/cartesi/dave"
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/cartesi/dave"
+
+[workspace.dependencies]
+async-recursion = "1"
+ethers = "2.0.10"
+futures = "0.3"
+tokio = { version = "1", features = ["full"] }
