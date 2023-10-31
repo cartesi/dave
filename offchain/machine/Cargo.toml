@@ -1,0 +1,21 @@
+[package]
+name = "machine"
+version = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+cartesi-machine-json-rpc = {path = "../../machine-json-rpc"}
+cryptography = {path = "../cryptography"}
+ethers = { workspace = true }
+hex = "0.4.3"
+async-mutex = "1.4.0"
+sha3 = "0.10.8"
+async-trait = "0.1.74"
+jsonrpsee = {version = "0.18.2", features=["jsonrpsee-http-client"]}
