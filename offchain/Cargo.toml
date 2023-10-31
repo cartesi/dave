@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "machine-json-rpc",
+    "core",
+    "coordinator",
+    "simulator",
+]
