@@ -3,4 +3,4 @@ node_modules
 .env
 .DS_Store
 **/.idea/
-target
+target/
