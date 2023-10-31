@@ -69,6 +69,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-mutex"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "479db852db25d9dbf6204e6cb6253698f175c15726470f78af0d918e99d6156e"
+dependencies = [
+ "event-listener",
+]
+
+[[package]]
 name = "async-recursion"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -644,6 +653,14 @@ checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "cryptography"
+version = "0.1.0"
+dependencies = [
+ "ethers",
+ "hex",
 ]
 
 [[package]]
@@ -1240,6 +1257,12 @@ dependencies = [
  "walkdir",
  "yansi",
 ]
+
+[[package]]
+name = "event-listener"
+version = "2.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "eyre"
@@ -1986,6 +2009,20 @@ name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
+
+[[package]]
+name = "machine"
+version = "0.1.0"
+dependencies = [
+ "async-mutex",
+ "async-trait",
+ "cartesi-machine-json-rpc",
+ "cryptography",
+ "ethers",
+ "hex",
+ "jsonrpsee",
+ "sha3",
+]
 
 [[package]]
 name = "matchit"

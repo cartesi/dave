@@ -1,11 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "machine-json-rpc",
     "core",
     "coordinator",
     "input-reader",
     "simulator",
+    "cryptography",
+    "machine",
 ]
 
 [workspace.package]

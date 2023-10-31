@@ -13,8 +13,8 @@ async-trait = "0.1.72"
 primitive-types = "0.12.1"
 sha3 = "0.10.8"
 serde_json = "1.0.107"
-cartesi-machine-json-rpc = { path = "../machine-json-rpc" }
+cartesi-machine-json-rpc = { path = "../../machine-json-rpc" }
 
 [build-dependencies]
-ethers-contract-abigen = "2.0.8" 
+ethers-contract-abigen = "2.0.8"
 ethers-solc = "2.0.8"
