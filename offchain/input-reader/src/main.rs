@@ -39,8 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // TODO: get from configuration
     let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
-    let provider =
-        Provider::<Http>::try_from("https://mainnet.infura.io/v3/PUT_YOUR_INFURA_KEY_HERE")?;
+    let provider = Provider::<Http>::try_from(
+        "https://mainnet.infura.io/v3/6d58afadb5a94a978b232aabc243a82f",
+    )?;
     let semaphore = Semaphore::new(5);
 
     let partition_provider = PartitionProvider {
