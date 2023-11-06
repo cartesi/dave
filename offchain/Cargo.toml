@@ -5,7 +5,6 @@ members = [
     "coordinator",
     "input-reader",
     "simulator",
-    "cryptography",
     "machine",
 ]
 

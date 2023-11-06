@@ -12,7 +12,6 @@ repository = { workspace = true }
 
 [dependencies]
 cartesi-machine-json-rpc = {path = "../../machine-json-rpc"}
-cryptography = {path = "../cryptography"}
 ethers = { workspace = true }
 hex = "0.4.3"
 async-mutex = "1.4.0"

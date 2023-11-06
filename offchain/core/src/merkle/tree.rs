@@ -2,10 +2,12 @@ use std::collections::HashMap;
 
 use crate::merkle::{Hash, MerkleTreeNode};
 
+use super::Int;
+
 #[derive(Clone, Debug)]
 pub struct MerkleTreeLeaf {
     pub node: Hash,
-    pub accumulated_count: u64,
+    pub accumulated_count: Int,
     pub log2_size: Option<u64>
 }
 
@@ -18,7 +20,7 @@ struct ProofAccumulator {
 
 #[derive(Debug)]
 pub struct MerkleTree {
-    log2_size: u64,
+    log2_size: u32,
     root: Hash,
     leafs: Vec<MerkleTreeLeaf>,
     nodes: HashMap<Hash, MerkleTreeNode>,
@@ -26,7 +28,7 @@ pub struct MerkleTree {
 
 impl MerkleTree {
     pub fn new(
-        log2_size: u64,
+        log2_size: u32,
         root: Hash,
         leafs: Vec<MerkleTreeLeaf>,
         nodes: HashMap<Hash, MerkleTreeNode>,
@@ -59,7 +61,7 @@ impl MerkleTree {
         let mut height = 0u64;
         if let Some(leaf) = self.leafs.get(0) {
             if let Some(log2_size) = leaf.log2_size {
-                height = log2_size + self.log2_size;
+                height = log2_size + self.log2_size as u64;
             }
         }
         assert!((index >> height) == 0);
