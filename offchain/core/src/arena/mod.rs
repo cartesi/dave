@@ -9,4 +9,3 @@ pub use ethers_arena::*;
 
 mod util;
 use util::*;
-

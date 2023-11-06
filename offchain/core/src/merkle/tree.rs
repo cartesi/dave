@@ -8,7 +8,7 @@ use super::Int;
 pub struct MerkleTreeLeaf {
     pub node: Hash,
     pub accumulated_count: Int,
-    pub log2_size: Option<u64>
+    pub log2_size: Option<u64>,
 }
 
 pub type MerkleProof = Vec<Hash>;
@@ -46,7 +46,8 @@ impl MerkleTree {
     }
 
     pub fn root_children(&self) -> (Hash, Hash) {
-        self.node_children(self.root).expect("root does not have children")
+        self.node_children(self.root)
+            .expect("root does not have children")
     }
 
     pub fn node_children(&self, digest: Hash) -> Option<(Hash, Hash)> {
@@ -54,10 +55,7 @@ impl MerkleTree {
         node.children()
     }
 
-    pub fn prove_leaf(
-        &self,
-        index: u64
-    ) -> (Hash, MerkleProof) {
+    pub fn prove_leaf(&self, index: u64) -> (Hash, MerkleProof) {
         let mut height = 0u64;
         if let Some(leaf) = self.leafs.get(0) {
             if let Some(log2_size) = leaf.log2_size {
@@ -74,18 +72,18 @@ impl MerkleTree {
             &mut proof_acc,
             self.nodes.get(&self.root).expect("root does not exist"),
             height,
-            index
+            index,
         );
 
         (proof_acc.leaf, proof_acc.proof)
     }
 
     fn generate_proof(
-        &self, 
+        &self,
         proof_acc: &mut ProofAccumulator,
         root: &MerkleTreeNode,
         height: u64,
-        include_index: u64
+        include_index: u64,
     ) {
         if height == 0 {
             proof_acc.leaf = root.digest;
@@ -99,21 +97,11 @@ impl MerkleTree {
 
         if (include_index >> new_height) & 1 == 0 {
             let left = left;
-            self.generate_proof(
-                proof_acc,
-                left,
-                new_height,
-                include_index,
-            );
+            self.generate_proof(proof_acc, left, new_height, include_index);
             proof_acc.proof.push(left.digest);
         } else {
             let right = right;
-            self.generate_proof(
-                proof_acc,
-                right,
-                new_height,
-                include_index,
-            );
+            self.generate_proof(proof_acc, right, new_height, include_index);
             proof_acc.proof.push(right.digest);
         }
     }
@@ -122,7 +110,7 @@ impl MerkleTree {
         let mut proof = Vec::new();
         let mut children: Option<(Hash, Hash)> = Some(self.root_children());
         let mut old_right = self.root;
-        
+
         while let Some((left, right)) = children {
             proof.push(left);
             old_right = right;

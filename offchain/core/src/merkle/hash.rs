@@ -9,9 +9,7 @@ pub struct Hash {
 
 impl Hash {
     pub fn new(data: [u8; 32]) -> Self {
-        return Hash{
-            data: data,
-        }
+        return Hash { data: data };
     }
 
     pub fn from_data(digest_data: Vec<u8>) -> Hash {
@@ -47,7 +45,7 @@ impl From<[u8; 32]> for Hash {
 }
 
 impl From<Hash> for [u8; 32] {
-    fn from (hash: Hash) -> Self {
+    fn from(hash: Hash) -> Self {
         hash.data
     }
 }

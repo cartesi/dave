@@ -1,30 +1,14 @@
-use std::{
-    error::Error,
-    sync::Arc,
-    path::Path,
-    collections::HashMap,
-};
+use std::{collections::HashMap, error::Error, path::Path, sync::Arc};
 
 use sha3::{Digest, Keccak256};
 
-use tokio::{
-    sync::Mutex,
-    process::Command,
-};
+use tokio::{process::Command, sync::Mutex};
 
 use cartesi_machine_json_rpc::client::{
-    JsonRpcCartesiMachineClient,
-    MachineRuntimeConfig,
-    AccessLogType,
-    AccessType,
-    AccessLog,
+    AccessLog, AccessLogType, AccessType, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
 
-use crate::{
-    merkle::Hash,
-    machine::constants,
-    utils::arithmetic,
-};
+use crate::{machine::constants, merkle::Hash, utils::arithmetic};
 
 #[derive(Debug)]
 pub struct MachineState {
@@ -54,15 +38,14 @@ pub struct MachineRpc {
 }
 
 impl MachineRpc {
-    pub async fn new(
-        json_rpc_url: &str,
-        snapshot_path: &Path
-    ) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(json_rpc_url: &str, snapshot_path: &Path) -> Result<Self, Box<dyn Error>> {
         let mut rpc_client = JsonRpcCartesiMachineClient::new(json_rpc_url.to_string()).await?;
-        
+
         let snapshot_path = snapshot_path.to_str().unwrap();
-        rpc_client.load_machine(snapshot_path, &MachineRuntimeConfig::default()).await?;
-        
+        rpc_client
+            .load_machine(snapshot_path, &MachineRuntimeConfig::default())
+            .await?;
+
         let root_hash = rpc_client.get_root_hash().await?;
         let start_cycle = rpc_client.read_csr("mcycle".to_string()).await?;
 
@@ -86,8 +69,8 @@ impl MachineRpc {
     pub async fn generate_proof(
         &mut self,
         cycle: u64,
-        ucycle: u64
-    ) -> Result<MachineProof, Box<dyn Error>> {        
+        ucycle: u64,
+    ) -> Result<MachineProof, Box<dyn Error>> {
         self.rpc_client.run(cycle).await?;
         self.rpc_client.run_uarch(ucycle).await?;
 
@@ -108,11 +91,11 @@ impl MachineRpc {
 
     pub async fn run(&mut self, cycle: u64) -> Result<(), Box<dyn Error>> {
         assert!(arithmetic::ulte(self.cycle, cycle));
-        
+
         let physical_cycle = add_and_clamp(self.start_cycle, cycle);
-    
+
         loop {
-            let halted = self.rpc_client.read_iflags_h().await?; 
+            let halted = self.rpc_client.read_iflags_h().await?;
             if halted {
                 break;
             }
@@ -122,7 +105,7 @@ impl MachineRpc {
                 break;
             }
         }
-        
+
         self.cycle = cycle;
 
         Ok(())
@@ -159,7 +142,7 @@ impl MachineRpc {
         let halted = self.rpc_client.read_iflags_h().await?;
         let uhalted = self.rpc_client.read_uarch_halt_flag().await?;
 
-        Ok(MachineState{
+        Ok(MachineState {
             root_hash: Hash::new(root_hash),
             halted: halted,
             uhalted: uhalted,
@@ -181,7 +164,7 @@ fn add_and_clamp(x: u64, y: u64) -> u64 {
 
 fn encode_access_log(log: &AccessLog) -> Vec<u8> {
     let mut encoded = Vec::new();
-    
+
     for a in log.accesses.iter() {
         assert_eq!(a.log2_size, 3);
         if a.r#type == AccessType::Read {
@@ -210,7 +193,7 @@ fn encode_access_log(log: &AccessLog) -> Vec<u8> {
             hex::decode(a.proof.root_hash.clone()).unwrap()
         );
     }
-    
+
     encoded.iter().cloned().flatten().collect()
 }
 
@@ -241,7 +224,7 @@ pub struct MachineFactory {
 
 impl MachineFactory {
     pub async fn new(rpc_host: String, rpc_port: u32) -> Result<Self, Box<dyn Error>> {
-        let rpc_url = format!("{}:{}", rpc_host, rpc_port); 
+        let rpc_url = format!("{}:{}", rpc_host, rpc_port);
         let rpc_client = JsonRpcCartesiMachineClient::new(rpc_url).await?;
         Ok(Self {
             rpc_host: rpc_host,
@@ -251,7 +234,10 @@ impl MachineFactory {
         })
     }
 
-    pub async fn create_machine(&mut self, snapshot_path: &Path) -> Result<Arc<Mutex<MachineRpc>>, Box<dyn Error>> {
+    pub async fn create_machine(
+        &mut self,
+        snapshot_path: &Path,
+    ) -> Result<Arc<Mutex<MachineRpc>>, Box<dyn Error>> {
         let fork_rpc_url = self.rpc_client.fork().await?;
         let fork_rpc_port = fork_rpc_url.split(":").last().unwrap();
         let fork_rpc_url = format!("{}:{}", self.rpc_host, fork_rpc_port);
@@ -263,7 +249,7 @@ impl MachineFactory {
         let machine_lock = if let Some(machine) = self.machines.get_mut(&url) {
             machine.clone()
         } else {
-            return Ok(())
+            return Ok(());
         };
 
         let mut machine = machine_lock.lock().await;
@@ -275,4 +261,3 @@ impl MachineFactory {
         Ok(())
     }
 }
-
