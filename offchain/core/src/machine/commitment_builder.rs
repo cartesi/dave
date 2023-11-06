@@ -1,20 +1,11 @@
-use std::{
-    error::Error,
-    sync::Arc,
-    collections::HashMap,
-};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
-use tokio::sync::Mutex;
 use async_trait::async_trait;
+use tokio::sync::Mutex;
 
 use crate::{
+    machine::{build_machine_commitment, constants, MachineCommitment, MachineRpc},
     merkle::{Hash, MerkleBuilder},
-    machine::{
-        constants,
-        MachineRpc,
-        MachineCommitment,
-        build_machine_commitment,
-    }
 };
 
 #[async_trait]
@@ -33,7 +24,7 @@ pub struct CachingMachineCommitmentBuilder {
 
 impl CachingMachineCommitmentBuilder {
     pub fn new(machine: Arc<Mutex<MachineRpc>>) -> Self {
-        CachingMachineCommitmentBuilder { 
+        CachingMachineCommitmentBuilder {
             machine: machine,
             commitments: HashMap::new(),
         }
@@ -48,7 +39,7 @@ impl MachineCommitmentBuilder for CachingMachineCommitmentBuilder {
         level: u64,
     ) -> Result<MachineCommitment, Box<dyn Error>> {
         assert!(level <= constants::LEVELS);
-        
+
         if !self.commitments.contains_key(&level) {
             self.commitments.insert(level, HashMap::new());
         } else if self.commitments[&level].contains_key(&base_cycle) {
@@ -57,19 +48,20 @@ impl MachineCommitmentBuilder for CachingMachineCommitmentBuilder {
 
         let l = constants::LEVELS - level + 1;
         let log2_stride = constants::LOG2_STEP[l as usize];
-        let log2_stride_count = constants::HEIGHTS[l as usize];        
+        let log2_stride_count = constants::HEIGHTS[l as usize];
         let commitment = build_machine_commitment(
             self.machine.clone(),
             base_cycle,
             log2_stride,
-            log2_stride_count
-        ).await?;
-        
+            log2_stride_count,
+        )
+        .await?;
+
         self.commitments
             .entry(level)
             .or_insert_with(HashMap::new)
             .insert(base_cycle, commitment.clone());
-        
+
         Ok(commitment)
     }
 }
@@ -104,15 +96,12 @@ impl MachineCommitmentBuilder for FakeMachineCommitmentBuilder {
                 (1 << constants::HEIGHTS[level as usize]) - 1,
             );
         } else {
-            merkle_builder.add(
-                Hash::default(),
-                1 << constants::HEIGHTS[level as usize],
-            );
+            merkle_builder.add(Hash::default(), 1 << constants::HEIGHTS[level as usize]);
         }
 
         let merkle = merkle_builder.build();
 
-        Ok(MachineCommitment{
+        Ok(MachineCommitment {
             implicit_hash: self.initial_hash,
             merkle: Arc::new(merkle),
         })

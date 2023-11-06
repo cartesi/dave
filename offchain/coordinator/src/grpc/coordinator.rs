@@ -48,8 +48,8 @@ pub struct GetDisputeInfoResponse {
 /// Generated client implementations.
 pub mod coordinator_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct CoordinatorClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -93,9 +93,8 @@ pub mod coordinator_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
-            >>::Error: Into<StdError> + Send + Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
+                Into<StdError> + Send + Sync,
         {
             CoordinatorClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -133,23 +132,17 @@ pub mod coordinator_client {
         pub async fn start_dispute(
             &mut self,
             request: impl tonic::IntoRequest<super::StartDisputeRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StartDisputeResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::StartDisputeResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/coordinator.Coordinator/StartDispute",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/coordinator.Coordinator/StartDispute");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("coordinator.Coordinator", "StartDispute"));
@@ -158,23 +151,17 @@ pub mod coordinator_client {
         pub async fn finish_dispute(
             &mut self,
             request: impl tonic::IntoRequest<super::FinishDisputeRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::FinishDisputeResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::FinishDisputeResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/coordinator.Coordinator/FinishDispute",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/coordinator.Coordinator/FinishDispute");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("coordinator.Coordinator", "FinishDispute"));
@@ -183,23 +170,17 @@ pub mod coordinator_client {
         pub async fn get_dispute_info(
             &mut self,
             request: impl tonic::IntoRequest<super::GetDisputeInfoRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetDisputeInfoResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::GetDisputeInfoResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/coordinator.Coordinator/GetDisputeInfo",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/coordinator.Coordinator/GetDisputeInfo");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("coordinator.Coordinator", "GetDisputeInfo"));
@@ -217,24 +198,15 @@ pub mod coordinator_server {
         async fn start_dispute(
             &self,
             request: tonic::Request<super::StartDisputeRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StartDisputeResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::StartDisputeResponse>, tonic::Status>;
         async fn finish_dispute(
             &self,
             request: tonic::Request<super::FinishDisputeRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::FinishDisputeResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::FinishDisputeResponse>, tonic::Status>;
         async fn get_dispute_info(
             &self,
             request: tonic::Request<super::GetDisputeInfoRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetDisputeInfoResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::GetDisputeInfoResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct CoordinatorServer<T: Coordinator> {
@@ -259,10 +231,7 @@ pub mod coordinator_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -318,23 +287,17 @@ pub mod coordinator_server {
                 "/coordinator.Coordinator/StartDispute" => {
                     #[allow(non_camel_case_types)]
                     struct StartDisputeSvc<T: Coordinator>(pub Arc<T>);
-                    impl<
-                        T: Coordinator,
-                    > tonic::server::UnaryService<super::StartDisputeRequest>
-                    for StartDisputeSvc<T> {
+                    impl<T: Coordinator> tonic::server::UnaryService<super::StartDisputeRequest>
+                        for StartDisputeSvc<T>
+                    {
                         type Response = super::StartDisputeResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::StartDisputeRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                (*inner).start_dispute(request).await
-                            };
+                            let fut = async move { (*inner).start_dispute(request).await };
                             Box::pin(fut)
                         }
                     }
@@ -364,23 +327,17 @@ pub mod coordinator_server {
                 "/coordinator.Coordinator/FinishDispute" => {
                     #[allow(non_camel_case_types)]
                     struct FinishDisputeSvc<T: Coordinator>(pub Arc<T>);
-                    impl<
-                        T: Coordinator,
-                    > tonic::server::UnaryService<super::FinishDisputeRequest>
-                    for FinishDisputeSvc<T> {
+                    impl<T: Coordinator> tonic::server::UnaryService<super::FinishDisputeRequest>
+                        for FinishDisputeSvc<T>
+                    {
                         type Response = super::FinishDisputeResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::FinishDisputeRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                (*inner).finish_dispute(request).await
-                            };
+                            let fut = async move { (*inner).finish_dispute(request).await };
                             Box::pin(fut)
                         }
                     }
@@ -410,23 +367,17 @@ pub mod coordinator_server {
                 "/coordinator.Coordinator/GetDisputeInfo" => {
                     #[allow(non_camel_case_types)]
                     struct GetDisputeInfoSvc<T: Coordinator>(pub Arc<T>);
-                    impl<
-                        T: Coordinator,
-                    > tonic::server::UnaryService<super::GetDisputeInfoRequest>
-                    for GetDisputeInfoSvc<T> {
+                    impl<T: Coordinator> tonic::server::UnaryService<super::GetDisputeInfoRequest>
+                        for GetDisputeInfoSvc<T>
+                    {
                         type Response = super::GetDisputeInfoResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GetDisputeInfoRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                (*inner).get_dispute_info(request).await
-                            };
+                            let fut = async move { (*inner).get_dispute_info(request).await };
                             Box::pin(fut)
                         }
                     }
@@ -453,18 +404,14 @@ pub mod coordinator_server {
                     };
                     Box::pin(fut)
                 }
-                _ => {
-                    Box::pin(async move {
-                        Ok(
-                            http::Response::builder()
-                                .status(200)
-                                .header("grpc-status", "12")
-                                .header("content-type", "application/grpc")
-                                .body(empty_body())
-                                .unwrap(),
-                        )
-                    })
-                }
+                _ => Box::pin(async move {
+                    Ok(http::Response::builder()
+                        .status(200)
+                        .header("grpc-status", "12")
+                        .header("content-type", "application/grpc")
+                        .body(empty_body())
+                        .unwrap())
+                }),
             }
         }
     }

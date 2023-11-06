@@ -2,30 +2,19 @@ use std::sync::Arc;
 
 use log::error;
 
-use tokio::signal;
-use tonic::{
-    transport::Server,
-    Request,
-    Response,
-    Status,
-};
 use ethers::abi::AbiEncode;
+use tokio::signal;
+use tonic::{transport::Server, Request, Response, Status};
 
 use cartesi_compute_core::{
-    merkle::Hash,
     arena::{Address, Arena},
+    merkle::Hash,
 };
 
-use crate::grpc:: {
-        StartDisputeRequest,
-        StartDisputeResponse,
-        FinishDisputeRequest,
-        FinishDisputeResponse,
-        GetDisputeInfoRequest,
-        GetDisputeInfoResponse,
-        Coordinator, 
-        CoordinatorServer,
-    };
+use crate::grpc::{
+    Coordinator, CoordinatorServer, FinishDisputeRequest, FinishDisputeResponse,
+    GetDisputeInfoRequest, GetDisputeInfoResponse, StartDisputeRequest, StartDisputeResponse,
+};
 
 #[derive(Debug, Clone)]
 pub struct APIServerConfig {
@@ -45,15 +34,18 @@ impl<A: Arena + 'static> APIServer<A> {
         }
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> { 
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
         let server_addr = self.config.address.parse().unwrap();
         let server = Server::builder().add_service(CoordinatorServer::new(self));
 
-        if let Err(err) = server.serve_with_shutdown(server_addr, async {
-            if let Err(err) = signal::ctrl_c().await {
-                error!("failed to catch ctrl-c signal - {}", err)
-            }
-        }).await {
+        if let Err(err) = server
+            .serve_with_shutdown(server_addr, async {
+                if let Err(err) = signal::ctrl_c().await {
+                    error!("failed to catch ctrl-c signal - {}", err)
+                }
+            })
+            .await
+        {
             error!("failed to run grpc server - {}", err);
         }
 
@@ -62,24 +54,27 @@ impl<A: Arena + 'static> APIServer<A> {
 }
 
 #[tonic::async_trait]
-impl<A: Arena + 'static> Coordinator for APIServer<A> {    
+impl<A: Arena + 'static> Coordinator for APIServer<A> {
     async fn start_dispute(
         &self,
         request: Request<StartDisputeRequest>,
     ) -> Result<Response<StartDisputeResponse>, Status> {
-        let req = request.into_inner(); 
-        
+        let req = request.into_inner();
+
         if !is_valid_digest_data(&req.initial_hash) {
-            return Err(Status::invalid_argument("invalid initial hash digest"))
+            return Err(Status::invalid_argument("invalid initial hash digest"));
         }
         let initial_hash = Hash::from_data(req.initial_hash);
-        
-        match self.arena.clone().create_root_tournament(initial_hash).await {
-            Ok(dispute_tournament) => Ok(
-                Response::new(StartDisputeResponse{
-                    dispute_id: dispute_tournament.encode_hex(),
-                })
-            ),
+
+        match self
+            .arena
+            .clone()
+            .create_root_tournament(initial_hash)
+            .await
+        {
+            Ok(dispute_tournament) => Ok(Response::new(StartDisputeResponse {
+                dispute_id: dispute_tournament.encode_hex(),
+            })),
             Err(err) => Err(Status::internal(err.to_string())),
         }
     }
@@ -89,13 +84,15 @@ impl<A: Arena + 'static> Coordinator for APIServer<A> {
         request: Request<FinishDisputeRequest>,
     ) -> Result<Response<FinishDisputeResponse>, Status> {
         let req = request.into_inner();
-        
+
         let root_tournament = if let Ok(tournament) = req.dispute_id.parse::<Address>() {
             tournament
         } else {
-            return Err(Status::invalid_argument("invalid dispute tournament address"))
+            return Err(Status::invalid_argument(
+                "invalid dispute tournament address",
+            ));
         };
-        
+
         todo!()
     }
 
@@ -108,7 +105,9 @@ impl<A: Arena + 'static> Coordinator for APIServer<A> {
         let root_tournament = if let Ok(tournament) = req.dispute_id.parse::<Address>() {
             tournament
         } else {
-            return Err(Status::invalid_argument("invalid dispute tournament address"))
+            return Err(Status::invalid_argument(
+                "invalid dispute tournament address",
+            ));
         };
 
         todo!()

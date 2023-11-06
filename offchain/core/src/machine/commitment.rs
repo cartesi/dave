@@ -1,17 +1,10 @@
-use std::{
-    error::Error,
-    sync::Arc,
-};
+use std::{error::Error, sync::Arc};
 
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
-    merkle::{Hash, MerkleTree, MerkleBuilder, Int},
-    machine::{
-        constants,
-        MachineRpc,
-        MachineState,
-    },
+    machine::{constants, MachineRpc, MachineState},
+    merkle::{Hash, Int, MerkleBuilder, MerkleTree},
     utils::arithmetic,
 };
 
@@ -32,18 +25,9 @@ pub async fn build_machine_commitment(
             log2_stride + log2_stride_count
                 <= constants::LOG2_EMULATOR_SPAN + constants::LOG2_UARCH_SPAN
         );
-        build_big_machine_commitment(
-            machine,
-            base_cycle,
-            log2_stride,
-            log2_stride_count,
-        ).await
+        build_big_machine_commitment(machine, base_cycle, log2_stride, log2_stride_count).await
     } else {
-        build_small_machine_commitment(
-            machine,
-            base_cycle,
-            log2_stride_count,
-        ).await
+        build_small_machine_commitment(machine, base_cycle, log2_stride_count).await
     }
 }
 
@@ -54,11 +38,11 @@ pub async fn build_big_machine_commitment(
     log2_stride_count: u64,
 ) -> Result<MachineCommitment, Box<dyn Error>> {
     let machine_lock = machine.clone();
-    let mut machine  = machine_lock.lock().await; 
-    
+    let mut machine = machine_lock.lock().await;
+
     machine.run(base_cycle).await?;
     let initial_state = machine.machine_state().await?;
-    
+
     let mut builder = MerkleBuilder::new();
     let instruction_count = arithmetic::max_uint(log2_stride_count);
     let mut instruction = 0;
@@ -79,7 +63,7 @@ pub async fn build_big_machine_commitment(
     }
     let merkle = builder.build();
 
-    Ok(MachineCommitment{
+    Ok(MachineCommitment {
         implicit_hash: initial_state.root_hash,
         merkle: Arc::new(merkle),
     })
@@ -91,26 +75,22 @@ pub async fn build_small_machine_commitment(
     log2_stride_count: u64,
 ) -> Result<MachineCommitment, Box<dyn Error>> {
     let machine_lock = machine.clone();
-    let mut machine  = machine_lock.lock().await; 
-    
+    let mut machine = machine_lock.lock().await;
+
     machine.run(base_cycle).await?;
     let initial_state = machine.machine_state().await?;
 
     let mut builder = MerkleBuilder::new();
-    let instruction_count =
-        arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN);
+    let instruction_count = arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN);
     let mut instructions = 0;
     loop {
         if !arithmetic::ulte(instructions, instruction_count) {
             break;
         }
-        
-        builder.add(
-            run_uarch_span(&mut machine).await?.root_hash(),
-            1,
-        );
+
+        builder.add(run_uarch_span(&mut machine).await?.root_hash(), 1);
         instructions += 1;
-        
+
         let state = machine.machine_state().await?;
         if state.halted {
             builder.add(
@@ -122,28 +102,30 @@ pub async fn build_small_machine_commitment(
     }
     let merkle = builder.build();
 
-    Ok(MachineCommitment{
+    Ok(MachineCommitment {
         implicit_hash: initial_state.root_hash,
         merkle: Arc::new(merkle),
     })
 }
 
-async fn run_uarch_span<'a>(machine: &mut MutexGuard<'a, MachineRpc>) -> Result<MerkleTree, Box<dyn Error>> {
+async fn run_uarch_span<'a>(
+    machine: &mut MutexGuard<'a, MachineRpc>,
+) -> Result<MerkleTree, Box<dyn Error>> {
     let (ucycle, _) = machine.position();
     assert!(ucycle == 0);
 
     machine.increment_uarch().await?;
-    
+
     let mut builder = MerkleBuilder::new();
     let mut i = 0;
     let mut state: MachineState;
     loop {
         state = machine.machine_state().await?;
         builder.add(state.root_hash, 1);
-        
+
         machine.increment_uarch().await?;
         i += 1;
-        
+
         state = machine.machine_state().await?;
         if state.uhalted {
             break;
@@ -158,4 +140,3 @@ async fn run_uarch_span<'a>(machine: &mut MutexGuard<'a, MachineRpc>) -> Result<
 
     Ok(builder.build())
 }
-
