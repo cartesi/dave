@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use cartesi_machine_json_rpc::client::{
     AccessLogType, AccessType, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
-use cryptography::Digest;
 use sha3::{Digest as Sha3Digest, Keccak256};
 use std::sync::Arc;
 

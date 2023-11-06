@@ -98,15 +98,15 @@ impl MachineCommitmentBuilder for FakeMachineCommitmentBuilder {
         let mut merkle_builder = MerkleBuilder::new();
         let level = constants::LEVELS - level + 1;
         if constants::LOG2_STEP[level as usize] == 0 && self.second_state.is_some() {
-            merkle_builder.add(self.second_state.clone().unwrap(), None);
+            merkle_builder.add(self.second_state.clone().unwrap(), 1);
             merkle_builder.add(
                 Hash::default(),
-                Some((1 << constants::HEIGHTS[level as usize]) - 1),
+                (1 << constants::HEIGHTS[level as usize]) - 1,
             );
         } else {
             merkle_builder.add(
                 Hash::default(),
-                Some(1 << constants::HEIGHTS[level as usize]),
+                1 << constants::HEIGHTS[level as usize],
             );
         }
 

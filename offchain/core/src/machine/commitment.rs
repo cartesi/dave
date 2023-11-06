@@ -6,7 +6,7 @@ use std::{
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
-    merkle::{Hash, MerkleTree, MerkleBuilder},
+    merkle::{Hash, MerkleTree, MerkleBuilder, Int},
     machine::{
         constants,
         MachineRpc,
@@ -67,12 +67,12 @@ pub async fn build_big_machine_commitment(
         machine.run(base_cycle + cycle).await?;
         let state = machine.machine_state().await?;
         if state.halted {
-            builder.add(state.root_hash, None);
+            builder.add(state.root_hash, 1);
             instruction = instruction + 1
         } else {
             builder.add(
                 state.root_hash,
-                Some(instruction_count - instruction + 1),
+                Int::from(instruction_count - instruction + 1),
             );
             break;
         }
@@ -107,7 +107,7 @@ pub async fn build_small_machine_commitment(
         
         builder.add(
             run_uarch_span(&mut machine).await?.root_hash(),
-            None,
+            1,
         );
         instructions += 1;
         
@@ -115,7 +115,7 @@ pub async fn build_small_machine_commitment(
         if state.halted {
             builder.add(
                 run_uarch_span(&mut machine).await?.root_hash(),
-                Some(instruction_count - instructions + 1),
+                Int::from(instruction_count - instructions + 1),
             );
             break;
         }
@@ -139,7 +139,7 @@ async fn run_uarch_span<'a>(machine: &mut MutexGuard<'a, MachineRpc>) -> Result<
     let mut state: MachineState;
     loop {
         state = machine.machine_state().await?;
-        builder.add(state.root_hash, None);
+        builder.add(state.root_hash, 1);
         
         machine.increment_uarch().await?;
         i += 1;
@@ -149,11 +149,12 @@ async fn run_uarch_span<'a>(machine: &mut MutexGuard<'a, MachineRpc>) -> Result<
             break;
         }
     }
-    builder.add(state.root_hash, Some(constants::UARCH_SPAN - i));
+
+    builder.add(state.root_hash, Int::from(constants::UARCH_SPAN - i));
 
     machine.ureset().await?;
     state = machine.machine_state().await?;
-    builder.add(state.root_hash, None);
+    builder.add(state.root_hash, 1);
 
     Ok(builder.build())
 }
