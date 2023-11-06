@@ -16,6 +16,6 @@ fn generate_grpc_stubs() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir(stub_dirs)
         .compile(&proto_files, &proto_dirs)
         .unwrap_or_else(|e| panic!("failed to build grpc stubs: {}", e));
-    
+
     Ok(())
 }
