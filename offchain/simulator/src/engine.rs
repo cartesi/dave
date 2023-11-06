@@ -1,31 +1,17 @@
-use std::{
-    error::Error,
-    path::Path,
-    sync::Arc,
-    collections::HashMap,
-    time::Duration,
-};
+use std::{collections::HashMap, error::Error, path::Path, sync::Arc, time::Duration};
 
 use thiserror::Error;
-use tokio::{
-    sync::Mutex,
-    task,
-    time,
-    select,
-};
+use tokio::{select, sync::Mutex, task, time};
 use tokio_util::sync::CancellationToken;
 use tonic::transport::channel::Channel;
 
 use cartesi_compute_core::{
-    merkle::Hash,
-    machine::{
-        MachineRpc,
-        MachineFactory,
-        MachineCommitmentBuilder,
-        CachingMachineCommitmentBuilder,
-        FakeMachineCommitmentBuilder,
-    },
     arena::{Address, Arena},
+    machine::{
+        CachingMachineCommitmentBuilder, FakeMachineCommitmentBuilder, MachineCommitmentBuilder,
+        MachineFactory, MachineRpc,
+    },
+    merkle::Hash,
     player::{Player, PlayerTournamentResult},
 };
 
@@ -47,16 +33,16 @@ pub struct DisputeState {
     pub finished: bool,
 }
 
-struct Dispute <A: Arena,> {
+struct Dispute<A: Arena> {
     state: DisputeState,
     players: Vec<Arc<Mutex<Player<A>>>>,
 }
 
 pub struct EngineConfig {
-    pub player_react_period: Duration, 
+    pub player_react_period: Duration,
 }
 
-pub struct Engine <A: Arena> {
+pub struct Engine<A: Arena> {
     coordinator: Arc<Mutex<CoordinatorClient>>,
     machine_factory: Arc<Mutex<MachineFactory>>,
     config: EngineConfig,
@@ -68,7 +54,8 @@ impl<A: Arena + 'static> Engine<A> {
     pub fn new(
         coordinator: Arc<Mutex<CoordinatorClient>>,
         machine_facotry: Arc<Mutex<MachineFactory>>,
-        config: EngineConfig) -> Self {
+        config: EngineConfig,
+    ) -> Self {
         Self {
             coordinator: coordinator,
             machine_factory: machine_facotry,
@@ -79,7 +66,7 @@ impl<A: Arena + 'static> Engine<A> {
     }
 
     pub async fn run(self: Arc<Self>) -> Result<(), Box<dyn Error>> {
-        let palyer_executor = task::spawn_local(async move{
+        let palyer_executor = task::spawn_local(async move {
             let shutdown = self.shutdown_token.clone();
             let mut exec_timer = time::interval(self.config.player_react_period);
             loop {
@@ -94,20 +81,18 @@ impl<A: Arena + 'static> Engine<A> {
 
     async fn execute_players(self: Arc<Self>) {
         let mut player_tasks = task::JoinSet::new();
-        
+
         {
             let disputes = self.disputes.clone();
             let disputes = disputes.lock().await;
             for (address, dispute) in disputes.iter().filter(|d| !d.1.state.finished) {
                 for (player_idx, _) in dispute.players.iter().enumerate() {
                     let address = *address;
-                    player_tasks.spawn_local({
-                        self.clone().execute_player(address, player_idx)
-                    });
+                    player_tasks.spawn_local({ self.clone().execute_player(address, player_idx) });
                 }
             }
         }
-        
+
         while let Some(_) = player_tasks.join_next().await {}
     }
 
@@ -115,10 +100,10 @@ impl<A: Arena + 'static> Engine<A> {
         let result: Result<(Option<PlayerTournamentResult>), Box<dyn std::error::Error>>;
         {
             let player = self.clone().player(dispute_tournament, player_idx).await;
-            result = player.clone().lock().await.react().await; 
+            result = player.clone().lock().await.react().await;
         };
-        
-        match  result {
+
+        match result {
             Ok(result) => {
                 if let Err(err) = self.clone().finish_dispute(dispute_tournament).await {
                     // TODO log error
@@ -130,10 +115,20 @@ impl<A: Arena + 'static> Engine<A> {
         }
     }
 
-    async fn player(self: Arc<Self>, dispute_tournament: Address, player_idx: usize) -> Arc<Mutex<Player<A>>> {
+    async fn player(
+        self: Arc<Self>,
+        dispute_tournament: Address,
+        player_idx: usize,
+    ) -> Arc<Mutex<Player<A>>> {
         let disputes = self.disputes.clone();
         let disputes = disputes.lock().await;
-        disputes.get(&dispute_tournament).unwrap().players.get(player_idx).unwrap().clone()
+        disputes
+            .get(&dispute_tournament)
+            .unwrap()
+            .players
+            .get(player_idx)
+            .unwrap()
+            .clone()
     }
 
     pub async fn shutdown(self: Arc<Self>) -> Result<(), Box<dyn Error>> {
@@ -149,24 +144,29 @@ impl<A: Arena + 'static> Engine<A> {
     ) -> Result<Address, Box<dyn Error>> {
         let coordinator = self.coordinator.clone();
         let mut coordinator = coordinator.lock().await;
-        let response = coordinator.start_dispute(StartDisputeRequest{
-            initial_hash: initial_hash_data.into(),
-            snapshot_path: machine_snapshot_path.clone(),
-        }).await?;
+        let response = coordinator
+            .start_dispute(StartDisputeRequest {
+                initial_hash: initial_hash_data.into(),
+                snapshot_path: machine_snapshot_path.clone(),
+            })
+            .await?;
 
         let root_tournament = response.into_inner().dispute_id.parse::<Address>()?;
-        
+
         let disputes = self.disputes.clone();
         let mut disputes = disputes.lock().await;
-        disputes.insert(root_tournament, Dispute {
-            state: DisputeState {
-                initial_hash: Hash::new(initial_hash_data),
-                machine_snapshot_path: machine_snapshot_path.clone(),
-                root_tournament: root_tournament,
-                finished: false,
+        disputes.insert(
+            root_tournament,
+            Dispute {
+                state: DisputeState {
+                    initial_hash: Hash::new(initial_hash_data),
+                    machine_snapshot_path: machine_snapshot_path.clone(),
+                    root_tournament: root_tournament,
+                    finished: false,
+                },
+                players: Vec::<Arc<Mutex<Player<A>>>>::new(),
             },
-            players: Vec::<Arc<Mutex<Player::<A>>>>::new(),
-        });
+        );
 
         Ok(root_tournament)
     }
@@ -176,19 +176,24 @@ impl<A: Arena + 'static> Engine<A> {
         root_tournament: Address,
     ) -> Result<DisputeState, Box<dyn Error>> {
         if let Some(dispute_state) = self.clone().disupte_state(root_tournament).await {
-            // TODO: terminate all involved cartesi vm processes            
+            // TODO: terminate all involved cartesi vm processes
             let disputes = self.clone().disputes.clone();
-            disputes.lock().await.get_mut(&root_tournament).unwrap().state.finished = true;
+            disputes
+                .lock()
+                .await
+                .get_mut(&root_tournament)
+                .unwrap()
+                .state
+                .finished = true;
             Ok(dispute_state.clone())
         } else {
-            Err(Box::new(EngineError::DsiputeNotFound(root_tournament.to_string())))
+            Err(Box::new(EngineError::DsiputeNotFound(
+                root_tournament.to_string(),
+            )))
         }
     }
 
-    pub async fn disupte_state(
-        self: Arc<Self>,
-        root_tournament: Address,
-    ) -> Option<DisputeState> {
+    pub async fn disupte_state(self: Arc<Self>, root_tournament: Address) -> Option<DisputeState> {
         let disputes = self.disputes.clone();
         let disputes = disputes.lock().await;
         if let Some(dispute) = disputes.get(&root_tournament) {
@@ -204,37 +209,45 @@ impl<A: Arena + 'static> Engine<A> {
         adversary: bool,
         root_tournament: Address,
     ) -> Result<(), Box<dyn Error>> {
-       let dispute = if let Some(dispute) = self.clone().disupte_state(root_tournament).await {
-            dispute    
-       } else {
-            return Err(Box::new(EngineError::DsiputeNotFound(root_tournament.to_string())))
-       };
-       
-       let (machine, commitment_builder) = self.clone().create_player_machine(&dispute.machine_snapshot_path, adversary).await?;
-       {
+        let dispute = if let Some(dispute) = self.clone().disupte_state(root_tournament).await {
+            dispute
+        } else {
+            return Err(Box::new(EngineError::DsiputeNotFound(
+                root_tournament.to_string(),
+            )));
+        };
+
+        let (machine, commitment_builder) = self
+            .clone()
+            .create_player_machine(&dispute.machine_snapshot_path, adversary)
+            .await?;
+        {
             let disputes = self.disputes.clone();
             let mut disputes = disputes.lock().await;
             if let Some(dispute) = disputes.get_mut(&root_tournament) {
-                let player = Player::new(
-                    arena,
-                    machine,
-                    commitment_builder,
-                    root_tournament,
-                );
+                let player = Player::new(arena, machine, commitment_builder, root_tournament);
                 dispute.players.push(Arc::new(Mutex::new(player)));
             } else {
-                return Err(Box::new(EngineError::DsiputeNotFound(root_tournament.to_string())))
+                return Err(Box::new(EngineError::DsiputeNotFound(
+                    root_tournament.to_string(),
+                )));
             }
         }
-       
-       Ok(())
+
+        Ok(())
     }
 
     async fn create_player_machine(
         self: Arc<Self>,
         snapshot_path: &String,
         fake: bool,
-    ) -> Result<(Arc<Mutex<MachineRpc>>, Arc<Mutex<dyn MachineCommitmentBuilder + Send>>), Box<dyn Error>> {
+    ) -> Result<
+        (
+            Arc<Mutex<MachineRpc>>,
+            Arc<Mutex<dyn MachineCommitmentBuilder + Send>>,
+        ),
+        Box<dyn Error>,
+    > {
         let factory_lock = self.machine_factory.clone();
         let mut factory = factory_lock.lock().await;
         let snapshot_path = Path::new(snapshot_path);
@@ -242,9 +255,14 @@ impl<A: Arena + 'static> Engine<A> {
 
         let commitment_builder: Arc<Mutex<dyn MachineCommitmentBuilder + Send>> = if fake {
             // TODO: pass parameters here or add them to config
-            Arc::new(Mutex::new(FakeMachineCommitmentBuilder::new(Hash::default(), Some(Hash::default()))))
+            Arc::new(Mutex::new(FakeMachineCommitmentBuilder::new(
+                Hash::default(),
+                Some(Hash::default()),
+            )))
         } else {
-            Arc::new(Mutex::new(CachingMachineCommitmentBuilder::new(machine.clone())))
+            Arc::new(Mutex::new(CachingMachineCommitmentBuilder::new(
+                machine.clone(),
+            )))
         };
 
         Ok((machine, commitment_builder))
