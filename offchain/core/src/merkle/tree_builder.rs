@@ -1,56 +1,68 @@
 use std::collections::HashMap;
 
-use sha3::{Digest, Keccak256};
-
-use crate::merkle::{Hash, MerkleTree, MerkleTreeLeaf, MerkleTreeNode};
+use crate::merkle::{Digest, MerkleTree, MerkleTreeLeaf, MerkleTreeNode};
 
 pub type Int = u128;
 
 #[derive(Debug)]
 pub struct MerkleBuilder {
     leafs: Vec<MerkleTreeLeaf>,
-    nodes: HashMap<Hash, MerkleTreeNode>,
-    iterateds: HashMap<Hash, Vec<Hash>>,
+    nodes: HashMap<Digest, MerkleTreeNode>,
+    interned: HashMap<Digest, Vec<Digest>>,
 }
 
 impl MerkleBuilder {
     pub fn new() -> Self {
         MerkleBuilder {
             leafs: Vec::new(),
-            iterateds: HashMap::new(),
+            interned: HashMap::new(),
             nodes: HashMap::new(),
         }
     }
 
-    pub fn add(&mut self, digest: Hash, rep: Int) {
+    /// Adds a new leaf to the merkle tree. The leaf is represented by its 
+    /// digest and its repetition.
+    pub fn add(&mut self, digest: Digest, rep: Int) {
         self.add_new_node(digest);
 
-        let accumulated_count = if let Some(last) = self.leafs.last() {
+        let count = self.calculate_accumulated_count(rep);
+
+        self.leafs.push(MerkleTreeLeaf {
+            node: digest,
+            accumulated_count: count,
+            log2_size: None,
+        });
+    }
+
+    /// Calculates the accumulated count of the new leaf.
+    /// 
+    /// Invariants:
+    /// 
+    /// - The accumulated count should be different from zero.
+    /// - It should not overflow the [Int] type.
+    /// 
+    fn calculate_accumulated_count(&mut self, rep: u128) -> u128 {
+        if let Some(last) = self.leafs.last() {
             assert!(last.accumulated_count != 0, "merkle builder is full");
-            let accumulated_count = rep.wrapping_add(last.accumulated_count);
+            let accumulated_count = rep.wrapping_add(last.accumulated_count);    
             if rep >= accumulated_count {
                 assert_eq!(accumulated_count, 0);
             }
             accumulated_count
         } else {
             rep
-        };
-
-        self.leafs.push(MerkleTreeLeaf {
-            node: digest,
-            accumulated_count,
-            log2_size: None,
-        });
-    }
-
-    fn add_new_node(&mut self, digest: Hash) {
-        if !self.nodes.contains_key(&digest) {
-            let node = MerkleTreeNode::new(digest);
-            self.nodes.insert(node.digest, node.clone());
-            self.iterateds.insert(node.digest, vec![node.digest]);
         }
     }
 
+    fn add_new_node(&mut self, digest: Digest) {
+        if !self.nodes.contains_key(&digest) {
+            let node = MerkleTreeNode::new(digest);
+            self.nodes.insert(node.digest, node.clone());
+            self.interned.insert(node.digest, vec![node.digest]);
+        }
+    }
+
+    /// Builds the merkle tree from the leafs.
     pub fn build(&mut self) -> MerkleTree {
         let last = self.leafs.last().expect("no leafs in merkle builder");
         let count = last.accumulated_count;
@@ -72,7 +84,7 @@ impl MerkleBuilder {
         last_leaf: Int,
         log2_size: u32,
         stride: Int,
-    ) -> (Hash, Int, Int) {
+    ) -> (Digest, Int, Int) {
         let leafs = &self.leafs.as_slice()[first_leaf as usize..last_leaf as usize];
 
         let first_time = stride * (Int::from(1u8).wrapping_shl(log2_size)) + 1;
@@ -94,56 +106,46 @@ impl MerkleBuilder {
         (result, first_time, last_time)
     }
 
-    pub fn iterated_merkle(&mut self, node: Hash, level: u32) -> Hash {
-        let iterated = self.iterateds.get(&node).unwrap();
+    /// Builds the iterated merkle tree from the given node and level.
+    pub fn iterated_merkle(&mut self, node: Digest, level: u32) -> Digest {
+        let iterated = self.interned.get(&node).unwrap();
         if let Some(node) = iterated.get(level as usize) {
             return *node;
         }
         self.build_iterated_merkle(node, level)
     }
 
-    fn build_iterated_merkle(&mut self, node: Hash, level: u32) -> Hash {
-        let iterated = self.iterateds.get(&node).unwrap();
+    fn build_iterated_merkle(&mut self, node: Digest, level: u32) -> Digest {
+        let iterated = self.interned.get(&node).unwrap();
         let mut i = iterated.len() - 1;
         let mut highest_level = *iterated.get(i).unwrap();
+
         while i < level as usize {
             highest_level = self.join_nodes(highest_level, highest_level);
             i += 1;
-            self.iterateds.get_mut(&node).unwrap().push(highest_level);
+            self.interned.get_mut(&node).unwrap().push(highest_level);
         }
+        
         highest_level
     }
 
-    fn join_nodes(&mut self, left: Hash, right: Hash) -> Hash {
-        let digest = join_merkle_tree_node_digests(left, right);
+    fn join_nodes(&mut self, left: Digest, right: Digest) -> Digest {
+        let digest = left.join(right);
 
-        let node = if let Some(node) = self.nodes.get_mut(&digest) {
-            node
+        if let Some(node) = self.nodes.get_mut(&digest) {
+            node.set_children(left, right);
         } else {
-            let node = MerkleTreeNode::new(digest);
+            let mut node = MerkleTreeNode::new(digest);
+            node.set_children(left, right);
             self.nodes.insert(node.digest, node.clone());
-            self.iterateds.insert(node.digest, vec![node.digest]);
-            self.nodes.get_mut(&digest).unwrap()
+            self.interned.insert(node.digest, vec![node.digest]);
         };
-        node.set_children(left, right);
 
         digest
     }
 }
 
-pub fn join_merkle_tree_node_digests(digest_1: Hash, digest_2: Hash) -> Hash {
-    let mut keccak = Keccak256::new();
-
-    let digest_1: [u8; 32] = digest_1.into();
-    keccak.update(digest_1);
-
-    let digest_2: [u8; 32] = digest_2.into();
-    keccak.update(digest_2);
-
-    let digest: [u8; 32] = keccak.finalize().into();
-    Hash::from(digest)
-}
-
+// Binary search to find the cell containing the element.
 fn find_cell_containing(leafs: &[MerkleTreeLeaf], elem: Int) -> Int {
     let mut left = 0;
     let mut right = leafs.len() as Int - 1;
@@ -162,16 +164,14 @@ fn find_cell_containing(leafs: &[MerkleTreeLeaf], elem: Int) -> Int {
 
 #[cfg(test)]
 mod tests {
-    use crate::merkle::Hash;
-
+    use crate::merkle::Digest;
     use super::MerkleBuilder;
 
     #[test]
     fn test_merkle_builder() {
         let mut builder = MerkleBuilder::new();
-        builder.add(Hash::default(), 0);
+        builder.add(Digest::zeroed(), 0);
         let merkle = builder.build();
-        println!("{}", merkle.root_hash());
-        println!("{}", builder.iterated_merkle(Hash::default(), 128));
+        assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 128));
     }
 }
