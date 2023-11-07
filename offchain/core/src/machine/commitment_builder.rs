@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     machine::{build_machine_commitment, constants, MachineCommitment, MachineRpc},
-    merkle::{Hash, MerkleBuilder},
+    merkle::{Digest, MerkleBuilder},
 };
 
 #[async_trait]
@@ -67,12 +67,12 @@ impl MachineCommitmentBuilder for CachingMachineCommitmentBuilder {
 }
 
 pub struct FakeMachineCommitmentBuilder {
-    initial_hash: Hash,
-    second_state: Option<Hash>,
+    initial_hash: Digest,
+    second_state: Option<Digest>,
 }
 
 impl FakeMachineCommitmentBuilder {
-    pub fn new(initial_hash: Hash, second_state: Option<Hash>) -> Self {
+    pub fn new(initial_hash: Digest, second_state: Option<Digest>) -> Self {
         FakeMachineCommitmentBuilder {
             initial_hash,
             second_state,
@@ -92,11 +92,11 @@ impl MachineCommitmentBuilder for FakeMachineCommitmentBuilder {
         if constants::LOG2_STEP[level as usize] == 0 && self.second_state.is_some() {
             merkle_builder.add(self.second_state.clone().unwrap(), 1);
             merkle_builder.add(
-                Hash::default(),
+                Digest::zeroed(),
                 (1 << constants::HEIGHTS[level as usize]) - 1,
             );
         } else {
-            merkle_builder.add(Hash::default(), 1 << constants::HEIGHTS[level as usize]);
+            merkle_builder.add(Digest::zeroed(), 1 << constants::HEIGHTS[level as usize]);
         }
 
         let merkle = merkle_builder.build();
