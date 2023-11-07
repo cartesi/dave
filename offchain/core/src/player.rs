@@ -259,7 +259,7 @@ impl<A: Arena> Player<A> {
                 .match_state(player_match.tournament, player_match.event.id)
                 .await?
                 .expect("match not found");
-            let finished = match_state.other_parent.is_zero();
+            let finished = match_state.other_parent.is_zeroed();
             if finished {
                 return Ok(());
             }

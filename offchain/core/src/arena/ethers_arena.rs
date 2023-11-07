@@ -20,7 +20,7 @@ use crate::{
         },
     },
     machine::MachineProof,
-    merkle::{Hash, MerkleProof},
+    merkle::{Digest, MerkleProof},
 };
 
 pub struct EthersArena {
@@ -111,7 +111,7 @@ impl EthersArena {
 
 #[async_trait]
 impl Arena for EthersArena {
-    async fn create_root_tournament(&self, initial_hash: Hash) -> Result<Address, Box<dyn Error>> {
+    async fn create_root_tournament(&self, initial_hash: Digest) -> Result<Address, Box<dyn Error>> {
         let factory = TournamentFactory::new(self.tournament_factory, self.client.clone());
         factory
             .instantiate_top(initial_hash.into())
@@ -131,10 +131,10 @@ impl Arena for EthersArena {
     async fn join_tournament(
         &self,
         tournament: Address,
-        final_state: Hash,
+        final_state: Digest,
         proof: MerkleProof,
-        left_child: Hash,
-        right_child: Hash,
+        left_child: Digest,
+        right_child: Digest,
     ) -> Result<(), Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let proof = proof
@@ -158,10 +158,10 @@ impl Arena for EthersArena {
         &self,
         tournament: Address,
         match_id: MatchID,
-        left_node: Hash,
-        right_node: Hash,
-        new_left_node: Hash,
-        new_right_node: Hash,
+        left_node: Digest,
+        right_node: Digest,
+        new_left_node: Digest,
+        new_right_node: Digest,
     ) -> Result<(), Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let match_id = tournament::Id {
@@ -186,9 +186,9 @@ impl Arena for EthersArena {
         &self,
         tournament: Address,
         match_id: MatchID,
-        left_leaf: Hash,
-        right_leaf: Hash,
-        initial_hash: Hash,
+        left_leaf: Digest,
+        right_leaf: Digest,
+        initial_hash: Digest,
         initial_hash_proof: MerkleProof,
     ) -> Result<(), Box<dyn Error>> {
         let tournament =
@@ -219,8 +219,8 @@ impl Arena for EthersArena {
         &self,
         tournament: Address,
         child_tournament: Address,
-        left_node: Hash,
-        right_node: Hash,
+        left_node: Digest,
+        right_node: Digest,
     ) -> Result<(), Box<dyn Error>> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
@@ -236,9 +236,9 @@ impl Arena for EthersArena {
         &self,
         tournament: Address,
         match_id: MatchID,
-        left_leaf: Hash,
-        right_leaf: Hash,
-        initial_hash: Hash,
+        left_leaf: Digest,
+        right_leaf: Digest,
+        initial_hash: Digest,
         initial_hash_proof: MerkleProof,
     ) -> Result<(), Box<dyn Error>> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
@@ -268,8 +268,8 @@ impl Arena for EthersArena {
         &self,
         tournament: Address,
         match_id: MatchID,
-        left_node: Hash,
-        right_node: Hash,
+        left_node: Digest,
+        right_node: Digest,
         proofs: MachineProof,
     ) -> Result<(), Box<dyn Error>> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
@@ -315,7 +315,7 @@ impl Arena for EthersArena {
     async fn created_matches(
         &self,
         tournament: Address,
-        commitment_hash: Hash,
+        commitment_hash: Digest,
     ) -> Result<Vec<MatchCreatedEvent>, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let events = tournament.match_created_filter().query().await.unwrap();
@@ -335,8 +335,8 @@ impl Arena for EthersArena {
     async fn commitment(
         &self,
         tournament: Address,
-        commitment_hash: Hash,
-    ) -> Result<(ClockState, Hash), Box<dyn Error>> {
+        commitment_hash: Digest,
+    ) -> Result<(ClockState, Digest), Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let (clock_state, hash) = tournament
             .get_commitment(commitment_hash.into())
@@ -346,7 +346,7 @@ impl Arena for EthersArena {
             allowance: clock_state.allowance,
             start_instant: clock_state.start_instant,
         };
-        Ok((clock_state, Hash::from(hash)))
+        Ok((clock_state, Digest::from(hash)))
     }
 
     async fn match_state(
@@ -356,7 +356,7 @@ impl Arena for EthersArena {
     ) -> Result<Option<MatchState>, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let match_state = tournament.get_match(match_id.hash().into()).call().await?;
-        if !Hash::from(match_state.other_parent).is_zero() {
+        if !Digest::from(match_state.other_parent).is_zeroed() {
             Ok(Some(MatchState {
                 other_parent: match_state.other_parent.into(),
                 left_node: match_state.left_node.into(),
@@ -373,23 +373,23 @@ impl Arena for EthersArena {
     async fn root_tournament_winner(
         &self,
         root_tournament: Address,
-    ) -> Result<Option<(Hash, Hash)>, Box<dyn Error>> {
+    ) -> Result<Option<(Digest, Digest)>, Box<dyn Error>> {
         let root_tournament =
             root_tournament::RootTournament::new(root_tournament, self.client.clone());
         let (finished, commitment, state) = root_tournament.arbitration_result().call().await?;
         if finished {
-            Ok(Some((Hash::from(commitment), Hash::from(state))))
+            Ok(Some((Digest::from(commitment), Digest::from(state))))
         } else {
             Ok(None)
         }
     }
 
-    async fn tournament_winner(&self, tournament: Address) -> Result<Option<Hash>, Box<dyn Error>> {
+    async fn tournament_winner(&self, tournament: Address) -> Result<Option<Digest>, Box<dyn Error>> {
         let tournament =
             non_root_tournament::NonRootTournament::new(tournament, self.client.clone());
         let (finished, state) = tournament.inner_tournament_winner().call().await?;
         if finished {
-            Ok(Some(Hash::from(state)))
+            Ok(Some(Digest::from(state)))
         } else {
             Ok(None)
         }

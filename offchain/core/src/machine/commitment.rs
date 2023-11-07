@@ -4,13 +4,13 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
     machine::{constants, MachineRpc, MachineState},
-    merkle::{Hash, Int, MerkleBuilder, MerkleTree},
+    merkle::{Digest, Int, MerkleBuilder, MerkleTree},
     utils::arithmetic,
 };
 
 #[derive(Clone, Debug)]
 pub struct MachineCommitment {
-    pub implicit_hash: Hash,
+    pub implicit_hash: Digest,
     pub merkle: Arc<MerkleTree>,
 }
 
