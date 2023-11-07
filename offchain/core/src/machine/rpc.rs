@@ -1,18 +1,17 @@
 use std::{collections::HashMap, error::Error, path::Path, sync::Arc};
 
-use sha3::{Digest, Keccak256};
-
+use sha3::{Keccak256, Digest as Keccak256Digest};
 use tokio::{process::Command, sync::Mutex};
 
 use cartesi_machine_json_rpc::client::{
     AccessLog, AccessLogType, AccessType, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
 
-use crate::{machine::constants, merkle::Hash, utils::arithmetic};
+use crate::{machine::constants, merkle::Digest, utils::arithmetic};
 
 #[derive(Debug)]
 pub struct MachineState {
-    pub root_hash: Hash,
+    pub root_hash: Digest,
     pub halted: bool,
     pub uhalted: bool,
 }
@@ -31,7 +30,7 @@ pub type MachineProof = Vec<u8>;
 
 pub struct MachineRpc {
     rpc_client: JsonRpcCartesiMachineClient,
-    root_hash: Hash,
+    root_hash: Digest,
     start_cycle: u64,
     cycle: u64,
     ucycle: u64,
@@ -56,13 +55,13 @@ impl MachineRpc {
         Ok(MachineRpc {
             rpc_client: rpc_client,
             start_cycle: start_cycle,
-            root_hash: Hash::from(root_hash),
+            root_hash: Digest::from(root_hash),
             cycle: 0,
             ucycle: 0,
         })
     }
 
-    pub fn root_hash(&self) -> Hash {
+    pub fn root_hash(&self) -> Digest {
         self.root_hash
     }
 
@@ -143,7 +142,7 @@ impl MachineRpc {
         let uhalted = self.rpc_client.read_uarch_halt_flag().await?;
 
         Ok(MachineState {
-            root_hash: Hash::new(root_hash),
+            root_hash: Digest::new(root_hash),
             halted: halted,
             uhalted: uhalted,
         })
