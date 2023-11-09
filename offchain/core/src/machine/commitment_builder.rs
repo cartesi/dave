@@ -84,7 +84,7 @@ impl FakeMachineCommitmentBuilder {
 impl MachineCommitmentBuilder for FakeMachineCommitmentBuilder {
     async fn build_commitment(
         &mut self,
-        base_cycle: u64,
+        _base_cycle: u64,
         level: u64,
     ) -> Result<MachineCommitment, Box<dyn Error>> {
         let mut merkle_builder = MerkleBuilder::new();

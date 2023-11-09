@@ -33,6 +33,10 @@ impl Default for ProofAccumulator {
     }
 }
 
+/// A [MerkleTree] is a binary tree where the leafs are the data and the nodes
+/// are the hashes of the children. The root of the tree is the hash of the 
+/// entire tree. The tree is balanced, so the height of the tree is log2(n)
+/// where n is the number of leafs.
 #[derive(Debug)]
 pub struct MerkleTree {
     log2_size: u32,
@@ -73,7 +77,7 @@ impl MerkleTree {
     pub fn prove_leaf(&self, index: u64) -> (Digest, MerkleProof) {
         let height = self.calculate_height();
 
-        assert!((index >> height) == 0);
+        assert!(index.wrapping_shr(height as u32) == 0);
 
         let mut proof_acc = ProofAccumulator::default();
 
@@ -114,7 +118,7 @@ impl MerkleTree {
         let left = self.nodes.get(&left).expect("left child does not exist");
         let right = self.nodes.get(&right).expect("right child does not exist");
 
-        if (include_index >> new_height) & 1 == 0 {
+        if (include_index.wrapping_shr(new_height as u32)) & 1 == 0 {
             let left = left;
             self.proof(proof_acc, left, new_height, include_index);
             proof_acc.proof.push(left.digest);
@@ -139,5 +143,20 @@ impl MerkleTree {
         proof.reverse();
 
         (old_right, proof)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::merkle::Digest;
+
+    #[test]
+    pub fn test_tree() {
+        let mut builder = crate::merkle::MerkleBuilder::new();
+        builder.add(Digest::zeroed(), 0);
+        let tree = builder.build();
+
+        let proof = tree.prove_leaf(0);
+        assert_eq!(proof.0, Digest::zeroed());
     }
 }
