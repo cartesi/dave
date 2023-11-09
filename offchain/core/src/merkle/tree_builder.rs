@@ -70,8 +70,9 @@ impl MerkleBuilder {
 
         if count != 0 {
             assert!(count.is_power_of_two(), "is not a power of two {}", count);
-            log2_size = count.leading_zeros();
+            log2_size = count.trailing_zeros();
         };
+
 
         let root = self.build_merkle(0, self.leafs.len() as Int, log2_size, 0);
 
@@ -168,9 +169,28 @@ mod tests {
     use super::MerkleBuilder;
 
     #[test]
-    fn test_merkle_builder() {
+    fn test_merkle_builder_8() {
         let mut builder = MerkleBuilder::new();
-        builder.add(Digest::zeroed(), 0);
+        builder.add(Digest::zeroed(), 2); 
+        builder.add(Digest::zeroed(), 6);
+        let merkle = builder.build();
+        assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 3));
+    }
+
+    #[test]
+    fn test_merkle_builder_64() {
+        let mut builder = MerkleBuilder::new();
+        builder.add(Digest::zeroed(), 2); 
+        builder.add(Digest::zeroed(), 2u128.pow(64) - 2);
+        let merkle = builder.build();
+        assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 64));
+    }
+
+    #[test]
+    fn test_merkle_builder_128() {
+        let mut builder = MerkleBuilder::new();
+        builder.add(Digest::zeroed(), 2); 
+        builder.add(Digest::zeroed(),0u128.wrapping_sub(2));
         let merkle = builder.build();
         assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 128));
     }
