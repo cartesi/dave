@@ -14,7 +14,7 @@ use cartesi_compute_simulator::engine::{Engine, EngineConfig};
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let simple_linux_program = String::from("/data/programs/simple-linux-program");
-    let simple_program = String::from("/data/programs/simple-program");
+    let _simple_program = String::from("/data/programs/simple-program");
 
     let coordinator_address = "http://coordinator:50500";
     let machine_rpc_host = "http://machine";
@@ -30,7 +30,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine_config = EngineConfig {
         player_react_period: Duration::from_secs(5),
     };
-    let engine = Arc::new(Engine::<EthersArena>::new(
+    let _engine = Arc::new(Engine::<EthersArena>::new(
         coordinator.clone(),
         machine_factory.clone(),
         engine_config,
@@ -43,7 +43,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arena = create_player_arena(String::from(
         "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
     ))?;
-    let tournament = arena.create_root_tournament(dispute_root_hash).await?;
+    let _tournament = arena.create_root_tournament(dispute_root_hash).await?;
 
     // !!!
     /*
@@ -91,8 +91,8 @@ fn create_player_arena(
 
     let arena_config = ArenaConfig {
         web3_rpc_url: String::from(web3_rpc_url),
-        web3_private_key: String::from(web3_private_key),
-        web3_chain_id: web3_chain_id,
+        web3_private_key,
+        web3_chain_id,
         contract_artifacts: ContractArtifactsConfig {
             single_level_factory: String::from("core/artifacts/SingleLevelTournamentFactory.json"),
             top_factory: String::from("core/artifacts/TopTournamentFactory.json"),

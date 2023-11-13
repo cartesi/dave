@@ -38,10 +38,10 @@ pub const LOG2STEP: [u32; 3] = [31, 16, 0];
 pub const HEIGHTS: [u8; 3] = [32, 15, 16];
 
 pub const LOG2_UARCH_SPAN: u64 = 16;
-pub const UARCH_SPAN: u64 = 2 ^ LOG2_UARCH_SPAN - 1;
+pub const UARCH_SPAN: u64 = 2 ^ (LOG2_UARCH_SPAN - 1);
 
 pub const LOG2_EMULATOR_SPAN: u64 = 47;
-pub const EMULATOR_SPAN: u64 = 2 ^ LOG2_EMULATOR_SPAN - 1;
+pub const EMULATOR_SPAN: u64 = 2 ^ (LOG2_EMULATOR_SPAN - 1);
 
 #[async_trait]
 impl CartesiMachine for CanonicalCartesiMachine {
@@ -86,7 +86,7 @@ impl CartesiMachine for CanonicalCartesiMachine {
                 .proof
                 .sibling_hashes
                 .iter()
-                .map(|hex_string| hex::decode(hex_string))
+                .map(hex::decode)
                 .collect();
 
             let mut decoded = decoded_sibling_hashes?;
@@ -102,7 +102,7 @@ impl CartesiMachine for CanonicalCartesiMachine {
                 hex::decode(a.proof.root_hash.clone()).unwrap()
             );
         }
-        let data: Vec<u8> = encoded.iter().cloned().flatten().collect();
+        let data: Vec<u8> = encoded.iter().flatten().cloned().collect();
 
         let hex_data = hex::encode(data);
 
@@ -129,7 +129,7 @@ impl CartesiMachine for CanonicalCartesiMachine {
     async fn run(&mut self, cycle: u64) -> Result<(), Box<dyn std::error::Error>> {
         assert!(self.cycle <= cycle);
         let combined_cycle: u128 = u128::from(self.start_cycle) + u128::from(cycle);
-        let physical_cycle = u128::min(2 ^ 64 - 1, combined_cycle) as u64;
+        let physical_cycle = u128::min(2 ^ (64 - 1), combined_cycle) as u64;
         let machine_client = Arc::clone(&self.machine_client);
         while !(machine_client.lock().await.read_iflags_h().await?
             || machine_client
@@ -160,7 +160,7 @@ impl CartesiMachine for CanonicalCartesiMachine {
             .await
             .run_uarch(self.ucycle + 1)
             .await?;
-        self.ucycle = self.ucycle + 1;
+        self.ucycle += 1;
 
         Ok(())
     }

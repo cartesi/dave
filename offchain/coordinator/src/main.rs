@@ -13,7 +13,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let arena_config = ArenaConfig {
         web3_rpc_url: String::from(web3_rpc_url),
-        web3_chain_id: web3_chain_id,
+        web3_chain_id,
         web3_private_key: String::from(web3_private_key),
         contract_artifacts: ContractArtifactsConfig {
             single_level_factory: String::from("core/artifacts/SingleLevelTournamentFactory.json"),

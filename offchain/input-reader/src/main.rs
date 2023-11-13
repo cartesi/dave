@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ProviderErr(err_arr.into_iter().map(|e| e.to_string()).collect())
                         })?;
 
-                    if logs.len() > 0 {
+                    if !logs.is_empty() {
                         println!("Inputs arrived: {:?}", logs);
                     } else {
                         println!("No input submitted!")
