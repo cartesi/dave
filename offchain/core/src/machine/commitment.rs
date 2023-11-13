@@ -51,7 +51,7 @@ pub async fn build_big_machine_commitment(
         let state = machine.machine_state().await?;
         if state.halted {
             builder.add(state.root_hash, 1);
-            instruction = instruction + 1
+            instruction += 1
         } else {
             builder.add(
                 state.root_hash,

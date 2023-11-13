@@ -57,7 +57,7 @@ impl<A: Arena + 'static> Engine<A> {
         config: EngineConfig,
     ) -> Self {
         Self {
-            coordinator: coordinator,
+            coordinator,
             machine_factory: machine_facotry,
             config,
             disputes: Arc::new(Mutex::new(HashMap::<Address, Dispute<A>>::new())),
@@ -88,7 +88,7 @@ impl<A: Arena + 'static> Engine<A> {
             for (address, dispute) in disputes.iter().filter(|d| !d.1.state.finished) {
                 for (player_idx, _) in dispute.players.iter().enumerate() {
                     let address = *address;
-                    player_tasks.spawn_local({ self.clone().execute_player(address, player_idx) });
+                    player_tasks.spawn_local(self.clone().execute_player(address, player_idx));
                 }
             }
         }
@@ -97,19 +97,19 @@ impl<A: Arena + 'static> Engine<A> {
     }
 
     async fn execute_player(self: Arc<Self>, dispute_tournament: Address, player_idx: usize) {
-        let result: Result<(Option<PlayerTournamentResult>), Box<dyn std::error::Error>>;
+        let result: Result<Option<PlayerTournamentResult>, Box<dyn std::error::Error>>;
         {
             let player = self.clone().player(dispute_tournament, player_idx).await;
             result = player.clone().lock().await.react().await;
         };
 
         match result {
-            Ok(result) => {
-                if let Err(err) = self.clone().finish_dispute(dispute_tournament).await {
+            Ok(_result) => {
+                if let Err(_err) = self.clone().finish_dispute(dispute_tournament).await {
                     // TODO log error
                 }
             }
-            Err(err) => {
+            Err(_err) => {
                 // TODO: log error
             }
         }
@@ -161,7 +161,7 @@ impl<A: Arena + 'static> Engine<A> {
                 state: DisputeState {
                     initial_hash: Digest::new(initial_hash_data),
                     machine_snapshot_path: machine_snapshot_path.clone(),
-                    root_tournament: root_tournament,
+                    root_tournament,
                     finished: false,
                 },
                 players: Vec::<Arc<Mutex<Player<A>>>>::new(),
@@ -196,11 +196,7 @@ impl<A: Arena + 'static> Engine<A> {
     pub async fn disupte_state(self: Arc<Self>, root_tournament: Address) -> Option<DisputeState> {
         let disputes = self.disputes.clone();
         let disputes = disputes.lock().await;
-        if let Some(dispute) = disputes.get(&root_tournament) {
-            Some(dispute.state.clone())
-        } else {
-            None
-        }
+        disputes.get(&root_tournament).map(|dispute| dispute.state.clone())
     }
 
     pub async fn create_player(

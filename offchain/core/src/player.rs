@@ -48,9 +48,9 @@ impl<A: Arena> Player<A> {
         root_tournamet: Address,
     ) -> Self {
         Player {
-            arena: arena,
-            machine: machine,
-            commitment_builder: commitment_builder,
+            arena,
+            machine,
+            commitment_builder,
             tournaments: vec![Arc::new(PlayerTournament {
                 address: root_tournamet,
                 level: constants::LEVELS,
@@ -108,35 +108,33 @@ impl<A: Arena> Player<A> {
             } else {
                 return Ok(None);
             }
-        } else {
-            if let Some(winner) = self.arena.tournament_winner(tournament.address).await? {
-                let old_commitment = self.commitments.get(&tournament.parent.unwrap()).unwrap();
-                if winner != old_commitment.merkle.root_hash() {
-                    info!("player lost tournament {}", tournament.address);
-                    return Ok(Some(PlayerTournamentResult::TournamentLost));
-                }
-
-                if self.called_win.contains_key(&tournament.address) {
-                    info!(
-                        "player already called winInnerMatch for tournament {}",
-                        tournament.address
-                    );
-                    return Ok(None);
-                } else {
-                    self.called_win.insert(tournament.address, true);
-                }
-
-                info!(
-                    "win tournament {} of level {} for commitment {}",
-                    tournament.address,
-                    tournament.level,
-                    commitment.merkle.root_hash(),
-                );
-                let (left, right) = old_commitment.merkle.root_children();
-                self.arena
-                    .win_inner_match(tournament.parent.unwrap(), tournament.address, left, right)
-                    .await?
+        } else if let Some(winner) = self.arena.tournament_winner(tournament.address).await? {
+            let old_commitment = self.commitments.get(&tournament.parent.unwrap()).unwrap();
+            if winner != old_commitment.merkle.root_hash() {
+                info!("player lost tournament {}", tournament.address);
+                return Ok(Some(PlayerTournamentResult::TournamentLost));
             }
+
+            if let std::collections::hash_map::Entry::Vacant(e) = self.called_win.entry(tournament.address) {
+                e.insert(true);
+            } else {
+                info!(
+                    "player already called winInnerMatch for tournament {}",
+                    tournament.address
+                );
+                return Ok(None);
+            }
+
+            info!(
+                "win tournament {} of level {} for commitment {}",
+                tournament.address,
+                tournament.level,
+                commitment.merkle.root_hash(),
+            );
+            let (left, right) = old_commitment.merkle.root_children();
+            self.arena
+                .win_inner_match(tournament.parent.unwrap(), tournament.address, left, right)
+                .await?
         }
 
         match self
@@ -189,8 +187,8 @@ impl<A: Arena> Player<A> {
             state: match_state,
             event: *last_match,
             tournament: tournament.address,
-            leaf_cycle: leaf_cycle,
-            base_big_cycle: base_big_cycle,
+            leaf_cycle,
+            base_big_cycle,
         });
         self.matches.push(player_match.clone());
 
@@ -264,10 +262,11 @@ impl<A: Arena> Player<A> {
                 return Ok(());
             }
 
-            if let Some(_) = self
+            if self
                 .arena
                 .match_state(player_match.tournament, player_match.event.id)
                 .await?
+                .is_some()
             {
                 let delay = self.arena.maximum_delay(player_match.tournament).await?;
                 info!(
@@ -432,7 +431,7 @@ impl<A: Arena> Player<A> {
             .new_tournament_address;
 
         let tournament = Arc::new(PlayerTournament {
-            address: address,
+            address,
             level: player_match.state.level - 1,
             parent: Some(player_match.tournament),
             base_big_cycle: player_match.leaf_cycle,

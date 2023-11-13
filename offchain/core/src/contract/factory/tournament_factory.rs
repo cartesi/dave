@@ -421,7 +421,7 @@ pub mod tournament_factory {
         > {
             let factory = ::ethers::contract::ContractFactory::new(
                 TOURNAMENTFACTORY_ABI.clone(),
-                TOURNAMENTFACTORY_BYTECODE.clone().into(),
+                TOURNAMENTFACTORY_BYTECODE.clone(),
                 client,
             );
             let deployer = factory.deploy(constructor_args)?;
