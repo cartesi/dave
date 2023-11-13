@@ -13,7 +13,7 @@ use super::Int;
 pub struct MerkleTreeLeaf {
     pub node: Digest,
     pub accumulated_count: Int,
-    pub log2_size: Option<u64>,
+    pub log2_size: Option<u32>,
 }
 
 /// A [MerkleProof] is used to verify that a leaf is part of a [MerkleTree].
@@ -84,20 +84,22 @@ impl MerkleTree {
         self.proof(
             &mut proof_acc,
             self.nodes.get(&self.root).expect("root does not exist"),
-            height,
+            height as u64,
             index,
         );
 
         (proof_acc.leaf, proof_acc.proof)
     }
 
-    fn calculate_height(&self) -> u64 {
-        let mut height = Int::BITS as u64;
+    fn calculate_height(&self) -> u32 {
+        let mut height = self.log2_size;
+
         if let Some(leaf) = self.leafs.get(0) {
             if let Some(log2_size) = leaf.log2_size {
-                height = log2_size + self.log2_size as u64;
+                height = log2_size as u32 + self.log2_size;
             }
         }
+        
         height
     }
 
@@ -152,11 +154,48 @@ mod tests {
 
     #[test]
     pub fn test_tree() {
-        let mut builder = crate::merkle::MerkleBuilder::new();
-        builder.add(Digest::zeroed(), 0);
+        let mut builder = crate::merkle::MerkleBuilder::default();
+        builder.add(Digest::zeroed(), 2); 
+        builder.add(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let proof = tree.prove_leaf(0);
         assert_eq!(proof.0, Digest::zeroed());
     }
+
+    #[test]
+    pub fn proof_test() {
+        let mut builder = crate::merkle::MerkleBuilder::default();
+        builder.add(Digest::zeroed(), 8);
+        let tree = builder.build();
+
+        let (leaf, proof) = tree.prove_leaf(0);
+    
+        let mut root = leaf;
+        
+        for node in proof {
+            root = Digest::join(&node, root);
+        }
+
+        assert_eq!(root, tree.root_hash());
+    }
+
+    #[test]
+    pub fn last_proof_test() {
+        let mut builder = crate::merkle::MerkleBuilder::default();
+        builder.add(Digest::zeroed(), 2); 
+        builder.add(Digest::zeroed(), 2u128.pow(64) - 2);
+        let tree = builder.build();
+
+        let (leaf, proof) = tree.last();
+    
+        let mut root = leaf;
+        
+        for node in proof {
+            root = Digest::join(&node, root);
+        }
+
+        assert_eq!(root, tree.root_hash());
+    }
+
 }

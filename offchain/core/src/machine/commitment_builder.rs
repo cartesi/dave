@@ -87,7 +87,7 @@ impl MachineCommitmentBuilder for FakeMachineCommitmentBuilder {
         _base_cycle: u64,
         level: u64,
     ) -> Result<MachineCommitment, Box<dyn Error>> {
-        let mut merkle_builder = MerkleBuilder::new();
+        let mut merkle_builder = MerkleBuilder::default();
         let level = constants::LEVELS - level + 1;
         if constants::LOG2_STEP[level as usize] == 0 && self.second_state.is_some() {
             merkle_builder.add(self.second_state.clone().unwrap(), 1);
