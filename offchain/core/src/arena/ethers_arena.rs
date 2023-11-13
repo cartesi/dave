@@ -90,7 +90,7 @@ impl EthersArena {
             )
             .await?;
 
-        return Ok(());
+        Ok(())
     }
 
     async fn deploy_contract_from_artifact<T: Tokenize>(
@@ -139,7 +139,7 @@ impl Arena for EthersArena {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let proof = proof
             .iter()
-            .map(|h| -> [u8; 32] { h.clone().into() })
+            .map(|h| -> [u8; 32] { (*h).into() })
             .collect();
         tournament
             .join_tournament(
@@ -199,7 +199,7 @@ impl Arena for EthersArena {
         };
         let initial_hash_proof = initial_hash_proof
             .iter()
-            .map(|h| -> [u8; 32] { h.clone().into() })
+            .map(|h| -> [u8; 32] { (*h).into() })
             .collect();
         tournament
             .seal_inner_match_and_create_inner_tournament(
@@ -248,7 +248,7 @@ impl Arena for EthersArena {
         };
         let initial_hash_proof = initial_hash_proof
             .iter()
-            .map(|h| -> [u8; 32] { h.clone().into() })
+            .map(|h| -> [u8; 32] { (*h).into() })
             .collect();
         tournament
             .seal_leaf_match(
@@ -315,7 +315,7 @@ impl Arena for EthersArena {
     async fn created_matches(
         &self,
         tournament: Address,
-        commitment_hash: Digest,
+        _commitment_hash: Digest,
     ) -> Result<Vec<MatchCreatedEvent>, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let events = tournament.match_created_filter().query().await.unwrap();

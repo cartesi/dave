@@ -53,10 +53,10 @@ impl MerkleTree {
         nodes: HashMap<Digest, MerkleTreeNode>,
     ) -> Self {
         MerkleTree {
-            log2_size: log2_size,
-            root: root,
-            leafs: leafs,
-            nodes: nodes,
+            log2_size,
+            root,
+            leafs,
+            nodes,
         }
     }
 
@@ -77,7 +77,7 @@ impl MerkleTree {
     pub fn prove_leaf(&self, index: u64) -> (Digest, MerkleProof) {
         let height = self.calculate_height();
 
-        assert!(index.wrapping_shr(height as u32) == 0);
+        assert!(index.wrapping_shr(height) == 0);
 
         let mut proof_acc = ProofAccumulator::default();
 
@@ -96,7 +96,7 @@ impl MerkleTree {
 
         if let Some(leaf) = self.leafs.get(0) {
             if let Some(log2_size) = leaf.log2_size {
-                height = log2_size as u32 + self.log2_size;
+                height = log2_size + self.log2_size;
             }
         }
         

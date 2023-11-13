@@ -25,7 +25,7 @@ pub struct CachingMachineCommitmentBuilder {
 impl CachingMachineCommitmentBuilder {
     pub fn new(machine: Arc<Mutex<MachineRpc>>) -> Self {
         CachingMachineCommitmentBuilder {
-            machine: machine,
+            machine,
             commitments: HashMap::new(),
         }
     }
@@ -40,8 +40,8 @@ impl MachineCommitmentBuilder for CachingMachineCommitmentBuilder {
     ) -> Result<MachineCommitment, Box<dyn Error>> {
         assert!(level <= constants::LEVELS);
 
-        if !self.commitments.contains_key(&level) {
-            self.commitments.insert(level, HashMap::new());
+        if let std::collections::hash_map::Entry::Vacant(e) = self.commitments.entry(level) {
+            e.insert(HashMap::new());
         } else if self.commitments[&level].contains_key(&base_cycle) {
             return Ok(self.commitments[&level][&base_cycle].clone());
         }
@@ -59,7 +59,7 @@ impl MachineCommitmentBuilder for CachingMachineCommitmentBuilder {
 
         self.commitments
             .entry(level)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(base_cycle, commitment.clone());
 
         Ok(commitment)
@@ -90,7 +90,7 @@ impl MachineCommitmentBuilder for FakeMachineCommitmentBuilder {
         let mut merkle_builder = MerkleBuilder::default();
         let level = constants::LEVELS - level + 1;
         if constants::LOG2_STEP[level as usize] == 0 && self.second_state.is_some() {
-            merkle_builder.add(self.second_state.clone().unwrap(), 1);
+            merkle_builder.add(self.second_state.unwrap(), 1);
             merkle_builder.add(
                 Digest::zeroed(),
                 (1 << constants::HEIGHTS[level as usize]) - 1,

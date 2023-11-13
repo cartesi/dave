@@ -16,8 +16,8 @@ impl Digest {
     /// Joins the current Digest with another Digest to create a new Digest.
     pub fn join(&self, digest_2: Digest) -> Digest {
         let mut keccak = Keccak256::new();
-        keccak.update(&self.data);
-        keccak.update(&digest_2.data);
+        keccak.update(self.data);
+        keccak.update(digest_2.data);
         let digest: [u8; 32] = keccak.finalize().into();
         Digest::from(digest)
     }

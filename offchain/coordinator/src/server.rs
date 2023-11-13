@@ -29,8 +29,8 @@ pub struct APIServer<A: Arena> {
 impl<A: Arena + 'static> APIServer<A> {
     pub fn new(arena: Arc<A>, config: APIServerConfig) -> Self {
         Self {
-            arena: arena,
-            config: config,
+            arena,
+            config,
         }
     }
 
@@ -85,7 +85,7 @@ impl<A: Arena + 'static> Coordinator for APIServer<A> {
     ) -> Result<Response<FinishDisputeResponse>, Status> {
         let req = request.into_inner();
 
-        let root_tournament = if let Ok(tournament) = req.dispute_id.parse::<Address>() {
+        let _root_tournament = if let Ok(tournament) = req.dispute_id.parse::<Address>() {
             tournament
         } else {
             return Err(Status::invalid_argument(
@@ -102,7 +102,7 @@ impl<A: Arena + 'static> Coordinator for APIServer<A> {
     ) -> Result<Response<GetDisputeInfoResponse>, Status> {
         let req = request.into_inner();
 
-        let root_tournament = if let Ok(tournament) = req.dispute_id.parse::<Address>() {
+        let _root_tournament = if let Ok(tournament) = req.dispute_id.parse::<Address>() {
             tournament
         } else {
             return Err(Status::invalid_argument(

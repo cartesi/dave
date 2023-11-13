@@ -53,8 +53,8 @@ impl MachineRpc {
         assert_eq!(rpc_client.read_csr("uarch_cycle".to_string()).await?, 0);
 
         Ok(MachineRpc {
-            rpc_client: rpc_client,
-            start_cycle: start_cycle,
+            rpc_client,
+            start_cycle,
             root_hash: Digest::from(root_hash),
             cycle: 0,
             ucycle: 0,
@@ -125,7 +125,7 @@ impl MachineRpc {
 
     pub async fn increment_uarch(&mut self) -> Result<(), Box<dyn Error>> {
         self.rpc_client.run(self.ucycle + 1).await?;
-        self.ucycle = self.ucycle + 1;
+        self.ucycle += 1;
         Ok(())
     }
 
@@ -143,8 +143,8 @@ impl MachineRpc {
 
         Ok(MachineState {
             root_hash: Digest::new(root_hash),
-            halted: halted,
-            uhalted: uhalted,
+            halted,
+            uhalted,
         })
     }
 
@@ -176,7 +176,7 @@ fn encode_access_log(log: &AccessLog) -> Vec<u8> {
             .proof
             .sibling_hashes
             .iter()
-            .map(|hex_string| hex::decode(hex_string))
+            .map(hex::decode)
             .collect();
 
         let mut decoded = decoded_sibling_hashes.unwrap();
@@ -193,7 +193,7 @@ fn encode_access_log(log: &AccessLog) -> Vec<u8> {
         );
     }
 
-    encoded.iter().cloned().flatten().collect()
+    encoded.iter().flatten().cloned().collect()
 }
 
 fn ver(mut t: Vec<u8>, p: u64, s: Vec<Vec<u8>>) -> Vec<u8> {
@@ -226,9 +226,9 @@ impl MachineFactory {
         let rpc_url = format!("{}:{}", rpc_host, rpc_port);
         let rpc_client = JsonRpcCartesiMachineClient::new(rpc_url).await?;
         Ok(Self {
-            rpc_host: rpc_host,
-            rpc_port: rpc_port,
-            rpc_client: rpc_client,
+            rpc_host,
+            rpc_port,
+            rpc_client,
             machines: HashMap::new(),
         })
     }
@@ -238,7 +238,7 @@ impl MachineFactory {
         snapshot_path: &Path,
     ) -> Result<Arc<Mutex<MachineRpc>>, Box<dyn Error>> {
         let fork_rpc_url = self.rpc_client.fork().await?;
-        let fork_rpc_port = fork_rpc_url.split(":").last().unwrap();
+        let fork_rpc_port = fork_rpc_url.split(':').last().unwrap();
         let fork_rpc_url = format!("{}:{}", self.rpc_host, fork_rpc_port);
         let machine_rpc = MachineRpc::new(fork_rpc_url.as_str(), snapshot_path).await?;
         Ok(Arc::new(Mutex::new(machine_rpc)))

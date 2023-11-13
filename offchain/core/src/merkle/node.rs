@@ -15,7 +15,7 @@ impl MerkleTreeNode {
     /// Creates a new Merkle tree node with the given digest.
     pub fn new(digest: Digest) -> Self {
         MerkleTreeNode {
-            digest: digest,
+            digest,
             children: None,
         }
     }
