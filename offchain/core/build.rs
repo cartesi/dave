@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use ethers_contract_abigen::Abigen;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

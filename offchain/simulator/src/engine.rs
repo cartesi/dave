@@ -11,7 +11,7 @@ use cartesi_compute_core::{
         CachingMachineCommitmentBuilder, FakeMachineCommitmentBuilder, MachineCommitmentBuilder,
         MachineFactory, MachineRpc,
     },
-    merkle::Hash,
+    merkle::Digest,
     player::{Player, PlayerTournamentResult},
 };
 
@@ -27,7 +27,7 @@ pub enum EngineError {
 
 #[derive(Clone)]
 pub struct DisputeState {
-    pub initial_hash: Hash,
+    pub initial_hash: Digest,
     pub machine_snapshot_path: String,
     pub root_tournament: Address,
     pub finished: bool,
@@ -159,7 +159,7 @@ impl<A: Arena + 'static> Engine<A> {
             root_tournament,
             Dispute {
                 state: DisputeState {
-                    initial_hash: Hash::new(initial_hash_data),
+                    initial_hash: Digest::new(initial_hash_data),
                     machine_snapshot_path: machine_snapshot_path.clone(),
                     root_tournament: root_tournament,
                     finished: false,
@@ -256,8 +256,8 @@ impl<A: Arena + 'static> Engine<A> {
         let commitment_builder: Arc<Mutex<dyn MachineCommitmentBuilder + Send>> = if fake {
             // TODO: pass parameters here or add them to config
             Arc::new(Mutex::new(FakeMachineCommitmentBuilder::new(
-                Hash::default(),
-                Some(Hash::default()),
+                Digest::zeroed(),
+                Some(Digest::zeroed()),
             )))
         } else {
             Arc::new(Mutex::new(CachingMachineCommitmentBuilder::new(

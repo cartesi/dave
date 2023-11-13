@@ -1,10 +1,13 @@
+//! Module for building merkle trees from leafs.
+
 use std::collections::HashMap;
 
 use crate::merkle::{Digest, MerkleTree, MerkleTreeLeaf, MerkleTreeNode};
 
 pub type Int = u128;
 
-#[derive(Debug)]
+/// A [MerkleBuilder] is used to build a [MerkleTree] from its leafs.
+#[derive(Debug, Default)]
 pub struct MerkleBuilder {
     leafs: Vec<MerkleTreeLeaf>,
     nodes: HashMap<Digest, MerkleTreeNode>,
@@ -12,17 +15,11 @@ pub struct MerkleBuilder {
 }
 
 impl MerkleBuilder {
-    pub fn new() -> Self {
-        MerkleBuilder {
-            leafs: Vec::new(),
-            interned: HashMap::new(),
-            nodes: HashMap::new(),
-        }
-    }
-
     /// Adds a new leaf to the merkle tree. The leaf is represented by its 
     /// digest and its repetition.
     pub fn add(&mut self, digest: Digest, rep: Int) {
+        assert!(rep != 0, "repetition is zero");
+            
         self.add_new_node(digest);
 
         let count = self.calculate_accumulated_count(rep);
@@ -34,13 +31,6 @@ impl MerkleBuilder {
         });
     }
 
-    /// Calculates the accumulated count of the new leaf.
-    /// 
-    /// Invariants:
-    /// 
-    /// - The accumulated count should be different from zero.
-    /// - It should not overflow the [Int] type.
-    /// 
     fn calculate_accumulated_count(&mut self, rep: u128) -> u128 {
         if let Some(last) = self.leafs.last() {
             assert!(last.accumulated_count != 0, "merkle builder is full");
@@ -170,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_merkle_builder_8() {
-        let mut builder = MerkleBuilder::new();
+        let mut builder = MerkleBuilder::default();
         builder.add(Digest::zeroed(), 2); 
         builder.add(Digest::zeroed(), 6);
         let merkle = builder.build();
@@ -179,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_merkle_builder_64() {
-        let mut builder = MerkleBuilder::new();
+        let mut builder = MerkleBuilder::default();
         builder.add(Digest::zeroed(), 2); 
         builder.add(Digest::zeroed(), 2u128.pow(64) - 2);
         let merkle = builder.build();
@@ -188,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_merkle_builder_128() {
-        let mut builder = MerkleBuilder::new();
+        let mut builder = MerkleBuilder::default();
         builder.add(Digest::zeroed(), 2); 
         builder.add(Digest::zeroed(),0u128.wrapping_sub(2));
         let merkle = builder.build();

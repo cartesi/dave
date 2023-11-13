@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error, path::Path, sync::Arc};
 
 use sha3::{Keccak256, Digest as Keccak256Digest};
-use tokio::{process::Command, sync::Mutex};
+use tokio::sync::Mutex;
 
 use cartesi_machine_json_rpc::client::{
     AccessLog, AccessLogType, AccessType, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
@@ -89,7 +89,7 @@ impl MachineRpc {
     }
 
     pub async fn run(&mut self, cycle: u64) -> Result<(), Box<dyn Error>> {
-        assert!(arithmetic::ulte(self.cycle, cycle));
+        assert!(self.cycle <= cycle);
 
         let physical_cycle = add_and_clamp(self.start_cycle, cycle);
 
@@ -112,7 +112,7 @@ impl MachineRpc {
 
     pub async fn run_uarch(&mut self, ucycle: u64) -> Result<(), Box<dyn Error>> {
         assert!(
-            arithmetic::ulte(self.ucycle, ucycle),
+            self.ucycle <= ucycle,
             "{}",
             format!("{}, {}", self.ucycle, ucycle)
         );
@@ -154,7 +154,7 @@ impl MachineRpc {
 }
 
 fn add_and_clamp(x: u64, y: u64) -> u64 {
-    if arithmetic::ult(x, arithmetic::max_uint(64) - y) {
+    if x < arithmetic::max_uint(64) - y {
         x + y
     } else {
         arithmetic::max_uint(64)
@@ -252,6 +252,7 @@ impl MachineFactory {
         };
 
         let mut machine = machine_lock.lock().await;
+
         // TODO: handle result here
         machine.rpc_client.shutdown().await;
 

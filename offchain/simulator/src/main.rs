@@ -6,7 +6,7 @@ use cartesi_compute_coordinator::grpc::CoordinatorClient;
 use cartesi_compute_core::{
     arena::{Arena, ArenaConfig, ContractArtifactsConfig, EthersArena},
     machine::MachineFactory,
-    merkle::Hash,
+    merkle::Digest,
 };
 
 use cartesi_compute_simulator::engine::{Engine, EngineConfig};
@@ -73,7 +73,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn dispute_root_hash(
     machine_factory: Arc<Mutex<MachineFactory>>,
     snapshot_path: &String,
-) -> Result<Hash, Box<dyn std::error::Error>> {
+) -> Result<Digest, Box<dyn std::error::Error>> {
     let mut machine_factory = machine_factory.lock().await;
     let machine = machine_factory
         .create_machine(Path::new(snapshot_path))

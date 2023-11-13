@@ -83,7 +83,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         thread::sleep(interval);
     }
-    Ok(())
 }
 
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
