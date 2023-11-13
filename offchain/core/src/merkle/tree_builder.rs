@@ -56,7 +56,7 @@ impl MerkleBuilder {
     pub fn build(&mut self) -> MerkleTree {
         let last = self.leafs.last().expect("no leafs in merkle builder");
         let count = last.accumulated_count;
-        let mut log2_size = Int::BITS as u32;
+        let mut log2_size = Int::BITS;
 
         if count != 0 {
             assert!(count.is_power_of_two(), "is not a power of two {}", count);

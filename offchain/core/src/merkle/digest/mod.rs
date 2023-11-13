@@ -17,7 +17,7 @@ pub struct Digest {
 impl Digest {
     /// Creates a new [Digest] with the provided 32-byte data.
     pub fn new(data: [u8; 32]) -> Self {
-        return Digest { data: data };
+        Digest { data }
     }
 
     /// Attempts to create a [Digest] from a Vec<u8> containing 32 bytes of data.
@@ -27,7 +27,7 @@ impl Digest {
         }
 
         let mut data = [0u8; 32];
-        data.copy_from_slice(&digest_data);
+        data.copy_from_slice(digest_data);
         Ok(Digest::new(data))
     }
 
