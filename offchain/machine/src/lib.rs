@@ -1,5 +1,6 @@
 use async_mutex::Mutex;
 use async_trait::async_trait;
+use cartesi_compute_core::merkle::Digest;
 use cartesi_machine_json_rpc::client::{
     AccessLogType, AccessType, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
@@ -27,7 +28,7 @@ pub struct CanonicalCartesiMachine {
     cycle: u64,
     ucycle: u64,
     start_cycle: u64,
-    initial_hash: Digest,
+    _initial_hash: Digest,
 }
 
 pub const LEVELS: usize = 3;
@@ -119,7 +120,7 @@ impl CartesiMachine for CanonicalCartesiMachine {
             .await?;
 
         Ok(MachineState {
-            root_hash: Digest::from_data(&root_hash),
+            root_hash: Digest::from_data(&root_hash)?,
             halted,
             uhalted,
         })
@@ -226,7 +227,7 @@ impl CanonicalCartesiMachine {
             cycle: 0,
             ucycle: 0,
             start_cycle,
-            initial_hash: Digest::from_data(&root_hash),
+            _initial_hash: Digest::from_data(&root_hash)?,
         })
     }
 }

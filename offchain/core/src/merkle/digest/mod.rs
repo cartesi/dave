@@ -21,7 +21,7 @@ impl Digest {
     }
 
     /// Attempts to create a [Digest] from a Vec<u8> containing 32 bytes of data.
-    pub fn from_data(digest_data: Vec<u8>) -> Result<Digest, Box<dyn Error>> {
+    pub fn from_data(digest_data: &[u8]) -> Result<Digest, Box<dyn Error>> {
         if digest_data.len() != 32 {
             return Err("Invalid digest data length".into());
         }
@@ -34,7 +34,7 @@ impl Digest {
     /// Attempts to create a [Digest] from a hexadecimal string.
     pub fn from_hex(digest_hex: &str) -> Result<Digest, Box<dyn Error>> {
         let data = Vec::from_hex(digest_hex)?;
-        Self::from_data(data)
+        Self::from_data(&data)
     }
 
     /// Converts the [Digest] to a hexadecimal string.

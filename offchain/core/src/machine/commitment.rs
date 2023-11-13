@@ -4,8 +4,7 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use crate::{
     machine::{constants, MachineRpc, MachineState},
-    merkle::{Digest, Int, MerkleBuilder, MerkleTree},
-    utils::arithmetic,
+    merkle::{Digest, Int, MerkleBuilder, MerkleTree}, utils::arithmetic
 };
 
 #[derive(Clone, Debug)]
@@ -43,10 +42,10 @@ pub async fn build_big_machine_commitment(
     machine.run(base_cycle).await?;
     let initial_state = machine.machine_state().await?;
 
-    let mut builder = MerkleBuilder::new();
-    let instruction_count = arithmetic::max_uint(log2_stride_count);
+    let mut builder = MerkleBuilder::default();
+    let instruction_count = 1u64.wrapping_shl(log2_stride_count as u32) - 1;
     let mut instruction = 0;
-    while arithmetic::ulte(instruction, instruction_count) {
+    while instruction <= instruction_count {
         let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN);
         machine.run(base_cycle + cycle).await?;
         let state = machine.machine_state().await?;
@@ -80,11 +79,11 @@ pub async fn build_small_machine_commitment(
     machine.run(base_cycle).await?;
     let initial_state = machine.machine_state().await?;
 
-    let mut builder = MerkleBuilder::new();
+    let mut builder = MerkleBuilder::default();
     let instruction_count = arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN);
     let mut instructions = 0;
     loop {
-        if !arithmetic::ulte(instructions, instruction_count) {
+        if !instructions <= instruction_count {
             break;
         }
 
@@ -116,7 +115,7 @@ async fn run_uarch_span<'a>(
 
     machine.increment_uarch().await?;
 
-    let mut builder = MerkleBuilder::new();
+    let mut builder = MerkleBuilder::default();
     let mut i = 0;
     let mut state: MachineState;
     loop {

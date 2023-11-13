@@ -2,7 +2,7 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 
 use ::tokio::sync::Mutex;
 
-use ::log::{debug, info};
+use ::log::info;
 
 use crate::{
     arena::{Address, Arena, MatchCreatedEvent, MatchState},

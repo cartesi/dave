@@ -2008,6 +2008,7 @@ version = "0.1.0"
 dependencies = [
  "async-mutex",
  "async-trait",
+ "cartesi-compute-core",
  "cartesi-machine-json-rpc",
  "ethers",
  "hex",
