@@ -1,33 +1,6 @@
 local Hash = require "cryptography.hash"
 local eth_abi = require "utils.eth_abi"
 
-local function latest_block(block)
-    local cmd = string.format("cast block " .. block .. " 2>&1")
-
-    local handle = io.popen(cmd)
-    assert(handle)
-
-    local ret
-    local str = handle:read()
-    while str do
-        if str:find "Error" or str:find "error" then
-            local err_str = handle:read "*a"
-            handle:close()
-            error(string.format("Cast block failed:\n%s", err_str))
-        end
-
-        ret = str:match("timestamp            (%d+)")
-        if ret then
-            break
-        end
-
-        str = handle:read()
-    end
-    handle:close()
-
-    return ret
-end
-
 local function parse_topics(json)
     local _, _, topics = json:find(
         [==["topics":%[([^%]]*)%]]==]
@@ -85,6 +58,58 @@ local function parse_logs(logs, data_sig)
     return ret
 end
 
+local CommitmentClock = {}
+CommitmentClock.__index = CommitmentClock
+
+function CommitmentClock:new(allowance, last_resume)
+    local clock = {
+        allowance = tonumber(allowance),
+        last_resume = tonumber(last_resume),
+    }
+
+    setmetatable(clock, self)
+    return clock
+end
+
+function CommitmentClock:display(block_time)
+    local c = self
+    local b = block_time
+    local s
+    if c.last_resume == 0 then
+        local time_left = c.allowance
+        s = string.format("clock paused, %d seconds left", time_left)
+    else
+        local current = b
+        local time_left = c.allowance - (current - c.last_resume)
+        if time_left >= 0 then
+            s = string.format("clock running, %d seconds left", time_left)
+        else
+            s = string.format("clock running, %d seconds overdue", -time_left)
+        end
+    end
+    return s
+end
+
+function CommitmentClock:has_time(block_time)
+    local clock = self
+    if clock.last_resume == 0 then
+        return true
+    else
+        local current = block_time
+        return (clock.last_resume + clock.allowance) > current
+    end
+end
+
+function CommitmentClock:time_since_timeout(block_time)
+    local clock = self
+    if clock.last_resume == 0 then
+        return
+    else
+        local current = block_time
+        return current - (clock.last_resume + clock.allowance)
+    end
+end
+
 local Reader = {}
 Reader.__index = Reader
 
@@ -97,6 +122,33 @@ function Reader:new()
 
     setmetatable(reader, self)
     return reader
+end
+
+function Reader:get_block(block)
+    local cmd = string.format("cast block " .. block .. " 2>&1")
+
+    local handle = io.popen(cmd)
+    assert(handle)
+
+    local ret
+    local str = handle:read()
+    while str do
+        if str:find "Error" or str:find "error" then
+            local err_str = handle:read "*a"
+            handle:close()
+            error(string.format("Cast block failed:\n%s", err_str))
+        end
+
+        ret = str:match("timestamp            (%d+)")
+        if ret then
+            break
+        end
+
+        str = handle:read()
+    end
+    handle:close()
+
+    return ret
 end
 
 local cast_logs_template = [==[
@@ -229,20 +281,16 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     local call_ret = self:_call(tournament_address, sig, { commitment_hash:hex_string() })
     assert(#call_ret == 2)
 
-    local last_block = latest_block("latest")
-
-    local allowance, last_resume = call_ret[1]:match "%((%d+),(%d+)%)"
+    -- call_ret[1] = (299, 0) or (419, 1700743849 [1.7e9])
+    -- remove spaces, scientific notations and color code
+    local parsed_ret = call_ret[1]:gsub("%s+", ""):gsub("%b[]", ""):gsub("\27%[[%d;]*m", "")
+    local allowance, last_resume = parsed_ret:match "%((%d+),(%d+)%)"
     assert(allowance)
     assert(last_resume)
-    local clock = {
-        allowance = tonumber(allowance),
-        last_resume = tonumber(last_resume),
-    }
 
     local ret = {
-        clock = clock,
+        clock = CommitmentClock:new(allowance, last_resume),
         final_state = Hash:from_digest_hex(call_ret[2]),
-        last_block = tonumber(last_block)
     }
 
     return ret
