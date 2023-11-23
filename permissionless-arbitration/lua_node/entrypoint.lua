@@ -4,9 +4,16 @@ package.path = package.path .. ";./lua_node/?.lua"
 package.cpath = package.cpath .. ";/opt/cartesi/lib/lua/5.4/?.so"
 
 local machine_path = "lua_node/program/simple-program"
+-- amount of time to fastforward if `IDLE_LIMIT` is reached
 local FF_TIME = 30
+-- max consecutive iterations of all players idling before the blockchain fastforwards
 local IDLE_LIMIT = 5
+-- max consecutive iterations of no active players before the program exits
 local INACTIVE_LIMIT = 10
+-- delay time for blockchain node to be ready
+local NODE_DELAY = 2
+-- delay between each player
+local PLAYER_DELAY = 3
 
 local helper = require "utils.helper"
 local blockchain_utils = require "blockchain.utils"
@@ -21,7 +28,7 @@ os.execute "cd lua_node/program && ./gen_machine_simple.sh"
 local m = Machine:new_from_path(machine_path)
 local initial_hash = m:state().root_hash
 local blockchain = Blockchain:new()
-time.sleep(2)
+time.sleep(NODE_DELAY)
 local contract = blockchain:deploy_contract(initial_hash)
 
 -- add more player instances here
@@ -44,7 +51,7 @@ for i, cmd in ipairs(cmds) do
     local pid = assert(reader):read()
     pid_reader[pid] = reader
     pid_player[pid] = i
-    time.sleep(3)
+    time.sleep(PLAYER_DELAY)
 end
 
 -- gracefully end children processes
@@ -83,7 +90,6 @@ while true do
             all_idle = 0
         end
 
-        -- if all players are idle for `IDLE_LIMIT` consecutive iterations, advance blockchain
         if all_idle == IDLE_LIMIT then
             print(string.format("all players idle, fastforward blockchain for %d seconds...", FF_TIME))
             blockchain_utils.advance_time(FF_TIME, blockchain_constants.endpoint)
@@ -97,7 +103,6 @@ while true do
         no_active_players = 0
     end
 
-    -- if no active player processes for `INACTIVE_LIMIT` consecutive iterations, break loop
     if no_active_players == INACTIVE_LIMIT then
         print("no active players, end program...")
         break
