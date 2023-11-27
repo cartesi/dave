@@ -1,9 +1,4 @@
 pub const fn max_uint(k: u64) -> u64 {
-    assert!(k <= 64);
-    (1 << k) - 1
-}
-
-
-pub fn semi_sum(a: u64, b: u64) -> u64 {
-    a + (b - a) / 2
+    assert!(k <= u64::BITS as u64);
+    (1u64.wrapping_shl(k as u32)).wrapping_sub(1)
 }

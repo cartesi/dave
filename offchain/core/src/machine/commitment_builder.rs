@@ -1,3 +1,6 @@
+//! The builder of machine commitments [MachineCommitmentBuilder] is responsible for building the
+//! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
+
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use async_trait::async_trait;
