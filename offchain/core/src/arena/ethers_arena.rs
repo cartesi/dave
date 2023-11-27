@@ -1,3 +1,5 @@
+//! Module for creation of an Arena in an ethereum node.
+
 use std::{error::Error, path::Path, str::FromStr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
@@ -23,8 +25,8 @@ use crate::{
     merkle::{Digest, MerkleProof},
 };
 
+/// The [EthersArena] struct implements the [Arena] trait for an ethereum node.
 pub struct EthersArena {
-    // Start anvil for testing.
     config: ArenaConfig,
     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
     tournament_factory: EthersAddress,
@@ -47,6 +49,7 @@ impl EthersArena {
         })
     }
 
+    /// Initializes the arena by deploying the necessary contracts.
     pub async fn init(&mut self) -> Result<(), Box<dyn Error>> {
         // Deploy single level factory.
         let sl_factory_artifact =
@@ -93,6 +96,7 @@ impl EthersArena {
         Ok(())
     }
 
+    /// Deploys a contract from an artifact file and returns its address.
     async fn deploy_contract_from_artifact<T: Tokenize>(
         &self,
         artifact_path: &Path,

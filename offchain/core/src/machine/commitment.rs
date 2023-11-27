@@ -1,3 +1,6 @@
+//! This module defines a struct [MachineCommitment] that is used to represent a `computation hash`
+//! described on the paper https://arxiv.org/pdf/2212.12439.pdf.
+
 use std::{error::Error, sync::Arc};
 
 use tokio::sync::{Mutex, MutexGuard};
@@ -7,6 +10,8 @@ use crate::{
     merkle::{Digest, Int, MerkleBuilder, MerkleTree}, utils::arithmetic
 };
 
+/// The [MachineCommitment] struct represents a `computation hash`, that is a [MerkleTree] of a set
+/// of steps of the Cartesi Machine.
 #[derive(Clone, Debug)]
 pub struct MachineCommitment {
     pub implicit_hash: Digest,
@@ -43,15 +48,14 @@ pub async fn build_big_machine_commitment(
     let initial_state = machine.machine_state().await?;
 
     let mut builder = MerkleBuilder::default();
-    let instruction_count = 1u64.wrapping_shl(log2_stride_count as u32) - 1;
-    let mut instruction = 0;
-    while instruction <= instruction_count {
+    let instruction_count = arithmetic::max_uint(log2_stride_count);
+
+    for instruction in 0..instruction_count {
         let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN);
         machine.run(base_cycle + cycle).await?;
         let state = machine.machine_state().await?;
         if state.halted {
             builder.add(state.root_hash, 1);
-            instruction += 1
         } else {
             builder.add(
                 state.root_hash,
@@ -60,6 +64,7 @@ pub async fn build_big_machine_commitment(
             break;
         }
     }
+
     let merkle = builder.build();
 
     Ok(MachineCommitment {

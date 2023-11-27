@@ -21,7 +21,7 @@ impl MerkleTreeNode {
     }
 
     /// Sets the children of the node.
-    pub fn set_children(&mut self, left: Digest, right: Digest) {
+    pub(crate) fn set_children(&mut self, left: Digest, right: Digest) {
         self.children = Some((left, right));
     }
 

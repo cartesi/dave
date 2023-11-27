@@ -1,5 +1,7 @@
-use std::error::Error;
+//! This module defines the trait [Arena] that is responsible for the creation and 
+//! management of tournaments. It also defines some structs that are used to communicate events.
 
+use std::error::Error;
 use async_trait::async_trait;
 use primitive_types::H160;
 
@@ -8,10 +10,13 @@ use crate::{
     merkle::{Digest, MerkleProof},
 };
 
+/// Type alias for Ethereum addresses (20 bytes).
 pub type Address = H160;
 
+/// The [Arena] trait defines the interface for the creation and management of tournaments.
 #[async_trait]
 pub trait Arena: Send + Sync {
+    /// Creates a new tournament and returns its address.
     async fn create_root_tournament(&self, initial_hash: Digest) -> Result<Address, Box<dyn Error>>;
 
     async fn join_tournament(
@@ -104,20 +109,22 @@ pub trait Arena: Send + Sync {
     async fn maximum_delay(&self, tournament: Address) -> Result<u64, Box<dyn Error>>;
 }
 
-#[derive(Clone, Copy)]
 
+/// This struct is used to communicate the creation of a new tournament.
+#[derive(Clone, Copy)]
 pub struct TournamentCreatedEvent {
     pub parent_match_id_hash: Digest,
     pub new_tournament_address: Address,
 }
 
+/// This struct is used to communicate the creation of a new match.
 #[derive(Clone, Copy)]
-
 pub struct MatchCreatedEvent {
     pub id: MatchID,
     pub left_hash: Digest,
 }
 
+/// Struct used to identify a match.
 #[derive(Clone, Copy)]
 pub struct MatchID {
     pub commitment_one: Digest,
@@ -125,17 +132,20 @@ pub struct MatchID {
 }
 
 impl MatchID {
+    /// Generates a new [Digest]
     pub fn hash(&self) -> Digest {
         self.commitment_one.join(self.commitment_two)
     }
 }
 
+/// Struct used to communicate the state of the clock.
 #[derive(Clone, Copy)]
 pub struct ClockState {
     pub allowance: u64,
     pub start_instant: u64,
 }
 
+/// Struct used to communicate the state of a match.
 #[derive(Clone, Copy)]
 pub struct MatchState {
     pub other_parent: Digest,

@@ -1,5 +1,5 @@
-//! Definition of the [Digest] type and its associated methods. A digest is the
-//! output of a hash function. It's used to identify the data in the MerkleTree.
+//! Definition of the [Digest] type and its associated methods. A digest is the output of a hash 
+//! function. It's used to identify the data in the MerkleTree.
 
 use std::{fmt, error::Error};
 use hex::FromHex;
@@ -8,7 +8,7 @@ pub mod keccak;
 
 use hex;
 
-/// The output of a hash function.
+/// The output of a hash function. 
 #[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
 pub struct Digest {
     data: [u8; 32],
