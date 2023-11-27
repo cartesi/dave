@@ -1,3 +1,5 @@
+//! Module for configuration of an Arena.
+
 #[derive(Debug, Clone)]
 pub struct ArenaConfig {
     pub web3_rpc_url: String,
@@ -6,6 +8,7 @@ pub struct ArenaConfig {
     pub contract_artifacts: ContractArtifactsConfig,
 }
 
+/// Configuration for the contract artifacts.
 #[derive(Debug, Clone)]
 pub struct ContractArtifactsConfig {
     pub single_level_factory: String,
