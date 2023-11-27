@@ -1,3 +1,5 @@
+//! Module for communication with the Cartesi machine using RPC. 
+
 use std::{collections::HashMap, error::Error, path::Path, sync::Arc};
 
 use sha3::{Keccak256, Digest as Keccak256Digest};
