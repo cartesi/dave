@@ -7,6 +7,13 @@ use hex::FromHex;
 pub mod keccak;
 
 use hex;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum DigestError {
+    #[error("Invalid digest data length")]
+    InvalidDigestLength,
+}
 
 /// The output of a hash function. 
 #[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
@@ -21,9 +28,9 @@ impl Digest {
     }
 
     /// Attempts to create a [Digest] from a Vec<u8> containing 32 bytes of data.
-    pub fn from_data(digest_data: &[u8]) -> Result<Digest, Box<dyn Error>> {
+    pub fn from_digest(digest_data: &[u8]) -> Result<Digest, Box<dyn Error>> {
         if digest_data.len() != 32 {
-            return Err("Invalid digest data length".into());
+            return Err(Box::new(DigestError::InvalidDigestLength));
         }
 
         let mut data = [0u8; 32];
@@ -32,9 +39,9 @@ impl Digest {
     }
 
     /// Attempts to create a [Digest] from a hexadecimal string.
-    pub fn from_hex(digest_hex: &str) -> Result<Digest, Box<dyn Error>> {
+    pub fn from_digest_hex(digest_hex: &str) -> Result<Digest, Box<dyn Error>> {
         let data = Vec::from_hex(digest_hex)?;
-        Self::from_data(&data)
+        Self::from_digest(&data)
     }
 
     /// Converts the [Digest] to a hexadecimal string.

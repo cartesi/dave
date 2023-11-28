@@ -27,6 +27,8 @@ struct PlayerMatch {
     event: MatchCreatedEvent,
     tournament: Address,
     leaf_cycle: u64,
+    
+    #[allow(dead_code)]
     base_big_cycle: u64,
 }
 

@@ -64,7 +64,7 @@ impl<A: Arena + 'static> Coordinator for APIServer<A> {
         if !is_valid_digest_data(&req.initial_hash) {
             return Err(Status::invalid_argument("invalid initial hash digest"));
         }
-        let initial_hash = Digest::from_data(&req.initial_hash).unwrap();
+        let initial_hash = Digest::from_digest(&req.initial_hash).unwrap();
 
         match self
             .arena
