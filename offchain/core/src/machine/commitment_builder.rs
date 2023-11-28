@@ -42,7 +42,7 @@ impl MachineCommitmentBuilder for CachingMachineCommitmentBuilder {
         base_cycle: u64,
         level: u64,
     ) -> Result<MachineCommitment, Box<dyn Error>> {
-        assert!(level <= constants::LEVELS);
+        assert!(level <= constants::LEVELS, "level out of bounds");
 
         if let Entry::Vacant(e) = self.commitments.entry(level) {
             e.insert(HashMap::new());
