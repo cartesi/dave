@@ -6,7 +6,7 @@ use super::Digest;
 
 impl Digest {
     /// Computes the Keccak256 hash of the given data and returns a new Digest.
-    pub fn hash(data: &[u8]) -> Digest {
+    pub fn from_data(data: &[u8]) -> Digest {
         let mut keccak = Keccak256::new();
         keccak.update(data);
         let digest: [u8; 32] = keccak.finalize().into();
@@ -14,10 +14,10 @@ impl Digest {
     }
 
     /// Joins the current Digest with another Digest to create a new Digest.
-    pub fn join(&self, digest_2: Digest) -> Digest {
+    pub fn join(&self, digest: &Digest) -> Digest {
         let mut keccak = Keccak256::new();
         keccak.update(self.data);
-        keccak.update(digest_2.data);
+        keccak.update(digest.data);
         let digest: [u8; 32] = keccak.finalize().into();
         Digest::from(digest)
     }
