@@ -1,7 +1,7 @@
 //! The builder of machine commitments [MachineCommitmentBuilder] is responsible for building the
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{collections::{HashMap, hash_map::Entry}, error::Error, sync::Arc};
 
 use async_trait::async_trait;
 
@@ -44,7 +44,7 @@ impl MachineCommitmentBuilder for CachingMachineCommitmentBuilder {
     ) -> Result<MachineCommitment, Box<dyn Error>> {
         assert!(level <= constants::LEVELS);
 
-        if let std::collections::hash_map::Entry::Vacant(e) = self.commitments.entry(level) {
+        if let Entry::Vacant(e) = self.commitments.entry(level) {
             e.insert(HashMap::new());
         } else if self.commitments[&level].contains_key(&base_cycle) {
             return Ok(self.commitments[&level][&base_cycle].clone());
