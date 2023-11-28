@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::merkle::{Digest, MerkleTree, MerkleTreeLeaf, MerkleTreeNode};
 
-pub type Int = u128;
+pub type UInt = u128;
 
 /// A [MerkleBuilder] is used to build a [MerkleTree] from its leafs.
 #[derive(Debug, Default)]
@@ -15,9 +15,14 @@ pub struct MerkleBuilder {
 }
 
 impl MerkleBuilder {
+    /// Adds a new leaf to the merkle tree. The leaf is represented by its digest.s
+    pub fn add(&mut self, digest: Digest) {
+        self.add_with_repetition(digest, 1);
+    }
+    
     /// Adds a new leaf to the merkle tree. The leaf is represented by its 
     /// digest and its repetition.
-    pub fn add(&mut self, digest: Digest, rep: Int) {
+    pub fn add_with_repetition(&mut self, digest: Digest, rep: UInt) {
         assert!(rep != 0, "repetition is zero");
             
         self.add_new_node(digest);
@@ -46,7 +51,7 @@ impl MerkleBuilder {
 
     fn add_new_node(&mut self, digest: Digest) {
         if !self.nodes.contains_key(&digest) {
-            let node = MerkleTreeNode::new(digest);
+            let node = MerkleTreeNode::from_digest(digest);
             self.nodes.insert(node.digest, node.clone());
             self.interned.insert(node.digest, vec![node.digest]);
         }
@@ -56,7 +61,7 @@ impl MerkleBuilder {
     pub fn build(&mut self) -> MerkleTree {
         let last = self.leafs.last().expect("no leafs in merkle builder");
         let count = last.accumulated_count;
-        let mut log2_size = Int::BITS;
+        let mut log2_size = UInt::BITS;
 
         if count != 0 {
             assert!(count.is_power_of_two(), "is not a power of two {}", count);
@@ -64,22 +69,22 @@ impl MerkleBuilder {
         };
 
 
-        let root = self.build_merkle(0, self.leafs.len() as Int, log2_size, 0);
+        let root = self.build_merkle(0, self.leafs.len() as UInt, log2_size, 0);
 
         MerkleTree::new(log2_size, root.0, self.leafs.clone(), self.nodes.clone())
     }
 
     fn build_merkle(
         &mut self,
-        first_leaf: Int,
-        last_leaf: Int,
+        first_leaf: UInt,
+        last_leaf: UInt,
         log2_size: u32,
-        stride: Int,
-    ) -> (Digest, Int, Int) {
+        stride: UInt,
+    ) -> (Digest, UInt, UInt) {
         let leafs = &self.leafs.as_slice()[first_leaf as usize..last_leaf as usize];
 
-        let first_time = stride * (Int::from(1u8).wrapping_shl(log2_size)) + 1;
-        let last_time = (stride + 1) * (Int::from(1u8).wrapping_shl(log2_size));
+        let first_time = stride * (UInt::from(1u8).wrapping_shl(log2_size)) + 1;
+        let last_time = (stride + 1) * (UInt::from(1u8).wrapping_shl(log2_size));
 
         let first_cell = find_cell_containing(leafs, first_time);
         let last_cell = find_cell_containing(leafs, last_time);
@@ -126,8 +131,7 @@ impl MerkleBuilder {
         if let Some(node) = self.nodes.get_mut(&digest) {
             node.set_children(left, right);
         } else {
-            let mut node = MerkleTreeNode::new(digest);
-            node.set_children(left, right);
+            let node = MerkleTreeNode::new(left, right);
             self.nodes.insert(node.digest, node.clone());
             self.interned.insert(node.digest, vec![node.digest]);
         };
@@ -137,9 +141,9 @@ impl MerkleBuilder {
 }
 
 // Binary search to find the cell containing the element.
-fn find_cell_containing(leafs: &[MerkleTreeLeaf], elem: Int) -> Int {
+fn find_cell_containing(leafs: &[MerkleTreeLeaf], elem: UInt) -> UInt {
     let mut left = 0;
-    let mut right = leafs.len() as Int - 1;
+    let mut right = leafs.len() as UInt - 1;
 
     while left < right {
         let needle = left + (right - left) / 2;
@@ -161,8 +165,8 @@ mod tests {
     #[test]
     fn test_merkle_builder_8() {
         let mut builder = MerkleBuilder::default();
-        builder.add(Digest::zeroed(), 2); 
-        builder.add(Digest::zeroed(), 6);
+        builder.add_with_repetition(Digest::zeroed(), 2); 
+        builder.add_with_repetition(Digest::zeroed(), 6);
         let merkle = builder.build();
         assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 3));
     }
@@ -170,8 +174,8 @@ mod tests {
     #[test]
     fn test_merkle_builder_64() {
         let mut builder = MerkleBuilder::default();
-        builder.add(Digest::zeroed(), 2); 
-        builder.add(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.add_with_repetition(Digest::zeroed(), 2); 
+        builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let merkle = builder.build();
         assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 64));
     }
@@ -179,8 +183,8 @@ mod tests {
     #[test]
     fn test_merkle_builder_128() {
         let mut builder = MerkleBuilder::default();
-        builder.add(Digest::zeroed(), 2); 
-        builder.add(Digest::zeroed(),0u128.wrapping_sub(2));
+        builder.add_with_repetition(Digest::zeroed(), 2); 
+        builder.add_with_repetition(Digest::zeroed(),0u128.wrapping_sub(2));
         let merkle = builder.build();
         assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 128));
     }

@@ -13,7 +13,14 @@ pub struct MerkleTreeNode {
 
 impl MerkleTreeNode {
     /// Creates a new Merkle tree node with the given digest.
-    pub fn new(digest: Digest) -> Self {
+    pub fn new(left: Digest, right: Digest) -> Self {
+        MerkleTreeNode {
+            digest: left.join(right),
+            children: Some((left, right)),
+        }
+    }
+
+    pub fn from_digest(digest: Digest) -> Self {
         MerkleTreeNode {
             digest,
             children: None,
