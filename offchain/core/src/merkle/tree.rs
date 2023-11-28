@@ -5,14 +5,14 @@ use std::collections::HashMap;
 
 use crate::merkle::{Digest, MerkleTreeNode};
 
-use super::Int;
+use super::UInt;
 
 /// A leaf of a [MerkleTree], it contains the offset of the leaf in the tree, 
 /// and the hash of the data.
 #[derive(Clone, Debug)]
 pub struct MerkleTreeLeaf {
     pub node: Digest,
-    pub accumulated_count: Int,
+    pub accumulated_count: UInt,
     pub log2_size: Option<u32>,
 }
 
@@ -155,8 +155,8 @@ mod tests {
     #[test]
     pub fn test_tree() {
         let mut builder = crate::merkle::MerkleBuilder::default();
-        builder.add(Digest::zeroed(), 2); 
-        builder.add(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.add_with_repetition(Digest::zeroed(), 2); 
+        builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let proof = tree.prove_leaf(0);
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     pub fn proof_test() {
         let mut builder = crate::merkle::MerkleBuilder::default();
-        builder.add(Digest::zeroed(), 8);
+        builder.add_with_repetition(Digest::zeroed(), 8);
         let tree = builder.build();
 
         let (leaf, proof) = tree.prove_leaf(0);
@@ -183,8 +183,8 @@ mod tests {
     #[test]
     pub fn last_proof_test() {
         let mut builder = crate::merkle::MerkleBuilder::default();
-        builder.add(Digest::zeroed(), 2); 
-        builder.add(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.add_with_repetition(Digest::zeroed(), 2); 
+        builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let (leaf, proof) = tree.last();
