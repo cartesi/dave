@@ -3,10 +3,12 @@
 
 use std::{error::Error, ops::ControlFlow, sync::Arc};
 
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::sync::Mutex;
+
+pub type MachineRPC = Arc<Mutex<MachineRpc>>;
 
 use crate::{
-    machine::{constants, MachineRpc, MachineState},
+    machine::{constants, MachineRpc},
     merkle::{Digest, MerkleBuilder, MerkleTree, UInt},
     utils::arithmetic,
 };
@@ -21,7 +23,7 @@ pub struct MachineCommitment {
 
 /// Builds a [MachineCommitment] from a [MachineRpc] and a base cycle.
 pub async fn build_machine_commitment(
-    machine: Arc<Mutex<MachineRpc>>,
+    machine: MachineRPC,
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
@@ -79,7 +81,7 @@ pub async fn build_big_machine_commitment(
 async fn advance_instruction(
     instruction: u64,
     log2_stride: u64,
-    machine: &mut MutexGuard<'_, MachineRpc>,
+    machine: &mut MachineRpc,
     base_cycle: u64,
     builder: &mut MerkleBuilder,
     instruction_count: u64,
@@ -101,7 +103,7 @@ async fn advance_instruction(
 }
 
 pub async fn build_small_machine_commitment(
-    machine: Arc<Mutex<MachineRpc>>,
+    machine: MachineRPC,
     base_cycle: u64,
     log2_stride_count: u64,
 ) -> Result<MachineCommitment, Box<dyn Error>> {
@@ -140,7 +142,7 @@ pub async fn build_small_machine_commitment(
 }
 
 async fn run_uarch_span<'a>(
-    machine: &mut MutexGuard<'a, MachineRpc>,
+    machine: &'a mut MachineRpc,
 ) -> Result<MerkleTree, Box<dyn Error>> {
     let (ucycle, _) = machine.position();
     assert!(ucycle == 0);
@@ -149,9 +151,9 @@ async fn run_uarch_span<'a>(
 
     let mut builder = MerkleBuilder::default();
     let mut i = 0;
-    let mut state: MachineState;
-    loop {
-        state = machine.machine_state().await?;
+
+    let mut state = loop {
+        let mut state = machine.machine_state().await?;
         builder.add_with_repetition(state.root_hash, 1);
 
         machine.increment_uarch().await?;
@@ -159,9 +161,9 @@ async fn run_uarch_span<'a>(
 
         state = machine.machine_state().await?;
         if state.uhalted {
-            break;
+            break state;
         }
-    }
+    };
 
     builder.add_with_repetition(state.root_hash, UInt::from(constants::UARCH_SPAN - i));
 
