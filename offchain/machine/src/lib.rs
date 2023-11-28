@@ -120,7 +120,7 @@ impl CartesiMachine for CanonicalCartesiMachine {
             .await?;
 
         Ok(MachineState {
-            root_hash: Digest::from_data(&root_hash)?,
+            root_hash: Digest::from_digest(&root_hash)?,
             halted,
             uhalted,
         })
@@ -227,7 +227,7 @@ impl CanonicalCartesiMachine {
             cycle: 0,
             ucycle: 0,
             start_cycle,
-            _initial_hash: Digest::from_data(&root_hash)?,
+            _initial_hash: Digest::from_digest(&root_hash)?,
         })
     }
 }

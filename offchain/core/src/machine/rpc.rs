@@ -218,7 +218,10 @@ fn ver(mut t: Vec<u8>, p: u64, s: Vec<Vec<u8>>) -> Vec<u8> {
 
 pub struct MachineFactory {
     rpc_host: String,
+
+    #[allow(dead_code)]
     rpc_port: u32,
+    
     rpc_client: JsonRpcCartesiMachineClient,
     machines: HashMap<String, Arc<Mutex<MachineRpc>>>,
 }
@@ -256,9 +259,11 @@ impl MachineFactory {
         let mut machine = machine_lock.lock().await;
 
         // TODO: handle result here
-        machine.rpc_client.shutdown().await;
+        let result = machine.rpc_client.shutdown().await;
 
         self.machines.remove(&url);
+
+        result?;
 
         Ok(())
     }
