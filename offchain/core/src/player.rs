@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{collections::{HashMap, hash_map::Entry}, error::Error, sync::Arc};
 
 use ::tokio::sync::Mutex;
 
@@ -119,7 +119,7 @@ impl<A: Arena> Player<A> {
                 return Ok(Some(PlayerTournamentResult::TournamentLost));
             }
 
-            if let std::collections::hash_map::Entry::Vacant(e) = self.called_win.entry(tournament.address) {
+            if let Entry::Vacant(e) = self.called_win.entry(tournament.address) {
                 e.insert(true);
             } else {
                 info!(
