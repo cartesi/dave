@@ -4,12 +4,13 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
 use crate::{
-    machine::{build_machine_commitment, constants, MachineCommitment, MachineRpc},
+    machine::{build_machine_commitment, constants, MachineCommitment},
     merkle::{Digest, MerkleBuilder},
 };
+
+use super::MachineRPC;
 
 #[async_trait]
 pub trait MachineCommitmentBuilder {
@@ -21,12 +22,12 @@ pub trait MachineCommitmentBuilder {
 }
 
 pub struct CachingMachineCommitmentBuilder {
-    machine: Arc<Mutex<MachineRpc>>,
+    machine: MachineRPC,
     commitments: HashMap<u64, HashMap<u64, MachineCommitment>>,
 }
 
 impl CachingMachineCommitmentBuilder {
-    pub fn new(machine: Arc<Mutex<MachineRpc>>) -> Self {
+    pub fn new(machine: MachineRPC) -> Self {
         CachingMachineCommitmentBuilder {
             machine,
             commitments: HashMap::new(),
