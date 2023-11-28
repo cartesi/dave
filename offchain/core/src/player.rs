@@ -6,9 +6,11 @@ use ::log::info;
 
 use crate::{
     arena::{Address, Arena, MatchCreatedEvent, MatchState},
-    machine::{constants, MachineCommitment, MachineCommitmentBuilder, MachineRpc},
+    machine::{constants, MachineCommitment, MachineRpc, MachineCommitmentBuilder},
     merkle::MerkleProof,
 };
+
+use crate::machine::CachingMachineCommitmentBuilder;
 
 pub enum PlayerTournamentResult {
     TournamentWon,
@@ -35,7 +37,7 @@ struct PlayerMatch {
 pub struct Player<A: Arena> {
     arena: Arc<A>,
     machine: Arc<Mutex<MachineRpc>>,
-    commitment_builder: Arc<Mutex<dyn MachineCommitmentBuilder + Send>>,
+    commitment_builder: Arc<Mutex<CachingMachineCommitmentBuilder>>,
     tournaments: Vec<Arc<PlayerTournament>>,
     matches: Vec<Arc<PlayerMatch>>,
     commitments: HashMap<Address, Arc<MachineCommitment>>,
@@ -46,7 +48,7 @@ impl<A: Arena> Player<A> {
     pub fn new(
         arena: Arc<A>,
         machine: Arc<Mutex<MachineRpc>>,
-        commitment_builder: Arc<Mutex<dyn MachineCommitmentBuilder + Send>>,
+        commitment_builder: Arc<Mutex<CachingMachineCommitmentBuilder>>,
         root_tournamet: Address,
     ) -> Self {
         Player {

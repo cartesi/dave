@@ -236,7 +236,6 @@ impl<A: Arena + 'static> Engine<A> {
     async fn create_player_machine(
         self: Arc<Self>,
         snapshot_path: &String,
-        fake: bool,
     ) -> Result<
         (
             Arc<Mutex<MachineRpc>>,
@@ -249,17 +248,9 @@ impl<A: Arena + 'static> Engine<A> {
         let snapshot_path = Path::new(snapshot_path);
         let machine = factory.create_machine(snapshot_path).await?;
 
-        let commitment_builder: Arc<Mutex<dyn MachineCommitmentBuilder + Send>> = if fake {
-            // TODO: pass parameters here or add them to config
-            Arc::new(Mutex::new(FakeMachineCommitmentBuilder::new(
-                Digest::zeroed(),
-                Some(Digest::zeroed()),
-            )))
-        } else {
-            Arc::new(Mutex::new(CachingMachineCommitmentBuilder::new(
-                machine.clone(),
-            )))
-        };
+        let commitment_builder = Arc::new(Mutex::new(CachingMachineCommitmentBuilder::new(
+            machine.clone(),
+        )));
 
         Ok((machine, commitment_builder))
     }
