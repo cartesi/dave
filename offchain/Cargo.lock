@@ -442,7 +442,6 @@ dependencies = [
  "derive_builder",
  "jsonrpsee",
  "prost 0.12.1",
- "rand",
  "serde",
  "serde_json",
  "tokio",
