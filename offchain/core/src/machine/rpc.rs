@@ -1,12 +1,12 @@
-//! Module for communication with the Cartesi machine using RPC. 
+//! Module for communication with the Cartesi machine using RPC.
 
-use std::{collections::HashMap, error::Error, path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
-use sha3::{Keccak256, Digest as Keccak256Digest};
+use sha3::{Digest as Keccak256Digest, Keccak256};
 use tokio::sync::Mutex;
 
 use cartesi_machine_json_rpc::client::{
-    AccessLog, AccessLogType, AccessType, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
+    AccessLog, AccessLogType, AccessType, Error, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
 
 use crate::{machine::constants, merkle::Digest, utils::arithmetic};
@@ -39,8 +39,8 @@ pub struct MachineRpc {
 }
 
 impl MachineRpc {
-    pub async fn new(json_rpc_url: &str, snapshot_path: &Path) -> Result<Self, Box<dyn Error>> {
-        let mut rpc_client = JsonRpcCartesiMachineClient::new(json_rpc_url.to_string()).await?;
+    pub async fn new(json_rpc_url: &str, snapshot_path: &Path) -> Result<Self, Error> {
+        let rpc_client = JsonRpcCartesiMachineClient::new(json_rpc_url.to_string()).await?;
 
         let snapshot_path = snapshot_path.to_str().unwrap();
         rpc_client
@@ -67,11 +67,7 @@ impl MachineRpc {
         self.root_hash
     }
 
-    pub async fn generate_proof(
-        &mut self,
-        cycle: u64,
-        ucycle: u64,
-    ) -> Result<MachineProof, Box<dyn Error>> {
+    pub async fn generate_proof(&mut self, cycle: u64, ucycle: u64) -> Result<MachineProof, Error> {
         self.rpc_client.run(cycle).await?;
         self.rpc_client.run_uarch(ucycle).await?;
 
@@ -90,7 +86,7 @@ impl MachineRpc {
         Ok(encode_access_log(&log))
     }
 
-    pub async fn run(&mut self, cycle: u64) -> Result<(), Box<dyn Error>> {
+    pub async fn run(&mut self, cycle: u64) -> Result<(), Error> {
         assert!(self.cycle <= cycle);
 
         let physical_cycle = add_and_clamp(self.start_cycle, cycle);
@@ -105,6 +101,8 @@ impl MachineRpc {
             if mcycle == physical_cycle {
                 break;
             }
+
+            self.rpc_client.run(physical_cycle).await?;
         }
 
         self.cycle = cycle;
@@ -112,7 +110,7 @@ impl MachineRpc {
         Ok(())
     }
 
-    pub async fn run_uarch(&mut self, ucycle: u64) -> Result<(), Box<dyn Error>> {
+    pub async fn run_uarch(&mut self, ucycle: u64) -> Result<(), Error> {
         assert!(
             self.ucycle <= ucycle,
             "{}",
@@ -125,20 +123,20 @@ impl MachineRpc {
         Ok(())
     }
 
-    pub async fn increment_uarch(&mut self) -> Result<(), Box<dyn Error>> {
-        self.rpc_client.run(self.ucycle + 1).await?;
+    pub async fn increment_uarch(&mut self) -> Result<(), Error> {
+        self.rpc_client.run_uarch(self.ucycle + 1).await?;
         self.ucycle += 1;
         Ok(())
     }
 
-    pub async fn ureset(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn ureset(&mut self) -> Result<(), Error> {
         self.rpc_client.reset_uarch_state().await?;
         self.cycle += 1;
         self.ucycle = 0;
         Ok(())
     }
 
-    pub async fn machine_state(&mut self) -> Result<MachineState, Box<dyn Error>> {
+    pub async fn machine_state(&mut self) -> Result<MachineState, Error> {
         let root_hash = self.rpc_client.get_root_hash().await?;
         let halted = self.rpc_client.read_iflags_h().await?;
         let uhalted = self.rpc_client.read_uarch_halt_flag().await?;
@@ -174,12 +172,8 @@ fn encode_access_log(log: &AccessLog) -> Vec<u8> {
 
         encoded.push(hex::decode(a.proof.target_hash.clone()).unwrap());
 
-        let decoded_sibling_hashes: Result<Vec<Vec<u8>>, hex::FromHexError> = a
-            .proof
-            .sibling_hashes
-            .iter()
-            .map(hex::decode)
-            .collect();
+        let decoded_sibling_hashes: Result<Vec<Vec<u8>>, hex::FromHexError> =
+            a.proof.sibling_hashes.iter().map(hex::decode).collect();
 
         let mut decoded = decoded_sibling_hashes.unwrap();
         decoded.reverse();
@@ -221,13 +215,13 @@ pub struct MachineFactory {
 
     #[allow(dead_code)]
     rpc_port: u32,
-    
+
     rpc_client: JsonRpcCartesiMachineClient,
     machines: HashMap<String, Arc<Mutex<MachineRpc>>>,
 }
 
 impl MachineFactory {
-    pub async fn new(rpc_host: String, rpc_port: u32) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(rpc_host: String, rpc_port: u32) -> Result<Self, Error> {
         let rpc_url = format!("{}:{}", rpc_host, rpc_port);
         let rpc_client = JsonRpcCartesiMachineClient::new(rpc_url).await?;
         Ok(Self {
@@ -241,7 +235,7 @@ impl MachineFactory {
     pub async fn create_machine(
         &mut self,
         snapshot_path: &Path,
-    ) -> Result<Arc<Mutex<MachineRpc>>, Box<dyn Error>> {
+    ) -> Result<Arc<Mutex<MachineRpc>>, Error> {
         let fork_rpc_url = self.rpc_client.fork().await?;
         let fork_rpc_port = fork_rpc_url.split(':').last().unwrap();
         let fork_rpc_url = format!("{}:{}", self.rpc_host, fork_rpc_port);
@@ -249,7 +243,7 @@ impl MachineFactory {
         Ok(Arc::new(Mutex::new(machine_rpc)))
     }
 
-    pub async fn destroy_machine(&mut self, url: String) -> Result<(), Box<dyn Error>> {
+    pub async fn destroy_machine(&mut self, url: String) -> Result<(), Error> {
         let machine_lock = if let Some(machine) = self.machines.get_mut(&url) {
             machine.clone()
         } else {
@@ -258,12 +252,9 @@ impl MachineFactory {
 
         let mut machine = machine_lock.lock().await;
 
-        // TODO: handle result here
-        let result = machine.rpc_client.shutdown().await;
+        machine.rpc_client.shutdown().await?;
 
         self.machines.remove(&url);
-
-        result?;
 
         Ok(())
     }
