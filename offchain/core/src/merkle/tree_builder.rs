@@ -36,7 +36,7 @@ impl MerkleBuilder {
         });
     }
 
-    fn calculate_accumulated_count(&mut self, rep: u128) -> u128 {
+    fn calculate_accumulated_count(&mut self, rep: UInt) -> UInt {
         if let Some(last) = self.leafs.last() {
             assert!(last.accumulated_count != 0, "merkle builder is full");
             let accumulated_count = rep.wrapping_add(last.accumulated_count);    

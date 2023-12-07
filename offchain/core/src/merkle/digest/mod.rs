@@ -1,7 +1,7 @@
 //! Definition of the [Digest] type and its associated methods. A digest is the output of a hash 
 //! function. It's used to identify the data in the MerkleTree.
 
-use std::{fmt, error::Error};
+use std::fmt;
 use hex::FromHex;
 
 pub mod keccak;
@@ -28,9 +28,9 @@ impl Digest {
     }
 
     /// Attempts to create a [Digest] from a Vec<u8> containing 32 bytes of data.
-    pub fn from_digest(digest_data: &[u8]) -> Result<Digest, Box<dyn Error>> {
+    pub fn from_digest(digest_data: &[u8]) -> Result<Digest, DigestError> {
         if digest_data.len() != 32 {
-            return Err(Box::new(DigestError::InvalidDigestLength));
+            return Err(DigestError::InvalidDigestLength);
         }
 
         let mut data = [0u8; 32];
@@ -39,8 +39,8 @@ impl Digest {
     }
 
     /// Attempts to create a [Digest] from a hexadecimal string.
-    pub fn from_digest_hex(digest_hex: &str) -> Result<Digest, Box<dyn Error>> {
-        let data = Vec::from_hex(digest_hex)?;
+    pub fn from_digest_hex(digest_hex: &str) -> Result<Digest, DigestError> {
+        let data = Vec::from_hex(digest_hex).map_err(|_| DigestError::InvalidDigestLength)?;
         Self::from_digest(&data)
     }
 
