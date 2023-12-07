@@ -6,7 +6,7 @@ use ::log::info;
 
 use crate::{
     arena::{Address, Arena, MatchCreatedEvent, MatchState},
-    machine::{constants, MachineCommitment, MachineRpc, MachineCommitmentBuilder},
+    machine::{constants, MachineCommitment, MachineRpc},
     merkle::MerkleProof,
 };
 

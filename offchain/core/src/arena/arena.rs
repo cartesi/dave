@@ -134,7 +134,7 @@ pub struct MatchID {
 impl MatchID {
     /// Generates a new [Digest]
     pub fn hash(&self) -> Digest {
-        self.commitment_one.join(self.commitment_two)
+        self.commitment_one.join(&self.commitment_two)
     }
 }
 
