@@ -121,11 +121,9 @@ impl MerkleTree {
         let right = self.nodes.get(&right).expect("right child does not exist");
 
         if (include_index.wrapping_shr(new_height as u32)) & 1 == 0 {
-            let left = left;
             self.proof(proof_acc, left, new_height, include_index);
             proof_acc.proof.push(left.digest);
         } else {
-            let right = right;
             self.proof(proof_acc, right, new_height, include_index);
             proof_acc.proof.push(right.digest);
         }
@@ -174,7 +172,7 @@ mod tests {
         let mut root = leaf;
         
         for node in proof {
-            root = Digest::join(&node, root);
+            root = Digest::join(&node, &root);
         }
 
         assert_eq!(root, tree.root_hash());
@@ -192,7 +190,7 @@ mod tests {
         let mut root = leaf;
         
         for node in proof {
-            root = Digest::join(&node, root);
+            root = Digest::join(&node, &root);
         }
 
         assert_eq!(root, tree.root_hash());

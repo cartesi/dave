@@ -15,7 +15,7 @@ impl MerkleTreeNode {
     /// Creates a new Merkle tree node with the given digest.
     pub fn new(left: Digest, right: Digest) -> Self {
         MerkleTreeNode {
-            digest: left.join(right),
+            digest: left.join(&right),
             children: Some((left, right)),
         }
     }

@@ -126,7 +126,7 @@ impl MerkleBuilder {
     }
 
     fn join_nodes(&mut self, left: Digest, right: Digest) -> Digest {
-        let digest = left.join(right);
+        let digest = left.join(&right);
 
         if let Some(node) = self.nodes.get_mut(&digest) {
             node.set_children(left, right);

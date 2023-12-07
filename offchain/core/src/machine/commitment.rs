@@ -141,8 +141,8 @@ pub async fn build_small_machine_commitment(
     })
 }
 
-async fn run_uarch_span<'a>(
-    machine: &'a mut MachineRpc,
+async fn run_uarch_span(
+    machine: &mut MachineRpc,
 ) -> Result<MerkleTree, Box<dyn Error>> {
     let (ucycle, _) = machine.position();
     assert!(ucycle == 0);
