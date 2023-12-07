@@ -8,9 +8,6 @@ use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
 use ethers::types::{Address, BlockNumber, Filter, Log, U64};
 
-use std::str::FromStr;
-use std::{thread, time};
-
 struct PartitionProvider {
     provider: Provider<Http>,
     semaphore: Semaphore,
@@ -28,30 +25,31 @@ impl std::fmt::Display for ProviderErr {
 
 impl std::error::Error for ProviderErr {}
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Hello, world!");
+pub struct InputReader {
+    last_finalized: U64,
+    provider: PartitionProvider,
+}
 
-    // TODO: get from configuration
-    let genesis: U64 = U64::from(17784733);
-    let mut last_finalized: U64 = genesis;
-    let interval = time::Duration::from_secs(10);
+impl InputReader {
+    pub fn new(
+        last_finalized_opt: Option<U64>,
+        input_box: Address,
+        provider_url: &str,
+        concurrency_opt: Option<usize>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            last_finalized: last_finalized_opt.unwrap_or_default(),
+            provider: PartitionProvider {
+                input_box,
+                provider: Provider::<Http>::try_from(provider_url)?,
+                semaphore: Semaphore::new(concurrency_opt.unwrap_or_default()),
+            },
+        })
+    }
 
-    // TODO: get from configuration
-    let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
-    let provider = Provider::<Http>::try_from(
-        "https://mainnet.infura.io/v3/6d58afadb5a94a978b232aabc243a82f",
-    )?;
-    let semaphore = Semaphore::new(5);
-
-    let partition_provider = PartitionProvider {
-        input_box,
-        provider,
-        semaphore,
-    };
-
-    loop {
-        let block_opt = partition_provider
+    pub async fn next(&mut self) -> Result<Vec<Log>, Box<dyn std::error::Error>> {
+        let block_opt = self
+            .provider
             .provider
             .get_block(BlockNumber::Finalized)
             .await
@@ -59,29 +57,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Some(block) = block_opt {
             if let Some(current_finalized) = block.number {
-                println!("Last finalized block at number: {:?}", last_finalized);
+                println!("Last finalized block at number: {:?}", self.last_finalized);
                 println!("Current finalized block at number: {:?}", current_finalized);
 
-                if current_finalized > last_finalized {
-                    let logs = partition_provider
-                        .get_events(last_finalized.as_u64(), current_finalized.as_u64())
+                if current_finalized > self.last_finalized {
+                    let logs = self
+                        .provider
+                        .get_events(self.last_finalized.as_u64(), current_finalized.as_u64())
                         .await
                         .map_err(|err_arr| {
                             ProviderErr(err_arr.into_iter().map(|e| e.to_string()).collect())
                         })?;
 
-                    if !logs.is_empty() {
-                        println!("Inputs arrived: {:?}", logs);
-                    } else {
-                        println!("No input submitted!")
-                    }
-
                     // update last finalized block
-                    last_finalized = current_finalized;
+                    self.last_finalized = current_finalized;
+                    return Ok(logs);
                 }
             }
         }
-        thread::sleep(interval);
+
+        Ok(vec![])
     }
 }
 
@@ -161,4 +156,28 @@ impl PartitionProvider {
 
         false
     }
+}
+
+#[tokio::test]
+
+async fn test_input_reader() -> Result<(), Box<dyn std::error::Error>> {
+    use std::str::FromStr;
+
+    let genesis: U64 = U64::from(17784733);
+    let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
+    let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
+
+    let mut reader = InputReader::new(
+        Some(genesis),
+        input_box,
+        format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref(),
+        Some(5),
+    )?;
+
+    let res: Vec<Log> = reader.next().await?;
+
+    // input box from mainnet shouldn't be empty
+    assert!(!res.is_empty(), "input box shouldn't be empty");
+
+    Ok(())
 }
