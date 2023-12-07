@@ -8,7 +8,7 @@ use tonic::transport::channel::Channel;
 use cartesi_compute_core::{
     arena::{Address, Arena},
     machine::{
-        CachingMachineCommitmentBuilder, FakeMachineCommitmentBuilder, MachineCommitmentBuilder,
+        CachingMachineCommitmentBuilder,
         MachineFactory, MachineRpc,
     },
     merkle::Digest,
@@ -93,7 +93,7 @@ impl<A: Arena + 'static> Engine<A> {
             }
         }
 
-        while let Some(_) = player_tasks.join_next().await {}
+        while player_tasks.join_next().await.is_none() {}
     }
 
     async fn execute_player(self: Arc<Self>, dispute_tournament: Address, player_idx: usize) {
@@ -140,14 +140,14 @@ impl<A: Arena + 'static> Engine<A> {
     pub async fn start_dispute(
         self: Arc<Self>,
         initial_hash_data: [u8; 32],
-        machine_snapshot_path: &String,
+        machine_snapshot_path: &str,
     ) -> Result<Address, Box<dyn Error>> {
         let coordinator = self.coordinator.clone();
         let mut coordinator = coordinator.lock().await;
         let response = coordinator
             .start_dispute(StartDisputeRequest {
                 initial_hash: initial_hash_data.into(),
-                snapshot_path: machine_snapshot_path.clone(),
+                snapshot_path: machine_snapshot_path.to_string(),
             })
             .await?;
 
@@ -160,7 +160,7 @@ impl<A: Arena + 'static> Engine<A> {
             Dispute {
                 state: DisputeState {
                     initial_hash: Digest::new(initial_hash_data),
-                    machine_snapshot_path: machine_snapshot_path.clone(),
+                    machine_snapshot_path: machine_snapshot_path.to_string(),
                     root_tournament,
                     finished: false,
                 },
@@ -202,7 +202,6 @@ impl<A: Arena + 'static> Engine<A> {
     pub async fn create_player(
         self: Arc<Self>,
         arena: Arc<A>,
-        adversary: bool,
         root_tournament: Address,
     ) -> Result<(), Box<dyn Error>> {
         let dispute = if let Some(dispute) = self.clone().disupte_state(root_tournament).await {
@@ -215,7 +214,7 @@ impl<A: Arena + 'static> Engine<A> {
 
         let (machine, commitment_builder) = self
             .clone()
-            .create_player_machine(&dispute.machine_snapshot_path, adversary)
+            .create_player_machine(&dispute.machine_snapshot_path)
             .await?;
         {
             let disputes = self.disputes.clone();
@@ -239,7 +238,7 @@ impl<A: Arena + 'static> Engine<A> {
     ) -> Result<
         (
             Arc<Mutex<MachineRpc>>,
-            Arc<Mutex<dyn MachineCommitmentBuilder + Send>>,
+            Arc<Mutex<CachingMachineCommitmentBuilder>>,
         ),
         Box<dyn Error>,
     > {
