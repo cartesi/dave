@@ -67,6 +67,57 @@ impl MachineRpc {
         self.root_hash
     }
 
+    // pub async fn get_logs(&self, cycle: u64, ucycle: u64) -> Result<String, Error> {
+    pub async fn get_logs(&mut self, cycle: u64, ucycle: u64) -> Result<MachineProof, Error> {
+        self.run(cycle).await?;
+        self.run_uarch(ucycle).await?;
+
+        if ucycle == constants::UARCH_SPAN {
+            self.run_uarch(constants::UARCH_SPAN).await?;
+            eprintln!("ureset, not implemented");
+        }
+
+        let access_log = AccessLogType {
+            annotations: true,
+            proofs: true,
+        };
+        let logs = self.rpc_client.step(&access_log, false).await?;
+
+        // let mut encoded = Vec::new();
+
+        // for a in &logs.accesses {
+        //     assert_eq!(a.log2_size, 3);
+        //     if a.r#type == AccessType::Read {
+        //         encoded.push(a.read_data.clone());
+        //     }
+
+        //     encoded.push(hex::decode(a.proof.target_hash.clone()).unwrap());
+
+        //     let decoded_sibling_hashes: Result<Vec<Vec<u8>>, hex::FromHexError> =
+        //         a.proof.sibling_hashes.iter().map(hex::decode).collect();
+
+        //     let mut decoded = decoded_sibling_hashes?;
+        //     decoded.reverse();
+        //     encoded.extend_from_slice(&decoded.clone());
+
+        //     assert_eq!(
+        //         ver(
+        //             hex::decode(a.proof.target_hash.clone()).unwrap(),
+        //             a.address,
+        //             decoded.clone()
+        //         ),
+        //         hex::decode(a.proof.root_hash.clone()).unwrap()
+        //     );
+        // }
+        // let data: Vec<u8> = encoded.iter().flatten().cloned().collect();
+
+        // let hex_data = hex::encode(data);
+
+        // Ok(format!("\"{}\"", hex_data))
+
+        Ok(encode_access_log(&logs))
+    }
+
     pub async fn generate_proof(&mut self, cycle: u64, ucycle: u64) -> Result<MachineProof, Error> {
         self.rpc_client.run(cycle).await?;
         self.rpc_client.run_uarch(ucycle).await?;
@@ -136,7 +187,7 @@ impl MachineRpc {
         Ok(())
     }
 
-    pub async fn machine_state(&mut self) -> Result<MachineState, Error> {
+    pub async fn machine_state(&self) -> Result<MachineState, Error> {
         let root_hash = self.rpc_client.get_root_hash().await?;
         let halted = self.rpc_client.read_iflags_h().await?;
         let uhalted = self.rpc_client.read_uarch_halt_flag().await?;
@@ -217,7 +268,7 @@ pub struct MachineFactory {
     rpc_port: u32,
 
     rpc_client: JsonRpcCartesiMachineClient,
-    machines: HashMap<String, Arc<Mutex<MachineRpc>>>,
+    machines: HashMap<String, MachineRpc>,
 }
 
 impl MachineFactory {
@@ -232,30 +283,10 @@ impl MachineFactory {
         })
     }
 
-    pub async fn create_machine(
-        &mut self,
-        snapshot_path: &Path,
-    ) -> Result<Arc<Mutex<MachineRpc>>, Error> {
+    pub async fn create_machine(&self, snapshot_path: &Path) -> Result<MachineRpc, Error> {
         let fork_rpc_url = self.rpc_client.fork().await?;
         let fork_rpc_port = fork_rpc_url.split(':').last().unwrap();
         let fork_rpc_url = format!("{}:{}", self.rpc_host, fork_rpc_port);
         let machine_rpc = MachineRpc::new(fork_rpc_url.as_str(), snapshot_path).await?;
-        Ok(Arc::new(Mutex::new(machine_rpc)))
-    }
-
-    pub async fn destroy_machine(&mut self, url: String) -> Result<(), Error> {
-        let machine_lock = if let Some(machine) = self.machines.get_mut(&url) {
-            machine.clone()
-        } else {
-            return Ok(());
-        };
-
-        let mut machine = machine_lock.lock().await;
-
-        machine.rpc_client.shutdown().await?;
-
-        self.machines.remove(&url);
-
-        Ok(())
     }
 }
