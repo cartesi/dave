@@ -1,17 +1,17 @@
-use std::{collections::HashMap, error::Error, path::Path, sync::Arc};
-
-use ::tokio::sync::Mutex;
-use serde_json::map::Entry;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    error::Error,
+    path::Path,
+    sync::Arc,
+};
 
 use ::log::info;
 
 use crate::{
     arena::{Address, Arena, MatchCreatedEvent, MatchState},
-    machine::{constants, MachineCommitment, MachineCommitmentBuilder, MachineFactory, MachineRpc},
+    machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineFactory},
     merkle::MerkleProof,
 };
-
-use crate::machine::CachingMachineCommitmentBuilder;
 
 pub enum PlayerTournamentResult {
     TournamentWon,
@@ -39,9 +39,9 @@ pub struct Player<A: Arena> {
     arena: Arc<A>,
     machine_factory: MachineFactory,
     machine_path: String,
-    commitment_builder: Box<dyn MachineCommitmentBuilder + Send>,
+    commitment_builder: CachingMachineCommitmentBuilder,
     tournaments: Vec<Arc<PlayerTournament>>,
-    matches: Vec<Arc<PlayerMatch>>,
+    matches: Vec<PlayerMatch>,
     commitments: HashMap<Address, MachineCommitment>,
     called_win: HashMap<Address, bool>,
 }
@@ -51,7 +51,7 @@ impl<A: Arena> Player<A> {
         arena: Arc<A>,
         machine_factory: MachineFactory,
         machine_path: String,
-        commitment_builder: Box<dyn MachineCommitmentBuilder + Send>,
+        commitment_builder: CachingMachineCommitmentBuilder,
         root_tournamet: Address,
     ) -> Self {
         Player {
@@ -137,7 +137,10 @@ impl<A: Arena> Player<A> {
         }
 
         match self.latest_match(tournament.address, commitment).await? {
-            Some(latest_match) => self.react_match(latest_match, commitment).await?,
+            Some(latest_match) => {
+                self.matches.push(latest_match);
+                self.react_match(latest_match, commitment).await?
+            }
             None => {
                 self.join_tournament_if_needed(tournament, commitment)
                     .await?
@@ -148,10 +151,10 @@ impl<A: Arena> Player<A> {
     }
 
     async fn latest_match(
-        &mut self,
+        &self,
         tournament: Address,
         commitment: &MachineCommitment,
-    ) -> Result<Option<Arc<PlayerMatch>>, Box<dyn Error>> {
+    ) -> Result<Option<PlayerMatch>, Box<dyn Error>> {
         let matches = self
             .arena
             .created_matches(tournament, commitment.merkle.root_hash())
@@ -179,14 +182,13 @@ impl<A: Arena> Player<A> {
         let leaf_cycle = base + (step * match_state.running_leaf_position);
         let base_big_cycle = leaf_cycle >> constants::LOG2_UARCH_SPAN;
 
-        let player_match = Arc::new(PlayerMatch {
+        let player_match = PlayerMatch {
             state: match_state,
             event: *last_match,
             tournament: tournament.address,
             leaf_cycle,
             base_big_cycle,
-        });
-        self.matches.push(player_match.clone());
+        };
 
         Ok(Some(player_match))
     }
