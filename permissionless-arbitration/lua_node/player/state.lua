@@ -17,7 +17,6 @@ function State:new(root_tournament_address)
             matches = {},
             tournament_winner = {}
         },
-        block_time = 0,
         reader = Reader:new()
     }
 
@@ -26,7 +25,6 @@ function State:new(root_tournament_address)
 end
 
 function State:fetch()
-    self.block_time = tonumber(self.reader:get_block("latest"))
     return self:_fetch_tournament(self.root_tournament)
 end
 

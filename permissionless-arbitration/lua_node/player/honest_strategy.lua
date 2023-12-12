@@ -247,10 +247,10 @@ function HonestStrategy:_react_tournament(state, tournament)
             local status_2 = tournament.commitments[match.commitment_two].status
 
             -- try to eliminate matches that both clocks are out of time
-            if (not status_1.clock:has_time(state.block_time) and
-               (status_1.clock:time_since_timeout(state.block_time) > status_2.clock.allowance)) or
-               (not status_2.clock:has_time(state.block_time) and
-               (status_2.clock:time_since_timeout(state.block_time) > status_1.clock.allowance)) then
+            if (not status_1.clock:has_time() and
+               (status_1.clock:time_since_timeout() > status_2.clock.allowance)) or
+               (not status_2.clock:has_time() and
+               (status_2.clock:time_since_timeout() > status_1.clock.allowance)) then
                 helper.log(self.sender.index, string.format(
                     "eliminate match for commitment %s and %s at tournament %s of level %d",
                     match.commitment_one,
@@ -278,7 +278,7 @@ function HonestStrategy:_react_tournament(state, tournament)
         self:_join_tournament(tournament, commitment)
     else
         local commitment_clock = tournament.commitments[commitment.root_hash].status.clock
-        helper.log(self.sender.index, commitment_clock:display(state.block_time))
+        helper.log(self.sender.index, tostring(commitment_clock))
 
         local latest_match = tournament.commitments[commitment.root_hash].latest_match
         if latest_match then

@@ -61,7 +61,7 @@ function IdleStrategy:_react_tournament(state, tournament)
         self:_join_tournament(tournament, commitment)
     else
         local commitment_clock = tournament.commitments[commitment.root_hash].status.clock
-        helper.log(self.sender.index, commitment_clock:display(state.block_time))
+        helper.log(self.sender.index, tostring(commitment_clock))
     end
 end
 
