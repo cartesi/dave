@@ -5,6 +5,7 @@ package.cpath = package.cpath .. ";/opt/cartesi/lib/lua/5.4/?.so"
 
 local State = require "player.state"
 local HonestStrategy = require "player.honest_strategy"
+local GarbageCollectionStrategy = require "player.gc_strategy"
 local Sender = require "blockchain.sender"
 
 local time = require "utils.time"
@@ -17,10 +18,12 @@ local machine_path = arg[3]
 local state = State:new(tournament)
 local sender = Sender:new(player_index)
 local honest_strategy
+local gc_strategy
 do
     local CommitmentBuilder = require "computation.commitment"
     local builder = CommitmentBuilder:new(machine_path)
     honest_strategy = HonestStrategy:new(builder, machine_path, sender)
+    gc_strategy = GarbageCollectionStrategy:new(sender)
 end
 
 while true do
@@ -34,5 +37,6 @@ while true do
     else
         helper.rm_player_idle(player_index)
     end
+    gc_strategy:react(state)
     time.sleep(1)
 end
