@@ -48,6 +48,7 @@ abstract contract NonRootTournament is Tournament {
     /// - if the tournament is finished
     /// - the contested parent commitment
     /// - the dangling commitment
+    // TODO: handle when no one wins, i.e no one joins the tournament
     function innerTournamentWinner()
         external
         view

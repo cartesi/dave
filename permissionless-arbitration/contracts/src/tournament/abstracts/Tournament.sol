@@ -94,10 +94,9 @@ abstract contract Tournament {
         startInstant = Time.currentTime();
         allowance = _allowance;
 
-        // TODO: do we need this cap check?
-        // if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
-        //     _allowance = ArbitrationConstants.MAX_ALLOWANCE;
-        // }
+        if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
+            _allowance = ArbitrationConstants.MAX_ALLOWANCE;
+        }
     }
 
     //
