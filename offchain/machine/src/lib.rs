@@ -1,11 +1,9 @@
-use async_mutex::Mutex;
 use async_trait::async_trait;
 use cartesi_compute_core::merkle::Digest;
 use cartesi_machine_json_rpc::client::{
     AccessLogType, AccessType, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
 use sha3::{Digest as Sha3Digest, Keccak256};
-use std::sync::Arc;
 
 #[async_trait]
 pub trait CartesiMachine {
@@ -24,7 +22,7 @@ pub trait CartesiMachine {
 }
 
 pub struct CanonicalCartesiMachine {
-    machine_client: Arc<Mutex<JsonRpcCartesiMachineClient>>,
+    machine_client: JsonRpcCartesiMachineClient,
     cycle: u64,
     ucycle: u64,
     start_cycle: u64,
@@ -65,12 +63,7 @@ impl CartesiMachine for CanonicalCartesiMachine {
             annotations: true,
             proofs: true,
         };
-        let logs = machine
-            .machine_client
-            .lock()
-            .await
-            .step(&access_log, false)
-            .await?;
+        let logs = machine.machine_client.step(&access_log, false).await?;
 
         let mut encoded = Vec::new();
 
@@ -82,12 +75,8 @@ impl CartesiMachine for CanonicalCartesiMachine {
 
             encoded.push(hex::decode(a.proof.target_hash.clone()).unwrap());
 
-            let decoded_sibling_hashes: Result<Vec<Vec<u8>>, hex::FromHexError> = a
-                .proof
-                .sibling_hashes
-                .iter()
-                .map(hex::decode)
-                .collect();
+            let decoded_sibling_hashes: Result<Vec<Vec<u8>>, hex::FromHexError> =
+                a.proof.sibling_hashes.iter().map(hex::decode).collect();
 
             let mut decoded = decoded_sibling_hashes?;
             decoded.reverse();
@@ -110,14 +99,9 @@ impl CartesiMachine for CanonicalCartesiMachine {
     }
 
     async fn state(&self) -> Result<Self::State, Box<dyn std::error::Error>> {
-        let root_hash = self.machine_client.lock().await.get_root_hash().await?;
-        let halted = self.machine_client.lock().await.read_iflags_h().await?;
-        let uhalted = self
-            .machine_client
-            .lock()
-            .await
-            .read_uarch_halt_flag()
-            .await?;
+        let root_hash = self.machine_client.get_root_hash().await?;
+        let halted = self.machine_client.read_iflags_h().await?;
+        let uhalted = self.machine_client.read_uarch_halt_flag().await?;
 
         Ok(MachineState {
             root_hash: Digest::from_digest(&root_hash)?,
@@ -130,16 +114,11 @@ impl CartesiMachine for CanonicalCartesiMachine {
         assert!(self.cycle <= cycle);
         let combined_cycle: u128 = u128::from(self.start_cycle) + u128::from(cycle);
         let physical_cycle = u128::min(2 ^ (64 - 1), combined_cycle) as u64;
-        let machine_client = Arc::clone(&self.machine_client);
-        while !(machine_client.lock().await.read_iflags_h().await?
-            || machine_client
-                .lock()
-                .await
-                .read_csr("mcycle".to_string())
-                .await?
-                == physical_cycle)
+        let machine_client = &self.machine_client;
+        while !(machine_client.read_iflags_h().await?
+            || machine_client.read_csr("mcycle".to_string()).await? == physical_cycle)
         {
-            machine_client.lock().await.run(physical_cycle).await?;
+            machine_client.run(physical_cycle).await?;
         }
         self.cycle = cycle;
 
@@ -148,25 +127,21 @@ impl CartesiMachine for CanonicalCartesiMachine {
 
     async fn run_uarch(&mut self, ucycle: u64) -> Result<(), Box<dyn std::error::Error>> {
         assert!(self.ucycle <= ucycle);
-        self.machine_client.lock().await.run_uarch(ucycle).await?;
+        self.machine_client.run_uarch(ucycle).await?;
         self.ucycle = ucycle;
 
         Ok(())
     }
 
     async fn increment_uarch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.machine_client
-            .lock()
-            .await
-            .run_uarch(self.ucycle + 1)
-            .await?;
+        self.machine_client.run_uarch(self.ucycle + 1).await?;
         self.ucycle += 1;
 
         Ok(())
     }
 
     async fn ureset(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.machine_client.lock().await.reset_uarch_state().await?;
+        self.machine_client.reset_uarch_state().await?;
         self.cycle += 1;
         self.ucycle = 0;
 
@@ -197,30 +172,16 @@ impl CanonicalCartesiMachine {
     async fn new_from_path(
         path: &str,
     ) -> Result<CanonicalCartesiMachine, Box<dyn std::error::Error>> {
-        let machine_client = Arc::new(Mutex::new(
-            JsonRpcCartesiMachineClient::new("http://127.0.0.1:50051".into()).await?,
-        ));
+        let machine_client =
+            JsonRpcCartesiMachineClient::new("http://127.0.0.1:50051".into()).await?;
         machine_client
-            .lock()
-            .await
             .load_machine(path, &MachineRuntimeConfig::default())
             .await?;
-        let start_cycle = machine_client
-            .lock()
-            .await
-            .read_csr("mcycle".into())
-            .await?;
+        let start_cycle = machine_client.read_csr("mcycle".into()).await?;
         // Machine can never be advanced on the micro arch.
         // Validators must verify this first
-        assert_eq!(
-            machine_client
-                .lock()
-                .await
-                .read_csr("uarch_cycle".into())
-                .await?,
-            0
-        );
-        let root_hash = machine_client.lock().await.get_root_hash().await?;
+        assert_eq!(machine_client.read_csr("uarch_cycle".into()).await?, 0);
+        let root_hash = machine_client.get_root_hash().await?;
 
         Ok(Self {
             machine_client,
