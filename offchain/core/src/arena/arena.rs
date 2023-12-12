@@ -1,12 +1,13 @@
-//! This module defines the trait [Arena] that is responsible for the creation and 
+//! This module defines the trait [Arena] that is responsible for the creation and
 //! management of tournaments. It also defines some structs that are used to communicate events.
 
-use std::error::Error;
 use async_trait::async_trait;
 use primitive_types::H160;
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 use crate::{
-    machine::MachineProof,
+    contract::tournament::tournament::CommitmentJoinedFilter,
+    machine::{constants, MachineProof},
     merkle::{Digest, MerkleProof},
 };
 
@@ -17,7 +18,8 @@ pub type Address = H160;
 #[async_trait]
 pub trait Arena: Send + Sync {
     /// Creates a new tournament and returns its address.
-    async fn create_root_tournament(&self, initial_hash: Digest) -> Result<Address, Box<dyn Error>>;
+    async fn create_root_tournament(&self, initial_hash: Digest)
+        -> Result<Address, Box<dyn Error>>;
 
     async fn join_tournament(
         &self,
@@ -84,8 +86,12 @@ pub trait Arena: Send + Sync {
     async fn created_matches(
         &self,
         tournament: Address,
-        commitment_hash: Digest,
     ) -> Result<Vec<MatchCreatedEvent>, Box<dyn Error>>;
+
+    async fn joined_commitments(
+        &self,
+        tournament: Address,
+    ) -> Result<Vec<CommitmentJoinedFilter>, Box<dyn Error>>;
 
     async fn commitment(
         &self,
@@ -93,22 +99,29 @@ pub trait Arena: Send + Sync {
         commitment_hash: Digest,
     ) -> Result<(ClockState, Digest), Box<dyn Error>>;
 
+    async fn tournament_state(
+        &mut self,
+        tournament_state: TournamentState,
+    ) -> Result<Arc<TournamentState>, Box<dyn Error>>;
+
     async fn match_state(
-        &self,
-        tournament: Address,
-        match_id: MatchID,
-    ) -> Result<Option<MatchState>, Box<dyn Error>>;
+        &mut self,
+        tournament_level: u64,
+        match_state: MatchState,
+    ) -> Result<MatchState, Box<dyn Error>>;
 
     async fn root_tournament_winner(
         &self,
         tournament: Address,
     ) -> Result<Option<(Digest, Digest)>, Box<dyn Error>>;
 
-    async fn tournament_winner(&self, tournament: Address) -> Result<Option<Digest>, Box<dyn Error>>;
+    async fn tournament_winner(
+        &self,
+        tournament: Address,
+    ) -> Result<Option<Digest>, Box<dyn Error>>;
 
     async fn maximum_delay(&self, tournament: Address) -> Result<u64, Box<dyn Error>>;
 }
-
 
 /// This struct is used to communicate the creation of a new tournament.
 #[derive(Clone, Copy)]
@@ -145,13 +158,56 @@ pub struct ClockState {
     pub start_instant: u64,
 }
 
+/// Struct used to communicate the state of a tournament.
+#[derive(Clone)]
+pub struct TournamentState {
+    pub address: Address,
+    pub base_big_cycle: u64,
+    pub level: u64,
+    pub parent: Option<Address>,
+    pub commitments: HashMap<Digest, bool>,
+    pub matches: Vec<MatchState>,
+    pub winner: Option<Address>,
+}
+
+impl TournamentState {
+    pub fn new_root(address: Address) -> Self {
+        TournamentState {
+            address,
+            base_big_cycle: 0,
+            level: constants::LEVELS,
+            parent: None,
+            commitments: HashMap::new(),
+            matches: vec![],
+            winner: None,
+        }
+    }
+
+    pub fn new_inner(address: Address, level: u64, base_big_cycle: u64, parent: Address) -> Self {
+        TournamentState {
+            address,
+            base_big_cycle,
+            level,
+            parent: Some(parent),
+            commitments: HashMap::new(),
+            matches: vec![],
+            winner: None,
+        }
+    }
+}
+
 /// Struct used to communicate the state of a match.
 #[derive(Clone, Copy)]
 pub struct MatchState {
+    pub id: MatchID,
     pub other_parent: Digest,
     pub left_node: Digest,
     pub right_node: Digest,
     pub running_leaf_position: u64,
     pub current_height: u64,
     pub level: u64,
+    pub leaf_cycle: u64,
+    pub base_big_cycle: u64,
+    pub tournament: Address,
+    pub inner_tournament: Option<Address>,
 }

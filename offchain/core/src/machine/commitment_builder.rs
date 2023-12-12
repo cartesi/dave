@@ -1,9 +1,12 @@
 //! The builder of machine commitments [MachineCommitmentBuilder] is responsible for building the
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
-use std::{collections::{HashMap, hash_map::Entry}, error::Error};
-use crate::machine::{build_machine_commitment, constants, MachineCommitment};
 use super::MachineRPC;
+use crate::machine::{build_machine_commitment, constants, MachineCommitment};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    error::Error,
+};
 
 pub struct CachingMachineCommitmentBuilder {
     machine: MachineRPC,
