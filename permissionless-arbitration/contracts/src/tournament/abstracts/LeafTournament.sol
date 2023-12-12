@@ -80,7 +80,7 @@ abstract contract LeafTournament is Tournament {
                 _finalState.eq(_finalStateOne), "final state one doesn't match"
             );
 
-            _clockOne.deduct(_clockTwo.timeSinceTimeout());
+            _clockOne.setPaused();
             pairCommitment(
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
@@ -89,7 +89,7 @@ abstract contract LeafTournament is Tournament {
                 _finalState.eq(_finalStateTwo), "final state two doesn't match"
             );
 
-            _clockTwo.deduct(_clockOne.timeSinceTimeout());
+            _clockTwo.setPaused();
             pairCommitment(
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
