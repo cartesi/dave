@@ -61,19 +61,20 @@ end
 local CommitmentClock = {}
 CommitmentClock.__index = CommitmentClock
 
-function CommitmentClock:new(allowance, last_resume)
+function CommitmentClock:new(allowance, last_resume, block_time)
     local clock = {
         allowance = tonumber(allowance),
         last_resume = tonumber(last_resume),
+        block_time = tonumber(block_time)
     }
 
     setmetatable(clock, self)
     return clock
 end
 
-function CommitmentClock:display(block_time)
+function CommitmentClock:__tostring()
     local c = self
-    local b = block_time
+    local b = c.block_time
     local s
     if c.last_resume == 0 then
         local time_left = c.allowance
@@ -90,22 +91,22 @@ function CommitmentClock:display(block_time)
     return s
 end
 
-function CommitmentClock:has_time(block_time)
+function CommitmentClock:has_time()
     local clock = self
     if clock.last_resume == 0 then
         return true
     else
-        local current = block_time
+        local current = clock.block_time
         return (clock.last_resume + clock.allowance) > current
     end
 end
 
-function CommitmentClock:time_since_timeout(block_time)
+function CommitmentClock:time_since_timeout()
     local clock = self
     if clock.last_resume == 0 then
         return
     else
-        local current = block_time
+        local current = clock.block_time
         return current - (clock.last_resume + clock.allowance)
     end
 end
@@ -124,7 +125,7 @@ function Reader:new()
     return reader
 end
 
-function Reader:get_block(block)
+function Reader:_get_block(block)
     local cmd = string.format("cast block " .. block .. " 2>&1")
 
     local handle = io.popen(cmd)
@@ -288,8 +289,10 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     assert(allowance)
     assert(last_resume)
 
+    local block_time = self:_get_block("latest")
+
     local ret = {
-        clock = CommitmentClock:new(allowance, last_resume),
+        clock = CommitmentClock:new(allowance, last_resume, block_time),
         final_state = Hash:from_digest_hex(call_ret[2]),
     }
 
