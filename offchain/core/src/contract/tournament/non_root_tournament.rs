@@ -112,6 +112,33 @@ pub mod non_root_tournament {
                     ],
                 ),
                 (
+                    ::std::borrow::ToOwned::to_owned("eliminateMatchByTimeout"),
+                    ::std::vec![
+                        ::ethers::core::abi::ethabi::Function {
+                            name: ::std::borrow::ToOwned::to_owned(
+                                "eliminateMatchByTimeout",
+                            ),
+                            inputs: ::std::vec![
+                                ::ethers::core::abi::ethabi::Param {
+                                    name: ::std::borrow::ToOwned::to_owned("_matchId"),
+                                    kind: ::ethers::core::abi::ethabi::ParamType::Tuple(
+                                        ::std::vec![
+                                            ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
+                                            ::ethers::core::abi::ethabi::ParamType::FixedBytes(32usize),
+                                        ],
+                                    ),
+                                    internal_type: ::core::option::Option::Some(
+                                        ::std::borrow::ToOwned::to_owned("struct Match.Id"),
+                                    ),
+                                },
+                            ],
+                            outputs: ::std::vec![],
+                            constant: ::core::option::Option::None,
+                            state_mutability: ::ethers::core::abi::ethabi::StateMutability::NonPayable,
+                        },
+                    ],
+                ),
+                (
                     ::std::borrow::ToOwned::to_owned("getCommitment"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::Function {
@@ -251,6 +278,15 @@ pub mod non_root_tournament {
                                         ::std::borrow::ToOwned::to_owned("Tree.Node"),
                                     ),
                                 },
+                                ::ethers::core::abi::ethabi::Param {
+                                    name: ::std::string::String::new(),
+                                    kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
+                                        32usize,
+                                    ),
+                                    internal_type: ::core::option::Option::Some(
+                                        ::std::borrow::ToOwned::to_owned("Tree.Node"),
+                                    ),
+                                },
                             ],
                             constant: ::core::option::Option::None,
                             state_mutability: ::ethers::core::abi::ethabi::StateMutability::View,
@@ -305,28 +341,6 @@ pub mod non_root_tournament {
                             outputs: ::std::vec![],
                             constant: ::core::option::Option::None,
                             state_mutability: ::ethers::core::abi::ethabi::StateMutability::NonPayable,
-                        },
-                    ],
-                ),
-                (
-                    ::std::borrow::ToOwned::to_owned("maximumEnforceableDelay"),
-                    ::std::vec![
-                        ::ethers::core::abi::ethabi::Function {
-                            name: ::std::borrow::ToOwned::to_owned(
-                                "maximumEnforceableDelay",
-                            ),
-                            inputs: ::std::vec![],
-                            outputs: ::std::vec![
-                                ::ethers::core::abi::ethabi::Param {
-                                    name: ::std::string::String::new(),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::Uint(64usize),
-                                    internal_type: ::core::option::Option::Some(
-                                        ::std::borrow::ToOwned::to_owned("Time.Instant"),
-                                    ),
-                                },
-                            ],
-                            constant: ::core::option::Option::None,
-                            state_mutability: ::ethers::core::abi::ethabi::StateMutability::View,
                         },
                     ],
                 ),
@@ -412,27 +426,13 @@ pub mod non_root_tournament {
             ]),
             events: ::core::convert::From::from([
                 (
-                    ::std::borrow::ToOwned::to_owned("matchAdvanced"),
+                    ::std::borrow::ToOwned::to_owned("commitmentJoined"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::Event {
-                            name: ::std::borrow::ToOwned::to_owned("matchAdvanced"),
+                            name: ::std::borrow::ToOwned::to_owned("commitmentJoined"),
                             inputs: ::std::vec![
                                 ::ethers::core::abi::ethabi::EventParam {
-                                    name: ::std::string::String::new(),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
-                                        32usize,
-                                    ),
-                                    indexed: true,
-                                },
-                                ::ethers::core::abi::ethabi::EventParam {
-                                    name: ::std::borrow::ToOwned::to_owned("parent"),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
-                                        32usize,
-                                    ),
-                                    indexed: false,
-                                },
-                                ::ethers::core::abi::ethabi::EventParam {
-                                    name: ::std::borrow::ToOwned::to_owned("left"),
+                                    name: ::std::borrow::ToOwned::to_owned("root"),
                                     kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
                                         32usize,
                                     ),
@@ -549,6 +549,15 @@ pub mod non_root_tournament {
                 .method_hash([106, 26, 20, 13], (match_id,))
                 .expect("method not found (this should never happen)")
         }
+        ///Calls the contract's `eliminateMatchByTimeout` (0x9a9b4b2b) function
+        pub fn eliminate_match_by_timeout(
+            &self,
+            match_id: Id,
+        ) -> ::ethers::contract::builders::ContractCall<M, ()> {
+            self.0
+                .method_hash([154, 155, 75, 43], (match_id,))
+                .expect("method not found (this should never happen)")
+        }
         ///Calls the contract's `getCommitment` (0x7795820c) function
         pub fn get_commitment(
             &self,
@@ -579,7 +588,7 @@ pub mod non_root_tournament {
         ///Calls the contract's `innerTournamentWinner` (0x5145236f) function
         pub fn inner_tournament_winner(
             &self,
-        ) -> ::ethers::contract::builders::ContractCall<M, (bool, [u8; 32])> {
+        ) -> ::ethers::contract::builders::ContractCall<M, (bool, [u8; 32], [u8; 32])> {
             self.0
                 .method_hash([81, 69, 35, 111], ())
                 .expect("method not found (this should never happen)")
@@ -597,14 +606,6 @@ pub mod non_root_tournament {
                     [29, 91, 247, 150],
                     (final_state, proof, left_node, right_node),
                 )
-                .expect("method not found (this should never happen)")
-        }
-        ///Calls the contract's `maximumEnforceableDelay` (0x60f302dc) function
-        pub fn maximum_enforceable_delay(
-            &self,
-        ) -> ::ethers::contract::builders::ContractCall<M, u64> {
-            self.0
-                .method_hash([96, 243, 2, 220], ())
                 .expect("method not found (this should never happen)")
         }
         ///Calls the contract's `tournamentLevelConstants` (0xa1af906b) function
@@ -626,13 +627,13 @@ pub mod non_root_tournament {
                 .method_hash([255, 120, 224, 238], (match_id, left_node, right_node))
                 .expect("method not found (this should never happen)")
         }
-        ///Gets the contract's `matchAdvanced` event
-        pub fn match_advanced_filter(
+        ///Gets the contract's `commitmentJoined` event
+        pub fn commitment_joined_filter(
             &self,
         ) -> ::ethers::contract::builders::Event<
             ::std::sync::Arc<M>,
             M,
-            MatchAdvancedFilter,
+            CommitmentJoinedFilter,
         > {
             self.0.event()
         }
@@ -673,12 +674,9 @@ pub mod non_root_tournament {
         Eq,
         Hash
     )]
-    #[ethevent(name = "matchAdvanced", abi = "matchAdvanced(bytes32,bytes32,bytes32)")]
-    pub struct MatchAdvancedFilter {
-        #[ethevent(indexed)]
-        pub p0: [u8; 32],
-        pub parent: [u8; 32],
-        pub left: [u8; 32],
+    #[ethevent(name = "commitmentJoined", abi = "commitmentJoined(bytes32)")]
+    pub struct CommitmentJoinedFilter {
+        pub root: [u8; 32],
     }
     #[derive(
         Clone,
@@ -701,15 +699,15 @@ pub mod non_root_tournament {
     ///Container type for all of the contract's events
     #[derive(Clone, ::ethers::contract::EthAbiType, Debug, PartialEq, Eq, Hash)]
     pub enum NonRootTournamentEvents {
-        MatchAdvancedFilter(MatchAdvancedFilter),
+        CommitmentJoinedFilter(CommitmentJoinedFilter),
         MatchCreatedFilter(MatchCreatedFilter),
     }
     impl ::ethers::contract::EthLogDecode for NonRootTournamentEvents {
         fn decode_log(
             log: &::ethers::core::abi::RawLog,
         ) -> ::core::result::Result<Self, ::ethers::core::abi::Error> {
-            if let Ok(decoded) = MatchAdvancedFilter::decode_log(log) {
-                return Ok(NonRootTournamentEvents::MatchAdvancedFilter(decoded));
+            if let Ok(decoded) = CommitmentJoinedFilter::decode_log(log) {
+                return Ok(NonRootTournamentEvents::CommitmentJoinedFilter(decoded));
             }
             if let Ok(decoded) = MatchCreatedFilter::decode_log(log) {
                 return Ok(NonRootTournamentEvents::MatchCreatedFilter(decoded));
@@ -720,7 +718,7 @@ pub mod non_root_tournament {
     impl ::core::fmt::Display for NonRootTournamentEvents {
         fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
             match self {
-                Self::MatchAdvancedFilter(element) => {
+                Self::CommitmentJoinedFilter(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
                 Self::MatchCreatedFilter(element) => {
@@ -729,9 +727,9 @@ pub mod non_root_tournament {
             }
         }
     }
-    impl ::core::convert::From<MatchAdvancedFilter> for NonRootTournamentEvents {
-        fn from(value: MatchAdvancedFilter) -> Self {
-            Self::MatchAdvancedFilter(value)
+    impl ::core::convert::From<CommitmentJoinedFilter> for NonRootTournamentEvents {
+        fn from(value: CommitmentJoinedFilter) -> Self {
+            Self::CommitmentJoinedFilter(value)
         }
     }
     impl ::core::convert::From<MatchCreatedFilter> for NonRootTournamentEvents {
@@ -777,6 +775,24 @@ pub mod non_root_tournament {
         abi = "canWinMatchByTimeout((bytes32,bytes32))"
     )]
     pub struct CanWinMatchByTimeoutCall {
+        pub match_id: Id,
+    }
+    ///Container type for all input parameters for the `eliminateMatchByTimeout` function with signature `eliminateMatchByTimeout((bytes32,bytes32))` and selector `0x9a9b4b2b`
+    #[derive(
+        Clone,
+        ::ethers::contract::EthCall,
+        ::ethers::contract::EthDisplay,
+        Default,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash
+    )]
+    #[ethcall(
+        name = "eliminateMatchByTimeout",
+        abi = "eliminateMatchByTimeout((bytes32,bytes32))"
+    )]
+    pub struct EliminateMatchByTimeoutCall {
         pub match_id: Id,
     }
     ///Container type for all input parameters for the `getCommitment` function with signature `getCommitment(bytes32)` and selector `0x7795820c`
@@ -858,19 +874,6 @@ pub mod non_root_tournament {
         pub left_node: [u8; 32],
         pub right_node: [u8; 32],
     }
-    ///Container type for all input parameters for the `maximumEnforceableDelay` function with signature `maximumEnforceableDelay()` and selector `0x60f302dc`
-    #[derive(
-        Clone,
-        ::ethers::contract::EthCall,
-        ::ethers::contract::EthDisplay,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash
-    )]
-    #[ethcall(name = "maximumEnforceableDelay", abi = "maximumEnforceableDelay()")]
-    pub struct MaximumEnforceableDelayCall;
     ///Container type for all input parameters for the `tournamentLevelConstants` function with signature `tournamentLevelConstants()` and selector `0xa1af906b`
     #[derive(
         Clone,
@@ -909,12 +912,12 @@ pub mod non_root_tournament {
     pub enum NonRootTournamentCalls {
         AdvanceMatch(AdvanceMatchCall),
         CanWinMatchByTimeout(CanWinMatchByTimeoutCall),
+        EliminateMatchByTimeout(EliminateMatchByTimeoutCall),
         GetCommitment(GetCommitmentCall),
         GetMatch(GetMatchCall),
         GetMatchCycle(GetMatchCycleCall),
         InnerTournamentWinner(InnerTournamentWinnerCall),
         JoinTournament(JoinTournamentCall),
-        MaximumEnforceableDelay(MaximumEnforceableDelayCall),
         TournamentLevelConstants(TournamentLevelConstantsCall),
         WinMatchByTimeout(WinMatchByTimeoutCall),
     }
@@ -932,6 +935,11 @@ pub mod non_root_tournament {
                 data,
             ) {
                 return Ok(Self::CanWinMatchByTimeout(decoded));
+            }
+            if let Ok(decoded) = <EliminateMatchByTimeoutCall as ::ethers::core::abi::AbiDecode>::decode(
+                data,
+            ) {
+                return Ok(Self::EliminateMatchByTimeout(decoded));
             }
             if let Ok(decoded) = <GetCommitmentCall as ::ethers::core::abi::AbiDecode>::decode(
                 data,
@@ -958,11 +966,6 @@ pub mod non_root_tournament {
             ) {
                 return Ok(Self::JoinTournament(decoded));
             }
-            if let Ok(decoded) = <MaximumEnforceableDelayCall as ::ethers::core::abi::AbiDecode>::decode(
-                data,
-            ) {
-                return Ok(Self::MaximumEnforceableDelay(decoded));
-            }
             if let Ok(decoded) = <TournamentLevelConstantsCall as ::ethers::core::abi::AbiDecode>::decode(
                 data,
             ) {
@@ -985,6 +988,9 @@ pub mod non_root_tournament {
                 Self::CanWinMatchByTimeout(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
+                Self::EliminateMatchByTimeout(element) => {
+                    ::ethers::core::abi::AbiEncode::encode(element)
+                }
                 Self::GetCommitment(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
@@ -998,9 +1004,6 @@ pub mod non_root_tournament {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
                 Self::JoinTournament(element) => {
-                    ::ethers::core::abi::AbiEncode::encode(element)
-                }
-                Self::MaximumEnforceableDelay(element) => {
                     ::ethers::core::abi::AbiEncode::encode(element)
                 }
                 Self::TournamentLevelConstants(element) => {
@@ -1019,6 +1022,9 @@ pub mod non_root_tournament {
                 Self::CanWinMatchByTimeout(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
+                Self::EliminateMatchByTimeout(element) => {
+                    ::core::fmt::Display::fmt(element, f)
+                }
                 Self::GetCommitment(element) => ::core::fmt::Display::fmt(element, f),
                 Self::GetMatch(element) => ::core::fmt::Display::fmt(element, f),
                 Self::GetMatchCycle(element) => ::core::fmt::Display::fmt(element, f),
@@ -1026,9 +1032,6 @@ pub mod non_root_tournament {
                     ::core::fmt::Display::fmt(element, f)
                 }
                 Self::JoinTournament(element) => ::core::fmt::Display::fmt(element, f),
-                Self::MaximumEnforceableDelay(element) => {
-                    ::core::fmt::Display::fmt(element, f)
-                }
                 Self::TournamentLevelConstants(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
@@ -1044,6 +1047,11 @@ pub mod non_root_tournament {
     impl ::core::convert::From<CanWinMatchByTimeoutCall> for NonRootTournamentCalls {
         fn from(value: CanWinMatchByTimeoutCall) -> Self {
             Self::CanWinMatchByTimeout(value)
+        }
+    }
+    impl ::core::convert::From<EliminateMatchByTimeoutCall> for NonRootTournamentCalls {
+        fn from(value: EliminateMatchByTimeoutCall) -> Self {
+            Self::EliminateMatchByTimeout(value)
         }
     }
     impl ::core::convert::From<GetCommitmentCall> for NonRootTournamentCalls {
@@ -1069,11 +1077,6 @@ pub mod non_root_tournament {
     impl ::core::convert::From<JoinTournamentCall> for NonRootTournamentCalls {
         fn from(value: JoinTournamentCall) -> Self {
             Self::JoinTournament(value)
-        }
-    }
-    impl ::core::convert::From<MaximumEnforceableDelayCall> for NonRootTournamentCalls {
-        fn from(value: MaximumEnforceableDelayCall) -> Self {
-            Self::MaximumEnforceableDelay(value)
         }
     }
     impl ::core::convert::From<TournamentLevelConstantsCall> for NonRootTournamentCalls {
@@ -1145,19 +1148,7 @@ pub mod non_root_tournament {
         Eq,
         Hash
     )]
-    pub struct InnerTournamentWinnerReturn(pub bool, pub [u8; 32]);
-    ///Container type for all return fields from the `maximumEnforceableDelay` function with signature `maximumEnforceableDelay()` and selector `0x60f302dc`
-    #[derive(
-        Clone,
-        ::ethers::contract::EthAbiType,
-        ::ethers::contract::EthAbiCodec,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash
-    )]
-    pub struct MaximumEnforceableDelayReturn(pub u64);
+    pub struct InnerTournamentWinnerReturn(pub bool, pub [u8; 32], pub [u8; 32]);
     ///Container type for all return fields from the `tournamentLevelConstants` function with signature `tournamentLevelConstants()` and selector `0xa1af906b`
     #[derive(
         Clone,

@@ -1,12 +1,13 @@
-use std::{collections::{HashMap, hash_map::Entry}, error::Error, sync::Arc};
+use std::{collections::HashMap, error::Error, path::Path, sync::Arc};
 
 use ::tokio::sync::Mutex;
+use serde_json::map::Entry;
 
 use ::log::info;
 
 use crate::{
     arena::{Address, Arena, MatchCreatedEvent, MatchState},
-    machine::{constants, MachineCommitment, MachineRpc},
+    machine::{constants, MachineCommitment, MachineCommitmentBuilder, MachineFactory, MachineRpc},
     merkle::MerkleProof,
 };
 
@@ -29,31 +30,34 @@ struct PlayerMatch {
     event: MatchCreatedEvent,
     tournament: Address,
     leaf_cycle: u64,
-    
+
     #[allow(dead_code)]
     base_big_cycle: u64,
 }
 
 pub struct Player<A: Arena> {
     arena: Arc<A>,
-    machine: Arc<Mutex<MachineRpc>>,
-    commitment_builder: Arc<Mutex<CachingMachineCommitmentBuilder>>,
+    machine_factory: MachineFactory,
+    machine_path: String,
+    commitment_builder: Box<dyn MachineCommitmentBuilder + Send>,
     tournaments: Vec<Arc<PlayerTournament>>,
     matches: Vec<Arc<PlayerMatch>>,
-    commitments: HashMap<Address, Arc<MachineCommitment>>,
+    commitments: HashMap<Address, MachineCommitment>,
     called_win: HashMap<Address, bool>,
 }
 
 impl<A: Arena> Player<A> {
     pub fn new(
         arena: Arc<A>,
-        machine: Arc<Mutex<MachineRpc>>,
-        commitment_builder: Arc<Mutex<CachingMachineCommitmentBuilder>>,
+        machine_factory: MachineFactory,
+        machine_path: String,
+        commitment_builder: Box<dyn MachineCommitmentBuilder + Send>,
         root_tournamet: Address,
     ) -> Self {
         Player {
             arena,
-            machine,
+            machine_factory,
+            machine_path,
             commitment_builder,
             tournaments: vec![Arc::new(PlayerTournament {
                 address: root_tournamet,
@@ -76,23 +80,14 @@ impl<A: Arena> Player<A> {
         &mut self,
         tournament: Arc<PlayerTournament>,
     ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
-        let commitment = if let Some(commitment) = self.commitments.get(&tournament.address) {
-            commitment.clone()
-        } else {
-            let commitment = self
-                .commitment_builder
-                .clone()
-                .lock()
-                .await
+        let commitment = self.commitments.entry(tournament.address).or_insert(
+            self.commitment_builder
                 .build_commitment(
                     constants::LOG2_STEP[tournament.level as usize],
                     constants::HEIGHTS[(constants::LEVELS - tournament.level) as usize],
                 )
-                .await?;
-            self.commitments
-                .insert(tournament.address, Arc::new(commitment));
-            self.commitments.get(&tournament.address).unwrap().clone()
-        };
+                .await?,
+        );
 
         if tournament.parent.is_none() {
             if let Some((winner_commitment, winner_state)) = self
@@ -141,10 +136,7 @@ impl<A: Arena> Player<A> {
                 .await?
         }
 
-        match self
-            .latest_match(tournament.address, commitment.clone())
-            .await?
-        {
+        match self.latest_match(tournament.address, commitment).await? {
             Some(latest_match) => self.react_match(latest_match, commitment).await?,
             None => {
                 self.join_tournament_if_needed(tournament, commitment)
@@ -158,7 +150,7 @@ impl<A: Arena> Player<A> {
     async fn latest_match(
         &mut self,
         tournament: Address,
-        commitment: Arc<MachineCommitment>,
+        commitment: &MachineCommitment,
     ) -> Result<Option<Arc<PlayerMatch>>, Box<dyn Error>> {
         let matches = self
             .arena
@@ -202,7 +194,7 @@ impl<A: Arena> Player<A> {
     async fn join_tournament_if_needed(
         &mut self,
         tournament: Arc<PlayerTournament>,
-        commitment: Arc<MachineCommitment>,
+        commitment: &MachineCommitment,
     ) -> Result<(), Box<dyn Error>> {
         let (clock, _) = self
             .arena
@@ -230,7 +222,7 @@ impl<A: Arena> Player<A> {
     async fn react_match(
         &mut self,
         player_match: Arc<PlayerMatch>,
-        commitment: Arc<MachineCommitment>,
+        commitment: &MachineCommitment,
     ) -> Result<(), Box<dyn Error>> {
         if player_match.state.current_height == 0 {
             self.react_sealed_match(player_match, commitment).await
@@ -244,7 +236,7 @@ impl<A: Arena> Player<A> {
     async fn react_sealed_match(
         &mut self,
         player_match: Arc<PlayerMatch>,
-        commitment: Arc<MachineCommitment>,
+        commitment: &MachineCommitment,
     ) -> Result<(), Box<dyn Error>> {
         info!(
             "height for match {} is {}",
@@ -284,11 +276,10 @@ impl<A: Arena> Player<A> {
             let cycle = player_match.state.running_leaf_position >> constants::LOG2_UARCH_SPAN;
             let ucycle = player_match.state.running_leaf_position & constants::UARCH_SPAN;
             let proof = self
-                .machine
-                .clone()
-                .lock()
-                .await
-                .generate_proof(cycle, ucycle)
+                .machine_factory
+                .create_machine(Path::new(&self.machine_path).as_ref())
+                .await?
+                .get_logs(cycle, ucycle)
                 .await?;
 
             info!(
@@ -316,7 +307,7 @@ impl<A: Arena> Player<A> {
     async fn react_unsealed_match(
         &mut self,
         player_match: Arc<PlayerMatch>,
-        commitment: Arc<MachineCommitment>,
+        commitment: &MachineCommitment,
     ) -> Result<(), Box<dyn Error>> {
         let (left, right) = if let Some(children) = commitment
             .merkle
@@ -379,7 +370,7 @@ impl<A: Arena> Player<A> {
     async fn react_running_match(
         &mut self,
         player_match: Arc<PlayerMatch>,
-        commitment: Arc<MachineCommitment>,
+        commitment: &MachineCommitment,
     ) -> Result<(), Box<dyn Error>> {
         let (left, right) = if let Some(children) = commitment
             .merkle
