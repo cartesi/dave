@@ -1,13 +1,10 @@
 //! Module for communication with the Cartesi machine using RPC.
 
-use std::{collections::HashMap, path::Path, sync::Arc};
-
-use sha3::{Digest as Keccak256Digest, Keccak256};
-use tokio::sync::Mutex;
-
 use cartesi_machine_json_rpc::client::{
     AccessLog, AccessLogType, AccessType, Error, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
+use sha3::{Digest as Keccak256Digest, Keccak256};
+use std::path::Path;
 
 use crate::{machine::constants, merkle::Digest, utils::arithmetic};
 
@@ -199,6 +196,10 @@ impl MachineRpc {
         })
     }
 
+    pub async fn write_memory(&self, address: u64, data: String) -> Result<bool, Error> {
+        self.rpc_client.write_memory(address, data).await
+    }
+
     pub fn position(&self) -> (u64, u64) {
         (self.cycle, self.ucycle)
     }
@@ -268,7 +269,6 @@ pub struct MachineFactory {
     rpc_port: u32,
 
     rpc_client: JsonRpcCartesiMachineClient,
-    machines: HashMap<String, MachineRpc>,
 }
 
 impl MachineFactory {
@@ -279,7 +279,6 @@ impl MachineFactory {
             rpc_host,
             rpc_port,
             rpc_client,
-            machines: HashMap::new(),
         })
     }
 
@@ -288,5 +287,7 @@ impl MachineFactory {
         let fork_rpc_port = fork_rpc_url.split(':').last().unwrap();
         let fork_rpc_url = format!("{}:{}", self.rpc_host, fork_rpc_port);
         let machine_rpc = MachineRpc::new(fork_rpc_url.as_str(), snapshot_path).await?;
+
+        Ok(machine_rpc)
     }
 }
