@@ -1,4 +1,4 @@
-//! This module defines the trait [Arena] that is responsible for the creation and management of 
+//! This module defines the trait [Arena] that is responsible for the creation and management of
 //! tournaments and one implementation of this trait using the Ethereum blockchain [EthersArena].
 
 mod config;
