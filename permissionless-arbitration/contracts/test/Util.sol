@@ -258,7 +258,8 @@ contract Util {
         MiddleTournamentFactory middleFactory = new MiddleTournamentFactory();
         BottomTournamentFactory bottomFactory = new BottomTournamentFactory();
 
-        return
-        new TournamentFactory(singleLevelFactory, topFactory, middleFactory, bottomFactory);
+        return new TournamentFactory(
+            singleLevelFactory, topFactory, middleFactory, bottomFactory
+        );
     }
 }
