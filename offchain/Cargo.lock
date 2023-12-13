@@ -383,6 +383,7 @@ dependencies = [
 name = "cartesi-compute-core"
 version = "0.1.0"
 dependencies = [
+ "async-recursion",
  "async-trait",
  "cartesi-machine-json-rpc",
  "ethers",
@@ -391,6 +392,7 @@ dependencies = [
  "hex",
  "log",
  "primitive-types",
+ "serde",
  "serde_json",
  "sha3",
  "thiserror",
@@ -680,12 +682,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2e66c9d817f1720209181c316d28635c050fa304f9c79e47a520882661b7308"
 
 [[package]]
-name = "dave-input-reader"
+name = "dave-compute"
 version = "0.1.0"
 dependencies = [
- "async-recursion",
+ "async-mutex",
+ "async-trait",
+ "cartesi-compute-core",
  "ethers",
- "futures",
+ "jsonrpsee",
+ "rollups-input-reader",
+ "tokio",
+]
+
+[[package]]
+name = "dave-rollups"
+version = "0.1.0"
+dependencies = [
+ "async-mutex",
+ "async-trait",
+ "cartesi-compute-core",
+ "ethers",
+ "jsonrpsee",
+ "rollups-input-reader",
  "tokio",
 ]
 
@@ -1977,20 +1995,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 
 [[package]]
-name = "machine"
-version = "0.1.0"
-dependencies = [
- "async-mutex",
- "async-trait",
- "cartesi-compute-core",
- "cartesi-machine-json-rpc",
- "ethers",
- "hex",
- "jsonrpsee",
- "sha3",
-]
-
-[[package]]
 name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2815,6 +2819,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "rollups-input-reader"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "ethers",
+ "futures",
+ "tokio",
 ]
 
 [[package]]

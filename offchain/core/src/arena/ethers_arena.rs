@@ -12,7 +12,7 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Http, Middleware, Provider},
     signers::{LocalWallet, Signer},
-    types::{Address as EthersAddress, Bytes, Filter},
+    types::{Address, BlockNumber::Latest, Bytes, Filter},
 };
 
 use crate::{
@@ -20,8 +20,7 @@ use crate::{
     contract::{
         factory::TournamentFactory,
         tournament::{
-            leaf_tournament, non_leaf_tournament, non_root_tournament, root_tournament,
-            shared_types::Id, tournament,
+            leaf_tournament, non_leaf_tournament, non_root_tournament, root_tournament, tournament,
         },
     },
     machine::{constants, MachineProof},
@@ -32,8 +31,7 @@ use crate::{
 pub struct EthersArena {
     config: ArenaConfig,
     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
-    tournament_factory: EthersAddress,
-    tournament_states: HashMap<Address, Arc<TournamentState>>,
+    tournament_factory: Address,
 }
 
 impl EthersArena {
@@ -49,8 +47,7 @@ impl EthersArena {
         Ok(EthersArena {
             config,
             client,
-            tournament_factory: EthersAddress::default(),
-            tournament_states: HashMap::new(),
+            tournament_factory: Address::default(),
         })
     }
 
@@ -106,7 +103,7 @@ impl EthersArena {
         &self,
         artifact_path: &Path,
         constuctor_args: T,
-    ) -> Result<EthersAddress, Box<dyn Error>> {
+    ) -> Result<Address, Box<dyn Error>> {
         let (abi, bytecode) = parse_artifact(artifact_path)?;
         let deployer = ContractFactory::new(abi, bytecode, self.client.clone());
         let contract = deployer
@@ -173,7 +170,7 @@ impl Arena for EthersArena {
         new_right_node: Digest,
     ) -> Result<(), Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
-        let match_id = Id {
+        let match_id = tournament::Id {
             commitment_one: match_id.commitment_one.into(),
             commitment_two: match_id.commitment_two.into(),
         };
@@ -202,7 +199,7 @@ impl Arena for EthersArena {
     ) -> Result<(), Box<dyn Error>> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
-        let match_id = Id {
+        let match_id = non_leaf_tournament::Id {
             commitment_one: match_id.commitment_one.into(),
             commitment_two: match_id.commitment_two.into(),
         };
@@ -251,7 +248,7 @@ impl Arena for EthersArena {
         initial_hash_proof: MerkleProof,
     ) -> Result<(), Box<dyn Error>> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
-        let match_id = Id {
+        let match_id = leaf_tournament::Id {
             commitment_one: match_id.commitment_one.into(),
             commitment_two: match_id.commitment_two.into(),
         };
@@ -282,7 +279,7 @@ impl Arena for EthersArena {
         proofs: MachineProof,
     ) -> Result<(), Box<dyn Error>> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
-        let match_id = Id {
+        let match_id = leaf_tournament::Id {
             commitment_one: match_id.commitment_one.into(),
             commitment_two: match_id.commitment_two.into(),
         };
@@ -339,38 +336,70 @@ impl Arena for EthersArena {
     async fn joined_commitments(
         &self,
         tournament: Address,
-    ) -> Result<Vec<tournament::CommitmentJoinedFilter>, Box<dyn Error>> {
+    ) -> Result<Vec<CommitmentJoinedEvent>, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
-        let events = tournament.commitment_joined_filter().query().await?;
+        let events = tournament
+            .commitment_joined_filter()
+            .query()
+            .await?
+            .iter()
+            .map(|c| CommitmentJoinedEvent {
+                root: Digest::from(c.root),
+            })
+            .collect();
         Ok(events)
     }
 
-    async fn commitment(
+    async fn get_commitment(
         &self,
         tournament: Address,
         commitment_hash: Digest,
-    ) -> Result<(ClockState, Digest), Box<dyn Error>> {
+    ) -> Result<CommitmentState, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let (clock_state, hash) = tournament
             .get_commitment(commitment_hash.into())
             .call()
             .await?;
+        let block_time = self.client.get_block(Latest).await?.unwrap().timestamp;
         let clock_state = ClockState {
             allowance: clock_state.allowance,
             start_instant: clock_state.start_instant,
+            block_time,
         };
-        Ok((clock_state, Digest::from(hash)))
+        Ok(CommitmentState {
+            clock: clock_state,
+            final_state: Digest::from(hash),
+            latest_match: None,
+        })
     }
 
-    async fn tournament_state(
-        &mut self,
+    async fn fetch_from_root(
+        &self,
+        root_tournament: Address,
+    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>> {
+        self.fetch_tournament(TournamentState::new_root(root_tournament), HashMap::new())
+            .await
+    }
+
+    async fn fetch_tournament(
+        &self,
         tournament_state: TournamentState,
-    ) -> Result<Arc<TournamentState>, Box<dyn Error>> {
+        states: HashMap<Address, TournamentState>,
+    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament_state.address, self.client.clone());
         let created_matches = self.created_matches(tournament_state.address).await?;
-        // let commitments_joined = self.commitment(tournament, commitment_hash);
+        let commitments_joined = self.joined_commitments(tournament_state.address).await?;
+
+        let mut commitment_states = HashMap::new();
+        for commitment in commitments_joined {
+            let commitment_state = self
+                .get_commitment(tournament_state.address, commitment.root)
+                .await?;
+            commitment_states.insert(commitment.root, commitment_state);
+        }
 
         let mut matches = vec![];
+        let mut new_states = states.clone();
         for match_event in created_matches {
             let match_id = match_event.id;
             let m = tournament.get_match(match_id.hash().into()).call().await?;
@@ -380,47 +409,63 @@ impl Arena for EthersArena {
             let step = 1 << constants::LOG2_STEP[tournament_state.level as usize];
             let leaf_cycle = base + (step * running_leaf_position);
             let base_big_cycle = leaf_cycle >> constants::LOG2_UARCH_SPAN;
+            let prev_states = new_states.clone();
 
-            if !Digest::from(m.other_parent).is_zeroed() {
-                let match_state = self
-                    .match_state(
-                        tournament_state.level,
-                        MatchState {
-                            id: match_id,
-                            other_parent: m.other_parent.into(),
-                            left_node: m.left_node.into(),
-                            right_node: m.right_node.into(),
-                            running_leaf_position,
-                            current_height: m.current_height,
-                            tournament: tournament_state.address,
-                            level: m.level,
-                            leaf_cycle,
-                            base_big_cycle,
-                            inner_tournament: None,
-                        },
-                    )
-                    .await?;
+            // if !Digest::from(m.other_parent).is_zeroed() {
+            let (match_state, new_states) = self
+                .fetch_match(
+                    MatchState {
+                        id: match_id,
+                        other_parent: m.other_parent.into(),
+                        left_node: m.left_node.into(),
+                        right_node: m.right_node.into(),
+                        running_leaf_position,
+                        current_height: m.current_height,
+                        tournament: tournament_state.address,
+                        level: m.level,
+                        leaf_cycle,
+                        base_big_cycle,
+                        inner_tournament: None,
+                    },
+                    prev_states,
+                )
+                .await?;
 
-                matches.push(match_state);
-            }
+            commitment_states
+                .get_mut(&match_id.commitment_one)
+                .unwrap()
+                .latest_match = Some(matches.len());
+            commitment_states
+                .get_mut(&match_id.commitment_two)
+                .unwrap()
+                .latest_match = Some(matches.len());
+            matches.push(match_state);
         }
+        // }
+
+        let winner = match tournament_state.parent {
+            Some(_) => self.tournament_winner(tournament_state.address).await?,
+            None => {
+                self.root_tournament_winner(tournament_state.address)
+                    .await?
+            }
+        };
 
         let mut state = tournament_state.clone();
+        state.winner = winner;
         state.matches = matches;
-        // state.commitments = commitments;
+        state.commitment_states = commitment_states;
 
-        let arc_state = Arc::new(state);
-        self.tournament_states
-            .insert(tournament_state.address, arc_state.clone());
+        new_states.insert(tournament_state.address, state);
 
-        Ok(arc_state)
+        Ok(new_states)
     }
 
-    async fn match_state(
-        &mut self,
-        tournament_level: u64,
+    async fn fetch_match(
+        &self,
         match_state: MatchState,
-    ) -> Result<MatchState, Box<dyn Error>> {
+        states: HashMap<Address, TournamentState>,
+    ) -> Result<(MatchState, HashMap<Address, TournamentState>), Box<dyn Error>> {
         let mut state = match_state.clone();
         let created_tournament = self
             .created_tournament(match_state.tournament, match_state.id)
@@ -428,26 +473,31 @@ impl Arena for EthersArena {
         if let Some(inner) = created_tournament {
             let inner_tournament = TournamentState::new_inner(
                 inner.new_tournament_address,
-                tournament_level - 1,
+                match_state.level - 1,
                 match_state.base_big_cycle,
                 match_state.tournament,
             );
-            self.tournament_state(inner_tournament).await?;
+            let new_states = self.fetch_tournament(inner_tournament, states).await?;
             state.inner_tournament = Some(inner.new_tournament_address);
+
+            return Ok((state, new_states));
         }
 
-        Ok(state)
+        Ok((state, states))
     }
 
     async fn root_tournament_winner(
         &self,
         root_tournament: Address,
-    ) -> Result<Option<(Digest, Digest)>, Box<dyn Error>> {
+    ) -> Result<Option<TournamentWinner>, Box<dyn Error>> {
         let root_tournament =
             root_tournament::RootTournament::new(root_tournament, self.client.clone());
         let (finished, commitment, state) = root_tournament.arbitration_result().call().await?;
         if finished {
-            Ok(Some((Digest::from(commitment), Digest::from(state))))
+            Ok(Some(TournamentWinner::Root((
+                Digest::from(commitment),
+                Digest::from(state),
+            ))))
         } else {
             Ok(None)
         }
@@ -456,12 +506,12 @@ impl Arena for EthersArena {
     async fn tournament_winner(
         &self,
         tournament: Address,
-    ) -> Result<Option<Digest>, Box<dyn Error>> {
+    ) -> Result<Option<TournamentWinner>, Box<dyn Error>> {
         let tournament =
             non_root_tournament::NonRootTournament::new(tournament, self.client.clone());
         let (finished, state) = tournament.inner_tournament_winner().call().await?;
         if finished {
-            Ok(Some(Digest::from(state)))
+            Ok(Some(TournamentWinner::Inner(Digest::from(state))))
         } else {
             Ok(None)
         }
