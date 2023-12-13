@@ -132,21 +132,13 @@ function Reader:_get_block(block)
     assert(handle)
 
     local ret
-    local str = handle:read()
-    while str do
-        if str:find "Error" or str:find "error" then
-            local err_str = handle:read "*a"
-            handle:close()
-            error(string.format("Cast block failed:\n%s", err_str))
-        end
-
-        ret = str:match("timestamp            (%d+)")
-        if ret then
-            break
-        end
-
-        str = handle:read()
+    local str = handle:read "*a"
+    if str:find "Error" or str:find "error" then
+        handle:close()
+        error(string.format("Cast block failed:\n%s", str))
     end
+
+    ret = str:match("timestamp            (%d+)")
     handle:close()
 
     return ret
