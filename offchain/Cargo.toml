@@ -4,8 +4,9 @@ members = [
     "core",
     "coordinator",
     "input-reader",
+    "dave-compute",
+    "dave-rollups",
     "simulator",
-    "machine",
 ]
 
 [workspace.package]
@@ -25,6 +26,8 @@ repository = "https://github.com/cartesi/dave"
 
 [workspace.dependencies]
 async-recursion = "1"
+async-mutex = "1.4.0"
+async-trait = "0.1.74"
 ethers = "2.0.10"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }

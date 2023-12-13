@@ -41,7 +41,7 @@ pub async fn build_machine_commitment(
 
 /// Builds a [MachineCommitment] Hash for the Cartesi Machine using the big machine model.
 pub async fn build_big_machine_commitment(
-    machine: Arc<Mutex<MachineRpc>>,
+    machine: MachineRPC,
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
@@ -69,9 +69,9 @@ pub async fn build_big_machine_commitment(
             break;
         }
     }
-    
+
     let merkle = builder.build();
-    
+
     Ok(MachineCommitment {
         implicit_hash: initial_state.root_hash,
         merkle: Arc::new(merkle),
@@ -141,9 +141,7 @@ pub async fn build_small_machine_commitment(
     })
 }
 
-async fn run_uarch_span(
-    machine: &mut MachineRpc,
-) -> Result<MerkleTree, Box<dyn Error>> {
+async fn run_uarch_span(machine: &mut MachineRpc) -> Result<MerkleTree, Box<dyn Error>> {
     let (ucycle, _) = machine.position();
     assert!(ucycle == 0);
 

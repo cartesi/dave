@@ -2,17 +2,13 @@
 //! management of tournaments. It also defines some structs that are used to communicate events.
 
 use async_trait::async_trait;
-use primitive_types::H160;
-use std::{collections::HashMap, error::Error, sync::Arc};
+use ethers::types::{Address, U256};
+use std::{collections::HashMap, error::Error};
 
 use crate::{
-    contract::tournament::tournament::CommitmentJoinedFilter,
     machine::{constants, MachineProof},
     merkle::{Digest, MerkleProof},
 };
-
-/// Type alias for Ethereum addresses (20 bytes).
-pub type Address = H160;
 
 /// The [Arena] trait defines the interface for the creation and management of tournaments.
 #[async_trait]
@@ -91,34 +87,40 @@ pub trait Arena: Send + Sync {
     async fn joined_commitments(
         &self,
         tournament: Address,
-    ) -> Result<Vec<CommitmentJoinedFilter>, Box<dyn Error>>;
+    ) -> Result<Vec<CommitmentJoinedEvent>, Box<dyn Error>>;
 
-    async fn commitment(
+    async fn get_commitment(
         &self,
         tournament: Address,
         commitment_hash: Digest,
-    ) -> Result<(ClockState, Digest), Box<dyn Error>>;
+    ) -> Result<CommitmentState, Box<dyn Error>>;
 
-    async fn tournament_state(
-        &mut self,
+    async fn fetch_from_root(
+        &self,
+        root_tournament: Address,
+    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>>;
+
+    async fn fetch_tournament(
+        &self,
         tournament_state: TournamentState,
-    ) -> Result<Arc<TournamentState>, Box<dyn Error>>;
+        states: HashMap<Address, TournamentState>,
+    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>>;
 
-    async fn match_state(
-        &mut self,
-        tournament_level: u64,
+    async fn fetch_match(
+        &self,
         match_state: MatchState,
-    ) -> Result<MatchState, Box<dyn Error>>;
+        states: HashMap<Address, TournamentState>,
+    ) -> Result<(MatchState, HashMap<Address, TournamentState>), Box<dyn Error>>;
 
     async fn root_tournament_winner(
         &self,
         tournament: Address,
-    ) -> Result<Option<(Digest, Digest)>, Box<dyn Error>>;
+    ) -> Result<Option<TournamentWinner>, Box<dyn Error>>;
 
     async fn tournament_winner(
         &self,
         tournament: Address,
-    ) -> Result<Option<Digest>, Box<dyn Error>>;
+    ) -> Result<Option<TournamentWinner>, Box<dyn Error>>;
 
     async fn maximum_delay(&self, tournament: Address) -> Result<u64, Box<dyn Error>>;
 }
@@ -128,6 +130,12 @@ pub trait Arena: Send + Sync {
 pub struct TournamentCreatedEvent {
     pub parent_match_id_hash: Digest,
     pub new_tournament_address: Address,
+}
+
+/// This struct is used to communicate the enrollment of a new commitment.
+#[derive(Clone, Copy)]
+pub struct CommitmentJoinedEvent {
+    pub root: Digest,
 }
 
 /// This struct is used to communicate the creation of a new match.
@@ -151,11 +159,27 @@ impl MatchID {
     }
 }
 
-/// Struct used to communicate the state of the clock.
+/// Struct used to communicate the state of a commitment.
+#[derive(Clone, Copy)]
+pub struct CommitmentState {
+    pub clock: ClockState,
+    pub final_state: Digest,
+    pub latest_match: Option<usize>,
+}
+
+/// Struct used to communicate the state of a clock.
 #[derive(Clone, Copy)]
 pub struct ClockState {
     pub allowance: u64,
     pub start_instant: u64,
+    pub block_time: U256,
+}
+
+/// Enum used to represent the winner of a tournament.
+#[derive(Clone, PartialEq)]
+pub enum TournamentWinner {
+    Root((Digest, Digest)),
+    Inner(Digest),
 }
 
 /// Struct used to communicate the state of a tournament.
@@ -165,9 +189,9 @@ pub struct TournamentState {
     pub base_big_cycle: u64,
     pub level: u64,
     pub parent: Option<Address>,
-    pub commitments: HashMap<Digest, bool>,
+    pub commitment_states: HashMap<Digest, CommitmentState>,
     pub matches: Vec<MatchState>,
-    pub winner: Option<Address>,
+    pub winner: Option<TournamentWinner>,
 }
 
 impl TournamentState {
@@ -177,7 +201,7 @@ impl TournamentState {
             base_big_cycle: 0,
             level: constants::LEVELS,
             parent: None,
-            commitments: HashMap::new(),
+            commitment_states: HashMap::new(),
             matches: vec![],
             winner: None,
         }
@@ -189,7 +213,7 @@ impl TournamentState {
             base_big_cycle,
             level,
             parent: Some(parent),
-            commitments: HashMap::new(),
+            commitment_states: HashMap::new(),
             matches: vec![],
             winner: None,
         }
