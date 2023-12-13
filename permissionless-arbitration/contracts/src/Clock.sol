@@ -128,7 +128,7 @@ library Clock {
     }
 
     /// @notice Add `MATCH_EFFORT` to a clock and set it to paused.
-    /// The new clock allowance is capped by `DISPUTE_TIMEOUT`.
+    /// The new clock allowance is capped by `MAX_ALLOWANCE`.
     function addMatchEffort(State storage state) internal {
         Time.Duration _timeLeft = timeLeft(state);
 
