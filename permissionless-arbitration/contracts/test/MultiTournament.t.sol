@@ -419,12 +419,8 @@ contract MultiTournamentTest is Util, Test {
 
         uint256 _t = block.timestamp;
         // the delay is increased when a match is created
-        uint256 _rootTournamentFinish = _t
-            + 2
-                * (
-                    Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
-                        + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT)
-                );
+        uint256 _rootTournamentFinish =
+            _t + 2 * Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
 
         vm.warp(_rootTournamentFinish - 1);
         // cannot eliminate match when both blocks still have time
