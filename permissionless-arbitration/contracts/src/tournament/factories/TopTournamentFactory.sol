@@ -12,10 +12,8 @@ contract TopTournamentFactory {
         external
         returns (TopTournament)
     {
-        TopTournament _tournament = new TopTournament(
-            _initialHash,
-            TournamentFactory(msg.sender)
-        );
+        TopTournament _tournament =
+            new TopTournament(_initialHash, TournamentFactory(msg.sender));
 
         return _tournament;
     }

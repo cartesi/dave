@@ -12,9 +12,8 @@ contract SingleLevelTournamentFactory {
         external
         returns (SingleLevelTournament)
     {
-        SingleLevelTournament _tournament = new SingleLevelTournament(
-            _initialHash
-        );
+        SingleLevelTournament _tournament =
+            new SingleLevelTournament(_initialHash);
 
         return _tournament;
     }
