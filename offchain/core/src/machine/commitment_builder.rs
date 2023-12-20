@@ -1,20 +1,20 @@
 //! The builder of machine commitments [MachineCommitmentBuilder] is responsible for building the
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
-use super::MachineRPC;
-use crate::machine::{build_machine_commitment, constants, MachineCommitment};
+use crate::machine::{build_machine_commitment, constants, MachineCommitment, MachineRpc};
+use ::log::info;
 use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error,
 };
 
 pub struct CachingMachineCommitmentBuilder {
-    machine: MachineRPC,
+    machine: MachineRpc,
     commitments: HashMap<u64, HashMap<u64, MachineCommitment>>,
 }
 
 impl CachingMachineCommitmentBuilder {
-    pub fn new(machine: MachineRPC) -> Self {
+    pub fn new(machine: MachineRpc) -> Self {
         CachingMachineCommitmentBuilder {
             machine,
             commitments: HashMap::new(),
@@ -34,11 +34,11 @@ impl CachingMachineCommitmentBuilder {
             return Ok(self.commitments[&level][&base_cycle].clone());
         }
 
-        let l = constants::LEVELS - level + 1;
+        let l = constants::LEVELS - level;
         let log2_stride = constants::LOG2_STEP[l as usize];
         let log2_stride_count = constants::HEIGHTS[l as usize];
         let commitment = build_machine_commitment(
-            self.machine.clone(),
+            &mut self.machine,
             base_cycle,
             log2_stride,
             log2_stride_count,
