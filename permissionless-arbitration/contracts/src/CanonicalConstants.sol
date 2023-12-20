@@ -28,7 +28,7 @@ library ArbitrationConstants {
     Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(60 * 5);
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(60 * 2);
 
-    // 4-level tournament
+    // 3-level tournament
     uint64 constant LEVELS = 3;
     // uint64 constant LOG2_MAX_MCYCLE = 63;
 
