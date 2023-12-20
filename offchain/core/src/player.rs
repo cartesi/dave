@@ -60,10 +60,7 @@ impl<A: Arena> Player<A> {
             .entry(tournament_state.address)
             .or_insert(
                 self.commitment_builder
-                    .build_commitment(
-                        constants::LOG2_STEP[tournament_state.level as usize],
-                        constants::HEIGHTS[(constants::LEVELS - tournament_state.level) as usize],
-                    )
+                    .build_commitment(tournament_state.base_big_cycle, tournament_state.level)
                     .await?,
             )
             .clone();
@@ -106,25 +103,23 @@ impl<A: Arena> Player<A> {
                     }
                 }
             }
-        } else {
-            return Ok(None);
         }
 
-        let latest_match = tournament_state
+        let commitment_state = tournament_state
             .commitment_states
-            .get(&commitment.merkle.root_hash())
-            .unwrap()
-            .latest_match
-            .clone();
-        match latest_match {
-            Some(m) => {
-                self.react_match(
-                    &tournament_state.matches.get(m).unwrap().clone(),
-                    &commitment,
-                    new_commitments,
-                    tournament_states,
-                )
-                .await?
+            .get(&commitment.merkle.root_hash());
+        match commitment_state {
+            Some(c) => {
+                if let Some(m) = c.latest_match {
+                    self.react_match(
+                        &tournament_state.matches.get(m).unwrap().clone(),
+                        &commitment,
+                        new_commitments,
+                        tournament_states,
+                    )
+                    .await?
+                } else {
+                }
             }
             None => {
                 self.join_tournament_if_needed(tournament_state, &commitment)
@@ -140,15 +135,6 @@ impl<A: Arena> Player<A> {
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
     ) -> Result<(), Box<dyn Error>> {
-        let commitment_state = tournament_state
-            .commitment_states
-            .get(&commitment.merkle.root_hash())
-            .unwrap();
-
-        if commitment_state.clock.allowance != 0 {
-            return Ok(());
-        }
-
         let (left, right) = commitment.merkle.root_children();
         let (last, proof) = commitment.merkle.last();
 
