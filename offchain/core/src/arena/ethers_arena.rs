@@ -35,7 +35,10 @@ pub struct EthersArena {
 }
 
 impl EthersArena {
-    pub fn new(config: ArenaConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        config: ArenaConfig,
+        tournament_factory: Option<Address>,
+    ) -> Result<Self, Box<dyn Error>> {
         let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
             .interval(Duration::from_millis(10u64));
         let wallet = LocalWallet::from_str(config.web3_private_key.as_str())?;
@@ -47,7 +50,7 @@ impl EthersArena {
         Ok(EthersArena {
             config,
             client,
-            tournament_factory: Address::default(),
+            tournament_factory: tournament_factory.unwrap_or_default(),
         })
     }
 
@@ -112,6 +115,12 @@ impl EthersArena {
             .send()
             .await?;
         Ok(contract.address())
+    }
+
+    pub fn clone_with_new_key(&self, new_key: String) -> Result<Self, Box<dyn Error>> {
+        let mut new_arena_config = self.config.clone();
+        new_arena_config.web3_private_key = new_key;
+        Self::new(new_arena_config, Some(self.tournament_factory))
     }
 }
 
