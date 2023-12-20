@@ -40,7 +40,7 @@ function IdleStrategy:_join_tournament(tournament, commitment)
     end
 end
 
-function IdleStrategy:_react_tournament(state, tournament)
+function IdleStrategy:_react_tournament(_, tournament)
     helper.log(self.sender.index, "Enter tournament at address: " .. tournament.address)
     local commitment = self.commitment_builder:build(
         tournament.base_big_cycle,

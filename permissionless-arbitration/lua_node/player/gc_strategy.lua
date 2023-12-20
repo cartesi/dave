@@ -1,7 +1,4 @@
-local constants = require "constants"
 local helper = require "utils.helper"
-
-local Machine = require "computation.machine"
 
 local GarbageCollectionStrategy = {}
 GarbageCollectionStrategy.__index = GarbageCollectionStrategy
