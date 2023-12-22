@@ -10,6 +10,9 @@ Dave is a permissionless, interactive fraud-proof system. This repo contains the
 
 ## Running Dave
 
+This project uses git submodules.
+Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
+
 To run the Lua node, follow the instructions [here](permissionless-arbitration/lua_node/README.md).
 
 
@@ -33,11 +36,11 @@ Dave is inspired by the David vs. Goliath archetype.
 
 ## Execution Environment
 
-Dave uses the [Cartesi machine](https://github.com/cartesi/machine-emulator) as its execution environment.
-The Cartesi machine is a RISC-V emulator.
+Dave uses the [Cartesi Machine](https://github.com/cartesi/machine-emulator) as its execution environment.
+The Cartesi Machine is a RISC-V emulator.
 Its onchain implementation can be found [here](https://github.com/cartesi/machine-solidity-step).
 The Cartesi Machine state-transition function is implemented in two layers: the big-machine and the micro-architecture.
-The former implements the RV64GC ISA, while the later implements the much smaller RV64IM ISA.
+The former implements the RV64GC ISA, while the latter implements the much smaller RV64IM ISA.
 Using a technique called _machine swapping_ and leveraging good compilers, we implement in Solidity only the micro-architecture's state-transition function, while the execution environment can support a much larger set of extensions.
 
 Nevertheless, Dave was designed to be agnostic on its execution environment.
