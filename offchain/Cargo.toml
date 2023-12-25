@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "core",
     "dave-compute",
-    "dave-rollups",
     "input-reader",
 ]
 
