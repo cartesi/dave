@@ -110,6 +110,7 @@ pub trait Arena: Send + Sync {
         &self,
         match_state: MatchState,
         states: HashMap<Address, TournamentState>,
+        tournament_level: u64,
     ) -> Result<(MatchState, HashMap<Address, TournamentState>), Box<dyn Error>>;
 
     async fn root_tournament_winner(
@@ -121,8 +122,6 @@ pub trait Arena: Send + Sync {
         &self,
         tournament: Address,
     ) -> Result<Option<TournamentWinner>, Box<dyn Error>>;
-
-    async fn maximum_delay(&self, tournament: Address) -> Result<u64, Box<dyn Error>>;
 }
 
 /// This struct is used to communicate the creation of a new tournament.
@@ -174,12 +173,34 @@ pub struct ClockState {
     pub start_instant: u64,
     pub block_time: U256,
 }
+impl std::fmt::Display for ClockState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.start_instant == 0 {
+            write!(f, "clock paused, {} seconds left", self.allowance)
+        } else {
+            let time_elapsed = self.block_time.as_u64() - self.start_instant;
+            if self.allowance >= time_elapsed {
+                write!(
+                    f,
+                    "clock ticking, {} seconds left",
+                    self.allowance - time_elapsed
+                )
+            } else {
+                write!(
+                    f,
+                    "clock ticking, {} seconds overdue",
+                    time_elapsed - self.allowance
+                )
+            }
+        }
+    }
+}
 
 /// Enum used to represent the winner of a tournament.
 #[derive(Clone, PartialEq)]
 pub enum TournamentWinner {
-    Root((Digest, Digest)),
-    Inner(Digest),
+    Root(Digest, Digest),
+    Inner(Digest, Digest),
 }
 
 /// Struct used to communicate the state of a tournament.
@@ -232,6 +253,6 @@ pub struct MatchState {
     pub level: u64,
     pub leaf_cycle: u64,
     pub base_big_cycle: u64,
-    pub tournament: Address,
+    pub tournament_address: Address,
     pub inner_tournament: Option<Address>,
 }

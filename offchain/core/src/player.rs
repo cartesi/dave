@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, path::Path};
+use std::{collections::HashMap, error::Error};
 
 use ::log::info;
 use async_recursion::async_recursion;
@@ -10,6 +10,7 @@ use crate::{
     merkle::MerkleProof,
 };
 
+#[derive(Debug)]
 pub enum PlayerTournamentResult {
     TournamentWon,
     TournamentLost,
@@ -50,10 +51,13 @@ impl<A: Arena> Player<A> {
     async fn react_tournament(
         &mut self,
         commitments: HashMap<Address, MachineCommitment>,
-        tournament: Address,
+        tournament_address: Address,
         tournament_states: HashMap<Address, TournamentState>,
     ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
-        let tournament_state = tournament_states.get(&tournament).unwrap();
+        info!("Enter tournament at address: {}", tournament_address);
+        let tournament_state = tournament_states
+            .get(&tournament_address)
+            .expect("tournament state not found");
         let mut new_commitments = commitments.clone();
 
         let commitment = new_commitments
@@ -67,10 +71,10 @@ impl<A: Arena> Player<A> {
 
         if let Some(winner) = tournament_state.winner.clone() {
             match winner {
-                TournamentWinner::Root((winner_commitment, winner_state)) => {
+                TournamentWinner::Root(winner_commitment, winner_state) => {
                     info!(
-                        "tournament {} finished - winner is {}, winner state hash is {}",
-                        tournament_state.address, winner_commitment, winner_state,
+                        "tournament finished, winner commitment: {}, state hash: {}",
+                        winner_commitment, winner_state,
                     );
                     if commitment.merkle.root_hash() == winner_commitment {
                         return Ok(Some(PlayerTournamentResult::TournamentWon));
@@ -78,10 +82,15 @@ impl<A: Arena> Player<A> {
                         return Ok(Some(PlayerTournamentResult::TournamentLost));
                     }
                 }
-                TournamentWinner::Inner(winner_commitment) => {
-                    let old_commitment =
-                        commitments.get(&tournament_state.parent.unwrap()).unwrap();
-                    if winner_commitment != old_commitment.merkle.root_hash() {
+                TournamentWinner::Inner(parent_commitment, _) => {
+                    let old_commitment = commitments
+                        .get(
+                            &tournament_state
+                                .parent
+                                .expect("parent tournament state not found"),
+                        )
+                        .expect("parent commitment not found");
+                    if parent_commitment != old_commitment.merkle.root_hash() {
                         info!("player lost tournament {}", tournament_state.address);
                         return Ok(Some(PlayerTournamentResult::TournamentLost));
                     } else {
@@ -94,12 +103,16 @@ impl<A: Arena> Player<A> {
                         let (left, right) = old_commitment.merkle.root_children();
                         self.arena
                             .win_inner_match(
-                                tournament_state.parent.unwrap(),
+                                tournament_state
+                                    .parent
+                                    .expect("parent tournament state not found"),
                                 tournament_state.address,
                                 left,
                                 right,
                             )
                             .await?;
+
+                        return Ok(None);
                     }
                 }
             }
@@ -110,20 +123,25 @@ impl<A: Arena> Player<A> {
             .get(&commitment.merkle.root_hash());
         match commitment_state {
             Some(c) => {
+                info!("{}", c.clock);
                 if let Some(m) = c.latest_match {
                     self.react_match(
-                        &tournament_state.matches.get(m).unwrap().clone(),
+                        &tournament_state
+                            .matches
+                            .get(m)
+                            .expect("match state not found")
+                            .clone(),
                         &commitment,
                         new_commitments,
+                        tournament_state.level,
                         tournament_states,
                     )
-                    .await?
-                } else {
+                    .await?;
                 }
             }
             None => {
                 self.join_tournament_if_needed(tournament_state, &commitment)
-                    .await?
+                    .await?;
             }
         }
 
@@ -155,15 +173,25 @@ impl<A: Arena> Player<A> {
         match_state: &MatchState,
         commitment: &MachineCommitment,
         commitments: HashMap<Address, MachineCommitment>,
+        tournament_level: u64,
         tournament_states: HashMap<Address, TournamentState>,
     ) -> Result<(), Box<dyn Error>> {
+        info!("Enter match at HEIGHT: {}", match_state.current_height);
         if match_state.current_height == 0 {
-            self.react_sealed_match(match_state, commitment, commitments, tournament_states)
-                .await
+            self.react_sealed_match(
+                match_state,
+                commitment,
+                commitments,
+                tournament_level,
+                tournament_states,
+            )
+            .await
         } else if match_state.current_height == 1 {
-            self.react_unsealed_match(match_state, commitment).await
+            self.react_unsealed_match(match_state, commitment, tournament_level)
+                .await
         } else {
-            self.react_running_match(match_state, commitment).await
+            self.react_running_match(match_state, commitment, tournament_level)
+                .await
         }
     }
 
@@ -173,15 +201,10 @@ impl<A: Arena> Player<A> {
         match_state: &MatchState,
         commitment: &MachineCommitment,
         commitments: HashMap<Address, MachineCommitment>,
+        tournament_level: u64,
         tournament_states: HashMap<Address, TournamentState>,
     ) -> Result<(), Box<dyn Error>> {
-        info!(
-            "height for match {} is {}",
-            match_state.id.hash(),
-            match_state.current_height
-        );
-
-        if match_state.level == 1 {
+        if tournament_level == 1 {
             let (left, right) = commitment.merkle.root_children();
 
             let finished = match_state.other_parent.is_zeroed();
@@ -193,24 +216,32 @@ impl<A: Arena> Player<A> {
             let ucycle = match_state.running_leaf_position & constants::UARCH_SPAN;
             let proof = self
                 .machine_factory
-                .create_machine(Path::new(&self.machine_path).as_ref())
+                .create_machine(&self.machine_path)
                 .await?
                 .get_logs(cycle, ucycle)
                 .await?;
 
             info!(
                 "win leaf match in tournament {} of level {} for commitment {}",
-                match_state.tournament,
-                match_state.level,
+                match_state.tournament_address,
+                tournament_level,
                 commitment.merkle.root_hash(),
             );
             self.arena
-                .win_leaf_match(match_state.tournament, match_state.id, left, right, proof)
+                .win_leaf_match(
+                    match_state.tournament_address,
+                    match_state.id,
+                    left,
+                    right,
+                    proof,
+                )
                 .await?;
         } else {
             self.react_tournament(
                 commitments,
-                match_state.inner_tournament.unwrap(),
+                match_state
+                    .inner_tournament
+                    .expect("inner tournament not found"),
                 tournament_states,
             )
             .await?;
@@ -223,6 +254,7 @@ impl<A: Arena> Player<A> {
         &mut self,
         match_state: &MatchState,
         commitment: &MachineCommitment,
+        tournament_level: u64,
     ) -> Result<(), Box<dyn Error>> {
         let (left, right) =
             if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
@@ -239,16 +271,16 @@ impl<A: Arena> Player<A> {
                 .prove_leaf(match_state.running_leaf_position)
         };
 
-        if match_state.level == 1 {
+        if tournament_level == 1 {
             info!(
                 "seal leaf match in tournament {} of level {} for commitment {}",
-                match_state.tournament,
-                match_state.level,
+                match_state.tournament_address,
+                tournament_level,
                 commitment.merkle.root_hash(),
             );
             self.arena
                 .seal_leaf_match(
-                    match_state.tournament,
+                    match_state.tournament_address,
                     match_state.id,
                     left,
                     right,
@@ -259,13 +291,13 @@ impl<A: Arena> Player<A> {
         } else {
             info!(
                 "seal inner match in tournament {} of level {} for commitment {}",
-                match_state.tournament,
-                match_state.level,
+                match_state.tournament_address,
+                tournament_level,
                 commitment.merkle.root_hash(),
             );
             self.arena
                 .seal_inner_match(
-                    match_state.tournament,
+                    match_state.tournament_address,
                     match_state.id,
                     left,
                     right,
@@ -282,14 +314,15 @@ impl<A: Arena> Player<A> {
         &mut self,
         match_state: &MatchState,
         commitment: &MachineCommitment,
+        tournament_level: u64,
     ) -> Result<(), Box<dyn Error>> {
         let (left, right) =
             if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
                 children
             } else {
+                info!("not my turn to react");
                 return Ok(());
             };
-
         let (new_left, new_right) = if left != match_state.left_node {
             commitment
                 .merkle
@@ -305,13 +338,13 @@ impl<A: Arena> Player<A> {
         info!(
             "advance match with current height {} in tournament {} of level {} for commitment {}",
             match_state.current_height,
-            match_state.tournament,
-            match_state.level,
+            match_state.tournament_address,
+            tournament_level,
             commitment.merkle.root_hash(),
         );
         self.arena
             .advance_match(
-                match_state.tournament,
+                match_state.tournament_address,
                 match_state.id,
                 left,
                 right,
