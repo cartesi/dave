@@ -7,6 +7,7 @@ local State = require "player.state"
 local Hash = require "cryptography.hash"
 local Sender = require "blockchain.sender"
 local HonestStrategy = require "player.honest_strategy"
+local GarbageCollectionStrategy = require "player.gc_strategy"
 
 local time = require "utils.time"
 local helper = require "utils.helper"
@@ -19,10 +20,12 @@ local initial_hash = Hash:from_digest_hex(arg[4])
 local state = State:new(tournament)
 local sender = Sender:new(player_index)
 local honest_strategy
+local gc_strategy
 do
     local FakeCommitmentBuilder = require "computation.fake_commitment"
     local builder = FakeCommitmentBuilder:new(initial_hash)
     honest_strategy = HonestStrategy:new(builder, machine_path, sender)
+    gc_strategy = GarbageCollectionStrategy:new(sender)
 end
 
 while true do
@@ -36,5 +39,6 @@ while true do
     else
         helper.rm_player_idle(player_index)
     end
+    gc_strategy:react(state)
     time.sleep(1)
 end
