@@ -1,22 +1,23 @@
 //! The builder of machine commitments [MachineCommitmentBuilder] is responsible for building the
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
-use crate::machine::{build_machine_commitment, constants, MachineCommitment, MachineRpc};
-use ::log::info;
+use crate::machine::{build_machine_commitment, constants, MachineCommitment, MachineFactory};
 use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error,
 };
 
 pub struct CachingMachineCommitmentBuilder {
-    machine: MachineRpc,
+    machine_factory: MachineFactory,
+    machine_path: String,
     commitments: HashMap<u64, HashMap<u64, MachineCommitment>>,
 }
 
 impl CachingMachineCommitmentBuilder {
-    pub fn new(machine: MachineRpc) -> Self {
+    pub fn new(machine_factory: MachineFactory, machine_path: String) -> Self {
         CachingMachineCommitmentBuilder {
-            machine,
+            machine_factory,
+            machine_path,
             commitments: HashMap::new(),
         }
     }
@@ -37,13 +38,13 @@ impl CachingMachineCommitmentBuilder {
         let l = constants::LEVELS - level;
         let log2_stride = constants::LOG2_STEP[l as usize];
         let log2_stride_count = constants::HEIGHTS[l as usize];
-        let commitment = build_machine_commitment(
-            &mut self.machine,
-            base_cycle,
-            log2_stride,
-            log2_stride_count,
-        )
-        .await?;
+        let mut machine = self
+            .machine_factory
+            .create_machine(&self.machine_path)
+            .await?;
+        let commitment =
+            build_machine_commitment(&mut machine, base_cycle, log2_stride, log2_stride_count)
+                .await?;
 
         self.commitments
             .entry(level)
