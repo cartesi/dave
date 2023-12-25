@@ -24,7 +24,8 @@ deployed_at=`forge create TournamentFactory --rpc-url=$RPC_URL --private-key=$PK
     tr -d '\n' | \
     tail -c 42`
 
-cd /root/permissionless-arbitration/lua_node/program/ && ./gen_machine_simple.sh && cd -
+cd ../lua_node/program/
+initial_hash=`xxd -p -c32 simple-program/hash`
+cd -
 
-initial_hash=`xxd -p -c32 /root/permissionless-arbitration/lua_node/program/simple-program/hash`
 cast send --private-key=$PK --rpc-url=$RPC_URL $deployed_at "instantiateTop(bytes32)" 0x$initial_hash
