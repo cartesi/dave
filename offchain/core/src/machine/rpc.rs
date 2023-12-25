@@ -1,10 +1,11 @@
 //! Module for communication with the Cartesi machine using RPC.
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use cartesi_machine_json_rpc::client::{
     AccessLog, AccessLogType, AccessType, Error, JsonRpcCartesiMachineClient, MachineRuntimeConfig,
 };
 use sha3::{Digest as Keccak256Digest, Keccak256};
-use std::path::Path;
 
 use crate::{machine::constants, merkle::Digest, utils::arithmetic};
 
@@ -36,10 +37,9 @@ pub struct MachineRpc {
 }
 
 impl MachineRpc {
-    pub async fn new(json_rpc_url: &str, snapshot_path: &Path) -> Result<Self, Error> {
+    pub async fn new(json_rpc_url: &str, snapshot_path: &str) -> Result<Self, Error> {
         let rpc_client = JsonRpcCartesiMachineClient::new(json_rpc_url.to_string()).await?;
 
-        let snapshot_path = snapshot_path.to_str().unwrap();
         rpc_client
             .load_machine(snapshot_path, &MachineRuntimeConfig::default())
             .await?;
@@ -88,10 +88,10 @@ impl MachineRpc {
         //         encoded.push(a.read_data.clone());
         //     }
 
-        //     encoded.push(hex::decode(a.proof.target_hash.clone()).unwrap());
+        //     encoded.push(STANDARD.decode(a.proof.target_hash.clone()).unwrap());
 
         //     let decoded_sibling_hashes: Result<Vec<Vec<u8>>, hex::FromHexError> =
-        //         a.proof.sibling_hashes.iter().map(hex::decode).collect();
+        //         a.proof.sibling_hashes.iter().map(STANDARD.decode).collect();
 
         //     let mut decoded = decoded_sibling_hashes?;
         //     decoded.reverse();
@@ -99,11 +99,11 @@ impl MachineRpc {
 
         //     assert_eq!(
         //         ver(
-        //             hex::decode(a.proof.target_hash.clone()).unwrap(),
+        //             STANDARD.decode(a.proof.target_hash.clone()).unwrap(),
         //             a.address,
         //             decoded.clone()
         //         ),
-        //         hex::decode(a.proof.root_hash.clone()).unwrap()
+        //         STANDARD.decode(a.proof.root_hash.clone()).unwrap()
         //     );
         // }
         // let data: Vec<u8> = encoded.iter().flatten().cloned().collect();
@@ -222,26 +222,48 @@ fn encode_access_log(log: &AccessLog) -> Vec<u8> {
             encoded.push(a.read_data.clone());
         }
 
-        encoded.push(hex::decode(a.proof.target_hash.clone()).unwrap());
+        encoded.push(
+            STANDARD
+                .decode(base64_hash_to_string(&a.proof.target_hash))
+                .unwrap(),
+        );
 
-        let decoded_sibling_hashes: Result<Vec<Vec<u8>>, hex::FromHexError> =
-            a.proof.sibling_hashes.iter().map(hex::decode).collect();
+        let mut decoded_sibling_hashes: Vec<Vec<u8>> = a
+            .proof
+            .sibling_hashes
+            .iter()
+            .map(base64_hash_to_string)
+            .map(|s| STANDARD.decode(s).unwrap())
+            .collect();
 
-        let mut decoded = decoded_sibling_hashes.unwrap();
-        decoded.reverse();
-        encoded.extend_from_slice(&decoded.clone());
+        decoded_sibling_hashes.reverse();
+        encoded.extend_from_slice(&decoded_sibling_hashes.clone());
 
         assert_eq!(
             ver(
-                hex::decode(a.proof.target_hash.clone()).unwrap(),
+                STANDARD
+                    .decode(base64_hash_to_string(&a.proof.target_hash))
+                    .unwrap(),
                 a.address,
-                decoded.clone()
+                decoded_sibling_hashes.clone()
             ),
-            hex::decode(a.proof.root_hash.clone()).unwrap()
+            STANDARD
+                .decode(base64_hash_to_string(&a.proof.root_hash))
+                .unwrap()
         );
     }
 
     encoded.iter().flatten().cloned().collect()
+}
+
+fn base64_hash_to_string(base64_hash: &cartesi_machine_json_rpc::interfaces::Base64Hash) -> String {
+    let mut res = base64_hash.clone();
+
+    if res.ends_with('\n') {
+        res.pop();
+    }
+
+    res
 }
 
 fn ver(mut t: Vec<u8>, p: u64, s: Vec<Vec<u8>>) -> Vec<u8> {
@@ -262,6 +284,7 @@ fn ver(mut t: Vec<u8>, p: u64, s: Vec<Vec<u8>>) -> Vec<u8> {
     t
 }
 
+#[derive(Clone)]
 pub struct MachineFactory {
     rpc_host: String,
 
@@ -282,7 +305,7 @@ impl MachineFactory {
         })
     }
 
-    pub async fn create_machine(&self, snapshot_path: &Path) -> Result<MachineRpc, Error> {
+    pub async fn create_machine(&self, snapshot_path: &str) -> Result<MachineRpc, Error> {
         let fork_rpc_url = self.rpc_client.fork().await?;
         let fork_rpc_port = fork_rpc_url.split(':').last().unwrap();
         let fork_rpc_url = format!("{}:{}", self.rpc_host, fork_rpc_port);

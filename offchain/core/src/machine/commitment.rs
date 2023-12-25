@@ -8,7 +8,6 @@ use crate::{
     merkle::{Digest, MerkleBuilder, MerkleTree, UInt},
     utils::arithmetic,
 };
-use ::log::info;
 
 /// The [MachineCommitment] struct represents a `computation hash`, that is a [MerkleTree] of a set
 /// of steps of the Cartesi Machine.
@@ -50,7 +49,7 @@ pub async fn build_big_machine_commitment(
     let mut builder = MerkleBuilder::default();
     let instruction_count = arithmetic::max_uint(log2_stride_count);
 
-    for instruction in 0..instruction_count {
+    for instruction in 0..=instruction_count {
         let control_flow = advance_instruction(
             instruction,
             log2_stride,
@@ -107,20 +106,20 @@ pub async fn build_small_machine_commitment(
 
     let mut builder = MerkleBuilder::default();
     let instruction_count = arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN);
-    let mut instructions = 0;
+    let mut instruction = 0;
     loop {
-        if !instructions <= instruction_count {
+        if instruction > instruction_count {
             break;
         }
 
-        builder.add_with_repetition(run_uarch_span(machine).await?.root_hash(), 1);
-        instructions += 1;
+        builder.add_tree(run_uarch_span(machine).await?);
+        instruction += 1;
 
         let state = machine.machine_state().await?;
         if state.halted {
-            builder.add_with_repetition(
-                run_uarch_span(machine).await?.root_hash(),
-                UInt::from(instruction_count - instructions + 1),
+            builder.add_tree_with_repetition(
+                run_uarch_span(machine).await?,
+                UInt::from(instruction_count - instruction + 1),
             );
             break;
         }
@@ -134,7 +133,7 @@ pub async fn build_small_machine_commitment(
 }
 
 async fn run_uarch_span(machine: &mut MachineRpc) -> Result<MerkleTree, Box<dyn Error>> {
-    let (ucycle, _) = machine.position();
+    let (_, ucycle) = machine.position();
     assert!(ucycle == 0);
 
     machine.increment_uarch().await?;
