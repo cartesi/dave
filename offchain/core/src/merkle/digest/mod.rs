@@ -1,8 +1,8 @@
-//! Definition of the [Digest] type and its associated methods. A digest is the output of a hash 
+//! Definition of the [Digest] type and its associated methods. A digest is the output of a hash
 //! function. It's used to identify the data in the MerkleTree.
 
-use std::fmt;
 use hex::FromHex;
+use std::fmt;
 
 pub mod keccak;
 
@@ -15,7 +15,7 @@ pub enum DigestError {
     InvalidDigestLength,
 }
 
-/// The output of a hash function. 
+/// The output of a hash function.
 #[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
 pub struct Digest {
     data: [u8; 32],
@@ -51,7 +51,7 @@ impl Digest {
 
     /// Creates a [Digest] with all bytes set to zero.
     pub fn zeroed() -> Self {
-        Digest::new([0;32])
+        Digest::new([0; 32])
     }
 
     /// Checks if the [Digest] is zeroed.
