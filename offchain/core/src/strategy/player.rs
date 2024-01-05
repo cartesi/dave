@@ -32,7 +32,7 @@ impl<A: Arena> Player<A> {
         commitment_builder: CachingMachineCommitmentBuilder,
         root_tournamet: Address,
     ) -> Self {
-        Player {
+        Self {
             arena,
             machine_factory,
             machine_path,
