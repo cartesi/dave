@@ -1,6 +1,6 @@
 use cartesi_compute_core::arena::{ArenaConfig, ContractArtifactsConfig, EthersArena};
 use cartesi_compute_core::machine::{CachingMachineCommitmentBuilder, MachineFactory};
-use cartesi_compute_core::player::Player;
+use cartesi_compute_core::strategy::{gc::GarbageCollector, player::Player};
 use ethers::types::Address;
 use log::info;
 use std::str::FromStr;
@@ -46,14 +46,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let player1_machine_factory =
         MachineFactory::new(String::from(machine_rpc_host), machine_rpc_port).await?;
+    let root_tournament = Address::from_str("0xcafac3dd18ac6c6e92c921884f9e4176737c052c")?;
 
     let mut player1 = Player::new(
-        player1_arena,
+        player1_arena.clone(),
         player1_machine_factory.clone(),
         simple_linux_program.clone(),
         CachingMachineCommitmentBuilder::new(player1_machine_factory, simple_linux_program),
-        Address::from_str("0xcafac3dd18ac6c6e92c921884f9e4176737c052c")?,
+        root_tournament.clone(),
     );
+
+    let mut player1_gc = GarbageCollector::new(player1_arena, root_tournament);
 
     loop {
         let res = player1.react().await?;
@@ -61,7 +64,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Tournament finished, {:?}", r);
             break;
         }
-        // player2.react().await?;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        player1_gc.react().await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
