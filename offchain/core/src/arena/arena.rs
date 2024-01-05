@@ -73,6 +73,12 @@ pub trait Arena: Send + Sync {
         proofs: MachineProof,
     ) -> Result<(), Box<dyn Error>>;
 
+    async fn eliminate_match(
+        &self,
+        tournament: Address,
+        match_id: MatchID,
+    ) -> Result<(), Box<dyn Error>>;
+
     async fn created_tournament(
         &self,
         tournament: Address,
@@ -173,6 +179,30 @@ pub struct ClockState {
     pub start_instant: u64,
     pub block_time: U256,
 }
+
+impl ClockState {
+    pub fn has_time(&self) -> bool {
+        if self.start_instant == 0 {
+            true
+        } else {
+            self.deadline() > self.block_time.as_u64()
+        }
+    }
+
+    pub fn time_since_timeout(&self) -> u64 {
+        if self.start_instant == 0 {
+            0
+        } else {
+            self.block_time.as_u64() - self.deadline()
+        }
+    }
+
+    // deadline of clock if it's ticking
+    fn deadline(&self) -> u64 {
+        self.start_instant + self.allowance
+    }
+}
+
 impl std::fmt::Display for ClockState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.start_instant == 0 {
