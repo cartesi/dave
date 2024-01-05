@@ -27,6 +27,7 @@ use crate::{
     merkle::{Digest, MerkleProof},
 };
 
+#[derive(Clone)]
 /// The [EthersArena] struct implements the [Arena] trait for an ethereum node.
 pub struct EthersArena {
     config: ArenaConfig,
@@ -115,12 +116,6 @@ impl EthersArena {
             .send()
             .await?;
         Ok(contract.address())
-    }
-
-    pub fn clone_with_new_key(&self, new_key: String) -> Result<Self, Box<dyn Error>> {
-        let mut new_arena_config = self.config.clone();
-        new_arena_config.web3_private_key = new_key;
-        Self::new(new_arena_config, Some(self.tournament_factory))
     }
 }
 
@@ -299,6 +294,24 @@ impl Arena for EthersArena {
                 right_node.into(),
                 Bytes::from(proofs),
             )
+            .send()
+            .await?
+            .await?;
+        Ok(())
+    }
+
+    async fn eliminate_match(
+        &self,
+        tournament: Address,
+        match_id: MatchID,
+    ) -> Result<(), Box<dyn Error>> {
+        let tournament = tournament::Tournament::new(tournament, self.client.clone());
+        let match_id = tournament::Id {
+            commitment_one: match_id.commitment_one.into(),
+            commitment_two: match_id.commitment_two.into(),
+        };
+        tournament
+            .eliminate_match_by_timeout(match_id)
             .send()
             .await?
             .await?;
