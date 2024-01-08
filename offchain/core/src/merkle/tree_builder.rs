@@ -84,12 +84,9 @@ impl MerkleBuilder {
     pub fn build(&mut self) -> MerkleTree {
         let last = self.leafs.last().expect("no leafs in merkle builder");
         let count = last.accumulated_count;
-        let mut log2_size = 64;
 
-        if count != 0 {
-            assert!(count.is_power_of_two(), "is not a power of two {}", count);
-            log2_size = count.trailing_zeros();
-        };
+        assert!(count.is_power_of_two(), "is not a power of two {}", count);
+        let log2_size = count.trailing_zeros();
 
         let leafs_clone = self.leafs.clone();
         let root = self.build_merkle(leafs_clone.as_slice(), log2_size, 0);
