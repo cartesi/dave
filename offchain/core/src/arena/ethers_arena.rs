@@ -12,16 +12,13 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Http, Middleware, Provider},
     signers::{LocalWallet, Signer},
-    types::{Address, BlockNumber::Latest, Bytes, Filter, ValueOrArray::Value},
+    types::{Address, BlockNumber::Latest, Bytes, ValueOrArray::Value},
 };
 
 use crate::{
     arena::*,
     contract::{
-        factory::TournamentFactory,
-        tournament::{
-            leaf_tournament, non_leaf_tournament, non_root_tournament, root_tournament, tournament,
-        },
+        leaf_tournament, non_leaf_tournament, non_root_tournament, root_tournament, tournament,
     },
     machine::{constants, MachineProof},
     merkle::{Digest, MerkleProof},
@@ -121,26 +118,6 @@ impl EthersArena {
 
 #[async_trait]
 impl Arena for EthersArena {
-    async fn create_root_tournament(
-        &self,
-        initial_hash: Digest,
-    ) -> Result<Address, Box<dyn Error>> {
-        let factory = TournamentFactory::new(self.tournament_factory, self.client.clone());
-        factory
-            .instantiate_top(initial_hash.into())
-            .send()
-            .await?
-            .await?;
-
-        let filter = Filter::new().from_block(0);
-        let logs = self.client.get_logs(&filter).await?;
-
-        // !!!
-        println!("{}", logs.len());
-
-        Ok(Address::default())
-    }
-
     async fn join_tournament(
         &self,
         tournament: Address,
