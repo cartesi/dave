@@ -1,5 +1,5 @@
 [package]
-name = "dave-input-reader"
+name = "rollups-input-reader"
 version = { workspace = true }
 
 authors = { workspace = true }

@@ -1,19 +1,23 @@
 //! The builder of machine commitments [MachineCommitmentBuilder] is responsible for building the
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
-use std::{collections::{HashMap, hash_map::Entry}, error::Error};
-use crate::machine::{build_machine_commitment, constants, MachineCommitment};
-use super::MachineRPC;
+use crate::machine::{build_machine_commitment, constants, MachineCommitment, MachineFactory};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    error::Error,
+};
 
 pub struct CachingMachineCommitmentBuilder {
-    machine: MachineRPC,
+    machine_factory: MachineFactory,
+    machine_path: String,
     commitments: HashMap<u64, HashMap<u64, MachineCommitment>>,
 }
 
 impl CachingMachineCommitmentBuilder {
-    pub fn new(machine: MachineRPC) -> Self {
+    pub fn new(machine_factory: MachineFactory, machine_path: String) -> Self {
         CachingMachineCommitmentBuilder {
-            machine,
+            machine_factory,
+            machine_path,
             commitments: HashMap::new(),
         }
     }
@@ -31,16 +35,16 @@ impl CachingMachineCommitmentBuilder {
             return Ok(self.commitments[&level][&base_cycle].clone());
         }
 
-        let l = constants::LEVELS - level + 1;
+        let l = constants::LEVELS - level;
         let log2_stride = constants::LOG2_STEP[l as usize];
         let log2_stride_count = constants::HEIGHTS[l as usize];
-        let commitment = build_machine_commitment(
-            self.machine.clone(),
-            base_cycle,
-            log2_stride,
-            log2_stride_count,
-        )
-        .await?;
+        let mut machine = self
+            .machine_factory
+            .create_machine(&self.machine_path)
+            .await?;
+        let commitment =
+            build_machine_commitment(&mut machine, base_cycle, log2_stride, log2_stride_count)
+                .await?;
 
         self.commitments
             .entry(level)

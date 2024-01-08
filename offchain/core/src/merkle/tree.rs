@@ -1,4 +1,4 @@
-//! This module contains the [MerkleTree] struct and related types like the 
+//! This module contains the [MerkleTree] struct and related types like the
 //! [MerkleProof].
 
 use std::collections::HashMap;
@@ -7,7 +7,7 @@ use crate::merkle::{Digest, MerkleTreeNode};
 
 use super::UInt;
 
-/// A leaf of a [MerkleTree], it contains the offset of the leaf in the tree, 
+/// A leaf of a [MerkleTree], it contains the offset of the leaf in the tree,
 /// and the hash of the data.
 #[derive(Clone, Debug)]
 pub struct MerkleTreeLeaf {
@@ -34,10 +34,10 @@ impl Default for ProofAccumulator {
 }
 
 /// A [MerkleTree] is a binary tree where the leafs are the data and the nodes
-/// are the hashes of the children. The root of the tree is the hash of the 
+/// are the hashes of the children. The root of the tree is the hash of the
 /// entire tree. The tree is balanced, so the height of the tree is log2(n)
 /// where n is the number of leafs.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MerkleTree {
     log2_size: u32,
     root: Digest,
@@ -70,8 +70,18 @@ impl MerkleTree {
     }
 
     pub fn node_children(&self, digest: Digest) -> Option<(Digest, Digest)> {
-        let node = self.nodes.get(&digest).expect("node does not exist");
-        node.children()
+        match self.nodes.get(&digest) {
+            Some(node) => node.children(),
+            None => None,
+        }
+    }
+
+    pub fn nodes(&self) -> HashMap<Digest, MerkleTreeNode> {
+        self.nodes.clone()
+    }
+
+    pub fn log2_size(&self) -> u32 {
+        self.log2_size.clone()
     }
 
     pub fn prove_leaf(&self, index: u64) -> (Digest, MerkleProof) {
@@ -99,7 +109,7 @@ impl MerkleTree {
                 height = log2_size + self.log2_size;
             }
         }
-        
+
         height
     }
 
@@ -153,7 +163,7 @@ mod tests {
     #[test]
     pub fn test_tree() {
         let mut builder = crate::merkle::MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 2); 
+        builder.add_with_repetition(Digest::zeroed(), 2);
         builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
 
@@ -168,9 +178,9 @@ mod tests {
         let tree = builder.build();
 
         let (leaf, proof) = tree.prove_leaf(0);
-    
+
         let mut root = leaf;
-        
+
         for node in proof {
             root = Digest::join(&node, &root);
         }
@@ -181,19 +191,18 @@ mod tests {
     #[test]
     pub fn last_proof_test() {
         let mut builder = crate::merkle::MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 2); 
+        builder.add_with_repetition(Digest::zeroed(), 2);
         builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let (leaf, proof) = tree.last();
-    
+
         let mut root = leaf;
-        
+
         for node in proof {
             root = Digest::join(&node, &root);
         }
 
         assert_eq!(root, tree.root_hash());
     }
-
 }

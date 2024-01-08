@@ -3,10 +3,6 @@
 
 use std::{error::Error, ops::ControlFlow, sync::Arc};
 
-use tokio::sync::Mutex;
-
-pub type MachineRPC = Arc<Mutex<MachineRpc>>;
-
 use crate::{
     machine::{constants, MachineRpc},
     merkle::{Digest, MerkleBuilder, MerkleTree, UInt},
@@ -23,7 +19,7 @@ pub struct MachineCommitment {
 
 /// Builds a [MachineCommitment] from a [MachineRpc] and a base cycle.
 pub async fn build_machine_commitment(
-    machine: MachineRPC,
+    machine: &mut MachineRpc,
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
@@ -35,31 +31,29 @@ pub async fn build_machine_commitment(
         );
         build_big_machine_commitment(machine, base_cycle, log2_stride, log2_stride_count).await
     } else {
+        assert!(log2_stride == 0);
         build_small_machine_commitment(machine, base_cycle, log2_stride_count).await
     }
 }
 
 /// Builds a [MachineCommitment] Hash for the Cartesi Machine using the big machine model.
 pub async fn build_big_machine_commitment(
-    machine: Arc<Mutex<MachineRpc>>,
+    machine: &mut MachineRpc,
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
 ) -> Result<MachineCommitment, Box<dyn Error>> {
-    let machine_lock = machine.clone();
-    let mut machine = machine_lock.lock().await;
-
     machine.run(base_cycle).await?;
     let initial_state = machine.machine_state().await?;
 
     let mut builder = MerkleBuilder::default();
     let instruction_count = arithmetic::max_uint(log2_stride_count);
 
-    for instruction in 0..instruction_count {
+    for instruction in 0..=instruction_count {
         let control_flow = advance_instruction(
             instruction,
             log2_stride,
-            &mut machine,
+            machine,
             base_cycle,
             &mut builder,
             instruction_count,
@@ -69,9 +63,9 @@ pub async fn build_big_machine_commitment(
             break;
         }
     }
-    
+
     let merkle = builder.build();
-    
+
     Ok(MachineCommitment {
         implicit_hash: initial_state.root_hash,
         merkle: Arc::new(merkle),
@@ -90,45 +84,42 @@ async fn advance_instruction(
     machine.run(base_cycle + cycle).await?;
     let state = machine.machine_state().await?;
     let control_flow = if state.halted {
-        builder.add(state.root_hash);
-        ControlFlow::Continue(())
-    } else {
         builder.add_with_repetition(
             state.root_hash,
             UInt::from(instruction_count - instruction + 1),
         );
         ControlFlow::Break(())
+    } else {
+        builder.add(state.root_hash);
+        ControlFlow::Continue(())
     };
     Ok(control_flow)
 }
 
 pub async fn build_small_machine_commitment(
-    machine: MachineRPC,
+    machine: &mut MachineRpc,
     base_cycle: u64,
     log2_stride_count: u64,
 ) -> Result<MachineCommitment, Box<dyn Error>> {
-    let machine_lock = machine.clone();
-    let mut machine = machine_lock.lock().await;
-
     machine.run(base_cycle).await?;
     let initial_state = machine.machine_state().await?;
 
     let mut builder = MerkleBuilder::default();
     let instruction_count = arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN);
-    let mut instructions = 0;
+    let mut instruction = 0;
     loop {
-        if !instructions <= instruction_count {
+        if instruction > instruction_count {
             break;
         }
 
-        builder.add_with_repetition(run_uarch_span(&mut machine).await?.root_hash(), 1);
-        instructions += 1;
+        builder.add_tree(run_uarch_span(machine).await?);
+        instruction += 1;
 
         let state = machine.machine_state().await?;
         if state.halted {
-            builder.add_with_repetition(
-                run_uarch_span(&mut machine).await?.root_hash(),
-                UInt::from(instruction_count - instructions + 1),
+            builder.add_tree_with_repetition(
+                run_uarch_span(machine).await?,
+                UInt::from(instruction_count - instruction + 1),
             );
             break;
         }
@@ -141,10 +132,8 @@ pub async fn build_small_machine_commitment(
     })
 }
 
-async fn run_uarch_span(
-    machine: &mut MachineRpc,
-) -> Result<MerkleTree, Box<dyn Error>> {
-    let (ucycle, _) = machine.position();
+async fn run_uarch_span(machine: &mut MachineRpc) -> Result<MerkleTree, Box<dyn Error>> {
+    let (_, ucycle) = machine.position();
     assert!(ucycle == 0);
 
     machine.increment_uarch().await?;

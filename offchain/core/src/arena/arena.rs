@@ -1,24 +1,18 @@
-//! This module defines the trait [Arena] that is responsible for the creation and 
+//! This module defines the trait [Arena] that is responsible for the creation and
 //! management of tournaments. It also defines some structs that are used to communicate events.
 
-use std::error::Error;
 use async_trait::async_trait;
-use primitive_types::H160;
+use ethers::types::{Address, U256};
+use std::{collections::HashMap, error::Error};
 
 use crate::{
-    machine::MachineProof,
+    machine::{constants, MachineProof},
     merkle::{Digest, MerkleProof},
 };
-
-/// Type alias for Ethereum addresses (20 bytes).
-pub type Address = H160;
 
 /// The [Arena] trait defines the interface for the creation and management of tournaments.
 #[async_trait]
 pub trait Arena: Send + Sync {
-    /// Creates a new tournament and returns its address.
-    async fn create_root_tournament(&self, initial_hash: Digest) -> Result<Address, Box<dyn Error>>;
-
     async fn join_tournament(
         &self,
         tournament: Address,
@@ -75,6 +69,12 @@ pub trait Arena: Send + Sync {
         proofs: MachineProof,
     ) -> Result<(), Box<dyn Error>>;
 
+    async fn eliminate_match(
+        &self,
+        tournament: Address,
+        match_id: MatchID,
+    ) -> Result<(), Box<dyn Error>>;
+
     async fn created_tournament(
         &self,
         tournament: Address,
@@ -84,37 +84,59 @@ pub trait Arena: Send + Sync {
     async fn created_matches(
         &self,
         tournament: Address,
-        commitment_hash: Digest,
     ) -> Result<Vec<MatchCreatedEvent>, Box<dyn Error>>;
 
-    async fn commitment(
+    async fn joined_commitments(
+        &self,
+        tournament: Address,
+    ) -> Result<Vec<CommitmentJoinedEvent>, Box<dyn Error>>;
+
+    async fn get_commitment(
         &self,
         tournament: Address,
         commitment_hash: Digest,
-    ) -> Result<(ClockState, Digest), Box<dyn Error>>;
+    ) -> Result<CommitmentState, Box<dyn Error>>;
 
-    async fn match_state(
+    async fn fetch_from_root(
         &self,
-        tournament: Address,
-        match_id: MatchID,
-    ) -> Result<Option<MatchState>, Box<dyn Error>>;
+        root_tournament: Address,
+    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>>;
+
+    async fn fetch_tournament(
+        &self,
+        tournament_state: TournamentState,
+        states: HashMap<Address, TournamentState>,
+    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>>;
+
+    async fn fetch_match(
+        &self,
+        match_state: MatchState,
+        states: HashMap<Address, TournamentState>,
+        tournament_level: u64,
+    ) -> Result<(MatchState, HashMap<Address, TournamentState>), Box<dyn Error>>;
 
     async fn root_tournament_winner(
         &self,
         tournament: Address,
-    ) -> Result<Option<(Digest, Digest)>, Box<dyn Error>>;
+    ) -> Result<Option<TournamentWinner>, Box<dyn Error>>;
 
-    async fn tournament_winner(&self, tournament: Address) -> Result<Option<Digest>, Box<dyn Error>>;
-
-    async fn maximum_delay(&self, tournament: Address) -> Result<u64, Box<dyn Error>>;
+    async fn tournament_winner(
+        &self,
+        tournament: Address,
+    ) -> Result<Option<TournamentWinner>, Box<dyn Error>>;
 }
-
 
 /// This struct is used to communicate the creation of a new tournament.
 #[derive(Clone, Copy)]
 pub struct TournamentCreatedEvent {
     pub parent_match_id_hash: Digest,
     pub new_tournament_address: Address,
+}
+
+/// This struct is used to communicate the enrollment of a new commitment.
+#[derive(Clone, Copy)]
+pub struct CommitmentJoinedEvent {
+    pub root: Digest,
 }
 
 /// This struct is used to communicate the creation of a new match.
@@ -138,20 +160,125 @@ impl MatchID {
     }
 }
 
-/// Struct used to communicate the state of the clock.
+/// Struct used to communicate the state of a commitment.
+#[derive(Clone, Copy)]
+pub struct CommitmentState {
+    pub clock: ClockState,
+    pub final_state: Digest,
+    pub latest_match: Option<usize>,
+}
+
+/// Struct used to communicate the state of a clock.
 #[derive(Clone, Copy)]
 pub struct ClockState {
     pub allowance: u64,
     pub start_instant: u64,
+    pub block_time: U256,
+}
+
+impl ClockState {
+    pub fn has_time(&self) -> bool {
+        if self.start_instant == 0 {
+            true
+        } else {
+            self.deadline() > self.block_time.as_u64()
+        }
+    }
+
+    pub fn time_since_timeout(&self) -> u64 {
+        if self.start_instant == 0 {
+            0
+        } else {
+            self.block_time.as_u64() - self.deadline()
+        }
+    }
+
+    // deadline of clock if it's ticking
+    fn deadline(&self) -> u64 {
+        self.start_instant + self.allowance
+    }
+}
+
+impl std::fmt::Display for ClockState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.start_instant == 0 {
+            write!(f, "clock paused, {} seconds left", self.allowance)
+        } else {
+            let time_elapsed = self.block_time.as_u64() - self.start_instant;
+            if self.allowance >= time_elapsed {
+                write!(
+                    f,
+                    "clock ticking, {} seconds left",
+                    self.allowance - time_elapsed
+                )
+            } else {
+                write!(
+                    f,
+                    "clock ticking, {} seconds overdue",
+                    time_elapsed - self.allowance
+                )
+            }
+        }
+    }
+}
+
+/// Enum used to represent the winner of a tournament.
+#[derive(Clone, PartialEq)]
+pub enum TournamentWinner {
+    Root(Digest, Digest),
+    Inner(Digest, Digest),
+}
+
+/// Struct used to communicate the state of a tournament.
+#[derive(Clone)]
+pub struct TournamentState {
+    pub address: Address,
+    pub base_big_cycle: u64,
+    pub level: u64,
+    pub parent: Option<Address>,
+    pub commitment_states: HashMap<Digest, CommitmentState>,
+    pub matches: Vec<MatchState>,
+    pub winner: Option<TournamentWinner>,
+}
+
+impl TournamentState {
+    pub fn new_root(address: Address) -> Self {
+        TournamentState {
+            address,
+            base_big_cycle: 0,
+            level: constants::LEVELS,
+            parent: None,
+            commitment_states: HashMap::new(),
+            matches: vec![],
+            winner: None,
+        }
+    }
+
+    pub fn new_inner(address: Address, level: u64, base_big_cycle: u64, parent: Address) -> Self {
+        TournamentState {
+            address,
+            base_big_cycle,
+            level,
+            parent: Some(parent),
+            commitment_states: HashMap::new(),
+            matches: vec![],
+            winner: None,
+        }
+    }
 }
 
 /// Struct used to communicate the state of a match.
 #[derive(Clone, Copy)]
 pub struct MatchState {
+    pub id: MatchID,
     pub other_parent: Digest,
     pub left_node: Digest,
     pub right_node: Digest,
     pub running_leaf_position: u64,
     pub current_height: u64,
     pub level: u64,
+    pub leaf_cycle: u64,
+    pub base_big_cycle: u64,
+    pub tournament_address: Address,
+    pub inner_tournament: Option<Address>,
 }

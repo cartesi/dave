@@ -1,6 +1,7 @@
 -- contains default 40 accounts of anvil test node
 local constants = {
     endpoint = "http://127.0.0.1:8545",
+    root_tournament = "0xcafac3dd18ac6c6e92c921884f9e4176737c052c",
     addresses = {
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
