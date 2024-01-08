@@ -13,10 +13,6 @@ use crate::{
 /// The [Arena] trait defines the interface for the creation and management of tournaments.
 #[async_trait]
 pub trait Arena: Send + Sync {
-    /// Creates a new tournament and returns its address.
-    async fn create_root_tournament(&self, initial_hash: Digest)
-        -> Result<Address, Box<dyn Error>>;
-
     async fn join_tournament(
         &self,
         tournament: Address,

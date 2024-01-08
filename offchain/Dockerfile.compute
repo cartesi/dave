@@ -15,11 +15,18 @@ FROM chef AS builder
 WORKDIR /app
 COPY ./machine-json-rpc /app/machine-json-rpc
 COPY --from=planner /app/offchain/recipe.json /app/offchain/recipe.json
+
 # Build dependencies - this is the caching Docker layer!
 WORKDIR /app/offchain
 RUN cargo chef cook --release --recipe-path recipe.json
+
 # Build application
+COPY --from=ethereum/solc:stable /usr/bin/solc /usr/bin/solc
+RUN chmod u+x /usr/bin/solc
+
 COPY ./offchain /app/offchain
+COPY ./machine-emulator-sdk /app/machine-emulator-sdk
+COPY ./permissionless-arbitration /app/permissionless-arbitration
 RUN cargo build --release --bin dave-compute
 
 FROM --platform=linux/amd64 cartesi/machine-emulator:0.15.2
