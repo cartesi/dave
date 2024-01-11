@@ -1,0 +1,47 @@
+FROM rust:1.71.0-bookworm AS chef
+
+ENV CARGO_REGISTRIES_CARTESI_INDEX=https://github.com/cartesi/crates-index
+RUN rustup component add rustfmt
+RUN cargo install cargo-chef
+
+FROM chef AS planner
+WORKDIR /app
+COPY ./machine-json-rpc /app/machine-json-rpc
+COPY ./offchain /app/offchain
+WORKDIR /app/offchain
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+WORKDIR /app
+COPY ./machine-json-rpc /app/machine-json-rpc
+COPY --from=planner /app/offchain/recipe.json /app/offchain/recipe.json
+
+# Build dependencies - this is the caching Docker layer!
+WORKDIR /app/offchain
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Build application
+COPY --from=ethereum/solc:0.8.23 /usr/bin/solc /usr/bin/solc
+RUN chmod u+x /usr/bin/solc
+
+COPY ./offchain /app/offchain
+COPY ./machine-emulator-sdk /app/machine-emulator-sdk
+COPY ./permissionless-arbitration /app/permissionless-arbitration
+RUN cargo build --release --bin dave-compute
+
+FROM --platform=linux/amd64 cartesi/machine-emulator:0.15.2
+
+USER root
+RUN apt-get update && \
+    apt-get install -y procps curl git xxd
+RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
+    tar -zx -C /usr/local/bin
+RUN mkdir -p /root/permissionless-arbitration/lua_node/program
+RUN curl -sSL https://web3.link/debootstrap-machine-sparsed.tar.gz | \
+    tar -zx -C /root/permissionless-arbitration/lua_node/program
+
+COPY . /root
+COPY --from=builder /app/offchain/target/release/dave-compute /root/target/release/dave-compute
+WORKDIR /root
+
+ENTRYPOINT [ "/root/offchain/compute-entrypoint.sh" ]
