@@ -3,7 +3,7 @@ package.path = package.path .. ";/opt/cartesi/lib/lua/5.4/?.lua"
 package.path = package.path .. ";./lua_node/?.lua"
 package.cpath = package.cpath .. ";/opt/cartesi/lib/lua/5.4/?.so"
 
-local machine_path = "lua_node/program/simple-program"
+local machine_path = (os.getenv ("MACHINE_PATH"))
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
 local FF_TIME = 30
 -- max consecutive iterations of all players idling before the blockchain fastforwards
@@ -23,13 +23,11 @@ local Blockchain = require "blockchain.node"
 local Machine = require "computation.machine"
 
 print "Hello from Dave lua prototype!"
-os.execute "cd lua_node/program && ./gen_machine_simple.sh"
 
 local m = Machine:new_from_path(machine_path)
 local initial_hash = m:state().root_hash
 local blockchain = Blockchain:new()
 time.sleep(NODE_DELAY)
--- local contract = blockchain:deploy_contract(initial_hash)
 local contract = blockchain_constants.root_tournament, blockchain:default_account()
 
 -- add more player instances here

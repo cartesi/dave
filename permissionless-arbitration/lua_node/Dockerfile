@@ -22,6 +22,8 @@ WORKDIR "/app/lua_node"
 
 COPY ./permissionless-arbitration/lua_node/ .
 RUN chmod +x multiplayers_entrypoint.lua
+WORKDIR "/app/lua_node/program"
+RUN ./gen_machine_simple.sh
 
 WORKDIR "/app"
 ENTRYPOINT ["./lua_node/multiplayers_entrypoint.lua"]
