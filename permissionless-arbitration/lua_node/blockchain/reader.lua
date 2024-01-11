@@ -337,11 +337,4 @@ function Reader:root_tournament_winner(address)
     return ret
 end
 
-function Reader:maximum_delay(address)
-    local sig = "maximumEnforceableDelay()(uint64)"
-    local ret = self:_call(address, sig, {})
-
-    return ret
-end
-
 return Reader
