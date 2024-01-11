@@ -24,8 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let arena = Arena::new(arena_config)?;
 
-    let simple_linux_program =
-        String::from("/root/permissionless-arbitration/lua_node/program/simple-program");
+    let machine_path = std::env::var("MACHINE_PATH").expect("MACHINE_PATH is not set");
+    // String::from("/root/permissionless-arbitration/lua_node/program/simple-program");
 
     let machine_rpc_host = "http://127.0.0.1";
     let machine_rpc_port = 5002;
@@ -37,8 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut player = Player::new(
         arena.clone(),
         machine_factory.clone(),
-        simple_linux_program.clone(),
-        CachingMachineCommitmentBuilder::new(machine_factory, simple_linux_program),
+        machine_path.clone(),
+        CachingMachineCommitmentBuilder::new(machine_factory, machine_path),
         root_tournament.clone(),
     );
 

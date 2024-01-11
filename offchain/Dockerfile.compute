@@ -37,8 +37,11 @@ RUN apt-get update && \
 RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
     tar -zx -C /usr/local/bin
 
-COPY --from=builder /app/offchain/target/release/dave-compute /root/target/release/dave-compute
 COPY . /root
+WORKDIR /root/permissionless-arbitration/lua_node/program
+RUN ./gen_machine_simple.sh
+
+COPY --from=builder /app/offchain/target/release/dave-compute /root/target/release/dave-compute
 WORKDIR /root
 
 ENTRYPOINT [ "/root/offchain/compute-entrypoint.sh" ]
