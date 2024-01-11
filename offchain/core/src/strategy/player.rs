@@ -5,7 +5,7 @@ use async_recursion::async_recursion;
 use ethers::types::Address;
 
 use crate::{
-    arena::{Arena, MatchState, TournamentState, TournamentWinner},
+    arena::{ArenaSender, MatchState, TournamentState, TournamentWinner},
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineFactory},
     merkle::MerkleProof,
 };
@@ -16,24 +16,24 @@ pub enum PlayerTournamentResult {
     TournamentLost,
 }
 
-pub struct Player<A: Arena> {
-    arena: A,
+pub struct Player<A: ArenaSender> {
+    arena_sender: A,
     machine_factory: MachineFactory,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournamet: Address,
 }
 
-impl<A: Arena> Player<A> {
+impl<A: ArenaSender> Player<A> {
     pub fn new(
-        arena: A,
+        arena_sender: A,
         machine_factory: MachineFactory,
         machine_path: String,
         commitment_builder: CachingMachineCommitmentBuilder,
         root_tournamet: Address,
     ) -> Self {
         Self {
-            arena,
+            arena_sender,
             machine_factory,
             machine_path,
             commitment_builder,
@@ -41,8 +41,10 @@ impl<A: Arena> Player<A> {
         }
     }
 
-    pub async fn react(&mut self) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
-        let tournament_states = self.arena.fetch_from_root(self.root_tournamet).await?;
+    pub async fn react(
+        &mut self,
+        tournament_states: HashMap<Address, TournamentState>,
+    ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
         self.react_tournament(HashMap::new(), self.root_tournamet, tournament_states)
             .await
     }
@@ -101,7 +103,7 @@ impl<A: Arena> Player<A> {
                             commitment.merkle.root_hash(),
                         );
                         let (left, right) = old_commitment.merkle.root_children();
-                        self.arena
+                        self.arena_sender
                             .win_inner_match(
                                 tournament_state
                                     .parent
@@ -162,7 +164,7 @@ impl<A: Arena> Player<A> {
             tournament_state.level,
             commitment.merkle.root_hash(),
         );
-        self.arena
+        self.arena_sender
             .join_tournament(tournament_state.address, last, proof, left, right)
             .await
     }
@@ -227,7 +229,7 @@ impl<A: Arena> Player<A> {
                 tournament_level,
                 commitment.merkle.root_hash(),
             );
-            self.arena
+            self.arena_sender
                 .win_leaf_match(
                     match_state.tournament_address,
                     match_state.id,
@@ -278,7 +280,7 @@ impl<A: Arena> Player<A> {
                 tournament_level,
                 commitment.merkle.root_hash(),
             );
-            self.arena
+            self.arena_sender
                 .seal_leaf_match(
                     match_state.tournament_address,
                     match_state.id,
@@ -295,7 +297,7 @@ impl<A: Arena> Player<A> {
                 tournament_level,
                 commitment.merkle.root_hash(),
             );
-            self.arena
+            self.arena_sender
                 .seal_inner_match(
                     match_state.tournament_address,
                     match_state.id,
@@ -342,7 +344,7 @@ impl<A: Arena> Player<A> {
             tournament_level,
             commitment.merkle.root_hash(),
         );
-        self.arena
+        self.arena_sender
             .advance_match(
                 match_state.tournament_address,
                 match_state.id,

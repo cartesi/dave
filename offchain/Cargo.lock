@@ -502,7 +502,6 @@ dependencies = [
  "foundry-compilers",
  "hex",
  "log",
- "serde",
  "serde_json",
  "sha3",
  "thiserror",
