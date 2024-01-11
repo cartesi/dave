@@ -61,10 +61,6 @@ function State:_fetch_match(match)
 
             match.finished =
                 self.reader:match(match.tournament.address, match.match_id_hash)[1]:is_zero()
-
-            if match.finished then
-                match.delay = tonumber(self.reader:maximum_delay(match.tournament.address)[1])
-            end
         else
             local address = self.reader:read_tournament_created(
                 match.tournament.address,
