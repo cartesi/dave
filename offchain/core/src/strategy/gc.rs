@@ -4,29 +4,25 @@ use ::log::info;
 use async_recursion::async_recursion;
 use ethers::types::Address;
 
-use crate::arena::{Arena, MatchState, TournamentState};
+use crate::arena::{ArenaSender, MatchState, TournamentState};
 
-#[derive(Debug)]
-pub enum PlayerTournamentResult {
-    TournamentWon,
-    TournamentLost,
-}
-
-pub struct GarbageCollector<A: Arena> {
-    arena: A,
+pub struct GarbageCollector<A: ArenaSender> {
+    arena_sender: A,
     root_tournamet: Address,
 }
 
-impl<A: Arena> GarbageCollector<A> {
-    pub fn new(arena: A, root_tournamet: Address) -> Self {
+impl<A: ArenaSender> GarbageCollector<A> {
+    pub fn new(arena_sender: A, root_tournamet: Address) -> Self {
         Self {
-            arena,
+            arena_sender,
             root_tournamet,
         }
     }
 
-    pub async fn react(&mut self) -> Result<(), Box<dyn Error>> {
-        let tournament_states = self.arena.fetch_from_root(self.root_tournamet).await?;
+    pub async fn react(
+        &mut self,
+        tournament_states: HashMap<Address, TournamentState>,
+    ) -> Result<(), Box<dyn Error>> {
         self.react_tournament(self.root_tournamet, tournament_states)
             .await
     }
@@ -66,7 +62,7 @@ impl<A: Arena> GarbageCollector<A> {
                     tournament_state.level
                 );
 
-                self.arena
+                self.arena_sender
                     .eliminate_match(tournament_address, m.id)
                     .await
                     .expect("fail to eliminate match");
