@@ -1,0 +1,10 @@
+[package]
+name = "cartesi-machine"
+version = "0.15.2"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cartesi-machine-sys = { path = "../cartesi-machine-sys" }
+hex = "0.4.3"

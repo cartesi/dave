@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "cartesi-machine",
+    "cartesi-machine-sys",
+]
+
+resolver = "2"
