@@ -205,16 +205,18 @@ impl MachineClient {
         loop {
             self.machine.reset_iflags_y().await?;
             self.feed_advance_input(data.clone()).await?;
-            let result = self.step().await?;
-            if let BreakReason::YieldManual(reason) = result {
-                if reason == Reason::Rejected {
-                    self.rollback().await?;
+            loop {
+                let result = self.step().await?;
+                if let BreakReason::YieldManual(reason) = result {
+                    if reason == Reason::Rejected {
+                        self.rollback().await?;
+                    }
+                    self.snapshot().await?;
+                } else if BreakReason::YieldAutomatic == result {
+                    continue
                 }
-                self.snapshot().await?;
-            } else if BreakReason::YieldAutomatic == result {
-                continue
+                return Ok(result);
             }
-            return Ok(result);
         }
     }
 
