@@ -49,7 +49,7 @@ function HonestStrategy:_react_match(state, match, commitment)
     helper.log(self.sender.index, "Enter match at HEIGHT: " .. match.current_height)
     if match.current_height == 0 then
         -- match sealed
-        if match.tournament.level == 1 then
+        if match.tournament.level == (match.tournament.max_level - 1) then
             local f, left, right = commitment.root_hash:children()
             assert(f)
 
@@ -99,7 +99,7 @@ function HonestStrategy:_react_match(state, match, commitment)
             initial_hash, proof = commitment:prove_leaf(match.running_leaf)
         end
 
-        if match.tournament.level == 1 then
+        if match.tournament.level == (match.tournament.max_level - 1) then
             helper.log(self.sender.index, string.format(
                 "seal leaf match in tournament %s of level %d for commitment %s",
                 match.tournament.address,
@@ -191,7 +191,9 @@ function HonestStrategy:_react_tournament(state, tournament)
     helper.log(self.sender.index, "Enter tournament at address: " .. tournament.address)
     local commitment = self.commitment_builder:build(
         tournament.base_big_cycle,
-        tournament.level
+        tournament.level,
+        tournament.log2_stride,
+        tournament.log2_stride_count
     )
 
     local tournament_winner = tournament.tournament_winner
@@ -204,7 +206,9 @@ function HonestStrategy:_react_tournament(state, tournament)
         else
             local old_commitment = self.commitment_builder:build(
                 tournament.parent.base_big_cycle,
-                tournament.parent.level
+                tournament.parent.level,
+                tournament.parent.log2_stride,
+                tournament.parent.log2_stride_count
             )
             if tournament_winner[2] ~= old_commitment.root_hash then
                 helper.log(self.sender.index, "player lost tournament")
