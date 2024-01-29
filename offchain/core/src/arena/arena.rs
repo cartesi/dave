@@ -11,7 +11,7 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Http, Middleware, Provider},
     signers::{LocalWallet, Signer},
-    types::{Address, BlockNumber::Latest, Bytes, ValueOrArray::Value, U256},
+    types::{Address, BlockNumber::Latest, Bytes, ValueOrArray::Value, H256, U256},
 };
 
 use crate::{
@@ -51,6 +51,7 @@ impl Arena {
         let events = tournament
             .new_inner_tournament_filter()
             .address(Value(tournament_address))
+            .topic1(H256::from_slice(match_id.hash().slice()))
             .from_block(0)
             .to_block(Latest)
             .query()
@@ -152,6 +153,17 @@ impl Arena {
         states: HashMap<Address, TournamentState>,
     ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament_state.address, self.client.clone());
+        let mut state = tournament_state.clone();
+
+        (
+            state.max_level,
+            state.level,
+            state.log2_stride,
+            state.log2_stride_count,
+        ) = tournament.tournament_level_constants().await?;
+
+        assert!(state.level < state.max_level, "level out of bounds");
+
         let created_matches = self.created_matches(tournament_state.address).await?;
         let commitments_joined = self.joined_commitments(tournament_state.address).await?;
 
@@ -171,7 +183,7 @@ impl Arena {
 
             let running_leaf_position = m.running_leaf_position.as_u64();
             let base = tournament_state.base_big_cycle;
-            let step = 1 << constants::LOG2_STEP[(tournament_state.level - 1) as usize];
+            let step = 1 << state.log2_stride;
             let leaf_cycle = base + (step * running_leaf_position);
             let base_big_cycle = leaf_cycle >> constants::LOG2_UARCH_SPAN;
             let prev_states = new_states.clone();
@@ -218,7 +230,6 @@ impl Arena {
             }
         };
 
-        let mut state = tournament_state.clone();
         state.winner = winner;
         state.matches = matches;
         state.commitment_states = commitment_states;
@@ -242,7 +253,7 @@ impl Arena {
         if let Some(inner) = created_tournament {
             let inner_tournament = TournamentState::new_inner(
                 inner.new_tournament_address,
-                tournament_level - 1,
+                tournament_level,
                 match_state.base_big_cycle,
                 match_state.tournament_address,
             );
@@ -646,6 +657,9 @@ pub struct TournamentState {
     pub address: Address,
     pub base_big_cycle: u64,
     pub level: u64,
+    pub log2_stride: u64,
+    pub log2_stride_count: u64,
+    pub max_level: u64,
     pub parent: Option<Address>,
     pub commitment_states: HashMap<Digest, CommitmentState>,
     pub matches: Vec<MatchState>,
@@ -657,7 +671,10 @@ impl TournamentState {
         TournamentState {
             address,
             base_big_cycle: 0,
-            level: constants::LEVELS,
+            level: 0,
+            log2_stride: 0,
+            log2_stride_count: 0,
+            max_level: 0,
             parent: None,
             commitment_states: HashMap::new(),
             matches: vec![],
@@ -669,7 +686,10 @@ impl TournamentState {
         TournamentState {
             address,
             base_big_cycle,
-            level,
+            level: level + 1,
+            log2_stride: 0,
+            log2_stride_count: 0,
+            max_level: 0,
             parent: Some(parent),
             commitment_states: HashMap::new(),
             matches: vec![],

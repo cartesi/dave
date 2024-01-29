@@ -11,14 +11,14 @@ function CommitmentBuilder:new(initial_hash, seed, second_state)
     return c
 end
 
-function CommitmentBuilder:build(_, level)
+function CommitmentBuilder:build(_, level, log2_stride, log2_stride_count)
     local builder = MerkleBuilder:new()
     local seed = self.seed and self.seed or Hash.zero
-    if consts.log2step[consts.levels - level + 1] == 0 and self.second_state then
+    if log2_stride == 0 and self.second_state then
         builder:add(self.second_state)
-        builder:add(seed, (1 << consts.heights[consts.levels - level + 1]) - 1)
+        builder:add(seed, (1 << log2_stride_count) - 1)
     else
-        builder:add(seed, 1 << consts.heights[consts.levels - level + 1])
+        builder:add(seed, 1 << log2_stride_count)
     end
     -- local commitment = Hash.zero:iterated_merkle(consts.heights[level])
     return builder:build(self.initial_hash)
