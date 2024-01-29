@@ -106,16 +106,12 @@ function CommitmentBuilder:new(machine_path)
     return c
 end
 
-function CommitmentBuilder:build(base_cycle, level)
-    assert(level <= consts.levels)
+function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count)
     if not self.commitments[level] then
         self.commitments[level] = {}
     elseif self.commitments[level][base_cycle] then
         return self.commitments[level][base_cycle]
     end
-
-    local l = consts.levels - level + 1
-    local log2_stride, log2_stride_count = consts.log2step[l], consts.heights[l]
 
     local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path)
     self.commitments[level][base_cycle] = commitment

@@ -44,6 +44,10 @@ impl Digest {
         Self::from_digest(&data)
     }
 
+    pub fn slice(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
     /// Converts the [Digest] to a hexadecimal string.
     pub fn to_hex(&self) -> String {
         hex::encode(self.data)

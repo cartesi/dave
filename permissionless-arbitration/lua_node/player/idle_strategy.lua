@@ -44,7 +44,9 @@ function IdleStrategy:_react_tournament(_, tournament)
     helper.log(self.sender.index, "Enter tournament at address: " .. tournament.address)
     local commitment = self.commitment_builder:build(
         tournament.base_big_cycle,
-        tournament.level
+        tournament.level,
+        tournament.log2_stride,
+        tournament.log2_stride_count
     )
 
     local tournament_winner = tournament.tournament_winner
