@@ -66,7 +66,12 @@ impl<A: ArenaSender> Player<A> {
             .entry(tournament_state.address)
             .or_insert(
                 self.commitment_builder
-                    .build_commitment(tournament_state.base_big_cycle, tournament_state.level)
+                    .build_commitment(
+                        tournament_state.base_big_cycle,
+                        tournament_state.level,
+                        tournament_state.log2_stride,
+                        tournament_state.log2_stride_count,
+                    )
                     .await?,
             )
             .clone();
@@ -136,6 +141,7 @@ impl<A: ArenaSender> Player<A> {
                         &commitment,
                         new_commitments,
                         tournament_state.level,
+                        tournament_state.max_level,
                         tournament_states,
                     )
                     .await?;
@@ -176,6 +182,7 @@ impl<A: ArenaSender> Player<A> {
         commitment: &MachineCommitment,
         commitments: HashMap<Address, MachineCommitment>,
         tournament_level: u64,
+        tournament_max_level: u64,
         tournament_states: HashMap<Address, TournamentState>,
     ) -> Result<(), Box<dyn Error>> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
@@ -185,12 +192,18 @@ impl<A: ArenaSender> Player<A> {
                 commitment,
                 commitments,
                 tournament_level,
+                tournament_max_level,
                 tournament_states,
             )
             .await
         } else if match_state.current_height == 1 {
-            self.react_unsealed_match(match_state, commitment, tournament_level)
-                .await
+            self.react_unsealed_match(
+                match_state,
+                commitment,
+                tournament_level,
+                tournament_max_level,
+            )
+            .await
         } else {
             self.react_running_match(match_state, commitment, tournament_level)
                 .await
@@ -204,9 +217,10 @@ impl<A: ArenaSender> Player<A> {
         commitment: &MachineCommitment,
         commitments: HashMap<Address, MachineCommitment>,
         tournament_level: u64,
+        tournament_max_level: u64,
         tournament_states: HashMap<Address, TournamentState>,
     ) -> Result<(), Box<dyn Error>> {
-        if tournament_level == 1 {
+        if tournament_level == (tournament_max_level - 1) {
             let (left, right) = commitment.merkle.root_children();
 
             let finished = match_state.other_parent.is_zeroed();
@@ -257,6 +271,7 @@ impl<A: ArenaSender> Player<A> {
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,
+        tournament_max_level: u64,
     ) -> Result<(), Box<dyn Error>> {
         let (left, right) =
             if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
@@ -273,7 +288,7 @@ impl<A: ArenaSender> Player<A> {
                 .prove_leaf(match_state.running_leaf_position)
         };
 
-        if tournament_level == 1 {
+        if tournament_level == (tournament_max_level - 1) {
             info!(
                 "seal leaf match in tournament {} of level {} for commitment {}",
                 match_state.tournament_address,
