@@ -273,7 +273,12 @@ abstract contract Tournament {
     function tournamentLevelConstants()
         external
         view
-        returns (uint64 _max_level, uint64 _level, uint64 _log2step, uint64 _height)
+        returns (
+            uint64 _max_level,
+            uint64 _level,
+            uint64 _log2step,
+            uint64 _height
+        )
     {
         _max_level = ArbitrationConstants.LEVELS;
         _level = level;
