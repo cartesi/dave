@@ -1,13 +1,23 @@
 # Dave Compute Node
 
-## Run example
+## Build test image
 
 ```
-docker build -t cartesi/dave-compute:dev -f Dockerfile.compute ../ && docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/simple-program" cartesi/dave-compute:dev
+docker build -t cartesi/dave-compute:test -f Dockerfile.compute.test ../
 ```
 
-## Run debootstraps
+## Run simple test
+
+Requires image built from [previous section]().
 
 ```
-docker build -t cartesi/dave-compute-debootstrap:dev -f Dockerfile.compute.debootstrap ../ && docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/debootstrap-machine-sparsed" cartesi/dave-compute-debootstrap:dev
+docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/simple-program" cartesi/dave-compute:test
+```
+
+## Run stress test
+
+Requires image built from [previous section]().
+
+```
+docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/debootstrap-machine-sparsed" cartesi/dave-compute:test
 ```

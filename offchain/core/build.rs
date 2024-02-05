@@ -69,7 +69,7 @@ fn generate_contract_bidings() -> Result<(), Box<dyn std::error::Error>> {
         });
 
     // Tell Cargo that if a source file changes, to rerun this build script.
-    project.rerun_if_sources_changed();
+    println!("cargo:rerun-if-changed={}", contract_root_path.display());
 
     Ok(())
 }
