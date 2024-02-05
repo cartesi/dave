@@ -37,6 +37,15 @@ RUN apt-get update && \
 RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
     tar -zx -C /usr/local/bin
 
+# generate debootstrap machine
+# RUN curl -sSL https://web3.link/debootstrap-machine-sparsed.tar.gz | \
+#     tar -zx -C /root/permissionless-arbitration/lua_node/program
+
+WORKDIR /root/permissionless-arbitration/lua_node/program
+COPY ./permissionless-arbitration/measure_constants/program/debootstrap-machine-sparsed.tar.gz ./debootstrap-machine-sparsed.tar.gz
+RUN tar -zxf ./debootstrap-machine-sparsed.tar.gz
+
+# generate simple machine
 COPY . /root
 WORKDIR /root/permissionless-arbitration/lua_node/program
 RUN ./gen_machine_simple.sh
@@ -44,4 +53,4 @@ RUN ./gen_machine_simple.sh
 COPY --from=builder /app/offchain/target/release/dave-compute /root/target/release/dave-compute
 WORKDIR /root
 
-ENTRYPOINT [ "/root/offchain/compute-entrypoint.sh" ]
+ENTRYPOINT [ "/root/offchain/compute-test-entrypoint.sh" ]
