@@ -1,5 +1,8 @@
 #![doc = include_str!("../README.md")]
 
+#[macro_use]
+extern crate num_derive;
+
 use std::path::Path;
 
 pub mod configuration;

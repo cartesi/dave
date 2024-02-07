@@ -263,7 +263,7 @@ pub struct RollupConfig {
     pub tx_buffer: MemoryRangeConfig,
 }
 
-impl From<RollupConfig> for cartesi_machine_sys::cm_rollup_config {
+impl From<RollupConfig> for cartesi_machine_sys::cm_cmio_config {
     fn from(config: RollupConfig) -> Self {
         Self {
             has_value: config.has_value,
@@ -273,8 +273,8 @@ impl From<RollupConfig> for cartesi_machine_sys::cm_rollup_config {
     }
 }
 
-impl From<cartesi_machine_sys::cm_rollup_config> for RollupConfig {
-    fn from(config: cartesi_machine_sys::cm_rollup_config) -> Self {
+impl From<cartesi_machine_sys::cm_cmio_config> for RollupConfig {
+    fn from(config: cartesi_machine_sys::cm_cmio_config) -> Self {
         Self {
             has_value: config.has_value,
             rx_buffer: config.rx_buffer.into(),
@@ -404,7 +404,7 @@ impl From<MachineConfig> for OwnedMachineConfig {
             tlb: config.tlb.into(),
             clint: config.clint.into(),
             htif: config.htif.into(),
-            rollup: config.rollup.into(),
+            cmio: config.rollup.into(),
             uarch: config.uarch.into(),
         };
 
@@ -430,7 +430,7 @@ impl From<cartesi_machine_sys::cm_machine_config> for MachineConfig {
             tlb: value.tlb.into(),
             clint: value.clint.into(),
             htif: value.htif.into(),
-            rollup: value.rollup.into(),
+            rollup: value.cmio.into(),
             uarch: value.uarch.into(),
         }
     }
@@ -464,8 +464,8 @@ impl Drop for OwnedMachineConfig {
         free_cstr(self.0.dtb.entrypoint);
         free_cstr(self.0.dtb.image_filename);
         free_cstr(self.0.tlb.image_filename);
-        free_cstr(self.0.rollup.rx_buffer.image_filename);
-        free_cstr(self.0.rollup.tx_buffer.image_filename);
+        free_cstr(self.0.cmio.rx_buffer.image_filename);
+        free_cstr(self.0.cmio.tx_buffer.image_filename);
         free_cstr(self.0.uarch.ram.image_filename);
 
         unsafe {

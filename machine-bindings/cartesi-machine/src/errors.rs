@@ -3,11 +3,12 @@
 use std::{ffi::c_char, fmt::Display};
 
 use cartesi_machine_sys::*;
+use num_traits::FromPrimitive;
 
 use crate::ffi::from_cstr;
 
 /// Error codes returned from machine emulator C API
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, ToPrimitive)]
 pub enum ErrorCode {
     InvalidArgument = CM_ERROR_CM_ERROR_INVALID_ARGUMENT as isize,
     DomainError = CM_ERROR_CM_ERROR_DOMAIN_ERROR as isize,
@@ -77,7 +78,7 @@ impl ErrorCollector {
 
     /// Collect error from C API
     pub fn collect(self, code: i32) -> Result<(), MachineError> {
-        if code == 0 {
+        if code == CM_ERROR_CM_ERROR_OK as i32 {
             Ok(())
         } else {
             let message = from_cstr(self.ptr);
@@ -85,7 +86,7 @@ impl ErrorCollector {
             unsafe { cartesi_machine_sys::cm_delete_cstring(self.ptr) };
 
             Err(MachineError {
-                code: unsafe { std::mem::transmute(code as u8) },
+                code: FromPrimitive::from_i32(code).expect("cannot transform error code to enum"),
                 message
             })
         }
