@@ -3,7 +3,7 @@ package.path = package.path .. ";/opt/cartesi/lib/lua/5.4/?.lua"
 package.path = package.path .. ";./lua_node/?.lua"
 package.cpath = package.cpath .. ";/opt/cartesi/lib/lua/5.4/?.so"
 
-local machine_path = "lua_node/program/simple-program"
+local machine_path = (os.getenv ("MACHINE_PATH"))
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
 local FF_TIME = 30
 -- max consecutive iterations of all players idling before the blockchain fastforwards
@@ -22,25 +22,25 @@ local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
 local Machine = require "computation.machine"
 
-print "Hello, world!"
-os.execute "cd lua_node/program && ./gen_machine_simple.sh"
+print "Hello from Dave lua prototype!"
 
 local m = Machine:new_from_path(machine_path)
 local initial_hash = m:state().root_hash
 local blockchain = Blockchain:new()
 time.sleep(NODE_DELAY)
-local contract = blockchain:deploy_contract(initial_hash)
+local contract = blockchain_constants.root_tournament, blockchain:default_account()
 
 -- add more player instances here
 local cmds = {
-    string.format([[sh -c "echo $$ ; exec ./lua_node/player/honest_player.lua %d %s %s | tee honest.log"]], 1, contract,
+    [[sh -c "cd contracts && ./deploy_anvil.sh"]],
+    string.format([[sh -c "echo $$ ; exec ./lua_node/player/honest_player.lua %d %s %s | tee honest.log"]], 2, contract,
         machine_path),
-    string.format([[sh -c "echo $$ ; exec ./lua_node/player/dishonest_player.lua %d %s %s %s | tee dishonest.log"]], 2,
+    string.format([[sh -c "echo $$ ; exec ./lua_node/player/dishonest_player.lua %d %s %s %s | tee dishonest.log"]], 3,
         contract, machine_path, initial_hash),
     -- enable below for two extra idle players
-    -- string.format([[sh -c "echo $$ ; exec ./lua_node/player/idle_player.lua %d %s %s %s | tee idle_1.log"]], 3,
+    -- string.format([[sh -c "echo $$ ; exec ./lua_node/player/idle_player.lua %d %s %s %s | tee idle_1.log"]], 4,
     --     contract, machine_path, initial_hash),
-    -- string.format([[sh -c "echo $$ ; exec ./lua_node/player/idle_player.lua %d %s %s %s | tee idle_2.log"]], 4,
+    -- string.format([[sh -c "echo $$ ; exec ./lua_node/player/idle_player.lua %d %s %s %s | tee idle_2.log"]], 5,
     --     contract, machine_path, initial_hash)
 }
 local pid_reader = {}
@@ -49,8 +49,10 @@ local pid_player = {}
 for i, cmd in ipairs(cmds) do
     local reader = io.popen(cmd)
     local pid = assert(reader):read()
-    pid_reader[pid] = reader
-    pid_player[pid] = i
+    if i > 1 then
+        pid_reader[pid] = reader
+        pid_player[pid] = i
+    end
     time.sleep(PLAYER_DELAY)
 end
 

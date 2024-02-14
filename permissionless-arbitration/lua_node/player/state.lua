@@ -11,7 +11,10 @@ function State:new(root_tournament_address)
         root_tournament = {
             base_big_cycle = 0,
             address = root_tournament_address,
-            level = constants.levels,
+            max_level = false,
+            level = false,
+            log2_stride = false,
+            log2_stride_count = false,
             parent = false,
             commitments = {},
             matches = {},
@@ -29,8 +32,17 @@ function State:fetch()
 end
 
 function State:_fetch_tournament(tournament)
+    local consts = self.reader:read_constants(tournament.address)
+    tournament.max_level = consts.max_level
+    tournament.level = consts.level
+    tournament.log2_stride = consts.log2_step
+    tournament.log2_stride_count = consts.height
+
+    assert(tournament.level < tournament.max_level)
+
     local matches =  self:_matches(tournament)
     local commitments = self.reader:read_commitment_joined(tournament.address)
+
 
     for _, log in ipairs(commitments) do
         local root = log.root
@@ -57,14 +69,10 @@ end
 function State:_fetch_match(match)
     if match.current_height == 0 then
         -- match sealed
-        if match.tournament.level == 1 then
+        if match.tournament.level == (match.tournament.max_level - 1) then
 
             match.finished =
                 self.reader:match(match.tournament.address, match.match_id_hash)[1]:is_zero()
-
-            if match.finished then
-                match.delay = tonumber(self.reader:maximum_delay(match.tournament.address)[1])
-            end
         else
             local address = self.reader:read_tournament_created(
                 match.tournament.address,
@@ -73,7 +81,7 @@ function State:_fetch_match(match)
 
             local new_tournament = {}
             new_tournament.address = address
-            new_tournament.level = match.tournament.level - 1
+            new_tournament.level = match.tournament.level + 1
             new_tournament.parent = match.tournament
             new_tournament.base_big_cycle = match.base_big_cycle
             new_tournament.commitments = {}
@@ -102,7 +110,7 @@ function State:_matches(tournament)
 
             local level = tournament.level
             local base = bint(tournament.base_big_cycle)
-            local step = bint(1) << constants.log2step[level]
+            local step = bint(1) << tournament.log2_stride
             match.leaf_cycle = base + (step * match.running_leaf)
             match.base_big_cycle = (match.leaf_cycle >> constants.log2_uarch_span):touinteger()
         end

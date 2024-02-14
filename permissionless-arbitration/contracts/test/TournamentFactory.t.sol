@@ -33,7 +33,7 @@ contract TournamentFactoryTest is Util, Test {
             address(factory.instantiateSingleLevel(Util.ONE_STATE))
         );
 
-        (uint64 _level, uint64 _log2step, uint64 _height) =
+        (uint64 _max_level, uint64 _level, uint64 _log2step, uint64 _height) =
             rootTournament.tournamentLevelConstants();
 
         assertEq(_level, 0, "level should be 0");
@@ -49,7 +49,8 @@ contract TournamentFactoryTest is Util, Test {
         rootTournament =
             RootTournament(address(factory.instantiateTop(Util.ONE_STATE)));
 
-        (_level, _log2step, _height) = rootTournament.tournamentLevelConstants();
+        (_max_level, _level, _log2step, _height) =
+            rootTournament.tournamentLevelConstants();
 
         assertEq(_level, 0, "level should be 0");
         assertEq(

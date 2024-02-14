@@ -291,6 +291,22 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     return ret
 end
 
+function Reader:read_constants(tournament_address)
+    local sig = "tournamentLevelConstants()(uint64,uint64,uint64,uint64)"
+
+    local call_ret = self:_call(tournament_address, sig, { })
+    assert(#call_ret == 4)
+
+    local ret = {
+        max_level = tonumber(call_ret[1]),
+        level = tonumber(call_ret[2]),
+        log2_step = tonumber(call_ret[3]),
+        height = tonumber(call_ret[4]),
+    }
+
+    return ret
+end
+
 function Reader:read_tournament_created(tournament_address, match_id_hash)
     local sig = "newInnerTournament(bytes32,address)"
     local data_sig = "(address)"
@@ -333,13 +349,6 @@ function Reader:root_tournament_winner(address)
     local ret = self:_call(address, sig, {})
     ret[2] = Hash:from_digest_hex(ret[2])
     ret[3] = Hash:from_digest_hex(ret[3])
-
-    return ret
-end
-
-function Reader:maximum_delay(address)
-    local sig = "maximumEnforceableDelay()(uint64)"
-    local ret = self:_call(address, sig, {})
 
     return ret
 end

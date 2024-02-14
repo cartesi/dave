@@ -36,5 +36,4 @@ while true do
     else
         helper.rm_player_idle(player_index)
     end
-    time.sleep(1)
 end

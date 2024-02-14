@@ -32,5 +32,5 @@ To add more players of different kinds, you can edit the [`entrypoint.lua`](entr
 To run the full example, execute the following command from the current path path (_i.e._ [`permissionless-arbitration/lua_node`](.)):
 
 ```
-docker build -t dave:latest -f Dockerfile ../../ && docker run --rm dave:latest
+docker build -t nxn_playground:latest -f Dockerfile ../../ && docker run --rm --env MACHINE_PATH="/app/lua_node/program/simple-program" nxn_playground:latest
 ```
