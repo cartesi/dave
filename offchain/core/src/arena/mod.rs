@@ -1,9 +1,15 @@
-//! This module defines the struct [Reader] that is responsible for the reading the states
-//! of tournaments; and the struct [Sender] that is responsible for the sending transactions
+//! This module defines the struct [StateReader] that is responsible for the reading the states
+//! of tournaments; and the struct [EthArenaSender] that is responsible for the sending transactions
 //! to tournaments
+
+mod arena;
+pub use arena::*;
 
 mod config;
 pub use config::*;
 
-mod arena;
-pub use arena::*;
+mod reader;
+pub use reader::*;
+
+mod sender;
+pub use sender::*;

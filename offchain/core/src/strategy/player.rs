@@ -16,24 +16,21 @@ pub enum PlayerTournamentResult {
     TournamentLost,
 }
 
-pub struct Player<A: ArenaSender> {
-    arena_sender: A,
+pub struct Player {
     machine_factory: MachineFactory,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournamet: Address,
 }
 
-impl<A: ArenaSender> Player<A> {
+impl Player {
     pub fn new(
-        arena_sender: A,
         machine_factory: MachineFactory,
         machine_path: String,
         commitment_builder: CachingMachineCommitmentBuilder,
         root_tournamet: Address,
     ) -> Self {
         Self {
-            arena_sender,
             machine_factory,
             machine_path,
             commitment_builder,
@@ -41,17 +38,24 @@ impl<A: ArenaSender> Player<A> {
         }
     }
 
-    pub async fn react(
+    pub async fn react<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         tournament_states: TournamentStateMap,
     ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
-        self.react_tournament(HashMap::new(), self.root_tournamet, tournament_states)
-            .await
+        self.react_tournament(
+            arena_sender,
+            HashMap::new(),
+            self.root_tournamet,
+            tournament_states,
+        )
+        .await
     }
 
     #[async_recursion]
-    async fn react_tournament(
+    async fn react_tournament<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         commitments: HashMap<Address, MachineCommitment>,
         tournament_address: Address,
         tournament_states: TournamentStateMap,
@@ -108,7 +112,7 @@ impl<A: ArenaSender> Player<A> {
                             commitment.merkle.root_hash(),
                         );
                         let (left, right) = old_commitment.merkle.root_children();
-                        self.arena_sender
+                        arena_sender
                             .win_inner_match(
                                 tournament_state
                                     .parent
@@ -133,6 +137,7 @@ impl<A: ArenaSender> Player<A> {
                 info!("{}", c.clock);
                 if let Some(m) = c.latest_match {
                     self.react_match(
+                        arena_sender,
                         &tournament_state
                             .matches
                             .get(m)
@@ -148,7 +153,7 @@ impl<A: ArenaSender> Player<A> {
                 }
             }
             None => {
-                self.join_tournament_if_needed(tournament_state, &commitment)
+                self.join_tournament_if_needed(arena_sender, tournament_state, &commitment)
                     .await?;
             }
         }
@@ -156,8 +161,9 @@ impl<A: ArenaSender> Player<A> {
         Ok(None)
     }
 
-    async fn join_tournament_if_needed(
+    async fn join_tournament_if_needed<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
     ) -> Result<(), Box<dyn Error>> {
@@ -170,14 +176,15 @@ impl<A: ArenaSender> Player<A> {
             tournament_state.level,
             commitment.merkle.root_hash(),
         );
-        self.arena_sender
+        arena_sender
             .join_tournament(tournament_state.address, last, proof, left, right)
             .await
     }
 
     #[async_recursion]
-    async fn react_match(
+    async fn react_match<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
         commitment: &MachineCommitment,
         commitments: HashMap<Address, MachineCommitment>,
@@ -188,6 +195,7 @@ impl<A: ArenaSender> Player<A> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
         if match_state.current_height == 0 {
             self.react_sealed_match(
+                arena_sender,
                 match_state,
                 commitment,
                 commitments,
@@ -198,6 +206,7 @@ impl<A: ArenaSender> Player<A> {
             .await
         } else if match_state.current_height == 1 {
             self.react_unsealed_match(
+                arena_sender,
                 match_state,
                 commitment,
                 tournament_level,
@@ -205,14 +214,15 @@ impl<A: ArenaSender> Player<A> {
             )
             .await
         } else {
-            self.react_running_match(match_state, commitment, tournament_level)
+            self.react_running_match(arena_sender, match_state, commitment, tournament_level)
                 .await
         }
     }
 
     #[async_recursion]
-    async fn react_sealed_match(
+    async fn react_sealed_match<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
         commitment: &MachineCommitment,
         commitments: HashMap<Address, MachineCommitment>,
@@ -243,7 +253,7 @@ impl<A: ArenaSender> Player<A> {
                 tournament_level,
                 commitment.merkle.root_hash(),
             );
-            self.arena_sender
+            arena_sender
                 .win_leaf_match(
                     match_state.tournament_address,
                     match_state.id,
@@ -254,6 +264,7 @@ impl<A: ArenaSender> Player<A> {
                 .await?;
         } else {
             self.react_tournament(
+                arena_sender,
                 commitments,
                 match_state
                     .inner_tournament
@@ -266,8 +277,9 @@ impl<A: ArenaSender> Player<A> {
         Ok(())
     }
 
-    async fn react_unsealed_match(
+    async fn react_unsealed_match<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,
@@ -295,7 +307,7 @@ impl<A: ArenaSender> Player<A> {
                 tournament_level,
                 commitment.merkle.root_hash(),
             );
-            self.arena_sender
+            arena_sender
                 .seal_leaf_match(
                     match_state.tournament_address,
                     match_state.id,
@@ -312,7 +324,7 @@ impl<A: ArenaSender> Player<A> {
                 tournament_level,
                 commitment.merkle.root_hash(),
             );
-            self.arena_sender
+            arena_sender
                 .seal_inner_match(
                     match_state.tournament_address,
                     match_state.id,
@@ -327,8 +339,9 @@ impl<A: ArenaSender> Player<A> {
         Ok(())
     }
 
-    async fn react_running_match(
+    async fn react_running_match<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,
@@ -359,7 +372,7 @@ impl<A: ArenaSender> Player<A> {
             tournament_level,
             commitment.merkle.root_hash(),
         );
-        self.arena_sender
+        arena_sender
             .advance_match(
                 match_state.tournament_address,
                 match_state.id,
