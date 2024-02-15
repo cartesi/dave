@@ -5,7 +5,7 @@ use async_recursion::async_recursion;
 use ethers::types::Address;
 
 use crate::{
-    arena::{ArenaSender, MatchState, TournamentState, TournamentWinner},
+    arena::{ArenaSender, MatchState, TournamentState, TournamentStateMap, TournamentWinner},
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineFactory},
     merkle::MerkleProof,
 };
@@ -43,7 +43,7 @@ impl<A: ArenaSender> Player<A> {
 
     pub async fn react(
         &mut self,
-        tournament_states: HashMap<Address, TournamentState>,
+        tournament_states: TournamentStateMap,
     ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
         self.react_tournament(HashMap::new(), self.root_tournamet, tournament_states)
             .await
@@ -54,7 +54,7 @@ impl<A: ArenaSender> Player<A> {
         &mut self,
         commitments: HashMap<Address, MachineCommitment>,
         tournament_address: Address,
-        tournament_states: HashMap<Address, TournamentState>,
+        tournament_states: TournamentStateMap,
     ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
         info!("Enter tournament at address: {}", tournament_address);
         let tournament_state = tournament_states
@@ -183,7 +183,7 @@ impl<A: ArenaSender> Player<A> {
         commitments: HashMap<Address, MachineCommitment>,
         tournament_level: u64,
         tournament_max_level: u64,
-        tournament_states: HashMap<Address, TournamentState>,
+        tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
         if match_state.current_height == 0 {
@@ -218,7 +218,7 @@ impl<A: ArenaSender> Player<A> {
         commitments: HashMap<Address, MachineCommitment>,
         tournament_level: u64,
         tournament_max_level: u64,
-        tournament_states: HashMap<Address, TournamentState>,
+        tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
         if tournament_level == (tournament_max_level - 1) {
             let (left, right) = commitment.merkle.root_children();

@@ -1,10 +1,10 @@
-use std::{collections::HashMap, error::Error};
+use std::error::Error;
 
 use ::log::info;
 use async_recursion::async_recursion;
 use ethers::types::Address;
 
-use crate::arena::{ArenaSender, MatchState, TournamentState};
+use crate::arena::{ArenaSender, MatchState, TournamentStateMap};
 
 pub struct GarbageCollector<A: ArenaSender> {
     arena_sender: A,
@@ -21,7 +21,7 @@ impl<A: ArenaSender> GarbageCollector<A> {
 
     pub async fn react(
         &mut self,
-        tournament_states: HashMap<Address, TournamentState>,
+        tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
         self.react_tournament(self.root_tournamet, tournament_states)
             .await
@@ -31,7 +31,7 @@ impl<A: ArenaSender> GarbageCollector<A> {
     async fn react_tournament(
         &mut self,
         tournament_address: Address,
-        tournament_states: HashMap<Address, TournamentState>,
+        tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
         info!("Enter tournament at address: {}", tournament_address);
         let tournament_state = tournament_states
@@ -75,7 +75,7 @@ impl<A: ArenaSender> GarbageCollector<A> {
     async fn react_match(
         &mut self,
         match_state: &MatchState,
-        tournament_states: HashMap<Address, TournamentState>,
+        tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
         if let Some(inner_tournament) = match_state.inner_tournament {

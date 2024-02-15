@@ -28,6 +28,8 @@ pub struct Arena {
     client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
 }
 
+pub type TournamentStateMap = HashMap<Address, TournamentState>;
+
 impl Arena {
     pub fn new(config: ArenaConfig) -> Result<Self, Box<dyn Error>> {
         let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
@@ -141,7 +143,7 @@ impl Arena {
     pub async fn fetch_from_root(
         &self,
         root_tournament: Address,
-    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>> {
+    ) -> Result<TournamentStateMap, Box<dyn Error>> {
         self.fetch_tournament(TournamentState::new_root(root_tournament), HashMap::new())
             .await
     }
@@ -150,8 +152,8 @@ impl Arena {
     async fn fetch_tournament(
         &self,
         tournament_state: TournamentState,
-        states: HashMap<Address, TournamentState>,
-    ) -> Result<HashMap<Address, TournamentState>, Box<dyn Error>> {
+        states: TournamentStateMap,
+    ) -> Result<TournamentStateMap, Box<dyn Error>> {
         let tournament = tournament::Tournament::new(tournament_state.address, self.client.clone());
         let mut state = tournament_state.clone();
 
@@ -243,9 +245,9 @@ impl Arena {
     async fn fetch_match(
         &self,
         match_state: MatchState,
-        states: HashMap<Address, TournamentState>,
+        states: TournamentStateMap,
         tournament_level: u64,
-    ) -> Result<(MatchState, HashMap<Address, TournamentState>), Box<dyn Error>> {
+    ) -> Result<(MatchState, TournamentStateMap), Box<dyn Error>> {
         let mut state = match_state.clone();
         let created_tournament = self
             .created_tournament(match_state.tournament_address, match_state.id)
