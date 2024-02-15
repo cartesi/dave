@@ -8,7 +8,7 @@ docker build -t cartesi/dave-compute:test -f Dockerfile.compute.test ../
 
 ## Run simple test
 
-Requires image built from [previous section]().
+Requires image built from [previous section](#build-test-image).
 
 ```
 docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/simple-program" cartesi/dave-compute:test
@@ -16,7 +16,7 @@ docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/pr
 
 ## Run stress test
 
-Requires image built from [previous section]().
+Requires image built from [previous section](#build-test-image).
 
 ```
 docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/debootstrap-machine-sparsed" cartesi/dave-compute:test
