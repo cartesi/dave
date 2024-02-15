@@ -6,30 +6,28 @@ use ethers::types::Address;
 
 use crate::arena::{ArenaSender, MatchState, TournamentStateMap};
 
-pub struct GarbageCollector<A: ArenaSender> {
-    arena_sender: A,
+pub struct GarbageCollector {
     root_tournamet: Address,
 }
 
-impl<A: ArenaSender> GarbageCollector<A> {
-    pub fn new(arena_sender: A, root_tournamet: Address) -> Self {
-        Self {
-            arena_sender,
-            root_tournamet,
-        }
+impl GarbageCollector {
+    pub fn new(root_tournamet: Address) -> Self {
+        Self { root_tournamet }
     }
 
-    pub async fn react(
+    pub async fn react<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
-        self.react_tournament(self.root_tournamet, tournament_states)
+        self.react_tournament(arena_sender, self.root_tournamet, tournament_states)
             .await
     }
 
     #[async_recursion]
-    async fn react_tournament(
+    async fn react_tournament<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         tournament_address: Address,
         tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
@@ -39,7 +37,8 @@ impl<A: ArenaSender> GarbageCollector<A> {
             .expect("tournament state not found");
 
         for m in tournament_state.matches.clone() {
-            self.react_match(&m, tournament_states.clone()).await?;
+            self.react_match(arena_sender, &m, tournament_states.clone())
+                .await?;
 
             let status_1 = tournament_state
                 .commitment_states
@@ -62,7 +61,7 @@ impl<A: ArenaSender> GarbageCollector<A> {
                     tournament_state.level
                 );
 
-                self.arena_sender
+                arena_sender
                     .eliminate_match(tournament_address, m.id)
                     .await
                     .expect("fail to eliminate match");
@@ -72,15 +71,16 @@ impl<A: ArenaSender> GarbageCollector<A> {
     }
 
     #[async_recursion]
-    async fn react_match(
+    async fn react_match<'a>(
         &mut self,
+        arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
         tournament_states: TournamentStateMap,
     ) -> Result<(), Box<dyn Error>> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
         if let Some(inner_tournament) = match_state.inner_tournament {
             return self
-                .react_tournament(inner_tournament, tournament_states)
+                .react_tournament(arena_sender, inner_tournament, tournament_states)
                 .await;
         }
 
