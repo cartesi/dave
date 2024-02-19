@@ -23,24 +23,25 @@ library ArbitrationConstants {
             + Time.Duration.unwrap(COMMITMENT_EFFORT)
     );
 
-    // Dummy
-    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(0);
+    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(60 * 40);
     Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(60 * 5);
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(60 * 2);
 
     // 3-level tournament
-    uint64 constant LEVELS = 3;
+    uint64 constant LEVELS = 4;
     // uint64 constant LOG2_MAX_MCYCLE = 63;
 
     /// @return log2step gap of each leaf in the tournament[level]
     function log2step(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [uint64(31), uint64(16), uint64(0)];
+        uint64[LEVELS] memory arr =
+            [uint64(49), uint64(35), uint64(19), uint64(0)];
         return arr[level];
     }
 
     /// @return height of the tournament[level] tree which is calculated by subtracting the log2step[level] from the log2step[level - 1]
     function height(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [uint64(32), uint64(15), uint64(16)];
+        uint64[LEVELS] memory arr =
+            [uint64(14), uint64(14), uint64(16), uint64(19)];
         return arr[level];
     }
 }
