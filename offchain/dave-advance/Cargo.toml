@@ -1,0 +1,18 @@
+[package]
+name = "dave-advance"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license-file.workspace = true
+readme.workspace = true
+repository.workspace = true
+
+[dependencies]
+ethers.workspace = true
+cartesi-machine = { path = "../../machine-bindings/cartesi-machine" }
+tokio = { workspace = true }
+base64 = "0.21.3"
+hex = "0.4.3"
+serde_json = "1.0.100"
