@@ -37,15 +37,12 @@ RUN apt-get update && \
 RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
     tar -zx -C /usr/local/bin
 
-# generate debootstrap machine
-# RUN curl -sSL https://web3.link/debootstrap-machine-sparsed.tar.gz | \
-#     tar -zx -C /root/permissionless-arbitration/lua_node/program
-
+# prepare debootstrap machine
 WORKDIR /root/permissionless-arbitration/lua_node/program
-COPY ./permissionless-arbitration/measure_constants/program/debootstrap-machine-sparsed.tar.gz ./debootstrap-machine-sparsed.tar.gz
-RUN tar -zxf ./debootstrap-machine-sparsed.tar.gz
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.1-rc-test/debootstrap-machine-sparsed.tar.gz | \
+    tar -zx -C /root/permissionless-arbitration/lua_node/program
 
-# generate simple machine
+# prepare simple machine
 COPY . /root
 WORKDIR /root/permissionless-arbitration/lua_node/program
 RUN ./gen_machine_simple.sh
