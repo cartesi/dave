@@ -32,6 +32,7 @@ contract Util {
     Tree.Node constant TWO_NODE = Tree.Node.wrap(bytes32(uint256(2)));
     Machine.Hash constant ONE_STATE = Machine.Hash.wrap(bytes32(uint256(1)));
     Machine.Hash constant TWO_STATE = Machine.Hash.wrap(bytes32(uint256(2)));
+    uint64 constant LOG2_MAX_HEIGHT = 63;
 
     // players' commitment node at different height
     // player 0, player 1, and player 2
@@ -39,9 +40,9 @@ contract Util {
     Machine.Hash[3] finalStates;
 
     constructor() {
-        playerNodes[0] = new Tree.Node[](ArbitrationConstants.height(0) + 1);
-        playerNodes[1] = new Tree.Node[](ArbitrationConstants.height(0) + 1);
-        playerNodes[2] = new Tree.Node[](ArbitrationConstants.height(0) + 1);
+        playerNodes[0] = new Tree.Node[](LOG2_MAX_HEIGHT + 1);
+        playerNodes[1] = new Tree.Node[](LOG2_MAX_HEIGHT + 1);
+        playerNodes[2] = new Tree.Node[](LOG2_MAX_HEIGHT + 1);
 
         playerNodes[0][0] = ONE_NODE;
         playerNodes[1][0] = TWO_NODE;
@@ -51,7 +52,7 @@ contract Util {
         finalStates[1] = TWO_STATE;
         finalStates[2] = TWO_STATE;
 
-        for (uint256 _i = 1; _i <= ArbitrationConstants.height(0); _i++) {
+        for (uint256 _i = 1; _i <= LOG2_MAX_HEIGHT; _i++) {
             // player 0 is all 1
             playerNodes[0][_i] =
                 playerNodes[0][_i - 1].join(playerNodes[0][_i - 1]);
