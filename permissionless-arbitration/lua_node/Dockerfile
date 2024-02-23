@@ -1,8 +1,8 @@
-FROM cartesi/machine-emulator:0.15.2
+FROM cartesi/machine-emulator:0.16.0
 
 USER 0
 RUN apt-get -y update; apt-get -y install curl git; apt-get install -y procps xxd
-RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
+RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly-5b7e4cb3c882b28f3c32ba580de27ce7381f415a/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
     tar -zx -C /usr/local/bin
 
 WORKDIR "/machine-emulator-sdk"
