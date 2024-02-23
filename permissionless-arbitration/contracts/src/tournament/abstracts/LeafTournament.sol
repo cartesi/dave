@@ -7,6 +7,7 @@ import "./Tournament.sol";
 import "../../Commitment.sol";
 
 import "step/ready_src/UArchStep.sol";
+import "step/ready_src/UArchReset.sol";
 
 /// @notice Leaf tournament is the one that seals leaf match
 abstract contract LeafTournament is Tournament {
@@ -112,24 +113,22 @@ abstract contract LeafTournament is Tournament {
     }
 
     // TODO: move to step repo
-    // TODO: add ureset
     function metaStep(
         bytes32 machineState,
         uint256 counter,
         bytes memory proofs
-    ) internal pure returns (bytes32) {
+    ) internal pure returns (bytes32 newMachineState) {
         // TODO: create a more convinient constructor.
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-        uint256 mask = (1 << 64) - 1;
+        uint256 mask = (1 << 16) - 1;
         if (counter & mask == mask) {
-            // reset
-            revert("RESET UNIMPLEMENTED");
+            UArchReset.reset(accessLogs);
+            newMachineState = accessLogs.currentRootHash;
         } else {
             UArchStep.step(accessLogs);
-            bytes32 newMachineState = accessLogs.currentRootHash;
-            return newMachineState;
+            newMachineState = accessLogs.currentRootHash;
         }
     }
 }
