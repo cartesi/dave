@@ -7,7 +7,7 @@ Furthermore, this node implements only compute (_i.e._ a one-shot computation, l
 Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
 You need a docker installation to run the Dave Lua node.
 
-## Run example
+## Run simple test
 
 This directory also has an example _verification tournament_ program, in which players compete against each other to prove the correct result of a computation.
 The computation binary is specified in the [`program`](program) directory.
@@ -33,4 +33,10 @@ To run the full example, execute the following command from the current path pat
 
 ```
 docker build -t dave:latest -f Dockerfile ../../ && docker run --rm --env MACHINE_PATH="/app/lua_node/program/simple-program" dave:latest
+```
+
+## Run stress test
+
+```
+docker build -t dave:latest -f Dockerfile -f Dockerfile ../../ && docker run --rm --env MACHINE_PATH="/app/lua_node/program/debootstrap-machine-sparsed" dave:latest -f Dockerfile
 ```
