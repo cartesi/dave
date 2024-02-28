@@ -74,7 +74,7 @@ local function run_big_instruction_in_uarch(machine)
 
   local uinstructions = machine:read_uarch_cycle()
   -- print("UINSTRUCTIONS", uinstructions)
-  machine:reset_uarch_state()
+  machine:reset_uarch()
   machine:get_root_hash()
   return uinstructions
 end
@@ -101,7 +101,7 @@ local function run_uarch_until_timeout()
     for _ = 1, iterations do
       local status = machine:run_uarch(1 << log2_uarch_span)
       assert(status == cartesi.BREAK_REASON_HALTED, "error: uarch not halted")
-      machine:reset_uarch_state()
+      machine:reset_uarch()
     end
     no_snapshot_time = stop_timer()
   end
