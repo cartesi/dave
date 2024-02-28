@@ -32,17 +32,16 @@ COPY additional /replicate/release/sbin/install-from-mtdblock1
 RUN chmod 755 /replicate/release/sbin/install-from-mtdblock1
 
 RUN find "/replicate/release" \
-	-newermt "@1695938400" \
-	-exec touch --no-dereference --date="@1695938400" '{}' +
+    -newermt "@1695938400" \
+    -exec touch --no-dereference --date="@1695938400" '{}' +
 RUN tar --sort=name -C /replicate/release -vcf - . > /replicate/release.tar
 RUN HOSTNAME=linux SOURCE_DATE_EPOCH=1695938400 genext2fs -z -v -v -f -a /replicate/release.tar -B 4096 /replicate/source.ext2 2>&1 > /tool-image.gen
 RUN ls -al /replicate/source.ext2
 RUN rm -rf /replicate/release /replicate/release.tar
 
-COPY --from=cartesi/linux-kernel:0.16.0 /opt/riscv/kernel/artifacts/linux-5.15.63-ctsi-2.bin /usr/share/cartesi-machine/images/linux.bin
-RUN wget -O /usr/share/cartesi-machine/images/rom.bin https://github.com/cartesi/machine-emulator-rom/releases/download/v0.16.0/rom-v0.16.0.bin
+COPY --from=cartesi/linux-kernel:0.19.1 /opt/riscv/kernel/artifacts/linux-6.5.9-ctsi-1-v0.19.1.bin /usr/share/cartesi-machine/images/linux.bin
 #20231201T000000Z
-FROM cartesi/machine-emulator:0.15.2@sha256:bc4e65ed6dde506b7476a751ad9cda2fb136cbad655ff80df3180ca45444e440 AS cartesi-base
+FROM cartesi/machine-emulator:0.16.0 AS cartesi-base
 COPY --from=build /replicate/source.ext2 /source.ext2
 COPY --from=build /usr/share/cartesi-machine/images /usr/share/cartesi-machine/images
 USER root
@@ -50,9 +49,9 @@ USER root
 FROM cartesi-base AS debootstrap-image
 RUN truncate -s 2G /image.ext2
 # run copy
-RUN cartesi-machine --skip-root-hash-check --append-rom-bootargs="loglevel=8 init=/debootstrap/copy" --flash-drive=label:root,filename:/source.ext2 --flash-drive=label:dest,filename:/image.ext2,shared --ram-length=2Gi --uarch-ram-image="/usr/share/cartesi-machine/uarch/uarch-ram.bin" --uarch-ram-length=0x1000000
+RUN cartesi-machine --skip-root-hash-check --append-bootargs="loglevel=8 init=/debootstrap/copy" --flash-drive=label:root,filename:/source.ext2 --flash-drive=label:dest,filename:/image.ext2,shared --ram-length=2Gi --uarch-ram-image="/usr/share/cartesi-machine/uarch/uarch-ram.bin" || true
 # actually debootstrap
-RUN cartesi-machine --skip-root-hash-check --append-rom-bootargs="loglevel=8 init=/debootstrap/bootstrap" --flash-drive=label:root,filename:/image.ext2 --ram-length=2Gi --max-mcycle=0 --store=debootstrap-machine --uarch-ram-image="/usr/share/cartesi-machine/uarch/uarch-ram.bin" --uarch-ram-length=0x1000000 && \
+RUN cartesi-machine --skip-root-hash-check --append-bootargs="loglevel=8 init=/debootstrap/bootstrap" --flash-drive=label:root,filename:/image.ext2 --ram-length=2Gi --max-mcycle=0 --store=debootstrap-machine --uarch-ram-image="/usr/share/cartesi-machine/uarch/uarch-ram.bin" && \
     cp -v --sparse=always -r debootstrap-machine debootstrap-machine-sparsed && rm -rf debootstrap-machine && \
     tar --sparse --hole-detection=seek -zvcf /debootstrap-machine-sparsed.tar.gz debootstrap-machine-sparsed  && rm -rf /source.ext2 /image.ext2 && rm -rf debootstrap-machine-sparsed
 
