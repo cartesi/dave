@@ -1,5 +1,5 @@
 use cartesi_compute_core::arena::{ArenaConfig, EthArenaSender, StateReader};
-use cartesi_compute_core::machine::{CachingMachineCommitmentBuilder, MachineFactory};
+use cartesi_compute_core::machine::CachingMachineCommitmentBuilder;
 use cartesi_compute_core::strategy::{gc::GarbageCollector, player::Player};
 use ethers::types::Address;
 use log::info;
@@ -26,19 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sender = EthArenaSender::new(arena_config)?;
 
     let machine_path = std::env::var("MACHINE_PATH").expect("MACHINE_PATH is not set");
-    // String::from("/root/permissionless-arbitration/lua_node/program/simple-program");
 
-    let machine_rpc_host = "http://127.0.0.1";
-    let machine_rpc_port = 5002;
-
-    let machine_factory =
-        MachineFactory::new(String::from(machine_rpc_host), machine_rpc_port).await?;
     let root_tournament = Address::from_str("0xcafac3dd18ac6c6e92c921884f9e4176737c052c")?;
 
     let mut player = Player::new(
-        machine_factory.clone(),
         machine_path.clone(),
-        CachingMachineCommitmentBuilder::new(machine_factory, machine_path),
+        CachingMachineCommitmentBuilder::new(machine_path),
         root_tournament.clone(),
     );
 
