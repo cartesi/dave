@@ -4,7 +4,7 @@
 use std::{error::Error, ops::ControlFlow, sync::Arc};
 
 use crate::{
-    machine::{constants, MachineRpc},
+    machine::{constants, MachineInstance},
     merkle::{Digest, MerkleBuilder, MerkleTree, UInt},
     utils::arithmetic,
 };
@@ -17,9 +17,9 @@ pub struct MachineCommitment {
     pub merkle: Arc<MerkleTree>,
 }
 
-/// Builds a [MachineCommitment] from a [MachineRpc] and a base cycle.
-pub async fn build_machine_commitment(
-    machine: &mut MachineRpc,
+/// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle.
+pub fn build_machine_commitment(
+    machine: &mut MachineInstance,
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
@@ -29,22 +29,22 @@ pub async fn build_machine_commitment(
             log2_stride + log2_stride_count
                 <= constants::LOG2_EMULATOR_SPAN + constants::LOG2_UARCH_SPAN
         );
-        build_big_machine_commitment(machine, base_cycle, log2_stride, log2_stride_count).await
+        build_big_machine_commitment(machine, base_cycle, log2_stride, log2_stride_count)
     } else {
         assert!(log2_stride == 0);
-        build_small_machine_commitment(machine, base_cycle, log2_stride_count).await
+        build_small_machine_commitment(machine, base_cycle, log2_stride_count)
     }
 }
 
 /// Builds a [MachineCommitment] Hash for the Cartesi Machine using the big machine model.
-pub async fn build_big_machine_commitment(
-    machine: &mut MachineRpc,
+pub fn build_big_machine_commitment(
+    machine: &mut MachineInstance,
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
 ) -> Result<MachineCommitment, Box<dyn Error>> {
-    machine.run(base_cycle).await?;
-    let initial_state = machine.machine_state().await?;
+    machine.run(base_cycle)?;
+    let initial_state = machine.machine_state()?;
 
     let mut builder = MerkleBuilder::default();
     let instruction_count = arithmetic::max_uint(log2_stride_count);
@@ -57,8 +57,7 @@ pub async fn build_big_machine_commitment(
             base_cycle,
             &mut builder,
             instruction_count,
-        )
-        .await?;
+        )?;
         if let ControlFlow::Break(_) = control_flow {
             break;
         }
@@ -72,17 +71,17 @@ pub async fn build_big_machine_commitment(
     })
 }
 
-async fn advance_instruction(
+fn advance_instruction(
     instruction: u64,
     log2_stride: u64,
-    machine: &mut MachineRpc,
+    machine: &mut MachineInstance,
     base_cycle: u64,
     builder: &mut MerkleBuilder,
     instruction_count: u64,
 ) -> Result<ControlFlow<()>, Box<dyn Error>> {
     let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN);
-    machine.run(base_cycle + cycle).await?;
-    let state = machine.machine_state().await?;
+    machine.run(base_cycle + cycle)?;
+    let state = machine.machine_state()?;
     let control_flow = if state.halted {
         builder.add_with_repetition(
             state.root_hash,
@@ -96,13 +95,13 @@ async fn advance_instruction(
     Ok(control_flow)
 }
 
-pub async fn build_small_machine_commitment(
-    machine: &mut MachineRpc,
+pub fn build_small_machine_commitment(
+    machine: &mut MachineInstance,
     base_cycle: u64,
     log2_stride_count: u64,
 ) -> Result<MachineCommitment, Box<dyn Error>> {
-    machine.run(base_cycle).await?;
-    let initial_state = machine.machine_state().await?;
+    machine.run(base_cycle)?;
+    let initial_state = machine.machine_state()?;
 
     let mut builder = MerkleBuilder::default();
     let instruction_count = arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN);
@@ -112,13 +111,13 @@ pub async fn build_small_machine_commitment(
             break;
         }
 
-        builder.add_tree(run_uarch_span(machine).await?);
+        builder.add_tree(run_uarch_span(machine)?);
         instruction += 1;
 
-        let state = machine.machine_state().await?;
+        let state = machine.machine_state()?;
         if state.halted {
             builder.add_tree_with_repetition(
-                run_uarch_span(machine).await?,
+                run_uarch_span(machine)?,
                 UInt::from(instruction_count - instruction + 1),
             );
             break;
@@ -132,23 +131,23 @@ pub async fn build_small_machine_commitment(
     })
 }
 
-async fn run_uarch_span(machine: &mut MachineRpc) -> Result<MerkleTree, Box<dyn Error>> {
+fn run_uarch_span(machine: &mut MachineInstance) -> Result<MerkleTree, Box<dyn Error>> {
     let (_, ucycle) = machine.position();
     assert!(ucycle == 0);
 
-    machine.increment_uarch().await?;
+    machine.increment_uarch()?;
 
     let mut builder = MerkleBuilder::default();
     let mut i = 0;
 
     let mut state = loop {
-        let mut state = machine.machine_state().await?;
+        let mut state = machine.machine_state()?;
         builder.add_with_repetition(state.root_hash, 1);
 
-        machine.increment_uarch().await?;
+        machine.increment_uarch()?;
         i += 1;
 
-        state = machine.machine_state().await?;
+        state = machine.machine_state()?;
         if state.uhalted {
             break state;
         }
@@ -156,8 +155,8 @@ async fn run_uarch_span(machine: &mut MachineRpc) -> Result<MerkleTree, Box<dyn 
 
     builder.add_with_repetition(state.root_hash, UInt::from(constants::UARCH_SPAN - i));
 
-    machine.ureset().await?;
-    state = machine.machine_state().await?;
+    machine.ureset()?;
+    state = machine.machine_state()?;
     builder.add_with_repetition(state.root_hash, 1);
 
     Ok(builder.build())

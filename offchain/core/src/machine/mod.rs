@@ -1,11 +1,11 @@
-//! Module for communication with the Cartesi machine using RPC and construction of computation 
+//! Module for communication with the Cartesi machine using RPC and construction of computation
 //! hashes.
- 
+
 #[doc(hidden)]
 pub mod constants;
 
-pub mod rpc;
-pub use rpc::*;
+pub mod instance;
+pub use instance::*;
 
 mod commitment;
 pub use commitment::*;

@@ -6,7 +6,7 @@ use ethers::types::Address;
 
 use crate::{
     arena::{ArenaSender, MatchState, TournamentState, TournamentStateMap, TournamentWinner},
-    machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineFactory},
+    machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     merkle::MerkleProof,
 };
 
@@ -17,7 +17,6 @@ pub enum PlayerTournamentResult {
 }
 
 pub struct Player {
-    machine_factory: MachineFactory,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournamet: Address,
@@ -25,13 +24,11 @@ pub struct Player {
 
 impl Player {
     pub fn new(
-        machine_factory: MachineFactory,
         machine_path: String,
         commitment_builder: CachingMachineCommitmentBuilder,
         root_tournamet: Address,
     ) -> Self {
         Self {
-            machine_factory,
             machine_path,
             commitment_builder,
             root_tournamet,
@@ -68,16 +65,12 @@ impl Player {
 
         let commitment = new_commitments
             .entry(tournament_state.address)
-            .or_insert(
-                self.commitment_builder
-                    .build_commitment(
-                        tournament_state.base_big_cycle,
-                        tournament_state.level,
-                        tournament_state.log2_stride,
-                        tournament_state.log2_stride_count,
-                    )
-                    .await?,
-            )
+            .or_insert(self.commitment_builder.build_commitment(
+                tournament_state.base_big_cycle,
+                tournament_state.level,
+                tournament_state.log2_stride,
+                tournament_state.log2_stride_count,
+            )?)
             .clone();
 
         if let Some(winner) = tournament_state.winner.clone() {
@@ -240,12 +233,7 @@ impl Player {
 
             let cycle = match_state.running_leaf_position >> constants::LOG2_UARCH_SPAN;
             let ucycle = match_state.running_leaf_position & constants::UARCH_SPAN;
-            let proof = self
-                .machine_factory
-                .create_machine(&self.machine_path)
-                .await?
-                .get_logs(cycle, ucycle)
-                .await?;
+            let proof = MachineInstance::new(&self.machine_path)?.get_logs(cycle, ucycle)?;
 
             info!(
                 "win leaf match in tournament {} of level {} for commitment {}",
