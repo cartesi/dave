@@ -7,10 +7,10 @@ use std::path::Path;
 
 pub mod configuration;
 pub mod errors;
+mod ffi;
 pub mod hash;
 pub mod log;
 pub mod proof;
-mod ffi;
 
 use cartesi_machine_sys::{cm_machine_runtime_config, cm_memory_range_config};
 use configuration::{free_cm_memory_range_config_cstr, OwnedMachineConfig};
@@ -21,7 +21,7 @@ macro_rules! read_csr {
     ($typ: ty, $name: ident, $flag: ident) => {
         pub fn $name(&self) -> Result<$typ, MachineError> {
             let mut error_collector = ErrorCollector::new();
-            let mut value : $typ = Default::default();
+            let mut value: $typ = Default::default();
 
             unsafe {
                 let result = cartesi_machine_sys::$flag(
@@ -64,10 +64,8 @@ macro_rules! iflags {
             let mut error_collector = ErrorCollector::new();
 
             unsafe {
-                let result = cartesi_machine_sys::$flag(
-                    self.machine,
-                    &mut error_collector.as_mut_ptr(),
-                );
+                let result =
+                    cartesi_machine_sys::$flag(self.machine, &mut error_collector.as_mut_ptr());
 
                 error_collector.collect(result)?;
             }
@@ -262,6 +260,25 @@ impl Machine {
         Ok(unsafe { BreakReason::from_u8_unchecked(break_reason as u8) })
     }
 
+    /// Runs the machine until ucycle reaches ucycle_end or the machine halts.
+    pub fn run_uarch(&mut self, ucycle_end: u64) -> Result<BreakReason, MachineError> {
+        let mut error_collector = ErrorCollector::new();
+        let mut break_reason = 0;
+
+        unsafe {
+            let result = cartesi_machine_sys::cm_machine_run_uarch(
+                self.machine,
+                ucycle_end,
+                &mut break_reason,
+                &mut error_collector.as_mut_ptr(),
+            );
+
+            error_collector.collect(result)?;
+        }
+
+        Ok(unsafe { BreakReason::from_u8_unchecked(break_reason as u8) })
+    }
+
     /// Runs the machine for one micro cycle logging all accesses to the state.
     pub fn log_uarch_step(
         &mut self,
@@ -421,7 +438,7 @@ impl Machine {
     /// Obtains the root hash of the Merkle tree
     pub fn get_root_hash(&mut self) -> Result<hash::Hash, MachineError> {
         let mut error_collector = ErrorCollector::new();
-        let mut hash = [0;32];
+        let mut hash = [0; 32];
 
         unsafe {
             let result = cartesi_machine_sys::cm_get_root_hash(
@@ -579,11 +596,7 @@ impl Machine {
     }
 
     /// Writes a chunk of data to the machine virtual memory.
-    pub fn write_virtual_memory(
-        &mut self,
-        address: u64,
-        data: &[u8],
-    ) -> Result<(), MachineError> {
+    pub fn write_virtual_memory(&mut self, address: u64, data: &[u8]) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
         unsafe {
