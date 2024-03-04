@@ -10,3 +10,4 @@ cartesi-machine-sys = { path = "../cartesi-machine-sys" }
 hex = "0.4.3"
 num-traits = "0.2"
 num-derive = "0.4"
+thiserror = "1.0.50"

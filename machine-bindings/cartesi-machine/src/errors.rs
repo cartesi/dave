@@ -40,19 +40,24 @@ pub enum ErrorCode {
     BadVariantAccess = CM_ERROR_CM_ERROR_BAD_VARIANT_ACCESS as isize,
     Exception = CM_ERROR_CM_ERROR_EXCEPTION as isize,
     OtherErrorEnd = CM_ERROR_CM_OTHER_ERROR_END as isize,
-    Unknown = CM_ERROR_CM_ERROR_UNKNOWN as isize
+    Unknown = CM_ERROR_CM_ERROR_UNKNOWN as isize,
 }
 
 /// Error returned from machine emulator C API
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub struct MachineError {
     code: ErrorCode,
-    message: Option<String>
+    message: Option<String>,
 }
 
 impl Display for MachineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error {:?}: {}", self.code as u8, self.message.clone().unwrap_or_default())
+        write!(
+            f,
+            "Error {:?}: {}",
+            self.code as u8,
+            self.message.clone().unwrap_or_default()
+        )
     }
 }
 
@@ -60,14 +65,14 @@ impl Display for MachineError {
 /// handling errors using the ownership of [ErrorCollector], the inability to clone it and the
 /// [cm_delete_cstring] function.
 pub struct ErrorCollector {
-    ptr: *mut c_char
+    ptr: *mut c_char,
 }
 
 impl ErrorCollector {
     /// Creates a new error collector
     pub fn new() -> Self {
         Self {
-            ptr: std::ptr::null_mut()
+            ptr: std::ptr::null_mut(),
         }
     }
 
@@ -87,7 +92,7 @@ impl ErrorCollector {
 
             Err(MachineError {
                 code: FromPrimitive::from_i32(code).expect("cannot transform error code to enum"),
-                message
+                message,
             })
         }
     }
