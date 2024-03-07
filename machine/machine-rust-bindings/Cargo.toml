@@ -2,7 +2,7 @@
 
 members = [
     "cartesi-machine",
-    "cartesi-machine-sys",
+    "cartesi-machine-sys", "zz",
 ]
 
 resolver = "2"
