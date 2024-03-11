@@ -14,17 +14,16 @@ fn main() {
 
     // Build `libcartesi.a`
     Command::new("make")
-        .current_dir(&machine_dir_path)
         .args(&["submodules", "downloads", "dep"])
+        .current_dir(&machine_dir_path)
         .output()
         .expect("Failed to run setup `make submodules downloads dep`");
     Command::new("make")
-        .current_dir(&machine_dir_path)
         .args(&["bundle-boost"])
+        .current_dir(&machine_dir_path)
         .output()
         .expect("Failed to run `make bundle-boost`");
     Command::new("make")
-        .current_dir(&machine_dir_path)
         .args(&[
             "-C",
             "src",
@@ -32,12 +31,19 @@ fn main() {
             "libcartesi.a",
             "libcartesi_jsonrpc.a",
         ])
+        .current_dir(&machine_dir_path)
         .output()
-        .expect("Failed to build `libcartesi.a`");
+        .expect("Failed to build `libcartesi.a` and/or `libcartesi_jsonrpc.a`");
 
-    // Tell cargo where to look for libraries, and which libraries to link
+    // Tell Cargo where to look for libraries
     println!("cargo:rustc-link-search={}", libdir_path.to_str().unwrap());
-    println!("cargo:rustc-link-lib=static=cartesi");
+
+    // Static link
+    if !cfg!(remote_machine) {
+        println!("cargo:rustc-link-lib=static=cartesi");
+    } else {
+        println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
+    }
 
     // Generate bindings
     let machine_bindings = bindgen::Builder::default()
@@ -51,7 +57,7 @@ fn main() {
         .generate()
         .expect("Unable to generate bindings");
 
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
+    // Write the bindings to the `$OUT_DIR/bindings.rs` and `$OUT_DIR/htif.rs` files.
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     machine_bindings
         .write_to_file(out_path.join("bindings.rs"))
