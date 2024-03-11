@@ -8,8 +8,10 @@ use std::path::Path;
 pub mod configuration;
 pub mod errors;
 pub mod hash;
+pub mod htif;
 pub mod log;
 pub mod proof;
+
 mod ffi;
 
 use cartesi_machine_sys::{cm_machine_runtime_config, cm_memory_range_config};
@@ -21,17 +23,16 @@ macro_rules! read_csr {
     ($typ: ty, $name: ident, $flag: ident) => {
         pub fn $name(&self) -> Result<$typ, MachineError> {
             let mut error_collector = ErrorCollector::new();
-            let mut value : $typ = Default::default();
+            let mut value: $typ = Default::default();
 
-            unsafe {
-                let result = cartesi_machine_sys::$flag(
+            let result = unsafe {
+                cartesi_machine_sys::$flag(
                     self.machine,
                     &mut value,
                     &mut error_collector.as_mut_ptr(),
-                );
-
-                error_collector.collect(result)?;
-            }
+                )
+            };
+            error_collector.collect(result)?;
 
             Ok(value)
         }
@@ -43,15 +44,10 @@ macro_rules! write_csr {
         pub fn $name(&mut self, value: $typ) -> Result<(), MachineError> {
             let mut error_collector = ErrorCollector::new();
 
-            unsafe {
-                let result = cartesi_machine_sys::$flag(
-                    self.machine,
-                    value,
-                    &mut error_collector.as_mut_ptr(),
-                );
-
-                error_collector.collect(result)?;
-            }
+            let result = unsafe {
+                cartesi_machine_sys::$flag(self.machine, value, &mut error_collector.as_mut_ptr())
+            };
+            error_collector.collect(result)?;
 
             Ok(())
         }
@@ -63,44 +59,49 @@ macro_rules! iflags {
         pub fn $name(&mut self) -> Result<(), MachineError> {
             let mut error_collector = ErrorCollector::new();
 
-            unsafe {
-                let result = cartesi_machine_sys::$flag(
-                    self.machine,
-                    &mut error_collector.as_mut_ptr(),
-                );
-
-                error_collector.collect(result)?;
-            }
+            let result = unsafe {
+                cartesi_machine_sys::$flag(self.machine, &mut error_collector.as_mut_ptr())
+            };
+            error_collector.collect(result)?;
 
             Ok(())
         }
     };
 }
 
+pub mod break_reason_constants {
+    use cartesi_machine_sys::*;
+
+    pub const FAILED: isize = CM_BREAK_REASON_CM_BREAK_REASON_FAILED as isize;
+    pub const HALTED: isize = CM_BREAK_REASON_CM_BREAK_REASON_HALTED as isize;
+    pub const YIELDED_MANUALLY: isize = CM_BREAK_REASON_CM_BREAK_REASON_YIELDED_MANUALLY as isize;
+    pub const YIELDED_AUTOMATICALLY: isize =
+        CM_BREAK_REASON_CM_BREAK_REASON_YIELDED_AUTOMATICALLY as isize;
+    pub const YIELDED_SOFTLY: isize = CM_BREAK_REASON_CM_BREAK_REASON_YIELDED_SOFTLY as isize;
+    pub const REACHED_TARGET_MCYCLE: isize =
+        CM_BREAK_REASON_CM_BREAK_REASON_REACHED_TARGET_MCYCLE as isize;
+}
+
 /// Reasons for a machine run interruption
 pub enum BreakReason {
-    Failed = 0,
-    Halted,
-    YieldedManually,
-    YieldedAutomatically,
-    ReachedTargetMcycle,
+    Failed = break_reason_constants::FAILED,
+    Halted = break_reason_constants::HALTED,
+    YieldedManually = break_reason_constants::YIELDED_MANUALLY,
+    YieldedAutomatically = break_reason_constants::YIELDED_AUTOMATICALLY,
+    YieldedSoftly = break_reason_constants::YIELDED_SOFTLY,
+    ReachedTargetMcycle = break_reason_constants::REACHED_TARGET_MCYCLE,
 }
 
 impl BreakReason {
-    /// Transmute a u8 value to a BreakReason
-    #[inline]
-    pub unsafe fn from_u8_unchecked(value: u8) -> Self {
-        std::mem::transmute(value)
-    }
-
     /// Transforms a u8 value to a BreakReason
-    pub fn from_u8(value: u8) -> Self {
+    pub fn from_int(value: isize) -> Self {
         match value {
-            0 => BreakReason::Failed,
-            1 => BreakReason::Halted,
-            2 => BreakReason::YieldedManually,
-            3 => BreakReason::YieldedAutomatically,
-            4 => BreakReason::ReachedTargetMcycle,
+            break_reason_constants::FAILED => BreakReason::Failed,
+            break_reason_constants::HALTED => BreakReason::Halted,
+            break_reason_constants::YIELDED_MANUALLY => BreakReason::YieldedManually,
+            break_reason_constants::YIELDED_AUTOMATICALLY => BreakReason::YieldedAutomatically,
+            break_reason_constants::YIELDED_SOFTLY => BreakReason::YieldedSoftly,
+            break_reason_constants::REACHED_TARGET_MCYCLE => BreakReason::ReachedTargetMcycle,
             _ => panic!("Invalid break reason value"),
         }
     }
@@ -150,11 +151,19 @@ pub enum CSR {
     UarchHaltFlag,
 }
 
+pub mod uarch_break_reason_constants {
+    use cartesi_machine_sys::*;
+
+    pub const REACHED_TARGET_CYCLE: isize =
+        CM_UARCH_BREAK_REASON_CM_UARCH_BREAK_REASON_REACHED_TARGET_CYCLE as isize;
+    pub const UARCH_HALTED: isize =
+        CM_UARCH_BREAK_REASON_CM_UARCH_BREAK_REASON_UARCH_HALTED as isize;
+}
+
 /// Return values of uarch_interpret. Reason for the uarch_interpret to break.
-#[repr(u8)]
 pub enum UarchBreakReason {
-    ReachedTargetCycle = 0,
-    UarchHalted,
+    ReachedTargetCycle = uarch_break_reason_constants::REACHED_TARGET_CYCLE,
+    UarchHalted = uarch_break_reason_constants::UARCH_HALTED,
 }
 
 /// Machine instance handle
@@ -181,19 +190,18 @@ impl Machine {
             machine: std::ptr::null_mut(),
         };
 
-        unsafe {
-            let config = OwnedMachineConfig::from(machine_config);
-            let runtime = cm_machine_runtime_config::from(runtime);
+        let config = OwnedMachineConfig::from(machine_config);
+        let runtime = cm_machine_runtime_config::from(runtime);
 
-            let result = cartesi_machine_sys::cm_create_machine(
+        let result = unsafe {
+            cartesi_machine_sys::cm_create_machine(
                 config.as_ref(),
                 &runtime,
                 &mut machine.machine,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(machine)
     }
@@ -205,20 +213,22 @@ impl Machine {
             machine: std::ptr::null_mut(),
         };
 
-        unsafe {
-            let path = path.to_str().unwrap();
-            let path = std::ffi::CString::new(path).unwrap();
-            let runtime = cm_machine_runtime_config::from(runtime);
+        let path = {
+            let p = path.to_str().unwrap();
+            std::ffi::CString::new(p).unwrap()
+        };
 
-            let result = cartesi_machine_sys::cm_load_machine(
+        let runtime = cm_machine_runtime_config::from(runtime);
+
+        let result = unsafe {
+            cartesi_machine_sys::cm_load_machine(
                 path.as_ptr(),
                 &runtime,
                 &mut machine.machine,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(machine)
     }
@@ -227,18 +237,19 @@ impl Machine {
     pub fn store(&self, path: &Path) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
-        unsafe {
-            let path = path.to_str().unwrap();
-            let path = std::ffi::CString::new(path).unwrap();
+        let path = {
+            let p = path.to_str().unwrap();
+            std::ffi::CString::new(p).unwrap()
+        };
 
-            let result = cartesi_machine_sys::cm_store(
+        let result = unsafe {
+            cartesi_machine_sys::cm_store(
                 self.machine,
                 path.as_ptr(),
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -248,18 +259,18 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut break_reason = 0;
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_machine_run(
+        let result = unsafe {
+            cartesi_machine_sys::cm_machine_run(
                 self.machine,
                 mcycle_end,
                 &mut break_reason,
                 &mut error_collector.as_mut_ptr(),
-            );
+            )
+        };
 
-            error_collector.collect(result)?;
-        }
+        error_collector.collect(result)?;
 
-        Ok(unsafe { BreakReason::from_u8_unchecked(break_reason as u8) })
+        Ok(BreakReason::from_int(break_reason as isize))
     }
 
     /// Runs the machine for one micro cycle logging all accesses to the state.
@@ -271,17 +282,16 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut access_log = std::ptr::null_mut();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_log_uarch_step(
+        let result = unsafe {
+            cartesi_machine_sys::cm_log_uarch_step(
                 self.machine,
                 log_type.into(),
                 one_based,
                 &mut access_log,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(log::AccessLog::new(access_log))
     }
@@ -294,19 +304,17 @@ impl Machine {
         one_based: bool,
     ) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
+        let runtime = cm_machine_runtime_config::from(runtime);
 
-        unsafe {
-            let runtime = cm_machine_runtime_config::from(runtime);
-
-            let result = cartesi_machine_sys::cm_verify_uarch_step_log(
+        let result = unsafe {
+            cartesi_machine_sys::cm_verify_uarch_step_log(
                 log.as_ptr(),
                 &runtime,
                 one_based,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -321,21 +329,19 @@ impl Machine {
         one_based: bool,
     ) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
+        let runtime = cm_machine_runtime_config::from(runtime);
 
-        unsafe {
-            let runtime = cm_machine_runtime_config::from(runtime);
-
-            let result = cartesi_machine_sys::cm_verify_uarch_step_state_transition(
+        let result = unsafe {
+            cartesi_machine_sys::cm_verify_uarch_step_state_transition(
                 root_hash_before.as_ptr(),
                 log.as_ptr(),
                 root_hash_after.as_ptr(),
                 &runtime,
                 one_based,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -350,21 +356,19 @@ impl Machine {
         one_based: bool,
     ) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
+        let runtime = cm_machine_runtime_config::from(runtime);
 
-        unsafe {
-            let runtime = cm_machine_runtime_config::from(runtime);
-
-            let result = cartesi_machine_sys::cm_verify_uarch_reset_state_transition(
+        let result = unsafe {
+            cartesi_machine_sys::cm_verify_uarch_reset_state_transition(
                 root_hash_before.as_ptr(),
                 log.as_ptr(),
                 root_hash_after.as_ptr(),
                 &runtime,
                 one_based,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -377,19 +381,17 @@ impl Machine {
         one_based: bool,
     ) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
+        let runtime = cm_machine_runtime_config::from(runtime);
 
-        unsafe {
-            let runtime = cm_machine_runtime_config::from(runtime);
-
-            let result = cartesi_machine_sys::cm_verify_uarch_reset_log(
+        let result = unsafe {
+            cartesi_machine_sys::cm_verify_uarch_reset_log(
                 log.as_ptr(),
                 &runtime,
                 one_based,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -403,17 +405,16 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut proof = std::ptr::null_mut();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_get_proof(
+        let result = unsafe {
+            cartesi_machine_sys::cm_get_proof(
                 self.machine,
                 address,
                 log2_size,
                 &mut proof,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(proof::MerkleTreeProof::new(proof))
     }
@@ -421,17 +422,16 @@ impl Machine {
     /// Obtains the root hash of the Merkle tree
     pub fn get_root_hash(&mut self) -> Result<hash::Hash, MachineError> {
         let mut error_collector = ErrorCollector::new();
-        let mut hash = [0;32];
+        let mut hash = [0; 32];
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_get_root_hash(
+        let result = unsafe {
+            cartesi_machine_sys::cm_get_root_hash(
                 self.machine,
                 &mut hash,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(hash::Hash::new(hash))
     }
@@ -439,35 +439,33 @@ impl Machine {
     /// Verifies integrity of Merkle tree.
     pub fn verify_merkle_tree(&mut self) -> Result<bool, MachineError> {
         let mut error_collector = ErrorCollector::new();
-        let mut result = false;
+        let mut ret = false;
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_verify_merkle_tree(
+        let result = unsafe {
+            cartesi_machine_sys::cm_verify_merkle_tree(
                 self.machine,
-                &mut result,
+                &mut ret,
                 &mut error_collector.as_mut_ptr(),
-            );
+            )
+        };
+        error_collector.collect(result)?;
 
-            error_collector.collect(result)?;
-        }
-
-        Ok(result)
+        Ok(ret)
     }
 
     /// Write the value of any CSR
     pub fn write_csr(&mut self, csr: CSR, value: u64) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_write_csr(
+        let result = unsafe {
+            cartesi_machine_sys::cm_write_csr(
                 self.machine,
                 csr as u32,
                 value,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -477,16 +475,15 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut value = 0;
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_read_csr(
+        let result = unsafe {
+            cartesi_machine_sys::cm_read_csr(
                 self.machine,
                 csr as u32,
                 &mut value,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(value)
     }
@@ -501,16 +498,15 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut word_value = 0;
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_read_word(
+        let result = unsafe {
+            cartesi_machine_sys::cm_read_word(
                 self.machine,
                 word_address,
                 &mut word_value,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(word_value)
     }
@@ -520,17 +516,16 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut data = vec![0; length as usize];
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_read_memory(
+        let result = unsafe {
+            cartesi_machine_sys::cm_read_memory(
                 self.machine,
                 address,
                 data.as_mut_ptr(),
                 length,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(data)
     }
@@ -539,17 +534,16 @@ impl Machine {
     pub fn write_memory(&mut self, address: u64, data: &[u8]) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_write_memory(
+        let result = unsafe {
+            cartesi_machine_sys::cm_write_memory(
                 self.machine,
                 address,
                 data.as_ptr(),
                 data.len(),
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -563,40 +557,34 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut data = vec![0; length as usize];
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_read_virtual_memory(
+        let result = unsafe {
+            cartesi_machine_sys::cm_read_virtual_memory(
                 self.machine,
                 address,
                 data.as_mut_ptr(),
                 length,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(data)
     }
 
     /// Writes a chunk of data to the machine virtual memory.
-    pub fn write_virtual_memory(
-        &mut self,
-        address: u64,
-        data: &[u8],
-    ) -> Result<(), MachineError> {
+    pub fn write_virtual_memory(&mut self, address: u64, data: &[u8]) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_write_virtual_memory(
+        let result = unsafe {
+            cartesi_machine_sys::cm_write_virtual_memory(
                 self.machine,
                 address,
                 data.as_ptr(),
                 data.len(),
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -606,16 +594,15 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut value = 0;
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_read_x(
+        let result = unsafe {
+            cartesi_machine_sys::cm_read_x(
                 self.machine,
                 i as i32,
                 &mut value,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(value)
     }
@@ -624,16 +611,15 @@ impl Machine {
     pub fn write_x(&mut self, i: u32, value: u64) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_write_x(
+        let result = unsafe {
+            cartesi_machine_sys::cm_write_x(
                 self.machine,
                 i as i32,
                 value,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -653,16 +639,15 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut value = 0;
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_read_f(
+        let result = unsafe {
+            cartesi_machine_sys::cm_read_f(
                 self.machine,
                 i as i32,
                 &mut value,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(value)
     }
@@ -671,16 +656,15 @@ impl Machine {
     pub fn write_f(&mut self, i: u32, value: u64) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_write_f(
+        let result = unsafe {
+            cartesi_machine_sys::cm_write_f(
                 self.machine,
                 i as i32,
                 value,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(())
     }
@@ -695,21 +679,20 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut config = std::ptr::null();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_get_initial_config(
+        let result = unsafe {
+            cartesi_machine_sys::cm_get_initial_config(
                 self.machine,
                 &mut config,
                 &mut error_collector.as_mut_ptr(),
-            );
+            )
+        };
+        error_collector.collect(result)?;
 
-            error_collector.collect(result)?;
-        }
-
-        let new_config: MachineConfig = unsafe { (*config).into() };
-
-        unsafe {
+        let new_config: MachineConfig = unsafe {
+            let c = (*config).into();
             cartesi_machine_sys::cm_delete_machine_config(config);
-        }
+            c
+        };
 
         Ok(new_config)
     }
@@ -719,20 +702,19 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut config = std::ptr::null();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_get_default_config(
+        let result = unsafe {
+            cartesi_machine_sys::cm_get_default_config(
                 &mut config,
                 &mut error_collector.as_mut_ptr(),
-            );
+            )
+        };
+        error_collector.collect(result)?;
 
-            error_collector.collect(result)?;
-        }
-
-        let new_config: MachineConfig = unsafe { (*config).into() };
-
-        unsafe {
+        let new_config: MachineConfig = unsafe {
+            let c = (*config).into();
             cartesi_machine_sys::cm_delete_machine_config(config);
-        }
+            c
+        };
 
         Ok(new_config)
     }
@@ -740,20 +722,19 @@ impl Machine {
     /// Replaces a memory range
     pub fn replace_memory_range(
         &mut self,
-        new_range: configuration::MemoryRangeConfig,
+        new_range: &configuration::MemoryRangeConfig,
     ) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
-        let mut range: cm_memory_range_config = new_range.into();
+        let mut range: cm_memory_range_config = new_range.clone().into();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_replace_memory_range(
+        let result = unsafe {
+            cartesi_machine_sys::cm_replace_memory_range(
                 self.machine,
                 &mut range,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         free_cm_memory_range_config_cstr(&mut range);
 
@@ -763,19 +744,18 @@ impl Machine {
     /// Verify if dirty page maps are consistent.
     pub fn verify_dirty_page_maps(&mut self) -> Result<bool, MachineError> {
         let mut error_collector = ErrorCollector::new();
-        let mut result = false;
+        let mut ret = false;
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_verify_dirty_page_maps(
+        let result = unsafe {
+            cartesi_machine_sys::cm_verify_dirty_page_maps(
                 self.machine,
-                &mut result,
+                &mut ret,
                 &mut error_collector.as_mut_ptr(),
-            );
+            )
+        };
+        error_collector.collect(result)?;
 
-            error_collector.collect(result)?;
-        }
-
-        Ok(result)
+        Ok(ret)
     }
 
     /// Resets the value of the microarchitecture halt flag.
@@ -787,17 +767,16 @@ impl Machine {
         let mut error_collector = ErrorCollector::new();
         let mut access_log = std::ptr::null_mut();
 
-        unsafe {
-            let result = cartesi_machine_sys::cm_log_uarch_reset(
+        let result = unsafe {
+            cartesi_machine_sys::cm_log_uarch_reset(
                 self.machine,
                 log_type.into(),
                 one_based,
                 &mut access_log,
                 &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
+            )
+        };
+        error_collector.collect(result)?;
 
         Ok(log::AccessLog::new(access_log))
     }

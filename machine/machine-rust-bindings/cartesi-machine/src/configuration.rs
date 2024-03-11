@@ -252,9 +252,9 @@ impl From<cartesi_machine_sys::cm_htif_config> for HtifConfig {
     }
 }
 
-/// Rollup configuration
+/// CmIo configuration
 #[derive(Debug, Clone)]
-pub struct RollupConfig {
+pub struct CmIoConfig {
     /// Represents whether the rest of the struct have been filled
     pub has_value: bool,
     /// RX buffer memory range
@@ -263,8 +263,8 @@ pub struct RollupConfig {
     pub tx_buffer: MemoryRangeConfig,
 }
 
-impl From<RollupConfig> for cartesi_machine_sys::cm_cmio_config {
-    fn from(config: RollupConfig) -> Self {
+impl From<CmIoConfig> for cartesi_machine_sys::cm_cmio_config {
+    fn from(config: CmIoConfig) -> Self {
         Self {
             has_value: config.has_value,
             rx_buffer: config.rx_buffer.into(),
@@ -273,7 +273,7 @@ impl From<RollupConfig> for cartesi_machine_sys::cm_cmio_config {
     }
 }
 
-impl From<cartesi_machine_sys::cm_cmio_config> for RollupConfig {
+impl From<cartesi_machine_sys::cm_cmio_config> for CmIoConfig {
     fn from(config: cartesi_machine_sys::cm_cmio_config) -> Self {
         Self {
             has_value: config.has_value,
@@ -376,8 +376,8 @@ pub struct MachineConfig {
     pub clint: ClintConfig,
     /// Htif configuration
     pub htif: HtifConfig,
-    /// Rollup configuration
-    pub rollup: RollupConfig,
+    /// CmIo configuration
+    pub cmio: CmIoConfig,
     /// Uarch configuration
     pub uarch: UarchConfig,
 }
@@ -404,7 +404,7 @@ impl From<MachineConfig> for OwnedMachineConfig {
             tlb: config.tlb.into(),
             clint: config.clint.into(),
             htif: config.htif.into(),
-            cmio: config.rollup.into(),
+            cmio: config.cmio.into(),
             uarch: config.uarch.into(),
         };
 
@@ -430,7 +430,7 @@ impl From<cartesi_machine_sys::cm_machine_config> for MachineConfig {
             tlb: value.tlb.into(),
             clint: value.clint.into(),
             htif: value.htif.into(),
-            rollup: value.cmio.into(),
+            cmio: value.cmio.into(),
             uarch: value.uarch.into(),
         }
     }
@@ -480,7 +480,7 @@ impl Drop for OwnedMachineConfig {
 #[derive(Debug, Default, Clone)]
 #[repr(C)]
 pub struct ConcurrencyRuntimeConfig {
-    update_merkle_tree: u64,
+    pub update_merkle_tree: u64,
 }
 
 impl From<ConcurrencyRuntimeConfig> for cartesi_machine_sys::cm_concurrency_runtime_config {
@@ -498,7 +498,7 @@ impl From<cartesi_machine_sys::cm_concurrency_runtime_config> for ConcurrencyRun
 #[derive(Debug, Default, Clone)]
 #[repr(C)]
 pub struct HtifRuntimeConfig {
-    no_console_putchar: bool,
+    pub no_console_putchar: bool,
 }
 
 impl From<HtifRuntimeConfig> for cartesi_machine_sys::cm_htif_runtime_config {

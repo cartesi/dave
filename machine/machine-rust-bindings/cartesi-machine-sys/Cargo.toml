@@ -1,0 +1,23 @@
+[package]
+name = "cartesi-machine-sys"
+version = { workspace = true }
+edition = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+
+[features]
+remote_machine = []
+
+
+[dependencies]
+link-cplusplus = "1.0"
+
+
+[build-dependencies]
+bindgen = "0.69"

@@ -4,3 +4,6 @@
 [submodule "permissionless-arbitration/contracts/lib/forge-std"]
 	path = permissionless-arbitration/contracts/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "machine/machine-emulator"]
+	path = machine/machine-emulator
+	url = https://github.com/cartesi/machine-emulator
