@@ -4,6 +4,10 @@ version = "0.15.2"
 edition = "2021"
 
 
+[features]
+remote_machine = []
+
+
 [dependencies]
 link-cplusplus = "1.0"
 
