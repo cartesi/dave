@@ -1,7 +1,14 @@
 [package]
 name = "cartesi-machine-sys"
-version = "0.15.2"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
 
 
 [features]
