@@ -1,8 +1,27 @@
 [workspace]
+resolver = "2"
 
 members = [
     "cartesi-machine",
     "cartesi-machine-sys",
 ]
 
-resolver = "2"
+
+[workspace.package]
+version = "0.16.0"
+edition = "2021"
+
+license = "Apache-2.0"
+license-file = "LICENSE"
+
+description = "Cartesi Machine bindings for Rust"
+readme = "README.md"
+
+homepage = "https://github.com/cartesi/dave"
+repository = "https://github.com/cartesi/dave"
+
+authors = [
+  "Gabriel Coutinho de Paula <gcdepaula@protonmail.io>",
+  "Stephen Chen <20940639+stephenctw@users.noreply.github.com>",
+  "Sofia Rodrigues <algebraic.sofia+github@gmail.com>",
+]
