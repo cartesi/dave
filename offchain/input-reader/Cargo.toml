@@ -12,6 +12,9 @@ repository = { workspace = true }
 
 [dependencies]
 async-recursion = { workspace = true }
+cartesi-rollups-contracts = "2.0.0-rc.1"
 ethers = { workspace = true }
+ethers-contract = "2.0.13"
 futures = { workspace = true }
+serde = "1.0.197"
 tokio = { workspace = true }
