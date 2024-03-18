@@ -3,16 +3,20 @@
 
 use anyhow::Result;
 use async_recursion::async_recursion;
+use ethers::abi::RawLog;
 use tokio::sync::Semaphore;
 
+use cartesi_rollups_contracts::input_box::input_box::InputAddedFilter;
+use ethers::contract::EthEvent;
 use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
-use ethers::types::{Address, BlockNumber, Filter, Log, U64};
+use ethers::types::{Address, BlockNumber, Filter, H160, U64};
 
 struct PartitionProvider {
     provider: Provider<Http>,
     semaphore: Semaphore,
     input_box: Address,
+    app: H160,
 }
 
 #[derive(Debug)]
@@ -44,6 +48,7 @@ impl InputReader {
                 input_box,
                 provider: Provider::<Http>::try_from(provider_url)?,
                 semaphore: Semaphore::new(concurrency_opt.unwrap_or_default()),
+                app,
             },
         })
     }
@@ -88,7 +93,7 @@ impl PartitionProvider {
         &self,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<Log>, Vec<ProviderError>> {
+    ) -> Result<Vec<InputAddedFilter>, Vec<ProviderError>> {
         self.get_events_rec(start_block, end_block).await
     }
 
@@ -97,12 +102,13 @@ impl PartitionProvider {
         &self,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<Log>, Vec<ProviderError>> {
+    ) -> Result<Vec<InputAddedFilter>, Vec<ProviderError>> {
         // TODO: partition log queries if range too large
         let filter = Filter::new()
             .from_block(start_block)
             .to_block(end_block)
-            .address(self.input_box);
+            .address(self.input_box)
+            .event("InputAdded(address,uint256,address,bytes)");
 
         let res = {
             // Make number of concurrent fetches bounded.
@@ -111,7 +117,18 @@ impl PartitionProvider {
         };
 
         match res {
-            Ok(l) => Ok(l),
+            Ok(l) => {
+                let raw_logs = l
+                    .into_iter()
+                    .map(RawLog::from)
+                    .map(|x| InputAddedFilter::decode_log(&x))
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap();
+
+                let logs = raw_logs.into_iter().filter(|x| x.app == self.app).collect();
+
+                Ok(logs)
+            }
             Err(e) => {
                 if Self::should_retry_with_partition(&e) {
                     let middle = {
@@ -166,6 +183,7 @@ async fn test_input_reader() -> Result<()> {
 
     let genesis: U64 = U64::from(17784733);
     let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
+    let app = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
     let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
 
     let mut reader = InputReader::new(
@@ -173,9 +191,10 @@ async fn test_input_reader() -> Result<()> {
         input_box,
         format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref(),
         Some(5),
+        app,
     )?;
 
-    let res: Vec<Log> = reader.next().await?;
+    let res: Vec<_> = reader.next().await?;
 
     // input box from mainnet shouldn't be empty
     assert!(!res.is_empty(), "input box shouldn't be empty");

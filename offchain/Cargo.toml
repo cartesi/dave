@@ -1,9 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "core",
-    "dave-compute",
     "dave-advance",
+    "input-query",
     "input-reader",
 ]
 
