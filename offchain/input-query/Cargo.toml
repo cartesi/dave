@@ -1,0 +1,18 @@
+[package]
+name = "input-query"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license-file.workspace = true
+readme.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rollups-input-reader = { path = "../input-reader" }
+cartesi-rollups-contracts = "2.0.0-rc.1"
+sqlite = "0.33.0"
+ethers = { workspace = true }
