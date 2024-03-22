@@ -8,7 +8,7 @@ members = [
 
 
 [workspace.package]
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 
 license = "Apache-2.0"
@@ -21,7 +21,6 @@ homepage = "https://github.com/cartesi/dave"
 repository = "https://github.com/cartesi/dave"
 
 authors = [
-  "Gabriel Coutinho de Paula <gcdepaula@protonmail.io>",
+  "Gabriel Coutinho de Paula <gcdepaula@protonmail.com>",
   "Stephen Chen <20940639+stephenctw@users.noreply.github.com>",
-  "Sofia Rodrigues <algebraic.sofia+github@gmail.com>",
 ]

@@ -14,6 +14,17 @@ repository = { workspace = true }
 [features]
 remote_machine = []
 
+# default
+download_uarch = ["reqwest", "bytes"]
+
+# requires docker daemon to be running
+build_uarch = []
+
+ # requires setting env vars UARCH_PRISTINE_HASH_PATH and UARCH_PRISTINE_RAM_PATH
+copy_uarch = []
+
+default = ["download_uarch"]
+
 
 [dependencies]
 link-cplusplus = "1.0"
@@ -21,3 +32,9 @@ link-cplusplus = "1.0"
 
 [build-dependencies]
 bindgen = "0.69"
+cfg-if = "1.0"
+
+hex-literal = "0.4.1"
+reqwest = { version = "0.12", features = ["blocking"], optional = true }
+bytes = { version = "1.0", optional = true }
+sha1 = "0.10.6"
