@@ -1,6 +1,6 @@
 //! Logging utilities for Cartesi Machine.
 
-use crate::{ffi, hash::Hash};
+use crate::{hash::Hash, utils};
 
 /// Type of state access
 #[derive(Debug, PartialEq, Eq)]
@@ -68,7 +68,7 @@ impl<'a> BracketNote<'a> {
     }
 
     pub fn text(&self) -> String {
-        unsafe { ffi::from_cstr((*self.ptr).text) }.unwrap()
+        unsafe { utils::from_cstr((*self.ptr).text) }.unwrap()
     }
 }
 
@@ -174,7 +174,7 @@ impl AccessLog {
 
         notes
             .iter()
-            .map(|note| ffi::from_cstr(*note).unwrap())
+            .map(|note| utils::from_cstr(*note).unwrap())
             .collect()
     }
 
