@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
+import "../../CanonicalConstants.sol";
 import "../../Commitment.sol";
 
 import "step/ready_src/UArchStep.sol";
@@ -122,7 +123,7 @@ abstract contract LeafTournament is Tournament {
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-        uint256 mask = (1 << 16) - 1;
+        uint256 mask = (1 << ArbitrationConstants.LOG2_MAX_MCYCLE) - 1;
         if (counter & mask == mask) {
             UArchReset.reset(accessLogs);
             newMachineState = accessLogs.currentRootHash;
