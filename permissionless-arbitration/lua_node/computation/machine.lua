@@ -99,7 +99,7 @@ function Machine:increment_uarch()
 end
 
 function Machine:ureset()
-    self.machine:reset_uarch_state()
+    self.machine:reset_uarch()
     self.cycle = self.cycle + 1
     self.ucycle = 0
 end
@@ -129,19 +129,15 @@ end
 
 function Machine:get_logs(path, cycle, ucycle)
     local machine = Machine:new_from_path(path)
+    local logs
     machine:run(cycle)
     machine:run_uarch(ucycle)
 
     if ucycle == consts.uarch_span then
-        error "ureset, not implemented"
-
-        machine:run_uarch(consts.uarch_span)
-        -- get reset-uarch logs
-
-        return
+        logs = machine.machine:log_uarch_reset { annotations = true, proofs = true }
+    else
+        logs = machine.machine:log_uarch_step { annotations = true, proofs = true }
     end
-
-    local logs = machine.machine:step_uarch { annotations = true, proofs = true }
 
     local encoded = {}
 
@@ -151,14 +147,11 @@ function Machine:get_logs(path, cycle, ucycle)
             table.insert(encoded, a.read)
         end
 
-        table.insert(encoded, a.proof.target_hash)
+        table.insert(encoded, a.read_hash)
 
-        local siblings = arithmetic.array_reverse(a.proof.sibling_hashes)
-        for _, h in ipairs(siblings) do
+        for _, h in ipairs(a.sibling_hashes) do
             table.insert(encoded, h)
         end
-
-        assert(ver(a.proof.target_hash, a.address, siblings) == a.proof.root_hash)
     end
 
     local data = table.concat(encoded)

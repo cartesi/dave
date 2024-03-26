@@ -11,6 +11,7 @@ readme = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+anyhow = { workspace = true }
 async-recursion = { workspace = true }
 ethers = { workspace = true }
 futures = { workspace = true }

@@ -1,12 +1,13 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 
 use ::log::info;
+use anyhow::Result;
 use async_recursion::async_recursion;
 use ethers::types::Address;
 
 use crate::{
     arena::{ArenaSender, MatchState, TournamentState, TournamentStateMap, TournamentWinner},
-    machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineFactory},
+    machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     merkle::MerkleProof,
 };
 
@@ -17,7 +18,6 @@ pub enum PlayerTournamentResult {
 }
 
 pub struct Player {
-    machine_factory: MachineFactory,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournamet: Address,
@@ -25,13 +25,11 @@ pub struct Player {
 
 impl Player {
     pub fn new(
-        machine_factory: MachineFactory,
         machine_path: String,
         commitment_builder: CachingMachineCommitmentBuilder,
         root_tournamet: Address,
     ) -> Self {
         Self {
-            machine_factory,
             machine_path,
             commitment_builder,
             root_tournamet,
@@ -42,7 +40,7 @@ impl Player {
         &mut self,
         arena_sender: &'a impl ArenaSender,
         tournament_states: TournamentStateMap,
-    ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
+    ) -> Result<Option<PlayerTournamentResult>> {
         self.react_tournament(
             arena_sender,
             HashMap::new(),
@@ -59,7 +57,7 @@ impl Player {
         commitments: HashMap<Address, MachineCommitment>,
         tournament_address: Address,
         tournament_states: TournamentStateMap,
-    ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
+    ) -> Result<Option<PlayerTournamentResult>> {
         info!("Enter tournament at address: {}", tournament_address);
         let tournament_state = tournament_states
             .get(&tournament_address)
@@ -68,16 +66,12 @@ impl Player {
 
         let commitment = new_commitments
             .entry(tournament_state.address)
-            .or_insert(
-                self.commitment_builder
-                    .build_commitment(
-                        tournament_state.base_big_cycle,
-                        tournament_state.level,
-                        tournament_state.log2_stride,
-                        tournament_state.log2_stride_count,
-                    )
-                    .await?,
-            )
+            .or_insert(self.commitment_builder.build_commitment(
+                tournament_state.base_big_cycle,
+                tournament_state.level,
+                tournament_state.log2_stride,
+                tournament_state.log2_stride_count,
+            )?)
             .clone();
 
         if let Some(winner) = tournament_state.winner.clone() {
@@ -166,7 +160,7 @@ impl Player {
         arena_sender: &'a impl ArenaSender,
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let (left, right) = commitment.merkle.root_children();
         let (last, proof) = commitment.merkle.last();
 
@@ -191,7 +185,7 @@ impl Player {
         tournament_level: u64,
         tournament_max_level: u64,
         tournament_states: TournamentStateMap,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
         if match_state.current_height == 0 {
             self.react_sealed_match(
@@ -229,7 +223,7 @@ impl Player {
         tournament_level: u64,
         tournament_max_level: u64,
         tournament_states: TournamentStateMap,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         if tournament_level == (tournament_max_level - 1) {
             let (left, right) = commitment.merkle.root_children();
 
@@ -240,12 +234,7 @@ impl Player {
 
             let cycle = match_state.running_leaf_position >> constants::LOG2_UARCH_SPAN;
             let ucycle = match_state.running_leaf_position & constants::UARCH_SPAN;
-            let proof = self
-                .machine_factory
-                .create_machine(&self.machine_path)
-                .await?
-                .get_logs(cycle, ucycle)
-                .await?;
+            let proof = MachineInstance::new(&self.machine_path)?.get_logs(cycle, ucycle)?;
 
             info!(
                 "win leaf match in tournament {} of level {} for commitment {}",
@@ -284,7 +273,7 @@ impl Player {
         commitment: &MachineCommitment,
         tournament_level: u64,
         tournament_max_level: u64,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let (left, right) =
             if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
                 children
@@ -345,7 +334,7 @@ impl Player {
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let (left, right) =
             if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
                 children

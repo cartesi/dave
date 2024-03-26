@@ -29,7 +29,7 @@ library ArbitrationConstants {
 
     // 3-level tournament
     uint64 constant LEVELS = 4;
-    // uint64 constant LOG2_MAX_MCYCLE = 63;
+    uint64 constant LOG2_MAX_MCYCLE = 16;
 
     /// @return log2step gap of each leaf in the tournament[level]
     function log2step(uint64 level) internal pure returns (uint64) {

@@ -1,8 +1,9 @@
 //! This module defines the struct [EthArenaSender] that is responsible for the sending transactions
 //! to tournaments
 
-use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
+use std::{ str::FromStr, sync::Arc, time::Duration};
 
+use anyhow::Result;
 use async_trait::async_trait;
 
 use ethers::{
@@ -25,7 +26,7 @@ pub struct EthArenaSender {
 }
 
 impl EthArenaSender {
-    pub fn new(config: ArenaConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn new(config: ArenaConfig) -> Result<Self> {
         let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
             .interval(Duration::from_millis(10u64));
         let wallet = LocalWallet::from_str(config.web3_private_key.as_str())?;
@@ -48,7 +49,7 @@ pub trait ArenaSender: Send + Sync {
         proof: MerkleProof,
         left_child: Digest,
         right_child: Digest,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<()>;
 
     async fn advance_match(
         &self,
@@ -58,7 +59,7 @@ pub trait ArenaSender: Send + Sync {
         right_node: Digest,
         new_left_node: Digest,
         new_right_node: Digest,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<()>;
 
     async fn seal_inner_match(
         &self,
@@ -68,7 +69,7 @@ pub trait ArenaSender: Send + Sync {
         right_leaf: Digest,
         initial_hash: Digest,
         initial_hash_proof: MerkleProof,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<()>;
 
     async fn win_inner_match(
         &self,
@@ -76,7 +77,7 @@ pub trait ArenaSender: Send + Sync {
         child_tournament: Address,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<()>;
 
     async fn seal_leaf_match(
         &self,
@@ -86,7 +87,7 @@ pub trait ArenaSender: Send + Sync {
         right_leaf: Digest,
         initial_hash: Digest,
         initial_hash_proof: MerkleProof,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<()>;
 
     async fn win_leaf_match(
         &self,
@@ -95,13 +96,9 @@ pub trait ArenaSender: Send + Sync {
         left_node: Digest,
         right_node: Digest,
         proofs: MachineProof,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<()>;
 
-    async fn eliminate_match(
-        &self,
-        tournament: Address,
-        match_id: MatchID,
-    ) -> Result<(), Box<dyn Error>>;
+    async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()>;
 }
 
 #[async_trait]
@@ -113,7 +110,7 @@ impl ArenaSender for EthArenaSender {
         proof: MerkleProof,
         left_child: Digest,
         right_child: Digest,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let proof = proof.iter().map(|h| -> [u8; 32] { (*h).into() }).collect();
         tournament
@@ -137,7 +134,7 @@ impl ArenaSender for EthArenaSender {
         right_node: Digest,
         new_left_node: Digest,
         new_right_node: Digest,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let match_id = tournament::Id {
             commitment_one: match_id.commitment_one.into(),
@@ -165,7 +162,7 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash: Digest,
         initial_hash_proof: MerkleProof,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
         let match_id = non_leaf_tournament::Id {
@@ -196,7 +193,7 @@ impl ArenaSender for EthArenaSender {
         child_tournament: Address,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
         tournament
@@ -215,7 +212,7 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash: Digest,
         initial_hash_proof: MerkleProof,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
         let match_id = leaf_tournament::Id {
             commitment_one: match_id.commitment_one.into(),
@@ -246,7 +243,7 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
         proofs: MachineProof,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
         let match_id = leaf_tournament::Id {
             commitment_one: match_id.commitment_one.into(),
@@ -265,11 +262,7 @@ impl ArenaSender for EthArenaSender {
         Ok(())
     }
 
-    async fn eliminate_match(
-        &self,
-        tournament: Address,
-        match_id: MatchID,
-    ) -> Result<(), Box<dyn Error>> {
+    async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let match_id = tournament::Id {
             commitment_one: match_id.commitment_one.into(),

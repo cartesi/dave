@@ -3,6 +3,7 @@
 use crate::{ffi, hash::Hash};
 
 /// Type of state access
+#[derive(Debug, PartialEq, Eq)]
 pub enum AccessType {
     /// Read operation
     Read = 0,
@@ -50,7 +51,7 @@ pub struct BracketNote<'a> {
     phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a> BracketNote<'a>  {
+impl<'a> BracketNote<'a> {
     fn new(ptr: *const cartesi_machine_sys::cm_bracket_note) -> Self {
         Self {
             ptr,
@@ -77,7 +78,7 @@ pub struct Access<'a> {
     phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a>  Access<'a> {
+impl<'a> Access<'a> {
     fn new(ptr: *const cartesi_machine_sys::cm_access) -> Self {
         Self {
             ptr,
@@ -117,13 +118,16 @@ impl<'a>  Access<'a> {
 
     /// Data after access (if writing)
     pub fn written_data(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts((*self.ptr).written_data, (*self.ptr).written_data_size) }
+        unsafe {
+            std::slice::from_raw_parts((*self.ptr).written_data, (*self.ptr).written_data_size)
+        }
     }
 
     /// Sibling hashes towards root
     pub fn sibling_hashes(&self) -> Vec<Hash> {
         let sibling_hashes = unsafe { *(*self.ptr).sibling_hashes };
-        let sibling_hashes = unsafe { std::slice::from_raw_parts(sibling_hashes.entry, sibling_hashes.count) };
+        let sibling_hashes =
+            unsafe { std::slice::from_raw_parts(sibling_hashes.entry, sibling_hashes.count) };
 
         sibling_hashes.iter().map(|hash| Hash::new(*hash)).collect()
     }
@@ -158,14 +162,20 @@ impl AccessLog {
         let brackets = unsafe { (*self.0).brackets };
         let brackets = unsafe { std::slice::from_raw_parts(brackets.entry, brackets.count) };
 
-        brackets.iter().map(|bracket| BracketNote::new(bracket)).collect()
+        brackets
+            .iter()
+            .map(|bracket| BracketNote::new(bracket))
+            .collect()
     }
 
     pub fn notes(&self) -> Vec<String> {
         let notes = unsafe { (*self.0).notes };
         let notes = unsafe { std::slice::from_raw_parts(notes.entry, notes.count) };
 
-        notes.iter().map(|note| ffi::from_cstr(*note).unwrap()).collect()
+        notes
+            .iter()
+            .map(|note| ffi::from_cstr(*note).unwrap())
+            .collect()
     }
 
     pub fn log_type(&self) -> AccessLogType {
