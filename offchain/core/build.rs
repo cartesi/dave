@@ -3,18 +3,25 @@ use ethers_contract_abigen::Abigen;
 use foundry_compilers::remappings::Remapping;
 use foundry_compilers::{Project, ProjectPathsConfig};
 use serde_json;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+macro_rules! p {
+    ($($tokens: tt)*) => {
+        println!("cargo:warning={}", format!($($tokens)*))
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    generate_contract_bidings()?;
+    generate_contract_bindings()?;
     Ok(())
 }
 
-fn generate_contract_bidings() -> Result<(), Box<dyn std::error::Error>> {
+// TODO: polish this function
+fn generate_contract_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let project_path = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let contract_rel_path = "../../permissionless-arbitration/contracts";
-    let step_rel_path = "../../machine-emulator-sdk/solidity-step/";
-    let contract_root_path = project_path.join(contract_rel_path);
+    let permissionless_contract_path =
+        project_path.join("../../permissionless-arbitration/contracts");
+    let step_path = "../../machine-emulator-sdk/solidity-step/";
     let contract_src_files = vec![
         "LeafTournament".to_string(),
         "NonLeafTournament".to_string(),
@@ -24,30 +31,35 @@ fn generate_contract_bidings() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let paths = ProjectPathsConfig::builder()
-        .root(contract_root_path.as_path())
+        .root(permissionless_contract_path.clone())
         .remapping(Remapping {
             context: None,
             name: "step/".to_string(),
-            path: step_rel_path.to_string(),
+            path: step_path.to_string(),
+        })
+        .remapping(Remapping {
+            context: None,
+            name: "forge-std/".to_string(),
+            path: "lib/forge-std/src/".to_string(),
+        })
+        .remapping(Remapping {
+            context: None,
+            name: "ds-test/".to_string(),
+            path: "lib/forge-std/lib/ds-test/src/".to_string(),
         })
         .build()?;
 
     let project = Project::builder()
         .paths(paths)
-        .allowed_path(step_rel_path)
+        .allowed_path(step_path)
         .build()?;
 
     project
-        .compile_files(
-            contract_src_files
-                .iter()
-                .map(|f| {
-                    contract_root_path
-                        .join("src/tournament/abstracts")
-                        .join(format!("{}.sol", f))
-                })
-                .collect::<Vec<PathBuf>>(),
-        )?
+        .compile()?
+        // .output()
+        // .errors
+        // .iter()
+        // .for_each(|f| p!("{}", f));
         .artifacts()
         .filter(|artifact| {
             contract_src_files
@@ -69,7 +81,10 @@ fn generate_contract_bidings() -> Result<(), Box<dyn std::error::Error>> {
         });
 
     // Tell Cargo that if a source file changes, to rerun this build script.
-    println!("cargo:rerun-if-changed={}", contract_root_path.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        permissionless_contract_path.display()
+    );
 
     Ok(())
 }
