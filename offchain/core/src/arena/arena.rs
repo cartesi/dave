@@ -90,7 +90,7 @@ pub enum TournamentWinner {
 }
 
 /// Struct used to communicate the state of a tournament.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TournamentState {
     pub address: Address,
     pub base_big_cycle: u64,
@@ -108,15 +108,7 @@ impl TournamentState {
     pub fn new_root(address: Address) -> Self {
         TournamentState {
             address,
-            base_big_cycle: 0,
-            level: 0,
-            log2_stride: 0,
-            log2_stride_count: 0,
-            max_level: 0,
-            parent: None,
-            commitment_states: HashMap::new(),
-            matches: vec![],
-            winner: None,
+            ..Default::default()
         }
     }
 
@@ -125,13 +117,8 @@ impl TournamentState {
             address,
             base_big_cycle,
             level: level + 1,
-            log2_stride: 0,
-            log2_stride_count: 0,
-            max_level: 0,
             parent: Some(parent),
-            commitment_states: HashMap::new(),
-            matches: vec![],
-            winner: None,
+            ..Default::default()
         }
     }
 }
