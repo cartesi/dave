@@ -1,6 +1,5 @@
-use std::error::Error;
-
 use ::log::info;
+use anyhow::Result;
 use async_recursion::async_recursion;
 use ethers::types::Address;
 
@@ -19,7 +18,7 @@ impl GarbageCollector {
         &mut self,
         arena_sender: &'a impl ArenaSender,
         tournament_states: TournamentStateMap,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         self.react_tournament(arena_sender, self.root_tournamet, tournament_states)
             .await
     }
@@ -30,7 +29,7 @@ impl GarbageCollector {
         arena_sender: &'a impl ArenaSender,
         tournament_address: Address,
         tournament_states: TournamentStateMap,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         info!("Enter tournament at address: {}", tournament_address);
         let tournament_state = tournament_states
             .get(&tournament_address)
@@ -76,7 +75,7 @@ impl GarbageCollector {
         arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
         tournament_states: TournamentStateMap,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
         if let Some(inner_tournament) = match_state.inner_tournament {
             return self

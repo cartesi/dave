@@ -2,10 +2,8 @@
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
 use crate::machine::{build_machine_commitment, MachineCommitment, MachineInstance};
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    error::Error,
-};
+use anyhow::Result;
+use std::collections::{hash_map::Entry, HashMap};
 
 pub struct CachingMachineCommitmentBuilder {
     machine_path: String,
@@ -26,7 +24,7 @@ impl CachingMachineCommitmentBuilder {
         level: u64,
         log2_stride: u64,
         log2_stride_count: u64,
-    ) -> Result<MachineCommitment, Box<dyn Error>> {
+    ) -> Result<MachineCommitment> {
         if let Entry::Vacant(e) = self.commitments.entry(level) {
             e.insert(HashMap::new());
         } else if self.commitments[&level].contains_key(&base_cycle) {

@@ -1,6 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
+use anyhow::Result;
 use async_recursion::async_recursion;
 use tokio::sync::Semaphore;
 
@@ -36,7 +37,7 @@ impl InputReader {
         input_box: Address,
         provider_url: &str,
         concurrency_opt: Option<usize>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self> {
         Ok(Self {
             last_finalized: last_finalized_opt.unwrap_or_default(),
             provider: PartitionProvider {
@@ -47,7 +48,7 @@ impl InputReader {
         })
     }
 
-    pub async fn next(&mut self) -> Result<Vec<Log>, Box<dyn std::error::Error>> {
+    pub async fn next(&mut self) -> Result<Vec<Log>> {
         let block_opt = self
             .provider
             .provider
@@ -160,7 +161,7 @@ impl PartitionProvider {
 
 #[tokio::test]
 
-async fn test_input_reader() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_input_reader() -> Result<()> {
     use std::str::FromStr;
 
     let genesis: U64 = U64::from(17784733);

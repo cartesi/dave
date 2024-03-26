@@ -101,6 +101,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.81"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0952808a6c2afd1aa8947271f3a60f1a6763c7b912d210184c5149b5cf147247"
+
+[[package]]
 name = "ark-ff"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -500,6 +506,7 @@ dependencies = [
 name = "cartesi-compute-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-recursion",
  "async-trait",
  "base64 0.21.5",
@@ -795,6 +802,7 @@ checksum = "c2e66c9d817f1720209181c316d28635c050fa304f9c79e47a520882661b7308"
 name = "dave-compute"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "cartesi-compute-core",
  "env_logger",
  "ethers",
@@ -2910,6 +2918,7 @@ dependencies = [
 name = "rollups-input-reader"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-recursion",
  "ethers",
  "futures",

@@ -1,13 +1,16 @@
-use cartesi_compute_core::arena::{ArenaConfig, EthArenaSender, StateReader};
-use cartesi_compute_core::machine::CachingMachineCommitmentBuilder;
-use cartesi_compute_core::strategy::{gc::GarbageCollector, player::Player};
+use cartesi_compute_core::{
+    arena::{ArenaConfig, EthArenaSender, StateReader},
+    machine::CachingMachineCommitmentBuilder,
+    strategy::{gc::GarbageCollector, player::Player},
+};
+
+use anyhow::Result;
 use ethers::types::Address;
 use log::info;
-use std::str::FromStr;
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     env_logger::init();
     info!("Hello from Dave!");
     let web3_rpc_url = String::from("http://127.0.0.1:8545");
