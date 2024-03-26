@@ -1,7 +1,8 @@
 //! This module defines a struct [MachineCommitment] that is used to represent a `computation hash`
 //! described on the paper https://arxiv.org/pdf/2212.12439.pdf.
 
-use std::{error::Error, ops::ControlFlow, sync::Arc};
+use anyhow::Result;
+use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
     machine::{constants, MachineInstance},
@@ -23,7 +24,7 @@ pub fn build_machine_commitment(
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
-) -> Result<MachineCommitment, Box<dyn Error>> {
+) -> Result<MachineCommitment> {
     if log2_stride >= constants::LOG2_UARCH_SPAN {
         assert!(
             log2_stride + log2_stride_count
@@ -42,7 +43,7 @@ pub fn build_big_machine_commitment(
     base_cycle: u64,
     log2_stride: u64,
     log2_stride_count: u64,
-) -> Result<MachineCommitment, Box<dyn Error>> {
+) -> Result<MachineCommitment> {
     machine.run(base_cycle)?;
     let initial_state = machine.machine_state()?;
 
@@ -78,7 +79,7 @@ fn advance_instruction(
     base_cycle: u64,
     builder: &mut MerkleBuilder,
     instruction_count: u64,
-) -> Result<ControlFlow<()>, Box<dyn Error>> {
+) -> Result<ControlFlow<()>> {
     let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN);
     machine.run(base_cycle + cycle)?;
     let state = machine.machine_state()?;
@@ -99,7 +100,7 @@ pub fn build_small_machine_commitment(
     machine: &mut MachineInstance,
     base_cycle: u64,
     log2_stride_count: u64,
-) -> Result<MachineCommitment, Box<dyn Error>> {
+) -> Result<MachineCommitment> {
     machine.run(base_cycle)?;
     let initial_state = machine.machine_state()?;
 
@@ -131,7 +132,7 @@ pub fn build_small_machine_commitment(
     })
 }
 
-fn run_uarch_span(machine: &mut MachineInstance) -> Result<MerkleTree, Box<dyn Error>> {
+fn run_uarch_span(machine: &mut MachineInstance) -> Result<MerkleTree> {
     let (_, ucycle) = machine.position();
     assert!(ucycle == 0);
 

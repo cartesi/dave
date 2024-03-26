@@ -1,6 +1,7 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 
 use ::log::info;
+use anyhow::Result;
 use async_recursion::async_recursion;
 use ethers::types::Address;
 
@@ -39,7 +40,7 @@ impl Player {
         &mut self,
         arena_sender: &'a impl ArenaSender,
         tournament_states: TournamentStateMap,
-    ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
+    ) -> Result<Option<PlayerTournamentResult>> {
         self.react_tournament(
             arena_sender,
             HashMap::new(),
@@ -56,7 +57,7 @@ impl Player {
         commitments: HashMap<Address, MachineCommitment>,
         tournament_address: Address,
         tournament_states: TournamentStateMap,
-    ) -> Result<Option<PlayerTournamentResult>, Box<dyn Error>> {
+    ) -> Result<Option<PlayerTournamentResult>> {
         info!("Enter tournament at address: {}", tournament_address);
         let tournament_state = tournament_states
             .get(&tournament_address)
@@ -159,7 +160,7 @@ impl Player {
         arena_sender: &'a impl ArenaSender,
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let (left, right) = commitment.merkle.root_children();
         let (last, proof) = commitment.merkle.last();
 
@@ -184,7 +185,7 @@ impl Player {
         tournament_level: u64,
         tournament_max_level: u64,
         tournament_states: TournamentStateMap,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
         if match_state.current_height == 0 {
             self.react_sealed_match(
@@ -222,7 +223,7 @@ impl Player {
         tournament_level: u64,
         tournament_max_level: u64,
         tournament_states: TournamentStateMap,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         if tournament_level == (tournament_max_level - 1) {
             let (left, right) = commitment.merkle.root_children();
 
@@ -272,7 +273,7 @@ impl Player {
         commitment: &MachineCommitment,
         tournament_level: u64,
         tournament_max_level: u64,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let (left, right) =
             if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
                 children
@@ -333,7 +334,7 @@ impl Player {
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         let (left, right) =
             if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
                 children

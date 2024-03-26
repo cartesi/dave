@@ -1,8 +1,9 @@
 //! This module defines the struct [StateReader] that is responsible for the reading the states
 //! of tournaments
 
-use std::{collections::HashMap, error::Error, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
+use anyhow::Result;
 use async_recursion::async_recursion;
 
 use ethers::{
@@ -31,7 +32,7 @@ pub struct StateReader {
 }
 
 impl StateReader {
-    pub fn new(config: ArenaConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn new(config: ArenaConfig) -> Result<Self> {
         let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
             .interval(Duration::from_millis(10u64));
         let wallet = LocalWallet::from_str(config.web3_private_key.as_str())?;
@@ -47,7 +48,7 @@ impl StateReader {
         &self,
         tournament_address: Address,
         match_id: MatchID,
-    ) -> Result<Option<TournamentCreatedEvent>, Box<dyn Error>> {
+    ) -> Result<Option<TournamentCreatedEvent>> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament_address, self.client.clone());
         let events = tournament
@@ -68,10 +69,7 @@ impl StateReader {
         }
     }
 
-    async fn created_matches(
-        &self,
-        tournament_address: Address,
-    ) -> Result<Vec<MatchCreatedEvent>, Box<dyn Error>> {
+    async fn created_matches(&self, tournament_address: Address) -> Result<Vec<MatchCreatedEvent>> {
         let tournament = tournament::Tournament::new(tournament_address, self.client.clone());
         let events: Vec<MatchCreatedEvent> = tournament
             .match_created_filter()
@@ -95,7 +93,7 @@ impl StateReader {
     async fn joined_commitments(
         &self,
         tournament_address: Address,
-    ) -> Result<Vec<CommitmentJoinedEvent>, Box<dyn Error>> {
+    ) -> Result<Vec<CommitmentJoinedEvent>> {
         let tournament = tournament::Tournament::new(tournament_address, self.client.clone());
         let events = tournament
             .commitment_joined_filter()
@@ -116,7 +114,7 @@ impl StateReader {
         &self,
         tournament: Address,
         commitment_hash: Digest,
-    ) -> Result<CommitmentState, Box<dyn Error>> {
+    ) -> Result<CommitmentState> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
         let (clock_state, hash) = tournament
             .get_commitment(commitment_hash.into())
@@ -140,10 +138,7 @@ impl StateReader {
         })
     }
 
-    pub async fn fetch_from_root(
-        &self,
-        root_tournament: Address,
-    ) -> Result<TournamentStateMap, Box<dyn Error>> {
+    pub async fn fetch_from_root(&self, root_tournament: Address) -> Result<TournamentStateMap> {
         self.fetch_tournament(TournamentState::new_root(root_tournament), HashMap::new())
             .await
     }
@@ -153,7 +148,7 @@ impl StateReader {
         &self,
         tournament_state: TournamentState,
         states: TournamentStateMap,
-    ) -> Result<TournamentStateMap, Box<dyn Error>> {
+    ) -> Result<TournamentStateMap> {
         let tournament = tournament::Tournament::new(tournament_state.address, self.client.clone());
         let mut state = tournament_state.clone();
 
@@ -247,7 +242,7 @@ impl StateReader {
         match_state: MatchState,
         states: TournamentStateMap,
         tournament_level: u64,
-    ) -> Result<(MatchState, TournamentStateMap), Box<dyn Error>> {
+    ) -> Result<(MatchState, TournamentStateMap)> {
         let mut state = match_state.clone();
         let created_tournament = self
             .created_tournament(match_state.tournament_address, match_state.id)
@@ -271,7 +266,7 @@ impl StateReader {
     async fn root_tournament_winner(
         &self,
         root_tournament: Address,
-    ) -> Result<Option<TournamentWinner>, Box<dyn Error>> {
+    ) -> Result<Option<TournamentWinner>> {
         let root_tournament =
             root_tournament::RootTournament::new(root_tournament, self.client.clone());
         let (finished, commitment, state) = root_tournament.arbitration_result().call().await?;
@@ -285,10 +280,7 @@ impl StateReader {
         }
     }
 
-    async fn tournament_winner(
-        &self,
-        tournament: Address,
-    ) -> Result<Option<TournamentWinner>, Box<dyn Error>> {
+    async fn tournament_winner(&self, tournament: Address) -> Result<Option<TournamentWinner>> {
         let tournament =
             non_root_tournament::NonRootTournament::new(tournament, self.client.clone());
         let (finished, parent_commitment, dangling_commitment) =

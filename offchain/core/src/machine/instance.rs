@@ -7,7 +7,8 @@ use cartesi_machine::{
     Machine,
 };
 
-use std::{error::Error, path::Path};
+use anyhow::Result;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct MachineState {
@@ -37,7 +38,7 @@ pub struct MachineInstance {
 }
 
 impl MachineInstance {
-    pub fn new(snapshot_path: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new(snapshot_path: &str) -> Result<Self> {
         let mut machine = Machine::load(&Path::new(snapshot_path), RuntimeConfig::default())?;
 
         let root_hash = machine.get_root_hash()?;
@@ -60,7 +61,7 @@ impl MachineInstance {
         self.root_hash
     }
 
-    pub fn get_logs(&mut self, cycle: u64, ucycle: u64) -> Result<MachineProof, Box<dyn Error>> {
+    pub fn get_logs(&mut self, cycle: u64, ucycle: u64) -> Result<MachineProof> {
         self.run(cycle)?;
         self.run_uarch(ucycle)?;
 
@@ -80,7 +81,7 @@ impl MachineInstance {
         Ok(encode_access_log(&logs))
     }
 
-    pub fn run(&mut self, cycle: u64) -> Result<(), Box<dyn Error>> {
+    pub fn run(&mut self, cycle: u64) -> Result<()> {
         assert!(self.cycle <= cycle);
 
         let physical_cycle = add_and_clamp(self.start_cycle, cycle);
@@ -104,7 +105,7 @@ impl MachineInstance {
         Ok(())
     }
 
-    pub fn run_uarch(&mut self, ucycle: u64) -> Result<(), Box<dyn Error>> {
+    pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
         assert!(
             self.ucycle <= ucycle,
             "{}",
@@ -117,20 +118,20 @@ impl MachineInstance {
         Ok(())
     }
 
-    pub fn increment_uarch(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn increment_uarch(&mut self) -> Result<()> {
         self.machine.run_uarch(self.ucycle + 1)?;
         self.ucycle += 1;
         Ok(())
     }
 
-    pub fn ureset(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn ureset(&mut self) -> Result<()> {
         self.machine.reset_uarch()?;
         self.cycle += 1;
         self.ucycle = 0;
         Ok(())
     }
 
-    pub fn machine_state(&mut self) -> Result<MachineState, Box<dyn Error>> {
+    pub fn machine_state(&mut self) -> Result<MachineState> {
         let root_hash = self.machine.get_root_hash()?;
         let halted = self.machine.read_iflags_h()?;
         let uhalted = self.machine.read_uarch_halt_flag()?;
@@ -142,7 +143,7 @@ impl MachineInstance {
         })
     }
 
-    pub fn write_memory(&mut self, address: u64, data: String) -> Result<(), Box<dyn Error>> {
+    pub fn write_memory(&mut self, address: u64, data: String) -> Result<()> {
         self.machine
             .write_memory(address, &hex::decode(data.as_bytes())?)?;
         Ok(())
