@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "dave-advance",
     "input-query",
+    "input-manager",
     "input-reader",
 ]
 
