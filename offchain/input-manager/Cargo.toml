@@ -1,0 +1,18 @@
+[package]
+name = "rollups-input-manager"
+version = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+anyhow = "1.0.6"
+ethers = { workspace = true }
+
+[dev-dependencies]
+cartesi-rollups-contracts = "2.0.0-rc.1"
