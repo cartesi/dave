@@ -5,17 +5,41 @@ use async_recursion::async_recursion;
 use ethers::abi::RawLog;
 use tokio::sync::Semaphore;
 
-use cartesi_rollups_contracts::input_box::input_box::InputAddedFilter;
+// use cartesi_rollups_contracts::input_box::input_box::InputAddedFilter;
 use ethers::contract::EthEvent;
 use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
 use ethers::types::{Address, BlockNumber, Filter, H160, U64};
 
+/// `OldInputAddedFilter` is the old event format,
+/// it should be replaced by the actual `InputAddedFilter` after it's deployed and published
+#[derive(
+    Clone,
+    ::ethers::contract::EthEvent,
+    ::ethers::contract::EthDisplay,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+)]
+#[ethevent(name = "InputAdded", abi = "InputAdded(address,uint256,address,bytes)")]
+pub struct OldInputAddedFilter {
+    #[ethevent(indexed)]
+    pub app_contract: ::ethers::core::types::Address,
+    #[ethevent(indexed)]
+    pub index: ::ethers::core::types::U256,
+    pub address: ethers::core::types::Address,
+    pub input: ::ethers::core::types::Bytes,
+}
+
 struct PartitionProvider {
     provider: Provider<Http>,
     semaphore: Semaphore,
     input_box: Address,
-    app: H160
+    app: H160,
 }
 
 #[derive(Debug)]
@@ -48,12 +72,12 @@ impl InputReader {
                 input_box,
                 provider: Provider::<Http>::try_from(provider_url)?,
                 semaphore: Semaphore::new(concurrency_opt.unwrap_or_default()),
-                app
+                app,
             },
         })
     }
 
-    pub async fn next(&mut self) -> Result<Vec<InputAddedFilter>, Box<dyn std::error::Error>> {
+    pub async fn next(&mut self) -> Result<Vec<OldInputAddedFilter>, Box<dyn std::error::Error>> {
         let block_opt = self
             .provider
             .provider
@@ -93,7 +117,7 @@ impl PartitionProvider {
         &self,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<InputAddedFilter>, Vec<ProviderError>> {
+    ) -> Result<Vec<OldInputAddedFilter>, Vec<ProviderError>> {
         self.get_events_rec(start_block, end_block).await
     }
 
@@ -102,13 +126,14 @@ impl PartitionProvider {
         &self,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<InputAddedFilter>, Vec<ProviderError>> {
+    ) -> Result<Vec<OldInputAddedFilter>, Vec<ProviderError>> {
         // TODO: partition log queries if range too large
         let filter = Filter::new()
             .from_block(start_block)
             .to_block(end_block)
             .address(self.input_box)
-            .event("InputAdded(address,uint256,address,bytes)");
+            .event(&OldInputAddedFilter::abi_signature())
+            .topic1(self.app);
 
         let res = {
             // Make number of concurrent fetches bounded.
@@ -118,14 +143,12 @@ impl PartitionProvider {
 
         match res {
             Ok(l) => {
-                let raw_logs = l
+                let logs = l
                     .into_iter()
                     .map(RawLog::from)
-                    .map(|x| InputAddedFilter::decode_log(&x))
+                    .map(|x| OldInputAddedFilter::decode_log(&x))
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
-
-                let logs = raw_logs.into_iter().filter(|x| x.app == self.app).collect();
 
                 Ok(logs)
             }
@@ -183,7 +206,7 @@ async fn test_input_reader() -> Result<(), Box<dyn std::error::Error>> {
 
     let genesis: U64 = U64::from(17784733);
     let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
-    let app = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
+    let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
     let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
 
     let mut reader = InputReader::new(
@@ -191,7 +214,7 @@ async fn test_input_reader() -> Result<(), Box<dyn std::error::Error>> {
         input_box,
         format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref(),
         Some(5),
-        app
+        app,
     )?;
 
     let res: Vec<_> = reader.next().await?;
