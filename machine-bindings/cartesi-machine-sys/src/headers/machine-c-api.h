@@ -23,7 +23,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #else
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #endif
@@ -69,7 +68,7 @@ typedef enum { // NOLINT(modernize-use-using)
     CM_ERROR_FILESYSTEM_ERROR,
     CM_ERROR_ATOMIC_TX_ERROR,
     CM_ERROR_NONEXISTING_LOCAL_TIME,
-    CM_ERROR_AMBIGOUS_LOCAL_TIME,
+    CM_ERROR_AMBIGUOUS_LOCAL_TIME,
     CM_ERROR_FORMAT_ERROR,
     CM_RUNTIME_ERROR_END,
     // Other errors
@@ -94,6 +93,7 @@ typedef enum { // NOLINT(modernize-use-using)
     CM_BREAK_REASON_HALTED,
     CM_BREAK_REASON_YIELDED_MANUALLY,
     CM_BREAK_REASON_YIELDED_AUTOMATICALLY,
+    CM_BREAK_REASON_YIELDED_SOFTLY,
     CM_BREAK_REASON_REACHED_TARGET_MCYCLE
 } CM_BREAK_REASON;
 
@@ -129,7 +129,10 @@ typedef enum { // NOLINT(modernize-use-using)
     CM_PROC_SENVCFG,
     CM_PROC_ILRSC,
     CM_PROC_IFLAGS,
+    CM_PROC_IUNREP,
     CM_PROC_CLINT_MTIMECMP,
+    CM_PROC_PLIC_GIRQPEND,
+    CM_PROC_PLIC_GIRQSRVD,
     CM_PROC_HTIF_TOHOST,
     CM_PROC_HTIF_FROMHOST,
     CM_PROC_HTIF_IHALT,
@@ -181,6 +184,7 @@ typedef struct {                        // NOLINT(modernize-use-using)
     uint64_t senvcfg;                   ///< Value of senvcfg CSR
     uint64_t ilrsc;                     ///< Value of ilrsc CSR
     uint64_t iflags;                    ///< Value of iflags CSR
+    uint64_t iunrep;                    ///< Value of iunrep CSR
 } cm_processor_config;
 
 /// \brief RAM state configuration
@@ -221,6 +225,12 @@ typedef struct {       // NOLINT(modernize-use-using)
     uint64_t mtimecmp; ///< Value of mtimecmp CSR
 } cm_clint_config;
 
+/// \brief PLIC device state configuration
+typedef struct {       // NOLINT(modernize-use-using)
+    uint64_t girqpend; ///< Value of girqpend CSR
+    uint64_t girqsrvd; ///< Value of girqsrvd CSR
+} cm_plic_config;
+
 /// \brief HTIF device state configuration
 typedef struct {          // NOLINT(modernize-use-using)
     uint64_t fromhost;    ///< Value of fromhost CSR
@@ -230,11 +240,74 @@ typedef struct {          // NOLINT(modernize-use-using)
     bool yield_automatic; ///< Make yield automatic available?
 } cm_htif_config;
 
+/// \brief VirtIO device type
+typedef enum { // NOLINT(modernize-use-using)
+    CM_VIRTIO_DEVICE_CONSOLE,
+    CM_VIRTIO_DEVICE_P9FS,
+    CM_VIRTIO_DEVICE_NET_USER,
+    CM_VIRTIO_DEVICE_NET_TUNTAP
+} CM_VIRTIO_DEVICE_TYPE;
+
+/// \brief VirtIO Plan 9 filesystem device state configuration
+typedef struct {                // NOLINT(modernize-use-using)
+    const char *tag;            ///< Guest mount tag
+    const char *host_directory; ///< Path to the host shared directory
+} cm_virtio_p9fs_config;
+
+/// \brief VirtIO host forward state config
+typedef struct cm_virtio_hostfwd_config { // NOLINT(modernize-use-using)
+    bool is_udp;
+    uint64_t host_ip;
+    uint64_t guest_ip;
+    uint16_t host_port;
+    uint16_t guest_port;
+} cm_virtio_hostfwd_config;
+
+/// \brief VirtIO host forward configuration array
+typedef struct { // NOLINT(modernize-use-using)
+    cm_virtio_hostfwd_config *entry;
+    size_t count;
+} cm_virtio_hostfwd_config_array;
+
+/// \brief VirtIO user network device state configuration
+typedef struct { // NOLINT(modernize-use-using)
+    cm_virtio_hostfwd_config_array hostfwd;
+} cm_virtio_net_user_config;
+
+/// \brief VirtIO TUN/TAP network device state configuration
+typedef struct {       // NOLINT(modernize-use-using)
+    const char *iface; ///< Host's tap network interface (e.g "tap0")
+} cm_virtio_net_tuntap_config;
+
+/// \brief VirtIO device union
+typedef union {                             // NOLINT(modernize-use-using)
+    cm_virtio_p9fs_config p9fs;             ///< Plan 9 filesystem
+    cm_virtio_net_user_config net_user;     ///< User-mode networking
+    cm_virtio_net_tuntap_config net_tuntap; ///< TUN/TAP networking
+} cm_virtio_device_config_union;
+
+/// \brief VirtIO device state configuration
+typedef struct {                          // NOLINT(modernize-use-using)
+    CM_VIRTIO_DEVICE_TYPE type;           ///< VirtIO device type
+    cm_virtio_device_config_union device; ///< VirtIO device config
+} cm_virtio_device_config;
+
+/// \brief VirtIO device configuration array
+typedef struct { // NOLINT(modernize-use-using)
+    cm_virtio_device_config *entry;
+    size_t count;
+} cm_virtio_config_array;
+
+/// \brief CMIO buffer configuration
+typedef struct {                // NOLINT(modernize-use-using)
+    bool shared;                ///< Target changes to range affect image file?
+    const char *image_filename; ///< Memory range image file name
+} cm_cmio_buffer_config;
+
 /// \brief Cmio state configuration
-typedef struct {                           // NOLINT(modernize-use-using)
-    bool has_value;                        ///< Represents whether the rest of the struct have been filled
-    cm_memory_range_config rx_buffer;      ///< RX buffer memory range
-    cm_memory_range_config tx_buffer;      ///< TX buffer memory range
+typedef struct {                     // NOLINT(modernize-use-using)
+    cm_cmio_buffer_config rx_buffer; ///< RX buffer configuration
+    cm_cmio_buffer_config tx_buffer; ///< TX buffer configuration
 } cm_cmio_config;
 
 /// \brief microarchitecture RAM configuration
@@ -264,7 +337,9 @@ typedef struct { // NOLINT(modernize-use-using)
     cm_memory_range_config_array flash_drive;
     cm_tlb_config tlb;
     cm_clint_config clint;
+    cm_plic_config plic;
     cm_htif_config htif;
+    cm_virtio_config_array virtio;
     cm_cmio_config cmio;
     cm_uarch_config uarch;
 } cm_machine_config;
@@ -363,7 +438,9 @@ typedef struct { // NOLINT(modernize-use-using)
     cm_concurrency_runtime_config concurrency;
     cm_htif_runtime_config htif;
     bool skip_root_hash_check;
+    bool skip_root_hash_store;
     bool skip_version_check;
+    bool soft_yield;
 } cm_machine_runtime_config;
 
 /// \brief Machine instance handle
@@ -663,6 +740,17 @@ CM_API int cm_read_virtual_memory(const cm_machine *m, uint64_t address, unsigne
 /// \returns 0 for success, non zero code for error
 CM_API int cm_write_virtual_memory(cm_machine *m, uint64_t address, const unsigned char *data, size_t length,
     char **err_msg);
+
+/// \brief Translates a virtual memory address to its corresponding physical memory address.
+/// \param m Pointer to valid machine instance
+/// \param vaddr Virtual address to translate.
+/// \param paddr Receives the physical memory address.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_translate_virtual_address(cm_machine *m, uint64_t vaddr, uint64_t *paddr, char **err_msg);
 
 /// \brief Reads the value of a general-purpose register.
 /// \param m Pointer to valid machine instance
@@ -1297,6 +1385,26 @@ CM_API uint64_t cm_packed_iflags(int PRV, int X, int Y, int H);
 /// \returns 0 for success, non zero code for error
 CM_API int cm_write_iflags(cm_machine *m, uint64_t val, char **err_msg);
 
+/// \brief Reads the value of the iunrep register.
+/// \param m Pointer to valid machine instance
+/// \param val Receives value of the register.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_read_iunrep(const cm_machine *m, uint64_t *val, char **err_msg);
+
+/// \brief Writes the value of the iunrep register.
+/// \param m Pointer to valid machine instance
+/// \param val New register value.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_write_iunrep(cm_machine *m, uint64_t val, char **err_msg);
+
 /// \brief Reads the value of HTIF's tohost register.
 /// \param m Pointer to valid machine instance
 /// \param val Receives value of the register.
@@ -1456,6 +1564,46 @@ CM_API int cm_read_clint_mtimecmp(const cm_machine *m, uint64_t *val, char **err
 /// err_msg can be NULL, meaning the error message won't be received.
 /// \returns 0 for success, non zero code for error
 CM_API int cm_write_clint_mtimecmp(cm_machine *m, uint64_t val, char **err_msg);
+
+/// \brief Reads the value of PLIC's girqpend register.
+/// \param m Pointer to valid machine instance
+/// \param val Receives value of the register.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_error_message.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_read_plic_girqpend(const cm_machine *m, uint64_t *val, char **err_msg);
+
+/// \brief Writes the value of PLIC's girqpend register.
+/// \param m Pointer to valid machine instance
+/// \param val New register value.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_error_message.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_write_plic_girqpend(cm_machine *m, uint64_t val, char **err_msg);
+
+/// \brief Reads the value of PLIC's girqsrvd register.
+/// \param m Pointer to valid machine instance
+/// \param val Receives value of the register.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_error_message.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_read_plic_girqsrvd(const cm_machine *m, uint64_t *val, char **err_msg);
+
+/// \brief Writes the value of PLIC's girqsrvd register.
+/// \param m Pointer to valid machine instance
+/// \param val New register value.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_error_message.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_write_plic_girqsrvd(cm_machine *m, uint64_t val, char **err_msg);
 
 /// \brief Checks the value of the iflags_X flag.
 /// \param m Pointer to valid machine instance
@@ -1621,7 +1769,15 @@ CM_API int cm_destroy(cm_machine *m, char **err_msg);
 /// \returns 0 for success, non zero code for error
 CM_API int cm_snapshot(cm_machine *m, char **err_msg);
 
-/// \brief Performs rollback
+/// \brief Performs commit of the machine, discarding last snapshot.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successful function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring.
+/// err_msg can be NULL, meaning the error message won't be received.
+/// \returns 0 for success, non zero code for error
+CM_API int cm_commit(cm_machine *m, char **err_msg);
+
+/// \brief Performs rollback of the machine, restoring last snapshot.
 /// \param err_msg Receives the error message if function execution fails
 /// or NULL in case of successful function execution. In case of failure error_msg
 /// must be deleted by the function caller using cm_delete_cstring.
@@ -1695,7 +1851,7 @@ CM_API int cm_write_uarch_cycle(cm_machine *m, uint64_t val, char **err_msg);
 /// \param m Pointer to valid machine instance
 /// \param val Receives value of the halt flag.
 /// \param err_msg Receives the error message if function execution fails
-/// or NULL in case of successfull function execution. In case of failure error_msg
+/// or NULL in case of successful function execution. In case of failure error_msg
 /// must be deleted by the function caller using cm_delete_cstring
 /// \returns 0 for success, non zero code for error
 CM_API int cm_read_uarch_halt_flag(const cm_machine *m, bool *val, char **err_msg);
@@ -1703,15 +1859,15 @@ CM_API int cm_read_uarch_halt_flag(const cm_machine *m, bool *val, char **err_ms
 /// \brief Sets the value of the microarchitecture halt flag.
 /// \param m Pointer to valid machine instance
 /// \param err_msg Receives the error message if function execution fails
-/// or NULL in case of successfull function execution. In case of failure error_msg
+/// or NULL in case of successful function execution. In case of failure error_msg
 /// must be deleted by the function caller using cm_delete_cstring
 /// \returns 0 for success, non zero code for error
 CM_API int cm_set_uarch_halt_flag(cm_machine *m, char **err_msg);
 
-/// \brief Resets the value of the microarchitecture halt flag.
+/// \brief Resets the entire uarch state to pristine values.
 /// \param m Pointer to valid machine instance
 /// \param err_msg Receives the error message if function execution fails
-/// or NULL in case of successfull function execution. In case of failure error_msg
+/// or NULL in case of successful function execution. In case of failure error_msg
 /// must be deleted by the function caller using cm_delete_cstring
 /// \returns 0 for success, non zero code for error
 CM_API int cm_reset_uarch(cm_machine *m, char **err_msg);
@@ -1722,7 +1878,7 @@ CM_API int cm_reset_uarch(cm_machine *m, char **err_msg);
 /// \param one_based Use 1-based indices when reporting errors.
 /// \param access_log Receives the state access log.
 /// \param err_msg Receives the error message if function execution fails
-/// or NULL in case of successfull function execution. In case of failure error_msg
+/// or NULL in case of successful function execution. In case of failure error_msg
 /// must be deleted by the function caller using cm_delete_cstring
 /// \returns 0 for success, non zero code for error
 CM_API int cm_log_uarch_reset(cm_machine *m, cm_access_log_type log_type, bool one_based, cm_access_log **access_log,
@@ -1756,6 +1912,64 @@ CM_API int cm_get_memory_ranges(cm_machine *m, cm_memory_range_descr_array **mrd
 /// \param mrda Pointer to array of memory range descriptions to delete.
 /// \returns void
 CM_API void cm_delete_memory_range_descr_array(cm_memory_range_descr_array *mrda);
+
+/// \brief Sends cmio response
+/// \param m Pointer to valid machine instance
+/// \param reason Reason for sending the response.
+/// \param data Response data to send
+/// \param length Length of response data.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successfull function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring
+/// \returns 0 for success, non zero code for error
+CM_API int cm_send_cmio_response(cm_machine *m, uint16_t reason, const unsigned char *data, size_t length,
+    char **err_msg);
+
+/// \brief Send cmio response and returns an access log
+/// \param m Pointer to valid machine instance
+/// \param reason Reason for sending the response.
+/// \param data Response data to send.
+/// \param length Length of response data.
+/// \param log_type Type of access log to generate.
+/// \param one_based Use 1-based indices when reporting errors.
+/// \param access_log Receives the state access log.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successfull function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring
+/// \returns 0 for success, non zero code for error
+CM_API int cm_log_send_cmio_response(cm_machine *m, uint16_t reason, const unsigned char *data, size_t length,
+    cm_access_log_type log_type, bool one_based, cm_access_log **access_log, char **err_msg);
+
+/// \brief Checks the internal consistency of an access log produced by cm_send_cmio_response
+/// \param reason Reason for sending the response.
+/// \param data The response sent when the log was generated.
+/// \param length Length of response.
+/// \param log State access log to be verified.
+/// \param runtime_config Runtime configuration of the machine.
+/// \param one_based Use 1-based indices when reporting errors.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successfull function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring
+/// \returns 0 for success, non zero code for error
+CM_API int cm_verify_send_cmio_response_log(uint16_t reason, const unsigned char *data, size_t length,
+    const cm_access_log *log, const cm_machine_runtime_config *runtime_config, bool one_based, char **err_msg);
+
+/// \brief Checks the validity of state transitions caused by cm_send_cmio_response
+/// \param reason Reason for sending the response.
+/// \param data The response sent when the log was generated.
+/// \param length Length of response
+/// \param root_hash_before State hash before load.
+/// \param log State access log to be verified.
+/// \param root_hash_after State hash after load.
+/// \param runtime_config Runtime configuration of the machine.
+/// \param one_based Use 1-based indices when reporting errors.
+/// \param err_msg Receives the error message if function execution fails
+/// or NULL in case of successfull function execution. In case of failure error_msg
+/// must be deleted by the function caller using cm_delete_cstring
+/// \returns 0 for success, non zero code for error
+CM_API int cm_verify_send_cmio_response_state_transition(uint16_t reason, const unsigned char *data, size_t length,
+    const cm_hash *root_hash_before, const cm_access_log *log, const cm_hash *root_hash_after,
+    const cm_machine_runtime_config *runtime_config, bool one_based, char **err_msg);
 
 #ifdef __cplusplus
 }

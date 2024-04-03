@@ -26,7 +26,7 @@ pub enum ErrorCode {
     FilesystemError = CM_ERROR_CM_ERROR_FILESYSTEM_ERROR as isize,
     AtomicTxError = CM_ERROR_CM_ERROR_ATOMIC_TX_ERROR as isize,
     NonexistingLocalTime = CM_ERROR_CM_ERROR_NONEXISTING_LOCAL_TIME as isize,
-    AmbigousLocalTime = CM_ERROR_CM_ERROR_AMBIGOUS_LOCAL_TIME as isize,
+    AmbigousLocalTime = CM_ERROR_CM_ERROR_AMBIGUOUS_LOCAL_TIME as isize,
     FormatError = CM_ERROR_CM_ERROR_FORMAT_ERROR as isize,
     RuntimeErrorEnd = CM_ERROR_CM_RUNTIME_ERROR_END as isize,
     BadTypeid = CM_ERROR_CM_ERROR_BAD_TYPEID as isize,

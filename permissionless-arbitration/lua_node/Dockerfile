@@ -1,4 +1,4 @@
-FROM cartesi/machine-emulator:0.16.0
+FROM cartesi/machine-emulator:0.17.0
 
 USER 0
 RUN apt-get -y update; apt-get -y install curl git; apt-get install -y procps xxd
