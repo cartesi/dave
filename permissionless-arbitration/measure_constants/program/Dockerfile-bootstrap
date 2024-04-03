@@ -39,9 +39,9 @@ RUN HOSTNAME=linux SOURCE_DATE_EPOCH=1695938400 genext2fs -z -v -v -f -a /replic
 RUN ls -al /replicate/source.ext2
 RUN rm -rf /replicate/release /replicate/release.tar
 
-COPY --from=cartesi/linux-kernel:0.19.1 /opt/riscv/kernel/artifacts/linux-6.5.9-ctsi-1-v0.19.1.bin /usr/share/cartesi-machine/images/linux.bin
+COPY --from=cartesi/linux-kernel:0.20.0 /opt/riscv/kernel/artifacts/linux-6.5.13-ctsi-1-v0.20.0.bin /usr/share/cartesi-machine/images/linux.bin
 #20231201T000000Z
-FROM cartesi/machine-emulator:0.16.0 AS cartesi-base
+FROM cartesi/machine-emulator:0.17.0 AS cartesi-base
 COPY --from=build /replicate/source.ext2 /source.ext2
 COPY --from=build /usr/share/cartesi-machine/images /usr/share/cartesi-machine/images
 USER root

@@ -13,8 +13,8 @@ pub mod log;
 pub mod proof;
 
 use cartesi_machine_sys::{cm_machine_runtime_config, cm_memory_range_config};
-use configuration::{free_cm_memory_range_config_cstr, OwnedMachineConfig};
-use configuration::{MachineConfig, RuntimeConfig};
+use configuration::{free_cm_memory_range_config_cstr};
+use configuration::{RuntimeConfig};
 use errors::{ErrorCollector, MachineError};
 
 macro_rules! read_csr {
@@ -169,33 +169,6 @@ impl Drop for Machine {
 }
 
 impl Machine {
-    /// Create new machine instance from configuration
-    pub fn create(
-        machine_config: MachineConfig,
-        runtime: RuntimeConfig,
-    ) -> Result<Self, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut machine = Machine {
-            machine: std::ptr::null_mut(),
-        };
-
-        unsafe {
-            let config = OwnedMachineConfig::from(machine_config);
-            let runtime = cm_machine_runtime_config::from(runtime);
-
-            let result = cartesi_machine_sys::cm_create_machine(
-                config.as_ref(),
-                &runtime,
-                &mut machine.machine,
-                &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
-
-        Ok(machine)
-    }
-
     /// Create machine instance from previously serialized directory
     pub fn load(path: &Path, runtime: RuntimeConfig) -> Result<Self, MachineError> {
         let mut error_collector = ErrorCollector::new();
@@ -552,6 +525,25 @@ impl Machine {
         Ok(data)
     }
 
+    /// Write a CMIO response
+    pub fn send_cmio_response(&mut self, reason: u16, data: &[u8]) -> Result<(), MachineError> {
+        let mut error_collector = ErrorCollector::new();
+
+        unsafe {
+            let result = cartesi_machine_sys::cm_send_cmio_response(
+                self.machine,
+                reason,
+                data.as_ptr(),
+                data.len(),
+                &mut error_collector.as_mut_ptr(),
+            );
+
+            error_collector.collect(result)?;
+        }
+
+        Ok(())
+    }
+
     /// Write a chunk of data to the machine memory.
     pub fn write_memory(&mut self, address: u64, data: &[u8]) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
@@ -701,53 +693,6 @@ impl Machine {
     /// Gets the address of a floating-point register.
     pub fn get_f_address(&mut self, i: u32) -> u64 {
         unsafe { cartesi_machine_sys::cm_get_f_address(i as i32) }
-    }
-
-    /// Returns copy of initialization config.
-    pub fn get_initial_config(&mut self) -> Result<MachineConfig, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut config = std::ptr::null();
-
-        unsafe {
-            let result = cartesi_machine_sys::cm_get_initial_config(
-                self.machine,
-                &mut config,
-                &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
-
-        let new_config: MachineConfig = unsafe { (*config).into() };
-
-        unsafe {
-            cartesi_machine_sys::cm_delete_machine_config(config);
-        }
-
-        Ok(new_config)
-    }
-
-    /// Returns copy of default system config.
-    pub fn get_default_config() -> Result<MachineConfig, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut config = std::ptr::null();
-
-        unsafe {
-            let result = cartesi_machine_sys::cm_get_default_config(
-                &mut config,
-                &mut error_collector.as_mut_ptr(),
-            );
-
-            error_collector.collect(result)?;
-        }
-
-        let new_config: MachineConfig = unsafe { (*config).into() };
-
-        unsafe {
-            cartesi_machine_sys::cm_delete_machine_config(config);
-        }
-
-        Ok(new_config)
     }
 
     /// Replaces a memory range

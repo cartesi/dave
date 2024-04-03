@@ -7,8 +7,8 @@ import "./Tournament.sol";
 import "../../CanonicalConstants.sol";
 import "../../Commitment.sol";
 
-import "step/ready_src/UArchStep.sol";
-import "step/ready_src/UArchReset.sol";
+import "step/src/UArchStep.sol";
+import "step/src/UArchReset.sol";
 
 /// @notice Leaf tournament is the one that seals leaf match
 abstract contract LeafTournament is Tournament {
