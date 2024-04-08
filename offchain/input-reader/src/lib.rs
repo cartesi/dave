@@ -6,36 +6,10 @@ use async_recursion::async_recursion;
 use ethers::abi::RawLog;
 use tokio::sync::Semaphore;
 
-// use cartesi_rollups_contracts::input_box::input_box::InputAddedFilter;
 use ethers::contract::EthEvent;
 use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
 use ethers::types::{Address, BlockNumber, Filter, H160, U64};
-
-/// `OldInputAddedFilter` is the old event format,
-/// it should be replaced by the actual `InputAddedFilter` after it's deployed and published
-#[derive(
-    Clone,
-    ::ethers::contract::EthEvent,
-    ::ethers::contract::EthDisplay,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    Debug,
-    PartialEq,
-    Eq,
-    Hash,
-)]
-#[ethevent(name = "InputAdded", abi = "InputAdded(address,uint256,address,bytes)")]
-pub struct OldInputAddedFilter {
-    #[ethevent(indexed)]
-    pub app_contract: ::ethers::core::types::Address,
-    #[ethevent(indexed)]
-    pub index: ::ethers::core::types::U256,
-    pub address: ethers::core::types::Address,
-    pub input: ::ethers::core::types::Bytes,
-}
-
 struct PartitionProvider {
     provider: Provider<Http>,
     semaphore: Semaphore,
@@ -77,7 +51,7 @@ impl InputReader {
         })
     }
 
-    pub async fn next(&mut self) -> Result<Vec<OldInputAddedFilter>> {
+    pub async fn next<E: EthEvent>(&mut self) -> Result<Vec<E>> {
         let block_opt = self
             .provider
             .provider
@@ -113,26 +87,26 @@ impl InputReader {
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
 // ParitionProvider will attempt to fetch events in smaller partition if the original request is too large
 impl PartitionProvider {
-    async fn get_events(
+    async fn get_events<E: EthEvent>(
         &self,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<OldInputAddedFilter>, Vec<ProviderError>> {
+    ) -> Result<Vec<E>, Vec<ProviderError>> {
         self.get_events_rec(start_block, end_block).await
     }
 
     #[async_recursion]
-    async fn get_events_rec(
+    async fn get_events_rec<E: EthEvent>(
         &self,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<OldInputAddedFilter>, Vec<ProviderError>> {
+    ) -> Result<Vec<E>, Vec<ProviderError>> {
         // TODO: partition log queries if range too large
         let filter = Filter::new()
             .from_block(start_block)
             .to_block(end_block)
             .address(self.input_box)
-            .event(&OldInputAddedFilter::abi_signature())
+            .event(&E::abi_signature())
             .topic1(self.app);
 
         let res = {
@@ -146,7 +120,7 @@ impl PartitionProvider {
                 let logs = l
                     .into_iter()
                     .map(RawLog::from)
-                    .map(|x| OldInputAddedFilter::decode_log(&x))
+                    .map(|x| E::decode_log(&x))
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
 
@@ -204,6 +178,19 @@ impl PartitionProvider {
 async fn test_input_reader() -> Result<()> {
     use std::str::FromStr;
 
+    /// `OldInputAddedFilter` is the old event format,
+    /// it should be replaced by the actual `InputAddedFilter` after it's deployed and published
+    #[derive(EthEvent)]
+    #[ethevent(name = "InputAdded", abi = "InputAdded(address,uint256,address,bytes)")]
+    pub struct OldInputAddedFilter {
+        #[ethevent(indexed)]
+        pub app_contract: ::ethers::core::types::Address,
+        #[ethevent(indexed)]
+        pub index: ::ethers::core::types::U256,
+        pub address: ethers::core::types::Address,
+        pub input: ::ethers::core::types::Bytes,
+    }
+
     let genesis: U64 = U64::from(17784733);
     let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
     let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
@@ -217,7 +204,7 @@ async fn test_input_reader() -> Result<()> {
         app,
     )?;
 
-    let res: Vec<_> = reader.next().await?;
+    let res: Vec<_> = reader.next::<OldInputAddedFilter>().await?;
 
     // input box from mainnet shouldn't be empty
     assert!(!res.is_empty(), "input box shouldn't be empty");
