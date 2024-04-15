@@ -8,13 +8,7 @@ use tokio::sync::Semaphore;
 use ethers::contract::EthEvent;
 use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
-use ethers::types::{Address, BlockNumber, Filter, H160, U64};
-struct PartitionProvider {
-    provider: Provider<Http>,
-    semaphore: Semaphore,
-    input_box: Address,
-    app: H160,
-}
+use ethers::types::{Address, BlockNumber, Filter, U64};
 
 #[derive(Debug)]
 struct ProviderErr(Vec<String>);
@@ -27,31 +21,46 @@ impl std::fmt::Display for ProviderErr {
 
 impl std::error::Error for ProviderErr {}
 
-pub struct InputReader {
+pub struct InputReader<E: EthEvent> {
+    app: Address,
+    input_box: Address,
     last_finalized: U64,
     provider: PartitionProvider,
+    __phantom: std::marker::PhantomData<E>,
 }
 
-impl InputReader {
+impl<E: EthEvent> InputReader<E> {
     pub fn new(
-        last_finalized_opt: Option<U64>,
+        app: Address,
         input_box: Address,
+        last_finalized_opt: Option<U64>,
         provider_url: &str,
         concurrency_opt: Option<usize>,
-        app: H160,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            last_finalized: last_finalized_opt.unwrap_or_default(),
-            provider: PartitionProvider {
-                input_box,
-                provider: Provider::<Http>::try_from(provider_url)?,
-                semaphore: Semaphore::new(concurrency_opt.unwrap_or_default()),
-                app,
-            },
-        })
+        let mut partition_provider = PartitionProvider::new(provider_url)?;
+        if let Some(c) = concurrency_opt {
+            partition_provider.set_concurrency(c);
+        }
+
+        let mut reader = Self {
+            app,
+            input_box,
+            last_finalized: U64::from(0),
+            provider: partition_provider,
+            __phantom: std::marker::PhantomData,
+        };
+        if let Some(l) = last_finalized_opt {
+            reader.set_last_finalized(l);
+        }
+
+        Ok(reader)
     }
 
-    pub async fn next<E: EthEvent>(&mut self) -> Result<Vec<E>, Box<dyn std::error::Error>> {
+    fn set_last_finalized(&mut self, last_finalized: U64) {
+        self.last_finalized = last_finalized;
+    }
+
+    pub async fn next(&mut self) -> Result<Vec<E>, Box<dyn std::error::Error>> {
         let block_opt = self
             .provider
             .provider
@@ -67,7 +76,12 @@ impl InputReader {
                 if current_finalized > self.last_finalized {
                     let logs = self
                         .provider
-                        .get_events(self.last_finalized.as_u64(), current_finalized.as_u64())
+                        .get_events(
+                            &self.app,
+                            &self.input_box,
+                            self.last_finalized.as_u64(),
+                            current_finalized.as_u64(),
+                        )
                         .await
                         .map_err(|err_arr| {
                             ProviderErr(err_arr.into_iter().map(|e| e.to_string()).collect())
@@ -84,20 +98,41 @@ impl InputReader {
     }
 }
 
+struct PartitionProvider {
+    provider: Provider<Http>,
+    semaphore: Semaphore,
+}
+
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
 // ParitionProvider will attempt to fetch events in smaller partition if the original request is too large
 impl PartitionProvider {
+    fn new(provider_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(PartitionProvider {
+            provider: Provider::<Http>::try_from(provider_url)?,
+            semaphore: Semaphore::new(4),
+        })
+    }
+
+    fn set_concurrency(&mut self, concurrency: usize) {
+        self.semaphore = Semaphore::new(concurrency);
+    }
+
     async fn get_events<E: EthEvent>(
         &self,
+        app: &Address,
+        input_box: &Address,
         start_block: u64,
         end_block: u64,
     ) -> Result<Vec<E>, Vec<ProviderError>> {
-        self.get_events_rec(start_block, end_block).await
+        self.get_events_rec(app, input_box, start_block, end_block)
+            .await
     }
 
     #[async_recursion]
     async fn get_events_rec<E: EthEvent>(
         &self,
+        app: &Address,
+        input_box: &Address,
         start_block: u64,
         end_block: u64,
     ) -> Result<Vec<E>, Vec<ProviderError>> {
@@ -105,9 +140,9 @@ impl PartitionProvider {
         let filter = Filter::new()
             .from_block(start_block)
             .to_block(end_block)
-            .address(self.input_box)
+            .address(*input_box)
             .event(&E::abi_signature())
-            .topic1(self.app);
+            .topic1(*app);
 
         let res = {
             // Make number of concurrent fetches bounded.
@@ -134,8 +169,8 @@ impl PartitionProvider {
                         start_block + half - 1
                     };
 
-                    let first_fut = self.get_events_rec(start_block, middle);
-                    let second_fut = self.get_events_rec(middle + 1, end_block);
+                    let first_fut = self.get_events_rec(app, input_box, start_block, middle);
+                    let second_fut = self.get_events_rec(app, input_box, middle + 1, end_block);
 
                     let (first_res, second_res) = futures::join!(first_fut, second_fut);
 
@@ -196,15 +231,15 @@ async fn test_input_reader() -> Result<(), Box<dyn std::error::Error>> {
     let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
     let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
 
-    let mut reader = InputReader::new(
-        Some(genesis),
+    let mut reader = InputReader::<OldInputAddedFilter>::new(
+        app,
         input_box,
+        Some(genesis),
         format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref(),
         Some(5),
-        app,
     )?;
 
-    let res: Vec<_> = reader.next::<OldInputAddedFilter>().await?;
+    let res: Vec<_> = reader.next().await?;
 
     // input box from mainnet shouldn't be empty
     assert!(!res.is_empty(), "input box shouldn't be empty");
