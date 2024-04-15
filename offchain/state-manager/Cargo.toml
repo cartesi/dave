@@ -1,5 +1,5 @@
 [package]
-name = "rollups-input-manager"
+name = "rollups-state-manager"
 version = { workspace = true }
 
 authors = { workspace = true }
@@ -12,7 +12,3 @@ repository = { workspace = true }
 
 [dependencies]
 anyhow = "1.0.6"
-ethers = { workspace = true }
-
-[dev-dependencies]
-cartesi-rollups-contracts = "2.0.0-rc.1"
