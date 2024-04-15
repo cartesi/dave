@@ -1,5 +1,3 @@
-//! Module for communication with the Cartesi machine using RPC.
-
 use crate::{machine::constants, merkle::Digest, utils::arithmetic};
 use cartesi_machine::{
     configuration::RuntimeConfig,
