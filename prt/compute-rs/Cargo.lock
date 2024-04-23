@@ -542,16 +542,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cartesi-rollups-contracts"
-version = "2.0.0-rc.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b531818e5956e0c08a39aa305b91f8903478a252f858bd5ae47b96dc2da9045"
-dependencies = [
- "ethers",
- "serde",
-]
-
-[[package]]
 name = "cc"
 version = "1.0.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -809,18 +799,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2e66c9d817f1720209181c316d28635c050fa304f9c79e47a520882661b7308"
 
 [[package]]
-name = "dave-advance"
-version = "0.1.0"
-dependencies = [
- "base64 0.21.5",
- "cartesi-machine",
- "ethers",
- "hex",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "dave-compute"
 version = "0.1.0"
 dependencies = [
@@ -829,18 +807,6 @@ dependencies = [
  "env_logger",
  "ethers",
  "log",
- "tokio",
-]
-
-[[package]]
-name = "dave-rollups"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "cartesi-compute-core",
- "ethers",
- "rollups-input-reader",
  "tokio",
 ]
 
@@ -1936,16 +1902,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "input-query"
-version = "0.1.0"
-dependencies = [
- "cartesi-rollups-contracts",
- "ethers",
- "rollups-input-reader",
- "sqlite",
-]
-
-[[package]]
 name = "instant"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2959,27 +2915,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rollups-input-reader"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-recursion",
- "cartesi-rollups-contracts",
- "ethers",
- "ethers-contract",
- "futures",
- "serde",
- "tokio",
-]
-
-[[package]]
-name = "rollups-state-manager"
-version = "0.1.0"
-dependencies = [
- "anyhow",
-]
-
-[[package]]
 name = "ruint"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3442,36 +3377,6 @@ checksum = "9d1e996ef02c474957d681f1b05213dfb0abab947b446a62d37770b23500184a"
 dependencies = [
  "base64ct",
  "der",
-]
-
-[[package]]
-name = "sqlite"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78a97f6ee5b054b7cfddc3b6613fdea4c77af2ef8f8aac3048c7d0be31e605e3"
-dependencies = [
- "libc",
- "sqlite3-sys",
-]
-
-[[package]]
-name = "sqlite3-src"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9448d45899495acd1a46b0b888ae9747c13551fb0d8f4a60ab485da52b040503"
-dependencies = [
- "cc",
- "pkg-config",
-]
-
-[[package]]
-name = "sqlite3-sys"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aed0b61828382e1103930d2d5df1972d493173319730b481192e63d929097321"
-dependencies = [
- "libc",
- "sqlite3-src",
 ]
 
 [[package]]

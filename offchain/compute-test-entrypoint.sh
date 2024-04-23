@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # integration test with lua node
-cd /root/permissionless-arbitration && ./lua_node/attached_entrypoint.lua &
+cd /root/permissionless-refereed-tournaments && ./lua_node/attached_entrypoint.lua &
 cd -
 sleep 60
 

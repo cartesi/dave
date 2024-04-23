@@ -1,0 +1,19 @@
+[package]
+name = "dave-compute"
+version = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+cartesi-compute-core = { path = "../core" }
+anyhow = { workspace = true }
+ethers = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+env_logger = "0.10"
