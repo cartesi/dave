@@ -2,12 +2,7 @@
 resolver = "2"
 members = [
     "core",
-    "dave-advance",
     "dave-compute",
-    "dave-rollups",
-    "input-query",
-    "state-manager",
-    "input-reader",
 ]
 
 [workspace.package]

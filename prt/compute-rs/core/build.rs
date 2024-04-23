@@ -19,9 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 // TODO: polish this function
 fn generate_contract_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let project_path = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let permissionless_contract_path =
-        project_path.join("../../permissionless-refereed-tournaments/contracts");
-    let step_path = "../../machine-emulator-sdk/solidity-step/";
+    let permissionless_contract_path = project_path.join("../../contracts");
     let contract_src_files = vec![
         "LeafTournament".to_string(),
         "NonLeafTournament".to_string(),
@@ -35,7 +33,7 @@ fn generate_contract_bindings() -> Result<(), Box<dyn std::error::Error>> {
         .remapping(Remapping {
             context: None,
             name: "step/".to_string(),
-            path: step_path.to_string(),
+            path: "../../machine-emulator-sdk/solidity-step/".to_string(),
         })
         .remapping(Remapping {
             context: None,
@@ -51,15 +49,18 @@ fn generate_contract_bindings() -> Result<(), Box<dyn std::error::Error>> {
 
     let project = Project::builder()
         .paths(paths)
-        .allowed_path(step_path)
+        .allowed_path("/app/machine-emulator-sdk/solidity-step/")
         .build()?;
 
     project
         .compile()?
-        // .output()
-        // .errors
-        // .iter()
-        // .for_each(|f| p!("{}", f));
+        .output()
+        .errors
+        .iter()
+        .for_each(|f| p!("{}", f));
+
+    project
+        .compile()?
         .artifacts()
         .filter(|artifact| {
             contract_src_files

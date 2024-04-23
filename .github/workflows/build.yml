@@ -13,7 +13,7 @@ jobs:
           version: nightly
 
       - name: Build, format check and test
-        working-directory: ./permissionless-arbitration/contracts
+        working-directory: ./prt/contracts
         run: |
           forge build
           forge fmt --check
