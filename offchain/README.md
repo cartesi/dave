@@ -11,7 +11,10 @@ docker build -t cartesi/dave-compute:test -f Dockerfile.compute.test ../
 Requires image built from [previous section](#build-test-image).
 
 ```
-docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/simple-program" cartesi/dave-compute:test
+docker run --rm \
+    --env MACHINE_PATH="/root/program/simple-program" \
+    --env DEPLOY_TO_ANVIL="true" \
+    cartesi/dave-compute:test
 ```
 
 ## Run stress test
@@ -19,5 +22,19 @@ docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/pr
 Requires image built from [previous section](#build-test-image).
 
 ```
-docker run --rm --env MACHINE_PATH="/root/permissionless-arbitration/lua_node/program/debootstrap-machine-sparsed" cartesi/dave-compute:test
+docker run --rm \
+    --env MACHINE_PATH="/root/program/debootstrap-machine-sparsed" \
+    --env DEPLOY_TO_ANVIL="true" \
+    cartesi/dave-compute:test
+```
+
+## Run doom showcase
+
+Requires image built from [previous section](#build-test-image).
+
+```
+docker run --rm \
+    --env MACHINE_PATH="/root/program/doom-compute-machine" \
+    --env DEPLOY_TO_ANVIL="true" \
+    cartesi/dave-compute:test
 ```

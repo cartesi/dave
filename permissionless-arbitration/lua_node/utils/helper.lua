@@ -52,6 +52,13 @@ local function stop_players(pid_reader)
     end
 end
 
+local function str_to_bool(str)
+    if str == nil then
+        return false
+    end
+    return string.lower(str) == 'true'
+end
+
 local function touch_player_idle(player_index)
     os.execute(string.format("touch player%d_idle", player_index))
 end
@@ -89,6 +96,7 @@ return {
     is_zombie = is_zombie,
     stop_players = stop_players,
     touch_player_idle = touch_player_idle,
+    str_to_bool = str_to_bool,
     all_players_idle = all_players_idle,
     rm_all_players_idle = rm_all_players_idle,
     rm_player_idle = rm_player_idle

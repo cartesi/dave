@@ -24,8 +24,6 @@ deployed_at=`forge create TournamentFactory --rpc-url=$RPC_URL --private-key=$PK
     tr -d '\n' | \
     tail -c 42`
 
-cd ../lua_node/program/
 initial_hash=`xxd -p -c32 $MACHINE_PATH/hash`
-cd -
 
 cast send --private-key=$PK --rpc-url=$RPC_URL $deployed_at "instantiateTop(bytes32)" 0x$initial_hash
