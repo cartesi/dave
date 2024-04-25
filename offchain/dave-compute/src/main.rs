@@ -7,17 +7,27 @@ use cartesi_compute_core::{
 use anyhow::Result;
 use ethers::types::Address;
 use log::info;
-use std::{str::FromStr, time::Duration};
+use std::{env::var, str::FromStr, time::Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
     info!("Hello from Dave!");
-    let web3_rpc_url = String::from("http://127.0.0.1:8545");
-    let web3_chain_id = 31337;
 
-    let private_key =
-        String::from("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
+    const ANVIL_URL: &str = "http://127.0.0.1:8545";
+    const ANVIL_CHAIN_ID: u64 = 31337;
+    const ANVIL_KEY_1: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    const ANVIL_ROOT_TOURNAMENT: &str = "0xcafac3dd18ac6c6e92c921884f9e4176737c052c";
+
+    env_logger::init();
+    let web3_rpc_url = var("URL").unwrap_or(String::from(ANVIL_URL));
+    let web3_chain_id = var("CHAIN_ID")
+        .map(|c| c.parse::<u64>().expect("INVALID CHAIN ID"))
+        .unwrap_or(ANVIL_CHAIN_ID);
+    let private_key = var("PRIV_KEY").unwrap_or(String::from(ANVIL_KEY_1));
+    let root_tournament_string =
+        var("ROOT_TOURNAMENT").unwrap_or(String::from(ANVIL_ROOT_TOURNAMENT));
+    let root_tournament = Address::from_str(root_tournament_string.as_str())?;
+    let machine_path = var("MACHINE_PATH").expect("MACHINE_PATH is not set");
 
     let arena_config = ArenaConfig {
         web3_rpc_url,
@@ -27,10 +37,6 @@ async fn main() -> Result<()> {
 
     let reader = StateReader::new(arena_config.clone())?;
     let sender = EthArenaSender::new(arena_config)?;
-
-    let machine_path = std::env::var("MACHINE_PATH").expect("MACHINE_PATH is not set");
-
-    let root_tournament = Address::from_str("0xcafac3dd18ac6c6e92c921884f9e4176737c052c")?;
 
     let mut player = Player::new(
         machine_path.clone(),

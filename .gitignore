@@ -5,3 +5,4 @@ node_modules
 **/.idea/
 target/
 offchain/core/src/contract/*tournament.rs
+permissionless-arbitration/machine-emulator-sdk

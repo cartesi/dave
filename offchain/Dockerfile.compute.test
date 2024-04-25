@@ -41,17 +41,19 @@ RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly/fo
     tar -zx -C /usr/local/bin
 
 # prepare debootstrap machine
-WORKDIR /root/permissionless-arbitration/lua_node/program
-# RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.1-rc-test/debootstrap-machine-sparsed.tar.gz | \
-#     tar -zx -C /root/permissionless-arbitration/lua_node/program
-COPY ./permissionless-arbitration/measure_constants/program/debootstrap-machine-sparsed.tar.gz ./debootstrap-machine-sparsed.tar.gz
-RUN tar -zxf ./debootstrap-machine-sparsed.tar.gz
+WORKDIR /root/program
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.2-rc-test/debootstrap-machine-sparsed.tar.gz | \
+    tar -zx -C /root/program
+
+# prepare doom-showcase machine
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.3-rc-test/doom-compute-machine.tar.gz | \
+    tar -zx -C /root/program
 
 # prepare simple machine
-COPY . /root
-WORKDIR /root/permissionless-arbitration/lua_node/program
-RUN ./gen_machine_simple.sh
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.4-rc-test/simple-program.tar.gz | \
+    tar -zx -C /root/program
 
+COPY . /root
 COPY --from=builder /app/offchain/target/release/dave-compute /root/target/release/dave-compute
 WORKDIR /root
 

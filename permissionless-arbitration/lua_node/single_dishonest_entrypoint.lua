@@ -3,7 +3,6 @@ package.path = package.path .. ";/opt/cartesi/lib/lua/5.4/?.lua"
 package.path = package.path .. ";./lua_node/?.lua"
 package.cpath = package.cpath .. ";/opt/cartesi/lib/lua/5.4/?.so"
 
-local machine_path = (os.getenv ("MACHINE_PATH"))
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
 local FF_TIME = 30
 -- max consecutive iterations of all players idling before the blockchain fastforwards
@@ -22,20 +21,26 @@ local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
 local Machine = require "computation.machine"
 
+local machine_path = os.getenv("MACHINE_PATH")
+local deploy_to_anvil = helper.str_to_bool(os.getenv("DEPLOY_TO_ANVIL"))
+
 print "Hello from Dave lua prototype!"
 
 local m = Machine:new_from_path(machine_path)
 local initial_hash = m:state().root_hash
-local blockchain = Blockchain:new()
-time.sleep(NODE_DELAY)
-local contract = blockchain_constants.root_tournament, blockchain:default_account()
+local contract = blockchain_constants.root_tournament
 
--- add more player instances here
 local cmds = {
-    [[sh -c "cd contracts && ./deploy_anvil.sh"]],
     string.format([[sh -c "echo $$ ; exec ./lua_node/player/dishonest_player.lua %d %s %s %s | tee dishonest.log"]], 2,
         contract, machine_path, initial_hash),
 }
+
+if deploy_to_anvil then
+    local blockchain = Blockchain:new()
+    time.sleep(NODE_DELAY)
+    table.insert(cmds, 1, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
+end
+
 local pid_reader = {}
 local pid_player = {}
 
