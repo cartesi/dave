@@ -7,6 +7,14 @@ Furthermore, this node implements only compute (_i.e._ a one-shot computation, l
 Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
 You need a docker installation to run the Dave Lua node.
 
+## Build test image
+
+In order to run tests in this directory, a docker image must be built to prepare the test environment. Once the test image is built, the user can run all the tests supported by swapping the `MACHINE_PATH` env variable.
+
+```
+docker build -t dave:latest -f Dockerfile ../../
+```
+
 ## Run simple test
 
 This directory also has an example _verification tournament_ program, in which players compete against each other to prove the correct result of a computation.
@@ -28,15 +36,30 @@ These players come in multiple flavours:
 -   Another kind of dishonest player — called the _idle_ player — posts a claim, but never interacts with the blockchain again.
     If no other player is actively defending this claim, it will lose by timeout.
 
-To add more players of different kinds, you can edit the [`entrypoint.lua`](entrypoint.lua) file.
+To add more players of different kinds, you can edit the [`multiplayers_entrypoint.lua`](multiplayers_entrypoint.lua) file.
 To run the full example, execute the following command from the current path path (_i.e._ [`permissionless-arbitration/lua_node`](.)):
 
 ```
-docker build -t dave:latest -f Dockerfile ../../ && docker run --rm --env MACHINE_PATH="/app/lua_node/program/simple-program" dave:latest
+docker run --rm \
+    --env MACHINE_PATH="/app/lua_node/program/simple-program" \
+    --env DEPLOY_TO_ANVIL="true" \
+    dave:latest
 ```
 
 ## Run stress test
 
 ```
-docker build -t dave:latest -f Dockerfile -f Dockerfile ../../ && docker run --rm --env MACHINE_PATH="/app/lua_node/program/debootstrap-machine-sparsed" dave:latest -f Dockerfile
+docker run --rm \
+    --env MACHINE_PATH="/app/lua_node/program/debootstrap-machine-sparsed" \
+    --env DEPLOY_TO_ANVIL="true" \
+    dave:latest
+```
+
+## Run doom showcase
+
+```
+docker run --rm \
+    --env MACHINE_PATH="/app/lua_node/program/doom-compute-machine" \
+    --env DEPLOY_TO_ANVIL="true" \
+    dave:latest
 ```
