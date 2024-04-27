@@ -3,7 +3,7 @@
 --
 
 -- String containing path where machine was stored.
-local machine_directory = "debootstrap-machine-sparsed"
+local machine_path = os.getenv("MACHINE_PATH")
 
 -- How much slower can the root tournament be. Value is an integer
 -- representing a fixed-point number with a single decimal
@@ -82,7 +82,7 @@ end
 local function run_uarch_until_timeout()
   local iterations, uinstructions, with_snapshot_time = 0, 0, nil
   do
-    local machine = cartesi.machine(machine_directory, machine_settings)
+    local machine = cartesi.machine(machine_path, machine_settings)
 
     start_timer()
     repeat
@@ -95,7 +95,7 @@ local function run_uarch_until_timeout()
 
   local no_snapshot_time
   do
-    local machine = cartesi.machine(machine_directory, machine_settings)
+    local machine = cartesi.machine(machine_path, machine_settings)
 
     start_timer()
     for _ = 1, iterations do
@@ -147,7 +147,7 @@ local function run_big_machine_until_timeout(previous_log2_stride_count)
 
   local snapshots, spans, with_snapshot_time = 0, 0, nil
   do
-    local machine = cartesi.machine(machine_directory, machine_settings)
+    local machine = cartesi.machine(machine_path, machine_settings)
     local machine_base_cycle = machine:read_mcycle()
 
     start_timer()
@@ -162,7 +162,7 @@ local function run_big_machine_until_timeout(previous_log2_stride_count)
 
   local no_snapshot_time
   do
-    local machine = cartesi.machine(machine_directory, machine_settings)
+    local machine = cartesi.machine(machine_path, machine_settings)
     start_timer()
     machine:run(machine:read_mcycle() + cycles)
     no_snapshot_time = stop_timer()
