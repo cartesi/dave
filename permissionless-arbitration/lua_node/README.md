@@ -36,7 +36,7 @@ These players come in multiple flavours:
 -   Another kind of dishonest player — called the _idle_ player — posts a claim, but never interacts with the blockchain again.
     If no other player is actively defending this claim, it will lose by timeout.
 
-To add more players of different kinds, you can edit the [`multiplayers_entrypoint.lua`](multiplayers_entrypoint.lua) file.
+To add more players of different kinds, you can edit the [`self_contained_entrypoint.lua`](self_contained_entrypoint.lua) file.
 To run the full example, execute the following command from the current path path (_i.e._ [`permissionless-arbitration/lua_node`](.)):
 
 ```
@@ -63,3 +63,22 @@ docker run --rm \
     --env DEPLOY_TO_ANVIL="true" \
     dave:latest
 ```
+
+## Run doom showcase with graphics on
+
+```
+docker run --rm \
+    --env MACHINE_PATH="/app/lua_node/program/doom-compute-machine" \
+    --env DEPLOY_TO_ANVIL="true" \
+    --mount type=bind,source="$(pwd)/snapshots",target=/app/snapshots \
+    dave:latest graphics
+```
+
+On a separate terminal run the script to view the actual game graphics while being disputed:
+```
+sudo ./doom_showcase/view.sh
+```
+
+[`mplayer`](http://www.mplayerhq.hu/design7/news.html) is required to run the game graphics.
+
+`sudo` may be required as the files are created inside the docker container.
