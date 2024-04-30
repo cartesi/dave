@@ -23,7 +23,7 @@ library ArbitrationConstants {
             + Time.Duration.unwrap(COMMITMENT_EFFORT)
     );
 
-    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(60 * 40);
+    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(60 * 50);
     Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(60 * 5);
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(60 * 2);
 

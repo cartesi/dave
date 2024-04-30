@@ -39,6 +39,7 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
     local builder = MerkleBuilder:new()
     local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span)
     local instruction = 0
+    machine:snapshot(initial_state:hex_string(), base_cycle, 0, log2_stride_count)
     while ulte(instruction, instruction_count) do
         builder:add(run_uarch_span(machine))
         instruction = instruction + 1
@@ -53,8 +54,6 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
     return initial_state, builder:build(initial_state)
 end
 
-
-
 local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine)
     machine:run(base_cycle)
     local initial_state = machine:state().root_hash
@@ -62,6 +61,7 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
     local builder = MerkleBuilder:new()
     local instruction_count = arithmetic.max_uint(log2_stride_count)
     local instruction = 0
+    machine:snapshot(initial_state:hex_string(), base_cycle, log2_stride, log2_stride_count)
     while ulte(instruction, instruction_count) do
         local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
         machine:run(base_cycle + cycle)
