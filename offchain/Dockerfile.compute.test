@@ -55,6 +55,7 @@ RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.4-rc-test/s
 
 COPY . /root
 COPY --from=builder /app/offchain/target/release/dave-compute /root/target/release/dave-compute
+RUN chmod +x ./permissionless-arbitration/lua_node/attached_entrypoint.lua
 WORKDIR /root
 
 ENTRYPOINT [ "/root/offchain/compute-test-entrypoint.sh" ]
