@@ -26,6 +26,7 @@ WORKDIR "/app/contracts"
 ADD ./permissionless-arbitration/contracts/foundry.toml .
 ADD ./permissionless-arbitration/contracts/lib/ ./lib/
 ADD ./permissionless-arbitration/contracts/src/ ./src/
+ADD ./permissionless-arbitration/contracts/script/ ./script/
 
 RUN forge --version
 RUN forge build
