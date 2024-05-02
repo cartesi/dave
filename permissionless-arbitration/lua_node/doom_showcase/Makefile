@@ -1,9 +1,11 @@
-playpal2rgb: playpal.o playpal2rgb.o
-	$(CC) $^ -o $@
+CCFLAGS=-O2
+
+playpal2rgb: playpal2rgb.o
+	$(CC) $^ -o $@ $(CCFLAGS)
 
 %.o: %.c
-	$(CC) -c $< -o $@
+	$(CC) -c $< -o $@ $(CCFLAGS)
 
 .PHONY: clean
 clean:
-	rm -f *.o playpal2rgb
+	rm -vf *.o playpal2rgb
