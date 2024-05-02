@@ -11,7 +11,7 @@ local time = require "utils.time"
 
 local snapshot_dir = "/app/snapshots"
 local conversion_cmd = [[
-    /app/lua_node/doom_showcase/playpal2rgb < %s/%04d.raw | convert -depth 8 -size 320x200 rgb:- %s/%04d.png& >/dev/null 2>&1
+    /app/lua_node/doom_showcase/playpal2rgb %s/%04d.palette < %s/%04d.raw | convert -depth 8 -size 320x200 rgb:- %s/%04d.png& >/dev/null 2>&1
 ]]
 
 local snapshot_count = 0
@@ -66,7 +66,11 @@ do
                     local out = io.open(string.format("%s/%04d.raw", pixels_dir, pixel_count), "wb")
                     out:write(machine:read_memory(0x82000000, 64000))
                     out:close()
-                    os.execute(string.format(conversion_cmd, pixels_dir, pixel_count, pixels_dir, pixel_count))
+
+                    out = io.open(string.format("%s/%04d.palette", pixels_dir, pixel_count), "wb")
+                    out:write(machine:read_memory(0x82800030, 1024))
+                    out:close()
+                    os.execute(string.format(conversion_cmd, pixels_dir, pixel_count, pixels_dir, pixel_count, pixels_dir, pixel_count))
                     pixel_count = pixel_count + 1
                 elseif reason == cartesi.BREAK_REASON_HALTED then
                     break

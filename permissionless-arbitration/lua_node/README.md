@@ -67,6 +67,7 @@ docker run --rm \
 ## Run doom showcase with graphics on
 
 ```
+mkdir -p snapshots
 docker run --rm \
     --env MACHINE_PATH="/app/lua_node/program/doom-compute-machine" \
     --env DEPLOY_TO_ANVIL="true" \

@@ -12,7 +12,7 @@ local INACTIVE_LIMIT = 10
 -- delay time for blockchain node to be ready
 local NODE_DELAY = 2
 -- delay between each player
-local PLAYER_DELAY = 3
+local PLAYER_DELAY = 5
 
 local helper = require "utils.helper"
 local blockchain_utils = require "blockchain.utils"
