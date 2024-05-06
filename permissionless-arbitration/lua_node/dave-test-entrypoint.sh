@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 if [ "$1" == "graphics" ]; then
     # process doom graphics during compute process
