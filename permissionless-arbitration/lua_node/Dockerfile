@@ -8,15 +8,15 @@ RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/nightly-5b
 
 # prepare debootstrap machine
 WORKDIR "/app/lua_node/program"
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.2-rc-test/debootstrap-machine-sparsed.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.5-rc-test/debootstrap-machine-sparsed.tar.gz | \
     tar -zx -C "/app/lua_node/program"
 
 # prepare doom-showcase machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.3-rc-test/doom-compute-machine.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.6-rc-test/doom-compute-machine.tar.gz | \
     tar -zx -C "/app/lua_node/program"
 
 # prepare simple machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.4-rc-test/simple-program.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.7-rc-test/simple-program.tar.gz | \
     tar -zx -C "/app/lua_node/program"
 
 WORKDIR "/machine-emulator-sdk"
