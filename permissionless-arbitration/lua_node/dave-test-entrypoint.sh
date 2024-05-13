@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$1" == "graphics" ]; then
+if [[ $# -eq 1 ]] && [ "$1" == "graphics" ]; then
     # process doom graphics during compute process
     cd lua_node/doom_showcase/ && make
     cd -
