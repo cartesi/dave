@@ -1,9 +1,9 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
-
 use anyhow::Result;
 use async_recursion::async_recursion;
 use ethers::abi::RawLog;
+use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use ethers::contract::EthEvent;
@@ -11,6 +11,7 @@ use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
 use ethers::types::{Address, BlockNumber, Filter, U64};
 
+use rollups_state_manager::StateManager;
 #[derive(Debug)]
 struct ProviderErr(Vec<String>);
 
@@ -22,7 +23,7 @@ impl std::fmt::Display for ProviderErr {
 
 impl std::error::Error for ProviderErr {}
 
-pub struct InputReader<E: EthEvent> {
+pub struct BlockchainReader<E: EthEvent> {
     app: Address,
     input_box: Address,
     last_finalized: U64,
@@ -30,7 +31,7 @@ pub struct InputReader<E: EthEvent> {
     __phantom: std::marker::PhantomData<E>,
 }
 
-impl<E: EthEvent> InputReader<E> {
+impl<E: EthEvent> BlockchainReader<E> {
     pub fn new(
         app: Address,
         input_box: Address,
@@ -96,6 +97,23 @@ impl<E: EthEvent> InputReader<E> {
         }
 
         Ok(vec![])
+    }
+
+    pub async fn start(&mut self, _s: Arc<StateManager>) -> Result<()> {
+        // instantiate
+        // ```
+        // read from DB the block of the most recent processed
+        // ```
+
+        // tick
+        // ```
+        // read most recent finalized block
+        // read new inputs from blockchain
+        // read epochs from blockchain
+        // update state-manager (atomic)
+        // ```
+
+        Ok(())
     }
 }
 
@@ -232,7 +250,7 @@ async fn test_input_reader() -> Result<()> {
     let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
     let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
 
-    let mut reader = InputReader::<OldInputAddedFilter>::new(
+    let mut reader = BlockchainReader::<OldInputAddedFilter>::new(
         app,
         input_box,
         Some(genesis),
