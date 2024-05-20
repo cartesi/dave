@@ -1,13 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "core",
-    "dave-advance",
-    "dave-compute",
-    "dave-rollups",
-    "input-query",
+    "blockchain-reader",
+    "machine-runner",
     "state-manager",
-    "input-reader",
 ]
 
 [workspace.package]
