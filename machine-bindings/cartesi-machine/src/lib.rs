@@ -13,8 +13,8 @@ pub mod log;
 pub mod proof;
 
 use cartesi_machine_sys::{cm_machine_runtime_config, cm_memory_range_config};
-use configuration::{free_cm_memory_range_config_cstr};
-use configuration::{RuntimeConfig};
+use configuration::free_cm_memory_range_config_cstr;
+use configuration::RuntimeConfig;
 use errors::{ErrorCollector, MachineError};
 
 macro_rules! read_csr {
@@ -153,6 +153,11 @@ pub enum CSR {
 pub enum UarchBreakReason {
     ReachedTargetCycle = 0,
     UarchHalted,
+}
+
+pub enum HtifYieldReason {
+    HtifYieldReasonAdvanceState = 0,
+    HtifYieldReasonInspectState = 1,
 }
 
 /// Machine instance handle
@@ -526,13 +531,17 @@ impl Machine {
     }
 
     /// Write a CMIO response
-    pub fn send_cmio_response(&mut self, reason: u16, data: &[u8]) -> Result<(), MachineError> {
+    pub fn send_cmio_response(
+        &mut self,
+        reason: HtifYieldReason,
+        data: &[u8],
+    ) -> Result<(), MachineError> {
         let mut error_collector = ErrorCollector::new();
 
         unsafe {
             let result = cartesi_machine_sys::cm_send_cmio_response(
                 self.machine,
-                reason,
+                reason as u16,
                 data.as_ptr(),
                 data.len(),
                 &mut error_collector.as_mut_ptr(),
