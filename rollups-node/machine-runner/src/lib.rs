@@ -46,28 +46,33 @@ impl Machine {
         initial_machine: &str,
         snapshot_frequency: u64,
     ) -> Result<()> {
-        let (snapshot, mut epoch_number, mut next_input_index) = match s.latest_snapshot()? {
-            Some(r) => (r.0, r.1, r.2 + 1),
-            None => (initial_machine.to_string(), 0, 0),
-        };
+        let (snapshot, mut epoch_number, mut next_input_index_in_epoch) =
+            match s.latest_snapshot()? {
+                Some(r) => (r.0, r.1, r.2 + 1),
+                None => (initial_machine.to_string(), 0, 0),
+            };
         let mut machine = Machine::load(&Path::new(&snapshot), RuntimeConfig::default())?;
         let mut now = SystemTime::now();
 
         loop {
-            match s.input(epoch_number, next_input_index) {
+            match s.input(epoch_number, next_input_index_in_epoch) {
                 Ok(input) => {
                     machine.advance(&input)?;
-                    let machine_state = machine.machine.get_root_hash()?;
-                    s.add_state(machine_state.as_bytes(), epoch_number, next_input_index)?;
+                    let machine_state_hash = machine.machine.get_root_hash()?;
+                    s.add_machine_state_hash(
+                        machine_state_hash.as_bytes(),
+                        epoch_number,
+                        next_input_index_in_epoch,
+                    )?;
 
                     if now.elapsed()?.as_secs() > (snapshot_frequency * 60) {
                         // take snapshot every 20 minutes
-                        let path = machine_state.to_string();
+                        let path = machine_state_hash.to_string();
                         machine.machine.store(&Path::new(&path))?;
-                        s.add_snapshot(&path, epoch_number, next_input_index)?;
+                        s.add_snapshot(&path, epoch_number, next_input_index_in_epoch)?;
                         now = SystemTime::now();
                     }
-                    next_input_index += 1;
+                    next_input_index_in_epoch += 1;
                 }
                 Err(_) => {
                     // fail to get next input, try get input 0 from next epoch
@@ -75,7 +80,7 @@ impl Machine {
                         // new epoch starts and current epoch closes
                         // TODO: calculate computation-hash
                         epoch_number += 1;
-                        next_input_index = 0;
+                        next_input_index_in_epoch = 0;
                     }
                 }
             }
