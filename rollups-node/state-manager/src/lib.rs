@@ -59,7 +59,7 @@ impl StateManager {
 
     // TODO: fn add_epoch, update_epoch
 
-    fn add_input(&self, input: &[u8], epoch_number: u64, input_index: u64) -> Result<()> {
+    pub fn add_input(&self, input: &[u8], epoch_number: u64, input_index: u64) -> Result<()> {
         // to keep the integrity of the inputs table, an input is only inserted when
         // 1. no input from later epoch exists
         // 2. all prior inputs of the same epoch are added
@@ -126,7 +126,32 @@ impl StateManager {
         }
     }
 
-    fn add_state(&self, state: &[u8], epoch_number: u64, input_index: u64) -> Result<()> {
+    pub fn add_state(&self, state: &[u8], epoch_number: u64, input_index: u64) -> Result<()> {
+        // add state
+        // 1. successful if the state doesn't exist
+        // 2. do nothing if it exists and the state is the same
+        // 3. return error if it exists with different value
+        let mut sttm = self
+            .connection
+            .prepare("SELECT * FROM states WHERE epoch_number = ? AND input_index = ?")?;
+        sttm.bind((1, epoch_number as i64))?;
+        sttm.bind((2, input_index as i64))?;
+
+        match sttm.next() {
+            Ok(State::Row) => {
+                if sttm.read::<Vec<u8>, _>("state")? != state.to_vec() {
+                    return Err(anyhow::anyhow!("different state exists for the same key"));
+                }
+                return Ok(());
+            }
+            Ok(State::Done) => {
+                // state doesn't exist
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!(e.to_string()));
+            }
+        }
+
         let mut sttm = self
             .connection
             .prepare("INSERT INTO states (epoch_number, input_index, state) VALUES (?, ?, ?)")?;
@@ -148,7 +173,7 @@ impl StateManager {
         }
     }
 
-    fn add_snapshot(&self, path: &str, epoch_number: u64, input_index: u64) -> Result<()> {
+    pub fn add_snapshot(&self, path: &str, epoch_number: u64, input_index: u64) -> Result<()> {
         let mut sttm = self
             .connection
             .prepare("INSERT INTO snapshots (epoch_number, input_index, path) VALUES (?, ?, ?)")?;
@@ -172,7 +197,7 @@ impl StateManager {
         }
     }
 
-    fn input(&self, epoch_number: u64, input_index: u64) -> Result<Vec<u8>> {
+    pub fn input(&self, epoch_number: u64, input_index: u64) -> Result<Vec<u8>> {
         let mut sttm = self
             .connection
             .prepare("SELECT * FROM inputs WHERE epoch_number = ? AND input_index = ?")?;
@@ -193,7 +218,7 @@ impl StateManager {
         }
     }
 
-    fn state(&self, epoch_number: u64, input_index: u64) -> Result<Vec<u8>> {
+    pub fn state(&self, epoch_number: u64, input_index: u64) -> Result<Vec<u8>> {
         let mut sttm = self
             .connection
             .prepare("SELECT * FROM states WHERE epoch_number = ? AND input_index = ?")?;
@@ -214,7 +239,7 @@ impl StateManager {
         }
     }
 
-    fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
+    pub fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
         let mut sttm = self.connection.prepare(
             "SELECT * FROM snapshots \
                 ORDER BY \
@@ -240,7 +265,7 @@ impl StateManager {
         }
     }
 
-    fn set_latest_block(&self, block: u64) -> Result<()> {
+    pub fn set_latest_block(&self, block: u64) -> Result<()> {
         let mut sttm = self
             .connection
             .prepare("INSERT INTO constants (key, value) VALUES (?, ?)")?;
@@ -263,7 +288,7 @@ impl StateManager {
         }
     }
 
-    fn latest_block(&self) -> Result<Option<u64>> {
+    pub fn latest_block(&self) -> Result<Option<u64>> {
         let mut sttm = self.connection.prepare(
             "SELECT * FROM constants \
                 WHERE key = \"latest_block\" ",
