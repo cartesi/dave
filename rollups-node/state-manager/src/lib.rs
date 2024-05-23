@@ -22,7 +22,7 @@ impl StateManager {
         connection.execute(
             "CREATE TABLE IF NOT EXISTS epochs (
                 epoch_number INTEGER NOT NULL PRIMARY KEY,
-                sealed INTEGER,
+                block_sealed INTEGER NOT NULL,
                 settled BOOLEAN NOT NULL
             );",
         )?;
@@ -30,27 +30,27 @@ impl StateManager {
         connection.execute(
             "CREATE TABLE IF NOT EXISTS inputs (
                 epoch_number INTEGER NOT NULL,
-                input_index INTEGER NOT NULL,
+                input_index_in_epoch INTEGER NOT NULL,
                 input BLOB NOT NULL,
-                PRIMARY KEY (epoch_number, input_index)
+                PRIMARY KEY (epoch_number, input_index_in_epoch)
             );",
         )?;
-        // states table
+        // machine state hashes table
         connection.execute(
-            "CREATE TABLE IF NOT EXISTS states (
+            "CREATE TABLE IF NOT EXISTS machine_state_hashes (
                 epoch_number INTEGER NOT NULL,
-                input_index INTEGER NOT NULL,
-                state BLOB NOT NULL,
-                PRIMARY KEY (epoch_number, input_index)
+                input_index_in_epoch INTEGER NOT NULL,
+                machine_state_hash BLOB NOT NULL,
+                PRIMARY KEY (epoch_number, input_index_in_epoch)
             );",
         )?;
         // snapshots table
         connection.execute(
             "CREATE TABLE IF NOT EXISTS snapshots (
                 epoch_number INTEGER NOT NULL,
-                input_index INTEGER NOT NULL,
+                input_index_in_epoch INTEGER NOT NULL,
                 path TEXT NOT NULL,
-                PRIMARY KEY (epoch_number, input_index)
+                PRIMARY KEY (epoch_number, input_index_in_epoch)
             );",
         )?;
 
@@ -59,7 +59,12 @@ impl StateManager {
 
     // TODO: fn add_epoch, update_epoch
 
-    pub fn add_input(&self, input: &[u8], epoch_number: u64, input_index: u64) -> Result<()> {
+    pub fn add_input(
+        &self,
+        input: &[u8],
+        epoch_number: u64,
+        input_index_in_epoch: u64,
+    ) -> Result<()> {
         // to keep the integrity of the inputs table, an input is only inserted when
         // 1. no input from later epoch exists
         // 2. all prior inputs of the same epoch are added
@@ -82,15 +87,15 @@ impl StateManager {
             }
         }
 
-        let mut sttm = self
-            .connection
-            .prepare("SELECT count(*) FROM inputs WHERE epoch_number = ? AND input_index < ?")?;
+        let mut sttm = self.connection.prepare(
+            "SELECT count(*) FROM inputs WHERE epoch_number = ? AND input_index_in_epoch < ?",
+        )?;
         sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index as i64))?;
+        sttm.bind((2, input_index_in_epoch as i64))?;
 
         match sttm.next() {
             Ok(State::Row) => {
-                if sttm.read::<i64, _>("count(*)")? != input_index as i64 {
+                if sttm.read::<i64, _>("count(*)")? != input_index_in_epoch as i64 {
                     return Err(anyhow::anyhow!("missing inputs before the current one"));
                 }
             }
@@ -106,11 +111,11 @@ impl StateManager {
 
         let mut sttm = self.connection.prepare(
             "
-                INSERT INTO inputs (epoch_number, input_index, input) VALUES (?, ?, ?)",
+                INSERT INTO inputs (epoch_number, input_index_in_epoch, input) VALUES (?, ?, ?)",
         )?;
 
         sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index as i64))?;
+        sttm.bind((2, input_index_in_epoch as i64))?;
         sttm.bind((3, input))?;
 
         match sttm.next() {
@@ -126,43 +131,52 @@ impl StateManager {
         }
     }
 
-    pub fn add_state(&self, state: &[u8], epoch_number: u64, input_index: u64) -> Result<()> {
-        // add state
-        // 1. successful if the state doesn't exist
-        // 2. do nothing if it exists and the state is the same
-        // 3. return error if it exists with different value
+    pub fn add_machine_state_hash(
+        &self,
+        machine_state_hash: &[u8],
+        epoch_number: u64,
+        input_index_in_epoch: u64,
+    ) -> Result<()> {
+        // add machine state hash
+        // 1. successful if the row doesn't exist
+        // 2. do nothing if it exists and the state hash is the same
+        // 3. return error if it exists with different state hash
         let mut sttm = self
             .connection
-            .prepare("SELECT * FROM states WHERE epoch_number = ? AND input_index = ?")?;
+            .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ? AND input_index_in_epoch = ?")?;
         sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index as i64))?;
+        sttm.bind((2, input_index_in_epoch as i64))?;
 
         match sttm.next() {
             Ok(State::Row) => {
-                if sttm.read::<Vec<u8>, _>("state")? != state.to_vec() {
-                    return Err(anyhow::anyhow!("different state exists for the same key"));
+                if sttm.read::<Vec<u8>, _>("machine_state_hash")? != machine_state_hash.to_vec() {
+                    return Err(anyhow::anyhow!(
+                        "different machine state hash exists for the same key"
+                    ));
                 }
                 return Ok(());
             }
             Ok(State::Done) => {
-                // state doesn't exist
+                // machine state hash doesn't exist
             }
             Err(e) => {
                 return Err(anyhow::anyhow!(e.to_string()));
             }
         }
 
-        let mut sttm = self
-            .connection
-            .prepare("INSERT INTO states (epoch_number, input_index, state) VALUES (?, ?, ?)")?;
+        let mut sttm = self.connection.prepare(
+            "INSERT INTO machine_state_hashes (epoch_number, input_index_in_epoch, machine_state_hash) VALUES (?, ?, ?)",
+        )?;
 
         sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index as i64))?;
-        sttm.bind((3, state))?;
+        sttm.bind((2, input_index_in_epoch as i64))?;
+        sttm.bind((3, machine_state_hash))?;
 
         match sttm.next() {
             Ok(State::Row) => {
-                return Err(anyhow::anyhow!("unknown row received from state insertion"));
+                return Err(anyhow::anyhow!(
+                    "unknown row received from machine state hash insertion"
+                ));
             }
             Ok(State::Done) => {
                 return Ok(());
@@ -173,13 +187,18 @@ impl StateManager {
         }
     }
 
-    pub fn add_snapshot(&self, path: &str, epoch_number: u64, input_index: u64) -> Result<()> {
-        let mut sttm = self
-            .connection
-            .prepare("INSERT INTO snapshots (epoch_number, input_index, path) VALUES (?, ?, ?)")?;
+    pub fn add_snapshot(
+        &self,
+        path: &str,
+        epoch_number: u64,
+        input_index_in_epoch: u64,
+    ) -> Result<()> {
+        let mut sttm = self.connection.prepare(
+            "INSERT INTO snapshots (epoch_number, input_index_in_epoch, path) VALUES (?, ?, ?)",
+        )?;
 
         sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index as i64))?;
+        sttm.bind((2, input_index_in_epoch as i64))?;
         sttm.bind((3, path))?;
 
         match sttm.next() {
@@ -197,12 +216,12 @@ impl StateManager {
         }
     }
 
-    pub fn input(&self, epoch_number: u64, input_index: u64) -> Result<Vec<u8>> {
+    pub fn input(&self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Vec<u8>> {
         let mut sttm = self
             .connection
-            .prepare("SELECT * FROM inputs WHERE epoch_number = ? AND input_index = ?")?;
+            .prepare("SELECT * FROM inputs WHERE epoch_number = ? AND input_index_in_epoch = ?")?;
         sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index as i64))?;
+        sttm.bind((2, input_index_in_epoch as i64))?;
 
         match sttm.next() {
             Ok(State::Row) => {
@@ -218,20 +237,24 @@ impl StateManager {
         }
     }
 
-    pub fn state(&self, epoch_number: u64, input_index: u64) -> Result<Vec<u8>> {
+    pub fn machine_state_hash(
+        &self,
+        epoch_number: u64,
+        input_index_in_epoch: u64,
+    ) -> Result<Vec<u8>> {
         let mut sttm = self
             .connection
-            .prepare("SELECT * FROM states WHERE epoch_number = ? AND input_index = ?")?;
+            .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ? AND input_index_in_epoch = ?")?;
         sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index as i64))?;
+        sttm.bind((2, input_index_in_epoch as i64))?;
 
         match sttm.next() {
             Ok(State::Row) => {
-                let state = sttm.read::<Vec<u8>, _>("state")?;
+                let state = sttm.read::<Vec<u8>, _>("machine_state_hashes")?;
                 return Ok(state);
             }
             Ok(State::Done) => {
-                return Err(anyhow::anyhow!("state doesn't exist"));
+                return Err(anyhow::anyhow!("machine state hash doesn't exist"));
             }
             Err(e) => {
                 return Err(anyhow::anyhow!(e.to_string()));
@@ -244,17 +267,21 @@ impl StateManager {
             "SELECT * FROM snapshots \
                 ORDER BY \
                     epoch_number DESC, \
-                    input_index DESC \
+                    input_index_in_epoch DESC \
                 LIMIT 1",
         )?;
 
         match sttm.next() {
             Ok(State::Row) => {
                 let epoch_number = sttm.read::<i64, _>("epoch_number")?;
-                let input_index = sttm.read::<i64, _>("input_index")?;
+                let input_index_in_epoch = sttm.read::<i64, _>("input_index_in_epoch")?;
                 let path = sttm.read::<String, _>("path")?;
 
-                return Ok(Some((path, epoch_number as u64, input_index as u64)));
+                return Ok(Some((
+                    path,
+                    epoch_number as u64,
+                    input_index_in_epoch as u64,
+                )));
             }
             Ok(State::Done) => {
                 return Ok(None);
@@ -377,51 +404,67 @@ fn test_state_manager() -> Result<()> {
         "latest snapshot should be empty"
     );
 
-    let (latest_snapshot, epoch_number, input_index) = ("AAA", 0, 0);
+    let (latest_snapshot, epoch_number, input_index_in_epoch) = ("AAA", 0, 0);
 
-    manager.add_snapshot(latest_snapshot, epoch_number, input_index)?;
+    manager.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
 
     assert_eq!(
         manager
             .latest_snapshot()?
             .expect("latest snapshot should exists"),
-        (latest_snapshot.to_string(), epoch_number, input_index),
+        (
+            latest_snapshot.to_string(),
+            epoch_number,
+            input_index_in_epoch
+        ),
         "latest snapshot should match"
     );
 
-    let (latest_snapshot, epoch_number, input_index) = ("BBB", 0, 1);
+    let (latest_snapshot, epoch_number, input_index_in_epoch) = ("BBB", 0, 1);
 
-    manager.add_snapshot(latest_snapshot, epoch_number, input_index)?;
+    manager.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
 
     assert_eq!(
         manager
             .latest_snapshot()?
             .expect("latest snapshot should exists"),
-        (latest_snapshot.to_string(), epoch_number, input_index),
+        (
+            latest_snapshot.to_string(),
+            epoch_number,
+            input_index_in_epoch
+        ),
         "latest snapshot should match"
     );
 
-    let (latest_snapshot, epoch_number, input_index) = ("CCC", 0, 2);
+    let (latest_snapshot, epoch_number, input_index_in_epoch) = ("CCC", 0, 2);
 
-    manager.add_snapshot(latest_snapshot, epoch_number, input_index)?;
+    manager.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
 
     assert_eq!(
         manager
             .latest_snapshot()?
             .expect("latest snapshot should exists"),
-        (latest_snapshot.to_string(), epoch_number, input_index),
+        (
+            latest_snapshot.to_string(),
+            epoch_number,
+            input_index_in_epoch
+        ),
         "latest snapshot should match"
     );
 
-    let (latest_snapshot, epoch_number, input_index) = ("DDD", 3, 1);
+    let (latest_snapshot, epoch_number, input_index_in_epoch) = ("DDD", 3, 1);
 
-    manager.add_snapshot(latest_snapshot, epoch_number, input_index)?;
+    manager.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
 
     assert_eq!(
         manager
             .latest_snapshot()?
             .expect("latest snapshot should exists"),
-        (latest_snapshot.to_string(), epoch_number, input_index),
+        (
+            latest_snapshot.to_string(),
+            epoch_number,
+            input_index_in_epoch
+        ),
         "latest snapshot should match"
     );
 
@@ -431,7 +474,11 @@ fn test_state_manager() -> Result<()> {
         manager
             .latest_snapshot()?
             .expect("latest snapshot should exists"),
-        (latest_snapshot.to_string(), epoch_number, input_index),
+        (
+            latest_snapshot.to_string(),
+            epoch_number,
+            input_index_in_epoch
+        ),
         "latest snapshot should match"
     );
 
