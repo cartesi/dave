@@ -76,11 +76,14 @@ macro_rules! iflags {
 }
 
 /// Reasons for a machine run interruption
+#[repr(u8)]
+#[derive(Debug)]
 pub enum BreakReason {
     Failed = 0,
     Halted,
     YieldedManually,
     YieldedAutomatically,
+    YieldedSoftly,
     ReachedTargetMcycle,
 }
 
@@ -98,9 +101,16 @@ impl BreakReason {
             1 => BreakReason::Halted,
             2 => BreakReason::YieldedManually,
             3 => BreakReason::YieldedAutomatically,
-            4 => BreakReason::ReachedTargetMcycle,
+            4 => BreakReason::YieldedSoftly,
+            5 => BreakReason::ReachedTargetMcycle,
             _ => panic!("Invalid break reason value"),
         }
+    }
+}
+
+impl std::fmt::Display for BreakReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -153,6 +163,23 @@ pub enum CSR {
 pub enum UarchBreakReason {
     ReachedTargetCycle = 0,
     UarchHalted,
+}
+
+impl UarchBreakReason {
+    /// Transmute a u8 value to an UarchBreakReason
+    #[inline]
+    pub unsafe fn from_u8_unchecked(value: u8) -> Self {
+        std::mem::transmute(value)
+    }
+
+    /// Transforms a u8 value to an UarchBreakReason
+    pub fn from_u8(value: u8) -> Self {
+        match value {
+            0 => UarchBreakReason::ReachedTargetCycle,
+            1 => UarchBreakReason::UarchHalted,
+            _ => panic!("Invalid uarch break reason value"),
+        }
+    }
 }
 
 pub enum HtifYieldReason {
@@ -239,7 +266,7 @@ impl Machine {
     }
 
     /// Runs the machine until ucycle reaches ucycle_end or the machine halts.
-    pub fn run_uarch(&mut self, ucycle_end: u64) -> Result<BreakReason, MachineError> {
+    pub fn run_uarch(&mut self, ucycle_end: u64) -> Result<UarchBreakReason, MachineError> {
         let mut error_collector = ErrorCollector::new();
         let mut break_reason = 0;
 
@@ -254,7 +281,7 @@ impl Machine {
             error_collector.collect(result)?;
         }
 
-        Ok(unsafe { BreakReason::from_u8_unchecked(break_reason as u8) })
+        Ok(unsafe { UarchBreakReason::from_u8_unchecked(break_reason as u8) })
     }
 
     /// Runs the machine for one micro cycle logging all accesses to the state.
