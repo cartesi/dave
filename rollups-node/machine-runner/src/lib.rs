@@ -1,43 +1,29 @@
 use anyhow::Result;
 use std::{path::Path, sync::Arc, time::SystemTime};
 
-use cartesi_machine::{configuration::RuntimeConfig, BreakReason, HtifYieldReason};
+use cartesi_machine::{configuration::RuntimeConfig, BreakReason, HtifYieldReason, Machine};
 use rollups_state_manager::StateManager;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Halted {
-    Yes,
-    No,
+pub struct MachineRunner {
+    machine: Machine,
 }
 
-pub struct Machine {
-    machine: cartesi_machine::Machine,
-}
-
-impl Machine {
-    pub fn load(path: &Path, runtime: RuntimeConfig) -> Result<Machine> {
-        let machine = cartesi_machine::Machine::load(path, runtime)?;
-        Ok(Self { machine })
-    }
-
+impl MachineRunner {
     fn feed(&mut self, input: &[u8]) -> Result<()> {
         self.machine
             .send_cmio_response(HtifYieldReason::HtifYieldReasonAdvanceState, input)?;
         Ok(())
     }
 
-    pub fn advance(&mut self, data: &[u8]) -> Result<Halted> {
-        loop {
-            self.machine.reset_iflags_y()?;
-            self.feed(data)?;
+    fn advance(&mut self, data: &[u8]) -> Result<()> {
+        self.feed(data)?;
+        self.machine.reset_iflags_y()?;
+        let reason = self.machine.run(u64::MAX)?;
 
-            let reason = self.machine.run(u64::MAX)?;
-
-            match reason {
-                BreakReason::YieldedAutomatically => continue,
-                BreakReason::YieldedManually => return Ok(Halted::No),
-                _ => return Ok(Halted::Yes),
-            }
+        // any break reason except `YieldedManually` is considered an error
+        match reason {
+            BreakReason::YieldedManually => Ok(()),
+            _ => Err(anyhow::anyhow!(reason.to_string())),
         }
     }
 
@@ -51,7 +37,9 @@ impl Machine {
                 Some(r) => (r.0, r.1, r.2 + 1),
                 None => (initial_machine.to_string(), 0, 0),
             };
-        let mut machine = Machine::load(&Path::new(&snapshot), RuntimeConfig::default())?;
+        let mut machine = Self {
+            machine: Machine::load(&Path::new(&snapshot), RuntimeConfig::default())?,
+        };
         let mut now = SystemTime::now();
 
         loop {
@@ -66,7 +54,7 @@ impl Machine {
                     )?;
 
                     if now.elapsed()?.as_secs() > (snapshot_frequency * 60) {
-                        // take snapshot every 20 minutes
+                        // take snapshot every `snapshot_frequency` minutes
                         let path = machine_state_hash.to_string();
                         machine.machine.store(&Path::new(&path))?;
                         s.add_snapshot(&path, epoch_number, next_input_index_in_epoch)?;
