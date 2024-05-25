@@ -58,6 +58,10 @@ impl StateManager {
 
     // TODO: fn add_epoch, update_epoch
 
+    pub fn epoch(&self) -> Result<u64> {
+        Ok(0)
+    }
+
     pub fn add_input(
         &self,
         input: &[u8],
@@ -123,11 +127,23 @@ impl StateManager {
         machine_state_hash: &[u8],
         epoch_number: u64,
         input_index_in_epoch: u64,
+        _repetitions: u64,
     ) -> Result<()> {
         // add machine state hash
         // 1. successful if the row doesn't exist
         // 2. do nothing if it exists and the state hash is the same
         // 3. return error if it exists with different state hash
+
+        // TODO:
+        // If it already exists, it shouldn't be an error (maybe just an assert)
+        // Abstractly, for each epoch and each input in epoch, there's an array of state hashes.
+        // This means we add an extra column called "index" or "computation_hash" index, which
+        // resets after every input.
+        // So we could read the last index for that epoch+input, and add a new row with the next
+        // index.
+        // Furthermore, besides the state hash itself, we have to add the number of
+        // repetitions of that state hash.
+
         let mut sttm = self
             .connection
             .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ?1 AND input_index_in_epoch = ?2")?;
@@ -175,7 +191,7 @@ impl StateManager {
         Ok(())
     }
 
-    pub fn input(&self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Vec<u8>> {
+    pub fn input(&self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<Vec<u8>>> {
         let mut sttm = self.connection.prepare(
             "SELECT input FROM inputs WHERE epoch_number = ?1 AND input_index_in_epoch = ?2",
         )?;
@@ -184,11 +200,9 @@ impl StateManager {
         match query.next() {
             Ok(Some(r)) => {
                 let input = r.get(0)?;
-                return Ok(input);
+                return Ok(Some(input));
             }
-            Ok(None) => {
-                return Err(anyhow::anyhow!("input doesn't exist"));
-            }
+            Ok(None) => return Ok(None),
             Err(e) => {
                 return Err(anyhow::anyhow!(e.to_string()));
             }
@@ -295,12 +309,12 @@ fn test_state_manager() -> Result<()> {
 
     assert_eq!(
         manager.input(0, 0)?,
-        input_0_bytes.to_vec(),
+        Some(input_0_bytes.to_vec()),
         "input 0 bytes should match"
     );
     assert_eq!(
         manager.input(0, 1)?,
-        input_1_bytes.to_vec(),
+        Some(input_1_bytes.to_vec()),
         "input 1 bytes should match"
     );
     assert_eq!(

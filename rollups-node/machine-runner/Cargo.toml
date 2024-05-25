@@ -10,6 +10,7 @@ readme.workspace = true
 repository.workspace = true
 
 [dependencies]
-cartesi-machine = { path = "../../machine-bindings/cartesi-machine" }
-rollups-state-manager = { path = "../state-manager" }
-anyhow = "1.0.6"
+rollups-state-manager = { workspace = true }
+
+cartesi-machine = { workspace = true }
+anyhow = { workspace = true }

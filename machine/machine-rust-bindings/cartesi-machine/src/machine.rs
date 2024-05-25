@@ -560,24 +560,6 @@ impl Machine {
         Ok(config.into())
     }
 
-    //     pub fn reset_rx_buffer_range(
-    //         &mut self,
-    //         new_range: &MemoryRangeConfig,
-    //     ) -> Result<(), MachineError> {
-    //         let mut error_collector = ErrorCollector::new();
-
-    //         let result = unsafe {
-    //             cartesi_machine_sys::cm_replace_memory_range(
-    //                 self.machine,
-    //                 new_range,
-    //                 error_collector.as_mut_ptr(),
-    //             )
-    //         };
-    //         error_collector.collect(result)?;
-
-    //         Ok(())
-    //     }
-
     /// Replaces a memory range
     pub fn replace_memory_range(
         &mut self,

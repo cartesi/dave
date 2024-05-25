@@ -24,55 +24,57 @@ pub mod uarch_break_reason {
 
 ///
 pub mod htif {
-    use cartesi_machine_sys::*;
-    pub const DEVICE_SHIFT: u32 = HTIF_DEV_SHIFT_DEF;
-    pub const COMMAND_SHIFT: u32 = HTIF_CMD_SHIFT_DEF;
-    pub const DATA_SHIFT: u32 = HTIF_DATA_SHIFT_DEF;
-    pub const DEVICE_MASK: u64 = HTIF_DEV_MASK_DEF as u64;
-    pub const COMMAND_MASK: u64 = HTIF_CMD_MASK_DEF as u64;
-    pub const DATA_MASK: u64 = HTIF_DATA_MASK_DEF as u64;
-}
-
-/// HTIF devices
-pub mod htif_devices {
-    use cartesi_machine_sys::*;
-    pub const HALT: u32 = HTIF_DEV_HALT_DEF;
-    pub const CONSOLE: u32 = HTIF_DEV_CONSOLE_DEF;
-    pub const YIELD: u32 = HTIF_DEV_YIELD_DEF;
-}
-
-/// HTIF commands
-pub mod htif_commands {
-    use cartesi_machine_sys::*;
-    pub const HALT_HALT: u32 = HTIF_HALT_CMD_HALT_DEF;
-    pub const CONSOLE_GETCHAR: u32 = HTIF_CONSOLE_CMD_GETCHAR_DEF;
-    pub const CONSOLE_PUTCHAR: u32 = HTIF_CONSOLE_CMD_PUTCHAR_DEF;
-    pub const YIELD_AUTOMATIC: u32 = HTIF_YIELD_CMD_AUTOMATIC_DEF;
-    pub const YIELD_MANUAL: u32 = HTIF_YIELD_CMD_MANUAL_DEF;
-}
-
-/// HTIF request
-pub mod htif_tohost {
-    pub mod automatic {
+    pub mod masks {
         use cartesi_machine_sys::*;
-        pub const PROGRESS: u32 = HTIF_YIELD_AUTOMATIC_REASON_PROGRESS_DEF;
-        pub const TX_OUTPUT: u32 = HTIF_YIELD_AUTOMATIC_REASON_TX_OUTPUT_DEF;
-        pub const TX_REPORT: u32 = HTIF_YIELD_AUTOMATIC_REASON_TX_REPORT_DEF;
+        pub const DEVICE_SHIFT: u32 = HTIF_DEV_SHIFT_DEF;
+        pub const COMMAND_SHIFT: u32 = HTIF_CMD_SHIFT_DEF;
+        pub const DATA_SHIFT: u32 = HTIF_DATA_SHIFT_DEF;
+        pub const DEVICE_MASK: u64 = HTIF_DEV_MASK_DEF as u64;
+        pub const COMMAND_MASK: u64 = HTIF_CMD_MASK_DEF as u64;
+        pub const DATA_MASK: u64 = HTIF_DATA_MASK_DEF as u64;
     }
 
-    pub mod manual {
+    /// HTIF devices
+    pub mod devices {
         use cartesi_machine_sys::*;
-        pub const RX_ACCEPTED: u32 = HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED_DEF;
-        pub const RX_REJECTED: u32 = HTIF_YIELD_MANUAL_REASON_RX_REJECTED_DEF;
-        pub const TX_EXCEPTION: u32 = HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION_DEF;
+        pub const HALT: u32 = HTIF_DEV_HALT_DEF;
+        pub const CONSOLE: u32 = HTIF_DEV_CONSOLE_DEF;
+        pub const YIELD: u32 = HTIF_DEV_YIELD_DEF;
     }
-}
 
-/// HTIF reply
-pub mod htif_fromhost {
-    use cartesi_machine_sys::*;
-    pub const ADVANCE_STATE: u32 = HTIF_YIELD_REASON_ADVANCE_STATE_DEF;
-    pub const INSPECT_STATE: u32 = HTIF_YIELD_REASON_INSPECT_STATE_DEF;
+    /// HTIF commands
+    pub mod commands {
+        use cartesi_machine_sys::*;
+        pub const HALT_HALT: u32 = HTIF_HALT_CMD_HALT_DEF;
+        pub const CONSOLE_GETCHAR: u32 = HTIF_CONSOLE_CMD_GETCHAR_DEF;
+        pub const CONSOLE_PUTCHAR: u32 = HTIF_CONSOLE_CMD_PUTCHAR_DEF;
+        pub const YIELD_AUTOMATIC: u32 = HTIF_YIELD_CMD_AUTOMATIC_DEF;
+        pub const YIELD_MANUAL: u32 = HTIF_YIELD_CMD_MANUAL_DEF;
+    }
+
+    /// HTIF request
+    pub mod tohost {
+        pub mod automatic {
+            use cartesi_machine_sys::*;
+            pub const PROGRESS: u32 = HTIF_YIELD_AUTOMATIC_REASON_PROGRESS_DEF;
+            pub const TX_OUTPUT: u32 = HTIF_YIELD_AUTOMATIC_REASON_TX_OUTPUT_DEF;
+            pub const TX_REPORT: u32 = HTIF_YIELD_AUTOMATIC_REASON_TX_REPORT_DEF;
+        }
+
+        pub mod manual {
+            use cartesi_machine_sys::*;
+            pub const RX_ACCEPTED: u32 = HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED_DEF;
+            pub const RX_REJECTED: u32 = HTIF_YIELD_MANUAL_REASON_RX_REJECTED_DEF;
+            pub const TX_EXCEPTION: u32 = HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION_DEF;
+        }
+    }
+
+    /// HTIF reply
+    pub mod fromhost {
+        use cartesi_machine_sys::*;
+        pub const ADVANCE_STATE: u16 = HTIF_YIELD_REASON_ADVANCE_STATE_DEF as u16;
+        pub const INSPECT_STATE: u16 = HTIF_YIELD_REASON_INSPECT_STATE_DEF as u16;
+    }
 }
 
 pub mod error {
