@@ -2,21 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use anyhow::Result;
-use sqlite::State;
+use rusqlite::Connection;
 
 pub struct StateManager {
-    connection: sqlite::ConnectionThreadSafe,
+    connection: Connection,
 }
 
 impl StateManager {
     pub fn connect(database_uri: &str) -> Result<Self> {
-        let connection = sqlite::Connection::open_thread_safe(database_uri)?;
+        let connection = Connection::open(database_uri)?;
         // constants table
         connection.execute(
             "CREATE TABLE IF NOT EXISTS constants (
                 key TEXT NOT NULL PRIMARY KEY,
                 value TEXT NOT NULL
             );",
+            (),
         )?;
         // epochs table
         connection.execute(
@@ -25,6 +26,7 @@ impl StateManager {
                 block_sealed INTEGER NOT NULL,
                 settled BOOLEAN NOT NULL
             );",
+            (),
         )?;
         // inputs table
         connection.execute(
@@ -34,6 +36,7 @@ impl StateManager {
                 input BLOB NOT NULL,
                 PRIMARY KEY (epoch_number, input_index_in_epoch)
             );",
+            (),
         )?;
         // machine state hashes table
         connection.execute(
@@ -43,6 +46,7 @@ impl StateManager {
                 machine_state_hash BLOB NOT NULL,
                 PRIMARY KEY (epoch_number, input_index_in_epoch)
             );",
+            (),
         )?;
         // snapshots table
         connection.execute(
@@ -52,6 +56,7 @@ impl StateManager {
                 path TEXT NOT NULL,
                 PRIMARY KEY (epoch_number, input_index_in_epoch)
             );",
+            (),
         )?;
 
         Ok(Self { connection })
@@ -70,16 +75,16 @@ impl StateManager {
         // 2. all prior inputs of the same epoch are added
         let mut sttm = self
             .connection
-            .prepare("SELECT count(*) FROM inputs WHERE epoch_number > ?")?;
-        sttm.bind((1, epoch_number as i64))?;
+            .prepare("SELECT count(*) FROM inputs WHERE epoch_number > ?1")?;
 
-        match sttm.next() {
-            Ok(State::Row) => {
-                if sttm.read::<i64, _>("count(*)")? > 0 {
+        match sttm.query([epoch_number])?.next() {
+            Ok(Some(r)) => {
+                let count_of_inputs: u64 = r.get(0)?;
+                if count_of_inputs > 0 {
                     return Err(anyhow::anyhow!("inputs from later epochs are found"));
                 }
             }
-            Ok(State::Done) => {
+            Ok(None) => {
                 return Err(anyhow::anyhow!("fail to get count(*) from epoch check"));
             }
             Err(e) => {
@@ -88,18 +93,17 @@ impl StateManager {
         }
 
         let mut sttm = self.connection.prepare(
-            "SELECT count(*) FROM inputs WHERE epoch_number = ? AND input_index_in_epoch < ?",
+            "SELECT count(*) FROM inputs WHERE epoch_number = ?1 AND input_index_in_epoch < ?2",
         )?;
-        sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index_in_epoch as i64))?;
 
-        match sttm.next() {
-            Ok(State::Row) => {
-                if sttm.read::<i64, _>("count(*)")? != input_index_in_epoch as i64 {
+        match sttm.query([epoch_number, input_index_in_epoch])?.next() {
+            Ok(Some(r)) => {
+                let count_of_inputs: u64 = r.get(0)?;
+                if count_of_inputs != input_index_in_epoch {
                     return Err(anyhow::anyhow!("missing inputs before the current one"));
                 }
             }
-            Ok(State::Done) => {
+            Ok(None) => {
                 return Err(anyhow::anyhow!(
                     "fail to get count(*) from input index check"
                 ));
@@ -111,24 +115,13 @@ impl StateManager {
 
         let mut sttm = self.connection.prepare(
             "
-                INSERT INTO inputs (epoch_number, input_index_in_epoch, input) VALUES (?, ?, ?)",
+                INSERT INTO inputs (epoch_number, input_index_in_epoch, input) VALUES (?1, ?2, ?3)",
         )?;
 
-        sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index_in_epoch as i64))?;
-        sttm.bind((3, input))?;
-
-        match sttm.next() {
-            Ok(State::Row) => {
-                return Err(anyhow::anyhow!("unknown row received from input insertion"));
-            }
-            Ok(State::Done) => {
-                return Ok(());
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+        if sttm.execute((epoch_number, input_index_in_epoch, input))? != 1 {
+            return Err(anyhow::anyhow!("input insertion failed"));
         }
+        Ok(())
     }
 
     pub fn add_machine_state_hash(
@@ -143,20 +136,18 @@ impl StateManager {
         // 3. return error if it exists with different state hash
         let mut sttm = self
             .connection
-            .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ? AND input_index_in_epoch = ?")?;
-        sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index_in_epoch as i64))?;
+            .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ?1 AND input_index_in_epoch = ?2")?;
 
-        match sttm.next() {
-            Ok(State::Row) => {
-                if sttm.read::<Vec<u8>, _>("machine_state_hash")? != machine_state_hash.to_vec() {
+        match sttm.query([epoch_number, input_index_in_epoch])?.next() {
+            Ok(Some(r)) => {
+                let read_machine_state_hash: Vec<u8> = r.get(0)?;
+                if read_machine_state_hash != machine_state_hash.to_vec() {
                     return Err(anyhow::anyhow!(
                         "different machine state hash exists for the same key"
                     ));
                 }
-                return Ok(());
             }
-            Ok(State::Done) => {
+            Ok(None) => {
                 // machine state hash doesn't exist
             }
             Err(e) => {
@@ -165,26 +156,13 @@ impl StateManager {
         }
 
         let mut sttm = self.connection.prepare(
-            "INSERT INTO machine_state_hashes (epoch_number, input_index_in_epoch, machine_state_hash) VALUES (?, ?, ?)",
+            "INSERT INTO machine_state_hashes (epoch_number, input_index_in_epoch, machine_state_hash) VALUES (?1, ?2, ?3)",
         )?;
 
-        sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index_in_epoch as i64))?;
-        sttm.bind((3, machine_state_hash))?;
-
-        match sttm.next() {
-            Ok(State::Row) => {
-                return Err(anyhow::anyhow!(
-                    "unknown row received from machine state hash insertion"
-                ));
-            }
-            Ok(State::Done) => {
-                return Ok(());
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+        if sttm.execute((epoch_number, input_index_in_epoch, machine_state_hash))? != 1 {
+            return Err(anyhow::anyhow!("machine state hash insertion failed"));
         }
+        Ok(())
     }
 
     pub fn add_snapshot(
@@ -194,41 +172,27 @@ impl StateManager {
         input_index_in_epoch: u64,
     ) -> Result<()> {
         let mut sttm = self.connection.prepare(
-            "INSERT INTO snapshots (epoch_number, input_index_in_epoch, path) VALUES (?, ?, ?)",
+            "INSERT INTO snapshots (epoch_number, input_index_in_epoch, path) VALUES (?1, ?2, ?3)",
         )?;
 
-        sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index_in_epoch as i64))?;
-        sttm.bind((3, path))?;
-
-        match sttm.next() {
-            Ok(State::Row) => {
-                return Err(anyhow::anyhow!(
-                    "unknown row received from snapshot insertion"
-                ));
-            }
-            Ok(State::Done) => {
-                return Ok(());
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+        if sttm.execute((epoch_number, input_index_in_epoch, path))? != 1 {
+            return Err(anyhow::anyhow!("machine snapshot insertion failed"));
         }
+        Ok(())
     }
 
     pub fn input(&self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Vec<u8>> {
-        let mut sttm = self
-            .connection
-            .prepare("SELECT * FROM inputs WHERE epoch_number = ? AND input_index_in_epoch = ?")?;
-        sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index_in_epoch as i64))?;
+        let mut sttm = self.connection.prepare(
+            "SELECT input FROM inputs WHERE epoch_number = ?1 AND input_index_in_epoch = ?2",
+        )?;
+        let mut query = sttm.query([epoch_number, input_index_in_epoch])?;
 
-        match sttm.next() {
-            Ok(State::Row) => {
-                let input = sttm.read::<Vec<u8>, _>("input")?;
+        match query.next() {
+            Ok(Some(r)) => {
+                let input = r.get(0)?;
                 return Ok(input);
             }
-            Ok(State::Done) => {
+            Ok(None) => {
                 return Err(anyhow::anyhow!("input doesn't exist"));
             }
             Err(e) => {
@@ -244,16 +208,15 @@ impl StateManager {
     ) -> Result<Vec<u8>> {
         let mut sttm = self
             .connection
-            .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ? AND input_index_in_epoch = ?")?;
-        sttm.bind((1, epoch_number as i64))?;
-        sttm.bind((2, input_index_in_epoch as i64))?;
+            .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ?1 AND input_index_in_epoch = ?2")?;
+        let mut query = sttm.query([epoch_number, input_index_in_epoch])?;
 
-        match sttm.next() {
-            Ok(State::Row) => {
-                let state = sttm.read::<Vec<u8>, _>("machine_state_hashes")?;
+        match query.next() {
+            Ok(Some(r)) => {
+                let state = r.get(0)?;
                 return Ok(state);
             }
-            Ok(State::Done) => {
+            Ok(None) => {
                 return Err(anyhow::anyhow!("machine state hash doesn't exist"));
             }
             Err(e) => {
@@ -264,26 +227,23 @@ impl StateManager {
 
     pub fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
         let mut sttm = self.connection.prepare(
-            "SELECT * FROM snapshots \
+            "SELECT epoch_number, input_index_in_epoch, path FROM snapshots \
                 ORDER BY \
                     epoch_number DESC, \
                     input_index_in_epoch DESC \
                 LIMIT 1",
         )?;
+        let mut query = sttm.query([])?;
 
-        match sttm.next() {
-            Ok(State::Row) => {
-                let epoch_number = sttm.read::<i64, _>("epoch_number")?;
-                let input_index_in_epoch = sttm.read::<i64, _>("input_index_in_epoch")?;
-                let path = sttm.read::<String, _>("path")?;
+        match query.next() {
+            Ok(Some(r)) => {
+                let epoch_number = r.get(0)?;
+                let input_index_in_epoch = r.get(1)?;
+                let path = r.get(2)?;
 
-                return Ok(Some((
-                    path,
-                    epoch_number as u64,
-                    input_index_in_epoch as u64,
-                )));
+                return Ok(Some((path, epoch_number, input_index_in_epoch)));
             }
-            Ok(State::Done) => {
+            Ok(None) => {
                 return Ok(None);
             }
             Err(e) => {
@@ -295,39 +255,28 @@ impl StateManager {
     pub fn set_latest_block(&self, block: u64) -> Result<()> {
         let mut sttm = self
             .connection
-            .prepare("INSERT INTO constants (key, value) VALUES (?, ?)")?;
+            .prepare("INSERT OR REPLACE INTO constants (key, value) VALUES (?1, ?2)")?;
 
-        sttm.bind((1, "latest_block"))?;
-        sttm.bind((2, block as i64))?;
-
-        match sttm.next() {
-            Ok(State::Row) => {
-                return Err(anyhow::anyhow!(
-                    "unknown row received from latest block update"
-                ));
-            }
-            Ok(State::Done) => {
-                return Ok(());
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+        if sttm.execute(("latest_block", block))? != 1 {
+            return Err(anyhow::anyhow!("fail to update latest processed block"));
         }
+        Ok(())
     }
 
     pub fn latest_block(&self) -> Result<Option<u64>> {
         let mut sttm = self.connection.prepare(
-            "SELECT * FROM constants \
-                WHERE key = \"latest_block\" ",
+            "SELECT value FROM constants \
+                WHERE key = ?1 ",
         )?;
+        let mut query = sttm.query(["latest_block"])?;
 
-        match sttm.next() {
-            Ok(State::Row) => {
-                let latest_block = sttm.read::<i64, _>("value")?;
+        match query.next() {
+            Ok(Some(r)) => {
+                let latest_block: u64 = r.get::<_, String>(0)?.parse()?;
 
-                return Ok(Some(latest_block as u64));
+                return Ok(Some(latest_block));
             }
-            Ok(State::Done) => {
+            Ok(None) => {
                 return Ok(None);
             }
             Err(e) => {
