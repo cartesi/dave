@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use rusqlite::Connection;
+use rusqlite_migration::{Migrations, M};
 
 pub struct StateManager {
     connection: Connection,
@@ -10,54 +11,47 @@ pub struct StateManager {
 
 impl StateManager {
     pub fn connect(database_uri: &str) -> Result<Self> {
-        let connection = Connection::open(database_uri)?;
-        // constants table
-        connection.execute(
-            "CREATE TABLE IF NOT EXISTS constants (
-                key TEXT NOT NULL PRIMARY KEY,
-                value TEXT NOT NULL
-            );",
-            (),
-        )?;
-        // epochs table
-        connection.execute(
-            "CREATE TABLE IF NOT EXISTS epochs (
-                epoch_number INTEGER NOT NULL PRIMARY KEY,
-                block_sealed INTEGER NOT NULL,
-                settled BOOLEAN NOT NULL
-            );",
-            (),
-        )?;
-        // inputs table
-        connection.execute(
-            "CREATE TABLE IF NOT EXISTS inputs (
-                epoch_number INTEGER NOT NULL,
-                input_index_in_epoch INTEGER NOT NULL,
-                input BLOB NOT NULL,
-                PRIMARY KEY (epoch_number, input_index_in_epoch)
-            );",
-            (),
-        )?;
-        // machine state hashes table
-        connection.execute(
-            "CREATE TABLE IF NOT EXISTS machine_state_hashes (
-                epoch_number INTEGER NOT NULL,
-                input_index_in_epoch INTEGER NOT NULL,
-                machine_state_hash BLOB NOT NULL,
-                PRIMARY KEY (epoch_number, input_index_in_epoch)
-            );",
-            (),
-        )?;
-        // snapshots table
-        connection.execute(
-            "CREATE TABLE IF NOT EXISTS snapshots (
-                epoch_number INTEGER NOT NULL,
-                input_index_in_epoch INTEGER NOT NULL,
-                path TEXT NOT NULL,
-                PRIMARY KEY (epoch_number, input_index_in_epoch)
-            );",
-            (),
-        )?;
+        let mut connection = Connection::open(database_uri)?;
+        let migrations = Migrations::new(vec![
+            M::up(
+                "CREATE TABLE constants (
+                    key TEXT NOT NULL PRIMARY KEY,
+                    value TEXT NOT NULL
+                );",
+            ),
+            M::up(
+                "CREATE TABLE epochs (
+                    epoch_number INTEGER NOT NULL PRIMARY KEY,
+                    block_sealed INTEGER NOT NULL,
+                    settled BOOLEAN NOT NULL
+                );",
+            ),
+            M::up(
+                "CREATE TABLE inputs (
+                    epoch_number INTEGER NOT NULL,
+                    input_index_in_epoch INTEGER NOT NULL,
+                    input BLOB NOT NULL,
+                    PRIMARY KEY (epoch_number, input_index_in_epoch)
+                );",
+            ),
+            M::up(
+                "CREATE TABLE machine_state_hashes (
+                    epoch_number INTEGER NOT NULL,
+                    input_index_in_epoch INTEGER NOT NULL,
+                    machine_state_hash BLOB NOT NULL,
+                    PRIMARY KEY (epoch_number, input_index_in_epoch)
+                );",
+            ),
+            M::up(
+                "CREATE TABLE snapshots (
+                    epoch_number INTEGER NOT NULL,
+                    input_index_in_epoch INTEGER NOT NULL,
+                    path TEXT NOT NULL,
+                    PRIMARY KEY (epoch_number, input_index_in_epoch)
+                );",
+            ),
+        ]);
+        migrations.to_latest(&mut connection)?;
 
         Ok(Self { connection })
     }
