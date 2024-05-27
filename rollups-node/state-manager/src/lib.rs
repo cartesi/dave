@@ -75,18 +75,15 @@ impl StateManager {
             .connection
             .prepare("SELECT count(*) FROM inputs WHERE epoch_number > ?1")?;
 
-        match sttm.query([epoch_number])?.next() {
-            Ok(Some(r)) => {
+        match sttm.query([epoch_number])?.next()? {
+            Some(r) => {
                 let count_of_inputs: u64 = r.get(0)?;
                 if count_of_inputs > 0 {
                     return Err(anyhow::anyhow!("inputs from later epochs are found"));
                 }
             }
-            Ok(None) => {
+            None => {
                 return Err(anyhow::anyhow!("fail to get count(*) from epoch check"));
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
             }
         }
 
@@ -94,20 +91,17 @@ impl StateManager {
             "SELECT count(*) FROM inputs WHERE epoch_number = ?1 AND input_index_in_epoch < ?2",
         )?;
 
-        match sttm.query([epoch_number, input_index_in_epoch])?.next() {
-            Ok(Some(r)) => {
+        match sttm.query([epoch_number, input_index_in_epoch])?.next()? {
+            Some(r) => {
                 let count_of_inputs: u64 = r.get(0)?;
                 if count_of_inputs != input_index_in_epoch {
                     return Err(anyhow::anyhow!("missing inputs before the current one"));
                 }
             }
-            Ok(None) => {
+            None => {
                 return Err(anyhow::anyhow!(
                     "fail to get count(*) from input index check"
                 ));
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
             }
         }
 
@@ -148,8 +142,8 @@ impl StateManager {
             .connection
             .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ?1 AND input_index_in_epoch = ?2")?;
 
-        match sttm.query([epoch_number, input_index_in_epoch])?.next() {
-            Ok(Some(r)) => {
+        match sttm.query([epoch_number, input_index_in_epoch])?.next()? {
+            Some(r) => {
                 let read_machine_state_hash: Vec<u8> = r.get(0)?;
                 if read_machine_state_hash != machine_state_hash.to_vec() {
                     return Err(anyhow::anyhow!(
@@ -157,11 +151,8 @@ impl StateManager {
                     ));
                 }
             }
-            Ok(None) => {
+            None => {
                 // machine state hash doesn't exist
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
             }
         }
 
@@ -197,15 +188,12 @@ impl StateManager {
         )?;
         let mut query = sttm.query([epoch_number, input_index_in_epoch])?;
 
-        match query.next() {
-            Ok(Some(r)) => {
+        match query.next()? {
+            Some(r) => {
                 let input = r.get(0)?;
-                return Ok(Some(input));
+                Ok(input)
             }
-            Ok(None) => return Ok(None),
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+            None => Ok(None),
         }
     }
 
@@ -219,16 +207,13 @@ impl StateManager {
             .prepare("SELECT * FROM machine_state_hashes WHERE epoch_number = ?1 AND input_index_in_epoch = ?2")?;
         let mut query = sttm.query([epoch_number, input_index_in_epoch])?;
 
-        match query.next() {
-            Ok(Some(r)) => {
+        match query.next()? {
+            Some(r) => {
                 let state = r.get(0)?;
                 return Ok(state);
             }
-            Ok(None) => {
+            None => {
                 return Err(anyhow::anyhow!("machine state hash doesn't exist"));
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
             }
         }
     }
@@ -243,20 +228,15 @@ impl StateManager {
         )?;
         let mut query = sttm.query([])?;
 
-        match query.next() {
-            Ok(Some(r)) => {
+        match query.next()? {
+            Some(r) => {
                 let epoch_number = r.get(0)?;
                 let input_index_in_epoch = r.get(1)?;
                 let path = r.get(2)?;
 
-                return Ok(Some((path, epoch_number, input_index_in_epoch)));
+                Ok(Some((path, epoch_number, input_index_in_epoch)))
             }
-            Ok(None) => {
-                return Ok(None);
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+            None => Ok(None),
         }
     }
 
@@ -278,18 +258,13 @@ impl StateManager {
         )?;
         let mut query = sttm.query(["latest_block"])?;
 
-        match query.next() {
-            Ok(Some(r)) => {
+        match query.next()? {
+            Some(r) => {
                 let latest_block: u64 = r.get::<_, String>(0)?.parse()?;
 
-                return Ok(Some(latest_block));
+                Ok(Some(latest_block))
             }
-            Ok(None) => {
-                return Ok(None);
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e.to_string()));
-            }
+            None => Ok(None),
         }
     }
 }
@@ -317,11 +292,7 @@ fn test_state_manager() -> Result<()> {
         Some(input_1_bytes.to_vec()),
         "input 1 bytes should match"
     );
-    assert_eq!(
-        manager.input(0, 2).is_err(),
-        true,
-        "input 2 shouldn't exist"
-    );
+    assert_eq!(manager.input(0, 2)?, None, "input 2 shouldn't exist");
 
     assert_eq!(
         manager.add_input(input_0_bytes, 0, 1).is_err(),
