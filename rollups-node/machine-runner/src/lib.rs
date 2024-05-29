@@ -6,7 +6,7 @@ use rollups_state_manager::StateManager;
 
 pub struct MachineRunner {
     machine: Machine,
-    state_manager: Arc<StateManager>,
+    state_manager: Arc<dyn StateManager>,
     _snapshot_frequency: Duration,
 
     epoch_number: u64,
@@ -15,7 +15,7 @@ pub struct MachineRunner {
 
 impl MachineRunner {
     pub fn new(
-        state_manager: Arc<StateManager>,
+        state_manager: Arc<dyn StateManager>,
         initial_machine: &str,
         _snapshot_frequency: Duration,
     ) -> Result<Self> {
