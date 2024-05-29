@@ -99,7 +99,7 @@ impl<E: EthEvent> BlockchainReader<E> {
         Ok(vec![])
     }
 
-    pub async fn start(&mut self, _s: Arc<StateManager>) -> Result<()> {
+    pub async fn start(&mut self, _s: Arc<dyn StateManager>) -> Result<()> {
         // instantiate
         // ```
         // read from DB the block of the most recent processed
