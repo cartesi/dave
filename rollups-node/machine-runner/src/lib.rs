@@ -1,11 +1,12 @@
 use anyhow::Result;
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, thread::sleep, time::Duration};
 
 use cartesi_machine::{break_reason, configuration::RuntimeConfig, htif, machine::Machine};
 use rollups_state_manager::{InputId, StateManager};
 
 pub struct MachineRunner<SM: StateManager> {
     machine: Machine,
+    sleep_duration: Duration,
     state_manager: Arc<SM>,
     _snapshot_frequency: Duration,
 
@@ -20,6 +21,7 @@ where
     pub fn new(
         state_manager: Arc<SM>,
         initial_machine: &str,
+        sleep_duration: Duration,
         _snapshot_frequency: Duration,
     ) -> Result<Self> {
         let (snapshot, epoch_number, next_input_index_in_epoch) =
@@ -32,6 +34,7 @@ where
 
         Ok(Self {
             machine,
+            sleep_duration,
             state_manager,
             _snapshot_frequency,
             epoch_number,
@@ -40,28 +43,34 @@ where
     }
 
     pub fn start(&mut self) -> Result<()> {
-        // TODO: "poll" process rollup
-        self.process_rollup()?;
+        loop {
+            self.process_rollup()?;
 
+            // all inputs have been processed up to this point,
+            // sleep and come back later
+            sleep(self.sleep_duration);
+        }
         // TODO: snapshot after some time
 
         Ok(())
     }
-}
 
-impl<SM: StateManager> MachineRunner<SM>
-where
-    <SM as StateManager>::Error: Send + Sync + 'static,
-{
     fn process_rollup(&mut self) -> Result<()> {
+        // process all inputs that are currently availalble
         loop {
             self.advance_epoch()?;
+            let latest_epoch = self.state_manager.epoch_count()?;
 
-            if self.epoch_number == self.state_manager.epoch_count()? {
+            if self.epoch_number == latest_epoch {
                 break Ok(());
-            } else {
+            } else if self.epoch_number < latest_epoch {
                 self.epoch_number += 1;
                 self.next_input_index_in_epoch = 0;
+            } else {
+                // self.epoch_number > latest_epoch
+                break Err(anyhow::anyhow!(
+                    "current epoch is greater than latest epoch on blockchain"
+                ));
             }
         }
     }
