@@ -2797,9 +2797,10 @@ dependencies = [
 name = "rollups-state-manager"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "lazy_static",
  "rusqlite",
  "rusqlite_migration",
+ "thiserror",
 ]
 
 [[package]]

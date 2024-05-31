@@ -2,20 +2,23 @@ use anyhow::Result;
 use std::{path::Path, sync::Arc, time::Duration};
 
 use cartesi_machine::{break_reason, configuration::RuntimeConfig, htif, machine::Machine};
-use rollups_state_manager::StateManager;
+use rollups_state_manager::{InputId, StateManager};
 
-pub struct MachineRunner {
+pub struct MachineRunner<SM: StateManager> {
     machine: Machine,
-    state_manager: Arc<dyn StateManager>,
+    state_manager: Arc<SM>,
     _snapshot_frequency: Duration,
 
     epoch_number: u64,
     next_input_index_in_epoch: u64,
 }
 
-impl MachineRunner {
+impl<SM: StateManager> MachineRunner<SM>
+where
+    <SM as StateManager>::Error: Send + Sync + 'static,
+{
     pub fn new(
-        state_manager: Arc<dyn StateManager>,
+        state_manager: Arc<SM>,
         initial_machine: &str,
         _snapshot_frequency: Duration,
     ) -> Result<Self> {
@@ -46,12 +49,15 @@ impl MachineRunner {
     }
 }
 
-impl MachineRunner {
+impl<SM: StateManager> MachineRunner<SM>
+where
+    <SM as StateManager>::Error: Send + Sync + 'static,
+{
     fn process_rollup(&mut self) -> Result<()> {
         loop {
             self.advance_epoch()?;
 
-            if self.epoch_number == self.state_manager.epoch()? {
+            if self.epoch_number == self.state_manager.epoch_count()? {
                 break Ok(());
             } else {
                 self.epoch_number += 1;
@@ -62,12 +68,14 @@ impl MachineRunner {
 
     fn advance_epoch(&mut self) -> Result<()> {
         loop {
-            match self
-                .state_manager
-                .input(self.epoch_number, self.next_input_index_in_epoch)?
-            {
+            let next = self.state_manager.input(&InputId {
+                epoch_number: self.epoch_number,
+                input_index_in_epoch: self.next_input_index_in_epoch,
+            })?;
+
+            match next {
                 Some(input) => {
-                    self.process_input(&input)?;
+                    self.process_input(&input.data)?;
                     self.next_input_index_in_epoch += 1;
                 }
                 None => {
