@@ -373,6 +373,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cartesi-rollups-contracts"
+version = "2.0.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebba9744e384a679adce12d78e7150f374ce38ee0b590018a4d5be973c6edf9d"
+dependencies = [
+ "ethers",
+ "serde",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2776,6 +2786,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-recursion",
+ "cartesi-rollups-contracts",
  "ethers",
  "ethers-contract",
  "futures",
