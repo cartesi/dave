@@ -2,16 +2,96 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 use anyhow::Result;
 use async_recursion::async_recursion;
+use cartesi_rollups_contracts::inputs;
 use ethers::abi::RawLog;
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc, thread::sleep, time::Duration};
 use tokio::sync::Semaphore;
 
 use ethers::contract::EthEvent;
 use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
-use ethers::types::{Address, BlockNumber, Filter, U64};
+use ethers::types::{Address, BlockNumber, Filter, Topic};
 
-use rollups_state_manager::StateManager;
+use cartesi_rollups_contracts::input_box::InputAddedFilter;
+use rollups_state_manager::{Epoch, Input, InputId, StateManager};
+
+pub struct BlockchainReader {
+    last_finalized: u64,
+    consensus: Address,
+    input_box: Address,
+    provider: PartitionProvider,
+    sleep_duration: Duration,
+}
+
+impl BlockchainReader {
+    pub fn new(
+        app_genesis: u64,
+        consensus: Address,
+        input_box: Address,
+        provider_url: &str,
+        concurrency_opt: Option<usize>,
+        sleep_duration: Duration,
+    ) -> Result<Self> {
+        let mut partition_provider = PartitionProvider::new(provider_url)?;
+        if let Some(c) = concurrency_opt {
+            partition_provider.set_concurrency(c);
+        }
+
+        Ok(Self {
+            consensus,
+            input_box,
+            last_finalized: app_genesis,
+            provider: partition_provider,
+            sleep_duration,
+        })
+    }
+    pub async fn start<SM: StateManager>(&mut self, s: Arc<SM>) -> Result<()>
+    where
+        <SM as StateManager>::Error: Send + Sync + 'static,
+    {
+        let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
+
+        // read from DB the block of the most recent processed
+        let mut prev_block = {
+            let latest_processed_block = s.latest_processed_block()?;
+            if latest_processed_block >= self.last_finalized {
+                latest_processed_block
+            } else {
+                self.last_finalized
+            }
+        };
+
+        let inputs_reader = EventReader::<InputAddedFilter>::new(app.into(), self.input_box)?;
+        // TODO: change this to NewEpochFilter
+        let epoch_reader = EventReader::<InputAddedFilter>::new(app.into(), self.consensus)?;
+
+        loop {
+            let current_block = self
+                .provider
+                .latest_finalized_block()
+                .await?
+                .expect("fail to get latest block");
+
+            // read new inputs from blockchain
+            let input_events = inputs_reader
+                .next(prev_block, current_block, &self.provider)
+                .await?;
+            // read epochs from blockchain
+            let epoch_events = epoch_reader
+                .next(prev_block, current_block, &self.provider)
+                .await?;
+
+            // TODO: all state updates should be be atomic
+            s.insert_consensus_data(current_block, input_events, epoch_events);
+
+            prev_block = current_block;
+            sleep(self.sleep_duration);
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct ProviderErr(Vec<String>);
 
@@ -23,97 +103,48 @@ impl std::fmt::Display for ProviderErr {
 
 impl std::error::Error for ProviderErr {}
 
-pub struct BlockchainReader<E: EthEvent> {
-    app: Address,
-    input_box: Address,
-    last_finalized: U64,
-    provider: PartitionProvider,
+pub struct EventReader<E: EthEvent> {
+    topic1: Topic,
+    read_from: Address,
     __phantom: std::marker::PhantomData<E>,
 }
 
-impl<E: EthEvent> BlockchainReader<E> {
-    pub fn new(
-        app: Address,
-        input_box: Address,
-        last_finalized_opt: Option<U64>,
-        provider_url: &str,
-        concurrency_opt: Option<usize>,
-    ) -> Result<Self> {
-        let mut partition_provider = PartitionProvider::new(provider_url)?;
-        if let Some(c) = concurrency_opt {
-            partition_provider.set_concurrency(c);
-        }
-
-        let mut reader = Self {
-            app,
-            input_box,
-            last_finalized: U64::from(0),
-            provider: partition_provider,
+impl<E: EthEvent> EventReader<E> {
+    pub fn new(topic1: Topic, read_from: Address) -> Result<Self> {
+        let reader = Self {
+            topic1: topic1.into(),
+            read_from,
             __phantom: std::marker::PhantomData,
         };
-        if let Some(l) = last_finalized_opt {
-            reader.set_last_finalized(l);
-        }
 
         Ok(reader)
     }
 
-    fn set_last_finalized(&mut self, last_finalized: U64) {
-        self.last_finalized = last_finalized;
-    }
+    // returns (last_finalized_block, vector of events)
+    async fn next(
+        &self,
+        prev_finalized: u64,
+        current_finalized: u64,
+        provider: &PartitionProvider,
+    ) -> Result<Vec<E>> {
+        if current_finalized > prev_finalized {
+            let logs = provider
+                .get_events(
+                    &self.topic1,
+                    &self.read_from,
+                    prev_finalized,
+                    current_finalized,
+                )
+                .await
+                .map_err(|err_arr| {
+                    ProviderErr(err_arr.into_iter().map(|e| e.to_string()).collect())
+                })?;
 
-    pub async fn next(&mut self) -> Result<Vec<E>> {
-        let block_opt = self
-            .provider
-            .provider
-            .get_block(BlockNumber::Finalized)
-            .await
-            .map_err(|e| ProviderErr(vec![e.to_string()]))?;
-
-        if let Some(block) = block_opt {
-            if let Some(current_finalized) = block.number {
-                println!("Last finalized block at number: {:?}", self.last_finalized);
-                println!("Current finalized block at number: {:?}", current_finalized);
-
-                if current_finalized > self.last_finalized {
-                    let logs = self
-                        .provider
-                        .get_events(
-                            &self.app,
-                            &self.input_box,
-                            self.last_finalized.as_u64(),
-                            current_finalized.as_u64(),
-                        )
-                        .await
-                        .map_err(|err_arr| {
-                            ProviderErr(err_arr.into_iter().map(|e| e.to_string()).collect())
-                        })?;
-
-                    // update last finalized block
-                    self.last_finalized = current_finalized;
-                    return Ok(logs);
-                }
-            }
+            return Ok(logs);
         }
 
+        // Should we return error here?
         Ok(vec![])
-    }
-
-    pub async fn start<SM: StateManager>(&mut self, _s: Arc<SM>) -> Result<()> {
-        // instantiate
-        // ```
-        // read from DB the block of the most recent processed
-        // ```
-
-        // tick
-        // ```
-        // read most recent finalized block
-        // read new inputs from blockchain
-        // read epochs from blockchain
-        // update state-manager (atomic)
-        // ```
-
-        Ok(())
     }
 }
 
@@ -138,20 +169,20 @@ impl PartitionProvider {
 
     async fn get_events<E: EthEvent>(
         &self,
-        app: &Address,
-        input_box: &Address,
+        topic1: &Topic,
+        read_from: &Address,
         start_block: u64,
         end_block: u64,
     ) -> Result<Vec<E>, Vec<ProviderError>> {
-        self.get_events_rec(app, input_box, start_block, end_block)
+        self.get_events_rec(topic1, read_from, start_block, end_block)
             .await
     }
 
     #[async_recursion]
     async fn get_events_rec<E: EthEvent>(
         &self,
-        app: &Address,
-        input_box: &Address,
+        topic1: &Topic,
+        read_from: &Address,
         start_block: u64,
         end_block: u64,
     ) -> Result<Vec<E>, Vec<ProviderError>> {
@@ -159,9 +190,9 @@ impl PartitionProvider {
         let filter = Filter::new()
             .from_block(start_block)
             .to_block(end_block)
-            .address(*input_box)
+            .address(*read_from)
             .event(&E::abi_signature())
-            .topic1(*app);
+            .topic1(topic1.clone());
 
         let res = {
             // Make number of concurrent fetches bounded.
@@ -188,8 +219,8 @@ impl PartitionProvider {
                         start_block + half - 1
                     };
 
-                    let first_fut = self.get_events_rec(app, input_box, start_block, middle);
-                    let second_fut = self.get_events_rec(app, input_box, middle + 1, end_block);
+                    let first_fut = self.get_events_rec(topic1, read_from, start_block, middle);
+                    let second_fut = self.get_events_rec(topic1, read_from, middle + 1, end_block);
 
                     let (first_res, second_res) = futures::join!(first_fut, second_fut);
 
@@ -213,6 +244,16 @@ impl PartitionProvider {
         }
     }
 
+    async fn latest_finalized_block(&self) -> Result<Option<u64>> {
+        let block_opt = self
+            .provider
+            .get_block(BlockNumber::Finalized)
+            .await
+            .map_err(|e| ProviderErr(vec![e.to_string()]))?;
+
+        Ok(block_opt.map(|b| b.number.expect("fail to get block number").as_u64()))
+    }
+
     fn should_retry_with_partition(err: &ProviderError) -> bool {
         // infura limit error code: -32005
         let query_limit_error_codes = [-32005];
@@ -230,8 +271,6 @@ impl PartitionProvider {
 #[tokio::test]
 
 async fn test_input_reader() -> Result<()> {
-    use std::str::FromStr;
-
     /// `OldInputAddedFilter` is the old event format,
     /// it should be replaced by the actual `InputAddedFilter` after it's deployed and published
     #[derive(EthEvent)]
@@ -245,20 +284,27 @@ async fn test_input_reader() -> Result<()> {
         pub input: ::ethers::core::types::Bytes,
     }
 
-    let genesis: U64 = U64::from(17784733);
+    let genesis = 17784733;
     let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
     let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
     let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
 
-    let mut reader = BlockchainReader::<OldInputAddedFilter>::new(
-        app,
-        input_box,
-        Some(genesis),
-        format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref(),
-        Some(5),
-    )?;
+    let mut partition_provider =
+        PartitionProvider::new(format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref())?;
+    partition_provider.set_concurrency(5);
 
-    let res: Vec<_> = reader.next().await?;
+    let reader = EventReader::<OldInputAddedFilter>::new(app.into(), input_box)?;
+
+    let res = reader
+        .next(
+            genesis,
+            partition_provider
+                .latest_finalized_block()
+                .await?
+                .expect("fail to get latest block"),
+            &partition_provider,
+        )
+        .await?;
 
     // input box from mainnet shouldn't be empty
     assert!(!res.is_empty(), "input box shouldn't be empty");
