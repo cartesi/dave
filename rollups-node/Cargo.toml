@@ -28,6 +28,7 @@ cartesi-machine = { path = "../machine/machine-rust-bindings/cartesi-machine" }
 anyhow = "1.0"
 async-recursion = "1"
 async-trait = "0.1.74"
+cartesi-rollups-contracts = "2.0.0-rc.1"
 ethers = "2.0.11"
 futures = "0.3"
 log = "0.4"
