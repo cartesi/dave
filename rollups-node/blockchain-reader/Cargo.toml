@@ -12,11 +12,8 @@ repository = { workspace = true }
 
 [dependencies]
 rollups-state-manager = { path = "../state-manager" }
-anyhow = { workspace = true }
 async-recursion = { workspace = true }
 cartesi-rollups-contracts = { workspace = true }
 ethers = { workspace = true }
-futures = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
-ethers-contract = "2.0.13"
-serde = "1.0.197"
