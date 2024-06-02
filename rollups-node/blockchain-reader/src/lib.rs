@@ -1,179 +1,219 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
-use anyhow::Result;
+mod error;
+
+use crate::error::{ProviderErrors, Result};
+
 use async_recursion::async_recursion;
-use cartesi_rollups_contracts::inputs;
+use error::BlockchainReaderError;
 use ethers::abi::RawLog;
-use std::{str::FromStr, sync::Arc, thread::sleep, time::Duration};
-use tokio::sync::Semaphore;
+use std::str::FromStr;
+use std::{sync::Arc, time::Duration};
 
 use ethers::contract::EthEvent;
 use ethers::prelude::{Http, ProviderError};
 use ethers::providers::{Middleware, Provider};
 use ethers::types::{Address, BlockNumber, Filter, Topic};
 
-use cartesi_rollups_contracts::input_box::InputAddedFilter;
+use cartesi_rollups_contracts::input_box::InputAddedFilter as NewInputAddedFilter;
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
-pub struct BlockchainReader {
-    last_finalized: u64,
+// TODO: use actual event type from the rollups_contract crate
+/// this is the old event format,
+/// it should be replaced by the actual `InputAddedFilter` after it's deployed and published
+#[derive(EthEvent)]
+#[ethevent(name = "InputAdded", abi = "InputAdded(address,uint256,address,bytes)")]
+pub struct InputAddedFilter {
+    #[ethevent(indexed)]
+    pub app_contract: ::ethers::core::types::Address,
+    #[ethevent(indexed)]
+    pub index: ::ethers::core::types::U256,
+    pub address: ethers::core::types::Address,
+    pub input: ::ethers::core::types::Bytes,
+}
+
+/// this is a placeholder for the non-existing epoch event
+#[derive(EthEvent)]
+#[ethevent(name = "EpochSealed", abi = "EpochSealed(uint256,uint256)")]
+pub struct EpochSealedFilter {
+    #[ethevent(indexed)]
+    pub epoch_index: ::ethers::core::types::U256,
+    #[ethevent(indexed)]
+    pub last_input_index: ::ethers::core::types::U256,
+}
+
+pub struct AddressBook {
     consensus: Address,
     input_box: Address,
+    topic1_of_input_box: Topic,
+}
+
+pub struct BlockchainReader<SM: StateManager> {
+    state_manager: Arc<SM>,
+    address_book: AddressBook,
     provider: PartitionProvider,
+    input_reader: EventReader<InputAddedFilter>,
+    epoch_reader: EventReader<EpochSealedFilter>,
     sleep_duration: Duration,
 }
 
-impl BlockchainReader {
+impl<SM: StateManager> BlockchainReader<SM>
+where
+    <SM as StateManager>::Error: Send + Sync + 'static,
+{
     pub fn new(
-        app_genesis: u64,
-        consensus: Address,
-        input_box: Address,
+        state_manager: Arc<SM>,
+        address_book: AddressBook,
         provider_url: &str,
-        concurrency_opt: Option<usize>,
         sleep_duration: Duration,
-    ) -> Result<Self> {
-        let mut partition_provider = PartitionProvider::new(provider_url)?;
-        if let Some(c) = concurrency_opt {
-            partition_provider.set_concurrency(c);
-        }
+    ) -> std::result::Result<Self, <Http as FromStr>::Err> {
+        let partition_provider = PartitionProvider::new(provider_url)?;
 
         Ok(Self {
-            consensus,
-            input_box,
-            last_finalized: app_genesis,
+            state_manager,
+            address_book,
             provider: partition_provider,
+            input_reader: EventReader::<InputAddedFilter>::new(),
+            epoch_reader: EventReader::<EpochSealedFilter>::new(),
             sleep_duration,
         })
     }
-    pub async fn start<SM: StateManager>(&mut self, s: Arc<SM>) -> Result<()>
-    where
-        <SM as StateManager>::Error: Send + Sync + 'static,
-    {
-        let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
 
+    pub async fn start(&mut self) -> Result<(), SM> {
         // read from DB the block of the most recent processed
-        let mut prev_block = {
-            let latest_processed_block = s.latest_processed_block()?;
-            if latest_processed_block >= self.last_finalized {
-                latest_processed_block
-            } else {
-                self.last_finalized
-            }
-        };
-
-        let inputs_reader = EventReader::<InputAddedFilter>::new(app.into(), self.input_box)?;
-        // TODO: change this to NewEpochFilter
-        let epoch_reader = EventReader::<InputAddedFilter>::new(app.into(), self.consensus)?;
+        let mut prev_block = self
+            .state_manager
+            .latest_processed_block()
+            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
 
         loop {
-            let current_block = self
-                .provider
-                .latest_finalized_block()
-                .await?
-                .expect("fail to get latest block");
-
-            // read new inputs from blockchain
-            let input_events = inputs_reader
-                .next(prev_block, current_block, &self.provider)
-                .await?;
-            // read epochs from blockchain
-            let epoch_events = epoch_reader
-                .next(prev_block, current_block, &self.provider)
-                .await?;
-
-            // TODO: all state updates should be be atomic
-            s.insert_consensus_data(current_block, input_events, epoch_events);
-
+            let current_block = self.provider.latest_finalized_block().await?;
+            self.advance(prev_block, current_block).await?;
             prev_block = current_block;
-            sleep(self.sleep_duration);
+
+            tokio::time::sleep(self.sleep_duration).await;
         }
+    }
+
+    async fn advance(&self, prev_block: u64, current_block: u64) -> Result<(), SM> {
+        let (inputs, epochs) = self.collect_events(prev_block, current_block).await?;
+
+        self.state_manager
+            .insert_consensus_data(
+                current_block,
+                inputs.iter().collect::<Vec<&Input>>().into_iter(),
+                epochs.iter().collect::<Vec<&Epoch>>().into_iter(),
+            )
+            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
 
         Ok(())
     }
-}
 
-#[derive(Debug)]
-struct ProviderErr(Vec<String>);
+    async fn collect_events(
+        &self,
+        prev_block: u64,
+        current_block: u64,
+    ) -> Result<(Vec<Input>, Vec<Epoch>), SM> {
+        // read new inputs from blockchain
+        let inputs: Vec<Input> = self
+            .input_reader
+            .next(
+                Some(&self.address_book.topic1_of_input_box),
+                &self.address_book.input_box,
+                prev_block,
+                current_block,
+                &self.provider,
+            )
+            .await?
+            .iter()
+            .map(|e| Input {
+                // TODO: use correct values
+                id: InputId {
+                    epoch_number: 0,
+                    input_index_in_epoch: 0,
+                },
+                data: e.input.to_vec(),
+            })
+            .collect();
+        // read epochs from blockchain
+        let epochs: Vec<Epoch> = self
+            .epoch_reader
+            .next(
+                None,
+                &self.address_book.consensus,
+                prev_block,
+                current_block,
+                &self.provider,
+            )
+            .await?
+            .iter()
+            .map(|e| Epoch {
+                // TODO: use correct values
+                epoch_number: e.epoch_index.as_u64(),
+                block_sealed: 0,
+            })
+            .collect();
 
-impl std::fmt::Display for ProviderErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Partition error: {:?}", self.0)
+        Ok((inputs, epochs))
     }
 }
 
-impl std::error::Error for ProviderErr {}
-
 pub struct EventReader<E: EthEvent> {
-    topic1: Topic,
-    read_from: Address,
     __phantom: std::marker::PhantomData<E>,
 }
 
 impl<E: EthEvent> EventReader<E> {
-    pub fn new(topic1: Topic, read_from: Address) -> Result<Self> {
-        let reader = Self {
-            topic1: topic1.into(),
-            read_from,
+    pub fn new() -> Self {
+        Self {
             __phantom: std::marker::PhantomData,
-        };
-
-        Ok(reader)
+        }
     }
 
-    // returns (last_finalized_block, vector of events)
     async fn next(
         &self,
+        topic1: Option<&Topic>,
+        read_from: &Address,
         prev_finalized: u64,
         current_finalized: u64,
         provider: &PartitionProvider,
-    ) -> Result<Vec<E>> {
-        if current_finalized > prev_finalized {
-            let logs = provider
-                .get_events(
-                    &self.topic1,
-                    &self.read_from,
-                    prev_finalized,
-                    current_finalized,
-                )
-                .await
-                .map_err(|err_arr| {
-                    ProviderErr(err_arr.into_iter().map(|e| e.to_string()).collect())
-                })?;
+    ) -> std::result::Result<Vec<E>, ProviderErrors> {
+        assert!(current_finalized > prev_finalized);
 
-            return Ok(logs);
-        }
+        let logs = provider
+            .get_events(
+                topic1,
+                read_from,
+                // blocks are inclusive on both ends
+                prev_finalized + 1,
+                current_finalized,
+            )
+            .await
+            .map_err(|err_arr| ProviderErrors(err_arr))?;
 
-        // Should we return error here?
-        Ok(vec![])
+        return Ok(logs);
     }
 }
 
 struct PartitionProvider {
-    provider: Provider<Http>,
-    semaphore: Semaphore,
+    inner: Provider<Http>,
 }
 
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
 // ParitionProvider will attempt to fetch events in smaller partition if the original request is too large
 impl PartitionProvider {
-    fn new(provider_url: &str) -> Result<Self> {
+    fn new(provider_url: &str) -> std::result::Result<Self, <Http as FromStr>::Err> {
         Ok(PartitionProvider {
-            provider: Provider::<Http>::try_from(provider_url)?,
-            semaphore: Semaphore::new(4),
+            inner: Provider::<Http>::try_from(provider_url)?,
         })
-    }
-
-    fn set_concurrency(&mut self, concurrency: usize) {
-        self.semaphore = Semaphore::new(concurrency);
     }
 
     async fn get_events<E: EthEvent>(
         &self,
-        topic1: &Topic,
+        topic1: Option<&Topic>,
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<E>, Vec<ProviderError>> {
+    ) -> std::result::Result<Vec<E>, Vec<ProviderError>> {
         self.get_events_rec(topic1, read_from, start_block, end_block)
             .await
     }
@@ -181,23 +221,29 @@ impl PartitionProvider {
     #[async_recursion]
     async fn get_events_rec<E: EthEvent>(
         &self,
-        topic1: &Topic,
+        topic1: Option<&Topic>,
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> Result<Vec<E>, Vec<ProviderError>> {
+    ) -> std::result::Result<Vec<E>, Vec<ProviderError>> {
         // TODO: partition log queries if range too large
-        let filter = Filter::new()
-            .from_block(start_block)
-            .to_block(end_block)
-            .address(*read_from)
-            .event(&E::abi_signature())
-            .topic1(topic1.clone());
+        let filter = {
+            let mut f = Filter::new()
+                .from_block(start_block)
+                .to_block(end_block)
+                .address(*read_from)
+                .event(&E::abi_signature());
+
+            if let Some(t) = topic1 {
+                f = f.topic1(t.clone());
+            }
+
+            f
+        };
 
         let res = {
             // Make number of concurrent fetches bounded.
-            let _permit = self.semaphore.acquire().await;
-            self.provider.get_logs(&filter).await
+            self.inner.get_logs(&filter).await
         };
 
         match res {
@@ -205,9 +251,8 @@ impl PartitionProvider {
                 let logs = l
                     .into_iter()
                     .map(RawLog::from)
-                    .map(|x| E::decode_log(&x))
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap();
+                    .map(|x| E::decode_log(&x).unwrap())
+                    .collect();
 
                 Ok(logs)
             }
@@ -219,10 +264,12 @@ impl PartitionProvider {
                         start_block + half - 1
                     };
 
-                    let first_fut = self.get_events_rec(topic1, read_from, start_block, middle);
-                    let second_fut = self.get_events_rec(topic1, read_from, middle + 1, end_block);
-
-                    let (first_res, second_res) = futures::join!(first_fut, second_fut);
+                    let first_res = self
+                        .get_events_rec(topic1, read_from, start_block, middle)
+                        .await;
+                    let second_res = self
+                        .get_events_rec(topic1, read_from, middle + 1, end_block)
+                        .await;
 
                     match (first_res, second_res) {
                         (Ok(mut first), Ok(second)) => {
@@ -244,14 +291,18 @@ impl PartitionProvider {
         }
     }
 
-    async fn latest_finalized_block(&self) -> Result<Option<u64>> {
-        let block_opt = self
-            .provider
+    async fn latest_finalized_block(&self) -> std::result::Result<u64, ProviderErrors> {
+        let block_number = self
+            .inner
             .get_block(BlockNumber::Finalized)
             .await
-            .map_err(|e| ProviderErr(vec![e.to_string()]))?;
+            .map_err(|e| ProviderErrors(vec![e]))?
+            .expect("block is empty")
+            .number
+            .expect("block number is empty")
+            .as_u64();
 
-        Ok(block_opt.map(|b| b.number.expect("fail to get block number").as_u64()))
+        Ok(block_number)
     }
 
     fn should_retry_with_partition(err: &ProviderError) -> bool {
@@ -270,38 +321,22 @@ impl PartitionProvider {
 
 #[tokio::test]
 
-async fn test_input_reader() -> Result<()> {
-    /// `OldInputAddedFilter` is the old event format,
-    /// it should be replaced by the actual `InputAddedFilter` after it's deployed and published
-    #[derive(EthEvent)]
-    #[ethevent(name = "InputAdded", abi = "InputAdded(address,uint256,address,bytes)")]
-    pub struct OldInputAddedFilter {
-        #[ethevent(indexed)]
-        pub app_contract: ::ethers::core::types::Address,
-        #[ethevent(indexed)]
-        pub index: ::ethers::core::types::U256,
-        pub address: ethers::core::types::Address,
-        pub input: ::ethers::core::types::Bytes,
-    }
-
+async fn test_input_reader() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let genesis = 17784733;
     let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
-    let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?;
+    let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?.into();
     let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
 
-    let mut partition_provider =
+    let partition_provider =
         PartitionProvider::new(format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref())?;
-    partition_provider.set_concurrency(5);
-
-    let reader = EventReader::<OldInputAddedFilter>::new(app.into(), input_box)?;
+    let reader = EventReader::<InputAddedFilter>::new();
 
     let res = reader
         .next(
+            Some(&app),
+            &input_box,
             genesis,
-            partition_provider
-                .latest_finalized_block()
-                .await?
-                .expect("fail to get latest block"),
+            partition_provider.latest_finalized_block().await?,
             &partition_provider,
         )
         .await?;
