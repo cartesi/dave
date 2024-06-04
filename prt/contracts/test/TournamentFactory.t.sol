@@ -14,7 +14,7 @@ import "forge-std/console.sol";
 import "forge-std/Test.sol";
 
 import "src/tournament/abstracts/RootTournament.sol";
-import "src/tournament/factories/TournamentFactory.sol";
+import "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import "src/CanonicalConstants.sol";
 
 import "./Util.sol";
@@ -22,15 +22,17 @@ import "./Util.sol";
 pragma solidity ^0.8.0;
 
 contract TournamentFactoryTest is Util, Test {
-    TournamentFactory factory;
+    SingleLevelTournamentFactory singleLevelfactory;
+    MultiLevelTournamentFactory multiLevelfactory;
 
     function setUp() public {
-        factory = Util.instantiateTournamentFactory();
+        singleLevelfactory = Util.instantiateSingleLevelTournamentFactory();
+        multiLevelfactory = Util.instantiateTournamentFactory();
     }
 
     function testRootTournament() public {
         RootTournament rootTournament = RootTournament(
-            address(factory.instantiateSingleLevel(Util.ONE_STATE))
+            address(singleLevelfactory.instantiateSingleLevel(Util.ONE_STATE))
         );
 
         (uint64 _max_level, uint64 _level, uint64 _log2step, uint64 _height) =
@@ -46,8 +48,9 @@ contract TournamentFactoryTest is Util, Test {
             _height, ArbitrationConstants.height(_level), "height should match"
         );
 
-        rootTournament =
-            RootTournament(address(factory.instantiateTop(Util.ONE_STATE)));
+        rootTournament = RootTournament(
+            address(multiLevelfactory.instantiateTop(Util.ONE_STATE))
+        );
 
         (_max_level, _level, _log2step, _height) =
             rootTournament.tournamentLevelConstants();

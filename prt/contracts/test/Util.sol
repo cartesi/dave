@@ -10,15 +10,15 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "src/Match.sol";
+import "src/tournament/libs/Match.sol";
 import "src/CanonicalConstants.sol";
 import "src/tournament/concretes/TopTournament.sol";
 import "src/tournament/concretes/MiddleTournament.sol";
 
 import "src/tournament/factories/SingleLevelTournamentFactory.sol";
-import "src/tournament/factories/TopTournamentFactory.sol";
-import "src/tournament/factories/MiddleTournamentFactory.sol";
-import "src/tournament/factories/BottomTournamentFactory.sol";
+import "src/tournament/factories/multilevel/TopTournamentFactory.sol";
+import "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
+import "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
 
 pragma solidity ^0.8.0;
 
@@ -148,7 +148,7 @@ contract Util {
     }
 
     // create new _topTournament and player 0 joins it
-    function initializePlayer0Tournament(TournamentFactory _factory)
+    function initializePlayer0Tournament(MultiLevelTournamentFactory _factory)
         internal
         returns (TopTournament _topTournament)
     {
@@ -249,18 +249,27 @@ contract Util {
     }
 
     // instantiates all sub-factories and TournamentFactory
-    function instantiateTournamentFactory()
+    function instantiateSingleLevelTournamentFactory()
         internal
-        returns (TournamentFactory)
+        returns (SingleLevelTournamentFactory)
     {
         SingleLevelTournamentFactory singleLevelFactory =
             new SingleLevelTournamentFactory();
+
+        return singleLevelFactory;
+    }
+
+    // instantiates all sub-factories and TournamentFactory
+    function instantiateTournamentFactory()
+        internal
+        returns (MultiLevelTournamentFactory)
+    {
         TopTournamentFactory topFactory = new TopTournamentFactory();
         MiddleTournamentFactory middleFactory = new MiddleTournamentFactory();
         BottomTournamentFactory bottomFactory = new BottomTournamentFactory();
 
-        return new TournamentFactory(
-            singleLevelFactory, topFactory, middleFactory, bottomFactory
+        return new MultiLevelTournamentFactory(
+            topFactory, middleFactory, bottomFactory
         );
     }
 }

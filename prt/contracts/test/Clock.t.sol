@@ -12,7 +12,7 @@
 
 import "forge-std/Test.sol";
 
-import "src/Clock.sol";
+import "src/tournament/libs/Clock.sol";
 
 pragma solidity ^0.8.0;
 
@@ -35,7 +35,7 @@ contract ClockTest is Test {
         );
     }
 
-    function testMax() public {
+    function testMax() public view {
         Time.Duration max = clock1.max(clock2);
         assertEq(
             Time.Duration.unwrap(max),
