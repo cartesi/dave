@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "./Time.sol";
+import "src/tournament/libs/Time.sol";
 
 library ArbitrationConstants {
     // maximum time for computing the commitments offchain

@@ -13,7 +13,7 @@
 import "forge-std/console.sol";
 import "forge-std/Test.sol";
 
-import "src/Match.sol";
+import "src/tournament/libs/Match.sol";
 import "src/CanonicalConstants.sol";
 
 pragma solidity ^0.8.0;
