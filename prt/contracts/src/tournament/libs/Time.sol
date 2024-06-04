@@ -7,7 +7,7 @@ library Time {
     type Instant is uint64;
     type Duration is uint64;
 
-    using Time for Instant; // TODO rename to Instant
+    using Time for Instant;
     using Time for Duration;
 
     Instant constant ZERO_INSTANT = Instant.wrap(0);
