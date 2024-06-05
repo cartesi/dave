@@ -2,7 +2,7 @@ use crate::{machine::constants, merkle::Digest, utils::arithmetic};
 use cartesi_machine::{
     configuration::RuntimeConfig,
     log::{AccessLog, AccessLogType, AccessType},
-    Machine,
+    machine::Machine,
 };
 
 use anyhow::Result;
