@@ -151,7 +151,7 @@ pub fn insert_epochs<'a>(
             });
         }
 
-        stmt.execute(params![epoch.epoch_number, epoch.block_sealed])?;
+        stmt.execute(params![epoch.epoch_number, epoch.input_count])?;
         next_epoch += 1;
     }
     Ok(())
@@ -160,7 +160,7 @@ pub fn insert_epochs<'a>(
 fn insert_epoch_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite::Statement<'a>> {
     Ok(conn.prepare(
         "\
-        INSERT INTO epochs (epoch_number, block_sealed) VALUES (?1, ?2)
+        INSERT INTO epochs (epoch_number, input_count) VALUES (?1, ?2)
         ",
     )?)
 }
@@ -460,7 +460,7 @@ mod epochs_tests {
                 &conn,
                 [&Epoch {
                     epoch_number: 1,
-                    block_sealed: 0,
+                    input_count: 0,
                 }]
                 .into_iter(),
             ),
@@ -476,7 +476,7 @@ mod epochs_tests {
                 &conn,
                 [&Epoch {
                     epoch_number: 0,
-                    block_sealed: 0,
+                    input_count: 0,
                 }]
                 .into_iter(),
             ),
@@ -489,7 +489,7 @@ mod epochs_tests {
                 &conn,
                 [&Epoch {
                     epoch_number: 0,
-                    block_sealed: 0,
+                    input_count: 0,
                 }]
                 .into_iter(),
             ),
@@ -503,7 +503,7 @@ mod epochs_tests {
         let x: Vec<_> = (1..128)
             .map(|i| Epoch {
                 epoch_number: i,
-                block_sealed: 0,
+                input_count: 0,
             })
             .collect();
         assert!(matches!(insert_epochs(&conn, x.iter()), Ok(())));
@@ -515,15 +515,15 @@ mod epochs_tests {
                 [
                     &Epoch {
                         epoch_number: 128,
-                        block_sealed: 0,
+                        input_count: 0,
                     },
                     &Epoch {
                         epoch_number: 129,
-                        block_sealed: 0,
+                        input_count: 0,
                     },
                     &Epoch {
                         epoch_number: 131,
-                        block_sealed: 0,
+                        input_count: 0,
                     }
                 ]
                 .into_iter(),
