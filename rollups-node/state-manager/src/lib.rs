@@ -70,7 +70,7 @@ pub struct Input {
 #[derive(Clone, Debug)]
 pub struct Epoch {
     pub epoch_number: u64,
-    pub block_sealed: u64,
+    pub input_count: u64,
 }
 
 pub trait StateManager {
@@ -98,14 +98,21 @@ pub trait StateManager {
         &self,
         machine_state_hash: &[u8],
         epoch_number: u64,
-        input_index_in_epoch: u64,
-        _repetitions: u64,
+        state_hash_index_in_epoch: u64,
+        repetitions: u64,
     ) -> Result<(), Self::Error>;
     fn machine_state_hash(
         &self,
         epoch_number: u64,
-        input_index_in_epoch: u64,
-    ) -> Result<Vec<u8>, Self::Error>;
+        state_hash_index_in_epoch: u64,
+    ) -> Result<(Vec<u8>, u64), Self::Error>;
+    fn machine_state_hashes(&self, epoch_number: u64) -> Result<Vec<(Vec<u8>, u64)>, Self::Error>;
+    fn computation_hash(&self, epoch_number: u64) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn add_computation_hash(
+        &self,
+        computation_hash: &[u8],
+        epoch_number: u64,
+    ) -> Result<(), Self::Error>;
     fn add_snapshot(
         &self,
         path: &str,

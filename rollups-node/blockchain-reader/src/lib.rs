@@ -39,7 +39,7 @@ pub struct EpochSealedFilter {
     #[ethevent(indexed)]
     pub epoch_index: ::ethers::core::types::U256,
     #[ethevent(indexed)]
-    pub last_input_index: ::ethers::core::types::U256,
+    pub input_count: ::ethers::core::types::U256,
 }
 
 pub struct AddressBook {
@@ -150,7 +150,7 @@ where
             .map(|e| Epoch {
                 // TODO: use correct values
                 epoch_number: e.epoch_index.as_u64(),
-                block_sealed: 0,
+                input_count: 0,
             })
             .collect();
 
