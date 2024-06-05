@@ -29,7 +29,7 @@ Since anyone can participate, there's the possibility of Sybil attacks, where an
 
 Dave's security is one of N: a single honest validator can enforce the correct result.
 It doesn't matter if it's you against the world.
-If you're honest, Dave's got your back; you can fight a mountain of powerful, well-funded crooks and win, using a single laptop in a timely manner.
+If you're honest, Dave's got your back; you can fight a mountain of powerful, well-funded crooks and win, using a single laptop, in a relatively timely manner.
 
 Dave is inspired by the David vs. Goliath archetype.
 
@@ -40,7 +40,7 @@ Dave uses the [Cartesi Machine](https://github.com/cartesi/machine-emulator) as 
 The Cartesi Machine is a RISC-V emulator.
 Its onchain implementation can be found [here](https://github.com/cartesi/machine-solidity-step).
 The Cartesi Machine state-transition function is implemented in two layers: the big-machine and the micro-architecture.
-The former implements the RV64GC ISA, while the latter implements the much smaller RV64IM ISA.
+The former implements the RV64GC ISA, while the latter implements the much smaller RV64I ISA.
 Using a technique called _machine swapping_ and leveraging good compilers, we implement in Solidity only the micro-architecture's state-transition function, while the execution environment can support a much larger set of extensions.
 
 Nevertheless, Dave was designed to be agnostic on its execution environment.
