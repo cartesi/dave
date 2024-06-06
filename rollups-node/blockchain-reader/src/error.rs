@@ -4,7 +4,9 @@
 use rollups_state_manager::StateManager;
 
 use ethers::abi::Error as AbiError;
+use ethers::prelude::Http;
 use ethers::providers::ProviderError;
+use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -30,6 +32,7 @@ pub enum BlockchainReaderError<SM: StateManager> {
         source: AbiError,
     },
 
+    ParseError(<Http as FromStr>::Err),
     StateManagerError(<SM as StateManager>::Error),
 }
 
