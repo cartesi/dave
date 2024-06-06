@@ -1,9 +1,11 @@
 use anyhow::Result;
-use std::{path::Path, sync::Arc, thread::sleep, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
+use cartesi_compute_core::merkle::{Digest, MerkleBuilder};
 use cartesi_machine::{break_reason, configuration::RuntimeConfig, htif, machine::Machine};
 use rollups_state_manager::{InputId, StateManager};
 
+// TODO: setup constants for commitment builder
 pub struct MachineRunner<SM: StateManager> {
     machine: Machine,
     sleep_duration: Duration,
@@ -12,6 +14,11 @@ pub struct MachineRunner<SM: StateManager> {
 
     epoch_number: u64,
     next_input_index_in_epoch: u64,
+    state_hash_index_in_epoch: u64,
+    // TODO: add computation constants
+    // log2_stride_size
+    // log2_inputs_in_epoch
+    // ...
 }
 
 impl<SM: StateManager> MachineRunner<SM>
@@ -39,6 +46,7 @@ where
             _snapshot_frequency,
             epoch_number,
             next_input_index_in_epoch,
+            state_hash_index_in_epoch: 0,
         })
     }
 
@@ -48,11 +56,9 @@ where
 
             // all inputs have been processed up to this point,
             // sleep and come back later
-            sleep(self.sleep_duration);
+            std::thread::sleep(self.sleep_duration);
         }
         // TODO: snapshot after some time
-
-        Ok(())
     }
 
     fn process_rollup(&mut self) -> Result<()> {
@@ -63,14 +69,14 @@ where
 
             if self.epoch_number == latest_epoch {
                 break Ok(());
-            } else if self.epoch_number < latest_epoch {
+            } else {
+                assert!(self.epoch_number < latest_epoch);
+
+                self.build_and_save_commitment()?;
+                // end of current epoch
                 self.epoch_number += 1;
                 self.next_input_index_in_epoch = 0;
-            } else {
-                // self.epoch_number > latest_epoch
-                break Err(anyhow::anyhow!(
-                    "current epoch is greater than latest epoch on blockchain"
-                ));
+                self.state_hash_index_in_epoch = 0;
             }
         }
     }
@@ -87,11 +93,46 @@ where
                     self.process_input(&input.data)?;
                     self.next_input_index_in_epoch += 1;
                 }
-                None => {
-                    break;
-                }
+                None => break Ok(()),
             }
         }
+    }
+
+    fn build_and_save_commitment(&self) -> Result<()> {
+        // get all state hashes with repetitions for `self.epoch_number`
+        let state_hashes = self.state_manager.machine_state_hashes(self.epoch_number)?;
+
+        let computation_hash = {
+            if state_hashes.len() == 0 {
+                // no inputs in current epoch, reuse claim from previous epoch
+                self.state_manager
+                    .computation_hash(self.epoch_number - 1)?
+                    .unwrap()
+            } else {
+                let mut builder = MerkleBuilder::default();
+                let mut total_repetitions = 0;
+                for state_hash in &state_hashes {
+                    total_repetitions += state_hash.1;
+                    builder.add_with_repetition(
+                        Digest::from_digest(&state_hash.0)?,
+                        state_hash.1.into(),
+                    );
+                }
+
+                // TODO: validate total repetitions match epoch length
+                let number_of_leaves_in_an_epoch = 1 << 10;
+                builder.add_with_repetition(
+                    Digest::from_digest(&state_hashes.last().unwrap().0)?,
+                    (number_of_leaves_in_an_epoch - total_repetitions).into(),
+                );
+
+                let tree = builder.build();
+                tree.root_hash().slice().to_vec()
+            }
+        };
+
+        self.state_manager
+            .add_computation_hash(&computation_hash, self.epoch_number)?;
 
         Ok(())
     }
@@ -131,9 +172,9 @@ where
             match reason {
                 break_reason::YIELDED_AUTOMATICALLY | break_reason::YIELDED_SOFTLY => continue,
                 break_reason::YIELDED_MANUALLY | break_reason::REACHED_TARGET_MCYCLE => {
-                    return Ok(())
+                    break Ok(())
                 }
-                _ => return Err(anyhow::anyhow!(reason.to_string())),
+                _ => break Err(anyhow::anyhow!(reason.to_string())),
             }
         }
     }
@@ -143,45 +184,11 @@ where
         self.state_manager.add_machine_state_hash(
             machine_state_hash.as_bytes(),
             self.epoch_number,
-            self.next_input_index_in_epoch,
+            self.state_hash_index_in_epoch,
             repetitions,
         )?;
+        self.state_hash_index_in_epoch += 1;
 
         Ok(())
     }
-
-    /*
-    pub fn start(&mut self) -> Result<()> {
-        let mut now = SystemTime::now();
-
-        loop {
-            match self
-                .state_manager
-                .input(self.epoch_number, self.next_input_index_in_epoch)
-            {
-                Ok(input) => {
-                    self.process_input(&input)?;
-
-                    //                     if now.elapsed()?.as_secs() > (snapshot_frequency * 60) {
-                    //                         // take snapshot every `snapshot_frequency` minutes
-                    //                         let path = machine_state_hash.to_string();
-                    //                         machine.machine.store(&Path::new(&path))?;
-                    //                         s.add_snapshot(&path, epoch_number, next_input_index_in_epoch)?;
-                    //                         now = SystemTime::now();
-                    //                     }
-                    //                     next_input_index_in_epoch += 1;
-                }
-                Err(_) => {
-                    // fail to get next input, try get input 0 from next epoch
-                    if s.input(epoch_number + 1, 0).is_ok() {
-                        // new epoch starts and current epoch closes
-                        // TODO: calculate computation-hash
-                        epoch_number += 1;
-                        next_input_index_in_epoch = 0;
-                    }
-                }
-            }
-        }
-    }
-    */
 }
