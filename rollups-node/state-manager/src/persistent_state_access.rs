@@ -37,6 +37,9 @@ impl StateManager for PersistentStateAccess {
     //
     // Consensus Data
     //
+    fn epoch(&self, epoch_number: u64) -> Result<Option<Epoch>> {
+        consensus_data::epoch(&self.connection, epoch_number)
+    }
 
     fn epoch_count(&self) -> Result<u64> {
         consensus_data::epoch_count(&self.connection)
@@ -44,6 +47,10 @@ impl StateManager for PersistentStateAccess {
 
     fn input(&self, id: &InputId) -> Result<Option<Input>> {
         consensus_data::input(&self.connection, id)
+    }
+
+    fn input_count(&self, epoch_number: u64) -> Result<u64> {
+        consensus_data::input_count(&self.connection, epoch_number)
     }
 
     fn latest_processed_block(&self) -> Result<u64> {
