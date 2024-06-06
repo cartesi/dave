@@ -127,6 +127,19 @@ pub fn input(conn: &rusqlite::Connection, id: &InputId) -> Result<Option<Input>>
     Ok(i)
 }
 
+pub fn input_count<'a>(conn: &'a rusqlite::Connection, epoch_number: u64) -> Result<u64> {
+    Ok(conn.query_row(
+        "\
+        SELECT MAX(input_index_in_epoch) FROM inputs WHERE epoch_number = ?1
+        ",
+        [epoch_number],
+        |row| {
+            let x: Option<u64> = row.get(0)?;
+            Ok(x.map(|x: u64| x + 1).unwrap_or(0))
+        },
+    )?)
+}
+
 //
 // Epochs
 //
@@ -163,6 +176,26 @@ fn insert_epoch_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite
         INSERT INTO epochs (epoch_number, input_count) VALUES (?1, ?2)
         ",
     )?)
+}
+
+pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Epoch>> {
+    let mut stmt = conn.prepare(
+        "\
+        SELECT input_count FROM epochs
+        WHERE epoch_number = ?1
+        ",
+    )?;
+
+    let e = stmt
+        .query_row(params![epoch_number], |row| {
+            Ok(Epoch {
+                epoch_number,
+                input_count: row.get(0)?,
+            })
+        })
+        .optional()?;
+
+    Ok(e)
 }
 
 pub fn epoch_count<'a>(conn: &'a rusqlite::Connection) -> Result<u64> {
@@ -442,6 +475,7 @@ mod inputs_tests {
                 ..
             }))
         ));
+        assert!(matches!(input_count(&conn, 0,), Ok(1)));
     }
 }
 
@@ -534,5 +568,25 @@ mod epochs_tests {
             })
         ));
         assert!(matches!(epoch_count(&conn), Ok(130)));
+
+        assert!(matches!(epoch(&conn, 130), Ok(None)));
+        assert!(matches!(
+            insert_epochs(
+                &conn,
+                [&Epoch {
+                    epoch_number: 130,
+                    input_count: 99,
+                }]
+                .into_iter(),
+            ),
+            Ok(())
+        ));
+        assert!(matches!(
+            epoch(&conn, 130),
+            Ok(Some(Epoch {
+                epoch_number: 130,
+                input_count: 99,
+            }))
+        ));
     }
 }
