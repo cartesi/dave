@@ -3116,6 +3116,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rollups-epoch-manager"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rollups-state-manager",
+ "tokio",
+]
+
+[[package]]
 name = "rollups-machine-runner"
 version = "0.1.0"
 dependencies = [
