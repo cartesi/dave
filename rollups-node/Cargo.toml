@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "blockchain-reader",
+    "dave-rollups",
     "epoch-manager",
     "machine-runner",
     "state-manager",
@@ -22,6 +23,9 @@ readme = "README.md"
 repository = "https://github.com/cartesi/dave"
 
 [workspace.dependencies]
+rollups-blockchain-reader = { version = "0.1", path = "blockchain-reader" }
+rollups-epoch-manager = { version = "0.1", path = "epoch-manager" }
+rollups-machine-runner = { version = "0.1", path = "machine-runner" }
 rollups-state-manager = { version = "0.1", path = "state-manager" }
 
 cartesi-machine = { path = "../machine/machine-rust-bindings/cartesi-machine" }
