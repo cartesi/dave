@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "blockchain-reader",
+    "epoch-manager",
     "machine-runner",
     "state-manager",
 ]
