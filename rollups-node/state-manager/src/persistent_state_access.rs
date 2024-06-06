@@ -6,6 +6,7 @@ use crate::{Epoch, Input, InputId, StateManager};
 
 use rusqlite::{Connection, OptionalExtension};
 
+#[derive(Debug)]
 pub struct PersistentStateAccess {
     connection: Connection,
 }
