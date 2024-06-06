@@ -1,5 +1,5 @@
 [package]
-name = "rollups-blockchain-reader"
+name = "dave-rollups"
 version = { workspace = true }
 
 authors = { workspace = true }
@@ -11,9 +11,17 @@ readme = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+rollups-blockchain-reader = { workspace = true }
+rollups-epoch-manager = { workspace = true }
+rollups-machine-runner = { workspace = true }
 rollups-state-manager = { workspace = true }
-async-recursion = { workspace = true }
+
 cartesi-rollups-contracts = { workspace = true }
+
+anyhow = { workspace = true }
 ethers = { workspace = true }
-thiserror = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true }
+log = { workspace = true }
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+env_logger = "0.10"

@@ -43,9 +43,19 @@ pub struct EpochSealedFilter {
 }
 
 pub struct AddressBook {
+    app: Address,
     consensus: Address,
     input_box: Address,
-    app: Address,
+}
+
+impl AddressBook {
+    pub fn new(app: Address, consensus: Address, input_box: Address) -> Self {
+        Self {
+            app,
+            consensus,
+            input_box,
+        }
+    }
 }
 
 pub struct BlockchainReader<SM: StateManager> {
