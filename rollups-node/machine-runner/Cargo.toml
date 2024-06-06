@@ -10,6 +10,7 @@ readme.workspace = true
 repository.workspace = true
 
 [dependencies]
+cartesi-compute-core = { workspace = true }
 rollups-state-manager = { workspace = true }
 
 cartesi-machine = { workspace = true }
