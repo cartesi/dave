@@ -45,12 +45,13 @@ pub struct EpochSealedFilter {
 pub struct AddressBook {
     consensus: Address,
     input_box: Address,
-    topic1_of_input_box: Topic,
+    app: Address,
 }
 
 pub struct BlockchainReader<SM: StateManager> {
     state_manager: Arc<SM>,
     address_book: AddressBook,
+    prev_block: u64,
     provider: PartitionProvider,
     input_reader: EventReader<InputAddedFilter>,
     epoch_reader: EventReader<EpochSealedFilter>,
@@ -66,12 +67,18 @@ where
         address_book: AddressBook,
         provider_url: &str,
         sleep_duration: Duration,
-    ) -> std::result::Result<Self, <Http as FromStr>::Err> {
-        let partition_provider = PartitionProvider::new(provider_url)?;
+    ) -> Result<Self, SM> {
+        let partition_provider = PartitionProvider::new(provider_url)
+            .map_err(|e| BlockchainReaderError::ParseError(e))?;
+        // read from DB the block of the most recent processed
+        let prev_block = state_manager
+            .latest_processed_block()
+            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
 
         Ok(Self {
             state_manager,
             address_book,
+            prev_block,
             provider: partition_provider,
             input_reader: EventReader::<InputAddedFilter>::new(),
             epoch_reader: EventReader::<EpochSealedFilter>::new(),
@@ -80,16 +87,10 @@ where
     }
 
     pub async fn start(&mut self) -> Result<(), SM> {
-        // read from DB the block of the most recent processed
-        let mut prev_block = self
-            .state_manager
-            .latest_processed_block()
-            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
-
         loop {
             let current_block = self.provider.latest_finalized_block().await?;
-            self.advance(prev_block, current_block).await?;
-            prev_block = current_block;
+            self.advance(self.prev_block, current_block).await?;
+            self.prev_block = current_block;
 
             tokio::time::sleep(self.sleep_duration).await;
         }
@@ -114,29 +115,34 @@ where
         prev_block: u64,
         current_block: u64,
     ) -> Result<(Vec<Input>, Vec<Epoch>), SM> {
-        // read new inputs from blockchain
-        let inputs: Vec<Input> = self
-            .input_reader
-            .next(
-                Some(&self.address_book.topic1_of_input_box),
-                &self.address_book.input_box,
+        let prev_sealed_epoch = self
+            .state_manager
+            .epoch_count()
+            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
+
+        // read epochs from blockchain
+        let epochs: Vec<Epoch> = self.collect_epochs(prev_block, current_block).await?;
+
+        let latest_sealed_epoch = match epochs.last() {
+            Some(e) => e.epoch_number,
+            None => prev_sealed_epoch,
+        };
+
+        // read inputs from blockchain
+        let inputs = self
+            .collect_inputs(
                 prev_block,
                 current_block,
-                &self.provider,
+                prev_sealed_epoch,
+                latest_sealed_epoch,
             )
-            .await?
-            .iter()
-            .map(|e| Input {
-                // TODO: use correct values
-                id: InputId {
-                    epoch_number: 0,
-                    input_index_in_epoch: 0,
-                },
-                data: e.input.to_vec(),
-            })
-            .collect();
-        // read epochs from blockchain
-        let epochs: Vec<Epoch> = self
+            .await?;
+
+        Ok((inputs, epochs))
+    }
+
+    async fn collect_epochs(&self, prev_block: u64, current_block: u64) -> Result<Vec<Epoch>, SM> {
+        Ok(self
             .epoch_reader
             .next(
                 None,
@@ -148,13 +154,102 @@ where
             .await?
             .iter()
             .map(|e| Epoch {
-                // TODO: use correct values
                 epoch_number: e.epoch_index.as_u64(),
-                input_count: 0,
+                input_count: e.input_count.as_u64(),
             })
-            .collect();
+            .collect())
+    }
 
-        Ok((inputs, epochs))
+    async fn collect_inputs(
+        &self,
+        prev_block: u64,
+        current_block: u64,
+        prev_sealed_epoch: u64,
+        latest_sealed_epoch: u64,
+    ) -> Result<Vec<Input>, SM> {
+        // read new inputs from blockchain
+        // collected inputs should belong to `prev_sealed_epoch` + 1 and/or later epochs
+        let input_events = self
+            .input_reader
+            .next(
+                Some(&self.address_book.app.into()),
+                &self.address_book.input_box,
+                prev_block,
+                current_block,
+                &self.provider,
+            )
+            .await?;
+
+        let mut inputs = vec![];
+        let input_events_len = input_events.len();
+        let mut input_events_iter = input_events.into_iter();
+
+        // all inputs from `prev_sealed_epoch` should be in database already because it's sealed in previous tick
+        for epoch_number in prev_sealed_epoch + 1..latest_sealed_epoch + 1 {
+            // iterate through newly sealed epochs
+            // get total input count submitted to the sealed epoch
+            let total_input_count_of_epoch = self
+                .state_manager
+                .epoch(epoch_number)
+                .map_err(|e| BlockchainReaderError::StateManagerError(e))?
+                .unwrap()
+                .input_count;
+            // get input count of epoch that currently exist in database
+            let current_input_count_of_epoch = self
+                .state_manager
+                .input_count(epoch_number)
+                .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
+
+            // fill in the inputs of the sealed epoch
+            let inputs_of_epoch = self
+                .construct_input_ids(
+                    epoch_number,
+                    current_input_count_of_epoch,
+                    total_input_count_of_epoch,
+                    &mut input_events_iter,
+                )
+                .await;
+
+            inputs.extend(inputs_of_epoch);
+        }
+
+        // all remaining inputs belong to an epoch that's not sealed yet
+        let inputs_of_epoch = self
+            .construct_input_ids(
+                latest_sealed_epoch + 1,
+                0,
+                (input_events_len - inputs.len()).try_into().unwrap(),
+                &mut input_events_iter,
+            )
+            .await;
+
+        inputs.extend(inputs_of_epoch);
+
+        Ok(inputs)
+    }
+
+    async fn construct_input_ids(
+        &self,
+        epoch_number: u64,
+        input_index_in_epoch_start: u64,
+        input_index_in_epoch_end: u64,
+        input_events_iter: &mut impl Iterator<Item = InputAddedFilter>,
+    ) -> Vec<Input> {
+        let mut inputs = vec![];
+
+        for input_index_in_epoch in input_index_in_epoch_start..input_index_in_epoch_end {
+            let input = Input {
+                id: InputId {
+                    epoch_number,
+                    input_index_in_epoch,
+                },
+                data: input_events_iter.next().unwrap().input.to_vec(),
+            };
+
+            inputs.push(input);
+        }
+
+        inputs
     }
 }
 
