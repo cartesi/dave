@@ -5,30 +5,19 @@ use crate::sql::{consensus_data, error::*, migrations};
 use crate::{Epoch, Input, InputId, StateManager};
 
 use rusqlite::{Connection, OptionalExtension};
+use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct PersistentStateAccess {
-    connection: Connection,
+    connection: Mutex<Connection>,
 }
 
 impl PersistentStateAccess {
     pub fn new(mut connection: Connection) -> std::result::Result<Self, rusqlite_migration::Error> {
         migrations::migrate_to_latest(&mut connection).unwrap();
-        Ok(Self { connection })
-    }
-
-    fn last_machine_state_index(&self, epoch_number: u64) -> Result<Option<u64>> {
-        let mut stmt = self.connection.prepare(
-            "\
-            SELECT state_hash_index_in_epoch FROM machine_state_hashes
-            WHERE epoch_number = ?1
-            ORDER BY state_hash_index_in_epoch DESC LIMIT 1
-            ",
-        )?;
-
-        Ok(stmt
-            .query_row([epoch_number], |row| Ok(row.get(0)?))
-            .optional()?)
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
     }
 }
 
@@ -39,23 +28,28 @@ impl StateManager for PersistentStateAccess {
     // Consensus Data
     //
     fn epoch(&self, epoch_number: u64) -> Result<Option<Epoch>> {
-        consensus_data::epoch(&self.connection, epoch_number)
+        let conn = self.connection.lock().unwrap();
+        consensus_data::epoch(&conn, epoch_number)
     }
 
     fn epoch_count(&self) -> Result<u64> {
-        consensus_data::epoch_count(&self.connection)
+        let conn = self.connection.lock().unwrap();
+        consensus_data::epoch_count(&conn)
     }
 
     fn input(&self, id: &InputId) -> Result<Option<Input>> {
-        consensus_data::input(&self.connection, id)
+        let conn = self.connection.lock().unwrap();
+        consensus_data::input(&conn, id)
     }
 
     fn input_count(&self, epoch_number: u64) -> Result<u64> {
-        consensus_data::input_count(&self.connection, epoch_number)
+        let conn = self.connection.lock().unwrap();
+        consensus_data::input_count(&conn, epoch_number)
     }
 
     fn latest_processed_block(&self) -> Result<u64> {
-        consensus_data::last_processed_block(&self.connection)
+        let conn = self.connection.lock().unwrap();
+        consensus_data::last_processed_block(&conn)
     }
 
     fn insert_consensus_data<'a>(
@@ -64,7 +58,8 @@ impl StateManager for PersistentStateAccess {
         inputs: impl Iterator<Item = &'a Input>,
         epochs: impl Iterator<Item = &'a Epoch>,
     ) -> Result<()> {
-        let tx = self.connection.unchecked_transaction()?;
+        let conn = self.connection.lock().unwrap();
+        let tx = conn.unchecked_transaction()?;
         consensus_data::update_last_processed_block(&tx, last_processed_block)?;
         consensus_data::insert_inputs(&tx, inputs)?;
         consensus_data::insert_epochs(&tx, epochs)?;
@@ -97,7 +92,8 @@ impl StateManager for PersistentStateAccess {
 
         assert!(repetitions > 0);
 
-        let mut sttm = self.connection.prepare(
+        let conn = self.connection.lock().unwrap();
+        let mut sttm = conn.prepare(
             "\
             SELECT * FROM machine_state_hashes
             WHERE epoch_number = ?1
@@ -123,7 +119,17 @@ impl StateManager for PersistentStateAccess {
             }
         }
 
-        let current_machine_state_index = self.last_machine_state_index(epoch_number)?;
+        let mut sttm = conn.prepare(
+            "\
+            SELECT state_hash_index_in_epoch FROM machine_state_hashes
+            WHERE epoch_number = ?1
+            ORDER BY state_hash_index_in_epoch DESC LIMIT 1
+            ",
+        )?;
+
+        let current_machine_state_index: Option<u64> = sttm
+            .query_row([epoch_number], |row| Ok(row.get(0)?))
+            .optional()?;
 
         match current_machine_state_index {
             Some(index) => {
@@ -136,7 +142,7 @@ impl StateManager for PersistentStateAccess {
             }
         }
 
-        let mut sttm = self.connection.prepare(
+        let mut sttm = conn.prepare(
             "\
             INSERT INTO machine_state_hashes
             (epoch_number, state_hash_index_in_epoch, repetitions, machine_state_hash)
@@ -159,7 +165,8 @@ impl StateManager for PersistentStateAccess {
     }
 
     fn computation_hash(&self, epoch_number: u64) -> Result<Option<Vec<u8>>> {
-        let mut stmt = self.connection.prepare(
+        let conn = self.connection.lock().unwrap();
+        let mut stmt = conn.prepare(
             "\
             SELECT computation_hash FROM computation_hashes
             WHERE epoch_number = ?1
@@ -182,7 +189,8 @@ impl StateManager for PersistentStateAccess {
             None => {}
         }
 
-        let mut sttm = self.connection.prepare(
+        let conn = self.connection.lock().unwrap();
+        let mut sttm = conn.prepare(
             "INSERT INTO computation_hashes (epoch_number, computation_hash) VALUES (?1, ?2)",
         )?;
 
@@ -195,7 +203,8 @@ impl StateManager for PersistentStateAccess {
     }
 
     fn add_snapshot(&self, path: &str, epoch_number: u64, input_index_in_epoch: u64) -> Result<()> {
-        let mut sttm = self.connection.prepare(
+        let conn = self.connection.lock().unwrap();
+        let mut sttm = conn.prepare(
             "INSERT INTO snapshots (epoch_number, input_index_in_epoch, path) VALUES (?1, ?2, ?3)",
         )?;
 
@@ -212,7 +221,8 @@ impl StateManager for PersistentStateAccess {
         epoch_number: u64,
         state_hash_index_in_epoch: u64,
     ) -> Result<(Vec<u8>, u64)> {
-        let mut sttm = self.connection.prepare(
+        let conn = self.connection.lock().unwrap();
+        let mut sttm = conn.prepare(
             "\
             SELECT * FROM machine_state_hashes
             WHERE epoch_number = ?1
@@ -237,7 +247,8 @@ impl StateManager for PersistentStateAccess {
 
     // returns all state hashes and their repetitions in acending order of `state_hash_index_in_epoch`
     fn machine_state_hashes(&self, epoch_number: u64) -> Result<Vec<(Vec<u8>, u64)>> {
-        let mut sttm = self.connection.prepare(
+        let conn = self.connection.lock().unwrap();
+        let mut sttm = conn.prepare(
             "\
             SELECT * FROM machine_state_hashes
             WHERE epoch_number = ?1
@@ -263,7 +274,8 @@ impl StateManager for PersistentStateAccess {
     }
 
     fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
-        let mut sttm = self.connection.prepare(
+        let conn = self.connection.lock().unwrap();
+        let mut sttm = conn.prepare(
             "\
             SELECT epoch_number, input_index_in_epoch, path FROM snapshots
             ORDER BY epoch_number DESC, input_index_in_epoch DESC LIMIT 1
@@ -512,6 +524,7 @@ mod tests {
 
         let machine_state_hash_1 = vec![1, 2, 3, 4, 5];
         let machine_state_hash_2 = vec![2, 2, 3, 4, 5];
+        // lock problem
         access.add_machine_state_hash(&machine_state_hash_1, 0, 0, 1)?;
 
         assert_eq!(
