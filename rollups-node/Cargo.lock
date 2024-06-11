@@ -834,6 +834,7 @@ dependencies = [
  "cartesi-rollups-contracts",
  "env_logger",
  "ethers",
+ "futures",
  "log",
  "rollups-blockchain-reader",
  "rollups-epoch-manager",
@@ -3175,10 +3176,11 @@ dependencies = [
 name = "rollups-machine-runner"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "cartesi-compute-core",
  "cartesi-machine",
  "rollups-state-manager",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

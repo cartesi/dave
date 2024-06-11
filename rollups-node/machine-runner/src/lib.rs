@@ -1,4 +1,8 @@
-use anyhow::Result;
+// (c) Cartesi and individual authors (see AUTHORS)
+// SPDX-License-Identifier: Apache-2.0 (see LICENSE)
+mod error;
+
+use error::{MachineRunnerError, Result};
 use std::{path::Path, sync::Arc, time::Duration};
 
 use cartesi_compute_core::merkle::{Digest, MerkleBuilder};
@@ -21,21 +25,23 @@ pub struct MachineRunner<SM: StateManager> {
     // ...
 }
 
-impl<SM: StateManager> MachineRunner<SM>
+impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM>
 where
-    <SM as StateManager>::Error: Send + Sync + 'static,
+    <SM as StateManager>::Error:  Send + Sync + 'static,
 {
     pub fn new(
         state_manager: Arc<SM>,
         initial_machine: &str,
         sleep_duration: Duration,
         _snapshot_frequency: Duration,
-    ) -> Result<Self> {
-        let (snapshot, epoch_number, next_input_index_in_epoch) =
-            match state_manager.latest_snapshot()? {
-                Some(r) => (r.0, r.1, r.2 + 1),
-                None => (initial_machine.to_string(), 0, 0),
-            };
+    ) -> Result<Self, SM> {
+        let (snapshot, epoch_number, next_input_index_in_epoch) = match state_manager
+            .latest_snapshot()
+            .map_err(|e| MachineRunnerError::StateManagerError(e))?
+        {
+            Some(r) => (r.0, r.1, r.2 + 1),
+            None => (initial_machine.to_string(), 0, 0),
+        };
 
         let machine = Machine::load(&Path::new(&snapshot), RuntimeConfig::default())?;
 
@@ -50,7 +56,7 @@ where
         })
     }
 
-    pub fn start(&mut self) -> Result<()> {
+    pub fn start(&mut self) -> Result<(), SM> {
         loop {
             self.process_rollup()?;
 
@@ -61,11 +67,14 @@ where
         // TODO: snapshot after some time
     }
 
-    fn process_rollup(&mut self) -> Result<()> {
+    fn process_rollup(&mut self) -> Result<(), SM> {
         // process all inputs that are currently availalble
         loop {
             self.advance_epoch()?;
-            let latest_epoch = self.state_manager.epoch_count()?;
+            let latest_epoch = self
+                .state_manager
+                .epoch_count()
+                .map_err(|e| MachineRunnerError::StateManagerError(e))?;
 
             if self.epoch_number == latest_epoch {
                 break Ok(());
@@ -84,12 +93,15 @@ where
         }
     }
 
-    fn advance_epoch(&mut self) -> Result<()> {
+    fn advance_epoch(&mut self) -> Result<(), SM> {
         loop {
-            let next = self.state_manager.input(&InputId {
-                epoch_number: self.epoch_number,
-                input_index_in_epoch: self.next_input_index_in_epoch,
-            })?;
+            let next = self
+                .state_manager
+                .input(&InputId {
+                    epoch_number: self.epoch_number,
+                    input_index_in_epoch: self.next_input_index_in_epoch,
+                })
+                .map_err(|e| MachineRunnerError::StateManagerError(e))?;
 
             match next {
                 Some(input) => {
@@ -101,15 +113,19 @@ where
         }
     }
 
-    fn build_and_save_commitment(&self) -> Result<()> {
+    fn build_and_save_commitment(&self) -> Result<(), SM> {
         // get all state hashes with repetitions for `self.epoch_number`
-        let state_hashes = self.state_manager.machine_state_hashes(self.epoch_number)?;
+        let state_hashes = self
+            .state_manager
+            .machine_state_hashes(self.epoch_number)
+            .map_err(|e| MachineRunnerError::StateManagerError(e))?;
 
         let computation_hash = {
             if state_hashes.len() == 0 {
                 // no inputs in current epoch, reuse claim from previous epoch
                 self.state_manager
-                    .computation_hash(self.epoch_number - 1)?
+                    .computation_hash(self.epoch_number - 1)
+                    .map_err(|e| MachineRunnerError::StateManagerError(e))?
                     .unwrap()
             } else {
                 let mut builder = MerkleBuilder::default();
@@ -135,12 +151,13 @@ where
         };
 
         self.state_manager
-            .add_computation_hash(&computation_hash, self.epoch_number)?;
+            .add_computation_hash(&computation_hash, self.epoch_number)
+            .map_err(|e| MachineRunnerError::StateManagerError(e))?;
 
         Ok(())
     }
 
-    fn process_input(&mut self, data: &[u8]) -> Result<()> {
+    fn process_input(&mut self, data: &[u8]) -> Result<(), SM> {
         // TODO: setup constants
         let stride = 1 << 30;
         let b = 1 << 48;
@@ -160,14 +177,14 @@ where
         Ok(())
     }
 
-    fn feed_input(&mut self, input: &[u8]) -> Result<()> {
+    fn feed_input(&mut self, input: &[u8]) -> Result<(), SM> {
         self.machine
             .send_cmio_response(htif::fromhost::ADVANCE_STATE, input)?;
         self.machine.reset_iflags_y()?;
         Ok(())
     }
 
-    fn run_machine(&mut self, cycles: u64) -> Result<()> {
+    fn run_machine(&mut self, cycles: u64) -> Result<(), SM> {
         let mcycle = self.machine.read_mcycle()?;
 
         loop {
@@ -177,19 +194,21 @@ where
                 break_reason::YIELDED_MANUALLY | break_reason::REACHED_TARGET_MCYCLE => {
                     break Ok(())
                 }
-                _ => break Err(anyhow::anyhow!(reason.to_string())),
+                _ => break Err(MachineRunnerError::MachineRunFail { reason: reason }),
             }
         }
     }
 
-    fn add_state_hash(&mut self, repetitions: u64) -> Result<()> {
+    fn add_state_hash(&mut self, repetitions: u64) -> Result<(), SM> {
         let machine_state_hash = self.machine.get_root_hash()?;
-        self.state_manager.add_machine_state_hash(
-            machine_state_hash.as_bytes(),
-            self.epoch_number,
-            self.state_hash_index_in_epoch,
-            repetitions,
-        )?;
+        self.state_manager
+            .add_machine_state_hash(
+                machine_state_hash.as_bytes(),
+                self.epoch_number,
+                self.state_hash_index_in_epoch,
+                repetitions,
+            )
+            .map_err(|e| MachineRunnerError::StateManagerError(e))?;
         self.state_hash_index_in_epoch += 1;
 
         Ok(())

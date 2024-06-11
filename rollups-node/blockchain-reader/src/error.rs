@@ -32,14 +32,10 @@ pub enum BlockchainReaderError<SM: StateManager> {
         source: AbiError,
     },
 
+    #[error("Parse error: {0}")]
     ParseError(<Http as FromStr>::Err),
+    #[error("State manager error: {0}")]
     StateManagerError(<SM as StateManager>::Error),
-}
-
-impl<SM: StateManager + std::fmt::Debug> std::fmt::Display for BlockchainReaderError<SM> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "BlockchainReaderError error: {:?}", self)
-    }
 }
 
 pub type Result<T, SM> = std::result::Result<T, BlockchainReaderError<SM>>;
