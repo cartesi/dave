@@ -14,5 +14,5 @@ cartesi-compute-core = { workspace = true }
 cartesi-machine = { workspace = true }
 rollups-state-manager = { workspace = true }
 
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
