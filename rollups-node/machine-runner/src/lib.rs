@@ -72,7 +72,10 @@ where
             } else {
                 assert!(self.epoch_number < latest_epoch);
 
-                self.build_and_save_commitment()?;
+                tokio::task::block_in_place(|| {
+                    self.build_and_save_commitment().unwrap();
+                });
+
                 // end of current epoch
                 self.epoch_number += 1;
                 self.next_input_index_in_epoch = 0;
