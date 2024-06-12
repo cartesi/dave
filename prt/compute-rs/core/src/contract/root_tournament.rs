@@ -449,38 +449,6 @@ pub mod root_tournament {
                     ],
                 ),
                 (
-                    ::std::borrow::ToOwned::to_owned("matchAdvanced"),
-                    ::std::vec![
-                        ::ethers::core::abi::ethabi::Event {
-                            name: ::std::borrow::ToOwned::to_owned("matchAdvanced"),
-                            inputs: ::std::vec![
-                                ::ethers::core::abi::ethabi::EventParam {
-                                    name: ::std::string::String::new(),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
-                                        32usize,
-                                    ),
-                                    indexed: true,
-                                },
-                                ::ethers::core::abi::ethabi::EventParam {
-                                    name: ::std::borrow::ToOwned::to_owned("parent"),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
-                                        32usize,
-                                    ),
-                                    indexed: false,
-                                },
-                                ::ethers::core::abi::ethabi::EventParam {
-                                    name: ::std::borrow::ToOwned::to_owned("left"),
-                                    kind: ::ethers::core::abi::ethabi::ParamType::FixedBytes(
-                                        32usize,
-                                    ),
-                                    indexed: false,
-                                },
-                            ],
-                            anonymous: false,
-                        },
-                    ],
-                ),
-                (
                     ::std::borrow::ToOwned::to_owned("matchCreated"),
                     ::std::vec![
                         ::ethers::core::abi::ethabi::Event {
@@ -674,16 +642,6 @@ pub mod root_tournament {
         > {
             self.0.event()
         }
-        ///Gets the contract's `matchAdvanced` event
-        pub fn match_advanced_filter(
-            &self,
-        ) -> ::ethers::contract::builders::Event<
-            ::std::sync::Arc<M>,
-            M,
-            MatchAdvancedFilter,
-        > {
-            self.0.event()
-        }
         ///Gets the contract's `matchCreated` event
         pub fn match_created_filter(
             &self,
@@ -735,23 +693,6 @@ pub mod root_tournament {
         Eq,
         Hash
     )]
-    #[ethevent(name = "matchAdvanced", abi = "matchAdvanced(bytes32,bytes32,bytes32)")]
-    pub struct MatchAdvancedFilter {
-        #[ethevent(indexed)]
-        pub p0: [u8; 32],
-        pub parent: [u8; 32],
-        pub left: [u8; 32],
-    }
-    #[derive(
-        Clone,
-        ::ethers::contract::EthEvent,
-        ::ethers::contract::EthDisplay,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash
-    )]
     #[ethevent(name = "matchCreated", abi = "matchCreated(bytes32,bytes32,bytes32)")]
     pub struct MatchCreatedFilter {
         #[ethevent(indexed)]
@@ -764,7 +705,6 @@ pub mod root_tournament {
     #[derive(Clone, ::ethers::contract::EthAbiType, Debug, PartialEq, Eq, Hash)]
     pub enum RootTournamentEvents {
         CommitmentJoinedFilter(CommitmentJoinedFilter),
-        MatchAdvancedFilter(MatchAdvancedFilter),
         MatchCreatedFilter(MatchCreatedFilter),
     }
     impl ::ethers::contract::EthLogDecode for RootTournamentEvents {
@@ -773,9 +713,6 @@ pub mod root_tournament {
         ) -> ::core::result::Result<Self, ::ethers::core::abi::Error> {
             if let Ok(decoded) = CommitmentJoinedFilter::decode_log(log) {
                 return Ok(RootTournamentEvents::CommitmentJoinedFilter(decoded));
-            }
-            if let Ok(decoded) = MatchAdvancedFilter::decode_log(log) {
-                return Ok(RootTournamentEvents::MatchAdvancedFilter(decoded));
             }
             if let Ok(decoded) = MatchCreatedFilter::decode_log(log) {
                 return Ok(RootTournamentEvents::MatchCreatedFilter(decoded));
@@ -789,9 +726,6 @@ pub mod root_tournament {
                 Self::CommitmentJoinedFilter(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
-                Self::MatchAdvancedFilter(element) => {
-                    ::core::fmt::Display::fmt(element, f)
-                }
                 Self::MatchCreatedFilter(element) => {
                     ::core::fmt::Display::fmt(element, f)
                 }
@@ -801,11 +735,6 @@ pub mod root_tournament {
     impl ::core::convert::From<CommitmentJoinedFilter> for RootTournamentEvents {
         fn from(value: CommitmentJoinedFilter) -> Self {
             Self::CommitmentJoinedFilter(value)
-        }
-    }
-    impl ::core::convert::From<MatchAdvancedFilter> for RootTournamentEvents {
-        fn from(value: MatchAdvancedFilter) -> Self {
-            Self::MatchAdvancedFilter(value)
         }
     }
     impl ::core::convert::From<MatchCreatedFilter> for RootTournamentEvents {

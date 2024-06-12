@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "./TournamentFactory.sol";
+import "./MultiLevelTournamentFactory.sol";
 import "../abstracts/NonLeafTournament.sol";
 import "../concretes/MiddleTournament.sol";
 
@@ -35,7 +35,7 @@ contract MiddleTournamentFactory {
             _startCycle,
             _level,
             _parent,
-            TournamentFactory(msg.sender)
+            MultiLevelTournamentFactory(msg.sender)
         );
 
         return _tournament;

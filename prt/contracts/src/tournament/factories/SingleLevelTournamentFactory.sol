@@ -4,16 +4,19 @@
 pragma solidity ^0.8.17;
 
 import "../concretes/SingleLevelTournament.sol";
+import "./ITournamentFactory.sol";
 
-contract SingleLevelTournamentFactory {
+contract SingleLevelTournamentFactory is ITournamentFactory {
     constructor() {}
 
-    function instantiate(Machine.Hash _initialHash)
+    function instantiateRoot(Machine.Hash _initialHash)
         external
-        returns (SingleLevelTournament)
+        override
+        returns (RootTournament)
     {
         SingleLevelTournament _tournament =
             new SingleLevelTournament(_initialHash);
+        emit rootCreated(_tournament);
 
         return _tournament;
     }

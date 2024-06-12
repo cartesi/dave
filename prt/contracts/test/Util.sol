@@ -148,12 +148,12 @@ contract Util {
     }
 
     // create new _topTournament and player 0 joins it
-    function initializePlayer0Tournament(TournamentFactory _factory)
+    function initializePlayer0Tournament(MultiLevelTournamentFactory _factory)
         internal
         returns (TopTournament _topTournament)
     {
         _topTournament =
-            TopTournament(address(_factory.instantiateTop(ONE_STATE)));
+            TopTournament(address(_factory.instantiateRoot(ONE_STATE)));
         // player 0 joins tournament
         joinTournament(_topTournament, 0, 0);
     }
@@ -248,19 +248,17 @@ contract Util {
         );
     }
 
-    // instantiates all sub-factories and TournamentFactory
-    function instantiateTournamentFactory()
+    // instantiates all sub-factories and MultiLevelTournamentFactory
+    function instantiateMultiLevelTournamentFactory()
         internal
-        returns (TournamentFactory)
+        returns (MultiLevelTournamentFactory)
     {
-        SingleLevelTournamentFactory singleLevelFactory =
-            new SingleLevelTournamentFactory();
         TopTournamentFactory topFactory = new TopTournamentFactory();
         MiddleTournamentFactory middleFactory = new MiddleTournamentFactory();
         BottomTournamentFactory bottomFactory = new BottomTournamentFactory();
 
-        return new TournamentFactory(
-            singleLevelFactory, topFactory, middleFactory, bottomFactory
+        return new MultiLevelTournamentFactory(
+            topFactory, middleFactory, bottomFactory
         );
     }
 }

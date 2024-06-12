@@ -3,8 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "../factories/ITournamentFactory.sol";
-import "./Tournament.sol";
+import "../factories/IMultiLevelTournamentFactory.sol";
 import "./NonRootTournament.sol";
 
 /// @notice Non-leaf tournament can create inner tournaments and matches
@@ -21,7 +20,7 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Constants
     //
-    ITournamentFactory immutable tournamentFactory;
+    IMultiLevelTournamentFactory immutable tournamentFactory;
 
     //
     // Storage
@@ -46,7 +45,7 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Constructor
     //
-    constructor(ITournamentFactory _tournamentFactory) {
+    constructor(IMultiLevelTournamentFactory _tournamentFactory) {
         tournamentFactory = _tournamentFactory;
     }
 

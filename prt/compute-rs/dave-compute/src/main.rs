@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     const ANVIL_URL: &str = "http://127.0.0.1:8545";
     const ANVIL_CHAIN_ID: u64 = 31337;
     const ANVIL_KEY_1: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-    const ANVIL_ROOT_TOURNAMENT: &str = "0xcafac3dd18ac6c6e92c921884f9e4176737c052c";
+    const ANVIL_ROOT_TOURNAMENT: &str = "0xa16E02E87b7454126E5E10d957A927A7F5B5d2be";
 
     env_logger::init();
     let web3_rpc_url = var("URL").unwrap_or(String::from(ANVIL_URL));

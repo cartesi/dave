@@ -3,24 +3,17 @@
 
 pragma solidity ^0.8.17;
 
-import "../concretes/TopTournament.sol";
-import "../concretes/MiddleTournament.sol";
-import "../concretes/BottomTournament.sol";
-import "../concretes/SingleLevelTournament.sol";
-
+import "./IMultiLevelTournamentFactory.sol";
 import "./TopTournamentFactory.sol";
 import "./MiddleTournamentFactory.sol";
 import "./BottomTournamentFactory.sol";
-import "./SingleLevelTournamentFactory.sol";
 
-contract TournamentFactory is ITournamentFactory {
-    SingleLevelTournamentFactory immutable singleLevelFactory;
+contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
 
     constructor(
-        SingleLevelTournamentFactory _singleLevelFactory,
         TopTournamentFactory _topFactory,
         MiddleTournamentFactory _middleFactory,
         BottomTournamentFactory _bottomFactory
@@ -28,27 +21,14 @@ contract TournamentFactory is ITournamentFactory {
         topFactory = _topFactory;
         middleFactory = _middleFactory;
         bottomFactory = _bottomFactory;
-        singleLevelFactory = _singleLevelFactory;
     }
 
-    function instantiateSingleLevel(Machine.Hash _initialHash)
+    function instantiateRoot(Machine.Hash _initialHash)
         external
         override
-        returns (Tournament)
+        returns (RootTournament)
     {
-        SingleLevelTournament _tournament =
-            singleLevelFactory.instantiate(_initialHash);
-        emit rootCreated(_tournament);
-
-        return _tournament;
-    }
-
-    function instantiateTop(Machine.Hash _initialHash)
-        external
-        override
-        returns (Tournament)
-    {
-        TopTournament _tournament = topFactory.instantiate(_initialHash);
+        RootTournament _tournament = topFactory.instantiate(_initialHash);
         emit rootCreated(_tournament);
 
         return _tournament;
