@@ -120,13 +120,19 @@ fn main() {
     let machine_bindings = bindgen::Builder::default()
         .header(libdir_path.join("machine-c-api.h").to_str().unwrap())
         .generate()
-        .expect("Unable to generate bindings");
+        .expect("Unable to generate machine bindings");
 
     // htif constants
     let htif = bindgen::Builder::default()
         .header(libdir_path.join("htif-defines.h").to_str().unwrap())
         .generate()
-        .expect("Unable to generate bindings");
+        .expect("Unable to generate htif bindings");
+
+    // pma constants
+    let pma = bindgen::Builder::default()
+        .header(libdir_path.join("pma-defines.h").to_str().unwrap())
+        .generate()
+        .expect("Unable to generate pma bindings");
 
     // Write the bindings to the `$OUT_DIR/bindings.rs` and `$OUT_DIR/htif.rs` files.
     machine_bindings
@@ -134,6 +140,8 @@ fn main() {
         .expect("Couldn't write machine bindings");
     htif.write_to_file(out_path.join("htif.rs"))
         .expect("Couldn't write htif defines");
+    pma.write_to_file(out_path.join("pma.rs"))
+        .expect("Couldn't write pma defines");
 
     // Setup reruns
     println!("cargo:rerun-if-changed=build.rs");

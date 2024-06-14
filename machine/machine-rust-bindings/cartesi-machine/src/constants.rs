@@ -77,6 +77,15 @@ pub mod htif {
     }
 }
 
+///
+pub mod pma {
+    use cartesi_machine_sys::*;
+    pub const CMIO_RX_BUFFER_START: u64 = PMA_CMIO_RX_BUFFER_START_DEF as u64;
+    pub const CMIO_RX_BUFFER_LOG2_SIZE: u64 = PMA_CMIO_RX_BUFFER_LOG2_SIZE_DEF as u64;
+    pub const CMIO_TX_BUFFER_START: u64 = PMA_CMIO_TX_BUFFER_START_DEF as u64;
+    pub const CMIO_TX_BUFFER_LOG2_SIZE: u64 = PMA_CMIO_TX_BUFFER_LOG2_SIZE_DEF as u64;
+}
+
 pub mod error {
     use cartesi_machine_sys::*;
 
