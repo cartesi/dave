@@ -532,32 +532,12 @@ impl Machine {
 
     /// Returns copy of initialization config.
     pub fn initial_config(&self) -> Result<MachineConfigRef, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut config = std::ptr::null();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_get_initial_config(
-                self.machine,
-                &mut config,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(config.into())
+        MachineConfigRef::try_new(self)
     }
 
     /// Returns copy of default system config.
-    pub fn default_config() -> Result<MachineConfigRef, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut config = std::ptr::null();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_get_default_config(&mut config, error_collector.as_mut_ptr())
-        };
-        error_collector.collect(result)?;
-
-        Ok(config.into())
+    pub fn default_config() -> MachineConfigRef {
+        MachineConfigRef::default()
     }
 
     /// Replaces a memory range

@@ -3,6 +3,7 @@
 
 pub type MemoryRangeConfig = cartesi_machine_sys::cm_memory_range_config;
 pub type CmIoConfig = cartesi_machine_sys::cm_cmio_config;
+pub type CmIoBufferConfig = cartesi_machine_sys::cm_cmio_buffer_config;
 pub type HtifConfig = cartesi_machine_sys::cm_htif_config;
 
 pub type MachineConfig = cartesi_machine_sys::cm_machine_config;
@@ -10,12 +11,6 @@ pub type MachineConfig = cartesi_machine_sys::cm_machine_config;
 #[derive(Debug)]
 pub struct MachineConfigRef {
     config: *const MachineConfig,
-}
-
-impl From<*const MachineConfig> for MachineConfigRef {
-    fn from(value: *const MachineConfig) -> Self {
-        Self { config: value }
-    }
 }
 
 impl Drop for MachineConfigRef {
@@ -26,7 +21,41 @@ impl Drop for MachineConfigRef {
     }
 }
 
+impl Default for MachineConfigRef {
+    fn default() -> Self {
+        let mut error_collector = crate::errors::ErrorCollector::new();
+        let mut config = std::ptr::null();
+
+        let result = unsafe {
+            cartesi_machine_sys::cm_get_default_config(&mut config, error_collector.as_mut_ptr())
+        };
+        error_collector
+            .collect(result)
+            .expect("cm_get_default_config should never fail");
+
+        Self { config }
+    }
+}
+
 impl MachineConfigRef {
+    pub fn try_new(
+        machine: &crate::Machine,
+    ) -> Result<MachineConfigRef, crate::errors::MachineError> {
+        let mut error_collector = crate::errors::ErrorCollector::new();
+        let mut config = std::ptr::null();
+
+        let result = unsafe {
+            cartesi_machine_sys::cm_get_initial_config(
+                machine.machine,
+                &mut config,
+                error_collector.as_mut_ptr(),
+            )
+        };
+        error_collector.collect(result)?;
+
+        Ok(Self { config })
+    }
+
     pub fn inner(&self) -> &MachineConfig {
         unsafe { self.config.as_ref().unwrap() }
     }
