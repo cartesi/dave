@@ -13,7 +13,7 @@
 import "forge-std/Test.sol";
 
 import "./Util.sol";
-import "src/tournament/factories/TournamentFactory.sol";
+import "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import "src/CanonicalConstants.sol";
 
 pragma solidity ^0.8.0;
@@ -25,7 +25,7 @@ contract MultiTournamentTest is Util, Test {
     using Match for Match.State;
     using Machine for Machine.Hash;
 
-    TournamentFactory immutable factory;
+    MultiLevelTournamentFactory immutable factory;
     TopTournament topTournament;
     MiddleTournament middleTournament;
     BottomTournament bottomTournament;

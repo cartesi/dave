@@ -4,8 +4,8 @@
 pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
-import "../../CanonicalConstants.sol";
-import "../../Commitment.sol";
+import "src/CanonicalConstants.sol";
+import "../libs/Commitment.sol";
 
 import "step/src/UArchStep.sol";
 import "step/src/UArchReset.sol";

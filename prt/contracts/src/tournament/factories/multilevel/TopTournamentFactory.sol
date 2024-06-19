@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "../concretes/TopTournament.sol";
+import "src/tournament/concretes/TopTournament.sol";
 
 contract TopTournamentFactory {
     constructor() {}
@@ -12,8 +12,9 @@ contract TopTournamentFactory {
         external
         returns (TopTournament)
     {
-        TopTournament _tournament =
-            new TopTournament(_initialHash, TournamentFactory(msg.sender));
+        TopTournament _tournament = new TopTournament(
+            _initialHash, MultiLevelTournamentFactory(msg.sender)
+        );
 
         return _tournament;
     }
