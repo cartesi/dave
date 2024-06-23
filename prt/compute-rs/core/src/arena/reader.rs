@@ -1,15 +1,13 @@
 //! This module defines the struct [StateReader] that is responsible for the reading the states
 //! of tournaments
 
-use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use async_recursion::async_recursion;
 
 use ethers::{
-    middleware::SignerMiddleware,
     providers::{Http, Middleware, Provider},
-    signers::{LocalWallet, Signer},
     types::{Address, BlockNumber::Latest, ValueOrArray::Value, H256},
 };
 
@@ -28,18 +26,14 @@ use crate::{
 
 #[derive(Clone)]
 pub struct StateReader {
-    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    client: Arc<Provider<Http>>,
 }
 
 impl StateReader {
     pub fn new(config: ArenaConfig) -> Result<Self> {
         let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
             .interval(Duration::from_millis(10u64));
-        let wallet = LocalWallet::from_str(config.web3_private_key.as_str())?;
-        let client = Arc::new(SignerMiddleware::new(
-            provider,
-            wallet.with_chain_id(config.web3_chain_id),
-        ));
+        let client = Arc::new(provider);
 
         Ok(Self { client })
     }

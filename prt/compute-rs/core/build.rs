@@ -19,7 +19,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 // TODO: polish this function
 fn generate_contract_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let project_path = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let permissionless_contract_path = project_path.join("../../contracts");
+    let permissionless_contract_path = project_path.join("../../contracts").canonicalize().unwrap();
+    let solidity_step_path = project_path
+        .join("../../../machine-emulator-sdk/solidity-step/")
+        .canonicalize()
+        .unwrap();
     let contract_src_files = vec![
         "LeafTournament".to_string(),
         "NonLeafTournament".to_string(),
@@ -33,7 +37,7 @@ fn generate_contract_bindings() -> Result<(), Box<dyn std::error::Error>> {
         .remapping(Remapping {
             context: None,
             name: "step/".to_string(),
-            path: "../../machine-emulator-sdk/solidity-step/".to_string(),
+            path: solidity_step_path.to_str().unwrap().to_string(),
         })
         .remapping(Remapping {
             context: None,
@@ -49,7 +53,7 @@ fn generate_contract_bindings() -> Result<(), Box<dyn std::error::Error>> {
 
     let project = Project::builder()
         .paths(paths)
-        .allowed_path("/app/machine-emulator-sdk/solidity-step/")
+        .allowed_path(solidity_step_path.to_str().unwrap())
         .build()?;
 
     project
