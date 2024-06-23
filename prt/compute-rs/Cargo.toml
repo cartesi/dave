@@ -25,6 +25,7 @@ cartesi-machine = { path = "../../machine/machine-rust-bindings/cartesi-machine"
 anyhow = "1.0.63"
 async-recursion = "1"
 async-trait = "0.1.74"
+clap = { version = "4.5.7", features = ["derive", "env"] }
 ethers = "2.0.11"
 futures = "0.3"
 log = "0.4"

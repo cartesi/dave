@@ -9,8 +9,10 @@ cartesi-machine = { workspace = true }
 anyhow = { workspace = true }
 async-recursion = { workspace = true }
 async-trait = { workspace = true }
+clap = { workspace = true }
 ethers = { workspace = true }
 log = { workspace = true }
+clap_derive = "=4.5.5"
 hex = "0.4.3"
 sha3 = "0.10.8"
 thiserror = "1.0.50"
