@@ -13,6 +13,7 @@ repository = { workspace = true }
 [dependencies]
 cartesi-compute-core = { path = "../core" }
 anyhow = { workspace = true }
+clap = { workspace = true }
 ethers = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }

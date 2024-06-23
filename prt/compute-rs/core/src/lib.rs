@@ -2,6 +2,7 @@
 //! trees and tournaments using the Cartesi Machine.
 
 pub mod arena;
+pub mod config;
 pub mod contract;
 pub mod machine;
 pub mod merkle;
