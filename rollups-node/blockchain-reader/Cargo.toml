@@ -14,6 +14,9 @@ repository = { workspace = true }
 rollups-state-manager = { workspace = true }
 async-recursion = { workspace = true }
 cartesi-rollups-contracts = { workspace = true }
+clap = { workspace = true }
 ethers = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+clap_derive = "=4.5.5"
