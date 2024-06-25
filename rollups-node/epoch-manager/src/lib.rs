@@ -1,10 +1,12 @@
 use anyhow::Result;
+use ethers::types::Address;
 use std::{sync::Arc, time::Duration};
 
 use rollups_state_manager::StateManager;
 
 // TODO: setup constants for commitment builder
 pub struct EpochManager<SM: StateManager> {
+    consensus: Address,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
     // sender: Provider
@@ -22,9 +24,10 @@ impl<SM: StateManager> EpochManager<SM>
 where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
-    pub fn new(state_manager: Arc<SM>, sleep_duration: Duration) -> Self {
+    pub fn new(consensus_address: Address, state_manager: Arc<SM>, sleep_duration: u64) -> Self {
         Self {
-            sleep_duration,
+            consensus: consensus_address,
+            sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
         }
     }
@@ -36,8 +39,7 @@ where
             // if can_settle then send settle_epoch tx
 
             // claim := ethcall epoch(sealed_epoch_index)
-            let computation_hash_opt = self.state_manager.computation_hash(0)?;
-            match computation_hash_opt {
+            match self.state_manager.computation_hash(0)? {
                 Some(computation_hash) => {
                     // match claim
                     //  + None -> claim
