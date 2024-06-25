@@ -12,4 +12,5 @@ repository.workspace = true
 [dependencies]
 rollups-state-manager = { workspace = true }
 anyhow = { workspace = true }
+ethers = { workspace = true }
 tokio = { workspace = true }
