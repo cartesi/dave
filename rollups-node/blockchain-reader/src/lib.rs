@@ -5,6 +5,7 @@ mod error;
 use crate::error::{ProviderErrors, Result};
 
 use async_recursion::async_recursion;
+use clap::Parser;
 use error::BlockchainReaderError;
 use ethers::abi::RawLog;
 use std::str::FromStr;
@@ -42,20 +43,19 @@ pub struct EpochSealedFilter {
     pub input_count: ::ethers::core::types::U256,
 }
 
+#[derive(Debug, Clone, Parser)]
+#[command(name = "cartesi_rollups_config")]
+#[command(about = "Addresses of Cartesi Rollups")]
 pub struct AddressBook {
+    /// address of app
+    #[arg(long, env)]
     app: Address,
-    consensus: Address,
+    /// address of Dave consensus
+    #[arg(long, env)]
+    pub consensus: Address,
+    /// address of input box
+    #[arg(long, env)]
     input_box: Address,
-}
-
-impl AddressBook {
-    pub fn new(app: Address, consensus: Address, input_box: Address) -> Self {
-        Self {
-            app,
-            consensus,
-            input_box,
-        }
-    }
 }
 
 pub struct BlockchainReader<SM: StateManager> {
@@ -76,7 +76,7 @@ where
         state_manager: Arc<SM>,
         address_book: AddressBook,
         provider_url: &str,
-        sleep_duration: Duration,
+        sleep_duration: u64,
     ) -> Result<Self, SM> {
         let partition_provider = PartitionProvider::new(provider_url)
             .map_err(|e| BlockchainReaderError::ParseError(e))?;
@@ -92,7 +92,7 @@ where
             provider: partition_provider,
             input_reader: EventReader::<InputAddedFilter>::new(),
             epoch_reader: EventReader::<EpochSealedFilter>::new(),
-            sleep_duration,
+            sleep_duration: Duration::from_secs(sleep_duration),
         })
     }
 

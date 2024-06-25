@@ -27,13 +27,13 @@ pub struct MachineRunner<SM: StateManager> {
 
 impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM>
 where
-    <SM as StateManager>::Error:  Send + Sync + 'static,
+    <SM as StateManager>::Error: Send + Sync + 'static,
 {
     pub fn new(
         state_manager: Arc<SM>,
         initial_machine: &str,
-        sleep_duration: Duration,
-        _snapshot_frequency: Duration,
+        sleep_duration: u64,
+        snapshot_frequency: u64,
     ) -> Result<Self, SM> {
         let (snapshot, epoch_number, next_input_index_in_epoch) = match state_manager
             .latest_snapshot()
@@ -47,9 +47,9 @@ where
 
         Ok(Self {
             machine,
-            sleep_duration,
+            sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
-            _snapshot_frequency,
+            _snapshot_frequency: Duration::from_secs(snapshot_frequency),
             epoch_number,
             next_input_index_in_epoch,
             state_hash_index_in_epoch: 0,
