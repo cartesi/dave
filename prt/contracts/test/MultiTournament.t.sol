@@ -159,53 +159,20 @@ contract MultiTournamentTest is Util, Test {
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        MiddleTournament middleTournament2 = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
-
-        Util.joinTournament(middleTournament2, 0, 2);
-        Util.joinTournament(middleTournament2, 1, 2);
-
-        _matchId = Util.matchId(1, 2);
-        _match = middleTournament2.getMatch(_matchId.hashFromId());
-        assertTrue(_match.exists(), "match should exist");
-
-        // advance match to end, this match will always advance to left tree
-        _playerToSeal =
-            Util.advanceMatch01AtLevel(middleTournament2, _matchId, 2);
-
-        // expect new inner created (bottom)
-        vm.recordLogs();
-
-        // seal match
-        Util.sealInnerMatchAndCreateInnerTournament(
-            middleTournament2, _matchId, _playerToSeal
-        );
-
-        _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
-        assertEq(
-            _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
-        );
-        assertEq(
-            _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
-        );
-
         bottomTournament = BottomTournament(
             address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
         );
 
-        Util.joinTournament(bottomTournament, 0, 3);
-        Util.joinTournament(bottomTournament, 1, 3);
+        Util.joinTournament(bottomTournament, 0, 2);
+        Util.joinTournament(bottomTournament, 1, 2);
 
-        _matchId = Util.matchId(1, 3);
+        _matchId = Util.matchId(1, 2);
         _match = bottomTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to left tree
         _playerToSeal =
-            Util.advanceMatch01AtLevel(bottomTournament, _matchId, 3);
+            Util.advanceMatch01AtLevel(bottomTournament, _matchId, 2);
 
         // seal match
         Util.sealLeafMatch(bottomTournament, _matchId, _playerToSeal);

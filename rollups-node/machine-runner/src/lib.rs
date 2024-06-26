@@ -5,11 +5,17 @@ mod error;
 use error::{MachineRunnerError, Result};
 use std::{path::Path, sync::Arc, time::Duration};
 
-use cartesi_compute_core::merkle::{Digest, MerkleBuilder};
+use cartesi_compute_core::{
+    machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_UARCH_SPAN},
+    merkle::{Digest, MerkleBuilder},
+    utils::arithmetic::max_uint,
+};
 use cartesi_machine::{break_reason, configuration::RuntimeConfig, htif, machine::Machine};
 use rollups_state_manager::{InputId, StateManager};
 
-// TODO: setup constants for commitment builder
+// gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
+const LOG2_STRIDE: u64 = 30;
+
 pub struct MachineRunner<SM: StateManager> {
     machine: Machine,
     sleep_duration: Duration,
@@ -81,9 +87,8 @@ where
             } else {
                 assert!(self.epoch_number < latest_epoch);
 
-                tokio::task::block_in_place(|| {
-                    self.build_and_save_commitment().unwrap();
-                });
+                let commitment = self.build_commitment()?;
+                self.save_commitment(&commitment)?;
 
                 // end of current epoch
                 self.epoch_number += 1;
@@ -113,7 +118,8 @@ where
         }
     }
 
-    fn build_and_save_commitment(&self) -> Result<(), SM> {
+    /// calculate computation hash for `self.epoch_number`
+    fn build_commitment(&self) -> Result<Vec<u8>, SM> {
         // get all state hashes with repetitions for `self.epoch_number`
         let state_hashes = self
             .state_manager
@@ -138,11 +144,11 @@ where
                     );
                 }
 
-                // TODO: validate total repetitions match epoch length
-                let number_of_leaves_in_an_epoch = 1 << 10;
+                let stride_count_in_epoch =
+                    max_uint(LOG2_INPUT_SPAN + LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
                 builder.add_with_repetition(
                     Digest::from_digest(&state_hashes.last().unwrap().0)?,
-                    (number_of_leaves_in_an_epoch - total_repetitions).into(),
+                    (stride_count_in_epoch - total_repetitions).into(),
                 );
 
                 let tree = builder.build();
@@ -150,29 +156,31 @@ where
             }
         };
 
+        Ok(computation_hash)
+    }
+
+    fn save_commitment(&self, computation_hash: &[u8]) -> Result<(), SM> {
         self.state_manager
-            .add_computation_hash(&computation_hash, self.epoch_number)
+            .add_computation_hash(computation_hash, self.epoch_number)
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
 
         Ok(())
     }
 
     fn process_input(&mut self, data: &[u8]) -> Result<(), SM> {
-        // TODO: setup constants
-        let stride = 1 << 30;
-        let b = 1 << 48;
-        //
+        let big_steps_in_stride = max_uint(LOG2_STRIDE - LOG2_UARCH_SPAN);
+        let stride_count_in_input = max_uint(LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
 
         self.feed_input(data)?;
-        self.run_machine(stride)?;
+        self.run_machine(big_steps_in_stride)?;
 
         let mut i: u64 = 0;
         while !self.machine.read_iflags_y()? {
             self.add_state_hash(1)?;
-            self.run_machine(stride)?;
             i += 1;
+            self.run_machine(big_steps_in_stride)?;
         }
-        self.add_state_hash(b - i)?;
+        self.add_state_hash(stride_count_in_input - i)?;
 
         Ok(())
     }
