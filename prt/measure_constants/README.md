@@ -21,9 +21,9 @@ There are two values in the script that can be configured (WIP):
 After running the script one should get results like this:
 
 ```
-level    3
-log2_stride    {37, 20, 0}
-height    {26, 17, 20}
+level	3
+log2_stride	[uint64(49), uint64(35), uint64(0)]
+height	[uint64(19), uint64(14), uint64(35)]
 ```
 
 Go to `prt/contracts` and modified the content of `src/CanonicalConstants.sol`:
