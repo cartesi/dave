@@ -123,9 +123,15 @@ abstract contract LeafTournament is Tournament {
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-        uint256 mask = (1 << ArbitrationConstants.LOG2_MAX_MCYCLE) - 1;
-        if (counter & mask == mask) {
+        uint256 uarch_mask = (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
+        uint256 input_mask = (1 << ArbitrationConstants.LOG2_INPUT_SPAN) - 1;
+
+        if (counter & uarch_mask == uarch_mask) {
             UArchReset.reset(accessLogs);
+            newMachineState = accessLogs.currentRootHash;
+        } else if (counter & input_mask == input_mask) {
+            UArchReset.reset(accessLogs);
+            // TODO: add input
             newMachineState = accessLogs.currentRootHash;
         } else {
             UArchStep.step(accessLogs);
