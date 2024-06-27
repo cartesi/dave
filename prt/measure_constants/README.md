@@ -6,9 +6,9 @@ docker build -t cartesi/measure_script . && docker run --rm --env MACHINE_PATH="
 
 Valid value for `MACHINE_PATH` can be:
 
--   `simple-program`
--   `doom-compute-machine`
 -   `debootstrap-machine-sparsed`
+-   `doom-compute-machine`
+-   `simple-program`
 
 There are two values in the script that can be configured (WIP):
 
