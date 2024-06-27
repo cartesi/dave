@@ -7,15 +7,15 @@ RUN apt-get update && \
 WORKDIR "/app"
 
 # prepare debootstrap machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.2-rc-test/debootstrap-machine-sparsed.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.5-rc-test/debootstrap-machine-sparsed.tar.gz | \
     tar -zx -C "/app"
 
 # prepare doom-showcase machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.3-rc-test/doom-compute-machine.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.6-rc-test/doom-compute-machine.tar.gz | \
     tar -zx -C "/app"
 
 # prepare simple machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.4-rc-test/simple-program.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.7-rc-test/simple-program.tar.gz | \
     tar -zx -C "/app"
 
 COPY chronos.c .
