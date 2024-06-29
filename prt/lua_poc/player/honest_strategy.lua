@@ -196,6 +196,9 @@ function HonestStrategy:_react_tournament(state, tournament)
         tournament.log2_stride_count
     )
 
+    state.hero_state.tournament = tournament
+    state.hero_state.commitment = commitment
+
     local tournament_winner = tournament.tournament_winner
     if tournament_winner[1] == "true" then
         if not tournament.parent then
@@ -252,6 +255,7 @@ function HonestStrategy:_react_tournament(state, tournament)
         helper.log(self.sender.index, tostring(commitment_clock))
 
         local latest_match = tournament.commitments[commitment.root_hash].latest_match
+        state.hero_state.latest_match = latest_match
         if latest_match then
             return self:_react_match(state, latest_match, commitment)
         end
