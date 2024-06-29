@@ -247,6 +247,15 @@ function HonestStrategy:_react_tournament(state, tournament)
 
     if not tournament.commitments[commitment.root_hash] then
         self:_join_tournament(tournament, commitment)
+
+        claimsFile = io.open("/app/lua_poc/utils/hero-claims.json", "a")
+        local jsonResult = {}
+        table.insert(jsonResult, string.format("\"tournament_address\":%s", tournament.address))
+        table.insert(jsonResult, string.format("\"tournament_level\":%s", tournament.level))
+        table.insert(jsonResult, string.format("\"commitment_root_hash\":%s", commitment.root_hash))
+        jsonResult = "{" .. table.concat(jsonResult, ",") .. "}"
+        claimsFile:write(jsonResult)
+        claimsFile:close()
     else
         local commitment_clock = tournament.commitments[commitment.root_hash].status.clock
         helper.log(self.sender.index, tostring(commitment_clock))

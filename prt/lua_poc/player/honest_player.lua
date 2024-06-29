@@ -26,8 +26,52 @@ do
     gc_strategy = GarbageCollectionStrategy:new(sender)
 end
 
+function toJson(item)
+    if item~= nil
+    then
+        local jsonResult = {}
+        for key, value in pairs(item) do
+            if string.find(tostring(value), "table:") then
+                -- skip if the value is table
+                goto continue
+            end
+            table.insert(jsonResult, string.format("\"%s\":%s", key, value))
+            ::continue::
+        end
+        jsonResult = "{" .. table.concat(jsonResult, ",") .. "}"
+        stateFile:write(jsonResult)
+    end
+end
+
+function TM(t)
+    if t ~= nil
+    then
+        -- print("tournament")
+        toJson(t)
+    
+        if t.matches ~= nil
+        then
+            for i = 1, #t.matches do
+                -- print("match")
+                toJson(t.matches[i])
+                if(t.matches[i] ~= nil and t.matches[i].inner_tournament ~= nil)
+                then
+                    TM(t.matches[i].inner_tournament)
+                end
+            end
+        end
+    end
+end
+
 while true do
     state:fetch()
+
+    -- write to a file inside docker
+    stateFile = io.open("/app/lua_poc/utils/current-state.json", "w")
+    local rt = state.root_tournament
+    TM(rt)
+    stateFile:close()
+
     local tx_count = sender.tx_count
     if honest_strategy:react(state) then break end
     -- player is considered idle if no tx sent in current iteration
