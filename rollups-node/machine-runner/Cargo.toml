@@ -1,0 +1,18 @@
+[package]
+name = "rollups-machine-runner"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license-file.workspace = true
+readme.workspace = true
+repository.workspace = true
+
+[dependencies]
+cartesi-compute-core = { workspace = true }
+cartesi-machine = { workspace = true }
+rollups-state-manager = { workspace = true }
+
+thiserror = { workspace = true }
+tokio = { workspace = true }

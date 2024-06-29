@@ -1,0 +1,22 @@
+[package]
+name = "rollups-blockchain-reader"
+version = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+rollups-state-manager = { workspace = true }
+async-recursion = { workspace = true }
+cartesi-rollups-contracts = { workspace = true }
+clap = { workspace = true }
+ethers = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+clap_derive = "=4.5.5"

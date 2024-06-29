@@ -1,0 +1,29 @@
+[package]
+name = "dave-rollups"
+version = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+rollups-blockchain-reader = { workspace = true }
+rollups-epoch-manager = { workspace = true }
+rollups-machine-runner = { workspace = true }
+rollups-state-manager = { workspace = true }
+
+cartesi-rollups-contracts = { workspace = true }
+
+anyhow = { workspace = true }
+clap = { workspace = true }
+ethers = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+clap_derive = "=4.5.5"
+env_logger = "0.10"

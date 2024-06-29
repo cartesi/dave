@@ -13,7 +13,7 @@ Dave is a permissionless, interactive fraud-proof system. This repo contains the
 This project uses git submodules.
 Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
 
-To run the Lua node, follow the instructions [here](permissionless-arbitration/lua_node/README.md).
+To run the Lua node, follow the instructions [here](prt/lua_poc/README.md).
 
 
 ## What's in a name
