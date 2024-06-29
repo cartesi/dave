@@ -20,7 +20,8 @@ function State:new(root_tournament_address)
             matches = {},
             tournament_winner = {}
         },
-        reader = Reader:new()
+        reader = Reader:new(),
+        hero_state = {}
     }
 
     setmetatable(state, self)
