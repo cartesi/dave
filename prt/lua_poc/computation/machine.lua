@@ -64,23 +64,6 @@ function Machine:new_from_path(path)
     return b
 end
 
-function Machine:snapshot(root, base_cycle, log2_stride, log2_stride_count)
-    local path = string.format("snapshots/%s_%d_%d", root:sub(1, 12), log2_stride, log2_stride_count)
-    if not helper.exists(path) then
-        self.machine:store(path)
-
-        local out = io.open(string.format("%s/base_cycle", path), "w")
-        out:write(base_cycle)
-        out:close()
-        local out = io.open(string.format("%s/log2_stride", path), "w")
-        out:write(log2_stride)
-        out:close()
-        local out = io.open(string.format("%s/log2_stride_count", path), "w")
-        out:write(log2_stride_count)
-        out:close()
-    end
-end
-
 function Machine:state()
     return ComputationState:from_current_machine_state(self.machine)
 end
