@@ -3,14 +3,14 @@
 
 pragma solidity ^0.8.17;
 
-import "src/tournament/abstracts/NonLeafTournament.sol";
-import "src/tournament/concretes/MiddleTournament.sol";
+import "../../abstracts/NonLeafTournament.sol";
+import "../../concretes/MiddleTournament.sol";
 
-import "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import "../../factories/MultiLevelTournamentFactory.sol";
 
-import "src/Machine.sol";
-import "src/Tree.sol";
-import "src/tournament/libs/Time.sol";
+import "../../../Machine.sol";
+import "../../../Tree.sol";
+import "../../libs/Time.sol";
 
 contract MiddleTournamentFactory {
     constructor() {}

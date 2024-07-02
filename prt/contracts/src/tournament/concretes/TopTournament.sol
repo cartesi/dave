@@ -8,7 +8,7 @@ import "../abstracts/NonLeafTournament.sol";
 
 import "../factories/MultiLevelTournamentFactory.sol";
 
-import "src/Machine.sol";
+import "../../Machine.sol";
 
 /// @notice Top tournament of a multi-level instance
 contract TopTournament is NonLeafTournament, RootTournament {

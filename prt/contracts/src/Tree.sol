@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "src/Machine.sol";
+import "./Machine.sol";
 
 library Tree {
     using Tree for Node;
