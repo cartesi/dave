@@ -4,9 +4,12 @@
 pragma solidity ^0.8.17;
 
 interface IDataProvider {
-    function merkleizedData(
-        bytes32 namespace,
-        bytes calldata id,
-        bytes calldata proof
-    ) external returns (bytes32);
+    /// @notice Provides the Merkle root of the response to a Generic I/O request
+    /// @param namespace The request namespace
+    /// @param id The request ID
+    /// @param extra Extra data (e.g. proofs)
+    /// @return Merkle root of response
+    function gio(uint16 namespace, bytes calldata id, bytes calldata extra)
+        external
+        returns (bytes32);
 }
