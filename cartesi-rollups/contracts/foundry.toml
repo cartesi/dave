@@ -5,6 +5,11 @@ libs = ["lib"]
 
 remappings = [
     'rollups-contracts/=lib/rollups-contracts/contracts/',
+    'prt-contracts/=../../prt/contracts/src/',
+]
+
+allow_paths = [
+    '../../prt/contracts/src/',
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
