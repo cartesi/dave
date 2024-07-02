@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "src/tournament/concretes/BottomTournament.sol";
+import "../../concretes/BottomTournament.sol";
 
 contract BottomTournamentFactory {
     constructor() {}

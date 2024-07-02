@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "src/ITournamentFactory.sol";
+import "../../ITournamentFactory.sol";
 
 import "../concretes/TopTournament.sol";
 import "../concretes/MiddleTournament.sol";

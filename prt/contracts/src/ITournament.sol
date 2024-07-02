@@ -3,8 +3,8 @@
 
 pragma solidity ^0.8.17;
 
-import "src/Machine.sol";
-import "src/Tree.sol";
+import "./Machine.sol";
+import "./Tree.sol";
 
 interface ITournament {
     function arbitrationResult()
