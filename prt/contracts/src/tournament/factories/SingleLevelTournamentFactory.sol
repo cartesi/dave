@@ -23,7 +23,7 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
 
     function instantiate(Machine.Hash _initialHash, IDataProvider provider)
         external
-        returns (Tournament)
+        returns (ITournament)
     {
         return this.instantiateSingleLevel(_initialHash);
     }
