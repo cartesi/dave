@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "src/CanonicalConstants.sol";
-import "src/Machine.sol";
-import "src/Tree.sol";
+import "../../CanonicalConstants.sol";
+import "../../Machine.sol";
+import "../../Tree.sol";
 
 import "../libs/Commitment.sol";
 import "../libs/Time.sol";

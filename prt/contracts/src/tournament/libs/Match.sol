@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "src/CanonicalConstants.sol";
-import "src/Tree.sol";
-import "src/Machine.sol";
+import "../../CanonicalConstants.sol";
+import "../../Tree.sol";
+import "../../Machine.sol";
 import "./Commitment.sol";
 
 /// @notice Implements functionalities to advance a match, until the point where divergence is found.

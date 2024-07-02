@@ -4,7 +4,7 @@
 pragma solidity ^0.8.17;
 
 import "./Time.sol";
-import "src/CanonicalConstants.sol";
+import "../../CanonicalConstants.sol";
 
 library Clock {
     using Time for Time.Instant;
