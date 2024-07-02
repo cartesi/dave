@@ -3,6 +3,7 @@
 
 pragma solidity ^0.8.17;
 
+import "./ITournament.sol";
 import "./tournament/abstracts/Tournament.sol";
 import "./IDataProvider.sol";
 
@@ -11,5 +12,5 @@ interface ITournamentFactory {
 
     function instantiate(Machine.Hash _initialHash, IDataProvider provider)
         external
-        returns (Tournament);
+        returns (ITournament);
 }

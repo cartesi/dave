@@ -31,16 +31,16 @@ contract MultiLevelTournamentFactory is ITournamentFactory {
     function instantiate(Machine.Hash _initialHash, IDataProvider provider)
         external
         override
-        returns (Tournament)
+        returns (ITournament)
     {
-        Tournament _tournament = this.instantiateTop(_initialHash);
+        TopTournament _tournament = this.instantiateTop(_initialHash);
         emit tournamentCreated(_tournament);
         return _tournament;
     }
 
     function instantiateTop(Machine.Hash _initialHash)
         external
-        returns (Tournament)
+        returns (TopTournament)
     {
         TopTournament _tournament = topFactory.instantiate(_initialHash);
         return _tournament;
@@ -55,7 +55,7 @@ contract MultiLevelTournamentFactory is ITournamentFactory {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level
-    ) external returns (Tournament) {
+    ) external returns (MiddleTournament) {
         MiddleTournament _tournament = middleFactory.instantiate(
             _initialHash,
             _contestedCommitmentOne,
@@ -80,7 +80,7 @@ contract MultiLevelTournamentFactory is ITournamentFactory {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level
-    ) external returns (Tournament) {
+    ) external returns (BottomTournament) {
         BottomTournament _tournament = bottomFactory.instantiate(
             _initialHash,
             _contestedCommitmentOne,
