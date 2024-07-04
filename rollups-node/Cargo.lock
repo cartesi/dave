@@ -3292,7 +3292,11 @@ version = "0.1.0"
 dependencies = [
  "cartesi-compute-core",
  "cartesi-machine",
+ "cartesi-rollups-contracts",
+ "ethers",
+ "hex",
  "rollups-state-manager",
+ "serde",
  "thiserror",
  "tokio",
 ]
