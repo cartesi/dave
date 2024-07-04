@@ -16,3 +16,9 @@ rollups-state-manager = { workspace = true }
 
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+ethers = { workspace = true }
+cartesi-rollups-contracts = { workspace = true }
+hex = "0.4.3"
+serde = "1"
