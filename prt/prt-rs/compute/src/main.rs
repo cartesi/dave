@@ -1,4 +1,4 @@
-use cartesi_compute_core::{
+use cartesi_prt_core::{
     arena::{EthArenaSender, StateReader},
     config::ComputeConfig,
     machine::CachingMachineCommitmentBuilder,
@@ -6,7 +6,6 @@ use cartesi_compute_core::{
 };
 
 use anyhow::Result;
-use ethers::types::Address;
 use log::info;
 use std::{time::Duration};
 use clap::Parser;
