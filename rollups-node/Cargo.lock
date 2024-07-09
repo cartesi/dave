@@ -575,27 +575,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cartesi-compute-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-recursion",
- "async-trait",
- "cartesi-machine",
- "clap",
- "clap_derive",
- "convert_case 0.6.0",
- "ethers",
- "ethers-contract-abigen",
- "foundry-compilers",
- "hex",
- "log",
- "serde_json",
- "sha3",
- "thiserror",
-]
-
-[[package]]
 name = "cartesi-machine"
 version = "0.17.0"
 dependencies = [
@@ -615,6 +594,27 @@ dependencies = [
  "link-cplusplus",
  "reqwest 0.12.4",
  "sha1",
+]
+
+[[package]]
+name = "cartesi-prt-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-recursion",
+ "async-trait",
+ "cartesi-machine",
+ "clap",
+ "clap_derive",
+ "convert_case 0.6.0",
+ "ethers",
+ "ethers-contract-abigen",
+ "foundry-compilers",
+ "hex",
+ "log",
+ "serde_json",
+ "sha3",
+ "thiserror",
 ]
 
 [[package]]
@@ -3290,8 +3290,8 @@ dependencies = [
 name = "rollups-machine-runner"
 version = "0.1.0"
 dependencies = [
- "cartesi-compute-core",
  "cartesi-machine",
+ "cartesi-prt-core",
  "cartesi-rollups-contracts",
  "ethers",
  "hex",

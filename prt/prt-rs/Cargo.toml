@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "core",
-    "dave-compute",
+    "compute",
 ]
 
 [workspace.package]

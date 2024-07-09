@@ -1,8 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use cartesi_compute_core::merkle::DigestError;
 use cartesi_machine::errors::MachineError;
+use cartesi_prt_core::merkle::DigestError;
 use rollups_state_manager::StateManager;
 
 use thiserror::Error;

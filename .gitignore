@@ -1,9 +1,10 @@
-node_modules
-.vscode
+.bin
 .env
+.vscode
 .DS_Store
 **/.idea/
 target/
 snapshots/
-prt/compute_rs/core/src/contract/*tournament.rs
+node_modules
+prt/prt-rs/core/src/contract/*tournament.rs
 prt/machine-emulator-sdk

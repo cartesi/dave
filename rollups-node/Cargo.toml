@@ -29,7 +29,7 @@ rollups-machine-runner = { version = "0.1", path = "machine-runner" }
 rollups-state-manager = { version = "0.1", path = "state-manager" }
 
 cartesi-machine = { path = "../machine/machine-rust-bindings/cartesi-machine" }
-cartesi-compute-core = { path = "../prt/compute-rs/core" }
+cartesi-prt-core = { path = "../prt/prt-rs/core" }
 
 anyhow = "1.0"
 async-recursion = "1"
