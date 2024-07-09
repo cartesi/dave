@@ -5,4 +5,4 @@ set -euo pipefail
 ./lua_poc/attached_entrypoint.lua &
 sleep 20
 
-exec env RUST_LOG="info" ./compute-rs/target/release/dave-compute
+exec env RUST_LOG="info" ./prt-rs/target/release/cartesi-prt-compute
