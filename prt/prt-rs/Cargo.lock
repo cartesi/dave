@@ -564,27 +564,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cartesi-compute-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-recursion",
- "async-trait",
- "cartesi-machine",
- "clap",
- "clap_derive",
- "convert_case 0.6.0",
- "ethers",
- "ethers-contract-abigen",
- "foundry-compilers",
- "hex",
- "log",
- "serde_json",
- "sha3",
- "thiserror",
-]
-
-[[package]]
 name = "cartesi-machine"
 version = "0.17.0"
 dependencies = [
@@ -604,6 +583,40 @@ dependencies = [
  "link-cplusplus",
  "reqwest 0.12.4",
  "sha1",
+]
+
+[[package]]
+name = "cartesi-prt-compute"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cartesi-prt-core",
+ "clap",
+ "env_logger",
+ "ethers",
+ "log",
+ "tokio",
+]
+
+[[package]]
+name = "cartesi-prt-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-recursion",
+ "async-trait",
+ "cartesi-machine",
+ "clap",
+ "clap_derive",
+ "convert_case 0.6.0",
+ "ethers",
+ "ethers-contract-abigen",
+ "foundry-compilers",
+ "hex",
+ "log",
+ "serde_json",
+ "sha3",
+ "thiserror",
 ]
 
 [[package]]
@@ -908,19 +921,6 @@ name = "data-encoding"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2e66c9d817f1720209181c316d28635c050fa304f9c79e47a520882661b7308"
-
-[[package]]
-name = "dave-compute"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cartesi-compute-core",
- "clap",
- "env_logger",
- "ethers",
- "log",
- "tokio",
-]
 
 [[package]]
 name = "der"
