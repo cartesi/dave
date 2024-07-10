@@ -10,7 +10,7 @@ local conversion_cmd = [[
 ]]
 
 local machine_path = os.getenv("MACHINE_PATH")
-local machine_settings = { soft_yield = true }
+local machine_settings = { soft_yield = true, htif = { no_console_putchar = true } }
 local machine = cartesi.machine(machine_path, machine_settings)
 
 local pixels_dir = "/app/pixels"

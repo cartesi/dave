@@ -44,7 +44,8 @@ local Machine = {}
 Machine.__index = Machine
 
 function Machine:new_from_path(path)
-    local machine = cartesi.machine(path)
+    local machine_settings = { soft_yield = true, htif = { no_console_putchar = true } }
+    local machine = cartesi.machine(path, machine_settings)
     local start_cycle = machine:read_mcycle()
 
     -- Machine can never be advanced on the micro arch.
