@@ -1,5 +1,12 @@
 local m = {}
 
+local function hex_from_bin(bin)
+    assert(bin:len() == 32)
+    return "0x" .. (bin:gsub('.', function(c)
+        return string.format('%02x', string.byte(c))
+    end))
+end
+
 local function flatten_recursive (object, flat_tables)
     if type(object) == "table" then
         local id = ("%p"):format(object)
@@ -7,6 +14,10 @@ local function flatten_recursive (object, flat_tables)
             local flat_table = {}
             flat_tables[id] = flat_table
             for k, v in pairs(object) do
+                if k == "digest"
+                then
+                    v = hex_from_bin(v)
+                end
                 table.insert(flat_table, {
                     key = flatten_recursive(k, flat_tables),
                     value = flatten_recursive(v, flat_tables),
