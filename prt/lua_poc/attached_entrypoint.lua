@@ -8,7 +8,7 @@ local INACTIVE_LIMIT = 10
 -- delay time for blockchain node to be ready
 local NODE_DELAY = 2
 -- delay between each player
-local PLAYER_DELAY = 5
+local PLAYER_DELAY = 10
 
 local helper = require "utils.helper"
 local time = require "utils.time"
@@ -32,7 +32,7 @@ local cmds = {
 
 local player_start = 1
 if deploy_to_anvil then
-    blockchain = Blockchain:new()
+    node = Blockchain:new()
     time.sleep(NODE_DELAY)
     table.insert(cmds, 1, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
     player_start = player_start + 1

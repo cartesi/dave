@@ -334,7 +334,8 @@ library Match {
         returns (uint256)
     {
         uint256 step = 1 << log2step;
-        uint256 leafPosition = state.runningLeafPosition;
+        uint256 leafPosition =
+            state.runningLeafPosition > 0 ? state.runningLeafPosition - 1 : 0;
         return base + (leafPosition * step);
     }
 }
