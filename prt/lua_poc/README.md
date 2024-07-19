@@ -67,19 +67,13 @@ docker run --rm \
 ## Run doom showcase with graphics on
 
 ```
-mkdir -p snapshots
+mkdir -p pixels
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/doom-compute-machine" \
     --env DEPLOY_TO_ANVIL="true" \
-    --mount type=bind,source="$(pwd)/snapshots",target=/app/snapshots \
+    --mount type=bind,source="$(pwd)/pixels",target=/app/pixels \
+    --mount type=bind,source="$(pwd)/utils",target=/app/lua_poc/utils \
     dave:latest graphics
 ```
 
-On a separate terminal run the script to view the actual game graphics while being disputed:
-```
-sudo ./doom_showcase/view.sh
-```
-
-[`mplayer`](http://www.mplayerhq.hu/design7/news.html) is required to run the game graphics.
-
-`sudo` may be required as the files are created inside the docker container.
+After execution, the `pixels` directory will contain all snapshots of the full gameplay. Two files `current-state.json` and `hero-claims.json` in the `utils` directory.
