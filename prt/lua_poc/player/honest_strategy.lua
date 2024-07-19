@@ -58,8 +58,8 @@ function HonestStrategy:_react_match(state, match, commitment)
                 match.running_leaf
             ))
 
-            local cycle = (match.running_leaf >> constants.log2_uarch_span):touinteger()
-            local ucycle = (match.running_leaf & constants.uarch_span):touinteger()
+            local cycle = match.base_big_cycle
+            local ucycle = (match.leaf_cycle & constants.uarch_span):touinteger()
             local logs = Machine:get_logs(self.machine_path, cycle, ucycle)
 
             helper.log(self.sender.index, string.format(

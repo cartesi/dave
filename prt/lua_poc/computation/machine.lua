@@ -2,7 +2,6 @@ local Hash = require "cryptography.hash"
 local arithmetic = require "utils.arithmetic"
 local cartesi = require "cartesi"
 local consts = require "constants"
-local helper = require "utils.helper"
 
 local ComputationState = {}
 ComputationState.__index = ComputationState
@@ -43,8 +42,9 @@ end
 local Machine = {}
 Machine.__index = Machine
 
+local machine_settings = { htif = { no_console_putchar = true } }
+
 function Machine:new_from_path(path)
-    local machine_settings = { soft_yield = true, htif = { no_console_putchar = true } }
     local machine = cartesi.machine(path, machine_settings)
     local start_cycle = machine:read_mcycle()
 

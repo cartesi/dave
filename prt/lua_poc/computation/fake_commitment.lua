@@ -1,6 +1,5 @@
 local MerkleBuilder = require "cryptography.merkle_builder"
 local Hash = require "cryptography.hash"
-local consts = require "constants"
 
 local CommitmentBuilder = {}
 CommitmentBuilder.__index = CommitmentBuilder
@@ -11,7 +10,7 @@ function CommitmentBuilder:new(initial_hash, seed, second_state)
     return c
 end
 
-function CommitmentBuilder:build(_, level, log2_stride, log2_stride_count)
+function CommitmentBuilder:build(_, _, log2_stride, log2_stride_count)
     local builder = MerkleBuilder:new()
     local seed = self.seed and self.seed or Hash.zero
     if log2_stride == 0 and self.second_state then

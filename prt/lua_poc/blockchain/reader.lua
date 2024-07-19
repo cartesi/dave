@@ -325,6 +325,13 @@ function Reader:read_tournament_created(tournament_address, match_id_hash)
     return ret
 end
 
+function Reader:cycle(address, match_id_hash)
+    local sig = "getMatchCycle(bytes32)(uint256)"
+    local ret = self:_call(address, sig, { match_id_hash:hex_string() })
+
+    return ret[1]
+end
+
 function Reader:match(address, match_id_hash)
     local sig = "getMatch(bytes32)(bytes32,bytes32,bytes32,uint256,uint64,uint64)"
     local ret = self:_call(address, sig, { match_id_hash:hex_string() })

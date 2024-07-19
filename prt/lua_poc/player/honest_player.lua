@@ -19,6 +19,7 @@ local constants = require "constants"
 local player_index = tonumber(arg[1])
 local tournament = arg[2]
 local machine_path = arg[3]
+local gen_data = false
 
 local state = State:new(tournament)
 local sender = Sender:new(player_index)
@@ -31,20 +32,20 @@ do
     gc_strategy = GarbageCollectionStrategy:new(sender)
 end
 
-function output_tournaments(state)
+local function output_tournaments(s)
     -- write to a file inside docker
-    stateFile = io.open("/app/lua_poc/utils/current-state.json", "w")
-    local rt = state.root_tournament
-    stateFile:write(json.encode(flat.flatten(state.root_tournament)))
+    local stateFile = io.open("/app/lua_poc/utils/current-state.json", "w")
+    local rt = s.root_tournament
+    stateFile:write(json.encode(flat.flatten(rt)))
     stateFile:close()
 end
 
-function output_hero_claim(state)
+local function output_hero_claim(s)
     -- output hero claims
-    if state.hero_state ~= nil
+    if s.hero_state ~= nil
     then
-        hero_state = {}
-        claimsFile = io.open("/app/lua_poc/utils/hero-claims.json", "w")
+        local hero_state = {}
+        local claimsFile = io.open("/app/lua_poc/utils/hero-claims.json", "w")
         hero_state.tournament_address = string.format("%s", state.hero_state.tournament.address)
         hero_state.commitment_root_hash = string.format("%s", state.hero_state.commitment.root_hash)
         claimsFile:write(json.encode(hero_state))
@@ -52,9 +53,9 @@ function output_hero_claim(state)
     end
 end
 
-function copy_png(one, two)
+local function copy_png(one, two)
     local directory = "/app/pixels/"
-    local pfile = io.popen('ls -a "'..directory..'"')
+    local pfile = io.popen('ls -a "' .. directory .. '"')
     for filename in pfile:lines() do
         local png_name = filename:match("[^/]*.png$")
         if png_name ~= nil
@@ -85,8 +86,8 @@ function copy_png(one, two)
     pfile:close()
 end
 
-function pick_2_pngs(state)
-    local match = state.hero_state.latest_match
+local function pick_2_pngs(s)
+    local match = s.hero_state.latest_match
     if match ~= nil and match ~= false and match.current_height ~= 0
     then
         local span = 1 << (match.current_height - 1)
@@ -95,7 +96,7 @@ function pick_2_pngs(state)
         then
             agreed_leaf = bint(match.running_leaf) - 1
         end
-        disagreed_leaf = agreed_leaf + span
+        local disagreed_leaf = agreed_leaf + span
         local base = bint(match.tournament.base_big_cycle)
         local step = (bint(1) << match.tournament.log2_stride) >> constants.log2_uarch_span
         local agreed_cycle = base + (step * agreed_leaf)
@@ -111,9 +112,11 @@ while true do
     local react = honest_strategy:react(state)
 
     -- prepare files for frontend
-    output_tournaments(state)
-    output_hero_claim(state)
-    pick_2_pngs(state)
+    if gen_data then
+        output_tournaments(state)
+        output_hero_claim(state)
+        pick_2_pngs(state)
+    end
 
     if react then break end
     -- player is considered idle if no tx sent in current iteration
@@ -124,5 +127,6 @@ while true do
         helper.rm_player_idle(player_index)
     end
     gc_strategy:react(state)
+
     time.sleep(5)
 end
