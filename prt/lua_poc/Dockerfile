@@ -37,10 +37,10 @@ ADD ./prt/contracts/deploy_anvil.sh .
 WORKDIR "/app/lua_poc"
 
 COPY ./prt/lua_poc/ .
-RUN chmod +x dave-test-entrypoint.sh
+RUN chmod +x compute-test-entrypoint.sh
 RUN chmod +x self_contained_entrypoint.lua
 RUN chmod +x doom_showcase/process_doom_graphics.lua
 
 WORKDIR "/app"
-RUN mkdir -p snapshots
-ENTRYPOINT ["./lua_poc/dave-test-entrypoint.sh"]
+RUN mkdir -p pixels
+ENTRYPOINT ["./lua_poc/compute-test-entrypoint.sh"]

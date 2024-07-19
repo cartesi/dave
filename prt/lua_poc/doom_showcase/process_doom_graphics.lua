@@ -16,7 +16,7 @@ local machine = cartesi.machine(machine_path, machine_settings)
 local pixels_dir = "/app/pixels"
 os.execute(string.format("mkdir -p %s", pixels_dir))
 
-function output_pixel(start_cycle, end_cycle)
+local function output_pixel(start_cycle, end_cycle)
     -- print("wrinting to =====> " .. string.format("%s/%04d_%04d.raw", pixels_dir, start_cycle, end_cycle))
     local out = io.open(string.format("%s/%04d_%04d.raw", pixels_dir, start_cycle, end_cycle), "wb")
     out:write(machine:read_memory(0x82000000, 64000))
@@ -25,7 +25,8 @@ function output_pixel(start_cycle, end_cycle)
     out = io.open(string.format("%s/%04d_%04d.palette", pixels_dir, start_cycle, end_cycle), "wb")
     out:write(machine:read_memory(0x82800030, 1024))
     out:close()
-    os.execute(string.format(conversion_cmd, pixels_dir, start_cycle, end_cycle, pixels_dir, start_cycle, end_cycle, pixels_dir, start_cycle, end_cycle))
+    os.execute(string.format(conversion_cmd, pixels_dir, start_cycle, end_cycle,
+        pixels_dir, start_cycle, end_cycle, pixels_dir, start_cycle, end_cycle))
 end
 
 while(true)

@@ -58,7 +58,7 @@ end
 
 local function link_tables (flat_tables, tables)
     for id, flat_table in pairs(flat_tables) do
-        for i, pair in ipairs(flat_table) do
+        for _, pair in ipairs(flat_table) do
             local k = inflate_object(pair.key, tables)
             local v = inflate_object(pair.value, tables)
             tables[id][k] = v

@@ -1,4 +1,4 @@
-local constants = require "constants"
+local constants = require('constants')
 local bint = require 'utils.bint' (256) -- use 256 bits integers
 
 local Reader = require "blockchain.reader"
@@ -41,7 +41,7 @@ function State:_fetch_tournament(tournament)
 
     assert(tournament.level < tournament.max_level)
 
-    local matches =  self:_matches(tournament)
+    local matches = self:_matches(tournament)
     local commitments = self.reader:read_commitment_joined(tournament.address)
 
 
@@ -71,7 +71,6 @@ function State:_fetch_match(match)
     if match.current_height == 0 then
         -- match sealed
         if match.tournament.level == (match.tournament.max_level - 1) then
-
             match.finished =
                 self.reader:match(match.tournament.address, match.match_id_hash)[1]:is_zero()
         else
@@ -101,18 +100,16 @@ function State:_matches(tournament)
         if m[1]:is_zero() and m[2]:is_zero() and m[3]:is_zero() then
             matches[k] = false
         else
+            match.tournament = tournament
             match.current_other_parent = m[1]
             match.current_left = m[2]
             match.current_right = m[3]
             match.running_leaf = bint(m[4])
             match.current_height = tonumber(m[5])
             match.level = tonumber(m[6])
-            match.tournament = tournament
 
-            local level = tournament.level
-            local base = bint(tournament.base_big_cycle)
-            local step = bint(1) << tournament.log2_stride
-            match.leaf_cycle = base + (step * match.running_leaf)
+            local leaf_cycle = self.reader:cycle(tournament.address, match.match_id_hash)
+            match.leaf_cycle = bint(leaf_cycle)
             match.base_big_cycle = (match.leaf_cycle >> constants.log2_uarch_span):touinteger()
         end
     end
