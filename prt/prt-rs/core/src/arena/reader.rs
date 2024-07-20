@@ -171,12 +171,14 @@ impl StateReader {
         for match_event in created_matches {
             let match_id = match_event.id;
             let m = tournament.get_match(match_id.hash().into()).call().await?;
+            let leaf_cycle = tournament
+                .get_match_cycle(match_id.hash().into())
+                .call()
+                .await?
+                .as_u64();
+            let base_big_cycle = leaf_cycle >> constants::LOG2_UARCH_SPAN;
 
             let running_leaf_position = m.running_leaf_position.as_u64();
-            let base = tournament_state.base_big_cycle;
-            let step = 1 << state.log2_stride;
-            let leaf_cycle = base + (step * running_leaf_position);
-            let base_big_cycle = leaf_cycle >> constants::LOG2_UARCH_SPAN;
             let prev_states = new_states.clone();
             let match_state;
 
