@@ -22,7 +22,7 @@ function HonestStrategy:_join_tournament(tournament, commitment)
     assert(f)
     local last, proof = commitment:last()
 
-    helper.log(self.sender.index, string.format(
+    helper.log_timestamp(string.format(
         "join tournament %s of level %d with commitment %s",
         tournament.address,
         tournament.level,
@@ -36,7 +36,7 @@ function HonestStrategy:_join_tournament(tournament, commitment)
         right
     )
     if not ok then
-        helper.log(self.sender.index, string.format(
+        helper.log_timestamp(string.format(
             "join tournament reverted: %s",
             e
         ))
@@ -46,14 +46,14 @@ end
 function HonestStrategy:_react_match(state, match, commitment)
     -- TODO call timeout if needed
 
-    helper.log(self.sender.index, "Enter match at HEIGHT: " .. match.current_height)
+    helper.log_timestamp("Enter match at HEIGHT: " .. match.current_height)
     if match.current_height == 0 then
         -- match sealed
         if match.tournament.level == (match.tournament.max_level - 1) then
             local f, left, right = commitment.root_hash:children()
             assert(f)
 
-            helper.log(self.sender.index, string.format(
+            helper.log_timestamp(string.format(
                 "Calculating access logs for step %s",
                 match.running_leaf
             ))
@@ -62,7 +62,7 @@ function HonestStrategy:_react_match(state, match, commitment)
             local ucycle = (match.leaf_cycle & constants.uarch_span):touinteger()
             local logs = Machine:get_logs(self.machine_path, cycle, ucycle)
 
-            helper.log(self.sender.index, string.format(
+            helper.log_timestamp(string.format(
                 "win leaf match in tournament %s of level %d for commitment %s",
                 match.tournament.address,
                 match.tournament.level,
@@ -77,7 +77,7 @@ function HonestStrategy:_react_match(state, match, commitment)
                 logs
             )
             if not ok then
-                helper.log(self.sender.index, string.format(
+                helper.log_timestamp(string.format(
                     "win leaf match reverted: %s",
                     e
                 ))
@@ -100,7 +100,7 @@ function HonestStrategy:_react_match(state, match, commitment)
         end
 
         if match.tournament.level == (match.tournament.max_level - 1) then
-            helper.log(self.sender.index, string.format(
+            helper.log_timestamp(string.format(
                 "seal leaf match in tournament %s of level %d for commitment %s",
                 match.tournament.address,
                 match.tournament.level,
@@ -116,13 +116,13 @@ function HonestStrategy:_react_match(state, match, commitment)
                 proof
             )
             if not ok then
-                helper.log(self.sender.index, string.format(
+                helper.log_timestamp(string.format(
                     "seal leaf match reverted: %s",
                     e
                 ))
             end
         else
-            helper.log(self.sender.index, string.format(
+            helper.log_timestamp(string.format(
                 "seal inner match in tournament %s of level %d for commitment %s",
                 match.tournament.address,
                 match.tournament.level,
@@ -138,7 +138,7 @@ function HonestStrategy:_react_match(state, match, commitment)
                 proof
             )
             if not ok then
-                helper.log(self.sender.index, string.format(
+                helper.log_timestamp(string.format(
                     "seal inner match reverted: %s",
                     e
                 ))
@@ -162,7 +162,7 @@ function HonestStrategy:_react_match(state, match, commitment)
             assert(f)
         end
 
-        helper.log(self.sender.index, string.format(
+        helper.log_timestamp(string.format(
             "advance match with current height %d in tournament %s of level %d for commitment %s",
             match.current_height,
             match.tournament.address,
@@ -179,7 +179,7 @@ function HonestStrategy:_react_match(state, match, commitment)
             new_right
         )
         if not ok then
-            helper.log(self.sender.index, string.format(
+            helper.log_timestamp(string.format(
                 "advance match reverted: %s",
                 e
             ))
@@ -188,7 +188,7 @@ function HonestStrategy:_react_match(state, match, commitment)
 end
 
 function HonestStrategy:_react_tournament(state, tournament)
-    helper.log(self.sender.index, "Enter tournament at address: " .. tournament.address)
+    helper.log_timestamp("Enter tournament at address: " .. tournament.address)
     local commitment = self.commitment_builder:build(
         tournament.base_big_cycle,
         tournament.level,
@@ -202,9 +202,9 @@ function HonestStrategy:_react_tournament(state, tournament)
     local tournament_winner = tournament.tournament_winner
     if tournament_winner[1] == "true" then
         if not tournament.parent then
-            helper.log(self.sender.index, "TOURNAMENT FINISHED, HURRAYYY")
-            helper.log(self.sender.index, "Winner commitment: " .. tournament_winner[2]:hex_string())
-            helper.log(self.sender.index, "Final state: " .. tournament_winner[3]:hex_string())
+            helper.log_timestamp("TOURNAMENT FINISHED, HURRAYYY")
+            helper.log_timestamp("Winner commitment: " .. tournament_winner[2]:hex_string())
+            helper.log_timestamp("Final state: " .. tournament_winner[3]:hex_string())
             return true
         else
             local old_commitment = self.commitment_builder:build(
@@ -214,18 +214,18 @@ function HonestStrategy:_react_tournament(state, tournament)
                 tournament.parent.log2_stride_count
             )
             if tournament_winner[2] ~= old_commitment.root_hash then
-                helper.log(self.sender.index, "player lost tournament")
+                helper.log_timestamp("player lost tournament")
                 return true
             end
 
             if tournament.commitments[commitment.root_hash].called_win then
-                helper.log(self.sender.index, "player already called winInnerMatch")
+                helper.log_timestamp("player already called winInnerMatch")
                 return
             else
                 tournament.commitments[commitment.root_hash].called_win = true
             end
 
-            helper.log(self.sender.index, string.format(
+            helper.log_timestamp(string.format(
                 "win tournament %s of level %d for commitment %s",
                 tournament.address,
                 tournament.level,
@@ -239,7 +239,7 @@ function HonestStrategy:_react_tournament(state, tournament)
                 right
             )
             if not ok then
-                helper.log(self.sender.index, string.format(
+                helper.log_timestamp(string.format(
                     "win inner match reverted: %s",
                     e
                 ))
@@ -252,7 +252,7 @@ function HonestStrategy:_react_tournament(state, tournament)
         self:_join_tournament(tournament, commitment)
     else
         local commitment_clock = tournament.commitments[commitment.root_hash].status.clock
-        helper.log(self.sender.index, tostring(commitment_clock))
+        helper.log_timestamp(tostring(commitment_clock))
 
         local latest_match = tournament.commitments[commitment.root_hash].latest_match
         state.hero_state.latest_match = latest_match

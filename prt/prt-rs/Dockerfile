@@ -15,6 +15,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY ./machine /app/machine
+COPY ./.git /app/.git
 COPY --from=planner /app/prt/prt-rs/recipe.json /app/prt/prt-rs/recipe.json
 
 # Build dependencies - this is the caching Docker layer!
@@ -62,6 +63,4 @@ RUN forge --version
 RUN forge build
 
 WORKDIR /root/prt
-RUN chmod +x /root/prt/lua_poc/attached_entrypoint.lua
-
-ENTRYPOINT [ "prt-rs/compute-test-entrypoint.sh" ]
+ENTRYPOINT ["./lua_poc/compute-test-entrypoint.sh"]
