@@ -9,4 +9,4 @@ if [[ $# -eq 1 ]] && [ "$1" == "graphics" ]; then
     ./lua_poc/doom_showcase/process_doom_graphics.lua &
 fi
 
-exec ./lua_poc/self_contained_entrypoint.lua
+exec ./lua_poc/prt_compute.lua

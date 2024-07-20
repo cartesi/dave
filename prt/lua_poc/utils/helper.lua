@@ -1,18 +1,66 @@
 local color = require "utils.color"
 
-local names = {'green', 'yellow', 'blue', 'pink', 'cyan', 'white'}
+local names = { 'green', 'yellow', 'blue', 'pink', 'cyan', 'white' }
 local idle_template = [[ls player%d_idle 2>/dev/null | grep player%d_idle | wc -l]]
 local ps_template = [[ps %s | grep defunct | wc -l]]
 local helper = {}
 
-function helper.log(player_index, msg)
+local function parse_datetime(datetime_str)
+    local patterns = {
+        -- Lua node timestamp format
+        "(%d%d)/(%d%d)/(%d%d%d%d) (%d%d):(%d%d):(%d%d)", -- MM/DD/YYYY HH:MM:SS
+        -- Rust node timestamp format
+        "(%d%d%d%d)-(%d%d)-(%d%d)T(%d%d):(%d%d):(%d%d)Z" -- YYYY-MM-DDTHH:MM:SSZ
+    }
+
+    for _, pattern in ipairs(patterns) do
+        local year, month, day, hour, min, sec
+
+        if pattern == patterns[1] then
+            month, day, year, hour, min, sec = datetime_str:match(pattern)
+        else
+            year, month, day, hour, min, sec = datetime_str:match(pattern)
+        end
+
+        if year and month and day and hour and min and sec then
+            local parsed_time = os.time({
+                year = tonumber(year) or 2000,
+                month = tonumber(month) or 1,
+                day = tonumber(day) or 1,
+                hour = tonumber(hour),
+                min = tonumber(min),
+                sec = tonumber(sec)
+            })
+            return parsed_time
+        end
+    end
+
+    return nil, "Invalid date-time format"
+end
+
+-- log message with color based on `player_index`
+function helper.log_color(player_index, msg)
+    local color_index = (player_index - 1) % #names + 1
+    print(color.reset .. color.fg[names[color_index]] ..
+        string.format("[#%d]%s", player_index, msg) .. color.reset)
+end
+
+-- log message with timestamp
+function helper.log_timestamp(msg)
+    local timestamp = os.date("%m/%d/%Y %X")
+    print(string.format("[%s] %s", timestamp, msg))
+end
+
+-- log message with color and timestamp based on `player_index`
+function helper.log_full(player_index, msg)
     local color_index = (player_index - 1) % #names + 1
     local timestamp = os.date("%m/%d/%Y %X")
     print(color.reset .. color.fg[names[color_index]] ..
         string.format("[#%d][%s] %s", player_index, timestamp, msg) .. color.reset)
 end
 
-function helper.log_to_ts(reader, last_ts)
+-- log message with color to `last_ts` based on `player_index`
+function helper.log_to_ts(player_index, reader, last_ts)
     -- print everything hold in the buffer which has smaller timestamp
     -- this is to synchronise when there're gaps in between the logs
     local msg_output = 0
@@ -20,11 +68,10 @@ function helper.log_to_ts(reader, last_ts)
         local msg = reader:read()
         if msg then
             msg_output = msg_output + 1
-            print(msg)
+            helper.log_color(player_index, msg)
 
-            local i, j = msg:find("%d%d/%d%d/%d%d%d%d %d%d:%d%d:%d%d")
-            if i and j then
-                local timestamp = msg:sub(i, j)
+            local timestamp, _ = parse_datetime(msg)
+            if timestamp then
                 if timestamp > last_ts then
                     last_ts = timestamp
                     break
@@ -39,9 +86,11 @@ end
 
 function helper.is_zombie(pid)
     local reader = io.popen(string.format(ps_template, pid))
-    local ret = reader:read()
-    reader:close()
-    return tonumber(ret) == 1
+    if reader then
+        local ret = reader:read()
+        reader:close()
+        return tonumber(ret) == 1
+    end
 end
 
 function helper.stop_players(pid_reader)
@@ -66,9 +115,11 @@ end
 
 function helper.is_player_idle(player_index)
     local reader = io.popen(string.format(idle_template, player_index, player_index))
-    local ret = reader:read()
-    reader:close()
-    return tonumber(ret) == 1
+    if reader then
+        local ret = reader:read()
+        reader:close()
+        return tonumber(ret) == 1
+    end
 end
 
 function helper.rm_player_idle(player_index)
@@ -95,12 +146,12 @@ end
 function helper.exists(file)
     local ok, err, code = os.rename(file, file)
     if not ok then
-       if code == 13 then
-          -- Permission denied, but it exists
-          return true
-       end
+        if code == 13 then
+            -- Permission denied, but it exists
+            return true
+        end
     end
     return ok, err
- end
+end
 
 return helper
