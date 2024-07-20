@@ -38,7 +38,7 @@ WORKDIR "/app/lua_poc"
 
 COPY ./prt/lua_poc/ .
 RUN chmod +x compute-test-entrypoint.sh
-RUN chmod +x self_contained_entrypoint.lua
+RUN chmod +x prt_compute.lua
 RUN chmod +x doom_showcase/process_doom_graphics.lua
 
 WORKDIR "/app"
