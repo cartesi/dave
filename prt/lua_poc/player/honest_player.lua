@@ -36,8 +36,11 @@ local function output_tournaments(s)
     -- write to a file inside docker
     local stateFile = io.open("/app/lua_poc/utils/current-state.json", "w")
     local rt = s.root_tournament
-    stateFile:write(json.encode(flat.flatten(rt)))
-    stateFile:close()
+
+    if stateFile then
+        stateFile:write(json.encode(flat.flatten(rt)))
+        stateFile:close()
+    end
 end
 
 local function output_hero_claim(s)
@@ -48,42 +51,47 @@ local function output_hero_claim(s)
         local claimsFile = io.open("/app/lua_poc/utils/hero-claims.json", "w")
         hero_state.tournament_address = string.format("%s", state.hero_state.tournament.address)
         hero_state.commitment_root_hash = string.format("%s", state.hero_state.commitment.root_hash)
-        claimsFile:write(json.encode(hero_state))
-        claimsFile:close()
+
+        if claimsFile then
+            claimsFile:write(json.encode(hero_state))
+            claimsFile:close()
+        end
     end
 end
 
 local function copy_png(one, two)
     local directory = "/app/pixels/"
     local pfile = io.popen('ls -a "' .. directory .. '"')
-    for filename in pfile:lines() do
-        local png_name = filename:match("[^/]*.png$")
-        if png_name ~= nil
-        then
-            -- print(png_name)
-            local left = tonumber(string.match(png_name, "%d+"))
-            local right = tonumber(string.match(png_name, "_%d+"):sub(2))
-            -- print(left)
-            -- print(right)
-            if left <= one and (one < right or right == 0)
+    if pfile then
+        for filename in pfile:lines() do
+            local png_name = filename:match("[^/]*.png$")
+            if png_name ~= nil
             then
-                -- found 1
-                local cp_command = "cp " .. directory .. png_name .. " " .. directory .. "one.png"
-                print(cp_command)
-                os.execute(cp_command)
-            end
-            if left <= two and (two < right or right == 0)
-            then
-                -- found 2
-                local cp_command = "cp " .. directory .. png_name .. " " .. directory .. "two.png"
-                print(cp_command)
-                os.execute(cp_command)
-                pfile:close()
-                return
+                -- print(png_name)
+                local left = tonumber(string.match(png_name, "%d+"))
+                local right = tonumber(string.match(png_name, "_%d+"):sub(2))
+                -- print(left)
+                -- print(right)
+                if left <= one and (one < right or right == 0)
+                then
+                    -- found 1
+                    local cp_command = "cp " .. directory .. png_name .. " " .. directory .. "one.png"
+                    print(cp_command)
+                    os.execute(cp_command)
+                end
+                if left <= two and (two < right or right == 0)
+                then
+                    -- found 2
+                    local cp_command = "cp " .. directory .. png_name .. " " .. directory .. "two.png"
+                    print(cp_command)
+                    os.execute(cp_command)
+                    pfile:close()
+                    return
+                end
             end
         end
+        pfile:close()
     end
-    pfile:close()
 end
 
 local function pick_2_pngs(s)
@@ -121,7 +129,7 @@ while true do
     if react then break end
     -- player is considered idle if no tx sent in current iteration
     if tx_count == sender.tx_count then
-        helper.log(player_index, "player idling")
+        helper.log_timestamp("player idling")
         helper.touch_player_idle(player_index)
     else
         helper.rm_player_idle(player_index)

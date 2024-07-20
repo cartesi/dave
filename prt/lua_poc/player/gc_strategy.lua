@@ -19,7 +19,7 @@ function GarbageCollectionStrategy:_react_match(state, match)
 end
 
 function GarbageCollectionStrategy:_react_tournament(state, tournament)
-    helper.log(self.sender.index, "Garbage collect tournament at address: " .. tournament.address)
+    helper.log_timestamp("Garbage collect tournament at address: " .. tournament.address)
 
     for _, match in ipairs(tournament.matches) do
         if match then
@@ -30,10 +30,10 @@ function GarbageCollectionStrategy:_react_tournament(state, tournament)
 
             -- try to eliminate matches that both clocks are out of time
             if (not status_1.clock:has_time() and
-               (status_1.clock:time_since_timeout() > status_2.clock.allowance)) or
-               (not status_2.clock:has_time() and
-               (status_2.clock:time_since_timeout() > status_1.clock.allowance)) then
-                helper.log(self.sender.index, string.format(
+                    (status_1.clock:time_since_timeout() > status_2.clock.allowance)) or
+                (not status_2.clock:has_time() and
+                    (status_2.clock:time_since_timeout() > status_1.clock.allowance)) then
+                helper.log_timestamp(string.format(
                     "eliminate match for commitment %s and %s at tournament %s of level %d",
                     match.commitment_one,
                     match.commitment_two,
@@ -47,7 +47,7 @@ function GarbageCollectionStrategy:_react_tournament(state, tournament)
                     match.commitment_two
                 )
                 if not ok then
-                    helper.log(self.sender.index, string.format(
+                    helper.log_timestamp(string.format(
                         "eliminate match reverted: %s",
                         e
                     ))

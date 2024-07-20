@@ -31,7 +31,7 @@ while true do
     if idle_strategy:react(state) then break end
     -- player is considered idle if no tx sent in current iteration
     if tx_count == sender.tx_count then
-        helper.log(player_index, "player idling")
+        helper.log_timestamp("player idling")
         helper.touch_player_idle(player_index)
     else
         helper.rm_player_idle(player_index)

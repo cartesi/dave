@@ -1,14 +1,14 @@
 //! This module defines the struct [EthArenaSender] that is responsible for the sending transactions
 //! to tournaments
 
-use std::{ str::FromStr, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use async_trait::async_trait;
 
 use ethers::{
     middleware::SignerMiddleware,
-    providers::{Http, Provider},
+    providers::{Http, Middleware, Provider},
     signers::{LocalWallet, Signer},
     types::{Address, Bytes},
 };
@@ -36,6 +36,15 @@ impl EthArenaSender {
         ));
 
         Ok(Self { client })
+    }
+
+    pub async fn nonce(&self) -> Result<u64> {
+        Ok(self
+            .client
+            .inner()
+            .get_transaction_count(self.client.signer().address(), None)
+            .await?
+            .as_u64())
     }
 }
 

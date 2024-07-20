@@ -1,4 +1,4 @@
-# Dave Lua node
+# PRT Compute in Lua
 
 This directory contains a prototype node written in Lua.
 The purpose of this Lua node is testing and prototyping only; the real production node is written in Rust.
@@ -12,7 +12,7 @@ You need a docker installation to run the Dave Lua node.
 In order to run tests in this directory, a docker image must be built to prepare the test environment. Once the test image is built, the user can run all the tests supported by swapping the `MACHINE_PATH` env variable.
 
 ```
-docker build -t dave:latest -f Dockerfile ../../
+docker build -t cartesi/prt-compute:lua -f Dockerfile ../../
 ```
 
 ## Run simple test
@@ -43,7 +43,8 @@ To run the full example, execute the following command from the current path pat
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/simple-program" \
     --env DEPLOY_TO_ANVIL="true" \
-    dave:latest
+    --env LUA_NODE="true" \
+    cartesi/prt-compute:lua
 ```
 
 ## Run stress test
@@ -52,7 +53,8 @@ docker run --rm \
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/debootstrap-machine-sparsed" \
     --env DEPLOY_TO_ANVIL="true" \
-    dave:latest
+    --env LUA_NODE="true" \
+    cartesi/prt-compute:lua
 ```
 
 ## Run doom showcase
@@ -61,7 +63,8 @@ docker run --rm \
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/doom-compute-machine" \
     --env DEPLOY_TO_ANVIL="true" \
-    dave:latest
+    --env LUA_NODE="true" \
+    cartesi/prt-compute:lua
 ```
 
 ## Run doom showcase with graphics on
@@ -71,9 +74,10 @@ mkdir -p pixels
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/doom-compute-machine" \
     --env DEPLOY_TO_ANVIL="true" \
+    --env LUA_NODE="true" \
     --mount type=bind,source="$(pwd)/pixels",target=/app/pixels \
     --mount type=bind,source="$(pwd)/utils",target=/app/lua_poc/utils \
-    dave:latest graphics
+    cartesi/prt-compute:lua graphics
 ```
 
 After execution, the `pixels` directory will contain all snapshots of the full gameplay. Two files `current-state.json` and `hero-claims.json` in the `utils` directory.
