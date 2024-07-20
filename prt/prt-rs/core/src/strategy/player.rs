@@ -232,8 +232,8 @@ impl Player {
                 return Ok(());
             }
 
-            let cycle = match_state.running_leaf_position >> constants::LOG2_UARCH_SPAN;
-            let ucycle = match_state.running_leaf_position & constants::UARCH_SPAN;
+            let cycle = match_state.base_big_cycle;
+            let ucycle = match_state.leaf_cycle & constants::UARCH_SPAN;
             let proof = MachineInstance::new(&self.machine_path)?.get_logs(cycle, ucycle)?;
 
             info!(
