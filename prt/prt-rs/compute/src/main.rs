@@ -2,15 +2,20 @@ use cartesi_prt_core::{
     arena::{EthArenaSender, StateReader},
     config::ComputeConfig,
     machine::CachingMachineCommitmentBuilder,
-    strategy::{gc::GarbageCollector, player::Player}
+    strategy::{gc::GarbageCollector, player::Player},
 };
 
 use anyhow::Result;
-use log::info;
-use std::{time::Duration, path::Path, io, fs::{self, OpenOptions}};
 use clap::Parser;
+use log::{error, info};
+use std::{
+    fs::{self, OpenOptions},
+    io,
+    path::Path,
+    time::Duration,
+};
 
-const idle_path_str: &str = "player2_idle";
+const IDLE_PATH_STR: &str = "player2_idle";
 
 // A simple implementation of `% touch path` (ignores existing files)
 fn touch(path: &Path) -> io::Result<()> {
@@ -40,17 +45,22 @@ async fn main() -> Result<()> {
 
     let mut gc = GarbageCollector::new(config.root_tournament.clone());
 
-    let idle_path = Path::new(idle_path_str);
+    let idle_path = Path::new(IDLE_PATH_STR);
 
     loop {
         let tournament_states = reader.fetch_from_root(config.root_tournament).await?;
 
         let tx_count = sender.nonce().await?;
-        let res = player.react(&sender, tournament_states).await?;
+        let res = player.react(&sender, tournament_states).await;
 
-        if let Some(r) = res {
-            info!("Tournament finished, {:?}", r);
-            break;
+        match res {
+            Err(e) => error!("{}", e),
+            Ok(player_tournament_result) => {
+                if let Some(r) = player_tournament_result {
+                    info!("Tournament finished, {:?}", r);
+                    break;
+                }
+            }
         }
 
         if sender.nonce().await? == tx_count {
@@ -58,7 +68,7 @@ async fn main() -> Result<()> {
             touch(&idle_path)?;
         } else {
             // ignore error if the file doesn't exist
-            let _ = fs::remove_file(idle_path_str);
+            let _ = fs::remove_file(IDLE_PATH_STR);
         }
 
         let tournament_states = reader.fetch_from_root(config.root_tournament).await?;

@@ -1,14 +1,13 @@
 //! This module defines the struct [EthArenaSender] that is responsible for the sending transactions
 //! to tournaments
 
+use async_trait::async_trait;
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::Result;
-use async_trait::async_trait;
-
 use ethers::{
+    contract::ContractError,
     middleware::SignerMiddleware,
-    providers::{Http, Middleware, Provider},
+    providers::{Http, Middleware, Provider, ProviderError},
     signers::{LocalWallet, Signer},
     types::{Address, Bytes},
 };
@@ -20,13 +19,16 @@ use crate::{
     merkle::{Digest, MerkleProof},
 };
 
+type SenderMiddleware = SignerMiddleware<Provider<Http>, LocalWallet>;
+type Result<T> = std::result::Result<T, ContractError<SenderMiddleware>>;
+
 #[derive(Clone)]
 pub struct EthArenaSender {
-    client: Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    client: Arc<SenderMiddleware>,
 }
 
 impl EthArenaSender {
-    pub fn new(config: ArenaConfig) -> Result<Self> {
+    pub fn new(config: ArenaConfig) -> anyhow::Result<Self> {
         let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
             .interval(Duration::from_millis(10u64));
         let wallet = LocalWallet::from_str(config.web3_private_key.as_str())?;
@@ -38,7 +40,7 @@ impl EthArenaSender {
         Ok(Self { client })
     }
 
-    pub async fn nonce(&self) -> Result<u64> {
+    pub async fn nonce(&self) -> std::result::Result<u64, ProviderError> {
         Ok(self
             .client
             .inner()

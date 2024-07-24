@@ -172,7 +172,9 @@ impl Player {
         );
         arena_sender
             .join_tournament(tournament_state.address, last, proof, left, right)
-            .await
+            .await?;
+
+        Ok(())
     }
 
     #[async_recursion]
