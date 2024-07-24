@@ -148,6 +148,7 @@ function HonestStrategy:_react_match(state, match, commitment)
         -- match running
         local found, left, right = match.current_other_parent:children()
         if not found then
+            helper.log_timestamp("not my turn to react")
             return
         end
 
