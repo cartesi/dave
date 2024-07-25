@@ -3,10 +3,9 @@ local helper = require "utils.helper"
 local IdleStrategy = {}
 IdleStrategy.__index = IdleStrategy
 
-function IdleStrategy:new(commitment_builder, machine_path, sender)
+function IdleStrategy:new(commitment_builder, sender)
     local honest_strategy = {
         commitment_builder = commitment_builder,
-        machine_path = machine_path,
         sender = sender
     }
 

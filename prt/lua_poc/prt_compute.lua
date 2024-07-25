@@ -33,13 +33,13 @@ local contract = blockchain_constants.root_tournament
 
 -- add more player instances here
 local cmds = {
-    string.format([[sh -c "echo $$ ; exec ./lua_poc/player/dishonest_player.lua %d %s %s %s | tee dishonest.log"]], 3,
-        contract, machine_path, initial_hash),
+    string.format([[sh -c "echo $$ ; exec ./lua_poc/player/dishonest_player.lua %d %s %s %d | tee dishonest.log"]], 3,
+        contract, machine_path, 3),
     -- uncomment below for two extra idle players
-    -- string.format([[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s %s | tee idle_1.log"]], 4,
-    --     contract, machine_path, initial_hash),
-    -- string.format([[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s %s | tee idle_2.log"]], 5,
-    --     contract, machine_path, initial_hash)
+    -- string.format([[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s | tee idle_1.log"]], 4,
+    --     contract, initial_hash),
+    -- string.format([[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s | tee idle_2.log"]], 5,
+    --     contract, initial_hash)
 }
 
 if lua_node then
