@@ -116,6 +116,12 @@ contract MultiTournamentTest is Util, Test {
             topTournament, _matchId, _playerToSeal
         );
 
+        assertEq(
+            topTournament.getMatchCycle(_matchId.hashFromId()),
+            0,
+            "agree cycle should be zero"
+        );
+
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 2);
         assertEq(
@@ -149,6 +155,12 @@ contract MultiTournamentTest is Util, Test {
             middleTournament, _matchId, _playerToSeal
         );
 
+        assertEq(
+            middleTournament.getMatchCycle(_matchId.hashFromId()),
+            0,
+            "agree cycle should be zero"
+        );
+
         _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 2);
         assertEq(
@@ -177,6 +189,12 @@ contract MultiTournamentTest is Util, Test {
         // seal match
         Util.sealLeafMatch(bottomTournament, _matchId, _playerToSeal);
 
+        assertEq(
+            bottomTournament.getMatchCycle(_matchId.hashFromId()),
+            0,
+            "agree cycle should be zero"
+        );
+
         vm.expectRevert();
         // win match, expect revert
         Util.winLeafMatch(bottomTournament, _matchId, _playerToSeal);
@@ -203,6 +221,12 @@ contract MultiTournamentTest is Util, Test {
             topTournament, _matchId, _playerToSeal
         );
 
+        assertEq(
+            topTournament.getMatchCycle(_matchId.hashFromId()),
+            0,
+            "agree cycle should be zero"
+        );
+
         topTournament = Util.initializePlayer0Tournament(factory);
 
         // pair commitment, expect a match
@@ -219,6 +243,15 @@ contract MultiTournamentTest is Util, Test {
         // seal match
         Util.sealInnerMatchAndCreateInnerTournament(
             topTournament, _matchId, _playerToSeal
+        );
+
+        uint256 step = 1 << ArbitrationConstants.log2step(0);
+        uint256 leaf_position = (1 << ArbitrationConstants.height(0)) - 1;
+
+        assertEq(
+            topTournament.getMatchCycle(_matchId.hashFromId()),
+            step * leaf_position,
+            "agree cycle should be the second right most leaf"
         );
     }
 
