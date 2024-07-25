@@ -15,22 +15,33 @@ local function bin_from_hex(hex)
     end))
 end
 
-local internalized_hahes = {}
+local internalized_hashes = {}
 local iterateds = {}
 
 local Hash = {}
 Hash.__index = Hash
 
+-- two special functions to manipulate `Hash` internal state
+-- they should only be called by `FakeCommitment` to restore the internal state,
+-- after them being updated by honest commitment computation
+Hash.get_internal = function()
+    return internalized_hashes
+end
+
+Hash.set_internal = function(new_internalized_hashes)
+    internalized_hashes = new_internalized_hashes
+end
+
 function Hash:from_digest(digest)
     assert(type(digest) == "string", digest:len() == 32)
 
-    local x = internalized_hahes[digest]
+    local x = internalized_hashes[digest]
     if x then return x end
 
     local h = { digest = digest }
     iterateds[h] = { h }
     setmetatable(h, self)
-    internalized_hahes[digest] = h
+    internalized_hashes[digest] = h
     return h
 end
 
