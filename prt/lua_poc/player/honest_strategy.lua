@@ -92,11 +92,11 @@ function HonestStrategy:_react_match(state, match, commitment)
             return
         end
 
-        local initial_hash, proof
+        local agree_state, agree_state_proof
         if match.running_leaf:iszero() then
-            initial_hash, proof = commitment.implicit_hash, {}
+            agree_state, agree_state_proof = commitment.implicit_hash, {}
         else
-            initial_hash, proof = commitment:prove_leaf(match.running_leaf)
+            agree_state, agree_state_proof = commitment:prove_leaf(match.running_leaf - 1)
         end
 
         if match.tournament.level == (match.tournament.max_level - 1) then
@@ -112,8 +112,8 @@ function HonestStrategy:_react_match(state, match, commitment)
                 match.commitment_two,
                 left,
                 right,
-                initial_hash,
-                proof
+                agree_state,
+                agree_state_proof
             )
             if not ok then
                 helper.log_timestamp(string.format(
@@ -134,8 +134,8 @@ function HonestStrategy:_react_match(state, match, commitment)
                 match.commitment_two,
                 left,
                 right,
-                initial_hash,
-                proof
+                agree_state,
+                agree_state_proof
             )
             if not ok then
                 helper.log_timestamp(string.format(
@@ -157,10 +157,14 @@ function HonestStrategy:_react_match(state, match, commitment)
             local f
             f, new_left, new_right = left:children()
             assert(f)
+
+            helper.log_timestamp("going down to the left")
         else
             local f
             f, new_left, new_right = right:children()
             assert(f)
+
+            helper.log_timestamp("going down to the right")
         end
 
         helper.log_timestamp(string.format(
