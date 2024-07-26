@@ -72,7 +72,7 @@ function State:_fetch_match(match)
         -- match sealed
         if match.tournament.level == (match.tournament.max_level - 1) then
             match.finished =
-                self.reader:match(match.tournament.address, match.match_id_hash)[1]:is_zero()
+                self.reader:read_match(match.tournament.address, match.match_id_hash)[1]:is_zero()
         else
             local address = self.reader:read_tournament_created(
                 match.tournament.address,
@@ -96,7 +96,7 @@ function State:_matches(tournament)
     local matches = self.reader:read_match_created(tournament.address)
 
     for k, match in ipairs(matches) do
-        local m = self.reader:match(tournament.address, match.match_id_hash)
+        local m = self.reader:read_match(tournament.address, match.match_id_hash)
         if m[1]:is_zero() and m[2]:is_zero() and m[3]:is_zero() then
             matches[k] = false
         else
@@ -108,7 +108,7 @@ function State:_matches(tournament)
             match.current_height = tonumber(m[5])
             match.level = tonumber(m[6])
 
-            local leaf_cycle = self.reader:cycle(tournament.address, match.match_id_hash)
+            local leaf_cycle = self.reader:read_cycle(tournament.address, match.match_id_hash)
             match.leaf_cycle = bint(leaf_cycle)
             match.base_big_cycle = (match.leaf_cycle >> constants.log2_uarch_span):touinteger()
         end

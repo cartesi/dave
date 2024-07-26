@@ -283,12 +283,12 @@ impl Player {
                 return Ok(());
             };
 
-        let (initial_hash, initial_hash_proof) = if match_state.running_leaf_position == 0 {
+        let (agree_state, agree_state_proof) = if match_state.running_leaf_position == 0 {
             (commitment.implicit_hash, MerkleProof::default())
         } else {
             commitment
                 .merkle
-                .prove_leaf(match_state.running_leaf_position)
+                .prove_leaf(match_state.running_leaf_position - 1)
         };
 
         if tournament_level == (tournament_max_level - 1) {
@@ -304,8 +304,8 @@ impl Player {
                     match_state.id,
                     left,
                     right,
-                    initial_hash,
-                    initial_hash_proof,
+                    agree_state,
+                    agree_state_proof,
                 )
                 .await?;
         } else {
@@ -321,8 +321,8 @@ impl Player {
                     match_state.id,
                     left,
                     right,
-                    initial_hash,
-                    initial_hash_proof,
+                    agree_state,
+                    agree_state_proof,
                 )
                 .await?;
         }
