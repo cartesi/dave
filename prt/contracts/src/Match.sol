@@ -143,7 +143,14 @@ library Match {
         if (state.runningLeafPosition == 0) {
             require(agreeState.eq(initialState), "agree hash incorrect");
         } else {
-            id.commitmentOne.requireState(
+            Tree.Node commitment;
+            if (state.height() % 2 == 1) {
+                commitment = id.commitmentOne;
+            } else {
+                commitment = id.commitmentTwo;
+            }
+
+            commitment.requireState(
                 state.level,
                 state.runningLeafPosition - 1,
                 agreeState,

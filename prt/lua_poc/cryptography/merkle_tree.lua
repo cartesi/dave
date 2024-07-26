@@ -46,7 +46,7 @@ local function generate_proof(proof, root, height, include_index)
     local ok, left, right = root:children()
     assert(ok)
 
-    if (include_index >> new_height) & 1 == 0 then
+    if ((include_index >> new_height) & 1):iszero() then
         generate_proof(proof, left, new_height, include_index)
         table.insert(proof, right)
     else
@@ -57,14 +57,14 @@ end
 
 function MerkleTree:prove_leaf(index)
     local height
-    local l = assert(self.leafs[1])
+    local l = assert(self.leafs[1].hash)
     if l.log2size then
         height = l.log2size + self.log2size
     else
         height = self.log2size
     end
 
-    assert((index >> height) == 0)
+    assert((index >> height):iszero())
     local proof = {}
     generate_proof(proof, self.root_hash, height, index)
     return proof.leaf, proof

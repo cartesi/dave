@@ -58,6 +58,11 @@ local function parse_logs(logs, data_sig)
     return ret
 end
 
+local function sanitize_string(s)
+    -- remove spaces, scientific notations and color code
+    return s:gsub("%s+", ""):gsub("%b[]", ""):gsub("\27%[[%d;]*m", "")
+end
+
 local CommitmentClock = {}
 CommitmentClock.__index = CommitmentClock
 
@@ -271,40 +276,39 @@ end
 function Reader:read_commitment(tournament_address, commitment_hash)
     local sig = "getCommitment(bytes32)((uint64,uint64),bytes32)"
 
-    local call_ret = self:_call(tournament_address, sig, { commitment_hash:hex_string() })
-    assert(#call_ret == 2)
+    local ret = self:_call(tournament_address, sig, { commitment_hash:hex_string() })
+    assert(#ret == 2)
 
-    -- call_ret[1] = (299, 0) or (419, 1700743849 [1.7e9])
-    -- remove spaces, scientific notations and color code
-    local parsed_ret = call_ret[1]:gsub("%s+", ""):gsub("%b[]", ""):gsub("\27%[[%d;]*m", "")
+    -- ret[1] = (299, 0) or (419, 1700743849 [1.7e9])
+    local parsed_ret = sanitize_string(ret[1])
     local allowance, last_resume = parsed_ret:match "%((%d+),(%d+)%)"
     assert(allowance)
     assert(last_resume)
 
     local block_time = self:_get_block("latest")
 
-    local ret = {
+    local commitment = {
         clock = CommitmentClock:new(allowance, last_resume, block_time),
-        final_state = Hash:from_digest_hex(call_ret[2]),
+        final_state = Hash:from_digest_hex(ret[2]),
     }
 
-    return ret
+    return commitment
 end
 
 function Reader:read_constants(tournament_address)
     local sig = "tournamentLevelConstants()(uint64,uint64,uint64,uint64)"
 
-    local call_ret = self:_call(tournament_address, sig, { })
-    assert(#call_ret == 4)
+    local ret = self:_call(tournament_address, sig, {})
+    assert(#ret == 4)
 
-    local ret = {
-        max_level = tonumber(call_ret[1]),
-        level = tonumber(call_ret[2]),
-        log2_step = tonumber(call_ret[3]),
-        height = tonumber(call_ret[4]),
+    local constants = {
+        max_level = tonumber(ret[1]),
+        level = tonumber(ret[2]),
+        log2_step = tonumber(ret[3]),
+        height = tonumber(ret[4]),
     }
 
-    return ret
+    return constants
 end
 
 function Reader:read_tournament_created(tournament_address, match_id_hash)
@@ -325,19 +329,27 @@ function Reader:read_tournament_created(tournament_address, match_id_hash)
     return ret
 end
 
-function Reader:cycle(address, match_id_hash)
+function Reader:read_cycle(address, match_id_hash)
     local sig = "getMatchCycle(bytes32)(uint256)"
-    local ret = self:_call(address, sig, { match_id_hash:hex_string() })
+    local call_ret = self:_call(address, sig, { match_id_hash:hex_string() })
 
-    return ret[1]
+    local parsed_ret = sanitize_string(call_ret[1])
+    local ret = parsed_ret:match("(%d+)")
+
+    return ret
 end
 
-function Reader:match(address, match_id_hash)
+function Reader:read_match(address, match_id_hash)
     local sig = "getMatch(bytes32)(bytes32,bytes32,bytes32,uint256,uint64,uint64)"
     local ret = self:_call(address, sig, { match_id_hash:hex_string() })
+    assert(#ret == 6)
+
     ret[1] = Hash:from_digest_hex(ret[1])
     ret[2] = Hash:from_digest_hex(ret[2])
     ret[3] = Hash:from_digest_hex(ret[3])
+    -- ret[4] = 0 or 268435456 [2.684e8]
+    local parsed_ret = sanitize_string(ret[4])
+    ret[4] = parsed_ret:match("(%d+)")
 
     return ret
 end
