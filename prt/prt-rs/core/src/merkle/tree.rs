@@ -132,10 +132,10 @@ impl MerkleTree {
 
         if (include_index.wrapping_shr(new_height as u32)) & 1 == 0 {
             self.proof(proof_acc, left, new_height, include_index);
-            proof_acc.proof.push(left.digest);
+            proof_acc.proof.push(right.digest);
         } else {
             self.proof(proof_acc, right, new_height, include_index);
-            proof_acc.proof.push(right.digest);
+            proof_acc.proof.push(left.digest);
         }
     }
 
