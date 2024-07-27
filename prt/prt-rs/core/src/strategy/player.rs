@@ -6,9 +6,12 @@ use async_recursion::async_recursion;
 use ethers::types::Address;
 
 use crate::{
-    arena::{ArenaSender, MatchState, TournamentState, TournamentStateMap, TournamentWinner},
+    arena::{
+        ArenaSender, CommitmentState, MatchState, TournamentState, TournamentStateMap,
+        TournamentWinner,
+    },
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
-    merkle::MerkleProof,
+    merkle::{Digest, MerkleProof},
 };
 
 #[derive(Debug)]
@@ -59,9 +62,7 @@ impl Player {
         tournament_states: TournamentStateMap,
     ) -> Result<Option<PlayerTournamentResult>> {
         info!("Enter tournament at address: {}", tournament_address);
-        let tournament_state = tournament_states
-            .get(&tournament_address)
-            .expect("tournament state not found");
+        let tournament_state = get_tournament_state(&tournament_states, tournament_address);
         let mut new_commitments = commitments.clone();
 
         let commitment = new_commitments
@@ -144,6 +145,11 @@ impl Player {
                         tournament_states,
                     )
                     .await?;
+                } else {
+                    info!(
+                        "no match found for commitment: {}",
+                        commitment.merkle.root_hash()
+                    );
                 }
             }
             None => {
@@ -189,6 +195,19 @@ impl Player {
         tournament_states: TournamentStateMap,
     ) -> Result<()> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
+
+        let commitment_states =
+            &get_tournament_state(&tournament_states, match_state.tournament_address.clone())
+                .commitment_states;
+        self.win_timeout_match(
+            arena_sender,
+            match_state,
+            commitment,
+            commitment_states,
+            tournament_level,
+        )
+        .await?;
+
         if match_state.current_height == 0 {
             self.react_sealed_match(
                 arena_sender,
@@ -213,6 +232,45 @@ impl Player {
             self.react_running_match(arena_sender, match_state, commitment, tournament_level)
                 .await
         }
+    }
+
+    async fn win_timeout_match<'a>(
+        &mut self,
+        arena_sender: &'a impl ArenaSender,
+        match_state: &MatchState,
+        commitment: &MachineCommitment,
+        commitment_states: &HashMap<Digest, CommitmentState>,
+        tournament_level: u64,
+    ) -> Result<()> {
+        let opponent_clock;
+        if commitment.merkle.root_hash() == match_state.id.commitment_one {
+            opponent_clock = commitment_states
+                .get(&match_state.id.commitment_two)
+                .unwrap()
+                .clock;
+        } else {
+            opponent_clock = commitment_states
+                .get(&match_state.id.commitment_one)
+                .unwrap()
+                .clock;
+        }
+
+        if !opponent_clock.has_time() {
+            let (left, right) = commitment.merkle.root_children();
+
+            info!(
+                "win match by timeout in tournament {} of level {} for commitment {}",
+                match_state.tournament_address,
+                tournament_level,
+                commitment.merkle.root_hash(),
+            );
+
+            arena_sender
+                .win_timeout_match(match_state.tournament_address, match_state.id, left, right)
+                .await?;
+        }
+
+        Ok(())
     }
 
     #[async_recursion]
@@ -376,4 +434,9 @@ impl Player {
 
         Ok(())
     }
+}
+
+fn get_tournament_state(map: &TournamentStateMap, tournament_address: Address) -> &TournamentState {
+    map.get(&tournament_address)
+        .expect("tournament state not found")
 }

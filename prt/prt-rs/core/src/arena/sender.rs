@@ -90,6 +90,14 @@ pub trait ArenaSender: Send + Sync {
         right_node: Digest,
     ) -> Result<()>;
 
+    async fn win_timeout_match(
+        &self,
+        tournament: Address,
+        match_id: MatchID,
+        left_node: Digest,
+        right_node: Digest,
+    ) -> Result<()>;
+
     async fn seal_leaf_match(
         &self,
         tournament: Address,
@@ -209,6 +217,27 @@ impl ArenaSender for EthArenaSender {
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
         tournament
             .win_inner_match(child_tournament, left_node.into(), right_node.into())
+            .send()
+            .await?
+            .await?;
+        Ok(())
+    }
+
+    async fn win_timeout_match(
+        &self,
+        tournament: Address,
+        match_id: MatchID,
+        left_node: Digest,
+        right_node: Digest,
+    ) -> Result<()> {
+        let tournament =
+            non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
+        let match_id = non_leaf_tournament::Id {
+            commitment_one: match_id.commitment_one.into(),
+            commitment_two: match_id.commitment_two.into(),
+        };
+        tournament
+            .win_match_by_timeout(match_id, left_node.into(), right_node.into())
             .send()
             .await?
             .await?;
