@@ -42,7 +42,6 @@ To run the full example, execute the following command from the current path pat
 ```
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/simple-program" \
-    --env DEPLOY_TO_ANVIL="true" \
     --env LUA_NODE="true" \
     cartesi/prt-compute:lua
 ```
@@ -52,7 +51,6 @@ docker run --rm \
 ```
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/debootstrap-machine-sparsed" \
-    --env DEPLOY_TO_ANVIL="true" \
     --env LUA_NODE="true" \
     cartesi/prt-compute:lua
 ```
@@ -62,7 +60,6 @@ docker run --rm \
 ```
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/doom-compute-machine" \
-    --env DEPLOY_TO_ANVIL="true" \
     --env LUA_NODE="true" \
     cartesi/prt-compute:lua
 ```
@@ -73,7 +70,6 @@ docker run --rm \
 mkdir -p pixels
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/doom-compute-machine" \
-    --env DEPLOY_TO_ANVIL="true" \
     --env LUA_NODE="true" \
     --mount type=bind,source="$(pwd)/pixels",target=/app/pixels \
     --mount type=bind,source="$(pwd)/utils",target=/app/lua_poc/utils \
