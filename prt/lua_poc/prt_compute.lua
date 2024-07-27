@@ -22,7 +22,6 @@ local Blockchain = require "blockchain.node"
 local Machine = require "computation.machine"
 
 local machine_path = os.getenv("MACHINE_PATH")
-local deploy_to_anvil = helper.str_to_bool(os.getenv("DEPLOY_TO_ANVIL"))
 local lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
 
 print "Hello from Dave lua prototype!"
@@ -56,14 +55,10 @@ else
             machine_path))
 end
 
-local player_start = 1
-local node = nil
-if deploy_to_anvil then
-    node = Blockchain:new()
-    time.sleep(NODE_DELAY)
-    table.insert(cmds, 1, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
-    player_start = player_start + 1
-end
+local player_start = 2
+local node = Blockchain:new()
+time.sleep(NODE_DELAY)
+table.insert(cmds, 1, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
 
 local pid_reader = {}
 local pid_player = {}
@@ -121,7 +116,7 @@ while true do
             all_idle = 0
         end
 
-        if all_idle == IDLE_LIMIT and deploy_to_anvil then
+        if all_idle == IDLE_LIMIT then
             print(string.format("all players idle, fastforward blockchain for %d seconds...", FF_TIME))
             blockchain_utils.advance_time(FF_TIME, blockchain_constants.endpoint)
             all_idle = 0
