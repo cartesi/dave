@@ -44,9 +44,40 @@ function HonestStrategy:_join_tournament(tournament, commitment)
 end
 
 function HonestStrategy:_react_match(state, match, commitment)
-    -- TODO call timeout if needed
-
     helper.log_timestamp("Enter match at HEIGHT: " .. match.current_height)
+
+    local opponent_clock = nil
+    if commitment.root_hash == match.commitment_one then
+        opponent_clock = match.tournament.commitments[match.commitment_two].status.clock
+    else
+        opponent_clock = match.tournament.commitments[match.commitment_one].status.clock
+    end
+
+    if not opponent_clock:has_time() then
+        local f, left, right = commitment.root_hash:children()
+        assert(f)
+
+        helper.log_timestamp(string.format("win match by timeout in tournament %s of level %d for commitment %s",
+            match.tournament.address,
+            match.tournament.level,
+            commitment.root_hash))
+
+        local ok, e = self.sender:tx_win_timeout_match(
+            match.tournament.address,
+            match.commitment_one,
+            match.commitment_two,
+            left,
+            right
+        )
+        if not ok then
+            helper.log_timestamp(string.format(
+                "win timeout match reverted: %s",
+                e
+            ))
+        end
+        return
+    end
+
     if match.current_height == 0 then
         -- match sealed
         if match.tournament.level == (match.tournament.max_level - 1) then
@@ -223,13 +254,6 @@ function HonestStrategy:_react_tournament(state, tournament)
                 return true
             end
 
-            if tournament.commitments[commitment.root_hash].called_win then
-                helper.log_timestamp("player already called winInnerMatch")
-                return
-            else
-                tournament.commitments[commitment.root_hash].called_win = true
-            end
-
             helper.log_timestamp(string.format(
                 "win tournament %s of level %d for commitment %s",
                 tournament.address,
@@ -263,6 +287,8 @@ function HonestStrategy:_react_tournament(state, tournament)
         state.hero_state.latest_match = latest_match
         if latest_match then
             return self:_react_match(state, latest_match, commitment)
+        else
+            helper.log_timestamp(string.format("no match found for commitment: %s", commitment.root_hash))
         end
     end
 end
