@@ -1,6 +1,5 @@
 local constants = require "constants"
 local helper = require "utils.helper"
-
 local Machine = require "computation.machine"
 
 local HonestStrategy = {}
@@ -46,12 +45,9 @@ end
 function HonestStrategy:_react_match(state, match, commitment)
     helper.log_timestamp("Enter match at HEIGHT: " .. match.current_height)
 
-    local opponent_clock = nil
-    if commitment.root_hash == match.commitment_one then
-        opponent_clock = match.tournament.commitments[match.commitment_two].status.clock
-    else
-        opponent_clock = match.tournament.commitments[match.commitment_one].status.clock
-    end
+    local opponent_clock = commitment.root_hash == match.commitment_one and
+        match.tournament.commitments[match.commitment_two].status.clock or
+        match.tournament.commitments[match.commitment_one].status.clock
 
     if not opponent_clock:has_time() then
         local f, left, right = commitment.root_hash:children()
