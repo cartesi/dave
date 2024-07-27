@@ -143,6 +143,18 @@ function Sender:tx_win_inner_match(tournament_address, child_tournament_address,
     )
 end
 
+function Sender:tx_win_timeout_match(tournament_address, commitment_one, commitment_two, left, right)
+    local sig =
+    [[winMatchByTimeout((bytes32,bytes32),bytes32,bytes32)]]
+    return pcall(
+        self._send_tx,
+        self,
+        tournament_address,
+        sig,
+        { { commitment_one, commitment_two, _tag = "tuple" }, left, right }
+    )
+end
+
 function Sender:tx_seal_leaf_match(
     tournament_address, commitment_one, commitment_two, left, right, initial_hash, proof
 )
