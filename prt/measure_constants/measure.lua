@@ -208,7 +208,7 @@ local log2_strides = {} -- log2_gap or log2_step
 local heights = {}
 
 local function add_uint64_brackets(src)
-  dst = {}
+  local dst = {}
   for k, v in ipairs(src) do
     dst[k] = "uint64(" .. tostring(v) .. ")"
   end

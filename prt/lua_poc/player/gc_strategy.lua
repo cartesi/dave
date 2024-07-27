@@ -13,6 +13,7 @@ function GarbageCollectionStrategy:new(sender)
 end
 
 function GarbageCollectionStrategy:_react_match(state, match)
+    helper.log_timestamp("Garbage collect match at HEIGHT: " .. match.current_height)
     if match.inner_tournament then
         return self:_react_tournament(state, match.inner_tournament)
     end
