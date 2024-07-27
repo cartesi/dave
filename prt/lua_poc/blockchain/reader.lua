@@ -331,12 +331,12 @@ end
 
 function Reader:read_cycle(address, match_id_hash)
     local sig = "getMatchCycle(bytes32)(uint256)"
-    local call_ret = self:_call(address, sig, { match_id_hash:hex_string() })
+    local ret = self:_call(address, sig, { match_id_hash:hex_string() })
 
-    local parsed_ret = sanitize_string(call_ret[1])
-    local ret = parsed_ret:match("(%d+)")
+    local parsed_ret = sanitize_string(ret[1])
+    local cycle = parsed_ret:match("(%d+)")
 
-    return ret
+    return cycle
 end
 
 function Reader:read_match(address, match_id_hash)

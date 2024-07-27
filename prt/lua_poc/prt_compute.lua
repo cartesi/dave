@@ -4,16 +4,21 @@ package.path = package.path .. ";./lua_poc/?.lua"
 package.cpath = package.cpath .. ";/opt/cartesi/lib/lua/5.4/?.so"
 
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
-local FF_TIME = 30
+local FAST_FORWARD_TIME = 30
 -- max consecutive iterations of all players idling before the blockchain fastforwards
 local IDLE_LIMIT = 5
 -- max consecutive iterations of no active players before the program exits
 local INACTIVE_LIMIT = 10
 -- delay time for blockchain node to be ready
 local NODE_DELAY = 2
--- delay between each player
+-- delay between each player to run its command process
 local PLAYER_DELAY = 10
+-- number of fake commitment to make
+local FAKE_COMMITMENT_COUNT = 1
+-- number of idle players
+local IDLE_PLAYER_COUNT = 1
 
+-- Required Modules
 local helper = require "utils.helper"
 local blockchain_utils = require "blockchain.utils"
 local time = require "utils.time"
@@ -21,118 +26,123 @@ local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
 local Machine = require "computation.machine"
 
-local machine_path = os.getenv("MACHINE_PATH")
-local lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
+-- Function to setup players
+local function setup_players(commands, use_lua_node, contract_address, machine_path, initial_hash)
+    table.insert(commands, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
+    local player_index = 2
 
-print "Hello from Dave lua prototype!"
-
-local m = Machine:new_from_path(machine_path)
-local initial_hash = m:state().root_hash
-local contract = blockchain_constants.root_tournament
-
--- add more player instances here
-local cmds = {
-    string.format([[sh -c "echo $$ ; exec ./lua_poc/player/dishonest_player.lua %d %s %s %d | tee dishonest.log"]], 3,
-        contract, machine_path, 3),
-    -- uncomment below for two extra idle players
-    -- string.format([[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s | tee idle_1.log"]], 4,
-    --     contract, initial_hash),
-    -- string.format([[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s | tee idle_2.log"]], 5,
-    --     contract, initial_hash)
-}
-
-if lua_node then
-    -- use Lua node to defend
-    table.insert(cmds, 1,
-        string.format([[sh -c "echo $$ ; exec ./lua_poc/player/honest_player.lua %d %s %s | tee honest.log"]], 2,
-            contract,
-            machine_path))
-else
-    -- use Rust node to defend
-    table.insert(cmds, 1,
-        string.format(
+    if use_lua_node then
+        -- use Lua node to defend
+        table.insert(commands, string.format(
+            [[sh -c "echo $$ ; exec ./lua_poc/player/honest_player.lua %d %s %s | tee honest.log"]],
+            player_index, contract_address, machine_path))
+    else
+        -- use Rust node to defend
+        table.insert(commands, string.format(
             [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' ./prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
             machine_path))
+    end
+    player_index = player_index + 1
+
+    if FAKE_COMMITMENT_COUNT > 0 then
+        table.insert(commands, string.format(
+            [[sh -c "echo $$ ; exec ./lua_poc/player/dishonest_player.lua %d %s %s %d | tee dishonest.log"]],
+            player_index, contract_address, machine_path, FAKE_COMMITMENT_COUNT))
+        player_index = player_index + 1
+    end
+
+    if IDLE_PLAYER_COUNT > 0 then
+        for _ = 1, IDLE_PLAYER_COUNT do
+            table.insert(commands, string.format(
+                [[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s | tee idle_1.log"]],
+                player_index, contract_address, initial_hash))
+            player_index = player_index + 1
+        end
+    end
 end
 
-local player_start = 2
-local node = Blockchain:new()
+-- Main Execution
+local machine_path = os.getenv("MACHINE_PATH")
+local use_lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
+local machine = Machine:new_from_path(machine_path)
+local initial_hash = machine:state().root_hash
+local contract_address = blockchain_constants.root_tournament
+local commands = {}
+
+print("Hello from Dave lua prototype!")
+setup_players(commands, use_lua_node, contract_address, machine_path, initial_hash)
+
+local player_start_index = 2
+local blockchain_node = Blockchain:new()
 time.sleep(NODE_DELAY)
-table.insert(cmds, 1, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
 
-local pid_reader = {}
-local pid_player = {}
+local pid_reader_map = {}
+local pid_player_map = {}
 
-for i, cmd in ipairs(cmds) do
-    local reader = io.popen(cmd)
+for index, command in ipairs(commands) do
+    local reader = io.popen(command)
     local pid = assert(reader):read()
-    if i >= player_start then
-        pid_reader[pid] = reader
-        pid_player[pid] = i
+    if index >= player_start_index then
+        pid_reader_map[pid] = reader
+        pid_player_map[pid] = index
     end
     time.sleep(PLAYER_DELAY)
 end
 
--- gracefully end children processes
-setmetatable(pid_reader, {
+-- Gracefully end child processes
+setmetatable(pid_reader_map, {
     __gc = function(t)
         helper.stop_players(t)
     end
 })
 
-local no_active_players = 0
-local all_idle = 0
-local last_ts = os.time({
-    year = 2000,
-    month = 1,
-    day = 1,
-    hour = 0,
-    min = 0,
-    sec = 0
-})
-while true do
-    local players = 0
+local no_active_players_count = 0
+local all_idle_count = 0
+local last_timestamp = os.time({ year = 2000, month = 1, day = 1, hour = 0, min = 0, sec = 0 })
 
-    for pid, reader in pairs(pid_reader) do
-        local msg_out
-        players = players + 1
-        last_ts, msg_out = helper.log_to_ts(pid_player[pid], reader, last_ts)
+while true do
+    local active_players = 0
+
+    for pid, reader in pairs(pid_reader_map) do
+        local message_out
+        active_players = active_players + 1
+        last_timestamp, message_out = helper.log_to_ts(pid_player_map[pid], reader, last_timestamp)
 
         -- close the reader and delete the reader entry when there's no more msg in the buffer
         -- and the process has already ended
-        if msg_out == 0 and helper.is_zombie(pid) then
-            helper.log_full(pid_player[pid], string.format("player process %s is dead", pid))
+        if message_out == 0 and helper.is_zombie(pid) then
+            helper.log_full(pid_player_map[pid], string.format("player process %s is dead", pid))
             reader:close()
-            pid_reader[pid] = nil
-            pid_player[pid] = nil
+            pid_reader_map[pid] = nil
+            pid_player_map[pid] = nil
         end
     end
 
-    if players > 0 then
-        if helper.all_players_idle(pid_player) then
-            all_idle = all_idle + 1
-            helper.rm_all_players_idle(pid_player)
+    if active_players > 0 then
+        if helper.all_players_idle(pid_player_map) then
+            all_idle_count = all_idle_count + 1
+            helper.rm_all_players_idle(pid_player_map)
         else
-            all_idle = 0
+            all_idle_count = 0
         end
 
-        if all_idle == IDLE_LIMIT then
-            print(string.format("all players idle, fastforward blockchain for %d seconds...", FF_TIME))
-            blockchain_utils.advance_time(FF_TIME, blockchain_constants.endpoint)
-            all_idle = 0
+        if all_idle_count == IDLE_LIMIT then
+            print(string.format("All players idle, fastforward blockchain for %d seconds...", FAST_FORWARD_TIME))
+            blockchain_utils.advance_time(FAST_FORWARD_TIME, blockchain_constants.endpoint)
+            all_idle_count = 0
         end
     end
 
-    if players == 0 then
-        no_active_players = no_active_players + 1
+    if active_players == 0 then
+        no_active_players_count = no_active_players_count + 1
     else
-        no_active_players = 0
+        no_active_players_count = 0
     end
 
-    if no_active_players == INACTIVE_LIMIT then
-        print("no active players, end program...")
+    if no_active_players_count == INACTIVE_LIMIT then
+        print("No active players, ending program...")
         break
     end
 end
 
-print "Good-bye, world!"
+print("Good-bye, world!")

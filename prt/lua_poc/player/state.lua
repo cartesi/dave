@@ -1,6 +1,5 @@
 local constants = require('constants')
 local bint = require 'utils.bint' (256) -- use 256 bits integers
-
 local Reader = require "blockchain.reader"
 
 local State = {}
@@ -41,9 +40,8 @@ function State:_fetch_tournament(tournament)
 
     assert(tournament.level < tournament.max_level)
 
-    local matches = self:_matches(tournament)
+    local matches = self:_capture_matches(tournament)
     local commitments = self.reader:read_commitment_joined(tournament.address)
-
 
     for _, log in ipairs(commitments) do
         local root = log.root
@@ -92,7 +90,7 @@ function State:_fetch_match(match)
     end
 end
 
-function State:_matches(tournament)
+function State:_capture_matches(tournament)
     local matches = self.reader:read_match_created(tournament.address)
 
     for k, match in ipairs(matches) do
