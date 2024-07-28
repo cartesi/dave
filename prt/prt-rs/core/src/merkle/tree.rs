@@ -40,22 +40,22 @@ impl Default for ProofAccumulator {
 #[derive(Clone, Debug)]
 pub struct MerkleTree {
     log2_size: u32,
+    leaf_log2_size: Option<u32>,
     root: Digest,
-    leafs: Vec<MerkleTreeLeaf>,
     nodes: HashMap<Digest, MerkleTreeNode>,
 }
 
 impl MerkleTree {
     pub fn new(
         log2_size: u32,
+        leaf_log2_size: Option<u32>,
         root: Digest,
-        leafs: Vec<MerkleTreeLeaf>,
         nodes: HashMap<Digest, MerkleTreeNode>,
     ) -> Self {
         MerkleTree {
             log2_size,
+            leaf_log2_size,
             root,
-            leafs,
             nodes,
         }
     }
@@ -81,7 +81,7 @@ impl MerkleTree {
     }
 
     pub fn log2_size(&self) -> u32 {
-        self.log2_size.clone()
+        self.log2_size
     }
 
     pub fn prove_leaf(&self, index: u64) -> (Digest, MerkleProof) {
@@ -102,15 +102,10 @@ impl MerkleTree {
     }
 
     fn calculate_height(&self) -> u32 {
-        let mut height = self.log2_size;
-
-        if let Some(leaf) = self.leafs.get(0) {
-            if let Some(log2_size) = leaf.log2_size {
-                height = log2_size + self.log2_size;
-            }
+        match self.leaf_log2_size {
+            Some(leaf_log2_size) => self.log2_size + leaf_log2_size,
+            None => self.log2_size,
         }
-
-        height
     }
 
     fn proof(
