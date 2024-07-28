@@ -7,8 +7,8 @@ use ethers::types::Address;
 
 use crate::{
     arena::{
-        ArenaSender, CommitmentState, MatchState, TournamentState, TournamentStateMap,
-        TournamentWinner,
+        ArenaSender, CommitmentMap, CommitmentState, MatchState, TournamentState,
+        TournamentStateMap, TournamentWinner,
     },
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     merkle::{Digest, MerkleProof},
@@ -42,7 +42,7 @@ impl Player {
     pub async fn react<'a>(
         &mut self,
         arena_sender: &'a impl ArenaSender,
-        tournament_states: TournamentStateMap,
+        tournament_states: &TournamentStateMap,
     ) -> Result<Option<PlayerTournamentResult>> {
         self.react_tournament(
             arena_sender,
@@ -57,46 +57,45 @@ impl Player {
     async fn react_tournament<'a>(
         &mut self,
         arena_sender: &'a impl ArenaSender,
-        commitments: HashMap<Address, MachineCommitment>,
+        mut commitments: CommitmentMap,
         tournament_address: Address,
-        tournament_states: TournamentStateMap,
+        tournament_states: &TournamentStateMap,
     ) -> Result<Option<PlayerTournamentResult>> {
         info!("Enter tournament at address: {}", tournament_address);
         let tournament_state = get_tournament_state(&tournament_states, tournament_address);
-        let mut new_commitments = commitments.clone();
 
-        let commitment = new_commitments
-            .entry(tournament_state.address)
-            .or_insert(self.commitment_builder.build_commitment(
+        commitments.insert(
+            tournament_state.address,
+            self.commitment_builder.build_commitment(
                 tournament_state.base_big_cycle,
                 tournament_state.level,
                 tournament_state.log2_stride,
                 tournament_state.log2_stride_count,
-            )?)
-            .clone();
+            )?,
+        );
+        let commitment = get_commitment(&commitments, tournament_address);
 
-        if let Some(winner) = tournament_state.winner.clone() {
+        if let Some(winner) = &tournament_state.winner {
             match winner {
                 TournamentWinner::Root(winner_commitment, winner_state) => {
                     info!(
                         "tournament finished, winner commitment: {}, state hash: {}",
                         winner_commitment, winner_state,
                     );
-                    if commitment.merkle.root_hash() == winner_commitment {
+                    if commitment.merkle.root_hash() == *winner_commitment {
                         return Ok(Some(PlayerTournamentResult::TournamentWon));
                     } else {
                         return Ok(Some(PlayerTournamentResult::TournamentLost));
                     }
                 }
                 TournamentWinner::Inner(parent_commitment, _) => {
-                    let old_commitment = commitments
-                        .get(
-                            &tournament_state
-                                .parent
-                                .expect("parent tournament state not found"),
-                        )
-                        .expect("parent commitment not found");
-                    if parent_commitment != old_commitment.merkle.root_hash() {
+                    let old_commitment = get_commitment(
+                        &commitments,
+                        tournament_state
+                            .parent
+                            .expect("parent tournament state not found"),
+                    );
+                    if *parent_commitment != old_commitment.merkle.root_hash() {
                         info!("player lost tournament {}", tournament_state.address);
                         return Ok(Some(PlayerTournamentResult::TournamentLost));
                     } else {
@@ -131,17 +130,16 @@ impl Player {
             Some(c) => {
                 info!("{}", c.clock);
                 if let Some(m) = c.latest_match {
+                    let match_state = tournament_state
+                        .matches
+                        .get(m)
+                        .expect("match state not found");
+
                     self.react_match(
                         arena_sender,
-                        &tournament_state
-                            .matches
-                            .get(m)
-                            .expect("match state not found")
-                            .clone(),
-                        &commitment,
-                        new_commitments,
-                        tournament_state.level,
-                        tournament_state.max_level,
+                        &match_state,
+                        commitments,
+                        tournament_state,
                         tournament_states,
                     )
                     .await?;
@@ -188,23 +186,21 @@ impl Player {
         &mut self,
         arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
-        commitment: &MachineCommitment,
-        commitments: HashMap<Address, MachineCommitment>,
-        tournament_level: u64,
-        tournament_max_level: u64,
-        tournament_states: TournamentStateMap,
+        commitments: CommitmentMap,
+        tournament_state: &TournamentState,
+        tournament_states: &TournamentStateMap,
     ) -> Result<()> {
         info!("Enter match at HEIGHT: {}", match_state.current_height);
 
-        let commitment_states =
-            &get_tournament_state(&tournament_states, match_state.tournament_address.clone())
-                .commitment_states;
+        let commitment_states = &tournament_state.commitment_states;
+        let commitment = get_commitment(&commitments, match_state.tournament_address);
+
         self.win_timeout_match(
             arena_sender,
             match_state,
             commitment,
             commitment_states,
-            tournament_level,
+            tournament_state.level,
         )
         .await?;
 
@@ -212,10 +208,9 @@ impl Player {
             self.react_sealed_match(
                 arena_sender,
                 match_state,
-                commitment,
                 commitments,
-                tournament_level,
-                tournament_max_level,
+                tournament_state.level,
+                tournament_state.max_level,
                 tournament_states,
             )
             .await
@@ -224,13 +219,18 @@ impl Player {
                 arena_sender,
                 match_state,
                 commitment,
-                tournament_level,
-                tournament_max_level,
+                tournament_state.level,
+                tournament_state.max_level,
             )
             .await
         } else {
-            self.react_running_match(arena_sender, match_state, commitment, tournament_level)
-                .await
+            self.react_running_match(
+                arena_sender,
+                match_state,
+                commitment,
+                tournament_state.level,
+            )
+            .await
         }
     }
 
@@ -278,13 +278,13 @@ impl Player {
         &mut self,
         arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
-        commitment: &MachineCommitment,
-        commitments: HashMap<Address, MachineCommitment>,
+        commitments: CommitmentMap,
         tournament_level: u64,
         tournament_max_level: u64,
-        tournament_states: TournamentStateMap,
+        tournament_states: &TournamentStateMap,
     ) -> Result<()> {
         if tournament_level == (tournament_max_level - 1) {
+            let commitment = get_commitment(&commitments, match_state.tournament_address);
             let (left, right) = commitment.merkle.root_children();
 
             let finished = match_state.other_parent.is_zeroed();
@@ -439,4 +439,8 @@ impl Player {
 fn get_tournament_state(map: &TournamentStateMap, tournament_address: Address) -> &TournamentState {
     map.get(&tournament_address)
         .expect("tournament state not found")
+}
+
+fn get_commitment(map: &CommitmentMap, tournament_address: Address) -> &MachineCommitment {
+    map.get(&tournament_address).expect("commitment not found")
 }

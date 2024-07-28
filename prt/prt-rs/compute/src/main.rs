@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
         let tournament_states = reader.fetch_from_root(config.root_tournament).await?;
 
         let tx_count = sender.nonce().await?;
-        let res = player.react(&sender, tournament_states).await;
+        let res = player.react(&sender, &tournament_states).await;
 
         match res {
             Err(e) => error!("{}", e),
