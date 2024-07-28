@@ -11,7 +11,7 @@ local time = require "utils.time"
 local helper = require "utils.helper"
 
 -- Function to start dishonest player
-local function start_dishonest_player(player_index, tournament, machine_path, fake_count)
+local function start_dishonest_player(player_index, tournament, machine_path, fake_commitment_count)
     local state = State:new(tournament)
     local sender = Sender:new(player_index)
     local honest_strategy
@@ -27,10 +27,8 @@ local function start_dishonest_player(player_index, tournament, machine_path, fa
         -- an dishonest player can send multiple fake commitments
         -- each of them is determined by the `fake_index` of `FakeCommitmentBuilder`
         local finish_count = 0
-        for i = 1, fake_count do
-            time.sleep(5)
+        for i = 1, fake_commitment_count do
             state:fetch()
-
             helper.log_timestamp(string.format("react with fake index: %d", i))
             honest_strategy.commitment_builder.fake_index = i
             if honest_strategy:react(state) then
@@ -38,7 +36,7 @@ local function start_dishonest_player(player_index, tournament, machine_path, fa
             end
         end
 
-        if finish_count == fake_count then
+        if finish_count == fake_commitment_count then
             -- all fake commitments are done
             break
         end
@@ -50,6 +48,8 @@ local function start_dishonest_player(player_index, tournament, machine_path, fa
         else
             helper.rm_player_idle(player_index)
         end
+
+        time.sleep(5)
     end
 end
 
@@ -57,6 +57,6 @@ end
 local player_index = tonumber(arg[1])
 local tournament = arg[2]
 local machine_path = arg[3]
-local fake_count = tonumber(arg[4]) or 1
+local fake_commitment_count = tonumber(arg[4])
 
-start_dishonest_player(player_index, tournament, machine_path, fake_count)
+start_dishonest_player(player_index, tournament, machine_path, fake_commitment_count)
