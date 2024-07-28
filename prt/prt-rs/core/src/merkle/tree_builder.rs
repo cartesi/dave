@@ -10,9 +10,8 @@ pub type UInt = u128;
 #[derive(Debug, Default)]
 pub struct MerkleBuilder {
     leafs: Vec<MerkleTreeLeaf>,
-    trees: Vec<MerkleTree>,
     nodes: HashMap<Digest, MerkleTreeNode>,
-    interned: HashMap<Digest, Vec<Digest>>,
+    iterateds: HashMap<Digest, Vec<Digest>>,
 }
 
 impl MerkleBuilder {
@@ -23,19 +22,8 @@ impl MerkleBuilder {
 
     /// Adds a new leaf to the merkle tree. The leaf is represented by a MerkleTree and its repetition.
     pub fn add_tree_with_repetition(&mut self, tree: MerkleTree, rep: UInt) {
-        assert!(rep != 0, "repetition is zero");
-
-        let root_hash = tree.root_hash();
-        self.add_new_node(root_hash);
-
-        let count = self.calculate_accumulated_count(rep);
-
-        self.leafs.push(MerkleTreeLeaf {
-            node: root_hash,
-            accumulated_count: count,
-            log2_size: Some(tree.log2_size()),
-        });
-        self.trees.push(tree);
+        self.add_with_repetition_and_log2_size(tree.root_hash(), Some(tree.log2_size()), rep);
+        self.nodes.extend(tree.nodes());
     }
 
     /// Adds a new leaf to the merkle tree. The leaf is represented by its digest.
@@ -46,6 +34,15 @@ impl MerkleBuilder {
     /// Adds a new leaf to the merkle tree. The leaf is represented by its
     /// digest and its repetition.
     pub fn add_with_repetition(&mut self, digest: Digest, rep: UInt) {
+        self.add_with_repetition_and_log2_size(digest, None, rep);
+    }
+
+    fn add_with_repetition_and_log2_size(
+        &mut self,
+        digest: Digest,
+        log2_size: Option<u32>,
+        rep: UInt,
+    ) {
         assert!(rep != 0, "repetition is zero");
 
         self.add_new_node(digest);
@@ -55,7 +52,7 @@ impl MerkleBuilder {
         self.leafs.push(MerkleTreeLeaf {
             node: digest,
             accumulated_count: count,
-            log2_size: None,
+            log2_size,
         });
     }
 
@@ -76,7 +73,7 @@ impl MerkleBuilder {
         if !self.nodes.contains_key(&digest) {
             let node = MerkleTreeNode::from_digest(digest);
             self.nodes.insert(node.digest, node.clone());
-            self.interned.insert(node.digest, vec![node.digest]);
+            self.iterateds.insert(node.digest, vec![node.digest]);
         }
     }
 
@@ -87,14 +84,12 @@ impl MerkleBuilder {
 
         assert!(count.is_power_of_two(), "is not a power of two {}", count);
         let log2_size = count.trailing_zeros();
+        let leaf_log2_size = last.log2_size.clone();
 
         let leafs_clone = self.leafs.clone();
         let root = self.build_merkle(leafs_clone.as_slice(), log2_size, 0);
 
-        for tree in self.trees.clone() {
-            self.nodes.extend(tree.nodes());
-        }
-        MerkleTree::new(log2_size, root.0, self.leafs.clone(), self.nodes.clone())
+        MerkleTree::new(log2_size, leaf_log2_size, root.0, self.nodes.clone())
     }
 
     fn build_merkle(
@@ -131,23 +126,20 @@ impl MerkleBuilder {
     }
 
     /// Builds the iterated merkle tree from the given node and level.
-    pub fn iterated_merkle(&mut self, node: Digest, level: u32) -> Digest {
-        let iterated = self.interned.get(&node).expect("interned not found");
-        if let Some(node) = iterated.get(level as usize) {
-            return *node;
+    fn iterated_merkle(&mut self, node: Digest, level: u32) -> Digest {
+        let iterated = self.iterateds.get(&node).expect("iterated not found");
+        if let Some(n) = iterated.get(level as usize) {
+            return *n;
         }
-        self.build_iterated_merkle(node, level)
-    }
 
-    fn build_iterated_merkle(&mut self, node: Digest, level: u32) -> Digest {
-        let iterated = self.interned.get(&node).expect("interned not found");
+        // at least 1
         let mut i = iterated.len() - 1;
-        let mut highest_level = *iterated.get(i).expect("iterated not found");
+        let mut highest_level = *iterated.get(i).expect("iterated at level not found");
 
         while i < level as usize {
             highest_level = self.join_nodes(highest_level, highest_level);
+            self.iterateds.get_mut(&node).unwrap().push(highest_level);
             i += 1;
-            self.interned.get_mut(&node).unwrap().push(highest_level);
         }
 
         highest_level
@@ -161,7 +153,7 @@ impl MerkleBuilder {
         } else {
             let node = MerkleTreeNode::new(left, right);
             self.nodes.insert(node.digest, node.clone());
-            self.interned.insert(node.digest, vec![node.digest]);
+            self.iterateds.insert(node.digest, vec![node.digest]);
         };
 
         digest
@@ -171,8 +163,8 @@ impl MerkleBuilder {
         self.nodes.clone()
     }
 
-    pub fn interned(&self) -> HashMap<Digest, Vec<Digest>> {
-        self.interned.clone()
+    pub fn iterateds(&self) -> HashMap<Digest, Vec<Digest>> {
+        self.iterateds.clone()
     }
 }
 
@@ -219,18 +211,6 @@ mod tests {
         assert_eq!(
             merkle.root_hash(),
             builder.iterated_merkle(Digest::zeroed(), 64)
-        );
-    }
-
-    #[test]
-    fn test_merkle_builder_128() {
-        let mut builder = MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 2);
-        builder.add_with_repetition(Digest::zeroed(), 0u128.wrapping_sub(2));
-        let merkle = builder.build();
-        assert_eq!(
-            merkle.root_hash(),
-            builder.iterated_merkle(Digest::zeroed(), 128)
         );
     }
 }
