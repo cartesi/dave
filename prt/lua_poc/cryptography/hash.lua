@@ -97,6 +97,10 @@ function Hash:hex_string()
     return hex_from_bin(self.digest)
 end
 
+Hash.__eq = function(x, y)
+    return x:hex_string() == y:hex_string()
+end
+
 Hash.__tostring = function(x)
     return hex_from_bin(x.digest)
 end
