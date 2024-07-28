@@ -1,10 +1,11 @@
 //! This module defines the structs that are used for the interacting to tournaments
 
-use crate::merkle::Digest;
+use crate::{machine::MachineCommitment, merkle::Digest};
 use ethers::types::{Address, U256};
 use std::collections::HashMap;
 
 pub type TournamentStateMap = HashMap<Address, TournamentState>;
+pub type CommitmentMap = HashMap<Address, MachineCommitment>;
 
 /// Struct used to identify a match.
 #[derive(Clone, Copy)]
