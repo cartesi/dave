@@ -4,11 +4,13 @@
 //!
 //! # Examples
 //! ```rust
+//! use cartesi_prt_core::merkle::{Digest, MerkleBuilder};
+//!
 //! let mut builder = MerkleBuilder::default();
-//! builder.add(Digest::zeroed(), 2);
-//! builder.add(Digest::zeroed(),0u128.wrapping_sub(2));
+//! builder.add_with_repetition(Digest::zeroed(), 2);
+//! builder.add_with_repetition(Digest::zeroed(), 6);
 //! let merkle = builder.build();
-//! assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 128));
+//! assert_eq!(merkle.root_hash(), builder.iterated_merkle(Digest::zeroed(), 3));
 //! ```
 //!
 
