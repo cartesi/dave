@@ -144,9 +144,13 @@ function HonestStrategy:_react_match(state, match, commitment)
             )
             if not ok then
                 helper.log_timestamp(string.format(
-                    "seal leaf match reverted: %s",
-                    e
+                    [[seal leaf match reverted: %s, current left: %s, current right: %s,
+                    my left: %s, my right: %s, agree_state: %s]],
+                    e, match.current_left, match.current_right, left, right, agree_state
                 ))
+                for i = 1, #agree_state_proof do
+                    helper.log_timestamp(agree_state_proof[i])
+                end
             end
         else
             helper.log_timestamp(string.format(
@@ -166,9 +170,13 @@ function HonestStrategy:_react_match(state, match, commitment)
             )
             if not ok then
                 helper.log_timestamp(string.format(
-                    "seal inner match reverted: %s",
-                    e
+                    [[seal inner match reverted: %s, current left: %s, current right: %s,
+                    my left: %s, my right: %s, agree_state: %s]],
+                    e, match.current_left, match.current_right, left, right, agree_state
                 ))
+                for i = 1, #agree_state_proof do
+                    helper.log_timestamp(agree_state_proof[i])
+                end
             end
         end
     else
@@ -212,8 +220,9 @@ function HonestStrategy:_react_match(state, match, commitment)
         )
         if not ok then
             helper.log_timestamp(string.format(
-                "advance match reverted: %s",
-                e
+                [[advance match reverted: %s, current left: %s, current right: %s,
+                my left: %s, my right: %s, new_left: %s, new_right: %s]],
+                e, match.current_left, match.current_right, left, right, new_left, new_right
             ))
         end
     end
