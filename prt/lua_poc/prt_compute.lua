@@ -33,18 +33,22 @@ local function setup_players(commands, use_lua_node, contract_address, machine_p
 
     if use_lua_node then
         -- use Lua node to defend
+        print("Setting up Lua honest player")
         table.insert(commands, string.format(
             [[sh -c "echo $$ ; exec ./lua_poc/player/honest_player.lua %d %s %s | tee honest.log"]],
             player_index, contract_address, machine_path))
     else
         -- use Rust node to defend
+        print("Setting up Rust honest player")
         table.insert(commands, string.format(
-            [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' ./prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
+            [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
+            ./prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
             machine_path))
     end
     player_index = player_index + 1
 
     if FAKE_COMMITMENT_COUNT > 0 then
+        print(string.format("Setting up dishonest player with %d fake commitments", FAKE_COMMITMENT_COUNT))
         table.insert(commands, string.format(
             [[sh -c "echo $$ ; exec ./lua_poc/player/dishonest_player.lua %d %s %s %d | tee dishonest.log"]],
             player_index, contract_address, machine_path, FAKE_COMMITMENT_COUNT))
@@ -52,6 +56,7 @@ local function setup_players(commands, use_lua_node, contract_address, machine_p
     end
 
     if IDLE_PLAYER_COUNT > 0 then
+        print(string.format("Setting up %d idle players", IDLE_PLAYER_COUNT))
         for _ = 1, IDLE_PLAYER_COUNT do
             table.insert(commands, string.format(
                 [[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s | tee idle_1.log"]],
