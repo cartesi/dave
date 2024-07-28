@@ -96,6 +96,7 @@ function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride
 
     local commitment = build_commitment(self.builder, base_cycle, level, log2_stride, log2_stride_count)
     -- function caller should set `self.fake_index` properly from outside to generate different fake commitment
+    -- the fake commitments are not guaranteed to be unique if there are not many leafs (short computation)
     local fake_commitment = build_fake_commitment(commitment, self.fake_index, log2_stride, self.uarch_zero)
 
     self.fake_commitments[level][base_cycle][self.fake_index] = fake_commitment

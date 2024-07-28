@@ -31,6 +31,10 @@ function MerkleTree:hex_string()
     return self.root_hash:hex_string()
 end
 
+MerkleTree.__eq = function(x, y)
+    return x:hex_string() == y:hex_string()
+end
+
 MerkleTree.__tostring = function(x)
     return x.root_hash:hex_string()
 end
