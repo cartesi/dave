@@ -341,12 +341,20 @@ impl Player {
                 return Ok(());
             };
 
-        let (agree_state, agree_state_proof) = if match_state.running_leaf_position == 0 {
+        let running_leaf_position = {
+            if left != match_state.left_node {
+                // disagree on left
+                match_state.running_leaf_position
+            } else {
+                // disagree on right
+                match_state.running_leaf_position + 1
+            }
+        };
+
+        let (agree_state, agree_state_proof) = if running_leaf_position == 0 {
             (commitment.implicit_hash, MerkleProof::default())
         } else {
-            commitment
-                .merkle
-                .prove_leaf(match_state.running_leaf_position - 1)
+            commitment.merkle.prove_leaf(running_leaf_position - 1)
         };
 
         if tournament_level == (tournament_max_level - 1) {
