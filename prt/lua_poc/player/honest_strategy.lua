@@ -119,11 +119,20 @@ function HonestStrategy:_react_match(state, match, commitment)
             return
         end
 
+        local running_leaf
+        if left ~= match.current_left then
+            -- disagree on left
+            running_leaf = match.running_leaf
+        else
+            -- disagree on right
+            running_leaf = match.running_leaf + 1
+        end
+
         local agree_state, agree_state_proof
-        if match.running_leaf:iszero() then
+        if running_leaf:iszero() then
             agree_state, agree_state_proof = commitment.implicit_hash, {}
         else
-            agree_state, agree_state_proof = commitment:prove_leaf(match.running_leaf - 1)
+            agree_state, agree_state_proof = commitment:prove_leaf(running_leaf - 1)
         end
 
         if match.tournament.level == (match.tournament.max_level - 1) then
