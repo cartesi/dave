@@ -217,22 +217,10 @@ library Match {
 
         if (state.runningLeafPosition % 2 == 0) {
             // divergence was set on left leaf
-            if (state.height() % 2 == 0) {
-                finalStateOne = state.leftNode.toMachineHash();
-                finalStateTwo = state.rightNode.toMachineHash();
-            } else {
-                finalStateOne = state.rightNode.toMachineHash();
-                finalStateTwo = state.leftNode.toMachineHash();
-            }
+            (finalStateOne, finalStateTwo) = _getDivergenceOnLeftLeaf(state);
         } else {
             // divergence was set on right leaf
-            if (state.height() % 2 == 0) {
-                finalStateOne = state.rightNode.toMachineHash();
-                finalStateTwo = state.leftNode.toMachineHash();
-            } else {
-                finalStateOne = state.leftNode.toMachineHash();
-                finalStateTwo = state.rightNode.toMachineHash();
-            }
+            (finalStateOne, finalStateTwo) = _getDivergenceOnRightLeaf(state);
         }
     }
 
@@ -301,13 +289,7 @@ library Match {
         state.rightNode = leftLeaf;
         state.currentHeight = 0;
 
-        if (state.height() % 2 == 0) {
-            finalStateOne = state.leftNode.toMachineHash();
-            finalStateTwo = state.rightNode.toMachineHash();
-        } else {
-            finalStateOne = state.rightNode.toMachineHash();
-            finalStateTwo = state.leftNode.toMachineHash();
-        }
+        (finalStateOne, finalStateTwo) = _getDivergenceOnLeftLeaf(state);
     }
 
     function _setDivergenceOnRightLeaf(State storage state, Tree.Node rightLeaf)
@@ -319,6 +301,28 @@ library Match {
         state.currentHeight = 0;
         state.runningLeafPosition += 1;
 
+        (finalStateOne, finalStateTwo) = _getDivergenceOnRightLeaf(state);
+    }
+
+    function _getDivergenceOnLeftLeaf(State memory state)
+        internal
+        pure
+        returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
+    {
+        if (state.height() % 2 == 0) {
+            finalStateOne = state.leftNode.toMachineHash();
+            finalStateTwo = state.rightNode.toMachineHash();
+        } else {
+            finalStateOne = state.rightNode.toMachineHash();
+            finalStateTwo = state.leftNode.toMachineHash();
+        }
+    }
+
+    function _getDivergenceOnRightLeaf(State memory state)
+        internal
+        pure
+        returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
+    {
         if (state.height() % 2 == 0) {
             finalStateOne = state.rightNode.toMachineHash();
             finalStateTwo = state.leftNode.toMachineHash();
