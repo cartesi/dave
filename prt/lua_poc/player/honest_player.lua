@@ -34,6 +34,9 @@ local function output_hero_claim(state)
         local claims_file = io.open("/app/lua_poc/utils/hero-claims.json", "w")
         hero_state.tournament_address = string.format("%s", state.hero_state.tournament.address)
         hero_state.commitment_root_hash = string.format("%s", state.hero_state.commitment.root_hash)
+        if (state.hero_state.latest_match) then
+            hero_state.latest_match = string.format("%s", state.hero_state.latest_match.match_id_hash)
+        end
 
         if claims_file then
             claims_file:write(json.encode(hero_state))

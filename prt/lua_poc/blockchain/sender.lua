@@ -127,7 +127,7 @@ function Sender:tx_seal_inner_match(
         self,
         tournament_address,
         sig,
-        { { commitment_one, commitment_two, _tag = "tuple" }, left, right, initial_hash:hex_string(), proof }
+        { { commitment_one, commitment_two, _tag = "tuple" }, left, right, initial_hash, proof }
     )
 end
 
