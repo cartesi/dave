@@ -1,45 +1,83 @@
+local bint = require 'utils.bint' (256) -- use 256 bits integers
+
 local m = {}
 
-local function hex_from_bin(bin)
-    assert(bin:len() == 32)
-    return "0x" .. (bin:gsub('.', function(c)
-        return string.format('%02x', string.byte(c))
-    end))
+local function print_table(object)
+    if type(object) == "table" then
+        for k, v in pairs(object) do
+            print(string.format("\"%s\":{", k))
+            print_table(v)
+            print(string.format("},", k))
+        end
+    else
+        print(string.format("\"%s\"", object))
+    end
 end
 
-local function flatten_recursive (object, flat_tables)
+-- this is a very specific flatten implementation for tournament tables
+-- it handles circular references and all custom classes being used
+local function flatten_recursive(object, flat_tables)
     if type(object) == "table" then
-        local id = ("%p"):format(object)
-        if flat_tables[id] == nil then
+        local id
+        if next(object) == nil then
+            return "nil"
+            -- object is empty
+        elseif object.address then
+            -- tournament table
+            id = tostring(object.address)
+        elseif object.match_id_hash then
+            -- match table
+            id = tostring(object.match_id_hash)
+        elseif object.hex_string then
+            -- merkle table, treat as hex_string
+            return object:hex_string()
+        elseif bint.isbint(object) then
+            -- bint, treat as string
+            return tostring(object)
+        elseif #object > 0 then
+            -- this is an array
+            local flatten = {}
+            for i = 1, #object do
+                flatten[i] = flatten_recursive(object[i], flat_tables)
+            end
+            return flatten
+        else
+            -- other kind of tables
+            id = ("%p"):format(object)
+        end
+
+        if not flat_tables[id] then
             local flat_table = {}
             flat_tables[id] = flat_table
             for k, v in pairs(object) do
-                if k == "digest"
-                then
-                    v = hex_from_bin(v)
-                end
-                table.insert(flat_table, {
-                    key = flatten_recursive(k, flat_tables),
-                    value = flatten_recursive(v, flat_tables),
-                })
+                -- key must be string
+                flat_table[tostring(k)] = flatten_recursive(v, flat_tables)
             end
         end
-        return { id = id }
+
+        if object.address then
+            -- tournament table, return only id to avoid circular references
+            return id
+        else
+            return flat_tables[id]
+        end
     else
+        -- primitive types, return directly
         return object
     end
 end
 
-function m.flatten (object)
+function m.flatten(object)
     local flat_tables = {}
     local flat_object = flatten_recursive(object, flat_tables)
+    -- print_table(flat_tables)
     return {
         flat_tables = flat_tables,
         flat_object = flat_object,
     }
 end
 
-local function create_table_stubs (flat_tables)
+local function create_table_stubs(flat_tables)
     local tables = {}
     for id in pairs(flat_tables) do
         tables[id] = {}
@@ -47,7 +85,7 @@ local function create_table_stubs (flat_tables)
     return tables
 end
 
-local function inflate_object (flat_object, tables)
+local function inflate_object(flat_object, tables)
     if type(flat_object) == "table" then
         local id = assert(flat_object.id, "missing id")
         return tables[id]
@@ -56,7 +94,7 @@ local function inflate_object (flat_object, tables)
     end
 end
 
-local function link_tables (flat_tables, tables)
+local function link_tables(flat_tables, tables)
     for id, flat_table in pairs(flat_tables) do
         for _, pair in ipairs(flat_table) do
             local k = inflate_object(pair.key, tables)
@@ -66,7 +104,7 @@ local function link_tables (flat_tables, tables)
     end
 end
 
-function m.inflate (t)
+function m.inflate(t)
     local tables = create_table_stubs(t.flat_tables)
     link_tables(t.flat_tables, tables)
     return inflate_object(t.flat_object, tables)

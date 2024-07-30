@@ -49,11 +49,11 @@ function IdleStrategy:_react_tournament(_, tournament)
     )
 
     local tournament_winner = tournament.tournament_winner
-    if tournament_winner[1] == "true" then
+    if tournament_winner.has_winner then
         if not tournament.parent then
             helper.log_timestamp("TOURNAMENT FINISHED, HURRAYYY")
-            helper.log_timestamp("Winner commitment: " .. tournament_winner[2]:hex_string())
-            helper.log_timestamp("Final state: " .. tournament_winner[3]:hex_string())
+            helper.log_timestamp("Winner commitment: " .. tournament_winner.commitment:hex_string())
+            helper.log_timestamp("Final state: " .. tournament_winner.final:hex_string())
             return true
         end
     end

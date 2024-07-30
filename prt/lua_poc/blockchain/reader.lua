@@ -1,5 +1,6 @@
 local Hash = require "cryptography.hash"
 local eth_abi = require "utils.eth_abi"
+local helper = require "utils.helper"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -357,19 +358,27 @@ end
 function Reader:inner_tournament_winner(address)
     local sig = "innerTournamentWinner()(bool,bytes32,bytes32)"
     local ret = self:_call(address, sig, {})
-    ret[2] = Hash:from_digest_hex(ret[2])
-    ret[3] = Hash:from_digest_hex(ret[3])
 
-    return ret
+    local winner = {
+        has_winner = helper.str_to_bool(ret[1]),
+        commitment = Hash:from_digest_hex(ret[2]),
+        dangling = Hash:from_digest_hex(ret[3]),
+    }
+
+    return winner
 end
 
 function Reader:root_tournament_winner(address)
     local sig = "arbitrationResult()(bool,bytes32,bytes32)"
     local ret = self:_call(address, sig, {})
-    ret[2] = Hash:from_digest_hex(ret[2])
-    ret[3] = Hash:from_digest_hex(ret[3])
 
-    return ret
+    local winner = {
+        has_winner = helper.str_to_bool(ret[1]),
+        commitment = Hash:from_digest_hex(ret[2]),
+        final = Hash:from_digest_hex(ret[3]),
+    }
+
+    return winner
 end
 
 return Reader
