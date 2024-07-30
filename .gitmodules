@@ -13,9 +13,3 @@
 [submodule "cartesi-rollups/contracts/lib/rollups-contracts"]
 	path = cartesi-rollups/contracts/lib/rollups-contracts
 	url = https://github.com/cartesi/rollups-contracts
-[submodule "rollups/contracts/lib/forge-std"]
-	path = rollups/contracts/lib/forge-std
-	url = https://github.com/foundry-rs/forge-std
-[submodule "rollups/contracts/lib/rollups-contracts"]
-	path = rollups/contracts/lib/rollups-contracts
-	url = https://github.com/cartesi/rollups-contracts

@@ -28,7 +28,7 @@ contract MultiLevelTournamentFactory is ITournamentFactory {
         bottomFactory = _bottomFactory;
     }
 
-    function instantiate(Machine.Hash _initialHash, IDataProvider provider)
+    function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
         external
         override
         returns (ITournament)
