@@ -1,11 +1,13 @@
 local MerkleBuilder = require "cryptography.merkle_builder"
 local Hash = require "cryptography.hash"
+local Machine = require "computation.machine"
 
 local DummyCommitmentBuilder = {}
 DummyCommitmentBuilder.__index = DummyCommitmentBuilder
 
-function DummyCommitmentBuilder:new(initial_hash, seed, second_state)
-    local c = { initial_hash = initial_hash, seed = seed, second_state = second_state }
+function DummyCommitmentBuilder:new(machine_path, seed, second_state)
+    local machine = Machine:new_from_path(machine_path)
+    local c = { initial_hash = machine:state().root_hash, seed = seed, second_state = second_state }
     setmetatable(c, self)
     return c
 end

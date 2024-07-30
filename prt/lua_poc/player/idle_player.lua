@@ -12,13 +12,13 @@ local time = require "utils.time"
 local helper = require "utils.helper"
 
 -- Function to start idle player
-local function start_idle_player(player_index, tournament, initial_hash)
+local function start_idle_player(player_index, tournament, machine_path)
     local state = State:new(tournament)
     local sender = Sender:new(player_index)
     local idle_strategy
     do
         local DummyCommitmentBuilder = require "computation.dummy_commitment"
-        local builder = DummyCommitmentBuilder:new(initial_hash)
+        local builder = DummyCommitmentBuilder:new(machine_path)
         idle_strategy = IdleStrategy:new(builder, sender)
     end
 
@@ -40,6 +40,6 @@ end
 -- Main Execution
 local player_index = tonumber(arg[1])
 local tournament = arg[2]
-local initial_hash = Hash:from_digest_hex(arg[3])
+local machine_path = arg[3]
 
-start_idle_player(player_index, tournament, initial_hash)
+start_idle_player(player_index, tournament, machine_path)
