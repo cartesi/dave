@@ -24,10 +24,9 @@ local blockchain_utils = require "blockchain.utils"
 local time = require "utils.time"
 local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
-local Machine = require "computation.machine"
 
 -- Function to setup players
-local function setup_players(commands, use_lua_node, contract_address, machine_path, initial_hash)
+local function setup_players(commands, use_lua_node, contract_address, machine_path)
     table.insert(commands, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
     local player_index = 2
 
@@ -60,7 +59,7 @@ local function setup_players(commands, use_lua_node, contract_address, machine_p
         for _ = 1, IDLE_PLAYER_COUNT do
             table.insert(commands, string.format(
                 [[sh -c "echo $$ ; exec ./lua_poc/player/idle_player.lua %d %s %s | tee idle_1.log"]],
-                player_index, contract_address, initial_hash))
+                player_index, contract_address, machine_path))
             player_index = player_index + 1
         end
     end
@@ -69,13 +68,11 @@ end
 -- Main Execution
 local machine_path = os.getenv("MACHINE_PATH")
 local use_lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
-local machine = Machine:new_from_path(machine_path)
-local initial_hash = machine:state().root_hash
 local contract_address = blockchain_constants.root_tournament
 local commands = {}
 
 print("Hello from Dave lua prototype!")
-setup_players(commands, use_lua_node, contract_address, machine_path, initial_hash)
+setup_players(commands, use_lua_node, contract_address, machine_path)
 
 local player_start_index = 2
 local blockchain_node = Blockchain:new()
