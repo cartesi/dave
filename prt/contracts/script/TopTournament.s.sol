@@ -8,6 +8,8 @@ import {Script} from "forge-std/Script.sol";
 import {Machine} from "src/Machine.sol";
 
 import "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import "src/IDataProvider.sol";
+
 
 contract TopTournamentScript is Script {
     function run(Machine.Hash initialHash) external {
@@ -19,7 +21,7 @@ contract TopTournamentScript is Script {
             new BottomTournamentFactory()
         );
 
-        factory.instantiateTop(initialHash);
+        factory.instantiate(initialHash, IDataProvider(address(0x0)));
 
         vm.stopBroadcast();
     }
