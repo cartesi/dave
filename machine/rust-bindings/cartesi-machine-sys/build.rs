@@ -31,7 +31,7 @@ fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Directory where `libcartesi.a` is located after it's built.
-    let machine_dir_path = PathBuf::from("../../machine-emulator")
+    let machine_dir_path = PathBuf::from("../../emulator")
         // Canonicalize the path as `rustc-link-search` requires an absolute
         // path.
         .canonicalize()
