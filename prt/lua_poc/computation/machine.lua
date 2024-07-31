@@ -75,7 +75,7 @@ local function find_closest_snapshot(path, cycle)
 
     -- Collect all directories and their corresponding numbers
     -- Check if the directory exists and is not empty
-    local handle = io.popen('ls -d ' .. path .. '/*/')
+    local handle = io.popen('ls -d ' .. path .. '/*/ 2>/dev/null')
     if handle then
         for dir in handle:lines() do
             local dir_name = dir:gsub("/$", "")            -- Get the directory name
