@@ -87,6 +87,8 @@ function Machine:run(cycle)
     end
 
     self.cycle = cycle
+
+    return self:state()
 end
 
 function Machine:run_uarch(ucycle)
@@ -98,12 +100,16 @@ end
 function Machine:increment_uarch()
     self.machine:run_uarch(self.ucycle + 1)
     self.ucycle = self.ucycle + 1
+
+    return self:state()
 end
 
 function Machine:ureset()
     self.machine:reset_uarch()
     self.cycle = self.cycle + 1
     self.ucycle = 0
+
+    return self:state()
 end
 
 local keccak = require "cartesi".keccak
