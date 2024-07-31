@@ -39,13 +39,13 @@ library ArbitrationConstants {
 
     /// @return log2step gap of each leaf in the tournament[level]
     function log2step(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [uint64(49), uint64(35), uint64(0)];
+        uint64[LEVELS] memory arr = [uint64(41), uint64(26), uint64(0)];
         return arr[level];
     }
 
     /// @return height of the tournament[level] tree which is calculated by subtracting the log2step[level] from the log2step[level - 1]
     function height(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [uint64(19), uint64(14), uint64(35)];
+        uint64[LEVELS] memory arr = [uint64(27), uint64(15), uint64(26)];
         return arr[level];
     }
 }
