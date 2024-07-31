@@ -22,8 +22,8 @@ After running the script one should get results like this:
 
 ```
 level	3
-log2_stride	[uint64(49), uint64(35), uint64(0)]
-height	[uint64(19), uint64(14), uint64(35)]
+log2_stride	[uint64(41), uint64(26), uint64(0)]
+height	[uint64(27), uint64(15), uint64(26)]
 ```
 
 Go to `prt/contracts` and modified the content of `src/CanonicalConstants.sol`:
