@@ -13,15 +13,14 @@ function GarbageCollectionStrategy:new(sender)
 end
 
 function GarbageCollectionStrategy:_react_match(state, match)
-    helper.log_timestamp("Garbage collect match at HEIGHT: " .. match.current_height)
+    helper.log_timestamp(string.format("Garbage collect match at HEIGHT: %d, of tournament: %s", match.current_height,
+        match.tournament.address))
     if match.inner_tournament then
         return self:_react_tournament(state, match.inner_tournament)
     end
 end
 
 function GarbageCollectionStrategy:_react_tournament(state, tournament)
-    helper.log_timestamp("Garbage collect tournament at address: " .. tournament.address)
-
     for _, match in ipairs(tournament.matches) do
         if match then
             local status_1 = tournament.commitments[match.commitment_one].status

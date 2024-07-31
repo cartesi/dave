@@ -19,7 +19,7 @@ impl GarbageCollector {
         arena_sender: &'a impl ArenaSender,
         tournament_states: TournamentStateMap,
     ) -> Result<()> {
-        self.react_tournament(arena_sender, self.root_tournamet, tournament_states)
+        self.react_tournament(arena_sender, self.root_tournamet, &tournament_states)
             .await
     }
 
@@ -28,15 +28,14 @@ impl GarbageCollector {
         &mut self,
         arena_sender: &'a impl ArenaSender,
         tournament_address: Address,
-        tournament_states: TournamentStateMap,
+        tournament_states: &TournamentStateMap,
     ) -> Result<()> {
-        info!("Enter tournament at address: {}", tournament_address);
         let tournament_state = tournament_states
             .get(&tournament_address)
             .expect("tournament state not found");
 
-        for m in tournament_state.matches.clone() {
-            self.react_match(arena_sender, &m, tournament_states.clone())
+        for m in tournament_state.matches.iter() {
+            self.react_match(arena_sender, m, tournament_states, tournament_address)
                 .await?;
 
             let status_1 = tournament_state
@@ -74,9 +73,13 @@ impl GarbageCollector {
         &mut self,
         arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
-        tournament_states: TournamentStateMap,
+        tournament_states: &TournamentStateMap,
+        tournament_address: Address,
     ) -> Result<()> {
-        info!("Enter match at HEIGHT: {}", match_state.current_height);
+        info!(
+            "Garbage collect match at HEIGHT: {}, of tournament: {}",
+            match_state.current_height, tournament_address
+        );
         if let Some(inner_tournament) = match_state.inner_tournament {
             return self
                 .react_tournament(arena_sender, inner_tournament, tournament_states)
