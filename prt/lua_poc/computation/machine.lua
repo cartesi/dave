@@ -2,6 +2,7 @@ local Hash = require "cryptography.hash"
 local arithmetic = require "utils.arithmetic"
 local cartesi = require "cartesi"
 local consts = require "constants"
+local helper = require "utils.helper"
 
 local ComputationState = {}
 ComputationState.__index = ComputationState
@@ -67,6 +68,70 @@ end
 
 function Machine:state()
     return ComputationState:from_current_machine_state(self.machine)
+end
+
+local function find_closest_snapshot(path, cycle)
+    local directories = {}
+
+    -- Collect all directories and their corresponding numbers
+    -- Check if the directory exists and is not empty
+    local handle = io.popen('ls -d ' .. path .. '/*/')
+    if handle then
+        for dir in handle:lines() do
+            local dir_name = dir:gsub("/$", "")            -- Get the directory name
+            local number = tonumber(dir_name:match("%d+")) -- Extract the number from the name
+
+            if number then
+                table.insert(directories, { path = dir_name, number = number })
+            end
+        end
+        handle:close() -- Close the handle
+    end
+
+    -- Sort directories by the extracted number
+    table.sort(directories, function(a, b) return a.number < b.number end)
+
+    -- Binary search for the closest number smaller than target cycle
+    local closest_dir = nil
+    local low, high = 1, #directories
+
+    while low <= high do
+        local mid = math.floor((low + high) / 2)
+        local mid_number = directories[mid].number
+
+        if mid_number < cycle then
+            closest_dir = directories[mid].path
+            low = mid + 1  -- Search in the larger half
+        else
+            high = mid - 1 -- Search in the smaller half
+        end
+    end
+
+    return closest_dir
+end
+
+function Machine:snapshot(cycle)
+    local machines_path = "/app/machines"
+    local snapshot_path = machines_path .. "/temp_" .. tostring(cycle)
+    if not helper.exists(snapshot_path) then
+        -- print("saving snapshot", snapshot_path)
+        self.machine:store(snapshot_path)
+    end
+end
+
+function Machine:load_snapshot(cycle)
+    local machines_path = "/app/machines"
+    local snapshot_path = machines_path .. "/temp_" .. tostring(cycle)
+
+    if not helper.exists(snapshot_path) then
+        -- find closest snapshot if direct snapshot doesn't exists
+        snapshot_path = find_closest_snapshot(machines_path, cycle)
+    end
+    if snapshot_path then
+        -- print("loading snapshot", snapshot_path)
+        local machine = cartesi.machine(snapshot_path, machine_settings)
+        self.machine = machine
+    end
 end
 
 local function add_and_clamp(x, y)
@@ -137,6 +202,7 @@ end
 
 function Machine:get_logs(path, cycle, ucycle)
     local machine = Machine:new_from_path(path)
+    machine:load_snapshot(cycle)
     local logs
     machine:run(cycle)
     machine:run_uarch(ucycle)
