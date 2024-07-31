@@ -4,7 +4,7 @@ package.path = package.path .. ";./lua_poc/?.lua"
 package.cpath = package.cpath .. ";/opt/cartesi/lib/lua/5.4/?.so"
 
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
-local FAST_FORWARD_TIME = 30
+local FAST_FORWARD_TIME = 60
 -- max consecutive iterations of all players idling before the blockchain fastforwards
 local IDLE_LIMIT = 5
 -- max consecutive iterations of no active players before the program exits
@@ -16,7 +16,7 @@ local PLAYER_DELAY = 10
 -- number of fake commitment to make
 local FAKE_COMMITMENT_COUNT = 1
 -- number of idle players
-local IDLE_PLAYER_COUNT = 1
+local IDLE_PLAYER_COUNT = 0
 
 -- Required Modules
 local helper = require "utils.helper"
