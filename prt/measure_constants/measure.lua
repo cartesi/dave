@@ -61,8 +61,15 @@ end
 
 local cartesi = require "cartesi"
 
--- Helper function for machine initialization
-local function initialize_machine()
+-- Helper functions for machine initialization
+local function initialize_uarch_machine()
+  local m = cartesi.machine(machine_path, machine_settings)
+  -- manipulate the initial machine cycle to avoid crash when uarch states being read
+  m:run(1024)
+  return m
+end
+
+local function initialize_big_machine()
   return cartesi.machine(machine_path, machine_settings)
 end
 
@@ -77,8 +84,7 @@ local function run_big_instruction_in_uarch(machine)
   local status
   repeat
     status = machine:run_uarch(machine:read_uarch_cycle() + 1)
-    -- TODO: uncomment next line after new emulator version is released
-    -- machine:get_root_hash()
+    machine:get_root_hash()
   until status == halted
 
   local uinstructions = machine:read_uarch_cycle()
@@ -91,7 +97,7 @@ end
 local function run_uarch_until_timeout()
   local iterations, uinstructions, with_snapshot_time = 0, 0, nil
   do
-    local machine = initialize_machine()
+    local machine = initialize_uarch_machine()
 
     start_timer()
     repeat
@@ -104,7 +110,7 @@ local function run_uarch_until_timeout()
 
   local no_snapshot_time
   do
-    local machine = initialize_machine()
+    local machine = initialize_uarch_machine()
 
     start_timer()
     for _ = 1, iterations do
@@ -153,18 +159,19 @@ end
 
 local function run_big_machine_until_timeout(log2_stride)
   local snapshot_frequency = 1 << (log2_stride - log2_uarch_span)
-  local big_machine_span = default_big_machine_span
-  -- maybe more accurate with dynamic span selection?
-  -- local big_machine_span = math.min(snapshot_frequency, default_big_machine_span)
+  -- we pick the smaller value from (snapshot_frequency, default_big_machine_span)
+  -- to increment the machine, so we don't overshoot the timeout too much but also run fast
+  local big_machine_span = math.min(snapshot_frequency, default_big_machine_span)
 
   local iterations, spans, with_snapshot_time = 0, 0, nil
   do
-    local machine = initialize_machine()
+    local machine = initialize_big_machine()
     local machine_base_cycle = machine:read_mcycle()
 
     start_timer()
     repeat
-      iterations = iterations + run_big_machine_span(machine, machine_base_cycle, snapshot_frequency, big_machine_span)
+      iterations = iterations +
+          run_big_machine_span(machine, machine_base_cycle, snapshot_frequency, big_machine_span)
       spans = spans + 1
     until check_timer() > inner_tournament_timeout * 60
     with_snapshot_time = stop_timer()
@@ -174,7 +181,7 @@ local function run_big_machine_until_timeout(log2_stride)
 
   local no_snapshot_time
   do
-    local machine = initialize_machine()
+    local machine = initialize_big_machine()
     start_timer()
     machine:run(machine:read_mcycle() + cycles)
     no_snapshot_time = stop_timer()
