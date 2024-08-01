@@ -5,6 +5,7 @@
 **/.idea/
 target/
 snapshots/
+common-rs/Cargo.lock
 prt/lua_poc/outputs/
 prt/lua_poc/pixels/
 node_modules
