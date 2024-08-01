@@ -21,6 +21,7 @@ readme = "README.md"
 repository = "https://github.com/cartesi/dave"
 
 [workspace.dependencies]
+cartesi-dave-arithmetic = { path = "../../common-rs/arithmetic" }
 cartesi-dave-merkle = { path = "../../common-rs/merkle" }
 cartesi-machine = { path = "../../machine/machine-rust-bindings/cartesi-machine" }
 anyhow = "1.0.63"

@@ -5,6 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
+cartesi-dave-arithmetic = { workspace = true }
 cartesi-dave-merkle = { workspace = true }
 cartesi-machine = { workspace = true }
 anyhow = { workspace = true }
