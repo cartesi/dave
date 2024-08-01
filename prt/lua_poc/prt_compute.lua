@@ -26,16 +26,20 @@ local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
 
 -- Function to setup players
-local function setup_players(commands, use_lua_node, contract_address, machine_path)
+local function setup_players(commands, use_lua_node, extra_data, contract_address, machine_path)
     table.insert(commands, [[sh -c "cd contracts && ./deploy_anvil.sh"]])
     local player_index = 2
 
     if use_lua_node then
         -- use Lua node to defend
-        print("Setting up Lua honest player")
+        if extra_data then
+            print("Setting up Lua honest player with extra data")
+        else
+            print("Setting up Lua honest player")
+        end
         table.insert(commands, string.format(
-            [[sh -c "echo $$ ; exec ./lua_poc/player/honest_player.lua %d %s %s | tee honest.log"]],
-            player_index, contract_address, machine_path))
+            [[sh -c "echo $$ ; exec ./lua_poc/player/honest_player.lua %d %s %s %s | tee honest.log"]],
+            player_index, contract_address, machine_path, extra_data))
     else
         -- use Rust node to defend
         print("Setting up Rust honest player")
@@ -68,11 +72,12 @@ end
 -- Main Execution
 local machine_path = os.getenv("MACHINE_PATH")
 local use_lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
+local extra_data = helper.str_to_bool(os.getenv("EXTRA_DATA"))
 local contract_address = blockchain_constants.root_tournament
 local commands = {}
 
 print("Hello from Dave lua prototype!")
-setup_players(commands, use_lua_node, contract_address, machine_path)
+setup_players(commands, use_lua_node, extra_data, contract_address, machine_path)
 
 local player_start_index = 2
 local blockchain_node = Blockchain:new()

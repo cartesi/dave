@@ -43,5 +43,6 @@ RUN chmod +x doom_showcase/process_doom_graphics.lua
 
 WORKDIR "/app"
 RUN mkdir -p pixels
+RUN mkdir -p outputs
 RUN mkdir -p machines
 ENTRYPOINT ["./lua_poc/compute-test-entrypoint.sh"]

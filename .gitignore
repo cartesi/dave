@@ -5,6 +5,8 @@
 **/.idea/
 target/
 snapshots/
+prt/lua_poc/outputs/
+prt/lua_poc/pixels/
 node_modules
 prt/prt-rs/core/src/contract/*tournament.rs
 prt/machine-emulator-sdk
