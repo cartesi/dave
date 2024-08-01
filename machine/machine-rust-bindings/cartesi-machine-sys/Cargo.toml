@@ -20,7 +20,7 @@ download_uarch = ["reqwest", "bytes"]
 # requires docker daemon to be running
 build_uarch = []
 
- # requires setting env vars UARCH_PRISTINE_HASH_PATH and UARCH_PRISTINE_RAM_PATH
+# requires setting env vars UARCH_PRISTINE_HASH_PATH and UARCH_PRISTINE_RAM_PATH
 copy_uarch = []
 
 default = ["download_uarch"]
