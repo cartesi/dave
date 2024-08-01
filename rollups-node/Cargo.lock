@@ -575,6 +575,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cartesi-dave-arithmetic"
+version = "0.1.0"
+
+[[package]]
 name = "cartesi-dave-merkle"
 version = "0.1.0"
 dependencies = [
@@ -612,6 +616,7 @@ dependencies = [
  "anyhow",
  "async-recursion",
  "async-trait",
+ "cartesi-dave-arithmetic",
  "cartesi-dave-merkle",
  "cartesi-machine",
  "clap",
@@ -3300,6 +3305,7 @@ dependencies = [
 name = "rollups-machine-runner"
 version = "0.1.0"
 dependencies = [
+ "cartesi-dave-arithmetic",
  "cartesi-dave-merkle",
  "cartesi-machine",
  "cartesi-prt-core",

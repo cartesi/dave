@@ -29,6 +29,7 @@ rollups-machine-runner = { version = "0.1", path = "machine-runner" }
 rollups-state-manager = { version = "0.1", path = "state-manager" }
 
 cartesi-machine = { path = "../machine/machine-rust-bindings/cartesi-machine" }
+cartesi-dave-arithmetic = { path = "../common-rs/arithmetic" }
 cartesi-dave-merkle = { path = "../common-rs/merkle" }
 cartesi-prt-core = { path = "../prt/prt-rs/core" }
 
