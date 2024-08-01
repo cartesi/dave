@@ -188,7 +188,7 @@ fn find_cell_containing(leafs: &[MerkleTreeLeaf], elem: UInt) -> UInt {
 #[cfg(test)]
 mod tests {
     use super::MerkleBuilder;
-    use crate::merkle::Digest;
+    use crate::Digest;
 
     #[test]
     fn test_merkle_builder_8() {
