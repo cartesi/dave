@@ -25,6 +25,7 @@ RUN cartesi-machine --ram-image=./linux.bin \
 
 # copy dependencies
 COPY ./machine /app/machine
+COPY ./common-rs /app/common-rs
 COPY ./machine-emulator-sdk /app/machine-emulator-sdk
 COPY ./prt /app/prt
 
