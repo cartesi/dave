@@ -16,8 +16,8 @@ use crate::{
     arena::{arena::MatchID, config::ArenaConfig},
     contract::{leaf_tournament, non_leaf_tournament, tournament},
     machine::MachineProof,
-    merkle::{Digest, MerkleProof},
 };
+use cartesi_dave_merkle::{Digest, MerkleProof};
 
 type SenderMiddleware = SignerMiddleware<Provider<Http>, LocalWallet>;
 type Result<T> = std::result::Result<T, ContractError<SenderMiddleware>>;

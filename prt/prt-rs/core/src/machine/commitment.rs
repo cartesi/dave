@@ -6,9 +6,9 @@ use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
     machine::{constants, MachineInstance},
-    merkle::{Digest, MerkleBuilder, MerkleTree, UInt},
     utils::arithmetic,
 };
+use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree, UInt};
 
 /// The [MachineCommitment] struct represents a `computation hash`, that is a [MerkleTree] of a set
 /// of steps of the Cartesi Machine.

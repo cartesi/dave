@@ -564,6 +564,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cartesi-dave-merkle"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "sha3",
+ "thiserror",
+]
+
+[[package]]
 name = "cartesi-machine"
 version = "0.17.0"
 dependencies = [
@@ -605,6 +614,7 @@ dependencies = [
  "anyhow",
  "async-recursion",
  "async-trait",
+ "cartesi-dave-merkle",
  "cartesi-machine",
  "clap",
  "clap_derive",

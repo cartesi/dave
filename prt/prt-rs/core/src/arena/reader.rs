@@ -21,8 +21,8 @@ use crate::{
     },
     contract::{non_leaf_tournament, non_root_tournament, root_tournament, tournament},
     machine::constants,
-    merkle::Digest,
 };
+use cartesi_dave_merkle::Digest;
 
 #[derive(Clone)]
 pub struct StateReader {

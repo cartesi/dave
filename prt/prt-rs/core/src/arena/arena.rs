@@ -1,6 +1,7 @@
 //! This module defines the structs that are used for the interacting to tournaments
 
-use crate::{machine::MachineCommitment, merkle::Digest};
+use crate::machine::MachineCommitment;
+use cartesi_dave_merkle::Digest;
 use ethers::types::{Address, U256};
 use std::collections::HashMap;
 

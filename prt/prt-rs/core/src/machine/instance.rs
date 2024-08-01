@@ -1,4 +1,5 @@
-use crate::{machine::constants, merkle::Digest, utils::arithmetic};
+use crate::{machine::constants, utils::arithmetic};
+use cartesi_dave_merkle::Digest;
 use cartesi_machine::{
     configuration::RuntimeConfig,
     log::{AccessLog, AccessLogType, AccessType},
