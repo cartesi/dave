@@ -11,8 +11,8 @@ use crate::{
         TournamentStateMap, TournamentWinner,
     },
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
-    merkle::{Digest, MerkleProof},
 };
+use cartesi_dave_merkle::{Digest, MerkleProof};
 
 #[derive(Debug)]
 pub enum PlayerTournamentResult {

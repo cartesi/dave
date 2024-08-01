@@ -5,6 +5,5 @@ pub mod arena;
 pub mod config;
 pub mod contract;
 pub mod machine;
-pub mod merkle;
 pub mod strategy;
 pub mod utils;

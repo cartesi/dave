@@ -8,6 +8,7 @@ RUN apt-get update && \
 
 FROM chef AS planner
 COPY ./machine/machine-rust-bindings /app/machine/machine-rust-bindings
+COPY ./common-rs /app/common-rs
 COPY ./prt/prt-rs /app/prt/prt-rs
 
 WORKDIR /app/prt/prt-rs
@@ -15,6 +16,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY ./machine /app/machine
+COPY ./common-rs /app/common-rs
 COPY ./.git /app/.git
 COPY --from=planner /app/prt/prt-rs/recipe.json /app/prt/prt-rs/recipe.json
 
