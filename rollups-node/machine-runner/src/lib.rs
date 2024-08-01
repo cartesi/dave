@@ -5,12 +5,10 @@ mod error;
 use error::{MachineRunnerError, Result};
 use std::{path::Path, sync::Arc, time::Duration};
 
+use cartesi_dave_arithmetic::max_uint;
 use cartesi_dave_merkle::{Digest, MerkleBuilder};
 use cartesi_machine::{break_reason, configuration::RuntimeConfig, htif, machine::Machine};
-use cartesi_prt_core::{
-    machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_UARCH_SPAN},
-    utils::arithmetic::max_uint,
-};
+use cartesi_prt_core::machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_UARCH_SPAN};
 use rollups_state_manager::{InputId, StateManager};
 
 // gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
