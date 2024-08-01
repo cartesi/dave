@@ -1,0 +1,13 @@
+[package]
+name = "cartesi-dave-arithmetic"
+version = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+
