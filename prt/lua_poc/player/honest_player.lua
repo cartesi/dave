@@ -18,7 +18,7 @@ local constants = require "constants"
 -- Function to output tournaments
 local function output_tournaments(state)
     -- write to a file inside docker
-    local state_file = io.open("/app/lua_poc/utils/current-state.json", "w")
+    local state_file = io.open("/app/outputs/current-state.json", "w")
     local root_tournament = state.root_tournament
 
     if state_file then
@@ -31,7 +31,7 @@ end
 local function output_hero_claim(state)
     if state.hero_state ~= nil then
         local hero_state = {}
-        local claims_file = io.open("/app/lua_poc/utils/hero-claims.json", "w")
+        local claims_file = io.open("/app/outputs/hero-claims.json", "w")
         hero_state.tournament_address = string.format("%s", state.hero_state.tournament.address)
         hero_state.commitment_root_hash = string.format("%s", state.hero_state.commitment.root_hash)
         if (state.hero_state.latest_match) then
@@ -58,13 +58,13 @@ local function copy_png(one, two)
                 if left <= one and (one < right or right == 0) then
                     -- found 1
                     local cp_command = "cp " .. directory .. png_name .. " " .. directory .. "one.png"
-                    print(cp_command)
+                    -- print(cp_command)
                     os.execute(cp_command)
                 end
                 if left <= two and (two < right or right == 0) then
                     -- found 2
                     local cp_command = "cp " .. directory .. png_name .. " " .. directory .. "two.png"
-                    print(cp_command)
+                    -- print(cp_command)
                     os.execute(cp_command)
                     pfile:close()
                     return
@@ -89,13 +89,13 @@ local function pick_2_pngs(state)
         local step = (bint(1) << match.tournament.log2_stride) >> constants.log2_uarch_span
         local agreed_cycle = base + (step * agreed_leaf)
         local disagreed_cycle = base + (step * disagreed_leaf)
-        print("agreed on mcycle " .. tostring(agreed_cycle) .. " disagreed on " .. tostring(disagreed_cycle))
+        -- print("agreed on mcycle " .. tostring(agreed_cycle) .. " disagreed on " .. tostring(disagreed_cycle))
         copy_png(agreed_cycle, disagreed_cycle)
     end
 end
 
 -- Function to start honest player
-local function start_honest_player(player_index, tournament, machine_path)
+local function start_honest_player(player_index, tournament, machine_path, extra_data)
     local state = State:new(tournament)
     local sender = Sender:new(player_index)
     local honest_strategy
@@ -107,15 +107,13 @@ local function start_honest_player(player_index, tournament, machine_path)
         gc_strategy = GarbageCollectionStrategy:new(sender)
     end
 
-    local gen_data = false
-
     while true do
         state:fetch()
         local tx_count = sender.tx_count
         local react = honest_strategy:react(state)
 
         -- prepare files for frontend
-        if gen_data then
+        if extra_data then
             output_tournaments(state)
             output_hero_claim(state)
             pick_2_pngs(state)
@@ -139,5 +137,6 @@ end
 local player_index = tonumber(arg[1])
 local tournament = arg[2]
 local machine_path = arg[3]
+local extra_data = helper.str_to_bool(arg[4])
 
-start_honest_player(player_index, tournament, machine_path)
+start_honest_player(player_index, tournament, machine_path, extra_data)

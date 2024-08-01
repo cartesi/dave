@@ -36,8 +36,8 @@ These players come in multiple flavours:
 -   Another kind of dishonest player — called the _idle_ player — posts a claim, but never interacts with the blockchain again.
     If no other player is actively defending this claim, it will lose by timeout.
 
-To add more players of different kinds, you can edit the [`self_contained_entrypoint.lua`](self_contained_entrypoint.lua) file.
-To run the full example, execute the following command from the current path path (_i.e._ [`prt/lua_poc`](.)):
+To add more players of different kinds, you can edit the [`prt_comute.lua`](prt_compute.lua) file.
+To run the full example, execute one of the following commands from the current path path (_i.e._ [`prt/lua_poc`](.)):
 
 ```
 docker run --rm \
@@ -68,12 +68,13 @@ docker run --rm \
 
 ```
 mkdir -p pixels
+mkdir -p outputs
 docker run --rm \
     --env MACHINE_PATH="/app/lua_poc/program/doom-compute-machine" \
     --env LUA_NODE="true" \
     --mount type=bind,source="$(pwd)/pixels",target=/app/pixels \
-    --mount type=bind,source="$(pwd)/utils",target=/app/lua_poc/utils \
-    cartesi/prt-compute:lua graphics
+    --mount type=bind,source="$(pwd)/outputs",target=/app/outputs \
+    cartesi/prt-compute:lua extra_data
 ```
 
-After execution, the `pixels` directory will contain all snapshots of the full gameplay. Two files `current-state.json` and `hero-claims.json` in the `utils` directory.
+After execution, the `pixels` directory will contain all snapshots of the full gameplay. Two files `current-state.json` and `hero-claims.json` in the `outputs` directory.
