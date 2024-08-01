@@ -153,11 +153,11 @@ impl MerkleTree {
 
 #[cfg(test)]
 mod tests {
-    use crate::merkle::Digest;
+    use crate::Digest;
 
     #[test]
     pub fn test_tree() {
-        let mut builder = crate::merkle::MerkleBuilder::default();
+        let mut builder = crate::MerkleBuilder::default();
         builder.add_with_repetition(Digest::zeroed(), 2);
         builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     pub fn proof_test() {
-        let mut builder = crate::merkle::MerkleBuilder::default();
+        let mut builder = crate::MerkleBuilder::default();
         builder.add_with_repetition(Digest::zeroed(), 8);
         let tree = builder.build();
 
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     pub fn last_proof_test() {
-        let mut builder = crate::merkle::MerkleBuilder::default();
+        let mut builder = crate::MerkleBuilder::default();
         builder.add_with_repetition(Digest::zeroed(), 2);
         builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
