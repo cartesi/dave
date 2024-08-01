@@ -106,10 +106,12 @@ fn main() {
     println!("cargo:rustc-link-search={}", out_path.to_str().unwrap());
 
     // static link
-    if !cfg!(remote_machine) {
-        println!("cargo:rustc-link-lib=static=cartesi");
-    } else {
-        println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "remote_machine")] {
+            println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
+        } else {
+            println!("cargo:rustc-link-lib=static=cartesi");
+        }
     }
 
     //
