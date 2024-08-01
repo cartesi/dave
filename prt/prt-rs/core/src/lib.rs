@@ -6,4 +6,3 @@ pub mod config;
 pub mod contract;
 pub mod machine;
 pub mod strategy;
-pub mod utils;

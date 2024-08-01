@@ -1,4 +1,4 @@
-use crate::utils::arithmetic;
+use cartesi_dave_arithmetic as arithmetic;
 
 pub const LOG2_UARCH_SPAN: u64 = 20;
 pub const UARCH_SPAN: u64 = arithmetic::max_uint(LOG2_UARCH_SPAN);

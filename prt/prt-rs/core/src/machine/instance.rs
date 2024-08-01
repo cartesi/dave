@@ -1,4 +1,5 @@
-use crate::{machine::constants, utils::arithmetic};
+use crate::machine::constants;
+use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
 use cartesi_machine::{
     configuration::RuntimeConfig,
@@ -83,7 +84,7 @@ impl MachineInstance {
     pub fn run(&mut self, cycle: u64) -> Result<()> {
         assert!(self.cycle <= cycle);
 
-        let physical_cycle = add_and_clamp(self.start_cycle, cycle);
+        let physical_cycle = arithmetic::add_and_clamp(self.start_cycle, cycle);
 
         loop {
             let halted = self.machine.read_iflags_h()?;
@@ -150,14 +151,6 @@ impl MachineInstance {
 
     pub fn position(&self) -> (u64, u64) {
         (self.cycle, self.ucycle)
-    }
-}
-
-fn add_and_clamp(x: u64, y: u64) -> u64 {
-    if x < arithmetic::max_uint(64) - y {
-        x + y
-    } else {
-        arithmetic::max_uint(64)
     }
 }
 

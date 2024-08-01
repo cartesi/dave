@@ -4,10 +4,8 @@
 use anyhow::Result;
 use std::{ops::ControlFlow, sync::Arc};
 
-use crate::{
-    machine::{constants, MachineInstance},
-    utils::arithmetic,
-};
+use crate::machine::{constants, MachineInstance};
+use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree, UInt};
 
 /// The [MachineCommitment] struct represents a `computation hash`, that is a [MerkleTree] of a set
