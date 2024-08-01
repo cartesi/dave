@@ -1,0 +1,17 @@
+[package]
+name = "cartesi-dave-merkle"
+version = { workspace = true }
+
+authors = { workspace = true }
+description = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+license-file = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+hex = "0.4.3"
+sha3 = "0.10.8"
+thiserror = "1.0.50"
+
