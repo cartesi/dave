@@ -112,10 +112,12 @@ end
 
 function Machine:snapshot(cycle)
     local machines_path = "/app/machines"
-    local snapshot_path = machines_path .. "/temp_" .. tostring(cycle)
-    if not helper.exists(snapshot_path) then
-        -- print("saving snapshot", snapshot_path)
-        self.machine:store(snapshot_path)
+    if helper.exists(machines_path) then
+        local snapshot_path = machines_path .. "/temp_" .. tostring(cycle)
+        if not helper.exists(snapshot_path) then
+            -- print("saving snapshot", snapshot_path)
+            self.machine:store(snapshot_path)
+        end
     end
 end
 
