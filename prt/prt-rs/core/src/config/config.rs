@@ -2,7 +2,7 @@ use crate::arena::ArenaConfig;
 use clap::Parser;
 use ethers::types::Address;
 
-const ANVIL_ROOT_TOURNAMENT: &str = "0xcafac3dd18ac6c6e92c921884f9e4176737c052c";
+const ANVIL_ROOT_TOURNAMENT: &str = "0xa16E02E87b7454126E5E10d957A927A7F5B5d2be";
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "cartesi_compute_config")]
