@@ -1,6 +1,6 @@
 //! Keccak256 hash for the Digest Type. It's used to hash the data in the Digest.
 
-use sha3::{Keccak256, Digest as Keccak256Digest};
+use sha3::{Digest as Keccak256Digest, Keccak256};
 
 use super::Digest;
 
@@ -22,3 +22,4 @@ impl Digest {
         Digest::from(digest)
     }
 }
+
