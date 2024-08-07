@@ -1,67 +1,94 @@
 //! Module for building merkle trees from leafs.
 
-use std::collections::HashMap;
+use crate::MerkleTree;
 
-use crate::{Digest, MerkleTree, MerkleTreeLeaf, MerkleTreeNode};
+use ruint::{aliases::U256, UintTryFrom};
+use std::sync::Arc;
 
-pub type UInt = u128;
+#[derive(Clone, Debug)]
+struct Node {
+    tree: Arc<MerkleTree>,
+    accumulated_count: U256,
+}
 
 /// A [MerkleBuilder] is used to build a [MerkleTree] from its leafs.
 #[derive(Debug, Default)]
 pub struct MerkleBuilder {
-    leafs: Vec<MerkleTreeLeaf>,
-    nodes: HashMap<Digest, MerkleTreeNode>,
-    iterateds: HashMap<Digest, Vec<Digest>>,
+    trees: Vec<Node>,
 }
 
 impl MerkleBuilder {
-    /// Adds a new leaf to the merkle tree. The leaf is represented by a MerkleTree
-    pub fn add_tree(&mut self, tree: MerkleTree) {
-        self.add_tree_with_repetition(tree, 1);
+    /// Returns the height of the leaf trees, or none if there are no leafs added.
+    pub fn height(&self) -> Option<u32> {
+        self.trees.last().and_then(|last| Some(last.tree.height()))
     }
 
-    /// Adds a new leaf to the merkle tree. The leaf is represented by a MerkleTree and its repetition.
-    pub fn add_tree_with_repetition(&mut self, tree: MerkleTree, rep: UInt) {
-        self.add_with_repetition_and_log2_size(tree.root_hash(), Some(tree.log2_size()), rep);
-        self.nodes.extend(tree.nodes());
+    /// Returns the number of leafs (with repetition) in the builder, or none if there are no
+    /// leafs. Zero means 2^256 leafs.
+    pub fn count(&self) -> Option<U256> {
+        self.trees
+            .last()
+            .and_then(|last| Some(last.accumulated_count))
     }
 
-    /// Adds a new leaf to the merkle tree. The leaf is represented by its digest.
-    pub fn add(&mut self, digest: Digest) {
-        self.add_with_repetition(digest, 1);
+    /// Returns whether the builder has a balanced (i.e. power of two) number of leaves.
+    pub fn can_build(&self) -> bool {
+        match self.count() {
+            Some(count) => is_count_pow2(count),
+            None => false,
+        }
     }
 
-    /// Adds a new leaf to the merkle tree. The leaf is represented by its
-    /// digest and its repetition.
-    pub fn add_with_repetition(&mut self, digest: Digest, rep: UInt) {
-        self.add_with_repetition_and_log2_size(digest, None, rep);
+    /// Adds a new leaf to the merkle tree.
+    pub fn append<L>(&mut self, leaf: L)
+    where
+        L: Into<Arc<MerkleTree>>,
+    {
+        self.append_repeated(leaf, 1);
     }
 
-    fn add_with_repetition_and_log2_size(
-        &mut self,
-        digest: Digest,
-        log2_size: Option<u32>,
-        rep: UInt,
-    ) {
-        assert!(rep != 0, "repetition is zero");
+    /// Adds a new leaf to the merkle tree, repeating this leaf `rep` times.
+    pub fn append_repeated<L, I>(&mut self, leaf: L, rep: I)
+    where
+        L: Into<Arc<MerkleTree>>,
+        U256: UintTryFrom<I>,
+    {
+        let leaf = leaf.into();
+        let rep = U256::from(rep);
+        assert!(!rep.is_zero(), "repetition is zero");
 
-        self.add_new_node(digest);
+        let accumulated_count = self.calculate_accumulated_count(rep);
+        if let Some(height) = self.height() {
+            assert_eq!(height, leaf.height(), "mismatched tree size");
+        }
 
-        let count = self.calculate_accumulated_count(rep);
-
-        self.leafs.push(MerkleTreeLeaf {
-            node: digest,
-            accumulated_count: count,
-            log2_size,
+        self.trees.push(Node {
+            tree: leaf,
+            accumulated_count,
         });
     }
 
-    fn calculate_accumulated_count(&mut self, rep: UInt) -> UInt {
-        if let Some(last) = self.leafs.last() {
-            assert!(last.accumulated_count != 0, "merkle builder is full");
+    /// Builds the merkle tree from the leafs.
+    pub fn build(&self) -> Arc<MerkleTree> {
+        let count = self.count().expect("no leafs in merkle builder");
+        assert!(
+            is_count_pow2(count),
+            "builder has `{}` leafs, which is not a power of two",
+            count
+        );
+
+        let log2_size = count.trailing_zeros();
+        self.build_merkle(self.trees.as_slice(), log2_size, U256::ZERO)
+    }
+}
+
+impl MerkleBuilder {
+    fn calculate_accumulated_count(&mut self, rep: U256) -> U256 {
+        if let Some(last) = self.trees.last() {
+            assert!(!last.accumulated_count.is_zero(), "merkle builder is full");
             let accumulated_count = rep.wrapping_add(last.accumulated_count);
             if rep >= accumulated_count {
-                assert_eq!(accumulated_count, 0);
+                assert_eq!(accumulated_count, U256::ZERO, "merkle tree overflow");
             }
             accumulated_count
         } else {
@@ -69,113 +96,46 @@ impl MerkleBuilder {
         }
     }
 
-    fn add_new_node(&mut self, digest: Digest) {
-        if !self.nodes.contains_key(&digest) {
-            let node = MerkleTreeNode::from_digest(digest);
-            self.nodes.insert(node.digest, node.clone());
-            self.iterateds.insert(node.digest, vec![node.digest]);
-        }
-    }
+    fn build_merkle(&self, trees: &[Node], log2_size: usize, stride: U256) -> Arc<MerkleTree> {
+        let one = U256::from(1);
+        let size = one.wrapping_shl(log2_size);
 
-    /// Builds the merkle tree from the leafs.
-    pub fn build(&mut self) -> MerkleTree {
-        let last = self.leafs.last().expect("no leafs in merkle builder");
-        let count = last.accumulated_count;
+        let first_time = stride * size + one;
+        let last_time = (stride + one) * size;
 
-        assert!(count.is_power_of_two(), "is not a power of two {}", count);
-        let log2_size = count.trailing_zeros();
-        let leaf_log2_size = last.log2_size.clone();
-
-        let leafs_clone = self.leafs.clone();
-        let root = self.build_merkle(leafs_clone.as_slice(), log2_size, 0);
-
-        MerkleTree::new(log2_size, leaf_log2_size, root.0, self.nodes.clone())
-    }
-
-    fn build_merkle(
-        &mut self,
-        leafs: &[MerkleTreeLeaf],
-        log2_size: u32,
-        stride: UInt,
-    ) -> (Digest, UInt, UInt) {
-        let first_time = stride * (UInt::from(1u8).wrapping_shl(log2_size)) + 1;
-        let last_time = (stride + 1) * (UInt::from(1u8).wrapping_shl(log2_size));
-
-        let first_cell = find_cell_containing(leafs, first_time);
-        let last_cell = find_cell_containing(leafs, last_time);
+        let first_cell = find_cell_containing(trees, first_time);
+        let last_cell = find_cell_containing(trees, last_time);
 
         if first_cell == last_cell {
-            let node = leafs[first_cell as usize].node;
-            let iterated = self.iterated_merkle(node, log2_size);
-            return (iterated, first_time, last_time);
+            let tree = &trees[first_cell].tree;
+            let iterated = tree.iterated(log2_size);
+            return iterated;
         }
 
         let left = self.build_merkle(
-            &leafs[first_cell as usize..(last_cell + 1) as usize],
+            &trees[first_cell..(last_cell + 1)],
             log2_size - 1,
             stride << 1,
         );
         let right = self.build_merkle(
-            &leafs[first_cell as usize..(last_cell + 1) as usize],
+            &trees[first_cell..(last_cell + 1)],
             log2_size - 1,
-            (stride << 1) + 1,
+            (stride << 1) + one,
         );
 
-        let result = self.join_nodes(left.0, right.0);
-        (result, first_time, last_time)
-    }
-
-    /// Builds the iterated merkle tree from the given node and level.
-    fn iterated_merkle(&mut self, node: Digest, level: u32) -> Digest {
-        let iterated = self.iterateds.get(&node).expect("iterated not found");
-        if let Some(n) = iterated.get(level as usize) {
-            return *n;
-        }
-
-        // at least 1
-        let mut i = iterated.len() - 1;
-        let mut highest_level = *iterated.get(i).expect("iterated at level not found");
-
-        while i < level as usize {
-            highest_level = self.join_nodes(highest_level, highest_level);
-            self.iterateds.get_mut(&node).unwrap().push(highest_level);
-            i += 1;
-        }
-
-        highest_level
-    }
-
-    fn join_nodes(&mut self, left: Digest, right: Digest) -> Digest {
-        let digest = left.join(&right);
-
-        if let Some(node) = self.nodes.get_mut(&digest) {
-            node.set_children(left, right);
-        } else {
-            let node = MerkleTreeNode::new(left, right);
-            self.nodes.insert(node.digest, node.clone());
-            self.iterateds.insert(node.digest, vec![node.digest]);
-        };
-
-        digest
-    }
-
-    pub fn nodes(&self) -> HashMap<Digest, MerkleTreeNode> {
-        self.nodes.clone()
-    }
-
-    pub fn iterateds(&self) -> HashMap<Digest, Vec<Digest>> {
-        self.iterateds.clone()
+        left.join(&right)
     }
 }
 
 // Binary search to find the cell containing the element.
-fn find_cell_containing(leafs: &[MerkleTreeLeaf], elem: UInt) -> UInt {
+fn find_cell_containing(trees: &[Node], elem: U256) -> usize {
+    let one = U256::from(1);
     let mut left = 0;
-    let mut right = leafs.len() as UInt - 1;
+    let mut right = trees.len() - 1;
 
     while left < right {
         let needle = left + (right - left) / 2;
-        if leafs[needle as usize].accumulated_count.wrapping_sub(1) < elem.wrapping_sub(1) {
+        if trees[needle].accumulated_count.wrapping_sub(one) < elem.wrapping_sub(one) {
             left = needle + 1;
         } else {
             right = needle;
@@ -185,32 +145,181 @@ fn find_cell_containing(leafs: &[MerkleTreeLeaf], elem: UInt) -> UInt {
     left
 }
 
+fn is_count_pow2(count: U256) -> bool {
+    count.is_zero() || count.is_power_of_two()
+}
+
 #[cfg(test)]
 mod tests {
     use super::MerkleBuilder;
-    use crate::Digest;
+    use crate::{Digest, MerkleTree};
+    use ruint::aliases::U256;
+
+    fn one_digest() -> Digest {
+        Digest::from_digest_hex(
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_is_pow2() {
+        assert!(crate::tree_builder::is_count_pow2(U256::from(0)));
+        assert!(crate::tree_builder::is_count_pow2(U256::from(1)));
+        assert!(crate::tree_builder::is_count_pow2(U256::from(2)));
+        assert!(!crate::tree_builder::is_count_pow2(U256::from(3)));
+        assert!(crate::tree_builder::is_count_pow2(U256::from(4)));
+        assert!(!crate::tree_builder::is_count_pow2(U256::from(5)));
+    }
+
+    #[test]
+    #[should_panic(expected = "repetition is zero")]
+    fn test_repeat_zero() {
+        let mut builder = MerkleBuilder::default();
+        builder.append_repeated(Digest::ZERO, 0);
+    }
+
+    #[test]
+    fn test_simple_0() {
+        let one_digest = one_digest();
+        let mut builder = MerkleBuilder::default();
+        builder.append(one_digest);
+        let tree_root = builder.build().root_hash();
+        let expected = one_digest;
+        assert_eq!(tree_root, expected);
+    }
+
+    #[test]
+    fn test_simple_1() {
+        let one_digest = one_digest();
+
+        let mut builder = MerkleBuilder::default();
+        builder.append(Digest::ZERO);
+        builder.append(one_digest);
+        let tree_root = builder.build().root_hash();
+
+        let expected = Digest::ZERO.join(&one_digest);
+
+        assert_eq!(tree_root, expected);
+    }
+
+    #[test]
+    fn test_simple_2() {
+        let one_digest = one_digest();
+
+        let mut builder = MerkleBuilder::default();
+        builder.append_repeated(one_digest, 2);
+        builder.append_repeated(Digest::ZERO, 2);
+        let tree_root = builder.build().root_hash();
+
+        let expected = one_digest
+            .join(&one_digest)
+            .join(&Digest::ZERO.join(&Digest::ZERO));
+
+        assert_eq!(tree_root, expected);
+    }
+
+    #[test]
+    fn test_simple_3() {
+        let one_digest = one_digest();
+
+        let mut builder = MerkleBuilder::default();
+        builder.append(Digest::ZERO);
+        builder.append_repeated(one_digest, 2);
+        builder.append(Digest::ZERO);
+        let tree_root = builder.build().root_hash();
+
+        let expected = Digest::ZERO
+            .join(&one_digest)
+            .join(&one_digest.join(&Digest::ZERO));
+
+        assert_eq!(tree_root, expected);
+    }
 
     #[test]
     fn test_merkle_builder_8() {
         let mut builder = MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 2);
-        builder.add_with_repetition(Digest::zeroed(), 6);
+        builder.append_repeated(Digest::ZERO, 2);
+        builder.append_repeated(Digest::ZERO, 6);
+        assert!(builder.can_build());
         let merkle = builder.build();
         assert_eq!(
             merkle.root_hash(),
-            builder.iterated_merkle(Digest::zeroed(), 3)
+            MerkleTree::zeroed().iterated(3).root_hash()
         );
     }
 
     #[test]
     fn test_merkle_builder_64() {
         let mut builder = MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 2);
-        builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.append_repeated(Digest::ZERO, 2);
+        builder.append_repeated(Digest::ZERO, 2u128.pow(64) - 2);
+        assert!(builder.can_build());
         let merkle = builder.build();
         assert_eq!(
             merkle.root_hash(),
-            builder.iterated_merkle(Digest::zeroed(), 64)
+            MerkleTree::zeroed().iterated(64).root_hash()
         );
+    }
+
+    #[test]
+    fn test_merkle_builder_256() {
+        let mut builder = MerkleBuilder::default();
+        builder.append_repeated(Digest::ZERO, U256::MAX);
+        builder.append(Digest::ZERO);
+        assert!(builder.can_build());
+        let merkle = builder.build();
+        assert_eq!(
+            merkle.root_hash(),
+            MerkleTree::zeroed().iterated(256).root_hash()
+        );
+    }
+
+    #[test]
+    fn test_append_and_repeated() {
+        let mut builder = MerkleBuilder::default();
+        builder.append(Digest::ZERO);
+        assert!(builder.can_build());
+        let tree_1 = builder.build();
+
+        let mut builder = MerkleBuilder::default();
+        builder.append_repeated(Digest::ZERO, 1);
+        assert!(builder.can_build());
+        let tree_2 = builder.build();
+
+        assert_eq!(tree_1, tree_2);
+    }
+    #[test]
+    #[should_panic(expected = "no leafs in merkle builder")]
+    fn test_build_empty() {
+        MerkleBuilder::default().build();
+    }
+
+    #[test]
+    #[should_panic(expected = "builder has `3` leafs, which is not a power of two")]
+    fn test_build_not_pow2() {
+        let mut builder = MerkleBuilder::default();
+        builder.append(Digest::ZERO);
+        builder.append(Digest::ZERO);
+        builder.append(Digest::ZERO);
+        assert!(!builder.can_build());
+        builder.build();
+    }
+
+    #[test]
+    #[should_panic(expected = "merkle builder is full")]
+    fn test_build_full() {
+        let mut builder = MerkleBuilder::default();
+        builder.append_repeated(Digest::ZERO, U256::MAX);
+        builder.append(Digest::ZERO);
+        builder.append(Digest::ZERO);
+    }
+
+    #[test]
+    #[should_panic(expected = "merkle tree overflow")]
+    fn test_build_overflow() {
+        let mut builder = MerkleBuilder::default();
+        builder.append_repeated(Digest::ZERO, U256::MAX);
+        builder.append_repeated(Digest::ZERO, 2);
     }
 }
