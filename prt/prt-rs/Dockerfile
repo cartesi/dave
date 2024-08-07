@@ -7,7 +7,7 @@ RUN apt-get update && \
     apt-get install -y clang libslirp0
 
 FROM chef AS planner
-COPY ./machine/machine-rust-bindings /app/machine/machine-rust-bindings
+COPY ./machine/rust-bindings /app/machine/rust-bindings
 COPY ./common-rs /app/common-rs
 COPY ./prt/prt-rs /app/prt/prt-rs
 
