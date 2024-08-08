@@ -48,11 +48,7 @@ impl MerkleBuilder {
 
         let accumulated_count = self.calculate_accumulated_count(rep);
         if let Some(last) = self.trees.last() {
-            assert_eq!(
-                last.tree.log2_size(),
-                tree.log2_size(),
-                "mismatched tree size"
-            );
+            assert_eq!(last.tree.height(), tree.height(), "mismatched tree size");
         }
 
         self.trees.push(Node {

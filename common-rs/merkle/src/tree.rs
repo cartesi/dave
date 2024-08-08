@@ -31,14 +31,15 @@ impl MerkleProof {
 /// where n is the number of leafs.
 #[derive(Clone, Debug)]
 pub struct MerkleTree {
-    log2_size: u32,
-    root: Digest,
+    root_hash: Digest,
+    height: u32,
+
     subtrees: Option<InnerNode>,
 }
 
 impl PartialEq for MerkleTree {
     fn eq(&self, other: &Self) -> bool {
-        self.root == other.root
+        self.root_hash == other.root_hash
     }
 }
 
@@ -64,10 +65,10 @@ impl InnerNode {
 }
 
 impl MerkleTree {
-    pub fn leaf(root: Digest) -> Arc<Self> {
+    pub fn leaf(hash: Digest) -> Arc<Self> {
         Arc::new(Self {
-            log2_size: 0,
-            root,
+            height: 0,
+            root_hash: hash,
             subtrees: None,
         })
     }
@@ -77,19 +78,19 @@ impl MerkleTree {
     }
 
     pub fn root_hash(&self) -> Digest {
-        self.root
+        self.root_hash
     }
 
     pub fn subtrees(&self) -> Option<InnerNode> {
         self.subtrees.clone()
     }
 
-    pub fn log2_size(&self) -> u32 {
-        self.log2_size
+    pub fn height(&self) -> u32 {
+        self.height
     }
 
     pub fn find_child(self: &Arc<Self>, digest: &Digest) -> Option<Arc<Self>> {
-        if self.root == *digest {
+        if self.root_hash == *digest {
             return Some(Arc::clone(self));
         }
 
@@ -105,8 +106,8 @@ impl MerkleTree {
     }
 
     pub fn join(self: &Arc<Self>, other: &Arc<Self>) -> Arc<Self> {
-        assert_eq!(self.log2_size, other.log2_size, "tree size mismatch");
-        let root = self.root.join(&other.root);
+        assert_eq!(self.height, other.height, "tree size mismatch");
+        let root_hash = self.root_hash.join(&other.root_hash);
 
         let subtrees = Some(InnerNode::Pair {
             left: Arc::clone(self),
@@ -114,8 +115,8 @@ impl MerkleTree {
         });
 
         Arc::new(Self {
-            log2_size: self.log2_size + 1,
-            root,
+            height: self.height + 1,
+            root_hash,
             subtrees,
         })
     }
@@ -125,12 +126,13 @@ impl MerkleTree {
         let mut root = Arc::clone(self);
 
         for _ in 0..rep {
-            let log2_size = root.log2_size + 1;
-            let h = root.root.join(&root.root);
+            let root_hash = root.root_hash.join(&root.root_hash);
+            let height = root.height + 1;
             let subtrees = Some(InnerNode::Iterated { child: root });
+
             root = Arc::new(Self {
-                log2_size,
-                root: h,
+                root_hash,
+                height,
                 subtrees,
             });
         }
@@ -147,7 +149,7 @@ impl MerkleTree {
 
     pub fn prove_last(&self) -> MerkleProof {
         let one = U256::from(1);
-        self.prove_leaf((one << self.log2_size()) - one)
+        self.prove_leaf((one << self.height()) - one)
     }
 }
 
@@ -155,12 +157,12 @@ impl MerkleTree {
     fn prove_leaf_rec(&self, index: U256) -> MerkleProof {
         let one = U256::from(1);
 
-        assert!((one << self.log2_size) > index, "index out of bounds");
+        assert!((one << self.height) > index, "index out of bounds");
 
         let Some(subtree) = &self.subtrees else {
             assert_eq!(index, U256::ZERO);
-            assert_eq!(self.log2_size, 0);
-            return MerkleProof::leaf(self.root);
+            assert_eq!(self.height, 0);
+            return MerkleProof::leaf(self.root_hash);
         };
 
         let (left, right) = subtree.children();
@@ -169,11 +171,11 @@ impl MerkleTree {
 
         if leaf_at_left {
             let mut proof = left.prove_leaf_rec(inner_index);
-            proof.push_hash(right.root);
+            proof.push_hash(right.root_hash);
             proof
         } else {
             let mut proof = right.prove_leaf_rec(inner_index);
-            proof.push_hash(left.root);
+            proof.push_hash(left.root_hash);
             proof
         }
     }
