@@ -16,9 +16,6 @@
 mod digest;
 pub use digest::*;
 
-// mod node;
-// pub use node::*;
-
 mod tree;
 pub use tree::*;
 

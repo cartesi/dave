@@ -1,19 +1,10 @@
 //! This module contains the [MerkleTree] struct and related types like the
 //! [MerkleProof].
 
-use ruint::{aliases::U256, UintTryFrom};
-use std::sync::Arc;
-
 use crate::Digest;
 
-// /// A leaf of a [MerkleTree], it contains the offset of the leaf in the tree,
-// /// and the hash of the data.
-// #[derive(Clone, Debug)]
-// pub struct MerkleTreeLeaf {
-//     pub node: Digest,
-//     pub accumulated_count: U256,
-//     pub log2_size: Option<u32>,
-// }
+use ruint::{aliases::U256, UintTryFrom};
+use std::sync::Arc;
 
 /// A [MerkleProof] is used to verify that a leaf is part of a [MerkleTree].
 pub struct MerkleProof {
@@ -22,17 +13,15 @@ pub struct MerkleProof {
 }
 
 impl MerkleProof {
-    pub(crate) fn push_hash(&mut self, h: Digest) {
-        self.siblings.push(h);
-    }
-}
-
-impl MerkleProof {
     pub fn leaf(node: Digest) -> Self {
         Self {
             node,
             siblings: Vec::new(),
         }
+    }
+
+    pub(crate) fn push_hash(&mut self, h: Digest) {
+        self.siblings.push(h);
     }
 }
 
@@ -101,20 +90,17 @@ impl MerkleTree {
 
     pub fn find_child(self: &Arc<Self>, digest: &Digest) -> Option<Arc<Self>> {
         if self.root == *digest {
-            Some(Arc::clone(self))
-        } else {
-            match &self.subtrees {
-                None => None,
-                Some(InnerNode::Pair { left, right }) => {
-                    let r = left.find_child(digest);
-                    if r.is_some() {
-                        r
-                    } else {
-                        right.find_child(digest)
-                    }
-                }
-                Some(InnerNode::Iterated { child }) => child.find_child(digest),
+            return Some(Arc::clone(self));
+        }
+
+        match &self.subtrees {
+            None => None,
+
+            Some(InnerNode::Pair { left, right }) => {
+                left.find_child(digest).or_else(|| right.find_child(digest))
             }
+
+            Some(InnerNode::Iterated { child }) => child.find_child(digest),
         }
     }
 

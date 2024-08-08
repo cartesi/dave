@@ -16,8 +16,6 @@ struct Node {
 #[derive(Debug, Default)]
 pub struct MerkleBuilder {
     trees: Vec<Node>,
-    // nodes: HashMap<Digest, MerkleTreeNode>,
-    // iterateds: HashMap<Digest, Vec<Digest>>,
 }
 
 impl MerkleBuilder {
