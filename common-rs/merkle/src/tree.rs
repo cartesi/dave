@@ -6,14 +6,14 @@ use std::sync::Arc;
 
 use crate::Digest;
 
-/// A leaf of a [MerkleTree], it contains the offset of the leaf in the tree,
-/// and the hash of the data.
-#[derive(Clone, Debug)]
-pub struct MerkleTreeLeaf {
-    pub node: Digest,
-    pub accumulated_count: U256,
-    pub log2_size: Option<u32>,
-}
+// /// A leaf of a [MerkleTree], it contains the offset of the leaf in the tree,
+// /// and the hash of the data.
+// #[derive(Clone, Debug)]
+// pub struct MerkleTreeLeaf {
+//     pub node: Digest,
+//     pub accumulated_count: U256,
+//     pub log2_size: Option<u32>,
+// }
 
 /// A [MerkleProof] is used to verify that a leaf is part of a [MerkleTree].
 pub struct MerkleProof {
@@ -42,7 +42,7 @@ impl MerkleProof {
 /// where n is the number of leafs.
 #[derive(Clone, Debug)]
 pub struct MerkleTree {
-    pub log2_size: u32,
+    log2_size: u32,
     root: Digest,
     subtrees: Option<InnerNode>,
 }
@@ -74,20 +74,17 @@ impl InnerNode {
     }
 }
 
-// pub struct MerkleTree {
-//     log2_size: u32,
-//     leaf_log2_size: Option<u32>,
-//     root: Digest,
-//     nodes: HashMap<Digest, MerkleTreeNode>,
-// }
-
 impl MerkleTree {
-    pub fn leaf(root: Digest) -> Self {
-        Self {
+    pub fn leaf(root: Digest) -> Arc<Self> {
+        Arc::new(Self {
             log2_size: 0,
             root,
             subtrees: None,
-        }
+        })
+    }
+
+    pub fn zeroed() -> Arc<Self> {
+        Self::leaf(Digest::zeroed())
     }
 
     pub fn root_hash(&self) -> Digest {
@@ -96,6 +93,10 @@ impl MerkleTree {
 
     pub fn subtrees(&self) -> Option<InnerNode> {
         self.subtrees.clone()
+    }
+
+    pub fn log2_size(&self) -> u32 {
+        self.log2_size
     }
 
     pub fn find_child(self: &Arc<Self>, digest: &Digest) -> Option<Arc<Self>> {
@@ -117,65 +118,50 @@ impl MerkleTree {
         }
     }
 
-    pub fn log2_size(&self) -> u32 {
-        self.log2_size
+    pub fn join(self: &Arc<Self>, other: &Arc<Self>) -> Arc<Self> {
+        assert_eq!(self.log2_size, other.log2_size, "tree size mismatch");
+        let root = self.root.join(&other.root);
+
+        let subtrees = Some(InnerNode::Pair {
+            left: Arc::clone(self),
+            right: Arc::clone(other),
+        });
+
+        Arc::new(Self {
+            log2_size: self.log2_size + 1,
+            root,
+            subtrees,
+        })
     }
 
-    //     pub fn prove_leaf(&self, index: U256) -> (Digest, MerkleProof) {
-    //         let height = self.log2_size;
+    pub fn iterated(self: &Arc<Self>, rep: usize) -> Arc<Self> {
+        let rep = rep.into();
+        let mut root = Arc::clone(self);
 
-    //         assert!(index.wrapping_shr(height) == 0);
+        for _ in 0..rep {
+            let log2_size = root.log2_size + 1;
+            let h = root.root.join(&root.root);
+            let subtrees = Some(InnerNode::Iterated { child: root });
+            root = Arc::new(Self {
+                log2_size,
+                root: h,
+                subtrees,
+            });
+        }
 
-    //         let mut proof_acc = ProofAccumulator::default();
-
-    //         self.proof(&mut proof_acc, height as u64, index);
-
-    //         (proof_acc.leaf, proof_acc.proof)
-    //     }
-
-    //     fn calculate_height(&self) -> u32 {
-    //         match self.leaf_log2_size {
-    //             Some(leaf_log2_size) => self.log2_size + leaf_log2_size,
-    //             None => self.log2_size,
-    //         }
-    // }
+        root
+    }
 
     pub fn prove_leaf<T>(&self, index: T) -> MerkleProof
     where
         U256: UintTryFrom<T>,
     {
         self.prove_leaf_rec(U256::from(index))
-        // let new_height = height - 1;
-        // let (left, right) = root.children().expect("root does not have children");
-        // let left = self.nodes.get(&left).expect("left child does not exist");
-        // let right = self.nodes.get(&right).expect("right child does not exist");
-
-        // if (include_index.wrapping_shr(new_height as u32)) & 1 == 0 {
-        //     self.proof(proof_acc, left, new_height, include_index);
-        //     proof_acc.proof.push(right.digest);
-        // } else {
-        //     self.proof(proof_acc, right, new_height, include_index);
-        //     proof_acc.proof.push(left.digest);
-        // }
     }
 
     pub fn prove_last(&self) -> MerkleProof {
         let one = U256::from(1);
         self.prove_leaf((one << self.log2_size()) - one)
-
-        // let mut proof = Vec::new();
-        // let mut children = Some(self.root_children());
-        // let mut old_right = self.root;
-
-        // while let Some((left, right)) = children {
-        //     proof.push(left);
-        //     old_right = right;
-        //     children = self.node_children(right);
-        // }
-
-        // proof.reverse();
-
-        // (old_right, proof)
     }
 }
 
@@ -187,7 +173,7 @@ impl MerkleTree {
 
         let Some(subtree) = &self.subtrees else {
             assert_eq!(index, U256::ZERO);
-            assert_eq!(self.log2_size, 1);
+            assert_eq!(self.log2_size, 0);
             return MerkleProof::leaf(self.root);
         };
 
@@ -214,8 +200,8 @@ mod tests {
     #[test]
     pub fn test_tree() {
         let mut builder = crate::MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 2);
-        builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.add_leaf_with_repetition(Digest::zeroed(), 2);
+        builder.add_leaf_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let proof = tree.prove_leaf(0);
@@ -225,7 +211,7 @@ mod tests {
     #[test]
     pub fn proof_test() {
         let mut builder = crate::MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 8);
+        builder.add_leaf_with_repetition(Digest::zeroed(), 8);
         let tree = builder.build();
 
         let proof = tree.prove_leaf(0);
@@ -242,8 +228,8 @@ mod tests {
     #[test]
     pub fn last_proof_test() {
         let mut builder = crate::MerkleBuilder::default();
-        builder.add_with_repetition(Digest::zeroed(), 2);
-        builder.add_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.add_leaf_with_repetition(Digest::zeroed(), 2);
+        builder.add_leaf_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let proof = tree.prove_last();

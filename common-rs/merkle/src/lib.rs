@@ -7,8 +7,8 @@
 //! use cartesi_dave_merkle::{Digest, MerkleBuilder};
 //!
 //! let mut builder = MerkleBuilder::default();
-//! builder.add_with_repetition(Digest::zeroed(), 2);
-//! builder.add_with_repetition(Digest::zeroed(), 6);
+//! builder.add_leaf_with_repetition(Digest::zeroed(), 2);
+//! builder.add_leaf_with_repetition(Digest::zeroed(), 6);
 //! let merkle = builder.build();
 //! ```
 //!
@@ -16,8 +16,8 @@
 mod digest;
 pub use digest::*;
 
-mod node;
-pub use node::*;
+// mod node;
+// pub use node::*;
 
 mod tree;
 pub use tree::*;
