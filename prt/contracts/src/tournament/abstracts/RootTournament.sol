@@ -4,9 +4,10 @@
 pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
+import "../../ITournament.sol";
 
 /// @notice Root tournament has no parent
-abstract contract RootTournament is Tournament {
+abstract contract RootTournament is Tournament, ITournament {
     //
     // Constructor
     //
@@ -27,6 +28,7 @@ abstract contract RootTournament is Tournament {
     function arbitrationResult()
         external
         view
+        override
         returns (bool, Tree.Node, Machine.Hash)
     {
         if (!isFinished()) {

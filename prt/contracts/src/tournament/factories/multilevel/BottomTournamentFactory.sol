@@ -3,15 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "./TournamentFactory.sol";
-import "../abstracts/NonLeafTournament.sol";
-import "../concretes/MiddleTournament.sol";
+import "../../concretes/BottomTournament.sol";
 
-import "../../Machine.sol";
-import "../../Tree.sol";
-import "../../Time.sol";
-
-contract MiddleTournamentFactory {
+contract BottomTournamentFactory {
     constructor() {}
 
     function instantiate(
@@ -24,8 +18,8 @@ contract MiddleTournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         NonLeafTournament _parent
-    ) external returns (MiddleTournament) {
-        MiddleTournament _tournament = new MiddleTournament(
+    ) external returns (BottomTournament) {
+        BottomTournament _tournament = new BottomTournament(
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,
@@ -34,8 +28,7 @@ contract MiddleTournamentFactory {
             _allowance,
             _startCycle,
             _level,
-            _parent,
-            TournamentFactory(msg.sender)
+            _parent
         );
 
         return _tournament;

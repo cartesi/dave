@@ -4,13 +4,13 @@
 pragma solidity ^0.8.17;
 
 import "../../CanonicalConstants.sol";
-
-import "../../Commitment.sol";
-import "../../Time.sol";
 import "../../Machine.sol";
 import "../../Tree.sol";
-import "../../Clock.sol";
-import "../../Match.sol";
+
+import "../libs/Commitment.sol";
+import "../libs/Time.sol";
+import "../libs/Clock.sol";
+import "../libs/Match.sol";
 
 /// @notice Implements the core functionalities of a permissionless tournament that resolves
 /// disputes of n parties in O(log(n))

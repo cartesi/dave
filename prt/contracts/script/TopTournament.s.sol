@@ -7,20 +7,20 @@ import {Script} from "forge-std/Script.sol";
 
 import {Machine} from "src/Machine.sol";
 
-import "src/tournament/factories/TournamentFactory.sol";
+import "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import "src/IDataProvider.sol";
 
 contract TopTournamentScript is Script {
     function run(Machine.Hash initialHash) external {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
-        TournamentFactory factory = new TournamentFactory(
-            new SingleLevelTournamentFactory(),
+        MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory()
         );
 
-        factory.instantiateTop(initialHash);
+        factory.instantiate(initialHash, IDataProvider(address(0x0)));
 
         vm.stopBroadcast();
     }
