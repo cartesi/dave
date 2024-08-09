@@ -27,8 +27,10 @@ pub struct Digest {
 }
 
 impl Digest {
+    pub const ZERO: Digest = Digest::new([0; HASH_SIZE]);
+
     /// Creates a new [Digest] with the provided 32-byte data.
-    pub fn new(data: [u8; HASH_SIZE]) -> Self {
+    pub const fn new(data: [u8; HASH_SIZE]) -> Self {
         Digest { data }
     }
 
@@ -45,7 +47,7 @@ impl Digest {
 
     /// Attempts to create a [Digest] from a hexadecimal string.
     pub fn from_digest_hex(digest_hex: &str) -> Result<Digest, DigestError> {
-        let data = Vec::from_hex(digest_hex)?;
+        let data = Vec::from_hex(&digest_hex[2..])?;
         Self::from_digest(&data)
     }
 
@@ -56,11 +58,6 @@ impl Digest {
     /// Converts the [Digest] to a hexadecimal string.
     pub fn to_hex(&self) -> String {
         hex::encode(self.data)
-    }
-
-    /// Creates a [Digest] with all bytes set to zero.
-    pub fn zeroed() -> Self {
-        Digest::new([0; HASH_SIZE])
     }
 
     /// Checks if the [Digest] is zeroed.

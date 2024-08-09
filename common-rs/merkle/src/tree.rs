@@ -39,12 +39,12 @@ pub struct MerkleTree {
 
 impl PartialEq for MerkleTree {
     fn eq(&self, other: &Self) -> bool {
-        self.root_hash == other.root_hash
+        self.height == other.height && self.root_hash == other.root_hash
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum InnerNode {
+enum InnerNode {
     Pair {
         left: Arc<MerkleTree>,
         right: Arc<MerkleTree>,
@@ -56,11 +56,17 @@ pub enum InnerNode {
 }
 
 impl InnerNode {
-    pub fn children(&self) -> (Arc<MerkleTree>, Arc<MerkleTree>) {
+    fn children(&self) -> (Arc<MerkleTree>, Arc<MerkleTree>) {
         match &self {
             InnerNode::Pair { left, right } => (Arc::clone(left), Arc::clone(right)),
             InnerNode::Iterated { child } => (Arc::clone(child), Arc::clone(child)),
         }
+    }
+}
+
+impl From<Digest> for Arc<MerkleTree> {
+    fn from(value: Digest) -> Self {
+        MerkleTree::leaf(value)
     }
 }
 
@@ -74,19 +80,22 @@ impl MerkleTree {
     }
 
     pub fn zeroed() -> Arc<Self> {
-        Self::leaf(Digest::zeroed())
+        Self::leaf(Digest::ZERO)
     }
 
     pub fn root_hash(&self) -> Digest {
         self.root_hash
     }
 
-    pub fn subtrees(&self) -> Option<InnerNode> {
-        self.subtrees.clone()
-    }
-
     pub fn height(&self) -> u32 {
         self.height
+    }
+
+    pub fn subtrees(&self) -> Option<(Arc<MerkleTree>, Arc<MerkleTree>)> {
+        match self.subtrees {
+            None => None,
+            Some(ref x) => Some(x.children()),
+        }
     }
 
     pub fn find_child(self: &Arc<Self>, digest: &Digest) -> Option<Arc<Self>> {
@@ -183,23 +192,41 @@ impl MerkleTree {
 
 #[cfg(test)]
 mod tests {
-    use crate::Digest;
+    use crate::{Digest, MerkleTree};
+
+    #[test]
+    pub fn simple_tree() {
+        let zero_tree = MerkleTree::leaf(Digest::ZERO);
+        assert_eq!(zero_tree, MerkleTree::zeroed());
+        assert_eq!(zero_tree.root_hash(), Digest::ZERO);
+        assert_eq!(zero_tree.height(), 0);
+        assert!(zero_tree.subtrees().is_none());
+
+        let one_digest = Digest::from_digest_hex(
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+        )
+        .unwrap();
+        let one_tree = MerkleTree::leaf(one_digest);
+        assert_eq!(one_tree.root_hash(), one_digest);
+        assert_eq!(one_tree.height(), 0);
+        assert!(one_tree.subtrees().is_none());
+    }
 
     #[test]
     pub fn test_tree() {
         let mut builder = crate::MerkleBuilder::default();
-        builder.add_leaf_with_repetition(Digest::zeroed(), 2);
-        builder.add_leaf_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.append_repeated(Digest::ZERO, 2);
+        builder.append_repeated(Digest::ZERO, 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let proof = tree.prove_leaf(0);
-        assert_eq!(proof.node, Digest::zeroed());
+        assert_eq!(proof.node, Digest::ZERO);
     }
 
     #[test]
     pub fn proof_test() {
         let mut builder = crate::MerkleBuilder::default();
-        builder.add_leaf_with_repetition(Digest::zeroed(), 8);
+        builder.append_repeated(Digest::ZERO, 8);
         let tree = builder.build();
 
         let proof = tree.prove_leaf(0);
@@ -216,8 +243,8 @@ mod tests {
     #[test]
     pub fn last_proof_test() {
         let mut builder = crate::MerkleBuilder::default();
-        builder.add_leaf_with_repetition(Digest::zeroed(), 2);
-        builder.add_leaf_with_repetition(Digest::zeroed(), 2u128.pow(64) - 2);
+        builder.append_repeated(Digest::ZERO, 2);
+        builder.append_repeated(Digest::ZERO, 2u128.pow(64) - 2);
         let tree = builder.build();
 
         let proof = tree.prove_last();
