@@ -4,24 +4,52 @@
 use crate::Digest;
 
 use ruint::{aliases::U256, UintTryFrom};
-use std::sync::Arc;
+use std::{ops::Rem, sync::Arc};
 
 /// A [MerkleProof] is used to verify that a leaf is part of a [MerkleTree].
 pub struct MerkleProof {
+    pub position: U256,
     pub node: Digest,
     pub siblings: Vec<Digest>,
 }
 
 impl MerkleProof {
-    pub fn leaf(node: Digest) -> Self {
+    pub fn leaf(node: Digest, position: U256) -> Self {
         Self {
             node,
+            position,
             siblings: Vec::new(),
         }
     }
 
-    pub(crate) fn push_hash(&mut self, h: Digest) {
+    pub fn build_root(&self) -> Digest {
+        let two = U256::from(2);
+
+        let mut root = self.node;
+
+        for (i, s) in self.siblings.iter().enumerate() {
+            if (self.position >> i).rem(two) == U256::ZERO {
+                root = root.join(s);
+            } else {
+                root = s.join(&root);
+            }
+        }
+
+        root
+    }
+
+    pub fn verify_root(&self, root: Digest) -> bool {
+        let other = self.build_root();
+        root == other
+    }
+
+    fn push_hash(&mut self, h: Digest) {
         self.siblings.push(h);
+        // self.siblings.insert(0, h);
+    }
+
+    fn rev(&mut self) {
+        self.siblings.reverse()
     }
 }
 
@@ -153,7 +181,11 @@ impl MerkleTree {
     where
         U256: UintTryFrom<T>,
     {
-        self.prove_leaf_rec(U256::from(index))
+        let index = U256::from(index);
+        println!("PROOF {}", index);
+        let mut proof = self.prove_leaf_rec(index);
+        // proof.rev();
+        proof
     }
 
     pub fn prove_last(&self) -> MerkleProof {
@@ -165,20 +197,23 @@ impl MerkleTree {
 impl MerkleTree {
     fn prove_leaf_rec(&self, index: U256) -> MerkleProof {
         let one = U256::from(1);
-
         assert!((one << self.height) > index, "index out of bounds");
 
         let Some(subtree) = &self.subtrees else {
+            println!("{}, {}", index, self.height);
+
             assert_eq!(index, U256::ZERO);
             assert_eq!(self.height, 0);
-            return MerkleProof::leaf(self.root_hash);
+            return MerkleProof::leaf(self.root_hash, index.clone());
         };
 
-        let (left, right) = subtree.children();
-        let inner_index = index.wrapping_shr(1);
-        let leaf_at_left = (inner_index & one).is_zero();
+        let shift = (self.height - 1) as usize;
+        let leaf_at_left = (index.wrapping_shr(shift) & one).is_zero();
+        let inner_index = index & (!(one << shift));
 
-        if leaf_at_left {
+        let (left, right) = subtree.children();
+
+        let mut proof = if leaf_at_left {
             let mut proof = left.prove_leaf_rec(inner_index);
             proof.push_hash(right.root_hash);
             proof
@@ -186,13 +221,23 @@ impl MerkleTree {
             let mut proof = right.prove_leaf_rec(inner_index);
             proof.push_hash(left.root_hash);
             proof
-        }
+        };
+
+        proof.position = index;
+        proof
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{Digest, MerkleTree};
+
+    fn one_digest() -> Digest {
+        Digest::from_digest_hex(
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+        )
+        .unwrap()
+    }
 
     #[test]
     pub fn simple_tree() {
@@ -202,10 +247,7 @@ mod tests {
         assert_eq!(zero_tree.height(), 0);
         assert!(zero_tree.subtrees().is_none());
 
-        let one_digest = Digest::from_digest_hex(
-            "0x0000000000000000000000000000000000000000000000000000000000000001",
-        )
-        .unwrap();
+        let one_digest = one_digest();
         let one_tree = MerkleTree::leaf(one_digest);
         assert_eq!(one_tree.root_hash(), one_digest);
         assert_eq!(one_tree.height(), 0);
@@ -226,18 +268,20 @@ mod tests {
     #[test]
     pub fn proof_test() {
         let mut builder = crate::MerkleBuilder::default();
-        builder.append_repeated(Digest::ZERO, 8);
+        for _ in 0..2 {
+            builder.append(one_digest());
+            builder.append(Digest::ZERO);
+        }
         let tree = builder.build();
 
         let proof = tree.prove_leaf(0);
-
-        let mut root = proof.node;
-
-        for node in proof.siblings {
-            root = Digest::join(&node, &root);
-        }
-
-        assert_eq!(root, tree.root_hash());
+        assert!(proof.verify_root(tree.root_hash()));
+        let proof = tree.prove_leaf(1);
+        assert!(proof.verify_root(tree.root_hash()));
+        let proof = tree.prove_leaf(2);
+        assert!(proof.verify_root(tree.root_hash()));
+        let proof = tree.prove_leaf(3);
+        assert!(proof.verify_root(tree.root_hash()));
     }
 
     #[test]

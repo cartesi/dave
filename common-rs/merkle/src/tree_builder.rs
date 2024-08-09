@@ -18,12 +18,13 @@ pub struct MerkleBuilder {
 }
 
 impl MerkleBuilder {
-    /// Returns the height of the leaf trees, or none if there were no leafs added.
+    /// Returns the height of the leaf trees, or none if there are no leafs added.
     pub fn height(&self) -> Option<u32> {
         self.trees.last().and_then(|last| Some(last.tree.height()))
     }
 
-    /// Returns the number of leaves (with repetition) in the builder.
+    /// Returns the number of leafs (with repetition) in the builder, or none if there are no
+    /// leafs. Zero means 2^256 leafs.
     pub fn count(&self) -> Option<U256> {
         self.trees
             .last()
@@ -112,12 +113,12 @@ impl MerkleBuilder {
         }
 
         let left = self.build_merkle(
-            &trees[first_cell..(last_cell + 1) as usize],
+            &trees[first_cell..(last_cell + 1)],
             log2_size - 1,
             stride << 1,
         );
         let right = self.build_merkle(
-            &trees[first_cell..(last_cell + 1) as usize],
+            &trees[first_cell..(last_cell + 1)],
             log2_size - 1,
             (stride << 1) + one,
         );
