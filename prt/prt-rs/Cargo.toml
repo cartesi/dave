@@ -26,10 +26,10 @@ cartesi-dave-merkle = { path = "../../common-rs/merkle" }
 cartesi-machine = { path = "../../machine/rust-bindings/cartesi-machine" }
 cartesi-prt-contracts = { path = "../contract-bindings" }
 
-anyhow = "1.0.63"
+anyhow = "1.0"
 async-recursion = "1"
-async-trait = "0.1.74"
-clap = { version = "4.5.7", features = ["derive", "env"] }
+async-trait = "0.1"
+clap = { version = "4.5", features = ["derive", "env"] }
 ethers = "2.0"
 futures = "0.3"
 log = "0.4"

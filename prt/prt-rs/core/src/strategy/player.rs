@@ -105,15 +105,18 @@ impl Player {
                             tournament_state.level,
                             commitment.merkle.root_hash(),
                         );
-                        let (left, right) = old_commitment.merkle.root_children();
+                        let (left, right) = old_commitment
+                            .merkle
+                            .subtrees()
+                            .expect("merkle tree should have subtrees");
                         arena_sender
                             .win_inner_match(
                                 tournament_state
                                     .parent
                                     .expect("parent tournament state not found"),
                                 tournament_state.address,
-                                left,
-                                right,
+                                left.root_hash(),
+                                right.root_hash(),
                             )
                             .await?;
 
@@ -165,8 +168,11 @@ impl Player {
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
     ) -> Result<()> {
-        let (left, right) = commitment.merkle.root_children();
-        let (last, proof) = commitment.merkle.last();
+        let (left, right) = commitment
+            .merkle
+            .subtrees()
+            .expect("commitment should have subtrees");
+        let proof_last = commitment.merkle.prove_last();
 
         info!(
             "join tournament {} of level {} with commitment {}",
@@ -175,7 +181,12 @@ impl Player {
             commitment.merkle.root_hash(),
         );
         arena_sender
-            .join_tournament(tournament_state.address, last, proof, left, right)
+            .join_tournament(
+                tournament_state.address,
+                &proof_last,
+                left.root_hash(),
+                right.root_hash(),
+            )
             .await?;
 
         Ok(())
@@ -256,7 +267,10 @@ impl Player {
         }
 
         if !opponent_clock.has_time() {
-            let (left, right) = commitment.merkle.root_children();
+            let (left, right) = commitment
+                .merkle
+                .subtrees()
+                .expect("merkle tree should have subtrees");
 
             info!(
                 "win match by timeout in tournament {} of level {} for commitment {}",
@@ -266,7 +280,12 @@ impl Player {
             );
 
             arena_sender
-                .win_timeout_match(match_state.tournament_address, match_state.id, left, right)
+                .win_timeout_match(
+                    match_state.tournament_address,
+                    match_state.id,
+                    left.root_hash(),
+                    right.root_hash(),
+                )
                 .await?;
         }
 
@@ -285,7 +304,10 @@ impl Player {
     ) -> Result<()> {
         if tournament_level == (tournament_max_level - 1) {
             let commitment = get_commitment(&commitments, match_state.tournament_address);
-            let (left, right) = commitment.merkle.root_children();
+            let (left, right) = commitment
+                .merkle
+                .subtrees()
+                .expect("merkle tree should have subtrees");
 
             let finished = match_state.other_parent.is_zeroed();
             if finished {
@@ -306,8 +328,8 @@ impl Player {
                 .win_leaf_match(
                     match_state.tournament_address,
                     match_state.id,
-                    left,
-                    right,
+                    left.root_hash(),
+                    right.root_hash(),
                     proof,
                 )
                 .await?;
@@ -334,15 +356,15 @@ impl Player {
         tournament_level: u64,
         tournament_max_level: u64,
     ) -> Result<()> {
-        let (left, right) =
-            if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
-                children
-            } else {
-                return Ok(());
-            };
+        let Some(r) = commitment.merkle.find_child(&match_state.other_parent) else {
+            info!("not my turn to react");
+            return Ok(());
+        };
+
+        let (left, right) = r.subtrees().expect("merkle tree should have subtrees");
 
         let running_leaf_position = {
-            if left != match_state.left_node {
+            if left.root_hash() != match_state.left_node {
                 // disagree on left
                 match_state.running_leaf_position
             } else {
@@ -351,8 +373,8 @@ impl Player {
             }
         };
 
-        let (agree_state, agree_state_proof) = if running_leaf_position == 0 {
-            (commitment.implicit_hash, MerkleProof::default())
+        let agree_state_proof = if running_leaf_position == 0 {
+            MerkleProof::empty()
         } else {
             commitment.merkle.prove_leaf(running_leaf_position - 1)
         };
@@ -368,10 +390,9 @@ impl Player {
                 .seal_leaf_match(
                     match_state.tournament_address,
                     match_state.id,
-                    left,
-                    right,
-                    agree_state,
-                    agree_state_proof,
+                    left.root_hash(),
+                    right.root_hash(),
+                    &agree_state_proof,
                 )
                 .await?;
         } else {
@@ -385,10 +406,9 @@ impl Player {
                 .seal_inner_match(
                     match_state.tournament_address,
                     match_state.id,
-                    left,
-                    right,
-                    agree_state,
-                    agree_state_proof,
+                    left.root_hash(),
+                    right.root_hash(),
+                    &agree_state_proof,
                 )
                 .await?;
         }
@@ -403,23 +423,17 @@ impl Player {
         commitment: &MachineCommitment,
         tournament_level: u64,
     ) -> Result<()> {
-        let (left, right) =
-            if let Some(children) = commitment.merkle.node_children(match_state.other_parent) {
-                children
-            } else {
-                info!("not my turn to react");
-                return Ok(());
-            };
-        let (new_left, new_right) = if left != match_state.left_node {
-            commitment
-                .merkle
-                .node_children(left)
-                .expect("left node does not have children")
+        let Some(r) = commitment.merkle.find_child(&match_state.other_parent) else {
+            info!("not my turn to react");
+            return Ok(());
+        };
+
+        let (left, right) = r.subtrees().expect("merkle tree should have subtrees");
+
+        let (new_left, new_right) = if left.root_hash() != match_state.left_node {
+            left.subtrees().expect("merkle tree should have subtrees")
         } else {
-            commitment
-                .merkle
-                .node_children(right)
-                .expect("right node does not have children")
+            right.subtrees().expect("merkle tree should have subtrees")
         };
 
         info!(
@@ -433,10 +447,10 @@ impl Player {
             .advance_match(
                 match_state.tournament_address,
                 match_state.id,
-                left,
-                right,
-                new_left,
-                new_right,
+                left.root_hash(),
+                right.root_hash(),
+                new_left.root_hash(),
+                new_right.root_hash(),
             )
             .await?;
 

@@ -22,6 +22,14 @@ impl MerkleProof {
         }
     }
 
+    pub fn empty() -> Self {
+        Self {
+            position: U256::ZERO,
+            node: Digest::ZERO,
+            siblings: Vec::new(),
+        }
+    }
+
     pub fn build_root(&self) -> Digest {
         let two = U256::from(2);
 

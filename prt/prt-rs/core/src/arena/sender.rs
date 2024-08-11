@@ -56,8 +56,7 @@ pub trait ArenaSender: Send + Sync {
     async fn join_tournament(
         &self,
         tournament: Address,
-        final_state: Digest,
-        proof: MerkleProof,
+        proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
     ) -> Result<()>;
@@ -78,8 +77,7 @@ pub trait ArenaSender: Send + Sync {
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
-        initial_hash: Digest,
-        initial_hash_proof: MerkleProof,
+        initial_hash_proof: &MerkleProof,
     ) -> Result<()>;
 
     async fn win_inner_match(
@@ -104,8 +102,7 @@ pub trait ArenaSender: Send + Sync {
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
-        initial_hash: Digest,
-        initial_hash_proof: MerkleProof,
+        initial_hash_proof: &MerkleProof,
     ) -> Result<()>;
 
     async fn win_leaf_match(
@@ -125,17 +122,20 @@ impl ArenaSender for EthArenaSender {
     async fn join_tournament(
         &self,
         tournament: Address,
-        final_state: Digest,
-        proof: MerkleProof,
+        proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
     ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
-        let proof = proof.iter().map(|h| -> [u8; 32] { (*h).into() }).collect();
+        let siblings = proof
+            .siblings
+            .iter()
+            .map(|h| -> [u8; 32] { (*h).into() })
+            .collect();
         tournament
             .join_tournament(
-                final_state.into(),
-                proof,
+                proof.node.into(),
+                siblings,
                 left_child.into(),
                 right_child.into(),
             )
@@ -175,12 +175,12 @@ impl ArenaSender for EthArenaSender {
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
-        initial_hash: Digest,
-        initial_hash_proof: MerkleProof,
+        initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
-        let initial_hash_proof = initial_hash_proof
+        let initial_hash_siblings = initial_hash_proof
+            .siblings
             .iter()
             .map(|h| -> [u8; 32] { (*h).into() })
             .collect();
@@ -189,8 +189,8 @@ impl ArenaSender for EthArenaSender {
                 match_id.into(),
                 left_leaf.into(),
                 right_leaf.into(),
-                initial_hash.into(),
-                initial_hash_proof,
+                initial_hash_proof.node.into(),
+                initial_hash_siblings,
             )
             .send()
             .await?
@@ -238,11 +238,11 @@ impl ArenaSender for EthArenaSender {
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
-        initial_hash: Digest,
-        initial_hash_proof: MerkleProof,
+        initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
-        let initial_hash_proof = initial_hash_proof
+        let initial_hash_siblings = initial_hash_proof
+            .siblings
             .iter()
             .map(|h| -> [u8; 32] { (*h).into() })
             .collect();
@@ -251,8 +251,8 @@ impl ArenaSender for EthArenaSender {
                 match_id.into(),
                 left_leaf.into(),
                 right_leaf.into(),
-                initial_hash.into(),
-                initial_hash_proof,
+                initial_hash_proof.node.into(),
+                initial_hash_siblings,
             )
             .send()
             .await?

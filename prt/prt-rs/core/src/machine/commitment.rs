@@ -6,7 +6,7 @@ use std::{ops::ControlFlow, sync::Arc};
 
 use crate::machine::{constants, MachineInstance};
 use cartesi_dave_arithmetic as arithmetic;
-use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree, UInt};
+use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};
 
 /// The [MachineCommitment] struct represents a `computation hash`, that is a [MerkleTree] of a set
 /// of steps of the Cartesi Machine.
@@ -66,7 +66,7 @@ pub fn build_big_machine_commitment(
 
     Ok(MachineCommitment {
         implicit_hash: initial_state.root_hash,
-        merkle: Arc::new(merkle),
+        merkle,
     })
 }
 
@@ -82,13 +82,10 @@ fn advance_instruction(
     machine.run(base_cycle + cycle)?;
     let state = machine.machine_state()?;
     let control_flow = if state.halted {
-        builder.add_with_repetition(
-            state.root_hash,
-            UInt::from(instruction_count - instruction + 1),
-        );
+        builder.append_repeated(state.root_hash, instruction_count - instruction + 1);
         ControlFlow::Break(())
     } else {
-        builder.add(state.root_hash);
+        builder.append(state.root_hash);
         ControlFlow::Continue(())
     };
     Ok(control_flow)
@@ -110,14 +107,14 @@ pub fn build_small_machine_commitment(
             break;
         }
 
-        builder.add_tree(run_uarch_span(machine)?);
+        builder.append(run_uarch_span(machine)?);
         instruction += 1;
 
         let state = machine.machine_state()?;
         if state.halted {
-            builder.add_tree_with_repetition(
+            builder.append_repeated(
                 run_uarch_span(machine)?,
-                UInt::from(instruction_count - instruction + 1),
+                instruction_count - instruction + 1,
             );
             break;
         }
@@ -126,11 +123,11 @@ pub fn build_small_machine_commitment(
 
     Ok(MachineCommitment {
         implicit_hash: initial_state.root_hash,
-        merkle: Arc::new(merkle),
+        merkle,
     })
 }
 
-fn run_uarch_span(machine: &mut MachineInstance) -> Result<MerkleTree> {
+fn run_uarch_span(machine: &mut MachineInstance) -> Result<Arc<MerkleTree>> {
     let (_, ucycle) = machine.position();
     assert!(ucycle == 0);
 
@@ -141,7 +138,7 @@ fn run_uarch_span(machine: &mut MachineInstance) -> Result<MerkleTree> {
 
     let mut state = loop {
         let mut state = machine.machine_state()?;
-        builder.add_with_repetition(state.root_hash, 1);
+        builder.append(state.root_hash);
 
         machine.increment_uarch()?;
         i += 1;
@@ -152,11 +149,11 @@ fn run_uarch_span(machine: &mut MachineInstance) -> Result<MerkleTree> {
         }
     };
 
-    builder.add_with_repetition(state.root_hash, UInt::from(constants::UARCH_SPAN - i));
+    builder.append_repeated(state.root_hash, constants::UARCH_SPAN - i);
 
     machine.ureset()?;
     state = machine.machine_state()?;
-    builder.add_with_repetition(state.root_hash, 1);
+    builder.append(state.root_hash);
 
     Ok(builder.build())
 }
