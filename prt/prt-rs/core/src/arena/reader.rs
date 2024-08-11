@@ -34,7 +34,7 @@ pub struct StateReader {
 impl StateReader {
     pub fn new(config: ArenaConfig) -> Result<Self> {
         let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
-            .interval(Duration::from_millis(10u64));
+            .interval(Duration::from_millis(1000));
         let client = Arc::new(provider);
 
         Ok(Self { client })
