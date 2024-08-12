@@ -2,12 +2,12 @@
 name = "cartesi-prt-core"
 version = "0.1.0"
 edition = "2021"
-build = "build.rs"
 
 [dependencies]
 cartesi-dave-arithmetic = { workspace = true }
 cartesi-dave-merkle = { workspace = true }
 cartesi-machine = { workspace = true }
+cartesi-prt-contracts = { workspace = true }
 anyhow = { workspace = true }
 async-recursion = { workspace = true }
 async-trait = { workspace = true }

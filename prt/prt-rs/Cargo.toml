@@ -24,6 +24,7 @@ repository = "https://github.com/cartesi/dave"
 cartesi-dave-arithmetic = { path = "../../common-rs/arithmetic" }
 cartesi-dave-merkle = { path = "../../common-rs/merkle" }
 cartesi-machine = { path = "../../machine/machine-rust-bindings/cartesi-machine" }
+cartesi-prt-contracts = { path = "../contract-bindings" }
 anyhow = "1.0.63"
 async-recursion = "1"
 async-trait = "0.1.74"

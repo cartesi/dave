@@ -612,6 +612,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cartesi-prt-contracts"
+version = "0.1.0"
+dependencies = [
+ "ethers",
+ "serde",
+]
+
+[[package]]
 name = "cartesi-prt-core"
 version = "0.1.0"
 dependencies = [
@@ -621,6 +629,7 @@ dependencies = [
  "cartesi-dave-arithmetic",
  "cartesi-dave-merkle",
  "cartesi-machine",
+ "cartesi-prt-contracts",
  "clap",
  "clap_derive",
  "convert_case 0.6.0",
