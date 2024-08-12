@@ -14,10 +14,10 @@ use ethers::{
 
 use crate::{
     arena::{arena::MatchID, config::ArenaConfig},
-    contract::{leaf_tournament, non_leaf_tournament, tournament},
     machine::MachineProof,
 };
 use cartesi_dave_merkle::{Digest, MerkleProof};
+use cartesi_prt_contracts::{leaf_tournament, non_leaf_tournament, tournament};
 
 type SenderMiddleware = SignerMiddleware<Provider<Http>, LocalWallet>;
 type Result<T> = std::result::Result<T, ContractError<SenderMiddleware>>;
@@ -155,13 +155,9 @@ impl ArenaSender for EthArenaSender {
         new_right_node: Digest,
     ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
-        let match_id = tournament::Id {
-            commitment_one: match_id.commitment_one.into(),
-            commitment_two: match_id.commitment_two.into(),
-        };
         tournament
             .advance_match(
-                match_id,
+                match_id.into(),
                 left_node.into(),
                 right_node.into(),
                 new_left_node.into(),
@@ -184,17 +180,13 @@ impl ArenaSender for EthArenaSender {
     ) -> Result<()> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
-        let match_id = non_leaf_tournament::Id {
-            commitment_one: match_id.commitment_one.into(),
-            commitment_two: match_id.commitment_two.into(),
-        };
         let initial_hash_proof = initial_hash_proof
             .iter()
             .map(|h| -> [u8; 32] { (*h).into() })
             .collect();
         tournament
             .seal_inner_match_and_create_inner_tournament(
-                match_id,
+                match_id.into(),
                 left_leaf.into(),
                 right_leaf.into(),
                 initial_hash.into(),
@@ -232,12 +224,8 @@ impl ArenaSender for EthArenaSender {
     ) -> Result<()> {
         let tournament =
             non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
-        let match_id = non_leaf_tournament::Id {
-            commitment_one: match_id.commitment_one.into(),
-            commitment_two: match_id.commitment_two.into(),
-        };
         tournament
-            .win_match_by_timeout(match_id, left_node.into(), right_node.into())
+            .win_match_by_timeout(match_id.into(), left_node.into(), right_node.into())
             .send()
             .await?
             .await?;
@@ -254,17 +242,13 @@ impl ArenaSender for EthArenaSender {
         initial_hash_proof: MerkleProof,
     ) -> Result<()> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
-        let match_id = leaf_tournament::Id {
-            commitment_one: match_id.commitment_one.into(),
-            commitment_two: match_id.commitment_two.into(),
-        };
         let initial_hash_proof = initial_hash_proof
             .iter()
             .map(|h| -> [u8; 32] { (*h).into() })
             .collect();
         tournament
             .seal_leaf_match(
-                match_id,
+                match_id.into(),
                 left_leaf.into(),
                 right_leaf.into(),
                 initial_hash.into(),
@@ -285,13 +269,9 @@ impl ArenaSender for EthArenaSender {
         proofs: MachineProof,
     ) -> Result<()> {
         let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
-        let match_id = leaf_tournament::Id {
-            commitment_one: match_id.commitment_one.into(),
-            commitment_two: match_id.commitment_two.into(),
-        };
         tournament
             .win_leaf_match(
-                match_id,
+                match_id.into(),
                 left_node.into(),
                 right_node.into(),
                 Bytes::from(proofs),
@@ -304,12 +284,8 @@ impl ArenaSender for EthArenaSender {
 
     async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, self.client.clone());
-        let match_id = tournament::Id {
-            commitment_one: match_id.commitment_one.into(),
-            commitment_two: match_id.commitment_two.into(),
-        };
         tournament
-            .eliminate_match_by_timeout(match_id)
+            .eliminate_match_by_timeout(match_id.into())
             .send()
             .await?
             .await?;

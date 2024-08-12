@@ -19,10 +19,12 @@ use crate::{
         },
         config::ArenaConfig,
     },
-    contract::{non_leaf_tournament, non_root_tournament, root_tournament, tournament},
     machine::constants,
 };
 use cartesi_dave_merkle::Digest;
+use cartesi_prt_contracts::{
+    non_leaf_tournament, non_root_tournament, root_tournament, tournament,
+};
 
 #[derive(Clone)]
 pub struct StateReader {

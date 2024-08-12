@@ -1,6 +1,15 @@
 # PRT Compute in Rust
 
+## Generate Rust bindings
+
+Run make command from [parent directory](../)
+```
+make bind
+```
+
 ## Build test image
+
+Requires bindings generated from [previous section](#generate-rust-bindings).
 
 ```
 docker build -t cartesi/prt-compute:rs -f Dockerfile ../../

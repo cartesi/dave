@@ -2,6 +2,7 @@
 
 use crate::machine::MachineCommitment;
 use cartesi_dave_merkle::Digest;
+use cartesi_prt_contracts::shared_types::Id;
 use ethers::types::{Address, U256};
 use std::collections::HashMap;
 
@@ -19,6 +20,15 @@ impl MatchID {
     /// Generates a new [Digest]
     pub fn hash(&self) -> Digest {
         self.commitment_one.join(&self.commitment_two)
+    }
+}
+
+impl From<MatchID> for Id {
+    fn from(match_id: MatchID) -> Self {
+        Id {
+            commitment_one: match_id.commitment_one.into(),
+            commitment_two: match_id.commitment_two.into(),
+        }
     }
 }
 
