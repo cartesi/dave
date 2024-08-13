@@ -1,29 +1,17 @@
-BINDINGS_DIR := ./contract-bindings/src
-BINDING_FILES = \
-    leaf_tournament.rs \
-    non_leaf_tournament.rs \
-    non_root_tournament.rs \
-    root_tournament.rs \
-    shared_types.rs \
-    tournament.rs
+BINDINGS_DIR := ./contract-bindings/src/contract
 SRC_DIR := ./contracts
-
-# Common commands
-CLEAN_CMD := find . -wholename '$(BINDINGS_DIR)/*.rs' ! -name 'lib.rs' -delete
-FORGE_CMD := cd $(SRC_DIR) && forge
+BINDINGS_FILTER := 'LeafTournament|RootTournament|^Tournament$$'
 
 help:
-	@echo '  clean                      - clean the cache artifacts and generated files'
+	@echo '  clean                      - clean the generated bindings'
 	@echo '  bind                       - generate Rust bindings from Solidity code'
 
 clean:
-	@$(CLEAN_CMD)
-	@$(FORGE_CMD) clean
+	@rm -rf $(BINDINGS_DIR)
 
-bind: clean
-	@$(FORGE_CMD) bind --ethers && \
-	for file in $(BINDING_FILES); do \
-		cp ./out/bindings/src/$$file ../$(BINDINGS_DIR)/; \
-	done
+bind:
+	@forge bind --ethers --select $(BINDINGS_FILTER) \
+	--module --bindings-path $(BINDINGS_DIR) \
+	--root $(SRC_DIR)
 
 .PHONY: help bind clean

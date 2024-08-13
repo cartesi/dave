@@ -2,7 +2,6 @@
 name = "cartesi-prt-contracts"
 
 version = "0.1.0"
-build = "build.rs"
 
 authors = [
   "Gabriel Coutinho de Paula <gcdepaula@protonmail.io>",

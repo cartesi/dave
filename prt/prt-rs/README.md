@@ -2,10 +2,7 @@
 
 ## Generate Rust bindings
 
-Run make command from [parent directory](../)
-```
-make bind
-```
+Refer to [contract-bindings](../contract-bindings/README.md)
 
 ## Build test image
 
