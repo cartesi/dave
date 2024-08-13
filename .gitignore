@@ -9,7 +9,6 @@ common-rs/Cargo.lock
 prt/lua_poc/outputs/
 prt/lua_poc/pixels/
 node_modules
-prt/contract-bindings/src/*.rs
-!prt/contract-bindings/src/lib.rs
+prt/contract-bindings/src/contract
 prt/contract-bindings/Cargo.lock
 prt/machine-emulator-sdk
