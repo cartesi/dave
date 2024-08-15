@@ -10,7 +10,7 @@ clean:
 	@rm -rf $(BINDINGS_DIR)
 
 bind:
-	@forge bind --ethers --select $(BINDINGS_FILTER) \
+	@forge bind --alloy --select $(BINDINGS_FILTER) \
 	--module --bindings-path $(BINDINGS_DIR) \
 	--root $(SRC_DIR)
 
