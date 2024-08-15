@@ -1,6 +1,6 @@
-use crate::arena::ArenaConfig;
+use alloy::sol_types::private::Address;
+use cartesi_prt_core::arena::BlockchainConfig;
 use clap::Parser;
-use ethers::types::Address;
 
 const ANVIL_ROOT_TOURNAMENT: &str = "0xa16E02E87b7454126E5E10d957A927A7F5B5d2be";
 
@@ -9,8 +9,7 @@ const ANVIL_ROOT_TOURNAMENT: &str = "0xa16E02E87b7454126E5E10d957A927A7F5B5d2be"
 #[command(about = "Configuration for Cartesi Compute")]
 pub struct ComputeConfig {
     #[command(flatten)]
-    pub arena_config: ArenaConfig,
-
+    pub blockchain_config: BlockchainConfig,
     /// path to machine config
     #[arg(long, env)]
     pub machine_path: String,

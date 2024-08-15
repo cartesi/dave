@@ -3,7 +3,7 @@ use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
 use cartesi_machine::{
     configuration::RuntimeConfig,
-    log::{AccessLog, AccessLogType, AccessType},
+    log::{AccessLog, AccessLogType},
     machine::Machine,
 };
 

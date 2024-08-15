@@ -19,5 +19,3 @@ homepage = "https://github.com/cartesi/dave"
 license-file = "LICENSE"
 readme = "README.md"
 repository = "https://github.com/cartesi/dave"
-
-[workspace.dependencies]

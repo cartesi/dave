@@ -1,9 +1,10 @@
 //! This module defines the structs that are used for the interacting to tournaments
 
 use crate::machine::MachineCommitment;
+
+use alloy::sol_types::private::Address;
 use cartesi_dave_merkle::Digest;
-use cartesi_prt_contracts::shared_types::Id;
-use ethers::types::{Address, U256};
+use ruint::aliases::U256;
 use std::collections::HashMap;
 
 pub type TournamentStateMap = HashMap<Address, TournamentState>;
@@ -23,11 +24,30 @@ impl MatchID {
     }
 }
 
-impl From<MatchID> for Id {
+// TODO: this can be optimized if the bindings generated with only one shared `Id` struct
+impl From<MatchID> for cartesi_prt_contracts::tournament::Match::Id {
     fn from(match_id: MatchID) -> Self {
-        Id {
-            commitment_one: match_id.commitment_one.into(),
-            commitment_two: match_id.commitment_two.into(),
+        cartesi_prt_contracts::tournament::Match::Id {
+            commitmentOne: match_id.commitment_one.into(),
+            commitmentTwo: match_id.commitment_two.into(),
+        }
+    }
+}
+
+impl From<MatchID> for cartesi_prt_contracts::nonleaftournament::Match::Id {
+    fn from(match_id: MatchID) -> Self {
+        cartesi_prt_contracts::nonleaftournament::Match::Id {
+            commitmentOne: match_id.commitment_one.into(),
+            commitmentTwo: match_id.commitment_two.into(),
+        }
+    }
+}
+
+impl From<MatchID> for cartesi_prt_contracts::leaftournament::Match::Id {
+    fn from(match_id: MatchID) -> Self {
+        cartesi_prt_contracts::leaftournament::Match::Id {
+            commitmentOne: match_id.commitment_one.into(),
+            commitmentTwo: match_id.commitment_two.into(),
         }
     }
 }
@@ -45,7 +65,7 @@ pub struct CommitmentState {
 pub struct ClockState {
     pub allowance: u64,
     pub start_instant: u64,
-    pub block_time: U256,
+    pub block_time: u64,
 }
 
 impl ClockState {
@@ -53,7 +73,7 @@ impl ClockState {
         if self.start_instant == 0 {
             true
         } else {
-            self.deadline() > self.block_time.as_u64()
+            self.deadline() > self.block_time
         }
     }
 
@@ -61,7 +81,7 @@ impl ClockState {
         if self.start_instant == 0 {
             0
         } else {
-            self.block_time.as_u64() - self.deadline()
+            self.block_time - self.deadline()
         }
     }
 
@@ -76,7 +96,7 @@ impl std::fmt::Display for ClockState {
         if self.start_instant == 0 {
             write!(f, "clock paused, {} seconds left", self.allowance)
         } else {
-            let time_elapsed = self.block_time.as_u64() - self.start_instant;
+            let time_elapsed = self.block_time - self.start_instant;
             if self.allowance >= time_elapsed {
                 write!(
                     f,
@@ -142,10 +162,10 @@ pub struct MatchState {
     pub other_parent: Digest,
     pub left_node: Digest,
     pub right_node: Digest,
-    pub running_leaf_position: u64,
+    pub running_leaf_position: U256,
     pub current_height: u64,
     pub level: u64,
-    pub leaf_cycle: u64,
+    pub leaf_cycle: U256,
     pub base_big_cycle: u64,
     pub tournament_address: Address,
     pub inner_tournament: Option<Address>,

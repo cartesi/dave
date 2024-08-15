@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use ::log::info;
+use alloy::sol_types::private::Address;
 use anyhow::Result;
 use async_recursion::async_recursion;
-use ethers::types::Address;
+use num_traits::{cast::ToPrimitive, One};
+use ruint::aliases::U256;
 
 use crate::{
     arena::{
@@ -315,7 +317,9 @@ impl Player {
             }
 
             let cycle = match_state.base_big_cycle;
-            let ucycle = match_state.leaf_cycle & constants::UARCH_SPAN;
+            let ucycle = (match_state.leaf_cycle & U256::from(constants::UARCH_SPAN))
+                .to_u64()
+                .expect("fail to convert ucycle");
             let proof = MachineInstance::new(&self.machine_path)?.get_logs(cycle, ucycle)?;
 
             info!(
@@ -369,14 +373,16 @@ impl Player {
                 match_state.running_leaf_position
             } else {
                 // disagree on right
-                match_state.running_leaf_position + 1
+                match_state.running_leaf_position + U256::one()
             }
         };
 
-        let agree_state_proof = if running_leaf_position == 0 {
+        let agree_state_proof = if running_leaf_position.is_zero() {
             MerkleProof::empty()
         } else {
-            commitment.merkle.prove_leaf(running_leaf_position - 1)
+            commitment
+                .merkle
+                .prove_leaf(running_leaf_position - U256::one())
         };
 
         if tournament_level == (tournament_max_level - 1) {

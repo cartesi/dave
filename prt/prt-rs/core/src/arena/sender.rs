@@ -2,51 +2,75 @@
 //! to tournaments
 
 use async_trait::async_trait;
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc};
 
-use ethers::{
-    contract::ContractError,
-    middleware::SignerMiddleware,
-    providers::{Http, Middleware, Provider, ProviderError},
-    signers::{LocalWallet, Signer},
-    types::{Address, Bytes},
+use alloy::{
+    contract::Error as ContractError,
+    network::{Ethereum, EthereumWallet, NetworkWallet},
+    providers::{
+        fillers::{FillProvider, JoinFill, NonceFiller, WalletFiller},
+        Identity, Provider, ProviderBuilder, RootProvider,
+    },
+    signers::local::PrivateKeySigner,
+    sol_types::private::{Address, Bytes, B256},
+    transports::{
+        http::{Client, Http},
+        RpcError, TransportErrorKind,
+    },
 };
 
 use crate::{
-    arena::{arena::MatchID, config::ArenaConfig},
+    arena::{arena::MatchID, config::BlockchainConfig},
     machine::MachineProof,
 };
 use cartesi_dave_merkle::{Digest, MerkleProof};
-use cartesi_prt_contracts::{leaf_tournament, non_leaf_tournament, tournament};
+use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
 
-type SenderMiddleware = SignerMiddleware<Provider<Http>, LocalWallet>;
-type Result<T> = std::result::Result<T, ContractError<SenderMiddleware>>;
+pub type SenderFiller = FillProvider<
+    JoinFill<JoinFill<Identity, NonceFiller>, WalletFiller<EthereumWallet>>,
+    RootProvider<Http<Client>>,
+    Http<Client>,
+    Ethereum,
+>;
+type Result<T> = std::result::Result<T, ContractError>;
 
 #[derive(Clone)]
 pub struct EthArenaSender {
-    client: Arc<SenderMiddleware>,
+    client: Arc<SenderFiller>,
+    wallet_address: Address,
 }
 
 impl EthArenaSender {
-    pub fn new(config: ArenaConfig) -> anyhow::Result<Self> {
-        let provider = Provider::<Http>::try_from(config.web3_rpc_url.clone())?
-            .interval(Duration::from_millis(10u64));
-        let wallet = LocalWallet::from_str(config.web3_private_key.as_str())?;
-        let client = Arc::new(SignerMiddleware::new(
-            provider,
-            wallet.with_chain_id(config.web3_chain_id),
-        ));
+    pub fn new(config: &BlockchainConfig) -> anyhow::Result<Self> {
+        let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())?;
+        let wallet = EthereumWallet::from(signer);
+        let wallet_address =
+            <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
-        Ok(Self { client })
+        let url = config.web3_rpc_url.parse()?;
+        let provider = ProviderBuilder::new()
+            .with_nonce_management()
+            .wallet(wallet)
+            .with_chain(
+                config
+                    .web3_chain_id
+                    .try_into()
+                    .expect("fail to convert chain id"),
+            )
+            .on_http(url);
+        let client = Arc::new(provider);
+
+        Ok(Self {
+            client,
+            wallet_address,
+        })
     }
 
-    pub async fn nonce(&self) -> std::result::Result<u64, ProviderError> {
+    pub async fn nonce(&self) -> std::result::Result<u64, RpcError<TransportErrorKind>> {
         Ok(self
             .client
-            .inner()
-            .get_transaction_count(self.client.signer().address(), None)
-            .await?
-            .as_u64())
+            .get_transaction_count(self.wallet_address)
+            .await?)
     }
 }
 
@@ -126,14 +150,14 @@ impl ArenaSender for EthArenaSender {
         left_child: Digest,
         right_child: Digest,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, self.client.clone());
+        let tournament = tournament::Tournament::new(tournament, &self.client);
         let siblings = proof
             .siblings
             .iter()
-            .map(|h| -> [u8; 32] { (*h).into() })
+            .map(|h| -> B256 { (*h).into() })
             .collect();
         tournament
-            .join_tournament(
+            .joinTournament(
                 proof.node.into(),
                 siblings,
                 left_child.into(),
@@ -141,6 +165,7 @@ impl ArenaSender for EthArenaSender {
             )
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
@@ -154,9 +179,9 @@ impl ArenaSender for EthArenaSender {
         new_left_node: Digest,
         new_right_node: Digest,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, self.client.clone());
+        let tournament = tournament::Tournament::new(tournament, &self.client);
         tournament
-            .advance_match(
+            .advanceMatch(
                 match_id.into(),
                 left_node.into(),
                 right_node.into(),
@@ -165,6 +190,7 @@ impl ArenaSender for EthArenaSender {
             )
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
@@ -177,15 +203,14 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
-        let tournament =
-            non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
+        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.client);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
-            .map(|h| -> [u8; 32] { (*h).into() })
+            .map(|h| -> B256 { (*h).into() })
             .collect();
         tournament
-            .seal_inner_match_and_create_inner_tournament(
+            .sealInnerMatchAndCreateInnerTournament(
                 match_id.into(),
                 left_leaf.into(),
                 right_leaf.into(),
@@ -194,6 +219,7 @@ impl ArenaSender for EthArenaSender {
             )
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
@@ -205,12 +231,12 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
     ) -> Result<()> {
-        let tournament =
-            non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
+        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.client);
         tournament
-            .win_inner_match(child_tournament, left_node.into(), right_node.into())
+            .winInnerMatch(child_tournament, left_node.into(), right_node.into())
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
@@ -222,12 +248,12 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
     ) -> Result<()> {
-        let tournament =
-            non_leaf_tournament::NonLeafTournament::new(tournament, self.client.clone());
+        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.client);
         tournament
-            .win_match_by_timeout(match_id.into(), left_node.into(), right_node.into())
+            .winMatchByTimeout(match_id.into(), left_node.into(), right_node.into())
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
@@ -240,14 +266,14 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
-        let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
+        let tournament = leaftournament::LeafTournament::new(tournament, &self.client);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
-            .map(|h| -> [u8; 32] { (*h).into() })
+            .map(|h| -> B256 { (*h).into() })
             .collect();
         tournament
-            .seal_leaf_match(
+            .sealLeafMatch(
                 match_id.into(),
                 left_leaf.into(),
                 right_leaf.into(),
@@ -256,6 +282,7 @@ impl ArenaSender for EthArenaSender {
             )
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
@@ -268,9 +295,9 @@ impl ArenaSender for EthArenaSender {
         right_node: Digest,
         proofs: MachineProof,
     ) -> Result<()> {
-        let tournament = leaf_tournament::LeafTournament::new(tournament, self.client.clone());
+        let tournament = leaftournament::LeafTournament::new(tournament, &self.client);
         tournament
-            .win_leaf_match(
+            .winLeafMatch(
                 match_id.into(),
                 left_node.into(),
                 right_node.into(),
@@ -278,16 +305,18 @@ impl ArenaSender for EthArenaSender {
             )
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
 
     async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, self.client.clone());
+        let tournament = tournament::Tournament::new(tournament, &self.client);
         tournament
-            .eliminate_match_by_timeout(match_id.into())
+            .eliminateMatchByTimeout(match_id.into())
             .send()
             .await?
+            .watch()
             .await?;
         Ok(())
     }
