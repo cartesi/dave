@@ -1,6 +1,7 @@
 //! Definition of the [Digest] type and its associated methods. A digest is the output of a hash
 //! function. It's used to identify the data in the MerkleTree.
 
+use alloy::sol_types::private::B256;
 use hex::FromHex;
 use std::fmt;
 
@@ -75,6 +76,18 @@ impl From<[u8; HASH_SIZE]> for Digest {
 impl From<Digest> for [u8; HASH_SIZE] {
     fn from(hash: Digest) -> Self {
         hash.data
+    }
+}
+
+impl From<B256> for Digest {
+    fn from(data: B256) -> Self {
+        Digest::new(data.0)
+    }
+}
+
+impl From<Digest> for B256 {
+    fn from(hash: Digest) -> Self {
+        B256::from_slice(hash.slice())
     }
 }
 

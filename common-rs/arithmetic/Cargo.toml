@@ -9,5 +9,3 @@ homepage = { workspace = true }
 license-file = { workspace = true }
 readme = { workspace = true }
 repository = { workspace = true }
-
-

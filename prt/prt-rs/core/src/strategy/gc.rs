@@ -1,7 +1,7 @@
 use ::log::info;
+use alloy::sol_types::private::Address;
 use anyhow::Result;
 use async_recursion::async_recursion;
-use ethers::types::Address;
 
 use crate::arena::{ArenaSender, MatchState, TournamentStateMap};
 

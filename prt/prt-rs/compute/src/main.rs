@@ -1,6 +1,6 @@
+use cartesi_prt_compute::ComputeConfig;
 use cartesi_prt_core::{
     arena::{EthArenaSender, StateReader},
-    config::ComputeConfig,
     machine::CachingMachineCommitmentBuilder,
     strategy::{gc::GarbageCollector, player::Player},
 };
@@ -32,10 +32,10 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     let config = ComputeConfig::parse();
-    let arena_config = config.arena_config.clone();
+    let blockchain_config = config.blockchain_config;
 
-    let reader = StateReader::new(arena_config.clone())?;
-    let sender = EthArenaSender::new(arena_config)?;
+    let reader = StateReader::new(&blockchain_config)?;
+    let sender = EthArenaSender::new(&blockchain_config)?;
 
     let mut player = Player::new(
         config.machine_path.clone(),
