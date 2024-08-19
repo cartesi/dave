@@ -18,12 +18,12 @@ rollups-state-manager = { workspace = true }
 
 cartesi-rollups-contracts = { workspace = true }
 
+alloy = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
-ethers = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
+clap_derive = { workspace = true }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
-clap_derive = "=4.5.5"
-env_logger = "0.10"
+env_logger = "0.11.5"

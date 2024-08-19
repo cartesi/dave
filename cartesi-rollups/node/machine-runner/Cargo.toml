@@ -20,7 +20,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-ethers = { workspace = true }
+alloy = { workspace = true }
 cartesi-rollups-contracts = { workspace = true }
 hex = "0.4.3"
 serde = "1"
