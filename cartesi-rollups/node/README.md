@@ -3,7 +3,7 @@
 ## Build test image
 
 ```
-docker build -t cartesi/rollups-node:test ../ -f Dockerfile.test
+docker build -t cartesi/rollups-node:test ../../ -f Dockerfile.test
 ```
 
 ## Run rollups tests
