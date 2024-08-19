@@ -30,15 +30,17 @@ rollups-state-manager = { version = "0.1", path = "state-manager" }
 
 cartesi-machine = { path = "../../machine/rust-bindings/cartesi-machine" }
 cartesi-dave-arithmetic = { path = "../../common-rs/arithmetic" }
+cartesi-dave-contracts = { path = "../contract-bindings" }
 cartesi-dave-merkle = { path = "../../common-rs/merkle" }
 cartesi-prt-core = { path = "../../prt/prt-rs/core" }
 
+alloy = { version = "0.2.1", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
 anyhow = "1.0"
 async-recursion = "1"
 async-trait = "0.1.74"
 cartesi-rollups-contracts = "2.0.0-rc.1"
 clap = { version = "4.5.7", features = ["derive", "env"] }
-ethers = "2.0.11"
+clap_derive = "=4.5.13"
 futures = "0.3"
 log = "0.4"
 thiserror = "1.0"

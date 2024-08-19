@@ -16,5 +16,4 @@ repository = "https://github.com/cartesi/dave"
 
 [dependencies]
 alloy = { version = "0.2.1", features = ["sol-types", "contract"] }
-serde = "1"
 
