@@ -218,11 +218,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use cartesi_rollups_contracts::inputs::EvmAdvanceCall as NewEvmAdvanceCall;
-    use ethers::{
-        abi::AbiEncode,
-        types::{Address, U256},
-    };
+    use alloy::sol_types::private::{Address, U256};
+    use cartesi_rollups_contracts::inputs::Inputs::EvmAdvanceCall;
+    use ethers::abi::AbiEncode;
     use rollups_state_manager::{Epoch, Input, InputId, StateManager};
     use std::{str::FromStr, sync::Arc};
     use thiserror::Error;
@@ -415,35 +413,6 @@ mod tests {
         (machine_state_hashes, commitment)
     }
 
-    // TODO: use actual call type from the rollups_contract crate
-    /// this is the old call format,
-    /// it should be replaced by the actual `EvmAdvance` after it's deployed and published
-    #[derive(
-        Clone,
-        ethers::contract::EthCall,
-        ethers::contract::EthDisplay,
-        serde::Serialize,
-        serde::Deserialize,
-        Default,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash,
-    )]
-    #[ethcall(
-        name = "EvmAdvance",
-        abi = "EvmAdvance(uint256,address,address,uint256,uint256,uint256,bytes)"
-    )]
-    pub struct EvmAdvanceCall {
-        pub chain_id: ::ethers::core::types::U256,
-        pub app_contract: ::ethers::core::types::Address,
-        pub msg_sender: ::ethers::core::types::Address,
-        pub block_number: ::ethers::core::types::U256,
-        pub block_timestamp: ::ethers::core::types::U256,
-        pub index: ::ethers::core::types::U256,
-        pub payload: ::ethers::core::types::Bytes,
-    }
-
     fn load_inputs() -> Vec<Vec<u8>> {
         // this file stores all the inputs for one epoch
         let inputs_str = include_str!("../test-files/inputs.test");
@@ -459,13 +428,14 @@ mod tests {
             .enumerate()
             .map(|(i, h)| {
                 EvmAdvanceCall {
-                    chain_id,
-                    app_contract,
-                    msg_sender,
-                    block_number,
-                    block_timestamp,
+                    chainId: chain_id,
+                    appContract: app_contract,
+                    msgSender: msg_sender,
+                    blockNumber: block_number,
+                    blockTimestamp: block_timestamp,
                     index: U256::from(i),
                     payload: hex_to_bytes(*h).unwrap().into(),
+                    prevRandao: U256::ZERO, // TODO: what to put here?
                 }
                 .encode()
             })
@@ -476,6 +446,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_advance() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // TODO: update machine state hashes with new emulator version
         let (machine_state_hashes, commitment) = load_machine_state_hashes();
         let inputs = load_inputs();
 

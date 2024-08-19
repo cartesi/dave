@@ -13,6 +13,7 @@ repository = { workspace = true }
 [dependencies]
 rollups-state-manager = { workspace = true }
 alloy = { workspace = true }
+alloy-rpc-types-eth = "0.2.1"
 async-recursion = { workspace = true }
 cartesi-dave-contracts = { workspace = true }
 cartesi-rollups-contracts = { workspace = true }
