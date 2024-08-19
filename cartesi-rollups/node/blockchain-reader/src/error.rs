@@ -3,14 +3,12 @@
 
 use rollups_state_manager::StateManager;
 
-use ethers::abi::Error as AbiError;
-use ethers::prelude::Http;
-use ethers::providers::ProviderError;
+use alloy::{contract::Error as ContractError, transports::http::reqwest::Url};
 use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub struct ProviderErrors(pub Vec<ProviderError>);
+pub struct ProviderErrors(pub Vec<ContractError>);
 
 impl std::fmt::Display for ProviderErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -26,14 +24,9 @@ pub enum BlockchainReaderError<SM: StateManager> {
         source: ProviderErrors,
     },
 
-    #[error(transparent)]
-    Abi {
-        #[from]
-        source: AbiError,
-    },
-
     #[error("Parse error: {0}")]
-    ParseError(<Http as FromStr>::Err),
+    ParseError(<Url as FromStr>::Err),
+
     #[error("State manager error: {0}")]
     StateManagerError(<SM as StateManager>::Error),
 }

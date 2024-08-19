@@ -1,3 +1,4 @@
+use cartesi_prt_core::arena::BlockchainConfig;
 use clap::Parser;
 use log::error;
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
@@ -8,7 +9,6 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
-const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const SLEEP_DURATION: u64 = 30;
 const SNAPSHOT_DURATION: u64 = 30;
 
@@ -18,9 +18,8 @@ const SNAPSHOT_DURATION: u64 = 30;
 pub struct DaveParameters {
     #[command(flatten)]
     pub address_book: AddressBook,
-
-    #[arg(long, env, default_value = ANVIL_URL)]
-    web3_rpc_url: String,
+    #[command(flatten)]
+    pub blockchain_config: BlockchainConfig,
     #[arg(long, env)]
     machine_path: String,
     #[arg(long, env, default_value_t = SLEEP_DURATION)]
@@ -63,6 +62,7 @@ pub fn create_epoch_manager_task(
 
     spawn(async move {
         let mut epoch_manager = EpochManager::new(
+            &parameters.blockchain_config,
             params.address_book.consensus,
             state_manager,
             params.sleep_duration,
