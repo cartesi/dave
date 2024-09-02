@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 mod error;
 
+use alloy::sol_types::private::U256;
 use error::{MachineRunnerError, Result};
 use std::{path::Path, sync::Arc, time::Duration};
 
@@ -132,17 +133,17 @@ where
                 let mut total_repetitions = 0;
                 for state_hash in &state_hashes {
                     total_repetitions += state_hash.1;
-                    builder.add_with_repetition(
+                    builder.append_repeated(
                         Digest::from_digest(&state_hash.0)?,
-                        state_hash.1.into(),
+                        U256::from(state_hash.1),
                     );
                 }
 
                 let stride_count_in_epoch =
                     max_uint(LOG2_INPUT_SPAN + LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
-                builder.add_with_repetition(
+                builder.append_repeated(
                     Digest::from_digest(&state_hashes.last().unwrap().0)?,
-                    (stride_count_in_epoch - total_repetitions + 1).into(),
+                    U256::from(stride_count_in_epoch - total_repetitions + 1),
                 );
 
                 let tree = builder.build();
@@ -218,9 +219,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use alloy::sol_types::private::{Address, U256};
+    use alloy::sol_types::{
+        private::{Address, U256},
+        SolCall,
+    };
     use cartesi_rollups_contracts::inputs::Inputs::EvmAdvanceCall;
-    use ethers::abi::AbiEncode;
     use rollups_state_manager::{Epoch, Input, InputId, StateManager};
     use std::{str::FromStr, sync::Arc};
     use thiserror::Error;
@@ -437,7 +440,7 @@ mod tests {
                     payload: hex_to_bytes(*h).unwrap().into(),
                     prevRandao: U256::ZERO, // TODO: what to put here?
                 }
-                .encode()
+                .abi_encode()
             })
             .collect();
 
