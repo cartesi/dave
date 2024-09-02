@@ -1,6 +1,11 @@
-use alloy::sol_types::private::Address;
+use alloy::{
+    network::{Ethereum, EthereumWallet, NetworkWallet},
+    providers::ProviderBuilder,
+    signers::local::PrivateKeySigner,
+    sol_types::private::Address,
+};
 use anyhow::Result;
-use std::{sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus;
 use cartesi_prt_core::arena::{BlockchainConfig, SenderFiller};
@@ -24,12 +29,11 @@ where
         state_manager: Arc<SM>,
         sleep_duration: u64,
     ) -> Self {
-        let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())?;
+        let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())
+            .expect("fail to construct signer");
         let wallet = EthereumWallet::from(signer);
-        let wallet_address =
-            <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
-        let url = config.web3_rpc_url.parse()?;
+        let url = config.web3_rpc_url.parse().expect("fail to parse url");
         let provider = ProviderBuilder::new()
             .with_nonce_management()
             .wallet(wallet)

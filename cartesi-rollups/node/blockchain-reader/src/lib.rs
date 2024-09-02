@@ -125,7 +125,9 @@ where
             .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
 
         // read epochs from blockchain
-        let epochs: Vec<Epoch> = self.collect_sealed_epochs(prev_block, current_block).await?;
+        let epochs: Vec<Epoch> = self
+            .collect_sealed_epochs(prev_block, current_block)
+            .await?;
 
         let latest_sealed_epoch = match epochs.last() {
             Some(e) => e.epoch_number,
@@ -145,7 +147,11 @@ where
         Ok((inputs, epochs))
     }
 
-    async fn collect_sealed_epochs(&self, prev_block: u64, current_block: u64) -> Result<Vec<Epoch>, SM> {
+    async fn collect_sealed_epochs(
+        &self,
+        prev_block: u64,
+        current_block: u64,
+    ) -> Result<Vec<Epoch>, SM> {
         Ok(self
             .epoch_reader
             .next(
@@ -390,8 +396,7 @@ impl PartitionProvider {
             .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?
             .expect("block is empty")
             .header
-            .number
-            .expect("block number is empty");
+            .number;
 
         Ok(block_number)
     }
