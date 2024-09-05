@@ -16,6 +16,7 @@ import "src/tournament/concretes/TopTournament.sol";
 import "src/tournament/concretes/MiddleTournament.sol";
 
 import "src/tournament/factories/SingleLevelTournamentFactory.sol";
+import "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import "src/tournament/factories/multilevel/TopTournamentFactory.sol";
 import "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
 import "src/tournament/factories/multilevel/BottomTournamentFactory.sol";

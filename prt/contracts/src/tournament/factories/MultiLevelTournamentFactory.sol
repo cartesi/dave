@@ -3,17 +3,13 @@
 
 pragma solidity ^0.8.17;
 
-import "../../ITournamentFactory.sol";
-
-import "../concretes/TopTournament.sol";
-import "../concretes/MiddleTournament.sol";
-import "../concretes/BottomTournament.sol";
+import "../../IMultiLevelTournamentFactory.sol";
 
 import "./multilevel/TopTournamentFactory.sol";
 import "./multilevel/MiddleTournamentFactory.sol";
 import "./multilevel/BottomTournamentFactory.sol";
 
-contract MultiLevelTournamentFactory is ITournamentFactory {
+contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
@@ -64,8 +60,7 @@ contract MultiLevelTournamentFactory is ITournamentFactory {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level,
-            NonLeafTournament(msg.sender)
+            _level
         );
 
         return _tournament;
@@ -89,8 +84,7 @@ contract MultiLevelTournamentFactory is ITournamentFactory {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level,
-            NonLeafTournament(msg.sender)
+            _level
         );
 
         return _tournament;

@@ -3,8 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-// import "../factories/multilevel/IMultiLevelTournamentFactory.sol";
-import "../factories/MultiLevelTournamentFactory.sol";
+import "../../IMultiLevelTournamentFactory.sol";
 import "./Tournament.sol";
 import "./NonRootTournament.sol";
 
@@ -22,7 +21,7 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Constants
     //
-    MultiLevelTournamentFactory immutable tournamentFactory;
+    IMultiLevelTournamentFactory immutable tournamentFactory;
 
     //
     // Storage
@@ -47,7 +46,7 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Constructor
     //
-    constructor(MultiLevelTournamentFactory _tournamentFactory) {
+    constructor(IMultiLevelTournamentFactory _tournamentFactory) {
         tournamentFactory = _tournamentFactory;
     }
 
