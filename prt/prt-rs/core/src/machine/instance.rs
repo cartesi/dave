@@ -158,12 +158,11 @@ fn encode_access_log(log: &AccessLog) -> Vec<u8> {
     let mut encoded: Vec<Vec<u8>> = Vec::new();
 
     for a in log.accesses().iter() {
-        assert_eq!(a.log2_size(), 3);
-        if a.access_type() == AccessType::Read {
+        if a.log2_size() == 3 {
             encoded.push(a.read_data().to_vec());
+        } else {
+            encoded.push(a.read_hash().as_bytes().to_vec());
         }
-
-        encoded.push(a.read_hash().as_bytes().to_vec());
 
         let decoded_siblings: Vec<Vec<u8>> = a
             .sibling_hashes()

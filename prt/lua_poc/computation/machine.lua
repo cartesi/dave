@@ -218,12 +218,11 @@ function Machine:get_logs(path, cycle, ucycle)
     local encoded = {}
 
     for _, a in ipairs(logs.accesses) do
-        assert(a.log2_size == 3)
-        if a.type == "read" then
+        if a.log2_size == 3 then
             table.insert(encoded, a.read)
+        else
+            table.insert(encoded, a.read_hash)
         end
-
-        table.insert(encoded, a.read_hash)
 
         for _, h in ipairs(a.sibling_hashes) do
             table.insert(encoded, h)
