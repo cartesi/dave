@@ -266,6 +266,10 @@ mod tests {
             Ok(self.inputs.len() as u64)
         }
 
+        fn last_epoch(&self) -> Result<Option<Epoch>> {
+            panic!("last_epoch not implemented in mock version");
+        }
+
         fn input(&self, id: &InputId) -> Result<Option<Input>> {
             let (epoch_number, input_index_in_epoch) =
                 (id.epoch_number as usize, id.input_index_in_epoch as usize);
@@ -281,6 +285,10 @@ mod tests {
                 id: id.clone(),
                 data: input,
             }))
+        }
+
+        fn last_input(&self) -> Result<Option<InputId>> {
+            panic!("last_input not implemented in mock version");
         }
 
         fn input_count(&self, epoch_number: u64) -> Result<u64> {
@@ -447,8 +455,8 @@ mod tests {
         inputs
     }
 
-    #[tokio::test]
-    async fn test_input_advance() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    #[test]
+    fn test_input_advance() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // TODO: update machine state hashes with new emulator version
         let (machine_state_hashes, commitment) = load_machine_state_hashes();
         let inputs = load_inputs();

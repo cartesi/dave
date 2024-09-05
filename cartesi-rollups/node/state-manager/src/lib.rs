@@ -70,7 +70,8 @@ pub struct Input {
 #[derive(Clone, Debug)]
 pub struct Epoch {
     pub epoch_number: u64,
-    pub input_count: u64,
+    pub epoch_boundary: u64,
+    pub root_tournament: String,
 }
 
 pub trait StateManager {
@@ -82,8 +83,10 @@ pub trait StateManager {
 
     fn epoch(&self, epoch_number: u64) -> Result<Option<Epoch>, Self::Error>;
     fn epoch_count(&self) -> Result<u64, Self::Error>;
+    fn last_epoch(&self) -> Result<Option<Epoch>, Self::Error>;
     fn input(&self, id: &InputId) -> Result<Option<Input>, Self::Error>;
     fn input_count(&self, epoch_number: u64) -> Result<u64, Self::Error>;
+    fn last_input(&self) -> Result<Option<InputId>, Self::Error>;
     fn insert_consensus_data<'a>(
         &self,
         last_processed_block: u64,

@@ -24,6 +24,7 @@ repository = "https://github.com/cartesi/dave"
 
 [workspace.dependencies]
 rollups-blockchain-reader = { version = "0.1", path = "blockchain-reader" }
+rollups-compute-runner = { version = "0.1", path = "compute-runner" }
 rollups-epoch-manager = { version = "0.1", path = "epoch-manager" }
 rollups-machine-runner = { version = "0.1", path = "machine-runner" }
 rollups-state-manager = { version = "0.1", path = "state-manager" }
@@ -33,6 +34,7 @@ cartesi-dave-arithmetic = { path = "../../common-rs/arithmetic" }
 cartesi-dave-contracts = { path = "../contract-bindings" }
 cartesi-dave-merkle = { path = "../../common-rs/merkle" }
 cartesi-prt-core = { path = "../../prt/prt-rs/core" }
+cartesi-prt-compute = { path = "../../prt/prt-rs/compute" }
 
 alloy = { version = "0.3.1", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
 anyhow = "1.0"

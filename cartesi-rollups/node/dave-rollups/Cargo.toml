@@ -12,12 +12,14 @@ repository = { workspace = true }
 
 [dependencies]
 rollups-blockchain-reader = { workspace = true }
+rollups-compute-runner = { workspace = true }
 rollups-epoch-manager = { workspace = true }
 rollups-machine-runner = { workspace = true }
 rollups-state-manager = { workspace = true }
 
 cartesi-rollups-contracts = { workspace = true }
 cartesi-prt-core = { workspace = true }
+cartesi-prt-compute = { workspace = true }
 
 alloy = { workspace = true }
 anyhow = { workspace = true }
