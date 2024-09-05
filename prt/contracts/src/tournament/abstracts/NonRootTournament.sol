@@ -14,8 +14,6 @@ abstract contract NonRootTournament is Tournament {
     //
     // Constants
     //
-    NonLeafTournament immutable parentTournament;
-
     Tree.Node immutable contestedCommitmentOne;
     Machine.Hash immutable contestedFinalStateOne;
     Tree.Node immutable contestedCommitmentTwo;
@@ -32,11 +30,8 @@ abstract contract NonRootTournament is Tournament {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level,
-        NonLeafTournament _parent
+        uint64 _level
     ) Tournament(_initialHash, _allowance, _startCycle, _level) {
-        parentTournament = _parent;
-
         contestedCommitmentOne = _contestedCommitmentOne;
         contestedFinalStateOne = _contestedFinalStateOne;
         contestedCommitmentTwo = _contestedCommitmentTwo;

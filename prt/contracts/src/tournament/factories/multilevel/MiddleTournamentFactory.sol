@@ -6,7 +6,7 @@ pragma solidity ^0.8.17;
 import "../../abstracts/NonLeafTournament.sol";
 import "../../concretes/MiddleTournament.sol";
 
-import "../../factories/MultiLevelTournamentFactory.sol";
+import "../../../IMultiLevelTournamentFactory.sol";
 
 import "../../../Machine.sol";
 import "../../../Tree.sol";
@@ -23,8 +23,7 @@ contract MiddleTournamentFactory {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level,
-        NonLeafTournament _parent
+        uint64 _level
     ) external returns (MiddleTournament) {
         MiddleTournament _tournament = new MiddleTournament(
             _initialHash,
@@ -35,8 +34,7 @@ contract MiddleTournamentFactory {
             _allowance,
             _startCycle,
             _level,
-            _parent,
-            MultiLevelTournamentFactory(msg.sender)
+            IMultiLevelTournamentFactory(msg.sender)
         );
 
         return _tournament;

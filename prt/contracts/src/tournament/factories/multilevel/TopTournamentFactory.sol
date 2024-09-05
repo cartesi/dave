@@ -13,7 +13,7 @@ contract TopTournamentFactory {
         returns (TopTournament)
     {
         TopTournament _tournament = new TopTournament(
-            _initialHash, MultiLevelTournamentFactory(msg.sender)
+            _initialHash, IMultiLevelTournamentFactory(msg.sender)
         );
 
         return _tournament;

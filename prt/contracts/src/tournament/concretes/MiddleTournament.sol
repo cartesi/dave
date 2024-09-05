@@ -6,7 +6,7 @@ pragma solidity ^0.8.17;
 import "../abstracts/NonLeafTournament.sol";
 import "../abstracts/NonRootTournament.sol";
 
-import "../factories/MultiLevelTournamentFactory.sol";
+import "../../IMultiLevelTournamentFactory.sol";
 
 /// @notice Middle tournament is non-top, non-bottom of a multi-level instance
 contract MiddleTournament is NonLeafTournament, NonRootTournament {
@@ -19,8 +19,7 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level,
-        NonLeafTournament _parent,
-        MultiLevelTournamentFactory _tournamentFactory
+        IMultiLevelTournamentFactory _tournamentFactory
     )
         NonLeafTournament(_tournamentFactory)
         NonRootTournament(
@@ -31,8 +30,7 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level,
-            _parent
+            _level
         )
     {}
 }

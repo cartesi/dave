@@ -6,14 +6,14 @@ pragma solidity ^0.8.17;
 import "../abstracts/RootTournament.sol";
 import "../abstracts/NonLeafTournament.sol";
 
-import "../factories/MultiLevelTournamentFactory.sol";
+import "../../IMultiLevelTournamentFactory.sol";
 
 import "../../Machine.sol";
 
 /// @notice Top tournament of a multi-level instance
 contract TopTournament is NonLeafTournament, RootTournament {
-    constructor(Machine.Hash _initialHash, MultiLevelTournamentFactory _factory)
-        NonLeafTournament(_factory)
-        RootTournament(_initialHash)
-    {}
+    constructor(
+        Machine.Hash _initialHash,
+        IMultiLevelTournamentFactory _factory
+    ) NonLeafTournament(_factory) RootTournament(_initialHash) {}
 }
