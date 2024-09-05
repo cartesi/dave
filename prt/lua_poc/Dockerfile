@@ -9,15 +9,15 @@ RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_
 
 # prepare debootstrap machine
 WORKDIR "/app/lua_poc/program"
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.5-rc-test/debootstrap-machine-sparsed.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.8-rc-test/debootstrap-machine-sparsed.tar.gz | \
     tar -zx -C "/app/lua_poc/program"
 
 # prepare doom-showcase machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.6-rc-test/doom-compute-machine.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.9-rc-test/doom-compute-machine.tar.gz | \
     tar -zx -C "/app/lua_poc/program"
 
 # prepare simple machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.7-rc-test/simple-program.tar.gz | \
+RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.10-rc-test/simple-program.tar.gz | \
     tar -zx -C "/app/lua_poc/program"
 
 WORKDIR "/machine-emulator-sdk"
