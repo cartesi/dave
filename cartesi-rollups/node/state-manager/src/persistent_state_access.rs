@@ -37,6 +37,11 @@ impl StateManager for PersistentStateAccess {
         consensus_data::epoch_count(&conn)
     }
 
+    fn last_epoch(&self) -> Result<Option<Epoch>> {
+        let conn = self.connection.lock().unwrap();
+        consensus_data::last_epoch(&conn)
+    }
+
     fn input(&self, id: &InputId) -> Result<Option<Input>> {
         let conn = self.connection.lock().unwrap();
         consensus_data::input(&conn, id)
@@ -45,6 +50,11 @@ impl StateManager for PersistentStateAccess {
     fn input_count(&self, epoch_number: u64) -> Result<u64> {
         let conn = self.connection.lock().unwrap();
         consensus_data::input_count(&conn, epoch_number)
+    }
+
+    fn last_input(&self) -> Result<Option<InputId>> {
+        let conn = self.connection.lock().unwrap();
+        consensus_data::last_input(&conn)
     }
 
     fn latest_processed_block(&self) -> Result<u64> {
@@ -336,7 +346,8 @@ mod tests {
             .into_iter(),
             [&Epoch {
                 epoch_number: 0,
-                input_count: 12,
+                epoch_boundary: 12,
+                root_tournament: String::new(),
             }]
             .into_iter(),
         )?;

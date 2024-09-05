@@ -49,7 +49,7 @@ impl EthArenaSender {
 
         let url = config.web3_rpc_url.parse()?;
         let provider = ProviderBuilder::new()
-            .with_nonce_management()
+            .filler(NonceFiller::default())
             .wallet(wallet)
             .with_chain(
                 config

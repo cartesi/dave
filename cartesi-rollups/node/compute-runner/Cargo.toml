@@ -1,5 +1,5 @@
 [package]
-name = "rollups-machine-runner"
+name = "rollups-compute-runner"
 version.workspace = true
 authors.workspace = true
 description.workspace = true
@@ -10,15 +10,5 @@ readme.workspace = true
 repository.workspace = true
 
 [dependencies]
-alloy = { workspace = true }
-cartesi-dave-arithmetic = { workspace = true }
-cartesi-dave-merkle = { workspace = true }
 cartesi-prt-core = { workspace = true }
-cartesi-machine = { workspace = true }
 rollups-state-manager = { workspace = true }
-
-thiserror = { workspace = true }
-
-[dev-dependencies]
-cartesi-rollups-contracts = { workspace = true }
-hex = "0.4.3"

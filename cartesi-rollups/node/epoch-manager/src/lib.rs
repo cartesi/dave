@@ -1,6 +1,6 @@
 use alloy::{
-    network::{Ethereum, EthereumWallet, NetworkWallet},
-    providers::ProviderBuilder,
+    network::EthereumWallet,
+    providers::{fillers::NonceFiller, ProviderBuilder},
     signers::local::PrivateKeySigner,
     sol_types::private::Address,
 };
@@ -11,7 +11,6 @@ use cartesi_dave_contracts::daveconsensus;
 use cartesi_prt_core::arena::{BlockchainConfig, SenderFiller};
 use rollups_state_manager::StateManager;
 
-// TODO: setup constants for commitment builder
 pub struct EpochManager<SM: StateManager> {
     consensus: Address,
     sleep_duration: Duration,
@@ -35,7 +34,7 @@ where
 
         let url = config.web3_rpc_url.parse().expect("fail to parse url");
         let provider = ProviderBuilder::new()
-            .with_nonce_management()
+            .filler(NonceFiller::default())
             .wallet(wallet)
             .with_chain(
                 config
@@ -54,20 +53,21 @@ where
         }
     }
 
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
         let dave_consensus = daveconsensus::DaveConsensus::new(self.consensus, &self.client);
         loop {
-            let can_settle = dave_consensus.canSettle().call().await?._0;
+            let can_settle = dave_consensus.canSettle().call().await?;
 
-            if can_settle {
+            if can_settle.isFinished {
                 match self.state_manager.computation_hash(0)? {
                     Some(computation_hash) => {
-                        dave_consensus.settle().send().await?.watch().await?;
-                        // match claim
-                        //  + None -> claim
-                        //  + Some({x, false}) if x is same as comp_hash -> return;
-                        //  + Some({x, false}) if x is not same comp_hash -> claim;
-                        //  + Some({_, true}) -> instantiate/join dave;
+                        dave_consensus
+                            .settle(can_settle.epochNumber)
+                            .send()
+                            .await?
+                            .watch()
+                            .await?;
+                        // TODO: if claim doesn't match, that can be a serious problem, send out alert
                     }
                     None => {
                         // wait for the `machine-runner` to insert the value

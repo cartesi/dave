@@ -1,10 +1,15 @@
+use alloy::primitives::Address;
 use cartesi_prt_core::arena::BlockchainConfig;
+
 use clap::Parser;
+use dave_runner::DaveRunner;
 use log::error;
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
+use rollups_compute_runner::ComputeRunner;
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
+use rusqlite::config;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
@@ -49,6 +54,28 @@ pub fn create_blockchain_reader_task(
         blockchain_reader
             .start()
             .await
+            .inspect_err(|e| error!("{e}"))
+            .unwrap();
+    })
+}
+
+pub fn create_compute_runner_task(
+    state_manager: Arc<PersistentStateAccess>,
+    parameters: &DaveParameters,
+) -> JoinHandle<()> {
+    let params = parameters.clone();
+
+    spawn_blocking(move || {
+        let mut compute_runner = ComputeRunner::new(
+            &params.blockchain_config,
+            state_manager,
+            params.sleep_duration,
+        )
+        .inspect_err(|e| error!("{e}"))
+        .unwrap();
+
+        compute_runner
+            .start()
             .inspect_err(|e| error!("{e}"))
             .unwrap();
     })

@@ -5,7 +5,8 @@ CREATE TABLE computation_hashes (
 
 CREATE TABLE epochs (
     epoch_number INTEGER NOT NULL PRIMARY KEY,
-    input_count INTEGER NOT NULL
+    epoch_boundary INTEGER NOT NULL,
+    root_tournament TEXT NOT NULL
 );
 
 CREATE TABLE inputs (
