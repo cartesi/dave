@@ -1,4 +1,4 @@
-FROM cartesi/machine-emulator:0.17.0
+FROM cartesi/machine-emulator:0.18.1
 
 USER 0
 RUN apt-get -y update && \
