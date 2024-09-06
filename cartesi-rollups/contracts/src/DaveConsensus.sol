@@ -142,8 +142,16 @@ contract DaveConsensus is IDataProvider {
         tournament = _tournament;
     }
 
+    function getInputBox() external view returns (IInputBox) {
+        return _inputBox;
+    }
+
     function getApplicationContract() external view returns (address) {
         return _appContract;
+    }
+
+    function getTournamentFactory() external view returns (ITournamentFactory) {
+        return _tournamentFactory;
     }
 
     /// @inheritdoc IDataProvider
