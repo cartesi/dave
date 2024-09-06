@@ -44,7 +44,7 @@ contract DaveConsensus is IDataProvider {
     uint256 constant LOG2_GIO_RESPONSE_BUFFER_SIZE = 21;
 
     /// @notice The input box contract
-    IInputBox _inputBox;
+    IInputBox immutable _inputBox;
 
     /// @notice The application contract
     address immutable _appContract;
