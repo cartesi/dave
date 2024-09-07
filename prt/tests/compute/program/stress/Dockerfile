@@ -54,6 +54,3 @@ RUN cartesi-machine --skip-root-hash-check --append-bootargs="loglevel=8 init=/d
 RUN cartesi-machine --skip-root-hash-check --append-bootargs="loglevel=8 init=/debootstrap/bootstrap" --flash-drive=label:root,filename:/image.ext2 --ram-length=2Gi --max-mcycle=0 --store=debootstrap-machine --uarch-ram-image="/usr/share/cartesi-machine/uarch/uarch-ram.bin" && \
     cp -v --sparse=always -r debootstrap-machine debootstrap-machine-sparsed && rm -rf debootstrap-machine && \
     tar --sparse --hole-detection=seek -zvcf /debootstrap-machine-sparsed.tar.gz debootstrap-machine-sparsed  && rm -rf /source.ext2 /image.ext2 && rm -rf debootstrap-machine-sparsed
-
-FROM busybox
-COPY --from=debootstrap-image /debootstrap-machine-sparsed.tar.gz /debootstrap-machine-sparsed.tar.gz
