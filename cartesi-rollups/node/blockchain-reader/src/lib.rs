@@ -229,7 +229,7 @@ where
         epoch_number: u64,
         epoch_boundary: u64,
         next_input_index_in_epoch: &mut u64,
-        input_events_iter: &mut impl Iterator<Item = (InputAdded, u64)>,
+        input_events_iter: &mut impl Iterator<Item = &(InputAdded, u64)>,
     ) -> Vec<Input> {
         let mut inputs = vec![];
 
@@ -276,7 +276,7 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
         prev_finalized: u64,
         current_finalized: u64,
         provider: &PartitionProvider,
-    ) -> std::result::Result<Vec<(E, Option<u64>)>, ProviderErrors> {
+    ) -> std::result::Result<Vec<(E, u64)>, ProviderErrors> {
         assert!(current_finalized > prev_finalized);
 
         let logs = provider
@@ -313,7 +313,7 @@ impl PartitionProvider {
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> std::result::Result<Vec<(E, Option<u64>)>, Vec<Error>> {
+    ) -> std::result::Result<Vec<(E, u64)>, Vec<Error>> {
         self.get_events_rec(topic1, read_from, start_block, end_block)
             .await
     }
@@ -325,7 +325,7 @@ impl PartitionProvider {
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> std::result::Result<Vec<(E, Option<u64>)>, Vec<Error>> {
+    ) -> std::result::Result<Vec<(E, u64)>, Vec<Error>> {
         // TODO: partition log queries if range too large
         let event = {
             let mut e = Event::new_sol(&self.inner, read_from)
@@ -342,7 +342,16 @@ impl PartitionProvider {
 
         match event.query().await {
             Ok(l) => {
-                let logs = l.into_iter().map(|x| (x.0, x.1.block_number)).collect();
+                let logs = l
+                    .into_iter()
+                    .map(|x| {
+                        (
+                            x.0,
+                            x.1.block_number
+                                .expect("fail to get block number from event"),
+                        )
+                    })
+                    .collect();
 
                 Ok(logs)
             }
