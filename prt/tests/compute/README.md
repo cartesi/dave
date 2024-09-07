@@ -37,7 +37,7 @@ These players come in multiple flavours:
 -   Another kind of dishonest player — called the _idle_ player — posts a claim, but never interacts with the blockchain again.
     If no other player is actively defending this claim, it will lose by timeout.
 
-To add more players of different kinds, you can edit the [`prt_comute.lua`](prt_compute.lua) file.
+To add more players of different kinds, you can edit the [`prt_compute.lua`](prt_compute.lua) file.
 To run the full example, execute one of the following commands from the current path path (_i.e._ [`prt/lua_poc`](.)):
 
 ```
