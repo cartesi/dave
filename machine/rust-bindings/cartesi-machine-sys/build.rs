@@ -1,7 +1,9 @@
-use std::{env, fs, path::PathBuf, process::Command};
-
-use hex_literal::hex;
-use sha1::{Digest, Sha1};
+use std::{
+    env, fs,
+    path::Path,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 #[cfg(all(feature = "build_uarch", feature = "copy_uarch",))]
 compile_error!("Features `build_uarch` and `copy_uarch` are mutually exclusive");
@@ -12,20 +14,16 @@ compile_error!("Features `build_uarch` and `download_uarch` are mutually exclusi
 #[cfg(all(feature = "copy_uarch", feature = "download_uarch"))]
 compile_error!("Features `copy_uarch`, and `download_uarch` are mutually exclusive");
 
-#[cfg(not(any(feature = "copy_uarch", feature = "download_uarch")))]
+#[cfg(not(any(
+    feature = "copy_uarch",
+    feature = "download_uarch",
+    feature = "build_uarch"
+)))]
 compile_error!("At least one of `build_uarch`, `copy_uarch`, and `download_uarch` must be set");
-
-const UARCH_PRISTINE_HASH_URL: &str =
-    "https://github.com/cartesi/machine-emulator/releases/download/v0.17.0/uarch-pristine-hash.c";
-const UARCH_PRISTINE_HASH_CHECKSUM: [u8; 20] = hex!("b20b3b025166c0f3959ee29df3c7b849757f2c5f");
-
-const UARCH_PRISTINE_RAM_URL: &str =
-    "https://github.com/cartesi/machine-emulator/releases/download/v0.17.0/uarch-pristine-ram.c";
-const UARCH_PRISTINE_RAM_CHECKSUM: [u8; 20] = hex!("da3d6390aa4ea098311f11e91ff7f1002f874303");
 
 use bytes::Bytes;
 use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 
 fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -37,7 +35,6 @@ fn main() {
         .canonicalize()
         .expect("cannot canonicalize path");
     let libdir_path = machine_dir_path.join("src");
-    let uarch_path = machine_dir_path.join("uarch");
 
     // clean build artifacts and start from scratch
     clean(&machine_dir_path);
@@ -50,9 +47,10 @@ fn main() {
         if #[cfg(feature = "build_uarch")] {
             ()
         } else if #[cfg(feature = "copy_uarch")] {
+            let uarch_path = machine_dir_path.join("uarch");
             copy_uarch(&uarch_path)
         } else if #[cfg(feature = "download_uarch")] {
-            download_uarch(&uarch_path);
+            download_uarch(&machine_dir_path);
         } else {
             panic!("Internal error, no way specified to get uarch");
         }
@@ -64,10 +62,10 @@ fn main() {
 
     // build dependencies
     Command::new("make")
-        .args(&["submodules", "downloads", "dep"])
+        .args(&["submodules"])
         .current_dir(&machine_dir_path)
         .status()
-        .expect("Failed to run setup `make submodules downloads dep`");
+        .expect("Failed to run setup `make submodules`");
     Command::new("make")
         .args(&["bundle-boost"])
         .current_dir(&machine_dir_path)
@@ -176,60 +174,62 @@ fn copy_uarch(uarch_path: &PathBuf) {
 }
 
 #[cfg(feature = "download_uarch")]
-fn download_uarch(uarch_path: &PathBuf) {
-    //
-    // Download `uarch-pristine-hash.c`
-    //
+fn download_uarch(machine_dir_path: &PathBuf) {
+    // apply git patche for 0.18.1
+    let patch_file = machine_dir_path.join("add-generated-files.diff");
 
-    // get
-    let data = reqwest::blocking::get(UARCH_PRISTINE_HASH_URL)
-        .expect("error downloading uarch hash")
-        .bytes()
-        .expect("error getting uarch hash request body");
+    download_git_patch(&patch_file, "v0.18.1");
+    apply_git_patch(&patch_file, machine_dir_path);
+}
 
-    // checksum
-    let mut hasher = Sha1::new();
-    hasher.update(&data);
-    let result = hasher.finalize();
-    assert_eq!(
-        result[..],
-        UARCH_PRISTINE_HASH_CHECKSUM,
-        "uarch pristine hash checksum failed"
+fn download_git_patch(patch_file: &PathBuf, target_tag: &str) {
+    let emulator_git_url = "https://github.com/cartesi/machine-emulator";
+
+    let patch_url = format!(
+        "{}/releases/download/{}/add-generated-files.diff",
+        emulator_git_url, target_tag,
     );
 
-    // write to file
-    write_bytes_to_file(
-        uarch_path.join("uarch-pristine-hash.c").to_str().unwrap(),
-        data,
-    )
-    .expect("failed to write `uarch-pristine-hash.c`");
-
-    //
-    // Download `uarch-pristine-ram.c`
-    //
-
     // get
-    let data = reqwest::blocking::get(UARCH_PRISTINE_RAM_URL)
-        .expect("error downloading uarch ram")
+    let diff_data = reqwest::blocking::get(patch_url)
+        .expect("error downloading diff of generated files")
         .bytes()
-        .expect("error getting uarch ram request body");
-
-    // checksum
-    let mut hasher = Sha1::new();
-    hasher.update(&data);
-    let result = hasher.finalize();
-    assert_eq!(
-        result[..],
-        UARCH_PRISTINE_RAM_CHECKSUM,
-        "uarch pristine ram checksum failed"
-    );
+        .expect("error getting diff request body");
 
     // write to file
-    write_bytes_to_file(
-        uarch_path.join("uarch-pristine-ram.c").to_str().unwrap(),
-        data,
-    )
-    .expect("failed to write `uarch-pristine-ram.c`");
+    write_bytes_to_file(patch_file.to_str().unwrap(), diff_data)
+        .expect("failed to write `add-generated-files.diff`");
+}
+
+fn apply_git_patch(patch_file: &Path, target_dir: &Path) {
+    // Open the patch file
+    let mut patch = fs::File::open(patch_file).expect("fail to open patch file");
+
+    // Create a command to run `patch -Np0`
+    let mut cmd = Command::new("patch")
+        .arg("-Np0")
+        .stdin(Stdio::piped())
+        .current_dir(target_dir)
+        .spawn()
+        .expect("fail to spawn patch command");
+
+    // Write the contents of the patch file to the command's stdin
+    if let Some(ref mut stdin) = cmd.stdin {
+        let mut buffer = Vec::new();
+        patch
+            .read_to_end(&mut buffer)
+            .expect("fail to read patch content");
+        stdin
+            .write_all(&buffer)
+            .expect("fail to write patch to pipe");
+    }
+
+    // Wait for the command to complete
+    let status = cmd.wait().expect("fail to wait for patch command");
+
+    if !status.success() {
+        eprintln!("Patch command failed with status: {:?}", status);
+    }
 }
 
 fn write_bytes_to_file(path: &str, data: Bytes) -> io::Result<()> {
