@@ -1,7 +1,5 @@
 use alloy::{
-    network::EthereumWallet,
-    providers::{fillers::NonceFiller, ProviderBuilder},
-    signers::local::PrivateKeySigner,
+    network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner,
     sol_types::private::Address,
 };
 use anyhow::Result;
@@ -34,7 +32,7 @@ where
 
         let url = config.web3_rpc_url.parse().expect("fail to parse url");
         let provider = ProviderBuilder::new()
-            .filler(NonceFiller::default())
+            .with_recommended_fillers()
             .wallet(wallet)
             .with_chain(
                 config

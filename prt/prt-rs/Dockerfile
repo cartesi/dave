@@ -1,4 +1,4 @@
-FROM rust:1.78.0-bookworm AS chef
+FROM rust:1.79.0-bookworm AS chef
 
 ENV CARGO_REGISTRIES_CARTESI_INDEX=https://github.com/cartesi/crates-index
 RUN rustup component add rustfmt
@@ -66,5 +66,5 @@ WORKDIR /root/prt/contracts
 RUN forge --version
 RUN forge build
 
-WORKDIR /root/prt
-ENTRYPOINT ["./lua_poc/compute-test-entrypoint.sh"]
+WORKDIR /root/prt/tests/compute
+ENTRYPOINT ["./compute-test-entrypoint.sh"]

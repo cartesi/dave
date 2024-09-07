@@ -266,6 +266,7 @@ function HonestStrategy:_react_tournament(tournament, log)
             if tournament_winner.commitment ~= old_commitment.root_hash then
                 helper.log_timestamp("player lost tournament")
                 log.finished = true
+                return
             end
 
             helper.log_timestamp(string.format(
