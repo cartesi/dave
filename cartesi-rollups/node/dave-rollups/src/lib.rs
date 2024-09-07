@@ -1,15 +1,12 @@
-use alloy::primitives::Address;
 use cartesi_prt_core::arena::BlockchainConfig;
 
 use clap::Parser;
-use dave_runner::DaveRunner;
 use log::error;
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_compute_runner::ComputeRunner;
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
-use rusqlite::config;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
@@ -45,7 +42,7 @@ pub fn create_blockchain_reader_task(
         let mut blockchain_reader = BlockchainReader::new(
             state_manager,
             params.address_book,
-            params.web3_rpc_url.as_str(),
+            params.blockchain_config.web3_rpc_url.as_str(),
             params.sleep_duration,
         )
         .inspect_err(|e| error!("{e}"))
@@ -88,8 +85,8 @@ pub fn create_epoch_manager_task(
     let params = parameters.clone();
 
     spawn(async move {
-        let mut epoch_manager = EpochManager::new(
-            &parameters.blockchain_config,
+        let epoch_manager = EpochManager::new(
+            &params.blockchain_config,
             params.address_book.consensus,
             state_manager,
             params.sleep_duration,
