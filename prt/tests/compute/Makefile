@@ -6,7 +6,10 @@ LUA_NODE ?= "true"
 
 help:
 	@echo '  create-image              - create `prt-compute:lua` docker image'
-	@echo '  test-doom                 - run Doom PRT test'
+	@echo '  test-simple               - run PRT simple test'
+	@echo '  test-stress               - run PRT stress test'
+	@echo '  test-doom                 - run PRT Doom test'
+	@echo '  test-doom-with-graphics   - run PRT Doom test, saving graphics'
 
 create-image:
 	@docker build -t cartesi/prt-compute:lua -f Dockerfile ../../../
@@ -44,4 +47,4 @@ test-doom-with-graphics: create-image create-doom-dirs
 
 
 
-.PHONY: help create-image create-doom-dirs test-doom
+.PHONY: help create-image test-simple test-stress test-doom create-doom-dirs test-doom-with-graphics

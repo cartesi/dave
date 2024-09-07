@@ -2,6 +2,7 @@
 require "setup_path"
 
 local cartesi = require "cartesi"
+local constants = require "computation.constants"
 
 local conversion_cmd = [[
     /app/tests/compute/doom_showcase/playpal2rgb %s/%04d_%04d.palette < %s/%04d_%04d.raw | convert -depth 8 -size 320x200 rgb:- %s/%04d_%04d.png& >/dev/null 2>&1
@@ -30,7 +31,7 @@ end
 while (true)
 do
     local start_cycle = machine:read_mcycle()
-    local reason = machine:run(1 << 48)
+    local reason = machine:run(1 << constants.log2_emulator_span)
     if reason == cartesi.BREAK_REASON_YIELDED_SOFTLY then
         local end_cycle = machine:read_mcycle()
         output_pixel(start_cycle, end_cycle)

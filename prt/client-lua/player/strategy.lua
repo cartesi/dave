@@ -1,10 +1,11 @@
 local helper = require "utils.helper"
 local Machine = require "computation.machine"
+local constants = require "computation.constants"
 
 local HonestStrategy = {}
 HonestStrategy.__index = HonestStrategy
 
-function HonestStrategy:new(commitment_builder, machine_path, sender, constants)
+function HonestStrategy:new(commitment_builder, machine_path, sender)
     local honest_strategy = {
         commitment_builder = commitment_builder,
         machine_path = machine_path,
@@ -85,7 +86,7 @@ function HonestStrategy:_react_match(match, commitment, log)
             ))
 
             local cycle = match.base_big_cycle
-            local ucycle = (match.leaf_cycle & self.constants.uarch_span):touinteger()
+            local ucycle = (match.leaf_cycle & constants.uarch_span):touinteger()
             local logs = Machine:get_logs(self.machine_path, cycle, ucycle)
 
             helper.log_timestamp(string.format(
