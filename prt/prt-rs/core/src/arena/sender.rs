@@ -8,7 +8,7 @@ use alloy::{
     contract::Error as ContractError,
     network::{Ethereum, EthereumWallet, NetworkWallet},
     providers::{
-        fillers::{FillProvider, JoinFill, NonceFiller, WalletFiller},
+        fillers::{ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller},
         Identity, Provider, ProviderBuilder, RootProvider,
     },
     signers::local::PrivateKeySigner,
@@ -27,7 +27,10 @@ use cartesi_dave_merkle::{Digest, MerkleProof};
 use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
 
 pub type SenderFiller = FillProvider<
-    JoinFill<JoinFill<Identity, NonceFiller>, WalletFiller<EthereumWallet>>,
+    JoinFill<
+        JoinFill<JoinFill<JoinFill<Identity, GasFiller>, NonceFiller>, ChainIdFiller>,
+        WalletFiller<EthereumWallet>,
+    >,
     RootProvider<Http<Client>>,
     Http<Client>,
     Ethereum,
@@ -49,7 +52,7 @@ impl EthArenaSender {
 
         let url = config.web3_rpc_url.parse()?;
         let provider = ProviderBuilder::new()
-            .filler(NonceFiller::default())
+            .with_recommended_fillers()
             .wallet(wallet)
             .with_chain(
                 config

@@ -43,7 +43,7 @@ local function setup_players(commands, use_lua_node, extra_data, contract_addres
         print("Setting up Rust honest player")
         table.insert(commands, string.format(
             [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
-            ./prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
+            ../../prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
             machine_path))
     end
     player_index = player_index + 1
