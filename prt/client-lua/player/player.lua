@@ -7,55 +7,35 @@ local time = require "utils.time"
 local helper = require "utils.helper"
 
 
-local Player = {}
-Player.__index = Player
-
-function Player:new(wallet, tournament_address, machine_path, blokchain_endpoint, hook)
-    local p = {
-        pk = wallet.pk,
-        player_id = wallet.player_id,
-        tournament_address = tournament_address,
-        machine_path = machine_path,
-        blokchain_endpoint = blokchain_endpoint,
-        hook = hook
-    }
-    setmetatable(p, self)
-    return p
-end
-
-function Player:start()
-    local state_fetcher = StateFetcher:new(self.tournament_address, self.blokchain_endpoint)
-    local sender = Sender:new(self.pk, self.player_id, self.blokchain_endpoint)
+local function new(wallet, tournament_address, machine_path, blokchain_endpoint, hook)
+    local sender = Sender:new(wallet.pk, wallet.player_id, blokchain_endpoint)
+    local state_fetcher = StateFetcher:new(tournament_address, blokchain_endpoint)
     local gc_strategy = GarbageCollector:new(sender)
     local honest_strategy = HonestStrategy:new(
-        CommitmentBuilder:new(self.machine_path),
-        self.machine_path,
+        CommitmentBuilder:new(machine_path),
+        machine_path,
         sender
     )
 
-    while true do
+    local function react()
         local state = state_fetcher:fetch()
-        gc_strategy:react(state)
 
-        local tx_count = sender.tx_count
+        gc_strategy:react(state)
         local log = honest_strategy:react(state)
 
-        if self.hook then
-            self.hook(state, log)
+        if hook then
+            hook(state, log)
         end
 
-        if log.finished then break end
-
-        -- player is considered idle if no tx sent in current iteration
-        if tx_count == sender.tx_count then
-            helper.log_timestamp("player idling")
-            helper.touch_player_idle(self.player_id)
-        else
-            helper.rm_player_idle(self.player_id)
-        end
-
-        time.sleep(5)
+        return log
     end
+
+    return coroutine.create(function()
+        while true do
+            local log = react()
+            coroutine.yield(log)
+        end
+    end)
 end
 
-return Player
+return { new = new }

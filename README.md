@@ -47,11 +47,18 @@ Nevertheless, Dave was designed to be agnostic on its execution environment.
 As long as one can provide a self-contained state-transition function, Dave will work.
 
 
-## Algorithm
+## Algorithms
 
-Dave is based on the Permissionless Refereed Tournaments primitive.
+### Permissionless Refereed Tournaments
+
+The first implementation of Dave is based on the Permissionless Refereed Tournaments primitive.
 The paper can be found [here](https://arxiv.org/abs/2212.12439).
 The maximum delay grows logarithmically on the number of Sybils, whereas the computation resources and stakes are constant, and don't grow on the number of Sybils.
+
+
+### Dave fraud-proof algorithm
+
+Coming soon.
 
 
 ## Status
