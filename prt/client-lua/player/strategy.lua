@@ -309,14 +309,17 @@ function HonestStrategy:_react_tournament(tournament, log)
 end
 
 function HonestStrategy:react(tournament)
+    local tx_count = self.sender.tx_count
     local log = {
         commitments = {},
         tournaments = {},
         latest_match = false,
-        finished = false
+        finished = false,
     }
 
     self:_react_tournament(tournament, log)
+    log.idle = tx_count == self.sender.tx_count
+
     return log
 end
 
