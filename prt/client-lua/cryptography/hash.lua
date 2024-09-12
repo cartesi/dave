@@ -64,9 +64,16 @@ function Hash:children()
     end
 end
 
-function Hash:iterated_merkle(level)
+function Hash:iterated_merkle(level, lookup)
     level = level + 1
     local iterated = iterateds[self]
+
+    local j = 1
+    local k = #iterated
+    while j <= k do
+        lookup:add(iterated[j])
+        j = j + 1
+    end
 
     local ret = iterated[level]
     if ret then return ret end
@@ -77,6 +84,7 @@ function Hash:iterated_merkle(level)
         highest_level = highest_level:join(highest_level)
         i = i + 1
         iterated[i] = highest_level
+        lookup:add(highest_level)
     end
 
     return highest_level

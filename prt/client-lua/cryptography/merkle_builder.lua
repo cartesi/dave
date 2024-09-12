@@ -60,6 +60,46 @@ function Slice:find_cell_containing(elem)
     return l
 end
 
+-- HashSet implementation
+local HashSet = {}
+HashSet.__index = HashSet
+
+function HashSet:new()
+    local s = { set = {} }
+    setmetatable(s, self)
+    return s
+end
+
+function HashSet:add(value)
+    self.set[tostring(value)] = true
+end
+
+function HashSet:remove(value)
+    self.set[tostring(value)] = nil
+end
+
+function HashSet:contains(value)
+    return self.set[tostring(value)] ~= nil
+end
+
+function HashSet:merge(other_set)
+    for value in pairs(other_set.set) do
+        self:add(value)
+    end
+end
+
+function HashSet:size()
+    local count = 0
+    for _ in pairs(self.set) do
+        count = count + 1
+    end
+    return count
+end
+
+function HashSet:clear()
+    self.set = {}
+end
+
 local MerkleBuilder = {}
 MerkleBuilder.__index = MerkleBuilder
 
@@ -90,7 +130,7 @@ function MerkleBuilder:add(hash, rep)
     end
 end
 
-local function merkle(leafs, log2size, stride)
+local function merkle(leafs, log2size, stride, lookup)
     local first_time = stride * (1 << log2size) + 1
     local last_time = (stride + 1) * (1 << log2size)
 
@@ -98,12 +138,14 @@ local function merkle(leafs, log2size, stride)
     local last_cell = leafs:find_cell_containing(last_time)
 
     if first_cell == last_cell then
-        return leafs:get(first_cell).hash:iterated_merkle(log2size)
+        return leafs:get(first_cell).hash:iterated_merkle(log2size, lookup)
     end
 
     local slice = leafs:slice(first_cell, last_cell + 1)
-    local hash_left = merkle(slice, log2size - 1, stride << 1)
-    local hash_right = merkle(slice, log2size - 1, (stride << 1) + 1)
+    local hash_left = merkle(slice, log2size - 1, stride << 1, lookup)
+    lookup:add(hash_left)
+    local hash_right = merkle(slice, log2size - 1, (stride << 1) + 1, lookup)
+    lookup:add(hash_right)
 
     return hash_left:join(hash_right)
 end
@@ -120,8 +162,10 @@ function MerkleBuilder:build(implicit_hash)
         log2size = arithmetic.ctz(count)
     end
 
-    local root_hash = merkle(Slice:new(self.leafs), log2size, 0)
-    return MerkleTree:new(self.leafs, root_hash, log2size, implicit_hash)
+    local lookup = HashSet:new()
+    local root_hash = merkle(Slice:new(self.leafs), log2size, 0, lookup)
+    lookup:add(root_hash)
+    return MerkleTree:new(self.leafs, root_hash, log2size, implicit_hash, lookup)
 end
 
 -- local Hash = require "cryptography.hash"

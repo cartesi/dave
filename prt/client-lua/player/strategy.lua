@@ -114,10 +114,12 @@ function HonestStrategy:_react_match(match, commitment, log)
         end
     elseif match.current_height == 1 then
         -- match to be sealed
-        local found, left, right = match.current_other_parent:children()
-        if not found then
+        if not commitment:contains(match.current_other_parent) then
+            helper.log_timestamp("not my turn to react")
             return
         end
+        local found, left, right = match.current_other_parent:children()
+        assert(found)
 
         local running_leaf
         if left ~= match.current_left then
@@ -190,11 +192,12 @@ function HonestStrategy:_react_match(match, commitment, log)
         end
     else
         -- match running
-        local found, left, right = match.current_other_parent:children()
-        if not found then
+        if not commitment:contains(match.current_other_parent) then
             helper.log_timestamp("not my turn to react")
             return
         end
+        local found, left, right = match.current_other_parent:children()
+        assert(found)
 
         local new_left, new_right
         if left ~= match.current_left then

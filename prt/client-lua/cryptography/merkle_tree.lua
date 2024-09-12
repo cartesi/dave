@@ -3,9 +3,10 @@ local arithmetic = require "utils.arithmetic"
 local MerkleTree = {}
 MerkleTree.__index = MerkleTree
 
-function MerkleTree:new(leafs, root_hash, log2size, implicit_hash)
+function MerkleTree:new(leafs, root_hash, log2size, implicit_hash, lookup)
     local m = {
         leafs = leafs,
+        lookup = lookup,
         root_hash = root_hash,
         digest_hex = root_hash.digest_hex,
         log2size = log2size,
@@ -13,6 +14,10 @@ function MerkleTree:new(leafs, root_hash, log2size, implicit_hash)
     }
     setmetatable(m, self)
     return m
+end
+
+function MerkleTree:contains(hash)
+    return self.lookup:contains(hash)
 end
 
 function MerkleTree:join(other_hash)
@@ -23,8 +28,9 @@ function MerkleTree:children()
     return self.root_hash:children()
 end
 
-function MerkleTree:iterated_merkle(level)
-    return self.root_hash:iterated_merkle(level)
+function MerkleTree:iterated_merkle(level, lookup)
+    lookup:merge(self.lookup)
+    return self.root_hash:iterated_merkle(level, lookup)
 end
 
 function MerkleTree:hex_string()
