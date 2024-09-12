@@ -30,7 +30,6 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY --from=ethereum/solc:0.8.23 /usr/bin/solc /usr/bin/solc
 RUN chmod u+x /usr/bin/solc
 
-COPY ./machine-emulator-sdk /app/machine-emulator-sdk
 COPY ./prt /app/prt
 
 WORKDIR /app/prt/prt-rs
@@ -58,7 +57,7 @@ RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.9-rc-test/d
 RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.10-rc-test/simple-program.tar.gz | \
     tar -zx -C /root/program
 
-COPY ./machine-emulator-sdk /root/machine-emulator-sdk
+COPY ./machine/step /root/machine/step
 COPY ./prt /root/prt
 COPY --from=builder /app/prt/prt-rs/target/release/cartesi-prt-compute /root/prt/prt-rs/target/release/cartesi-prt-compute
 

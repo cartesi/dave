@@ -11,4 +11,3 @@ prt/lua_poc/pixels/
 node_modules
 **/contract-bindings/src/contract
 **/contract-bindings/Cargo.lock
-prt/machine-emulator-sdk

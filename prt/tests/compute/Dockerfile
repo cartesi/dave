@@ -20,8 +20,8 @@ RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.9-rc-test/d
 RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.10-rc-test/simple-program.tar.gz | \
     tar -zx -C "/app/tests/compute/program"
 
-WORKDIR "/machine-emulator-sdk"
-ADD ./machine-emulator-sdk/ .
+WORKDIR "/machine/step"
+ADD ./machine/step/ .
 
 WORKDIR "/app/contracts"
 ADD ./prt/contracts/foundry.toml .
