@@ -9,13 +9,13 @@ local time = require "utils.time"
 local helper = require "utils.helper"
 
 -- Function to start idle player
-local function start_idle_player(wallet, tournament, machine_path, endpoint)
-    local state_fetcher = StateFetcher:new(tournament, endpoint)
-    local sender = Sender:new(wallet.pk, wallet.player_id, endpoint)
+local function start_idle_player(player)
+    local state_fetcher = StateFetcher:new(player.tournament_address, player.blockchain_endpoint)
+    local sender = Sender:new(player.pk, player.player_id, player.blockchain_endpoint)
     local idle_strategy
     do
         local DummyCommitmentBuilder = require "runners.helpers.dummy_commitment"
-        local builder = DummyCommitmentBuilder:new(machine_path)
+        local builder = DummyCommitmentBuilder:new(player.machine_path)
         idle_strategy = IdleStrategy:new(builder, sender)
     end
 
@@ -23,30 +23,15 @@ local function start_idle_player(wallet, tournament, machine_path, endpoint)
         local state = state_fetcher:fetch()
         local tx_count = sender.tx_count
         if idle_strategy:react(state) then break end
+
         -- player is considered idle if no tx sent in current iteration
+        local idle = false
         if tx_count == sender.tx_count then
-            helper.log_timestamp("player idling")
-            helper.touch_player_idle(wallet.player_id)
-        else
-            helper.rm_player_idle(wallet.player_id)
+            idle = true
         end
-        time.sleep(5)
+
+        coroutine.yield(idle)
     end
 end
 
--- Main Execution
-local player_index = tonumber(arg[1])
-local tournament = arg[2]
-local machine_path = arg[3]
-
-local blockchain_consts = require "blockchain.constants"
-
-start_idle_player(
-    {
-        pk = blockchain_consts.pks[player_index],
-        player_id = player_index
-    },
-    tournament,
-    blockchain_consts.endpoint,
-    machine_path
-)
+return start_idle_player

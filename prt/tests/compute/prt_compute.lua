@@ -2,15 +2,13 @@
 require "setup_path"
 
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
-local FAST_FORWARD_TIME = 60
+local FAST_FORWARD_TIME = 300
 -- max consecutive iterations of all players idling before the blockchain fastforwards
 local IDLE_LIMIT = 5
--- max consecutive iterations of no active players before the program exits
-local INACTIVE_LIMIT = 10
 -- delay time for blockchain node to be ready
 local NODE_DELAY = 2
 -- delay between each player to run its command process
-local PLAYER_DELAY = 10
+local PLAYER_DELAY = 5
 -- number of fake commitment to make
 local FAKE_COMMITMENT_COUNT = 1
 -- number of idle players
@@ -22,49 +20,81 @@ local blockchain_utils = require "blockchain.utils"
 local time = require "utils.time"
 local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
+local Player = require "player.player"
+local hero_hook = require "runners.hero_runner"
+local start_sybil = require "runners.sybil_runner"
+local start_idle_player = require "runners.idle_runner"
 
 -- Function to setup players
 local function setup_players(commands, use_lua_node, extra_data, contract_address, machine_path)
-    table.insert(commands, [[sh -c "cd ../../contracts && ./deploy_anvil.sh"]])
-    local player_index = 2
+    local player_coroutines = {}
+    local player_index = 1
 
     if use_lua_node then
         -- use Lua node to defend
+        local hook
         if extra_data then
             print("Setting up Lua honest player with extra data")
+            hook = hero_hook
         else
             print("Setting up Lua honest player")
+            hook = false
         end
-        table.insert(commands, string.format(
-            [[sh -c "echo $$ ; exec ./runners/hero_runner.lua %d %s %s %s | tee honest.log"]],
-            player_index, contract_address, machine_path, extra_data))
+
+        local player = Player:new(
+            { pk = blockchain_constants.pks[player_index], player_id = player_index },
+            contract_address,
+            machine_path,
+            blockchain_constants.endpoint,
+            hook
+        )
+        player_coroutines[player_index] = coroutine.create(function() player:start() end)
     else
         -- use Rust node to defend
         print("Setting up Rust honest player")
-        table.insert(commands, string.format(
-            [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
-            ../../prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
-            machine_path))
+        -- table.insert(commands, string.format(
+        --     [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
+        --     ../../prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
+        --     machine_path))
     end
     player_index = player_index + 1
 
     if FAKE_COMMITMENT_COUNT > 0 then
         print(string.format("Setting up dishonest player with %d fake commitments", FAKE_COMMITMENT_COUNT))
-        table.insert(commands, string.format(
-            [[sh -c "echo $$ ; exec ./runners/sybil_runner.lua %d %s %s %d | tee dishonest.log"]],
-            player_index, contract_address, machine_path, FAKE_COMMITMENT_COUNT))
+
+        local player = Player:new(
+            { pk = blockchain_constants.pks[player_index], player_id = player_index },
+            contract_address,
+            machine_path,
+            blockchain_constants.endpoint,
+            false
+        )
+        player_coroutines[player_index] = coroutine.create(function()
+            start_sybil(player, FAKE_COMMITMENT_COUNT)
+        end)
+
         player_index = player_index + 1
     end
 
     if IDLE_PLAYER_COUNT > 0 then
         print(string.format("Setting up %d idle players", IDLE_PLAYER_COUNT))
         for _ = 1, IDLE_PLAYER_COUNT do
-            table.insert(commands, string.format(
-                [[sh -c "echo $$ ; exec ./runners/idle_runner.lua %d %s %s | tee idle_1.log"]],
-                player_index, contract_address, machine_path))
+            local player = Player:new(
+                { pk = blockchain_constants.pks[player_index], player_id = player_index },
+                contract_address,
+                machine_path,
+                blockchain_constants.endpoint,
+                false
+            )
+            player_coroutines[player_index] = coroutine.create(function()
+                start_idle_player(player)
+            end)
+
             player_index = player_index + 1
         end
     end
+
+    return player_coroutines
 end
 
 -- Main Execution
@@ -75,62 +105,42 @@ local contract_address = blockchain_constants.root_tournament
 local commands = {}
 
 print("Hello from Dave lua prototype!")
-setup_players(commands, use_lua_node, extra_data, contract_address, machine_path)
+local player_coroutines = setup_players(commands, use_lua_node, extra_data, contract_address, machine_path)
+local player_count = #player_coroutines
 
-local player_start_index = 2
 local blockchain_node = Blockchain:new()
 time.sleep(NODE_DELAY)
 
-local pid_reader_map = {}
-local pid_player_map = {}
+local deploy_cmd = [[sh -c "cd ../../contracts && ./deploy_anvil.sh"]]
+local reader = io.popen(deploy_cmd)
+local pid = assert(reader):read()
+time.sleep(PLAYER_DELAY)
 
-for index, command in ipairs(commands) do
-    local reader = io.popen(command)
-    local pid = assert(reader):read()
-    if index >= player_start_index then
-        pid_reader_map[pid] = reader
-        pid_player_map[pid] = index
-    end
-    time.sleep(PLAYER_DELAY)
-end
-
--- Gracefully end child processes
-setmetatable(pid_reader_map, {
-    __gc = function(t)
-        helper.stop_players(t)
-    end
-})
-
-local no_active_players_count = 0
 local all_idle_count = 0
-local last_timestamp = os.time({ year = 2000, month = 1, day = 1, hour = 0, min = 0, sec = 0 })
 
 while true do
-    local active_players = 0
+    local idle_count = 0
+    for i, c in ipairs(player_coroutines) do
+        local success, ret = coroutine.resume(c)
+        local status = coroutine.status(c)
 
-    for pid, reader in pairs(pid_reader_map) do
-        local message_out
-        active_players = active_players + 1
-        last_timestamp, message_out = helper.log_to_ts(pid_player_map[pid], reader, last_timestamp)
-
-        -- close the reader and delete the reader entry when there's no more msg in the buffer
-        -- and the process has already ended
-        if message_out == 0 and helper.is_zombie(pid) then
-            helper.log_full(pid_player_map[pid], string.format("player process %s is dead", pid))
-            reader:close()
-            pid_reader_map[pid] = nil
-            pid_player_map[pid] = nil
+        if not success then
+            print(string.format("coroutine %d fail to resume with error: %s", i, ret))
+        elseif status == "dead" then
+            player_coroutines[i] = nil
+            player_count = player_count - 1
+        elseif ret then
+            helper.log_full(i, "player idling")
+            idle_count = idle_count + 1
         end
     end
 
-    if active_players > 0 then
-        if helper.all_players_idle(pid_player_map) then
-            all_idle_count = all_idle_count + 1
-            helper.rm_all_players_idle(pid_player_map)
-        else
-            all_idle_count = 0
-        end
+    if idle_count >= player_count then
+        all_idle_count = all_idle_count + 1
+    end
 
+
+    if player_count > 0 then
         if all_idle_count == IDLE_LIMIT then
             print(string.format("All players idle, fastforward blockchain for %d seconds...", FAST_FORWARD_TIME))
             blockchain_utils.advance_time(FAST_FORWARD_TIME, blockchain_constants.endpoint)
@@ -138,13 +148,7 @@ while true do
         end
     end
 
-    if active_players == 0 then
-        no_active_players_count = no_active_players_count + 1
-    else
-        no_active_players_count = 0
-    end
-
-    if no_active_players_count == INACTIVE_LIMIT then
+    if player_count == 0 then
         print("No active players, ending program...")
         break
     end

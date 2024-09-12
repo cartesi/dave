@@ -10,13 +10,13 @@ local helper = require "utils.helper"
 local Player = {}
 Player.__index = Player
 
-function Player:new(wallet, tournament_address, machine_path, blokchain_endpoint, hook)
+function Player:new(wallet, tournament_address, machine_path, blockchain_endpoint, hook)
     local p = {
         pk = wallet.pk,
         player_id = wallet.player_id,
         tournament_address = tournament_address,
         machine_path = machine_path,
-        blokchain_endpoint = blokchain_endpoint,
+        blockchain_endpoint = blockchain_endpoint,
         hook = hook
     }
     setmetatable(p, self)
@@ -24,8 +24,8 @@ function Player:new(wallet, tournament_address, machine_path, blokchain_endpoint
 end
 
 function Player:start()
-    local state_fetcher = StateFetcher:new(self.tournament_address, self.blokchain_endpoint)
-    local sender = Sender:new(self.pk, self.player_id, self.blokchain_endpoint)
+    local state_fetcher = StateFetcher:new(self.tournament_address, self.blockchain_endpoint)
+    local sender = Sender:new(self.pk, self.player_id, self.blockchain_endpoint)
     local gc_strategy = GarbageCollector:new(sender)
     local honest_strategy = HonestStrategy:new(
         CommitmentBuilder:new(self.machine_path),
@@ -47,14 +47,12 @@ function Player:start()
         if log.finished then break end
 
         -- player is considered idle if no tx sent in current iteration
+        local idle = false
         if tx_count == sender.tx_count then
-            helper.log_timestamp("player idling")
-            helper.touch_player_idle(self.player_id)
-        else
-            helper.rm_player_idle(self.player_id)
+            idle = true
         end
 
-        time.sleep(5)
+        coroutine.yield(idle)
     end
 end
 

@@ -2,7 +2,6 @@
 require "setup_path"
 
 -- Required Modules
-local helper = require "utils.helper"
 local flat = require "utils.flat"
 local json = require "utils.json"
 local bint = require 'utils.bint' (256) -- use 256 bits integers
@@ -87,33 +86,11 @@ local function pick_2_pngs(state, logs)
     end
 end
 
-
--- Main Execution
-local player_index = tonumber(arg[1])
-local tournament = arg[2]
-local machine_path = arg[3]
-local extra_data = helper.str_to_bool(arg[4])
-local hook
-
-if extra_data then
-    hook = function(state, logs)
-        -- prepare files for frontend
-        output_tournaments(state)
-        output_hero_claim(state, logs)
-        pick_2_pngs(state, logs)
-    end
-else
-    hook = false
+local hero_hook = function(state, logs)
+    -- prepare files for frontend
+    output_tournaments(state)
+    output_hero_claim(state, logs)
+    pick_2_pngs(state, logs)
 end
 
-local Player = require "player.player"
-local blockchain_consts = require "blockchain.constants"
-
-local player = Player:new(
-    { pk = blockchain_consts.pks[player_index], player_id = player_index },
-    tournament,
-    machine_path,
-    blockchain_consts.endpoint,
-    hook
-)
-player:start()
+return hero_hook
