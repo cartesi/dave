@@ -1,27 +1,11 @@
 local StateFetcher = require "player.state"
-local HonestStrategy = require "player.strategy"
-local GarbageCollector = require "player.gc"
-local Sender = require "player.sender"
-local CommitmentBuilder = require "computation.commitment"
-local time = require "utils.time"
-local helper = require "utils.helper"
 
-
-local function new(wallet, tournament_address, machine_path, blokchain_endpoint, hook)
-    local sender = Sender:new(wallet.pk, wallet.player_id, blokchain_endpoint)
+local function new(tournament_address, strategy, blokchain_endpoint, hook)
     local state_fetcher = StateFetcher:new(tournament_address, blokchain_endpoint)
-    local gc_strategy = GarbageCollector:new(sender)
-    local honest_strategy = HonestStrategy:new(
-        CommitmentBuilder:new(machine_path),
-        machine_path,
-        sender
-    )
 
     local function react()
         local state = state_fetcher:fetch()
-
-        gc_strategy:react(state)
-        local log = honest_strategy:react(state)
+        local log = strategy:react(state)
 
         if hook then
             hook(state, log)

@@ -5,6 +5,7 @@ DOOM_MACHINE_PATH := "/app/tests/compute/program/doom-compute-machine"
 LUA_NODE ?= "true"
 
 help:
+	@echo '  clean-graphics            - deletes doom graphics'
 	@echo '  create-image              - create `prt-compute:lua` docker image'
 	@echo '  test-simple               - run PRT simple test'
 	@echo '  test-stress               - run PRT stress test'
@@ -35,6 +36,9 @@ test-doom: create-image
 create-doom-dirs:
 	@mkdir -p pixels
 	@mkdir -p outputs
+
+clean-graphics:
+	@rm -r pixels outputs
 
 test-doom-with-graphics: create-image create-doom-dirs
 	@docker run --rm \
