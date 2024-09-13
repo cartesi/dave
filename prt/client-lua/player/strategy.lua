@@ -1,19 +1,31 @@
 local helper = require "utils.helper"
 local Machine = require "computation.machine"
 local constants = require "computation.constants"
+local GarbageCollector = require "player.gc"
 
 local HonestStrategy = {}
 HonestStrategy.__index = HonestStrategy
 
 function HonestStrategy:new(commitment_builder, machine_path, sender)
+    local gc_strategy = GarbageCollector:new(sender)
+
     local honest_strategy = {
         commitment_builder = commitment_builder,
         machine_path = machine_path,
-        sender = sender
+        sender = sender,
+        gc_strategy = gc_strategy,
     }
 
     setmetatable(honest_strategy, self)
     return honest_strategy
+end
+
+function HonestStrategy:disable_gc()
+    self.gc_strategy = false
+end
+
+function HonestStrategy:enable_gc()
+    self.gc_strategy = GarbageCollector:new(self.sender)
 end
 
 function HonestStrategy:_join_tournament(tournament, commitment)
@@ -319,6 +331,11 @@ function HonestStrategy:react(tournament)
 
     self:_react_tournament(tournament, log)
     log.idle = tx_count == self.sender.tx_count
+
+
+    if self.gc_strategy then
+        self.gc_strategy:react(tournament)
+    end
 
     return log
 end

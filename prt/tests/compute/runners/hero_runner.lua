@@ -4,10 +4,13 @@ require "setup_path"
 -- Required Modules
 local time = require "utils.time"
 local helper = require "utils.helper"
+local Sender = require "player.sender"
+local CommitmentBuilder = require "computation.commitment"
+local HonestStrategy = require "player.strategy"
 
 -- Main Execution
 local player_id = tonumber(arg[1])
-local tournament = arg[2]
+local tournament_address = arg[2]
 local machine_path = arg[3]
 local extra_data = helper.str_to_bool(arg[4])
 local hook
@@ -21,10 +24,16 @@ end
 local Player = require "player.player"
 local blockchain_consts = require "blockchain.constants"
 
-local react = Player.new(
-    { pk = blockchain_consts.pks[player_id], player_id = player_id },
-    tournament,
+local wallet = { pk = blockchain_consts.pks[player_id], player_id = player_id }
+local honest_strategy = HonestStrategy:new(
+    CommitmentBuilder:new(machine_path),
     machine_path,
+    Sender:new(wallet.pk, wallet.player_id, blockchain_consts.endpoint)
+)
+
+local react = Player.new(
+    tournament_address,
+    honest_strategy,
     blockchain_consts.endpoint,
     hook
 )
@@ -32,6 +41,8 @@ local react = Player.new(
 repeat
     local status, log = coroutine.resume(react)
     assert(status)
+
+    if log.finished then return end
 
     if log.idle then
         helper.log_timestamp("player idling")
