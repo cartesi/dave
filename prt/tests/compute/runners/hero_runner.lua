@@ -4,9 +4,7 @@ require "setup_path"
 -- Required Modules
 local time = require "utils.time"
 local helper = require "utils.helper"
-local Sender = require "player.sender"
-local CommitmentBuilder = require "computation.commitment"
-local HonestStrategy = require "player.strategy"
+local blockchain_consts = require "blockchain.constants"
 
 -- Main Execution
 local player_id = tonumber(arg[1])
@@ -21,19 +19,13 @@ else
     hook = false
 end
 
-local Player = require "player.player"
-local blockchain_consts = require "blockchain.constants"
-
 local wallet = { pk = blockchain_consts.pks[player_id], player_id = player_id }
-local honest_strategy = HonestStrategy:new(
-    CommitmentBuilder:new(machine_path),
-    machine_path,
-    Sender:new(wallet.pk, wallet.player_id, blockchain_consts.endpoint)
-)
 
+local Player = require "player.player"
 local react = Player.new(
     tournament_address,
-    honest_strategy,
+    wallet,
+    machine_path,
     blockchain_consts.endpoint,
     hook
 )
