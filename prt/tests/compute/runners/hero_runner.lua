@@ -2,46 +2,38 @@
 require "setup_path"
 
 -- Required Modules
-local time = require "utils.time"
-local helper = require "utils.helper"
+local new_scoped_require = require "utils.scoped_require"
+local scoped_require = new_scoped_require(_ENV)
+
 local blockchain_consts = require "blockchain.constants"
-
--- Main Execution
-local player_id = tonumber(arg[1])
-local tournament_address = arg[2]
-local machine_path = arg[3]
-local extra_data = helper.str_to_bool(arg[4])
-local hook
-
-if extra_data then
-    hook = require "doom_showcase.hook"
-else
-    hook = false
-end
-
-local wallet = { pk = blockchain_consts.pks[player_id], player_id = player_id }
-
+local CommitmentBuilder = require "computation.commitment"
+local HonestStrategy = require "player.strategy"
+local Sender = require "player.sender"
 local Player = require "player.player"
-local react = Player.new(
-    tournament_address,
-    wallet,
-    machine_path,
-    blockchain_consts.endpoint,
-    hook
-)
 
-repeat
-    local status, log = coroutine.resume(react)
-    assert(status)
+local function hero_runner(player_id, machine_path, tournament_address, extra_data)
+    local hook
 
-    if log.finished then return end
-
-    if log.idle then
-        helper.log_timestamp("player idling")
-        helper.touch_player_idle(player_id)
+    if extra_data then
+        print("extra data is enabled")
+        hook = require "doom_showcase.hook"
     else
-        helper.rm_player_idle(player_id)
+        hook = false
     end
 
-    time.sleep(5)
-until coroutine.status(react) == "dead"
+    local strategy = HonestStrategy:new(
+        CommitmentBuilder:new(machine_path),
+        machine_path,
+        Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
+    )
+    local react = Player.new(
+        tournament_address,
+        strategy,
+        blockchain_consts.endpoint,
+        hook
+    )
+
+    return react
+end
+
+return hero_runner

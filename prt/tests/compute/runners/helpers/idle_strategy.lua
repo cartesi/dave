@@ -4,13 +4,13 @@ local IdleStrategy = {}
 IdleStrategy.__index = IdleStrategy
 
 function IdleStrategy:new(commitment_builder, sender)
-    local honest_strategy = {
+    local idle_strategy = {
         commitment_builder = commitment_builder,
         sender = sender
     }
 
-    setmetatable(honest_strategy, self)
-    return honest_strategy
+    setmetatable(idle_strategy, self)
+    return idle_strategy
 end
 
 function IdleStrategy:_join_tournament(tournament, commitment)
@@ -18,7 +18,7 @@ function IdleStrategy:_join_tournament(tournament, commitment)
     assert(f)
     local last, proof = commitment:last()
 
-    helper.log_timestamp(string.format(
+    helper.log_full(self.sender.index, string.format(
         "join tournament %s of level %d with commitment %s",
         tournament.address,
         tournament.level,
@@ -32,15 +32,15 @@ function IdleStrategy:_join_tournament(tournament, commitment)
         right
     )
     if not ok then
-        helper.log_timestamp(string.format(
+        helper.log_full(self.sender.index, string.format(
             "join tournament reverted: %s",
             e
         ))
     end
 end
 
-function IdleStrategy:_react_tournament(_, tournament)
-    helper.log_timestamp("Enter tournament at address: " .. tournament.address)
+function IdleStrategy:_react_tournament(tournament)
+    helper.log_full(self.sender.index, "Enter tournament at address: " .. tournament.address)
     local commitment = self.commitment_builder:build(
         tournament.base_big_cycle,
         tournament.level,
@@ -51,9 +51,9 @@ function IdleStrategy:_react_tournament(_, tournament)
     local tournament_winner = tournament.tournament_winner
     if tournament_winner.has_winner then
         if not tournament.parent then
-            helper.log_timestamp("TOURNAMENT FINISHED, HURRAYYY")
-            helper.log_timestamp("Winner commitment: " .. tournament_winner.commitment:hex_string())
-            helper.log_timestamp("Final state: " .. tournament_winner.final:hex_string())
+            helper.log_full(self.sender.index, "TOURNAMENT FINISHED, HURRAYYY")
+            helper.log_full(self.sender.index, "Winner commitment: " .. tournament_winner.commitment:hex_string())
+            helper.log_full(self.sender.index, "Final state: " .. tournament_winner.final:hex_string())
             return true
         end
     end
@@ -62,12 +62,20 @@ function IdleStrategy:_react_tournament(_, tournament)
         self:_join_tournament(tournament, commitment)
     else
         local commitment_clock = tournament.commitments[commitment.root_hash].status.clock
-        helper.log_timestamp(tostring(commitment_clock))
+        helper.log_full(self.sender.index, tostring(commitment_clock))
     end
 end
 
-function IdleStrategy:react(state)
-    return self:_react_tournament(state, state.root_tournament)
+function IdleStrategy:react(tournament)
+    local tx_count = self.sender.tx_count
+
+    local finished = self:_react_tournament(tournament)
+    local idle = tx_count == self.sender.tx_count
+
+    return {
+        idle = idle,
+        finished = finished
+    }
 end
 
 return IdleStrategy
