@@ -13,8 +13,9 @@ function GarbageCollector:new(sender)
 end
 
 function GarbageCollector:_react_match(match)
-    helper.log_timestamp(string.format("Garbage collect match at HEIGHT: %d, of tournament: %s", match.current_height,
-        match.tournament.address))
+    helper.log_full(self.sender.index,
+        string.format("Garbage collect match at HEIGHT: %d, of tournament: %s", match.current_height,
+            match.tournament.address))
     if match.inner_tournament then
         return self:_react_tournament(match.inner_tournament)
     end
@@ -33,7 +34,7 @@ function GarbageCollector:_react_tournament(tournament)
                     (status_1.clock:time_since_timeout() > status_2.clock.allowance)) or
                 (not status_2.clock:has_time() and
                     (status_2.clock:time_since_timeout() > status_1.clock.allowance)) then
-                helper.log_timestamp(string.format(
+                helper.log_full(self.sender.index, string.format(
                     "eliminate match for commitment %s and %s at tournament %s of level %d",
                     match.commitment_one,
                     match.commitment_two,
@@ -47,7 +48,7 @@ function GarbageCollector:_react_tournament(tournament)
                     match.commitment_two
                 )
                 if not ok then
-                    helper.log_timestamp(string.format(
+                    helper.log_full(self.sender.index, string.format(
                         "eliminate match reverted: %s",
                         e
                     ))

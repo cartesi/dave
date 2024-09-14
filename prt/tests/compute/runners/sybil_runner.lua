@@ -2,40 +2,61 @@
 require "setup_path"
 
 -- Required Modules
-local time = require "utils.time"
-local helper = require "utils.helper"
-
--- Main Execution
-local player_id = tonumber(arg[1])
-local tournament = arg[2]
-local machine_path = arg[3]
-local fake_commitment_count = tonumber(arg[4])
+local new_scoped_require = require "utils.scoped_require"
+local scoped_require = new_scoped_require(_ENV)
 
 local blockchain_consts = require "blockchain.constants"
-local wallet = { pk = blockchain_consts.pks[player_id], player_id = player_id }
+local FakeCommitmentBuilder = require "runners.helpers.fake_commitment"
+local HonestStrategy = require "player.strategy"
+local Sender = require "player.sender"
+local helper = require "utils.helper"
+local StateFetcher = require "player.state"
 
-local new_sybil = require "runners.helpers.sybil_player"
+local function sybil_player(tournament_address, strategy, blockchain_endpoint, fake_commitment_count)
+    local state_fetcher = StateFetcher:new(tournament_address, blockchain_endpoint)
 
-local react = new_sybil(
-    wallet,
-    tournament,
-    machine_path,
-    blockchain_consts.endpoint,
-    fake_commitment_count
-)
+    local function react()
+        local idle = true
+        local finished = true
+        for i = 1, fake_commitment_count do
+            local state = state_fetcher:fetch()
+            strategy.commitment_builder.fake_index = i
+            helper.log_timestamp(string.format("react with fake index: %d", i))
 
-repeat
-    local status, log = coroutine.resume(react)
-    assert(status)
+            local log = strategy:react(state)
+            idle = idle and log.idle
+            finished = finished and log.finished
+        end
 
-    if log.finished then return end
-
-    if log.idle then
-        helper.log_timestamp("player idling")
-        helper.touch_player_idle(player_id)
-    else
-        helper.rm_player_idle(player_id)
+        return { idle = idle, finished = finished }
     end
 
-    time.sleep(5)
-until coroutine.status(react) == "dead"
+    return coroutine.create(function()
+        local log
+        repeat
+            log = react()
+            coroutine.yield(log)
+        until log.finished
+    end)
+end
+
+
+local function sybil_runner(player_id, machine_path, tournament_address, fake_commitment_count)
+    local strategy = HonestStrategy:new(
+        FakeCommitmentBuilder:new(machine_path),
+        machine_path,
+        Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
+    )
+    strategy:disable_gc()
+
+    local react = sybil_player(
+        tournament_address,
+        strategy,
+        blockchain_consts.endpoint,
+        fake_commitment_count
+    )
+
+    return react
+end
+
+return sybil_runner
