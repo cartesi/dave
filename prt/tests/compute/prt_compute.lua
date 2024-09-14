@@ -3,8 +3,6 @@ require "setup_path"
 
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
 local FAST_FORWARD_TIME = 300
--- max consecutive iterations of all players idling before the blockchain fastforwards
-local IDLE_LIMIT = 5
 -- delay time for blockchain node to be ready
 local NODE_DELAY = 2
 -- delay between each player to run its command process
@@ -67,7 +65,6 @@ local machine_path = os.getenv("MACHINE_PATH")
 local use_lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
 local extra_data = helper.str_to_bool(os.getenv("EXTRA_DATA"))
 local contract_address = blockchain_constants.root_tournament
-local commands = {}
 
 print("Hello from Dave lua prototype!")
 local player_coroutines = setup_players(use_lua_node, extra_data, contract_address, machine_path)

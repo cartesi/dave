@@ -129,7 +129,7 @@ function Reader:new(endpoint)
     return reader
 end
 
-function Reader:_get_block(block)
+function Reader._get_block(block)
     local cmd = string.format("cast block " .. block .. " 2>&1")
 
     local handle = io.popen(cmd)
@@ -284,7 +284,7 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     assert(allowance)
     assert(last_resume)
 
-    local block_time = self:_get_block("latest")
+    local block_time = Reader._get_block("latest")
 
     local commitment = {
         clock = CommitmentClock:new(allowance, last_resume, block_time),

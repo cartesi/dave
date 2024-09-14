@@ -1,7 +1,6 @@
 require "setup_path"
 
 -- Required Modules
-local helper = require "utils.helper"
 local flat = require "utils.flat"
 local json = require "utils.json"
 local bint = require 'utils.bint' (256) -- use 256 bits integers
@@ -20,7 +19,7 @@ local function output_tournaments(state)
 end
 
 -- Function to output hero claims
-local function output_hero_claim(_, logs)
+local function output_hero_claim(logs)
     if logs ~= nil then
         local hero_state = {}
         local claims_file = io.open("/app/outputs/hero-claims.json", "w")
@@ -68,7 +67,7 @@ local function copy_png(one, two)
 end
 
 -- Function to pick two PNG files
-local function pick_2_pngs(state, logs)
+local function pick_2_pngs(logs)
     local match = logs.latest_match
     if match ~= nil and match ~= false and match.current_height ~= 0 then
         local span = 1 << (match.current_height - 1)
@@ -89,6 +88,6 @@ end
 return function(state, logs)
     -- prepare files for frontend
     output_tournaments(state)
-    output_hero_claim(state, logs)
-    pick_2_pngs(state, logs)
+    output_hero_claim(logs)
+    pick_2_pngs(logs)
 end
