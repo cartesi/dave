@@ -17,7 +17,7 @@ function ComputationState:new(root_hash, halted, uhalted)
     return r
 end
 
-function ComputationState:from_current_machine_state(machine)
+function ComputationState.from_current_machine_state(machine)
     local hash = Hash:from_digest(machine:get_root_hash())
     return ComputationState:new(
         hash,
@@ -67,7 +67,7 @@ function Machine:new_from_path(path)
 end
 
 function Machine:state()
-    return ComputationState:from_current_machine_state(self.machine)
+    return ComputationState.from_current_machine_state(self.machine)
 end
 
 local function find_closest_snapshot(path, cycle)
@@ -78,7 +78,7 @@ local function find_closest_snapshot(path, cycle)
     local handle = io.popen('ls -d ' .. path .. '/*/ 2>/dev/null')
     if handle then
         for dir in handle:lines() do
-            local dir_name = dir:gsub("/$", "")      -- Get the directory name
+            local dir_name = dir:gsub("/$", "")            -- Get the directory name
             local number = tonumber(dir_name:match("%d+")) -- Extract the number from the name
 
             if number then
@@ -101,7 +101,7 @@ local function find_closest_snapshot(path, cycle)
 
         if mid_number < cycle then
             closest_dir = directories[mid].path
-            low = mid + 1 -- Search in the larger half
+            low = mid + 1  -- Search in the larger half
         else
             high = mid - 1 -- Search in the smaller half
         end
@@ -201,8 +201,7 @@ local function ver(t, p, s)
     return t
 end
 
-
-function Machine:get_logs(path, cycle, ucycle)
+function Machine.get_logs(path, cycle, ucycle)
     local machine = Machine:new_from_path(path)
     machine:load_snapshot(cycle)
     local logs
