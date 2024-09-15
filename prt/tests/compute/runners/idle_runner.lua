@@ -2,9 +2,6 @@
 require "setup_path"
 
 -- Required Modules
-local new_scoped_require = require "utils.scoped_require"
-local scoped_require = new_scoped_require(_ENV)
-
 local blockchain_consts = require "blockchain.constants"
 local DummyCommitment = require "runners.helpers.dummy_commitment"
 local IdleStrategy = require "runners.helpers.idle_strategy"
