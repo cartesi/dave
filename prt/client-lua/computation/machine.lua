@@ -70,7 +70,7 @@ function Machine:state()
     return ComputationState.from_current_machine_state(self.machine)
 end
 
-local function find_closest_snapshot(path, cycle)
+local function find_closest_snapshot(path, current_cycle, cycle)
     local directories = {}
 
     -- Collect all directories and their corresponding numbers
@@ -99,7 +99,7 @@ local function find_closest_snapshot(path, cycle)
         local mid = math.floor((low + high) / 2)
         local mid_number = directories[mid].number
 
-        if mid_number < cycle then
+        if mid_number < cycle and mid_number > current_cycle then
             closest_dir = directories[mid].path
             low = mid + 1  -- Search in the larger half
         else
@@ -127,10 +127,10 @@ function Machine:load_snapshot(cycle)
 
     if not helper.exists(snapshot_path) then
         -- find closest snapshot if direct snapshot doesn't exists
-        snapshot_path = find_closest_snapshot(machines_path, cycle)
+        snapshot_path = find_closest_snapshot(machines_path, self.cycle, cycle)
     end
     if snapshot_path then
-        -- print("loading snapshot", snapshot_path)
+        print("loading snapshot", snapshot_path, "for cycle", cycle)
         local machine = cartesi.machine(snapshot_path, machine_settings)
         self.machine = machine
     end
