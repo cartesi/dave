@@ -29,7 +29,7 @@ function HonestStrategy:enable_gc()
 end
 
 function HonestStrategy:_join_tournament(tournament, commitment)
-    local f, left, right = commitment:children(commitment.root_hash)
+    local f, left, right = commitment:children()
     assert(f)
     local last, proof = commitment:last()
 
@@ -288,7 +288,7 @@ function HonestStrategy:_react_tournament(tournament, log)
                 tournament.level,
                 commitment.root_hash
             ))
-            local _, left, right = old_commitment:children(old_commitment.root_hash)
+            local _, left, right = old_commitment:children()
             local ok, e = self.sender:tx_win_inner_match(
                 tournament.parent.address,
                 tournament.address,
