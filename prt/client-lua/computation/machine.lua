@@ -130,7 +130,6 @@ function Machine:load_snapshot(cycle)
         snapshot_path = find_closest_snapshot(machines_path, self.cycle, cycle)
     end
     if snapshot_path then
-        print("loading snapshot", snapshot_path, "for cycle", cycle)
         local machine = cartesi.machine(snapshot_path, machine_settings)
         self.machine = machine
     end
