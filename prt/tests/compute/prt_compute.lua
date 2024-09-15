@@ -13,9 +13,7 @@ local FAKE_COMMITMENT_COUNT = 1
 local IDLE_PLAYER_COUNT = 0
 
 -- Required Modules
-local start_hero = require "runners.hero_runner"
-local start_sybil = require "runners.sybil_runner"
-local start_idle = require "runners.idle_runner"
+local new_scoped_require = require "utils.scoped_require"
 
 local helper = require "utils.helper"
 local blockchain_utils = require "blockchain.utils"
@@ -31,6 +29,8 @@ local function setup_players(use_lua_node, extra_data, contract_address, machine
     if use_lua_node then
         -- use Lua node to defend
         print("Setting up Lua honest player")
+        local scoped_require = new_scoped_require(_ENV)
+        local start_hero = scoped_require "runners.hero_runner"
         player_coroutines[player_index] = start_hero(player_index, machine_path, contract_address, extra_data)
     else
         -- use Rust node to defend
@@ -45,12 +45,16 @@ local function setup_players(use_lua_node, extra_data, contract_address, machine
 
     if FAKE_COMMITMENT_COUNT > 0 then
         print(string.format("Setting up dishonest player with %d fake commitments", FAKE_COMMITMENT_COUNT))
+        local scoped_require = new_scoped_require(_ENV)
+        local start_sybil = scoped_require "runners.sybil_runner"
         player_coroutines[player_index] = start_sybil(player_index, machine_path, contract_address, FAKE_COMMITMENT_COUNT)
         player_index = player_index + 1
     end
 
     if IDLE_PLAYER_COUNT > 0 then
         print(string.format("Setting up %d idle players", IDLE_PLAYER_COUNT))
+        local scoped_require = new_scoped_require(_ENV)
+        local start_idle = scoped_require "runners.idle_runner"
         for _ = 1, IDLE_PLAYER_COUNT do
             player_coroutines[player_index] = start_idle(player_index, machine_path, contract_address)
             player_index = player_index + 1
@@ -83,11 +87,12 @@ while true do
         local success, ret = coroutine.resume(c)
         local status = coroutine.status(c)
 
+        if status == "dead" then
+            table.remove(player_coroutines, i)
+        end
         if not success then
             print(string.format("coroutine %d fail to resume with error: %s", i, ret))
-        elseif status == "dead" then
-            player_coroutines[i] = nil
-        else
+        elseif ret then
             idle = idle and ret.idle
         end
     end
