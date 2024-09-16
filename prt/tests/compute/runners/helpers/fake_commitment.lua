@@ -74,7 +74,7 @@ local function build_commitment(cached_commitments, machine_path, base_cycle, le
         return cached_commitments[level][base_cycle]
     end
 
-    local c = coroutine.create(function(...)
+    local c = coroutine.create(function()
         local scoped_require = new_scoped_require(_ENV)
         local CommitmentBuilder = scoped_require "computation.commitment"
 
@@ -110,7 +110,7 @@ end
 
 function FakeCommitmentBuilder:new(machine_path)
     local c = {
-        fake_index = 1,
+        fake_index = false,
         machine_path = machine_path,
         fake_commitments = {},
         commitments = {}
@@ -120,6 +120,10 @@ function FakeCommitmentBuilder:new(machine_path)
 end
 
 function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count)
+    -- function caller should set `self.fake_index` properly before calling this function
+    -- the fake commitments are not guaranteed to be unique if there are not many leafs (short computation)
+    -- `self.fake_index` is reset and the end of a successful call to ensure the next caller must set it again.
+    assert(self.fake_index)
     if not self.fake_commitments[level] then
         self.fake_commitments[level] = {}
     end
@@ -132,11 +136,10 @@ function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride
 
     local commitment = build_commitment(self.commitments, self.machine_path, base_cycle, level, log2_stride,
         log2_stride_count)
-    -- function caller should set `self.fake_index` properly from outside to generate different fake commitment
-    -- the fake commitments are not guaranteed to be unique if there are not many leafs (short computation)
     local fake_commitment = build_fake_commitment(commitment, self.fake_index, log2_stride)
 
     self.fake_commitments[level][base_cycle][self.fake_index] = fake_commitment
+    self.fake_index = false
     return fake_commitment
 end
 

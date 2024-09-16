@@ -1,6 +1,3 @@
-#!/usr/bin/lua
-require "setup_path"
-
 -- Required Modules
 local blockchain_consts = require "blockchain.constants"
 local FakeCommitmentBuilder = require "runners.helpers.fake_commitment"
