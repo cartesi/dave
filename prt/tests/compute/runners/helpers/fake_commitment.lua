@@ -15,6 +15,15 @@ local function build_zero_uarch()
     return builder:build()
 end
 
+local function shallow_copy(orig)
+    local copy = {}
+    for orig_key, orig_value in next, orig, nil do
+        copy[orig_key] = orig_value
+    end
+    setmetatable(copy, getmetatable(orig))
+    return copy
+end
+
 local uarch_zero = build_zero_uarch()
 
 local function get_fake_hash(log2_stride)
@@ -55,9 +64,15 @@ local function rebuild_nested_trees(leafs)
     end
 end
 
-local function build_commitment(machine_path, base_cycle, level, log2_stride, log2_stride_count)
+local function build_commitment(cached_commitments, machine_path, base_cycle, level, log2_stride, log2_stride_count)
     -- the honest commitment builder should be operated in an isolated env
     -- to avoid side effects to the strategy behavior
+
+    if not cached_commitments[level] then
+        cached_commitments[level] = {}
+    elseif cached_commitments[level][base_cycle] then
+        return cached_commitments[level][base_cycle]
+    end
 
     local c = coroutine.create(function(...)
         local scoped_require = new_scoped_require(_ENV)
@@ -72,18 +87,14 @@ local function build_commitment(machine_path, base_cycle, level, log2_stride, lo
     if not success then
         error(string.format("commitment coroutine fail to resume with error: %s", ret))
     else
+        cached_commitments[level][base_cycle] = ret
         return ret
     end
-
-    -- local CommitmentBuilder = require "computation.commitment"
-    -- local builder = CommitmentBuilder:new(machine_path)
-    -- local commitment = builder:build(base_cycle, level, log2_stride, log2_stride_count)
-    -- return commitment
 end
 
 local function build_fake_commitment(commitment, fake_index, log2_stride)
     local fake_builder = MerkleBuilder:new()
-    fake_builder.leafs = commitment.leafs
+    fake_builder.leafs = shallow_copy(commitment.leafs)
 
     local fake_hash = get_fake_hash(log2_stride)
     local leaf_index = math.max(#commitment.leafs - fake_index + 1, 1)
@@ -93,14 +104,16 @@ local function build_fake_commitment(commitment, fake_index, log2_stride)
     update_scope_of_hashes(fake_builder.leafs)
     rebuild_nested_trees(fake_builder.leafs)
 
-    return fake_builder:build(commitment.implicit_hash)
+    local implicit_hash = Hash:from_digest(commitment.implicit_hash.digest)
+    return fake_builder:build(implicit_hash)
 end
 
 function FakeCommitmentBuilder:new(machine_path)
     local c = {
         fake_index = 1,
         machine_path = machine_path,
-        fake_commitments = {}
+        fake_commitments = {},
+        commitments = {}
     }
     setmetatable(c, self)
     return c
@@ -117,7 +130,8 @@ function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride
         return self.fake_commitments[level][base_cycle][self.fake_index]
     end
 
-    local commitment = build_commitment(self.machine_path, base_cycle, level, log2_stride, log2_stride_count)
+    local commitment = build_commitment(self.commitments, self.machine_path, base_cycle, level, log2_stride,
+        log2_stride_count)
     -- function caller should set `self.fake_index` properly from outside to generate different fake commitment
     -- the fake commitments are not guaranteed to be unique if there are not many leafs (short computation)
     local fake_commitment = build_fake_commitment(commitment, self.fake_index, log2_stride)
