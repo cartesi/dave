@@ -74,9 +74,7 @@ local player_coroutines = setup_players(use_lua_node, extra_data, contract_addre
 local blockchain_node = Blockchain:new()
 time.sleep(NODE_DELAY)
 
-local deploy_cmd = [[sh -c "cd ../../contracts && ./deploy_anvil.sh"]]
-local reader = io.popen(deploy_cmd)
-local pid = assert(reader):read()
+local pid = blockchain_utils.deploy_contracts()
 time.sleep(NODE_DELAY)
 
 while true do
