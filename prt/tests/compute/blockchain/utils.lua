@@ -19,4 +19,10 @@ local function advance_time(seconds, endpoint)
     end
 end
 
-return { advance_time = advance_time }
+local deploy_cmd = [[sh -c "cd ../../contracts && ./deploy_anvil.sh"]]
+local function deploy_contracts()
+    local reader = io.popen(deploy_cmd)
+    return assert(reader):read()
+end
+
+return { advance_time = advance_time, deploy_contracts = deploy_contracts }
