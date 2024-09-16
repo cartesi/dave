@@ -4,9 +4,7 @@ require "setup_path"
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
 local FAST_FORWARD_TIME = 300
 -- delay time for blockchain node to be ready
-local NODE_DELAY = 2
--- delay between each player to run its command process
-local PLAYER_DELAY = 5
+local NODE_DELAY = 3
 -- number of fake commitment to make
 local FAKE_COMMITMENT_COUNT = 1
 -- number of idle players
@@ -79,11 +77,12 @@ time.sleep(NODE_DELAY)
 local deploy_cmd = [[sh -c "cd ../../contracts && ./deploy_anvil.sh"]]
 local reader = io.popen(deploy_cmd)
 local pid = assert(reader):read()
-time.sleep(PLAYER_DELAY)
+time.sleep(NODE_DELAY)
 
 while true do
     local idle = true
-    for i, c in ipairs(player_coroutines) do
+    for i = #player_coroutines, 1, -1 do
+        local c = player_coroutines[i]
         local success, ret = coroutine.resume(c)
         local status = coroutine.status(c)
 
