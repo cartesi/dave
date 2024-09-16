@@ -37,7 +37,7 @@ local function new_scoped_require(env)
     local loaded = {}
 
     local function scoped_require(name)
-        if loaded[name] == nil then
+        if not loaded[name] then
             local module_type, path = find_path(name)
 
             local chunk, err, result
