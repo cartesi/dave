@@ -37,7 +37,7 @@ function HonestStrategy:_join_tournament(tournament, commitment)
         "join tournament %s of level %d with commitment %s",
         tournament.address,
         tournament.level,
-        commitment.root_hash
+        commitment
     ))
     local ok, e = self.sender:tx_join_tournament(
         tournament.address,
@@ -54,22 +54,48 @@ function HonestStrategy:_join_tournament(tournament, commitment)
     end
 end
 
+local function _is_my_turn(match, commitment)
+    -- commitment one should be the first to react after the match is created
+    -- thus commitment one will hold the same parity as the match height (not xor)
+    -- and commitment two will hold the opposite parity (xor)
+    local res = false
+    local height_parity = match.tournament.log2_stride_count % 2 == 0
+    local current_height_parity = match.current_height % 2 == 0
+    local xor_of_two_parities = height_parity ~= current_height_parity
+
+    if commitment == match.commitment_one then
+        res = not xor_of_two_parities
+    else
+        res = xor_of_two_parities
+    end
+
+    if not res then
+        helper.log_timestamp("not my turn to react to match")
+    end
+
+
+    return res
+end
+
 function HonestStrategy:_react_match(match, commitment, log)
     helper.log_full(self.sender.index, "Enter match at HEIGHT: " .. match.current_height)
 
-    local opponent_clock = commitment.root_hash == match.commitment_one and
-        match.tournament.commitments[match.commitment_two].status.clock or
-        match.tournament.commitments[match.commitment_one].status.clock
+    local opponent
+    if commitment == match.commitment_one then
+        opponent = match.tournament.commitments[match.commitment_two]
+    else
+        opponent = match.tournament.commitments[match.commitment_one]
+    end
 
-    if not opponent_clock:has_time() then
-        local f, left, right = commitment.root_hash:children()
+    if not opponent.status.clock:has_time() then
+        local f, left, right = commitment:children()
         assert(f)
 
         helper.log_full(self.sender.index,
             string.format("win match by timeout in tournament %s of level %d for commitment %s",
                 match.tournament.address,
                 match.tournament.level,
-                commitment.root_hash))
+                commitment))
 
         local ok, e = self.sender:tx_win_timeout_match(
             match.tournament.address,
@@ -90,7 +116,7 @@ function HonestStrategy:_react_match(match, commitment, log)
     if match.current_height == 0 then
         -- match sealed
         if match.tournament.level == (match.tournament.max_level - 1) then
-            local f, left, right = commitment.root_hash:children()
+            local f, left, right = commitment:children()
             assert(f)
 
             helper.log_full(self.sender.index, string.format(
@@ -106,7 +132,7 @@ function HonestStrategy:_react_match(match, commitment, log)
                 "win leaf match in tournament %s of level %d for commitment %s",
                 match.tournament.address,
                 match.tournament.level,
-                commitment.root_hash
+                commitment
             ))
             local ok, e = self.sender:tx_win_leaf_match(
                 match.tournament.address,
@@ -127,10 +153,9 @@ function HonestStrategy:_react_match(match, commitment, log)
         end
     elseif match.current_height == 1 then
         -- match to be sealed
+        if not _is_my_turn(match, commitment) then return end
         local found, left, right = match.current_other_parent:children()
-        if not found then
-            return
-        end
+        assert(found)
 
         local running_leaf
         if left ~= match.current_left then
@@ -153,7 +178,7 @@ function HonestStrategy:_react_match(match, commitment, log)
                 "seal leaf match in tournament %s of level %d for commitment %s",
                 match.tournament.address,
                 match.tournament.level,
-                commitment.root_hash
+                commitment
             ))
             local ok, e = self.sender:tx_seal_leaf_match(
                 match.tournament.address,
@@ -179,7 +204,7 @@ function HonestStrategy:_react_match(match, commitment, log)
                 "seal inner match in tournament %s of level %d for commitment %s",
                 match.tournament.address,
                 match.tournament.level,
-                commitment.root_hash
+                commitment
             ))
             local ok, e = self.sender:tx_seal_inner_match(
                 match.tournament.address,
@@ -203,11 +228,9 @@ function HonestStrategy:_react_match(match, commitment, log)
         end
     else
         -- match running
+        if not _is_my_turn(match, commitment) then return end
         local found, left, right = match.current_other_parent:children()
-        if not found then
-            helper.log_full(self.sender.index, "not my turn to react")
-            return
-        end
+        assert(found)
 
         local new_left, new_right
         if left ~= match.current_left then
@@ -229,7 +252,7 @@ function HonestStrategy:_react_match(match, commitment, log)
             match.current_height,
             match.tournament.address,
             match.tournament.level,
-            commitment.root_hash
+            commitment
         ))
         local ok, e = self.sender:tx_advance_match(
             match.tournament.address,
@@ -276,7 +299,7 @@ function HonestStrategy:_react_tournament(tournament, log)
                 tournament.parent.log2_stride,
                 tournament.parent.log2_stride_count
             )
-            if tournament_winner.commitment ~= old_commitment.root_hash then
+            if tournament_winner.commitment ~= old_commitment then
                 helper.log_full(self.sender.index, "player lost tournament")
                 log.finished = true
                 return
@@ -286,7 +309,7 @@ function HonestStrategy:_react_tournament(tournament, log)
                 "win tournament %s of level %d for commitment %s",
                 tournament.address,
                 tournament.level,
-                commitment.root_hash
+                commitment
             ))
             local _, left, right = old_commitment:children()
             local ok, e = self.sender:tx_win_inner_match(
@@ -316,7 +339,7 @@ function HonestStrategy:_react_tournament(tournament, log)
         if latest_match then
             return self:_react_match(latest_match, commitment, log)
         else
-            helper.log_full(self.sender.index, string.format("no match found for commitment: %s", commitment.root_hash))
+            helper.log_full(self.sender.index, string.format("no match found for commitment: %s", commitment))
         end
     end
 end
