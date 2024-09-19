@@ -42,7 +42,7 @@ local function new_scoped_require(env)
 
             local chunk, err, result
             if module_type == "lua" then
-                chunk, err = loadfile(path, "t", new_env)
+                chunk, err = loadfile(path, "bt", new_env)
             elseif module_type == "clib" then
                 chunk, err = custom_require_c(path, name)
             end
