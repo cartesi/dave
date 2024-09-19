@@ -1,0 +1,22 @@
+[package]
+name = "cartesi-prt-compute"
+version = "0.1.0"
+
+authors = [
+  "Gabriel Coutinho de Paula <gcdepaula@protonmail.io>",
+  "Algebraic Sofia <sofia@algebraic.dev>",
+  "Stephen Chen <stephenx747@gmail.com>",
+]
+description = "A Cartesi validator reference implementation"
+edition = "2021"
+homepage = "https://github.com/cartesi/dave"
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/cartesi/dave"
+
+[dependencies]
+cartesi-prt-core = { path = "../core" }
+alloy = { version = "0.3.1", features = ["sol-types"] }
+tokio = { version = "1", features = ["full"] }
+clap_derive = "=4.5.13"
+env_logger = "0.11.5"
