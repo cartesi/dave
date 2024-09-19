@@ -33,11 +33,9 @@ local function setup_players(use_lua_node, extra_data, contract_address, machine
     else
         -- use Rust node to defend
         print("Setting up Rust honest player")
-        -- TODO: create a rust runner
-        -- table.insert(commands, string.format(
-        --     [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
-        --     ../../prt-rs/target/release/cartesi-prt-compute 2>&1 | tee honest.log"]],
-        --     machine_path))
+        local rust_hero_runner = require "runners.rust_hero_runner"
+        -- TODO: switch to use "rust_hero_runner.create_react_once_runner" if we have cache commitments for rust_hero
+        player_coroutines[player_index] = rust_hero_runner.create_runner(player_index, machine_path)
     end
     player_index = player_index + 1
 
