@@ -8,7 +8,10 @@ use alloy::{
     contract::Error as ContractError,
     network::{Ethereum, EthereumWallet, NetworkWallet},
     providers::{
-        fillers::{ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller},
+        fillers::{
+            BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller,
+            WalletFiller,
+        },
         Identity, Provider, ProviderBuilder, RootProvider,
     },
     signers::local::PrivateKeySigner,
@@ -28,7 +31,10 @@ use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
 
 pub type SenderFiller = FillProvider<
     JoinFill<
-        JoinFill<JoinFill<JoinFill<Identity, GasFiller>, NonceFiller>, ChainIdFiller>,
+        JoinFill<
+            Identity,
+            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
+        >,
         WalletFiller<EthereumWallet>,
     >,
     RootProvider<Http<Client>>,
