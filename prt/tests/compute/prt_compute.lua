@@ -74,27 +74,30 @@ local player_coroutines = setup_players(use_lua_node, extra_data, contract_addre
 local blockchain_node = Blockchain:new()
 time.sleep(NODE_DELAY)
 
-local pid = blockchain_utils.deploy_contracts()
+blockchain_utils.deploy_contracts()
 time.sleep(NODE_DELAY)
 
 while true do
     local idle = true
-    for i = #player_coroutines, 1, -1 do
-        local c = player_coroutines[i]
-        local success, ret = coroutine.resume(c)
-        local status = coroutine.status(c)
+    local has_live_coroutine = false
+    for i, c in ipairs(player_coroutines) do
+        if c then
+            local success, ret = coroutine.resume(c)
+            local status = coroutine.status(c)
 
-        if status == "dead" then
-            table.remove(player_coroutines, i)
-        end
-        if not success then
-            print(string.format("coroutine %d fail to resume with error: %s", i, ret))
-        elseif ret then
-            idle = idle and ret.idle
+            if status == "dead" then
+                player_coroutines[i] = false
+            end
+            if not success then
+                print(string.format("coroutine %d fail to resume with error: %s", i, ret))
+            elseif ret then
+                has_live_coroutine = true
+                idle = idle and ret.idle
+            end
         end
     end
 
-    if #player_coroutines == 0 then
+    if not has_live_coroutine then
         print("No active players, ending program...")
         break
     end
