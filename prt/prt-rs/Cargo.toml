@@ -29,3 +29,4 @@ log = "0.4"
 hex = "0.4.3"
 num-traits = "0.2.19"
 ruint = { version = "1.12", features = ["num-traits"] }
+tokio = { version = "1", features = ["full"] }

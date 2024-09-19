@@ -6,6 +6,7 @@
 target/
 snapshots/
 common-rs/Cargo.lock
+prt/prt-rs/Cargo.lock
 prt/lua_poc/outputs/
 prt/lua_poc/pixels/
 node_modules

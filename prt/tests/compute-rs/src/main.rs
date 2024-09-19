@@ -1,22 +1,12 @@
 use cartesi_prt_compute::ComputeConfig;
-use cartesi_prt_core::{
-    arena::{EthArenaSender, StateReader},
-    machine::CachingMachineCommitmentBuilder,
-    strategy::{gc::GarbageCollector, player::Player},
-};
+use cartesi_prt_core::{arena::EthArenaSender, strategy::player::Player};
 
 use anyhow::Result;
 use clap::Parser;
-use log::{error, info};
-use std::{
-    fs::{self, OpenOptions},
-    io,
-    path::Path,
-    time::Duration,
-};
+use log::info;
+use std::{fs::OpenOptions, io, path::Path};
 
-const IDLE_PATH_STR: &str = "player2_idle";
-
+const FINISHED_PATH: &str = "/root/prt/tests/compute/finished";
 // A simple implementation of `% touch path` (ignores existing files)
 fn touch(path: &Path) -> io::Result<()> {
     match OpenOptions::new().create(true).write(true).open(path) {
@@ -34,46 +24,24 @@ async fn main() -> Result<()> {
     let config = ComputeConfig::parse();
     let blockchain_config = config.blockchain_config;
 
-    let reader = StateReader::new(&blockchain_config)?;
     let sender = EthArenaSender::new(&blockchain_config)?;
-
     let mut player = Player::new(
-        config.machine_path.clone(),
-        CachingMachineCommitmentBuilder::new(config.machine_path.clone()),
-        config.root_tournament.clone(),
-    );
+        &blockchain_config,
+        config.machine_path,
+        config.root_tournament,
+    )
+    .expect("fail to create player object");
 
-    let mut gc = GarbageCollector::new(config.root_tournament.clone());
-
-    let idle_path = Path::new(IDLE_PATH_STR);
-
-    loop {
-        let tournament_states = reader.fetch_from_root(config.root_tournament).await?;
-
-        let tx_count = sender.nonce().await?;
-        let res = player.react(&sender, &tournament_states).await;
-
-        match res {
-            Err(e) => error!("{}", e),
-            Ok(player_tournament_result) => {
-                if let Some(r) = player_tournament_result {
-                    info!("Tournament finished, {:?}", r);
-                    break;
-                }
-            }
+    if config.interval == u64::MAX {
+        let res = player.react_once(&sender).await;
+        if let Ok(Some(state)) = res {
+            info!("Tournament finished, {:?}", state);
+            let finished_path = Path::new(FINISHED_PATH);
+            touch(&finished_path)?;
         }
-
-        if sender.nonce().await? == tx_count {
-            info!("player idling");
-            touch(&idle_path)?;
-        } else {
-            // ignore error if the file doesn't exist
-            let _ = fs::remove_file(IDLE_PATH_STR);
-        }
-
-        let tournament_states = reader.fetch_from_root(config.root_tournament).await?;
-        gc.react(&sender, tournament_states).await?;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+    } else {
+        let res = player.react(&sender, config.interval).await;
+        info!("Tournament finished, {:?}", res);
     }
 
     Ok(())

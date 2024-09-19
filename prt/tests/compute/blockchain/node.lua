@@ -1,11 +1,6 @@
-local default_account_number = 40
+local helper = require "utils.helper"
 
-local function stop_blockchain(handle, pid)
-    print(string.format("Stopping blockchain with pid %d...", pid))
-    os.execute(string.format("kill -15 %i", pid))
-    handle:close()
-    print "Blockchain stopped"
-end
+local default_account_number = 40
 
 local function start_blockchain()
     print(string.format("Starting blockchain with %d accounts...", default_account_number))
@@ -21,7 +16,7 @@ local function start_blockchain()
     local handle = { reader = reader, pid = pid }
     setmetatable(handle, {
         __gc = function(t)
-            stop_blockchain(t.reader, t.pid)
+            helper.stop_pid(t.reader, t.pid)
         end
     })
 
