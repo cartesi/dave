@@ -10,6 +10,9 @@ const ANVIL_ROOT_TOURNAMENT: &str = "0xa16E02E87b7454126E5E10d957A927A7F5B5d2be"
 pub struct ComputeConfig {
     #[command(flatten)]
     pub blockchain_config: BlockchainConfig,
+    /// interval between player reactions
+    #[arg(long, env, default_value_t = u64::MAX)]
+    pub interval: u64,
     /// path to machine config
     #[arg(long, env)]
     pub machine_path: String,

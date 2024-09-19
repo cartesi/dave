@@ -11,19 +11,21 @@ COPY ./machine/rust-bindings /app/machine/rust-bindings
 COPY ./common-rs /app/common-rs
 COPY ./prt/contract-bindings /app/prt/contract-bindings
 COPY ./prt/prt-rs /app/prt/prt-rs
+COPY ./prt/tests/compute-rs /app/prt/tests/compute-rs
 
-WORKDIR /app/prt/prt-rs
+WORKDIR /app/prt/tests/compute-rs
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY ./machine /app/machine
 COPY ./common-rs /app/common-rs
+COPY ./prt/prt-rs /app/prt/prt-rs
 COPY ./prt/contract-bindings /app/prt/contract-bindings
 COPY ./.git /app/.git
-COPY --from=planner /app/prt/prt-rs/recipe.json /app/prt/prt-rs/recipe.json
+COPY --from=planner /app/prt/tests/compute-rs/recipe.json /app/prt/tests/compute-rs/recipe.json
 
 # Build dependencies - this is the caching Docker layer!
-WORKDIR /app/prt/prt-rs
+WORKDIR /app/prt/tests/compute-rs
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build application
@@ -32,7 +34,7 @@ RUN chmod u+x /usr/bin/solc
 
 COPY ./prt /app/prt
 
-WORKDIR /app/prt/prt-rs
+WORKDIR /app/prt/tests/compute-rs
 RUN cargo build --release --bin cartesi-prt-compute
 
 FROM --platform=linux/amd64 cartesi/machine-emulator:0.18.1
@@ -59,7 +61,7 @@ RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.10-rc-test/
 
 COPY ./machine/step /root/machine/step
 COPY ./prt /root/prt
-COPY --from=builder /app/prt/prt-rs/target/release/cartesi-prt-compute /root/prt/prt-rs/target/release/cartesi-prt-compute
+COPY --from=builder /app/prt/tests/compute-rs/target/release/cartesi-prt-compute /root/prt/tests/compute/cartesi-prt-compute
 
 WORKDIR /root/prt/contracts
 RUN forge --version

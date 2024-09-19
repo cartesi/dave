@@ -14,10 +14,10 @@ impl GarbageCollector {
         Self { root_tournamet }
     }
 
-    pub async fn react<'a>(
-        &mut self,
+    pub async fn react_once<'a>(
+        &self,
         arena_sender: &'a impl ArenaSender,
-        tournament_states: TournamentStateMap,
+        tournament_states: &TournamentStateMap,
     ) -> Result<()> {
         self.react_tournament(arena_sender, self.root_tournamet, &tournament_states)
             .await
@@ -25,7 +25,7 @@ impl GarbageCollector {
 
     #[async_recursion]
     async fn react_tournament<'a>(
-        &mut self,
+        &self,
         arena_sender: &'a impl ArenaSender,
         tournament_address: Address,
         tournament_states: &TournamentStateMap,
@@ -70,7 +70,7 @@ impl GarbageCollector {
 
     #[async_recursion]
     async fn react_match<'a>(
-        &mut self,
+        &self,
         arena_sender: &'a impl ArenaSender,
         match_state: &MatchState,
         tournament_states: &TournamentStateMap,

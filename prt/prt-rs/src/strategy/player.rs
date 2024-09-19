@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ::log::info;
+use ::log::{error, info};
 use alloy::sol_types::private::Address;
 use anyhow::Result;
 use async_recursion::async_recursion;
@@ -9,10 +9,11 @@ use ruint::aliases::U256;
 
 use crate::{
     arena::{
-        ArenaSender, CommitmentMap, CommitmentState, MatchState, TournamentState,
-        TournamentStateMap, TournamentWinner,
+        ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
+        TournamentState, TournamentStateMap, TournamentWinner,
     },
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
+    strategy::gc::GarbageCollector,
 };
 use cartesi_dave_merkle::{Digest, MerkleProof};
 
@@ -25,32 +26,59 @@ pub enum PlayerTournamentResult {
 pub struct Player {
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
-    root_tournamet: Address,
+    root_tournament: Address,
+    reader: StateReader,
+    gc: GarbageCollector,
 }
 
 impl Player {
     pub fn new(
+        blockchain_config: &BlockchainConfig,
         machine_path: String,
-        commitment_builder: CachingMachineCommitmentBuilder,
-        root_tournamet: Address,
-    ) -> Self {
-        Self {
+        root_tournament: Address,
+    ) -> Result<Self> {
+        let reader = StateReader::new(&blockchain_config)?;
+        let gc = GarbageCollector::new(root_tournament);
+        let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
+        Ok(Self {
             machine_path,
             commitment_builder,
-            root_tournamet,
-        }
+            root_tournament,
+            reader,
+            gc,
+        })
     }
 
     pub async fn react<'a>(
         &mut self,
         arena_sender: &'a impl ArenaSender,
-        tournament_states: &TournamentStateMap,
+        interval: u64,
+    ) -> Result<PlayerTournamentResult> {
+        loop {
+            let result = self.react_once(arena_sender).await;
+            match result {
+                Err(e) => error!("{}", e),
+                Ok(player_tournament_result) => {
+                    if let Some(r) = player_tournament_result {
+                        return Ok(r);
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+        }
+    }
+
+    pub async fn react_once<'a>(
+        &mut self,
+        arena_sender: &'a impl ArenaSender,
     ) -> Result<Option<PlayerTournamentResult>> {
+        let tournament_states = self.reader.fetch_from_root(self.root_tournament).await?;
+        self.gc.react_once(arena_sender, &tournament_states).await?;
         self.react_tournament(
             arena_sender,
             HashMap::new(),
-            self.root_tournamet,
-            tournament_states,
+            self.root_tournament,
+            &tournament_states,
         )
         .await
     }
@@ -378,7 +406,7 @@ impl Player {
         };
 
         let agree_state_proof = if running_leaf_position.is_zero() {
-            MerkleProof::empty()
+            MerkleProof::leaf(commitment.implicit_hash, U256::ZERO)
         } else {
             commitment
                 .merkle

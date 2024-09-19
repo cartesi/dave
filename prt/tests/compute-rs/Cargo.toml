@@ -15,8 +15,11 @@ readme = "README.md"
 repository = "https://github.com/cartesi/dave"
 
 [dependencies]
-cartesi-prt-core = { path = "../core" }
+cartesi-prt-core = { path = "../../prt-rs" }
+
+anyhow = "1.0"
 alloy = { version = "0.3.1", features = ["sol-types"] }
-tokio = { version = "1", features = ["full"] }
-clap_derive = "=4.5.13"
+clap = { version = "4.5", features = ["derive", "env"] }
 env_logger = "0.11.5"
+log = "0.4"
+tokio = { version = "1", features = ["full"] }

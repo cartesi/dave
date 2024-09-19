@@ -9,7 +9,7 @@ Refer to [contract-bindings](../contract-bindings/README.md)
 Requires bindings generated from [previous section](#generate-rust-bindings).
 
 ```
-docker build -t cartesi/prt-compute:rs -f Dockerfile ../../
+docker build -t cartesi/prt-compute:rs -f Dockerfile ../../../
 ```
 
 ## Run simple test
