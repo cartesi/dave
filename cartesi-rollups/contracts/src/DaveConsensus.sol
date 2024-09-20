@@ -5,12 +5,13 @@ pragma solidity ^0.8.8;
 
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
 import {Inputs} from "rollups-contracts/common/Inputs.sol";
-import {LibMerkle32} from "rollups-contracts/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {Machine} from "prt-contracts/Machine.sol";
+
+import {Merkle} from "./Merkle.sol";
 
 /// @notice Consensus contract with Dave tournaments.
 ///
@@ -35,7 +36,7 @@ import {Machine} from "prt-contracts/Machine.sol";
 /// accumulating epoch will be created.
 ///
 contract DaveConsensus is IDataProvider {
-    using LibMerkle32 for bytes32[];
+    using Merkle for bytes;
 
     /// @notice GIO namespace for getting advance requests from the InputBox contract
     uint16 constant INPUT_BOX_NAMESPACE = 0;
@@ -176,19 +177,7 @@ contract DaveConsensus is IDataProvider {
             abi.decode(args, (uint256, address, address, uint256, uint256, uint256, uint256, bytes));
 
         if (_blockNumberLowerBound <= blockNumber && blockNumber < _blockNumberUpperBound) {
-            require(input.length % 32 == 4, "Dave: bad input padding");
-            uint256 completeLeafCount = input.length / 32;
-            bytes32[] memory leaves = new bytes32[](completeLeafCount + 1);
-
-            // Slice input into leaves
-            for (uint256 leafIndex; leafIndex < completeLeafCount; ++leafIndex) {
-                leaves[leafIndex] = bytes32(input[:32]);
-                input = input[32:];
-            }
-            leaves[completeLeafCount] = bytes32(bytes4(input[:4]));
-
-            // Calculate Merkle root from leaves
-            return leaves.merkleRoot(LOG2_GIO_RESPONSE_BUFFER_SIZE);
+            return input.getMerkleRootFromBytes(LOG2_GIO_RESPONSE_BUFFER_SIZE);
         } else {
             // out-of-bounds index: repeat the state (as a fixpoint function)
             return bytes32(0);
