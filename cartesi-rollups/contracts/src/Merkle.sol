@@ -10,17 +10,17 @@ import {PristineMerkleTree} from "./PristineMerkleTree.sol";
 library Merkle {
     using Math for uint256;
 
-    /// @notice Compute the parent of two nodes.
-    /// @param leftNode The left node
-    /// @param rightNode The right node
-    /// @return parentNode The parent node
-    /// @dev Uses assembly for extra performance
-    function parent(bytes32 leftNode, bytes32 rightNode) internal pure returns (bytes32 parentNode) {
+    /// @notice Compute the hash of the concatenation of two 32-byte values.
+    /// @param a The first value
+    /// @param b The second value
+    /// @return c The result of `keccak256(abi.encodePacked(a, b))`
+    /// @dev Uses assembly for better performance.
+    function join(bytes32 a, bytes32 b) internal pure returns (bytes32 c) {
         /// @solidity memory-safe-assembly
         assembly {
-            mstore(0x00, leftNode)
-            mstore(0x20, rightNode)
-            parentNode := keccak256(0x00, 0x40)
+            mstore(0x00, a)
+            mstore(0x20, b)
+            c := keccak256(0x00, 0x40)
         }
     }
 
@@ -50,9 +50,9 @@ library Merkle {
 
         for (uint256 i; i < siblings.length; ++i) {
             if ((position & (sizeOfReplacement << i)) == 0) {
-                replacement = parent(replacement, siblings[i]);
+                replacement = join(replacement, siblings[i]);
             } else {
-                replacement = parent(siblings[i], replacement);
+                replacement = join(siblings[i], replacement);
             }
         }
 
@@ -79,9 +79,8 @@ library Merkle {
 
         require(data.length <= (numOfWordsInDrive << MerkleConstants.LOG2_WORD_SIZE), "Data larger than drive");
 
-        uint256 numOfWordsInData = data.length.ceilDivExp2(MerkleConstants.LOG2_WORD_SIZE);
-
-        bytes32[] memory stack = new bytes32[](2 + numOfWordsInData.getLog2Floor());
+        // Note: This is a very generous stack depth.
+        bytes32[] memory stack = new bytes32[](2 + log2NumOfWordsInDrive);
 
         uint256 numOfHashes; // total number of leaves covered up until now
         uint256 stackLength; // total length of stack
@@ -115,7 +114,7 @@ library Merkle {
                 bytes32 h2 = stack[stackLength - 1];
                 bytes32 h1 = stack[stackLength - 2];
 
-                stack[stackLength - 2] = parent(h1, h2);
+                stack[stackLength - 2] = join(h1, h2);
                 stackLength = stackLength - 1; // remove hashes from stack
 
                 numOfJoins = numOfJoins >> 1;
