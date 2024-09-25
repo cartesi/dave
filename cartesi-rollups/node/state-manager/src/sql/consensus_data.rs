@@ -127,6 +127,25 @@ pub fn input(conn: &rusqlite::Connection, id: &InputId) -> Result<Option<Input>>
     Ok(i)
 }
 
+pub fn inputs(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Vec<Vec<u8>>> {
+    let mut stmt = conn.prepare(
+        "\
+        SELECT input FROM inputs
+        WHERE epoch_number = ?1
+        ORDER BY input_index_in_epoch ASC
+        ",
+    )?;
+
+    let query = stmt.query_map([epoch_number], |r| Ok(r.get(0)?))?;
+
+    let mut res = vec![];
+    for row in query {
+        res.push(row?);
+    }
+
+    Ok(res)
+}
+
 pub fn input_count<'a>(conn: &'a rusqlite::Connection, epoch_number: u64) -> Result<u64> {
     Ok(conn.query_row(
         "\

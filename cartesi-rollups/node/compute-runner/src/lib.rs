@@ -1,13 +1,16 @@
-use std::process::Command;
+use alloy::sol_types::private::Address;
 use std::result::Result;
-use std::{sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
-use cartesi_prt_core::arena::BlockchainConfig;
-use rollups_state_manager::{Epoch, StateManager};
+use cartesi_prt_core::{
+    arena::{BlockchainConfig, EthArenaSender},
+    strategy::player::Player,
+};
+use rollups_state_manager::StateManager;
 
 pub struct ComputeRunner<SM: StateManager> {
     config: BlockchainConfig,
-    last_processed_epoch: Epoch,
+    sender: EthArenaSender,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
 }
@@ -16,57 +19,40 @@ impl<SM: StateManager> ComputeRunner<SM>
 where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
-    pub fn new(
-        config: &BlockchainConfig,
-        state_manager: Arc<SM>,
-        sleep_duration: u64,
-    ) -> Result<Self, <SM as StateManager>::Error> {
-        let last_sealed_epoch = state_manager.last_epoch()?;
-        let last_processed_epoch = {
-            match last_sealed_epoch {
-                Some(e) => {
-                    spawn_dave_process(config, &e);
-                    e
-                }
-                None => Epoch {
-                    epoch_number: 0,
-                    epoch_boundary: 0,
-                    root_tournament: String::new(),
-                },
-            }
-        };
-
-        Ok(Self {
+    pub fn new(config: &BlockchainConfig, state_manager: Arc<SM>, sleep_duration: u64) -> Self {
+        let sender = EthArenaSender::new(&config).expect("fail to initialize sender");
+        Self {
             config: config.clone(),
-            last_processed_epoch,
+            sender,
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
-        })
+        }
     }
 
-    pub fn start(&mut self) -> Result<(), <SM as StateManager>::Error> {
+    pub async fn start(&mut self) -> Result<(), <SM as StateManager>::Error> {
         loop {
-            let last_sealed_epoch = self.state_manager.last_epoch()?;
-            if let Some(e) = last_sealed_epoch {
-                if e.epoch_number != self.last_processed_epoch.epoch_number
-                    || e.epoch_boundary != self.last_processed_epoch.epoch_boundary
-                    || e.root_tournament != self.last_processed_epoch.root_tournament
+            if let Some(last_sealed_epoch) = self.state_manager.last_epoch()? {
+                if let Some(snapshot) = self
+                    .state_manager
+                    .snapshot(last_sealed_epoch.epoch_number, 0)?
                 {
-                    spawn_dave_process(&self.config, &e);
-                    self.last_processed_epoch = e;
+                    let inputs = self.state_manager.inputs(last_sealed_epoch.epoch_number)?;
+                    let leafs = self
+                        .state_manager
+                        .machine_state_hashes(last_sealed_epoch.epoch_number)?;
+                    let mut player = Player::new(
+                        inputs,
+                        leafs,
+                        &self.config,
+                        snapshot,
+                        Address::from_str(&last_sealed_epoch.root_tournament)
+                            .expect("fail to convert tournament address"),
+                    )
+                    .expect("fail to initialize compute player");
+                    let _ = player.react_once(&self.sender).await;
                 }
             }
-
             std::thread::sleep(self.sleep_duration);
         }
     }
-}
-
-fn spawn_dave_process(config: &BlockchainConfig, epoch: &Epoch) {
-    // Create a command to run `dave-compute`
-    let cmd = Command::new("cartesi-prt-compute")
-        .env("key", "val") // TODO: set up config properly
-        .current_dir("path to the binary")
-        .spawn()
-        .expect("fail to spawn dave compute process");
 }

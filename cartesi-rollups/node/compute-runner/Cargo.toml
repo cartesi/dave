@@ -12,3 +12,5 @@ repository.workspace = true
 [dependencies]
 cartesi-prt-core = { workspace = true }
 rollups-state-manager = { workspace = true }
+
+alloy = { workspace = true }
