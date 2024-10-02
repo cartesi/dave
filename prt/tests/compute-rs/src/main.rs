@@ -26,6 +26,8 @@ async fn main() -> Result<()> {
 
     let sender = EthArenaSender::new(&blockchain_config)?;
     let mut player = Player::new(
+        Vec::new(),
+        Vec::new(),
         &blockchain_config,
         config.machine_path,
         config.root_tournament,

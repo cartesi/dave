@@ -35,9 +35,9 @@ local function sybil_player(tournament_address, strategy, blockchain_endpoint, f
 end
 
 
-local function sybil_runner(player_id, machine_path, tournament_address, fake_commitment_count)
+local function sybil_runner(player_id, machine_path, root_commitment, tournament_address, fake_commitment_count)
     local strategy = HonestStrategy:new(
-        FakeCommitmentBuilder:new(machine_path),
+        FakeCommitmentBuilder:new(machine_path, root_commitment),
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
     )
