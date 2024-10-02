@@ -12,6 +12,7 @@ use crate::{
         ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
         TournamentState, TournamentStateMap, TournamentWinner,
     },
+    db::dispute_state_access::DisputeStateAccess,
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     strategy::gc::GarbageCollector,
 };
@@ -24,6 +25,7 @@ pub enum PlayerTournamentResult {
 }
 
 pub struct Player {
+    db: DisputeStateAccess,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournament: Address,
@@ -33,14 +35,18 @@ pub struct Player {
 
 impl Player {
     pub fn new(
+        inputs: Vec<Vec<u8>>,
+        leafs: Vec<(Vec<u8>, u64)>,
         blockchain_config: &BlockchainConfig,
         machine_path: String,
         root_tournament: Address,
     ) -> Result<Self> {
+        let db = DisputeStateAccess::new(inputs, leafs, root_tournament.to_string())?;
         let reader = StateReader::new(&blockchain_config)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
+            db,
             machine_path,
             commitment_builder,
             root_tournament,
@@ -101,9 +107,12 @@ impl Player {
                 tournament_state.level,
                 tournament_state.log2_stride,
                 tournament_state.log2_stride_count,
+                self.db
+                    .compute_leafs(tournament_state.level, tournament_state.base_big_cycle)?,
             )?,
         );
         let commitment = get_commitment(&commitments, tournament_address);
+        // TODO: save commitment to database
 
         if let Some(winner) = &tournament_state.winner {
             match winner {
