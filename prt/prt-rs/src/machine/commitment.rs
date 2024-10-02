@@ -16,6 +16,29 @@ pub struct MachineCommitment {
     pub merkle: Arc<MerkleTree>,
 }
 
+/// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle and leafs.
+pub fn build_machine_commitment_from_leafs<L>(
+    machine: &mut MachineInstance,
+    base_cycle: u64,
+    leafs: Vec<(L, u64)>,
+) -> Result<MachineCommitment>
+where
+    L: Into<Arc<MerkleTree>>,
+{
+    machine.run(base_cycle)?;
+    let initial_state = machine.machine_state()?;
+    let mut builder = MerkleBuilder::default();
+    for leaf in leafs {
+        builder.append_repeated(leaf.0, leaf.1);
+    }
+    // TODO: handle uarch when leafs are also trees
+    let tree = builder.build();
+    Ok(MachineCommitment {
+        implicit_hash: initial_state.root_hash,
+        merkle: tree,
+    })
+}
+
 /// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle.
 pub fn build_machine_commitment(
     machine: &mut MachineInstance,

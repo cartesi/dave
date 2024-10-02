@@ -1,7 +1,12 @@
 //! The builder of machine commitments [MachineCommitmentBuilder] is responsible for building the
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
-use crate::machine::{build_machine_commitment, MachineCommitment, MachineInstance};
+use crate::machine::{
+    build_machine_commitment, build_machine_commitment_from_leafs, MachineCommitment,
+    MachineInstance,
+};
+use cartesi_dave_merkle::Digest;
+
 use anyhow::Result;
 use std::collections::{hash_map::Entry, HashMap};
 
@@ -24,6 +29,7 @@ impl CachingMachineCommitmentBuilder {
         level: u64,
         log2_stride: u64,
         log2_stride_count: u64,
+        leafs: Vec<(Vec<u8>, u64)>,
     ) -> Result<MachineCommitment> {
         if let Entry::Vacant(e) = self.commitments.entry(level) {
             e.insert(HashMap::new());
@@ -32,8 +38,27 @@ impl CachingMachineCommitmentBuilder {
         }
 
         let mut machine = MachineInstance::new(&self.machine_path)?;
-        let commitment =
-            build_machine_commitment(&mut machine, base_cycle, log2_stride, log2_stride_count)?;
+        let commitment = {
+            // leafs are cached in database, use it to calculate merkle
+            if leafs.len() > 0 {
+                build_machine_commitment_from_leafs(
+                    &mut machine,
+                    base_cycle,
+                    leafs
+                        .into_iter()
+                        .map(|l| {
+                            (
+                                Digest::from_digest(&l.0).expect("fail to convert leaf to digest"),
+                                l.1,
+                            )
+                        })
+                        .collect(),
+                )?
+            } else {
+                // leafs are not cached, build merkle by running the machine
+                build_machine_commitment(&mut machine, base_cycle, log2_stride, log2_stride_count)?
+            }
+        };
 
         self.commitments
             .entry(level)
