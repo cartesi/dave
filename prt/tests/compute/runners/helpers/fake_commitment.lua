@@ -108,12 +108,17 @@ local function build_fake_commitment(commitment, fake_index, log2_stride)
     return fake_builder:build(implicit_hash)
 end
 
-function FakeCommitmentBuilder:new(machine_path)
+function FakeCommitmentBuilder:new(machine_path, root_commitment)
+    -- receive honest root commitment from main process
+    local commitments = {}
+    commitments[0] = {}
+    commitments[0][0] = root_commitment
+
     local c = {
         fake_index = false,
         machine_path = machine_path,
         fake_commitments = {},
-        commitments = {}
+        commitments = commitments
     }
     setmetatable(c, self)
     return c

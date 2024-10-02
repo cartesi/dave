@@ -5,7 +5,7 @@ local HonestStrategy = require "player.strategy"
 local Sender = require "player.sender"
 local Player = require "player.player"
 
-local function hero_runner(player_id, machine_path, tournament_address, extra_data)
+local function hero_runner(player_id, machine_path, root_commitment, tournament_address, extra_data)
     local hook
 
     if extra_data then
@@ -16,7 +16,7 @@ local function hero_runner(player_id, machine_path, tournament_address, extra_da
     end
 
     local strategy = HonestStrategy:new(
-        CommitmentBuilder:new(machine_path),
+        CommitmentBuilder:new(machine_path, root_commitment),
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
     )

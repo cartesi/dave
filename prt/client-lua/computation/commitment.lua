@@ -106,10 +106,15 @@ end
 local CommitmentBuilder = {}
 CommitmentBuilder.__index = CommitmentBuilder
 
-function CommitmentBuilder:new(machine_path)
+function CommitmentBuilder:new(machine_path, root_commitment)
+    -- receive honest root commitment from main process
+    local commitments = {}
+    commitments[0] = {}
+    commitments[0][0] = root_commitment
+
     local c = {
         machine_path = machine_path,
-        commitments = {}
+        commitments = commitments
     }
     setmetatable(c, self)
     return c
