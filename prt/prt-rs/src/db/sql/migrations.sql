@@ -12,7 +12,10 @@ CREATE TABLE compute_leafs (
     PRIMARY KEY (level, base_cycle, compute_leaf_index)
 );
 
-CREATE TABLE snapshots (
-    machine_cycle INTEGER NOT NULL PRIMARY KEY,
-    path TEXT NOT NULL
+CREATE TABLE compute_trees (
+    tree_root BLOB NOT NULL,
+    tree_leaf_index INTEGER NOT NULL,
+    repetitions INTEGER NOT NULL,
+    tree_leaf BLOB NOT NULL,
+    PRIMARY KEY (tree_root, tree_leaf_index)
 );

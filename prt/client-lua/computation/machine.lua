@@ -110,10 +110,10 @@ local function find_closest_snapshot(path, current_cycle, cycle)
     return closest_dir
 end
 
-function Machine:snapshot(cycle)
-    local machines_path = "/app/machines"
-    if helper.exists(machines_path) then
-        local snapshot_path = machines_path .. "/temp_" .. tostring(cycle)
+function Machine:snapshot(snapshot_dir, cycle)
+    if helper.exists(snapshot_dir) then
+        local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
+
         if not helper.exists(snapshot_path) then
             -- print("saving snapshot", snapshot_path)
             self.machine:store(snapshot_path)
@@ -121,16 +121,16 @@ function Machine:snapshot(cycle)
     end
 end
 
-function Machine:load_snapshot(cycle)
-    local machines_path = "/app/machines"
-    local snapshot_path = machines_path .. "/temp_" .. tostring(cycle)
+function Machine:load_snapshot(snapshot_dir, cycle)
+    local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
 
     if not helper.exists(snapshot_path) then
         -- find closest snapshot if direct snapshot doesn't exists
-        snapshot_path = find_closest_snapshot(machines_path, self.cycle, cycle)
+        snapshot_path = find_closest_snapshot(snapshot_dir, self.cycle, cycle)
     end
     if snapshot_path then
         local machine = cartesi.machine(snapshot_path, machine_settings)
+        self.cycle = machine:read_mcycle() - self.start_cycle
         self.machine = machine
     end
 end
@@ -200,9 +200,9 @@ local function ver(t, p, s)
     return t
 end
 
-function Machine.get_logs(path, cycle, ucycle)
+function Machine.get_logs(path, snapshot_dir, cycle, ucycle)
     local machine = Machine:new_from_path(path)
-    machine:load_snapshot(cycle)
+    machine:load_snapshot(snapshot_dir, cycle)
     local logs
     machine:run(cycle)
     machine:run_uarch(ucycle)

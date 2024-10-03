@@ -34,8 +34,12 @@ local function run_uarch_span(machine)
     return builder:build()
 end
 
-local function build_small_machine_commitment(base_cycle, log2_stride_count, machine)
+local function build_small_machine_commitment(base_cycle, log2_stride_count, machine, snapshot_dir)
     local machine_state = machine:run(base_cycle)
+    if save_snapshot then
+        -- taking snapshot for leafs to save time in next level
+        machine:snapshot(snapshot_dir, base_cycle)
+    end
     local initial_state = machine_state.root_hash
 
     local builder = MerkleBuilder:new()
@@ -55,24 +59,21 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
     return initial_state, builder:build(initial_state)
 end
 
-local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine)
+local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
     local machine_state = machine:run(base_cycle)
+    if save_snapshot then
+        -- taking snapshot for leafs to save time in next level
+        machine:snapshot(snapshot_dir, base_cycle)
+    end
     local initial_state = machine_state.root_hash
 
     local builder = MerkleBuilder:new()
     local instruction_count = arithmetic.max_uint(log2_stride_count)
     local instruction = 0
 
-    local snapshot_frequency = 1024
     while ulte(instruction, instruction_count) do
         local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
         machine_state = machine:run(base_cycle + cycle)
-        if save_snapshot then
-            -- taking snapshot for leafs to save time in next level
-            if ((instruction + 1) % snapshot_frequency) == 0 then
-                machine:snapshot(base_cycle + cycle)
-            end
-        end
 
         if not machine_state.halted then
             builder:add(machine_state.root_hash)
@@ -87,34 +88,35 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
     return initial_state, builder:build(initial_state)
 end
 
-local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path)
+local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, snapshot_dir)
     local machine = Machine:new_from_path(machine_path)
-    machine:load_snapshot(base_cycle)
+    machine:load_snapshot(snapshot_dir, base_cycle)
 
     if log2_stride >= consts.log2_uarch_span then
         assert(
             log2_stride + log2_stride_count <=
             consts.log2_emulator_span + consts.log2_uarch_span
         )
-        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine)
+        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
     else
         assert(log2_stride == 0)
-        return build_small_machine_commitment(base_cycle, log2_stride_count, machine)
+        return build_small_machine_commitment(base_cycle, log2_stride_count, machine, snapshot_dir)
     end
 end
 
 local CommitmentBuilder = {}
 CommitmentBuilder.__index = CommitmentBuilder
 
-function CommitmentBuilder:new(machine_path, root_commitment)
+function CommitmentBuilder:new(machine_path, snapshot_dir, root_commitment)
     -- receive honest root commitment from main process
     local commitments = {}
     commitments[0] = {}
     commitments[0][0] = root_commitment
 
     local c = {
+        commitments = commitments,
         machine_path = machine_path,
-        commitments = commitments
+        snapshot_dir = snapshot_dir
     }
     setmetatable(c, self)
     return c
@@ -127,7 +129,8 @@ function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_cou
         return self.commitments[level][base_cycle]
     end
 
-    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path)
+    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path,
+        self.snapshot_dir)
     self.commitments[level][base_cycle] = commitment
     return commitment
 end

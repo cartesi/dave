@@ -5,11 +5,16 @@ use crate::db::{
     sql::{dispute_data, error::*, migrations},
     Input,
 };
+use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};
 
 use log::info;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::sync::Mutex;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 #[derive(Debug, Serialize)]
 pub struct InputsAndLeafs {
@@ -65,12 +70,13 @@ impl<'de> Deserialize<'de> for InputsAndLeafs {
 #[derive(Debug)]
 pub struct DisputeStateAccess {
     connection: Mutex<Connection>,
+    pub work_path: PathBuf,
 }
 
 use std::fs::File;
 use std::io::Read;
 
-fn read_json_file(file_path: &str) -> Result<InputsAndLeafs> {
+fn read_json_file(file_path: &Path) -> Result<InputsAndLeafs> {
     let mut file = File::open(file_path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
@@ -88,13 +94,16 @@ impl DisputeStateAccess {
         // fill the database from a json-format file, or the parameters
         // the database should be "/dispute_data/0x_root_tournament_address/db"
         // the json file should be "/dispute_data/0x_root_tournament_address/inputs_and_leafs.json"
-        let db_path = format!("/dispute_data/{root_tournament}/db");
+        let work_dir = format!("/dispute_data/{root_tournament}");
+        let work_path = PathBuf::from(work_dir);
+        let db_path = work_path.join("db");
         let no_create_flags = OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE;
         match Connection::open_with_flags(&db_path, no_create_flags) {
             // database already exists, return it
             Ok(connection) => {
                 return Ok(Self {
                     connection: Mutex::new(connection),
+                    work_path,
                 })
             }
             Err(_) => {
@@ -103,7 +112,7 @@ impl DisputeStateAccess {
                 let mut connection = Connection::open(&db_path)?;
                 migrations::migrate_to_latest(&mut connection).unwrap();
 
-                let json_path = format!("/dispute_data/{root_tournament}/inputs_and_leafs.json");
+                let json_path = work_path.join("inputs_and_leafs.json");
                 // prioritize json file over parameters
                 match read_json_file(&json_path) {
                     Ok(inputs_and_leafs) => {
@@ -125,6 +134,7 @@ impl DisputeStateAccess {
 
                 Ok(Self {
                     connection: Mutex::new(connection),
+                    work_path,
                 })
             }
         }
@@ -135,61 +145,77 @@ impl DisputeStateAccess {
         dispute_data::input(&conn, id)
     }
 
-    pub fn compute_leafs(&self, level: u64, base_cycle: u64) -> Result<Vec<(Vec<u8>, u64)>> {
+    pub fn insert_compute_leafs<'a>(
+        &self,
+        level: u64,
+        base_cycle: u64,
+        leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+    ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
-        dispute_data::compute_leafs(&conn, level, base_cycle)
+        dispute_data::insert_compute_leafs(&conn, level, base_cycle, leafs)
     }
 
-    // fn add_snapshot(&self, path: &str, epoch_number: u64, input_index: u64) -> Result<()> {
-    //     let conn = self.connection.lock().unwrap();
-    //     let mut sttm = conn.prepare(
-    //         "INSERT INTO snapshots (epoch_number, input_index, path) VALUES (?1, ?2, ?3)",
-    //     )?;
+    pub fn compute_leafs(
+        &self,
+        level: u64,
+        base_cycle: u64,
+    ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
+        let conn = self.connection.lock().unwrap();
+        let leafs = dispute_data::compute_leafs(&conn, level, base_cycle)?;
 
-    //     if sttm.execute((epoch_number, input_index, path))? != 1 {
-    //         return Err(DisputeStateAccessError::InsertionFailed {
-    //             description: "machine snapshot insertion failed".to_owned(),
-    //         });
-    //     }
-    //     Ok(())
-    // }
+        let mut tree = Vec::new();
+        for leaf in leafs {
+            let tree_leafs = dispute_data::compute_tree(&conn, &leaf.0)?;
+            if tree_leafs.len() > 0 {
+                // if leaf is also tree, rebuild it from nested leafs
+                let mut builder = MerkleBuilder::default();
+                for tree_leaf in tree_leafs {
+                    builder.append_repeated(Digest::from_digest(&tree_leaf.0)?, tree_leaf.1);
+                }
+                tree.push((builder.build(), leaf.1));
+            } else {
+                tree.push((Digest::from_digest(&leaf.0)?.into(), leaf.1));
+            }
+        }
 
-    // fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
-    //     let conn = self.connection.lock().unwrap();
-    //     let mut sttm = conn.prepare(
-    //         "\
-    //         SELECT epoch_number, input_index, path FROM snapshots
-    //         ORDER BY epoch_number DESC, input_index DESC LIMIT 1
-    //         ",
-    //     )?;
-    //     let mut query = sttm.query([])?;
+        Ok(tree)
+    }
 
-    //     match query.next()? {
-    //         Some(r) => {
-    //             let epoch_number = r.get(0)?;
-    //             let input_index = r.get(1)?;
-    //             let path = r.get(2)?;
+    pub fn insert_compute_tree<'a>(
+        &self,
+        tree_root: &[u8],
+        tree_leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+    ) -> Result<()> {
+        let conn = self.connection.lock().unwrap();
+        dispute_data::insert_compute_tree(&conn, tree_root, tree_leafs)
+    }
 
-    //             Ok(Some((path, epoch_number, input_index)))
-    //         }
-    //         None => Ok(None),
-    //     }
-    // }
+    pub fn closest_snapshot(&self, base_cycle: u64) -> Result<Option<PathBuf>> {
+        let mut snapshots = Vec::new();
 
-    // fn snapshot(&self, epoch_number: u64, input_index: u64) -> Result<Option<String>> {
-    //     let conn = self.connection.lock().unwrap();
-    //     let mut sttm = conn.prepare(
-    //         "\
-    //         SELECT path FROM snapshots
-    //         WHERE epoch_number = ?1
-    //         AND input_index = ?2
-    //         ",
-    //     )?;
+        // iterate through the snapshot directory, find the one whose cycle number is closest to the base_cycle
+        for entry in fs::read_dir(&self.work_path)? {
+            let entry = entry?;
+            let path = entry.path();
 
-    //     Ok(sttm
-    //         .query_row([epoch_number, input_index], |row| Ok(row.get(0)?))
-    //         .optional()?)
-    // }
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.chars().all(char::is_numeric) {
+                        if let Ok(number) = name.parse::<u64>() {
+                            snapshots.push((number, path));
+                        }
+                    }
+                }
+            }
+        }
+
+        snapshots.sort_by_key(|k| k.0);
+        let pos = snapshots
+            .binary_search_by_key(&base_cycle, |k| k.0)
+            .unwrap_or_else(|x| if x > 0 { x - 1 } else { x });
+
+        Ok(snapshots.get(pos).map(|t| t.1.clone()))
+    }
 }
 
 // TODO: add tests

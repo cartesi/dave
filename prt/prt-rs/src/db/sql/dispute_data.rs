@@ -104,6 +104,68 @@ pub fn compute_leafs(
     Ok(res)
 }
 
+//
+// Compute trees
+//
+
+pub fn insert_compute_tree<'a>(
+    conn: &rusqlite::Connection,
+    tree_root: &[u8],
+    tree_leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+) -> Result<()> {
+    if compute_tree_count(conn, tree_root)? == 0 {
+        let mut stmt = insert_compute_tree_statement(&conn)?;
+        for (i, leaf) in tree_leafs.enumerate() {
+            assert!(leaf.1 > 0);
+            stmt.execute(params![tree_root, i, leaf.0, leaf.1])?;
+        }
+    }
+
+    Ok(())
+}
+
+fn insert_compute_tree_statement<'a>(
+    conn: &'a rusqlite::Connection,
+) -> Result<rusqlite::Statement<'a>> {
+    Ok(conn.prepare(
+        "\
+        INSERT INTO compute_trees (tree_root, tree_leaf_index, tree_leaf, repetitions) VALUES (?1, ?2, ?3, ?4)
+        ",
+    )?)
+}
+
+pub fn compute_tree(conn: &rusqlite::Connection, tree_root: &[u8]) -> Result<Vec<(Vec<u8>, u64)>> {
+    let mut stmt = conn.prepare(
+        "\
+        SELECT * FROM compute_trees
+        WHERE tree_root = ?1
+        ORDER BY tree_leaf_index ASC
+        ",
+    )?;
+
+    let query = stmt.query_map([tree_root], |r| {
+        Ok((r.get("tree_leaf")?, r.get("repetitions")?))
+    })?;
+
+    let mut res = vec![];
+    for row in query {
+        res.push(row?);
+    }
+
+    Ok(res)
+}
+
+pub fn compute_tree_count(conn: &rusqlite::Connection, tree_root: &[u8]) -> Result<u64> {
+    Ok(conn.query_row(
+        "\
+        SELECT count(*) FROM compute_trees
+        WHERE tree_root = ?1
+        ",
+        [tree_root],
+        |row| row.get(0),
+    )?)
+}
+
 pub fn insert_dispute_data<'a>(
     conn: &rusqlite::Connection,
     inputs: impl Iterator<Item = &'a Vec<u8>>,
