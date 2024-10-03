@@ -3,7 +3,7 @@ use cartesi_prt_core::{arena::EthArenaSender, strategy::player::Player};
 
 use anyhow::Result;
 use clap::Parser;
-use log::info;
+use log::{error, info};
 use std::{fs::OpenOptions, io, path::Path};
 
 const FINISHED_PATH: &str = "/root/prt/tests/compute/finished";
@@ -35,11 +35,16 @@ async fn main() -> Result<()> {
     .expect("fail to create player object");
 
     if config.interval == u64::MAX {
-        let res = player.react_once(&sender).await;
-        if let Ok(Some(state)) = res {
-            info!("Tournament finished, {:?}", state);
-            let finished_path = Path::new(FINISHED_PATH);
-            touch(&finished_path)?;
+        match player.react_once(&sender).await {
+            Ok(Some(state)) => {
+                info!("Tournament finished, {:?}", state);
+                let finished_path = Path::new(FINISHED_PATH);
+                touch(&finished_path)?;
+            }
+            Err(e) => {
+                error!("{}", e);
+            }
+            _ => {}
         }
     } else {
         let res = player.react(&sender, config.interval).await;

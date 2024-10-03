@@ -57,6 +57,30 @@ impl MachineInstance {
         })
     }
 
+    // load inner machine with snapshot, update cycle, keep everything else the same
+    pub fn load_snapshot(&mut self, snapshot_path: &Path) -> Result<()> {
+        let machine = Machine::load(&Path::new(snapshot_path), RuntimeConfig::default())?;
+
+        let cycle = machine.read_mcycle()?;
+
+        // Machine can not go backward behind the initial machine
+        assert!(cycle >= self.start_cycle);
+        self.cycle = cycle - self.start_cycle;
+
+        assert_eq!(machine.read_uarch_cycle()?, 0);
+
+        self.machine = machine;
+
+        Ok(())
+    }
+
+    pub fn snapshot(&self, snapshot_path: &Path) -> Result<()> {
+        if !snapshot_path.exists() {
+            self.machine.store(snapshot_path)?;
+        }
+        Ok(())
+    }
+
     pub fn root_hash(&self) -> Digest {
         self.root_hash
     }

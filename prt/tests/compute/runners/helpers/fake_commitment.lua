@@ -64,7 +64,8 @@ local function rebuild_nested_trees(leafs)
     end
 end
 
-local function build_commitment(cached_commitments, machine_path, base_cycle, level, log2_stride, log2_stride_count)
+local function build_commitment(cached_commitments, machine_path, snapshot_dir, base_cycle, level, log2_stride,
+                                log2_stride_count)
     -- the honest commitment builder should be operated in an isolated env
     -- to avoid side effects to the strategy behavior
 
@@ -78,7 +79,7 @@ local function build_commitment(cached_commitments, machine_path, base_cycle, le
         local scoped_require = new_scoped_require(_ENV)
         local CommitmentBuilder = scoped_require "computation.commitment"
 
-        local builder = CommitmentBuilder:new(machine_path)
+        local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
         local commitment = builder:build(base_cycle, level, log2_stride, log2_stride_count)
         coroutine.yield(commitment)
     end)
@@ -108,7 +109,7 @@ local function build_fake_commitment(commitment, fake_index, log2_stride)
     return fake_builder:build(implicit_hash)
 end
 
-function FakeCommitmentBuilder:new(machine_path, root_commitment)
+function FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir)
     -- receive honest root commitment from main process
     local commitments = {}
     commitments[0] = {}
@@ -117,6 +118,7 @@ function FakeCommitmentBuilder:new(machine_path, root_commitment)
     local c = {
         fake_index = false,
         machine_path = machine_path,
+        snapshot_dir = snapshot_dir,
         fake_commitments = {},
         commitments = commitments
     }
@@ -139,7 +141,8 @@ function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride
         return self.fake_commitments[level][base_cycle][self.fake_index]
     end
 
-    local commitment = build_commitment(self.commitments, self.machine_path, base_cycle, level, log2_stride,
+    local commitment = build_commitment(self.commitments, self.machine_path, self.snapshot_dir, base_cycle, level,
+        log2_stride,
         log2_stride_count)
     local fake_commitment = build_fake_commitment(commitment, self.fake_index, log2_stride)
 

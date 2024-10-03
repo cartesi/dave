@@ -28,7 +28,7 @@ end
 local function create_react_once_runner(player_id, machine_path)
     local rust_compute_cmd = string.format(
         [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
-    ./cartesi-prt-compute 2>&1 | tee honest.log"]],
+    ./cartesi-prt-compute 2>&1 | tee -a honest.log"]],
         machine_path)
 
     return coroutine.create(function()
@@ -38,11 +38,10 @@ local function create_react_once_runner(player_id, machine_path)
             assert(reader, "Failed to open process for Rust compute: " .. rust_compute_cmd)
             local hero_pid = tonumber(reader:read())
 
-            local output = reader:read("*a")
-            --remove the last new line character
-            output = output:sub(1, -2)
-            if output then
+            local output = reader:read()
+            while output do
                 helper.log_color(player_id, output)
+                output = reader:read()
             end
 
             local success, _, code = reader:close()

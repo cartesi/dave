@@ -6,6 +6,12 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum DisputeStateAccessError {
     #[error(transparent)]
+    Digest {
+        #[from]
+        source: cartesi_dave_merkle::DigestError,
+    },
+
+    #[error(transparent)]
     IO {
         #[from]
         source: std::io::Error,

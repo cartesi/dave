@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use ::log::{error, info};
 use alloy::sol_types::private::Address;
@@ -107,12 +107,10 @@ impl Player {
                 tournament_state.level,
                 tournament_state.log2_stride,
                 tournament_state.log2_stride_count,
-                self.db
-                    .compute_leafs(tournament_state.level, tournament_state.base_big_cycle)?,
+                &self.db,
             )?,
         );
         let commitment = get_commitment(&commitments, tournament_address);
-        // TODO: save commitment to database
 
         if let Some(winner) = &tournament_state.winner {
             match winner {
@@ -357,7 +355,14 @@ impl Player {
             let ucycle = (match_state.leaf_cycle & U256::from(constants::UARCH_SPAN))
                 .to_u64()
                 .expect("fail to convert ucycle");
-            let proof = MachineInstance::new(&self.machine_path)?.get_logs(cycle, ucycle)?;
+
+            let proof = {
+                let mut machine = MachineInstance::new(&self.machine_path)?;
+                if let Some(snapshot_path) = self.db.closest_snapshot(cycle)? {
+                    machine.load_snapshot(&PathBuf::from(snapshot_path))?;
+                };
+                machine.get_logs(cycle, ucycle)?
+            };
 
             info!(
                 "win leaf match in tournament {} of level {} for commitment {}",

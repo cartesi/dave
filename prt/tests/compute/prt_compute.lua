@@ -50,7 +50,8 @@ local function setup_players(use_lua_node, extra_data, root_constants, root_tour
     local player_coroutines = {}
     local player_index = 1
     print("Calculating root commitment...")
-    local builder = CommitmentBuilder:new(machine_path)
+    local snapshot_dir = string.format("/dispute_data/%s", root_tournament)
+    local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
     local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height)
 
     if use_lua_node then
@@ -64,8 +65,7 @@ local function setup_players(use_lua_node, extra_data, root_constants, root_tour
 
         print("Setting up Rust honest player")
         local rust_hero_runner = require "runners.rust_hero_runner"
-        -- TODO: switch to use "rust_hero_runner.create_react_once_runner" if we have cache commitments for rust_hero
-        player_coroutines[player_index] = rust_hero_runner.create_runner(player_index, machine_path)
+        player_coroutines[player_index] = rust_hero_runner.create_react_once_runner(player_index, machine_path)
         -- write leafs to json file for rust node to use
         write_json_file(root_commitment.leafs, root_tournament)
     end

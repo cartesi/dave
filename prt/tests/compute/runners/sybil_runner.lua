@@ -6,8 +6,8 @@ local Sender = require "player.sender"
 local helper = require "utils.helper"
 local StateFetcher = require "player.state"
 
-local function sybil_player(tournament_address, strategy, blockchain_endpoint, fake_commitment_count)
-    local state_fetcher = StateFetcher:new(tournament_address, blockchain_endpoint)
+local function sybil_player(root_tournament, strategy, blockchain_endpoint, fake_commitment_count)
+    local state_fetcher = StateFetcher:new(root_tournament, blockchain_endpoint)
 
     local function react()
         local idle = true
@@ -35,16 +35,17 @@ local function sybil_player(tournament_address, strategy, blockchain_endpoint, f
 end
 
 
-local function sybil_runner(player_id, machine_path, root_commitment, tournament_address, fake_commitment_count)
+local function sybil_runner(player_id, machine_path, root_commitment, root_tournament, fake_commitment_count)
+    local snapshot_dir = string.format("/dispute_data/%s", root_tournament)
     local strategy = HonestStrategy:new(
-        FakeCommitmentBuilder:new(machine_path, root_commitment),
+        FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir),
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
     )
     strategy:disable_gc()
 
     local react = sybil_player(
-        tournament_address,
+        root_tournament,
         strategy,
         blockchain_consts.endpoint,
         fake_commitment_count
