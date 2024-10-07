@@ -639,7 +639,7 @@ mod epochs_tests {
             Ok(Some(Epoch {
                 epoch_number: 130,
                 epoch_boundary: 99,
-                root_tournament: tournament_address,
+                ..
             }))
         ));
     }

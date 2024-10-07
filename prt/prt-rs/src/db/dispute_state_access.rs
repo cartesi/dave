@@ -89,12 +89,13 @@ impl DisputeStateAccess {
         inputs: Vec<Vec<u8>>,
         leafs: Vec<(Vec<u8>, u64)>,
         root_tournament: String,
+        dispute_data_path: &str,
     ) -> Result<Self> {
         // initialize the database if it doesn't exist
         // fill the database from a json-format file, or the parameters
         // the database should be "/dispute_data/0x_root_tournament_address/db"
         // the json file should be "/dispute_data/0x_root_tournament_address/inputs_and_leafs.json"
-        let work_dir = format!("/dispute_data/{root_tournament}");
+        let work_dir = format!("{dispute_data_path}/{root_tournament}");
         let work_path = PathBuf::from(work_dir);
         let db_path = work_path.join("db");
         let no_create_flags = OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE;
@@ -218,4 +219,108 @@ impl DisputeStateAccess {
     }
 }
 
-// TODO: add tests
+#[cfg(test)]
+mod dispute_state_access_tests {
+    use super::*;
+
+    fn create_directory(path: &Path) -> std::io::Result<()> {
+        fs::create_dir_all(path)?;
+        Ok(())
+    }
+
+    fn remove_directory(path: &Path) -> std::io::Result<()> {
+        let _ = fs::remove_dir_all(path);
+        Ok(())
+    }
+
+    #[test]
+    fn test_access_sequentially() {
+        test_compute_tree();
+        test_closest_snapshot();
+    }
+
+    fn test_closest_snapshot() {
+        let work_dir = PathBuf::from("/tmp/0x12345678");
+        remove_directory(&work_dir).unwrap();
+        create_directory(&work_dir).unwrap();
+        {
+            let access =
+                DisputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
+                    .unwrap();
+
+            assert_eq!(access.closest_snapshot(0).unwrap(), None);
+            assert_eq!(access.closest_snapshot(100).unwrap(), None);
+            assert_eq!(access.closest_snapshot(150).unwrap(), None);
+            assert_eq!(access.closest_snapshot(200).unwrap(), None);
+            assert_eq!(access.closest_snapshot(300).unwrap(), None);
+            assert_eq!(access.closest_snapshot(9000).unwrap(), None);
+            assert_eq!(access.closest_snapshot(9999).unwrap(), None);
+
+            for cycle in [99999, 0, 1, 5, 99, 300, 150, 200] {
+                create_directory(&access.work_path.join(format!("{cycle}"))).unwrap();
+            }
+
+            assert_eq!(
+                access.closest_snapshot(100).unwrap(),
+                Some(access.work_path.join(format!("99")))
+            );
+
+            assert_eq!(
+                access.closest_snapshot(150).unwrap(),
+                Some(access.work_path.join(format!("150")))
+            );
+
+            assert_eq!(
+                access.closest_snapshot(200).unwrap(),
+                Some(access.work_path.join(format!("200")))
+            );
+
+            assert_eq!(
+                access.closest_snapshot(300).unwrap(),
+                Some(access.work_path.join(format!("300")))
+            );
+
+            assert_eq!(
+                access.closest_snapshot(7).unwrap(),
+                Some(access.work_path.join(format!("5")))
+            );
+
+            assert_eq!(
+                access.closest_snapshot(10000).unwrap(),
+                Some(access.work_path.join(format!("300")))
+            );
+
+            assert_eq!(
+                access.closest_snapshot(100000).unwrap(),
+                Some(access.work_path.join(format!("99999")))
+            );
+        }
+
+        remove_directory(&work_dir).unwrap();
+    }
+
+    fn test_compute_tree() {
+        let work_dir = PathBuf::from("/tmp/0x12345678");
+        remove_directory(&work_dir).unwrap();
+        create_directory(&work_dir).unwrap();
+        let access =
+            DisputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
+                .unwrap();
+
+        let root = vec![
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1,
+            2, 3, 4,
+        ];
+        let leafs = vec![(root.clone(), 2)];
+
+        access.insert_compute_leafs(0, 0, leafs.iter()).unwrap();
+        let mut compute_leafs = access.compute_leafs(0, 0).unwrap();
+        let mut tree = compute_leafs.last().unwrap();
+        assert!(tree.0.subtrees().is_none());
+
+        access.insert_compute_tree(&root, leafs.iter()).unwrap();
+        compute_leafs = access.compute_leafs(0, 0).unwrap();
+        tree = compute_leafs.last().unwrap();
+        assert!(tree.0.subtrees().is_some());
+    }
+}
