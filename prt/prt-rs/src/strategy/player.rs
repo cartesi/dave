@@ -41,7 +41,8 @@ impl Player {
         machine_path: String,
         root_tournament: Address,
     ) -> Result<Self> {
-        let db = DisputeStateAccess::new(inputs, leafs, root_tournament.to_string())?;
+        let db =
+            DisputeStateAccess::new(inputs, leafs, root_tournament.to_string(), "/dispute_data")?;
         let reader = StateReader::new(&blockchain_config)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());

@@ -41,8 +41,8 @@ pub fn input(conn: &rusqlite::Connection, id: u64) -> Result<Option<Input>> {
     let i = stmt
         .query_row(params![id], |row| {
             Ok(Input {
-                id: id.clone(),
-                data: row.get(2)?,
+                id: row.get("input_index")?,
+                data: row.get("input")?,
             })
         })
         .optional()?;
@@ -195,4 +195,110 @@ mod test_helper {
     }
 }
 
-// TODO: add tests
+#[cfg(test)]
+mod inputs_tests {
+    use super::*;
+
+    #[test]
+    fn test_empty() {
+        let conn = test_helper::setup_db();
+        assert!(matches!(input(&conn, 0), Ok(None)));
+    }
+
+    #[test]
+    fn test_insert() {
+        let conn = test_helper::setup_db();
+        let data = vec![1];
+
+        assert!(matches!(
+            insert_inputs(&conn, [data.clone(), data.clone()].iter(),),
+            Ok(())
+        ));
+
+        assert!(matches!(input(&conn, 0), Ok(Some(Input { id: 0, .. }))));
+        assert!(matches!(input(&conn, 1), Ok(Some(Input { id: 1, .. }))));
+
+        // overwrite inputs is forbidden
+        assert!(matches!(
+            insert_inputs(&conn, [data.clone(), data.clone()].iter(),),
+            Err(_)
+        ));
+    }
+}
+
+#[cfg(test)]
+mod leafs_tests {
+    use super::*;
+
+    #[test]
+    fn test_empty() {
+        let conn = test_helper::setup_db();
+        assert!(matches!(compute_leafs(&conn, 0, 0).unwrap().len(), 0));
+        assert!(matches!(compute_leafs(&conn, 0, 1).unwrap().len(), 0));
+        assert!(matches!(compute_leafs(&conn, 1, 1).unwrap().len(), 0));
+    }
+
+    #[test]
+    fn test_insert() {
+        let conn = test_helper::setup_db();
+        let data = vec![1];
+
+        assert!(matches!(
+            insert_compute_leafs(&conn, 0, 0, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            Ok(())
+        ));
+        assert!(matches!(compute_leafs(&conn, 0, 0).unwrap().len(), 2));
+        // overwrite compute leafs is forbidden
+        assert!(matches!(
+            insert_compute_leafs(&conn, 0, 0, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            Err(_)
+        ));
+        assert!(matches!(
+            insert_compute_leafs(&conn, 0, 1, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            Ok(())
+        ));
+        assert!(matches!(compute_leafs(&conn, 0, 1).unwrap().len(), 2));
+        assert!(matches!(
+            insert_compute_leafs(&conn, 1, 0, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            Ok(())
+        ));
+        assert!(matches!(compute_leafs(&conn, 1, 0).unwrap().len(), 2));
+    }
+}
+
+#[cfg(test)]
+mod trees_tests {
+    use super::*;
+
+    #[test]
+    fn test_empty() {
+        let conn = test_helper::setup_db();
+        let root = vec![1];
+        assert!(matches!(compute_tree(&conn, &root).unwrap().len(), 0));
+    }
+
+    #[test]
+    fn test_insert() {
+        let conn = test_helper::setup_db();
+        let root = vec![1];
+        let data = vec![1, 2, 3];
+
+        assert!(matches!(
+            insert_compute_tree(&conn, &root, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            Ok(())
+        ));
+        assert!(matches!(compute_tree(&conn, &root).unwrap().len(), 2));
+
+        // tree exists already, skip the transaction
+        assert!(matches!(
+            insert_compute_tree(
+                &conn,
+                &root,
+                [(data.clone(), 1), (data.clone(), 2), (data.clone(), 3)].iter(),
+            ),
+            Ok(())
+        ));
+        // count of tree leafs should remain since the transaction is skipped
+        assert!(matches!(compute_tree(&conn, &root).unwrap().len(), 2));
+    }
+}
