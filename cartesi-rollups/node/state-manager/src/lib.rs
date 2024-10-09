@@ -85,6 +85,7 @@ pub trait StateManager {
     fn epoch_count(&self) -> Result<u64, Self::Error>;
     fn last_epoch(&self) -> Result<Option<Epoch>, Self::Error>;
     fn input(&self, id: &InputId) -> Result<Option<Input>, Self::Error>;
+    fn inputs(&self, epoch_number: u64) -> Result<Vec<Vec<u8>>, Self::Error>;
     fn input_count(&self, epoch_number: u64) -> Result<u64, Self::Error>;
     fn last_input(&self) -> Result<Option<InputId>, Self::Error>;
     fn insert_consensus_data<'a>(
@@ -125,4 +126,9 @@ pub trait StateManager {
         input_index_in_epoch: u64,
     ) -> Result<(), Self::Error>;
     fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>, Self::Error>;
+    fn snapshot(
+        &self,
+        epoch_number: u64,
+        input_index_in_epoch: u64,
+    ) -> Result<Option<String>, Self::Error>;
 }

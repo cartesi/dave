@@ -19,7 +19,6 @@ rollups-state-manager = { workspace = true }
 
 cartesi-rollups-contracts = { workspace = true }
 cartesi-prt-core = { workspace = true }
-cartesi-prt-compute = { workspace = true }
 
 alloy = { workspace = true }
 anyhow = { workspace = true }

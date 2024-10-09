@@ -287,6 +287,10 @@ mod tests {
             }))
         }
 
+        fn inputs(&self, _epoch_number: u64) -> Result<Vec<Vec<u8>>> {
+            panic!("inputs not implemented in mock version");
+        }
+
         fn last_input(&self) -> Result<Option<InputId>> {
             panic!("last_input not implemented in mock version");
         }
@@ -373,6 +377,14 @@ mod tests {
         }
 
         fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
+            Ok(None)
+        }
+
+        fn snapshot(
+            &self,
+            _epoch_number: u64,
+            _input_index_in_epoch: u64,
+        ) -> Result<Option<String>> {
             Ok(None)
         }
     }

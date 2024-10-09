@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use ::log::{error, info};
 use alloy::sol_types::private::Address;
@@ -12,6 +12,7 @@ use crate::{
         ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
         TournamentState, TournamentStateMap, TournamentWinner,
     },
+    db::dispute_state_access::DisputeStateAccess,
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     strategy::gc::GarbageCollector,
 };
@@ -24,6 +25,7 @@ pub enum PlayerTournamentResult {
 }
 
 pub struct Player {
+    db: DisputeStateAccess,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournament: Address,
@@ -33,14 +35,19 @@ pub struct Player {
 
 impl Player {
     pub fn new(
+        inputs: Vec<Vec<u8>>,
+        leafs: Vec<(Vec<u8>, u64)>,
         blockchain_config: &BlockchainConfig,
         machine_path: String,
         root_tournament: Address,
     ) -> Result<Self> {
+        let db =
+            DisputeStateAccess::new(inputs, leafs, root_tournament.to_string(), "/dispute_data")?;
         let reader = StateReader::new(&blockchain_config)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
+            db,
             machine_path,
             commitment_builder,
             root_tournament,
@@ -101,6 +108,7 @@ impl Player {
                 tournament_state.level,
                 tournament_state.log2_stride,
                 tournament_state.log2_stride_count,
+                &self.db,
             )?,
         );
         let commitment = get_commitment(&commitments, tournament_address);
@@ -348,7 +356,14 @@ impl Player {
             let ucycle = (match_state.leaf_cycle & U256::from(constants::UARCH_SPAN))
                 .to_u64()
                 .expect("fail to convert ucycle");
-            let proof = MachineInstance::new(&self.machine_path)?.get_logs(cycle, ucycle)?;
+
+            let proof = {
+                let mut machine = MachineInstance::new(&self.machine_path)?;
+                if let Some(snapshot_path) = self.db.closest_snapshot(cycle)? {
+                    machine.load_snapshot(&PathBuf::from(snapshot_path))?;
+                };
+                machine.get_logs(cycle, ucycle)?
+            };
 
             info!(
                 "win leaf match in tournament {} of level {} for commitment {}",

@@ -62,17 +62,16 @@ pub fn create_compute_runner_task(
 ) -> JoinHandle<()> {
     let params = parameters.clone();
 
-    spawn_blocking(move || {
+    spawn(async move {
         let mut compute_runner = ComputeRunner::new(
             &params.blockchain_config,
             state_manager,
             params.sleep_duration,
-        )
-        .inspect_err(|e| error!("{e}"))
-        .unwrap();
+        );
 
         compute_runner
             .start()
+            .await
             .inspect_err(|e| error!("{e}"))
             .unwrap();
     })

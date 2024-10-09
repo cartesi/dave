@@ -2,5 +2,6 @@
 //! trees and tournaments using the Cartesi Machine.
 
 pub mod arena;
+pub mod db;
 pub mod machine;
 pub mod strategy;

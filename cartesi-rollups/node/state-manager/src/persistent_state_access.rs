@@ -47,6 +47,11 @@ impl StateManager for PersistentStateAccess {
         consensus_data::input(&conn, id)
     }
 
+    fn inputs(&self, epoch_number: u64) -> Result<Vec<Vec<u8>>> {
+        let conn = self.connection.lock().unwrap();
+        consensus_data::inputs(&conn, epoch_number)
+    }
+
     fn input_count(&self, epoch_number: u64) -> Result<u64> {
         let conn = self.connection.lock().unwrap();
         consensus_data::input_count(&conn, epoch_number)
@@ -303,6 +308,21 @@ impl StateManager for PersistentStateAccess {
             }
             None => Ok(None),
         }
+    }
+
+    fn snapshot(&self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<String>> {
+        let conn = self.connection.lock().unwrap();
+        let mut sttm = conn.prepare(
+            "\
+            SELECT path FROM snapshots
+            WHERE epoch_number = ?1
+            AND input_index_in_epoch = ?2
+            ",
+        )?;
+
+        Ok(sttm
+            .query_row([epoch_number, input_index_in_epoch], |row| Ok(row.get(0)?))
+            .optional()?)
     }
 }
 

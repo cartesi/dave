@@ -46,7 +46,7 @@ RUN chmod +x doom_showcase/process_doom_graphics.lua
 WORKDIR "/app"
 RUN mkdir -p pixels
 RUN mkdir -p outputs
-RUN mkdir -p machines
+RUN mkdir -p /dispute_data/0xa16E02E87b7454126E5E10d957A927A7F5B5d2be
 
 WORKDIR "/app/tests/compute"
 ENTRYPOINT ["./compute-test-entrypoint.sh"]
