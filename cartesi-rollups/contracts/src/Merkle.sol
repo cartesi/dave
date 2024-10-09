@@ -37,7 +37,7 @@ library Merkle {
         bytes32 replacement,
         bytes32[] calldata siblings
     ) internal pure returns (bytes32) {
-        require(log2SizeOfReplacement >= MerkleConstants.LOG2_WORD_SIZE, "Replacement smaller than word");
+        require(log2SizeOfReplacement >= MerkleConstants.LOG2_LEAF_SIZE, "Replacement smaller than leaf");
         require(log2SizeOfDrive <= MerkleConstants.LOG2_MEMORY_SIZE, "Drive larger than memory");
         require(log2SizeOfDrive >= log2SizeOfReplacement, "Replacement larger than drive");
 
@@ -63,39 +63,39 @@ library Merkle {
     /// @param data the byte array
     /// @param log2SizeOfDrive log2 of size of the drive
     /// @dev If data is smaller than the drive, it is padded with zeros.
-    /// @dev See `MerkleConstants` for word size.
+    /// @dev See `MerkleConstants` for leaf size.
     function getMerkleRootFromBytes(bytes calldata data, uint256 log2SizeOfDrive) internal pure returns (bytes32) {
-        require(log2SizeOfDrive >= MerkleConstants.LOG2_WORD_SIZE, "Drive smaller than word");
+        require(log2SizeOfDrive >= MerkleConstants.LOG2_LEAF_SIZE, "Drive smaller than leaf");
         require(log2SizeOfDrive <= MerkleConstants.LOG2_MEMORY_SIZE, "Drive larger than memory");
 
-        uint256 log2NumOfWordsInDrive = log2SizeOfDrive - MerkleConstants.LOG2_WORD_SIZE;
+        uint256 log2NumOfLeavesInDrive = log2SizeOfDrive - MerkleConstants.LOG2_LEAF_SIZE;
 
         // if data is empty, then return node from pristine Merkle tree
         if (data.length == 0) {
-            return PristineMerkleTree.getNodeAtHeight(log2NumOfWordsInDrive);
+            return PristineMerkleTree.getNodeAtHeight(log2NumOfLeavesInDrive);
         }
 
-        uint256 numOfWordsInDrive = 1 << log2NumOfWordsInDrive;
+        uint256 numOfLeavesInDrive = 1 << log2NumOfLeavesInDrive;
 
-        require(data.length <= (numOfWordsInDrive << MerkleConstants.LOG2_WORD_SIZE), "Data larger than drive");
+        require(data.length <= (numOfLeavesInDrive << MerkleConstants.LOG2_LEAF_SIZE), "Data larger than drive");
 
         // Note: This is a very generous stack depth.
-        bytes32[] memory stack = new bytes32[](2 + log2NumOfWordsInDrive);
+        bytes32[] memory stack = new bytes32[](2 + log2NumOfLeavesInDrive);
 
         uint256 numOfHashes; // total number of leaves covered up until now
         uint256 stackLength; // total length of stack
         uint256 numOfJoins; // number of hashes of the same level on stack
         uint256 topStackLevel; // level of hash on top of the stack
 
-        while (numOfHashes < numOfWordsInDrive) {
-            if ((numOfHashes << MerkleConstants.LOG2_WORD_SIZE) < data.length) {
-                // we still have words to hash
-                stack[stackLength] = getHashOfWordAtIndex(data, numOfHashes);
+        while (numOfHashes < numOfLeavesInDrive) {
+            if ((numOfHashes << MerkleConstants.LOG2_LEAF_SIZE) < data.length) {
+                // we still have leaves to hash
+                stack[stackLength] = getHashOfLeafAtIndex(data, numOfHashes);
                 numOfHashes++;
 
                 numOfJoins = numOfHashes;
             } else {
-                // since padding happens in getHashOfWordAtIndex function
+                // since padding happens in getHashOfLeafAtIndex function
                 // we only need to complete the stack with pre-computed
                 // hash(0), hash(hash(0),hash(0)) and so on
                 topStackLevel = numOfHashes.ctz();
@@ -126,13 +126,13 @@ library Merkle {
         return stack[0];
     }
 
-    /// @notice Get the hash of a word from a byte array by its index.
+    /// @notice Get the hash of a leaf from a byte array by its index.
     /// @param data the byte array
-    /// @param wordIndex the word index
+    /// @param leafIndex the leaf index
     /// @dev The data is assumed to be followed by an infinite sequence of zeroes.
-    /// @dev See `MerkleConstants` for word size.
-    function getHashOfWordAtIndex(bytes calldata data, uint256 wordIndex) internal pure returns (bytes32) {
-        uint256 start = wordIndex << MerkleConstants.LOG2_WORD_SIZE;
+    /// @dev See `MerkleConstants` for leaf size.
+    function getHashOfLeafAtIndex(bytes calldata data, uint256 leafIndex) internal pure returns (bytes32) {
+        uint256 start = leafIndex << MerkleConstants.LOG2_LEAF_SIZE;
         if (start < data.length) {
             return keccak256(abi.encode(bytes32(data[start:])));
         } else {

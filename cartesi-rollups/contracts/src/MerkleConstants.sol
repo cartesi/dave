@@ -6,6 +6,6 @@ pragma solidity ^0.8.0;
 library MerkleConstants {
     uint256 constant HASH_SIZE = 32;
     uint256 constant LOG2_MEMORY_SIZE = 64;
-    uint256 constant LOG2_WORD_SIZE = 5;
-    uint256 constant TREE_HEIGHT = LOG2_MEMORY_SIZE - LOG2_WORD_SIZE;
+    uint256 constant LOG2_LEAF_SIZE = 5;
+    uint256 constant TREE_HEIGHT = LOG2_MEMORY_SIZE - LOG2_LEAF_SIZE;
 }
