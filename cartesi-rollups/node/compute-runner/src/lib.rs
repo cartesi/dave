@@ -4,6 +4,7 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use cartesi_prt_core::{
     arena::{BlockchainConfig, EthArenaSender},
+    db::dispute_state_access::{Input, Leaf},
     strategy::player::Player,
 };
 use rollups_state_manager::StateManager;
@@ -41,8 +42,18 @@ where
                         .state_manager
                         .machine_state_hashes(last_sealed_epoch.epoch_number)?;
                     let mut player = Player::new(
-                        inputs,
-                        leafs,
+                        inputs.into_iter().map(|i| Input(i)).collect(),
+                        leafs
+                            .into_iter()
+                            .map(|l| {
+                                Leaf(
+                                    l.0.as_slice()
+                                        .try_into()
+                                        .expect("fail to convert leaf from machine state hash"),
+                                    l.1,
+                                )
+                            })
+                            .collect(),
                         &self.config,
                         snapshot,
                         Address::from_str(&last_sealed_epoch.root_tournament)

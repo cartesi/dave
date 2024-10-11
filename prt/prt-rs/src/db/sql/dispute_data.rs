@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use super::error::*;
-use crate::db::Input;
+use crate::db::dispute_state_access::{Input, Leaf};
 
 use rusqlite::{params, OptionalExtension};
 
@@ -12,11 +12,11 @@ use rusqlite::{params, OptionalExtension};
 
 pub fn insert_inputs<'a>(
     conn: &rusqlite::Connection,
-    inputs: impl Iterator<Item = &'a Vec<u8>>,
+    inputs: impl Iterator<Item = &'a Input>,
 ) -> Result<()> {
     let mut stmt = insert_input_statement(&conn)?;
     for (i, input) in inputs.enumerate() {
-        stmt.execute(params![i, input])?;
+        stmt.execute(params![i, input.0])?;
     }
 
     Ok(())
@@ -30,7 +30,7 @@ fn insert_input_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite
     )?)
 }
 
-pub fn input(conn: &rusqlite::Connection, id: u64) -> Result<Option<Input>> {
+pub fn input(conn: &rusqlite::Connection, id: u64) -> Result<Option<Vec<u8>>> {
     let mut stmt = conn.prepare(
         "\
         SELECT * FROM inputs
@@ -39,12 +39,7 @@ pub fn input(conn: &rusqlite::Connection, id: u64) -> Result<Option<Input>> {
     )?;
 
     let i = stmt
-        .query_row(params![id], |row| {
-            Ok(Input {
-                id: row.get("input_index")?,
-                data: row.get("input")?,
-            })
-        })
+        .query_row(params![id], |row| Ok(row.get("input")?))
         .optional()?;
 
     Ok(i)
@@ -58,7 +53,7 @@ pub fn insert_compute_leafs<'a>(
     conn: &rusqlite::Connection,
     level: u64,
     base_cycle: u64,
-    leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+    leafs: impl Iterator<Item = &'a Leaf>,
 ) -> Result<()> {
     let mut stmt = insert_compute_leaf_statement(&conn)?;
     for (i, leaf) in leafs.enumerate() {
@@ -111,7 +106,7 @@ pub fn compute_leafs(
 pub fn insert_compute_tree<'a>(
     conn: &rusqlite::Connection,
     tree_root: &[u8],
-    tree_leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+    tree_leafs: impl Iterator<Item = &'a Leaf>,
 ) -> Result<()> {
     if compute_tree_count(conn, tree_root)? == 0 {
         let mut stmt = insert_compute_tree_statement(&conn)?;
@@ -168,8 +163,8 @@ pub fn compute_tree_count(conn: &rusqlite::Connection, tree_root: &[u8]) -> Resu
 
 pub fn insert_dispute_data<'a>(
     conn: &rusqlite::Connection,
-    inputs: impl Iterator<Item = &'a Vec<u8>>,
-    leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+    inputs: impl Iterator<Item = &'a Input>,
+    leafs: impl Iterator<Item = &'a Leaf>,
 ) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     insert_inputs(&tx, inputs)?;
@@ -211,16 +206,16 @@ mod inputs_tests {
         let data = vec![1];
 
         assert!(matches!(
-            insert_inputs(&conn, [data.clone(), data.clone()].iter(),),
+            insert_inputs(&conn, [Input(data.clone()), Input(data.clone())].iter(),),
             Ok(())
         ));
 
-        assert!(matches!(input(&conn, 0), Ok(Some(Input { id: 0, .. }))));
-        assert!(matches!(input(&conn, 1), Ok(Some(Input { id: 1, .. }))));
+        assert!(matches!(input(&conn, 0), Ok(Some(_))));
+        assert!(matches!(input(&conn, 1), Ok(Some(_))));
 
         // overwrite inputs is forbidden
         assert!(matches!(
-            insert_inputs(&conn, [data.clone(), data.clone()].iter(),),
+            insert_inputs(&conn, [Input(data.clone()), Input(data.clone())].iter(),),
             Err(_)
         ));
     }
@@ -241,25 +236,43 @@ mod leafs_tests {
     #[test]
     fn test_insert() {
         let conn = test_helper::setup_db();
-        let data = vec![1];
+        let data = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+            0, 1, 2,
+        ];
 
         assert!(matches!(
-            insert_compute_leafs(&conn, 0, 0, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            insert_compute_leafs(&conn, 0, 0, [Leaf(data, 1), Leaf(data, 2)].iter(),),
             Ok(())
         ));
         assert!(matches!(compute_leafs(&conn, 0, 0).unwrap().len(), 2));
         // overwrite compute leafs is forbidden
         assert!(matches!(
-            insert_compute_leafs(&conn, 0, 0, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            insert_compute_leafs(
+                &conn,
+                0,
+                0,
+                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+            ),
             Err(_)
         ));
         assert!(matches!(
-            insert_compute_leafs(&conn, 0, 1, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            insert_compute_leafs(
+                &conn,
+                0,
+                1,
+                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+            ),
             Ok(())
         ));
         assert!(matches!(compute_leafs(&conn, 0, 1).unwrap().len(), 2));
         assert!(matches!(
-            insert_compute_leafs(&conn, 1, 0, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            insert_compute_leafs(
+                &conn,
+                1,
+                0,
+                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+            ),
             Ok(())
         ));
         assert!(matches!(compute_leafs(&conn, 1, 0).unwrap().len(), 2));
@@ -281,10 +294,13 @@ mod trees_tests {
     fn test_insert() {
         let conn = test_helper::setup_db();
         let root = vec![1];
-        let data = vec![1, 2, 3];
+        let data = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+            0, 1, 2,
+        ];
 
         assert!(matches!(
-            insert_compute_tree(&conn, &root, [(data.clone(), 1), (data.clone(), 2)].iter(),),
+            insert_compute_tree(&conn, &root, [Leaf(data, 1), Leaf(data, 2)].iter(),),
             Ok(())
         ));
         assert!(matches!(compute_tree(&conn, &root).unwrap().len(), 2));
@@ -294,7 +310,7 @@ mod trees_tests {
             insert_compute_tree(
                 &conn,
                 &root,
-                [(data.clone(), 1), (data.clone(), 2), (data.clone(), 3)].iter(),
+                [Leaf(data, 1), Leaf(data, 2), Leaf(data, 3)].iter(),
             ),
             Ok(())
         ));
