@@ -12,7 +12,7 @@ use crate::{
         ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
         TournamentState, TournamentStateMap, TournamentWinner,
     },
-    db::dispute_state_access::DisputeStateAccess,
+    db::dispute_state_access::{DisputeStateAccess, Input, Leaf},
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     strategy::gc::GarbageCollector,
 };
@@ -35,8 +35,8 @@ pub struct Player {
 
 impl Player {
     pub fn new(
-        inputs: Vec<Vec<u8>>,
-        leafs: Vec<(Vec<u8>, u64)>,
+        inputs: Vec<Input>,
+        leafs: Vec<Leaf>,
         blockchain_config: &BlockchainConfig,
         machine_path: String,
         root_tournament: Address,

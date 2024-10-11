@@ -1,71 +1,31 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::db::{
-    sql::{dispute_data, error::*, migrations},
-    Input,
-};
+use crate::db::sql::{dispute_data, error::*, migrations};
 use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};
 
+use alloy::hex as alloy_hex;
 use log::info;
 use rusqlite::{Connection, OpenFlags};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InputsAndLeafs {
-    inputs: Vec<Vec<u8>>,
-    leafs: Vec<(Vec<u8>, u64)>,
+    #[serde(default)]
+    inputs: Vec<Input>,
+    leafs: Vec<Leaf>,
 }
 
-impl<'de> Deserialize<'de> for InputsAndLeafs {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Create a temporary struct to deserialize the data
-        #[derive(Deserialize)]
-        struct TempInputsAndLeafs {
-            leafs: Vec<TempLeaf>,        // Use a temporary struct for deserialization
-            inputs: Option<Vec<String>>, // Temporarily keep inputs as vec of String
-        }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Input(#[serde(with = "alloy_hex::serde")] pub Vec<u8>);
 
-        #[derive(Deserialize)]
-        struct TempLeaf {
-            hash: String,
-            repetitions: u64,
-        }
-
-        let temp: TempInputsAndLeafs = TempInputsAndLeafs::deserialize(deserializer)?;
-
-        // Default inputs to an empty vector if it is None
-        let inputs = temp.inputs.unwrap_or_else(|| Vec::new());
-
-        // Convert TempLeaf to the desired tuple format
-        let leafs = temp
-            .leafs
-            .into_iter()
-            .map(|leaf| {
-                let hex_string = leaf.hash.strip_prefix("0x").unwrap_or(&leaf.hash);
-                (hex::decode(hex_string).unwrap(), leaf.repetitions)
-            })
-            .collect();
-        // Convert TempInput
-        let inputs = inputs
-            .into_iter()
-            .map(|input| {
-                let hex_string = input.strip_prefix("0x").unwrap_or(&input);
-                hex::decode(hex_string).unwrap()
-            })
-            .collect();
-
-        Ok(InputsAndLeafs { leafs, inputs })
-    }
-}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Leaf(#[serde(with = "alloy_hex::serde")] pub [u8; 32], pub u64);
 
 #[derive(Debug)]
 pub struct DisputeStateAccess {
@@ -86,8 +46,8 @@ fn read_json_file(file_path: &Path) -> Result<InputsAndLeafs> {
 
 impl DisputeStateAccess {
     pub fn new(
-        inputs: Vec<Vec<u8>>,
-        leafs: Vec<(Vec<u8>, u64)>,
+        inputs: Vec<Input>,
+        leafs: Vec<Leaf>,
         root_tournament: String,
         dispute_data_path: &str,
     ) -> Result<Self> {
@@ -141,7 +101,7 @@ impl DisputeStateAccess {
         }
     }
 
-    pub fn input(&self, id: u64) -> Result<Option<Input>> {
+    pub fn input(&self, id: u64) -> Result<Option<Vec<u8>>> {
         let conn = self.connection.lock().unwrap();
         dispute_data::input(&conn, id)
     }
@@ -150,7 +110,7 @@ impl DisputeStateAccess {
         &self,
         level: u64,
         base_cycle: u64,
-        leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+        leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
         dispute_data::insert_compute_leafs(&conn, level, base_cycle, leafs)
@@ -185,7 +145,7 @@ impl DisputeStateAccess {
     pub fn insert_compute_tree<'a>(
         &self,
         tree_root: &[u8],
-        tree_leafs: impl Iterator<Item = &'a (Vec<u8>, u64)>,
+        tree_leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
         dispute_data::insert_compute_tree(&conn, tree_root, tree_leafs)
@@ -307,11 +267,11 @@ mod dispute_state_access_tests {
             DisputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
                 .unwrap();
 
-        let root = vec![
+        let root = [
             1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1,
             2, 3, 4,
         ];
-        let leafs = vec![(root.clone(), 2)];
+        let leafs = vec![Leaf(root, 2)];
 
         access.insert_compute_leafs(0, 0, leafs.iter()).unwrap();
         let mut compute_leafs = access.compute_leafs(0, 0).unwrap();
@@ -322,5 +282,39 @@ mod dispute_state_access_tests {
         compute_leafs = access.compute_leafs(0, 0).unwrap();
         tree = compute_leafs.last().unwrap();
         assert!(tree.0.subtrees().is_some());
+    }
+
+    #[test]
+    fn test_deserialize() {
+        let json_str_1 = r#"{"leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
+        let inputs_and_leafs_1: InputsAndLeafs = serde_json::from_str(json_str_1).unwrap();
+        assert_eq!(inputs_and_leafs_1.inputs.len(), 0);
+        assert_eq!(inputs_and_leafs_1.leafs.len(), 2);
+        assert_eq!(
+            inputs_and_leafs_1.leafs[0].0,
+            [
+                1, 2, 3, 4, 5, 6, 7, 171, 205, 239, 1, 2, 3, 4, 5, 6, 7, 171, 205, 239, 1, 2, 3, 4,
+                5, 6, 7, 171, 205, 239, 1, 2
+            ]
+        );
+        assert_eq!(
+            inputs_and_leafs_1.leafs[1].0,
+            [
+                1, 2, 3, 4, 5, 6, 7, 254, 220, 186, 1, 2, 3, 4, 5, 6, 7, 254, 220, 186, 1, 2, 3, 4,
+                5, 6, 7, 254, 220, 186, 1, 2
+            ]
+        );
+
+        let json_str_2 = r#"{"inputs": [], "leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
+        let inputs_and_leafs_2: InputsAndLeafs = serde_json::from_str(json_str_2).unwrap();
+        assert_eq!(inputs_and_leafs_2.inputs.len(), 0);
+        assert_eq!(inputs_and_leafs_2.leafs.len(), 2);
+
+        let json_str_3 = r#"{"inputs": ["0x12345678", "0x22345678"], "leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
+        let inputs_and_leafs_3: InputsAndLeafs = serde_json::from_str(json_str_3).unwrap();
+        assert_eq!(inputs_and_leafs_3.inputs.len(), 2);
+        assert_eq!(inputs_and_leafs_3.leafs.len(), 2);
+        assert_eq!(inputs_and_leafs_3.inputs[0].0, [18, 52, 86, 120]);
+        assert_eq!(inputs_and_leafs_3.inputs[1].0, [34, 52, 86, 120]);
     }
 }

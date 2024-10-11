@@ -5,7 +5,7 @@ use anyhow::Result;
 use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
-    db::dispute_state_access::DisputeStateAccess,
+    db::dispute_state_access::{DisputeStateAccess, Leaf},
     machine::{constants, MachineInstance},
 };
 use cartesi_dave_arithmetic as arithmetic;
@@ -103,8 +103,7 @@ pub fn build_big_machine_commitment(
     }
 
     let merkle = builder.build();
-    let compute_leafs: Vec<(Vec<u8>, u64)> =
-        leafs.iter().map(|l| (l.0.slice().to_vec(), l.1)).collect();
+    let compute_leafs: Vec<Leaf> = leafs.iter().map(|l| Leaf(l.0.data(), l.1)).collect();
     db.insert_compute_leafs(level, base_cycle, compute_leafs.iter())?;
 
     Ok(MachineCommitment {
@@ -171,8 +170,7 @@ pub fn build_small_machine_commitment(
         }
     }
     let merkle = builder.build();
-    let compute_leafs: Vec<(Vec<u8>, u64)> =
-        leafs.iter().map(|l| (l.0.slice().to_vec(), l.1)).collect();
+    let compute_leafs: Vec<Leaf> = leafs.iter().map(|l| Leaf(l.0.data(), l.1)).collect();
     db.insert_compute_leafs(level, base_cycle, compute_leafs.iter())?;
 
     Ok(MachineCommitment {
@@ -227,8 +225,7 @@ fn run_uarch_span(
     builder.append(state.root_hash);
 
     let uarch_span = builder.build();
-    let tree_leafs: Vec<(Vec<u8>, u64)> =
-        leafs.iter().map(|l| (l.0.slice().to_vec(), l.1)).collect();
+    let tree_leafs: Vec<Leaf> = leafs.iter().map(|l| Leaf(l.0.data(), l.1)).collect();
     db.insert_compute_tree(uarch_span.root_hash().slice(), tree_leafs.iter())?;
 
     Ok(uarch_span)

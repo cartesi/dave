@@ -52,6 +52,10 @@ impl Digest {
         Self::from_digest(&data)
     }
 
+    pub fn data(&self) -> [u8; 32] {
+        self.data
+    }
+
     pub fn slice(&self) -> &[u8] {
         self.data.as_slice()
     }
