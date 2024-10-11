@@ -33,7 +33,7 @@ cartesi-machine = { path = "../../machine/rust-bindings/cartesi-machine" }
 cartesi-dave-arithmetic = { path = "../../common-rs/arithmetic" }
 cartesi-dave-contracts = { path = "../contract-bindings" }
 cartesi-dave-merkle = { path = "../../common-rs/merkle" }
-cartesi-prt-core = { path = "../../prt/prt-rs" }
+cartesi-prt-core = { path = "../../prt/client-rs" }
 
 alloy = { version = "0.3.1", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
 anyhow = "1.0"

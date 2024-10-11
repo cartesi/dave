@@ -15,7 +15,7 @@ readme = "README.md"
 repository = "https://github.com/cartesi/dave"
 
 [dependencies]
-cartesi-prt-core = { path = "../../prt-rs" }
+cartesi-prt-core = { path = "../../client-rs" }
 
 anyhow = "1.0"
 alloy = { version = "0.3.1", features = ["sol-types"] }

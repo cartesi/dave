@@ -10,7 +10,7 @@ FROM chef AS planner
 COPY ./machine/rust-bindings /app/machine/rust-bindings
 COPY ./common-rs /app/common-rs
 COPY ./prt/contract-bindings /app/prt/contract-bindings
-COPY ./prt/prt-rs /app/prt/prt-rs
+COPY ./prt/client-rs /app/prt/client-rs
 COPY ./prt/tests/compute-rs /app/prt/tests/compute-rs
 
 WORKDIR /app/prt/tests/compute-rs
@@ -19,7 +19,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS builder
 COPY ./machine /app/machine
 COPY ./common-rs /app/common-rs
-COPY ./prt/prt-rs /app/prt/prt-rs
+COPY ./prt/client-rs /app/prt/client-rs
 COPY ./prt/contract-bindings /app/prt/contract-bindings
 COPY ./.git /app/.git
 COPY --from=planner /app/prt/tests/compute-rs/recipe.json /app/prt/tests/compute-rs/recipe.json
