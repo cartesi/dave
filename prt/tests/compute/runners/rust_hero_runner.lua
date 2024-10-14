@@ -38,10 +38,10 @@ local function create_react_once_runner(player_id, machine_path)
             assert(reader, "Failed to open process for Rust compute: " .. rust_compute_cmd)
             local hero_pid = tonumber(reader:read())
 
-            local output = reader:read()
-            while output do
+            while true do
+                local output = reader:read()
+                if not output then break end
                 helper.log_color(player_id, output)
-                output = reader:read()
             end
 
             local success, _, code = reader:close()
