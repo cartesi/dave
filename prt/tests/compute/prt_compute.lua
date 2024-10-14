@@ -37,12 +37,9 @@ local function write_json_file(leafs, root_tournament)
     local flat = require "utils.flat"
     local json = require "utils.json"
     local file_path = string.format("/dispute_data/%s/inputs_and_leafs.json", root_tournament)
-    local file = io.open(file_path, "w")
-
-    if file then
-        file:write(json.encode(flat.flatten(inputs_and_leafs).flat_object))
-        file:close()
-    end
+    local file = assert(io.open(file_path, "w"))
+    file:write(json.encode(flat.flatten(inputs_and_leafs).flat_object))
+    assert(file:close())
 end
 
 -- Function to setup players

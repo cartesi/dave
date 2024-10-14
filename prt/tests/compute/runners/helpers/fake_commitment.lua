@@ -111,9 +111,7 @@ end
 
 function FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir)
     -- receive honest root commitment from main process
-    local commitments = {}
-    commitments[0] = {}
-    commitments[0][0] = root_commitment
+    local commitments = { [0] = { [0] = root_commitment } }
 
     local c = {
         fake_index = false,
