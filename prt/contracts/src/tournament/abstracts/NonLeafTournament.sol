@@ -149,7 +149,8 @@ abstract contract NonLeafTournament is Tournament {
                 _contestedFinalStateTwo,
                 _allowance,
                 _startCycle,
-                _level
+                _level,
+                provider
             );
         } else {
             _tournament = tournamentFactory.instantiateMiddle(
@@ -160,7 +161,8 @@ abstract contract NonLeafTournament is Tournament {
                 _contestedFinalStateTwo,
                 _allowance,
                 _startCycle,
-                _level
+                _level,
+                provider
             );
         }
 

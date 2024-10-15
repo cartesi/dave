@@ -19,6 +19,7 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level,
+        IDataProvider _provider,
         IMultiLevelTournamentFactory _tournamentFactory
     )
         NonLeafTournament(_tournamentFactory)
@@ -30,7 +31,8 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level
+            _level,
+            _provider
         )
     {}
 }

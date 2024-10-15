@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import "../../CanonicalConstants.sol";
+import "../../IDataProvider.sol";
 import "../../Machine.sol";
 import "../../Tree.sol";
 
@@ -44,6 +45,8 @@ abstract contract Tournament {
 
     Time.Instant immutable startInstant;
     Time.Duration immutable allowance;
+
+    IDataProvider immutable provider;
 
     //
     // Storage
@@ -86,13 +89,15 @@ abstract contract Tournament {
         Machine.Hash _initialHash,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        IDataProvider _provider
     ) {
         initialHash = _initialHash;
         startCycle = _startCycle;
         level = _level;
         startInstant = Time.currentTime();
         allowance = _allowance;
+        provider = _provider;
 
         if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
             _allowance = ArbitrationConstants.MAX_ALLOWANCE;

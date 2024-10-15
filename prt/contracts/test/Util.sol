@@ -153,8 +153,11 @@ contract Util {
         internal
         returns (TopTournament _topTournament)
     {
-        _topTournament =
-            TopTournament(address(_factory.instantiateTop(ONE_STATE)));
+        _topTournament = TopTournament(
+            address(
+                _factory.instantiateTop(ONE_STATE, IDataProvider(address(0)))
+            )
+        );
         // player 0 joins tournament
         joinTournament(_topTournament, 0, 0);
     }

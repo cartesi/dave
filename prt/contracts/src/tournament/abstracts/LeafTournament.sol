@@ -107,14 +107,24 @@ abstract contract LeafTournament is Tournament {
         Machine.Hash machineState,
         uint256 counter,
         bytes memory proofs
-    ) internal pure returns (Machine.Hash) {
-        return Machine.Hash.wrap(
-            metaStep(Machine.Hash.unwrap(machineState), counter, proofs)
-        );
+    ) internal view returns (Machine.Hash) {
+        if (address(provider) == address(0)) {
+            return Machine.Hash.wrap(
+                computeMetaStep(
+                    Machine.Hash.unwrap(machineState), counter, proofs
+                )
+            );
+        } else {
+            return Machine.Hash.wrap(
+                rollupsMetaStep(
+                    Machine.Hash.unwrap(machineState), counter, proofs
+                )
+            );
+        }
     }
 
-    // TODO: move to step repo
-    function metaStep(
+    // this is a inputless version of the meta step implementation primarily used for testing
+    function computeMetaStep(
         bytes32 machineState,
         uint256 counter,
         bytes memory proofs
@@ -123,19 +133,46 @@ abstract contract LeafTournament is Tournament {
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-        uint256 uarch_mask = (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
-        uint256 input_mask = (1 << ArbitrationConstants.LOG2_INPUT_SPAN) - 1;
+        uint256 uarch_step_mask =
+            (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
 
-        if (counter & uarch_mask == uarch_mask) {
+        if ((counter + 1) & uarch_step_mask == 0) {
             UArchReset.reset(accessLogs);
-            newMachineState = accessLogs.currentRootHash;
-        } else if (counter & input_mask == input_mask) {
-            UArchReset.reset(accessLogs);
-            // TODO: add input
-            newMachineState = accessLogs.currentRootHash;
         } else {
             UArchStep.step(accessLogs);
-            newMachineState = accessLogs.currentRootHash;
         }
+        newMachineState = accessLogs.currentRootHash;
+    }
+
+    // TODO: move to step repo
+    function rollupsMetaStep(
+        bytes32 machineState,
+        uint256 counter,
+        bytes memory proofs
+    ) internal pure returns (bytes32 newMachineState) {
+        revert("rollups meta step is not ready");
+        // TODO: create a more convinient constructor.
+        AccessLogs.Context memory accessLogs =
+            AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
+
+        uint256 uarch_step_mask =
+            (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
+        uint256 big_step_mask = (
+            1
+                << (
+                    ArbitrationConstants.LOG2_EMULATOR_SPAN
+                        + ArbitrationConstants.LOG2_UARCH_SPAN
+                ) - 1
+        );
+
+        if (counter & big_step_mask == 0) {
+            // TODO: add inputs
+            UArchStep.step(accessLogs);
+        } else if ((counter + 1) & uarch_step_mask == 0) {
+            UArchReset.reset(accessLogs);
+        } else {
+            UArchStep.step(accessLogs);
+        }
+        newMachineState = accessLogs.currentRootHash;
     }
 }
