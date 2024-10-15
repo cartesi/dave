@@ -8,12 +8,12 @@ import "../../concretes/TopTournament.sol";
 contract TopTournamentFactory {
     constructor() {}
 
-    function instantiate(Machine.Hash _initialHash)
+    function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
         external
         returns (TopTournament)
     {
         TopTournament _tournament = new TopTournament(
-            _initialHash, IMultiLevelTournamentFactory(msg.sender)
+            _initialHash, _provider, IMultiLevelTournamentFactory(msg.sender)
         );
 
         return _tournament;

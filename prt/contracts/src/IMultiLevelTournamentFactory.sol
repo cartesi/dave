@@ -10,7 +10,7 @@ import "./tournament/concretes/MiddleTournament.sol";
 import "./tournament/concretes/BottomTournament.sol";
 
 interface IMultiLevelTournamentFactory is ITournamentFactory {
-    function instantiateTop(Machine.Hash _initialHash)
+    function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
         external
         returns (TopTournament);
 
@@ -22,7 +22,8 @@ interface IMultiLevelTournamentFactory is ITournamentFactory {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        IDataProvider _provider
     ) external returns (MiddleTournament);
 
     function instantiateBottom(
@@ -33,6 +34,7 @@ interface IMultiLevelTournamentFactory is ITournamentFactory {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        IDataProvider _provider
     ) external returns (BottomTournament);
 }

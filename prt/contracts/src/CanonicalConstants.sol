@@ -32,7 +32,7 @@ library ArbitrationConstants {
 
     uint64 constant LOG2_UARCH_SPAN = 20;
     uint64 constant LOG2_EMULATOR_SPAN = 48;
-    uint64 constant LOG2_INPUT_SPAN = LOG2_UARCH_SPAN + LOG2_EMULATOR_SPAN;
+    uint64 constant LOG2_INPUT_SPAN = 24;
 
     // 3-level tournament
     uint64 constant LEVELS = 3;
