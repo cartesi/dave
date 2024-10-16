@@ -20,7 +20,7 @@ RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.10-rc-test/
 
 COPY chronos.c .
 COPY Makefile .
-RUN make
+RUN make chronos.so
 
 COPY measure.lua .
 RUN chmod +x measure.lua

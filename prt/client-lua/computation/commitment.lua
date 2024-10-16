@@ -95,7 +95,7 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
     if log2_stride >= consts.log2_uarch_span then
         assert(
             log2_stride + log2_stride_count <=
-            consts.log2_emulator_span + consts.log2_uarch_span
+            consts.log2_input_span + consts.log2_emulator_span + consts.log2_uarch_span
         )
         return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
     else
