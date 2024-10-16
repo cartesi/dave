@@ -54,7 +54,9 @@ pub fn build_machine_commitment(
     if log2_stride >= constants::LOG2_UARCH_SPAN {
         assert!(
             log2_stride + log2_stride_count
-                <= constants::LOG2_EMULATOR_SPAN + constants::LOG2_UARCH_SPAN
+                <= constants::LOG2_INPUT_SPAN
+                    + constants::LOG2_EMULATOR_SPAN
+                    + constants::LOG2_UARCH_SPAN
         );
         build_big_machine_commitment(
             machine,

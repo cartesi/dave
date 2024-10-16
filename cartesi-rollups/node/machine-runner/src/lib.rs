@@ -13,7 +13,7 @@ use cartesi_prt_core::machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, 
 use rollups_state_manager::{InputId, StateManager};
 
 // gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
-const LOG2_STRIDE: u64 = 49;
+const LOG2_STRIDE: u64 = 44;
 
 pub struct MachineRunner<SM: StateManager> {
     machine: Machine,
