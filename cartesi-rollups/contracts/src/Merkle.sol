@@ -59,6 +59,24 @@ library Merkle {
         return replacement;
     }
 
+    /// @notice Get the root of the smallest Merkle tree that covers a byte array.
+    /// @param data the byte array
+    /// @dev If data is smaller than the drive, it is padded with zeros.
+    /// @dev The smallest tree covers at least one leaf.
+    /// @dev See `MerkleConstants` for leaf size.
+    function getSmallestMerkleRootFromBytes(bytes calldata data) internal pure returns (bytes32) {
+        for (
+            uint256 log2SizeOfDrive = MerkleConstants.LOG2_LEAF_SIZE;
+            log2SizeOfDrive <= MerkleConstants.LOG2_MEMORY_SIZE;
+            ++log2SizeOfDrive
+        ) {
+            if (data.length <= (1 << log2SizeOfDrive)) {
+                return getMerkleRootFromBytes(data, log2SizeOfDrive);
+            }
+        }
+        revert("Data larger than memory");
+    }
+
     /// @notice Get the Merkle root of a byte array.
     /// @param data the byte array
     /// @param log2SizeOfDrive log2 of size of the drive
