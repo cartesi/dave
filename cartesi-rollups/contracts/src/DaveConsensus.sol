@@ -41,9 +41,6 @@ contract DaveConsensus is IDataProvider {
     /// @notice GIO namespace for getting advance requests from the InputBox contract
     uint16 constant INPUT_BOX_NAMESPACE = 0;
 
-    /// @notice GIO response buffer size (2 MB)
-    uint256 constant LOG2_GIO_RESPONSE_BUFFER_SIZE = 21;
-
     /// @notice The input box contract
     IInputBox immutable _inputBox;
 
@@ -156,14 +153,19 @@ contract DaveConsensus is IDataProvider {
     }
 
     /// @inheritdoc IDataProvider
-    function gio(uint16 namespace, bytes calldata id, bytes calldata input) external view override returns (bytes32) {
+    function gio(uint16 namespace, bytes calldata id, bytes calldata input)
+        external
+        view
+        override
+        returns (bytes32, uint256)
+    {
         require(namespace == INPUT_BOX_NAMESPACE, "Dave: bad namespace");
         uint256 inputIndex = abi.decode(id, (uint256));
         uint256 inputCount = _inputBox.getNumberOfInputs(_appContract);
 
         if (inputIndex >= inputCount) {
             // out-of-bounds index: repeat the state (as a fixpoint function)
-            return bytes32(0);
+            return (bytes32(0), 0);
         }
 
         bytes32 inputHash = _inputBox.getInputHash(_appContract, inputIndex);
@@ -177,10 +179,10 @@ contract DaveConsensus is IDataProvider {
             abi.decode(args, (uint256, address, address, uint256, uint256, uint256, uint256, bytes));
 
         if (_blockNumberLowerBound <= blockNumber && blockNumber < _blockNumberUpperBound) {
-            return input.getMerkleRootFromBytes(LOG2_GIO_RESPONSE_BUFFER_SIZE);
+            return (input.getSmallestMerkleRootFromBytes(), input.length);
         } else {
             // out-of-bounds index: repeat the state (as a fixpoint function)
-            return bytes32(0);
+            return (bytes32(0), 0);
         }
     }
 }

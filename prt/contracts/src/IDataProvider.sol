@@ -9,7 +9,8 @@ interface IDataProvider {
     /// @param id The request ID
     /// @param extra Extra data (e.g. proofs)
     /// @return Merkle root of response
+    /// @return Size of the response (in bytes)
     function gio(uint16 namespace, bytes calldata id, bytes calldata extra)
         external
-        returns (bytes32);
+        returns (bytes32, uint256);
 }
