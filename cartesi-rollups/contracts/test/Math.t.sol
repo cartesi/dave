@@ -9,21 +9,19 @@ import {Math} from "src/Math.sol";
 
 library NaiveMath {
     function ctz(uint256 x) internal pure returns (uint256) {
-        if (x == 0) return 256;
-        uint256 n;
-        while (x & 1 == 0) {
-            ++n;
-            x >>= 1;
+        uint256 n = 256;
+        while (x != 0) {
+            --n;
+            x <<= 1;
         }
         return n;
     }
 
     function clz(uint256 x) internal pure returns (uint256) {
-        if (x == 0) return 256;
-        uint256 n;
-        while (x & 0x8000000000000000000000000000000000000000000000000000000000000000 == 0) {
-            ++n;
-            x <<= 1;
+        uint256 n = 256;
+        while (x != 0) {
+            --n;
+            x >>= 1;
         }
         return n;
     }
