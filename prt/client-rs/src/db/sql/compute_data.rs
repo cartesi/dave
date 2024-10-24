@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use super::error::*;
-use crate::db::dispute_state_access::{Input, Leaf};
+use crate::db::compute_state_access::{Input, Leaf};
 
 use rusqlite::{params, OptionalExtension};
 
@@ -161,7 +161,7 @@ pub fn compute_tree_count(conn: &rusqlite::Connection, tree_root: &[u8]) -> Resu
     )?)
 }
 
-pub fn insert_dispute_data<'a>(
+pub fn insert_compute_data<'a>(
     conn: &rusqlite::Connection,
     inputs: impl Iterator<Item = &'a Input>,
     leafs: impl Iterator<Item = &'a Leaf>,

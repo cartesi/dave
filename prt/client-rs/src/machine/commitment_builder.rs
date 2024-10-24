@@ -2,7 +2,7 @@
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
 use crate::{
-    db::dispute_state_access::DisputeStateAccess,
+    db::compute_state_access::ComputeStateAccess,
     machine::{
         build_machine_commitment, build_machine_commitment_from_leafs, MachineCommitment,
         MachineInstance,
@@ -34,7 +34,7 @@ impl CachingMachineCommitmentBuilder {
         level: u64,
         log2_stride: u64,
         log2_stride_count: u64,
-        db: &DisputeStateAccess,
+        db: &ComputeStateAccess,
     ) -> Result<MachineCommitment> {
         if let Entry::Vacant(e) = self.commitments.entry(level) {
             e.insert(HashMap::new());

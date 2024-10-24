@@ -67,7 +67,7 @@ WORKDIR /root/prt/contracts
 RUN forge --version
 RUN forge build
 
-RUN mkdir -p /dispute_data/0xa16E02E87b7454126E5E10d957A927A7F5B5d2be
+RUN mkdir -p /compute_data/0xa16E02E87b7454126E5E10d957A927A7F5B5d2be
 
 WORKDIR /root/prt/tests/compute
 ENTRYPOINT ["./compute-test-entrypoint.sh"]
