@@ -7,6 +7,8 @@ import "./Tournament.sol";
 import "../../CanonicalConstants.sol";
 import "../libs/Commitment.sol";
 
+import "step/src/EmulatorConstants.sol";
+import "step/src/SendCmioResponse.sol";
 import "step/src/UArchStep.sol";
 import "step/src/UArchReset.sol";
 
@@ -150,7 +152,6 @@ abstract contract LeafTournament is Tournament {
         uint256 counter,
         bytes memory proofs
     ) internal pure returns (bytes32 newMachineState) {
-        revert("rollups meta step is not ready");
         // TODO: create a more convinient constructor.
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
@@ -167,6 +168,14 @@ abstract contract LeafTournament is Tournament {
 
         if (counter & big_step_mask == 0) {
             // TODO: add inputs
+            (bytes32 inputMerkleRoot, uint64 inputLength) =
+                provider.gio(namespace, id, extra);
+            SendCmioResponse.sendCmioResponse(
+                EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
+                inputMerkleRoot,
+                inputLength,
+                accessLogs
+            );
             UArchStep.step(accessLogs);
         } else if ((counter + 1) & uarch_step_mask == 0) {
             UArchReset.reset(accessLogs);

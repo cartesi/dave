@@ -362,7 +362,8 @@ impl Player {
                 if let Some(snapshot_path) = self.db.closest_snapshot(cycle)? {
                     machine.load_snapshot(&PathBuf::from(snapshot_path))?;
                 };
-                machine.get_logs(cycle, ucycle)?
+                let input = self.db.input(cycle >> constants::LOG2_EMULATOR_SPAN)?;
+                machine.get_logs(cycle, ucycle, input)?
             };
 
             info!(

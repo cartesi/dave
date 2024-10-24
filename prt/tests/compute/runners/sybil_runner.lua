@@ -39,6 +39,7 @@ local function sybil_runner(player_id, machine_path, root_commitment, root_tourn
     local snapshot_dir = string.format("/dispute_data/%s", root_tournament)
     local strategy = HonestStrategy:new(
         FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir),
+        {},
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
     )

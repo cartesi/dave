@@ -200,19 +200,7 @@ local function ver(t, p, s)
     return t
 end
 
-function Machine.get_logs(path, snapshot_dir, cycle, ucycle)
-    local machine = Machine:new_from_path(path)
-    machine:load_snapshot(snapshot_dir, cycle)
-    local logs
-    machine:run(cycle)
-    machine:run_uarch(ucycle)
-
-    if ucycle == consts.uarch_span then
-        logs = machine.machine:log_uarch_reset { annotations = true, proofs = true }
-    else
-        logs = machine.machine:log_uarch_step { annotations = true, proofs = true }
-    end
-
+local function encode_access_log(logs)
     local encoded = {}
 
     for _, a in ipairs(logs.accesses) do
@@ -233,6 +221,40 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle)
     end))
 
     return '"' .. hex_data .. '"'
+end
+
+function Machine.get_logs(path, snapshot_dir, cycle, ucycle, input)
+    local machine = Machine:new_from_path(path)
+    machine:load_snapshot(snapshot_dir, cycle)
+    local logs
+    local log_type = { annotations = true, proofs = true }
+    machine:run(cycle)
+
+    local mask = 1 << consts.log2_emulator_span - 1;
+    if cycle & mask == 0 and input then
+        -- need to process input
+        if ucycle == 0 then
+            logs = machine.machine:log_send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input,
+                log_type
+            )
+            local step_logs = machine.machine:log_uarch_step(log_type)
+            -- append step logs to cmio logs
+            for _, log in ipairs(step_logs) do
+                table.insert(logs, log)
+            end
+            return encode_access_log(logs)
+        else
+            machine.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input)
+        end
+    end
+
+    machine:run_uarch(ucycle)
+    if ucycle == consts.uarch_span then
+        logs = machine.machine:log_uarch_reset(log_type)
+    else
+        logs = machine.machine:log_uarch_step(log_type)
+    end
+    return encode_access_log(logs)
 end
 
 return Machine

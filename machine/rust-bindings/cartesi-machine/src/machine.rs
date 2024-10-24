@@ -137,6 +137,35 @@ impl Machine {
         Ok(())
     }
 
+    /// Write a CMIO response logging all accesses to the state.
+    pub fn log_send_cmio_response(
+        &mut self,
+        reason: u16,
+        data: &[u8],
+        log_type: log::AccessLogType,
+        one_based: bool,
+    ) -> Result<log::AccessLog, MachineError> {
+        let mut error_collector = ErrorCollector::new();
+        let mut access_log = std::ptr::null_mut();
+
+        let result = unsafe {
+            cartesi_machine_sys::cm_log_send_cmio_response(
+                self.machine,
+                reason,
+                data.as_ptr(),
+                data.len(),
+                log_type.into(),
+                one_based,
+                &mut access_log,
+                error_collector.as_mut_ptr(),
+            )
+        };
+
+        error_collector.collect(result)?;
+
+        Ok(log::AccessLog::new(access_log))
+    }
+
     /// Runs the machine for one micro cycle logging all accesses to the state.
     pub fn log_uarch_step(
         &mut self,
@@ -160,7 +189,7 @@ impl Machine {
         Ok(log::AccessLog::new(access_log))
     }
 
-    /// Checks the internal consistency of an access log
+    /// Checks the internal consistency of an access log produced by cm_log_uarch_step
     pub fn verify_uarch_step_log(
         &mut self,
         log: &log::AccessLog,
@@ -231,7 +260,7 @@ impl Machine {
         Ok(())
     }
 
-    /// Checks the internal consistency of an access log produced by cm_log_uarch_step
+    /// Checks the internal consistency of an access log produced by cm_log_uarch_reset
     pub fn verify_uarch_reset_log(
         &mut self,
         log: &log::AccessLog,
