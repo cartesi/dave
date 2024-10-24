@@ -3,6 +3,7 @@ use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
 use cartesi_machine::{
     configuration::RuntimeConfig,
+    htif,
     log::{AccessLog, AccessLogType},
     machine::Machine,
 };
@@ -85,24 +86,51 @@ impl MachineInstance {
         self.root_hash
     }
 
-    pub fn get_logs(&mut self, cycle: u64, ucycle: u64) -> Result<MachineProof> {
+    pub fn get_logs(
+        &mut self,
+        cycle: u64,
+        ucycle: u64,
+        input: Option<Vec<u8>>,
+    ) -> Result<MachineProof> {
         self.run(cycle)?;
-        self.run_uarch(ucycle)?;
 
-        let access_log = AccessLogType {
+        let log_type = AccessLogType {
             annotations: true,
             proofs: true,
             large_data: false,
         };
-        let logs;
 
-        if ucycle == constants::UARCH_SPAN {
-            logs = self.machine.log_uarch_reset(access_log, false)?;
-        } else {
-            logs = self.machine.log_uarch_step(access_log, false)?;
+        let mask = 1 << constants::LOG2_EMULATOR_SPAN - 1;
+        if cycle & mask == 0 && input.is_some() {
+            // need to process input
+            let data = input.unwrap();
+            if ucycle == 0 {
+                let cmio_logs = self.machine.log_send_cmio_response(
+                    htif::fromhost::ADVANCE_STATE,
+                    &data,
+                    log_type,
+                    false,
+                )?;
+                // append step logs to cmio logs
+                let step_logs = self.machine.log_uarch_step(log_type, false)?;
+                let mut logs_encoded = encode_access_log(&cmio_logs);
+                let mut step_logs_encoded = encode_access_log(&step_logs);
+                logs_encoded.append(&mut step_logs_encoded);
+                return Ok(logs_encoded);
+            } else {
+                self.machine
+                    .send_cmio_response(htif::fromhost::ADVANCE_STATE, &data)?;
+            }
         }
 
-        Ok(encode_access_log(&logs))
+        self.run_uarch(ucycle)?;
+        if ucycle == constants::UARCH_SPAN {
+            let reset_logs = self.machine.log_uarch_reset(log_type, false)?;
+            Ok(encode_access_log(&reset_logs))
+        } else {
+            let step_logs = self.machine.log_uarch_step(log_type, false)?;
+            Ok(encode_access_log(&step_logs))
+        }
     }
 
     pub fn run(&mut self, cycle: u64) -> Result<()> {

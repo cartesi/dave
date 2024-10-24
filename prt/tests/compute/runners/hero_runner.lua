@@ -18,6 +18,7 @@ local function hero_runner(player_id, machine_path, root_commitment, root_tourna
     local snapshot_dir = string.format("/dispute_data/%s", root_tournament)
     local strategy = HonestStrategy:new(
         CommitmentBuilder:new(machine_path, snapshot_dir, root_commitment),
+        {},
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
     )
