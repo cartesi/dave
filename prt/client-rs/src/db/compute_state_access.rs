@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::db::sql::{dispute_data, error::*, migrations};
+use crate::db::sql::{compute_data, error::*, migrations};
 use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};
 
 use alloy::hex as alloy_hex;
@@ -28,7 +28,7 @@ pub struct Input(#[serde(with = "alloy_hex::serde")] pub Vec<u8>);
 pub struct Leaf(#[serde(with = "alloy_hex::serde")] pub [u8; 32], pub u64);
 
 #[derive(Debug)]
-pub struct DisputeStateAccess {
+pub struct ComputeStateAccess {
     connection: Mutex<Connection>,
     pub work_path: PathBuf,
 }
@@ -44,18 +44,18 @@ fn read_json_file(file_path: &Path) -> Result<InputsAndLeafs> {
     Ok(data)
 }
 
-impl DisputeStateAccess {
+impl ComputeStateAccess {
     pub fn new(
         inputs: Vec<Input>,
         leafs: Vec<Leaf>,
         root_tournament: String,
-        dispute_data_path: &str,
+        compute_data_path: &str,
     ) -> Result<Self> {
         // initialize the database if it doesn't exist
         // fill the database from a json-format file, or the parameters
-        // the database should be "/dispute_data/0x_root_tournament_address/db"
-        // the json file should be "/dispute_data/0x_root_tournament_address/inputs_and_leafs.json"
-        let work_dir = format!("{dispute_data_path}/{root_tournament}");
+        // the database should be "/compute_data/0x_root_tournament_address/db"
+        // the json file should be "/compute_data/0x_root_tournament_address/inputs_and_leafs.json"
+        let work_dir = format!("{compute_data_path}/{root_tournament}");
         let work_path = PathBuf::from(work_dir);
         let db_path = work_path.join("db");
         let no_create_flags = OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE;
@@ -77,7 +77,7 @@ impl DisputeStateAccess {
                 // prioritize json file over parameters
                 match read_json_file(&json_path) {
                     Ok(inputs_and_leafs) => {
-                        dispute_data::insert_dispute_data(
+                        compute_data::insert_compute_data(
                             &connection,
                             inputs_and_leafs.inputs.iter(),
                             inputs_and_leafs.leafs.iter(),
@@ -85,7 +85,7 @@ impl DisputeStateAccess {
                     }
                     Err(_) => {
                         info!("load inputs and leafs from parameters");
-                        dispute_data::insert_dispute_data(
+                        compute_data::insert_compute_data(
                             &connection,
                             inputs.iter(),
                             leafs.iter(),
@@ -103,7 +103,7 @@ impl DisputeStateAccess {
 
     pub fn input(&self, id: u64) -> Result<Option<Vec<u8>>> {
         let conn = self.connection.lock().unwrap();
-        dispute_data::input(&conn, id)
+        compute_data::input(&conn, id)
     }
 
     pub fn insert_compute_leafs<'a>(
@@ -113,7 +113,7 @@ impl DisputeStateAccess {
         leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
-        dispute_data::insert_compute_leafs(&conn, level, base_cycle, leafs)
+        compute_data::insert_compute_leafs(&conn, level, base_cycle, leafs)
     }
 
     pub fn compute_leafs(
@@ -122,11 +122,11 @@ impl DisputeStateAccess {
         base_cycle: u64,
     ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
         let conn = self.connection.lock().unwrap();
-        let leafs = dispute_data::compute_leafs(&conn, level, base_cycle)?;
+        let leafs = compute_data::compute_leafs(&conn, level, base_cycle)?;
 
         let mut tree = Vec::new();
         for leaf in leafs {
-            let tree_leafs = dispute_data::compute_tree(&conn, &leaf.0)?;
+            let tree_leafs = compute_data::compute_tree(&conn, &leaf.0)?;
             if tree_leafs.len() > 0 {
                 // if leaf is also tree, rebuild it from nested leafs
                 let mut builder = MerkleBuilder::default();
@@ -148,7 +148,7 @@ impl DisputeStateAccess {
         tree_leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
-        dispute_data::insert_compute_tree(&conn, tree_root, tree_leafs)
+        compute_data::insert_compute_tree(&conn, tree_root, tree_leafs)
     }
 
     pub fn closest_snapshot(&self, base_cycle: u64) -> Result<Option<PathBuf>> {
@@ -180,7 +180,7 @@ impl DisputeStateAccess {
 }
 
 #[cfg(test)]
-mod dispute_state_access_tests {
+mod compute_state_access_tests {
     use super::*;
 
     fn create_directory(path: &Path) -> std::io::Result<()> {
@@ -205,7 +205,7 @@ mod dispute_state_access_tests {
         create_directory(&work_dir).unwrap();
         {
             let access =
-                DisputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
+                ComputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
                     .unwrap();
 
             assert_eq!(access.closest_snapshot(0).unwrap(), None);
@@ -264,7 +264,7 @@ mod dispute_state_access_tests {
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         let access =
-            DisputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
+            ComputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
                 .unwrap();
 
         let root = [

@@ -12,7 +12,7 @@ use crate::{
         ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
         TournamentState, TournamentStateMap, TournamentWinner,
     },
-    db::dispute_state_access::{DisputeStateAccess, Input, Leaf},
+    db::compute_state_access::{ComputeStateAccess, Input, Leaf},
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     strategy::gc::GarbageCollector,
 };
@@ -25,7 +25,7 @@ pub enum PlayerTournamentResult {
 }
 
 pub struct Player {
-    db: DisputeStateAccess,
+    db: ComputeStateAccess,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournament: Address,
@@ -42,7 +42,7 @@ impl Player {
         root_tournament: Address,
     ) -> Result<Self> {
         let db =
-            DisputeStateAccess::new(inputs, leafs, root_tournament.to_string(), "/dispute_data")?;
+            ComputeStateAccess::new(inputs, leafs, root_tournament.to_string(), "/compute_data")?;
         let reader = StateReader::new(&blockchain_config)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());

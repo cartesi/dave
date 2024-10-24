@@ -5,7 +5,7 @@ use anyhow::Result;
 use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
-    db::dispute_state_access::{DisputeStateAccess, Leaf},
+    db::compute_state_access::{ComputeStateAccess, Leaf},
     machine::{constants, MachineInstance},
 };
 use cartesi_dave_arithmetic as arithmetic;
@@ -49,7 +49,7 @@ pub fn build_machine_commitment(
     level: u64,
     log2_stride: u64,
     log2_stride_count: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
     if log2_stride >= constants::LOG2_UARCH_SPAN {
         assert!(
@@ -79,7 +79,7 @@ pub fn build_big_machine_commitment(
     level: u64,
     log2_stride: u64,
     log2_stride_count: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
     machine.run(base_cycle)?;
     snapshot_base_cycle(machine, base_cycle, db)?;
@@ -143,7 +143,7 @@ pub fn build_small_machine_commitment(
     base_cycle: u64,
     level: u64,
     log2_stride_count: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
     machine.run(base_cycle)?;
     snapshot_base_cycle(machine, base_cycle, db)?;
@@ -184,7 +184,7 @@ pub fn build_small_machine_commitment(
 fn snapshot_base_cycle(
     machine: &mut MachineInstance,
     base_cycle: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<()> {
     let snapshot_path = db.work_path.join(format!("{}", base_cycle));
     machine.snapshot(&snapshot_path)?;
@@ -193,7 +193,7 @@ fn snapshot_base_cycle(
 
 fn run_uarch_span(
     machine: &mut MachineInstance,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<Arc<MerkleTree>> {
     let (_, ucycle) = machine.position();
     assert!(ucycle == 0);

@@ -36,7 +36,7 @@ local function write_json_file(leafs, root_tournament)
 
     local flat = require "utils.flat"
     local json = require "utils.json"
-    local file_path = string.format("/dispute_data/%s/inputs_and_leafs.json", root_tournament)
+    local file_path = string.format("/compute_data/%s/inputs_and_leafs.json", root_tournament)
     local file = assert(io.open(file_path, "w"))
     file:write(json.encode(flat.flatten(inputs_and_leafs).flat_object))
     assert(file:close())
@@ -47,7 +47,7 @@ local function setup_players(use_lua_node, extra_data, root_constants, root_tour
     local player_coroutines = {}
     local player_index = 1
     print("Calculating root commitment...")
-    local snapshot_dir = string.format("/dispute_data/%s", root_tournament)
+    local snapshot_dir = string.format("/compute_data/%s", root_tournament)
     local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
     local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height)
 

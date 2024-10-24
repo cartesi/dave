@@ -4,7 +4,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum DisputeStateAccessError {
+pub enum ComputeStateAccessError {
     #[error(transparent)]
     Digest {
         #[from]
@@ -39,4 +39,4 @@ pub enum DisputeStateAccessError {
     DataNotFound { description: String },
 }
 
-pub type Result<T> = std::result::Result<T, DisputeStateAccessError>;
+pub type Result<T> = std::result::Result<T, ComputeStateAccessError>;

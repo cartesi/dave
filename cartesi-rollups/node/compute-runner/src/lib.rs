@@ -4,7 +4,7 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use cartesi_prt_core::{
     arena::{BlockchainConfig, EthArenaSender},
-    db::dispute_state_access::{Input, Leaf},
+    db::compute_state_access::{Input, Leaf},
     strategy::player::Player,
 };
 use rollups_state_manager::StateManager;
@@ -37,6 +37,7 @@ where
                     .state_manager
                     .snapshot(last_sealed_epoch.epoch_number, 0)?
                 {
+                    // TODO: make sure all snapshots are available to compute
                     let inputs = self.state_manager.inputs(last_sealed_epoch.epoch_number)?;
                     let leafs = self
                         .state_manager
