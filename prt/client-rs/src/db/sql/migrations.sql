@@ -19,3 +19,8 @@ CREATE TABLE compute_trees (
     tree_leaf BLOB NOT NULL,
     PRIMARY KEY (tree_root, tree_leaf_index)
 );
+
+CREATE TABLE compute_or_rollups (
+    id INTEGER NOT NULL PRIMARY KEY,
+    handle_rollups INTEGER NOT NULL
+);

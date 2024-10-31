@@ -65,7 +65,7 @@ local function rebuild_nested_trees(leafs)
 end
 
 local function build_commitment(cached_commitments, machine_path, snapshot_dir, base_cycle, level, log2_stride,
-                                log2_stride_count)
+                                log2_stride_count, inputs)
     -- the honest commitment builder should be operated in an isolated env
     -- to avoid side effects to the strategy behavior
 
@@ -80,7 +80,7 @@ local function build_commitment(cached_commitments, machine_path, snapshot_dir, 
         local CommitmentBuilder = scoped_require "computation.commitment"
 
         local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
-        local commitment = builder:build(base_cycle, level, log2_stride, log2_stride_count)
+        local commitment = builder:build(base_cycle, level, log2_stride, log2_stride_count, inputs)
         coroutine.yield(commitment)
     end)
 
@@ -124,7 +124,7 @@ function FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir)
     return c
 end
 
-function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count)
+function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count, inputs)
     -- function caller should set `self.fake_index` properly before calling this function
     -- the fake commitments are not guaranteed to be unique if there are not many leafs (short computation)
     -- `self.fake_index` is reset and the end of a successful call to ensure the next caller must set it again.
@@ -141,7 +141,8 @@ function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride
 
     local commitment = build_commitment(self.commitments, self.machine_path, self.snapshot_dir, base_cycle, level,
         log2_stride,
-        log2_stride_count)
+        log2_stride_count,
+        inputs)
     local fake_commitment = build_fake_commitment(commitment, self.fake_index, log2_stride)
 
     self.fake_commitments[level][base_cycle][self.fake_index] = fake_commitment

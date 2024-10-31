@@ -168,18 +168,11 @@ where
 
     fn process_input(&mut self, data: &[u8]) -> Result<(), SM> {
         // TODO: review caclulations
-        let big_steps_in_stride = max_uint(LOG2_STRIDE - LOG2_UARCH_SPAN);
-        let stride_count_in_input = max_uint(LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
+        let big_steps_in_stride = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN);
+        let stride_count_in_input = 1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
 
-        // take snapshot and make it available to the compute client
-        // the snapshot taken before input insersion is for log/proof generation
-        self.snapshot(0)?;
         self.feed_input(data)?;
-        self.run_machine(1)?;
-        // take snapshot and make it available to the compute client
-        // the snapshot taken after insersion and step is for commitment builder
-        self.snapshot(1)?;
-        self.run_machine(big_steps_in_stride - 1)?;
+        self.run_machine(big_steps_in_stride)?;
 
         let mut i: u64 = 0;
         while !self.machine.read_iflags_y()? {
@@ -228,12 +221,12 @@ where
         Ok(())
     }
 
-    fn snapshot(&self, offset: u64) -> Result<(), SM> {
+    fn take_snapshot(&self) -> Result<(), SM> {
         // TODO: make sure "/rollups_data/{epoch_number}" exists
         let snapshot_path = PathBuf::from(format!(
             "/rollups_data/{}/{}",
             self.epoch_number,
-            self.next_input_index_in_epoch << LOG2_EMULATOR_SPAN + offset
+            self.next_input_index_in_epoch << LOG2_EMULATOR_SPAN
         ));
         if !snapshot_path.exists() {
             self.machine.store(&snapshot_path)?;

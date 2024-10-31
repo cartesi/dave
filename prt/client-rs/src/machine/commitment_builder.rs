@@ -46,12 +46,19 @@ impl CachingMachineCommitmentBuilder {
         if let Some(snapshot_path) = db.closest_snapshot(base_cycle)? {
             machine.load_snapshot(&PathBuf::from(snapshot_path))?;
         };
+        if db.handle_rollups {
+            // treat it as rollups
+            machine.run_with_inputs(base_cycle, &db.inputs()?)?;
+        } else {
+            // treat it as compute
+            machine.run(base_cycle)?;
+        }
 
         let commitment = {
             let leafs = db.compute_leafs(level, base_cycle)?;
             // leafs are cached in database, use it to calculate merkle
             if leafs.len() > 0 {
-                build_machine_commitment_from_leafs(&mut machine, base_cycle, leafs)?
+                build_machine_commitment_from_leafs(&mut machine, leafs)?
             } else {
                 // leafs are not cached, build merkle by running the machine
                 build_machine_commitment(

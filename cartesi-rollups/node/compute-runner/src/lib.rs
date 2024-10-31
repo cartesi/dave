@@ -43,7 +43,7 @@ where
                         .state_manager
                         .machine_state_hashes(last_sealed_epoch.epoch_number)?;
                     let mut player = Player::new(
-                        inputs.into_iter().map(|i| Input(i)).collect(),
+                        Some(inputs.into_iter().map(|i| Input(i)).collect()),
                         leafs
                             .into_iter()
                             .map(|l| {

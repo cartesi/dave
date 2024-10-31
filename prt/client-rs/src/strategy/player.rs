@@ -35,7 +35,7 @@ pub struct Player {
 
 impl Player {
     pub fn new(
-        inputs: Vec<Input>,
+        inputs: Option<Vec<Input>>,
         leafs: Vec<Leaf>,
         blockchain_config: &BlockchainConfig,
         machine_path: String,
@@ -362,8 +362,8 @@ impl Player {
                 if let Some(snapshot_path) = self.db.closest_snapshot(cycle)? {
                     machine.load_snapshot(&PathBuf::from(snapshot_path))?;
                 };
-                let input = self.db.input(cycle >> constants::LOG2_EMULATOR_SPAN)?;
-                machine.get_logs(cycle, ucycle, input)?
+                let inputs = self.db.inputs()?;
+                machine.get_logs(cycle, ucycle, inputs, self.db.handle_rollups)?
             };
 
             info!(

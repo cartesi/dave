@@ -1,3 +1,4 @@
+use crate::db::compute_state_access::Input;
 use crate::machine::constants;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
@@ -9,6 +10,7 @@ use cartesi_machine::{
 };
 
 use anyhow::Result;
+use ruint::aliases::U256;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -90,46 +92,56 @@ impl MachineInstance {
         &mut self,
         cycle: u64,
         ucycle: u64,
-        input: Option<Vec<u8>>,
+        inputs: Vec<Vec<u8>>,
+        handle_rollups: bool,
     ) -> Result<MachineProof> {
-        self.run(cycle)?;
-
         let log_type = AccessLogType {
             annotations: true,
             proofs: true,
             large_data: false,
         };
 
-        let mask = 1 << constants::LOG2_EMULATOR_SPAN - 1;
-        if cycle & mask == 0 && input.is_some() {
-            // need to process input
-            let data = input.unwrap();
-            if ucycle == 0 {
-                let cmio_logs = self.machine.log_send_cmio_response(
-                    htif::fromhost::ADVANCE_STATE,
-                    &data,
-                    log_type,
-                    false,
-                )?;
-                // append step logs to cmio logs
-                let step_logs = self.machine.log_uarch_step(log_type, false)?;
-                let mut logs_encoded = encode_access_log(&cmio_logs);
-                let mut step_logs_encoded = encode_access_log(&step_logs);
-                logs_encoded.append(&mut step_logs_encoded);
-                return Ok(logs_encoded);
-            } else {
-                self.machine
-                    .send_cmio_response(htif::fromhost::ADVANCE_STATE, &data)?;
+        let mut logs = Vec::new();
+        if handle_rollups {
+            // treat it as rollups
+            self.run_with_inputs(cycle, &inputs)?;
+
+            let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+            let input = inputs.get((cycle >> constants::LOG2_EMULATOR_SPAN) as usize);
+            if cycle & mask == 0 && input.is_some() {
+                // need to process input
+                let data = input.unwrap();
+                if ucycle == 0 {
+                    let cmio_logs = self.machine.log_send_cmio_response(
+                        htif::fromhost::ADVANCE_STATE,
+                        &data,
+                        log_type,
+                        false,
+                    )?;
+                    // append step logs to cmio logs
+                    let step_logs = self.machine.log_uarch_step(log_type, false)?;
+                    logs.push(&cmio_logs);
+                    logs.push(&step_logs);
+                    return Ok(encode_access_logs(logs, Some(Input { 0: data.clone() })));
+                } else {
+                    self.machine
+                        .send_cmio_response(htif::fromhost::ADVANCE_STATE, &data)?;
+                }
             }
+        } else {
+            // treat it as compute
+            self.run(cycle)?;
         }
 
         self.run_uarch(ucycle)?;
         if ucycle == constants::UARCH_SPAN {
             let reset_logs = self.machine.log_uarch_reset(log_type, false)?;
-            Ok(encode_access_log(&reset_logs))
+            logs.push(&reset_logs);
+            Ok(encode_access_logs(logs, None))
         } else {
             let step_logs = self.machine.log_uarch_step(log_type, false)?;
-            Ok(encode_access_log(&step_logs))
+            logs.push(&step_logs);
+            Ok(encode_access_logs(logs, None))
         }
     }
 
@@ -170,6 +182,36 @@ impl MachineInstance {
         Ok(())
     }
 
+    pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<()> {
+        let input_mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+        let current_input_index = self.cycle >> constants::LOG2_EMULATOR_SPAN;
+
+        let mut next_input_index;
+
+        if self.cycle & input_mask == 0 {
+            next_input_index = current_input_index;
+        } else {
+            next_input_index = current_input_index + 1;
+        }
+
+        let mut next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
+
+        while next_input_cycle < cycle {
+            self.run(next_input_cycle)?;
+            let input = inputs.get(next_input_index as usize);
+            if let Some(data) = input {
+                self.machine
+                    .send_cmio_response(htif::fromhost::ADVANCE_STATE, data)?;
+            }
+
+            next_input_index += 1;
+            next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
+        }
+        self.run(cycle)?;
+
+        Ok(())
+    }
+
     pub fn increment_uarch(&mut self) -> Result<()> {
         self.machine.run_uarch(self.ucycle + 1)?;
         self.ucycle += 1;
@@ -206,22 +248,29 @@ impl MachineInstance {
     }
 }
 
-fn encode_access_log(log: &AccessLog) -> Vec<u8> {
+fn encode_access_logs(logs: Vec<&AccessLog>, input: Option<Input>) -> Vec<u8> {
     let mut encoded: Vec<Vec<u8>> = Vec::new();
 
-    for a in log.accesses().iter() {
-        if a.log2_size() == 3 {
-            encoded.push(a.read_data().to_vec());
-        } else {
-            encoded.push(a.read_hash().as_bytes().to_vec());
-        }
+    if let Some(i) = input {
+        encoded.push(U256::from(i.0.len()).to_be_bytes_vec());
+        encoded.push(i.0);
+    }
 
-        let decoded_siblings: Vec<Vec<u8>> = a
-            .sibling_hashes()
-            .iter()
-            .map(|h| h.as_bytes().to_vec())
-            .collect();
-        encoded.extend_from_slice(&decoded_siblings);
+    for log in logs.iter() {
+        for a in log.accesses().iter() {
+            if a.log2_size() == 3 {
+                encoded.push(a.read_data().to_vec());
+            } else {
+                encoded.push(a.read_hash().as_bytes().to_vec());
+            }
+
+            let decoded_siblings: Vec<Vec<u8>> = a
+                .sibling_hashes()
+                .iter()
+                .map(|h| h.as_bytes().to_vec())
+                .collect();
+            encoded.extend_from_slice(&decoded_siblings);
+        }
     }
 
     encoded.iter().flatten().cloned().collect()
