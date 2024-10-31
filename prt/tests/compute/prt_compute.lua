@@ -49,7 +49,7 @@ local function setup_players(use_lua_node, extra_data, root_constants, root_tour
     print("Calculating root commitment...")
     local snapshot_dir = string.format("/compute_data/%s", root_tournament)
     local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
-    local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height)
+    local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height, nil)
 
     if use_lua_node then
         -- use Lua node to defend
@@ -59,7 +59,6 @@ local function setup_players(use_lua_node, extra_data, root_constants, root_tour
             extra_data)
     else
         -- use Rust node to defend
-
         print("Setting up Rust honest player")
         local rust_hero_runner = require "runners.rust_hero_runner"
         player_coroutines[player_index] = rust_hero_runner.create_react_once_runner(player_index, machine_path)

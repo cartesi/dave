@@ -110,7 +110,7 @@ local function find_closest_snapshot(path, current_cycle, cycle)
     return closest_dir
 end
 
-function Machine:snapshot(snapshot_dir, cycle)
+function Machine:take_snapshot(snapshot_dir, cycle)
     if helper.exists(snapshot_dir) then
         local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
 
@@ -163,6 +163,34 @@ function Machine:run_uarch(ucycle)
     self.ucycle = ucycle
 end
 
+function Machine:run_with_inputs(cycle, inputs)
+    local input_mask = arithmetic.max_uint(consts.log2_emulator_span)
+    local current_input_index = self.cycle >> consts.log2_emulator_span
+
+    local next_input_index
+
+    if self.cycle & input_mask == 0 then
+        next_input_index = current_input_index
+    else
+        next_input_index = current_input_index + 1
+    end
+    local next_input_cycle = next_input_index << consts.log2_emulator_span
+
+    while next_input_cycle < cycle do
+        self:run(next_input_cycle)
+        local input = inputs[next_input_index]
+        if input then
+            self.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input);
+        end
+
+        next_input_index = next_input_index + 1
+        next_input_cycle = next_input_index << consts.log2_emulator_span
+    end
+    self:run(cycle)
+
+    return self:state()
+end
+
 function Machine:increment_uarch()
     self.machine:run_uarch(self.ucycle + 1)
     self.ucycle = self.ucycle + 1
@@ -200,18 +228,28 @@ local function ver(t, p, s)
     return t
 end
 
-local function encode_access_log(logs)
+local bint = require 'utils.bint' (256) -- use 256 bits integers
+
+local function encode_access_logs(logs, input)
     local encoded = {}
 
-    for _, a in ipairs(logs.accesses) do
-        if a.log2_size == 3 then
-            table.insert(encoded, a.read)
-        else
-            table.insert(encoded, a.read_hash)
-        end
+    if input then
+        -- TODO: check #input is encoded as uint256
+        table.insert(encoded, bint(#input))
+        table.insert(encoded, input)
+    end
 
-        for _, h in ipairs(a.sibling_hashes) do
-            table.insert(encoded, h)
+    for _, log in ipairs(logs) do
+        for _, a in ipairs(log.accesses) do
+            if a.log2_size == 3 then
+                table.insert(encoded, a.read)
+            else
+                table.insert(encoded, a.read_hash)
+            end
+
+            for _, h in ipairs(a.sibling_hashes) do
+                table.insert(encoded, h)
+            end
         end
     end
 
@@ -223,38 +261,45 @@ local function encode_access_log(logs)
     return '"' .. hex_data .. '"'
 end
 
-function Machine.get_logs(path, snapshot_dir, cycle, ucycle, input)
+function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
     local machine = Machine:new_from_path(path)
     machine:load_snapshot(snapshot_dir, cycle)
-    local logs
+    local logs = {}
     local log_type = { annotations = true, proofs = true }
-    machine:run(cycle)
+    local input = Hash.zero
+    if inputs then
+        -- treat it as rollups
+        machine:run_with_inputs(cycle, inputs)
 
-    local mask = 1 << consts.log2_emulator_span - 1;
-    if cycle & mask == 0 and input then
-        -- need to process input
-        if ucycle == 0 then
-            logs = machine.machine:log_send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input,
-                log_type
-            )
-            local step_logs = machine.machine:log_uarch_step(log_type)
-            -- append step logs to cmio logs
-            for _, log in ipairs(step_logs) do
-                table.insert(logs, log)
+        local mask = arithmetic.max_uint(consts.log2_emulator_span);
+        local try_input = inputs[cycle >> consts.log2_emulator_span]
+        if cycle & mask == 0 and try_input then
+            input = try_input
+            -- need to process input
+            if ucycle == 0 then
+                -- need to log cmio
+                table.insert(logs,
+                    machine.machine:log_send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input,
+                        log_type
+                    ))
+                table.insert(logs, machine.machine:log_uarch_step(log_type))
+                return encode_access_logs(logs, input)
+            else
+                machine.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input)
             end
-            return encode_access_log(logs)
-        else
-            machine.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input)
         end
+    else
+        -- treat it as compute
+        machine:run(cycle)
     end
 
     machine:run_uarch(ucycle)
     if ucycle == consts.uarch_span then
-        logs = machine.machine:log_uarch_reset(log_type)
+        table.insert(logs, machine.machine:log_uarch_reset(log_type))
     else
-        logs = machine.machine:log_uarch_step(log_type)
+        table.insert(logs, machine.machine:log_uarch_step(log_type))
     end
-    return encode_access_log(logs)
+    return encode_access_logs(logs, nil)
 end
 
 return Machine

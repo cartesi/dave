@@ -35,10 +35,10 @@ local function run_uarch_span(machine)
 end
 
 local function build_small_machine_commitment(base_cycle, log2_stride_count, machine, snapshot_dir)
-    local machine_state = machine:run(base_cycle)
+    local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
-        machine:snapshot(snapshot_dir, base_cycle)
+        machine:take_snapshot(snapshot_dir, base_cycle)
     end
     local initial_state = machine_state.root_hash
 
@@ -60,10 +60,10 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
 end
 
 local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
-    local machine_state = machine:run(base_cycle)
+    local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
-        machine:snapshot(snapshot_dir, base_cycle)
+        machine:take_snapshot(snapshot_dir, base_cycle)
     end
     local initial_state = machine_state.root_hash
 
@@ -88,9 +88,16 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
     return initial_state, builder:build(initial_state)
 end
 
-local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, snapshot_dir)
+local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, snapshot_dir, inputs)
     local machine = Machine:new_from_path(machine_path)
     machine:load_snapshot(snapshot_dir, base_cycle)
+    if inputs then
+        -- treat it as rollups
+        machine:run_with_inputs(base_cycle, inputs)
+    else
+        -- treat it as compute
+        machine:run(base_cycle)
+    end
 
     if log2_stride >= consts.log2_uarch_span then
         assert(
@@ -120,7 +127,7 @@ function CommitmentBuilder:new(machine_path, snapshot_dir, root_commitment)
     return c
 end
 
-function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count)
+function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count, inputs)
     if not self.commitments[level] then
         self.commitments[level] = {}
     elseif self.commitments[level][base_cycle] then
@@ -128,7 +135,7 @@ function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_cou
     end
 
     local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path,
-        self.snapshot_dir)
+        self.snapshot_dir, inputs)
     self.commitments[level][base_cycle] = commitment
     return commitment
 end

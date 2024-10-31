@@ -12,5 +12,6 @@ interface IDataProvider {
     /// @return Size of the response (in bytes)
     function gio(uint16 namespace, bytes calldata id, bytes calldata extra)
         external
+        view
         returns (bytes32, uint256);
 }

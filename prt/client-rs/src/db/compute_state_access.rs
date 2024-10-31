@@ -16,12 +16,11 @@ use std::{
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InputsAndLeafs {
-    #[serde(default)]
-    inputs: Vec<Input>,
+    inputs: Option<Vec<Input>>,
     leafs: Vec<Leaf>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Input(#[serde(with = "alloy_hex::serde")] pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,6 +29,7 @@ pub struct Leaf(#[serde(with = "alloy_hex::serde")] pub [u8; 32], pub u64);
 #[derive(Debug)]
 pub struct ComputeStateAccess {
     connection: Mutex<Connection>,
+    pub handle_rollups: bool,
     pub work_path: PathBuf,
 }
 
@@ -46,7 +46,7 @@ fn read_json_file(file_path: &Path) -> Result<InputsAndLeafs> {
 
 impl ComputeStateAccess {
     pub fn new(
-        inputs: Vec<Input>,
+        inputs: Option<Vec<Input>>,
         leafs: Vec<Leaf>,
         root_tournament: String,
         compute_data_path: &str,
@@ -59,13 +59,16 @@ impl ComputeStateAccess {
         let work_path = PathBuf::from(work_dir);
         let db_path = work_path.join("db");
         let no_create_flags = OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE;
+        let handle_rollups;
         match Connection::open_with_flags(&db_path, no_create_flags) {
             // database already exists, return it
             Ok(connection) => {
+                handle_rollups = compute_data::handle_rollups(&connection)?;
                 return Ok(Self {
                     connection: Mutex::new(connection),
+                    handle_rollups,
                     work_path,
-                })
+                });
             }
             Err(_) => {
                 // create new database
@@ -77,17 +80,21 @@ impl ComputeStateAccess {
                 // prioritize json file over parameters
                 match read_json_file(&json_path) {
                     Ok(inputs_and_leafs) => {
+                        handle_rollups = inputs_and_leafs.inputs.is_some();
+                        compute_data::insert_handle_rollups(&connection, handle_rollups)?;
                         compute_data::insert_compute_data(
                             &connection,
-                            inputs_and_leafs.inputs.iter(),
+                            inputs_and_leafs.inputs.unwrap_or_default().iter(),
                             inputs_and_leafs.leafs.iter(),
                         )?;
                     }
                     Err(_) => {
                         info!("load inputs and leafs from parameters");
+                        handle_rollups = inputs.is_some();
+                        compute_data::insert_handle_rollups(&connection, handle_rollups)?;
                         compute_data::insert_compute_data(
                             &connection,
-                            inputs.iter(),
+                            inputs.unwrap_or_default().iter(),
                             leafs.iter(),
                         )?;
                     }
@@ -95,6 +102,7 @@ impl ComputeStateAccess {
 
                 Ok(Self {
                     connection: Mutex::new(connection),
+                    handle_rollups,
                     work_path,
                 })
             }
@@ -104,6 +112,11 @@ impl ComputeStateAccess {
     pub fn input(&self, id: u64) -> Result<Option<Vec<u8>>> {
         let conn = self.connection.lock().unwrap();
         compute_data::input(&conn, id)
+    }
+
+    pub fn inputs(&self) -> Result<Vec<Vec<u8>>> {
+        let conn = self.connection.lock().unwrap();
+        compute_data::inputs(&conn)
     }
 
     pub fn insert_compute_leafs<'a>(
@@ -197,6 +210,8 @@ mod compute_state_access_tests {
     fn test_access_sequentially() {
         test_compute_tree();
         test_closest_snapshot();
+        test_compute_or_rollups_true();
+        test_compute_or_rollups_false();
     }
 
     fn test_closest_snapshot() {
@@ -205,7 +220,7 @@ mod compute_state_access_tests {
         create_directory(&work_dir).unwrap();
         {
             let access =
-                ComputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
+                ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp")
                     .unwrap();
 
             assert_eq!(access.closest_snapshot(0).unwrap(), None);
@@ -264,8 +279,7 @@ mod compute_state_access_tests {
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         let access =
-            ComputeStateAccess::new(Vec::new(), Vec::new(), String::from("0x12345678"), "/tmp")
-                .unwrap();
+            ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp").unwrap();
 
         let root = [
             1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1,
@@ -284,11 +298,36 @@ mod compute_state_access_tests {
         assert!(tree.0.subtrees().is_some());
     }
 
+    fn test_compute_or_rollups_true() {
+        let work_dir = PathBuf::from("/tmp/0x12345678");
+        remove_directory(&work_dir).unwrap();
+        create_directory(&work_dir).unwrap();
+        let access = ComputeStateAccess::new(
+            Some(Vec::new()),
+            Vec::new(),
+            String::from("0x12345678"),
+            "/tmp",
+        )
+        .unwrap();
+
+        assert!(matches!(access.handle_rollups, true));
+    }
+
+    fn test_compute_or_rollups_false() {
+        let work_dir = PathBuf::from("/tmp/0x12345678");
+        remove_directory(&work_dir).unwrap();
+        create_directory(&work_dir).unwrap();
+        let access =
+            ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp").unwrap();
+
+        assert!(matches!(access.handle_rollups, false));
+    }
+
     #[test]
     fn test_deserialize() {
         let json_str_1 = r#"{"leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
         let inputs_and_leafs_1: InputsAndLeafs = serde_json::from_str(json_str_1).unwrap();
-        assert_eq!(inputs_and_leafs_1.inputs.len(), 0);
+        assert_eq!(inputs_and_leafs_1.inputs.unwrap_or_default().len(), 0);
         assert_eq!(inputs_and_leafs_1.leafs.len(), 2);
         assert_eq!(
             inputs_and_leafs_1.leafs[0].0,
@@ -307,14 +346,15 @@ mod compute_state_access_tests {
 
         let json_str_2 = r#"{"inputs": [], "leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
         let inputs_and_leafs_2: InputsAndLeafs = serde_json::from_str(json_str_2).unwrap();
-        assert_eq!(inputs_and_leafs_2.inputs.len(), 0);
+        assert_eq!(inputs_and_leafs_2.inputs.unwrap_or_default().len(), 0);
         assert_eq!(inputs_and_leafs_2.leafs.len(), 2);
 
         let json_str_3 = r#"{"inputs": ["0x12345678", "0x22345678"], "leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
         let inputs_and_leafs_3: InputsAndLeafs = serde_json::from_str(json_str_3).unwrap();
-        assert_eq!(inputs_and_leafs_3.inputs.len(), 2);
+        let inputs_3 = inputs_and_leafs_3.inputs.unwrap();
+        assert_eq!(inputs_3.len(), 2);
         assert_eq!(inputs_and_leafs_3.leafs.len(), 2);
-        assert_eq!(inputs_and_leafs_3.inputs[0].0, [18, 52, 86, 120]);
-        assert_eq!(inputs_and_leafs_3.inputs[1].0, [34, 52, 86, 120]);
+        assert_eq!(inputs_3[0].0, [18, 52, 86, 120]);
+        assert_eq!(inputs_3[1].0, [34, 52, 86, 120]);
     }
 }

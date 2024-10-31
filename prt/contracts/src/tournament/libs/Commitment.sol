@@ -24,9 +24,7 @@ library Commitment {
         Tree.Node expectedCommitment =
             getRoot(Machine.Hash.unwrap(state), treeHeight, position, hashProof);
 
-        require(
-            commitment.eq(expectedCommitment), "commitment state doesn't match"
-        );
+        require(commitment.eq(expectedCommitment), "commitment state mismatch");
     }
 
     function isEven(uint256 x) private pure returns (bool) {

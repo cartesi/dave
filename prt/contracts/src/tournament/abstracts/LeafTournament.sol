@@ -61,14 +61,14 @@ abstract contract LeafTournament is Tournament {
         Tree.Node _rightNode,
         bytes calldata proofs
     ) external tournamentNotFinished {
-        Match.State storage _matchState = matches[_matchId.hashFromId()];
-        _matchState.requireExist();
-        _matchState.requireIsFinished();
-
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
         _clockOne.requireInitialized();
         _clockTwo.requireInitialized();
+
+        Match.State storage _matchState = matches[_matchId.hashFromId()];
+        _matchState.requireExist();
+        _matchState.requireIsFinished();
 
         (
             Machine.Hash _agreeHash,
@@ -77,81 +77,38 @@ abstract contract LeafTournament is Tournament {
             Machine.Hash _finalStateTwo
         ) = _matchState.getDivergence(startCycle);
 
-        Machine.Hash _finalState = runMetaStep(_agreeHash, _agreeCycle, proofs);
+        Machine.Hash _finalState = Machine.Hash.wrap(
+            metaStep(Machine.Hash.unwrap(_agreeHash), _agreeCycle, proofs)
+        );
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
-            require(
-                _finalState.eq(_finalStateOne), "final state one doesn't match"
-            );
+            require(_finalState.eq(_finalStateOne), "final state one mismatch");
 
             _clockOne.setPaused();
             pairCommitment(
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
-            require(
-                _finalState.eq(_finalStateTwo), "final state two doesn't match"
-            );
+            require(_finalState.eq(_finalStateTwo), "final state two mismatch");
 
             _clockTwo.setPaused();
             pairCommitment(
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
         } else {
-            revert("wrong left/right nodes for step");
+            revert("wrong nodes for step");
         }
 
         // delete storage
         deleteMatch(_matchId.hashFromId());
     }
 
-    function runMetaStep(
-        Machine.Hash machineState,
-        uint256 counter,
-        bytes memory proofs
-    ) internal view returns (Machine.Hash) {
-        if (address(provider) == address(0)) {
-            return Machine.Hash.wrap(
-                computeMetaStep(
-                    Machine.Hash.unwrap(machineState), counter, proofs
-                )
-            );
-        } else {
-            return Machine.Hash.wrap(
-                rollupsMetaStep(
-                    Machine.Hash.unwrap(machineState), counter, proofs
-                )
-            );
-        }
-    }
-
-    // this is a inputless version of the meta step implementation primarily used for testing
-    function computeMetaStep(
-        bytes32 machineState,
-        uint256 counter,
-        bytes memory proofs
-    ) internal pure returns (bytes32 newMachineState) {
-        // TODO: create a more convinient constructor.
-        AccessLogs.Context memory accessLogs =
-            AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-
-        uint256 uarch_step_mask =
-            (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
-
-        if ((counter + 1) & uarch_step_mask == 0) {
-            UArchReset.reset(accessLogs);
-        } else {
-            UArchStep.step(accessLogs);
-        }
-        newMachineState = accessLogs.currentRootHash;
-    }
-
     // TODO: move to step repo
-    function rollupsMetaStep(
+    function metaStep(
         bytes32 machineState,
         uint256 counter,
-        bytes memory proofs
-    ) internal pure returns (bytes32 newMachineState) {
+        bytes calldata proofs
+    ) internal view returns (bytes32 newMachineState) {
         // TODO: create a more convinient constructor.
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
@@ -160,27 +117,46 @@ abstract contract LeafTournament is Tournament {
             (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
         uint256 big_step_mask = (
             1
-                << (
-                    ArbitrationConstants.LOG2_EMULATOR_SPAN
-                        + ArbitrationConstants.LOG2_UARCH_SPAN
-                ) - 1
-        );
+                << ArbitrationConstants.LOG2_EMULATOR_SPAN
+                    + ArbitrationConstants.LOG2_UARCH_SPAN
+        ) - 1;
 
-        if (counter & big_step_mask == 0) {
-            // TODO: add inputs
-            (bytes32 inputMerkleRoot, uint64 inputLength) =
-                provider.gio(namespace, id, extra);
-            SendCmioResponse.sendCmioResponse(
-                EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
-                inputMerkleRoot,
-                inputLength,
-                accessLogs
-            );
-            UArchStep.step(accessLogs);
-        } else if ((counter + 1) & uarch_step_mask == 0) {
-            UArchReset.reset(accessLogs);
+        if (address(provider) == address(0)) {
+            // this is a inputless version of the meta step implementation primarily used for testing
+            if ((counter + 1) & uarch_step_mask == 0) {
+                UArchReset.reset(accessLogs);
+            } else {
+                UArchStep.step(accessLogs);
+            }
         } else {
-            UArchStep.step(accessLogs);
+            // rollups meta step handles input
+            if (counter & big_step_mask == 0) {
+                (uint256 inputLength,) = abi.decode(proofs, (uint256, bytes));
+                bytes calldata input = proofs[32:32 + inputLength];
+                uint256 inputIndex = counter
+                    >> (
+                        ArbitrationConstants.LOG2_EMULATOR_SPAN
+                            + ArbitrationConstants.LOG2_UARCH_SPAN
+                    ); // TODO: add input index offset of the epoch
+
+                (bytes32 inputMerkleRoot,) =
+                    provider.gio(0, abi.encode(inputIndex), input);
+                accessLogs = AccessLogs.Context(
+                    machineState, Buffer.Context(proofs, 32 + inputLength)
+                );
+                // TODO: contract size too big...
+                // SendCmioResponse.sendCmioResponse(
+                //     accessLogs,
+                //     EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
+                //     inputMerkleRoot,
+                //     uint32(inputLength)
+                // );
+                UArchStep.step(accessLogs);
+            } else if ((counter + 1) & uarch_step_mask == 0) {
+                UArchReset.reset(accessLogs);
+            } else {
+                UArchStep.step(accessLogs);
+            }
         }
         newMachineState = accessLogs.currentRootHash;
     }

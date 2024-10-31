@@ -22,13 +22,11 @@ pub struct MachineCommitment {
 /// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle and leafs.
 pub fn build_machine_commitment_from_leafs<L>(
     machine: &mut MachineInstance,
-    base_cycle: u64,
     leafs: Vec<(L, u64)>,
 ) -> Result<MachineCommitment>
 where
     L: Into<Arc<MerkleTree>>,
 {
-    machine.run(base_cycle)?;
     let initial_state = machine.machine_state()?;
     let mut builder = MerkleBuilder::default();
     for leaf in leafs {
@@ -81,7 +79,6 @@ pub fn build_big_machine_commitment(
     log2_stride_count: u64,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    machine.run(base_cycle)?;
     snapshot_base_cycle(machine, base_cycle, db)?;
     let initial_state = machine.machine_state()?;
 
@@ -145,7 +142,6 @@ pub fn build_small_machine_commitment(
     log2_stride_count: u64,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    machine.run(base_cycle)?;
     snapshot_base_cycle(machine, base_cycle, db)?;
     let initial_state = machine.machine_state()?;
 

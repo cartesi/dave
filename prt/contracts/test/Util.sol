@@ -66,7 +66,18 @@ contract Util {
         }
     }
 
-    function generateProof(uint256 _player, uint64 _height)
+    function generateDivergenceProof(uint256 _player, uint64 _height)
+        internal
+        view
+        returns (bytes32[] memory)
+    {
+        bytes32[] memory _proof = generateFinalStateProof(_player, _height);
+        _proof[0] = Tree.Node.unwrap(playerNodes[_player][0]);
+
+        return _proof;
+    }
+
+    function generateFinalStateProof(uint256 _player, uint64 _height)
         internal
         view
         returns (bytes32[] memory)
@@ -171,21 +182,27 @@ contract Util {
         if (_player == 0) {
             _tournament.joinTournament(
                 ONE_STATE,
-                generateProof(_player, ArbitrationConstants.height(_level)),
+                generateFinalStateProof(
+                    _player, ArbitrationConstants.height(_level)
+                ),
                 playerNodes[0][ArbitrationConstants.height(_level) - 1],
                 playerNodes[0][ArbitrationConstants.height(_level) - 1]
             );
         } else if (_player == 1) {
             _tournament.joinTournament(
                 TWO_STATE,
-                generateProof(_player, ArbitrationConstants.height(_level)),
+                generateFinalStateProof(
+                    _player, ArbitrationConstants.height(_level)
+                ),
                 playerNodes[1][ArbitrationConstants.height(_level) - 1],
                 playerNodes[1][ArbitrationConstants.height(_level) - 1]
             );
         } else if (_player == 2) {
             _tournament.joinTournament(
                 TWO_STATE,
-                generateProof(_player, ArbitrationConstants.height(_level)),
+                generateFinalStateProof(
+                    _player, ArbitrationConstants.height(_level)
+                ),
                 playerNodes[0][ArbitrationConstants.height(_level) - 1],
                 playerNodes[2][ArbitrationConstants.height(_level) - 1]
             );
@@ -206,7 +223,7 @@ contract Util {
             _left,
             _right,
             ONE_STATE,
-            generateProof(_player, ArbitrationConstants.height(0))
+            generateDivergenceProof(_player, ArbitrationConstants.height(0))
         );
     }
 
@@ -236,7 +253,7 @@ contract Util {
             _left,
             _right,
             ONE_STATE,
-            generateProof(_player, ArbitrationConstants.height(0))
+            generateDivergenceProof(_player, ArbitrationConstants.height(0))
         );
     }
 
