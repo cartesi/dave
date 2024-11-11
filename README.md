@@ -13,7 +13,7 @@ Dave is a permissionless, interactive fraud-proof system. This repo contains the
 This project uses git submodules.
 Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
 
-To run the Lua node, follow the instructions [here](prt/lua_poc/README.md).
+To run the PRT Lua node, follow the instructions [here](prt/tests/compute/README.md).
 
 
 ## What's in a name
@@ -51,14 +51,18 @@ As long as one can provide a self-contained state-transition function, Dave will
 
 ### Permissionless Refereed Tournaments
 
-The first implementation of Dave is based on the Permissionless Refereed Tournaments primitive.
+The first implementation of Dave is based on the Permissionless Refereed Tournaments (PRT) primitive.
 The paper can be found [here](https://arxiv.org/abs/2212.12439).
-The maximum delay grows logarithmically on the number of Sybils, whereas the computation resources and stakes are constant, and don't grow on the number of Sybils.
+The maximum delay and expenses grow logarithmically on the number of Sybils, and hardware and bonds are both low and constant, regardless of the number of Sybils.
+As such, the defenders have an exponential resource advantage over the attackers (making the algorithm secure), it's easy to become a validator (low bonds and hardware requirements, making the algorithm decentralized), and delay grows slowly.
 
 
 ### Dave fraud-proof algorithm
 
-Coming soon.
+Although delay grows logarithmically in the Permissionless Refereed Tournaments (PRT) algorithm, the constant multiplying this logarithm is high, harming its liveness.
+
+The second implementation of Dave will be based on the eponymous Dave algorithm, which improves the liveness of PRT, while maintaining its attractive security and decentralization properties.
+We've published our initial research [here](https://arxiv.org/abs/2411.05463).
 
 
 ## Status
