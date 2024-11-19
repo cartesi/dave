@@ -93,6 +93,9 @@ abstract contract NonLeafTournament is Tournament {
         emit newInnerTournament(_matchId.hashFromId(), _inner);
     }
 
+    error ChildTournamentNotFinished();
+    error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
+
     function winInnerMatch(
         NonRootTournament _childTournament,
         Tree.Node _leftNode,
@@ -108,11 +111,14 @@ abstract contract NonLeafTournament is Tournament {
 
         (bool finished, Tree.Node _winner, Tree.Node _innerWinner) =
             _childTournament.innerTournamentWinner();
-        require(finished, "child tournament is not finished");
+        require(finished, ChildTournamentNotFinished());
         _winner.requireExist();
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
-        require(_commitmentRoot.eq(_winner), "tournament winner is different");
+        require(
+            _commitmentRoot.eq(_winner),
+            WrongTournamentWinner(_commitmentRoot, _winner)
+        );
 
         (Clock.State memory _innerClock,) =
             _childTournament.getCommitment(_innerWinner);

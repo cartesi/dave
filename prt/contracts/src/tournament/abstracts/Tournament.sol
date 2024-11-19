@@ -70,14 +70,17 @@ abstract contract Tournament {
     //
     // Modifiers
     //
+    error TournamentIsFinished();
+    error TournamentIsClosed();
+
     modifier tournamentNotFinished() {
-        require(!isFinished(), "tournament is finished");
+        require(!isFinished(), TournamentIsFinished());
 
         _;
     }
 
     modifier tournamentOpen() {
-        require(!isClosed(), "tournament check-in elapsed");
+        require(!isClosed(), TournamentIsClosed());
 
         _;
     }
@@ -166,6 +169,11 @@ abstract contract Tournament {
         clocks[_matchId.commitmentTwo].advanceClock();
     }
 
+    error WrongChildren(
+        uint256 commitment, Tree.Node parent, Tree.Node left, Tree.Node right
+    );
+    error WinByTimeout();
+
     function winMatchByTimeout(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
@@ -181,7 +189,7 @@ abstract contract Tournament {
         if (_clockOne.hasTimeLeft() && !_clockTwo.hasTimeLeft()) {
             require(
                 _matchId.commitmentOne.verify(_leftNode, _rightNode),
-                "child nodes do not match parent (commitmentOne)"
+                WrongChildren(1, _matchId.commitmentOne, _leftNode, _rightNode)
             );
 
             _clockOne.deduct(_clockTwo.timeSinceTimeout());
@@ -191,7 +199,7 @@ abstract contract Tournament {
         } else if (!_clockOne.hasTimeLeft() && _clockTwo.hasTimeLeft()) {
             require(
                 _matchId.commitmentTwo.verify(_leftNode, _rightNode),
-                "child nodes do not match parent (commitmentTwo)"
+                WrongChildren(2, _matchId.commitmentTwo, _leftNode, _rightNode)
             );
 
             _clockTwo.deduct(_clockOne.timeSinceTimeout());
@@ -199,12 +207,14 @@ abstract contract Tournament {
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
         } else {
-            revert("cannot win by timeout");
+            revert WinByTimeout();
         }
 
         // delete storage
         deleteMatch(_matchId.hashFromId());
     }
+
+    error EliminateByTimeout();
 
     function eliminateMatchByTimeout(Match.Id calldata _matchId)
         external
@@ -231,7 +241,7 @@ abstract contract Tournament {
             // delete storage
             deleteMatch(_matchId.hashFromId());
         } else {
-            revert("cannot eliminate by timeout");
+            revert EliminateByTimeout();
         }
     }
 
@@ -293,13 +303,15 @@ abstract contract Tournament {
     //
     // Helper functions
     //
+    error InvalidContestedFinalState(Machine.Hash finalState);
+
     function requireValidContestedFinalState(Machine.Hash _finalState)
         internal
         view
     {
         require(
             validContestedFinalState(_finalState),
-            "tournament doesn't have contested final state"
+            InvalidContestedFinalState(_finalState)
         );
     }
 

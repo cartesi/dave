@@ -55,6 +55,11 @@ abstract contract LeafTournament is Tournament {
         );
     }
 
+    error WrongFinalState(
+        uint256 commitment, Machine.Hash expected, Machine.Hash got
+    );
+    error WrongNodesForStep();
+
     function winLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
@@ -82,21 +87,27 @@ abstract contract LeafTournament is Tournament {
         );
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
-            require(_finalState.eq(_finalStateOne), "final state one mismatch");
+            require(
+                _finalState.eq(_finalStateOne),
+                WrongFinalState(1, _finalState, _finalStateOne)
+            );
 
             _clockOne.setPaused();
             pairCommitment(
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
-            require(_finalState.eq(_finalStateTwo), "final state two mismatch");
+            require(
+                _finalState.eq(_finalStateTwo),
+                WrongFinalState(2, _finalState, _finalStateTwo)
+            );
 
             _clockTwo.setPaused();
             pairCommitment(
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
         } else {
-            revert("wrong nodes for step");
+            revert WrongNodesForStep();
         }
 
         // delete storage
@@ -144,13 +155,12 @@ abstract contract LeafTournament is Tournament {
                 accessLogs = AccessLogs.Context(
                     machineState, Buffer.Context(proofs, 32 + inputLength)
                 );
-                // TODO: contract size too big...
-                // SendCmioResponse.sendCmioResponse(
-                //     accessLogs,
-                //     EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
-                //     inputMerkleRoot,
-                //     uint32(inputLength)
-                // );
+                SendCmioResponse.sendCmioResponse(
+                    accessLogs,
+                    EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
+                    inputMerkleRoot,
+                    uint32(inputLength)
+                );
                 UArchStep.step(accessLogs);
             } else if ((counter + 1) & uarch_step_mask == 0) {
                 UArchReset.reset(accessLogs);
