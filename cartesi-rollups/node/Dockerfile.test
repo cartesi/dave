@@ -8,7 +8,7 @@ RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-COPY --from=ethereum/solc:0.8.23 /usr/bin/solc /usr/bin/solc
+COPY --from=ethereum/solc:0.8.27 /usr/bin/solc /usr/bin/solc
 RUN chmod u+x /usr/bin/solc
 
 WORKDIR /app

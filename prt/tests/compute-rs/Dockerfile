@@ -29,7 +29,7 @@ WORKDIR /app/prt/tests/compute-rs
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build application
-COPY --from=ethereum/solc:0.8.23 /usr/bin/solc /usr/bin/solc
+COPY --from=ethereum/solc:0.8.27 /usr/bin/solc /usr/bin/solc
 RUN chmod u+x /usr/bin/solc
 
 COPY ./prt /app/prt

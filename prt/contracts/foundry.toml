@@ -7,6 +7,7 @@ allow_paths = ['../../machine/step/']
 remappings = [
     'step/=../../machine/step/',
 ]
+solc-version = "0.8.27"
 
 [fmt]
 line_length = 80
