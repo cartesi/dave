@@ -1,4 +1,5 @@
 use anyhow::Result;
+use cartesi_prt_core::arena::EthArenaSender;
 use clap::Parser;
 use dave_rollups::{
     create_blockchain_reader_task, create_compute_runner_task, create_epoch_manager_task,
@@ -20,10 +21,14 @@ async fn main() -> Result<()> {
         &parameters.path_to_db,
     )?)?);
 
+    let arena_sender = EthArenaSender::new(&parameters.blockchain_config)?;
+    let client = arena_sender.client();
+
     let blockchain_reader_task = create_blockchain_reader_task(state_manager.clone(), &parameters);
-    let epoch_manager_task = create_epoch_manager_task(state_manager.clone(), &parameters);
+    let epoch_manager_task = create_epoch_manager_task(client, state_manager.clone(), &parameters);
     let machine_runner_task = create_machine_runner_task(state_manager.clone(), &parameters);
-    let compute_runner_task = create_compute_runner_task(state_manager.clone(), &parameters);
+    let compute_runner_task =
+        create_compute_runner_task(arena_sender, state_manager.clone(), &parameters);
 
     let (_blockchain_reader_res, _epoch_manager_res, _machine_runner_res, _compute_runner_res) = futures::join!(
         blockchain_reader_task,

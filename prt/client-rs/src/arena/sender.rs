@@ -75,6 +75,10 @@ impl EthArenaSender {
         })
     }
 
+    pub fn client(&self) -> Arc<SenderFiller> {
+        self.client.clone()
+    }
+
     pub async fn nonce(&self) -> std::result::Result<u64, RpcError<TransportErrorKind>> {
         Ok(self
             .client

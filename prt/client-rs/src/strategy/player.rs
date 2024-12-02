@@ -359,8 +359,8 @@ impl Player {
 
             let proof = {
                 let mut machine = MachineInstance::new(&self.machine_path)?;
-                if let Some(snapshot_path) = self.db.closest_snapshot(cycle)? {
-                    machine.load_snapshot(&PathBuf::from(snapshot_path))?;
+                if let Some(snapshot) = self.db.closest_snapshot(cycle)? {
+                    machine.load_snapshot(&snapshot.1, snapshot.0)?;
                 };
                 let inputs = self.db.inputs()?;
                 machine.get_logs(cycle, ucycle, inputs, self.db.handle_rollups)?

@@ -11,9 +11,10 @@ COPY ./machine/rust-bindings /app/machine/rust-bindings
 COPY ./common-rs /app/common-rs
 COPY ./prt/client-rs /app/prt/client-rs
 COPY ./prt/contract-bindings /app/prt/contract-bindings
-COPY ./prt/tests/compute-rs /app/prt/tests/compute-rs
+COPY ./cartesi-rollups/contract-bindings /app/cartesi-rollups/contract-bindings
+COPY ./cartesi-rollups/node /app/cartesi-rollups/node
 
-WORKDIR /app/prt/tests/compute-rs
+WORKDIR  /app/cartesi-rollups/node
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
@@ -21,51 +22,45 @@ COPY ./machine /app/machine
 COPY ./common-rs /app/common-rs
 COPY ./prt/client-rs /app/prt/client-rs
 COPY ./prt/contract-bindings /app/prt/contract-bindings
+COPY ./cartesi-rollups/contract-bindings /app/cartesi-rollups/contract-bindings
 COPY ./.git /app/.git
-COPY --from=planner /app/prt/tests/compute-rs/recipe.json /app/prt/tests/compute-rs/recipe.json
+COPY --from=planner /app/cartesi-rollups/node/recipe.json /app/cartesi-rollups/node/recipe.json
 
 # Build dependencies - this is the caching Docker layer!
-WORKDIR /app/prt/tests/compute-rs
+WORKDIR /app/cartesi-rollups/node
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build application
 COPY --from=ethereum/solc:0.8.27 /usr/bin/solc /usr/bin/solc
 RUN chmod u+x /usr/bin/solc
 
-COPY ./prt /app/prt
+COPY ./cartesi-rollups /app/cartesi-rollups
 
-WORKDIR /app/prt/tests/compute-rs
-RUN cargo build --release --bin cartesi-prt-compute
+WORKDIR /app/cartesi-rollups/node
+RUN cargo build --release --bin dave-rollups
 
 FROM --platform=linux/amd64 cartesi/machine-emulator:0.18.1
 
 USER root
 RUN apt-get update && \
-    apt-get install -y procps curl xxd clang
+    apt-get install -y procps curl xxd clang sqlite3
 ENV FOUNDRY_NIGHTLY nightly-805d7cee81e78e9163b8ce3d86a0c3beb39772d4
 RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_NIGHTLY}/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
     tar -zx -C /usr/local/bin
 
-# prepare debootstrap machine
-WORKDIR /root/program
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.8-rc-test/debootstrap-machine-sparsed.tar.gz | \
-    tar -zx -C /root/program
-
-# prepare doom-showcase machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.9-rc-test/doom-compute-machine.tar.gz | \
-    tar -zx -C /root/program
-
-# prepare simple machine
-RUN curl -sSL https://github.com/cartesi/dave/releases/download/v0.0.10-rc-test/simple-program.tar.gz | \
-    tar -zx -C /root/program
+# prepare echo machine
+WORKDIR /root/program/
+COPY ./cartesi-rollups/tests/rollups/program/echo/echo-program.tar.gz /root/program/
+RUN tar -zx -f /root/program/echo-program.tar.gz
 
 COPY ./machine/step /root/machine/step
 COPY ./prt /root/prt
-COPY --from=builder /app/prt/tests/compute-rs/target/release/cartesi-prt-compute /root/prt/tests/compute/cartesi-prt-compute
+COPY ./cartesi-rollups /root/cartesi-rollups
+COPY --from=builder /app/cartesi-rollups/node/target/release/dave-rollups /root/cartesi-rollups/tests/rollups/dave-rollups
 
-WORKDIR /root/prt/contracts
+WORKDIR /root/cartesi-rollups/contracts
 RUN forge --version
 RUN forge build
 
-WORKDIR /root/prt/tests/compute
-ENTRYPOINT ["./entrypoint.sh"]
+WORKDIR /root/cartesi-rollups/tests/rollups
+ENTRYPOINT ["./prt_rollups.lua"]

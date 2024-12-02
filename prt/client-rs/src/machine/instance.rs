@@ -8,7 +8,9 @@ use cartesi_machine::{
     log::{AccessLog, AccessLogType},
     machine::Machine,
 };
+use log::debug;
 
+use alloy::hex::ToHexExt;
 use anyhow::Result;
 use ruint::aliases::U256;
 use std::path::Path;
@@ -17,6 +19,7 @@ use std::path::Path;
 pub struct MachineState {
     pub root_hash: Digest,
     pub halted: bool,
+    pub yielded: bool,
     pub uhalted: bool,
 }
 
@@ -24,8 +27,10 @@ impl std::fmt::Display for MachineState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{{root_hash = {:?}, halted = {}, uhalted = {}}}",
-            self.root_hash, self.halted, self.uhalted
+            "{{root_hash = {}, halted = {}, uhalted = {}}}",
+            self.root_hash.to_hex(),
+            self.halted,
+            self.uhalted
         )
     }
 }
@@ -61,18 +66,21 @@ impl MachineInstance {
     }
 
     // load inner machine with snapshot, update cycle, keep everything else the same
-    pub fn load_snapshot(&mut self, snapshot_path: &Path) -> Result<()> {
+    pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
         let machine = Machine::load(&Path::new(snapshot_path), RuntimeConfig::default())?;
 
         let cycle = machine.read_mcycle()?;
 
         // Machine can not go backward behind the initial machine
         assert!(cycle >= self.start_cycle);
-        self.cycle = cycle - self.start_cycle;
+        self.cycle = snapshot_cycle;
 
         assert_eq!(machine.read_uarch_cycle()?, 0);
 
         self.machine = machine;
+
+        debug!("load from {}", snapshot_path.display());
+        debug!("loaded machine {}", self.machine_state()?);
 
         Ok(())
     }
@@ -104,7 +112,8 @@ impl MachineInstance {
         let mut logs = Vec::new();
         if handle_rollups {
             // treat it as rollups
-            self.run_with_inputs(cycle, &inputs)?;
+            self.run_with_inputs(cycle - 1, &inputs)?;
+            self.run(cycle)?;
 
             let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
             let input = inputs.get((cycle >> constants::LOG2_EMULATOR_SPAN) as usize);
@@ -146,6 +155,7 @@ impl MachineInstance {
     }
 
     pub fn run(&mut self, cycle: u64) -> Result<()> {
+        debug!("self cycle: {}, target cycle: {}", self.cycle, cycle);
         assert!(self.cycle <= cycle);
 
         let physical_cycle = arithmetic::add_and_clamp(self.start_cycle, cycle);
@@ -153,6 +163,11 @@ impl MachineInstance {
         loop {
             let halted = self.machine.read_iflags_h()?;
             if halted {
+                break;
+            }
+
+            let yielded = self.machine.read_iflags_y()?;
+            if yielded {
                 break;
             }
 
@@ -183,6 +198,9 @@ impl MachineInstance {
     }
 
     pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<()> {
+        debug!("current cycle: {}", self.cycle);
+        debug!("target cycle: {}", cycle);
+
         let input_mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
         let current_input_index = self.cycle >> constants::LOG2_EMULATOR_SPAN;
 
@@ -193,20 +211,31 @@ impl MachineInstance {
         } else {
             next_input_index = current_input_index + 1;
         }
-
         let mut next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
 
-        while next_input_cycle < cycle {
+        while next_input_cycle <= cycle {
+            debug!("next input index: {}", next_input_index);
+            debug!("run to next input cycle: {}", next_input_cycle);
             self.run(next_input_cycle)?;
             let input = inputs.get(next_input_index as usize);
             if let Some(data) = input {
+                debug!(
+                    "before input, machine state: {}",
+                    self.machine.get_root_hash()?
+                );
+                debug!("input: 0x{}", data.encode_hex());
                 self.machine
                     .send_cmio_response(htif::fromhost::ADVANCE_STATE, data)?;
+                debug!(
+                    "after input, machine state: {}",
+                    self.machine.get_root_hash()?
+                );
             }
 
             next_input_index += 1;
             next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
         }
+        debug!("run to target cycle: {}", cycle);
         self.run(cycle)?;
 
         Ok(())
@@ -228,11 +257,13 @@ impl MachineInstance {
     pub fn machine_state(&mut self) -> Result<MachineState> {
         let root_hash = self.machine.get_root_hash()?;
         let halted = self.machine.read_iflags_h()?;
+        let yielded = self.machine.read_iflags_y()?;
         let uhalted = self.machine.read_uarch_halt_flag()?;
 
         Ok(MachineState {
             root_hash: Digest::from_digest(root_hash.as_bytes())?,
             halted,
+            yielded,
             uhalted,
         })
     }

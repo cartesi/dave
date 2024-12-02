@@ -137,4 +137,18 @@ function helper.is_pid_alive(pid)
     return false         -- Returns false if the process is not alive
 end
 
+-- Function to create a directory and its parents using os.execute
+function helper.mkdir_p(path)
+    -- Use os.execute to call the mkdir command with -p option
+    local command = "mkdir -p " .. path
+    local result = os.execute(command)
+
+    -- Check if the command was successful
+    if result then
+        print("Directory created successfully: " .. path)
+    else
+        print("Failed to create directory: " .. path)
+    end
+end
+
 return helper

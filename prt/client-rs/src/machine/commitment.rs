@@ -123,7 +123,7 @@ fn advance_instruction(
     let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN);
     machine.run(base_cycle + cycle)?;
     let state = machine.machine_state()?;
-    let control_flow = if state.halted {
+    let control_flow = if state.halted | state.yielded {
         leafs.push((state.root_hash, instruction_count - instruction + 1));
         builder.append_repeated(state.root_hash, instruction_count - instruction + 1);
         ControlFlow::Break(())
@@ -182,6 +182,12 @@ fn snapshot_base_cycle(
     base_cycle: u64,
     db: &ComputeStateAccess,
 ) -> Result<()> {
+    let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+    if db.handle_rollups && base_cycle & mask == 0 && !machine.machine_state()?.yielded {
+        // don't snapshot a machine state that's freshly fed with input without advance
+        return Ok(());
+    }
+
     let snapshot_path = db.work_path.join(format!("{}", base_cycle));
     machine.snapshot(&snapshot_path)?;
     Ok(())
