@@ -7,6 +7,7 @@ local consts = require "computation.constants"
 local ulte = arithmetic.ulte
 
 local save_snapshot = true
+local handle_rollups = false
 
 local function run_uarch_span(machine)
     assert(machine.ucycle == 0)
@@ -38,7 +39,7 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
     local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
-        machine:take_snapshot(snapshot_dir, base_cycle)
+        machine:take_snapshot(snapshot_dir, base_cycle, handle_rollups)
     end
     local initial_state = machine_state.root_hash
 
@@ -63,7 +64,7 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
     local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
-        machine:take_snapshot(snapshot_dir, base_cycle)
+        machine:take_snapshot(snapshot_dir, base_cycle, handle_rollups)
     end
     local initial_state = machine_state.root_hash
 
@@ -75,13 +76,13 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
         local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
         machine_state = machine:run(base_cycle + cycle)
 
-        if not machine_state.halted then
-            builder:add(machine_state.root_hash)
-            instruction = instruction + 1
-        else
+        if machine_state.halted or machine_state.yielded then
             -- add this loop plus all remainings
             builder:add(machine_state.root_hash, instruction_count - instruction + 1)
             break
+        else
+            builder:add(machine_state.root_hash)
+            instruction = instruction + 1
         end
     end
 
@@ -93,9 +94,11 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
     machine:load_snapshot(snapshot_dir, base_cycle)
     if inputs then
         -- treat it as rollups
+        handle_rollups = true
         machine:run_with_inputs(base_cycle, inputs)
     else
         -- treat it as compute
+        handle_rollups = false
         machine:run(base_cycle)
     end
 

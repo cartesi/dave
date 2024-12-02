@@ -57,6 +57,9 @@ impl ComputeStateAccess {
         // the json file should be "/compute_data/0x_root_tournament_address/inputs_and_leafs.json"
         let work_dir = format!("{compute_data_path}/{root_tournament}");
         let work_path = PathBuf::from(work_dir);
+        if !work_path.exists() {
+            fs::create_dir_all(&work_path)?;
+        }
         let db_path = work_path.join("db");
         let no_create_flags = OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE;
         let handle_rollups;
@@ -71,8 +74,7 @@ impl ComputeStateAccess {
                 });
             }
             Err(_) => {
-                // create new database
-                info!("create new database");
+                info!("create new database for dispute");
                 let mut connection = Connection::open(&db_path)?;
                 migrations::migrate_to_latest(&mut connection).unwrap();
 
@@ -164,7 +166,7 @@ impl ComputeStateAccess {
         compute_data::insert_compute_tree(&conn, tree_root, tree_leafs)
     }
 
-    pub fn closest_snapshot(&self, base_cycle: u64) -> Result<Option<PathBuf>> {
+    pub fn closest_snapshot(&self, base_cycle: u64) -> Result<Option<(u64, PathBuf)>> {
         let mut snapshots = Vec::new();
 
         // iterate through the snapshot directory, find the one whose cycle number is closest to the base_cycle
@@ -188,7 +190,7 @@ impl ComputeStateAccess {
             .binary_search_by_key(&base_cycle, |k| k.0)
             .unwrap_or_else(|x| if x > 0 { x - 1 } else { x });
 
-        Ok(snapshots.get(pos).map(|t| t.1.clone()))
+        Ok(snapshots.get(pos).map(|t| t.clone()))
     }
 }
 
@@ -237,37 +239,37 @@ mod compute_state_access_tests {
 
             assert_eq!(
                 access.closest_snapshot(100).unwrap(),
-                Some(access.work_path.join(format!("99")))
+                Some((99, access.work_path.join(format!("99"))))
             );
 
             assert_eq!(
                 access.closest_snapshot(150).unwrap(),
-                Some(access.work_path.join(format!("150")))
+                Some((150, access.work_path.join(format!("150"))))
             );
 
             assert_eq!(
                 access.closest_snapshot(200).unwrap(),
-                Some(access.work_path.join(format!("200")))
+                Some((200, access.work_path.join(format!("200"))))
             );
 
             assert_eq!(
                 access.closest_snapshot(300).unwrap(),
-                Some(access.work_path.join(format!("300")))
+                Some((300, access.work_path.join(format!("300"))))
             );
 
             assert_eq!(
                 access.closest_snapshot(7).unwrap(),
-                Some(access.work_path.join(format!("5")))
+                Some((5, access.work_path.join(format!("5"))))
             );
 
             assert_eq!(
                 access.closest_snapshot(10000).unwrap(),
-                Some(access.work_path.join(format!("300")))
+                Some((300, access.work_path.join(format!("300"))))
             );
 
             assert_eq!(
                 access.closest_snapshot(100000).unwrap(),
-                Some(access.work_path.join(format!("99999")))
+                Some((9999, access.work_path.join(format!("99999"))))
             );
         }
 

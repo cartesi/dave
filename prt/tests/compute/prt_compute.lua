@@ -36,27 +36,42 @@ local function write_json_file(leafs, root_tournament)
 
     local flat = require "utils.flat"
     local json = require "utils.json"
-    local file_path = string.format("/compute_data/%s/inputs_and_leafs.json", root_tournament)
+    local work_path = string.format("/compute_data/%s", root_tournament)
+    if not helper.exists(work_path) then
+        helper.mkdir_p(work_path)
+    end
+    local file_path = string.format("%s/inputs_and_leafs.json", work_path)
     local file = assert(io.open(file_path, "w"))
     file:write(json.encode(flat.flatten(inputs_and_leafs).flat_object))
     assert(file:close())
 end
 
+local function get_root_constants(root_tournament)
+    local Reader = require "player.reader"
+    local reader = Reader:new(blockchain_constants.endpoint)
+    local root_constants = reader:read_constants(root_tournament)
+
+    return root_constants
+end
+
 -- Function to setup players
-local function setup_players(use_lua_node, extra_data, root_constants, root_tournament, machine_path)
+local function setup_players(use_lua_node, extra_data, root_tournament, machine_path)
+    local root_constants = get_root_constants(root_tournament)
+
+    local inputs = nil
     local player_coroutines = {}
     local player_index = 1
     print("Calculating root commitment...")
     local snapshot_dir = string.format("/compute_data/%s", root_tournament)
     local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
-    local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height, nil)
+    local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height, inputs)
 
     if use_lua_node then
         -- use Lua node to defend
         print("Setting up Lua honest player")
         local start_hero = require "runners.hero_runner"
         player_coroutines[player_index] = start_hero(player_index, machine_path, root_commitment, root_tournament,
-            extra_data)
+            extra_data, inputs)
     else
         -- use Rust node to defend
         print("Setting up Rust honest player")
@@ -72,7 +87,7 @@ local function setup_players(use_lua_node, extra_data, root_constants, root_tour
         local scoped_require = new_scoped_require(_ENV)
         local start_sybil = scoped_require "runners.sybil_runner"
         player_coroutines[player_index] = start_sybil(player_index, machine_path, root_commitment, root_tournament,
-            FAKE_COMMITMENT_COUNT)
+            FAKE_COMMITMENT_COUNT, inputs)
         player_index = player_index + 1
     end
 
@@ -89,12 +104,38 @@ local function setup_players(use_lua_node, extra_data, root_constants, root_tour
     return player_coroutines
 end
 
-local function get_root_constants(root_tournament)
-    local Reader = require "player.reader"
-    local reader = Reader:new(blockchain_constants.endpoint)
-    local root_constants = reader:read_constants(root_tournament)
+-- Function to run players
+local function run_players(player_coroutines)
+    while true do
+        local idle = true
+        local has_live_coroutine = false
+        for i, c in ipairs(player_coroutines) do
+            if c then
+                local success, ret = coroutine.resume(c)
+                local status = coroutine.status(c)
 
-    return root_constants
+                if status == "dead" then
+                    player_coroutines[i] = false
+                end
+                if not success then
+                    print(string.format("coroutine %d fail to resume with error: %s", i, ret))
+                elseif ret then
+                    has_live_coroutine = true
+                    idle = idle and ret.idle
+                end
+            end
+        end
+
+        if not has_live_coroutine then
+            print("No active players, ending program...")
+            break
+        end
+
+        if idle then
+            print(string.format("All players idle, fastforward blockchain for %d seconds...", FAST_FORWARD_TIME))
+            blockchain_utils.advance_time(FAST_FORWARD_TIME, blockchain_constants.endpoint)
+        end
+    end
 end
 
 -- Main Execution
@@ -109,39 +150,9 @@ time.sleep(NODE_DELAY)
 blockchain_utils.deploy_contracts()
 time.sleep(NODE_DELAY)
 
-local root_constants = get_root_constants(root_tournament)
-local player_coroutines = setup_players(use_lua_node, extra_data, root_constants, root_tournament, machine_path)
-print("Hello from Dave lua prototype!")
+local player_coroutines = setup_players(use_lua_node, extra_data, root_tournament, machine_path)
+print("Hello from Dave compute lua prototype!")
 
-while true do
-    local idle = true
-    local has_live_coroutine = false
-    for i, c in ipairs(player_coroutines) do
-        if c then
-            local success, ret = coroutine.resume(c)
-            local status = coroutine.status(c)
-
-            if status == "dead" then
-                player_coroutines[i] = false
-            end
-            if not success then
-                print(string.format("coroutine %d fail to resume with error: %s", i, ret))
-            elseif ret then
-                has_live_coroutine = true
-                idle = idle and ret.idle
-            end
-        end
-    end
-
-    if not has_live_coroutine then
-        print("No active players, ending program...")
-        break
-    end
-
-    if idle then
-        print(string.format("All players idle, fastforward blockchain for %d seconds...", FAST_FORWARD_TIME))
-        blockchain_utils.advance_time(FAST_FORWARD_TIME, blockchain_constants.endpoint)
-    end
-end
+run_players(player_coroutines)
 
 print("Good-bye, world!")

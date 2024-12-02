@@ -10,6 +10,7 @@ use crate::{
 };
 
 use anyhow::Result;
+use log::debug;
 use std::{
     collections::{hash_map::Entry, HashMap},
     path::PathBuf,
@@ -38,21 +39,14 @@ impl CachingMachineCommitmentBuilder {
     ) -> Result<MachineCommitment> {
         if let Entry::Vacant(e) = self.commitments.entry(level) {
             e.insert(HashMap::new());
-        } else if self.commitments[&level].contains_key(&base_cycle) {
-            return Ok(self.commitments[&level][&base_cycle].clone());
+        } else if let Some(commitment) = self.commitments[&level].get(&base_cycle) {
+            return Ok(commitment.clone());
         }
 
         let mut machine = MachineInstance::new(&self.machine_path)?;
-        if let Some(snapshot_path) = db.closest_snapshot(base_cycle)? {
-            machine.load_snapshot(&PathBuf::from(snapshot_path))?;
+        if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
+            machine.load_snapshot(&snapshot.1, snapshot.0)?;
         };
-        if db.handle_rollups {
-            // treat it as rollups
-            machine.run_with_inputs(base_cycle, &db.inputs()?)?;
-        } else {
-            // treat it as compute
-            machine.run(base_cycle)?;
-        }
 
         let commitment = {
             let leafs = db.compute_leafs(level, base_cycle)?;
@@ -60,6 +54,15 @@ impl CachingMachineCommitmentBuilder {
             if leafs.len() > 0 {
                 build_machine_commitment_from_leafs(&mut machine, leafs)?
             } else {
+                if db.handle_rollups {
+                    debug!("run with inputs");
+                    // treat it as rollups
+                    machine.run_with_inputs(base_cycle, &db.inputs()?)?;
+                } else {
+                    debug!("run without inputs");
+                    // treat it as compute
+                    machine.run(base_cycle)?;
+                }
                 // leafs are not cached, build merkle by running the machine
                 build_machine_commitment(
                     &mut machine,
