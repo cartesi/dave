@@ -32,7 +32,11 @@ contract TournamentFactoryTest is Util, Test {
 
     function testRootTournament() public {
         RootTournament rootTournament = RootTournament(
-            address(singleLevelfactory.instantiateSingleLevel(Util.ONE_STATE))
+            address(
+                singleLevelfactory.instantiateSingleLevel(
+                    Util.ONE_STATE, IDataProvider(address(0))
+                )
+            )
         );
 
         (uint64 _max_level, uint64 _level, uint64 _log2step, uint64 _height) =
@@ -49,7 +53,11 @@ contract TournamentFactoryTest is Util, Test {
         );
 
         rootTournament = RootTournament(
-            address(multiLevelfactory.instantiateTop(Util.ONE_STATE))
+            address(
+                multiLevelfactory.instantiateTop(
+                    Util.ONE_STATE, IDataProvider(address(0))
+                )
+            )
         );
 
         (_max_level, _level, _log2step, _height) =

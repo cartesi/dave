@@ -1,19 +1,18 @@
-use alloy::{
-    network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner,
-    sol_types::private::Address,
-};
+use alloy::{hex::ToHexExt, sol_types::private::Address};
 use anyhow::Result;
-use std::{str::FromStr, sync::Arc, time::Duration};
+use log::{error, info};
+use num_traits::cast::ToPrimitive;
+use std::{sync::Arc, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus;
-use cartesi_prt_core::arena::{BlockchainConfig, SenderFiller};
+use cartesi_prt_core::arena::SenderFiller;
 use rollups_state_manager::StateManager;
 
 pub struct EpochManager<SM: StateManager> {
+    client: Arc<SenderFiller>,
     consensus: Address,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
-    client: Arc<SenderFiller>,
 }
 
 impl<SM: StateManager> EpochManager<SM>
@@ -21,28 +20,11 @@ where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
     pub fn new(
-        config: &BlockchainConfig,
+        client: Arc<SenderFiller>,
         consensus_address: Address,
         state_manager: Arc<SM>,
         sleep_duration: u64,
     ) -> Self {
-        let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())
-            .expect("fail to construct signer");
-        let wallet = EthereumWallet::from(signer);
-
-        let url = config.web3_rpc_url.parse().expect("fail to parse url");
-        let provider = ProviderBuilder::new()
-            .with_recommended_fillers()
-            .wallet(wallet)
-            .with_chain(
-                config
-                    .web3_chain_id
-                    .try_into()
-                    .expect("fail to convert chain id"),
-            )
-            .on_http(url);
-        let client = Arc::new(provider);
-
         Self {
             consensus: consensus_address,
             sleep_duration: Duration::from_secs(sleep_duration),
@@ -57,14 +39,25 @@ where
             let can_settle = dave_consensus.canSettle().call().await?;
 
             if can_settle.isFinished {
-                match self.state_manager.computation_hash(0)? {
+                match self.state_manager.computation_hash(
+                    can_settle
+                        .epochNumber
+                        .to_u64()
+                        .expect("fail to convert epoch number to u64"),
+                )? {
                     Some(computation_hash) => {
-                        dave_consensus
-                            .settle(can_settle.epochNumber)
-                            .send()
-                            .await?
-                            .watch()
-                            .await?;
+                        info!(
+                            "settle epoch {} with claim 0x{}",
+                            can_settle.epochNumber,
+                            computation_hash.encode_hex()
+                        );
+                        match dave_consensus.settle(can_settle.epochNumber).send().await {
+                            Ok(tx_builder) => {
+                                let _ = tx_builder.watch().await.inspect_err(|e| error!("{}", e));
+                            }
+                            // allow retry when errors happen
+                            Err(e) => error!("{e}"),
+                        }
                         // TODO: if claim doesn't match, that can be a serious problem, send out alert
                     }
                     None => {
@@ -72,7 +65,6 @@ where
                     }
                 }
             }
-
             tokio::time::sleep(self.sleep_duration).await;
         }
     }

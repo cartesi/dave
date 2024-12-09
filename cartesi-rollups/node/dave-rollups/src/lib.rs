@@ -1,4 +1,4 @@
-use cartesi_prt_core::arena::BlockchainConfig;
+use cartesi_prt_core::arena::{BlockchainConfig, EthArenaSender, SenderFiller};
 
 use clap::Parser;
 use log::error;
@@ -57,6 +57,7 @@ pub fn create_blockchain_reader_task(
 }
 
 pub fn create_compute_runner_task(
+    arena_sender: EthArenaSender,
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
@@ -64,6 +65,7 @@ pub fn create_compute_runner_task(
 
     spawn(async move {
         let mut compute_runner = ComputeRunner::new(
+            arena_sender,
             &params.blockchain_config,
             state_manager,
             params.sleep_duration,
@@ -78,6 +80,7 @@ pub fn create_compute_runner_task(
 }
 
 pub fn create_epoch_manager_task(
+    client: Arc<SenderFiller>,
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
@@ -85,7 +88,7 @@ pub fn create_epoch_manager_task(
 
     spawn(async move {
         let epoch_manager = EpochManager::new(
-            &params.blockchain_config,
+            client,
             params.address_book.consensus,
             state_manager,
             params.sleep_duration,

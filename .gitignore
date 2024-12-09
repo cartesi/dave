@@ -7,8 +7,8 @@ target/
 snapshots/
 common-rs/Cargo.lock
 prt/client-rs/Cargo.lock
-prt/lua_poc/outputs/
-prt/lua_poc/pixels/
+prt/tests/compute/outputs/
+prt/tests/compute/pixels/
 node_modules
 **/contract-bindings/src/contract
 **/contract-bindings/Cargo.lock

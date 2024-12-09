@@ -1,4 +1,4 @@
-FROM rust:1.79.0-bookworm AS chef
+FROM rust:1.81.0-bookworm AS chef
 
 ENV CARGO_REGISTRIES_CARTESI_INDEX=https://github.com/cartesi/crates-index
 RUN rustup component add rustfmt
@@ -9,8 +9,8 @@ RUN apt-get update && \
 FROM chef AS planner
 COPY ./machine/rust-bindings /app/machine/rust-bindings
 COPY ./common-rs /app/common-rs
-COPY ./prt/contract-bindings /app/prt/contract-bindings
 COPY ./prt/client-rs /app/prt/client-rs
+COPY ./prt/contract-bindings /app/prt/contract-bindings
 COPY ./prt/tests/compute-rs /app/prt/tests/compute-rs
 
 WORKDIR /app/prt/tests/compute-rs
@@ -29,7 +29,7 @@ WORKDIR /app/prt/tests/compute-rs
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build application
-COPY --from=ethereum/solc:0.8.23 /usr/bin/solc /usr/bin/solc
+COPY --from=ethereum/solc:0.8.27 /usr/bin/solc /usr/bin/solc
 RUN chmod u+x /usr/bin/solc
 
 COPY ./prt /app/prt
@@ -42,7 +42,7 @@ FROM --platform=linux/amd64 cartesi/machine-emulator:0.18.1
 USER root
 RUN apt-get update && \
     apt-get install -y procps curl xxd clang
-ENV FOUNDRY_NIGHTLY nightly-5b7e4cb3c882b28f3c32ba580de27ce7381f415a
+ENV FOUNDRY_NIGHTLY nightly-805d7cee81e78e9163b8ce3d86a0c3beb39772d4
 RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_NIGHTLY}/foundry_nightly_linux_$(dpkg --print-architecture).tar.gz | \
     tar -zx -C /usr/local/bin
 
@@ -67,7 +67,5 @@ WORKDIR /root/prt/contracts
 RUN forge --version
 RUN forge build
 
-RUN mkdir -p /dispute_data/0xa16E02E87b7454126E5E10d957A927A7F5B5d2be
-
 WORKDIR /root/prt/tests/compute
-ENTRYPOINT ["./compute-test-entrypoint.sh"]
+ENTRYPOINT ["./entrypoint.sh"]

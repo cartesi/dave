@@ -44,5 +44,6 @@ clap = { version = "4.5.7", features = ["derive", "env"] }
 clap_derive = "=4.5.13"
 futures = "0.3"
 log = "0.4"
+num-traits = "0.2.19"
 thiserror = "1.0"
 tokio = { version = "1", features = ["full"] }

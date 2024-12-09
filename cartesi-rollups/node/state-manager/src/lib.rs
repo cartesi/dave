@@ -83,7 +83,7 @@ pub trait StateManager {
 
     fn epoch(&self, epoch_number: u64) -> Result<Option<Epoch>, Self::Error>;
     fn epoch_count(&self) -> Result<u64, Self::Error>;
-    fn last_epoch(&self) -> Result<Option<Epoch>, Self::Error>;
+    fn last_sealed_epoch(&self) -> Result<Option<Epoch>, Self::Error>;
     fn input(&self, id: &InputId) -> Result<Option<Input>, Self::Error>;
     fn inputs(&self, epoch_number: u64) -> Result<Vec<Vec<u8>>, Self::Error>;
     fn input_count(&self, epoch_number: u64) -> Result<u64, Self::Error>;

@@ -12,7 +12,7 @@ use crate::{
         ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
         TournamentState, TournamentStateMap, TournamentWinner,
     },
-    db::dispute_state_access::{DisputeStateAccess, Input, Leaf},
+    db::compute_state_access::{ComputeStateAccess, Input, Leaf},
     machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     strategy::gc::GarbageCollector,
 };
@@ -25,7 +25,7 @@ pub enum PlayerTournamentResult {
 }
 
 pub struct Player {
-    db: DisputeStateAccess,
+    db: ComputeStateAccess,
     machine_path: String,
     commitment_builder: CachingMachineCommitmentBuilder,
     root_tournament: Address,
@@ -35,14 +35,14 @@ pub struct Player {
 
 impl Player {
     pub fn new(
-        inputs: Vec<Input>,
+        inputs: Option<Vec<Input>>,
         leafs: Vec<Leaf>,
         blockchain_config: &BlockchainConfig,
         machine_path: String,
         root_tournament: Address,
     ) -> Result<Self> {
         let db =
-            DisputeStateAccess::new(inputs, leafs, root_tournament.to_string(), "/dispute_data")?;
+            ComputeStateAccess::new(inputs, leafs, root_tournament.to_string(), "/compute_data")?;
         let reader = StateReader::new(&blockchain_config)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
@@ -359,10 +359,11 @@ impl Player {
 
             let proof = {
                 let mut machine = MachineInstance::new(&self.machine_path)?;
-                if let Some(snapshot_path) = self.db.closest_snapshot(cycle)? {
-                    machine.load_snapshot(&PathBuf::from(snapshot_path))?;
+                if let Some(snapshot) = self.db.closest_snapshot(cycle)? {
+                    machine.load_snapshot(&snapshot.1, snapshot.0)?;
                 };
-                machine.get_logs(cycle, ucycle)?
+                let inputs = self.db.inputs()?;
+                machine.get_logs(cycle, ucycle, inputs, self.db.handle_rollups)?
             };
 
             info!(

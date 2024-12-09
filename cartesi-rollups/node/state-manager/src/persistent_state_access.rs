@@ -37,9 +37,9 @@ impl StateManager for PersistentStateAccess {
         consensus_data::epoch_count(&conn)
     }
 
-    fn last_epoch(&self) -> Result<Option<Epoch>> {
+    fn last_sealed_epoch(&self) -> Result<Option<Epoch>> {
         let conn = self.connection.lock().unwrap();
-        consensus_data::last_epoch(&conn)
+        consensus_data::last_sealed_epoch(&conn)
     }
 
     fn input(&self, id: &InputId) -> Result<Option<Input>> {
@@ -277,12 +277,6 @@ impl StateManager for PersistentStateAccess {
         let mut res = vec![];
         for row in query {
             res.push(row?);
-        }
-
-        if res.len() == 0 {
-            return Err(PersistentStateAccessError::DataNotFound {
-                description: "machine state hash doesn't exist".to_owned(),
-            });
         }
 
         Ok(res)

@@ -14,6 +14,13 @@ pub enum MachineRunnerError<SM: StateManager> {
         #[from]
         source: DigestError,
     },
+
+    #[error(transparent)]
+    IO {
+        #[from]
+        source: std::io::Error,
+    },
+
     #[error(transparent)]
     Machine {
         #[from]

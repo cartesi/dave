@@ -16,7 +16,8 @@ contract BottomTournament is LeafTournament, NonRootTournament {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        IDataProvider _provider
     )
         LeafTournament()
         NonRootTournament(
@@ -27,7 +28,8 @@ contract BottomTournament is LeafTournament, NonRootTournament {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level
+            _level,
+            _provider
         )
     {}
 }

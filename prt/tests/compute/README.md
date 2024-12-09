@@ -2,7 +2,7 @@
 
 This directory contains a prototype node written in Lua.
 The purpose of this Lua node is testing and prototyping only; the real production node is written in Rust.
-Furthermore, this node implements only compute (_i.e._ a one-shot computation, like a rollups with no inputs).
+Furthermore, this node implements only compute (_i.e._ a one-shot computation, the machine doesn't yield for inputs).
 
 Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
 You need a docker installation to run the Dave Lua node.
@@ -38,7 +38,7 @@ These players come in multiple flavours:
     If no other player is actively defending this claim, it will lose by timeout.
 
 To add more players of different kinds, you can edit the [`prt_compute.lua`](prt_compute.lua) file.
-To run the full example, execute one of the following commands from the current path path (_i.e._ [`prt/lua_poc`](.)):
+To run the full example, execute one of the following commands from the current path:
 
 ```
 make test-simple

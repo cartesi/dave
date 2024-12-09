@@ -23,7 +23,8 @@ contract MiddleTournamentFactory {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        IDataProvider _provider
     ) external returns (MiddleTournament) {
         MiddleTournament _tournament = new MiddleTournament(
             _initialHash,
@@ -34,6 +35,7 @@ contract MiddleTournamentFactory {
             _allowance,
             _startCycle,
             _level,
+            _provider,
             IMultiLevelTournamentFactory(msg.sender)
         );
 

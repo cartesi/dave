@@ -9,22 +9,22 @@ import "../../ITournamentFactory.sol";
 contract SingleLevelTournamentFactory is ITournamentFactory {
     constructor() {}
 
-    function instantiateSingleLevel(Machine.Hash _initialHash)
-        external
-        returns (SingleLevelTournament)
-    {
+    function instantiateSingleLevel(
+        Machine.Hash _initialHash,
+        IDataProvider _provider
+    ) external returns (SingleLevelTournament) {
         SingleLevelTournament _tournament =
-            new SingleLevelTournament(_initialHash);
+            new SingleLevelTournament(_initialHash, _provider);
 
         emit tournamentCreated(_tournament);
 
         return _tournament;
     }
 
-    function instantiate(Machine.Hash _initialHash, IDataProvider)
+    function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
         external
         returns (ITournament)
     {
-        return this.instantiateSingleLevel(_initialHash);
+        return this.instantiateSingleLevel(_initialHash, _provider);
     }
 }

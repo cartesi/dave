@@ -5,7 +5,7 @@ use anyhow::Result;
 use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
-    db::dispute_state_access::{DisputeStateAccess, Leaf},
+    db::compute_state_access::{ComputeStateAccess, Leaf},
     machine::{constants, MachineInstance},
 };
 use cartesi_dave_arithmetic as arithmetic;
@@ -22,13 +22,11 @@ pub struct MachineCommitment {
 /// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle and leafs.
 pub fn build_machine_commitment_from_leafs<L>(
     machine: &mut MachineInstance,
-    base_cycle: u64,
     leafs: Vec<(L, u64)>,
 ) -> Result<MachineCommitment>
 where
     L: Into<Arc<MerkleTree>>,
 {
-    machine.run(base_cycle)?;
     let initial_state = machine.machine_state()?;
     let mut builder = MerkleBuilder::default();
     for leaf in leafs {
@@ -49,12 +47,14 @@ pub fn build_machine_commitment(
     level: u64,
     log2_stride: u64,
     log2_stride_count: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
     if log2_stride >= constants::LOG2_UARCH_SPAN {
         assert!(
             log2_stride + log2_stride_count
-                <= constants::LOG2_EMULATOR_SPAN + constants::LOG2_UARCH_SPAN
+                <= constants::LOG2_INPUT_SPAN
+                    + constants::LOG2_EMULATOR_SPAN
+                    + constants::LOG2_UARCH_SPAN
         );
         build_big_machine_commitment(
             machine,
@@ -77,9 +77,8 @@ pub fn build_big_machine_commitment(
     level: u64,
     log2_stride: u64,
     log2_stride_count: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    machine.run(base_cycle)?;
     snapshot_base_cycle(machine, base_cycle, db)?;
     let initial_state = machine.machine_state()?;
 
@@ -124,7 +123,7 @@ fn advance_instruction(
     let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN);
     machine.run(base_cycle + cycle)?;
     let state = machine.machine_state()?;
-    let control_flow = if state.halted {
+    let control_flow = if state.halted | state.yielded {
         leafs.push((state.root_hash, instruction_count - instruction + 1));
         builder.append_repeated(state.root_hash, instruction_count - instruction + 1);
         ControlFlow::Break(())
@@ -141,9 +140,8 @@ pub fn build_small_machine_commitment(
     base_cycle: u64,
     level: u64,
     log2_stride_count: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    machine.run(base_cycle)?;
     snapshot_base_cycle(machine, base_cycle, db)?;
     let initial_state = machine.machine_state()?;
 
@@ -182,8 +180,14 @@ pub fn build_small_machine_commitment(
 fn snapshot_base_cycle(
     machine: &mut MachineInstance,
     base_cycle: u64,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<()> {
+    let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+    if db.handle_rollups && base_cycle & mask == 0 && !machine.machine_state()?.yielded {
+        // don't snapshot a machine state that's freshly fed with input without advance
+        return Ok(());
+    }
+
     let snapshot_path = db.work_path.join(format!("{}", base_cycle));
     machine.snapshot(&snapshot_path)?;
     Ok(())
@@ -191,7 +195,7 @@ fn snapshot_base_cycle(
 
 fn run_uarch_span(
     machine: &mut MachineInstance,
-    db: &DisputeStateAccess,
+    db: &ComputeStateAccess,
 ) -> Result<Arc<MerkleTree>> {
     let (_, ucycle) = machine.position();
     assert!(ucycle == 0);
