@@ -18,6 +18,7 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint, fake
             helper.log_timestamp(string.format("react with fake index: %d", i))
 
             local log = strategy:react(state)
+            strategy.commitment_builder.fake_index = false
             idle = idle and log.idle
             finished = finished and log.finished
         end

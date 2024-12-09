@@ -27,9 +27,10 @@ impl std::fmt::Display for MachineState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{{root_hash = {}, halted = {}, uhalted = {}}}",
+            "{{root_hash = {}, halted = {}, yielded = {}, uhalted = {}}}",
             self.root_hash.to_hex(),
             self.halted,
+            self.yielded,
             self.uhalted
         )
     }
@@ -80,7 +81,7 @@ impl MachineInstance {
         self.machine = machine;
 
         debug!("load from {}", snapshot_path.display());
-        debug!("loaded machine {}", self.machine_state()?);
+        debug!("loaded machine: {}", self.machine_state()?);
 
         Ok(())
     }

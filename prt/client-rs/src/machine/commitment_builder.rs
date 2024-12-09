@@ -11,10 +11,7 @@ use crate::{
 
 use anyhow::Result;
 use log::debug;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    path::PathBuf,
-};
+use std::collections::{hash_map::Entry, HashMap};
 
 pub struct CachingMachineCommitmentBuilder {
     machine_path: String,

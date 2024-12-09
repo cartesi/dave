@@ -190,7 +190,21 @@ impl ComputeStateAccess {
             .binary_search_by_key(&base_cycle, |k| k.0)
             .unwrap_or_else(|x| if x > 0 { x - 1 } else { x });
 
-        Ok(snapshots.get(pos).map(|t| t.clone()))
+        let snapshot = {
+            match snapshots.get(pos) {
+                Some(t) => {
+                    if t.0 > base_cycle {
+                        None
+                    } else {
+                        Some(t.clone())
+                    }
+                }
+                // snapshots.get(pos).map(|t| t.clone()),
+                None => None,
+            }
+        };
+
+        Ok(snapshot)
     }
 }
 
@@ -214,6 +228,7 @@ mod compute_state_access_tests {
         test_closest_snapshot();
         test_compute_or_rollups_true();
         test_compute_or_rollups_false();
+        test_none_match();
     }
 
     fn test_closest_snapshot() {
@@ -269,11 +284,43 @@ mod compute_state_access_tests {
 
             assert_eq!(
                 access.closest_snapshot(100000).unwrap(),
-                Some((9999, access.work_path.join(format!("99999"))))
+                Some((99999, access.work_path.join(format!("99999"))))
             );
         }
 
         remove_directory(&work_dir).unwrap();
+    }
+
+    fn test_none_match() {
+        let work_dir = PathBuf::from("/tmp/0x12345678");
+        remove_directory(&work_dir).unwrap();
+        create_directory(&work_dir).unwrap();
+        {
+            let access =
+                ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp")
+                    .unwrap();
+
+            let cycle: u64 = 844424930131968;
+            for c in [cycle] {
+                create_directory(&access.work_path.join(format!("{c}"))).unwrap();
+            }
+
+            assert_eq!(access.closest_snapshot(0).unwrap(), None);
+            assert_eq!(access.closest_snapshot(5629).unwrap(), None);
+            assert_eq!(access.closest_snapshot(5629499).unwrap(), None);
+            assert_eq!(access.closest_snapshot(56294995342).unwrap(), None);
+            assert_eq!(access.closest_snapshot(562949953421312).unwrap(), None);
+            assert_eq!(
+                access.closest_snapshot(cycle).unwrap(),
+                Some((cycle, access.work_path.join(format!("{}", cycle))))
+            );
+            assert_eq!(
+                access.closest_snapshot(cycle + 1).unwrap(),
+                Some((cycle, access.work_path.join(format!("{}", cycle))))
+            );
+
+            remove_directory(&work_dir).unwrap();
+        }
     }
 
     fn test_compute_tree() {

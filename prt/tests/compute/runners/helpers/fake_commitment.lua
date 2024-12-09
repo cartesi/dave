@@ -147,7 +147,6 @@ function FakeCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride
     local fake_commitment = build_fake_commitment(commitment, self.fake_index, log2_stride)
 
     self.fake_commitments[level][base_cycle][self.fake_index] = fake_commitment
-    -- self.fake_index = false
     return fake_commitment
 end
 
