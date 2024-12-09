@@ -10,7 +10,7 @@ local EPOCH_TIME = 60 * 60 * 24 * 7
 -- delay time for blockchain node to be ready
 local NODE_DELAY = 3
 -- number of fake commitment to make
-local FAKE_COMMITMENT_COUNT = 1
+local FAKE_COMMITMENT_COUNT = 2
 -- number of idle players
 local IDLE_PLAYER_COUNT = 0
 -- consensus contract address in anvil deployment
@@ -188,7 +188,7 @@ local rollups_machine_path = os.getenv("MACHINE_PATH")
 local blockchain_node = Blockchain:new()
 time.sleep(NODE_DELAY)
 
-blockchain_utils.deploy_contracts()
+blockchain_utils.deploy_contracts("../../../cartesi-rollups/contracts")
 time.sleep(NODE_DELAY)
 
 local dave_node = Dave:new(rollups_machine_path)

@@ -1,6 +1,6 @@
 -- setup client-lua path
-package.path = package.path .. ";../../../prt/client-lua/?.lua"
-package.path = package.path .. ";../../../prt/tests/compute/?.lua"
+package.path = package.path .. ";../compute/?.lua"
+package.path = package.path .. ";../../client-lua/?.lua"
 
 -- setup cartesi machine path
 package.path = package.path .. ";/opt/cartesi/lib/lua/5.4/?.lua"

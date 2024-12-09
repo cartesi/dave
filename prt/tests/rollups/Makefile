@@ -2,7 +2,7 @@ ECHO_MACHINE_PATH := "/root/program/echo-program"
 
 help:
 	@echo '  create-image              - create `prt-rollups:test` docker image'
-	@echo '  test-echo                 - run PRT echo test'
+	@echo '  test-echo                 - run PRT rollups echo test'
 
 create-image:
 	@docker build -t cartesi/prt-rollups:test -f Dockerfile ../../../
