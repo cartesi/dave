@@ -99,9 +99,11 @@ local function build_fake_commitment(commitment, fake_index, log2_stride)
 
     local fake_hash = get_fake_hash(log2_stride)
     local leaf_index = math.max(#commitment.leafs - fake_index + 1, 1)
-    local old_leaf = fake_builder.leafs[leaf_index]
+    for i = leaf_index, #commitment.leafs do
+        local old_leaf = fake_builder.leafs[i]
+        fake_builder.leafs[i] = { hash = fake_hash, accumulated_count = old_leaf.accumulated_count }
+    end
 
-    fake_builder.leafs[leaf_index] = { hash = fake_hash, accumulated_count = old_leaf.accumulated_count }
     update_scope_of_hashes(fake_builder.leafs)
     rebuild_nested_trees(fake_builder.leafs)
 
