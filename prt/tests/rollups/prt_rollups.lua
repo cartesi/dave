@@ -188,7 +188,7 @@ local rollups_machine_path = os.getenv("MACHINE_PATH")
 local blockchain_node = Blockchain:new()
 time.sleep(NODE_DELAY)
 
-blockchain_utils.deploy_contracts()
+blockchain_utils.deploy_contracts("../../../cartesi-rollups/contracts")
 time.sleep(NODE_DELAY)
 
 local dave_node = Dave:new(rollups_machine_path)
