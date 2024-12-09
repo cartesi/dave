@@ -13,15 +13,28 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
+    uint64 immutable levels;
+    uint64[] log2step;
+    uint64[] height;
 
     constructor(
         TopTournamentFactory _topFactory,
         MiddleTournamentFactory _middleFactory,
-        BottomTournamentFactory _bottomFactory
+        BottomTournamentFactory _bottomFactory,
+        uint64 _levels,
+        uint64[] memory _log2step,
+        uint64[] memory _height
     ) {
+        require(_levels > 0, "levels cannot be zero");
+        require(_log2step.length == _levels, "bad log2step array length");
+        require(_height.length == _levels, "bad height array length");
+
         topFactory = _topFactory;
         middleFactory = _middleFactory;
         bottomFactory = _bottomFactory;
+        levels = _levels;
+        log2step = _log2step;
+        height = _height;
     }
 
     function instantiate(Machine.Hash _initialHash, IDataProvider)
@@ -38,7 +51,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         external
         returns (TopTournament)
     {
-        TopTournament _tournament = topFactory.instantiate(_initialHash);
+        TopTournament _tournament =
+            topFactory.instantiate(_initialHash, levels, log2step[0], height[0]);
         return _tournament;
     }
 
@@ -60,7 +74,10 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level
+            _level,
+            levels,
+            log2step[_level],
+            height[_level]
         );
 
         return _tournament;
@@ -84,7 +101,10 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level
+            _level,
+            levels,
+            log2step[_level],
+            height[_level]
         );
 
         return _tournament;

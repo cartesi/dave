@@ -30,8 +30,21 @@ abstract contract NonRootTournament is Tournament {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
-    ) Tournament(_initialHash, _allowance, _startCycle, _level) {
+        uint64 _level,
+        uint64 _levels,
+        uint64 _log2step,
+        uint64 _height
+    )
+        Tournament(
+            _initialHash,
+            _allowance,
+            _startCycle,
+            _level,
+            _levels,
+            _log2step,
+            _height
+        )
+    {
         contestedCommitmentOne = _contestedCommitmentOne;
         contestedFinalStateOne = _contestedFinalStateOne;
         contestedCommitmentTwo = _contestedCommitmentTwo;

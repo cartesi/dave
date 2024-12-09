@@ -41,6 +41,9 @@ abstract contract Tournament {
 
     uint256 immutable startCycle;
     uint64 immutable level;
+    uint64 immutable levels;
+    uint64 immutable log2step;
+    uint64 immutable height;
 
     Time.Instant immutable startInstant;
     Time.Duration immutable allowance;
@@ -86,11 +89,17 @@ abstract contract Tournament {
         Machine.Hash _initialHash,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        uint64 _levels,
+        uint64 _log2step,
+        uint64 _height
     ) {
         initialHash = _initialHash;
         startCycle = _startCycle;
         level = _level;
+        levels = _levels;
+        log2step = _log2step;
+        height = _height;
         startInstant = Time.currentTime();
         allowance = _allowance;
 
@@ -124,7 +133,7 @@ abstract contract Tournament {
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
         // Prove final state is in commitmentRoot
-        _commitmentRoot.requireFinalState(level, _finalState, _proof);
+        _commitmentRoot.requireFinalState(height, _finalState, _proof);
 
         // Verify whether finalState is one of the two allowed of tournament if nested
         requireValidContestedFinalState(_finalState);
@@ -280,10 +289,10 @@ abstract contract Tournament {
             uint64 _height
         )
     {
-        _max_level = ArbitrationConstants.LEVELS;
+        _max_level = levels;
         _level = level;
-        _log2step = ArbitrationConstants.log2step(level);
-        _height = ArbitrationConstants.height(level);
+        _log2step = log2step;
+        _height = height;
     }
 
     //
@@ -332,7 +341,12 @@ abstract contract Tournament {
         if (_hasDanglingCommitment) {
             (Match.IdHash _matchId, Match.State memory _matchState) = Match
                 .createMatch(
-                _danglingCommitment, _rootHash, _leftNode, _rightNode, level
+                _danglingCommitment,
+                _rootHash,
+                _leftNode,
+                _rightNode,
+                log2step,
+                height
             );
 
             matches[_matchId] = _matchState;

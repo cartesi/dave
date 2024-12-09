@@ -11,13 +11,21 @@ import "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import "src/IDataProvider.sol";
 
 contract TopTournamentScript is Script {
-    function run(Machine.Hash initialHash) external {
+    function run(
+        Machine.Hash initialHash,
+        uint64 levels,
+        uint64[] calldata log2step,
+        uint64[] calldata height
+    ) external {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
         MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
-            new BottomTournamentFactory()
+            new BottomTournamentFactory(),
+            levels,
+            log2step,
+            height
         );
 
         factory.instantiate(initialHash, IDataProvider(address(0x0)));

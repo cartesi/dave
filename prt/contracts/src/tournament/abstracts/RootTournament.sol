@@ -11,8 +11,21 @@ abstract contract RootTournament is Tournament, ITournament {
     //
     // Constructor
     //
-    constructor(Machine.Hash _initialHash)
-        Tournament(_initialHash, ArbitrationConstants.MAX_ALLOWANCE, 0, 0)
+    constructor(
+        Machine.Hash _initialHash,
+        uint64 _levels,
+        uint64 _log2step,
+        uint64 _height
+    )
+        Tournament(
+            _initialHash,
+            ArbitrationConstants.MAX_ALLOWANCE,
+            0,
+            0,
+            _levels,
+            _log2step,
+            _height
+        )
     {}
 
     function validContestedFinalState(Machine.Hash)

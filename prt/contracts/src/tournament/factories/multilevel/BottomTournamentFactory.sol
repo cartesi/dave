@@ -16,7 +16,10 @@ contract BottomTournamentFactory {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        uint64 _levels,
+        uint64 _log2step,
+        uint64 _height
     ) external returns (BottomTournament) {
         BottomTournament _tournament = new BottomTournament(
             _initialHash,
@@ -26,7 +29,10 @@ contract BottomTournamentFactory {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level
+            _level,
+            _levels,
+            _log2step,
+            _height
         );
 
         return _tournament;

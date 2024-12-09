@@ -14,6 +14,12 @@ import "../../Machine.sol";
 contract TopTournament is NonLeafTournament, RootTournament {
     constructor(
         Machine.Hash _initialHash,
+        uint64 _levels,
+        uint64 _log2step,
+        uint64 _height,
         IMultiLevelTournamentFactory _factory
-    ) NonLeafTournament(_factory) RootTournament(_initialHash) {}
+    )
+        NonLeafTournament(_factory)
+        RootTournament(_initialHash, _levels, _log2step, _height)
+    {}
 }

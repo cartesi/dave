@@ -7,14 +7,20 @@ import "../concretes/SingleLevelTournament.sol";
 import "../../ITournamentFactory.sol";
 
 contract SingleLevelTournamentFactory is ITournamentFactory {
-    constructor() {}
+    uint64 immutable log2step;
+    uint64 immutable height;
+
+    constructor(uint64 _log2step, uint64 _height) {
+        log2step = _log2step;
+        height = _height;
+    }
 
     function instantiateSingleLevel(Machine.Hash _initialHash)
         external
         returns (SingleLevelTournament)
     {
         SingleLevelTournament _tournament =
-            new SingleLevelTournament(_initialHash);
+            new SingleLevelTournament(_initialHash, log2step, height);
 
         emit tournamentCreated(_tournament);
 
