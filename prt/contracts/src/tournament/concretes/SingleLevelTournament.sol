@@ -7,8 +7,8 @@ import "../abstracts/RootTournament.sol";
 import "../abstracts/LeafTournament.sol";
 
 contract SingleLevelTournament is LeafTournament, RootTournament {
-    constructor(Machine.Hash _initialHash)
+    constructor(Machine.Hash _initialHash, IDataProvider _provider)
         LeafTournament()
-        RootTournament(_initialHash)
+        RootTournament(_initialHash, _provider)
     {}
 }

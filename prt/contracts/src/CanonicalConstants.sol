@@ -32,20 +32,20 @@ library ArbitrationConstants {
 
     uint64 constant LOG2_UARCH_SPAN = 20;
     uint64 constant LOG2_EMULATOR_SPAN = 48;
-    uint64 constant LOG2_INPUT_SPAN = LOG2_UARCH_SPAN + LOG2_EMULATOR_SPAN;
+    uint64 constant LOG2_INPUT_SPAN = 24;
 
     // 3-level tournament
     uint64 constant LEVELS = 3;
 
     /// @return log2step gap of each leaf in the tournament[level]
     function log2step(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [uint64(41), uint64(26), uint64(0)];
+        uint64[LEVELS] memory arr = [uint64(44), uint64(28), uint64(0)];
         return arr[level];
     }
 
     /// @return height of the tournament[level] tree which is calculated by subtracting the log2step[level] from the log2step[level - 1]
     function height(uint64 level) internal pure returns (uint64) {
-        uint64[LEVELS] memory arr = [uint64(27), uint64(15), uint64(26)];
+        uint64[LEVELS] memory arr = [uint64(48), uint64(16), uint64(28)];
         return arr[level];
     }
 }

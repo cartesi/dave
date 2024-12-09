@@ -16,19 +16,19 @@ create-image:
 	@docker build -t cartesi/prt-compute:rs -f Dockerfile ../../../
 
 test-simple: create-image
-	@docker run --rm \
+	@docker run --rm --name prt-compute-test \
 		--env MACHINE_PATH=$(SIMPLE_MACHINE_PATH) \
 		--env LUA_NODE=$(LUA_NODE) \
 		cartesi/prt-compute:rs
 
 test-stress: create-image
-	@docker run --rm \
+	@docker run --rm --name prt-compute-test \
 		--env MACHINE_PATH=$(STRESS_MACHINE_PATH) \
 		--env LUA_NODE=$(LUA_NODE) \
 		cartesi/prt-compute:rs
 
 test-doom: create-image
-	@docker run --rm \
+	@docker run --rm --name prt-compute-test \
 		--env MACHINE_PATH=$(DOOM_MACHINE_PATH) \
 		--env LUA_NODE=$(LUA_NODE) \
 		cartesi/prt-compute:rs

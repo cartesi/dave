@@ -272,6 +272,24 @@ function Reader:read_commitment_joined(tournament_address)
     return ret
 end
 
+function Reader:read_tournament_created(tournament_address, match_id_hash)
+    local sig = "newInnerTournament(bytes32,address)"
+    local data_sig = "(address)"
+
+    local logs = self:_read_logs(tournament_address, sig, { match_id_hash:hex_string(), false, false }, data_sig)
+    assert(#logs <= 1)
+
+    if #logs == 0 then return false end
+    local log = logs[1]
+
+    local ret = {
+        parent_match = match_id_hash,
+        new_tournament = log.decoded_data[1],
+    }
+
+    return ret
+end
+
 function Reader:read_commitment(tournament_address, commitment_hash)
     local sig = "getCommitment(bytes32)((uint64,uint64),bytes32)"
 
@@ -308,24 +326,6 @@ function Reader:read_constants(tournament_address)
     }
 
     return constants
-end
-
-function Reader:read_tournament_created(tournament_address, match_id_hash)
-    local sig = "newInnerTournament(bytes32,address)"
-    local data_sig = "(address)"
-
-    local logs = self:_read_logs(tournament_address, sig, { match_id_hash:hex_string(), false, false }, data_sig)
-    assert(#logs <= 1)
-
-    if #logs == 0 then return false end
-    local log = logs[1]
-
-    local ret = {
-        parent_match = match_id_hash,
-        new_tournament = log.decoded_data[1],
-    }
-
-    return ret
 end
 
 function Reader:read_cycle(address, match_id_hash)

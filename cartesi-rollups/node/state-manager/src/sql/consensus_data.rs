@@ -201,7 +201,7 @@ fn insert_epoch_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite
     )?)
 }
 
-pub fn last_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
+pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
     let mut stmt = conn.prepare(
         "\
         SELECT epoch_number, epoch_boundary, root_tournament FROM epochs

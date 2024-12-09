@@ -7,6 +7,7 @@ use crate::error::{ProviderErrors, Result};
 use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
+    hex::ToHexExt,
     providers::{
         network::primitives::BlockTransactionsKind, Provider, ProviderBuilder, RootProvider,
     },
@@ -17,8 +18,10 @@ use alloy_rpc_types_eth::Topic;
 use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
+use log::debug;
 use num_traits::cast::ToPrimitive;
 use std::{
+    iter::Peekable,
     marker::{Send, Sync},
     str::FromStr,
     sync::Arc,
@@ -29,18 +32,21 @@ use cartesi_dave_contracts::daveconsensus::DaveConsensus::EpochSealed;
 use cartesi_rollups_contracts::inputbox::InputBox::InputAdded;
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
+const DEVNET_CONSENSUS_ADDRESS: &str = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707";
+const DEVNET_INPUT_BOX_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
 #[derive(Debug, Clone, Parser)]
 #[command(name = "cartesi_rollups_config")]
 #[command(about = "Addresses of Cartesi Rollups")]
 pub struct AddressBook {
     /// address of app
-    #[arg(long, env)]
+    #[arg(long, env, default_value_t = Address::ZERO)]
     app: Address,
     /// address of Dave consensus
-    #[arg(long, env)]
+    #[arg(long, env, default_value = DEVNET_CONSENSUS_ADDRESS)]
     pub consensus: Address,
     /// address of input box
-    #[arg(long, env)]
+    #[arg(long, env, default_value = DEVNET_INPUT_BOX_ADDRESS)]
     input_box: Address,
 }
 
@@ -85,9 +91,11 @@ where
     pub async fn start(&mut self) -> Result<(), SM> {
         loop {
             let current_block = self.provider.latest_finalized_block().await?;
-            self.advance(self.prev_block, current_block).await?;
-            self.prev_block = current_block;
 
+            if current_block > self.prev_block {
+                self.advance(self.prev_block, current_block).await?;
+                self.prev_block = current_block;
+            }
             tokio::time::sleep(self.sleep_duration).await;
         }
     }
@@ -116,13 +124,23 @@ where
             .collect_sealed_epochs(prev_block, current_block)
             .await?;
 
+        let last_sealed_epoch_opt = self
+            .state_manager
+            .last_sealed_epoch()
+            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
+        let mut merged_sealed_epochs = Vec::new();
+        if let Some(last_sealed_epoch) = last_sealed_epoch_opt {
+            merged_sealed_epochs.push(last_sealed_epoch);
+        }
+        merged_sealed_epochs.extend(sealed_epochs.clone());
+        let merged_sealed_epochs_iter = merged_sealed_epochs
+            .iter()
+            .collect::<Vec<&Epoch>>()
+            .into_iter();
+
         // read inputs from blockchain
         let inputs = self
-            .collect_inputs(
-                prev_block,
-                current_block,
-                sealed_epochs.iter().collect::<Vec<&Epoch>>().into_iter(),
-            )
+            .collect_inputs(prev_block, current_block, merged_sealed_epochs_iter)
             .await?;
 
         Ok((inputs, sealed_epochs))
@@ -144,18 +162,25 @@ where
             )
             .await?
             .iter()
-            .map(|e| Epoch {
-                epoch_number: e
-                    .0
-                    .epochNumber
-                    .to_u64()
-                    .expect("fail to convert epoch number"),
-                epoch_boundary: e
-                    .0
-                    .blockNumberUpperBound
-                    .to_u64()
-                    .expect("fail to convert epoch boundary"),
-                root_tournament: e.0.tournament.to_string(),
+            .map(|e| {
+                let epoch = Epoch {
+                    epoch_number: e
+                        .0
+                        .epochNumber
+                        .to_u64()
+                        .expect("fail to convert epoch number"),
+                    epoch_boundary: e
+                        .0
+                        .blockNumberUpperBound
+                        .to_u64()
+                        .expect("fail to convert epoch boundary"),
+                    root_tournament: e.0.tournament.to_string(),
+                };
+                debug!(
+                    "epoch received: epoch_number {}, epoch_boundary {}, root_tournament {}",
+                    epoch.epoch_number, epoch.epoch_boundary, epoch.root_tournament
+                );
+                epoch
             })
             .collect())
     }
@@ -193,61 +218,64 @@ where
         };
 
         let mut inputs = vec![];
-        let mut input_events_iter = input_events.iter();
+        let mut input_events_peekable = input_events.iter().peekable();
         for epoch in sealed_epochs_iter {
+            if last_epoch_number > epoch.epoch_number {
+                continue;
+            }
             // iterate through newly sealed epochs, fill in the inputs accordingly
-            let inputs_of_epoch = self
-                .construct_input_ids(
-                    epoch.epoch_number,
-                    epoch.epoch_boundary,
-                    &mut next_input_index_in_epoch,
-                    &mut input_events_iter,
-                )
-                .await;
+            let inputs_of_epoch = self.construct_input_ids(
+                epoch.epoch_number,
+                epoch.epoch_boundary,
+                &mut next_input_index_in_epoch,
+                &mut input_events_peekable,
+            );
 
             inputs.extend(inputs_of_epoch);
             last_epoch_number = epoch.epoch_number + 1;
         }
 
         // all remaining inputs belong to an epoch that's not sealed yet
-        let inputs_of_epoch = self
-            .construct_input_ids(
-                last_epoch_number,
-                u64::MAX,
-                &mut next_input_index_in_epoch,
-                &mut input_events_iter,
-            )
-            .await;
+        let inputs_of_epoch = self.construct_input_ids(
+            last_epoch_number,
+            u64::MAX,
+            &mut next_input_index_in_epoch,
+            &mut input_events_peekable,
+        );
 
         inputs.extend(inputs_of_epoch);
 
         Ok(inputs)
     }
 
-    async fn construct_input_ids(
+    fn construct_input_ids<'a>(
         &self,
         epoch_number: u64,
         epoch_boundary: u64,
         next_input_index_in_epoch: &mut u64,
-        input_events_iter: &mut impl Iterator<Item = &(InputAdded, u64)>,
+        input_events_peekable: &mut Peekable<impl Iterator<Item = &'a (InputAdded, u64)>>,
     ) -> Vec<Input> {
         let mut inputs = vec![];
 
-        while input_events_iter
-            .peekable()
-            .peek()
-            .expect("fail to get peek next input")
-            .1
-            < epoch_boundary
-        {
+        while let Some(input_added) = input_events_peekable.peek() {
+            if input_added.1 >= epoch_boundary {
+                break;
+            }
             let input = Input {
                 id: InputId {
                     epoch_number,
                     input_index_in_epoch: *next_input_index_in_epoch,
                 },
-                data: input_events_iter.next().unwrap().0.input.to_vec(),
+                data: input_added.0.input.to_vec(),
             };
+            debug!(
+                "input received: epoch_number {}, input_index {}, data 0x{}",
+                input.id.epoch_number,
+                input.id.input_index_in_epoch,
+                input.data.encode_hex()
+            );
 
+            input_events_peekable.next();
             *next_input_index_in_epoch += 1;
             inputs.push(input);
         }

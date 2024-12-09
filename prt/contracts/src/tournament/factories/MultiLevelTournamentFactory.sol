@@ -24,21 +24,22 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         bottomFactory = _bottomFactory;
     }
 
-    function instantiate(Machine.Hash _initialHash, IDataProvider)
+    function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
         external
         override
         returns (ITournament)
     {
-        TopTournament _tournament = this.instantiateTop(_initialHash);
+        TopTournament _tournament = this.instantiateTop(_initialHash, _provider);
         emit tournamentCreated(_tournament);
         return _tournament;
     }
 
-    function instantiateTop(Machine.Hash _initialHash)
+    function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
         external
         returns (TopTournament)
     {
-        TopTournament _tournament = topFactory.instantiate(_initialHash);
+        TopTournament _tournament =
+            topFactory.instantiate(_initialHash, _provider);
         return _tournament;
     }
 
@@ -50,7 +51,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        IDataProvider _provider
     ) external returns (MiddleTournament) {
         MiddleTournament _tournament = middleFactory.instantiate(
             _initialHash,
@@ -60,7 +62,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level
+            _level,
+            _provider
         );
 
         return _tournament;
@@ -74,7 +77,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
+        uint64 _level,
+        IDataProvider _provider
     ) external returns (BottomTournament) {
         BottomTournament _tournament = bottomFactory.instantiate(
             _initialHash,
@@ -84,7 +88,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _contestedFinalStateTwo,
             _allowance,
             _startCycle,
-            _level
+            _level,
+            _provider
         );
 
         return _tournament;

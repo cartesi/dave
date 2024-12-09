@@ -6,11 +6,12 @@ local GarbageCollector = require "player.gc"
 local HonestStrategy = {}
 HonestStrategy.__index = HonestStrategy
 
-function HonestStrategy:new(commitment_builder, machine_path, sender)
+function HonestStrategy:new(commitment_builder, inputs, machine_path, sender)
     local gc_strategy = GarbageCollector:new(sender)
 
     local honest_strategy = {
         commitment_builder = commitment_builder,
+        inputs = inputs,
         machine_path = machine_path,
         sender = sender,
         gc_strategy = gc_strategy,
@@ -126,7 +127,8 @@ function HonestStrategy:_react_match(match, commitment, log)
 
             local cycle = match.base_big_cycle
             local ucycle = (match.leaf_cycle & constants.uarch_span):touinteger()
-            local logs = Machine.get_logs(self.machine_path, self.commitment_builder.snapshot_dir, cycle, ucycle)
+            local logs = Machine.get_logs(self.machine_path, self.commitment_builder.snapshot_dir, cycle, ucycle,
+                self.inputs)
 
             helper.log_full(self.sender.index, string.format(
                 "win leaf match in tournament %s of level %d for commitment %s",
@@ -279,7 +281,8 @@ function HonestStrategy:_react_tournament(tournament, log)
         tournament.base_big_cycle,
         tournament.level,
         tournament.log2_stride,
-        tournament.log2_stride_count
+        tournament.log2_stride_count,
+        self.inputs
     )
 
     table.insert(log.tournaments, tournament)
@@ -297,7 +300,8 @@ function HonestStrategy:_react_tournament(tournament, log)
                 tournament.parent.base_big_cycle,
                 tournament.parent.level,
                 tournament.parent.log2_stride,
-                tournament.parent.log2_stride_count
+                tournament.parent.log2_stride_count,
+                self.inputs
             )
             if tournament_winner.commitment ~= old_commitment then
                 helper.log_full(self.sender.index, "player lost tournament")

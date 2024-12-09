@@ -7,6 +7,8 @@ import "./Tournament.sol";
 import "../../CanonicalConstants.sol";
 import "../libs/Commitment.sol";
 
+import "step/src/EmulatorConstants.sol";
+import "step/src/SendCmioResponse.sol";
 import "step/src/UArchStep.sol";
 import "step/src/UArchReset.sol";
 
@@ -53,20 +55,25 @@ abstract contract LeafTournament is Tournament {
         );
     }
 
+    error WrongFinalState(
+        uint256 commitment, Machine.Hash expected, Machine.Hash got
+    );
+    error WrongNodesForStep();
+
     function winLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
         Tree.Node _rightNode,
         bytes calldata proofs
     ) external tournamentNotFinished {
-        Match.State storage _matchState = matches[_matchId.hashFromId()];
-        _matchState.requireExist();
-        _matchState.requireIsFinished();
-
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
         _clockOne.requireInitialized();
         _clockTwo.requireInitialized();
+
+        Match.State storage _matchState = matches[_matchId.hashFromId()];
+        _matchState.requireExist();
+        _matchState.requireIsFinished();
 
         (
             Machine.Hash _agreeHash,
@@ -75,11 +82,14 @@ abstract contract LeafTournament is Tournament {
             Machine.Hash _finalStateTwo
         ) = _matchState.getDivergence(startCycle);
 
-        Machine.Hash _finalState = runMetaStep(_agreeHash, _agreeCycle, proofs);
+        Machine.Hash _finalState = Machine.Hash.wrap(
+            metaStep(Machine.Hash.unwrap(_agreeHash), _agreeCycle, proofs)
+        );
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
             require(
-                _finalState.eq(_finalStateOne), "final state one doesn't match"
+                _finalState.eq(_finalStateOne),
+                WrongFinalState(1, _finalState, _finalStateOne)
             );
 
             _clockOne.setPaused();
@@ -88,7 +98,8 @@ abstract contract LeafTournament is Tournament {
             );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
             require(
-                _finalState.eq(_finalStateTwo), "final state two doesn't match"
+                _finalState.eq(_finalStateTwo),
+                WrongFinalState(2, _finalState, _finalStateTwo)
             );
 
             _clockTwo.setPaused();
@@ -96,46 +107,67 @@ abstract contract LeafTournament is Tournament {
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
         } else {
-            revert("wrong left/right nodes for step");
+            revert WrongNodesForStep();
         }
 
         // delete storage
         deleteMatch(_matchId.hashFromId());
     }
 
-    function runMetaStep(
-        Machine.Hash machineState,
-        uint256 counter,
-        bytes memory proofs
-    ) internal pure returns (Machine.Hash) {
-        return Machine.Hash.wrap(
-            metaStep(Machine.Hash.unwrap(machineState), counter, proofs)
-        );
-    }
-
     // TODO: move to step repo
     function metaStep(
         bytes32 machineState,
         uint256 counter,
-        bytes memory proofs
-    ) internal pure returns (bytes32 newMachineState) {
+        bytes calldata proofs
+    ) internal view returns (bytes32 newMachineState) {
         // TODO: create a more convinient constructor.
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-        uint256 uarch_mask = (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
-        uint256 input_mask = (1 << ArbitrationConstants.LOG2_INPUT_SPAN) - 1;
+        uint256 uarch_step_mask =
+            (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
+        uint256 big_step_mask = (
+            1
+                << ArbitrationConstants.LOG2_EMULATOR_SPAN
+                    + ArbitrationConstants.LOG2_UARCH_SPAN
+        ) - 1;
 
-        if (counter & uarch_mask == uarch_mask) {
-            UArchReset.reset(accessLogs);
-            newMachineState = accessLogs.currentRootHash;
-        } else if (counter & input_mask == input_mask) {
-            UArchReset.reset(accessLogs);
-            // TODO: add input
-            newMachineState = accessLogs.currentRootHash;
+        if (address(provider) == address(0)) {
+            // this is a inputless version of the meta step implementation primarily used for testing
+            if ((counter + 1) & uarch_step_mask == 0) {
+                UArchReset.reset(accessLogs);
+            } else {
+                UArchStep.step(accessLogs);
+            }
         } else {
-            UArchStep.step(accessLogs);
-            newMachineState = accessLogs.currentRootHash;
+            // rollups meta step handles input
+            if (counter & big_step_mask == 0) {
+                (uint256 inputLength,) = abi.decode(proofs, (uint256, bytes));
+                bytes calldata input = proofs[32:32 + inputLength];
+                uint256 inputIndex = counter
+                    >> (
+                        ArbitrationConstants.LOG2_EMULATOR_SPAN
+                            + ArbitrationConstants.LOG2_UARCH_SPAN
+                    ); // TODO: add input index offset of the epoch
+
+                (bytes32 inputMerkleRoot,) =
+                    provider.gio(0, abi.encode(inputIndex), input);
+                accessLogs = AccessLogs.Context(
+                    machineState, Buffer.Context(proofs, 32 + inputLength)
+                );
+                SendCmioResponse.sendCmioResponse(
+                    accessLogs,
+                    EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
+                    inputMerkleRoot,
+                    uint32(inputLength)
+                );
+                UArchStep.step(accessLogs);
+            } else if ((counter + 1) & uarch_step_mask == 0) {
+                UArchReset.reset(accessLogs);
+            } else {
+                UArchStep.step(accessLogs);
+            }
         }
+        newMachineState = accessLogs.currentRootHash;
     }
 }

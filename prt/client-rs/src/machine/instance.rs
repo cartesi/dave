@@ -1,19 +1,25 @@
+use crate::db::compute_state_access::Input;
 use crate::machine::constants;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
 use cartesi_machine::{
     configuration::RuntimeConfig,
+    htif,
     log::{AccessLog, AccessLogType},
     machine::Machine,
 };
+use log::debug;
 
+use alloy::hex::ToHexExt;
 use anyhow::Result;
+use ruint::aliases::U256;
 use std::path::Path;
 
 #[derive(Debug)]
 pub struct MachineState {
     pub root_hash: Digest,
     pub halted: bool,
+    pub yielded: bool,
     pub uhalted: bool,
 }
 
@@ -21,8 +27,10 @@ impl std::fmt::Display for MachineState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{{root_hash = {:?}, halted = {}, uhalted = {}}}",
-            self.root_hash, self.halted, self.uhalted
+            "{{root_hash = {}, halted = {}, uhalted = {}}}",
+            self.root_hash.to_hex(),
+            self.halted,
+            self.uhalted
         )
     }
 }
@@ -58,18 +66,21 @@ impl MachineInstance {
     }
 
     // load inner machine with snapshot, update cycle, keep everything else the same
-    pub fn load_snapshot(&mut self, snapshot_path: &Path) -> Result<()> {
+    pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
         let machine = Machine::load(&Path::new(snapshot_path), RuntimeConfig::default())?;
 
         let cycle = machine.read_mcycle()?;
 
         // Machine can not go backward behind the initial machine
         assert!(cycle >= self.start_cycle);
-        self.cycle = cycle - self.start_cycle;
+        self.cycle = snapshot_cycle;
 
         assert_eq!(machine.read_uarch_cycle()?, 0);
 
         self.machine = machine;
+
+        debug!("load from {}", snapshot_path.display());
+        debug!("loaded machine {}", self.machine_state()?);
 
         Ok(())
     }
@@ -85,27 +96,66 @@ impl MachineInstance {
         self.root_hash
     }
 
-    pub fn get_logs(&mut self, cycle: u64, ucycle: u64) -> Result<MachineProof> {
-        self.run(cycle)?;
-        self.run_uarch(ucycle)?;
-
-        let access_log = AccessLogType {
+    pub fn get_logs(
+        &mut self,
+        cycle: u64,
+        ucycle: u64,
+        inputs: Vec<Vec<u8>>,
+        handle_rollups: bool,
+    ) -> Result<MachineProof> {
+        let log_type = AccessLogType {
             annotations: true,
             proofs: true,
             large_data: false,
         };
-        let logs;
 
-        if ucycle == constants::UARCH_SPAN {
-            logs = self.machine.log_uarch_reset(access_log, false)?;
+        let mut logs = Vec::new();
+        if handle_rollups {
+            // treat it as rollups
+            self.run_with_inputs(cycle - 1, &inputs)?;
+            self.run(cycle)?;
+
+            let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+            let input = inputs.get((cycle >> constants::LOG2_EMULATOR_SPAN) as usize);
+            if cycle & mask == 0 && input.is_some() {
+                // need to process input
+                let data = input.unwrap();
+                if ucycle == 0 {
+                    let cmio_logs = self.machine.log_send_cmio_response(
+                        htif::fromhost::ADVANCE_STATE,
+                        &data,
+                        log_type,
+                        false,
+                    )?;
+                    // append step logs to cmio logs
+                    let step_logs = self.machine.log_uarch_step(log_type, false)?;
+                    logs.push(&cmio_logs);
+                    logs.push(&step_logs);
+                    return Ok(encode_access_logs(logs, Some(Input { 0: data.clone() })));
+                } else {
+                    self.machine
+                        .send_cmio_response(htif::fromhost::ADVANCE_STATE, &data)?;
+                }
+            }
         } else {
-            logs = self.machine.log_uarch_step(access_log, false)?;
+            // treat it as compute
+            self.run(cycle)?;
         }
 
-        Ok(encode_access_log(&logs))
+        self.run_uarch(ucycle)?;
+        if ucycle == constants::UARCH_SPAN {
+            let reset_logs = self.machine.log_uarch_reset(log_type, false)?;
+            logs.push(&reset_logs);
+            Ok(encode_access_logs(logs, None))
+        } else {
+            let step_logs = self.machine.log_uarch_step(log_type, false)?;
+            logs.push(&step_logs);
+            Ok(encode_access_logs(logs, None))
+        }
     }
 
     pub fn run(&mut self, cycle: u64) -> Result<()> {
+        debug!("self cycle: {}, target cycle: {}", self.cycle, cycle);
         assert!(self.cycle <= cycle);
 
         let physical_cycle = arithmetic::add_and_clamp(self.start_cycle, cycle);
@@ -113,6 +163,11 @@ impl MachineInstance {
         loop {
             let halted = self.machine.read_iflags_h()?;
             if halted {
+                break;
+            }
+
+            let yielded = self.machine.read_iflags_y()?;
+            if yielded {
                 break;
             }
 
@@ -142,6 +197,50 @@ impl MachineInstance {
         Ok(())
     }
 
+    pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<()> {
+        debug!("current cycle: {}", self.cycle);
+        debug!("target cycle: {}", cycle);
+
+        let input_mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+        let current_input_index = self.cycle >> constants::LOG2_EMULATOR_SPAN;
+
+        let mut next_input_index;
+
+        if self.cycle & input_mask == 0 {
+            next_input_index = current_input_index;
+        } else {
+            next_input_index = current_input_index + 1;
+        }
+        let mut next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
+
+        while next_input_cycle <= cycle {
+            debug!("next input index: {}", next_input_index);
+            debug!("run to next input cycle: {}", next_input_cycle);
+            self.run(next_input_cycle)?;
+            let input = inputs.get(next_input_index as usize);
+            if let Some(data) = input {
+                debug!(
+                    "before input, machine state: {}",
+                    self.machine.get_root_hash()?
+                );
+                debug!("input: 0x{}", data.encode_hex());
+                self.machine
+                    .send_cmio_response(htif::fromhost::ADVANCE_STATE, data)?;
+                debug!(
+                    "after input, machine state: {}",
+                    self.machine.get_root_hash()?
+                );
+            }
+
+            next_input_index += 1;
+            next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
+        }
+        debug!("run to target cycle: {}", cycle);
+        self.run(cycle)?;
+
+        Ok(())
+    }
+
     pub fn increment_uarch(&mut self) -> Result<()> {
         self.machine.run_uarch(self.ucycle + 1)?;
         self.ucycle += 1;
@@ -158,11 +257,13 @@ impl MachineInstance {
     pub fn machine_state(&mut self) -> Result<MachineState> {
         let root_hash = self.machine.get_root_hash()?;
         let halted = self.machine.read_iflags_h()?;
+        let yielded = self.machine.read_iflags_y()?;
         let uhalted = self.machine.read_uarch_halt_flag()?;
 
         Ok(MachineState {
             root_hash: Digest::from_digest(root_hash.as_bytes())?,
             halted,
+            yielded,
             uhalted,
         })
     }
@@ -178,22 +279,29 @@ impl MachineInstance {
     }
 }
 
-fn encode_access_log(log: &AccessLog) -> Vec<u8> {
+fn encode_access_logs(logs: Vec<&AccessLog>, input: Option<Input>) -> Vec<u8> {
     let mut encoded: Vec<Vec<u8>> = Vec::new();
 
-    for a in log.accesses().iter() {
-        if a.log2_size() == 3 {
-            encoded.push(a.read_data().to_vec());
-        } else {
-            encoded.push(a.read_hash().as_bytes().to_vec());
-        }
+    if let Some(i) = input {
+        encoded.push(U256::from(i.0.len()).to_be_bytes_vec());
+        encoded.push(i.0);
+    }
 
-        let decoded_siblings: Vec<Vec<u8>> = a
-            .sibling_hashes()
-            .iter()
-            .map(|h| h.as_bytes().to_vec())
-            .collect();
-        encoded.extend_from_slice(&decoded_siblings);
+    for log in logs.iter() {
+        for a in log.accesses().iter() {
+            if a.log2_size() == 3 {
+                encoded.push(a.read_data().to_vec());
+            } else {
+                encoded.push(a.read_hash().as_bytes().to_vec());
+            }
+
+            let decoded_siblings: Vec<Vec<u8>> = a
+                .sibling_hashes()
+                .iter()
+                .map(|h| h.as_bytes().to_vec())
+                .collect();
+            encoded.extend_from_slice(&decoded_siblings);
+        }
     }
 
     encoded.iter().flatten().cloned().collect()
