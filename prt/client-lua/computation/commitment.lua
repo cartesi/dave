@@ -35,13 +35,12 @@ local function run_uarch_span(machine)
     return builder:build()
 end
 
-local function build_small_machine_commitment(base_cycle, log2_stride_count, machine, snapshot_dir)
+local function build_small_machine_commitment(base_cycle, log2_stride_count, machine, initial_state, snapshot_dir)
     local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
         machine:take_snapshot(snapshot_dir, base_cycle, handle_rollups)
     end
-    local initial_state = machine_state.root_hash
 
     local builder = MerkleBuilder:new()
     local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span)
@@ -60,13 +59,13 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
     return initial_state, builder:build(initial_state)
 end
 
-local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
+local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state,
+                                            snapshot_dir)
     local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
         machine:take_snapshot(snapshot_dir, base_cycle, handle_rollups)
     end
-    local initial_state = machine_state.root_hash
 
     local builder = MerkleBuilder:new()
     local instruction_count = arithmetic.max_uint(log2_stride_count)
@@ -92,14 +91,18 @@ end
 local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, snapshot_dir, inputs)
     local machine = Machine:new_from_path(machine_path)
     machine:load_snapshot(snapshot_dir, base_cycle)
+
+    local initial_state
     if inputs then
         -- treat it as rollups
+        -- the base_cycle may be the cycle to receive input,
+        -- we need to take the initial state before feeding input to the machine
         handle_rollups = true
-        machine:run_with_inputs(base_cycle, inputs)
+        initial_state = machine:run_with_inputs(base_cycle, inputs).root_hash
     else
         -- treat it as compute
         handle_rollups = false
-        machine:run(base_cycle)
+        initial_state = machine:run(base_cycle).root_hash
     end
 
     if log2_stride >= consts.log2_uarch_span then
@@ -107,10 +110,11 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
             log2_stride + log2_stride_count <=
             consts.log2_input_span + consts.log2_emulator_span + consts.log2_uarch_span
         )
-        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
+        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state,
+            snapshot_dir)
     else
         assert(log2_stride == 0)
-        return build_small_machine_commitment(base_cycle, log2_stride_count, machine, snapshot_dir)
+        return build_small_machine_commitment(base_cycle, log2_stride_count, machine, initial_state, snapshot_dir)
     end
 end
 

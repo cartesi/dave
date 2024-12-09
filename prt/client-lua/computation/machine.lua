@@ -180,6 +180,7 @@ function Machine:run_with_inputs(cycle, inputs)
     local current_input_index = self.cycle >> consts.log2_emulator_span
 
     local next_input_index
+    local machine_state_without_input = self:state()
 
     if self.cycle & input_mask == 0 then
         next_input_index = current_input_index
@@ -189,7 +190,7 @@ function Machine:run_with_inputs(cycle, inputs)
     local next_input_cycle = next_input_index << consts.log2_emulator_span
 
     while next_input_cycle <= cycle do
-        self:run(next_input_cycle)
+        machine_state_without_input = self:run(next_input_cycle)
         local input = inputs[next_input_index + 1]
         if input then
             local h = assert(input:match("0x(%x+)"), input)
@@ -202,9 +203,12 @@ function Machine:run_with_inputs(cycle, inputs)
         next_input_index = next_input_index + 1
         next_input_cycle = next_input_index << consts.log2_emulator_span
     end
-    self:run(cycle)
 
-    return self:state()
+    if cycle > self.cycle then
+        machine_state_without_input = self:run(cycle)
+    end
+
+    return machine_state_without_input
 end
 
 function Machine:increment_uarch()
@@ -284,8 +288,14 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
     local log_type = { annotations = true, proofs = true }
     if inputs then
         -- treat it as rollups
-        machine:run_with_inputs(cycle - 1, inputs)
-        machine:run(cycle)
+        -- the cycle may be the cycle to receive input,
+        -- we need to include the process of feeding input to the machine in the log
+        if cycle == 0 then
+            machine:run(cycle)
+        else
+            machine:run_with_inputs(cycle - 1, inputs)
+            machine:run(cycle)
+        end
 
         local mask = arithmetic.max_uint(consts.log2_emulator_span);
         local input = inputs[cycle >> consts.log2_emulator_span]
