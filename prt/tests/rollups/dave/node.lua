@@ -1,11 +1,11 @@
 local helper = require "utils.helper"
 
-local function start_dave_node(machine_path, db_path)
+local function start_dave_node(machine_path, db_path, sleep_duration, verbosity, trace_level)
     local cmd = string.format(
         [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' PATH_TO_DB='%s' \
-        SLEEP_DURATION=4 RUST_BACKTRACE=1 RUST_LOG='info' RUST_BACKTRACE=full \
+        SLEEP_DURATION=%d RUST_LOG=%s RUST_BACKTRACE=%s \
         ./dave-rollups > dave.log 2>&1"]],
-        machine_path, db_path)
+        machine_path, db_path, sleep_duration, verbosity, trace_level)
 
     local reader = io.popen(cmd)
     assert(reader, "`popen` returned nil reader")
@@ -26,10 +26,10 @@ end
 local Dave = {}
 Dave.__index = Dave
 
-function Dave:new(machine_path)
+function Dave:new(machine_path, sleep_duration, verbosity, trace_level)
     local n = {}
 
-    local handle = start_dave_node(machine_path, "./dave.db")
+    local handle = start_dave_node(machine_path, "./dave.db", sleep_duration, verbosity, trace_level)
 
     n._handle = handle
 

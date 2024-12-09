@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 use ::log::{error, info};
 use alloy::sol_types::private::Address;
