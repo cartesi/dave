@@ -113,8 +113,14 @@ impl MachineInstance {
         let mut logs = Vec::new();
         if handle_rollups {
             // treat it as rollups
-            self.run_with_inputs(cycle - 1, &inputs)?;
-            self.run(cycle)?;
+            // the cycle may be the cycle to receive input,
+            // we need to include the process of feeding input to the machine in the log
+            if cycle == 0 {
+                self.run(cycle)?;
+            } else {
+                self.run_with_inputs(cycle - 1, &inputs)?;
+                self.run(cycle)?;
+            }
 
             let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
             let input = inputs.get((cycle >> constants::LOG2_EMULATOR_SPAN) as usize);
@@ -155,7 +161,8 @@ impl MachineInstance {
         }
     }
 
-    pub fn run(&mut self, cycle: u64) -> Result<()> {
+    // Runs to the `cycle` directly and returns the machine state after the run
+    pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
         debug!("self cycle: {}, target cycle: {}", self.cycle, cycle);
         assert!(self.cycle <= cycle);
 
@@ -182,7 +189,7 @@ impl MachineInstance {
 
         self.cycle = cycle;
 
-        Ok(())
+        Ok(self.machine_state()?)
     }
 
     pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
@@ -198,10 +205,16 @@ impl MachineInstance {
         Ok(())
     }
 
-    pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<()> {
+    // Runs to the `cycle` with all necessary inputs added to the machine
+    // Returns the machine state after the run;
+    // One exception is that if `cycle` is supposed to receive an input, in this case
+    // the machine state would be `without` input included in the machine,
+    // this is useful when we need the initial state to compute the commitments
+    pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<MachineState> {
         debug!("current cycle: {}", self.cycle);
         debug!("target cycle: {}", cycle);
 
+        let mut machine_state_without_input = self.machine_state()?;
         let input_mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
         let current_input_index = self.cycle >> constants::LOG2_EMULATOR_SPAN;
 
@@ -217,29 +230,31 @@ impl MachineInstance {
         while next_input_cycle <= cycle {
             debug!("next input index: {}", next_input_index);
             debug!("run to next input cycle: {}", next_input_cycle);
-            self.run(next_input_cycle)?;
+            machine_state_without_input = self.run(next_input_cycle)?;
             let input = inputs.get(next_input_index as usize);
             if let Some(data) = input {
                 debug!(
                     "before input, machine state: {}",
-                    self.machine.get_root_hash()?
+                    self.machine_state()?.root_hash
                 );
                 debug!("input: 0x{}", data.encode_hex());
                 self.machine
                     .send_cmio_response(htif::fromhost::ADVANCE_STATE, data)?;
                 debug!(
                     "after input, machine state: {}",
-                    self.machine.get_root_hash()?
+                    self.machine_state()?.root_hash
                 );
             }
 
             next_input_index += 1;
             next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
         }
-        debug!("run to target cycle: {}", cycle);
-        self.run(cycle)?;
-
-        Ok(())
+        if cycle > self.cycle {
+            debug!("run to target cycle: {}", cycle);
+            machine_state_without_input = self.run(cycle)?;
+            debug!("after run, machine state: {}", machine_state_without_input);
+        }
+        Ok(machine_state_without_input)
     }
 
     pub fn increment_uarch(&mut self) -> Result<()> {

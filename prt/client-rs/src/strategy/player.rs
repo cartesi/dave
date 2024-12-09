@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ::log::{error, info};
+use ::log::{debug, error, info};
 use alloy::sol_types::private::Address;
 use anyhow::Result;
 use async_recursion::async_recursion;
@@ -421,6 +421,7 @@ impl Player {
             }
         };
 
+        debug!("running leaf position: {}", running_leaf_position);
         let agree_state_proof = if running_leaf_position.is_zero() {
             MerkleProof::leaf(commitment.implicit_hash, U256::ZERO)
         } else {
@@ -481,9 +482,11 @@ impl Player {
         let (left, right) = r.subtrees().expect("merkle tree should have subtrees");
 
         let (new_left, new_right) = if left.root_hash() != match_state.left_node {
-            left.subtrees().expect("merkle tree should have subtrees")
+            debug!("going down to the left");
+            left.subtrees().expect("left tree should have subtrees")
         } else {
-            right.subtrees().expect("merkle tree should have subtrees")
+            debug!("going down to the right");
+            right.subtrees().expect("right tree should have subtrees")
         };
 
         info!(

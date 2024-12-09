@@ -21,13 +21,12 @@ pub struct MachineCommitment {
 
 /// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle and leafs.
 pub fn build_machine_commitment_from_leafs<L>(
-    machine: &mut MachineInstance,
     leafs: Vec<(L, u64)>,
+    initial_state: Digest,
 ) -> Result<MachineCommitment>
 where
     L: Into<Arc<MerkleTree>>,
 {
-    let initial_state = machine.machine_state()?;
     let mut builder = MerkleBuilder::default();
     for leaf in leafs {
         builder.append_repeated(leaf.0, leaf.1);
@@ -35,7 +34,7 @@ where
     let tree = builder.build();
 
     Ok(MachineCommitment {
-        implicit_hash: initial_state.root_hash,
+        implicit_hash: initial_state,
         merkle: tree,
     })
 }
@@ -47,6 +46,7 @@ pub fn build_machine_commitment(
     level: u64,
     log2_stride: u64,
     log2_stride_count: u64,
+    initial_state: Digest,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
     if log2_stride >= constants::LOG2_UARCH_SPAN {
@@ -62,11 +62,19 @@ pub fn build_machine_commitment(
             level,
             log2_stride,
             log2_stride_count,
+            initial_state,
             db,
         )
     } else {
         assert!(log2_stride == 0);
-        build_small_machine_commitment(machine, base_cycle, level, log2_stride_count, db)
+        build_small_machine_commitment(
+            machine,
+            base_cycle,
+            level,
+            log2_stride_count,
+            initial_state,
+            db,
+        )
     }
 }
 
@@ -77,10 +85,10 @@ pub fn build_big_machine_commitment(
     level: u64,
     log2_stride: u64,
     log2_stride_count: u64,
+    initial_state: Digest,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
     snapshot_base_cycle(machine, base_cycle, db)?;
-    let initial_state = machine.machine_state()?;
 
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
@@ -106,7 +114,7 @@ pub fn build_big_machine_commitment(
     db.insert_compute_leafs(level, base_cycle, compute_leafs.iter())?;
 
     Ok(MachineCommitment {
-        implicit_hash: initial_state.root_hash,
+        implicit_hash: initial_state,
         merkle,
     })
 }
@@ -140,10 +148,10 @@ pub fn build_small_machine_commitment(
     base_cycle: u64,
     level: u64,
     log2_stride_count: u64,
+    initial_state: Digest,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
     snapshot_base_cycle(machine, base_cycle, db)?;
-    let initial_state = machine.machine_state()?;
 
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
@@ -172,7 +180,7 @@ pub fn build_small_machine_commitment(
     db.insert_compute_leafs(level, base_cycle, compute_leafs.iter())?;
 
     Ok(MachineCommitment {
-        implicit_hash: initial_state.root_hash,
+        implicit_hash: initial_state,
         merkle,
     })
 }

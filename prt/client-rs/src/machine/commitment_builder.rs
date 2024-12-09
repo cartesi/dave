@@ -45,21 +45,26 @@ impl CachingMachineCommitmentBuilder {
             machine.load_snapshot(&snapshot.1, snapshot.0)?;
         };
 
+        let initial_state = {
+            if db.handle_rollups {
+                debug!("run with inputs");
+                // treat it as rollups
+                machine
+                    .run_with_inputs(base_cycle, &db.inputs()?)?
+                    .root_hash
+            } else {
+                debug!("run without inputs");
+                // treat it as compute
+                machine.run(base_cycle)?.root_hash
+            }
+        };
+        debug!("initial state for commitment: {}", initial_state);
         let commitment = {
             let leafs = db.compute_leafs(level, base_cycle)?;
             // leafs are cached in database, use it to calculate merkle
             if leafs.len() > 0 {
-                build_machine_commitment_from_leafs(&mut machine, leafs)?
+                build_machine_commitment_from_leafs(leafs, initial_state)?
             } else {
-                if db.handle_rollups {
-                    debug!("run with inputs");
-                    // treat it as rollups
-                    machine.run_with_inputs(base_cycle, &db.inputs()?)?;
-                } else {
-                    debug!("run without inputs");
-                    // treat it as compute
-                    machine.run(base_cycle)?;
-                }
                 // leafs are not cached, build merkle by running the machine
                 build_machine_commitment(
                     &mut machine,
@@ -67,6 +72,7 @@ impl CachingMachineCommitmentBuilder {
                     level,
                     log2_stride,
                     log2_stride_count,
+                    initial_state,
                     db,
                 )?
             }
