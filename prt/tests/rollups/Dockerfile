@@ -50,17 +50,17 @@ RUN curl -sSL https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_
 
 # prepare echo machine
 WORKDIR /root/program/
-COPY ./cartesi-rollups/tests/rollups/program/echo/echo-program.tar.gz /root/program/
+COPY ./prt/tests/rollups/program/echo/echo-program.tar.gz /root/program/
 RUN tar -zx -f /root/program/echo-program.tar.gz
 
 COPY ./machine/step /root/machine/step
 COPY ./prt /root/prt
 COPY ./cartesi-rollups /root/cartesi-rollups
-COPY --from=builder /app/cartesi-rollups/node/target/release/dave-rollups /root/cartesi-rollups/tests/rollups/dave-rollups
+COPY --from=builder /app/cartesi-rollups/node/target/release/dave-rollups /root/prt/tests/rollups/dave-rollups
 
 WORKDIR /root/cartesi-rollups/contracts
 RUN forge --version
 RUN forge build
 
-WORKDIR /root/cartesi-rollups/tests/rollups
+WORKDIR /root/prt/tests/rollups
 ENTRYPOINT ["./prt_rollups.lua"]

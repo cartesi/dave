@@ -19,9 +19,9 @@ local function advance_time(seconds, endpoint)
     end
 end
 
-local deploy_cmd = [[sh -c "cd ../../contracts && ./deploy_anvil.sh"]]
-local function deploy_contracts()
-    local reader = io.popen(deploy_cmd)
+local deploy_cmd = [[sh -c "cd %s && ./deploy_anvil.sh"]]
+local function deploy_contracts(contracts_path)
+    local reader = io.popen(string.format(deploy_cmd, contracts_path))
     assert(reader, "Failed to open process for deploy command: " .. deploy_cmd)
     local output = reader:read("*a")
     local success = reader:close()

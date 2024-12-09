@@ -147,7 +147,7 @@ local root_tournament = blockchain_constants.root_tournament
 local blockchain_node = Blockchain:new()
 time.sleep(NODE_DELAY)
 
-blockchain_utils.deploy_contracts()
+blockchain_utils.deploy_contracts("../../contracts")
 time.sleep(NODE_DELAY)
 
 local player_coroutines = setup_players(use_lua_node, extra_data, root_tournament, machine_path)
