@@ -127,13 +127,14 @@ library Clock {
         _setNewPaused(state, _timeLeft);
     }
 
-    /// @notice Add `MATCH_EFFORT` to a clock and set it to paused.
+    /// @notice Add matchEffort to a clock and set it to paused.
     /// The new clock allowance is capped by `MAX_ALLOWANCE`.
-    function addMatchEffort(State storage state) internal {
+    function addMatchEffort(State storage state, Time.Duration matchEffort)
+        internal
+    {
         Time.Duration _timeLeft = timeLeft(state);
 
-        Time.Duration _allowance =
-            _timeLeft.add(ArbitrationConstants.MATCH_EFFORT);
+        Time.Duration _allowance = _timeLeft.add(matchEffort);
 
         if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
             _allowance = ArbitrationConstants.MAX_ALLOWANCE;

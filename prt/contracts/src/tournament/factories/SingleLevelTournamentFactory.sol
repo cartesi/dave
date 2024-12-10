@@ -7,7 +7,10 @@ import "../concretes/SingleLevelTournament.sol";
 import "../../ITournamentFactory.sol";
 import "../../ITournamentParameters.sol";
 
-contract SingleLevelTournamentFactory is ITournamentFactory, ITournamentParameters {
+contract SingleLevelTournamentFactory is
+    ITournamentFactory,
+    ITournamentParameters
+{
     uint64 public constant levels = 1;
     Time.Duration public immutable matchEffort;
     Time.Duration public immutable maxAllowance;
@@ -33,7 +36,7 @@ contract SingleLevelTournamentFactory is ITournamentFactory, ITournamentParamete
         returns (SingleLevelTournament)
     {
         SingleLevelTournament _tournament =
-            new SingleLevelTournament(_initialHash);
+            new SingleLevelTournament(this, _initialHash);
 
         emit tournamentCreated(_tournament);
 

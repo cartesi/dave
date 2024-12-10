@@ -5,10 +5,13 @@ pragma solidity ^0.8.17;
 
 import "../../concretes/BottomTournament.sol";
 
+import "../../../ITournamentParameters.sol";
+
 contract BottomTournamentFactory {
     constructor() {}
 
     function instantiate(
+        ITournamentParameters _tournamentParameters,
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
         Machine.Hash _contestedFinalStateOne,
@@ -19,6 +22,7 @@ contract BottomTournamentFactory {
         uint64 _level
     ) external returns (BottomTournament) {
         BottomTournament _tournament = new BottomTournament(
+            _tournamentParameters,
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,

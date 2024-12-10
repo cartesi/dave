@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import "../../abstracts/NonLeafTournament.sol";
 import "../../concretes/MiddleTournament.sol";
 
+import "../../../ITournamentParameters.sol";
 import "../../../IMultiLevelTournamentFactory.sol";
 
 import "../../../Machine.sol";
@@ -16,6 +17,7 @@ contract MiddleTournamentFactory {
     constructor() {}
 
     function instantiate(
+        ITournamentParameters _tournamentParameters,
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
         Machine.Hash _contestedFinalStateOne,
@@ -26,6 +28,7 @@ contract MiddleTournamentFactory {
         uint64 _level
     ) external returns (MiddleTournament) {
         MiddleTournament _tournament = new MiddleTournament(
+            _tournamentParameters,
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,

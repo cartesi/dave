@@ -10,7 +10,10 @@ import "./multilevel/TopTournamentFactory.sol";
 import "./multilevel/MiddleTournamentFactory.sol";
 import "./multilevel/BottomTournamentFactory.sol";
 
-contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ITournamentParameters {
+contract MultiLevelTournamentFactory is
+    IMultiLevelTournamentFactory,
+    ITournamentParameters
+{
     TopTournamentFactory immutable topFactory;
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
@@ -60,7 +63,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ITournamen
         external
         returns (TopTournament)
     {
-        TopTournament _tournament = topFactory.instantiate(_initialHash);
+        TopTournament _tournament = topFactory.instantiate(this, _initialHash);
         return _tournament;
     }
 
@@ -75,6 +78,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ITournamen
         uint64 _level
     ) external returns (MiddleTournament) {
         MiddleTournament _tournament = middleFactory.instantiate(
+            this,
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,
@@ -99,6 +103,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ITournamen
         uint64 _level
     ) external returns (BottomTournament) {
         BottomTournament _tournament = bottomFactory.instantiate(
+            this,
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,
