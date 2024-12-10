@@ -274,8 +274,12 @@ contract Util {
         internal
         returns (SingleLevelTournamentFactory)
     {
-        SingleLevelTournamentFactory singleLevelFactory =
-            new SingleLevelTournamentFactory();
+        SingleLevelTournamentFactory singleLevelFactory = new SingleLevelTournamentFactory(
+            ArbitrationConstants.MATCH_EFFORT,
+            ArbitrationConstants.MAX_ALLOWANCE,
+            ArbitrationConstants.log2step(0),
+            ArbitrationConstants.height(0)
+        );
 
         return singleLevelFactory;
     }
@@ -285,12 +289,28 @@ contract Util {
         internal
         returns (MultiLevelTournamentFactory)
     {
-        TopTournamentFactory topFactory = new TopTournamentFactory();
-        MiddleTournamentFactory middleFactory = new MiddleTournamentFactory();
-        BottomTournamentFactory bottomFactory = new BottomTournamentFactory();
+        DisputeParameters memory disputeParameters = DisputeParameters({
+            timeConstants: TimeConstants({
+                matchEffort: ArbitrationConstants.MATCH_EFFORT,
+                maxAllowance: ArbitrationConstants.MAX_ALLOWANCE
+            }),
+            commitmentStructures: new CommitmentStructure[](
+                ArbitrationConstants.LEVELS
+            )
+        });
+
+        for (uint64 i; i < ArbitrationConstants.LEVELS; ++i) {
+            disputeParameters.commitmentStructures[i] = CommitmentStructure({
+                log2step: ArbitrationConstants.log2step(i),
+                height: ArbitrationConstants.height(i)
+            });
+        }
 
         return new MultiLevelTournamentFactory(
-            topFactory, middleFactory, bottomFactory
+            new TopTournamentFactory(),
+            new MiddleTournamentFactory(),
+            new BottomTournamentFactory(),
+            disputeParameters
         );
     }
 }

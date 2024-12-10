@@ -146,7 +146,7 @@ abstract contract NonLeafTournament is Tournament {
         // the inner tournament is bottom tournament at last level
         // else instantiate middle tournament
         Tournament _tournament;
-        if (_level == ArbitrationConstants.LEVELS - 1) {
+        if (_level == levels - 1) {
             _tournament = tournamentFactory.instantiateBottom(
                 _initialHash,
                 _contestedCommitmentOne,

@@ -104,4 +104,12 @@ library Time {
     {
         return timestamp.timeoutElapsedSince(duration, currentTime());
     }
+
+    function min(Duration left, Duration right)
+        internal
+        pure
+        returns (Duration)
+    {
+        return left.gt(right) ? right : left;
+    }
 }
