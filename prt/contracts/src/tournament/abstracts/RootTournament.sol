@@ -13,13 +13,17 @@ abstract contract RootTournament is Tournament, ITournament {
     //
     constructor(
         Machine.Hash _initialHash,
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
         uint64 _levels,
         uint64 _log2step,
         uint64 _height
     )
         Tournament(
             _initialHash,
-            ArbitrationConstants.MAX_ALLOWANCE,
+            _maxAllowance,
+            _matchEffort,
+            _maxAllowance,
             0,
             0,
             _levels,

@@ -13,6 +13,8 @@ import "src/IDataProvider.sol";
 contract TopTournamentScript is Script {
     function run(
         Machine.Hash initialHash,
+        Time.Duration matchEffort,
+        Time.Duration maxAllowance,
         uint64 levels,
         uint64[] calldata log2step,
         uint64[] calldata height
@@ -23,6 +25,8 @@ contract TopTournamentScript is Script {
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
+            matchEffort,
+            maxAllowance,
             levels,
             log2step,
             height

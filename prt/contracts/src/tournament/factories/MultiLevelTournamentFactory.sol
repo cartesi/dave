@@ -13,6 +13,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
+    Time.Duration immutable matchEffort;
+    Time.Duration immutable maxAllowance;
     uint64 immutable levels;
     uint64[] log2step;
     uint64[] height;
@@ -21,6 +23,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         TopTournamentFactory _topFactory,
         MiddleTournamentFactory _middleFactory,
         BottomTournamentFactory _bottomFactory,
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
         uint64 _levels,
         uint64[] memory _log2step,
         uint64[] memory _height
@@ -32,6 +36,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         topFactory = _topFactory;
         middleFactory = _middleFactory;
         bottomFactory = _bottomFactory;
+        matchEffort = _matchEffort;
+        maxAllowance = _maxAllowance;
         levels = _levels;
         log2step = _log2step;
         height = _height;
@@ -51,8 +57,14 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         external
         returns (TopTournament)
     {
-        TopTournament _tournament =
-            topFactory.instantiate(_initialHash, levels, log2step[0], height[0]);
+        TopTournament _tournament = topFactory.instantiate(
+            _initialHash,
+            matchEffort,
+            maxAllowance,
+            levels,
+            log2step[0],
+            height[0]
+        );
         return _tournament;
     }
 
@@ -73,6 +85,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _contestedCommitmentTwo,
             _contestedFinalStateTwo,
             _allowance,
+            matchEffort,
+            maxAllowance,
             _startCycle,
             _level,
             levels,
@@ -100,6 +114,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _contestedCommitmentTwo,
             _contestedFinalStateTwo,
             _allowance,
+            matchEffort,
+            maxAllowance,
             _startCycle,
             _level,
             levels,

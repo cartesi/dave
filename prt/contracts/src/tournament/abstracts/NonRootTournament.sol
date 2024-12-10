@@ -29,6 +29,8 @@ abstract contract NonRootTournament is Tournament {
         Tree.Node _contestedCommitmentTwo,
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
         uint256 _startCycle,
         uint64 _level,
         uint64 _levels,
@@ -38,6 +40,8 @@ abstract contract NonRootTournament is Tournament {
         Tournament(
             _initialHash,
             _allowance,
+            _matchEffort,
+            _maxAllowance,
             _startCycle,
             _level,
             _levels,

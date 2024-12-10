@@ -10,12 +10,16 @@ contract TopTournamentFactory {
 
     function instantiate(
         Machine.Hash _initialHash,
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
         uint64 _levels,
         uint64 _log2step,
         uint64 _height
     ) external returns (TopTournament) {
         TopTournament _tournament = new TopTournament(
             _initialHash,
+            _matchEffort,
+            _maxAllowance,
             _levels,
             _log2step,
             _height,

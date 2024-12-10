@@ -7,10 +7,19 @@ import "../concretes/SingleLevelTournament.sol";
 import "../../ITournamentFactory.sol";
 
 contract SingleLevelTournamentFactory is ITournamentFactory {
+    Time.Duration immutable matchEffort;
+    Time.Duration immutable maxAllowance;
     uint64 immutable log2step;
     uint64 immutable height;
 
-    constructor(uint64 _log2step, uint64 _height) {
+    constructor(
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
+        uint64 _log2step,
+        uint64 _height
+    ) {
+        matchEffort = _matchEffort;
+        maxAllowance = _maxAllowance;
         log2step = _log2step;
         height = _height;
     }
@@ -19,8 +28,9 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
         external
         returns (SingleLevelTournament)
     {
-        SingleLevelTournament _tournament =
-            new SingleLevelTournament(_initialHash, log2step, height);
+        SingleLevelTournament _tournament = new SingleLevelTournament(
+            _initialHash, matchEffort, maxAllowance, log2step, height
+        );
 
         emit tournamentCreated(_tournament);
 

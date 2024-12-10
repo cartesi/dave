@@ -47,6 +47,8 @@ abstract contract Tournament {
 
     Time.Instant immutable startInstant;
     Time.Duration immutable allowance;
+    Time.Duration immutable matchEffort;
+    Time.Duration immutable maxAllowance;
 
     //
     // Storage
@@ -88,6 +90,8 @@ abstract contract Tournament {
     constructor(
         Machine.Hash _initialHash,
         Time.Duration _allowance,
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
         uint256 _startCycle,
         uint64 _level,
         uint64 _levels,
@@ -102,9 +106,11 @@ abstract contract Tournament {
         height = _height;
         startInstant = Time.currentTime();
         allowance = _allowance;
+        matchEffort = _matchEffort;
+        maxAllowance = _maxAllowance;
 
-        if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
-            _allowance = ArbitrationConstants.MAX_ALLOWANCE;
+        if (_allowance.gt(_maxAllowance)) {
+            _allowance = _maxAllowance;
         }
     }
 
@@ -354,8 +360,8 @@ abstract contract Tournament {
             Clock.State storage _firstClock = clocks[_danglingCommitment];
 
             // grant extra match effort for both clocks
-            _firstClock.addMatchEffort();
-            _newClock.addMatchEffort();
+            _firstClock.addMatchEffort(matchEffort, maxAllowance);
+            _newClock.addMatchEffort(matchEffort, maxAllowance);
 
             _firstClock.advanceClock();
 
