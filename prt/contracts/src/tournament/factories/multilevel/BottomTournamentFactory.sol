@@ -5,6 +5,8 @@ pragma solidity ^0.8.17;
 
 import "../../concretes/BottomTournament.sol";
 
+import "../../../TournamentParameters.sol";
+
 contract BottomTournamentFactory {
     constructor() {}
 
@@ -17,6 +19,7 @@ contract BottomTournamentFactory {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level,
+        TournamentParameters memory _tournamentParameters,
         IDataProvider _provider
     ) external returns (BottomTournament) {
         BottomTournament _tournament = new BottomTournament(
@@ -28,6 +31,7 @@ contract BottomTournamentFactory {
             _allowance,
             _startCycle,
             _level,
+            _tournamentParameters,
             _provider
         );
 

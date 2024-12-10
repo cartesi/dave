@@ -70,7 +70,8 @@ library Match {
         // and contains contested final states.
         uint256 runningLeafPosition;
         uint64 currentHeight;
-        uint64 level; // constant
+        uint64 log2step; // constant
+        uint64 height; // constant
     }
 
     function createMatch(
@@ -78,20 +79,22 @@ library Match {
         Tree.Node two,
         Tree.Node leftNodeOfTwo,
         Tree.Node rightNodeOfTwo,
-        uint64 level
+        uint64 log2step,
+        uint64 height
     ) internal pure returns (IdHash, State memory) {
         assert(two.verify(leftNodeOfTwo, rightNodeOfTwo));
 
         Id memory matchId = Id(one, two);
 
-        State memory state = State(
-            one,
-            leftNodeOfTwo,
-            rightNodeOfTwo,
-            0,
-            ArbitrationConstants.height(level),
-            level
-        );
+        State memory state = State({
+            otherParent: one,
+            leftNode: leftNodeOfTwo,
+            rightNode: rightNodeOfTwo,
+            runningLeafPosition: 0,
+            currentHeight: height,
+            log2step: log2step,
+            height: height
+        });
 
         return (matchId.hashFromId(), state);
     }
@@ -151,14 +154,14 @@ library Match {
             );
         } else {
             Tree.Node commitment;
-            if (state.height() % 2 == 1) {
+            if (state.height % 2 == 1) {
                 commitment = id.commitmentOne;
             } else {
                 commitment = id.commitmentTwo;
             }
 
             commitment.requireState(
-                state.level,
+                state.height,
                 state.runningLeafPosition - 1,
                 agreeState,
                 agreeStateProof
@@ -200,12 +203,9 @@ library Match {
         pure
         returns (uint256)
     {
-        uint64 log2step = ArbitrationConstants.log2step(state.level);
-        return _toCycle(state, startCycle, log2step);
-    }
-
-    function height(State memory state) internal pure returns (uint64) {
-        return ArbitrationConstants.height(state.level);
+        uint256 step = 1 << state.log2step;
+        uint256 leafPosition = state.runningLeafPosition;
+        return startCycle + (leafPosition * step);
     }
 
     function getDivergence(State memory state, uint256 startCycle)
@@ -316,7 +316,7 @@ library Match {
         pure
         returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
     {
-        if (state.height() % 2 == 0) {
+        if (state.height % 2 == 0) {
             finalStateOne = state.leftNode.toMachineHash();
             finalStateTwo = state.rightNode.toMachineHash();
         } else {
@@ -330,7 +330,7 @@ library Match {
         pure
         returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
     {
-        if (state.height() % 2 == 0) {
+        if (state.height % 2 == 0) {
             finalStateOne = state.rightNode.toMachineHash();
             finalStateTwo = state.leftNode.toMachineHash();
         } else {
@@ -344,15 +344,5 @@ library Match {
     {
         assert(state.currentHeight == 0);
         state.otherParent = Tree.Node.wrap(Machine.Hash.unwrap(initialState));
-    }
-
-    function _toCycle(State memory state, uint256 base, uint64 log2step)
-        internal
-        pure
-        returns (uint256)
-    {
-        uint256 step = 1 << log2step;
-        uint256 leafPosition = state.runningLeafPosition;
-        return base + (leafPosition * step);
     }
 }

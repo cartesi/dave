@@ -6,6 +6,8 @@ pragma solidity ^0.8.17;
 import "../abstracts/LeafTournament.sol";
 import "../abstracts/NonRootTournament.sol";
 
+import "../../TournamentParameters.sol";
+
 /// @notice Bottom tournament of a multi-level instance
 contract BottomTournament is LeafTournament, NonRootTournament {
     constructor(
@@ -17,6 +19,7 @@ contract BottomTournament is LeafTournament, NonRootTournament {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level,
+        TournamentParameters memory _tournamentParameters,
         IDataProvider _provider
     )
         LeafTournament()
@@ -29,6 +32,7 @@ contract BottomTournament is LeafTournament, NonRootTournament {
             _allowance,
             _startCycle,
             _level,
+            _tournamentParameters,
             _provider
         )
     {}

@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import "../../abstracts/NonLeafTournament.sol";
 import "../../concretes/MiddleTournament.sol";
 
+import "../../../TournamentParameters.sol";
 import "../../../IMultiLevelTournamentFactory.sol";
 
 import "../../../Machine.sol";
@@ -24,7 +25,9 @@ contract MiddleTournamentFactory {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level,
-        IDataProvider _provider
+        TournamentParameters memory _tournamentParameters,
+        IDataProvider _provider,
+        IMultiLevelTournamentFactory _tournamentFactory
     ) external returns (MiddleTournament) {
         MiddleTournament _tournament = new MiddleTournament(
             _initialHash,
@@ -35,8 +38,9 @@ contract MiddleTournamentFactory {
             _allowance,
             _startCycle,
             _level,
+            _tournamentParameters,
             _provider,
-            IMultiLevelTournamentFactory(msg.sender)
+            _tournamentFactory
         );
 
         return _tournament;

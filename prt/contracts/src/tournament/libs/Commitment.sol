@@ -15,12 +15,11 @@ library Commitment {
 
     function requireState(
         Tree.Node commitment,
-        uint64 level,
+        uint64 treeHeight,
         uint256 position,
         Machine.Hash state,
         bytes32[] calldata hashProof
     ) internal pure {
-        uint64 treeHeight = ArbitrationConstants.height(level);
         Tree.Node expectedCommitment =
             getRoot(Machine.Hash.unwrap(state), treeHeight, position, hashProof);
 
@@ -52,11 +51,10 @@ library Commitment {
 
     function requireFinalState(
         Tree.Node commitment,
-        uint64 level,
+        uint64 treeHeight,
         Machine.Hash finalState,
         bytes32[] calldata hashProof
     ) internal pure {
-        uint64 treeHeight = ArbitrationConstants.height(level);
         Tree.Node expectedCommitment = getRootForLastLeaf(
             treeHeight, Machine.Hash.unwrap(finalState), hashProof
         );

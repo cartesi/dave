@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import "../abstracts/RootTournament.sol";
 import "../abstracts/NonLeafTournament.sol";
 
+import "../../TournamentParameters.sol";
 import "../../IMultiLevelTournamentFactory.sol";
 
 import "../../Machine.sol";
@@ -14,7 +15,11 @@ import "../../Machine.sol";
 contract TopTournament is NonLeafTournament, RootTournament {
     constructor(
         Machine.Hash _initialHash,
+        TournamentParameters memory _tournamentParameters,
         IDataProvider _provider,
-        IMultiLevelTournamentFactory _factory
-    ) NonLeafTournament(_factory) RootTournament(_initialHash, _provider) {}
+        IMultiLevelTournamentFactory _tournamentFactory
+    )
+        NonLeafTournament(_tournamentFactory)
+        RootTournament(_initialHash, _tournamentParameters, _provider)
+    {}
 }

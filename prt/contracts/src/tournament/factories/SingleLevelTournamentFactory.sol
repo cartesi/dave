@@ -5,16 +5,33 @@ pragma solidity ^0.8.17;
 
 import "../concretes/SingleLevelTournament.sol";
 import "../../ITournamentFactory.sol";
+import "../../TournamentParameters.sol";
 
 contract SingleLevelTournamentFactory is ITournamentFactory {
-    constructor() {}
+    uint64 immutable log2step0;
+    uint64 immutable height0;
+    Time.Duration immutable matchEffort;
+    Time.Duration immutable maxAllowance;
+
+    constructor(
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
+        uint64 _log2step,
+        uint64 _height
+    ) {
+        matchEffort = _matchEffort;
+        maxAllowance = _maxAllowance;
+        log2step0 = _log2step;
+        height0 = _height;
+    }
 
     function instantiateSingleLevel(
         Machine.Hash _initialHash,
         IDataProvider _provider
     ) external returns (SingleLevelTournament) {
-        SingleLevelTournament _tournament =
-            new SingleLevelTournament(_initialHash, _provider);
+        SingleLevelTournament _tournament = new SingleLevelTournament(
+            _initialHash, _getTournamentParameters(), _provider
+        );
 
         emit tournamentCreated(_tournament);
 
@@ -26,5 +43,19 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
         returns (ITournament)
     {
         return this.instantiateSingleLevel(_initialHash, _provider);
+    }
+
+    function _getTournamentParameters()
+        internal
+        view
+        returns (TournamentParameters memory)
+    {
+        return TournamentParameters({
+            levels: 1,
+            log2step: log2step0,
+            height: height0,
+            matchEffort: matchEffort,
+            maxAllowance: maxAllowance
+        });
     }
 }

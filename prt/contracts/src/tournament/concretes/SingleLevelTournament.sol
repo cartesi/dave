@@ -6,9 +6,15 @@ pragma solidity ^0.8.17;
 import "../abstracts/RootTournament.sol";
 import "../abstracts/LeafTournament.sol";
 
+import "../../TournamentParameters.sol";
+
 contract SingleLevelTournament is LeafTournament, RootTournament {
-    constructor(Machine.Hash _initialHash, IDataProvider _provider)
+    constructor(
+        Machine.Hash _initialHash,
+        TournamentParameters memory _tournamentParameters,
+        IDataProvider _provider
+    )
         LeafTournament()
-        RootTournament(_initialHash, _provider)
+        RootTournament(_initialHash, _tournamentParameters, _provider)
     {}
 }
