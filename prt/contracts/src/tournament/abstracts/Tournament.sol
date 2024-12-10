@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import "../../CanonicalConstants.sol";
+import "../../ITournamentParameters.sol";
 import "../../Machine.sol";
 import "../../Tree.sol";
 
@@ -41,9 +42,14 @@ abstract contract Tournament {
 
     uint256 immutable startCycle;
     uint64 immutable level;
+    uint64 immutable levels;
+    uint64 immutable log2step;
+    uint64 immutable height;
 
     Time.Instant immutable startInstant;
     Time.Duration immutable allowance;
+    Time.Duration immutable maxAllowance;
+    Time.Duration immutable matchEffort;
 
     //
     // Storage
@@ -83,6 +89,7 @@ abstract contract Tournament {
     // Constructor
     //
     constructor(
+        ITournamentParameters _tournamentParameters,
         Machine.Hash _initialHash,
         Time.Duration _allowance,
         uint256 _startCycle,
@@ -91,12 +98,17 @@ abstract contract Tournament {
         initialHash = _initialHash;
         startCycle = _startCycle;
         level = _level;
+        levels = _tournamentParameters.levels();
+        log2step = _tournamentParameters.log2step(_level);
+        height = _tournamentParameters.height(_level);
+
+        Time.Duration _maxAllowance = _tournamentParameters.maxAllowance();
+        _allowance = _allowance.min(_maxAllowance);
+
         startInstant = Time.currentTime();
         allowance = _allowance;
-
-        if (_allowance.gt(ArbitrationConstants.MAX_ALLOWANCE)) {
-            _allowance = ArbitrationConstants.MAX_ALLOWANCE;
-        }
+        maxAllowance = _maxAllowance;
+        matchEffort = _tournamentParameters.matchEffort();
     }
 
     //
@@ -124,7 +136,7 @@ abstract contract Tournament {
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
         // Prove final state is in commitmentRoot
-        _commitmentRoot.requireFinalState(level, _finalState, _proof);
+        _commitmentRoot.requireFinalState(height, _finalState, _proof);
 
         // Verify whether finalState is one of the two allowed of tournament if nested
         requireValidContestedFinalState(_finalState);
@@ -280,10 +292,10 @@ abstract contract Tournament {
             uint64 _height
         )
     {
-        _max_level = ArbitrationConstants.LEVELS;
+        _max_level = levels;
         _level = level;
-        _log2step = ArbitrationConstants.log2step(level);
-        _height = ArbitrationConstants.height(level);
+        _log2step = log2step;
+        _height = height;
     }
 
     //
@@ -332,7 +344,12 @@ abstract contract Tournament {
         if (_hasDanglingCommitment) {
             (Match.IdHash _matchId, Match.State memory _matchState) = Match
                 .createMatch(
-                _danglingCommitment, _rootHash, _leftNode, _rightNode, level
+                _danglingCommitment,
+                _rootHash,
+                _leftNode,
+                _rightNode,
+                log2step,
+                height
             );
 
             matches[_matchId] = _matchState;
@@ -340,8 +357,8 @@ abstract contract Tournament {
             Clock.State storage _firstClock = clocks[_danglingCommitment];
 
             // grant extra match effort for both clocks
-            _firstClock.addMatchEffort();
-            _newClock.addMatchEffort();
+            _firstClock.addMatchEffort(matchEffort);
+            _newClock.addMatchEffort(matchEffort);
 
             _firstClock.advanceClock();
 

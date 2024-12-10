@@ -5,6 +5,7 @@ pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
 import "./NonLeafTournament.sol";
+import "../../ITournamentParameters.sol";
 
 /// @notice Non-root tournament needs to propagate side-effects to its parent
 abstract contract NonRootTournament is Tournament {
@@ -23,6 +24,7 @@ abstract contract NonRootTournament is Tournament {
     // Constructor
     //
     constructor(
+        ITournamentParameters _tournamentParameters,
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
         Machine.Hash _contestedFinalStateOne,
@@ -31,7 +33,15 @@ abstract contract NonRootTournament is Tournament {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level
-    ) Tournament(_initialHash, _allowance, _startCycle, _level) {
+    )
+        Tournament(
+            _tournamentParameters,
+            _initialHash,
+            _allowance,
+            _startCycle,
+            _level
+        )
+    {
         contestedCommitmentOne = _contestedCommitmentOne;
         contestedFinalStateOne = _contestedFinalStateOne;
         contestedCommitmentTwo = _contestedCommitmentTwo;

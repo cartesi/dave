@@ -254,8 +254,12 @@ contract Util {
         internal
         returns (SingleLevelTournamentFactory)
     {
-        SingleLevelTournamentFactory singleLevelFactory =
-            new SingleLevelTournamentFactory();
+        SingleLevelTournamentFactory singleLevelFactory = new SingleLevelTournamentFactory(
+            ArbitrationConstants.MATCH_EFFORT,
+            ArbitrationConstants.MAX_ALLOWANCE,
+            ArbitrationConstants.log2step(0),
+            ArbitrationConstants.height(0)
+        );
 
         return singleLevelFactory;
     }
@@ -265,12 +269,26 @@ contract Util {
         internal
         returns (MultiLevelTournamentFactory)
     {
+        uint64[] memory log2step = new uint64[](ArbitrationConstants.LEVELS);
+        uint64[] memory height = new uint64[](ArbitrationConstants.LEVELS);
+
+        for (uint64 i; i < ArbitrationConstants.LEVELS; ++i) {
+            log2step[i] = ArbitrationConstants.log2step(i);
+            height[i] = ArbitrationConstants.height(i);
+        }
+
         TopTournamentFactory topFactory = new TopTournamentFactory();
         MiddleTournamentFactory middleFactory = new MiddleTournamentFactory();
         BottomTournamentFactory bottomFactory = new BottomTournamentFactory();
 
         return new MultiLevelTournamentFactory(
-            topFactory, middleFactory, bottomFactory
+            topFactory,
+            middleFactory,
+            bottomFactory,
+            ArbitrationConstants.MATCH_EFFORT,
+            ArbitrationConstants.MAX_ALLOWANCE,
+            log2step,
+            height
         );
     }
 }

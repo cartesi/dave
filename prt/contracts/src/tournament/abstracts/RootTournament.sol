@@ -5,14 +5,24 @@ pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
 import "../../ITournament.sol";
+import "../../ITournamentParameters.sol";
 
 /// @notice Root tournament has no parent
 abstract contract RootTournament is Tournament, ITournament {
     //
     // Constructor
     //
-    constructor(Machine.Hash _initialHash)
-        Tournament(_initialHash, ArbitrationConstants.MAX_ALLOWANCE, 0, 0)
+    constructor(
+        ITournamentParameters _tournamentParameters,
+        Machine.Hash _initialHash
+    )
+        Tournament(
+            _tournamentParameters,
+            _initialHash,
+            _tournamentParameters.maxAllowance(),
+            0,
+            0
+        )
     {}
 
     function validContestedFinalState(Machine.Hash)

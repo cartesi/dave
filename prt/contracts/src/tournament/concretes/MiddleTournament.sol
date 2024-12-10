@@ -6,11 +6,13 @@ pragma solidity ^0.8.17;
 import "../abstracts/NonLeafTournament.sol";
 import "../abstracts/NonRootTournament.sol";
 
+import "../../ITournamentParameters.sol";
 import "../../IMultiLevelTournamentFactory.sol";
 
 /// @notice Middle tournament is non-top, non-bottom of a multi-level instance
 contract MiddleTournament is NonLeafTournament, NonRootTournament {
     constructor(
+        ITournamentParameters _tournamentParameters,
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
         Machine.Hash _contestedFinalStateOne,
@@ -23,6 +25,7 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
     )
         NonLeafTournament(_tournamentFactory)
         NonRootTournament(
+            _tournamentParameters,
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,

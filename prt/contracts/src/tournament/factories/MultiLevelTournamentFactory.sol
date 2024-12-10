@@ -4,24 +4,49 @@
 pragma solidity ^0.8.17;
 
 import "../../IMultiLevelTournamentFactory.sol";
+import "../../ITournamentParameters.sol";
 
 import "./multilevel/TopTournamentFactory.sol";
 import "./multilevel/MiddleTournamentFactory.sol";
 import "./multilevel/BottomTournamentFactory.sol";
 
-contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
+contract MultiLevelTournamentFactory is
+    IMultiLevelTournamentFactory,
+    ITournamentParameters
+{
     TopTournamentFactory immutable topFactory;
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
+    uint64 public immutable levels;
+    Time.Duration public immutable matchEffort;
+    Time.Duration public immutable maxAllowance;
+    uint64[] public log2step;
+    uint64[] public height;
+
+    error ArrayLengthMismatch();
+    error ArrayLengthTooLarge();
 
     constructor(
         TopTournamentFactory _topFactory,
         MiddleTournamentFactory _middleFactory,
-        BottomTournamentFactory _bottomFactory
+        BottomTournamentFactory _bottomFactory,
+        Time.Duration _matchEffort,
+        Time.Duration _maxAllowance,
+        uint64[] memory _log2step,
+        uint64[] memory _height
     ) {
         topFactory = _topFactory;
         middleFactory = _middleFactory;
         bottomFactory = _bottomFactory;
+
+        require(log2step.length == height.length, ArrayLengthMismatch());
+        require(log2step.length <= type(uint64).max, ArrayLengthTooLarge());
+
+        levels = uint64(_log2step.length);
+        matchEffort = _matchEffort;
+        maxAllowance = _maxAllowance;
+        log2step = _log2step;
+        height = _height;
     }
 
     function instantiate(Machine.Hash _initialHash, IDataProvider)
@@ -38,7 +63,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         external
         returns (TopTournament)
     {
-        TopTournament _tournament = topFactory.instantiate(_initialHash);
+        TopTournament _tournament = topFactory.instantiate(this, _initialHash);
         return _tournament;
     }
 
@@ -53,6 +78,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint64 _level
     ) external returns (MiddleTournament) {
         MiddleTournament _tournament = middleFactory.instantiate(
+            this,
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,
@@ -77,6 +103,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint64 _level
     ) external returns (BottomTournament) {
         BottomTournament _tournament = bottomFactory.instantiate(
+            this,
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,

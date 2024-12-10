@@ -5,15 +5,19 @@ pragma solidity ^0.8.17;
 
 import "../../concretes/TopTournament.sol";
 
+import "../../../ITournamentParameters.sol";
+
 contract TopTournamentFactory {
     constructor() {}
 
-    function instantiate(Machine.Hash _initialHash)
-        external
-        returns (TopTournament)
-    {
+    function instantiate(
+        ITournamentParameters _tournamentParameters,
+        Machine.Hash _initialHash
+    ) external returns (TopTournament) {
         TopTournament _tournament = new TopTournament(
-            _initialHash, IMultiLevelTournamentFactory(msg.sender)
+            _tournamentParameters,
+            _initialHash,
+            IMultiLevelTournamentFactory(msg.sender)
         );
 
         return _tournament;
