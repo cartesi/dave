@@ -422,7 +422,6 @@ impl Player {
             }
         };
 
-        debug!("running leaf position: {}", running_leaf_position);
         let agree_state_proof = if running_leaf_position.is_zero() {
             MerkleProof::leaf(commitment.implicit_hash, U256::ZERO)
         } else {

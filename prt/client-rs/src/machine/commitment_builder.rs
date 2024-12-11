@@ -10,7 +10,7 @@ use crate::{
 };
 
 use anyhow::Result;
-use log::debug;
+use log::trace;
 use std::collections::{hash_map::Entry, HashMap};
 
 pub struct CachingMachineCommitmentBuilder {
@@ -56,7 +56,7 @@ impl CachingMachineCommitmentBuilder {
                 machine.run(base_cycle)?.root_hash
             }
         };
-        debug!("initial state for commitment: {}", initial_state);
+        trace!("initial state for commitment: {}", initial_state);
         let commitment = {
             let leafs = db.compute_leafs(level, base_cycle)?;
             // leafs are cached in database, use it to calculate merkle
