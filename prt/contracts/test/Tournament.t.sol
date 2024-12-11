@@ -61,7 +61,7 @@ contract TournamentTest is Util, Test {
     function testTimeout() public {
         topTournament = Util.initializePlayer0Tournament(factory);
 
-        uint256 _t = block.timestamp;
+        uint256 _t = vm.getBlockTimestamp();
         // the delay is increased when a match is created
         uint256 _tournamentFinishWithMatch = _t
             + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
@@ -114,7 +114,7 @@ contract TournamentTest is Util, Test {
         );
 
         topTournament = Util.initializePlayer0Tournament(factory);
-        _t = block.timestamp;
+        _t = vm.getBlockTimestamp();
 
         // the delay is increased when a match is created
         _tournamentFinishWithMatch = _t
