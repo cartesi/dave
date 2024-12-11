@@ -211,7 +211,6 @@ while true do
             run_players(player_coroutines)
         end
     end
-    -- TODO: send input
     -- blockchain_utils.advance_time(EPOCH_TIME, blockchain_constants.endpoint)
     time.sleep(SLEEP_TIME)
 end

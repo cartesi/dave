@@ -128,8 +128,10 @@ abstract contract LeafTournament is Tournament {
             (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
         uint256 big_step_mask = (
             1
-                << ArbitrationConstants.LOG2_EMULATOR_SPAN
-                    + ArbitrationConstants.LOG2_UARCH_SPAN
+                << (
+                    ArbitrationConstants.LOG2_EMULATOR_SPAN
+                        + ArbitrationConstants.LOG2_UARCH_SPAN
+                )
         ) - 1;
 
         if (address(provider) == address(0)) {
@@ -143,25 +145,38 @@ abstract contract LeafTournament is Tournament {
             // rollups meta step handles input
             if (counter & big_step_mask == 0) {
                 (uint256 inputLength,) = abi.decode(proofs, (uint256, bytes));
-                bytes calldata input = proofs[32:32 + inputLength];
-                uint256 inputIndex = counter
-                    >> (
-                        ArbitrationConstants.LOG2_EMULATOR_SPAN
-                            + ArbitrationConstants.LOG2_UARCH_SPAN
-                    ); // TODO: add input index offset of the epoch
-
-                (bytes32 inputMerkleRoot,) =
-                    provider.gio(0, abi.encode(inputIndex), input);
                 accessLogs = AccessLogs.Context(
                     machineState, Buffer.Context(proofs, 32 + inputLength)
                 );
-                SendCmioResponse.sendCmioResponse(
-                    accessLogs,
-                    EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
-                    inputMerkleRoot,
-                    uint32(inputLength)
-                );
-                UArchStep.step(accessLogs);
+
+                if (inputLength > 0) {
+                    bytes calldata input = proofs[32:32 + inputLength];
+                    // revert DebugError(inputLength, input);
+                    uint256 inputIndex = counter
+                        >> (
+                            ArbitrationConstants.LOG2_EMULATOR_SPAN
+                                + ArbitrationConstants.LOG2_UARCH_SPAN
+                        ); // TODO: add input index offset of the epoch
+
+                    // TODO: maybe assert retrieved input length matches?
+                    (bytes32 inputMerkleRoot,) =
+                        provider.gio(0, abi.encode(inputIndex), input);
+
+                    // TODO: maybe revert here if inputMerkleRoot is bytes32(0)?
+                    if (inputMerkleRoot != bytes32(0)) {
+                        SendCmioResponse.sendCmioResponse(
+                            accessLogs,
+                            EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
+                            inputMerkleRoot,
+                            uint32(inputLength)
+                        );
+                        UArchStep.step(accessLogs);
+                    } else {
+                        UArchStep.step(accessLogs);
+                    }
+                } else {
+                    UArchStep.step(accessLogs);
+                }
             } else if ((counter + 1) & uarch_step_mask == 0) {
                 UArchReset.reset(accessLogs);
             } else {

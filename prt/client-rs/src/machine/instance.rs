@@ -119,6 +119,7 @@ impl MachineInstance {
         };
 
         let mut logs = Vec::new();
+        let mut encode_input = None;
         if db.handle_rollups {
             // treat it as rollups
             // the cycle may be the cycle to receive input,
@@ -133,24 +134,29 @@ impl MachineInstance {
             let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
             let inputs = &db.inputs()?;
             let input = inputs.get((cycle >> constants::LOG2_EMULATOR_SPAN) as usize);
-            if cycle & mask == 0 && input.is_some() {
-                // need to process input
-                let data = input.unwrap();
-                if ucycle == 0 {
-                    let cmio_logs = self.machine.log_send_cmio_response(
-                        htif::fromhost::ADVANCE_STATE,
-                        &data,
-                        log_type,
-                        false,
-                    )?;
-                    // append step logs to cmio logs
-                    let step_logs = self.machine.log_uarch_step(log_type, false)?;
-                    logs.push(&cmio_logs);
-                    logs.push(&step_logs);
-                    return Ok(encode_access_logs(logs, Some(Input { 0: data.clone() })));
+            if cycle & mask == 0 {
+                if let Some(data) = input {
+                    // need to process input
+                    if ucycle == 0 {
+                        let cmio_logs = self.machine.log_send_cmio_response(
+                            htif::fromhost::ADVANCE_STATE,
+                            &data,
+                            log_type,
+                            false,
+                        )?;
+                        // append step logs to cmio logs
+                        let step_logs = self.machine.log_uarch_step(log_type, false)?;
+                        logs.push(&cmio_logs);
+                        logs.push(&step_logs);
+                        return Ok(encode_access_logs(logs, Some(Input { 0: data.clone() })));
+                    } else {
+                        self.machine
+                            .send_cmio_response(htif::fromhost::ADVANCE_STATE, &data)?;
+                    }
                 } else {
-                    self.machine
-                        .send_cmio_response(htif::fromhost::ADVANCE_STATE, &data)?;
+                    if ucycle == 0 {
+                        encode_input = Some(Input { 0: Vec::new() });
+                    }
                 }
             }
         } else {
@@ -162,11 +168,11 @@ impl MachineInstance {
         if ucycle == constants::UARCH_SPAN {
             let reset_logs = self.machine.log_uarch_reset(log_type, false)?;
             logs.push(&reset_logs);
-            Ok(encode_access_logs(logs, None))
+            Ok(encode_access_logs(logs, encode_input))
         } else {
             let step_logs = self.machine.log_uarch_step(log_type, false)?;
             logs.push(&step_logs);
-            Ok(encode_access_logs(logs, None))
+            Ok(encode_access_logs(logs, encode_input))
         }
     }
 
@@ -328,12 +334,14 @@ impl MachineInstance {
     }
 }
 
-fn encode_access_logs(logs: Vec<&AccessLog>, input: Option<Input>) -> Vec<u8> {
+fn encode_access_logs(logs: Vec<&AccessLog>, encode_input: Option<Input>) -> Vec<u8> {
     let mut encoded: Vec<Vec<u8>> = Vec::new();
 
-    if let Some(i) = input {
+    if let Some(i) = encode_input {
         encoded.push(U256::from(i.0.len()).to_be_bytes_vec());
-        encoded.push(i.0);
+        if i.0.len() > 0 {
+            encoded.push(i.0);
+        }
     }
 
     for log in logs.iter() {
