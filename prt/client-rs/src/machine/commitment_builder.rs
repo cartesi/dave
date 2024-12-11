@@ -48,12 +48,12 @@ impl CachingMachineCommitmentBuilder {
         let initial_state = {
             if db.handle_rollups {
                 // treat it as rollups
-                machine
-                    .run_with_inputs(base_cycle, &db.inputs()?)?
-                    .root_hash
+                machine.run_with_inputs(base_cycle, &db)?.root_hash
             } else {
                 // treat it as compute
-                machine.run(base_cycle)?.root_hash
+                let root_hash = machine.run(base_cycle)?.root_hash;
+                machine.take_snapshot(base_cycle, &db);
+                root_hash
             }
         };
         trace!("initial state for commitment: {}", initial_state);

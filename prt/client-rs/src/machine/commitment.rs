@@ -90,8 +90,6 @@ pub fn build_big_machine_commitment(
     initial_state: Digest,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    snapshot_base_cycle(machine, base_cycle, db)?;
-
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
     let instruction_count = arithmetic::max_uint(log2_stride_count);
@@ -159,8 +157,6 @@ pub fn build_small_machine_commitment(
     initial_state: Digest,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    snapshot_base_cycle(machine, base_cycle, db)?;
-
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
     let mut uarch_span_and_leafs = Vec::new();
@@ -206,22 +202,6 @@ pub fn build_small_machine_commitment(
         implicit_hash: initial_state,
         merkle,
     })
-}
-
-fn snapshot_base_cycle(
-    machine: &mut MachineInstance,
-    base_cycle: u64,
-    db: &ComputeStateAccess,
-) -> Result<()> {
-    let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
-    if db.handle_rollups && base_cycle & mask == 0 && !machine.machine_state()?.yielded {
-        // don't snapshot a machine state that's freshly fed with input without advance
-        return Ok(());
-    }
-
-    let snapshot_path = db.work_path.join(format!("{}", base_cycle));
-    machine.snapshot(&snapshot_path)?;
-    Ok(())
 }
 
 fn run_uarch_span(
