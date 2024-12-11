@@ -14,10 +14,14 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint, fake
         local finished = true
         for i = 1, fake_commitment_count do
             local state = state_fetcher:fetch()
-            strategy.commitment_builder.fake_index = i
-            helper.log_timestamp(string.format("react with fake index: %d", i))
+            strategy.commitment_builder.fake_index = i + 1
+            helper.log_timestamp(string.format("react with fake index: %d", i + 1))
+            -- TODO: change it back
+            -- strategy.commitment_builder.fake_index = i
+            -- helper.log_timestamp(string.format("react with fake index: %d", i))
 
             local log = strategy:react(state)
+            strategy.commitment_builder.fake_index = false
             idle = idle and log.idle
             finished = finished and log.finished
         end
@@ -35,10 +39,11 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint, fake
 end
 
 
-local function sybil_runner(player_id, machine_path, root_commitment, root_tournament, fake_commitment_count)
-    local snapshot_dir = string.format("/dispute_data/%s", root_tournament)
+local function sybil_runner(player_id, machine_path, root_commitment, root_tournament, fake_commitment_count, inputs)
+    local snapshot_dir = string.format("/compute_data/%s", root_tournament)
     local strategy = HonestStrategy:new(
         FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir),
+        inputs,
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
     )

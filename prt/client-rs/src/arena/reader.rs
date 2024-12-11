@@ -14,6 +14,7 @@ use alloy::{
     sol_types::private::{Address, B256},
     transports::http::{Client, Http},
 };
+use log::debug;
 use num_traits::cast::ToPrimitive;
 
 use crate::{

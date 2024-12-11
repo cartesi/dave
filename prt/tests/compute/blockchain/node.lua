@@ -2,10 +2,12 @@ local helper = require "utils.helper"
 
 local default_account_number = 40
 
+-- spawn an anvil node with 40 accounts, auto-mine, and finalize block at height N-2
 local function start_blockchain()
     print(string.format("Starting blockchain with %d accounts...", default_account_number))
 
-    local cmd = string.format([[sh -c "echo $$ ; exec anvil --block-time 1 -a %d > anvil.log 2>&1"]],
+    local cmd = string.format(
+        [[sh -c "echo $$ ; exec anvil --block-time 1 --slots-in-an-epoch 1 -a %d > anvil.log 2>&1"]],
         default_account_number)
 
     local reader = io.popen(cmd)

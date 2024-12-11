@@ -117,6 +117,8 @@ library Match {
         emit matchAdvanced(id.hashFromId(), state.otherParent, state.leftNode);
     }
 
+    error IncorrectState(Machine.Hash initialState, Machine.Hash agreeState);
+
     function sealMatch(
         State storage state,
         Id calldata id,
@@ -141,7 +143,10 @@ library Match {
 
         // Prove initial hash is in commitment
         if (state.runningLeafPosition == 0) {
-            require(agreeState.eq(initialState), "agree hash incorrect");
+            require(
+                agreeState.eq(initialState),
+                IncorrectState(initialState, agreeState)
+            );
         } else {
             Tree.Node commitment;
             if (state.height() % 2 == 1) {

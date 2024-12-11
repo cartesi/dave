@@ -8,14 +8,14 @@ RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-COPY --from=ethereum/solc:0.8.23 /usr/bin/solc /usr/bin/solc
+COPY --from=ethereum/solc:0.8.27 /usr/bin/solc /usr/bin/solc
 RUN chmod u+x /usr/bin/solc
 
 WORKDIR /app
 
 RUN wget https://github.com/cartesi/image-kernel/releases/download/v0.20.0/linux-6.5.13-ctsi-1-v0.20.0.bin \
     -O ./linux.bin
-RUN wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.15.0/rootfs-tools-v0.15.0.ext2 \
+RUN wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.16.1/rootfs-tools-v0.16.1.ext2 \
     -O ./rootfs.ext2
 
 RUN cartesi-machine --ram-image=./linux.bin \

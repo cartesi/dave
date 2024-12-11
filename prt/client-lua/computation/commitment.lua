@@ -6,7 +6,20 @@ local consts = require "computation.constants"
 
 local ulte = arithmetic.ulte
 
-local save_snapshot = true
+local handle_rollups = false
+
+
+local function print_flush_same_line(args_str)
+    io.write(string.format("\r%s", args_str))
+    -- Flush the output to ensure it appears immediately
+    io.flush()
+end
+
+local function finish_print_flush_same_line()
+    io.write("\n")
+    -- Flush the output to ensure it appears immediately
+    io.flush()
+end
 
 local function run_uarch_span(machine)
     assert(machine.ucycle == 0)
@@ -31,76 +44,93 @@ local function run_uarch_span(machine)
     machine_state = machine:ureset()
     builder:add(machine_state.root_hash)
 
-    return builder:build()
+    return builder:build(), machine_state
 end
 
-local function build_small_machine_commitment(base_cycle, log2_stride_count, machine, snapshot_dir)
-    local machine_state = machine:run(base_cycle)
-    if save_snapshot then
-        -- taking snapshot for leafs to save time in next level
-        machine:snapshot(snapshot_dir, base_cycle)
-    end
-    local initial_state = machine_state.root_hash
-
+local function build_small_machine_commitment(log2_stride_count, machine, initial_state, snapshot_dir)
     local builder = MerkleBuilder:new()
     local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span)
     local instruction = 0
     while ulte(instruction, instruction_count) do
-        builder:add(run_uarch_span(machine))
+        print_flush_same_line(string.format(
+            "building small machine commitment (%d/%d)...",
+            instruction, instruction_count
+        ))
+
+        local uarch_span, machine_state = run_uarch_span(machine)
+        builder:add(uarch_span)
         instruction = instruction + 1
 
         -- Optional optimization, just comment to remove.
-        if machine:state().halted then
-            builder:add(run_uarch_span(machine), instruction_count - instruction + 1)
+        -- BIZARRE!: why not yielded??? if added "or machine_state.yielded", win leaf match will revert with error code: 3 and data: 0x
+        -- if machine_state.halted or machine_state.yielded then
+        if machine_state.halted then
+            uarch_span, _ = run_uarch_span(machine)
+            builder:add(uarch_span, instruction_count - instruction + 1)
             break
         end
     end
+    finish_print_flush_same_line()
 
     return initial_state, builder:build(initial_state)
 end
 
-local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
-    local machine_state = machine:run(base_cycle)
-    if save_snapshot then
-        -- taking snapshot for leafs to save time in next level
-        machine:snapshot(snapshot_dir, base_cycle)
-    end
-    local initial_state = machine_state.root_hash
-
+local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state)
     local builder = MerkleBuilder:new()
     local instruction_count = arithmetic.max_uint(log2_stride_count)
     local instruction = 0
 
     while ulte(instruction, instruction_count) do
-        local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
-        machine_state = machine:run(base_cycle + cycle)
+        print_flush_same_line(string.format(
+            "building big machine commitment (%d/%d)...",
+            instruction, instruction_count
+        ))
 
-        if not machine_state.halted then
-            builder:add(machine_state.root_hash)
-            instruction = instruction + 1
-        else
+        local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
+        local machine_state = machine:run(base_cycle + cycle)
+
+        if machine_state.halted or machine_state.yielded then
             -- add this loop plus all remainings
             builder:add(machine_state.root_hash, instruction_count - instruction + 1)
             break
+        else
+            builder:add(machine_state.root_hash)
+            instruction = instruction + 1
         end
     end
+    finish_print_flush_same_line()
 
     return initial_state, builder:build(initial_state)
 end
 
-local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, snapshot_dir)
+local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, snapshot_dir, inputs)
     local machine = Machine:new_from_path(machine_path)
     machine:load_snapshot(snapshot_dir, base_cycle)
+
+    local initial_state
+    if inputs then
+        -- treat it as rollups
+        -- the base_cycle may be the cycle to receive input,
+        -- we need to take the initial state before feeding input to the machine
+        handle_rollups = true
+        initial_state = machine:run_with_inputs(base_cycle, inputs, snapshot_dir).root_hash
+    else
+        -- treat it as compute
+        handle_rollups = false
+        initial_state = machine:run(base_cycle).root_hash -- taking snapshot for leafs to save time in next level
+        machine:take_snapshot(snapshot_dir, base_cycle, handle_rollups)
+    end
 
     if log2_stride >= consts.log2_uarch_span then
         assert(
             log2_stride + log2_stride_count <=
-            consts.log2_emulator_span + consts.log2_uarch_span
+            consts.log2_input_span + consts.log2_emulator_span + consts.log2_uarch_span
         )
-        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, snapshot_dir)
+        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state,
+            snapshot_dir)
     else
         assert(log2_stride == 0)
-        return build_small_machine_commitment(base_cycle, log2_stride_count, machine, snapshot_dir)
+        return build_small_machine_commitment(log2_stride_count, machine, initial_state, snapshot_dir)
     end
 end
 
@@ -120,7 +150,7 @@ function CommitmentBuilder:new(machine_path, snapshot_dir, root_commitment)
     return c
 end
 
-function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count)
+function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count, inputs)
     if not self.commitments[level] then
         self.commitments[level] = {}
     elseif self.commitments[level][base_cycle] then
@@ -128,7 +158,7 @@ function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_cou
     end
 
     local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path,
-        self.snapshot_dir)
+        self.snapshot_dir, inputs)
     self.commitments[level][base_cycle] = commitment
     return commitment
 end

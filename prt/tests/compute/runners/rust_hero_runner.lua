@@ -28,7 +28,7 @@ end
 local function create_react_once_runner(player_id, machine_path)
     local rust_compute_cmd = string.format(
         [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
-    ./cartesi-prt-compute 2>&1 | tee -a honest.log"]],
+        ./cartesi-prt-compute 2>&1 | tee -a honest.log"]],
         machine_path)
 
     return coroutine.create(function()

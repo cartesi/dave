@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use super::error::*;
-use crate::db::dispute_state_access::{Input, Leaf};
+use crate::db::compute_state_access::{Input, Leaf};
 
 use rusqlite::{params, OptionalExtension};
 
@@ -43,6 +43,24 @@ pub fn input(conn: &rusqlite::Connection, id: u64) -> Result<Option<Vec<u8>>> {
         .optional()?;
 
     Ok(i)
+}
+
+pub fn inputs(conn: &rusqlite::Connection) -> Result<Vec<Vec<u8>>> {
+    let mut stmt = conn.prepare(
+        "\
+        SELECT * FROM inputs
+        ORDER BY input_index ASC
+        ",
+    )?;
+
+    let query = stmt.query_map([], |r| Ok(r.get("input")?))?;
+
+    let mut res = vec![];
+    for row in query {
+        res.push(row?);
+    }
+
+    Ok(res)
 }
 
 //
@@ -161,7 +179,37 @@ pub fn compute_tree_count(conn: &rusqlite::Connection, tree_root: &[u8]) -> Resu
     )?)
 }
 
-pub fn insert_dispute_data<'a>(
+//
+// Handle rollups
+//
+
+fn insert_handle_rollups_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
+    Ok(conn.prepare(
+        "\
+        INSERT INTO compute_or_rollups (id, handle_rollups) VALUES (0, ?1)
+        ",
+    )?)
+}
+
+pub fn insert_handle_rollups(conn: &rusqlite::Connection, handle_rollups: bool) -> Result<()> {
+    let mut stmt = insert_handle_rollups_statement(&conn)?;
+    stmt.execute(params![handle_rollups])?;
+
+    Ok(())
+}
+
+pub fn handle_rollups(conn: &rusqlite::Connection) -> Result<bool> {
+    Ok(conn.query_row(
+        "\
+        SELECT handle_rollups FROM compute_or_rollups
+        WHERE id = 0
+        ",
+        [],
+        |row| row.get(0),
+    )?)
+}
+
+pub fn insert_compute_data<'a>(
     conn: &rusqlite::Connection,
     inputs: impl Iterator<Item = &'a Input>,
     leafs: impl Iterator<Item = &'a Leaf>,
@@ -316,5 +364,27 @@ mod trees_tests {
         ));
         // count of tree leafs should remain since the transaction is skipped
         assert!(matches!(compute_tree(&conn, &root).unwrap().len(), 2));
+    }
+}
+
+#[cfg(test)]
+mod compute_or_rollups_tests {
+    use super::*;
+
+    #[test]
+    fn test_empty() {
+        let conn = test_helper::setup_db();
+        assert!(matches!(handle_rollups(&conn), Err(_)));
+    }
+
+    #[test]
+    fn test_insert() {
+        let conn = test_helper::setup_db();
+
+        assert!(matches!(insert_handle_rollups(&conn, true), Ok(())));
+        assert!(matches!(handle_rollups(&conn), Ok(true)));
+        // compute_or_rollups can only be set once
+        assert!(matches!(insert_handle_rollups(&conn, true), Err(_)));
+        assert!(matches!(handle_rollups(&conn), Ok(true)));
     }
 }

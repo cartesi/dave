@@ -62,7 +62,7 @@ impl Digest {
 
     /// Converts the [Digest] to a hexadecimal string.
     pub fn to_hex(&self) -> String {
-        hex::encode(self.data)
+        format!("0x{}", hex::encode(self.data))
     }
 
     /// Checks if the [Digest] is zeroed.

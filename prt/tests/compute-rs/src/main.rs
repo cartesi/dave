@@ -23,10 +23,10 @@ async fn main() -> Result<()> {
 
     let config = ComputeConfig::parse();
     let blockchain_config = config.blockchain_config;
-
     let sender = EthArenaSender::new(&blockchain_config)?;
+    
     let mut player = Player::new(
-        Vec::new(),
+        None,
         Vec::new(),
         &blockchain_config,
         config.machine_path,

@@ -24,7 +24,7 @@ anyhow = "1.0"
 async-recursion = "1"
 async-trait = "0.1"
 clap = { version = "4.5", features = ["derive", "env"] }
-alloy = { version = "0.3.1", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
+alloy = { version = "0.8.0", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
 lazy_static = "1.4.0"
 log = "0.4"
 hex = "0.4.3"

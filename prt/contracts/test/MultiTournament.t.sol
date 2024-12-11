@@ -389,7 +389,7 @@ contract MultiTournamentTest is Util, Test {
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
-        vm.expectRevert("cannot win by timeout");
+        vm.expectRevert(Tournament.WinByTimeout.selector);
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
@@ -457,7 +457,7 @@ contract MultiTournamentTest is Util, Test {
 
         vm.warp(_rootTournamentFinish - 1);
         // cannot eliminate match when both blocks still have time
-        vm.expectRevert("cannot eliminate by timeout");
+        vm.expectRevert(Tournament.EliminateByTimeout.selector);
         topTournament.eliminateMatchByTimeout(_matchId);
 
         vm.warp(_rootTournamentFinish);

@@ -2,6 +2,7 @@
 //! to tournaments
 
 use async_trait::async_trait;
+use log::trace;
 use std::{str::FromStr, sync::Arc};
 
 use alloy::{
@@ -73,6 +74,10 @@ impl EthArenaSender {
             client,
             wallet_address,
         })
+    }
+
+    pub fn client(&self) -> Arc<SenderFiller> {
+        self.client.clone()
     }
 
     pub async fn nonce(&self) -> std::result::Result<u64, RpcError<TransportErrorKind>> {
@@ -165,6 +170,11 @@ impl ArenaSender for EthArenaSender {
             .iter()
             .map(|h| -> B256 { (*h).into() })
             .collect();
+        trace!(
+            "final state for tournament {} at position {}",
+            proof.node,
+            proof.position
+        );
         tournament
             .joinTournament(
                 proof.node.into(),

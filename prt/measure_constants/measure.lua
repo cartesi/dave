@@ -26,6 +26,9 @@ local log2_uarch_span = 20
 -- Log2 of maximum mcycle value
 local log2_emulator_span = 48
 
+-- Log2 of maximum inputs per echo
+local log2_input_span = 24
+
 -- Big Machine increment roughly 2^26 big instructions per second
 local default_log2_big_machine_span = 26
 local default_big_machine_span = 1 << default_log2_big_machine_span
@@ -202,11 +205,11 @@ end
 assert(root_tournament_slowdown > 10, "root_tournament_slowdown must be greater than 1")
 
 print(string.format([[
-Starting measurements...
+Starting measurements for %s...
 
 Target root slowdown is set to `%.1fx` slower.
 Inner tournament running time is set to `%d` minutes.
-]], root_tournament_slowdown / 10, inner_tournament_timeout))
+]], machine_path, root_tournament_slowdown / 10, inner_tournament_timeout))
 
 
 -- Result variables
@@ -254,7 +257,7 @@ repeat
     output_results()
     print "CONTINUE\n"
   else
-    table.insert(heights, 1, log2_emulator_span + log2_uarch_span - log2_strides[1])
+    table.insert(heights, 1, log2_input_span + log2_emulator_span + log2_uarch_span - log2_strides[1])
     output_results()
     print "FINISHED\n"
     return

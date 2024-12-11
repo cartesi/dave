@@ -30,8 +30,9 @@ abstract contract NonRootTournament is Tournament {
         Machine.Hash _contestedFinalStateTwo,
         Time.Duration _allowance,
         uint256 _startCycle,
-        uint64 _level
-    ) Tournament(_initialHash, _allowance, _startCycle, _level) {
+        uint64 _level,
+        IDataProvider _provider
+    ) Tournament(_initialHash, _allowance, _startCycle, _level, _provider) {
         contestedCommitmentOne = _contestedCommitmentOne;
         contestedFinalStateOne = _contestedFinalStateOne;
         contestedCommitmentTwo = _contestedCommitmentTwo;
@@ -72,9 +73,13 @@ abstract contract NonRootTournament is Tournament {
         internal
         view
         override
-        returns (bool)
+        returns (bool, Machine.Hash, Machine.Hash)
     {
-        return contestedFinalStateOne.eq(_finalState)
-            || contestedFinalStateTwo.eq(_finalState);
+        return (
+            contestedFinalStateOne.eq(_finalState)
+                || contestedFinalStateTwo.eq(_finalState),
+            contestedFinalStateOne,
+            contestedFinalStateTwo
+        );
     }
 }
