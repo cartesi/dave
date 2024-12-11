@@ -8,7 +8,7 @@ use cartesi_machine::{
     log::{AccessLog, AccessLogType},
     machine::Machine,
 };
-use log::debug;
+use log::{debug, trace};
 
 use alloy::hex::ToHexExt;
 use anyhow::Result;
@@ -80,7 +80,7 @@ impl MachineInstance {
 
         self.machine = machine;
 
-        debug!("load from {}", snapshot_path.display());
+        debug!("load snapshot from {}", snapshot_path.display());
         debug!("loaded machine: {}", self.machine_state()?);
 
         Ok(())
@@ -166,32 +166,34 @@ impl MachineInstance {
         assert!(self.cycle <= cycle);
 
         let mcycle = self.machine.read_mcycle()?;
-        debug!("mcycle {}", mcycle);
         let mut machine_state = self.machine_state()?;
-        debug!(
-            "start cycle {}, run self cycle: {}, target cycle: {}",
-            self.start_cycle, self.cycle, cycle
+        trace!(
+            "start cycle {}, run self cycle: {}, target cycle: {}, mcycle: {}",
+            self.start_cycle,
+            self.cycle,
+            cycle,
+            mcycle
         );
-        debug!("before run, machine state: {}", machine_state);
+        trace!("before run, machine state: {}", machine_state);
 
         let physical_cycle = arithmetic::add_and_clamp(mcycle, cycle - self.cycle);
-        debug!("physical cycle {}", physical_cycle);
+        trace!("physical cycle {}", physical_cycle);
 
         loop {
             let halted = self.machine.read_iflags_h()?;
             if halted {
-                debug!("run break with halt");
+                trace!("run break with halt");
                 break;
             }
 
             let yielded = self.machine.read_iflags_y()?;
             if yielded {
-                debug!("run break with yield");
+                trace!("run break with yield");
                 break;
             }
 
             if self.machine.read_mcycle()? == physical_cycle {
-                debug!("run break with meeting physical cycle");
+                trace!("run break with meeting physical cycle");
                 break;
             }
 
@@ -200,7 +202,7 @@ impl MachineInstance {
 
         self.cycle = cycle;
         machine_state = self.machine_state()?;
-        debug!("after run, machine state: {}", machine_state);
+        trace!("after run, machine state: {}", machine_state);
 
         Ok(machine_state)
     }
@@ -224,9 +226,10 @@ impl MachineInstance {
     // the machine state would be `without` input included in the machine,
     // this is useful when we need the initial state to compute the commitments
     pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<MachineState> {
-        debug!(
+        trace!(
             "run_with_inputs self cycle: {}, target cycle: {}",
-            self.cycle, cycle
+            self.cycle,
+            cycle
         );
 
         let mut machine_state_without_input = self.machine_state()?;
@@ -243,19 +246,19 @@ impl MachineInstance {
         let mut next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
 
         while next_input_cycle <= cycle {
-            debug!("next input index: {}", next_input_index);
-            debug!("run to next input cycle: {}", next_input_cycle);
+            trace!("next input index: {}", next_input_index);
+            trace!("run to next input cycle: {}", next_input_cycle);
             machine_state_without_input = self.run(next_input_cycle)?;
             let input = inputs.get(next_input_index as usize);
             if let Some(data) = input {
-                debug!(
+                trace!(
                     "before input, machine state: {}",
                     self.machine_state()?.root_hash
                 );
-                debug!("input: 0x{}", data.encode_hex());
+                trace!("input: 0x{}", data.encode_hex());
                 self.machine
                     .send_cmio_response(htif::fromhost::ADVANCE_STATE, data)?;
-                debug!(
+                trace!(
                     "after input, machine state: {}",
                     self.machine_state()?.root_hash
                 );

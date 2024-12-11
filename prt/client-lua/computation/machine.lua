@@ -141,6 +141,7 @@ function Machine:load_snapshot(snapshot_dir, cycle)
         snapshot_cycle, snapshot_path = find_closest_snapshot(snapshot_dir, self.cycle, cycle)
     end
     if snapshot_path then
+        print(string.format("load snapshot from %s", snapshot_path))
         local machine = cartesi.machine(snapshot_path, machine_settings)
         self.cycle = snapshot_cycle
         self.machine = machine
@@ -159,8 +160,8 @@ function Machine:run(cycle)
     assert(arithmetic.ulte(self.cycle, cycle))
 
     local machine = self.machine
-    local m_cycle = machine:read_mcycle()
-    local physical_cycle = add_and_clamp(m_cycle, cycle - self.cycle) -- TODO reconsider for lambda
+    local mcycle = machine:read_mcycle()
+    local physical_cycle = add_and_clamp(mcycle, cycle - self.cycle) -- TODO reconsider for lambda
 
     while not (machine:read_iflags_H() or machine:read_iflags_Y() or machine:read_mcycle() == physical_cycle) do
         machine:run(physical_cycle)

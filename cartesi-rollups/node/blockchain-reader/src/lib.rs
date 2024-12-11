@@ -18,7 +18,7 @@ use alloy_rpc_types_eth::Topic;
 use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
-use log::debug;
+use log::{info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{
     iter::Peekable,
@@ -176,7 +176,7 @@ where
                         .expect("fail to convert epoch boundary"),
                     root_tournament: e.0.tournament.to_string(),
                 };
-                debug!(
+                info!(
                     "epoch received: epoch_number {}, epoch_boundary {}, root_tournament {}",
                     epoch.epoch_number, epoch.epoch_boundary, epoch.root_tournament
                 );
@@ -268,12 +268,11 @@ where
                 },
                 data: input_added.0.input.to_vec(),
             };
-            debug!(
-                "input received: epoch_number {}, input_index {}, data 0x{}",
-                input.id.epoch_number,
-                input.id.input_index_in_epoch,
-                input.data.encode_hex()
+            info!(
+                "input received: epoch_number {}, input_index {}",
+                input.id.epoch_number, input.id.input_index_in_epoch,
             );
+            trace!("input data 0x{}", input.data.encode_hex());
 
             input_events_peekable.next();
             *next_input_index_in_epoch += 1;

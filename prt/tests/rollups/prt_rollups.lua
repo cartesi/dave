@@ -178,7 +178,7 @@ blockchain_utils.deploy_contracts("../../../cartesi-rollups/contracts")
 time.sleep(NODE_DELAY)
 
 -- trace, debug, info, warn, error
-local verbosity = os.getenv("VERBOSITY") or 'info'
+local verbosity = os.getenv("VERBOSITY") or 'debug'
 -- 0, 1, full
 local trace_level = os.getenv("TRACE_LEVEL") or 'full'
 local dave_node = Dave:new(rollups_machine_path, SLEEP_TIME, verbosity, trace_level)

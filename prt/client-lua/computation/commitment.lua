@@ -9,6 +9,19 @@ local ulte = arithmetic.ulte
 local save_snapshot = true
 local handle_rollups = false
 
+
+local function print_flush_same_line(args_str)
+    io.write(string.format("\r%s", args_str))
+    -- Flush the output to ensure it appears immediately
+    io.flush()
+end
+
+local function finish_print_flush_same_line()
+    io.write("\n")
+    -- Flush the output to ensure it appears immediately
+    io.flush()
+end
+
 local function run_uarch_span(machine)
     assert(machine.ucycle == 0)
     local machine_state = machine:increment_uarch()
@@ -45,6 +58,11 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
     local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span)
     local instruction = 0
     while ulte(instruction, instruction_count) do
+        print_flush_same_line(string.format(
+            "building small machine commitment (%d/%d)...",
+            instruction, instruction_count
+        ))
+
         local uarch_span, machine_state = run_uarch_span(machine)
         builder:add(uarch_span)
         instruction = instruction + 1
@@ -58,6 +76,7 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
             break
         end
     end
+    finish_print_flush_same_line()
 
     return initial_state, builder:build(initial_state)
 end
@@ -74,6 +93,11 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
     local instruction = 0
 
     while ulte(instruction, instruction_count) do
+        print_flush_same_line(string.format(
+            "building big machine commitment (%d/%d)...",
+            instruction, instruction_count
+        ))
+
         local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
         local machine_state = machine:run(base_cycle + cycle)
 
@@ -86,6 +110,7 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
             instruction = instruction + 1
         end
     end
+    finish_print_flush_same_line()
 
     return initial_state, builder:build(initial_state)
 end
