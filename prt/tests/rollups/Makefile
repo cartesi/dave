@@ -8,7 +8,7 @@ create-image:
 	@docker build -t cartesi/prt-rollups:test -f Dockerfile ../../../
 
 test-echo: create-image
-	@docker run --rm --name rollups-echo-test \
+	@docker run --rm --name prt-rollups-test-echo \
 		--env MACHINE_PATH=$(ECHO_MACHINE_PATH) \
 		cartesi/prt-rollups:test
 
