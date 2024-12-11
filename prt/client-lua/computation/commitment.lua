@@ -62,9 +62,7 @@ local function build_small_machine_commitment(log2_stride_count, machine, initia
         instruction = instruction + 1
 
         -- Optional optimization, just comment to remove.
-        -- BIZARRE!: why not yielded??? if added "or machine_state.yielded", win leaf match will revert with error code: 3 and data: 0x
-        -- if machine_state.halted or machine_state.yielded then
-        if machine_state.halted then
+        if machine_state.halted or machine_state.yielded then
             uarch_span, _ = run_uarch_span(machine)
             builder:add(uarch_span, instruction_count - instruction + 1)
             break
@@ -126,8 +124,7 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
             log2_stride + log2_stride_count <=
             consts.log2_input_span + consts.log2_emulator_span + consts.log2_uarch_span
         )
-        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state,
-            snapshot_dir)
+        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state)
     else
         assert(log2_stride == 0)
         return build_small_machine_commitment(log2_stride_count, machine, initial_state, snapshot_dir)

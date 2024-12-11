@@ -115,6 +115,11 @@ local function find_closest_snapshot(path, current_cycle, cycle)
     return closest_cycle, closest_dir
 end
 
+
+local function to256BitHex(num) -- Pad the hex string with leading zeros to ensure it's 64 characters long (256 bits)
+    return string.format("%064x", num)
+end
+
 function Machine:take_snapshot(snapshot_dir, cycle, handle_rollups)
     local input_mask = arithmetic.max_uint(consts.log2_emulator_span)
     if handle_rollups and cycle & input_mask == 0 then
@@ -257,14 +262,8 @@ end
 
 local bint = require 'utils.bint' (256) -- use 256 bits integers
 
-local function encode_access_logs(logs, input)
+local function encode_access_logs(logs, encode_input)
     local encoded = {}
-
-    if input then
-        -- TODO: check #input is encoded as uint256
-        table.insert(encoded, bint(#input))
-        table.insert(encoded, input)
-    end
 
     for _, log in ipairs(logs) do
         for _, a in ipairs(log.accesses) do
@@ -285,7 +284,18 @@ local function encode_access_logs(logs, input)
         return string.format('%02x', string.byte(c))
     end))
 
-    return '"' .. hex_data .. '"'
+    local res
+    if encode_input then
+        assert(#encode_input >= 2)
+        res = "0x" .. to256BitHex(#encode_input - 2)
+        if #encode_input > 2 then
+            res = res .. string.sub(encode_input, 3, #encode_input)
+        end
+        res = res .. string.sub(hex_data, 3, #hex_data)
+    else
+        res = hex_data
+    end
+    return '"' .. res .. '"'
 end
 
 function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
@@ -293,6 +303,7 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
     machine:load_snapshot(snapshot_dir, cycle)
     local logs = {}
     local log_type = { annotations = true, proofs = true }
+    local encode_input = nil
     if inputs then
         -- treat it as rollups
         -- the cycle may be the cycle to receive input,
@@ -300,28 +311,34 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
         if cycle == 0 then
             machine:run(cycle)
         else
-            machine:run_with_inputs(cycle - 1, inputs)
+            machine:run_with_inputs(cycle - 1, inputs, snapshot_dir)
             machine:run(cycle)
         end
 
         local mask = arithmetic.max_uint(consts.log2_emulator_span);
         local input = inputs[cycle >> consts.log2_emulator_span]
-        if cycle & mask == 0 and input then
-            local h = assert(input:match("0x(%x+)"), input)
-            local data_hex = (h:gsub('..', function(cc)
-                return string.char(tonumber(cc, 16))
-            end))
-            -- need to process input
-            if ucycle == 0 then
-                -- need to log cmio
-                table.insert(logs,
-                    machine.machine:log_send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, data_hex,
-                        log_type
-                    ))
-                table.insert(logs, machine.machine:log_uarch_step(log_type))
-                return encode_access_logs(logs, input)
+        if cycle & mask == 0 then
+            if input then
+                local h = assert(input:match("0x(%x+)"), input)
+                local data_hex = (h:gsub('..', function(cc)
+                    return string.char(tonumber(cc, 16))
+                end))
+                -- need to process input
+                if ucycle == 0 then
+                    -- need to log cmio
+                    table.insert(logs,
+                        machine.machine:log_send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, data_hex,
+                            log_type
+                        ))
+                    table.insert(logs, machine.machine:log_uarch_step(log_type))
+                    return encode_access_logs(logs, input)
+                else
+                    machine.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input)
+                end
             else
-                machine.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input)
+                if ucycle == 0 then
+                    encode_input = "0x"
+                end
             end
         end
     else
@@ -335,7 +352,7 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
     else
         table.insert(logs, machine.machine:log_uarch_step(log_type))
     end
-    return encode_access_logs(logs, nil)
+    return encode_access_logs(logs, encode_input)
 end
 
 return Machine
