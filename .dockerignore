@@ -1,6 +1,6 @@
 .vscode
-**/target/
-**/snapshots/
+/**/target/
+/**/snapshots/
 Cargo.lock
-**/compute_data/
-**/rollups_data/
+/**/compute_data/
+/**/rollups_data/
