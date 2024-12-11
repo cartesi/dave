@@ -117,9 +117,9 @@ end
 
 function Machine:take_snapshot(snapshot_dir, cycle, handle_rollups)
     local input_mask = arithmetic.max_uint(consts.log2_emulator_span)
-    if handle_rollups and cycle & input_mask == 0 and not self.yielded then
+    if handle_rollups and cycle & input_mask == 0 then
         -- dont snapshot a machine state that's freshly fed with input without advance
-        return
+        assert(not self.yielded, "don't snapshot a machine state that's freshly fed with input without advance")
     end
 
     if helper.exists(snapshot_dir) then
@@ -178,7 +178,7 @@ function Machine:run_uarch(ucycle)
     self.ucycle = ucycle
 end
 
-function Machine:run_with_inputs(cycle, inputs)
+function Machine:run_with_inputs(cycle, inputs, snapshot_dir)
     local input_mask = arithmetic.max_uint(consts.log2_emulator_span)
     local current_input_index = self.cycle >> consts.log2_emulator_span
 
@@ -194,6 +194,9 @@ function Machine:run_with_inputs(cycle, inputs)
 
     while next_input_cycle <= cycle do
         machine_state_without_input = self:run(next_input_cycle)
+        if next_input_cycle == cycle then
+            self:take_snapshot(snapshot_dir, next_input_cycle, true)
+        end
         local input = inputs[next_input_index + 1]
         if input then
             local h = assert(input:match("0x(%x+)"), input)
@@ -209,6 +212,7 @@ function Machine:run_with_inputs(cycle, inputs)
 
     if cycle > self.cycle then
         machine_state_without_input = self:run(cycle)
+        self:take_snapshot(snapshot_dir, cycle, true)
     end
 
     return machine_state_without_input

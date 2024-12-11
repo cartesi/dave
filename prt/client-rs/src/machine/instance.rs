@@ -1,4 +1,4 @@
-use crate::db::compute_state_access::Input;
+use crate::db::compute_state_access::{ComputeStateAccess, Input};
 use crate::machine::constants;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
@@ -65,6 +65,22 @@ impl MachineInstance {
             ucycle: 0,
         })
     }
+    pub fn take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
+        let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+        if db.handle_rollups && base_cycle & mask == 0 {
+            // don't snapshot a machine state that's freshly fed with input without advance
+            assert!(
+                self.machine_state()?.yielded,
+                "don't snapshot a machine state that's freshly fed with input without advance",
+            );
+        }
+
+        let snapshot_path = db.work_path.join(format!("{}", base_cycle));
+        if !snapshot_path.exists() {
+            self.machine.store(&snapshot_path)?;
+        }
+        Ok(())
+    }
 
     // load inner machine with snapshot, update cycle, keep everything else the same
     pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
@@ -86,13 +102,6 @@ impl MachineInstance {
         Ok(())
     }
 
-    pub fn snapshot(&self, snapshot_path: &Path) -> Result<()> {
-        if !snapshot_path.exists() {
-            self.machine.store(snapshot_path)?;
-        }
-        Ok(())
-    }
-
     pub fn root_hash(&self) -> Digest {
         self.root_hash
     }
@@ -101,8 +110,7 @@ impl MachineInstance {
         &mut self,
         cycle: u64,
         ucycle: u64,
-        inputs: Vec<Vec<u8>>,
-        handle_rollups: bool,
+        db: &ComputeStateAccess,
     ) -> Result<MachineProof> {
         let log_type = AccessLogType {
             annotations: true,
@@ -111,18 +119,19 @@ impl MachineInstance {
         };
 
         let mut logs = Vec::new();
-        if handle_rollups {
+        if db.handle_rollups {
             // treat it as rollups
             // the cycle may be the cycle to receive input,
             // we need to include the process of feeding input to the machine in the log
             if cycle == 0 {
                 self.run(cycle)?;
             } else {
-                self.run_with_inputs(cycle - 1, &inputs)?;
+                self.run_with_inputs(cycle - 1, db)?;
                 self.run(cycle)?;
             }
 
             let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
+            let inputs = &db.inputs()?;
             let input = inputs.get((cycle >> constants::LOG2_EMULATOR_SPAN) as usize);
             if cycle & mask == 0 && input.is_some() {
                 // need to process input
@@ -225,13 +234,14 @@ impl MachineInstance {
     // One exception is that if `cycle` is supposed to receive an input, in this case
     // the machine state would be `without` input included in the machine,
     // this is useful when we need the initial state to compute the commitments
-    pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<MachineState> {
+    pub fn run_with_inputs(&mut self, cycle: u64, db: &ComputeStateAccess) -> Result<MachineState> {
         trace!(
             "run_with_inputs self cycle: {}, target cycle: {}",
             self.cycle,
             cycle
         );
 
+        let inputs = &db.inputs()?;
         let mut machine_state_without_input = self.machine_state()?;
         let input_mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
         let current_input_index = self.cycle >> constants::LOG2_EMULATOR_SPAN;
@@ -249,6 +259,10 @@ impl MachineInstance {
             trace!("next input index: {}", next_input_index);
             trace!("run to next input cycle: {}", next_input_cycle);
             machine_state_without_input = self.run(next_input_cycle)?;
+            if next_input_cycle == cycle {
+                self.take_snapshot(next_input_cycle, &db)?;
+            }
+
             let input = inputs.get(next_input_index as usize);
             if let Some(data) = input {
                 trace!(
@@ -256,8 +270,10 @@ impl MachineInstance {
                     self.machine_state()?.root_hash
                 );
                 trace!("input: 0x{}", data.encode_hex());
+
                 self.machine
                     .send_cmio_response(htif::fromhost::ADVANCE_STATE, data)?;
+
                 trace!(
                     "after input, machine state: {}",
                     self.machine_state()?.root_hash
@@ -269,6 +285,7 @@ impl MachineInstance {
         }
         if cycle > self.cycle {
             machine_state_without_input = self.run(cycle)?;
+            self.take_snapshot(cycle, &db)?;
         }
         Ok(machine_state_without_input)
     }

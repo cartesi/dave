@@ -363,8 +363,7 @@ impl Player {
                 if let Some(snapshot) = self.db.closest_snapshot(cycle)? {
                     machine.load_snapshot(&snapshot.1, snapshot.0)?;
                 };
-                let inputs = self.db.inputs()?;
-                machine.get_logs(cycle, ucycle, inputs, self.db.handle_rollups)?
+                machine.get_logs(cycle, ucycle, &self.db)?
             };
 
             info!(
