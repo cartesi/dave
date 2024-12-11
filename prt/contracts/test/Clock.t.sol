@@ -62,10 +62,10 @@ contract ClockTest is Test {
         clock1.advanceClock();
         assertTrue(clock1.hasTimeLeft(), "clock1 should have time left");
 
-        vm.warp(block.timestamp + clock1Allowance - 1);
+        vm.warp(vm.getBlockTimestamp() + clock1Allowance - 1);
         assertTrue(clock1.hasTimeLeft(), "clock1 should have time left");
 
-        vm.warp(block.timestamp + clock1Allowance);
+        vm.warp(vm.getBlockTimestamp() + clock1Allowance);
         assertTrue(!clock1.hasTimeLeft(), "clock1 should run out of time");
 
         vm.expectRevert("can't advance clock with no time left");

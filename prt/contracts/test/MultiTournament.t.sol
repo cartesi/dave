@@ -55,7 +55,7 @@ contract MultiTournamentTest is Util, Test {
         );
 
         // player 0 should win after fast forward time to tournament finishes
-        uint256 _t = block.timestamp;
+        uint256 _t = vm.getBlockTimestamp();
         uint256 _tournamentFinish =
             _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
 
@@ -298,7 +298,7 @@ contract MultiTournamentTest is Util, Test {
         assertFalse(_finished, "winner should be zero node");
 
         // player 0 should win after fast forward time to inner tournament finishes
-        uint256 _t = block.timestamp;
+        uint256 _t = vm.getBlockTimestamp();
         // the delay is increased when a match is created
         uint256 _rootTournamentFinish = _t
             + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
@@ -370,7 +370,7 @@ contract MultiTournamentTest is Util, Test {
         (_finished, _winner,) = middleTournament.innerTournamentWinner();
         assertTrue(_winner.isZero(), "winner should be zero node");
 
-        _t = block.timestamp;
+        _t = vm.getBlockTimestamp();
         // the delay is increased when a match is created
         _rootTournamentFinish =
             _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
@@ -450,7 +450,7 @@ contract MultiTournamentTest is Util, Test {
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
-        uint256 _t = block.timestamp;
+        uint256 _t = vm.getBlockTimestamp();
         // the delay is increased when a match is created
         uint256 _rootTournamentFinish =
             _t + 2 * Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
