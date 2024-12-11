@@ -47,13 +47,11 @@ impl CachingMachineCommitmentBuilder {
 
         let initial_state = {
             if db.handle_rollups {
-                debug!("run with inputs");
                 // treat it as rollups
                 machine
                     .run_with_inputs(base_cycle, &db.inputs()?)?
                     .root_hash
             } else {
-                debug!("run without inputs");
                 // treat it as compute
                 machine.run(base_cycle)?.root_hash
             }

@@ -1,6 +1,4 @@
-local Hash = require "cryptography.hash"
 local eth_abi = require "utils.eth_abi"
-local helper = require "utils.helper"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -57,11 +55,6 @@ local function parse_logs(logs, data_sig)
     end
 
     return ret
-end
-
-local function sanitize_string(s)
-    -- remove spaces, scientific notations and color code
-    return s:gsub("%s+", ""):gsub("%b[]", ""):gsub("\27%[[%d;]*m", "")
 end
 
 local Reader = {}

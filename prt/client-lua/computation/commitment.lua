@@ -32,11 +32,10 @@ local function run_uarch_span(machine)
     machine_state = machine:ureset()
     builder:add(machine_state.root_hash)
 
-    return builder:build()
+    return builder:build(), machine_state
 end
 
 local function build_small_machine_commitment(base_cycle, log2_stride_count, machine, initial_state, snapshot_dir)
-    local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
         machine:take_snapshot(snapshot_dir, base_cycle, handle_rollups)
@@ -46,12 +45,16 @@ local function build_small_machine_commitment(base_cycle, log2_stride_count, mac
     local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span)
     local instruction = 0
     while ulte(instruction, instruction_count) do
-        builder:add(run_uarch_span(machine))
+        local uarch_span, machine_state = run_uarch_span(machine)
+        builder:add(uarch_span)
         instruction = instruction + 1
 
         -- Optional optimization, just comment to remove.
-        if machine:state().halted then
-            builder:add(run_uarch_span(machine), instruction_count - instruction + 1)
+        -- BIZARRE!: why not yielded??? if added "or machine_state.yielded", win leaf match will revert with error code: 3 and data: 0x
+        -- if machine_state.halted or machine_state.yielded then
+        if machine_state.halted then
+            uarch_span, _ = run_uarch_span(machine)
+            builder:add(uarch_span, instruction_count - instruction + 1)
             break
         end
     end
@@ -61,7 +64,6 @@ end
 
 local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state,
                                             snapshot_dir)
-    local machine_state = machine:state()
     if save_snapshot then
         -- taking snapshot for leafs to save time in next level
         machine:take_snapshot(snapshot_dir, base_cycle, handle_rollups)
@@ -73,7 +75,7 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
 
     while ulte(instruction, instruction_count) do
         local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
-        machine_state = machine:run(base_cycle + cycle)
+        local machine_state = machine:run(base_cycle + cycle)
 
         if machine_state.halted or machine_state.yielded then
             -- add this loop plus all remainings

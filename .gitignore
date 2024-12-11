@@ -12,3 +12,5 @@ prt/tests/compute/pixels/
 node_modules
 **/contract-bindings/src/contract
 **/contract-bindings/Cargo.lock
+**/compute_data/
+**/rollups_data/

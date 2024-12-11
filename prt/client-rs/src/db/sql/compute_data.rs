@@ -192,10 +192,8 @@ fn insert_handle_rollups_statement(conn: &rusqlite::Connection) -> Result<rusqli
 }
 
 pub fn insert_handle_rollups(conn: &rusqlite::Connection, handle_rollups: bool) -> Result<()> {
-    let tx = conn.unchecked_transaction()?;
     let mut stmt = insert_handle_rollups_statement(&conn)?;
     stmt.execute(params![handle_rollups])?;
-    tx.commit()?;
 
     Ok(())
 }

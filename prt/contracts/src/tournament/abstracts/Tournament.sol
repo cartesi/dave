@@ -116,7 +116,7 @@ abstract contract Tournament {
         internal
         view
         virtual
-        returns (bool);
+        returns (bool, Machine.Hash, Machine.Hash);
 
     //
     // Methods
@@ -303,15 +303,26 @@ abstract contract Tournament {
     //
     // Helper functions
     //
-    error InvalidContestedFinalState(Machine.Hash finalState);
+    error InvalidContestedFinalState(
+        Machine.Hash contestedFinalStateOne,
+        Machine.Hash contestedFinalStateTwo,
+        Machine.Hash finalState
+    );
 
     function requireValidContestedFinalState(Machine.Hash _finalState)
         internal
         view
     {
+        (
+            bool valid,
+            Machine.Hash contestedFinalStateOne,
+            Machine.Hash contestedFinalStateTwo
+        ) = validContestedFinalState(_finalState);
         require(
-            validContestedFinalState(_finalState),
-            InvalidContestedFinalState(_finalState)
+            valid,
+            InvalidContestedFinalState(
+                contestedFinalStateOne, contestedFinalStateTwo, _finalState
+            )
         );
     }
 

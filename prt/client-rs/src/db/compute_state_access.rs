@@ -23,7 +23,7 @@ pub struct InputsAndLeafs {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Input(#[serde(with = "alloy_hex::serde")] pub Vec<u8>);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Leaf(#[serde(with = "alloy_hex::serde")] pub [u8; 32], pub u64);
 
 #[derive(Debug)]
@@ -157,13 +157,35 @@ impl ComputeStateAccess {
         Ok(tree)
     }
 
+    pub fn insert_compute_trees<'a>(
+        &self,
+        compute_trees: impl Iterator<Item = &'a (Digest, Vec<Leaf>)>,
+    ) -> Result<()> {
+        let conn = self.connection.lock().unwrap();
+        let tx = conn.unchecked_transaction()?;
+        for (_, digest_and_leaf) in compute_trees.enumerate() {
+            compute_data::insert_compute_tree(
+                &tx,
+                digest_and_leaf.0.slice(),
+                digest_and_leaf.1.iter(),
+            )?;
+        }
+        tx.commit()?;
+
+        Ok(())
+    }
+
     pub fn insert_compute_tree<'a>(
         &self,
         tree_root: &[u8],
         tree_leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
-        compute_data::insert_compute_tree(&conn, tree_root, tree_leafs)
+        let tx = conn.unchecked_transaction()?;
+        compute_data::insert_compute_tree(&tx, tree_root, tree_leafs)?;
+        tx.commit()?;
+
+        Ok(())
     }
 
     pub fn closest_snapshot(&self, base_cycle: u64) -> Result<Option<(u64, PathBuf)>> {
