@@ -16,19 +16,19 @@ create-image:
 	@docker build -t cartesi/prt-compute:lua -f Dockerfile ../../../
 
 test-simple: create-image
-	@docker run --rm --name prt-compute-test \
+	@docker run --rm --name prt-compute-test-simple \
 		--env MACHINE_PATH=$(SIMPLE_MACHINE_PATH) \
 		--env LUA_NODE=$(LUA_NODE) \
 		cartesi/prt-compute:lua
 
 test-stress: create-image
-	@docker run --rm --name prt-compute-test \
+	@docker run --rm --name prt-compute-test-stress \
 		--env MACHINE_PATH=$(STRESS_MACHINE_PATH) \
 		--env LUA_NODE=$(LUA_NODE) \
 		cartesi/prt-compute:lua
 
 test-doom: create-image
-	@docker run --rm --name prt-compute-test \
+	@docker run --rm --name prt-compute-test-doom \
 		--env MACHINE_PATH=$(DOOM_MACHINE_PATH) \
 		--env LUA_NODE=$(LUA_NODE) \
 		cartesi/prt-compute:lua
@@ -41,7 +41,7 @@ clean-graphics:
 	@rm -r pixels outputs
 
 test-doom-with-graphics: create-image create-doom-dirs
-	@docker run --rm --name prt-compute-test \
+	@docker run --rm --name prt-compute-test-doom-with-graphics \
 		--env MACHINE_PATH=$(DOOM_MACHINE_PATH) \
 		--env LUA_NODE=$(LUA_NODE) \
 		--mount type=bind,source="$(shell pwd)/pixels",target=/app/pixels \
