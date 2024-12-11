@@ -1,8 +1,6 @@
 local color = require "utils.color"
 
 local names = { 'green', 'yellow', 'blue', 'pink', 'cyan', 'white' }
-local idle_template = [[ls player%d_idle 2>/dev/null | grep player%d_idle | wc -l]]
-local ps_template = [[ps %s | grep defunct | wc -l]]
 local helper = {}
 
 function helper.parse_datetime(datetime_str)

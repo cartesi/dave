@@ -2,11 +2,11 @@
 require "setup_path"
 
 -- amount of time sleep between each react
-local SLEEP_TIME = 4
+local SLEEP_TIME = 1
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
-local FAST_FORWARD_TIME = 90
+local FAST_FORWARD_TIME = 30
 -- amount of time to fastforward to advance an epoch
-local EPOCH_TIME = 60 * 60 * 24 * 7
+-- local EPOCH_TIME = 60 * 60 * 24 * 7
 -- delay time for blockchain node to be ready
 local NODE_DELAY = 3
 -- number of fake commitment to make
@@ -42,21 +42,12 @@ local blockchain_utils = require "blockchain.utils"
 local time = require "utils.time"
 local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
-local CommitmentBuilder = require "computation.commitment"
 local Dave = require "dave.node"
 local Hash = require "cryptography.hash"
 local Machine = require "computation.machine"
 local MerkleBuilder = require "cryptography.merkle_builder"
 local Reader = require "dave.reader"
 local Sender = require "dave.sender"
-
-local function get_root_constants(root_tournament)
-    local TournamentReader = require "player.reader"
-    local reader = TournamentReader:new(blockchain_constants.endpoint)
-    local root_constants = reader:read_constants(root_tournament)
-
-    return root_constants
-end
 
 local ROOT_LEAFS_QUERY =
 [[sqlite3 /compute_data/%s/db 'select level,base_cycle,compute_leaf_index,repetitions,HEX(compute_leaf)
@@ -77,7 +68,7 @@ local function build_root_commitment_from_db(machine_path, root_tournament)
 
     -- Iterate over each line in the input data
     for line in rows:gmatch("[^\n]+") do
-        local level, base_cycle, compute_leafs_index, repetitions, compute_leaf = line:match(
+        local _, _, _, repetitions, compute_leaf = line:match(
             "([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)")
         -- Convert values to appropriate types
         repetitions = tonumber(repetitions)
@@ -114,14 +105,9 @@ end
 
 -- Function to setup players
 local function setup_players(root_tournament, machine_path)
-    local root_constants = get_root_constants(root_tournament)
-
     local player_coroutines = {}
     local player_index = 1
     print("Calculating root commitment...")
-    -- local snapshot_dir = string.format("/compute_data/%s", root_tournament)
-    -- local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
-    -- local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height, inputs)
     local root_commitment = build_root_commitment_from_db(machine_path, root_tournament)
     local inputs = get_inputs_from_db(root_tournament)
 
@@ -170,7 +156,7 @@ local function run_players(player_coroutines)
         end
 
         if not has_live_coroutine then
-            print("No active players, ending program...")
+            print("No active players, ending attack...")
             break
         end
 
@@ -192,7 +178,7 @@ blockchain_utils.deploy_contracts("../../../cartesi-rollups/contracts")
 time.sleep(NODE_DELAY)
 
 -- trace, debug, info, warn, error
-local verbosity = os.getenv("VERBOSITY") or 'debug'
+local verbosity = os.getenv("VERBOSITY") or 'info'
 -- 0, 1, full
 local trace_level = os.getenv("TRACE_LEVEL") or 'full'
 local dave_node = Dave:new(rollups_machine_path, SLEEP_TIME, verbosity, trace_level)
@@ -210,7 +196,6 @@ while true do
 
     if #sealed_epochs > 0 then
         local last_sealed_epoch = sealed_epochs[#sealed_epochs]
-        local inputs = {}
         for _ = input_index, input_index + 2 do
             sender:tx_add_input(INPUT_BOX_ADDRESS, APP_ADDRESS, ECHO_MSG)
         end

@@ -2,3 +2,5 @@
 **/target/
 **/snapshots/
 Cargo.lock
+**/compute_data/
+**/rollups_data/

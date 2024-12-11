@@ -73,9 +73,13 @@ abstract contract NonRootTournament is Tournament {
         internal
         view
         override
-        returns (bool)
+        returns (bool, Machine.Hash, Machine.Hash)
     {
-        return contestedFinalStateOne.eq(_finalState)
-            || contestedFinalStateTwo.eq(_finalState);
+        return (
+            contestedFinalStateOne.eq(_finalState)
+                || contestedFinalStateTwo.eq(_finalState),
+            contestedFinalStateOne,
+            contestedFinalStateTwo
+        );
     }
 }

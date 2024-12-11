@@ -59,7 +59,7 @@ local function _is_my_turn(match, commitment)
     -- commitment one should be the first to react after the match is created
     -- thus commitment one will hold the same parity as the match height (not xor)
     -- and commitment two will hold the opposite parity (xor)
-    local res = false
+    local res
     local height_parity = match.tournament.log2_stride_count % 2 == 0
     local current_height_parity = match.current_height % 2 == 0
     local xor_of_two_parities = height_parity ~= current_height_parity

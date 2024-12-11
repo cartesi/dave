@@ -25,10 +25,10 @@ abstract contract RootTournament is Tournament, ITournament {
         internal
         pure
         override
-        returns (bool)
+        returns (bool, Machine.Hash, Machine.Hash)
     {
         // always returns true in root tournament
-        return true;
+        return (true, Machine.ZERO_STATE, Machine.ZERO_STATE);
     }
 
     function arbitrationResult()

@@ -163,24 +163,35 @@ impl MachineInstance {
 
     // Runs to the `cycle` directly and returns the machine state after the run
     pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
-        debug!("self cycle: {}, target cycle: {}", self.cycle, cycle);
         assert!(self.cycle <= cycle);
 
-        let physical_cycle = arithmetic::add_and_clamp(self.start_cycle, cycle);
+        let mcycle = self.machine.read_mcycle()?;
+        debug!("mcycle {}", mcycle);
+        let mut machine_state = self.machine_state()?;
+        debug!(
+            "start cycle {}, run self cycle: {}, target cycle: {}",
+            self.start_cycle, self.cycle, cycle
+        );
+        debug!("before run, machine state: {}", machine_state);
+
+        let physical_cycle = arithmetic::add_and_clamp(mcycle, cycle - self.cycle);
+        debug!("physical cycle {}", physical_cycle);
 
         loop {
             let halted = self.machine.read_iflags_h()?;
             if halted {
+                debug!("run break with halt");
                 break;
             }
 
             let yielded = self.machine.read_iflags_y()?;
             if yielded {
+                debug!("run break with yield");
                 break;
             }
 
-            let mcycle = self.machine.read_mcycle()?;
-            if mcycle == physical_cycle {
+            if self.machine.read_mcycle()? == physical_cycle {
+                debug!("run break with meeting physical cycle");
                 break;
             }
 
@@ -188,8 +199,10 @@ impl MachineInstance {
         }
 
         self.cycle = cycle;
+        machine_state = self.machine_state()?;
+        debug!("after run, machine state: {}", machine_state);
 
-        Ok(self.machine_state()?)
+        Ok(machine_state)
     }
 
     pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
@@ -211,8 +224,10 @@ impl MachineInstance {
     // the machine state would be `without` input included in the machine,
     // this is useful when we need the initial state to compute the commitments
     pub fn run_with_inputs(&mut self, cycle: u64, inputs: &Vec<Vec<u8>>) -> Result<MachineState> {
-        debug!("current cycle: {}", self.cycle);
-        debug!("target cycle: {}", cycle);
+        debug!(
+            "run_with_inputs self cycle: {}, target cycle: {}",
+            self.cycle, cycle
+        );
 
         let mut machine_state_without_input = self.machine_state()?;
         let input_mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
@@ -250,24 +265,22 @@ impl MachineInstance {
             next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
         }
         if cycle > self.cycle {
-            debug!("run to target cycle: {}", cycle);
             machine_state_without_input = self.run(cycle)?;
-            debug!("after run, machine state: {}", machine_state_without_input);
         }
         Ok(machine_state_without_input)
     }
 
-    pub fn increment_uarch(&mut self) -> Result<()> {
+    pub fn increment_uarch(&mut self) -> Result<MachineState> {
         self.machine.run_uarch(self.ucycle + 1)?;
         self.ucycle += 1;
-        Ok(())
+        Ok(self.machine_state()?)
     }
 
-    pub fn ureset(&mut self) -> Result<()> {
+    pub fn ureset(&mut self) -> Result<MachineState> {
         self.machine.reset_uarch()?;
         self.cycle += 1;
         self.ucycle = 0;
-        Ok(())
+        Ok(self.machine_state()?)
     }
 
     pub fn machine_state(&mut self) -> Result<MachineState> {
@@ -290,8 +303,8 @@ impl MachineInstance {
         Ok(())
     }
 
-    pub fn position(&self) -> (u64, u64) {
-        (self.cycle, self.ucycle)
+    pub fn position(&self) -> Result<(u64, u64, u64)> {
+        Ok((self.cycle, self.ucycle, self.machine.read_mcycle()?))
     }
 }
 

@@ -157,9 +157,11 @@ end
 
 function Machine:run(cycle)
     assert(arithmetic.ulte(self.cycle, cycle))
-    local physical_cycle = add_and_clamp(self.start_cycle, cycle) -- TODO reconsider for lambda
 
     local machine = self.machine
+    local m_cycle = machine:read_mcycle()
+    local physical_cycle = add_and_clamp(m_cycle, cycle - self.cycle) -- TODO reconsider for lambda
+
     while not (machine:read_iflags_H() or machine:read_iflags_Y() or machine:read_mcycle() == physical_cycle) do
         machine:run(physical_cycle)
     end

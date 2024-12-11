@@ -99,6 +99,7 @@ impl Player {
         tournament_states: &TournamentStateMap,
     ) -> Result<Option<PlayerTournamentResult>> {
         info!("Enter tournament at address: {}", tournament_address);
+        // TODO: print final state one and final state two
         let tournament_state = get_tournament_state(&tournament_states, tournament_address);
 
         commitments.insert(

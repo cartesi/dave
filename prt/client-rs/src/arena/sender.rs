@@ -2,6 +2,7 @@
 //! to tournaments
 
 use async_trait::async_trait;
+use log::debug;
 use std::{str::FromStr, sync::Arc};
 
 use alloy::{
@@ -169,6 +170,10 @@ impl ArenaSender for EthArenaSender {
             .iter()
             .map(|h| -> B256 { (*h).into() })
             .collect();
+        debug!(
+            "final state for tournament {} at position {}",
+            proof.node, proof.position
+        );
         tournament
             .joinTournament(
                 proof.node.into(),
