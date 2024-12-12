@@ -4,7 +4,6 @@
 pragma solidity ^0.8.8;
 
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
-import {Inputs} from "rollups-contracts/common/Inputs.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
@@ -38,9 +37,6 @@ import {Merkle} from "./Merkle.sol";
 contract DaveConsensus is IDataProvider {
     using Merkle for bytes;
 
-    /// @notice GIO namespace for getting advance requests from the InputBox contract
-    uint16 constant INPUT_BOX_NAMESPACE = 0;
-
     /// @notice The input box contract
     IInputBox immutable _inputBox;
 
@@ -53,11 +49,11 @@ contract DaveConsensus is IDataProvider {
     /// @notice Current sealed epoch number
     uint256 _epochNumber;
 
-    /// @notice Block number (inclusive) lower bound of the current sealed epoch
-    uint256 _blockNumberLowerBound;
+    /// @notice Input index (inclusive) lower bound of the current sealed epoch
+    uint256 _inputIndexLowerBound;
 
-    /// @notice Block number (exclusive) upper bound of the current sealed epoch
-    uint256 _blockNumberUpperBound;
+    /// @notice Input index (exclusive) upper bound of the current sealed epoch
+    uint256 _inputIndexUpperBound;
 
     /// @notice Current sealed epoch tournament
     ITournament _tournament;
@@ -70,17 +66,30 @@ contract DaveConsensus is IDataProvider {
 
     /// @notice An epoch was sealed
     /// @param epochNumber the sealed epoch number
-    /// @param blockNumberLowerBound the block number (inclusive) lower bound in the sealed epoch
-    /// @param blockNumberUpperBound the block number (exclusive) upper bound in the sealed epoch
+    /// @param inputIndexLowerBound the input index (inclusive) lower bound in the sealed epoch
+    /// @param inputIndexUpperBound the input index (exclusive) upper bound in the sealed epoch
     /// @param initialMachineStateHash the initial machine state hash
     /// @param tournament the sealed epoch tournament contract
     event EpochSealed(
         uint256 epochNumber,
-        uint256 blockNumberLowerBound,
-        uint256 blockNumberUpperBound,
+        uint256 inputIndexLowerBound,
+        uint256 inputIndexUpperBound,
         Machine.Hash initialMachineStateHash,
         ITournament tournament
     );
+
+    /// @notice Received epoch number is different from actual
+    /// @param received The epoch number received as argument
+    /// @param actual The actual epoch number in storage
+    error IncorrectEpochNumber(uint256 received, uint256 actual);
+
+    /// @notice Tournament is not finished yet
+    error TournamentNotFinishedYet();
+
+    /// @notice Hash of received input blob is different from stored on-chain
+    /// @param fromReceivedInput Hash of received input blob
+    /// @param fromInputBox Hash of input stored on the input box contract
+    error InputHashMismatch(bytes32 fromReceivedInput, bytes32 fromInputBox);
 
     constructor(
         IInputBox inputBox,
@@ -95,11 +104,11 @@ contract DaveConsensus is IDataProvider {
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
         // Initialize first sealed epoch
-        uint256 blockNumberUpperBound = block.number;
-        _blockNumberUpperBound = blockNumberUpperBound;
+        uint256 inputIndexUpperBound = inputBox.getNumberOfInputs(appContract);
+        _inputIndexUpperBound = inputIndexUpperBound;
         ITournament tournament = tournamentFactory.instantiate(initialMachineStateHash, this);
         _tournament = tournament;
-        emit EpochSealed(0, 0, blockNumberUpperBound, initialMachineStateHash, tournament);
+        emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, tournament);
     }
 
     function canSettle() external view returns (bool isFinished, uint256 epochNumber) {
@@ -109,19 +118,20 @@ contract DaveConsensus is IDataProvider {
 
     function settle(uint256 epochNumber) external {
         // Check tournament settlement
-        require(epochNumber == _epochNumber, "Dave: incorrect epoch number");
+        uint256 actualEpochNumber = _epochNumber;
+        require(epochNumber == actualEpochNumber, IncorrectEpochNumber(epochNumber, actualEpochNumber));
         (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournament.arbitrationResult();
-        require(isFinished, "Dave: tournament not finished");
+        require(isFinished, TournamentNotFinishedYet());
 
         // Seal current accumulating epoch
         _epochNumber = ++epochNumber;
-        uint256 blockNumberLowerBound = _blockNumberUpperBound;
-        _blockNumberLowerBound = blockNumberLowerBound;
-        uint256 blockNumberUpperBound = block.number;
-        _blockNumberUpperBound = blockNumberUpperBound;
+        uint256 inputIndexLowerBound = _inputIndexUpperBound;
+        _inputIndexLowerBound = inputIndexLowerBound;
+        uint256 inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
+        _inputIndexUpperBound = inputIndexUpperBound;
         ITournament tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
         _tournament = tournament;
-        emit EpochSealed(epochNumber, blockNumberLowerBound, blockNumberUpperBound, finalMachineStateHash, tournament);
+        emit EpochSealed(epochNumber, inputIndexLowerBound, inputIndexUpperBound, finalMachineStateHash, tournament);
     }
 
     function getCurrentSealedEpoch()
@@ -129,14 +139,14 @@ contract DaveConsensus is IDataProvider {
         view
         returns (
             uint256 epochNumber,
-            uint256 blockNumberLowerBound,
-            uint256 blockNumberUpperBound,
+            uint256 inputIndexLowerBound,
+            uint256 inputIndexUpperBound,
             ITournament tournament
         )
     {
         epochNumber = _epochNumber;
-        blockNumberLowerBound = _blockNumberLowerBound;
-        blockNumberUpperBound = _blockNumberUpperBound;
+        inputIndexLowerBound = _inputIndexLowerBound;
+        inputIndexUpperBound = _inputIndexUpperBound;
         tournament = _tournament;
     }
 
@@ -153,36 +163,23 @@ contract DaveConsensus is IDataProvider {
     }
 
     /// @inheritdoc IDataProvider
-    function gio(uint16 namespace, bytes calldata id, bytes calldata input)
+    function provideMerkleRootOfInput(uint256 inputIndexWithinEpoch, bytes calldata input)
         external
         view
         override
-        returns (bytes32, uint256)
+        returns (bytes32)
     {
-        require(namespace == INPUT_BOX_NAMESPACE, "Dave: bad namespace");
-        uint256 inputIndex = abi.decode(id, (uint256));
-        uint256 inputCount = _inputBox.getNumberOfInputs(_appContract);
+        uint256 inputIndex = _inputIndexLowerBound + inputIndexWithinEpoch;
 
-        if (inputIndex >= inputCount) {
+        if (inputIndex >= _inputIndexUpperBound) {
             // out-of-bounds index: repeat the state (as a fixpoint function)
-            return (bytes32(0), 0);
+            return bytes32(0);
         }
 
-        bytes32 inputHash = _inputBox.getInputHash(_appContract, inputIndex);
-        require(keccak256(input) == inputHash, "Dave: bad input hash");
-        require(input.length >= 4, "Dave: bad input length");
+        bytes32 calculatedInputHash = keccak256(input);
+        bytes32 realInputHash = _inputBox.getInputHash(_appContract, inputIndex);
+        require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
 
-        bytes4 selector = bytes4(input[:4]);
-        bytes calldata args = input[4:];
-        require(selector == Inputs.EvmAdvance.selector, "Dave: bad input selector");
-        (,,, uint256 blockNumber,,,,) =
-            abi.decode(args, (uint256, address, address, uint256, uint256, uint256, uint256, bytes));
-
-        if (_blockNumberLowerBound <= blockNumber && blockNumber < _blockNumberUpperBound) {
-            return (input.getSmallestMerkleRootFromBytes(), input.length);
-        } else {
-            // out-of-bounds index: repeat the state (as a fixpoint function)
-            return (bytes32(0), 0);
-        }
+        return input.getSmallestMerkleRootFromBytes();
     }
 }

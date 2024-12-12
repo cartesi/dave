@@ -151,17 +151,17 @@ abstract contract LeafTournament is Tournament {
 
                 if (inputLength > 0) {
                     bytes calldata input = proofs[32:32 + inputLength];
-                    uint256 inputIndex = counter
+                    uint256 inputIndexWithinEpoch = counter
                         >> (
                             ArbitrationConstants.LOG2_EMULATOR_SPAN
                                 + ArbitrationConstants.LOG2_UARCH_SPAN
-                        ); // TODO: add input index offset of the epoch
+                        );
 
                     // TODO: maybe assert retrieved input length matches?
-                    (bytes32 inputMerkleRoot, uint256 retrievedInputLength) =
-                        provider.gio(0, abi.encode(inputIndex), input);
+                    bytes32 inputMerkleRoot = provider.provideMerkleRootOfInput(
+                        inputIndexWithinEpoch, input
+                    );
 
-                    require(inputLength == retrievedInputLength);
                     require(inputMerkleRoot != bytes32(0));
                     SendCmioResponse.sendCmioResponse(
                         accessLogs,
