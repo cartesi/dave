@@ -4,7 +4,7 @@ local function start_dave_node(machine_path, db_path, sleep_duration, verbosity,
     local cmd = string.format(
         [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' PATH_TO_DB='%s' \
         SLEEP_DURATION=%d RUST_BACKTRACE='%s' \
-        RUST_LOG='none',cartesi_prt_core='%s',compute_runner='%s',rollups_epoch_manager='%s' \
+        RUST_LOG='none',cartesi_prt_core='%s',rollups_compute_runner='%s',rollups_epoch_manager='%s' \
         ./dave-rollups > dave.log 2>&1"]],
         machine_path, db_path, sleep_duration, trace_level, verbosity, verbosity, verbosity)
 

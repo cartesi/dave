@@ -2,9 +2,9 @@
 require "setup_path"
 
 -- amount of time sleep between each react
-local SLEEP_TIME = 1
+local SLEEP_TIME = 2
 -- amount of time to fastforward if `IDLE_LIMIT` is reached
-local FAST_FORWARD_TIME = 30
+local FAST_FORWARD_TIME = 20
 -- amount of time to fastforward to advance an epoch
 -- local EPOCH_TIME = 60 * 60 * 24 * 7
 -- delay time for blockchain node to be ready
