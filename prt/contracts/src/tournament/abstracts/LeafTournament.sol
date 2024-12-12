@@ -56,7 +56,7 @@ abstract contract LeafTournament is Tournament {
     }
 
     error WrongFinalState(
-        uint256 commitment, Machine.Hash expected, Machine.Hash got
+        uint256 commitment, Machine.Hash computed, Machine.Hash claimed
     );
     error WrongNodesForStep();
 
