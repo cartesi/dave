@@ -4,14 +4,12 @@
 pragma solidity ^0.8.17;
 
 interface IDataProvider {
-    /// @notice Provides the Merkle root of the response to a Generic I/O request
-    /// @param namespace The request namespace
-    /// @param id The request ID
-    /// @param extra Extra data (e.g. proofs)
-    /// @return Merkle root of response
-    /// @return Size of the response (in bytes)
-    function gio(uint16 namespace, bytes calldata id, bytes calldata extra)
-        external
-        view
-        returns (bytes32, uint256);
+    /// @notice Provides the Merkle root of an input
+    /// @param inputIndexWithinEpoch The index of the input within the epoch
+    /// @param input The input blob (to hash and check against the input box)
+    /// @return The root of smallest Merkle tree that fits the input
+    function provideMerkleRootOfInput(
+        uint256 inputIndexWithinEpoch,
+        bytes calldata input
+    ) external view returns (bytes32);
 }
