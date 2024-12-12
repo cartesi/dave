@@ -181,15 +181,6 @@ impl MachineInstance {
         assert!(self.cycle <= cycle);
 
         let mcycle = self.machine.read_mcycle()?;
-        let mut machine_state = self.machine_state()?;
-        trace!(
-            "start cycle {}, run self cycle: {}, target cycle: {}, mcycle: {}",
-            self.start_cycle,
-            self.cycle,
-            cycle,
-            mcycle
-        );
-        trace!("before run, machine state: {}", machine_state);
 
         let physical_cycle = arithmetic::add_and_clamp(mcycle, cycle - self.cycle);
         trace!("physical cycle {}", physical_cycle);
@@ -216,10 +207,8 @@ impl MachineInstance {
         }
 
         self.cycle = cycle;
-        machine_state = self.machine_state()?;
-        trace!("after run, machine state: {}", machine_state);
 
-        Ok(machine_state)
+        Ok(self.machine_state()?)
     }
 
     pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
