@@ -117,7 +117,9 @@ library Match {
         emit matchAdvanced(id.hashFromId(), state.otherParent, state.leftNode);
     }
 
-    error IncorrectState(Machine.Hash initialState, Machine.Hash agreeState);
+    error IncorrectAgreeState(
+        Machine.Hash initialState, Machine.Hash agreeState
+    );
 
     function sealMatch(
         State storage state,
@@ -145,7 +147,7 @@ library Match {
         if (state.runningLeafPosition == 0) {
             require(
                 agreeState.eq(initialState),
-                IncorrectState(initialState, agreeState)
+                IncorrectAgreeState(initialState, agreeState)
             );
         } else {
             Tree.Node commitment;

@@ -263,7 +263,7 @@ impl Player {
                 tournament_state.max_level,
                 tournament_states,
             )
-            .await
+            .await?;
         } else if match_state.current_height == 1 {
             self.react_unsealed_match(
                 arena_sender,
@@ -272,7 +272,7 @@ impl Player {
                 tournament_state.level,
                 tournament_state.max_level,
             )
-            .await
+            .await?;
         } else {
             self.react_running_match(
                 arena_sender,
@@ -280,8 +280,10 @@ impl Player {
                 commitment,
                 tournament_state.level,
             )
-            .await
+            .await?;
         }
+
+        Ok(())
     }
 
     async fn win_timeout_match<'a>(
