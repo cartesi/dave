@@ -287,7 +287,7 @@ local function encode_access_logs(logs, encode_input)
     local res
     if encode_input then
         assert(#encode_input >= 2)
-        res = "0x" .. to256BitHex(#encode_input - 2)
+        res = "0x" .. to256BitHex((#encode_input - 2) / 2)
         if #encode_input > 2 then
             res = res .. string.sub(encode_input, 3, #encode_input)
         end
@@ -316,7 +316,8 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
         end
 
         local mask = arithmetic.max_uint(consts.log2_emulator_span);
-        local input = inputs[cycle >> consts.log2_emulator_span]
+        -- lua is one based
+        local input = inputs[(cycle >> consts.log2_emulator_span) + 1]
         if cycle & mask == 0 then
             if input then
                 local h = assert(input:match("0x(%x+)"), input)

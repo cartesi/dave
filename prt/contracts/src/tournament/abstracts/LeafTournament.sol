@@ -144,14 +144,13 @@ abstract contract LeafTournament is Tournament {
         } else {
             // rollups meta step handles input
             if (counter & big_step_mask == 0) {
-                (uint256 inputLength,) = abi.decode(proofs, (uint256, bytes));
+                uint256 inputLength = uint256(bytes32(proofs[:32]));
                 accessLogs = AccessLogs.Context(
                     machineState, Buffer.Context(proofs, 32 + inputLength)
                 );
 
                 if (inputLength > 0) {
                     bytes calldata input = proofs[32:32 + inputLength];
-                    // revert DebugError(inputLength, input);
                     uint256 inputIndex = counter
                         >> (
                             ArbitrationConstants.LOG2_EMULATOR_SPAN
@@ -159,21 +158,18 @@ abstract contract LeafTournament is Tournament {
                         ); // TODO: add input index offset of the epoch
 
                     // TODO: maybe assert retrieved input length matches?
-                    (bytes32 inputMerkleRoot,) =
+                    (bytes32 inputMerkleRoot, uint256 retrievedInputLength) =
                         provider.gio(0, abi.encode(inputIndex), input);
 
-                    // TODO: maybe revert here if inputMerkleRoot is bytes32(0)?
-                    if (inputMerkleRoot != bytes32(0)) {
-                        SendCmioResponse.sendCmioResponse(
-                            accessLogs,
-                            EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
-                            inputMerkleRoot,
-                            uint32(inputLength)
-                        );
-                        UArchStep.step(accessLogs);
-                    } else {
-                        UArchStep.step(accessLogs);
-                    }
+                    require(inputLength == retrievedInputLength);
+                    require(inputMerkleRoot != bytes32(0));
+                    SendCmioResponse.sendCmioResponse(
+                        accessLogs,
+                        EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
+                        inputMerkleRoot,
+                        uint32(inputLength)
+                    );
+                    UArchStep.step(accessLogs);
                 } else {
                     UArchStep.step(accessLogs);
                 }
