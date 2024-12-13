@@ -9,11 +9,11 @@ import {Machine} from "prt-contracts/Machine.sol";
 
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import "prt-contracts/CanonicalConstants.sol";
-import "rollups-contracts/inputs/InputBox.sol";
+import "rollups-contracts/inputs/IInputBox.sol";
 import "src/DaveConsensus.sol";
 
 contract DaveConcensusScript is Script {
-    function run(Machine.Hash initialHash) external {
+    function run(Machine.Hash initialHash, IInputBox inputBox) external {
         DisputeParameters memory disputeParameters = DisputeParameters({
             timeConstants: TimeConstants({
                 matchEffort: ArbitrationConstants.MATCH_EFFORT,
@@ -28,10 +28,8 @@ contract DaveConcensusScript is Script {
                 height: ArbitrationConstants.height(i)
             });
         }
-
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
-        InputBox inputBox = new InputBox();
         MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
             new TopTournamentFactory(), new MiddleTournamentFactory(), new BottomTournamentFactory(), disputeParameters
         );
