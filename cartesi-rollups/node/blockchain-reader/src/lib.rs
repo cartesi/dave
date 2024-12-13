@@ -32,7 +32,7 @@ use cartesi_dave_contracts::daveconsensus::DaveConsensus::EpochSealed;
 use cartesi_rollups_contracts::inputbox::InputBox::InputAdded;
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
-const DEVNET_CONSENSUS_ADDRESS: &str = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707";
+const DEVNET_CONSENSUS_ADDRESS: &str = "0x0165878A594ca255338adfa4d48449f69242Eb8F";
 const DEVNET_INPUT_BOX_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 #[derive(Debug, Clone, Parser)]
