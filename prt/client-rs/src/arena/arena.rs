@@ -2,7 +2,7 @@
 
 use crate::machine::MachineCommitment;
 
-use alloy::sol_types::private::Address;
+use alloy::primitives::Address;
 use cartesi_dave_merkle::Digest;
 use ruint::aliases::U256;
 use std::collections::HashMap;

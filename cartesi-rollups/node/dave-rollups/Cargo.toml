@@ -23,9 +23,9 @@ cartesi-prt-core = { workspace = true }
 alloy = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
+clap_derive = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
-clap_derive = { workspace = true }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 env_logger = "0.11.5"
