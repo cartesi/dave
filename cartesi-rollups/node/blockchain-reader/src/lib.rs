@@ -8,10 +8,11 @@ use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
     hex::ToHexExt,
+    primitives::Address,
     providers::{
         network::primitives::BlockTransactionsKind, Provider, ProviderBuilder, RootProvider,
     },
-    sol_types::{private::Address, SolEvent},
+    sol_types::SolEvent,
     transports::http::{reqwest::Url, Client, Http},
 };
 use alloy_rpc_types_eth::Topic;
@@ -206,7 +207,7 @@ where
             .last_input()
             .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
 
-        let (mut next_input_index_in_epoch, mut last_epoch_number) = {
+        let (mut next_input_index_in_epoch, mut last_input_epoch_number) = {
             match last_input {
                 // continue inserting inputs from where it was left
                 Some(input) => (input.input_index_in_epoch + 1, input.epoch_number),
@@ -218,7 +219,7 @@ where
         let mut inputs = vec![];
         let mut input_events_peekable = input_events.iter().peekable();
         for epoch in sealed_epochs_iter {
-            if last_epoch_number > epoch.epoch_number {
+            if last_input_epoch_number > epoch.epoch_number {
                 continue;
             }
             // iterate through newly sealed epochs, fill in the inputs accordingly
@@ -230,12 +231,12 @@ where
             );
 
             inputs.extend(inputs_of_epoch);
-            last_epoch_number = epoch.epoch_number + 1;
+            last_input_epoch_number = epoch.epoch_number + 1;
         }
 
         // all remaining inputs belong to an epoch that's not sealed yet
         let inputs_of_epoch = self.construct_input_ids(
-            last_epoch_number,
+            last_input_epoch_number,
             u64::MAX,
             &mut next_input_index_in_epoch,
             &mut input_events_peekable,
@@ -438,32 +439,351 @@ impl PartitionProvider {
     }
 }
 
-#[tokio::test]
+#[cfg(test)]
+mod blockchiain_reader_tests {
+    use crate::*;
+    use alloy::{
+        network::EthereumWallet,
+        node_bindings::{Anvil, AnvilInstance},
+        primitives::Address,
+        providers::ProviderBuilder,
+        signers::local::PrivateKeySigner,
+        signers::Signer,
+        sol_types::{SolCall, SolValue},
+        transports::http::{Client, Http},
+    };
+    use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
+    use cartesi_dave_merkle::Digest;
+    use cartesi_prt_contracts::{
+        bottomtournamentfactory::BottomTournamentFactory,
+        middletournamentfactory::MiddleTournamentFactory,
+        multileveltournamentfactory::MultiLevelTournamentFactory::{
+            self, CommitmentStructure, DisputeParameters, MultiLevelTournamentFactoryInstance,
+            TimeConstants,
+        },
+        toptournamentfactory::TopTournamentFactory,
+    };
+    use cartesi_prt_core::arena::SenderFiller;
+    use cartesi_rollups_contracts::{
+        inputbox::InputBox::{self, InputAdded},
+        inputs::Inputs::EvmAdvanceCall,
+    };
+    use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
-async fn test_input_reader() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let genesis = 17784733;
-    let input_box = Address::from_str("0x59b22D57D4f067708AB0c00552767405926dc768")?;
-    let app = Address::from_str("0x0974cc873df893b302f6be7ecf4f9d4b1a15c366")?
-        .into_word()
-        .into();
-    let infura_key = std::env::var("INFURA_KEY").expect("INFURA_KEY is not set");
+    use rusqlite::Connection;
+    use std::sync::Arc;
+    use tokio::{
+        task::spawn,
+        time::{sleep, Duration},
+    };
 
-    let partition_provider =
-        PartitionProvider::new(format!("https://mainnet.infura.io/v3/{}", infura_key).as_ref())?;
-    let reader = EventReader::<InputAdded>::new();
+    type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    const APP_ADDRESS: Address = Address::ZERO;
+    const INITIAL_STATE: Digest = Digest::ZERO;
+    const INPUT_PAYLOAD: &str = "Hello!";
+    const INPUT_PAYLOAD2: &str = "Hello Two!";
 
-    let res = reader
-        .next(
-            Some(&app),
-            &input_box,
-            genesis,
-            partition_provider.latest_finalized_block().await?,
-            &partition_provider,
+    fn spawn_anvil_and_provider() -> (AnvilInstance, Arc<SenderFiller>) {
+        let args = vec!["--slots-in-an-epoch", "1"];
+        let anvil = Anvil::default().block_time(1).args(args).spawn();
+
+        let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
+
+        signer.set_chain_id(Some(anvil.chain_id()));
+        let wallet = EthereumWallet::from(signer);
+
+        let provider = ProviderBuilder::new()
+            .with_recommended_fillers()
+            .wallet(wallet)
+            .on_http(anvil.endpoint_url());
+
+        (anvil, Arc::new(provider))
+    }
+
+    fn create_partition_rovider(url: &str) -> Result<PartitionProvider> {
+        let partition_provider = PartitionProvider::new(url)?;
+        Ok(partition_provider)
+    }
+
+    fn create_epoch_reader() -> EventReader<EpochSealed> {
+        EventReader::<EpochSealed>::new()
+    }
+
+    fn create_input_reader() -> EventReader<InputAdded> {
+        EventReader::<InputAdded>::new()
+    }
+
+    async fn deploy_inputbox<'a>(
+        provider: &'a Arc<SenderFiller>,
+    ) -> Result<Arc<InputBox::InputBoxInstance<Http<Client>, &'a Arc<SenderFiller>>>> {
+        let inputbox = InputBox::deploy(provider).await?;
+        Ok(Arc::new(inputbox))
+    }
+
+    async fn deploy_daveconsensus<'a>(
+        provider: &'a Arc<SenderFiller>,
+        inputbox: &Address,
+        tournament_factory: &Address,
+    ) -> Result<Arc<DaveConsensus::DaveConsensusInstance<Http<Client>, &'a Arc<SenderFiller>>>>
+    {
+        let daveconsensus = DaveConsensus::deploy(
+            provider,
+            *inputbox,
+            APP_ADDRESS,
+            *tournament_factory,
+            INITIAL_STATE.into(),
+        )
+        .await?;
+        Ok(Arc::new(daveconsensus))
+    }
+
+    async fn deploy_tournamentfactories<'a>(
+        provider: &'a Arc<SenderFiller>,
+    ) -> Result<Arc<MultiLevelTournamentFactoryInstance<Http<Client>, &'a Arc<SenderFiller>>>> {
+        let dispute_parameters = DisputeParameters {
+            timeConstants: TimeConstants {
+                matchEffort: 60 * 2,
+                maxAllowance: 60 * (60 + 5 + 2),
+            },
+            commitmentStructures: vec![
+                CommitmentStructure {
+                    log2step: 44,
+                    height: 48,
+                },
+                CommitmentStructure {
+                    log2step: 28,
+                    height: 16,
+                },
+                CommitmentStructure {
+                    log2step: 0,
+                    height: 28,
+                },
+            ],
+        };
+
+        let top_tournamentfactory = TopTournamentFactory::deploy(provider).await?;
+        let mid_tournamentfactory = MiddleTournamentFactory::deploy(provider).await?;
+        let bottom_tournamentfactory = BottomTournamentFactory::deploy(provider).await?;
+        let multi_tournamentfactory = MultiLevelTournamentFactory::deploy(
+            provider,
+            *top_tournamentfactory.address(),
+            *mid_tournamentfactory.address(),
+            *bottom_tournamentfactory.address(),
+            dispute_parameters,
+        )
+        .await?;
+        Ok(Arc::new(multi_tournamentfactory))
+    }
+
+    async fn add_input<'a>(
+        inputbox: &'a Arc<InputBox::InputBoxInstance<Http<Client>, &'a Arc<SenderFiller>>>,
+        input_payload: &'static str,
+        count: usize,
+    ) -> Result<()> {
+        for _ in 0..count {
+            inputbox
+                .addInput(APP_ADDRESS, input_payload.as_bytes().into())
+                .send()
+                .await?
+                .watch()
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn read_epochs_until_count(
+        url: &str,
+        consensus_address: &Address,
+        epoch_reader: &EventReader<EpochSealed>,
+        count: usize,
+    ) -> Result<Vec<EpochSealed>> {
+        let partition_provider = create_partition_rovider(url)?;
+        let mut read_epochs = Vec::new();
+        while read_epochs.len() != count {
+            // latest finalized block must be greater than 0
+            let latest_finalized_block =
+                std::cmp::max(1, partition_provider.latest_finalized_block().await?);
+
+            read_epochs = epoch_reader
+                .next(
+                    None,
+                    consensus_address,
+                    0,
+                    latest_finalized_block,
+                    &partition_provider,
+                )
+                .await?;
+            // wait a few seconds for the input added block to be finalized
+            sleep(Duration::from_secs(1)).await;
+        }
+
+        Ok(read_epochs)
+    }
+
+    async fn read_inputs_until_count(
+        url: &str,
+        inputbox_address: &Address,
+        input_reader: &EventReader<InputAdded>,
+        count: usize,
+    ) -> Result<Vec<InputAdded>> {
+        let partition_provider = create_partition_rovider(url)?;
+        let mut read_inputs = Vec::new();
+        while read_inputs.len() != count {
+            // latest finalized block must be greater than 0
+            let latest_finalized_block =
+                std::cmp::max(1, partition_provider.latest_finalized_block().await?);
+
+            read_inputs = input_reader
+                .next(
+                    Some(&APP_ADDRESS.into_word().into()),
+                    inputbox_address,
+                    0,
+                    latest_finalized_block,
+                    &partition_provider,
+                )
+                .await?;
+            // wait a few seconds for the input added block to be finalized
+            sleep(Duration::from_secs(1)).await;
+        }
+
+        Ok(read_inputs)
+    }
+
+    async fn read_inputs_from_db_until_count<SM: StateManager>(
+        state_manager: &Arc<SM>,
+        epoch_number: u64,
+        count: usize,
+    ) -> Result<Vec<Vec<u8>>>
+    where
+        <SM as StateManager>::Error: Send + Sync + 'static,
+    {
+        let mut read_inputs = Vec::new();
+        while read_inputs.len() != count {
+            read_inputs = state_manager.inputs(epoch_number)?;
+            // wait a few seconds for the db to be updated
+            sleep(Duration::from_secs(1)).await;
+        }
+
+        Ok(read_inputs)
+    }
+
+    #[tokio::test]
+    async fn test_input_reader() -> Result<()> {
+        let (anvil, provider) = spawn_anvil_and_provider();
+
+        let inputbox = deploy_inputbox(&provider).await?;
+
+        let mut input_count = 2;
+        add_input(&inputbox, &INPUT_PAYLOAD, input_count).await?;
+
+        let input_reader = create_input_reader();
+        let mut read_inputs = read_inputs_until_count(
+            &anvil.endpoint(),
+            inputbox.address(),
+            &input_reader,
+            input_count,
+        )
+        .await?;
+        assert_eq!(read_inputs.len(), input_count);
+
+        let received_payload =
+            EvmAdvanceCall::abi_decode(read_inputs[input_count - 1].input.as_ref(), true)?;
+        assert_eq!(received_payload.payload.as_ref(), INPUT_PAYLOAD.as_bytes());
+
+        input_count = 3;
+        add_input(&inputbox, &INPUT_PAYLOAD2, input_count).await?;
+        read_inputs = read_inputs_until_count(
+            &anvil.endpoint(),
+            inputbox.address(),
+            &input_reader,
+            input_count,
+        )
+        .await?;
+        assert_eq!(read_inputs.len(), input_count);
+
+        let received_payload =
+            EvmAdvanceCall::abi_decode(read_inputs[input_count - 1].input.as_ref(), true)?;
+        assert_eq!(received_payload.payload.as_ref(), INPUT_PAYLOAD2.as_bytes());
+
+        drop(anvil);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_epoch_reader() -> Result<()> {
+        let (anvil, provider) = spawn_anvil_and_provider();
+
+        let inputbox = deploy_inputbox(&provider).await?;
+        let multi_tournamentfactory = deploy_tournamentfactories(&provider).await?;
+        let daveconsensus = deploy_daveconsensus(
+            &provider,
+            inputbox.address(),
+            multi_tournamentfactory.address(),
         )
         .await?;
 
-    // input box from mainnet shouldn't be empty
-    assert!(!res.is_empty(), "input box shouldn't be empty");
+        let epoch_reader = create_epoch_reader();
+        let read_epochs =
+            read_epochs_until_count(&anvil.endpoint(), daveconsensus.address(), &epoch_reader, 1)
+                .await?;
+        assert_eq!(read_epochs.len(), 1);
+        assert_eq!(
+            &read_epochs[0].initialMachineStateHash.abi_encode(),
+            INITIAL_STATE.slice()
+        );
 
-    Ok(())
+        drop(anvil);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_blockchain_reader() -> Result<()> {
+        let (anvil, provider) = spawn_anvil_and_provider();
+
+        let inputbox = deploy_inputbox(&provider).await?;
+        let state_manager = Arc::new(PersistentStateAccess::new(
+            Connection::open_in_memory().unwrap(),
+        )?);
+
+        // add inputs to epoch 0
+        let mut input_count = 2;
+        add_input(&inputbox, &INPUT_PAYLOAD, input_count).await?;
+
+        let multi_tournamentfactory = deploy_tournamentfactories(&provider).await?;
+        let daveconsensus = deploy_daveconsensus(
+            &provider,
+            inputbox.address(),
+            multi_tournamentfactory.address(),
+        )
+        .await?;
+        let mut blockchain_reader = BlockchainReader::new(
+            state_manager.clone(),
+            AddressBook {
+                app: APP_ADDRESS,
+                consensus: *daveconsensus.address(),
+                input_box: *inputbox.address(),
+            },
+            &anvil.endpoint(),
+            1,
+        )?;
+
+        let _ = spawn(async move {
+            blockchain_reader.start().await.unwrap();
+        });
+
+        read_inputs_from_db_until_count(&state_manager, 0, input_count).await?;
+
+        // add inputs to epoch 1
+        input_count = 3;
+        add_input(&inputbox, &INPUT_PAYLOAD, input_count).await?;
+        read_inputs_from_db_until_count(&state_manager, 1, input_count).await?;
+
+        // add more inputs to epoch 1
+        let more_input_count = 3;
+        add_input(&inputbox, &INPUT_PAYLOAD, more_input_count).await?;
+        read_inputs_from_db_until_count(&state_manager, 1, input_count + more_input_count).await?;
+
+        drop(anvil);
+        Ok(())
+    }
 }

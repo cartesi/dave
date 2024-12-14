@@ -1,4 +1,4 @@
-use alloy::{hex::ToHexExt, sol_types::private::Address};
+use alloy::{hex::ToHexExt, primitives::Address};
 use anyhow::Result;
 use log::{error, info};
 use num_traits::cast::ToPrimitive;

@@ -1,5 +1,5 @@
 use ::log::info;
-use alloy::sol_types::private::Address;
+use alloy::primitives::Address;
 use anyhow::Result;
 use async_recursion::async_recursion;
 
