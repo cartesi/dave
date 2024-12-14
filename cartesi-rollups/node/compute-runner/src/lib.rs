@@ -1,4 +1,4 @@
-use alloy::sol_types::private::Address;
+use alloy::primitives::Address;
 use log::error;
 use std::result::Result;
 use std::{str::FromStr, sync::Arc, time::Duration};

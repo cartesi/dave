@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ::log::{debug, error, info};
-use alloy::sol_types::private::Address;
+use alloy::primitives::Address;
 use anyhow::Result;
 use async_recursion::async_recursion;
 use num_traits::{cast::ToPrimitive, One};
