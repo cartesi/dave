@@ -185,7 +185,7 @@ pub fn insert_epochs<'a>(
 
         stmt.execute(params![
             epoch.epoch_number,
-            epoch.epoch_boundary,
+            epoch.input_index_boundary,
             epoch.root_tournament
         ])?;
         next_epoch += 1;
@@ -196,7 +196,7 @@ pub fn insert_epochs<'a>(
 fn insert_epoch_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite::Statement<'a>> {
     Ok(conn.prepare(
         "\
-        INSERT INTO epochs (epoch_number, epoch_boundary, root_tournament) VALUES (?1, ?2, ?3)
+        INSERT INTO epochs (epoch_number, input_index_boundary, root_tournament) VALUES (?1, ?2, ?3)
         ",
     )?)
 }
@@ -204,7 +204,7 @@ fn insert_epoch_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite
 pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
     let mut stmt = conn.prepare(
         "\
-        SELECT epoch_number, epoch_boundary, root_tournament FROM epochs
+        SELECT epoch_number, input_index_boundary, root_tournament FROM epochs
         ORDER BY epoch_number DESC
         LIMIT 1
         ",
@@ -214,7 +214,7 @@ pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
         .query_row([], |row| {
             Ok(Epoch {
                 epoch_number: row.get(0)?,
-                epoch_boundary: row.get(1)?,
+                input_index_boundary: row.get(1)?,
                 root_tournament: row.get(2)?,
             })
         })
@@ -224,7 +224,7 @@ pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
 pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Epoch>> {
     let mut stmt = conn.prepare(
         "\
-        SELECT epoch_boundary, root_tournament FROM epochs
+        SELECT input_index_boundary, root_tournament FROM epochs
         WHERE epoch_number = ?1
         ",
     )?;
@@ -233,7 +233,7 @@ pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Ep
         .query_row(params![epoch_number], |row| {
             Ok(Epoch {
                 epoch_number,
-                epoch_boundary: row.get(0)?,
+                input_index_boundary: row.get(0)?,
                 root_tournament: row.get(1)?,
             })
         })
@@ -538,7 +538,7 @@ mod epochs_tests {
                 &conn,
                 [&Epoch {
                     epoch_number: 1,
-                    epoch_boundary: 0,
+                    input_index_boundary: 0,
                     root_tournament: String::new(),
                 }]
                 .into_iter(),
@@ -555,7 +555,7 @@ mod epochs_tests {
                 &conn,
                 [&Epoch {
                     epoch_number: 0,
-                    epoch_boundary: 0,
+                    input_index_boundary: 0,
                     root_tournament: String::new(),
                 }]
                 .into_iter(),
@@ -569,7 +569,7 @@ mod epochs_tests {
                 &conn,
                 [&Epoch {
                     epoch_number: 0,
-                    epoch_boundary: 0,
+                    input_index_boundary: 0,
                     root_tournament: String::new(),
                 }]
                 .into_iter(),
@@ -584,7 +584,7 @@ mod epochs_tests {
         let x: Vec<_> = (1..128)
             .map(|i| Epoch {
                 epoch_number: i,
-                epoch_boundary: 0,
+                input_index_boundary: 0,
                 root_tournament: String::new(),
             })
             .collect();
@@ -597,17 +597,17 @@ mod epochs_tests {
                 [
                     &Epoch {
                         epoch_number: 128,
-                        epoch_boundary: 0,
+                        input_index_boundary: 0,
                         root_tournament: String::new(),
                     },
                     &Epoch {
                         epoch_number: 129,
-                        epoch_boundary: 0,
+                        input_index_boundary: 0,
                         root_tournament: String::new(),
                     },
                     &Epoch {
                         epoch_number: 131,
-                        epoch_boundary: 0,
+                        input_index_boundary: 0,
                         root_tournament: String::new(),
                     }
                 ]
@@ -627,7 +627,7 @@ mod epochs_tests {
                 &conn,
                 [&Epoch {
                     epoch_number: 130,
-                    epoch_boundary: 99,
+                    input_index_boundary: 99,
                     root_tournament: tournament_address,
                 }]
                 .into_iter(),
@@ -638,7 +638,7 @@ mod epochs_tests {
             epoch(&conn, 130),
             Ok(Some(Epoch {
                 epoch_number: 130,
-                epoch_boundary: 99,
+                input_index_boundary: 99,
                 ..
             }))
         ));

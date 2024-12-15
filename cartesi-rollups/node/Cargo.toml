@@ -39,7 +39,7 @@ alloy = { version = "0.8.0", features = ["sol-types", "contract", "network", "re
 anyhow = "1.0"
 async-recursion = "1"
 async-trait = "0.1.74"
-cartesi-rollups-contracts = "2.0.0-rc.12"
+cartesi-rollups-contracts = "=2.0.0-rc.12"
 clap = { version = "4.5.7", features = ["derive", "env"] }
 clap_derive = "=4.5.13"
 futures = "0.3"

@@ -164,7 +164,6 @@ pub struct MatchState {
     pub right_node: Digest,
     pub running_leaf_position: U256,
     pub current_height: u64,
-    pub level: u64,
     pub leaf_cycle: U256,
     pub base_big_cycle: u64,
     pub tournament_address: Address,

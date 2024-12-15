@@ -98,7 +98,6 @@ impl StateReader {
                     running_leaf_position,
                     current_height: m.currentHeight,
                     tournament_address,
-                    level: m.level,
                     leaf_cycle,
                     base_big_cycle,
                     inner_tournament: None,

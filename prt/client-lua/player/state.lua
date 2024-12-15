@@ -109,7 +109,8 @@ function StateFetcher:_capture_matches(tournament)
             match.current_right = m[3]
             match.running_leaf = bint(m[4])
             match.current_height = tonumber(m[5])
-            match.level = tonumber(m[6])
+            match.log2_step = tonumber(m[6])
+            match.height = tonumber(m[7])
 
             local leaf_cycle = self.reader:read_cycle(tournament.address, match.match_id_hash)
             match.leaf_cycle = bint(leaf_cycle)
