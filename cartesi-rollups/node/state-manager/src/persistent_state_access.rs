@@ -360,7 +360,7 @@ mod tests {
             .into_iter(),
             [&Epoch {
                 epoch_number: 0,
-                epoch_boundary: 12,
+                input_index_boundary: 12,
                 root_tournament: String::new(),
             }]
             .into_iter(),

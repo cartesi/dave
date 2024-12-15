@@ -165,20 +165,18 @@ where
             .map(|e| {
                 let epoch = Epoch {
                     epoch_number: e
-                        .0
                         .epochNumber
                         .to_u64()
                         .expect("fail to convert epoch number"),
-                    epoch_boundary: e
-                        .0
-                        .blockNumberUpperBound
+                    input_index_boundary: e
+                        .inputIndexUpperBound
                         .to_u64()
                         .expect("fail to convert epoch boundary"),
-                    root_tournament: e.0.tournament.to_string(),
+                    root_tournament: e.tournament.to_string(),
                 };
                 info!(
-                    "epoch received: epoch_number {}, epoch_boundary {}, root_tournament {}",
-                    epoch.epoch_number, epoch.epoch_boundary, epoch.root_tournament
+                    "epoch received: epoch_number {}, input_index_boundary {}, root_tournament {}",
+                    epoch.epoch_number, epoch.input_index_boundary, epoch.root_tournament
                 );
                 epoch
             })
@@ -226,7 +224,7 @@ where
             // iterate through newly sealed epochs, fill in the inputs accordingly
             let inputs_of_epoch = self.construct_input_ids(
                 epoch.epoch_number,
-                epoch.epoch_boundary,
+                epoch.input_index_boundary,
                 &mut next_input_index_in_epoch,
                 &mut input_events_peekable,
             );
@@ -251,14 +249,19 @@ where
     fn construct_input_ids<'a>(
         &self,
         epoch_number: u64,
-        epoch_boundary: u64,
+        input_index_boundary: u64,
         next_input_index_in_epoch: &mut u64,
-        input_events_peekable: &mut Peekable<impl Iterator<Item = &'a (InputAdded, u64)>>,
+        input_events_peekable: &mut Peekable<impl Iterator<Item = &'a InputAdded>>,
     ) -> Vec<Input> {
         let mut inputs = vec![];
 
         while let Some(input_added) = input_events_peekable.peek() {
-            if input_added.1 >= epoch_boundary {
+            if input_added
+                .index
+                .to_u64()
+                .expect("fail to convert input index")
+                >= input_index_boundary
+            {
                 break;
             }
             let input = Input {
@@ -266,7 +269,7 @@ where
                     epoch_number,
                     input_index_in_epoch: *next_input_index_in_epoch,
                 },
-                data: input_added.0.input.to_vec(),
+                data: input_added.input.to_vec(),
             };
             info!(
                 "input received: epoch_number {}, input_index {}",
@@ -303,7 +306,7 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
         prev_finalized: u64,
         current_finalized: u64,
         provider: &PartitionProvider,
-    ) -> std::result::Result<Vec<(E, u64)>, ProviderErrors> {
+    ) -> std::result::Result<Vec<E>, ProviderErrors> {
         assert!(current_finalized > prev_finalized);
 
         let logs = provider
@@ -340,7 +343,7 @@ impl PartitionProvider {
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> std::result::Result<Vec<(E, u64)>, Vec<Error>> {
+    ) -> std::result::Result<Vec<E>, Vec<Error>> {
         self.get_events_rec(topic1, read_from, start_block, end_block)
             .await
     }
@@ -352,7 +355,7 @@ impl PartitionProvider {
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> std::result::Result<Vec<(E, u64)>, Vec<Error>> {
+    ) -> std::result::Result<Vec<E>, Vec<Error>> {
         // TODO: partition log queries if range too large
         let event = {
             let mut e = Event::new_sol(&self.inner, read_from)
@@ -369,16 +372,7 @@ impl PartitionProvider {
 
         match event.query().await {
             Ok(l) => {
-                let logs = l
-                    .into_iter()
-                    .map(|x| {
-                        (
-                            x.0,
-                            x.1.block_number
-                                .expect("fail to get block number from event"),
-                        )
-                    })
-                    .collect();
+                let logs = l.into_iter().map(|x| x.0).collect();
 
                 Ok(logs)
             }

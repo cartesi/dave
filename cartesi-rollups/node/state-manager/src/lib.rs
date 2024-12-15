@@ -70,7 +70,7 @@ pub struct Input {
 #[derive(Clone, Debug)]
 pub struct Epoch {
     pub epoch_number: u64,
-    pub epoch_boundary: u64,
+    pub input_index_boundary: u64,
     pub root_tournament: String,
 }
 
