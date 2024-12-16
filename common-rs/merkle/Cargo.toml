@@ -15,5 +15,5 @@ alloy = { workspace = true, features = ["sol-types"] }
 ruint = { workspace = true }
 
 hex = "0.4"
-sha3 = "0.10"
-thiserror = "1.0"
+tiny-keccak = { workspace = true }
+thiserror = { workspace = true }

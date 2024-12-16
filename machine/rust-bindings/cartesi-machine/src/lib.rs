@@ -3,20 +3,12 @@
 
 #![doc = include_str!("../README.md")]
 
-pub mod configuration;
-pub mod errors;
-
-pub mod hash;
+pub mod config;
+pub mod constants;
+pub mod error;
 pub mod machine;
+pub mod types;
 
-// TODO: review
-pub mod log;
-pub mod proof;
-
-mod constants;
-mod utils;
-
-pub use constants::*;
 pub use machine::Machine;
 
 // Reexport inner cartesi-machine-sys
