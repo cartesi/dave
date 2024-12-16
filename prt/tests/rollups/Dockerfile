@@ -39,7 +39,7 @@ COPY ./cartesi-rollups /app/cartesi-rollups
 WORKDIR /app/cartesi-rollups/node
 RUN cargo build --release --bin dave-rollups
 
-FROM --platform=linux/amd64 cartesi/machine-emulator:0.18.1
+FROM cartesi/machine-emulator:0.18.1
 
 USER root
 RUN apt-get update && \
