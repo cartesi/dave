@@ -16,7 +16,7 @@ use cartesi_machine::{break_reason, configuration::RuntimeConfig, htif, machine:
 use cartesi_prt_core::machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_UARCH_SPAN};
 use rollups_state_manager::{InputId, StateManager};
 
-// gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
+// gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)a
 const LOG2_STRIDE: u64 = 44;
 
 pub struct MachineRunner<SM: StateManager> {
@@ -24,6 +24,7 @@ pub struct MachineRunner<SM: StateManager> {
     sleep_duration: Duration,
     state_manager: Arc<SM>,
     _snapshot_frequency: Duration,
+    state_dir: PathBuf,
 
     epoch_number: u64,
     next_input_index_in_epoch: u64,
@@ -39,6 +40,7 @@ where
         initial_machine: &str,
         sleep_duration: u64,
         snapshot_frequency: u64,
+        state_dir: PathBuf,
     ) -> Result<Self, SM> {
         let (snapshot, epoch_number, next_input_index_in_epoch) = match state_manager
             .latest_snapshot()
@@ -55,6 +57,8 @@ where
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
             _snapshot_frequency: Duration::from_secs(snapshot_frequency),
+            state_dir,
+
             epoch_number,
             next_input_index_in_epoch,
             state_hash_index_in_epoch: 0,
@@ -131,7 +135,7 @@ where
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
         let stride_count_in_epoch =
             1 << (LOG2_INPUT_SPAN + LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
-        if state_hashes.len() == 0 {
+        if state_hashes.is_empty() {
             // no inputs in current epoch, add machine state hash repeatedly
             self.add_state_hash(stride_count_in_epoch)?;
             state_hashes.push((
@@ -229,14 +233,20 @@ where
     }
 
     fn take_snapshot(&self) -> Result<(), SM> {
-        let epoch_path = PathBuf::from(format!("/rollups_data/{}", self.epoch_number));
+        let epoch_path = self
+            .state_dir
+            .join("snapshots")
+            .join(self.epoch_number.to_string());
+
+        if !epoch_path.exists() {
+            fs::create_dir_all(&epoch_path)?;
+        }
+
         let snapshot_path = epoch_path.join(format!(
             "{}",
             self.next_input_index_in_epoch << LOG2_EMULATOR_SPAN
         ));
-        if !epoch_path.exists() {
-            fs::create_dir_all(&epoch_path)?;
-        }
+
         if !snapshot_path.exists() {
             self.state_manager
                 .add_snapshot(
@@ -523,7 +533,7 @@ mod tests {
         state_manager
             .machine_state_hashes
             .push(machine_state_hashes);
-        let mut runner = MachineRunner::new(Arc::new(state_manager), "/app/echo", 10, 10)?;
+        let mut runner = MachineRunner::new(Arc::new(state_manager), "/app/echo", 10, 10, ".")?;
 
         runner.advance_epoch()?;
         assert_eq!(

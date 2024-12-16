@@ -1,5 +1,6 @@
 use alloy::primitives::Address;
 use log::error;
+use std::path::PathBuf;
 use std::result::Result;
 use std::{str::FromStr, sync::Arc, time::Duration};
 
@@ -15,6 +16,7 @@ pub struct ComputeRunner<SM: StateManager> {
     config: BlockchainConfig,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
+    state_dir: PathBuf,
 }
 
 impl<SM: StateManager> ComputeRunner<SM>
@@ -26,12 +28,14 @@ where
         config: &BlockchainConfig,
         state_manager: Arc<SM>,
         sleep_duration: u64,
+        state_dir: PathBuf,
     ) -> Self {
         Self {
             arena_sender,
             config: config.clone(),
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
+            state_dir,
         }
     }
 
@@ -54,7 +58,7 @@ where
                                 .state_manager
                                 .machine_state_hashes(last_sealed_epoch.epoch_number)?;
                             let mut player = Player::new(
-                                Some(inputs.into_iter().map(|i| Input(i)).collect()),
+                                Some(inputs.into_iter().map(Input).collect()),
                                 leafs
                                     .into_iter()
                                     .map(|l| {
@@ -70,6 +74,7 @@ where
                                 snapshot,
                                 Address::from_str(&last_sealed_epoch.root_tournament)
                                     .expect("fail to convert tournament address"),
+                                self.state_dir.clone(),
                             )
                             .expect("fail to initialize compute player");
                             let _ = player

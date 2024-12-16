@@ -7,6 +7,7 @@ use rollups_compute_runner::ComputeRunner;
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
@@ -28,8 +29,8 @@ pub struct DaveParameters {
     sleep_duration: u64,
     #[arg(long, env, default_value_t = SNAPSHOT_DURATION)]
     snapshot_duration: u64,
-    #[arg(long, env)]
-    pub path_to_db: String,
+    #[arg(long, env)] // TODO: add default
+    pub state_dir: PathBuf,
 }
 
 pub fn create_blockchain_reader_task(
@@ -69,6 +70,7 @@ pub fn create_compute_runner_task(
             &params.blockchain_config,
             state_manager,
             params.sleep_duration,
+            params.state_dir,
         );
 
         compute_runner
@@ -115,6 +117,7 @@ pub fn create_machine_runner_task(
             params.machine_path.as_str(),
             params.sleep_duration,
             params.snapshot_duration,
+            params.state_dir.clone(),
         )
         .inspect_err(|e| error!("{e}"))
         .unwrap();

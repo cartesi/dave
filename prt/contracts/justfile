@@ -1,0 +1,20 @@
+BINDINGS_DIR := "./bindings-rs/src/contract"
+SRC_DIR := "."
+BINDINGS_FILTER := "^[^I].+TournamentFactory|LeafTournament|RootTournament|^Tournament$"
+
+default: help
+
+help:
+    echo "  clean                      - clean the generated bindings"
+    echo "  bind                       - generate Rust bindings from Solidity code"
+
+build:
+    forge build
+
+clean-bindings:
+    rm -rf {{BINDINGS_DIR}}
+
+bind: clean-bindings
+    forge bind --alloy --select "{{BINDINGS_FILTER}}" \
+    --module --bindings-path {{BINDINGS_DIR}} \
+    --root {{SRC_DIR}}

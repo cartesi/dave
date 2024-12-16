@@ -1,5 +1,5 @@
 [package]
-name = "cartesi-prt-contracts"
+name = "cartesi-dave-contracts"
 
 version = "0.1.0"
 
@@ -7,7 +7,7 @@ authors = [
   "Gabriel Coutinho de Paula <gcdepaula@protonmail.io>",
   "Stephen Chen <stephenx747@gmail.com>",
 ]
-description = "Cartesi PRT contract bindings"
+description = "Cartesi Dave contract bindings"
 edition = "2021"
 homepage = "https://github.com/cartesi/dave"
 license-file = "LICENSE"
@@ -15,5 +15,5 @@ readme = "README.md"
 repository = "https://github.com/cartesi/dave"
 
 [dependencies]
-alloy = { version = "0.8.0", features = ["sol-types", "contract"] }
+alloy = { workspace = true, features = ["sol-types", "contract"] }
 

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use ::log::{debug, error, info};
 use alloy::primitives::Address;
@@ -40,10 +41,15 @@ impl Player {
         blockchain_config: &BlockchainConfig,
         machine_path: String,
         root_tournament: Address,
+        state_dir: PathBuf,
     ) -> Result<Self> {
-        let db =
-            ComputeStateAccess::new(inputs, leafs, root_tournament.to_string(), "/compute_data")?;
-        let reader = StateReader::new(&blockchain_config)?;
+        let db = ComputeStateAccess::new(
+            inputs,
+            leafs,
+            root_tournament.to_string(),
+            state_dir.join("compute_path"),
+        )?;
+        let reader = StateReader::new(blockchain_config)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
@@ -100,7 +106,7 @@ impl Player {
     ) -> Result<Option<PlayerTournamentResult>> {
         info!("Enter tournament at address: {}", tournament_address);
         // TODO: print final state one and final state two
-        let tournament_state = get_tournament_state(&tournament_states, tournament_address);
+        let tournament_state = get_tournament_state(tournament_states, tournament_address);
 
         commitments.insert(
             tournament_state.address,

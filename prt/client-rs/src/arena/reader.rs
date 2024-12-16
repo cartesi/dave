@@ -161,17 +161,17 @@ impl StateReader {
             .call()
             .await?;
 
-        let block_time = self
+        let block_number = self
             .client
             .get_block(Latest.into(), BlockTransactionsKind::Hashes)
             .await?
             .expect("cannot get last block")
             .header
-            .timestamp;
+            .number;
         let clock_state = ClockState {
             allowance: commitment_return._0.allowance,
             start_instant: commitment_return._0.startInstant,
-            block_time,
+            block_number,
         };
         Ok(CommitmentState {
             clock: clock_state,

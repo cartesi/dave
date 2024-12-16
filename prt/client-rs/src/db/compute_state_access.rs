@@ -49,13 +49,13 @@ impl ComputeStateAccess {
         inputs: Option<Vec<Input>>,
         leafs: Vec<Leaf>,
         root_tournament: String,
-        compute_data_path: &str,
+        compute_data_path: PathBuf,
     ) -> Result<Self> {
         // initialize the database if it doesn't exist
         // fill the database from a json-format file, or the parameters
         // the database should be "/compute_data/0x_root_tournament_address/db"
         // the json file should be "/compute_data/0x_root_tournament_address/inputs_and_leafs.json"
-        let work_dir = format!("{compute_data_path}/{root_tournament}");
+        let work_dir = compute_data_path.join(root_tournament);
         let work_path = PathBuf::from(work_dir);
         if !work_path.exists() {
             fs::create_dir_all(&work_path)?;

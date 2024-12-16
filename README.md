@@ -13,7 +13,8 @@ Dave is a permissionless, interactive fraud-proof system. This repo contains the
 This project uses git submodules.
 Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
 
-To run the PRT Lua node, follow the instructions [here](prt/tests/compute/README.md).
+To run the PRT Lua client (compute), follow the instructions [here](prt/tests/compute/README.md).
+To run the PRT Rust node (rollups), follow the instructions [here](prt/tests/rollups/README.md).
 
 
 ## What's in a name
@@ -62,7 +63,7 @@ As such, the defenders have an exponential resource advantage over the attackers
 Although delay grows logarithmically in the Permissionless Refereed Tournaments (PRT) algorithm, the constant multiplying this logarithm is high, harming its liveness.
 
 The second implementation of Dave will be based on the eponymous Dave algorithm, which improves the liveness of PRT, while maintaining its attractive security and decentralization properties.
-We've published our initial research [here](https://arxiv.org/abs/2411.05463).
+We've published our initial research [here](https://arxiv.org/abs/2411.05463), and presented our findings at Devcon 24 [here](https://youtu.be/dI_3neyXVl0).
 
 
 ## Status
@@ -86,7 +87,7 @@ Please review our [LICENSE](LICENSE) file.
 ---
 
 <div align="center">
-  <a href="https://cartesi.io"><img alt="Dave" src="doc/assets/dave-img.jpeg" width=600></a>
+  <a href="https://cartesi.io"><img alt="Dave" src=".github/assets/dave-img.jpeg" width=600></a>
   <br />
   <h3><a href="https://github.com/cartesi/dave">Dave</a>.</h3>
 </div>

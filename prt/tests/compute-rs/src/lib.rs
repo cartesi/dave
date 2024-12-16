@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use alloy::primitives::Address;
 use cartesi_prt_core::arena::BlockchainConfig;
 use clap::Parser;
@@ -19,4 +21,7 @@ pub struct ComputeConfig {
     /// Address of root tournament
     #[arg(long, env, default_value = ANVIL_ROOT_TOURNAMENT)]
     pub root_tournament: Address,
+    /// Direcotry where state is stored.
+    #[arg(long, env, default_value = "_state")]
+    pub state_dir: PathBuf,
 }

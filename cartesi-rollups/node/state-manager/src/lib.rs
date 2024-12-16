@@ -9,19 +9,10 @@ use std::error::Error;
 
 pub type Blob = Vec<u8>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct InputId {
     pub epoch_number: u64,
     pub input_index_in_epoch: u64,
-}
-
-impl Default for InputId {
-    fn default() -> Self {
-        Self {
-            epoch_number: 0,
-            input_index_in_epoch: 0,
-        }
-    }
 }
 
 impl InputId {

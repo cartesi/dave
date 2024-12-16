@@ -19,7 +19,7 @@ impl GarbageCollector {
         arena_sender: &'a impl ArenaSender,
         tournament_states: &TournamentStateMap,
     ) -> Result<()> {
-        self.react_tournament(arena_sender, self.root_tournamet, &tournament_states)
+        self.react_tournament(arena_sender, self.root_tournamet, tournament_states)
             .await
     }
 
@@ -59,10 +59,16 @@ impl GarbageCollector {
                     tournament_state.level
                 );
 
-                arena_sender
-                    .eliminate_match(tournament_address, m.id)
-                    .await
-                    .expect("fail to eliminate match");
+                let elim = arena_sender.eliminate_match(tournament_address, m.id).await;
+                if elim.is_err() {
+                    info!(
+                    "failed to eliminate match for commitment {} and {} at tournament {} of level {}",
+                    m.id.commitment_one,
+                    m.id.commitment_two,
+                    tournament_address,
+                    tournament_state.level
+                );
+                }
             }
         }
         Ok(())

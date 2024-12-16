@@ -23,7 +23,6 @@ cartesi-prt-core = { workspace = true }
 alloy = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
-clap_derive = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }

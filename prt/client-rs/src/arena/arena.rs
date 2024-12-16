@@ -65,7 +65,7 @@ pub struct CommitmentState {
 pub struct ClockState {
     pub allowance: u64,
     pub start_instant: u64,
-    pub block_time: u64,
+    pub block_number: u64,
 }
 
 impl ClockState {
@@ -73,7 +73,7 @@ impl ClockState {
         if self.start_instant == 0 {
             true
         } else {
-            self.deadline() > self.block_time
+            self.deadline() > self.block_number
         }
     }
 
@@ -81,7 +81,7 @@ impl ClockState {
         if self.start_instant == 0 {
             0
         } else {
-            self.block_time - self.deadline()
+            self.block_number - self.deadline()
         }
     }
 
@@ -96,7 +96,7 @@ impl std::fmt::Display for ClockState {
         if self.start_instant == 0 {
             write!(f, "clock paused, {} seconds left", self.allowance)
         } else {
-            let time_elapsed = self.block_time - self.start_instant;
+            let time_elapsed = self.block_number - self.start_instant;
             if self.allowance >= time_elapsed {
                 write!(
                     f,

@@ -1,4 +1,4 @@
-LIBNAME = chronos
+
 
 LUADIR=$(shell pkg-config --cflags-only-I lua)
 COPT = -O2 -DNDEBUG

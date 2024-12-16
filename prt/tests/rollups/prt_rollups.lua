@@ -1,5 +1,11 @@
-#!/usr/bin/lua
 require "setup_path"
+
+
+-- TODO load from deployment file `addresses`
+-- consensus contract address in anvil deployment
+local CONSENSUS_ADDRESS = "0x0165878a594ca255338adfa4d48449f69242eb8f"
+-- input contract address in anvil deployment
+local INPUT_BOX_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 -- amount of time sleep between each react
 local SLEEP_TIME = 2
@@ -13,10 +19,6 @@ local NODE_DELAY = 3
 local FAKE_COMMITMENT_COUNT = 1
 -- number of idle players
 local IDLE_PLAYER_COUNT = 0
--- consensus contract address in anvil deployment
-local CONSENSUS_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F"
--- input contract address in anvil deployment
-local INPUT_BOX_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 -- app contract address in anvil deployment
 local APP_ADDRESS = "0x0000000000000000000000000000000000000000";
 -- Hello from Dave!
@@ -50,7 +52,7 @@ local Reader = require "dave.reader"
 local Sender = require "dave.sender"
 
 local ROOT_LEAFS_QUERY =
-[[sqlite3 /compute_data/%s/db 'select level,base_cycle,compute_leaf_index,repetitions,HEX(compute_leaf)
+[[sqlite3 ./_state/compute_path/%s/db 'select level,base_cycle,compute_leaf_index,repetitions,HEX(compute_leaf)
 from compute_leafs where level=0 ORDER BY compute_leaf_index ASC']]
 local function build_root_commitment_from_db(machine_path, root_tournament)
     local builder = MerkleBuilder:new()
@@ -81,7 +83,7 @@ local function build_root_commitment_from_db(machine_path, root_tournament)
 end
 
 local INPUTS_QUERY =
-[[sqlite3 /compute_data/%s/db 'select HEX(input)
+[[sqlite3 ./_state/compute_path/%s/db 'select HEX(input)
 from inputs ORDER BY input_index ASC']]
 local function get_inputs_from_db(root_tournament)
     local handle = io.popen(string.format(INPUTS_QUERY, root_tournament))
@@ -169,19 +171,21 @@ local function run_players(player_coroutines)
 end
 
 -- Main Execution
-local rollups_machine_path = os.getenv("MACHINE_PATH")
+local rpath = assert(io.popen("realpath " .. assert(os.getenv("MACHINE_PATH"))))
+local rollups_machine_path = assert(rpath:read())
+rpath:close()
 
-local blockchain_node = Blockchain:new()
+local blockchain_node = Blockchain:new(rollups_machine_path .. "/anvil_state.json")
 time.sleep(NODE_DELAY)
 
-blockchain_utils.deploy_contracts("../../../cartesi-rollups/contracts")
-time.sleep(NODE_DELAY)
+-- blockchain_utils.deploy_contracts("../../../cartesi-rollups/contracts")
+-- time.sleep(NODE_DELAY)
 
 -- trace, debug, info, warn, error
 local verbosity = os.getenv("VERBOSITY") or 'debug'
 -- 0, 1, full
 local trace_level = os.getenv("TRACE_LEVEL") or 'full'
-local dave_node = Dave:new(rollups_machine_path, SLEEP_TIME, verbosity, trace_level)
+local dave_node = Dave:new(rollups_machine_path .. "/machine-image", SLEEP_TIME, verbosity, trace_level)
 time.sleep(NODE_DELAY)
 
 local reader = Reader:new(blockchain_constants.endpoint)
@@ -202,11 +206,11 @@ while true do
 
         -- react to last sealed epoch
         local root_tournament = sealed_epochs[#sealed_epochs].tournament
-        local work_path = string.format("/compute_data/%s", root_tournament)
+        local work_path = string.format("./_state/compute_path/%s", root_tournament)
         if helper.exists(work_path) then
             print(string.format("sybil player attacking epoch %d",
                 last_sealed_epoch.epoch_number))
-            local epoch_machine_path = string.format("/rollups_data/%d/0", last_sealed_epoch.epoch_number)
+            local epoch_machine_path = string.format("./_state/snapshots/%d/0", last_sealed_epoch.epoch_number)
             local player_coroutines = setup_players(root_tournament, epoch_machine_path)
             run_players(player_coroutines)
         end

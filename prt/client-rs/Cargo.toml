@@ -15,24 +15,35 @@ readme = "README.md"
 repository = "https://github.com/cartesi/dave"
 
 [dependencies]
-cartesi-dave-arithmetic = { path = "../../common-rs/arithmetic" }
-cartesi-dave-merkle = { path = "../../common-rs/merkle" }
-cartesi-machine = { path = "../../machine/rust-bindings/cartesi-machine" }
-cartesi-prt-contracts = { path = "../contract-bindings" }
+# common-rs
+cartesi-dave-arithmetic = { workspace = true }
+cartesi-dave-merkle = { workspace = true }
 
-anyhow = "1.0"
-async-recursion = "1"
-async-trait = "0.1"
-clap = { version = "4.5", features = ["derive", "env"] }
-alloy = { version = "0.8.0", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
+# machine bindings
+cartesi-machine = { workspace = true }
+
+# solidity bindings
+cartesi-prt-contracts = { workspace = true }
+
+alloy = { workspace = true, features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
+ruint = { workspace = true, features = ["num-traits"] }
+
+# async
+async-recursion = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+
+clap = { workspace = true, features = ["derive", "env"] }
+hex = { workspace = true }
 lazy_static = "1.4.0"
-log = "0.4"
-hex = "0.4.3"
-num-traits = "0.2.19"
-ruint = { version = "1.12", features = ["num-traits"] }
+log = { workspace = true }
+num-traits = { workspace = true }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 rusqlite_migration = "1.2.0"
+
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
-tokio = { version = "1", features = ["full"] }

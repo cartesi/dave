@@ -24,13 +24,14 @@ async fn main() -> Result<()> {
     let config = ComputeConfig::parse();
     let blockchain_config = config.blockchain_config;
     let sender = EthArenaSender::new(&blockchain_config)?;
-    
+
     let mut player = Player::new(
         None,
         Vec::new(),
         &blockchain_config,
         config.machine_path,
         config.root_tournament,
+        config.state_dir,
     )
     .expect("fail to create player object");
 
@@ -39,7 +40,7 @@ async fn main() -> Result<()> {
             Ok(Some(state)) => {
                 info!("Tournament finished, {:?}", state);
                 let finished_path = Path::new(FINISHED_PATH);
-                touch(&finished_path)?;
+                touch(finished_path)?;
             }
             Err(e) => {
                 error!("{}", e);

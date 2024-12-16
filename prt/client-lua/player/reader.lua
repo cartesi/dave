@@ -142,7 +142,7 @@ function Reader._get_block(block)
         error(string.format("Cast block failed:\n%s", str))
     end
 
-    ret = str:match("timestamp            (%d+)")
+    ret = str:match("number%s+(%d+)")
     handle:close()
 
     return ret

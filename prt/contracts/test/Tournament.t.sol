@@ -61,7 +61,7 @@ contract TournamentTest is Util, Test {
     function testTimeout() public {
         topTournament = Util.initializePlayer0Tournament(factory);
 
-        uint256 _t = vm.getBlockTimestamp();
+        uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
         uint256 _tournamentFinishWithMatch = _t
             + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
@@ -81,7 +81,7 @@ contract TournamentTest is Util, Test {
         (Clock.State memory _player0Clock,) = topTournament.getCommitment(
             playerNodes[0][ArbitrationConstants.height(0)]
         );
-        vm.warp(
+        vm.roll(
             Time.Instant.unwrap(
                 _player0Clock.startInstant.add(_player0Clock.allowance)
             )
@@ -96,7 +96,7 @@ contract TournamentTest is Util, Test {
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
 
-        vm.warp(_tournamentFinishWithMatch);
+        vm.roll(_tournamentFinishWithMatch);
         (bool _finished, Tree.Node _winner, Machine.Hash _finalState) =
             topTournament.arbitrationResult();
 
@@ -114,7 +114,7 @@ contract TournamentTest is Util, Test {
         );
 
         topTournament = Util.initializePlayer0Tournament(factory);
-        _t = vm.getBlockTimestamp();
+        _t = vm.getBlockNumber();
 
         // the delay is increased when a match is created
         _tournamentFinishWithMatch = _t
@@ -138,7 +138,7 @@ contract TournamentTest is Util, Test {
         (Clock.State memory _player1Clock,) = topTournament.getCommitment(
             playerNodes[1][ArbitrationConstants.height(0)]
         );
-        vm.warp(
+        vm.roll(
             Time.Instant.unwrap(
                 _player1Clock.startInstant.add(_player1Clock.allowance)
             )
@@ -153,7 +153,7 @@ contract TournamentTest is Util, Test {
             playerNodes[0][ArbitrationConstants.height(0) - 1]
         );
 
-        vm.warp(_tournamentFinishWithMatch);
+        vm.roll(_tournamentFinishWithMatch);
         (_finished, _winner, _finalState) = topTournament.arbitrationResult();
 
         _winnerPlayer = 0;
