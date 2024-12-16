@@ -9,7 +9,7 @@ use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
     hex::ToHexExt,
-    primitives::Address,
+    primitives::{Address, U256},
     providers::{DynProvider, Provider, ProviderBuilder},
     sol_types::SolEvent,
     transports::http::reqwest::Url,
@@ -18,7 +18,6 @@ use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
 use log::{info, trace};
-use num_traits::cast::ToPrimitive;
 use std::{
     iter::Peekable,
     marker::{Send, Sync},
@@ -165,11 +164,11 @@ where
                 let epoch = Epoch {
                     epoch_number: e
                         .epochNumber
-                        .to_u64()
+                        .try_into()
                         .expect("fail to convert epoch number"),
                     input_index_boundary: e
                         .inputIndexUpperBound
-                        .to_u64()
+                        .try_into()
                         .expect("fail to convert epoch boundary"),
                     root_tournament: e.tournament.to_string(),
                 };
@@ -255,12 +254,7 @@ where
         let mut inputs = vec![];
 
         while let Some(input_added) = input_events_peekable.peek() {
-            if input_added
-                .index
-                .to_u64()
-                .expect("fail to convert input index")
-                >= input_index_boundary
-            {
+            if input_added.index >= U256::from(input_index_boundary) {
                 break;
             }
             let input = Input {
@@ -317,9 +311,9 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
                 current_finalized,
             )
             .await
-            .map_err(|err_arr| ProviderErrors(err_arr))?;
+            .map_err(ProviderErrors)?;
 
-        return Ok(logs);
+        Ok(logs)
     }
 }
 
@@ -360,7 +354,7 @@ impl PartitionProvider {
             let mut e = Event::new_sol(&self.inner, read_from)
                 .from_block(start_block)
                 .to_block(end_block)
-                .event(&E::SIGNATURE);
+                .event(E::SIGNATURE);
 
             if let Some(t) = topic1 {
                 e = e.topic1(t.clone());
