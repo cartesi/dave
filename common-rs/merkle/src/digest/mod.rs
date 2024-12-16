@@ -1,14 +1,12 @@
 //! Definition of the [Digest] type and its associated methods. A digest is the output of a hash
 //! function. It's used to identify the data in the MerkleTree.
 
-use alloy::sol_types::private::B256;
+use alloy::primitives::B256;
 use hex::FromHex;
 use std::fmt;
+use thiserror::Error;
 
 pub mod keccak;
-
-use hex;
-use thiserror::Error;
 
 const HASH_SIZE: usize = 32;
 

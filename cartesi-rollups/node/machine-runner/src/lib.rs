@@ -13,7 +13,10 @@ use std::{
 
 use cartesi_dave_merkle::{Digest, DigestError, MerkleBuilder};
 use cartesi_machine::{
-    break_reason, configuration::RuntimeConfig, hash::Hash, htif, machine::Machine,
+    config::runtime::RuntimeConfig,
+    constants::break_reason,
+    machine::Machine,
+    types::{cmio::CmioResponseReason, Hash},
 };
 use cartesi_prt_core::machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_UARCH_SPAN};
 use rollups_state_manager::{InputId, StateManager};
@@ -52,7 +55,7 @@ where
             None => (initial_machine.to_string(), 0, 0),
         };
 
-        let machine = Machine::load(Path::new(&snapshot), RuntimeConfig::default())?;
+        let machine = Machine::load(Path::new(&snapshot), &RuntimeConfig::default())?;
 
         Ok(Self {
             machine,
@@ -140,10 +143,7 @@ where
         if state_hashes.is_empty() {
             // no inputs in current epoch, add machine state hash repeatedly
             let machine_state_hash = self.add_state_hash(stride_count_in_epoch)?;
-            state_hashes.push((
-                machine_state_hash.as_bytes().to_vec(),
-                stride_count_in_epoch,
-            ));
+            state_hashes.push((machine_state_hash.to_vec(), stride_count_in_epoch));
         }
 
         let (computation_hash, total_repetitions) =
@@ -172,7 +172,7 @@ where
         self.run_machine(big_steps_in_stride)?;
 
         let mut i: u64 = 0;
-        while !self.machine.read_iflags_y()? {
+        while !self.machine.iflags_y()? {
             self.add_state_hash(1)?;
             i += 1;
             self.run_machine(big_steps_in_stride)?;
@@ -184,12 +184,12 @@ where
 
     fn feed_input(&mut self, input: &[u8]) -> Result<(), SM> {
         self.machine
-            .send_cmio_response(htif::fromhost::ADVANCE_STATE, input)?;
+            .send_cmio_response(CmioResponseReason::Advance, input)?;
         Ok(())
     }
 
     fn run_machine(&mut self, cycles: u64) -> Result<(), SM> {
-        let mcycle = self.machine.read_mcycle()?;
+        let mcycle = self.machine.mcycle()?;
 
         loop {
             let reason = self.machine.run(mcycle + cycles)?;
@@ -204,10 +204,10 @@ where
     }
 
     fn add_state_hash(&mut self, repetitions: u64) -> Result<Hash, SM> {
-        let machine_state_hash = self.machine.get_root_hash()?;
+        let machine_state_hash = self.machine.root_hash()?;
         self.state_manager
             .add_machine_state_hash(
-                machine_state_hash.as_bytes(),
+                &machine_state_hash,
                 self.epoch_number,
                 self.state_hash_index_in_epoch,
                 repetitions,
@@ -218,7 +218,7 @@ where
         Ok(machine_state_hash)
     }
 
-    fn take_snapshot(&self) -> Result<(), SM> {
+    fn take_snapshot(&mut self) -> Result<(), SM> {
         let epoch_path = self
             .state_dir
             .join("snapshots")
