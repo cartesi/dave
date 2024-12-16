@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 cartesi/machine-emulator:0.18.1
+FROM cartesi/machine-emulator:0.18.1
 USER root
 ENV FREEDOOM_VER=v0.2.0
 ENV KERNEL_VER=v0.19.1-riv1

@@ -37,7 +37,7 @@ COPY ./prt /app/prt
 WORKDIR /app/prt/tests/compute-rs
 RUN cargo build --release --bin cartesi-prt-compute
 
-FROM --platform=linux/amd64 cartesi/machine-emulator:0.18.1
+FROM cartesi/machine-emulator:0.18.1
 
 USER root
 RUN apt-get update && \
