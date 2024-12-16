@@ -14,7 +14,7 @@ library Clock {
 
     struct State {
         Time.Duration allowance;
-        Time.Instant startInstant; // the timestamp when the clock started ticking, zero means clock is paused
+        Time.Instant startInstant; // the block number when the clock started ticking, zero means clock is paused
     }
 
     //

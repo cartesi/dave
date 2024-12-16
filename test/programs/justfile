@@ -1,0 +1,27 @@
+download-deps: clean-deps
+  wget https://github.com/cartesi/image-kernel/releases/download/v0.20.0/linux-6.5.13-ctsi-1-v0.20.0.bin \
+    -O ./linux.bin
+  wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.16.1/rootfs-tools-v0.16.1.ext2 \
+    -O ./rootfs.ext2
+
+clean-deps:
+  rm -f rootfs.ext2
+  rm -f linux.bin
+
+clean-program prog:
+  rm -f {{prog}}/_anvil.log echo/addresses echo/anvil_state.json
+  rm -rf {{prog}}/machine-image
+
+clean-programs: clean-echo
+build-programs: build-echo
+
+clean-echo: (clean-program "echo")
+
+build-echo: clean-echo
+  cartesi-machine --ram-image=./linux.bin \
+    --flash-drive=label:root,filename:./rootfs.ext2 \
+    --no-rollback --store=./echo/machine-image \
+    -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1"
+  ./build_anvil_state.sh "echo"
+
+

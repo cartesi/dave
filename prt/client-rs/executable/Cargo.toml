@@ -1,0 +1,22 @@
+[package]
+name = "cartesi-prt-compute"
+description = "A Cartesi validator reference implementation"
+
+version = { workspace = true}
+authors = { workspace = true}
+edition = { workspace = true}
+homepage = { workspace = true}
+license-file = { workspace = true}
+readme = { workspace = true}
+repository = { workspace = true}
+
+
+[dependencies]
+cartesi-prt-core = { workspace = true }
+
+anyhow = { workspace = true }
+alloy = { workspace = true, features = ["sol-types"] }
+clap = { workspace = true, features = ["derive", "env"] }
+env_logger = "0.11.5"
+log = "0.4"
+tokio = { workspace = true, features = ["full"] }

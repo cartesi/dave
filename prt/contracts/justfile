@@ -1,0 +1,31 @@
+BINDINGS_DIR := "./bindings-rs/src/contract"
+SRC_DIR := "."
+BINDINGS_FILTER := "^[^I].+TournamentFactory|LeafTournament|RootTournament|^Tournament$"
+
+default: build
+
+build: build-smart-contracts bind
+clean: clean-smart-contracts clean-bindings
+
+build-smart-contracts:
+    forge build
+
+test:
+    forge test
+
+clean-smart-contracts:
+    forge clean
+
+fmt:
+    forge fmt
+
+check-fmt:
+    forge fmt --check
+
+clean-bindings:
+    rm -rf {{BINDINGS_DIR}}
+
+bind: clean-bindings
+    forge bind --alloy --select "{{BINDINGS_FILTER}}" \
+    --module --bindings-path {{BINDINGS_DIR}} \
+    --root {{SRC_DIR}}

@@ -11,8 +11,10 @@ use std::{
     time::Duration,
 };
 
-use cartesi_dave_merkle::{Digest, MerkleBuilder};
-use cartesi_machine::{break_reason, configuration::RuntimeConfig, htif, machine::Machine};
+use cartesi_dave_merkle::{Digest, DigestError, MerkleBuilder};
+use cartesi_machine::{
+    break_reason, configuration::RuntimeConfig, hash::Hash, htif, machine::Machine,
+};
 use cartesi_prt_core::machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_UARCH_SPAN};
 use rollups_state_manager::{InputId, StateManager};
 
@@ -24,6 +26,7 @@ pub struct MachineRunner<SM: StateManager> {
     sleep_duration: Duration,
     state_manager: Arc<SM>,
     _snapshot_frequency: Duration,
+    state_dir: PathBuf,
 
     epoch_number: u64,
     next_input_index_in_epoch: u64,
@@ -39,6 +42,7 @@ where
         initial_machine: &str,
         sleep_duration: u64,
         snapshot_frequency: u64,
+        state_dir: PathBuf,
     ) -> Result<Self, SM> {
         let (snapshot, epoch_number, next_input_index_in_epoch) = match state_manager
             .latest_snapshot()
@@ -48,13 +52,15 @@ where
             None => (initial_machine.to_string(), 0, 0),
         };
 
-        let machine = Machine::load(&Path::new(&snapshot), RuntimeConfig::default())?;
+        let machine = Machine::load(Path::new(&snapshot), RuntimeConfig::default())?;
 
         Ok(Self {
             machine,
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
             _snapshot_frequency: Duration::from_secs(snapshot_frequency),
+            state_dir,
+
             epoch_number,
             next_input_index_in_epoch,
             state_hash_index_in_epoch: 0,
@@ -131,36 +137,20 @@ where
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
         let stride_count_in_epoch =
             1 << (LOG2_INPUT_SPAN + LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
-        if state_hashes.len() == 0 {
+        if state_hashes.is_empty() {
             // no inputs in current epoch, add machine state hash repeatedly
-            self.add_state_hash(stride_count_in_epoch)?;
+            let machine_state_hash = self.add_state_hash(stride_count_in_epoch)?;
             state_hashes.push((
-                self.machine.get_root_hash()?.as_bytes().to_vec(),
+                machine_state_hash.as_bytes().to_vec(),
                 stride_count_in_epoch,
             ));
         }
 
-        let computation_hash = {
-            let mut builder = MerkleBuilder::default();
-            let mut total_repetitions = 0;
-            for state_hash in &state_hashes {
-                total_repetitions += state_hash.1;
-                builder.append_repeated(
-                    Digest::from_digest(&state_hash.0)?,
-                    U256::from(state_hash.1),
-                );
-            }
-            if stride_count_in_epoch > total_repetitions {
-                self.add_state_hash(stride_count_in_epoch - total_repetitions)?;
-                builder.append_repeated(
-                    Digest::from_digest(&state_hashes.last().unwrap().0)?,
-                    U256::from(stride_count_in_epoch - total_repetitions),
-                );
-            }
-
-            let tree = builder.build();
-            tree.root_hash().slice().to_vec()
-        };
+        let (computation_hash, total_repetitions) =
+            build_commitment_from_hashes(state_hashes, stride_count_in_epoch)?;
+        if stride_count_in_epoch > total_repetitions {
+            self.add_state_hash(stride_count_in_epoch - total_repetitions)?;
+        }
 
         Ok(computation_hash)
     }
@@ -213,7 +203,7 @@ where
         }
     }
 
-    fn add_state_hash(&mut self, repetitions: u64) -> Result<(), SM> {
+    fn add_state_hash(&mut self, repetitions: u64) -> Result<Hash, SM> {
         let machine_state_hash = self.machine.get_root_hash()?;
         self.state_manager
             .add_machine_state_hash(
@@ -225,18 +215,24 @@ where
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
         self.state_hash_index_in_epoch += 1;
 
-        Ok(())
+        Ok(machine_state_hash)
     }
 
     fn take_snapshot(&self) -> Result<(), SM> {
-        let epoch_path = PathBuf::from(format!("/rollups_data/{}", self.epoch_number));
+        let epoch_path = self
+            .state_dir
+            .join("snapshots")
+            .join(self.epoch_number.to_string());
+
+        if !epoch_path.exists() {
+            fs::create_dir_all(&epoch_path)?;
+        }
+
         let snapshot_path = epoch_path.join(format!(
             "{}",
             self.next_input_index_in_epoch << LOG2_EMULATOR_SPAN
         ));
-        if !epoch_path.exists() {
-            fs::create_dir_all(&epoch_path)?;
-        }
+
         if !snapshot_path.exists() {
             self.state_manager
                 .add_snapshot(
@@ -254,177 +250,40 @@ where
     }
 }
 
+fn build_commitment_from_hashes(
+    state_hashes: Vec<(Vec<u8>, u64)>,
+    stride_count_in_epoch: u64,
+) -> std::result::Result<(Vec<u8>, u64), DigestError> {
+    let mut total_repetitions = 0;
+    let computation_hash = {
+        let mut builder = MerkleBuilder::default();
+        for state_hash in &state_hashes {
+            total_repetitions += state_hash.1;
+            builder.append_repeated(
+                Digest::from_digest(&state_hash.0)?,
+                U256::from(state_hash.1),
+            );
+        }
+        if stride_count_in_epoch > total_repetitions {
+            builder.append_repeated(
+                Digest::from_digest(&state_hashes.last().unwrap().0)?,
+                U256::from(stride_count_in_epoch - total_repetitions),
+            );
+        }
+
+        let tree = builder.build();
+        tree.root_hash().slice().to_vec()
+    };
+
+    Ok((computation_hash, total_repetitions))
+}
+
 #[cfg(test)]
 mod tests {
-    use alloy::sol_types::{
-        private::{Address, U256},
-        SolCall,
+    use crate::{
+        build_commitment_from_hashes, LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_STRIDE,
+        LOG2_UARCH_SPAN,
     };
-    use cartesi_rollups_contracts::inputs::Inputs::EvmAdvanceCall;
-    use rollups_state_manager::{Epoch, Input, InputId, StateManager};
-    use std::{str::FromStr, sync::Arc};
-    use thiserror::Error;
-
-    use crate::MachineRunner;
-
-    #[derive(Error, Debug)]
-    pub enum MockStateAccessError {}
-    type Result<T> = std::result::Result<T, MockStateAccessError>;
-
-    #[derive(Debug)]
-    struct MockStateAccess {
-        // let computation_hash: &[u8] = machine_state_hashes[epoch_number]
-        computation_hash: Vec<Vec<u8>>,
-        // let input: &[u8] = inputs[epoch_number][input_index_in_epoch]
-        inputs: Vec<Vec<Vec<u8>>>,
-        // let (machine_state_hash, repetition): (&[u8], u64) =
-        //      machine_state_hashes[epoch_number][state_hash_index_in_epoch]
-        machine_state_hashes: Vec<Vec<(Vec<u8>, u64)>>,
-    }
-
-    impl MockStateAccess {
-        pub fn new() -> Self {
-            Self {
-                computation_hash: Vec::new(),
-                inputs: Vec::new(),
-                machine_state_hashes: Vec::new(),
-            }
-        }
-    }
-
-    impl StateManager for MockStateAccess {
-        type Error = MockStateAccessError;
-
-        fn epoch(&self, _epoch_number: u64) -> Result<Option<Epoch>> {
-            panic!("epoch not implemented in mock version");
-        }
-
-        fn epoch_count(&self) -> Result<u64> {
-            Ok(self.inputs.len() as u64)
-        }
-
-        fn last_sealed_epoch(&self) -> Result<Option<Epoch>> {
-            panic!("last_sealed_epoch not implemented in mock version");
-        }
-
-        fn input(&self, id: &InputId) -> Result<Option<Input>> {
-            let (epoch_number, input_index_in_epoch) =
-                (id.epoch_number as usize, id.input_index_in_epoch as usize);
-
-            if (self.inputs.len() <= epoch_number)
-                || (self.inputs[epoch_number].len() <= input_index_in_epoch)
-            {
-                return Ok(None);
-            }
-
-            let input = self.inputs[epoch_number][input_index_in_epoch].clone();
-            Ok(Some(Input {
-                id: id.clone(),
-                data: input,
-            }))
-        }
-
-        fn inputs(&self, _epoch_number: u64) -> Result<Vec<Vec<u8>>> {
-            panic!("inputs not implemented in mock version");
-        }
-
-        fn last_input(&self) -> Result<Option<InputId>> {
-            panic!("last_input not implemented in mock version");
-        }
-
-        fn input_count(&self, epoch_number: u64) -> Result<u64> {
-            let input_count = self.inputs[epoch_number as usize].len();
-            Ok(input_count as u64)
-        }
-
-        fn latest_processed_block(&self) -> Result<u64> {
-            panic!("latest_processed_block not implemented in mock version");
-        }
-
-        fn insert_consensus_data<'a>(
-            &self,
-            _last_processed_block: u64,
-            _inputs: impl Iterator<Item = &'a Input>,
-            _epochs: impl Iterator<Item = &'a Epoch>,
-        ) -> Result<()> {
-            panic!("insert_consensus_data not implemented in mock version");
-        }
-
-        fn add_machine_state_hash(
-            &self,
-            machine_state_hash: &[u8],
-            epoch_number: u64,
-            state_hash_index_in_epoch: u64,
-            repetitions: u64,
-        ) -> Result<()> {
-            println!(
-                "machine_state_hash at epoch {}, index {}, rep {} is: {}",
-                epoch_number,
-                state_hash_index_in_epoch,
-                repetitions,
-                hex::encode(&machine_state_hash),
-            );
-            let (h, r) = &self.machine_state_hashes[epoch_number as usize]
-                [state_hash_index_in_epoch as usize];
-
-            assert_eq!(h, machine_state_hash, "machine state hash should match");
-            assert_eq!(*r, repetitions, "repetition should match");
-
-            Ok(())
-        }
-
-        fn computation_hash(&self, epoch_number: u64) -> Result<Option<Vec<u8>>> {
-            let epoch_number = epoch_number as usize;
-
-            Ok(self.computation_hash.get(epoch_number).map(|h| h.clone()))
-        }
-
-        fn add_computation_hash(&self, _computation_hash: &[u8], _epoch_number: u64) -> Result<()> {
-            panic!("add_computation_hash not implemented in mock version");
-        }
-
-        fn add_snapshot(
-            &self,
-            _path: &str,
-            _epoch_number: u64,
-            _input_index_in_epoch: u64,
-        ) -> Result<()> {
-            panic!("add_snapshot not implemented in mock version");
-        }
-
-        fn machine_state_hash(
-            &self,
-            _epoch_number: u64,
-            _state_hash_index_in_epoch: u64,
-        ) -> Result<(Vec<u8>, u64)> {
-            panic!("machine_state_hash not implemented in mock version");
-        }
-
-        // returns all state hashes and their repetitions in acending order of `state_hash_index_in_epoch`
-        fn machine_state_hashes(&self, epoch_number: u64) -> Result<Vec<(Vec<u8>, u64)>> {
-            let epoch_number = epoch_number as usize;
-
-            if self.machine_state_hashes.len() <= epoch_number {
-                return Ok(Vec::new());
-            }
-
-            let machin_state_hashes = self.machine_state_hashes[epoch_number].clone();
-
-            Ok(machin_state_hashes)
-        }
-
-        fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
-            Ok(None)
-        }
-
-        fn snapshot(
-            &self,
-            _epoch_number: u64,
-            _input_index_in_epoch: u64,
-        ) -> Result<Option<String>> {
-            Ok(None)
-        }
-    }
 
     fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
         if s.len() % 2 == 0 {
@@ -440,97 +299,46 @@ mod tests {
         }
     }
 
-    fn load_machine_state_hashes() -> (Vec<(Vec<u8>, u64)>, Vec<u8>) {
-        // this file stores all the machine state hashes and their repetitions of stride at each line,
-        // machine state hash and its repetition are delimited by `space character`
-        // and the computation hash of above machine state hashes is at last line
-        // [
-        //     hash_0 rep_0
-        //     hash_1 rep_1
-        //     hash_2 rep_2
-        //     hash_3 rep_3
-        //     computation_hash
-        // ]
-        let machine_state_hashes_str = include_str!("../test-files/machine_state_hashes.test");
-        let mut machine_state_hashes_hex: Vec<&str> =
-            machine_state_hashes_str.split("\n").collect();
-
-        // get commitment from last line
-        let commitment_str = machine_state_hashes_hex.pop().unwrap();
-        let commitment = hex_to_bytes(commitment_str).unwrap();
-
-        let machine_state_hashes = machine_state_hashes_hex
-            .iter()
-            .map(|h| {
-                let hash_and_rep: Vec<&str> = (*h).split(" ").collect();
-                (
-                    hex_to_bytes(hash_and_rep[0]).unwrap(),
-                    hash_and_rep[1].parse().unwrap(),
-                )
-            })
-            .collect();
-
-        (machine_state_hashes, commitment)
-    }
-
-    fn load_inputs() -> Vec<Vec<u8>> {
-        // this file stores all the inputs for one epoch
-        let inputs_str = include_str!("../test-files/inputs.test");
-        let inputs_hex: Vec<&str> = inputs_str.split("\n").collect();
-
-        let chain_id = U256::from(31337);
-        let app_contract = Address::from_str("0x0000000000000000000000000000000000000002").unwrap();
-        let msg_sender = Address::from_str("0x0000000000000000000000000000000000000003").unwrap();
-        let block_number = U256::from(4);
-        let block_timestamp = U256::from(5);
-        let inputs = inputs_hex
-            .iter()
-            .enumerate()
-            .map(|(i, h)| {
-                EvmAdvanceCall {
-                    chainId: chain_id,
-                    appContract: app_contract,
-                    msgSender: msg_sender,
-                    blockNumber: block_number,
-                    blockTimestamp: block_timestamp,
-                    index: U256::from(i),
-                    payload: hex_to_bytes(*h).unwrap().into(),
-                    prevRandao: U256::ZERO, // TODO: what to put here?
-                }
-                .abi_encode()
-            })
-            .collect();
-
-        inputs
-    }
-
     #[test]
-    fn test_input_advance() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        // TODO: update machine state hashes with new emulator version
-        let (machine_state_hashes, commitment) = load_machine_state_hashes();
-        let inputs = load_inputs();
+    fn test_commitment_builder() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let repetitions = vec![1, 2, 1 << 24, (1 << 48) - 1, 1 << 48];
+        let stride_count_in_epoch =
+            1 << (LOG2_INPUT_SPAN + LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
+        let mut machine_state_hash =
+            hex_to_bytes("AAA646181BF25FD29FBB7D468E786F8B6F7215D53CE4F7C69A108FB8099555B7")
+                .unwrap();
+        let mut computation_hash =
+            hex_to_bytes("FB6E8E3659EC96D086402465894894B0B4D267023A26D25F0147C1F00D350FAE")
+                .unwrap();
 
-        assert_eq!(
-            machine_state_hashes.len(),
-            inputs.len(),
-            "number of machine state hashes and inputs should match"
-        );
+        for rep in &repetitions {
+            assert_eq!(
+                build_commitment_from_hashes(
+                    vec![(machine_state_hash.clone(), *rep)],
+                    stride_count_in_epoch
+                )?,
+                (computation_hash.clone(), *rep),
+                "computation hash and repetition should match"
+            );
+        }
 
-        let mut state_manager = MockStateAccess::new();
-        // preload inputs from file
-        state_manager.inputs.push(inputs);
-        // preload machine state hashes for epoch 0
-        state_manager
-            .machine_state_hashes
-            .push(machine_state_hashes);
-        let mut runner = MachineRunner::new(Arc::new(state_manager), "/app/echo", 10, 10)?;
+        machine_state_hash =
+            hex_to_bytes("5F0F4E3F7F266592691376743C5D558C781654CDFDC5AC8B002ECF5F899B789C")
+                .unwrap();
+        computation_hash =
+            hex_to_bytes("8AC7CD8E381CCFF6DB21F66B30F9AC69794394EB352E533C5ED0A8C175AAAF47")
+                .unwrap();
 
-        runner.advance_epoch()?;
-        assert_eq!(
-            runner.build_commitment()?,
-            commitment,
-            "computation hash should match"
-        );
+        for rep in &repetitions {
+            assert_eq!(
+                build_commitment_from_hashes(
+                    vec![(machine_state_hash.clone(), *rep)],
+                    stride_count_in_epoch
+                )?,
+                (computation_hash.clone(), *rep),
+                "computation hash and repetition should match"
+            );
+        }
 
         Ok(())
     }

@@ -12,7 +12,7 @@ repository = { workspace = true }
 
 [dependencies]
 rollups-blockchain-reader = { workspace = true }
-rollups-compute-runner = { workspace = true }
+rollups-prt-runner = { workspace = true }
 rollups-epoch-manager = { workspace = true }
 rollups-machine-runner = { workspace = true }
 rollups-state-manager = { workspace = true }
@@ -23,9 +23,8 @@ cartesi-prt-core = { workspace = true }
 alloy = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
-clap_derive = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
-rusqlite = { version = "0.31.0", features = ["bundled"] }
+rusqlite = { workspace = true }
 env_logger = "0.11.5"

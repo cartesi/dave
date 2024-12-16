@@ -440,29 +440,20 @@ impl PartitionProvider {
 }
 
 #[cfg(test)]
-mod blockchiain_reader_tests {
+mod blockchain_reader_tests {
     use crate::*;
     use alloy::{
+        hex::FromHex,
         network::EthereumWallet,
         node_bindings::{Anvil, AnvilInstance},
         primitives::Address,
         providers::ProviderBuilder,
-        signers::local::PrivateKeySigner,
-        signers::Signer,
+        signers::{local::PrivateKeySigner, Signer},
         sol_types::{SolCall, SolValue},
         transports::http::{Client, Http},
     };
     use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
     use cartesi_dave_merkle::Digest;
-    use cartesi_prt_contracts::{
-        bottomtournamentfactory::BottomTournamentFactory,
-        middletournamentfactory::MiddleTournamentFactory,
-        multileveltournamentfactory::MultiLevelTournamentFactory::{
-            self, CommitmentStructure, DisputeParameters, MultiLevelTournamentFactoryInstance,
-            TimeConstants,
-        },
-        toptournamentfactory::TopTournamentFactory,
-    };
     use cartesi_prt_core::arena::SenderFiller;
     use cartesi_rollups_contracts::{
         inputbox::InputBox::{self, InputAdded},
@@ -479,13 +470,24 @@ mod blockchiain_reader_tests {
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
     const APP_ADDRESS: Address = Address::ZERO;
-    const INITIAL_STATE: Digest = Digest::ZERO;
+    // $ xxd -p -c32 test/programs/echo/machine-image/hash
+    const INITIAL_STATE: &str =
+        "0x84c8181abd120e0281f5032d22422b890f79880ae90d9a1416be1afccb8182a0";
     const INPUT_PAYLOAD: &str = "Hello!";
     const INPUT_PAYLOAD2: &str = "Hello Two!";
 
-    fn spawn_anvil_and_provider() -> (AnvilInstance, Arc<SenderFiller>) {
-        let args = vec!["--slots-in-an-epoch", "1"];
-        let anvil = Anvil::default().block_time(1).args(args).spawn();
+    fn spawn_anvil_and_provider() -> (AnvilInstance, SenderFiller, Address, Address) {
+        let anvil = Anvil::default()
+            .block_time(1)
+            .args([
+                "--disable-code-size-limit",
+                "--preserve-historical-states",
+                "--slots-in-an-epoch",
+                "1",
+                "--load-state",
+                "../../../test/programs/echo/anvil_state.json",
+            ])
+            .spawn();
 
         let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
 
@@ -497,7 +499,12 @@ mod blockchiain_reader_tests {
             .wallet(wallet)
             .on_http(anvil.endpoint_url());
 
-        (anvil, Arc::new(provider))
+        (
+            anvil,
+            provider,
+            Address::from_hex("0x5fbdb2315678afecb367f032d93f642f64180aa3").unwrap(),
+            Address::from_hex("0x0165878a594ca255338adfa4d48449f69242eb8f").unwrap(),
+        )
     }
 
     fn create_partition_rovider(url: &str) -> Result<PartitionProvider> {
@@ -513,70 +520,8 @@ mod blockchiain_reader_tests {
         EventReader::<InputAdded>::new()
     }
 
-    async fn deploy_inputbox<'a>(
-        provider: &'a Arc<SenderFiller>,
-    ) -> Result<Arc<InputBox::InputBoxInstance<Http<Client>, &'a Arc<SenderFiller>>>> {
-        let inputbox = InputBox::deploy(provider).await?;
-        Ok(Arc::new(inputbox))
-    }
-
-    async fn deploy_daveconsensus<'a>(
-        provider: &'a Arc<SenderFiller>,
-        inputbox: &Address,
-        tournament_factory: &Address,
-    ) -> Result<Arc<DaveConsensus::DaveConsensusInstance<Http<Client>, &'a Arc<SenderFiller>>>>
-    {
-        let daveconsensus = DaveConsensus::deploy(
-            provider,
-            *inputbox,
-            APP_ADDRESS,
-            *tournament_factory,
-            INITIAL_STATE.into(),
-        )
-        .await?;
-        Ok(Arc::new(daveconsensus))
-    }
-
-    async fn deploy_tournamentfactories<'a>(
-        provider: &'a Arc<SenderFiller>,
-    ) -> Result<Arc<MultiLevelTournamentFactoryInstance<Http<Client>, &'a Arc<SenderFiller>>>> {
-        let dispute_parameters = DisputeParameters {
-            timeConstants: TimeConstants {
-                matchEffort: 60 * 2,
-                maxAllowance: 60 * (60 + 5 + 2),
-            },
-            commitmentStructures: vec![
-                CommitmentStructure {
-                    log2step: 44,
-                    height: 48,
-                },
-                CommitmentStructure {
-                    log2step: 28,
-                    height: 16,
-                },
-                CommitmentStructure {
-                    log2step: 0,
-                    height: 28,
-                },
-            ],
-        };
-
-        let top_tournamentfactory = TopTournamentFactory::deploy(provider).await?;
-        let mid_tournamentfactory = MiddleTournamentFactory::deploy(provider).await?;
-        let bottom_tournamentfactory = BottomTournamentFactory::deploy(provider).await?;
-        let multi_tournamentfactory = MultiLevelTournamentFactory::deploy(
-            provider,
-            *top_tournamentfactory.address(),
-            *mid_tournamentfactory.address(),
-            *bottom_tournamentfactory.address(),
-            dispute_parameters,
-        )
-        .await?;
-        Ok(Arc::new(multi_tournamentfactory))
-    }
-
-    async fn add_input<'a>(
-        inputbox: &'a Arc<InputBox::InputBoxInstance<Http<Client>, &'a Arc<SenderFiller>>>,
+    async fn add_input(
+        inputbox: &InputBox::InputBoxInstance<Http<Client>, impl Provider<Http<Client>>>,
         input_payload: &'static str,
         count: usize,
     ) -> Result<()> {
@@ -669,40 +614,40 @@ mod blockchiain_reader_tests {
 
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
-        let (anvil, provider) = spawn_anvil_and_provider();
+        let (anvil, provider, input_box_address, _) = spawn_anvil_and_provider();
+        let inputbox = InputBox::new(input_box_address, &provider);
 
-        let inputbox = deploy_inputbox(&provider).await?;
-
-        let mut input_count = 2;
-        add_input(&inputbox, &INPUT_PAYLOAD, input_count).await?;
+        let input_count_1 = 2;
+        // Inputbox is deployed with 1 input already
+        add_input(&inputbox, INPUT_PAYLOAD, input_count_1).await?;
 
         let input_reader = create_input_reader();
         let mut read_inputs = read_inputs_until_count(
             &anvil.endpoint(),
             inputbox.address(),
             &input_reader,
-            input_count,
+            1 + input_count_1,
         )
         .await?;
-        assert_eq!(read_inputs.len(), input_count);
+        assert_eq!(read_inputs.len(), 1 + input_count_1);
 
         let received_payload =
-            EvmAdvanceCall::abi_decode(read_inputs[input_count - 1].input.as_ref(), true)?;
+            EvmAdvanceCall::abi_decode(read_inputs.last().unwrap().input.as_ref(), true)?;
         assert_eq!(received_payload.payload.as_ref(), INPUT_PAYLOAD.as_bytes());
 
-        input_count = 3;
-        add_input(&inputbox, &INPUT_PAYLOAD2, input_count).await?;
+        let input_count_2 = 3;
+        add_input(&inputbox, INPUT_PAYLOAD2, input_count_2).await?;
         read_inputs = read_inputs_until_count(
             &anvil.endpoint(),
             inputbox.address(),
             &input_reader,
-            input_count,
+            1 + input_count_1 + input_count_2,
         )
         .await?;
-        assert_eq!(read_inputs.len(), input_count);
+        assert_eq!(read_inputs.len(), 1 + input_count_1 + input_count_2);
 
         let received_payload =
-            EvmAdvanceCall::abi_decode(read_inputs[input_count - 1].input.as_ref(), true)?;
+            EvmAdvanceCall::abi_decode(read_inputs.last().unwrap().input.as_ref(), true)?;
         assert_eq!(received_payload.payload.as_ref(), INPUT_PAYLOAD2.as_bytes());
 
         drop(anvil);
@@ -711,16 +656,8 @@ mod blockchiain_reader_tests {
 
     #[tokio::test]
     async fn test_epoch_reader() -> Result<()> {
-        let (anvil, provider) = spawn_anvil_and_provider();
-
-        let inputbox = deploy_inputbox(&provider).await?;
-        let multi_tournamentfactory = deploy_tournamentfactories(&provider).await?;
-        let daveconsensus = deploy_daveconsensus(
-            &provider,
-            inputbox.address(),
-            multi_tournamentfactory.address(),
-        )
-        .await?;
+        let (anvil, provider, _, consensus_address) = spawn_anvil_and_provider();
+        let daveconsensus = DaveConsensus::new(consensus_address, &provider);
 
         let epoch_reader = create_epoch_reader();
         let read_epochs =
@@ -729,7 +666,7 @@ mod blockchiain_reader_tests {
         assert_eq!(read_epochs.len(), 1);
         assert_eq!(
             &read_epochs[0].initialMachineStateHash.abi_encode(),
-            INITIAL_STATE.slice()
+            Digest::from_digest_hex(INITIAL_STATE).unwrap().slice()
         );
 
         drop(anvil);
@@ -737,25 +674,20 @@ mod blockchiain_reader_tests {
     }
 
     #[tokio::test]
-    async fn test_blockchain_reader() -> Result<()> {
-        let (anvil, provider) = spawn_anvil_and_provider();
+    async fn test_blockchain_reader_aaa() -> Result<()> {
+        let (anvil, provider, input_box_address, consensus_address) = spawn_anvil_and_provider();
 
-        let inputbox = deploy_inputbox(&provider).await?;
+        let inputbox = InputBox::new(input_box_address, &provider);
         let state_manager = Arc::new(PersistentStateAccess::new(
             Connection::open_in_memory().unwrap(),
         )?);
 
+        // Note that inputbox is deployed with 1 input already
         // add inputs to epoch 0
-        let mut input_count = 2;
-        add_input(&inputbox, &INPUT_PAYLOAD, input_count).await?;
+        let input_count_1 = 2;
+        add_input(&inputbox, INPUT_PAYLOAD, input_count_1).await?;
 
-        let multi_tournamentfactory = deploy_tournamentfactories(&provider).await?;
-        let daveconsensus = deploy_daveconsensus(
-            &provider,
-            inputbox.address(),
-            multi_tournamentfactory.address(),
-        )
-        .await?;
+        let daveconsensus = DaveConsensus::new(consensus_address, &provider);
         let mut blockchain_reader = BlockchainReader::new(
             state_manager.clone(),
             AddressBook {
@@ -767,23 +699,30 @@ mod blockchiain_reader_tests {
             1,
         )?;
 
-        let _ = spawn(async move {
+        let r = spawn(async move {
             blockchain_reader.start().await.unwrap();
         });
 
-        read_inputs_from_db_until_count(&state_manager, 0, input_count).await?;
+        read_inputs_from_db_until_count(&state_manager, 0, 1).await?;
+        read_inputs_from_db_until_count(&state_manager, 1, input_count_1).await?;
 
         // add inputs to epoch 1
-        input_count = 3;
-        add_input(&inputbox, &INPUT_PAYLOAD, input_count).await?;
-        read_inputs_from_db_until_count(&state_manager, 1, input_count).await?;
+        let input_count_2 = 3;
+        add_input(&inputbox, INPUT_PAYLOAD, input_count_2).await?;
+        read_inputs_from_db_until_count(&state_manager, 1, input_count_1 + input_count_2).await?;
 
         // add more inputs to epoch 1
-        let more_input_count = 3;
-        add_input(&inputbox, &INPUT_PAYLOAD, more_input_count).await?;
-        read_inputs_from_db_until_count(&state_manager, 1, input_count + more_input_count).await?;
+        let input_count_3 = 3;
+        add_input(&inputbox, INPUT_PAYLOAD, input_count_3).await?;
+        read_inputs_from_db_until_count(
+            &state_manager,
+            1,
+            input_count_1 + input_count_2 + input_count_3,
+        )
+        .await?;
 
         drop(anvil);
+        drop(r);
         Ok(())
     }
 }

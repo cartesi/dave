@@ -19,7 +19,6 @@ alloy = { workspace = true }
 alloy-rpc-types-eth = "0.8.0"
 async-recursion = { workspace = true }
 clap = { workspace = true }
-clap_derive = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -29,9 +28,9 @@ num-traits = { workspace = true }
 alloy = { workspace = true, features = ["node-bindings"] }
 cartesi-dave-merkle = { workspace = true }
 cartesi-prt-core = { workspace = true }
-cartesi-prt-contracts = { path = "../../../prt/contract-bindings" }
+cartesi-prt-contracts = { workspace = true }
+
+rusqlite = { workspace = true }
+rusqlite_migration = { workspace = true }
 
 clap = { workspace = true }
-clap_derive = { workspace = true }
-rusqlite = { version = "0.31.0", features = ["bundled"] }
-rusqlite_migration = "1.2.0"

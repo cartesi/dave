@@ -1,0 +1,9 @@
+linux.bin
+rootfs.ext2
+
+**/machine-image/
+**/addresses
+**/anvil_state.json
+**/_anvil.log
+
+**/*tar.gz
