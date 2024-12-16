@@ -4,7 +4,6 @@
 pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
-import "../../CanonicalConstants.sol";
 import "../libs/Commitment.sol";
 
 import "step/src/EmulatorConstants.sol";
@@ -114,6 +113,10 @@ abstract contract LeafTournament is Tournament {
         deleteMatch(_matchId.hashFromId());
     }
 
+    uint64 constant LOG2_UARCH_SPAN = 20;
+    uint64 constant LOG2_EMULATOR_SPAN = 48;
+    uint64 constant LOG2_INPUT_SPAN = 24;
+
     // TODO: move to step repo
     function metaStep(
         bytes32 machineState,
@@ -124,15 +127,9 @@ abstract contract LeafTournament is Tournament {
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-        uint256 uarch_step_mask =
-            (1 << ArbitrationConstants.LOG2_UARCH_SPAN) - 1;
-        uint256 big_step_mask = (
-            1
-                << (
-                    ArbitrationConstants.LOG2_EMULATOR_SPAN
-                        + ArbitrationConstants.LOG2_UARCH_SPAN
-                )
-        ) - 1;
+        uint256 uarch_step_mask = (1 << LOG2_UARCH_SPAN) - 1;
+        uint256 big_step_mask =
+            (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
 
         if (address(provider) == address(0)) {
             // this is a inputless version of the meta step implementation primarily used for testing
@@ -151,11 +148,8 @@ abstract contract LeafTournament is Tournament {
 
                 if (inputLength > 0) {
                     bytes calldata input = proofs[32:32 + inputLength];
-                    uint256 inputIndexWithinEpoch = counter
-                        >> (
-                            ArbitrationConstants.LOG2_EMULATOR_SPAN
-                                + ArbitrationConstants.LOG2_UARCH_SPAN
-                        );
+                    uint256 inputIndexWithinEpoch =
+                        counter >> (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
 
                     // TODO: maybe assert retrieved input length matches?
                     bytes32 inputMerkleRoot = provider.provideMerkleRootOfInput(

@@ -14,7 +14,7 @@ library Time {
     Duration constant ZERO_DURATION = Duration.wrap(0);
 
     function currentTime() internal view returns (Instant) {
-        return Instant.wrap(uint64(block.timestamp));
+        return Instant.wrap(uint64(block.number));
     }
 
     function add(Instant timestamp, Duration duration)

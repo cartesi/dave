@@ -23,6 +23,9 @@ build_uarch = []
 # requires setting env vars UARCH_PRISTINE_HASH_PATH and UARCH_PRISTINE_RAM_PATH
 copy_uarch = []
 
+# requires setting env vars LIBCARTESI_PATH and INCLUDECARTESI_PATH
+external_cartesi = []
+
 default = ["download_uarch"]
 
 

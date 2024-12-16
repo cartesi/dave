@@ -44,7 +44,8 @@ impl MerkleTreeProof {
     /// Sibling hashes towards root
     pub fn sibling_hashes(&self) -> Vec<Hash> {
         let sibling_hashes = unsafe { (*self.0).sibling_hashes };
-        let sibling_hashes = unsafe { std::slice::from_raw_parts(sibling_hashes.entry, sibling_hashes.count) };
+        let sibling_hashes =
+            unsafe { std::slice::from_raw_parts(sibling_hashes.entry, sibling_hashes.count) };
 
         sibling_hashes.iter().map(|hash| Hash::new(*hash)).collect()
     }

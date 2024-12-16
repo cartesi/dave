@@ -11,7 +11,7 @@ local FAKE_COMMITMENT_COUNT = 1
 local IDLE_PLAYER_COUNT = 0
 
 -- Required Modules
-local new_scoped_require = require "utils.scoped_require"
+local new_scoped_require = require "test_utils.scoped_require"
 
 local helper = require "utils.helper"
 local blockchain_utils = require "blockchain.utils"
@@ -132,7 +132,7 @@ local function run_players(player_coroutines)
         end
 
         if idle then
-            print(string.format("All players idle, fastforward blockchain for %d seconds...", FAST_FORWARD_TIME))
+            print(string.format("All players idle, fastforward blockchain for %d blocks...", FAST_FORWARD_TIME))
             blockchain_utils.advance_time(FAST_FORWARD_TIME, blockchain_constants.endpoint)
         end
     end

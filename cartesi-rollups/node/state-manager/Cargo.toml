@@ -11,8 +11,8 @@ readme = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-rusqlite = { version = "0.31.0", features = ["bundled"] }
-rusqlite_migration = "1.2.0"
+lazy_static = { workspace = true }
+rusqlite = { workspace = true }
+rusqlite_migration = { workspace = true }
 
-lazy_static = "1.4.0"
 thiserror = { workspace = true }

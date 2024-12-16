@@ -1,0 +1,96 @@
+[workspace]
+resolver = "2"
+members = [
+    # Solidity bindings
+    "cartesi-rollups/contracts/bindings-rs",
+    "prt/contracts/bindings-rs",
+
+    # common-rs
+    "common-rs/merkle",
+    "common-rs/arithmetic",
+
+    # prt
+    "prt/client-rs/core",
+    "prt/client-rs/executable",
+
+    # rollups-node
+    "cartesi-rollups/node/blockchain-reader",
+    "cartesi-rollups/node/prt-runner",
+    "cartesi-rollups/node/dave-rollups",
+    "cartesi-rollups/node/epoch-manager",
+    "cartesi-rollups/node/machine-runner",
+    "cartesi-rollups/node/state-manager",
+
+    # machine bindings
+    "machine/rust-bindings/cartesi-machine",
+    "machine/rust-bindings/cartesi-machine-sys",
+]
+
+[workspace.package]
+version = "0.1.0"
+
+authors = [
+  "Gabriel Coutinho de Paula <gcdepaula@protonmail.com>",
+  "Stephen Chen <stephenx747@gmail.com>",
+]
+description = "A Cartesi validator reference implementation"
+edition = "2021"
+homepage = "https://github.com/cartesi/dave"
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/cartesi/dave"
+
+[workspace.dependencies]
+
+## Workspace crates
+
+# machine bindings
+cartesi-machine = { path = "machine/rust-bindings/cartesi-machine" }
+
+# solidity bindings
+cartesi-dave-contracts = { path = "cartesi-rollups/contracts/bindings-rs" }
+cartesi-prt-contracts = { path = "prt/contracts/bindings-rs" }
+
+# rollups-node
+rollups-blockchain-reader = { version = "0.1", path = "cartesi-rollups/node/blockchain-reader" }
+rollups-prt-runner = { version = "0.1", path = "cartesi-rollups/node/prt-runner" }
+rollups-epoch-manager = { version = "0.1", path = "cartesi-rollups/node/epoch-manager" }
+rollups-machine-runner = { version = "0.1", path = "cartesi-rollups/node/machine-runner" }
+rollups-state-manager = { version = "0.1", path = "cartesi-rollups/node/state-manager" }
+
+# common-rs
+cartesi-dave-arithmetic = { path = "common-rs/arithmetic" }
+cartesi-dave-merkle = { path = "common-rs/merkle" }
+
+# prt
+cartesi-prt-core = { path = "prt/client-rs/core" }
+
+
+## Dependencies
+
+# cartesi
+cartesi-rollups-contracts = "=2.0.0-rc.13"
+
+# eth
+alloy = { version = "0.8", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
+ruint = "1.12"
+
+# error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# async
+async-recursion = "1"
+async-trait = "0.1"
+futures = "0.3"
+tokio = { version = "1", features = ["full"] }
+
+# sqlite
+lazy_static = "1.4"
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+rusqlite_migration = "1.2.0"
+
+clap = { version = "4.5", features = ["derive", "env"] }
+hex = "0.4"
+log = "0.4"
+num-traits = "0.2"

@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
 
     let parameters = DaveParameters::parse();
     let state_manager = Arc::new(PersistentStateAccess::new(Connection::open(
-        &parameters.path_to_db,
+        parameters.state_dir.join("state.db"),
     )?)?);
 
     let arena_sender = EthArenaSender::new(&parameters.blockchain_config)?;

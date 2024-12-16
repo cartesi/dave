@@ -55,11 +55,11 @@ contract MultiTournamentTest is Util, Test {
         );
 
         // player 0 should win after fast forward time to tournament finishes
-        uint256 _t = vm.getBlockTimestamp();
+        uint256 _t = vm.getBlockNumber();
         uint256 _tournamentFinish =
             _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
 
-        vm.warp(_tournamentFinish);
+        vm.roll(_tournamentFinish);
         (_finished, _winner, _finalState) = topTournament.arbitrationResult();
 
         uint256 _winnerPlayer = 0;
@@ -76,12 +76,12 @@ contract MultiTournamentTest is Util, Test {
         );
 
         // rewind time in half and pair commitment, expect a match
-        vm.warp(_t);
+        vm.roll(_t);
         // player 1 joins tournament
         Util.joinTournament(topTournament, 1, 0);
 
         // no dangling commitment available, should revert
-        vm.warp(_tournamentFinish);
+        vm.roll(_tournamentFinish);
         (_finished, _winner, _finalState) = topTournament.arbitrationResult();
 
         // tournament not finished when still match going on
@@ -298,14 +298,14 @@ contract MultiTournamentTest is Util, Test {
         assertFalse(_finished, "winner should be zero node");
 
         // player 0 should win after fast forward time to inner tournament finishes
-        uint256 _t = vm.getBlockTimestamp();
+        uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
         uint256 _rootTournamentFinish = _t
             + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
         Util.joinTournament(middleTournament, 0, 1);
 
-        vm.warp(_rootTournamentFinish);
+        vm.roll(_rootTournamentFinish);
         (_finished, _winner,) = middleTournament.innerTournamentWinner();
         topTournament.winInnerMatch(
             middleTournament,
@@ -370,7 +370,7 @@ contract MultiTournamentTest is Util, Test {
         (_finished, _winner,) = middleTournament.innerTournamentWinner();
         assertTrue(_winner.isZero(), "winner should be zero node");
 
-        _t = vm.getBlockTimestamp();
+        _t = vm.getBlockNumber();
         // the delay is increased when a match is created
         _rootTournamentFinish =
             _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
@@ -396,7 +396,7 @@ contract MultiTournamentTest is Util, Test {
             playerNodes[1][ArbitrationConstants.height(1) - 1]
         );
 
-        vm.warp(
+        vm.roll(
             Time.Instant.unwrap(
                 _player0Clock.startInstant.add(_player0Clock.allowance)
             )
@@ -410,7 +410,7 @@ contract MultiTournamentTest is Util, Test {
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertFalse(_match.exists(), "match should be deleted");
 
-        vm.warp(_middleTournamentFinish);
+        vm.roll(_middleTournamentFinish);
         (_finished, _winner,) = middleTournament.innerTournamentWinner();
         topTournament.winInnerMatch(
             middleTournament,
@@ -419,7 +419,7 @@ contract MultiTournamentTest is Util, Test {
         );
 
         {
-            vm.warp(_rootTournamentFinish);
+            vm.roll(_rootTournamentFinish);
             (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState)
             = topTournament.arbitrationResult();
 
@@ -450,17 +450,17 @@ contract MultiTournamentTest is Util, Test {
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
-        uint256 _t = vm.getBlockTimestamp();
+        uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
         uint256 _rootTournamentFinish =
             _t + 2 * Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
 
-        vm.warp(_rootTournamentFinish - 1);
+        vm.roll(_rootTournamentFinish - 1);
         // cannot eliminate match when both blocks still have time
         vm.expectRevert(Tournament.EliminateByTimeout.selector);
         topTournament.eliminateMatchByTimeout(_matchId);
 
-        vm.warp(_rootTournamentFinish);
+        vm.roll(_rootTournamentFinish);
         topTournament.eliminateMatchByTimeout(_matchId);
     }
 }

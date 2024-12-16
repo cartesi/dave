@@ -11,8 +11,9 @@ readme = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-alloy = { version = "0.8.0", features = ["sol-types"] }
+alloy = { workspace = true, features = ["sol-types"] }
+ruint = { workspace = true }
+
 hex = "0.4"
-ruint = "1.12"
 sha3 = "0.10"
 thiserror = "1.0"

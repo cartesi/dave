@@ -1,5 +1,6 @@
 name: Build
-on: [push]
+on:
+  push:
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -7,14 +8,58 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
+
+      - name: Set up cache for Foundry
+        uses: actions/cache@v3
+        with:
+          path: ~/.foundry
+          key: ${{ runner.os }}-foundry-${{ hashFiles('**/foundry.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
 
+      - name: Install just
+        uses: extractions/setup-just@v2
+
       - name: Build, format check and test
         working-directory: ./prt/contracts
         run: |
-          forge build
-          forge fmt --check
-          forge test
+          just check-fmt
+          just build-smart-contracts
+          just test
+
+      - name: Set up cache for Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Deps
+        run: |
+          export CARTESI_MACHINE_VERSION=0.18.1
+          sudo apt-get install -y libboost-all-dev lua5.4 libslirp0
+          wget https://github.com/cartesi/machine-emulator/releases/download/v0.18.1/cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
+          sudo dpkg -i ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
+          rm ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
+
+      - name: Rust fmt and check
+        run: |
+          just setup
+          just check-fmt-rust-workspace
+          just check-rust-workspace
+
+      - name: Rust build
+        run: |
+          just build-rust-workspace
+
+      - name: Rust test workspace
+        run: |
+          just test-rust-workspace

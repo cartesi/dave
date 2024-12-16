@@ -1,0 +1,50 @@
+# Variables
+BINDINGS_DIR := "./bindings-rs/src/contract"
+SRC_DIR := "."
+BINDINGS_FILTER := "DaveConsensus"
+
+export PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+ANVIL_ENDPOINT := "http://127.0.0.1:8545"
+ANVIL_CHAIN_ID := "31337"
+
+default: build
+
+build: build-smart-contracts bind
+
+fmt:
+    forge fmt
+
+# compile smart contracts
+build-smart-contracts:
+    forge build
+
+# clean smart contracts artifacts
+clean-smart-contracts:
+    forge clean
+
+# clean generated bindings
+clean-bindings:
+    rm -rf {{BINDINGS_DIR}}
+
+# generate Rust bindings from Solidity code
+bind: clean-bindings
+    forge bind --alloy --select {{BINDINGS_FILTER}} \
+        --module --bindings-path {{BINDINGS_DIR}} \
+        --root {{SRC_DIR}}
+
+deploy-dev INITIAL_HASH:
+    forge script \
+        script/InputBox.s.sol \
+        --fork-url {{ANVIL_ENDPOINT}} \
+        --broadcast \
+        --sig 'run()' \
+        -vvvv 2>&1
+    forge script \
+        script/DaveConsensus.s.sol \
+        --fork-url {{ANVIL_ENDPOINT}} \
+        --code-size-limit 65536 \
+        --broadcast \
+        --sig 'run(bytes32,address)' \
+        {{INITIAL_HASH}} \
+        $(jq -r '.transactions[] | select(.transactionType=="CREATE").contractAddress' broadcast/InputBox.s.sol/{{ANVIL_CHAIN_ID}}/run-latest.json) \
+        -vvvv 2>&1

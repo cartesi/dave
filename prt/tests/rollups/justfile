@@ -1,0 +1,11 @@
+# run PRT rollups test
+test MACH_PATH:
+  rm -rf _state
+  MACHINE_PATH={{MACH_PATH}} lua prt_rollups.lua
+
+# run PRT rollups echo test
+test-echo: (test "../../../test/programs/echo")
+
+# read logs from PRT Rollups node, run in separate terminal after `test-echo`
+read-node-logs:
+  tail -f dave.log
