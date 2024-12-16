@@ -1,772 +1,955 @@
-use std::path::Path;
+// (c) Cartesi and individual authors (see AUTHORS)
+// SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::configuration::*;
-use crate::errors::*;
-use crate::hash;
-use crate::log;
-use crate::proof;
+use std::{
+    ffi::{c_char, CStr, CString},
+    path::Path,
+    ptr,
+};
+
+use crate::{
+    config::{self, machine::MachineConfig, runtime::RuntimeConfig},
+    constants,
+    error::{MachineError, MachineResult as Result},
+    types::{
+        access_proof::AccessLog,
+        cmio::{CmioRequest, CmioResponseReason},
+        memory_proof::Proof,
+        memory_range::MemoryRangeDescriptions,
+        BreakReason, Hash, LogType, Register, UArchBreakReason,
+    },
+};
 
 /// Machine instance handle
 pub struct Machine {
     pub machine: *mut cartesi_machine_sys::cm_machine,
-    pub runtime_config: RuntimeConfig,
 }
 
 impl Drop for Machine {
     fn drop(&mut self) {
         unsafe {
-            cartesi_machine_sys::cm_delete_machine(self.machine);
+            cartesi_machine_sys::cm_delete(self.machine);
         }
     }
 }
 
+macro_rules! check_err {
+    ($err_code:expr) => {
+        if $err_code != constants::error_code::OK {
+            Err(Machine::last_error($err_code))
+        } else {
+            Ok(())
+        }
+    };
+}
+
+macro_rules! serialize_to_json {
+    ($src:expr) => {
+        CString::new(serde_json::to_string($src).expect("failed serializing to json"))
+            .expect("CString::new failed")
+    };
+}
+
+macro_rules! parse_json_from_cstring {
+    ($src:expr) => {{
+        let cstr = unsafe { CStr::from_ptr($src) };
+        let json = cstr.to_string_lossy();
+        serde_json::from_str(&json).expect("could not parse json")
+    }};
+}
+
 impl Machine {
-    /// Create machine instance from previously serialized directory
-    pub fn load(path: &Path, runtime_config: RuntimeConfig) -> Result<Self, MachineError> {
-        let mut machine = std::ptr::null_mut();
-        {
-            let mut error_collector = ErrorCollector::new();
-            let path = {
-                let p = path.to_str().unwrap();
-                std::ffi::CString::new(p).unwrap()
-            };
+    // -----------------------------------------------------------------------------
+    // API functions
+    // -----------------------------------------------------------------------------
 
-            let result = unsafe {
-                cartesi_machine_sys::cm_load_machine(
-                    path.as_ptr(),
-                    &runtime_config.values,
-                    &mut machine,
-                    error_collector.as_mut_ptr(),
-                )
-            };
-            error_collector.collect(result)?;
-        }
+    /// Returns the default machine config.
+    pub fn default_config() -> Result<MachineConfig> {
+        let mut config_ptr: *const c_char = ptr::null();
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_get_default_config(ptr::null(), &mut config_ptr) };
+        check_err!(err_code)?;
 
-        let mut initial_config_ptr = std::ptr::null();
-        {
-            let mut error_collector = ErrorCollector::new();
+        let config = parse_json_from_cstring!(config_ptr);
 
-            let result = unsafe {
-                cartesi_machine_sys::cm_get_initial_config(
-                    machine,
-                    &mut initial_config_ptr,
-                    error_collector.as_mut_ptr(),
-                )
-            };
-            error_collector.collect(result)?;
-        }
-
-        let machine = Machine {
-            machine,
-            runtime_config,
-        };
-
-        Ok(machine)
+        Ok(config)
     }
 
-    /// Serialize entire state to directory
-    pub fn store(&self, path: &Path) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
+    /// Gets the address of any x, f, or control state register.
+    pub fn reg_address(reg: Register) -> Result<u64> {
+        let mut val: u64 = 0;
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_get_reg_address(ptr::null(), reg, &mut val) };
+        check_err!(err_code)?;
+        Ok(val)
+    }
 
-        let path = {
-            let p = path.to_str().unwrap();
-            std::ffi::CString::new(p).unwrap()
-        };
+    // -----------------------------------------------------------------------------
+    // Machine API functions
+    // -----------------------------------------------------------------------------
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_store(self.machine, path.as_ptr(), error_collector.as_mut_ptr())
+    /// Creates a new machine instance from configuration.
+    pub fn create(config: &MachineConfig, runtime_config: &RuntimeConfig) -> Result<Self> {
+        let config_json = serialize_to_json!(&config);
+        let runtime_config_json = serialize_to_json!(&runtime_config);
+
+        let mut machine: *mut cartesi_machine_sys::cm_machine = ptr::null_mut();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_create_new(
+                config_json.as_ptr(),
+                runtime_config_json.as_ptr(),
+                &mut machine,
+            )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
+
+        Ok(Self { machine })
+    }
+
+    /// Loads a new machine instance from a previously stored directory.
+    pub fn load(dir: &Path, runtime_config: &RuntimeConfig) -> Result<Self> {
+        let dir_cstr = path_to_cstring(dir);
+        let runtime_config_json = serialize_to_json!(&runtime_config);
+
+        let mut machine: *mut cartesi_machine_sys::cm_machine = ptr::null_mut();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_load_new(
+                dir_cstr.as_ptr(),
+                runtime_config_json.as_ptr(),
+                &mut machine,
+            )
+        };
+        check_err!(err_code)?;
+
+        Ok(Self { machine })
+    }
+
+    /// Stores a machine instance to a directory, serializing its entire state.
+    pub fn store(&mut self, dir: &Path) -> Result<()> {
+        // CM_API cm_error cm_store(const cm_machine *m, const char *dir);
+        // todo!()
+        let dir_cstr = path_to_cstring(dir);
+        let err_code = unsafe { cartesi_machine_sys::cm_store(self.machine, dir_cstr.as_ptr()) };
+        check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Runs the machine until mcycle reaches mcycle_end or the machine halts.
-    pub fn run(&mut self, mcycle_end: u64) -> Result<u32, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut break_reason = 0;
+    /// Changes the machine runtime configuration.
+    pub fn set_runtime_config(&mut self, runtime_config: &RuntimeConfig) -> Result<()> {
+        let runtime_config_json = serialize_to_json!(&runtime_config);
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_set_runtime_config(self.machine, runtime_config_json.as_ptr())
+        };
+        check_err!(err_code)?;
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_machine_run(
+        Ok(())
+    }
+
+    /// Gets the machine runtime config.
+    pub fn runtime_config(&mut self) -> Result<RuntimeConfig> {
+        let mut rc_ptr: *const c_char = ptr::null();
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_get_runtime_config(self.machine, &mut rc_ptr) };
+        check_err!(err_code)?;
+
+        let runtime_config = parse_json_from_cstring!(rc_ptr);
+
+        Ok(runtime_config)
+    }
+
+    /// Replaces a memory range.
+    pub fn replace_memory_range(
+        &mut self,
+        start: u64,
+        length: u64,
+        shared: bool,
+        image_path: Option<&Path>,
+    ) -> Result<()> {
+        let image_cstr = match image_path {
+            Some(path) => path_to_cstring(path),
+            None => CString::new("").unwrap(),
+        };
+
+        let image_ptr = if image_path.is_some() {
+            image_cstr.as_ptr()
+        } else {
+            ptr::null()
+        };
+
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_replace_memory_range(
                 self.machine,
-                mcycle_end,
-                &mut break_reason,
-                error_collector.as_mut_ptr(),
+                start,
+                length,
+                shared,
+                image_ptr,
             )
         };
-
-        error_collector.collect(result)?;
-
-        Ok(break_reason)
-    }
-
-    /// Runs the machine until ucycle reaches ucycle_end or the machine halts.
-    pub fn run_uarch(&mut self, ucycle_end: u64) -> Result<u32, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut break_reason = 0;
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_machine_run_uarch(
-                self.machine,
-                ucycle_end,
-                &mut break_reason,
-                error_collector.as_mut_ptr(),
-            )
-        };
-
-        error_collector.collect(result)?;
-        Ok(break_reason)
-    }
-
-    /// Write a CMIO response
-    pub fn send_cmio_response(&mut self, reason: u16, data: &[u8]) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_send_cmio_response(
-                self.machine,
-                reason,
-                data.as_ptr(),
-                data.len(),
-                error_collector.as_mut_ptr(),
-            )
-        };
-
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Write a CMIO response logging all accesses to the state.
-    pub fn log_send_cmio_response(
-        &mut self,
-        reason: u16,
-        data: &[u8],
-        log_type: log::AccessLogType,
-        one_based: bool,
-    ) -> Result<log::AccessLog, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut access_log = std::ptr::null_mut();
+    /// Returns the machine config used to initialize the machine.
+    pub fn initial_config(&mut self) -> Result<config::machine::MachineConfig> {
+        let mut config_ptr: *const c_char = ptr::null();
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_get_initial_config(self.machine, &mut config_ptr) };
+        check_err!(err_code)?;
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_log_send_cmio_response(
-                self.machine,
-                reason,
-                data.as_ptr(),
-                data.len(),
-                log_type.into(),
-                one_based,
-                &mut access_log,
-                error_collector.as_mut_ptr(),
-            )
-        };
+        let config = parse_json_from_cstring!(config_ptr);
 
-        error_collector.collect(result)?;
-
-        Ok(log::AccessLog::new(access_log))
+        Ok(config)
     }
 
-    /// Runs the machine for one micro cycle logging all accesses to the state.
-    pub fn log_uarch_step(
-        &mut self,
-        log_type: log::AccessLogType,
-        one_based: bool,
-    ) -> Result<log::AccessLog, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut access_log = std::ptr::null_mut();
+    /// Returns a list with all memory ranges in the machine.
+    pub fn memory_ranges(&mut self) -> Result<MemoryRangeDescriptions> {
+        let mut ranges_ptr: *const c_char = ptr::null();
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_get_memory_ranges(self.machine, &mut ranges_ptr) };
+        check_err!(err_code)?;
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_log_uarch_step(
-                self.machine,
-                log_type.into(),
-                one_based,
-                &mut access_log,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
+        let ranges = parse_json_from_cstring!(ranges_ptr);
 
-        Ok(log::AccessLog::new(access_log))
+        Ok(ranges)
     }
 
-    /// Checks the internal consistency of an access log produced by cm_log_uarch_step
-    pub fn verify_uarch_step_log(
-        &mut self,
-        log: &log::AccessLog,
-        one_based: bool,
-    ) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
+    /// Obtains the root hash of the Merkle tree.
+    pub fn root_hash(&mut self) -> Result<Hash> {
+        let mut hash = Hash::default();
+        let err_code = unsafe { cartesi_machine_sys::cm_get_root_hash(self.machine, &mut hash) };
+        check_err!(err_code)?;
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_verify_uarch_step_log(
-                log.as_ptr(),
-                &self.runtime_config.values,
-                one_based,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(())
+        Ok(hash)
     }
 
-    /// Checks the validity of a state transition
-    pub fn verify_uarch_step_state_transition(
-        &mut self,
-        root_hash_before: &hash::Hash,
-        log: &log::AccessLog,
-        root_hash_after: &hash::Hash,
-        one_based: bool,
-    ) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_verify_uarch_step_state_transition(
-                root_hash_before.as_ptr(),
-                log.as_ptr(),
-                root_hash_after.as_ptr(),
-                &self.runtime_config.values,
-                one_based,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(())
-    }
-
-    /// Checks the validity of a state transition caused by a uarch state reset
-    pub fn verify_uarch_reset_state_transition(
-        &mut self,
-        root_hash_before: &hash::Hash,
-        log: &log::AccessLog,
-        root_hash_after: &hash::Hash,
-        one_based: bool,
-    ) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_verify_uarch_reset_state_transition(
-                root_hash_before.as_ptr(),
-                log.as_ptr(),
-                root_hash_after.as_ptr(),
-                &self.runtime_config.values,
-                one_based,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(())
-    }
-
-    /// Checks the internal consistency of an access log produced by cm_log_uarch_reset
-    pub fn verify_uarch_reset_log(
-        &mut self,
-        log: &log::AccessLog,
-        one_based: bool,
-    ) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_verify_uarch_reset_log(
-                log.as_ptr(),
-                &self.runtime_config.values,
-                one_based,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(())
-    }
-
-    /// Obtains the proof for a node in the Merkle tree
-    pub fn get_proof(
-        &mut self,
-        address: u64,
-        log2_size: i32,
-    ) -> Result<proof::MerkleTreeProof, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut proof = std::ptr::null_mut();
-
-        let result = unsafe {
+    /// Obtains the proof for a node in the machine state Merkle tree.
+    pub fn proof(&mut self, address: u64, log2_size: u32) -> Result<Proof> {
+        let mut proof_ptr: *const c_char = ptr::null();
+        let err_code = unsafe {
             cartesi_machine_sys::cm_get_proof(
                 self.machine,
                 address,
-                log2_size,
-                &mut proof,
-                error_collector.as_mut_ptr(),
+                log2_size as i32,
+                &mut proof_ptr,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
-        Ok(proof::MerkleTreeProof::new(proof))
+        let proof = parse_json_from_cstring!(proof_ptr);
+
+        Ok(proof)
     }
 
-    /// Obtains the root hash of the Merkle tree
-    pub fn get_root_hash(&mut self) -> Result<hash::Hash, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut hash = [0; 32];
+    // ------------------------------------
+    // Reading and writing
+    // ------------------------------------
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_get_root_hash(
-                self.machine,
-                &mut hash,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(hash::Hash::new(hash))
-    }
-
-    /// Verifies integrity of Merkle tree.
-    pub fn verify_merkle_tree(&mut self) -> Result<bool, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut ret = false;
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_verify_merkle_tree(
-                self.machine,
-                &mut ret,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(ret)
-    }
-
-    /// Write the value of any CSR
-    pub fn write_csr(&mut self, csr: u32, value: u64) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_write_csr(
-                self.machine,
-                csr as u32,
-                value,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(())
-    }
-
-    /// Read the value of any CSR
-    pub fn read_csr(&mut self, csr: u32) -> Result<u64, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut value = 0;
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_read_csr(
-                self.machine,
-                csr as u32,
-                &mut value,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
+    /// Reads the value of a word in the machine state, by its physical address.
+    pub fn read_word(&mut self, address: u64) -> Result<u64> {
+        let mut value: u64 = 0;
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_read_word(self.machine, address, &mut value) };
+        check_err!(err_code)?;
 
         Ok(value)
     }
 
-    /// Gets the address of any CSR
-    pub fn get_csr_address(&mut self, csr: u32) -> u64 {
-        unsafe { cartesi_machine_sys::cm_get_csr_address(csr as u32) }
+    /// Reads the value of a register.
+    pub fn read_reg(&mut self, reg: Register) -> Result<u64> {
+        let mut value: u64 = 0;
+        let err_code = unsafe { cartesi_machine_sys::cm_read_reg(self.machine, reg, &mut value) };
+        check_err!(err_code)?;
+
+        Ok(value)
     }
 
-    /// Read the value of a word in the machine state.
-    pub fn read_word(&mut self, word_address: u64) -> Result<u64, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut word_value = 0;
+    /// Writes the value of a register.
+    pub fn write_reg(&mut self, reg: Register, val: u64) -> Result<()> {
+        let err_code = unsafe { cartesi_machine_sys::cm_write_reg(self.machine, reg, val) };
+        check_err!(err_code)?;
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_read_word(
-                self.machine,
-                word_address,
-                &mut word_value,
-                error_collector.as_mut_ptr(),
-            )
+        Ok(())
+    }
+
+    /// Reads a chunk of data from a machine memory range, by its physical address.
+    pub fn read_memory(&mut self, address: u64, size: u64) -> Result<Vec<u8>> {
+        let mut buffer = vec![0u8; size as usize];
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_read_memory(self.machine, address, buffer.as_mut_ptr(), size)
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
-        Ok(word_value)
+        Ok(buffer)
     }
 
-    /// Read a chunk of data from the machine memory.
-    pub fn read_memory(&mut self, address: u64, length: u64) -> Result<Vec<u8>, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut data = vec![0; length as usize];
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_read_memory(
-                self.machine,
-                address,
-                data.as_mut_ptr(),
-                length,
-                error_collector.as_mut_ptr(),
-            )
-        };
-        error_collector.collect(result)?;
-
-        Ok(data)
-    }
-
-    /// Write a chunk of data to the machine memory.
-    pub fn write_memory(&mut self, address: u64, data: &[u8]) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
+    /// Writes a chunk of data to a machine memory range, by its physical address.
+    pub fn write_memory(&mut self, address: u64, data: &[u8]) -> Result<()> {
+        let err_code = unsafe {
             cartesi_machine_sys::cm_write_memory(
                 self.machine,
                 address,
                 data.as_ptr(),
-                data.len(),
-                error_collector.as_mut_ptr(),
+                data.len() as u64,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Reads a chunk of data from the machine virtual memory.
-    pub fn read_virtual_memory(
-        &mut self,
-        address: u64,
-        length: u64,
-    ) -> Result<Vec<u8>, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut data = vec![0; length as usize];
-
-        let result = unsafe {
+    /// Reads a chunk of data from a machine memory range, by its virtual memory.
+    pub fn read_virtual_memory(&mut self, address: u64, size: u64) -> Result<Vec<u8>> {
+        let mut buffer = vec![0u8; size as usize];
+        let err_code = unsafe {
             cartesi_machine_sys::cm_read_virtual_memory(
                 self.machine,
                 address,
-                data.as_mut_ptr(),
-                length,
-                error_collector.as_mut_ptr(),
+                buffer.as_mut_ptr(),
+                size,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
-        Ok(data)
+        Ok(buffer)
     }
 
-    /// Writes a chunk of data to the machine virtual memory.
-    pub fn write_virtual_memory(&mut self, address: u64, data: &[u8]) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
+    /// Writes a chunk of data to a machine memory range, by its virtual address.
+    pub fn write_virtual_memory(&mut self, address: u64, data: &[u8]) -> Result<()> {
+        let err_code = unsafe {
             cartesi_machine_sys::cm_write_virtual_memory(
                 self.machine,
                 address,
                 data.as_ptr(),
-                data.len(),
-                error_collector.as_mut_ptr(),
+                data.len() as u64,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Reads the value of a general-purpose microarchitecture register.
-    pub fn read_x(&mut self, i: u32) -> Result<u64, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut value = 0;
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_read_x(
+    /// Translates a virtual memory address to its corresponding physical memory address.
+    pub fn translate_virtual_address(&mut self, virtual_address: u64) -> Result<u64> {
+        let mut paddr: u64 = 0;
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_translate_virtual_address(
                 self.machine,
-                i as i32,
-                &mut value,
-                error_collector.as_mut_ptr(),
+                virtual_address,
+                &mut paddr,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
-        Ok(value)
+        Ok(paddr)
     }
 
-    /// Writes the value of a general-purpose microarchitecture register.
-    pub fn write_x(&mut self, i: u32, value: u64) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
+    // ------------------------------------
+    // Running
+    // ------------------------------------
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_write_x(
-                self.machine,
-                i as i32,
-                value,
-                error_collector.as_mut_ptr(),
-            )
+    /// Returns machine CM_REG_MCYCLE
+    pub fn mcycle(&mut self) -> Result<u64> {
+        self.read_reg(cartesi_machine_sys::CM_REG_MCYCLE)
+    }
+
+    /// Returns machine CM_REG_IFLAGS_Y
+    pub fn iflags_y(&mut self) -> Result<bool> {
+        Ok(self.read_reg(cartesi_machine_sys::CM_REG_IFLAGS_Y)? != 0)
+    }
+
+    /// Returns machine CM_REG_IFLAGS_H
+    pub fn iflags_h(&mut self) -> Result<bool> {
+        Ok(self.read_reg(cartesi_machine_sys::CM_REG_IFLAGS_H)? != 0)
+    }
+
+    /// Returns machine CM_REG_UARCH_CYCLE
+    pub fn ucycle(&mut self) -> Result<u64> {
+        self.read_reg(cartesi_machine_sys::CM_REG_UARCH_CYCLE)
+    }
+
+    /// Returns machine CM_REG_UARCH_HALT_FLAG
+    pub fn uarch_halt_flag(&mut self) -> Result<bool> {
+        Ok(self.read_reg(cartesi_machine_sys::CM_REG_UARCH_HALT_FLAG)? != 0)
+    }
+
+    /// Runs the machine until CM_REG_MCYCLE reaches mcycle_end, machine yields, or halts.
+    pub fn run(&mut self, mcycle_end: u64) -> Result<BreakReason> {
+        let mut break_reason = BreakReason::default();
+        let cm_error =
+            unsafe { cartesi_machine_sys::cm_run(self.machine, mcycle_end, &mut break_reason) };
+        check_err!(cm_error)?;
+
+        Ok(break_reason)
+    }
+
+    /// Runs the machine microarchitecture until CM_REG_UARCH_CYCLE reaches uarch_cycle_end or it halts.
+    pub fn run_uarch(&mut self, uarch_cycle_end: u64) -> Result<UArchBreakReason> {
+        let mut break_reason = UArchBreakReason::default();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_run_uarch(self.machine, uarch_cycle_end, &mut break_reason)
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
+
+        Ok(break_reason)
+    }
+
+    /// Resets the entire microarchitecture state to pristine values.
+    pub fn reset_uarch(&mut self) -> Result<()> {
+        let err_code = unsafe { cartesi_machine_sys::cm_reset_uarch(self.machine) };
+        check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Gets the address of a general-purpose register.
-    pub fn get_x_address(&mut self, i: u32) -> u64 {
-        unsafe { cartesi_machine_sys::cm_get_x_address(i as i32) }
-    }
+    /// Receives a cmio request.
+    pub fn receive_cmio_request(&mut self) -> Result<CmioRequest> {
+        let mut cmd: u8 = 0;
+        let mut reason: u16 = 0;
+        let mut length: u64 = 0;
 
-    /// Gets the address of a general-purpose microarchitecture register.
-    pub fn get_uarch_x_address(&mut self, i: u32) -> u64 {
-        unsafe { cartesi_machine_sys::cm_get_uarch_x_address(i as i32) }
-    }
-
-    /// Reads the value of a floating-point register.
-    pub fn read_f(&mut self, i: u32) -> Result<u64, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut value = 0;
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_read_f(
+        // if data is NULL, length will still be set without reading any data.
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_receive_cmio_request(
                 self.machine,
-                i as i32,
-                &mut value,
-                error_collector.as_mut_ptr(),
+                &mut cmd,
+                &mut reason,
+                ptr::null_mut(),
+                &mut length,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
-        Ok(value)
-    }
+        let mut buffer = vec![0u8; length as usize];
 
-    /// Writes the value of a floating-point register.
-    pub fn write_f(&mut self, i: u32, value: u64) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_write_f(
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_receive_cmio_request(
                 self.machine,
-                i as i32,
-                value,
-                error_collector.as_mut_ptr(),
+                &mut cmd,
+                &mut reason,
+                buffer.as_mut_ptr(),
+                &mut length,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
+
+        Ok(CmioRequest::new(cmd, reason, buffer))
+    }
+
+    /// Sends a cmio response.
+    pub fn send_cmio_response(&mut self, reason: CmioResponseReason, data: &[u8]) -> Result<()> {
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_send_cmio_response(
+                self.machine,
+                reason as u16,
+                data.as_ptr(),
+                data.len() as u64,
+            )
+        };
+        check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Gets the address of a floating-point register.
-    pub fn get_f_address(&mut self, i: u32) -> u64 {
-        unsafe { cartesi_machine_sys::cm_get_f_address(i as i32) }
+    // ------------------------------------
+    // Logging
+    // ------------------------------------
+
+    /// Runs the machine for the given mcycle count and generates a log of accessed pages and proof data.
+    pub fn log_step(&mut self, mcycle_count: u64, log_filename: &Path) -> Result<BreakReason> {
+        let mut break_reason = BreakReason::default();
+        let log_filename_c = path_to_cstring(log_filename);
+
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_log_step(
+                self.machine,
+                mcycle_count,
+                log_filename_c.as_ptr(),
+                &mut break_reason,
+            )
+        };
+        check_err!(err_code)?;
+
+        Ok(break_reason)
     }
 
-    /// Returns copy of initialization config.
-    pub fn initial_config(&self) -> Result<MachineConfigRef, MachineError> {
-        MachineConfigRef::try_new(self)
+    /// Runs the machine in the microarchitecture for one micro cycle logging all accesses to the state.
+    pub fn log_step_uarch(&mut self, log_type: LogType) -> Result<AccessLog> {
+        let mut log_ptr: *const c_char = ptr::null();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_log_step_uarch(self.machine, log_type as i32, &mut log_ptr)
+        };
+        check_err!(err_code)?;
+
+        let access_log = parse_json_from_cstring!(log_ptr);
+
+        Ok(access_log)
     }
 
-    /// Returns copy of default system config.
-    pub fn default_config() -> MachineConfigRef {
-        MachineConfigRef::default()
+    /// Resets the entire microarchitecture state to pristine values logging all accesses to the state.
+    pub fn log_reset_uarch(&mut self, log_type: LogType) -> Result<AccessLog> {
+        let mut log_ptr: *const c_char = ptr::null();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_log_reset_uarch(self.machine, log_type as i32, &mut log_ptr)
+        };
+        check_err!(err_code)?;
+
+        let access_log = parse_json_from_cstring!(log_ptr);
+
+        Ok(access_log)
     }
 
-    /// Replaces a memory range
-    pub fn replace_memory_range(
+    /// Sends a cmio response logging all accesses to the state.
+    pub fn log_send_cmio_response(
         &mut self,
-        new_range: &MemoryRangeConfig,
-    ) -> Result<(), MachineError> {
-        let mut error_collector = ErrorCollector::new();
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_replace_memory_range(
+        reason: CmioResponseReason,
+        data: &[u8],
+        log_type: LogType,
+    ) -> Result<AccessLog> {
+        let mut log_ptr: *const c_char = ptr::null();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_log_send_cmio_response(
                 self.machine,
-                new_range,
-                error_collector.as_mut_ptr(),
+                reason as u16,
+                data.as_ptr(),
+                data.len() as u64,
+                log_type as i32,
+                &mut log_ptr,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
+
+        let access_log = parse_json_from_cstring!(log_ptr);
+
+        Ok(access_log)
+    }
+
+    // ------------------------------------
+    // Verifying
+    // ------------------------------------
+
+    /// Checks the validity of a step log file.
+    pub fn verify_step(
+        root_hash_before: &Hash,
+        log_filename: &Path,
+        mcycle_count: u64,
+        root_hash_after: &Hash,
+    ) -> Result<BreakReason> {
+        let log_filename_c = path_to_cstring(log_filename);
+
+        let mut break_reason = BreakReason::default();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_verify_step(
+                ptr::null(),
+                root_hash_before,
+                log_filename_c.as_ptr(),
+                mcycle_count,
+                root_hash_after,
+                &mut break_reason,
+            )
+        };
+        check_err!(err_code)?;
+
+        Ok(break_reason)
+    }
+
+    /// Checks the validity of a state transition produced by cm_log_step_uarch.
+    pub fn verify_step_uarch(
+        root_hash_before: &Hash,
+        log: &AccessLog,
+        root_hash_after: &Hash,
+    ) -> Result<()> {
+        let log_cstr = serialize_to_json!(&log);
+
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_verify_step_uarch(
+                ptr::null(),
+                root_hash_before,
+                log_cstr.as_ptr(),
+                root_hash_after,
+            )
+        };
+        check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Verify if dirty page maps are consistent.
-    pub fn verify_dirty_page_maps(&mut self) -> Result<bool, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut ret = false;
-
-        let result = unsafe {
-            cartesi_machine_sys::cm_verify_dirty_page_maps(
-                self.machine,
-                &mut ret,
-                error_collector.as_mut_ptr(),
+    /// Checks the validity of a state transition produced by cm_log_verify_reset_uarch.
+    pub fn verify_reset_uarch(
+        root_hash_before: &Hash,
+        log: &AccessLog,
+        root_hash_after: &Hash,
+    ) -> Result<()> {
+        let log_cstr = serialize_to_json!(&log);
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_verify_reset_uarch(
+                ptr::null(),
+                root_hash_before,
+                log_cstr.as_ptr(),
+                root_hash_after,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
-        Ok(ret)
+        Ok(())
     }
 
-    /// Resets the value of the microarchitecture halt flag.
-    pub fn log_uarch_reset(
-        &mut self,
-        log_type: log::AccessLogType,
-        one_based: bool,
-    ) -> Result<log::AccessLog, MachineError> {
-        let mut error_collector = ErrorCollector::new();
-        let mut access_log = std::ptr::null_mut();
+    /// Checks the validity of a state transition produced by cm_log_send_cmio_response.
+    pub fn verify_send_cmio_response(
+        reason: CmioResponseReason,
+        data: &[u8],
+        root_hash_before: &Hash,
+        log: &AccessLog,
+        root_hash_after: &Hash,
+    ) -> Result<()> {
+        let log_cstr = serialize_to_json!(&log);
 
-        let result = unsafe {
-            cartesi_machine_sys::cm_log_uarch_reset(
-                self.machine,
-                log_type.into(),
-                one_based,
-                &mut access_log,
-                error_collector.as_mut_ptr(),
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_verify_send_cmio_response(
+                ptr::null(),
+                reason as u16,
+                data.as_ptr(),
+                data.len() as u64,
+                root_hash_before,
+                log_cstr.as_ptr(),
+                root_hash_after,
             )
         };
-        error_collector.collect(result)?;
+        check_err!(err_code)?;
 
-        Ok(log::AccessLog::new(access_log))
+        Ok(())
     }
-}
-
-macro_rules! read_csr {
-    ($typ: ty, $name: ident, $flag: ident) => {
-        pub fn $name(&self) -> Result<$typ, MachineError> {
-            let mut error_collector = ErrorCollector::new();
-            let mut value: $typ = Default::default();
-
-            let result = unsafe {
-                cartesi_machine_sys::$flag(self.machine, &mut value, error_collector.as_mut_ptr())
-            };
-            error_collector.collect(result)?;
-
-            Ok(value)
-        }
-    };
-}
-
-macro_rules! write_csr {
-    ($typ: ty, $name: ident, $flag: ident) => {
-        pub fn $name(&mut self, value: $typ) -> Result<(), MachineError> {
-            let mut error_collector = ErrorCollector::new();
-
-            let result = unsafe {
-                cartesi_machine_sys::$flag(self.machine, value, error_collector.as_mut_ptr())
-            };
-            error_collector.collect(result)?;
-
-            Ok(())
-        }
-    };
-}
-
-macro_rules! iflags {
-    ($name: ident, $flag: ident) => {
-        pub fn $name(&mut self) -> Result<(), MachineError> {
-            let mut error_collector = ErrorCollector::new();
-
-            let result =
-                unsafe { cartesi_machine_sys::$flag(self.machine, error_collector.as_mut_ptr()) };
-            error_collector.collect(result)?;
-
-            Ok(())
-        }
-    };
 }
 
 impl Machine {
-    iflags!(set_iflags_x, cm_set_iflags_X);
-    iflags!(reset_iflags_x, cm_reset_iflags_X);
-    iflags!(set_iflags_y, cm_set_iflags_Y);
-    iflags!(reset_iflags_y, cm_reset_iflags_Y);
-    iflags!(set_iflags_h, cm_set_iflags_H);
-    iflags!(set_uarch_halt_flag, cm_set_uarch_halt_flag);
-    iflags!(reset_uarch, cm_reset_uarch);
+    fn last_error(code: i32) -> MachineError {
+        assert!(code != constants::error_code::OK);
 
-    read_csr!(u64, read_pc, cm_read_pc);
-    read_csr!(u64, read_fcsr, cm_read_fcsr);
-    read_csr!(u64, read_mvendorid, cm_read_mvendorid);
-    read_csr!(u64, read_marchid, cm_read_marchid);
-    read_csr!(u64, read_mimpid, cm_read_mimpid);
-    read_csr!(u64, read_mcycle, cm_read_mcycle);
-    read_csr!(u64, read_icycleinstret, cm_read_icycleinstret);
-    read_csr!(u64, read_mstatus, cm_read_mstatus);
-    read_csr!(u64, read_menvcfg, cm_read_menvcfg);
-    read_csr!(u64, read_mtvec, cm_read_mtvec);
-    read_csr!(u64, read_mscratch, cm_read_mscratch);
-    read_csr!(u64, read_mepc, cm_read_mepc);
-    read_csr!(u64, read_mcause, cm_read_mcause);
-    read_csr!(u64, read_mtval, cm_read_mtval);
-    read_csr!(u64, read_misa, cm_read_misa);
-    read_csr!(u64, read_mie, cm_read_mie);
-    read_csr!(u64, read_mip, cm_read_mip);
-    read_csr!(u64, read_medeleg, cm_read_medeleg);
-    read_csr!(u64, read_mideleg, cm_read_mideleg);
-    read_csr!(u64, read_mcounteren, cm_read_mcounteren);
-    read_csr!(u64, read_stvec, cm_read_stvec);
-    read_csr!(u64, read_sscratch, cm_read_sscratch);
-    read_csr!(u64, read_sepc, cm_read_sepc);
-    read_csr!(u64, read_scause, cm_read_scause);
-    read_csr!(u64, read_stval, cm_read_stval);
-    read_csr!(u64, read_satp, cm_read_satp);
-    read_csr!(u64, read_scounteren, cm_read_scounteren);
-    read_csr!(u64, read_senvcfg, cm_read_senvcfg);
-    read_csr!(u64, read_ilrsc, cm_read_ilrsc);
-    read_csr!(u64, read_iflags, cm_read_iflags);
-    read_csr!(u64, read_htif_tohost, cm_read_htif_tohost);
-    read_csr!(u64, read_htif_tohost_dev, cm_read_htif_tohost_dev);
-    read_csr!(u64, read_htif_tohost_cmd, cm_read_htif_tohost_cmd);
-    read_csr!(u64, read_htif_tohost_data, cm_read_htif_tohost_data);
-    read_csr!(u64, read_htif_fromhost, cm_read_htif_fromhost);
-    read_csr!(u64, read_htif_ihalt, cm_read_htif_ihalt);
-    read_csr!(u64, read_htif_iconsole, cm_read_htif_iconsole);
-    read_csr!(u64, read_htif_iyield, cm_read_htif_iyield);
-    read_csr!(u64, read_clint_mtimecmp, cm_read_clint_mtimecmp);
-    read_csr!(bool, read_iflags_x, cm_read_iflags_X);
-    read_csr!(bool, read_iflags_y, cm_read_iflags_Y);
-    read_csr!(bool, read_iflags_h, cm_read_iflags_H);
-    read_csr!(u64, read_uarch_pc, cm_read_uarch_pc);
-    read_csr!(u64, read_uarch_cycle, cm_read_uarch_cycle);
-    read_csr!(bool, read_uarch_halt_flag, cm_read_uarch_halt_flag);
+        let msg_p = unsafe { cartesi_machine_sys::cm_get_last_error_message() };
+        let cstr = unsafe { std::ffi::CStr::from_ptr(msg_p) };
+        let message = String::from_utf8_lossy(cstr.to_bytes()).to_string();
 
-    write_csr!(u64, write_pc, cm_write_pc);
-    write_csr!(u64, write_fcsr, cm_write_fcsr);
-    write_csr!(u64, write_mcycle, cm_write_mcycle);
-    write_csr!(u64, write_icycleinstret, cm_write_icycleinstret);
-    write_csr!(u64, write_mstatus, cm_write_mstatus);
-    write_csr!(u64, write_menvcfg, cm_write_menvcfg);
-    write_csr!(u64, write_mtvec, cm_write_mtvec);
-    write_csr!(u64, write_mscratch, cm_write_mscratch);
-    write_csr!(u64, write_mepc, cm_write_mepc);
-    write_csr!(u64, write_mcause, cm_write_mcause);
-    write_csr!(u64, write_mtval, cm_write_mtval);
-    write_csr!(u64, write_misa, cm_write_misa);
-    write_csr!(u64, write_mie, cm_write_mie);
-    write_csr!(u64, write_mip, cm_write_mip);
-    write_csr!(u64, write_medeleg, cm_write_medeleg);
-    write_csr!(u64, write_mideleg, cm_write_mideleg);
-    write_csr!(u64, write_mcounteren, cm_write_mcounteren);
-    write_csr!(u64, write_stvec, cm_write_stvec);
-    write_csr!(u64, write_sscratch, cm_write_sscratch);
-    write_csr!(u64, write_sepc, cm_write_sepc);
-    write_csr!(u64, write_scause, cm_write_scause);
-    write_csr!(u64, write_stval, cm_write_stval);
-    write_csr!(u64, write_satp, cm_write_satp);
-    write_csr!(u64, write_scounteren, cm_write_scounteren);
-    write_csr!(u64, write_senvcfg, cm_write_senvcfg);
-    write_csr!(u64, write_ilrsc, cm_write_ilrsc);
-    write_csr!(u64, write_iflags, cm_write_iflags);
-    write_csr!(u64, write_htif_tohost, cm_write_htif_tohost);
-    write_csr!(u64, write_htif_fromhost, cm_write_htif_fromhost);
-    write_csr!(u64, write_htif_ihalt, cm_write_htif_ihalt);
-    write_csr!(u64, write_htif_iconsole, cm_write_htif_iconsole);
-    write_csr!(u64, write_htif_iyield, cm_write_htif_iyield);
-    write_csr!(u64, write_clint_mtimecmp, cm_write_clint_mtimecmp);
-    write_csr!(u64, write_uarch_pc, cm_write_uarch_pc);
-    write_csr!(u64, write_uarch_cycle, cm_write_uarch_cycle);
+        MachineError { code, message }
+    }
 }
 
-/// Returns packed iflags from its component fields.
-pub fn packed_iflags(prv: i32, x: i32, y: i32, h: i32) -> u64 {
-    unsafe { cartesi_machine_sys::cm_packed_iflags(prv, x, y, h) }
+fn path_to_cstring(path: &Path) -> CString {
+    CString::new(path.to_string_lossy().as_bytes()).expect("CString::new failed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::{
+        config::{
+            machine::{MachineConfig, MemoryRangeConfig},
+            runtime::RuntimeConfig,
+        },
+        constants,
+        error::MachineResult as Result,
+        types::cmio::ManualReason,
+    };
+
+    fn make_basic_machine_config() -> MachineConfig {
+        MachineConfig {
+            dtb: Some(crate::config::machine::DTBConfig {
+                entrypoint: Some("echo Hello from inside!".to_string()),
+                ..Default::default()
+            }),
+            flash_drive: Some(vec![MemoryRangeConfig {
+                image_filename: Some("../../../test/programs/rootfs.ext2".into()),
+                ..Default::default()
+            }]),
+            ram: crate::config::machine::RAMConfig {
+                length: 134217728,
+                image_filename: Some("../../../test/programs/linux.bin".into()),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn make_cmio_machine_config() -> MachineConfig {
+        MachineConfig {
+            dtb: Some(crate::config::machine::DTBConfig {
+                entrypoint: Some(
+                    "echo '{\"domain\":16,\"id\":\"'$(echo -n Hello from inside! | hex --encode)'\"}' \
+                     | rollup gio | grep -Eo '0x[0-9a-f]+' | tr -d '\\n' | hex --decode; echo"
+                        .to_string(),
+                ),
+                ..Default::default()
+            }),
+            flash_drive: Some(vec![MemoryRangeConfig {
+                image_filename: Some("../../../test/programs/rootfs.ext2".into()),
+                ..Default::default()
+            }]),
+            ram: crate::config::machine::RAMConfig {
+                length: 134217728,
+                image_filename: Some("../../../test/programs/linux.bin".into()),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn create_machine(config: &MachineConfig) -> Result<Machine> {
+        let runtime_config = RuntimeConfig {
+            htif: Some(config::runtime::HTIFRuntimeConfig {
+                no_console_putchar: Some(true),
+            }),
+            ..Default::default()
+        };
+        Machine::create(config, &runtime_config)
+    }
+
+    #[test]
+    fn test_machine_run_halt_root_hash() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let break_reason = machine.run(u64::MAX)?;
+        assert_eq!(break_reason, constants::break_reason::HALTED);
+
+        let mcycle_after_halt = machine.mcycle()?;
+        let root_hash_before = machine.root_hash()?;
+
+        let break_reason = machine.run(u64::MAX)?;
+        assert_eq!(break_reason, constants::break_reason::HALTED);
+
+        let root_hash_after = machine.root_hash()?;
+        assert_eq!(root_hash_before, root_hash_after,);
+
+        let mcycle_after_second_run = machine.mcycle()?;
+        assert_eq!(mcycle_after_halt, mcycle_after_second_run,);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_machine_uarch_reset() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        machine.run(1)?;
+        let reference_hash = machine.root_hash()?;
+        let initial_config = machine.initial_config()?;
+        drop(machine);
+
+        let mut machine = create_machine(&initial_config)?;
+
+        let uarch_break_reason = machine.run_uarch(u64::MAX)?;
+        assert_eq!(
+            uarch_break_reason,
+            constants::uarch_break_reason::UARCH_HALTED
+        );
+
+        machine.reset_uarch()?;
+
+        let final_hash = machine.root_hash()?;
+        assert_eq!(reference_hash, final_hash,);
+
+        let ucycle = machine.ucycle()?;
+        assert_eq!(ucycle, 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_runtime_config_round_trip() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let original_config = machine.runtime_config()?;
+        machine.set_runtime_config(&original_config)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_log_step() -> Result<()> {
+        let tmp_dir = tempfile::tempdir().expect("failed creating a temp dir");
+        let log_path = tmp_dir.path().join("machine_step.log");
+
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let root_hash_before = machine.root_hash()?;
+
+        machine.log_step(50, &log_path)?;
+        let root_hash_after = machine.root_hash()?;
+
+        let verified_break_reason =
+            Machine::verify_step(&root_hash_before, &log_path, 50, &root_hash_after)?;
+        assert_ne!(verified_break_reason, constants::break_reason::FAILED);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_log_step_uarch() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let root_hash_before = machine.root_hash()?;
+        let access_log: AccessLog = machine.log_step_uarch(LogType::LargeData)?;
+        let root_hash_after = machine.root_hash()?;
+
+        Machine::verify_step_uarch(&root_hash_before, &access_log, &root_hash_after)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_log_reset_uarch() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let root_hash_before = machine.root_hash()?;
+        let reset_log = machine.log_reset_uarch(LogType::Annotations)?;
+        let root_hash_after = machine.root_hash()?;
+
+        Machine::verify_reset_uarch(&root_hash_before, &reset_log, &root_hash_after)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_log_send_cmio_response() -> Result<()> {
+        let config = make_cmio_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let break_reason = machine.run(u64::MAX)?;
+        assert_eq!(break_reason, constants::break_reason::YIELDED_MANUALLY);
+
+        let root_hash_before = machine.root_hash()?;
+
+        let request = machine.receive_cmio_request()?;
+        assert!(matches!(
+            request,
+            CmioRequest::Manual(ManualReason::GIO { domain: 16, ref data })
+            if data == b"Hello from inside!"
+        ));
+        let response_data = b"Hello from outside!";
+        let access_log: AccessLog = machine.log_send_cmio_response(
+            CmioResponseReason::Advance,
+            response_data,
+            LogType::LargeData,
+        )?;
+
+        let root_hash_after = machine.root_hash()?;
+
+        Machine::verify_send_cmio_response(
+            CmioResponseReason::Advance,
+            response_data,
+            &root_hash_before,
+            &access_log,
+            &root_hash_after,
+        )?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_machine_cmio() -> Result<()> {
+        let cmio_config = make_cmio_machine_config();
+        let mut machine = create_machine(&cmio_config)?;
+
+        let break_reason = machine.run(u64::MAX)?;
+        assert_eq!(break_reason, constants::break_reason::YIELDED_MANUALLY);
+
+        let request = machine.receive_cmio_request()?;
+        assert!(matches!(
+            request,
+            CmioRequest::Manual(ManualReason::GIO { domain: 16, ref data })
+            if data == b"Hello from inside!"
+        ));
+
+        let response = b"Hello from outside!";
+        machine.send_cmio_response(CmioResponseReason::Advance, response)?;
+
+        let break_reason = machine.run(u64::MAX)?;
+        assert_eq!(break_reason, constants::break_reason::HALTED);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_store_and_load_machine() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let break_reason = machine.run(1000)?;
+        assert_eq!(break_reason, constants::break_reason::REACHED_TARGET_MCYCLE);
+        let root_hash_before_store = machine.root_hash()?;
+
+        let tmp_dir = tempfile::tempdir().expect("failed creating a temp dir");
+        let store_path = tmp_dir.path().join("image");
+        machine.store(&store_path)?;
+
+        let runtime_config = RuntimeConfig::default();
+        let mut machine = Machine::load(&store_path, &runtime_config)?;
+
+        let root_hash_after_load = machine.root_hash()?;
+        assert_eq!(root_hash_before_store, root_hash_after_load,);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_range() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let ranges_before = machine.memory_ranges()?;
+        assert!(!ranges_before.is_empty());
+
+        let range = ranges_before.last().unwrap();
+
+        let mem = machine.read_memory(range.start, range.length)?;
+        assert!(mem.iter().any(|x| *x != 0));
+
+        // writes zeroes in range
+        machine.replace_memory_range(range.start, range.length, false, None)?;
+        let mem = machine.read_memory(range.start, range.length)?;
+        assert!(!mem.iter().any(|x| *x != 0));
+
+        // write ones in range
+        machine.write_memory(range.start, &vec![1; range.length as usize])?;
+        let mem = machine.read_memory(range.start, range.length)?;
+        assert!(mem.iter().all(|x| *x == 1));
+
+        let log2_size = u64::BITS - range.length.leading_zeros();
+        let proof: Proof = machine.proof(range.start, u64::BITS - range.length.leading_zeros())?;
+        assert_eq!(proof.target_address, range.start);
+        assert_eq!(proof.log2_target_size, log2_size as u64);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_ops() -> Result<()> {
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+
+        let reg = cartesi_machine_sys::CM_REG_X1;
+        let reg_phys_addr = Machine::reg_address(reg)?;
+
+        let val_via_read_word = machine.read_word(reg_phys_addr)?;
+        let val_via_read_reg = machine.read_reg(reg)?;
+        assert_eq!(val_via_read_word, val_via_read_reg);
+
+        let new_reg_value = 0x1234_5678_9ABC_DEF0;
+        machine.write_reg(reg, new_reg_value)?;
+        let val_via_read_word2 = machine.read_word(reg_phys_addr)?;
+        assert_eq!(val_via_read_word2, new_reg_value);
+
+        let val_via_read_reg2 = machine.read_reg(reg)?;
+        assert_eq!(val_via_read_reg2, new_reg_value);
+
+        //         let another_value: u64 = 0xDEAD_BEEF_0000_0001;
+        //         let data_bytes = another_value.to_le_bytes();
+        //         machine.write_memory(reg_phys_addr, &data_bytes)?;
+
+        Ok(())
+    }
 }
