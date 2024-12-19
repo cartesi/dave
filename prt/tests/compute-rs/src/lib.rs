@@ -1,4 +1,4 @@
-use alloy::sol_types::private::Address;
+use alloy::primitives::Address;
 use cartesi_prt_core::arena::BlockchainConfig;
 use clap::Parser;
 

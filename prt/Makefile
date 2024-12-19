@@ -1,6 +1,6 @@
 BINDINGS_DIR := ./contract-bindings/src/contract
 SRC_DIR := ./contracts
-BINDINGS_FILTER := 'LeafTournament|RootTournament|^Tournament$$'
+BINDINGS_FILTER := '^[^I].+TournamentFactory|LeafTournament|RootTournament|^Tournament$$'
 
 help:
 	@echo '  clean                      - clean the generated bindings'
