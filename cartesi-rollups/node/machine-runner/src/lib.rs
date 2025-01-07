@@ -50,7 +50,7 @@ where
             None => (initial_machine.to_string(), 0, 0),
         };
 
-        let machine = Machine::load(&Path::new(&snapshot), RuntimeConfig::default())?;
+        let machine = Machine::load(Path::new(&snapshot), RuntimeConfig::default())?;
 
         Ok(Self {
             machine,
@@ -272,7 +272,7 @@ mod tests {
     };
     use cartesi_rollups_contracts::inputs::Inputs::EvmAdvanceCall;
     use rollups_state_manager::{Epoch, Input, InputId, StateManager};
-    use std::{str::FromStr, sync::Arc};
+    use std::{path::PathBuf, str::FromStr, sync::Arc};
     use thiserror::Error;
 
     use crate::MachineRunner;
@@ -372,7 +372,7 @@ mod tests {
                 epoch_number,
                 state_hash_index_in_epoch,
                 repetitions,
-                hex::encode(&machine_state_hash),
+                hex::encode(machine_state_hash),
             );
             let (h, r) = &self.machine_state_hashes[epoch_number as usize]
                 [state_hash_index_in_epoch as usize];
@@ -386,7 +386,7 @@ mod tests {
         fn computation_hash(&self, epoch_number: u64) -> Result<Option<Vec<u8>>> {
             let epoch_number = epoch_number as usize;
 
-            Ok(self.computation_hash.get(epoch_number).map(|h| h.clone()))
+            Ok(self.computation_hash.get(epoch_number).cloned())
         }
 
         fn add_computation_hash(&self, _computation_hash: &[u8], _epoch_number: u64) -> Result<()> {
@@ -504,7 +504,7 @@ mod tests {
                     blockNumber: block_number,
                     blockTimestamp: block_timestamp,
                     index: U256::from(i),
-                    payload: hex_to_bytes(*h).unwrap().into(),
+                    payload: hex_to_bytes(h).unwrap().into(),
                     prevRandao: U256::ZERO, // TODO: what to put here?
                 }
                 .abi_encode()
@@ -533,7 +533,13 @@ mod tests {
         state_manager
             .machine_state_hashes
             .push(machine_state_hashes);
-        let mut runner = MachineRunner::new(Arc::new(state_manager), "/app/echo", 10, 10, ".")?;
+        let mut runner = MachineRunner::new(
+            Arc::new(state_manager),
+            "../../../test/programs/echo/machine-image",
+            10,
+            10,
+            PathBuf::from("."),
+        )?;
 
         runner.advance_epoch()?;
         assert_eq!(

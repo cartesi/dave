@@ -440,7 +440,7 @@ impl PartitionProvider {
 }
 
 #[cfg(test)]
-mod blockchiain_reader_tests {
+mod blockchain_reader_tests {
     use crate::*;
     use alloy::{
         network::EthereumWallet,

@@ -258,9 +258,13 @@ mod compute_state_access_tests {
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         {
-            let access =
-                ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp")
-                    .unwrap();
+            let access = ComputeStateAccess::new(
+                None,
+                Vec::new(),
+                String::from("0x12345678"),
+                PathBuf::from("/tmp"),
+            )
+            .unwrap();
 
             assert_eq!(access.closest_snapshot(0).unwrap(), None);
             assert_eq!(access.closest_snapshot(100).unwrap(), None);
@@ -318,9 +322,13 @@ mod compute_state_access_tests {
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         {
-            let access =
-                ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp")
-                    .unwrap();
+            let access = ComputeStateAccess::new(
+                None,
+                Vec::new(),
+                String::from("0x12345678"),
+                PathBuf::from("/tmp"),
+            )
+            .unwrap();
 
             let cycle: u64 = 844424930131968;
             for c in [cycle] {
@@ -349,8 +357,13 @@ mod compute_state_access_tests {
         let work_dir = PathBuf::from("/tmp/0x12345678");
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
-        let access =
-            ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp").unwrap();
+        let access = ComputeStateAccess::new(
+            None,
+            Vec::new(),
+            String::from("0x12345678"),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
 
         let root = [
             1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1,
@@ -377,7 +390,7 @@ mod compute_state_access_tests {
             Some(Vec::new()),
             Vec::new(),
             String::from("0x12345678"),
-            "/tmp",
+            PathBuf::from("/tmp"),
         )
         .unwrap();
 
@@ -388,8 +401,13 @@ mod compute_state_access_tests {
         let work_dir = PathBuf::from("/tmp/0x12345678");
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
-        let access =
-            ComputeStateAccess::new(None, Vec::new(), String::from("0x12345678"), "/tmp").unwrap();
+        let access = ComputeStateAccess::new(
+            None,
+            Vec::new(),
+            String::from("0x12345678"),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
 
         assert!(matches!(access.handle_rollups, false));
     }

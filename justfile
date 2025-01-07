@@ -19,7 +19,7 @@ build-smart-contracts: build-consensus build-prt
 bind: bind-consensus bind-prt
 clean-bindings: clean-consensus-bindings clean-prt-bindings
 
-format-rust-workspace:
+format-rust-workspace: bind
   cargo fmt
 check-rust-workspace: bind
   cargo check
@@ -30,7 +30,7 @@ build-rust-workspace *ARGS: bind
 build-release-rust-workspace *ARGS: bind
   cargo build --release {{ARGS}}
 
-build: build-smart-contracts build-prt bind build-rust-workspace
+build: build-smart-contracts bind build-rust-workspace
 
 clean-emulator:
   make -C machine/emulator clean depclean distclean

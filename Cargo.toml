@@ -64,7 +64,7 @@ cartesi-prt-core = { path = "prt/client-rs" }
 ## Dependencies
 
 # cartesi
-cartesi-rollups-contracts = "=2.0.0-rc.12"
+cartesi-rollups-contracts = "=2.0.0-rc.13"
 
 # eth
 alloy = { version = "0.8", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }

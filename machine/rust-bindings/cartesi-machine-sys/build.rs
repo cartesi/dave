@@ -20,18 +20,6 @@ mod feature_checks {
         feature = "external_cartesi",
     )))]
     compile_error!("At least one of `build_uarch`, `copy_uarch`, `download_uarch`, and `external_cartesi` must be set");
-
-    //     #[cfg(all(
-    //         feature = "external_cartesi",
-    //         any(
-    //             feature = "copy_uarch",
-    //             feature = "download_uarch",
-    //             feature = "build_uarch"
-    //         )
-    //     ))]
-    //     compile_error!(
-    //     "`external_cartesi` is mutually exclusive with `build_uarch`, `copy_uarch`, or `download_uarch`"
-    //     );
 }
 
 fn main() {
