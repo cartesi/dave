@@ -1,6 +1,13 @@
 update-submodules:
   git submodule update --recursive --init
 
+clean-emulator:
+  make -C machine/emulator clean depclean distclean
+
+setup: update-submodules clean-emulator
+  just -f ./test/programs/justfile download-deps
+  just -f ./test/programs/justfile build-programs
+
 build-consensus:
     just -f ./cartesi-rollups/contracts/justfile build
 clean-consensus-bindings:
@@ -32,8 +39,6 @@ build-release-rust-workspace *ARGS: bind
 
 build: build-smart-contracts bind build-rust-workspace
 
-clean-emulator:
-  make -C machine/emulator clean depclean distclean
 
 
 build-docker-image TAG="dave:dev":
