@@ -10,5 +10,9 @@ interface ITournament {
     function arbitrationResult()
         external
         view
-        returns (bool, Tree.Node, Machine.Hash);
+        returns (
+            bool isFinished,
+            Tree.Node winningCommitment,
+            Machine.Hash finalMachineStateHash
+        );
 }

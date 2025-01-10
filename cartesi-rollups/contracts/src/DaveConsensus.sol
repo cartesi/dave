@@ -49,10 +49,20 @@ contract DaveConsensus is IDataProvider {
     /// @notice Current sealed epoch number
     uint256 _epochNumber;
 
+    /// @notice Block number (inclusive) lower bound of the current sealed epoch
+    /// @dev Initialized with 0
+    uint256 _blockNumberLowerBound;
+
+    /// @notice Block number (exclusive) upper bound of the current sealed epoch
+    /// @dev Initialized with the deployment block number
+    uint256 _blockNumberUpperBound;
+
     /// @notice Input index (inclusive) lower bound of the current sealed epoch
+    /// @dev Initialized with 0
     uint256 _inputIndexLowerBound;
 
     /// @notice Input index (exclusive) upper bound of the current sealed epoch
+    /// @dev Initialized with the number of inputs before the deployment block
     uint256 _inputIndexUpperBound;
 
     /// @notice Current sealed epoch tournament
@@ -66,14 +76,14 @@ contract DaveConsensus is IDataProvider {
 
     /// @notice An epoch was sealed
     /// @param epochNumber the sealed epoch number
-    /// @param inputIndexLowerBound the input index (inclusive) lower bound in the sealed epoch
-    /// @param inputIndexUpperBound the input index (exclusive) upper bound in the sealed epoch
+    /// @param blockNumberLowerBound the block number (inclusive) lower bound in the sealed epoch
+    /// @param blockNumberUpperBound the block number (exclusive) upper bound in the sealed epoch
     /// @param initialMachineStateHash the initial machine state hash
     /// @param tournament the sealed epoch tournament contract
     event EpochSealed(
         uint256 epochNumber,
-        uint256 inputIndexLowerBound,
-        uint256 inputIndexUpperBound,
+        uint256 blockNumberLowerBound,
+        uint256 blockNumberUpperBound,
         Machine.Hash initialMachineStateHash,
         ITournament tournament
     );
@@ -104,11 +114,12 @@ contract DaveConsensus is IDataProvider {
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
         // Initialize first sealed epoch
-        uint256 inputIndexUpperBound = inputBox.getNumberOfInputs(appContract);
-        _inputIndexUpperBound = inputIndexUpperBound;
+        uint256 blockNumberUpperBound = block.number;
+        _blockNumberUpperBound = blockNumberUpperBound;
+        _inputIndexUpperBound = inputBox.getNumberOfInputsBeforeCurrentBlock(appContract);
         ITournament tournament = tournamentFactory.instantiate(initialMachineStateHash, this);
         _tournament = tournament;
-        emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, tournament);
+        emit EpochSealed(0, 0, blockNumberUpperBound, initialMachineStateHash, tournament);
     }
 
     function canSettle() external view returns (bool isFinished, uint256 epochNumber) {
@@ -125,13 +136,15 @@ contract DaveConsensus is IDataProvider {
 
         // Seal current accumulating epoch
         _epochNumber = ++epochNumber;
-        uint256 inputIndexLowerBound = _inputIndexUpperBound;
-        _inputIndexLowerBound = inputIndexLowerBound;
-        uint256 inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
-        _inputIndexUpperBound = inputIndexUpperBound;
+        uint256 blockNumberLowerBound = _blockNumberUpperBound;
+        _blockNumberLowerBound = blockNumberLowerBound;
+        uint256 blockNumberUpperBound = block.number;
+        _blockNumberUpperBound = blockNumberUpperBound;
+        _inputIndexLowerBound = _inputIndexUpperBound;
+        _inputIndexUpperBound = _inputBox.getNumberOfInputsBeforeCurrentBlock(_appContract);
         ITournament tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
         _tournament = tournament;
-        emit EpochSealed(epochNumber, inputIndexLowerBound, inputIndexUpperBound, finalMachineStateHash, tournament);
+        emit EpochSealed(epochNumber, blockNumberLowerBound, blockNumberUpperBound, finalMachineStateHash, tournament);
     }
 
     function getCurrentSealedEpoch()
@@ -139,14 +152,14 @@ contract DaveConsensus is IDataProvider {
         view
         returns (
             uint256 epochNumber,
-            uint256 inputIndexLowerBound,
-            uint256 inputIndexUpperBound,
+            uint256 blockNumberLowerBound,
+            uint256 blockNumberUpperBound,
             ITournament tournament
         )
     {
         epochNumber = _epochNumber;
-        inputIndexLowerBound = _inputIndexLowerBound;
-        inputIndexUpperBound = _inputIndexUpperBound;
+        blockNumberLowerBound = _blockNumberLowerBound;
+        blockNumberUpperBound = _blockNumberUpperBound;
         tournament = _tournament;
     }
 
