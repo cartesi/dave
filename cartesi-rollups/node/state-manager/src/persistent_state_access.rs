@@ -543,8 +543,8 @@ mod tests {
             "machine state hash shouldn't exist"
         );
         assert!(
-            access.machine_state_hashes(0).is_err(),
-            "machine state hash shouldn't exist"
+            access.machine_state_hashes(0).is_ok_and(|x| x.is_empty()),
+            "machine state hashes shouldn't exist"
         );
 
         let machine_state_hash_1 = vec![1, 2, 3, 4, 5];
