@@ -45,14 +45,18 @@ build-release-rust-workspace *ARGS: bind
 
 build: build-smart-contracts bind build-rust-workspace
 
-
-
 build-docker-image TAG="dave:dev":
   docker build -f test/Dockerfile -t {{TAG}} .
 
 run-dockered +CMD: build-docker-image
-  docker run -it dave:dev {{CMD}}
+  docker run -it --rm --name dave-node dave:dev {{CMD}}
+exec-dockered +CMD:
+  docker exec dave-node {{CMD}}
 
+test-rollups-echo:
+    just -f ./prt/tests/rollups/justfile test-echo
+view-rollups-echo:
+    just -f ./prt/tests/rollups/justfile read-node-logs
 
 hello:
   echo $(echo "Hello")
