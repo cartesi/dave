@@ -67,11 +67,11 @@ end
 local CommitmentClock = {}
 CommitmentClock.__index = CommitmentClock
 
-function CommitmentClock:new(allowance, last_resume, block_time)
+function CommitmentClock:new(allowance, last_resume, block_number)
     local clock = {
         allowance = tonumber(allowance),
         last_resume = tonumber(last_resume),
-        block_time = tonumber(block_time)
+        block_number = tonumber(block_number)
     }
 
     setmetatable(clock, self)
@@ -80,18 +80,18 @@ end
 
 function CommitmentClock:__tostring()
     local c = self
-    local b = c.block_time
+    local b = c.block_number
     local s
     if c.last_resume == 0 then
-        local time_left = c.allowance
-        s = string.format("clock paused, %d seconds left", time_left)
+        local blocks_left = c.allowance
+        s = string.format("clock paused, %d blocks left", blocks_left)
     else
         local current = b
-        local time_left = c.allowance - (current - c.last_resume)
-        if time_left >= 0 then
-            s = string.format("clock running, %d seconds left", time_left)
+        local blocks_left = c.allowance - (current - c.last_resume)
+        if blocks_left >= 0 then
+            s = string.format("clock ticking, %d blocks left", blocks_left)
         else
-            s = string.format("clock running, %d seconds overdue", -time_left)
+            s = string.format("clock ticking, %d blocks overdue", -blocks_left)
         end
     end
     return s
@@ -102,7 +102,7 @@ function CommitmentClock:has_time()
     if clock.last_resume == 0 then
         return true
     else
-        local current = clock.block_time
+        local current = clock.block_number
         return (clock.last_resume + clock.allowance) > current
     end
 end
@@ -112,7 +112,7 @@ function CommitmentClock:time_since_timeout()
     if clock.last_resume == 0 then
         return
     else
-        local current = clock.block_time
+        local current = clock.block_number
         return current - (clock.last_resume + clock.allowance)
     end
 end
@@ -129,7 +129,7 @@ function Reader:new(endpoint)
     return reader
 end
 
-function Reader._get_block(block)
+function Reader._get_block_number(block)
     local cmd = string.format("cast block " .. block .. " 2>&1")
 
     local handle = io.popen(cmd)
@@ -302,10 +302,10 @@ function Reader:read_commitment(tournament_address, commitment_hash)
     assert(allowance)
     assert(last_resume)
 
-    local block_time = Reader._get_block("latest")
+    local block_number = Reader._get_block_number("latest")
 
     local commitment = {
-        clock = CommitmentClock:new(allowance, last_resume, block_time),
+        clock = CommitmentClock:new(allowance, last_resume, block_number),
         final_state = Hash:from_digest_hex(ret[2]),
     }
 
