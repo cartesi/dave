@@ -13,3 +13,6 @@
 [submodule "cartesi-rollups/contracts/lib/rollups-contracts"]
 	path = cartesi-rollups/contracts/lib/rollups-contracts
 	url = https://github.com/cartesi/rollups-contracts
+[submodule "cartesi-rollups/contracts/lib/openzeppelin-contracts"]
+	path = cartesi-rollups/contracts/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
