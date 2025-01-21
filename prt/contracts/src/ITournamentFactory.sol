@@ -10,7 +10,7 @@ import "./IDataProvider.sol";
 interface ITournamentFactory {
     event tournamentCreated(Tournament);
 
-    function instantiate(Machine.Hash _initialHash, IDataProvider provider)
+    function instantiate(Machine.Hash initialState, IDataProvider provider)
         external
         returns (ITournament);
 }
