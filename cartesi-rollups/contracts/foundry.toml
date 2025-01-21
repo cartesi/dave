@@ -5,6 +5,7 @@ libs = ["lib"]
 via_ir = true
 
 remappings = [
+    'openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/',
     'rollups-contracts/=lib/rollups-contracts/contracts/',
     'prt-contracts/=../../prt/contracts/src/',
     'step/=../../machine/step/',
