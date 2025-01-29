@@ -16,8 +16,15 @@ import "src/tournament/libs/Clock.sol";
 
 pragma solidity ^0.8.0;
 
+library ExternalClock {
+    function advanceClockExternal(Clock.State storage state) external {
+        Clock.advanceClock(state);
+    }
+}
+
 contract ClockTest is Test {
     using Clock for Clock.State;
+    using ExternalClock for Clock.State;
     using Time for Time.Instant;
 
     Clock.State clock1;
@@ -69,6 +76,6 @@ contract ClockTest is Test {
         assertTrue(!clock1.hasTimeLeft(), "clock1 should run out of time");
 
         vm.expectRevert("can't advance clock with no time left");
-        clock1.advanceClock();
+        clock1.advanceClockExternal();
     }
 }
