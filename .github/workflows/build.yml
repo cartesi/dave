@@ -42,7 +42,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Deps
+      - name: Install Cartesi Machine
         run: |
           export CARTESI_MACHINE_VERSION=0.18.1
           sudo apt-get install -y libboost-all-dev lua5.4 libslirp0
@@ -50,9 +50,12 @@ jobs:
           sudo dpkg -i ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
           rm ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
 
-      - name: Rust fmt and check
+      - name: Setup env
         run: |
           just setup
+
+      - name: Rust fmt and check
+        run: |
           just check-fmt-rust-workspace
           just check-rust-workspace
 

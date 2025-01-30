@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use cartesi_dave_merkle::DigestError;
-use cartesi_machine::errors::MachineError;
+use cartesi_machine::error::MachineError;
 use rollups_state_manager::StateManager;
 
 use thiserror::Error;
