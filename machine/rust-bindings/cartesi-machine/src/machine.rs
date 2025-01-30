@@ -644,7 +644,7 @@ mod tests {
 
     use crate::{
         config::{
-            machine::{MachineConfig, MemoryRangeConfig},
+            machine::{DTBConfig, MachineConfig, MemoryRangeConfig, RAMConfig},
             runtime::RuntimeConfig,
         },
         constants,
@@ -653,43 +653,36 @@ mod tests {
     };
 
     fn make_basic_machine_config() -> MachineConfig {
-        MachineConfig {
-            dtb: Some(crate::config::machine::DTBConfig {
-                entrypoint: Some("echo Hello from inside!".to_string()),
-                ..Default::default()
-            }),
-            flash_drive: Some(vec![MemoryRangeConfig {
-                image_filename: Some("../../../test/programs/rootfs.ext2".into()),
-                ..Default::default()
-            }]),
-            ram: crate::config::machine::RAMConfig {
-                length: 134217728,
-                image_filename: Some("../../../test/programs/linux.bin".into()),
-            },
+        MachineConfig::new_with_ram(RAMConfig {
+            length: 134217728,
+            image_filename: "../../../test/programs/linux.bin".into(),
+        })
+        .dtb(DTBConfig {
+            entrypoint: "echo Hello from inside!".to_string(),
             ..Default::default()
-        }
+        })
+        .add_flash_drive(MemoryRangeConfig {
+            image_filename: "../../../test/programs/rootfs.ext2".into(),
+            ..Default::default()
+        })
     }
 
     fn make_cmio_machine_config() -> MachineConfig {
-        MachineConfig {
-            dtb: Some(crate::config::machine::DTBConfig {
-                entrypoint: Some(
-                    "echo '{\"domain\":16,\"id\":\"'$(echo -n Hello from inside! | hex --encode)'\"}' \
+        MachineConfig::new_with_ram(RAMConfig {
+            length: 134217728,
+            image_filename: "../../../test/programs/linux.bin".into(),
+        })
+        .dtb(DTBConfig {
+            entrypoint:
+                "echo '{\"domain\":16,\"id\":\"'$(echo -n Hello from inside! | hex --encode)'\"}' \
                      | rollup gio | grep -Eo '0x[0-9a-f]+' | tr -d '\\n' | hex --decode; echo"
-                        .to_string(),
-                ),
-                ..Default::default()
-            }),
-            flash_drive: Some(vec![MemoryRangeConfig {
-                image_filename: Some("../../../test/programs/rootfs.ext2".into()),
-                ..Default::default()
-            }]),
-            ram: crate::config::machine::RAMConfig {
-                length: 134217728,
-                image_filename: Some("../../../test/programs/linux.bin".into()),
-            },
+                    .to_string(),
             ..Default::default()
-        }
+        })
+        .add_flash_drive(MemoryRangeConfig {
+            image_filename: "../../../test/programs/rootfs.ext2".into(),
+            ..Default::default()
+        })
     }
 
     fn create_machine(config: &MachineConfig) -> Result<Machine> {
@@ -945,10 +938,6 @@ mod tests {
 
         let val_via_read_reg2 = machine.read_reg(reg)?;
         assert_eq!(val_via_read_reg2, new_reg_value);
-
-        //         let another_value: u64 = 0xDEAD_BEEF_0000_0001;
-        //         let data_bytes = another_value.to_le_bytes();
-        //         machine.write_memory(reg_phys_addr, &data_bytes)?;
 
         Ok(())
     }
