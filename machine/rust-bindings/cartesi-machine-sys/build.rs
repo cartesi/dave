@@ -215,9 +215,9 @@ mod build_cm {
             // Open the patch file
             let mut patch = fs::File::open(patch_file).expect("fail to open patch file");
 
-            // Create a command to run `patch -Np0`
+            // Create a command to run `patch -Np1`
             let mut cmd = Command::new("patch")
-                .arg("-Np0")
+                .arg("-Np1")
                 .stdin(Stdio::piped())
                 .current_dir(target_dir)
                 .spawn()
