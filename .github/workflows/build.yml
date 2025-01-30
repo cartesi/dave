@@ -16,6 +16,14 @@ jobs:
           target: x86_64-unknown-linux-gnu
           toolchain: 1.85
 
+      - name: Set up cache for Foundry
+        uses: actions/cache@v3
+        with:
+          path: ~/.foundry
+          key: ${{ runner.os }}-foundry-${{ hashFiles('**/foundry.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -31,7 +39,17 @@ jobs:
           just build-smart-contracts
           just test
 
-      - name: Deps
+      - name: Set up cache for Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Cartesi Machine
         run: |
           export CARTESI_MACHINE_VERSION=0.18.1
           sudo apt-get install -y libboost-all-dev lua5.4 libslirp0
@@ -39,9 +57,12 @@ jobs:
           sudo dpkg -i ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
           rm ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
 
-      - name: Rust fmt and check
+      - name: Setup env
         run: |
           just setup
+
+      - name: Rust fmt and check
+        run: |
           just check-fmt-rust-workspace
           just check-rust-workspace
 
