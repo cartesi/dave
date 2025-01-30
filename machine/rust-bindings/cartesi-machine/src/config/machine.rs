@@ -6,276 +6,219 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MachineConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub processor: Option<ProcessorConfig>,
+    pub processor: ProcessorConfig,
     pub ram: RAMConfig,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dtb: Option<DTBConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flash_drive: Option<FlashDriveConfigs>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tlb: Option<TLBConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clint: Option<CLINTConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub plic: Option<PLICConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub htif: Option<HTIFConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub uarch: Option<UarchConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cmio: Option<CmioConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub virtio: Option<VirtIOConfigs>,
+    pub dtb: DTBConfig,
+    pub flash_drive: FlashDriveConfigs,
+    pub tlb: TLBConfig,
+    pub clint: CLINTConfig,
+    pub plic: PLICConfig,
+    pub htif: HTIFConfig,
+    pub uarch: UarchConfig,
+    pub cmio: CmioConfig,
+    pub virtio: VirtIOConfigs,
 }
 
-impl Default for MachineConfig {
-    fn default() -> Self {
-        crate::machine::Machine::default_config().expect("failed to get default config")
+impl MachineConfig {
+    pub fn new_with_ram(ram: RAMConfig) -> Self {
+        Self {
+            processor: ProcessorConfig::default(),
+            ram,
+            dtb: DTBConfig::default(),
+            flash_drive: FlashDriveConfigs::default(),
+            tlb: TLBConfig::default(),
+            clint: CLINTConfig::default(),
+            plic: PLICConfig::default(),
+            htif: HTIFConfig::default(),
+            uarch: UarchConfig::default(),
+            cmio: CmioConfig::default(),
+            virtio: VirtIOConfigs::default(),
+        }
     }
+
+    pub fn processor(mut self, processor: ProcessorConfig) -> Self {
+        self.processor = processor;
+        self
+    }
+
+    pub fn dtb(mut self, dtb: DTBConfig) -> Self {
+        self.dtb = dtb;
+        self
+    }
+
+    pub fn add_flash_drive(mut self, flash_drive: MemoryRangeConfig) -> Self {
+        self.flash_drive.push(flash_drive);
+        self
+    }
+
+    pub fn tlb(mut self, tlb: TLBConfig) -> Self {
+        self.tlb = tlb;
+        self
+    }
+
+    pub fn clint(mut self, clint: CLINTConfig) -> Self {
+        self.clint = clint;
+        self
+    }
+
+    pub fn plic(mut self, plic: PLICConfig) -> Self {
+        self.plic = plic;
+        self
+    }
+
+    pub fn htif(mut self, htif: HTIFConfig) -> Self {
+        self.htif = htif;
+        self
+    }
+
+    pub fn uarch(mut self, uarch: UarchConfig) -> Self {
+        self.uarch = uarch;
+        self
+    }
+
+    pub fn cmio(mut self, cmio: CmioConfig) -> Self {
+        self.cmio = cmio;
+        self
+    }
+
+    pub fn add_virtio(mut self, virtio_config: VirtIODeviceConfig) -> Self {
+        self.virtio.push(virtio_config);
+        self
+    }
+}
+
+fn default_config() -> MachineConfig {
+    crate::machine::Machine::default_config().expect("failed to get default config")
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProcessorConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x0: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x1: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x2: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x3: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x4: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x5: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x6: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x7: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x8: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x9: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x10: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x11: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x12: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x13: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x14: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x15: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x16: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x17: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x18: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x19: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x20: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x21: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x22: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x23: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x24: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x25: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x26: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x27: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x28: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x29: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x30: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x31: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f0: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f1: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f2: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f3: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f4: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f5: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f6: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f7: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f8: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f9: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f10: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f11: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f12: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f13: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f14: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f15: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f16: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f17: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f18: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f19: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f20: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f21: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f22: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f23: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f24: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f25: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f26: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f27: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f28: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f29: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f30: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub f31: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pc: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fcsr: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mvendorid: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub marchid: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mimpid: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mcycle: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icycleinstret: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mstatus: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mtvec: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mscratch: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mepc: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mcause: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mtval: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub misa: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mie: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mip: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub medeleg: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mideleg: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mcounteren: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub menvcfg: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stvec: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sscratch: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sepc: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scause: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stval: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub satp: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scounteren: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub senvcfg: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ilrsc: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iprv: Option<u64>,
+    pub x0: u64,
+    pub x1: u64,
+    pub x2: u64,
+    pub x3: u64,
+    pub x4: u64,
+    pub x5: u64,
+    pub x6: u64,
+    pub x7: u64,
+    pub x8: u64,
+    pub x9: u64,
+    pub x10: u64,
+    pub x11: u64,
+    pub x12: u64,
+    pub x13: u64,
+    pub x14: u64,
+    pub x15: u64,
+    pub x16: u64,
+    pub x17: u64,
+    pub x18: u64,
+    pub x19: u64,
+    pub x20: u64,
+    pub x21: u64,
+    pub x22: u64,
+    pub x23: u64,
+    pub x24: u64,
+    pub x25: u64,
+    pub x26: u64,
+    pub x27: u64,
+    pub x28: u64,
+    pub x29: u64,
+    pub x30: u64,
+    pub x31: u64,
+    pub f0: u64,
+    pub f1: u64,
+    pub f2: u64,
+    pub f3: u64,
+    pub f4: u64,
+    pub f5: u64,
+    pub f6: u64,
+    pub f7: u64,
+    pub f8: u64,
+    pub f9: u64,
+    pub f10: u64,
+    pub f11: u64,
+    pub f12: u64,
+    pub f13: u64,
+    pub f14: u64,
+    pub f15: u64,
+    pub f16: u64,
+    pub f17: u64,
+    pub f18: u64,
+    pub f19: u64,
+    pub f20: u64,
+    pub f21: u64,
+    pub f22: u64,
+    pub f23: u64,
+    pub f24: u64,
+    pub f25: u64,
+    pub f26: u64,
+    pub f27: u64,
+    pub f28: u64,
+    pub f29: u64,
+    pub f30: u64,
+    pub f31: u64,
+    pub pc: u64,
+    pub fcsr: u64,
+    pub mvendorid: u64,
+    pub marchid: u64,
+    pub mimpid: u64,
+    pub mcycle: u64,
+    pub icycleinstret: u64,
+    pub mstatus: u64,
+    pub mtvec: u64,
+    pub mscratch: u64,
+    pub mepc: u64,
+    pub mcause: u64,
+    pub mtval: u64,
+    pub misa: u64,
+    pub mie: u64,
+    pub mip: u64,
+    pub medeleg: u64,
+    pub mideleg: u64,
+    pub mcounteren: u64,
+    pub menvcfg: u64,
+    pub stvec: u64,
+    pub sscratch: u64,
+    pub sepc: u64,
+    pub scause: u64,
+    pub stval: u64,
+    pub satp: u64,
+    pub scounteren: u64,
+    pub senvcfg: u64,
+    pub ilrsc: u64,
+    pub iprv: u64,
     #[serde(rename = "iflags_X")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iflags_x: Option<u64>,
+    pub iflags_x: u64,
     #[serde(rename = "iflags_Y")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iflags_y: Option<u64>,
+    pub iflags_y: u64,
     #[serde(rename = "iflags_H")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iflags_h: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iunrep: Option<u64>,
+    pub iflags_h: u64,
+    pub iunrep: u64,
 }
 
 impl Default for ProcessorConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .processor
-            .expect("`processor` field should not be empty")
+        default_config().processor
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RAMConfig {
     pub length: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_filename: Option<PathBuf>,
-}
-
-impl Default for RAMConfig {
-    fn default() -> Self {
-        MachineConfig::default().ram
-    }
+    pub image_filename: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DTBConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bootargs: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub init: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entrypoint: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_filename: Option<PathBuf>,
+    pub bootargs: String,
+    pub init: String,
+    pub entrypoint: String,
+    pub image_filename: PathBuf,
 }
 
 impl Default for DTBConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .dtb
-            .expect("`dtb` field should not be empty")
+        default_config().dtb
     }
 }
 
@@ -285,32 +228,23 @@ pub struct MemoryRangeConfig {
     pub start: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub length: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_filename: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shared: Option<bool>,
+    pub image_filename: PathBuf,
+    pub shared: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CmioBufferConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_filename: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shared: Option<bool>,
+    pub image_filename: PathBuf,
+    pub shared: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VirtIOHostfwd {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_udp: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub host_ip: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub guest_ip: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub host_port: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub guest_port: Option<u64>,
+    pub is_udp: bool,
+    pub host_ip: u64,
+    pub guest_ip: u64,
+    pub host_port: u64,
+    pub guest_port: u64,
 }
 
 pub type VirtIOHostfwdArray = Vec<VirtIOHostfwd>;
@@ -330,165 +264,105 @@ pub enum VirtIODeviceType {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VirtIODeviceConfig {
     pub r#type: VirtIODeviceType,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tag: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub host_directory: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hostfwd: Option<VirtIOHostfwdArray>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iface: Option<String>,
+    pub tag: String,
+    pub host_directory: String,
+    pub hostfwd: VirtIOHostfwdArray,
+    pub iface: String,
 }
 
 pub type FlashDriveConfigs = Vec<MemoryRangeConfig>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TLBConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_filename: Option<PathBuf>,
+    pub image_filename: PathBuf,
 }
 
 impl Default for TLBConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .tlb
-            .expect("`tlb` field should not be empty")
+        default_config().tlb
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CLINTConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mtimecmp: Option<u64>,
+    pub mtimecmp: u64,
 }
 
 impl Default for CLINTConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .clint
-            .expect("`clint` field should not be empty")
+        default_config().clint
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PLICConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub girqpend: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub girqsrvd: Option<u64>,
+    pub girqpend: u64,
+    pub girqsrvd: u64,
 }
 
 impl Default for PLICConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .plic
-            .expect("`plic` field should not be empty")
+        default_config().plic
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HTIFConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fromhost: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tohost: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub console_getchar: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yield_manual: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yield_automatic: Option<bool>,
+    pub fromhost: u64,
+    pub tohost: u64,
+    pub console_getchar: bool,
+    pub yield_manual: bool,
+    pub yield_automatic: bool,
 }
 
 impl Default for HTIFConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .htif
-            .expect("`htif` field should not be empty")
+        default_config().htif
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UarchProcessorConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x0: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x1: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x2: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x3: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x4: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x5: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x6: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x7: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x8: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x9: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x10: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x11: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x12: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x13: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x14: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x15: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x16: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x17: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x18: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x19: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x20: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x21: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x22: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x23: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x24: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x25: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x26: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x27: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x28: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x29: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x30: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x31: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pc: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cycle: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub halt_flag: Option<bool>,
+    pub x0: u64,
+    pub x1: u64,
+    pub x2: u64,
+    pub x3: u64,
+    pub x4: u64,
+    pub x5: u64,
+    pub x6: u64,
+    pub x7: u64,
+    pub x8: u64,
+    pub x9: u64,
+    pub x10: u64,
+    pub x11: u64,
+    pub x12: u64,
+    pub x13: u64,
+    pub x14: u64,
+    pub x15: u64,
+    pub x16: u64,
+    pub x17: u64,
+    pub x18: u64,
+    pub x19: u64,
+    pub x20: u64,
+    pub x21: u64,
+    pub x22: u64,
+    pub x23: u64,
+    pub x24: u64,
+    pub x25: u64,
+    pub x26: u64,
+    pub x27: u64,
+    pub x28: u64,
+    pub x29: u64,
+    pub x30: u64,
+    pub x31: u64,
+    pub pc: u64,
+    pub cycle: u64,
+    pub halt_flag: bool,
 }
 
 impl Default for UarchProcessorConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .uarch
-            .expect("`uarch` field should not be empty")
-            .processor
-            .expect("`uarch.processor` field should not be empty")
+        default_config().uarch.processor
     }
 }
 
@@ -496,49 +370,36 @@ impl Default for UarchProcessorConfig {
 pub struct UarchRAMConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub length: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_filename: Option<PathBuf>,
+    pub image_filename: PathBuf,
 }
 
 impl Default for UarchRAMConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .uarch
-            .expect("`uarch` field should not be empty")
-            .ram
-            .expect("`uarch.ram` field should not be empty")
+        default_config().uarch.ram
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UarchConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub processor: Option<UarchProcessorConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ram: Option<UarchRAMConfig>,
+    pub processor: UarchProcessorConfig,
+    pub ram: UarchRAMConfig,
 }
 
 impl Default for UarchConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .uarch
-            .expect("`uarch` field should not be empty")
+        default_config().uarch
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CmioConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rx_buffer: Option<CmioBufferConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tx_buffer: Option<CmioBufferConfig>,
+    pub rx_buffer: CmioBufferConfig,
+    pub tx_buffer: CmioBufferConfig,
 }
 
 impl Default for CmioConfig {
     fn default() -> Self {
-        MachineConfig::default()
-            .cmio
-            .expect("`plic` field should not be empty")
+        default_config().cmio
     }
 }
 
@@ -550,9 +411,8 @@ mod tests {
 
     #[test]
     fn test_default_configs() {
-        MachineConfig::default();
+        default_config();
         ProcessorConfig::default();
-        RAMConfig::default();
         DTBConfig::default();
         TLBConfig::default();
         CLINTConfig::default();
