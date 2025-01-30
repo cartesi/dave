@@ -2,7 +2,7 @@
 
 # to work wiht an unreleased verion, build machine docker image locally
 # (i.e. cartesi/machine-emulator:latest), and change tag.
-FROM cartesi/machine-emulator:0.18.1 AS machine
+FROM cartesi/machine-emulator:0.19.0-test2 AS machine
 
 FROM rust:1.85
 
@@ -38,7 +38,7 @@ RUN \
 # Install cartesi machine
 COPY \
   --from=machine \
-  /usr/lib/libcartesi-0.18.so /usr/lib/libcartesi.a \
+  /usr/lib/libcartesi-0.19.so /usr/lib/libcartesi.a \
   /usr/lib/
 COPY \
   --from=machine \
