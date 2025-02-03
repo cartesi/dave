@@ -71,7 +71,8 @@ contract TopTournamentTest is Util, Test {
         // rewind time in half and pair commitment, expect a match
         vm.roll(_t);
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        Util.joinTournament(topTournament, _opponent);
 
         // no dangling commitment available, should revert
         vm.roll(_tournamentFinish);
@@ -90,21 +91,24 @@ contract TopTournamentTest is Util, Test {
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to left tree
         uint256 _playerToSeal =
-            Util.advanceMatch01AtLevel(topTournament, _matchId, 0);
+            Util.advanceMatch(topTournament, _matchId, _opponent);
 
         // seal match
         Util.sealInnerMatchAndCreateInnerTournament(
             topTournament, _matchId, _playerToSeal
         );
+        _height += 1;
 
         assertEq(
             topTournament.getMatchCycle(_matchId.hashFromId()),
@@ -116,19 +120,22 @@ contract TopTournamentTest is Util, Test {
 
         // pair commitment, expect a match
         // player 2 joins tournament
-        Util.joinTournament(topTournament, 2, 0);
+        _opponent = 2;
+        _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        _matchId = Util.matchId(2, 0);
+        _matchId = Util.matchId(_opponent, _height);
         _match = topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to right tree
-        _playerToSeal = Util.advanceMatch02AtLevel(topTournament, _matchId, 0);
+        _playerToSeal = Util.advanceMatch(topTournament, _matchId, _opponent);
 
         // seal match
         Util.sealInnerMatchAndCreateInnerTournament(
             topTournament, _matchId, _playerToSeal
         );
+        _height += 1;
 
         uint256 step = 1 << ArbitrationConstants.log2step(0);
         uint256 leaf_position = (1 << ArbitrationConstants.height(0)) - 1;

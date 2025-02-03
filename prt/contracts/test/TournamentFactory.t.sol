@@ -33,7 +33,7 @@ contract TournamentFactoryTest is Util, Test {
     function testRootTournament() public {
         RootTournament rootTournament = RootTournament(
             address(
-                singleLevelfactory.instantiateSingleLevel(
+                singleLevelfactory.instantiate(
                     Util.ONE_STATE, IDataProvider(address(0))
                 )
             )
