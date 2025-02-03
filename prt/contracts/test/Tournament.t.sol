@@ -23,6 +23,7 @@ contract TournamentTest is Util, Test {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
+    using Match for Match.State;
     using Machine for Machine.Hash;
 
     MultiLevelTournamentFactory immutable factory;
@@ -32,7 +33,6 @@ contract TournamentTest is Util, Test {
     event matchCreated(
         Tree.Node indexed one, Tree.Node indexed two, Tree.Node leftOfTwo
     );
-    event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     constructor() {
         factory = Util.instantiateTournamentFactory();
@@ -168,5 +168,31 @@ contract TournamentTest is Util, Test {
             _finalState.eq(Util.finalStates[_winnerPlayer]),
             "final state should match"
         );
+    }
+
+    function testEliminateByTimeout() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+
+        // pair commitment, expect a match
+        // player 1 joins tournament
+        Util.joinTournament(topTournament, 1, 0);
+
+        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.State memory _match =
+            topTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        uint256 _t = vm.getBlockNumber();
+        // the delay is increased when a match is created
+        uint256 _rootTournamentFinish =
+            _t + 2 * Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+
+        vm.roll(_rootTournamentFinish - 1);
+        // cannot eliminate match when both blocks still have time
+        vm.expectRevert(Tournament.EliminateByTimeout.selector);
+        topTournament.eliminateMatchByTimeout(_matchId);
+
+        vm.roll(_rootTournamentFinish);
+        topTournament.eliminateMatchByTimeout(_matchId);
     }
 }
