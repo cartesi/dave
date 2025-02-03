@@ -7,11 +7,11 @@ import "../../CanonicalConstants.sol";
 import "../../Tree.sol";
 import "../../Machine.sol";
 
-// import "./Merkle.sol";
-
 library Commitment {
     using Tree for Tree.Node;
     using Commitment for Tree.Node;
+
+    error CommitmentMismatch(Tree.Node received, Tree.Node expected);
 
     function requireState(
         Tree.Node commitment,
@@ -23,12 +23,17 @@ library Commitment {
         Tree.Node expectedCommitment =
             getRoot(Machine.Hash.unwrap(state), treeHeight, position, hashProof);
 
-        require(commitment.eq(expectedCommitment), "commitment state mismatch");
+        require(
+            commitment.eq(expectedCommitment),
+            CommitmentMismatch(commitment, expectedCommitment)
+        );
     }
 
     function isEven(uint256 x) private pure returns (bool) {
         return x % 2 == 0;
     }
+
+    error LengthMismatch(uint64 treeHeight, uint64 siblingsLength);
 
     function getRoot(
         bytes32 leaf,
@@ -36,7 +41,11 @@ library Commitment {
         uint256 position,
         bytes32[] calldata siblings
     ) internal pure returns (Tree.Node) {
-        assert(treeHeight == siblings.length);
+        uint64 siblingsLength = uint64(siblings.length);
+        require(
+            treeHeight == siblingsLength,
+            LengthMismatch(treeHeight, siblingsLength)
+        );
 
         for (uint256 i = 0; i < treeHeight; i++) {
             if (isEven(position >> i)) {

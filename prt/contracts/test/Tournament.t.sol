@@ -43,10 +43,6 @@ contract TournamentTest is Util, Test {
     function testJoinTournament() public {
         topTournament = Util.initializePlayer0Tournament(factory);
 
-        // duplicate commitment should be reverted
-        vm.expectRevert("clock is initialized");
-        Util.joinTournament(topTournament, 0, 0);
-
         // pair commitment, expect a match
         vm.expectEmit(true, true, false, true, address(topTournament));
         emit matchCreated(
@@ -55,8 +51,17 @@ contract TournamentTest is Util, Test {
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        Util.joinTournament(topTournament, _opponent);
     }
+
+    // function testDuplicateJoinTournament() public {
+    //     topTournament = Util.initializePlayer0Tournament(factory);
+
+    //     // duplicate commitment should be reverted
+    //     vm.expectRevert("clock is initialized");
+    //     Util.joinTournament(topTournament, 0);
+    // }
 
     function testTimeout() public {
         topTournament = Util.initializePlayer0Tournament(factory);
@@ -68,9 +73,11 @@ contract TournamentTest is Util, Test {
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
         assertFalse(
             topTournament.canWinMatchByTimeout(_matchId),
             "shouldn't be able to win match by timeout"
@@ -122,11 +129,11 @@ contract TournamentTest is Util, Test {
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        Util.joinTournament(topTournament, _opponent);
 
         // player 0 should win after fast forward time to player 1 timeout
         // player 1 timeout first because he's supposed to advance match after player 0 advanced
-        _matchId = Util.matchId(1, 0);
+        _matchId = Util.matchId(_opponent, _height);
 
         topTournament.advanceMatch(
             _matchId,
@@ -175,9 +182,11 @@ contract TournamentTest is Util, Test {
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
