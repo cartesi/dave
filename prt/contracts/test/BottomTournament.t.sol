@@ -38,21 +38,23 @@ contract BottomTournamentTest is Util, Test {
 
     function setUp() public {}
 
-    function testBottom() public {
+    function testBottom1() public {
         topTournament = Util.initializePlayer0Tournament(factory);
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to left tree
         uint256 _playerToSeal =
-            Util.advanceMatch01AtLevel(topTournament, _matchId, 0);
+            Util.advanceMatch(topTournament, _matchId, _opponent);
 
         // expect new inner created
         vm.recordLogs();
@@ -61,6 +63,7 @@ contract BottomTournamentTest is Util, Test {
         Util.sealInnerMatchAndCreateInnerTournament(
             topTournament, _matchId, _playerToSeal
         );
+        _height += 1;
 
         assertEq(
             topTournament.getMatchCycle(_matchId.hashFromId()),
@@ -82,16 +85,15 @@ contract BottomTournamentTest is Util, Test {
             address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
         );
 
-        Util.joinTournament(middleTournament, 0, 1);
-        Util.joinTournament(middleTournament, 1, 1);
+        Util.joinTournament(middleTournament, 0);
+        Util.joinTournament(middleTournament, _opponent);
 
-        _matchId = Util.matchId(1, 1);
+        _matchId = Util.matchId(_opponent, _height);
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to left tree
-        _playerToSeal =
-            Util.advanceMatch01AtLevel(middleTournament, _matchId, 1);
+        _playerToSeal = Util.advanceMatch(middleTournament, _matchId, _opponent);
 
         // expect new inner created (middle 2)
         vm.recordLogs();
@@ -100,6 +102,7 @@ contract BottomTournamentTest is Util, Test {
         Util.sealInnerMatchAndCreateInnerTournament(
             middleTournament, _matchId, _playerToSeal
         );
+        _height += 1;
 
         assertEq(
             middleTournament.getMatchCycle(_matchId.hashFromId()),
@@ -121,16 +124,15 @@ contract BottomTournamentTest is Util, Test {
             address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
         );
 
-        Util.joinTournament(bottomTournament, 0, 2);
-        Util.joinTournament(bottomTournament, 1, 2);
+        Util.joinTournament(bottomTournament, 0);
+        Util.joinTournament(bottomTournament, _opponent);
 
-        _matchId = Util.matchId(1, 2);
+        _matchId = Util.matchId(_opponent, _height);
         _match = bottomTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to left tree
-        _playerToSeal =
-            Util.advanceMatch01AtLevel(bottomTournament, _matchId, 2);
+        _playerToSeal = Util.advanceMatch(bottomTournament, _matchId, _opponent);
 
         // seal match
         Util.sealLeafMatch(bottomTournament, _matchId, _playerToSeal);
@@ -139,6 +141,137 @@ contract BottomTournamentTest is Util, Test {
             bottomTournament.getMatchCycle(_matchId.hashFromId()),
             0,
             "agree cycle should be zero"
+        );
+
+        vm.expectRevert();
+        // win match, expect revert
+        Util.winLeafMatch(bottomTournament, _matchId, _playerToSeal);
+    }
+
+    function testBottom2() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+
+        // pair commitment, expect a match
+        // player 2 joins tournament
+        uint256 _opponent = 2;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
+
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.State memory _match =
+            topTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        // advance match to end, this match will always advance to right tree
+        uint256 _playerToSeal =
+            Util.advanceMatch(topTournament, _matchId, _opponent);
+
+        // expect new inner created
+        vm.recordLogs();
+
+        // seal match
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+        _height += 1;
+
+        uint256 cycle = (
+            1
+                << (
+                    ArbitrationConstants.height(0)
+                        + ArbitrationConstants.log2step(0)
+                )
+        ) - (1 << ArbitrationConstants.log2step(0));
+        assertEq(
+            topTournament.getMatchCycle(_matchId.hashFromId()),
+            cycle,
+            "agree cycle should be 4951760157141503507410452480"
+        );
+
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        assertEq(_entries[0].topics.length, 2);
+        assertEq(
+            _entries[0].topics[0],
+            keccak256("newInnerTournament(bytes32,address)")
+        );
+        assertEq(
+            _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
+        );
+
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+
+        Util.joinTournament(middleTournament, 0);
+        Util.joinTournament(middleTournament, _opponent);
+
+        _matchId = Util.matchId(_opponent, _height);
+        _match = middleTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        // advance match to end, this match will always advance to right tree
+        _playerToSeal = Util.advanceMatch(middleTournament, _matchId, _opponent);
+
+        // expect new inner created (middle 2)
+        vm.recordLogs();
+
+        // seal match
+        Util.sealInnerMatchAndCreateInnerTournament(
+            middleTournament, _matchId, _playerToSeal
+        );
+        _height += 1;
+
+        cycle = (
+            1
+                << (
+                    ArbitrationConstants.height(0)
+                        + ArbitrationConstants.log2step(0)
+                )
+        ) - (1 << ArbitrationConstants.log2step(1));
+        assertEq(
+            middleTournament.getMatchCycle(_matchId.hashFromId()),
+            cycle,
+            "agree cycle should be 4951760157141521099462279168"
+        );
+
+        _entries = vm.getRecordedLogs();
+        assertEq(_entries[0].topics.length, 2);
+        assertEq(
+            _entries[0].topics[0],
+            keccak256("newInnerTournament(bytes32,address)")
+        );
+        assertEq(
+            _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
+        );
+
+        bottomTournament = BottomTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+
+        Util.joinTournament(bottomTournament, 0);
+        Util.joinTournament(bottomTournament, _opponent);
+
+        _matchId = Util.matchId(_opponent, _height);
+        _match = bottomTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        // advance match to end, this match will always advance to right tree
+        _playerToSeal = Util.advanceMatch(bottomTournament, _matchId, _opponent);
+
+        // seal match
+        Util.sealLeafMatch(bottomTournament, _matchId, _playerToSeal);
+
+        cycle = (
+            1
+                << (
+                    ArbitrationConstants.height(0)
+                        + ArbitrationConstants.log2step(0)
+                )
+        ) - (1 << ArbitrationConstants.log2step(2));
+        assertEq(
+            bottomTournament.getMatchCycle(_matchId.hashFromId()),
+            cycle,
+            "agree cycle should be 4951760157141521099596496895"
         );
 
         vm.expectRevert();

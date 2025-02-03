@@ -42,16 +42,18 @@ contract MiddleTournamentTest is Util, Test {
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to left tree
         uint256 _playerToSeal =
-            Util.advanceMatch01AtLevel(topTournament, _matchId, 0);
+            Util.advanceMatch(topTournament, _matchId, _opponent);
 
         // expect new inner created
         vm.recordLogs();
@@ -60,6 +62,7 @@ contract MiddleTournamentTest is Util, Test {
         Util.sealInnerMatchAndCreateInnerTournament(
             topTournament, _matchId, _playerToSeal
         );
+        _height += 1;
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 2);
@@ -85,7 +88,7 @@ contract MiddleTournamentTest is Util, Test {
         uint256 _rootTournamentFinish = _t
             + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
-        Util.joinTournament(middleTournament, 0, 1);
+        Util.joinTournament(middleTournament, 0);
 
         vm.roll(_rootTournamentFinish);
         (_finished, _winner,) = middleTournament.innerTournamentWinner();
@@ -118,14 +121,15 @@ contract MiddleTournamentTest is Util, Test {
 
         // pair commitment, expect a match
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        _matchId = Util.matchId(1, 0);
+        _matchId = Util.matchId(_opponent, _height);
         _match = topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
         // advance match to end, this match will always advance to left tree
-        _playerToSeal = Util.advanceMatch01AtLevel(topTournament, _matchId, 0);
+        _playerToSeal = Util.advanceMatch(topTournament, _matchId, _opponent);
 
         // expect new inner created
         vm.recordLogs();
@@ -134,6 +138,7 @@ contract MiddleTournamentTest is Util, Test {
         Util.sealInnerMatchAndCreateInnerTournament(
             topTournament, _matchId, _playerToSeal
         );
+        _height += 1;
 
         _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 2);
@@ -159,15 +164,15 @@ contract MiddleTournamentTest is Util, Test {
         uint256 _middleTournamentFinish = _rootTournamentFinish
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
-        Util.joinTournament(middleTournament, 0, 1);
+        Util.joinTournament(middleTournament, 0);
 
         //let player 1 join, then timeout player 0
-        Util.joinTournament(middleTournament, 1, 1);
+        Util.joinTournament(middleTournament, _opponent);
 
         (Clock.State memory _player0Clock,) = middleTournament.getCommitment(
-            playerNodes[0][ArbitrationConstants.height(1)]
+            playerNodes[0][ArbitrationConstants.height(_height)]
         );
-        _matchId = Util.matchId(1, 1);
+        _matchId = Util.matchId(_opponent, _height);
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 

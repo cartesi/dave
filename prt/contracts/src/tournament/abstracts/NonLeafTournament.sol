@@ -34,16 +34,6 @@ abstract contract NonLeafTournament is Tournament {
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     //
-    // Modifiers
-    //
-    modifier onlyInnerTournament() {
-        Match.IdHash matchIdHash =
-            matchIdFromInnerTournaments[NonRootTournament(msg.sender)];
-        matches[matchIdHash].requireExist();
-        _;
-    }
-
-    //
     // Constructor
     //
     constructor(IMultiLevelTournamentFactory _tournamentFactory) {
