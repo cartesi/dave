@@ -180,6 +180,7 @@ contract DaveConsensus is IDataProvider {
         bytes32 realInputHash = _inputBox.getInputHash(_appContract, inputIndex);
         require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
 
-        return input.getSmallestMerkleRootFromBytes();
+        uint256 log2SizeOfDrive = input.getMinLog2SizeOfDrive();
+        return input.getMerkleRootFromBytes(log2SizeOfDrive);
     }
 }
