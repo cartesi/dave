@@ -23,8 +23,12 @@ import {Merkle} from "src/Merkle.sol";
 contract MerkleProxy {
     using Merkle for bytes;
 
-    function getSmallestMerkleRootFromBytes(bytes calldata data) external pure returns (bytes32) {
-        return data.getSmallestMerkleRootFromBytes();
+    function getMinLog2SizeOfDrive(bytes calldata data) external pure returns (uint256) {
+        return data.getMinLog2SizeOfDrive();
+    }
+
+    function getMerkleRootFromBytes(bytes calldata data, uint256 log2SizeOfDrive) external pure returns (bytes32) {
+        return data.getMerkleRootFromBytes(log2SizeOfDrive);
     }
 }
 
@@ -335,7 +339,8 @@ contract DaveConsensusTest is Test {
             inputIndexWithinBounds = bound(inputIndexWithinBounds, 0, inputs.length - 1);
             bytes memory input = inputs[inputIndexWithinBounds];
             bytes32 root = daveConsensus.provideMerkleRootOfInput(inputIndexWithinBounds, input);
-            assertEq(root, _merkleProxy.getSmallestMerkleRootFromBytes(input));
+            uint256 log2SizeOfDrive = _merkleProxy.getMinLog2SizeOfDrive(input);
+            assertEq(root, _merkleProxy.getMerkleRootFromBytes(input, log2SizeOfDrive));
         }
 
         {
