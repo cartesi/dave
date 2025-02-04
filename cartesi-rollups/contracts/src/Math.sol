@@ -55,7 +55,7 @@ library Math {
         return n;
     }
 
-    /// @notice the smallest uint256 for which x <= 2^i
+    /// @notice the smallest y for which x <= 2^y
     /// @param x number you want the log2clp of
     /// @dev this a binary search implementation
     function log2clp(uint256 x) internal pure returns (uint256) {
