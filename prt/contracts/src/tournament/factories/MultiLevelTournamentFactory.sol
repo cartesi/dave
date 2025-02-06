@@ -3,27 +3,13 @@
 
 pragma solidity ^0.8.17;
 
+import "../../DisputeParameters.sol";
 import "../../IMultiLevelTournamentFactory.sol";
 import "../../TournamentParameters.sol";
 
 import "./multilevel/TopTournamentFactory.sol";
 import "./multilevel/MiddleTournamentFactory.sol";
 import "./multilevel/BottomTournamentFactory.sol";
-
-struct CommitmentStructure {
-    uint64 log2step;
-    uint64 height;
-}
-
-struct TimeConstants {
-    Time.Duration matchEffort;
-    Time.Duration maxAllowance;
-}
-
-struct DisputeParameters {
-    TimeConstants timeConstants;
-    CommitmentStructure[] commitmentStructures;
-}
 
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
