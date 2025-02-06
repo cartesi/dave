@@ -10,7 +10,7 @@ forge_script="forge script \
     script/Deploy.s.sol \
     --fork-url 'http://127.0.0.1:8545' \
     --broadcast \
-    --sig 'run(bytes32)' \
+    --sig 'deployTopTournament(bytes32)' \
     '${INITIAL_HASH}' \
     -vvvv 2>&1"
 

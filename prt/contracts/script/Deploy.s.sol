@@ -18,7 +18,7 @@ contract DeployScript is Script {
         vm.stopBroadcast();
     }
 
-    function run(Machine.Hash initialHash) external broadcast {
+    function deployTopTournament(Machine.Hash initialHash) external broadcast {
         MultiLevelTournamentFactory factory = _deployFactory();
         factory.instantiate(initialHash, IDataProvider(address(0x0)));
     }
