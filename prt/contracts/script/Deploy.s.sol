@@ -23,6 +23,10 @@ contract DeployScript is Script {
         factory.instantiate(initialHash, IDataProvider(address(0x0)));
     }
 
+    function deployMultiLevelTournamentFactory() external broadcast {
+        _deployFactory();
+    }
+
     function _deployFactory() internal returns (MultiLevelTournamentFactory) {
         return new MultiLevelTournamentFactory(
             new TopTournamentFactory(),
