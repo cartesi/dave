@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import "./tournament/libs/Time.sol";
+import "./DisputeParameters.sol";
 
 library ArbitrationConstants {
     // maximum time for computing the commitments offchain
@@ -43,5 +44,45 @@ library ArbitrationConstants {
     function height(uint64 level) internal pure returns (uint64) {
         uint64[LEVELS] memory arr = [uint64(48), uint64(16), uint64(28)];
         return arr[level];
+    }
+
+    function disputeParameters()
+        internal
+        pure
+        returns (DisputeParameters memory)
+    {
+        return DisputeParameters({
+            timeConstants: timeConstants(),
+            commitmentStructures: commitmentStructures()
+        });
+    }
+
+    function timeConstants() internal pure returns (TimeConstants memory) {
+        return TimeConstants({
+            matchEffort: MATCH_EFFORT,
+            maxAllowance: MAX_ALLOWANCE
+        });
+    }
+
+    function commitmentStructures()
+        internal
+        pure
+        returns (CommitmentStructure[] memory structures)
+    {
+        structures = new CommitmentStructure[](LEVELS);
+        for (uint64 level; level < LEVELS; ++level) {
+            structures[level] = commitmentStructure(level);
+        }
+    }
+
+    function commitmentStructure(uint64 level)
+        internal
+        pure
+        returns (CommitmentStructure memory)
+    {
+        return CommitmentStructure({
+            log2step: log2step(level),
+            height: height(level)
+        });
     }
 }
