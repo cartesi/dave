@@ -12,14 +12,15 @@ import "src/IDataProvider.sol";
 import "src/CanonicalConstants.sol";
 
 contract TopTournamentScript is Script {
-    function run(Machine.Hash initialHash) external {
+    modifier broadcast() {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
-
-        MultiLevelTournamentFactory factory = _deployFactory();
-
-        factory.instantiate(initialHash, IDataProvider(address(0x0)));
-
+        _;
         vm.stopBroadcast();
+    }
+
+    function run(Machine.Hash initialHash) external broadcast {
+        MultiLevelTournamentFactory factory = _deployFactory();
+        factory.instantiate(initialHash, IDataProvider(address(0x0)));
     }
 
     function _deployFactory() internal returns (MultiLevelTournamentFactory) {
