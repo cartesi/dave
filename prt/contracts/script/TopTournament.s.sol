@@ -15,15 +15,19 @@ contract TopTournamentScript is Script {
     function run(Machine.Hash initialHash) external {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
-        MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
+        MultiLevelTournamentFactory factory = _deployFactory();
+
+        factory.instantiate(initialHash, IDataProvider(address(0x0)));
+
+        vm.stopBroadcast();
+    }
+
+    function _deployFactory() internal returns (MultiLevelTournamentFactory) {
+        return new MultiLevelTournamentFactory(
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
             ArbitrationConstants.disputeParameters()
         );
-
-        factory.instantiate(initialHash, IDataProvider(address(0x0)));
-
-        vm.stopBroadcast();
     }
 }
