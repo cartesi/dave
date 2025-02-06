@@ -11,7 +11,7 @@ import "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import "src/IDataProvider.sol";
 import "src/CanonicalConstants.sol";
 
-contract TopTournamentScript is Script {
+contract DeployScript is Script {
     modifier broadcast() {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         _;
