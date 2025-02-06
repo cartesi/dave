@@ -503,7 +503,7 @@ mod blockchain_reader_tests {
             anvil,
             provider,
             Address::from_hex("0x5fbdb2315678afecb367f032d93f642f64180aa3").unwrap(),
-            Address::from_hex("0x0165878a594ca255338adfa4d48449f69242eb8f").unwrap(),
+            Address::from_hex("0xa513e6e4b8f2a923d98304ec87f64353c4d5c853").unwrap(),
         )
     }
 
