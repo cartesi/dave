@@ -12,7 +12,7 @@ You need a docker installation to run the Dave Lua node.
 In order to run tests in this directory, a docker image must be built to prepare the test environment.
 Once the test image is built, the user can run all the tests supported by swapping the `MACHINE_PATH` env variable.
 
-```
+```bash
 make create-image
 ```
 
@@ -28,37 +28,37 @@ Note that there may only be one instance of each claim (_i.e._ no duplicates).
 Players that are defending the same claim will join forces.
 These players come in multiple flavours:
 
--   The honest player is one that uses the honest strategy and defends the correct claim.
+- The honest player is one that uses the honest strategy and defends the correct claim.
     The honest players will always emerge victorious.
     There may be multiple honest players; they'll help each other defending the correct claim.
     Honest players never fight multiple matches at the same time.
--   One kind of dishonest player uses the honest strategy, but defends an incorrect claim.
+- One kind of dishonest player uses the honest strategy, but defends an incorrect claim.
     These dishonest players will always lose a match against the correct claim.
--   Another kind of dishonest player — called the _idle_ player — posts a claim, but never interacts with the blockchain again.
+- Another kind of dishonest player — called the _idle_ player — posts a claim, but never interacts with the blockchain again.
     If no other player is actively defending this claim, it will lose by timeout.
 
 To add more players of different kinds, you can edit the [`prt_compute.lua`](prt_compute.lua) file.
 To run the full example, execute one of the following commands from the current path:
 
-```
+```bash
 make test-simple
 ```
 
 ## Run stress test
 
-```
+```bash
 make test-stress
 ```
 
 ## Run doom showcase
 
-```
+```bash
 make test-doom
 ```
 
 ## Run doom showcase with graphics on
 
-```
+```bash
 make test-doom-with-graphics
 ```
 

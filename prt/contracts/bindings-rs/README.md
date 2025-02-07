@@ -4,5 +4,5 @@
 
 Run make command from [parent directory](../)
 ```
-make bind
+just bind
 ```
