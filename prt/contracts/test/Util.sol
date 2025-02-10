@@ -152,6 +152,21 @@ contract Util {
         joinTournament(_topTournament, 0);
     }
 
+    // create new _topTournament and player 0 joins it
+    function initializePlayer0RollupsTournament(
+        MultiLevelTournamentFactory _factory
+    ) internal returns (TopTournament _topTournament) {
+        _topTournament = TopTournament(
+            address(
+                _factory.instantiate(
+                    ONE_STATE, IDataProvider(address(0x12345678901234567890))
+                )
+            )
+        );
+        // player 0 joins tournament
+        joinTournament(_topTournament, 0);
+    }
+
     // _player joins _tournament at _level
     function joinTournament(Tournament _tournament, uint256 _player) internal {
         (,,, uint64 height) = _tournament.tournamentLevelConstants();
@@ -197,6 +212,42 @@ contract Util {
         // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
 
         _tournament.winLeafMatch(_matchId, _left, _right, new bytes(0));
+    }
+
+    function winLeafMatchRollupsWithInput(
+        LeafTournament _tournament,
+        Match.Id memory _matchId,
+        uint256 _player
+    ) internal {
+        Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
+        Tree.Node _right = playerNodes[_player][0];
+        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
+
+        uint256 length = 20;
+        _tournament.winLeafMatch(
+            _matchId,
+            _left,
+            _right,
+            abi.encodePacked(abi.encodePacked(length), new bytes(20))
+        );
+    }
+
+    function winLeafMatchRollupsWithoutInput(
+        LeafTournament _tournament,
+        Match.Id memory _matchId,
+        uint256 _player
+    ) internal {
+        Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
+        Tree.Node _right = playerNodes[_player][0];
+        // Machine.Hash state = _player == 1 ? ONE_STATE : Machine.ZERO_STATE;
+
+        uint256 length = 0;
+        _tournament.winLeafMatch(
+            _matchId,
+            _left,
+            _right,
+            abi.encodePacked(abi.encodePacked(length), new bytes(0))
+        );
     }
 
     function sealInnerMatchAndCreateInnerTournament(
