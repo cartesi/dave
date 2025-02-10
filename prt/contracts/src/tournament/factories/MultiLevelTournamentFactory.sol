@@ -5,65 +5,28 @@ pragma solidity ^0.8.17;
 
 import "../../IMultiLevelTournamentFactory.sol";
 import "../../TournamentParameters.sol";
+import "../../ITournamentParametersProvider.sol";
 
 import "./multilevel/TopTournamentFactory.sol";
 import "./multilevel/MiddleTournamentFactory.sol";
 import "./multilevel/BottomTournamentFactory.sol";
 
-struct CommitmentStructure {
-    uint64 log2step;
-    uint64 height;
-}
-
-struct TimeConstants {
-    Time.Duration matchEffort;
-    Time.Duration maxAllowance;
-}
-
-struct DisputeParameters {
-    TimeConstants timeConstants;
-    CommitmentStructure[] commitmentStructures;
-}
-
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
     MiddleTournamentFactory immutable middleFactory;
     BottomTournamentFactory immutable bottomFactory;
-    uint64 immutable levels;
-    Time.Duration immutable matchEffort;
-    Time.Duration immutable maxAllowance;
-    uint64 immutable log2step0;
-    uint64 immutable height0;
-    CommitmentStructure[] commitmentStructures;
-
-    error CommitmentStructuresArrayLengthTooSmall();
-    error CommitmentStructuresArrayLengthTooLarge();
+    ITournamentParametersProvider immutable tournamentParametersProvider;
 
     constructor(
         TopTournamentFactory _topFactory,
         MiddleTournamentFactory _middleFactory,
         BottomTournamentFactory _bottomFactory,
-        DisputeParameters memory _disputeParameters
+        ITournamentParametersProvider _tournamentParametersProvider
     ) {
         topFactory = _topFactory;
         middleFactory = _middleFactory;
         bottomFactory = _bottomFactory;
-
-        require(
-            _disputeParameters.commitmentStructures.length >= 1,
-            CommitmentStructuresArrayLengthTooSmall()
-        );
-        require(
-            _disputeParameters.commitmentStructures.length <= type(uint64).max,
-            CommitmentStructuresArrayLengthTooLarge()
-        );
-
-        levels = uint64(_disputeParameters.commitmentStructures.length);
-        matchEffort = _disputeParameters.timeConstants.matchEffort;
-        maxAllowance = _disputeParameters.timeConstants.maxAllowance;
-        log2step0 = _disputeParameters.commitmentStructures[0].log2step;
-        height0 = _disputeParameters.commitmentStructures[0].height;
-        commitmentStructures = _disputeParameters.commitmentStructures;
+        tournamentParametersProvider = _tournamentParametersProvider;
     }
 
     function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
@@ -71,13 +34,14 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         override
         returns (ITournament)
     {
-        TopTournament _tournament = this.instantiateTop(_initialHash, _provider);
+        TopTournament _tournament = instantiateTop(_initialHash, _provider);
         emit tournamentCreated(_tournament);
         return _tournament;
     }
 
     function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
-        external
+        public
+        override
         returns (TopTournament)
     {
         TopTournament _tournament = topFactory.instantiate(
@@ -96,7 +60,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external returns (MiddleTournament) {
+    ) external override returns (MiddleTournament) {
         MiddleTournament _tournament = middleFactory.instantiate(
             _initialHash,
             _contestedCommitmentOne,
@@ -124,7 +88,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external returns (BottomTournament) {
+    ) external override returns (BottomTournament) {
         BottomTournament _tournament = bottomFactory.instantiate(
             _initialHash,
             _contestedCommitmentOne,
@@ -146,13 +110,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         view
         returns (TournamentParameters memory)
     {
-        return TournamentParameters({
-            levels: levels,
-            log2step: log2step0,
-            height: height0,
-            matchEffort: matchEffort,
-            maxAllowance: maxAllowance
-        });
+        return _getTournamentParameters(0);
     }
 
     function _getTournamentParameters(uint64 _level)
@@ -160,12 +118,6 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         view
         returns (TournamentParameters memory)
     {
-        return TournamentParameters({
-            levels: levels,
-            log2step: commitmentStructures[_level].log2step,
-            height: commitmentStructures[_level].height,
-            matchEffort: matchEffort,
-            maxAllowance: maxAllowance
-        });
+        return tournamentParametersProvider.tournamentParameters(_level);
     }
 }

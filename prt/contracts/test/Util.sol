@@ -12,6 +12,7 @@
 
 import "src/tournament/libs/Match.sol";
 import "src/CanonicalConstants.sol";
+import "src/CanonicalTournamentParametersProvider.sol";
 import "src/tournament/concretes/TopTournament.sol";
 import "src/tournament/concretes/MiddleTournament.sol";
 
@@ -289,28 +290,11 @@ contract Util {
         internal
         returns (MultiLevelTournamentFactory)
     {
-        DisputeParameters memory disputeParameters = DisputeParameters({
-            timeConstants: TimeConstants({
-                matchEffort: ArbitrationConstants.MATCH_EFFORT,
-                maxAllowance: ArbitrationConstants.MAX_ALLOWANCE
-            }),
-            commitmentStructures: new CommitmentStructure[](
-                ArbitrationConstants.LEVELS
-            )
-        });
-
-        for (uint64 i; i < ArbitrationConstants.LEVELS; ++i) {
-            disputeParameters.commitmentStructures[i] = CommitmentStructure({
-                log2step: ArbitrationConstants.log2step(i),
-                height: ArbitrationConstants.height(i)
-            });
-        }
-
         return new MultiLevelTournamentFactory(
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
-            disputeParameters
+            new CanonicalTournamentParametersProvider()
         );
     }
 }
