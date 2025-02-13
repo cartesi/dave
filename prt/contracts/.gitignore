@@ -16,6 +16,4 @@ docs/
 # Coverage
 report
 lcov.info
-
-# Test
-test/uarch-log
+lcov.info.pruned

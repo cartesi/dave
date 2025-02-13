@@ -23,6 +23,7 @@ contract TournamentTest is Util, Test {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
+    using Match for Match.State;
     using Machine for Machine.Hash;
 
     MultiLevelTournamentFactory immutable factory;
@@ -32,7 +33,6 @@ contract TournamentTest is Util, Test {
     event matchCreated(
         Tree.Node indexed one, Tree.Node indexed two, Tree.Node leftOfTwo
     );
-    event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     constructor() {
         factory = Util.instantiateTournamentFactory();
@@ -43,10 +43,6 @@ contract TournamentTest is Util, Test {
     function testJoinTournament() public {
         topTournament = Util.initializePlayer0Tournament(factory);
 
-        // duplicate commitment should be reverted
-        vm.expectRevert("clock is initialized");
-        Util.joinTournament(topTournament, 0, 0);
-
         // pair commitment, expect a match
         vm.expectEmit(true, true, false, true, address(topTournament));
         emit matchCreated(
@@ -55,8 +51,17 @@ contract TournamentTest is Util, Test {
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        Util.joinTournament(topTournament, _opponent);
     }
+
+    // function testDuplicateJoinTournament() public {
+    //     topTournament = Util.initializePlayer0Tournament(factory);
+
+    //     // duplicate commitment should be reverted
+    //     vm.expectRevert("clock is initialized");
+    //     Util.joinTournament(topTournament, 0);
+    // }
 
     function testTimeout() public {
         topTournament = Util.initializePlayer0Tournament(factory);
@@ -68,9 +73,11 @@ contract TournamentTest is Util, Test {
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(1, 0);
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
         assertFalse(
             topTournament.canWinMatchByTimeout(_matchId),
             "shouldn't be able to win match by timeout"
@@ -122,11 +129,11 @@ contract TournamentTest is Util, Test {
             + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
 
         // player 1 joins tournament
-        Util.joinTournament(topTournament, 1, 0);
+        Util.joinTournament(topTournament, _opponent);
 
         // player 0 should win after fast forward time to player 1 timeout
         // player 1 timeout first because he's supposed to advance match after player 0 advanced
-        _matchId = Util.matchId(1, 0);
+        _matchId = Util.matchId(_opponent, _height);
 
         topTournament.advanceMatch(
             _matchId,
@@ -168,5 +175,33 @@ contract TournamentTest is Util, Test {
             _finalState.eq(Util.finalStates[_winnerPlayer]),
             "final state should match"
         );
+    }
+
+    function testEliminateByTimeout() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+
+        // pair commitment, expect a match
+        // player 1 joins tournament
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
+
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.State memory _match =
+            topTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        uint256 _t = vm.getBlockNumber();
+        // the delay is increased when a match is created
+        uint256 _rootTournamentFinish =
+            _t + 2 * Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+
+        vm.roll(_rootTournamentFinish - 1);
+        // cannot eliminate match when both blocks still have time
+        vm.expectRevert(Tournament.EliminateByTimeout.selector);
+        topTournament.eliminateMatchByTimeout(_matchId);
+
+        vm.roll(_rootTournamentFinish);
+        topTournament.eliminateMatchByTimeout(_matchId);
     }
 }

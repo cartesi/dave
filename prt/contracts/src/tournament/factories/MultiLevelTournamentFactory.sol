@@ -63,7 +63,11 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         maxAllowance = _disputeParameters.timeConstants.maxAllowance;
         log2step0 = _disputeParameters.commitmentStructures[0].log2step;
         height0 = _disputeParameters.commitmentStructures[0].height;
-        commitmentStructures = _disputeParameters.commitmentStructures;
+        for (uint64 i = 0; i < levels; i++) {
+            commitmentStructures.push(
+                _disputeParameters.commitmentStructures[i]
+            );
+        }
     }
 
     function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
