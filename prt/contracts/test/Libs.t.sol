@@ -17,6 +17,15 @@ import "src/tournament/libs/Time.sol";
 
 pragma solidity ^0.8.0;
 
+library ExternalTime {
+    function sub(Time.Duration left, Time.Duration right)
+        external
+        returns (Time.Duration)
+    {
+        return Time.sub(left, right);
+    }
+}
+
 contract LibraryTest is Test {
     using Machine for Machine.Hash;
     using Time for Time.Duration;
@@ -35,7 +44,7 @@ contract LibraryTest is Test {
         vm.expectRevert();
         Time.Duration l = Time.Duration.wrap(25);
         Time.Duration r = Time.Duration.wrap(35);
-        l.sub(r);
+        ExternalTime.sub(l, r);
     }
 
     function testMachineNotInitialized() public pure {

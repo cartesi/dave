@@ -16,6 +16,27 @@ import "src/tournament/libs/Clock.sol";
 
 pragma solidity ^0.8.0;
 
+library ExternalClock {
+    function advanceClock(Clock.State storage state) external {
+        Clock.advanceClock(state);
+    }
+
+    function setNewPaused(
+        Clock.State storage state,
+        Time.Instant checkinInstant,
+        Time.Duration initialAllowance
+    ) external {
+        Clock.setNewPaused(state, checkinInstant, initialAllowance);
+    }
+
+    function timeSinceTimeout(Clock.State storage state)
+        external
+        returns (Time.Duration)
+    {
+        return Clock.timeSinceTimeout(state);
+    }
+}
+
 contract ClockTest is Test {
     using Clock for Clock.State;
     using Time for Time.Duration;
@@ -23,6 +44,7 @@ contract ClockTest is Test {
 
     Clock.State clock1;
     Clock.State clock2;
+    Clock.State clock3;
 
     uint64 constant clock1Allowance = 20;
     uint64 constant clock2Allowance = 30;
@@ -33,6 +55,9 @@ contract ClockTest is Test {
         );
         Clock.setNewPaused(
             clock2, Time.currentTime(), Time.Duration.wrap(clock2Allowance)
+        );
+        Clock.setNewPaused(
+            clock3, Time.currentTime(), Time.Duration.wrap(clock2Allowance)
         );
     }
 
@@ -66,7 +91,9 @@ contract ClockTest is Test {
 
     function testNewClock() public {
         vm.expectRevert("can't create clock with zero time");
-        Clock.setNewPaused(clock2, Time.currentTime(), Time.Duration.wrap(0));
+        ExternalClock.setNewPaused(
+            clock2, Time.currentTime(), Time.Duration.wrap(0)
+        );
     }
 
     function testTimeLeft() public {
@@ -82,7 +109,7 @@ contract ClockTest is Test {
         assertTrue(!clock1.hasTimeLeft(), "clock1 should run out of time");
 
         vm.expectRevert("can't advance clock with no time left");
-        clock1.advanceClock();
+        ExternalClock.advanceClock(clock1);
     }
 
     function testTimeout() public {
@@ -120,10 +147,8 @@ contract ClockTest is Test {
             clock2.timeSinceTimeout().gt(Time.ZERO_DURATION),
             "clock2 shouldn be timeout"
         );
-    }
 
-    function testTimeout2() public {
         vm.expectRevert("a paused clock can't timeout");
-        clock1.timeSinceTimeout();
+        ExternalClock.timeSinceTimeout(clock3);
     }
 }
