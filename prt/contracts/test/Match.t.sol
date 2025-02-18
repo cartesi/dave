@@ -18,6 +18,12 @@ import "src/CanonicalConstants.sol";
 
 pragma solidity ^0.8.0;
 
+library ExternalMatch {
+    function requireEq(Match.IdHash left, Match.IdHash right) external {
+        Match.requireEq(left, right);
+    }
+}
+
 contract MatchTest is Test {
     using Tree for Tree.Node;
     using Machine for Machine.Hash;
@@ -143,6 +149,6 @@ contract MatchTest is Test {
         assertTrue(!rightDivergenceMatchId.eq(leftDivergenceMatchId));
 
         vm.expectRevert("matches are not equal");
-        leftDivergenceMatchId.requireEq(rightDivergenceMatchId);
+        ExternalMatch.requireEq(leftDivergenceMatchId, rightDivergenceMatchId);
     }
 }
