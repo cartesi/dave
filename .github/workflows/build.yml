@@ -9,14 +9,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up cache for Foundry
-        uses: actions/cache@v3
-        with:
-          path: ~/.foundry
-          key: ${{ runner.os }}-foundry-${{ hashFiles('**/foundry.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-foundry-
-
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
@@ -29,16 +21,6 @@ jobs:
           just check-fmt
           just build-smart-contracts
           just test
-
-      - name: Set up cache for Cargo
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Deps
         run: |
