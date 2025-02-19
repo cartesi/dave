@@ -10,6 +10,7 @@ inputbox_script="forge script \
     script/InputBox.s.sol \
     --fork-url 'http://127.0.0.1:8545' \
     --broadcast \
+    --non-interactive \
     --sig 'run()' \
     -vvvv 2>&1"
 
@@ -22,6 +23,7 @@ daveconsensus_script="forge script \
     script/DaveConsensus.s.sol \
     --fork-url 'http://127.0.0.1:8545' \
     --broadcast \
+    --non-interactive \
     --sig 'run(bytes32,address)' \
     '$INITIAL_HASH' \
     '$INPUTBOX_ADDRESS' \

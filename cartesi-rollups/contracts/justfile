@@ -37,6 +37,7 @@ deploy-dev INITIAL_HASH:
         script/InputBox.s.sol \
         --fork-url {{ANVIL_ENDPOINT}} \
         --broadcast \
+        --non-interactive \
         --sig 'run()' \
         -vvvv 2>&1
     forge script \
@@ -44,6 +45,7 @@ deploy-dev INITIAL_HASH:
         --fork-url {{ANVIL_ENDPOINT}} \
         --code-size-limit 65536 \
         --broadcast \
+        --non-interactive \
         --sig 'run(bytes32,address)' \
         {{INITIAL_HASH}} \
         $(jq -r '.transactions[] | select(.transactionType=="CREATE").contractAddress' broadcast/InputBox.s.sol/{{ANVIL_CHAIN_ID}}/run-latest.json) \
