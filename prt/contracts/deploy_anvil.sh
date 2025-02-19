@@ -10,6 +10,7 @@ forge_script="forge script \
     script/TopTournament.s.sol \
     --fork-url 'http://127.0.0.1:8545' \
     --broadcast \
+    --non-interactive \
     --sig 'run(bytes32)' \
     '${INITIAL_HASH}' \
     -vvvv 2>&1"
