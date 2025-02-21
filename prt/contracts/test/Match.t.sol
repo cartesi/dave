@@ -18,56 +18,278 @@ import "src/CanonicalConstants.sol";
 
 pragma solidity ^0.8.0;
 
-// TODO: we cannot set the height of a match anymore
-// To properly test, we'll need to swap the implementation of
-// ArbitrationConstants.
-// Or wait until `mockCall` works on internal calls `https://github.com/foundry-rs/foundry/issues/432`
+library ExternalMatch {
+    function requireEq(Match.IdHash left, Match.IdHash right) external pure {
+        Match.requireEq(left, right);
+    }
 
-/*
+    function advanceMatch(
+        Match.State storage state,
+        Match.Id calldata id,
+        Tree.Node leftNode,
+        Tree.Node rightNode,
+        Tree.Node newLeftNode,
+        Tree.Node newRightNode
+    ) external {
+        Match.advanceMatch(
+            state, id, leftNode, rightNode, newLeftNode, newRightNode
+        );
+    }
+
+    function sealMatch(
+        Match.State storage state,
+        Match.Id calldata id,
+        Machine.Hash initialState,
+        Tree.Node leftLeaf,
+        Tree.Node rightLeaf,
+        Machine.Hash agreeState,
+        bytes32[] calldata agreeStateProof
+    )
+        external
+        returns (Machine.Hash divergentStateOne, Machine.Hash divergentStateTwo)
+    {
+        return Match.sealMatch(
+            state,
+            id,
+            initialState,
+            leftLeaf,
+            rightLeaf,
+            agreeState,
+            agreeStateProof
+        );
+    }
+}
+
 contract MatchTest is Test {
     using Tree for Tree.Node;
     using Machine for Machine.Hash;
     using Match for Match.Id;
+    using Match for Match.IdHash;
     using Match for Match.State;
 
-    uint256 MAX_LOG2_SIZE = ArbitrationConstants.height(0);
+    Tree.Node constant ONE_NODE = Tree.Node.wrap(bytes32(uint256(1)));
+
+    Match.State advanceMatchStateLeft;
+    Match.State advanceMatchStateRight;
 
     Match.State leftDivergenceMatch;
     Match.State rightDivergenceMatch;
-    Match.IdHash leftDivergenceMatchId;
-    Match.IdHash rightDivergenceMatchId;
+
+    Match.IdHash leftDivergenceMatchIdHash;
+    Match.IdHash rightDivergenceMatchIdHash;
+
+    Tree.Node leftDivergenceCommitment1 = Tree.ZERO_NODE.join(Tree.ZERO_NODE);
+    Tree.Node rightDivergenceCommitment1 = Tree.ZERO_NODE.join(Tree.ZERO_NODE);
+
+    Tree.Node leftDivergenceCommitment2 = ONE_NODE.join(Tree.ZERO_NODE);
+    Tree.Node rightDivergenceCommitment2 = Tree.ZERO_NODE.join(ONE_NODE);
 
     function setUp() public {
-        Tree.Node leftDivergenceCommitment1 = Tree.ZERO_NODE.join(
-            Tree.ZERO_NODE
-        );
-        Tree.Node rightDivergenceCommitment1 = Tree.ZERO_NODE.join(
-            Tree.ZERO_NODE
-        );
-
-        Tree.Node leftDivergenceCommitment2 = Tree
-            .Node
-            .wrap(bytes32(uint256(1)))
-            .join(Tree.ZERO_NODE);
-        Tree.Node rightDivergenceCommitment2 = Tree.ZERO_NODE.join(
-            Tree.Node.wrap(bytes32(uint256(1)))
-        );
-
-        (leftDivergenceMatchId, leftDivergenceMatch) = Match.createMatch(
+        (leftDivergenceMatchIdHash, leftDivergenceMatch) = Match.createMatch(
             leftDivergenceCommitment1,
             leftDivergenceCommitment2,
-            Tree.Node.wrap(bytes32(uint256(1))),
+            ONE_NODE,
             Tree.ZERO_NODE,
+            0,
             1
         );
 
-        (rightDivergenceMatchId, rightDivergenceMatch) = Match.createMatch(
+        (rightDivergenceMatchIdHash, rightDivergenceMatch) = Match.createMatch(
             rightDivergenceCommitment1,
             rightDivergenceCommitment2,
             Tree.ZERO_NODE,
-            Tree.Node.wrap(bytes32(uint256(1))),
+            ONE_NODE,
+            0,
             1
         );
+    }
+
+    function testAdvanceMatchLeft() public {
+        Tree.Node leftDivergenceCommitment3 =
+            leftDivergenceCommitment1.join(Tree.ZERO_NODE);
+        Tree.Node leftDivergenceCommitment4 =
+            leftDivergenceCommitment2.join(Tree.ZERO_NODE);
+
+        (, advanceMatchStateLeft) = Match.createMatch(
+            leftDivergenceCommitment3,
+            leftDivergenceCommitment4,
+            leftDivergenceCommitment2,
+            Tree.ZERO_NODE,
+            0,
+            2
+        );
+        advanceMatchStateLeft.requireExist();
+
+        Match.Id memory id =
+            Match.Id(leftDivergenceCommitment3, leftDivergenceCommitment4);
+
+        advanceMatchStateLeft.requireCanBeAdvanced();
+        ExternalMatch.advanceMatch(
+            advanceMatchStateLeft,
+            id,
+            leftDivergenceCommitment1,
+            Tree.ZERO_NODE,
+            Tree.ZERO_NODE,
+            Tree.ZERO_NODE
+        );
+
+        assertEq(advanceMatchStateLeft.currentHeight, 1);
+        assertTrue(advanceMatchStateLeft.leftNode.eq(Tree.ZERO_NODE));
+        assertTrue(advanceMatchStateLeft.rightNode.eq(Tree.ZERO_NODE));
+
+        advanceMatchStateLeft.requireCanBeFinalized();
+        ExternalMatch.sealMatch(
+            advanceMatchStateLeft,
+            id,
+            Machine.ZERO_STATE,
+            ONE_NODE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            new bytes32[](0)
+        );
+
+        advanceMatchStateLeft.requireIsFinished();
+        (
+            Machine.Hash agreeHash,
+            uint256 agreeCycle,
+            Machine.Hash finalStateOne,
+            Machine.Hash finalStateTwo
+        ) = advanceMatchStateLeft.getDivergence(0);
+    }
+
+    function testAdvanceMatchRight() public {
+        Tree.Node rightDivergenceCommitment3 =
+            Tree.ZERO_NODE.join(rightDivergenceCommitment1);
+        Tree.Node rightDivergenceCommitment4 =
+            Tree.ZERO_NODE.join(rightDivergenceCommitment2);
+
+        (, advanceMatchStateRight) = Match.createMatch(
+            rightDivergenceCommitment3,
+            rightDivergenceCommitment4,
+            Tree.ZERO_NODE,
+            rightDivergenceCommitment2,
+            0,
+            2
+        );
+        advanceMatchStateRight.requireExist();
+
+        Match.Id memory id =
+            Match.Id(rightDivergenceCommitment3, rightDivergenceCommitment4);
+
+        advanceMatchStateRight.requireCanBeAdvanced();
+        ExternalMatch.advanceMatch(
+            advanceMatchStateRight,
+            id,
+            Tree.ZERO_NODE,
+            rightDivergenceCommitment1,
+            Tree.ZERO_NODE,
+            Tree.ZERO_NODE
+        );
+
+        assertEq(advanceMatchStateRight.currentHeight, 1);
+        assertTrue(advanceMatchStateRight.leftNode.eq(Tree.ZERO_NODE));
+        assertTrue(advanceMatchStateRight.rightNode.eq(Tree.ZERO_NODE));
+
+        bytes32[] memory proof = new bytes32[](2);
+        proof[0] = Tree.Node.unwrap(ONE_NODE);
+        proof[1] = Tree.Node.unwrap(Tree.ZERO_NODE);
+
+        advanceMatchStateRight.requireCanBeFinalized();
+        ExternalMatch.sealMatch(
+            advanceMatchStateRight,
+            id,
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            ONE_NODE,
+            Machine.ZERO_STATE,
+            proof
+        );
+
+        advanceMatchStateRight.requireIsFinished();
+        (
+            Machine.Hash agreeHash,
+            uint256 agreeCycle,
+            Machine.Hash finalStateOne,
+            Machine.Hash finalStateTwo
+        ) = advanceMatchStateRight.getDivergence(0);
+    }
+
+    function testAdvanceMatchRight2() public {
+        Tree.Node rightDivergenceCommitment3 =
+            Tree.ZERO_NODE.join(rightDivergenceCommitment1);
+        Tree.Node rightDivergenceCommitment4 =
+            Tree.ZERO_NODE.join(rightDivergenceCommitment2);
+        Tree.Node rightDivergenceCommitment5 =
+            Tree.ZERO_NODE.join(rightDivergenceCommitment3);
+        Tree.Node rightDivergenceCommitment6 =
+            Tree.ZERO_NODE.join(rightDivergenceCommitment4);
+
+        (, advanceMatchStateRight) = Match.createMatch(
+            rightDivergenceCommitment5,
+            rightDivergenceCommitment6,
+            Tree.ZERO_NODE,
+            rightDivergenceCommitment4,
+            0,
+            3
+        );
+        advanceMatchStateRight.requireExist();
+
+        Match.Id memory id =
+            Match.Id(rightDivergenceCommitment5, rightDivergenceCommitment6);
+
+        advanceMatchStateRight.requireCanBeAdvanced();
+        ExternalMatch.advanceMatch(
+            advanceMatchStateRight,
+            id,
+            Tree.ZERO_NODE,
+            rightDivergenceCommitment3,
+            Tree.ZERO_NODE,
+            rightDivergenceCommitment1
+        );
+
+        assertEq(advanceMatchStateRight.currentHeight, 2);
+        assertTrue(advanceMatchStateRight.leftNode.eq(Tree.ZERO_NODE));
+        assertTrue(
+            advanceMatchStateRight.rightNode.eq(rightDivergenceCommitment1)
+        );
+
+        advanceMatchStateRight.requireCanBeAdvanced();
+        ExternalMatch.advanceMatch(
+            advanceMatchStateRight,
+            id,
+            Tree.ZERO_NODE,
+            rightDivergenceCommitment2,
+            Tree.ZERO_NODE,
+            ONE_NODE
+        );
+
+        assertEq(advanceMatchStateRight.currentHeight, 1);
+        assertTrue(advanceMatchStateRight.leftNode.eq(Tree.ZERO_NODE));
+        assertTrue(advanceMatchStateRight.rightNode.eq(ONE_NODE));
+
+        bytes32[] memory proof = new bytes32[](3);
+        proof[0] = Tree.Node.unwrap(Tree.ZERO_NODE);
+        proof[1] = Tree.Node.unwrap(Tree.ZERO_NODE);
+        proof[2] = Tree.Node.unwrap(Tree.ZERO_NODE);
+
+        advanceMatchStateRight.requireCanBeFinalized();
+        ExternalMatch.sealMatch(
+            advanceMatchStateRight,
+            id,
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            proof
+        );
+
+        advanceMatchStateRight.requireIsFinished();
+        (
+            Machine.Hash agreeHash,
+            uint256 agreeCycle,
+            Machine.Hash finalStateOne,
+            Machine.Hash finalStateTwo
+        ) = advanceMatchStateRight.getDivergence(0);
     }
 
     function testDivergenceLeftWithEvenHeight() public {
@@ -75,22 +297,17 @@ contract MatchTest is Test {
             !leftDivergenceMatch.agreesOnLeftNode(Tree.ZERO_NODE),
             "left node should diverge"
         );
-        (
-            Machine.Hash _finalHashOne,
-            Machine.Hash _finalHashTwo
-        ) = leftDivergenceMatch.setDivergenceOnLeftLeaf(Tree.ZERO_NODE);
 
         leftDivergenceMatch.height = 2;
+        (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
+            leftDivergenceMatch._setDivergenceOnLeftLeaf(Tree.ZERO_NODE);
 
         assertTrue(
-            _finalHashOne.eq(Tree.ZERO_NODE.toMachineHash()),
-            "hash one should be zero"
+            _finalHashOne.eq(ONE_NODE.toMachineHash()), "hash one should be 1"
         );
         assertTrue(
-            _finalHashTwo.eq(
-                Tree.Node.wrap(bytes32(uint256(1))).toMachineHash()
-            ),
-            "hash two should be 1"
+            _finalHashTwo.eq(Tree.ZERO_NODE.toMachineHash()),
+            "hash two should be zero"
         );
     }
 
@@ -99,22 +316,17 @@ contract MatchTest is Test {
             rightDivergenceMatch.agreesOnLeftNode(Tree.ZERO_NODE),
             "left node should match"
         );
-        (
-            Machine.Hash _finalHashOne,
-            Machine.Hash _finalHashTwo
-        ) = rightDivergenceMatch.setDivergenceOnRightLeaf(Tree.ZERO_NODE);
 
         rightDivergenceMatch.height = 2;
+        (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
+            rightDivergenceMatch._setDivergenceOnRightLeaf(Tree.ZERO_NODE);
 
         assertTrue(
-            _finalHashOne.eq(Tree.ZERO_NODE.toMachineHash()),
-            "hash one should be zero"
+            _finalHashOne.eq(ONE_NODE.toMachineHash()), "hash one should be 1"
         );
         assertTrue(
-            _finalHashTwo.eq(
-                Tree.Node.wrap(bytes32(uint256(1))).toMachineHash()
-            ),
-            "hash two should be 1"
+            _finalHashTwo.eq(Tree.ZERO_NODE.toMachineHash()),
+            "hash two should be zero"
         );
     }
 
@@ -123,22 +335,17 @@ contract MatchTest is Test {
             !leftDivergenceMatch.agreesOnLeftNode(Tree.ZERO_NODE),
             "left node should diverge"
         );
-        (
-            Machine.Hash _finalHashOne,
-            Machine.Hash _finalHashTwo
-        ) = leftDivergenceMatch.setDivergenceOnLeftLeaf(Tree.ZERO_NODE);
 
         leftDivergenceMatch.height = 3;
+        (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
+            leftDivergenceMatch._setDivergenceOnLeftLeaf(Tree.ZERO_NODE);
 
         assertTrue(
             _finalHashOne.eq(Tree.ZERO_NODE.toMachineHash()),
             "hash one should be zero"
         );
         assertTrue(
-            _finalHashTwo.eq(
-                Tree.Node.wrap(bytes32(uint256(1))).toMachineHash()
-            ),
-            "hash two should be 1"
+            _finalHashTwo.eq(ONE_NODE.toMachineHash()), "hash two should be 1"
         );
     }
 
@@ -147,23 +354,35 @@ contract MatchTest is Test {
             rightDivergenceMatch.agreesOnLeftNode(Tree.ZERO_NODE),
             "left node should match"
         );
-        (
-            Machine.Hash _finalHashOne,
-            Machine.Hash _finalHashTwo
-        ) = rightDivergenceMatch.setDivergenceOnRightLeaf(Tree.ZERO_NODE);
 
         rightDivergenceMatch.height = 3;
+        (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
+            rightDivergenceMatch._setDivergenceOnRightLeaf(Tree.ZERO_NODE);
 
         assertTrue(
             _finalHashOne.eq(Tree.ZERO_NODE.toMachineHash()),
             "hash one should be zero"
         );
         assertTrue(
-            _finalHashTwo.eq(
-                Tree.Node.wrap(bytes32(uint256(1))).toMachineHash()
-            ),
-            "hash two should be 1"
+            _finalHashTwo.eq(ONE_NODE.toMachineHash()), "hash two should be 1"
         );
     }
+
+    function testEqual() public {
+        assertTrue(leftDivergenceMatchIdHash.eq(leftDivergenceMatchIdHash));
+        assertTrue(rightDivergenceMatchIdHash.eq(rightDivergenceMatchIdHash));
+        assertTrue(!leftDivergenceMatchIdHash.eq(rightDivergenceMatchIdHash));
+        assertTrue(!rightDivergenceMatchIdHash.eq(leftDivergenceMatchIdHash));
+
+        vm.expectRevert("matches are not equal");
+        ExternalMatch.requireEq(
+            leftDivergenceMatchIdHash, rightDivergenceMatchIdHash
+        );
+    }
+
+    function testIdHash() public {
+        Match.Id memory id = Match.Id(Tree.ZERO_NODE, Tree.ZERO_NODE);
+        Match.IdHash idHash = id.hashFromId();
+        idHash.requireExist();
+    }
 }
-*/

@@ -32,7 +32,6 @@ abstract contract LeafTournament is Tournament {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeFinalized();
-        _matchState.requireParentHasChildren(_leftLeaf, _rightLeaf);
 
         // Unpause clocks
         {

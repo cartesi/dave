@@ -166,7 +166,6 @@ abstract contract Tournament {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
-        _matchState.requireParentHasChildren(_leftNode, _rightNode);
 
         _matchState.advanceMatch(
             _matchId, _leftNode, _rightNode, _newLeftNode, _newRightNode

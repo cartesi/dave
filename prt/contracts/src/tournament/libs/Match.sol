@@ -107,6 +107,8 @@ library Match {
         Tree.Node newLeftNode,
         Tree.Node newRightNode
     ) internal {
+        state.requireParentHasChildren(leftNode, rightNode);
+
         if (!state.agreesOnLeftNode(leftNode)) {
             // go down left in Commitment tree
             leftNode.requireChildren(newLeftNode, newRightNode);
@@ -136,6 +138,8 @@ library Match {
         internal
         returns (Machine.Hash divergentStateOne, Machine.Hash divergentStateTwo)
     {
+        state.requireParentHasChildren(leftLeaf, rightLeaf);
+
         if (!state.agreesOnLeftNode(leftLeaf)) {
             // Divergence is in the left leaf!
             (divergentStateOne, divergentStateTwo) =

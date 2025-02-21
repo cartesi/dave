@@ -34,16 +34,6 @@ abstract contract NonLeafTournament is Tournament {
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     //
-    // Modifiers
-    //
-    modifier onlyInnerTournament() {
-        Match.IdHash matchIdHash =
-            matchIdFromInnerTournaments[NonRootTournament(msg.sender)];
-        matches[matchIdHash].requireExist();
-        _;
-    }
-
-    //
     // Constructor
     //
     constructor(IMultiLevelTournamentFactory _tournamentFactory) {
@@ -59,7 +49,6 @@ abstract contract NonLeafTournament is Tournament {
     ) external tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireCanBeFinalized();
-        _matchState.requireParentHasChildren(_leftLeaf, _rightLeaf);
         // Pause clocks
         Time.Duration _maxDuration;
         {
