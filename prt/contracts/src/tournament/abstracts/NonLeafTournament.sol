@@ -49,7 +49,6 @@ abstract contract NonLeafTournament is Tournament {
     ) external tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireCanBeFinalized();
-        _matchState.requireParentHasChildren(_leftLeaf, _rightLeaf);
         // Pause clocks
         Time.Duration _maxDuration;
         {
