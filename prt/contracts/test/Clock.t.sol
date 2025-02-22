@@ -31,6 +31,7 @@ library ExternalClock {
 
     function timeSinceTimeout(Clock.State storage state)
         external
+        view
         returns (Time.Duration)
     {
         return Clock.timeSinceTimeout(state);

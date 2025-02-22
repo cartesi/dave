@@ -149,12 +149,11 @@ contract MatchTest is Test {
         );
 
         advanceMatchStateLeft.requireIsFinished();
-        (
-            Machine.Hash agreeHash,
-            uint256 agreeCycle,
-            Machine.Hash finalStateOne,
-            Machine.Hash finalStateTwo
-        ) = advanceMatchStateLeft.getDivergence(0);
+        (Machine.Hash agreeHash, uint256 agreeCycle,,) =
+            advanceMatchStateLeft.getDivergence(0);
+
+        assertEq(agreeCycle, 0);
+        assertTrue(agreeHash.eq(Machine.ZERO_STATE));
     }
 
     function testAdvanceMatchRight() public {
@@ -163,13 +162,14 @@ contract MatchTest is Test {
         Tree.Node rightDivergenceCommitment4 =
             Tree.ZERO_NODE.join(rightDivergenceCommitment2);
 
+        uint64 matchHeight = 2;
         (, advanceMatchStateRight) = Match.createMatch(
             rightDivergenceCommitment3,
             rightDivergenceCommitment4,
             Tree.ZERO_NODE,
             rightDivergenceCommitment2,
             0,
-            2
+            matchHeight
         );
         advanceMatchStateRight.requireExist();
 
@@ -186,7 +186,7 @@ contract MatchTest is Test {
             Tree.ZERO_NODE
         );
 
-        assertEq(advanceMatchStateRight.currentHeight, 1);
+        assertEq(advanceMatchStateRight.currentHeight, matchHeight - 1);
         assertTrue(advanceMatchStateRight.leftNode.eq(Tree.ZERO_NODE));
         assertTrue(advanceMatchStateRight.rightNode.eq(Tree.ZERO_NODE));
 
@@ -206,12 +206,11 @@ contract MatchTest is Test {
         );
 
         advanceMatchStateRight.requireIsFinished();
-        (
-            Machine.Hash agreeHash,
-            uint256 agreeCycle,
-            Machine.Hash finalStateOne,
-            Machine.Hash finalStateTwo
-        ) = advanceMatchStateRight.getDivergence(0);
+        (Machine.Hash agreeHash, uint256 agreeCycle,,) =
+            advanceMatchStateRight.getDivergence(0);
+
+        assertEq(agreeCycle, (1 << matchHeight) - 1);
+        assertTrue(agreeHash.eq(Machine.ZERO_STATE));
     }
 
     function testAdvanceMatchRight2() public {
@@ -224,13 +223,14 @@ contract MatchTest is Test {
         Tree.Node rightDivergenceCommitment6 =
             Tree.ZERO_NODE.join(rightDivergenceCommitment4);
 
+        uint64 matchHeight = 3;
         (, advanceMatchStateRight) = Match.createMatch(
             rightDivergenceCommitment5,
             rightDivergenceCommitment6,
             Tree.ZERO_NODE,
             rightDivergenceCommitment4,
             0,
-            3
+            matchHeight
         );
         advanceMatchStateRight.requireExist();
 
@@ -247,7 +247,7 @@ contract MatchTest is Test {
             rightDivergenceCommitment1
         );
 
-        assertEq(advanceMatchStateRight.currentHeight, 2);
+        assertEq(advanceMatchStateRight.currentHeight, matchHeight - 1);
         assertTrue(advanceMatchStateRight.leftNode.eq(Tree.ZERO_NODE));
         assertTrue(
             advanceMatchStateRight.rightNode.eq(rightDivergenceCommitment1)
@@ -263,7 +263,7 @@ contract MatchTest is Test {
             ONE_NODE
         );
 
-        assertEq(advanceMatchStateRight.currentHeight, 1);
+        assertEq(advanceMatchStateRight.currentHeight, matchHeight - 2);
         assertTrue(advanceMatchStateRight.leftNode.eq(Tree.ZERO_NODE));
         assertTrue(advanceMatchStateRight.rightNode.eq(ONE_NODE));
 
@@ -284,12 +284,11 @@ contract MatchTest is Test {
         );
 
         advanceMatchStateRight.requireIsFinished();
-        (
-            Machine.Hash agreeHash,
-            uint256 agreeCycle,
-            Machine.Hash finalStateOne,
-            Machine.Hash finalStateTwo
-        ) = advanceMatchStateRight.getDivergence(0);
+        (Machine.Hash agreeHash, uint256 agreeCycle,,) =
+            advanceMatchStateRight.getDivergence(0);
+
+        assertEq(agreeCycle, (1 << matchHeight) - 1);
+        assertTrue(agreeHash.eq(Machine.ZERO_STATE));
     }
 
     function testDivergenceLeftWithEvenHeight() public {
@@ -380,7 +379,7 @@ contract MatchTest is Test {
         );
     }
 
-    function testIdHash() public {
+    function testIdHash() public pure {
         Match.Id memory id = Match.Id(Tree.ZERO_NODE, Tree.ZERO_NODE);
         Match.IdHash idHash = id.hashFromId();
         idHash.requireExist();

@@ -20,6 +20,7 @@ pragma solidity ^0.8.0;
 library ExternalTime {
     function sub(Time.Duration left, Time.Duration right)
         external
+        pure
         returns (Time.Duration)
     {
         return Time.sub(left, right);
