@@ -1,12 +1,13 @@
 local helper = require "utils.helper"
 
-local function start_dave_node(machine_path, db_path, sleep_duration, verbosity, trace_level)
+local function start_dave_node(machine_path, db_path, consensus, input_box, sleep_duration, verbosity, trace_level)
     local cmd = string.format(
         [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' STATE_DIR='%s' \
+        CONSENSUS='%s' INPUT_BOX='%s' \
         SLEEP_DURATION=%d RUST_BACKTRACE='%s' \
         RUST_LOG='none',cartesi_prt_core='%s',rollups_prt_runner='%s',rollups_epoch_manager='%s' \
         ../../../target/debug/dave-rollups > dave.log 2>&1"]],
-        machine_path, db_path, sleep_duration, trace_level, verbosity, verbosity, verbosity
+        machine_path, db_path, consensus, input_box, sleep_duration, trace_level, verbosity, verbosity, verbosity
     )
 
     local reader = io.popen(cmd)
@@ -28,11 +29,11 @@ end
 local Dave = {}
 Dave.__index = Dave
 
-function Dave:new(machine_path, sleep_duration, verbosity, trace_level)
+function Dave:new(machine_path, consensus, input_box, sleep_duration, verbosity, trace_level)
     local n = {}
     os.execute "rm -rf _state && mkdir _state"
 
-    local handle = start_dave_node(machine_path, "_state/", sleep_duration, verbosity, trace_level)
+    local handle = start_dave_node(machine_path, "_state/", consensus, input_box, sleep_duration, verbosity, trace_level)
 
     n._handle = handle
 

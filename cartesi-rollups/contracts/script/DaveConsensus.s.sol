@@ -12,7 +12,7 @@ import "prt-contracts/CanonicalTournamentParametersProvider.sol";
 import "rollups-contracts/inputs/IInputBox.sol";
 import "src/DaveConsensus.sol";
 
-contract DaveConcensusScript is Script {
+contract DaveConsensusScript is Script {
     function run(Machine.Hash initialHash, IInputBox inputBox) external {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
