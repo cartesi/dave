@@ -1,11 +1,9 @@
 require "setup_path"
 
-
--- TODO load from deployment file `addresses`
 -- consensus contract address in anvil deployment
-local CONSENSUS_ADDRESS = "0x0165878a594ca255338adfa4d48449f69242eb8f"
+local CONSENSUS_ADDRESS = os.getenv("CONSENSUS") or "0x0165878A594ca255338adfa4d48449f69242Eb8F"
 -- input contract address in anvil deployment
-local INPUT_BOX_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+local INPUT_BOX_ADDRESS = os.getenv("INPUT_BOX") or "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 -- amount of time sleep between each react
 local SLEEP_TIME = 2
@@ -187,7 +185,8 @@ time.sleep(NODE_DELAY)
 local verbosity = os.getenv("VERBOSITY") or 'debug'
 -- 0, 1, full
 local trace_level = os.getenv("TRACE_LEVEL") or 'full'
-local dave_node = Dave:new(rollups_machine_path .. "/machine-image", SLEEP_TIME, verbosity, trace_level)
+local dave_node = Dave:new(rollups_machine_path .. "/machine-image", CONSENSUS_ADDRESS, INPUT_BOX_ADDRESS, SLEEP_TIME,
+    verbosity, trace_level)
 time.sleep(NODE_DELAY)
 
 local reader = Reader:new(blockchain_constants.endpoint)
