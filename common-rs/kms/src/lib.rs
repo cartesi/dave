@@ -21,11 +21,9 @@ pub async fn create_key_sign_verify(
 }
 
 pub async fn create_aws_client() -> Result<aws_sdk_kms::Client, Box<dyn Error>> {
-    let config = aws_config::defaults(BehaviorVersion::latest()).load().await;
-    let region = config.region();
-    let url = config.endpoint_url();
-    println!("Region: {:?}", region); // us-east-1
-    println!("Endpoint URL: {:?}", url); // http://localhost:4566
+    let config = aws_config::defaults(BehaviorVersion::v2024_03_28())
+        .load()
+        .await;
     let client = aws_sdk_kms::Client::new(&config);
     Ok(client)
 }
@@ -36,28 +34,35 @@ pub async fn process(
     chain_id: Option<ChainId>,
     message: &str,
 ) -> Result<(PrimitiveSignature, AwsSigner), Box<dyn Error>> {
-    println!(
-        "Processing message: {}, chain_id: {}",
-        message,
-        chain_id.unwrap_or_default()
-    );
     let signer = AwsSigner::new(client, key_id.to_string(), chain_id).await?;
     let message = message.as_bytes();
     let signature = signer.sign_message(message).await?;
-
-    println!("Signature: {:?}", signature);
 
     Ok((signature, signer))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::env::set_var;
+
+    use aws_sdk_kms::config::Credentials;
     use testcontainers_modules::{
         localstack::LocalStack,
         testcontainers::{core::ContainerPort, runners::AsyncRunner, ContainerRequest, ImageExt},
     };
 
     use super::*;
+
+    fn aws_test_credentials() {
+        let test_credentials = Credentials::for_tests();
+        set_var("AWS_ACCESS_KEY_ID", test_credentials.access_key_id());
+        set_var(
+            "AWS_SECRET_ACCESS_KEY",
+            test_credentials.secret_access_key(),
+        );
+        set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
+        set_var("AWS_REGION", "us-east-1");
+    }
 
     fn create_localstack() -> ContainerRequest<LocalStack> {
         LocalStack::default()
@@ -74,17 +79,19 @@ mod tests {
 
         println!("Container: {:?}", container);
 
-        dotenvy::from_filename("aws.env").unwrap();
+        aws_test_credentials();
         let client = create_aws_client().await.unwrap();
         let key_id = create_key_sign_verify(&client).await.unwrap();
         println!("Key ID: {}", key_id);
         let message = "Hello world!";
         let chain_id = None;
 
+        println!("Processing message: {}, chain_id: {:?}", message, chain_id);
         let signature = process(client, &key_id, chain_id, message).await;
         assert!(signature.is_ok(), "Error: {:?}", signature.err().unwrap());
 
         let (signature, signer) = signature.unwrap();
+        println!("Signature: {:?}", signature);
         assert_eq!(
             signature.recover_address_from_msg(message).unwrap(),
             signer.address()
