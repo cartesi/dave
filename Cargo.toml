@@ -8,6 +8,7 @@ members = [
     # common-rs
     "common-rs/merkle",
     "common-rs/arithmetic",
+    "common-rs/kms",
 
     # prt
     "prt/client-rs/core",
