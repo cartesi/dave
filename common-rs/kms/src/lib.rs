@@ -42,7 +42,7 @@ pub async fn process(
 }
 
 #[cfg(test)]
-mod tests {
+mod kms {
     use std::env::set_var;
 
     use aws_sdk_kms::config::Credentials;
