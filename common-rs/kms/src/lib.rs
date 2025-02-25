@@ -52,15 +52,32 @@ pub async fn process(
 
 #[cfg(test)]
 mod tests {
+    use testcontainers_modules::{
+        localstack::LocalStack,
+        testcontainers::{core::ContainerPort, runners::AsyncRunner, ContainerRequest, ImageExt},
+    };
+
     use super::*;
 
-    #[ignore = "requires LocalStack"]
+    fn create_localstack() -> ContainerRequest<LocalStack> {
+        LocalStack::default()
+            .with_env_var("SERVICES", "kms")
+            .with_tag("4.1.1")
+            .with_mapped_port(4566, ContainerPort::Tcp(4566))
+            .with_mapped_port(4566, ContainerPort::Udp(4566))
+    }
+
     #[tokio::test]
     async fn signer_works() {
+        let image = create_localstack();
+        let container = image.start().await.unwrap();
+
+        println!("Container: {:?}", container);
+
         dotenvy::from_filename("aws.env").unwrap();
         let client = create_aws_client().await.unwrap();
         let key_id = create_key_sign_verify(&client).await.unwrap();
-        print!("Key ID: {}", key_id);
+        println!("Key ID: {}", key_id);
         let message = "Hello world!";
         let chain_id = None;
 
@@ -72,5 +89,7 @@ mod tests {
             signature.recover_address_from_msg(message).unwrap(),
             signer.address()
         );
+
+        container.stop().await.unwrap();
     }
 }

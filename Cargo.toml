@@ -62,6 +62,7 @@ rollups-state-manager = { version = "0.1", path = "cartesi-rollups/node/state-ma
 # common-rs
 cartesi-dave-arithmetic = { path = "common-rs/arithmetic" }
 cartesi-dave-merkle = { path = "common-rs/merkle" }
+cartesi-dave-kms = { path = "common-rs/kms" }
 
 # prt
 cartesi-prt-core = { path = "prt/client-rs/core" }
