@@ -1850,6 +1850,7 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "cartesi-dave-arithmetic",
+ "cartesi-dave-kms",
  "cartesi-dave-merkle",
  "cartesi-machine",
  "cartesi-prt-contracts",
