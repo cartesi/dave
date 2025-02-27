@@ -1,10 +1,10 @@
 use alloy::{primitives::ChainId, signers::aws::AwsSigner};
+use anyhow::{self, Context};
 use aws_config::BehaviorVersion;
 use aws_sdk_kms::{
     types::{KeySpec, KeyUsageType},
     Client,
 };
-use std::error::Error;
 
 pub struct KmsSignerBuilder {
     client: Client,
@@ -42,7 +42,7 @@ impl KmsSignerBuilder {
         self
     }
 
-    pub async fn create_key_sign_verify(&mut self) -> Result<&str, Box<dyn Error>> {
+    pub async fn create_key_sign_verify(&mut self) -> anyhow::Result<&str> {
         let result = self
             .client
             .create_key()
@@ -51,15 +51,15 @@ impl KmsSignerBuilder {
             .send()
             .await?;
 
-        let metadata = result.key_metadata.ok_or("No metadata")?;
+        let metadata = result.key_metadata.context("No metadata")?;
 
         self.key_id = Some(metadata.key_id);
 
-        Ok(self.key_id.as_deref().ok_or("No key ID")?)
+        self.key_id.as_deref().context("No key ID")
     }
 
-    pub async fn build(self) -> Result<KmsSigner, Box<dyn Error>> {
-        let key_id = self.key_id.ok_or("No key_id")?;
+    pub async fn build(self) -> anyhow::Result<KmsSigner> {
+        let key_id = self.key_id.context("No key_id")?;
         let result = KmsSigner::new(self.client, key_id, self.chain_id).await?;
         Ok(result)
     }

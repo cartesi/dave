@@ -1782,6 +1782,7 @@ name = "cartesi-dave-kms"
 version = "0.1.0"
 dependencies = [
  "alloy 0.11.1",
+ "anyhow",
  "aws-config",
  "aws-sdk-kms",
  "testcontainers-modules",
