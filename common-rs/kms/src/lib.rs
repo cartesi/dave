@@ -1,7 +1,4 @@
-use alloy::{
-    primitives::{ChainId, PrimitiveSignature},
-    signers::{aws::AwsSigner, Signer},
-};
+use alloy::{primitives::ChainId, signers::aws::AwsSigner};
 use aws_config::BehaviorVersion;
 use aws_sdk_kms::{
     types::{KeySpec, KeyUsageType},
@@ -15,11 +12,7 @@ pub struct KmsSignerBuilder {
     chain_id: Option<ChainId>,
 }
 
-pub struct KmsSigner {
-    client: Client,
-    key_id: String,
-    chain_id: Option<ChainId>,
-}
+type KmsSigner = AwsSigner;
 
 impl KmsSignerBuilder {
     pub async fn new() -> Self {
@@ -65,34 +58,10 @@ impl KmsSignerBuilder {
         Ok(self.key_id.as_deref().ok_or("No key ID")?)
     }
 
-    pub fn build(self) -> Result<KmsSigner, Box<dyn Error>> {
+    pub async fn build(self) -> Result<KmsSigner, Box<dyn Error>> {
         let key_id = self.key_id.ok_or("No key_id")?;
-        Ok(KmsSigner::new(self.client, key_id, self.chain_id))
-    }
-}
-
-impl KmsSigner {
-    pub fn new(client: Client, key_id: String, chain_id: Option<ChainId>) -> Self {
-        Self {
-            client,
-            key_id,
-            chain_id,
-        }
-    }
-    pub async fn sign_message(
-        &self,
-        message: &str,
-    ) -> Result<(PrimitiveSignature, AwsSigner), Box<dyn Error>> {
-        let signer =
-            AwsSigner::new(self.client.clone(), self.key_id.clone(), self.chain_id).await?;
-        let message = message.as_bytes();
-        let signature = signer.sign_message(message).await?;
-
-        Ok((signature, signer))
-    }
-
-    pub fn get_chain_id(&self) -> Option<ChainId> {
-        self.chain_id
+        let result = KmsSigner::new(self.client, key_id, self.chain_id).await?;
+        Ok(result)
     }
 }
 
@@ -100,6 +69,7 @@ impl KmsSigner {
 mod kms {
     use std::env::set_var;
 
+    use alloy::signers::Signer;
     use aws_sdk_kms::config::Credentials;
     use testcontainers_modules::{
         localstack::LocalStack,
@@ -141,20 +111,21 @@ mod kms {
         println!("Key ID: {}", key_id);
         let message = "Hello world!";
 
-        let kms_signer = kms_signer.build().unwrap();
+        let kms_signer = kms_signer.build().await.unwrap();
 
         println!(
             "Processing message: {}, chain_id: {:?}",
-            message, kms_signer.chain_id
+            message,
+            kms_signer.chain_id()
         );
-        let signature = kms_signer.sign_message(message).await;
+        let signature = kms_signer.sign_message(message.as_bytes()).await;
         assert!(signature.is_ok(), "Error: {:?}", signature.err().unwrap());
 
-        let (signature, signer) = signature.unwrap();
+        let signature = signature.unwrap();
         println!("Signature: {:?}", signature);
         assert_eq!(
             signature.recover_address_from_msg(message).unwrap(),
-            signer.address()
+            kms_signer.address()
         );
 
         container.stop().await.unwrap();
