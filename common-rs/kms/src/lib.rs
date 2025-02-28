@@ -71,6 +71,7 @@ mod kms {
 
     use alloy::{
         network::{Ethereum, EthereumWallet, NetworkWallet},
+        primitives::PrimitiveSignature,
         signers::Signer,
     };
     use aws_sdk_kms::config::Credentials;
@@ -158,9 +159,13 @@ mod kms {
         let key_id = kms_signer.create_key_sign_verify().await.unwrap();
         println!("Key ID: {}", key_id);
 
+        let signer: Box<dyn alloy::network::TxSigner<PrimitiveSignature> + Send + Sync>;
+
         let kms_signer = kms_signer.build().await.unwrap();
 
-        let wallet = EthereumWallet::from(kms_signer);
+        signer = Box::new(kms_signer);
+
+        let wallet = EthereumWallet::from(signer);
         let wallet_address =
             <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
