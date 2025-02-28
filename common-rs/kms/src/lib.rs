@@ -69,11 +69,16 @@ impl KmsSignerBuilder {
 mod kms {
     use std::env::set_var;
 
-    use alloy::signers::Signer;
+    use alloy::{
+        network::{Ethereum, EthereumWallet, NetworkWallet},
+        signers::Signer,
+    };
     use aws_sdk_kms::config::Credentials;
     use testcontainers_modules::{
         localstack::LocalStack,
-        testcontainers::{core::ContainerPort, runners::AsyncRunner, ContainerRequest, ImageExt},
+        testcontainers::{
+            core::ContainerPort, runners::AsyncRunner, ContainerAsync, ContainerRequest, ImageExt,
+        },
     };
 
     use super::*;
@@ -97,12 +102,20 @@ mod kms {
             .with_mapped_port(4566, ContainerPort::Udp(4566))
     }
 
+    async fn setup() -> anyhow::Result<ContainerAsync<LocalStack>> {
+        let image = create_localstack();
+        let container_async = image.start().await?;
+        Ok(container_async)
+    }
+
+    async fn teardown(container: &ContainerAsync<LocalStack>) -> anyhow::Result<()> {
+        container.stop().await?;
+        Ok(())
+    }
+
     #[tokio::test]
     async fn signer_works() {
-        let image = create_localstack();
-        let container = image.start().await.unwrap();
-
-        println!("Container: {:?}", container);
+        let container = setup().await.unwrap();
 
         set_aws_test_env_vars();
         let mut kms_signer = KmsSignerBuilder::new().await;
@@ -128,6 +141,30 @@ mod kms {
             kms_signer.address()
         );
 
-        container.stop().await.unwrap();
+        teardown(&container).await.unwrap();
+    }
+
+    #[ignore = "This test is for wallet"]
+    #[tokio::test]
+    async fn wallet_eth() {
+        let container = setup().await.unwrap();
+        let chain_id: ChainId = 31337;
+
+        println!("Container: {:?}", container);
+
+        set_aws_test_env_vars();
+        let mut kms_signer = KmsSignerBuilder::new().await.with_chain_id(chain_id);
+
+        let key_id = kms_signer.create_key_sign_verify().await.unwrap();
+        println!("Key ID: {}", key_id);
+
+        let kms_signer = kms_signer.build().await.unwrap();
+
+        let wallet = EthereumWallet::from(kms_signer);
+        let wallet_address =
+            <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
+
+        println!("Wallet address: {:?}", wallet_address);
+        teardown(&container).await.unwrap();
     }
 }
