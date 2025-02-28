@@ -19,7 +19,7 @@ aws-sdk-kms = { version = "1.51", default-features = false, features = [
     "rt-tokio",
 ] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-alloy = { version = "0.11", features = ["signer-aws"] }
+alloy = { workspace = true, features = ["signer-aws"] }
 testcontainers-modules = { version = "0.11.6", default-features = false, features = [
     "localstack",
 ] }
