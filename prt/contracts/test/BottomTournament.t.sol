@@ -384,8 +384,28 @@ contract BottomTournamentTest is Util, Test {
             "agree cycle should be zero"
         );
 
+        // mock the IDataProvider to return no valid input
+        vm.mockCall(
+            address(0x12345678901234567890),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(uint256(0))
+        );
+
+        vm.expectRevert("no valid input");
+        // win match, expect revert from no valid input
+        Util.winLeafMatchRollupsWithInput(
+            bottomTournament, _matchId, _playerToSeal
+        );
+
+        // mock the IDataProvider to return valid input
+        vm.mockCall(
+            address(0x12345678901234567890),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(uint256(999))
+        );
+
         vm.expectRevert();
-        // win match, expect revert
+        // win match, expect revert from the cmio function
         Util.winLeafMatchRollupsWithInput(
             bottomTournament, _matchId, _playerToSeal
         );
