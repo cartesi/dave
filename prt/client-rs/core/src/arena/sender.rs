@@ -27,6 +27,7 @@ use crate::{
     arena::{arena::MatchID, config::BlockchainConfig},
     machine::MachineProof,
 };
+use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
 use cartesi_dave_merkle::{Digest, MerkleProof};
 use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
 
@@ -51,8 +52,23 @@ pub struct EthArenaSender {
 }
 
 impl EthArenaSender {
-    pub fn new(config: &BlockchainConfig) -> anyhow::Result<Self> {
-        let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())?;
+    pub async fn new(config: &BlockchainConfig) -> anyhow::Result<Self> {
+        let signer: Box<CommonSignature>;
+
+        if let Some(aws_config) = &config.aws_config {
+            let key_id = aws_config.aws_access_key_id.clone();
+            let kms_signer = KmsSignerBuilder::new()
+                .await
+                .with_chain_id(config.web3_chain_id)
+                .with_key_id(key_id)
+                .build()
+                .await?;
+            signer = Box::new(kms_signer);
+        } else {
+            let local_signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())?;
+            signer = Box::new(local_signer);
+        }
+
         let wallet = EthereumWallet::from(signer);
         let wallet_address =
             <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
