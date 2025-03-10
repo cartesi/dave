@@ -1,10 +1,15 @@
-use alloy::{primitives::ChainId, signers::aws::AwsSigner};
+use alloy::{
+    primitives::{ChainId, PrimitiveSignature},
+    signers::aws::AwsSigner,
+};
 use anyhow::{self, Context};
 use aws_config::BehaviorVersion;
 use aws_sdk_kms::{
     types::{KeySpec, KeyUsageType},
     Client,
 };
+
+pub type CommonSignature = dyn alloy::network::TxSigner<PrimitiveSignature> + Send + Sync;
 
 pub struct KmsSignerBuilder {
     client: Client,
@@ -67,22 +72,32 @@ impl KmsSignerBuilder {
 
 #[cfg(test)]
 mod kms {
-    use std::env::set_var;
+    use std::{
+        env::set_var,
+        future::Future,
+        panic::{catch_unwind, UnwindSafe},
+    };
 
     use alloy::{
         network::{Ethereum, EthereumWallet, NetworkWallet},
-        primitives::PrimitiveSignature,
         signers::Signer,
     };
     use aws_sdk_kms::config::Credentials;
+    use lazy_static::lazy_static;
     use testcontainers_modules::{
         localstack::LocalStack,
         testcontainers::{
             core::ContainerPort, runners::AsyncRunner, ContainerAsync, ContainerRequest, ImageExt,
         },
     };
+    use tokio::sync::Mutex;
 
     use super::*;
+
+    // mutex global
+    lazy_static! {
+        static ref CONTAINER_MUTEX: Mutex<()> = Mutex::new(());
+    }
 
     fn set_aws_test_env_vars() {
         let test_credentials = Credentials::for_tests();
@@ -114,62 +129,86 @@ mod kms {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn signer_works() {
-        let container = setup().await.unwrap();
+    async fn run_test<T, F>(test: T) -> anyhow::Result<()>
+    where
+        T: FnOnce() -> F + UnwindSafe,
+        F: Future<Output = ()>,
+    {
+        // lock
+        let _guard = CONTAINER_MUTEX.lock().await;
+        println!("Lock acquired");
 
-        set_aws_test_env_vars();
-        let mut kms_signer = KmsSignerBuilder::new().await;
-
-        let key_id = kms_signer.create_key_sign_verify().await.unwrap();
-        println!("Key ID: {}", key_id);
-        let message = "Hello world!";
-
-        let kms_signer = kms_signer.build().await.unwrap();
-
-        println!(
-            "Processing message: {}, chain_id: {:?}",
-            message,
-            kms_signer.chain_id()
-        );
-        let signature = kms_signer.sign_message(message.as_bytes()).await;
-        assert!(signature.is_ok(), "Error: {:?}", signature.err().unwrap());
-
-        let signature = signature.unwrap();
-        println!("Signature: {:?}", signature);
-        assert_eq!(
-            signature.recover_address_from_msg(message).unwrap(),
-            kms_signer.address()
-        );
-
-        teardown(&container).await.unwrap();
-    }
-
-    #[ignore = "This test is for wallet"]
-    #[tokio::test]
-    async fn wallet_eth() {
-        let container = setup().await.unwrap();
-        let chain_id: ChainId = 31337;
+        let container = setup().await?;
 
         println!("Container: {:?}", container);
 
-        set_aws_test_env_vars();
-        let mut kms_signer = KmsSignerBuilder::new().await.with_chain_id(chain_id);
+        let result = catch_unwind(async || test().await);
 
-        let key_id = kms_signer.create_key_sign_verify().await.unwrap();
-        println!("Key ID: {}", key_id);
+        teardown(&container).await?;
 
-        let signer: Box<dyn alloy::network::TxSigner<PrimitiveSignature> + Send + Sync>;
+        assert!(result.is_ok());
 
-        let kms_signer = kms_signer.build().await.unwrap();
+        // unlock
+        println!("Lock released");
 
-        signer = Box::new(kms_signer);
+        Ok(())
+    }
 
-        let wallet = EthereumWallet::from(signer);
-        let wallet_address =
-            <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
+    #[tokio::test]
+    async fn signer_works() {
+        run_test(|| async {
+            set_aws_test_env_vars();
+            let mut kms_signer = KmsSignerBuilder::new().await;
 
-        println!("Wallet address: {:?}", wallet_address);
-        teardown(&container).await.unwrap();
+            let key_id = kms_signer.create_key_sign_verify().await.unwrap();
+            println!("Key ID: {}", key_id);
+            let message = "Hello world!";
+
+            let kms_signer = kms_signer.build().await.unwrap();
+
+            println!(
+                "Processing message: {}, chain_id: {:?}",
+                message,
+                kms_signer.chain_id()
+            );
+            let signature = kms_signer.sign_message(message.as_bytes()).await;
+            assert!(signature.is_ok(), "Error: {:?}", signature.err().unwrap());
+
+            let signature = signature.unwrap();
+            println!("Signature: {:?}", signature);
+            assert_eq!(
+                signature.recover_address_from_msg(message).unwrap(),
+                kms_signer.address()
+            );
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn wallet_eth() {
+        run_test(|| async {
+            let chain_id: ChainId = 31337;
+
+            set_aws_test_env_vars();
+            let mut kms_signer = KmsSignerBuilder::new().await.with_chain_id(chain_id);
+
+            let key_id = kms_signer.create_key_sign_verify().await.unwrap();
+            println!("Key ID: {}", key_id);
+
+            let signer: Box<CommonSignature>;
+
+            let kms_signer = kms_signer.build().await.unwrap();
+
+            signer = Box::new(kms_signer);
+
+            let wallet = EthereumWallet::from(signer);
+            let wallet_address =
+                <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
+
+            println!("Wallet address: {:?}", wallet_address);
+        })
+        .await
+        .unwrap();
     }
 }

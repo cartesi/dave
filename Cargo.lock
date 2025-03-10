@@ -1424,6 +1424,7 @@ dependencies = [
  "anyhow",
  "aws-config",
  "aws-sdk-kms",
+ "lazy_static",
  "testcontainers-modules",
  "tokio",
 ]
