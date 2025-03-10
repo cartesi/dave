@@ -22,4 +22,24 @@ pub struct BlockchainConfig {
         default_value = ANVIL_KEY_1
     )]
     pub web3_private_key: String,
+    #[command(flatten)]
+    pub aws_config: Option<AWSConfig>,
+}
+
+#[derive(Debug, Clone, Parser)]
+#[command(name = "aws_config")]
+#[command(about = "Configuration for AWS Access")]
+pub struct AWSConfig {
+    /// aws key id
+    #[arg(long, env)]
+    pub aws_access_key_id: String,
+    /// aws secret access key
+    #[arg(long, env)]
+    pub aws_secret_access_key: String,
+    /// aws endpoint url
+    #[arg(long, env, default_value = "http://localhost:4566")]
+    pub aws_endpoint_url: String,
+    /// aws region
+    #[arg(long, env, default_value = "us-east-1")]
+    pub aws_region: String,
 }

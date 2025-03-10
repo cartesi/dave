@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
         parameters.state_dir.join("state.db"),
     )?)?);
 
-    let arena_sender = EthArenaSender::new(&parameters.blockchain_config)?;
+    let arena_sender = EthArenaSender::new(&parameters.blockchain_config).await?;
     let client = arena_sender.client();
 
     let blockchain_reader_task = create_blockchain_reader_task(state_manager.clone(), &parameters);
