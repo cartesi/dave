@@ -14,6 +14,7 @@ repository = { workspace = true}
 # common-rs
 cartesi-dave-arithmetic = { workspace = true }
 cartesi-dave-merkle = { workspace = true }
+cartesi-dave-kms = { workspace = true }
 
 # machine bindings
 cartesi-machine = { workspace = true }
