@@ -49,8 +49,6 @@ machine/emulator/src/*.gcda
 machine/emulator/src/*.profraw
 machine/emulator/src/compile_flags.txt
 machine/emulator/src/coverage*
-machine/emulator/src/jsonrpc-discover.cpp
-machine/emulator/src/machine-c-version.h
 
 machine/emulator/build
 machine/emulator/third-party/downloads
@@ -75,6 +73,9 @@ machine/emulator/**/*.ld
 machine/emulator/**/*.elf
 machine/emulator/**/*.bin
 
-machine/emulator/uarch/uarch-pristine-hash.c
-machine/emulator/uarch/uarch-pristine-ram.c
-machine/emulator/uarch/compute-uarch-pristine-hash
+## Currently building these outside
+# machine/emulator/src/jsonrpc-discover.cpp
+# machine/emulator/src/machine-c-version.h
+# machine/emulator/uarch/uarch-pristine-hash.c
+# machine/emulator/uarch/uarch-pristine-ram.c
+# machine/emulator/uarch/compute-uarch-pristine-hash

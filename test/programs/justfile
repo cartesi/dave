@@ -8,20 +8,31 @@ clean-deps:
   rm -f rootfs.ext2
   rm -f linux.bin
 
+# all programs
+build-programs: build-echo build-honeypot
+clean-programs: clean-echo clean-honeypot
 clean-program prog:
-  rm -f {{prog}}/_anvil.log echo/addresses echo/anvil_state.json
+  rm -f {{prog}}/_anvil.log {{prog}}/addresses {{prog}}/anvil_state.json
   rm -rf {{prog}}/machine-image
 
-clean-programs: clean-echo
-build-programs: build-echo
-
-clean-echo: (clean-program "echo")
-
+# echo
 build-echo: clean-echo
   cartesi-machine --ram-image=./linux.bin \
     --flash-drive=label:root,filename:./rootfs.ext2 \
     --no-rollback --store=./echo/machine-image \
     -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1"
   ./build_anvil_state.sh "echo"
+clean-echo: (clean-program "echo")
 
+# honeypot
+build-honeypot: clean-honeypot
+  cp -r honeypot/honeypot/snapshot honeypot/machine-image/
+  ./build_anvil_state.sh "honeypot"
+clean-honeypot: (clean-program "honeypot")
+
+# honeypot/honeypot (requires docker)
+build-honeypot-snapshot: clean-honeypot-snapshot
+  make -C honeypot/honeypot snapshot
+clean-honeypot-snapshot: clean-honeypot
+  make -C honeypot/honeypot clean
 

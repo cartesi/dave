@@ -14,9 +14,15 @@ build: build-smart-contracts bind
 fmt:
     forge fmt
 
+check-fmt:
+    forge fmt --check
+
 # compile smart contracts
 build-smart-contracts:
     forge build
+
+test:
+    forge test
 
 # clean smart contracts artifacts
 clean-smart-contracts:

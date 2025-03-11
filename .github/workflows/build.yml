@@ -3,19 +3,14 @@ on:
   push:
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
+      - name: Set up QEMU for riscv support
+        uses: docker/setup-qemu-action@v2
+
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-
-      - name: Set up cache for Foundry
-        uses: actions/cache@v3
-        with:
-          path: ~/.foundry
-          key: ${{ runner.os }}-foundry-${{ hashFiles('**/foundry.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-foundry-
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -25,34 +20,46 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Build, format check and test
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            build-essential git wget \
+            libslirp-dev \
+            libclang-dev \
+            liblua5.4-dev lua5.4 \
+            xxd jq sqlite3
+
+          export XGENEXT2_VERSION=1.5.6
+          export ARCH=amd64
+          wget -O xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
+          sudo dpkg -i ./xgenext2fs.deb
+          rm ./xgenext2fs.deb
+          xgenext2fs --version
+
+      - name: Install Cartesi Machine
+        working-directory: ./machine/emulator
+        run: |
+          make bundle-boost
+          make
+          sudo make install
+
+      - name: Setup env
+        run: |
+          just setup-local
+
+      - name: Build, format check and test prt contracts
         working-directory: ./prt/contracts
         run: |
           just check-fmt
           just build-smart-contracts
           just test
 
-      - name: Set up cache for Cargo
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Install Cartesi Machine
+      - name: Build, format check and test Dave consensus contracts
+        working-directory: ./cartesi-rollups/contracts
         run: |
-          export CARTESI_MACHINE_VERSION=0.18.1
-          sudo apt-get install -y libboost-all-dev lua5.4 libslirp0
-          wget https://github.com/cartesi/machine-emulator/releases/download/v0.18.1/cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
-          sudo dpkg -i ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
-          rm ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
-
-      - name: Setup env
-        run: |
-          just setup
+          just check-fmt
+          just build-smart-contracts
+          just test
 
       - name: Rust fmt and check
         run: |
