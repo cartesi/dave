@@ -26,5 +26,3 @@ cargo run -p cartesi-prt-compute -- \
     --aws-region REGION \
     --web3-chain-id CHAIN_ID
 ```
-
-cargo run -p cartesi-prt-compute -- --aws-access-key-id KEY_ID --aws-secret-access-key SECRET_ACCESS_KEY --aws-endpoint-url ENDPOINT --aws-region REGION --web3-chain-id CHAIN_ID
