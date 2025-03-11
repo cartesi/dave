@@ -102,51 +102,64 @@ mod build_cm {
             }
         }
 
-        //
-        // Build and link emulator
-        //
+        let libcartesi_path = machine_dir_path.join("src").join("libcartesi.a");
+        let libcartesi_dest_path = out_path.join("libcartesi.a");
 
-        // build dependencies
-        Command::new("make")
-            .args(["submodules"])
-            .current_dir(machine_dir_path)
-            .status()
-            .expect("Failed to run setup `make submodules`");
-        Command::new("make")
-            .args(["bundle-boost"])
-            .current_dir(machine_dir_path)
-            .status()
-            .expect("Failed to run `make bundle-boost`");
+        let libcartesi_jsonrpc_path = machine_dir_path.join("src").join("libcartesi_jsonrpc.a");
+        let libcartesi_jsonrpc_dest_path = out_path.join("libcartesi_jsonrpc.a");
 
-        // build `libcartesi.a` and `libcartesi_jsonrpc.a`, release, no `libslirp`
-        Command::new("make")
-            .args([
-                "-C",
-                "src",
-                "release=yes",
-                "slirp=no",
-                "libcartesi.a",
-                "libcartesi_jsonrpc.a",
-            ])
-            .current_dir(machine_dir_path)
-            .status()
-            .expect("Failed to build `libcartesi.a` and/or `libcartesi_jsonrpc.a`");
+        if libcartesi_path.exists() {
+            assert!(
+                libcartesi_jsonrpc_path.exists(),
+                "libcartesi.a exists, but libcartesi_jsonrpc.a does not"
+            );
+        } else {
+            //
+            // Build and link emulator
+            //
+
+            // build dependencies
+            Command::new("make")
+                .args(["submodules"])
+                .current_dir(machine_dir_path)
+                .status()
+                .expect("Failed to run setup `make submodules`");
+            Command::new("make")
+                .args(["bundle-boost"])
+                .current_dir(machine_dir_path)
+                .status()
+                .expect("Failed to run `make bundle-boost`");
+
+            // build `libcartesi.a` and `libcartesi_jsonrpc.a`, release, no `libslirp`
+            Command::new("make")
+                .args([
+                    "-C",
+                    "src",
+                    "release=yes",
+                    "slirp=no",
+                    "libcartesi.a",
+                    "libcartesi_jsonrpc.a",
+                ])
+                .current_dir(machine_dir_path)
+                .status()
+                .expect("Failed to build `libcartesi.a` and/or `libcartesi_jsonrpc.a`");
+        }
 
         // copy `libcartesi.a` to OUT_DIR
-        let libcartesi_path = machine_dir_path.join("src").join("libcartesi.a");
-        let libcartesi_new_path = out_path.join("libcartesi.a");
-        fs::copy(&libcartesi_path, &libcartesi_new_path).unwrap_or_else(|_| {
+        fs::copy(&libcartesi_path, &libcartesi_dest_path).unwrap_or_else(|_| {
             panic!(
                 "Failed to copy `libcartesi.a` {:?} to OUT_DIR {:?}",
-                libcartesi_path, libcartesi_new_path
+                libcartesi_path, libcartesi_dest_path
             )
         });
 
         // copy `libcartesi_jsonrpc.a` to OUT_DIR
-        let libcartesi_jsonrpc_path = machine_dir_path.join("src").join("libcartesi_jsonrpc.a");
-        let libcartesi_jsonrpc_new_path = out_path.join("libcartesi_jsonrpc.a");
-        fs::copy(libcartesi_jsonrpc_path, libcartesi_jsonrpc_new_path)
-            .expect("Failed to move `libcartesi_jsonrpc.a` to OUT_DIR");
+        fs::copy(&libcartesi_jsonrpc_path, &libcartesi_jsonrpc_dest_path).unwrap_or_else(|_| {
+            panic!(
+                "Failed to copy `libcartesi_jsonrpc.a` {:?} to OUT_DIR {:?}",
+                libcartesi_jsonrpc_path, libcartesi_jsonrpc_dest_path
+            )
+        });
     }
 
     #[cfg(feature = "copy_uarch")]

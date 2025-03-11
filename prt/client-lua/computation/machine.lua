@@ -22,9 +22,9 @@ function ComputationState.from_current_machine_state(machine)
     local hash = Hash:from_digest(machine:get_root_hash())
     return ComputationState:new(
         hash,
-        machine:read_iflags_H(),
-        machine:read_iflags_Y(),
-        machine:read_uarch_halt_flag()
+        machine:read_reg("iflags_H"),
+        machine:read_reg("iflags_Y"),
+        machine:read_reg("uarch_halt_flag")
     )
 end
 
@@ -50,11 +50,11 @@ local machine_settings = { htif = { no_console_putchar = true } }
 
 function Machine:new_from_path(path)
     local machine = cartesi.machine(path, machine_settings)
-    local start_cycle = machine:read_mcycle()
+    local start_cycle = machine:read_reg("mcycle")
 
     -- Machine can never be advanced on the micro arch.
     -- Validators must verify this first
-    assert(machine:read_uarch_cycle() == 0)
+    assert(machine:read_reg("uarch_cycle") == 0)
 
     local b = {
         path = path,
@@ -167,10 +167,10 @@ function Machine:run(cycle)
     assert(arithmetic.ulte(self.cycle, cycle))
 
     local machine = self.machine
-    local mcycle = machine:read_mcycle()
+    local mcycle = machine:read_reg("mcycle")
     local physical_cycle = add_and_clamp(mcycle, cycle - self.cycle) -- TODO reconsider for lambda
 
-    while not (machine:read_iflags_H() or machine:read_iflags_Y() or machine:read_mcycle() == physical_cycle) do
+    while not (machine:read_reg("iflags_H") or machine:read_reg("iflags_Y") or machine:read_reg("mcycle") == physical_cycle) do
         machine:run(physical_cycle)
     end
 
@@ -210,7 +210,7 @@ function Machine:run_with_inputs(cycle, inputs, snapshot_dir)
             local data_hex = (h:gsub('..', function(cc)
                 return string.char(tonumber(cc, 16))
             end))
-            self.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, data_hex);
+            self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, data_hex);
         end
 
         next_input_index = next_input_index + 1
@@ -330,13 +330,14 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
                 if ucycle == 0 then
                     -- need to log cmio
                     table.insert(logs,
-                        machine.machine:log_send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, data_hex,
+                        machine.machine:log_send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
+                            data_hex,
                             log_type
                         ))
                     table.insert(logs, machine.machine:log_uarch_step(log_type))
                     return encode_access_logs(logs, input)
                 else
-                    machine.machine:send_cmio_response(cartesi.machine.HTIF_YIELD_REASON_ADVANCE_STATE, input)
+                    machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, data_hex)
                 end
             else
                 if ucycle == 0 then

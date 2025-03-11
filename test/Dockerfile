@@ -1,19 +1,16 @@
 # syntax=docker.io/docker/dockerfile-upstream:1.12.1-labs
 
-# to work wiht an unreleased verion, build machine docker image locally
-# (i.e. cartesi/machine-emulator:latest), and change tag.
-FROM cartesi/machine-emulator:0.19.0-test2 AS machine
-
+# start from rust
 FROM rust:1.85
 
-# Install `just`
+# install `just`
 RUN \
   --mount=type=cache,target=$CARGO_HOME/registry,sharing=locked \
   --mount=type=cache,target=$CARGO_HOME/git,sharing=locked \
   --mount=type=cache,target=just-target,sharing=locked \
   cargo install just
 
-# Install `foundry`
+# install `foundry`
 ENV SVM_ROOT=/root/.svm
 RUN \
   --mount=type=cache,target=$CARGO_HOME/registry,sharing=locked \
@@ -23,56 +20,37 @@ RUN \
   --profile release --locked --target-dir foundry-target \
   anvil cast chisel forge
 
-# Install general dependencies
+# install general dependencies
 ENV DEBIAN_FRONTEND=noninteractive
 RUN \
   apt-get update && apt-get install -y --no-install-recommends \
-  build-essential git wget \
-  libslirp-dev \
-  liblua5.4-dev \
-  lua5.4 \
-  libclang-dev \
-  xxd jq sqlite3; \
+    build-essential git wget \
+    liblua5.4-dev lua5.4 \
+    libslirp-dev \
+    libclang-dev \
+    xxd jq sqlite3; \
   rm -rf /var/cache/apt;
-
-# Install cartesi machine
-COPY \
-  --from=machine \
-  /usr/lib/libcartesi-0.19.so /usr/lib/libcartesi.a \
-  /usr/lib/
-COPY \
-  --from=machine \
-  /usr/bin/cartesi-machine \
-  /usr/bin/
-COPY \
-  --from=machine \
-  /usr/include/cartesi-machine/ \
-  /usr/include/cartesi-machine/
-COPY \
-  --from=machine \
-  /usr/share/lua/ \
-  /usr/share/lua/
-COPY \
-  --from=machine \
-  /usr/lib/lua/ \
-  /usr/lib/lua/
-
-# for Rust bindings `cartesi-machine-sys`
-ENV LIBCARTESI_PATH="/usr/lib/"
-ENV INCLUDECARTESI_PATH="/usr/include/cartesi-machine/"
-
 
 WORKDIR /dave
 
-
+# download linux.bin and rootfs.ext2
 COPY test/programs/ test/programs/
 RUN just -f test/programs/justfile download-deps
+
+# install machine
+COPY machine/emulator/ machine/emulator/
+WORKDIR /dave/machine/emulator
+RUN make bundle-boost
+RUN make
+RUN make install
+WORKDIR /dave
 
 COPY prt/contracts/ prt/contracts/
 COPY cartesi-rollups/contracts/ cartesi-rollups/contracts/
 COPY machine/step/ machine/step/
 COPY justfile justfile
 
+# builds smart contracts and generate Rust bindings for smart contracts.
 RUN \
   --mount=type=cache,target=$SVM_ROOT,sharing=locked \
   --mount=type=cache,target=cartesi-rollups/contracts/out,sharing=locked \
@@ -81,21 +59,23 @@ RUN \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
   just build-smart-contracts && just bind
 
+# builds test programs and create anvil state dump.
+# requires compiled smart contracts.
 RUN \
   --mount=type=cache,target=$SVM_ROOT,sharing=locked \
   --mount=type=cache,target=cartesi-rollups/contracts/out,sharing=locked \
   --mount=type=cache,target=cartesi-rollups/contracts/cache,sharing=locked \
   --mount=type=cache,target=prt/contracts/out,sharing=locked \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
-  just -f test/programs/justfile build-echo
-
+  just -f test/programs/justfile build-programs
 
 COPY \
   --exclude=test/programs \
+  --exclude=machine/emulator \
   --exclude=prt/contracts \
+  --exclude=cartesi-rollups/contracts \
   --exclude=machine/step \
   --exclude=justfile \
-  --exclude=cartesi-rollups/contracts \
   . .
 
 RUN \
@@ -107,8 +87,8 @@ RUN \
   --mount=type=cache,target=cartesi-rollups/contracts/cache,sharing=locked \
   --mount=type=cache,target=prt/contracts/out,sharing=locked \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
-  RUSTFLAGS="-lslirp" \
-  just build-rust-workspace --features external_cartesi; \
+  just build-rust-workspace; \
   cp target/debug/dave-rollups .
 
+# because of `--mount`, we need to do this.
 RUN mkdir -p target/debug && mv dave-rollups target/debug/

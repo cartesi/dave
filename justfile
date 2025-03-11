@@ -4,13 +4,17 @@ update-submodules:
 clean-emulator:
   make -C machine/emulator clean depclean distclean
 
-download-deps:
+setup: update-submodules clean-emulator
+  make -C machine/emulator uarch-with-toolchain # Requries docker, necessary for machine bindings
+  just -f ./test/programs/justfile build-honeypot-snapshot # Requries docker, necessary for tests
+
+# Run this once after cloning, if using a docker environment
+setup-docker: setup build-docker-image
+
+# Run this once after cloning, if using local environment
+setup-local: setup
   just -f ./test/programs/justfile download-deps
-
-build-programs:
   just -f ./test/programs/justfile build-programs
-
-setup: update-submodules clean-emulator download-deps build-programs bind
 
 build-consensus:
     just -f ./cartesi-rollups/contracts/justfile build
@@ -35,19 +39,20 @@ fmt-rust-workspace: bind
 check-fmt-rust-workspace: bind
   cargo fmt --check
 check-rust-workspace: bind
-  cargo check
-test-rust-workspace: bind build-programs
-  cargo test
+  cargo check --features build_uarch
+test-rust-workspace: bind
+  cargo test --features build_uarch
 build-rust-workspace *ARGS: bind
-  cargo build {{ARGS}}
+  cargo build {{ARGS}} --features build_uarch
 build-release-rust-workspace *ARGS: bind
-  cargo build --release {{ARGS}}
+  cargo build --release {{ARGS}} --features build_uarch
+clean-rust-workspace: bind
+  cargo clean
 
 build: build-smart-contracts bind build-rust-workspace
 
 build-docker-image TAG="dave:dev":
   docker build -f test/Dockerfile -t {{TAG}} .
-
 run-dockered +CMD: build-docker-image
   docker run -it --rm --name dave-node dave:dev {{CMD}}
 exec-dockered +CMD:
@@ -55,7 +60,9 @@ exec-dockered +CMD:
 
 test-rollups-echo:
     just -f ./prt/tests/rollups/justfile test-echo
-view-rollups-echo:
+test-rollups-honeypot:
+    just -f ./prt/tests/rollups/justfile test-honeypot
+view-rollups-logs:
     just -f ./prt/tests/rollups/justfile read-node-logs
 
 kms-test-start:
@@ -67,6 +74,3 @@ kms-test-logs:
   docker compose -f common-rs/kms/compose.yaml logs -f
 kms-test-dave-logs:
   docker compose -f common-rs/kms/compose.yaml exec dave-kms tail -f ./prt/tests/rollups/dave.log
-
-hello:
-  echo $(echo "Hello")
