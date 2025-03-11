@@ -90,7 +90,7 @@ mod kms {
             core::ContainerPort, runners::AsyncRunner, ContainerAsync, ContainerRequest, ImageExt,
         },
     };
-    use tokio::sync::Mutex;
+    use tokio::{runtime, sync::Mutex};
 
     use super::*;
 
@@ -129,6 +129,13 @@ mod kms {
         Ok(())
     }
 
+    fn execute_blocking<F: Future>(f: F) {
+        runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(f);
+    }
+
     async fn run_test<T, F>(test: T) -> anyhow::Result<()>
     where
         T: FnOnce() -> F + UnwindSafe,
@@ -142,7 +149,7 @@ mod kms {
 
         println!("Container: {:?}", container);
 
-        let result = catch_unwind(async || test().await);
+        let result = catch_unwind(|| execute_blocking(test()));
 
         teardown(&container).await?;
 
