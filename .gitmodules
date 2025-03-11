@@ -16,3 +16,6 @@
 [submodule "cartesi-rollups/contracts/lib/openzeppelin-contracts"]
 	path = cartesi-rollups/contracts/lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "test/programs/honeypot/honeypot"]
+	path = test/programs/honeypot/honeypot
+	url = https://github.com/edubart/honeypot
