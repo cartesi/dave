@@ -251,6 +251,7 @@ where
         next_input_index_in_epoch: &mut u64,
         input_events_peekable: &mut Peekable<impl Iterator<Item = &'a InputAdded>>,
     ) -> Vec<Input> {
+        let input_index_boundary = U256::from(input_index_boundary);
         let mut inputs = vec![];
 
         while let Some(input_added) = input_events_peekable.peek() {
@@ -434,6 +435,7 @@ impl PartitionProvider {
 #[cfg(test)]
 mod blockchain_reader_tests {
     use crate::*;
+
     use alloy::{
         hex::FromHex,
         network::EthereumWallet,
@@ -452,10 +454,11 @@ mod blockchain_reader_tests {
     use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
     use rusqlite::Connection;
-    use std::sync::Arc;
     use std::{
-        fs::File,
-        io::{self, BufRead},
+        fs::{self, File},
+        io::Read,
+        path::PathBuf,
+        sync::Arc,
     };
     use tokio::{
         task::spawn,
@@ -464,47 +467,18 @@ mod blockchain_reader_tests {
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
     const APP_ADDRESS: Address = Address::ZERO;
-    // $ xxd -p -c32 test/programs/echo/machine-image/hash
-    const INITIAL_STATE: &str =
-        "0x84c8181abd120e0281f5032d22422b890f79880ae90d9a1416be1afccb8182a0";
     const INPUT_PAYLOAD: &str = "Hello!";
     const INPUT_PAYLOAD2: &str = "Hello Two!";
 
-    fn read_two_lines_from_file(file_path: &str) -> io::Result<(String, String)> {
-        // Open the file in read-only mode (ignoring errors for simplicity)
-        let file = File::open(file_path)?;
-        let reader = io::BufReader::new(file);
+    const PROGRAM: &str = "../../../test/programs/echo/";
 
-        // Create a vector to store the lines
-        let mut lines = Vec::new();
-
-        // Read lines from the file
-        for line in reader.lines() {
-            match line {
-                Ok(content) => lines.push(content),
-                Err(e) => return Err(e), // Handle any errors
-            }
-
-            // Stop reading after two lines
-            if lines.len() == 2 {
-                break;
-            }
-        }
-
-        // Ensure we have exactly two lines
-        if lines.len() != 2 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "File has less than two lines",
-            ));
-        }
-
-        // first line is input box address
-        // second line is consensus address
-        Ok((lines[0].clone(), lines[1].clone()))
+    fn program_path() -> PathBuf {
+        PathBuf::from(PROGRAM).canonicalize().unwrap()
     }
 
-    fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, Address, Address) {
+    fn spawn_anvil_and_provider() -> (AnvilInstance, SenderFiller, Address, Address, Digest) {
+        let program_path = program_path();
+
         let anvil = Anvil::default()
             .block_time(1)
             .args([
@@ -515,6 +489,7 @@ mod blockchain_reader_tests {
                 "../../../test/programs/echo/anvil_state.json",
                 "--block-base-fee-per-gas",
                 "0",
+                program_path.join("anvil_state.json").to_str().unwrap(),
             ])
             .spawn();
 
@@ -523,19 +498,34 @@ mod blockchain_reader_tests {
         signer.set_chain_id(Some(anvil.chain_id()));
         let wallet = EthereumWallet::from(signer);
 
-        let (input_box, consensus) =
-            read_two_lines_from_file("../../../test/programs/echo/addresses").unwrap();
-
         let provider = ProviderBuilder::new()
             .wallet(wallet)
             .on_http(anvil.endpoint_url())
             .erased();
 
+        let (input_box_address, consensus_address) = {
+            let addresses = fs::read_to_string(program_path.join("addresses")).unwrap();
+            let mut lines = addresses.lines().map(str::trim);
+            (
+                Address::from_hex(lines.next().unwrap()).unwrap(),
+                Address::from_hex(lines.next().unwrap()).unwrap(),
+            )
+        };
+
+        let initial_hash = {
+            // $ xxd -p -c32 test/programs/echo/machine-image/hash
+            let mut file = File::open(program_path.join("machine-image").join("hash")).unwrap();
+            let mut buffer = [0u8; 32];
+            file.read_exact(&mut buffer).unwrap();
+            buffer
+        };
+
         (
             anvil,
             provider,
-            Address::from_hex(input_box).unwrap(),
-            Address::from_hex(consensus).unwrap(),
+            input_box_address,
+            consensus_address,
+            Digest::from_digest(&initial_hash).unwrap(),
         )
     }
 
@@ -647,7 +637,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
-        let (anvil, provider, input_box_address, _) = spawn_anvil_and_provider();
+        let (anvil, provider, input_box_address, _, _) = spawn_anvil_and_provider();
         let inputbox = InputBox::new(input_box_address, &provider);
 
         let input_count_1 = 2;
@@ -689,7 +679,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_epoch_reader() -> Result<()> {
-        let (anvil, provider, _, consensus_address) = spawn_anvil_and_provider();
+        let (anvil, provider, _, consensus_address, initial_state) = spawn_anvil_and_provider();
         let daveconsensus = DaveConsensus::new(consensus_address, &provider);
 
         let epoch_reader = create_epoch_reader();
@@ -699,7 +689,7 @@ mod blockchain_reader_tests {
         assert_eq!(read_epochs.len(), 1);
         assert_eq!(
             &read_epochs[0].initialMachineStateHash.abi_encode(),
-            Digest::from_digest_hex(INITIAL_STATE).unwrap().slice()
+            initial_state.slice()
         );
 
         drop(anvil);
@@ -707,8 +697,8 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
-    async fn test_blockchain_reader() -> Result<()> {
-        let (anvil, provider, input_box_address, consensus_address) = spawn_anvil_and_provider();
+    async fn test_blockchain_reader_aaa() -> Result<()> {
+        let (anvil, provider, input_box_address, consensus_address, _) = spawn_anvil_and_provider();
 
         let inputbox = InputBox::new(input_box_address, &provider);
         let state_manager = Arc::new(PersistentStateAccess::new(

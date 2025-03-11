@@ -7,15 +7,7 @@ Dave is a permissionless, interactive fraud-proof system. This repo contains the
 * off-chain reference node in Rust;
 * dispute algorithm specification.
 
-
-## Running Dave
-
-This project uses git submodules.
-Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
-
-To run the PRT Lua client (compute), follow the instructions [here](prt/tests/compute/README.md).
-To run the PRT Rust node (rollups), follow the instructions [here](prt/tests/rollups/README.md).
-
+---
 
 ## What's in a name
 
@@ -35,6 +27,8 @@ If you're honest, Dave's got your back; you can fight a mountain of powerful, we
 Dave is inspired by the David vs. Goliath archetype.
 
 
+---
+
 ## Execution Environment
 
 Dave uses the [Cartesi Machine](https://github.com/cartesi/machine-emulator) as its execution environment.
@@ -47,6 +41,8 @@ Using a technique called _machine swapping_ and leveraging good compilers, we im
 Nevertheless, Dave was designed to be agnostic on its execution environment.
 As long as one can provide a self-contained state-transition function, Dave will work.
 
+
+---
 
 ## Algorithms
 
@@ -66,11 +62,76 @@ The second implementation of Dave will be based on the eponymous Dave algorithm,
 We've published our initial research [here](https://arxiv.org/abs/2411.05463), and presented our findings at Devcon 24 [here](https://youtu.be/dI_3neyXVl0).
 
 
+---
+
+## Running Dave
+
+This repository offers two development setups for Dave: one running inside a Docker container and one running natively (outside Docker).
+Choose the setup that best fits your workflow.
+
+### Docker Environment
+
+**Dependencies:**
+
+- Docker
+- just
+- make
+
+**Setup Steps:**
+
+1. **Clone the Repository:**  
+   Ensure you have cloned the repository to your local machine.
+
+2. **Initialize the Docker Environment:**
+   Run the following command to set up the Docker environment (it will take a while):
+   ```bash
+   just setup-docker
+   ```
+
+3. **Execute Commands Inside Docker:**
+   To run any command within the Docker container, prefix your command as follows:
+   ```bash
+   just run-dockered <command>
+   ```
+
+### Local Environment
+
+If you prefer running Dave natively on your machine, you'll need additional dependencies.
+
+**Additional Dependencies:**
+
+- A C++ compiler
+- A local installation of the Cartesi machine
+
+**Setup Steps:**
+
+1. **Clone the Repository:**
+   Make sure the repository is cloned locally.
+
+2. **Initialize the Local Environment:**
+   Run the following command to set up the environment (it will take a while):
+   ```bash
+   just setup-local
+   ```
+
+### Running Examples
+
+The repository includes examples for different components of Dave:
+
+- **PRT Lua Client (Compute):**
+  Follow the instructions in the [PRT Lua client README](prt/tests/compute/README.md).
+
+- **PRT Rust Node (Rollups):**
+  Follow the instructions in the [PRT Rust node README](prt/tests/rollups/README.md).
+
+---
+
 ## Status
 
 The project is still in its prototyping stages.
 
 
+---
 
 ## Contributing
 
@@ -78,6 +139,8 @@ Thank you for your interest in Cartesi!
 Head over to our [Contributing Guidelines](CONTRIBUTING.md) for instructions on how to sign our Contributors Agreement and get started with Cartesi!
 
 Please note we have a [Code of Conduct](CODE_OF_CONDUCT.md), please follow it in all your interactions with the project.
+
+---
 
 ## License
 
