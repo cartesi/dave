@@ -1,5 +1,5 @@
 //! Module for configuration of an Arena.
-use clap::Parser;
+use clap::{Args, Parser};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
@@ -23,19 +23,18 @@ pub struct BlockchainConfig {
     )]
     pub web3_private_key: String,
     #[command(flatten)]
-    pub aws_config: Option<AWSConfig>,
+    pub aws_config: AWSConfig,
 }
 
-#[derive(Debug, Clone, Parser)]
-#[command(name = "aws_config")]
-#[command(about = "Configuration for AWS Access")]
+#[derive(Args, Debug, Clone)]
+#[group()]
 pub struct AWSConfig {
     /// aws key id
     #[arg(long, env)]
-    pub aws_access_key_id: String,
+    pub aws_access_key_id: Option<String>,
     /// aws secret access key
     #[arg(long, env)]
-    pub aws_secret_access_key: String,
+    pub aws_secret_access_key: Option<String>,
     /// aws endpoint url
     #[arg(long, env, default_value = "http://localhost:4566")]
     pub aws_endpoint_url: String,
