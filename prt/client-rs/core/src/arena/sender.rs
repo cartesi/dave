@@ -55,8 +55,11 @@ impl EthArenaSender {
     pub async fn new(config: &BlockchainConfig) -> anyhow::Result<Self> {
         let signer: Box<CommonSignature>;
 
-        if let Some(aws_config) = &config.aws_config {
-            let key_id = aws_config.aws_access_key_id.clone();
+        let has_awsconfig = config.aws_config.aws_access_key_id.is_some()
+            && config.aws_config.aws_secret_access_key.is_some();
+
+        if has_awsconfig {
+            let key_id = config.aws_config.aws_access_key_id.clone().unwrap();
             let kms_signer = KmsSignerBuilder::new()
                 .await
                 .with_chain_id(config.web3_chain_id)
