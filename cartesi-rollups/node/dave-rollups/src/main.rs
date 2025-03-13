@@ -12,9 +12,9 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    info!("Hello from Dave Rollups!");
-
     env_logger::init();
+
+    info!("Hello from Dave Rollups!");
 
     let parameters = DaveParameters::parse();
     let state_manager = Arc::new(PersistentStateAccess::new(Connection::open(
