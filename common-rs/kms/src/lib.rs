@@ -82,7 +82,6 @@ mod kms {
         network::{Ethereum, EthereumWallet, NetworkWallet},
         signers::Signer,
     };
-    use aws_sdk_kms::config::Credentials;
     use lazy_static::lazy_static;
     use testcontainers_modules::{
         localstack::LocalStack,
@@ -100,12 +99,8 @@ mod kms {
     }
 
     fn set_aws_test_env_vars() {
-        let test_credentials = Credentials::for_tests();
-        set_var("AWS_ACCESS_KEY_ID", test_credentials.access_key_id());
-        set_var(
-            "AWS_SECRET_ACCESS_KEY",
-            test_credentials.secret_access_key(),
-        );
+        // set later on
+        set_var("AWS_KMS_KEY_ID", "");
         set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
         set_var("AWS_REGION", "us-east-1");
     }
