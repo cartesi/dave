@@ -29,12 +29,9 @@ pub struct BlockchainConfig {
 #[derive(Args, Debug, Clone)]
 #[group()]
 pub struct AWSConfig {
-    /// aws key id
+    /// aws kms key id
     #[arg(long, env)]
-    pub aws_access_key_id: Option<String>,
-    /// aws secret access key
-    #[arg(long, env)]
-    pub aws_secret_access_key: Option<String>,
+    pub aws_kms_key_id: Option<String>,
     /// aws endpoint url
     #[arg(long, env, default_value = "http://localhost:4566")]
     pub aws_endpoint_url: String,

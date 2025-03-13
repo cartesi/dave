@@ -12,3 +12,16 @@ services:
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
+  dave-rollups:
+    build:
+      context: ../..
+      dockerfile: test/Dockerfile
+    command: ["just", "test-rollups-echo"]
+    environment:
+      #  Put key_id here
+      - AWS_KMS_KEY_ID=13bf90b1-2504-412a-8cdb-6e345fbf88d6
+      - AWS_SECRET_ACCESS_KEY=notrealrnrELgWzOk3IfjzDKtFBhDby
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_REGION=us-east-1
+    depends_on:
+      - localstack
