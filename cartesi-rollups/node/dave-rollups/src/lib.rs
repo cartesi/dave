@@ -83,7 +83,7 @@ pub fn create_compute_runner_task(
 }
 
 pub fn create_epoch_manager_task(
-    client: Arc<DynProvider>,
+    client: DynProvider,
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {

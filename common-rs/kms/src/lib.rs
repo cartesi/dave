@@ -21,9 +21,7 @@ type KmsSigner = AwsSigner;
 
 impl KmsSignerBuilder {
     pub async fn new() -> Self {
-        let config = aws_config::defaults(BehaviorVersion::v2024_03_28())
-            .load()
-            .await;
+        let config = aws_config::defaults(BehaviorVersion::latest()).load().await;
         let client = Client::new(&config);
         Self {
             client,

@@ -1,7 +1,7 @@
 //! This module defines the struct [StateReader] that is responsible for the reading the states
 //! of tournaments
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use anyhow::Result;
 use async_recursion::async_recursion;
@@ -28,14 +28,13 @@ use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament
 
 #[derive(Clone)]
 pub struct StateReader {
-    client: Arc<DynProvider>,
+    client: DynProvider,
 }
 
 impl StateReader {
     pub fn new(config: &BlockchainConfig) -> Result<Self> {
         let url = config.web3_rpc_url.parse()?;
-        let provider = ProviderBuilder::new().on_http(url).erased();
-        let client = Arc::new(provider);
+        let client = ProviderBuilder::new().on_http(url).erased();
 
         Ok(Self { client })
     }
