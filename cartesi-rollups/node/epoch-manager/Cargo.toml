@@ -12,7 +12,6 @@ repository.workspace = true
 [dependencies]
 cartesi-dave-contracts = { workspace = true }
 rollups-state-manager = { workspace = true }
-cartesi-prt-core = { workspace = true }
 
 alloy = { workspace = true }
 anyhow = { workspace = true }

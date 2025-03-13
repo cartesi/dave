@@ -445,10 +445,9 @@ mod blockchain_reader_tests {
         network::EthereumWallet,
         node_bindings::{Anvil, AnvilInstance},
         primitives::Address,
-        providers::ProviderBuilder,
+        providers::{DynProvider, ProviderBuilder},
         signers::{local::PrivateKeySigner, Signer},
         sol_types::{SolCall, SolValue},
-        transports::http::{Client, Http},
     };
     use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
     use cartesi_dave_merkle::Digest;
@@ -520,6 +519,8 @@ mod blockchain_reader_tests {
                 "1",
                 "--load-state",
                 "../../../test/programs/echo/anvil_state.json",
+                "--block-base-fee-per-gas",
+                "0",
             ])
             .spawn();
 
@@ -533,7 +534,8 @@ mod blockchain_reader_tests {
 
         let provider = ProviderBuilder::new()
             .wallet(wallet)
-            .on_http(anvil.endpoint_url());
+            .on_http(anvil.endpoint_url())
+            .erased();
 
         (
             anvil,
@@ -557,13 +559,14 @@ mod blockchain_reader_tests {
     }
 
     async fn add_input(
-        inputbox: &InputBox::InputBoxInstance<Http<Client>, DynProvider>,
+        inputbox: &InputBox::InputBoxInstance<(), &DynProvider>,
         input_payload: &'static str,
         count: usize,
     ) -> Result<()> {
         for _ in 0..count {
             inputbox
                 .addInput(APP_ADDRESS, input_payload.as_bytes().into())
+                .max_fee_per_gas(10000000000)
                 .send()
                 .await?
                 .watch()

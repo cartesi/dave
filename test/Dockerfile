@@ -4,7 +4,7 @@
 # (i.e. cartesi/machine-emulator:latest), and change tag.
 FROM cartesi/machine-emulator:0.18.1 AS machine
 
-FROM rust:1.83
+FROM rust:1.85
 
 # Install `just`
 RUN \
@@ -27,12 +27,12 @@ RUN \
 ENV DEBIAN_FRONTEND=noninteractive
 RUN \
   apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git wget \
-    libslirp-dev \
-    liblua5.4-dev \
-    lua5.4 \
-    libclang-dev \
-    xxd jq sqlite3; \
+  build-essential git wget \
+  libslirp-dev \
+  liblua5.4-dev \
+  lua5.4 \
+  libclang-dev \
+  xxd jq sqlite3; \
   rm -rf /var/cache/apt;
 
 # Install cartesi machine
