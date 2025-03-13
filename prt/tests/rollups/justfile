@@ -1,5 +1,7 @@
 ECHO_DIR := "../../../test/programs/echo"
+HONEYPOT_DIR := "../../../test/programs/honeypot"
 
+# TODO each program should get its own, from its own dir.
 INPUT_BOX := `head -n 1 ../../../test/programs/echo/addresses`
 CONSENSUS := `head -n 2 ../../../test/programs/echo/addresses | tail -n 1`
 
@@ -11,8 +13,12 @@ test MACH_PATH:
   MACHINE_PATH={{MACH_PATH}} lua prt_rollups.lua
 
 # run PRT rollups echo test
-test-echo: 
+test-echo:
   just test {{ECHO_DIR}}
+
+# run PRT rollups honeypot test
+test-honeypot:
+  just test {{HONEYPOT_DIR}}
 
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:

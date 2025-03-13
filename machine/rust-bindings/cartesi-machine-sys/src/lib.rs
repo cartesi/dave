@@ -5,5 +5,5 @@
 
 extern crate link_cplusplus;
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-include!(concat!(env!("OUT_DIR"), "/htif.rs"));
-include!(concat!(env!("OUT_DIR"), "/pma.rs"));
+// include!(concat!(env!("OUT_DIR"), "/htif.rs"));
+// include!(concat!(env!("OUT_DIR"), "/pma.rs"));

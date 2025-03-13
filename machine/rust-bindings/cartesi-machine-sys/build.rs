@@ -1,26 +1,6 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
-
 use std::{env, path::PathBuf, process::Command};
-
-mod feature_checks {
-    #[cfg(all(feature = "build_uarch", feature = "copy_uarch",))]
-    compile_error!("Features `build_uarch` and `copy_uarch` are mutually exclusive");
-
-    #[cfg(all(feature = "build_uarch", feature = "download_uarch"))]
-    compile_error!("Features `build_uarch` and `download_uarch` are mutually exclusive");
-
-    #[cfg(all(feature = "copy_uarch", feature = "download_uarch"))]
-    compile_error!("Features `copy_uarch`, and `download_uarch` are mutually exclusive");
-
-    #[cfg(not(any(
-        feature = "copy_uarch",
-        feature = "download_uarch",
-        feature = "build_uarch",
-        feature = "external_cartesi",
-    )))]
-    compile_error!("At least one of `build_uarch`, `copy_uarch`, `download_uarch`, and `external_cartesi` must be set");
-}
 
 fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -62,6 +42,7 @@ fn main() {
     //  Generate bindings
     //
 
+    // find headers
     #[allow(clippy::needless_late_init)]
     let include_path;
     cfg_if::cfg_if! {
@@ -75,32 +56,21 @@ fn main() {
         }
     };
 
-    // machine api
+    // generate machine api
     let machine_bindings = bindgen::Builder::default()
         .header(include_path.join("machine-c-api.h").to_str().unwrap())
+        .allowlist_item("^cm_.*")
+        .allowlist_item("^CM_.*")
+        .merge_extern_blocks(true)
+        .prepend_enum_name(false)
+        .translate_enum_integer_types(true)
         .generate()
         .expect("Unable to generate machine bindings");
-
-    // htif constants
-    let htif = bindgen::Builder::default()
-        .header(include_path.join("htif-defines.h").to_str().unwrap())
-        .generate()
-        .expect("Unable to generate htif bindings");
-
-    // pma constants
-    let pma = bindgen::Builder::default()
-        .header(include_path.join("pma-defines.h").to_str().unwrap())
-        .generate()
-        .expect("Unable to generate pma bindings");
 
     // Write the bindings to the `$OUT_DIR/bindings.rs` and `$OUT_DIR/htif.rs` files.
     machine_bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write machine bindings");
-    htif.write_to_file(out_path.join("htif.rs"))
-        .expect("Couldn't write htif defines");
-    pma.write_to_file(out_path.join("pma.rs"))
-        .expect("Couldn't write pma defines");
 
     // Setup reruns
     println!("cargo:rerun-if-changed=build.rs");
@@ -120,6 +90,7 @@ mod build_cm {
         // Get uarch
         cfg_if::cfg_if! {
             if #[cfg(feature = "build_uarch")] {
+                // requires docker
                 ()
             } else if #[cfg(feature = "copy_uarch")] {
                 let uarch_path = machine_dir_path.join("uarch");
@@ -131,49 +102,63 @@ mod build_cm {
             }
         }
 
-        // Build and link emulator
+        let libcartesi_dest_path = out_path.join("libcartesi.a");
+        let libcartesi_jsonrpc_dest_path = out_path.join("libcartesi_jsonrpc.a");
 
-        // build dependencies
-        Command::new("make")
-            .args(["submodules"])
-            .current_dir(machine_dir_path)
-            .status()
-            .expect("Failed to run setup `make submodules`");
-        Command::new("make")
-            .args(["bundle-boost"])
-            .current_dir(machine_dir_path)
-            .status()
-            .expect("Failed to run `make bundle-boost`");
+        if libcartesi_dest_path.exists() {
+            assert!(
+                libcartesi_jsonrpc_dest_path.exists(),
+                "libcartesi.a exists, but libcartesi_jsonrpc.a does not"
+            );
+        } else {
+            //
+            // Build and link emulator
+            //
 
-        // build `libcartesi.a` and `libcartesi_jsonrpc.a`, release, no `libslirp`
-        Command::new("make")
-            .args([
-                "-C",
-                "src",
-                "release=yes",
-                "slirp=no",
-                "libcartesi.a",
-                "libcartesi_jsonrpc.a",
-            ])
-            .current_dir(machine_dir_path)
-            .status()
-            .expect("Failed to build `libcartesi.a` and/or `libcartesi_jsonrpc.a`");
+            // build dependencies
+            Command::new("make")
+                .args(["submodules"])
+                .current_dir(machine_dir_path)
+                .status()
+                .expect("Failed to run setup `make submodules`");
+            Command::new("make")
+                .args(["bundle-boost"])
+                .current_dir(machine_dir_path)
+                .status()
+                .expect("Failed to run `make bundle-boost`");
+
+            // build `libcartesi.a` and `libcartesi_jsonrpc.a`, release, no `libslirp`
+            Command::new("make")
+                .args([
+                    "-C",
+                    "src",
+                    "release=yes",
+                    "slirp=no",
+                    "libcartesi.a",
+                    "libcartesi_jsonrpc.a",
+                ])
+                .current_dir(machine_dir_path)
+                .status()
+                .expect("Failed to build `libcartesi.a` and/or `libcartesi_jsonrpc.a`");
+        }
 
         // copy `libcartesi.a` to OUT_DIR
         let libcartesi_path = machine_dir_path.join("src").join("libcartesi.a");
-        let libcartesi_new_path = out_path.join("libcartesi.a");
-        fs::copy(&libcartesi_path, &libcartesi_new_path).unwrap_or_else(|_| {
+        fs::copy(&libcartesi_path, &libcartesi_dest_path).unwrap_or_else(|_| {
             panic!(
                 "Failed to copy `libcartesi.a` {:?} to OUT_DIR {:?}",
-                libcartesi_path, libcartesi_new_path
+                libcartesi_path, libcartesi_dest_path
             )
         });
 
         // copy `libcartesi_jsonrpc.a` to OUT_DIR
         let libcartesi_jsonrpc_path = machine_dir_path.join("src").join("libcartesi_jsonrpc.a");
-        let libcartesi_jsonrpc_new_path = out_path.join("libcartesi_jsonrpc.a");
-        fs::copy(libcartesi_jsonrpc_path, libcartesi_jsonrpc_new_path)
-            .expect("Failed to move `libcartesi_jsonrpc.a` to OUT_DIR");
+        fs::copy(&libcartesi_jsonrpc_path, &libcartesi_jsonrpc_dest_path).unwrap_or_else(|_| {
+            panic!(
+                "Failed to copy `libcartesi_jsonrpc.a` {:?} to OUT_DIR {:?}",
+                libcartesi_jsonrpc_path, libcartesi_jsonrpc_dest_path
+            )
+        });
     }
 
     #[cfg(feature = "copy_uarch")]
@@ -210,11 +195,12 @@ mod build_cm {
             process::{Command, Stdio},
         };
 
+        const VERSION_STRING: &str = "v0.19.0-test2";
+
         pub fn download(machine_dir_path: &Path) {
-            // apply git patche for 0.18.1
             let patch_file = machine_dir_path.join("add-generated-files.diff");
 
-            download_git_patch(&patch_file, "v0.18.1");
+            download_git_patch(&patch_file, VERSION_STRING);
             apply_git_patch(&patch_file, machine_dir_path);
         }
 
@@ -241,9 +227,9 @@ mod build_cm {
             // Open the patch file
             let mut patch = fs::File::open(patch_file).expect("fail to open patch file");
 
-            // Create a command to run `patch -Np0`
+            // Create a command to run `patch -Np1`
             let mut cmd = Command::new("patch")
-                .arg("-Np0")
+                .arg("-Np1")
                 .stdin(Stdio::piped())
                 .current_dir(target_dir)
                 .spawn()
@@ -282,7 +268,26 @@ mod build_cm {
     }
 }
 
-#[allow(dead_code)]
+mod feature_checks {
+    #[cfg(all(feature = "build_uarch", feature = "copy_uarch",))]
+    compile_error!("Features `build_uarch` and `copy_uarch` are mutually exclusive");
+
+    #[cfg(all(feature = "build_uarch", feature = "download_uarch"))]
+    compile_error!("Features `build_uarch` and `download_uarch` are mutually exclusive");
+
+    #[cfg(all(feature = "copy_uarch", feature = "download_uarch"))]
+    compile_error!("Features `copy_uarch`, and `download_uarch` are mutually exclusive");
+
+    #[cfg(not(any(
+        feature = "copy_uarch",
+        feature = "download_uarch",
+        feature = "build_uarch",
+        feature = "external_cartesi",
+    )))]
+    compile_error!("At least one of `build_uarch`, `copy_uarch`, `download_uarch`, and `external_cartesi` must be set");
+}
+
+#[allow(unused)]
 fn clean(path: &PathBuf) {
     // clean build artifacts
     Command::new("make")

@@ -8,19 +8,18 @@ use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
     hex::ToHexExt,
-    primitives::Address,
+    primitives::{Address, U256},
     providers::{
         network::primitives::BlockTransactionsKind, Provider, ProviderBuilder, RootProvider,
     },
+    rpc::types::Topic,
     sol_types::SolEvent,
     transports::http::{reqwest::Url, Client, Http},
 };
-use alloy_rpc_types_eth::Topic;
 use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
 use log::{info, trace};
-use num_traits::cast::ToPrimitive;
 use std::{
     iter::Peekable,
     marker::{Send, Sync},
@@ -167,11 +166,11 @@ where
                 let epoch = Epoch {
                     epoch_number: e
                         .epochNumber
-                        .to_u64()
+                        .try_into()
                         .expect("fail to convert epoch number"),
                     input_index_boundary: e
                         .inputIndexUpperBound
-                        .to_u64()
+                        .try_into()
                         .expect("fail to convert epoch boundary"),
                     root_tournament: e.tournament.to_string(),
                 };
@@ -254,15 +253,11 @@ where
         next_input_index_in_epoch: &mut u64,
         input_events_peekable: &mut Peekable<impl Iterator<Item = &'a InputAdded>>,
     ) -> Vec<Input> {
+        let input_index_boundary = U256::from(input_index_boundary);
         let mut inputs = vec![];
 
         while let Some(input_added) = input_events_peekable.peek() {
-            if input_added
-                .index
-                .to_u64()
-                .expect("fail to convert input index")
-                >= input_index_boundary
-            {
+            if input_added.index >= U256::from(input_index_boundary) {
                 break;
             }
             let input = Input {
@@ -319,9 +314,9 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
                 current_finalized,
             )
             .await
-            .map_err(|err_arr| ProviderErrors(err_arr))?;
+            .map_err(ProviderErrors)?;
 
-        return Ok(logs);
+        Ok(logs)
     }
 }
 
@@ -362,7 +357,7 @@ impl PartitionProvider {
             let mut e = Event::new_sol(&self.inner, read_from)
                 .from_block(start_block)
                 .to_block(end_block)
-                .event(&E::SIGNATURE);
+                .event(E::SIGNATURE);
 
             if let Some(t) = topic1 {
                 e = e.topic1(t.clone());
@@ -442,6 +437,7 @@ impl PartitionProvider {
 #[cfg(test)]
 mod blockchain_reader_tests {
     use crate::*;
+
     use alloy::{
         hex::FromHex,
         network::EthereumWallet,
@@ -462,7 +458,12 @@ mod blockchain_reader_tests {
     use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
     use rusqlite::Connection;
-    use std::sync::Arc;
+    use std::{
+        fs::{self, File},
+        io::Read,
+        path::PathBuf,
+        sync::Arc,
+    };
     use tokio::{
         task::spawn,
         time::{sleep, Duration},
@@ -470,13 +471,18 @@ mod blockchain_reader_tests {
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
     const APP_ADDRESS: Address = Address::ZERO;
-    // $ xxd -p -c32 test/programs/echo/machine-image/hash
-    const INITIAL_STATE: &str =
-        "0x84c8181abd120e0281f5032d22422b890f79880ae90d9a1416be1afccb8182a0";
     const INPUT_PAYLOAD: &str = "Hello!";
     const INPUT_PAYLOAD2: &str = "Hello Two!";
 
-    fn spawn_anvil_and_provider() -> (AnvilInstance, SenderFiller, Address, Address) {
+    const PROGRAM: &str = "../../../test/programs/echo/";
+
+    fn program_path() -> PathBuf {
+        PathBuf::from(PROGRAM).canonicalize().unwrap()
+    }
+
+    fn spawn_anvil_and_provider() -> (AnvilInstance, SenderFiller, Address, Address, Digest) {
+        let program_path = program_path();
+
         let anvil = Anvil::default()
             .block_time(1)
             .args([
@@ -485,7 +491,7 @@ mod blockchain_reader_tests {
                 "--slots-in-an-epoch",
                 "1",
                 "--load-state",
-                "../../../test/programs/echo/anvil_state.json",
+                program_path.join("anvil_state.json").to_str().unwrap(),
             ])
             .spawn();
 
@@ -499,11 +505,29 @@ mod blockchain_reader_tests {
             .wallet(wallet)
             .on_http(anvil.endpoint_url());
 
+        let (input_box_address, consensus_address) = {
+            let addresses = fs::read_to_string(program_path.join("addresses")).unwrap();
+            let mut lines = addresses.lines().map(str::trim);
+            (
+                Address::from_hex(lines.next().unwrap()).unwrap(),
+                Address::from_hex(lines.next().unwrap()).unwrap(),
+            )
+        };
+
+        let initial_hash = {
+            // $ xxd -p -c32 test/programs/echo/machine-image/hash
+            let mut file = File::open(program_path.join("machine-image").join("hash")).unwrap();
+            let mut buffer = [0u8; 32];
+            file.read_exact(&mut buffer).unwrap();
+            buffer
+        };
+
         (
             anvil,
             provider,
-            Address::from_hex("0x5fbdb2315678afecb367f032d93f642f64180aa3").unwrap(),
-            Address::from_hex("0xa513e6e4b8f2a923d98304ec87f64353c4d5c853").unwrap(),
+            input_box_address,
+            consensus_address,
+            Digest::from_digest(&initial_hash).unwrap(),
         )
     }
 
@@ -614,7 +638,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
-        let (anvil, provider, input_box_address, _) = spawn_anvil_and_provider();
+        let (anvil, provider, input_box_address, _, _) = spawn_anvil_and_provider();
         let inputbox = InputBox::new(input_box_address, &provider);
 
         let input_count_1 = 2;
@@ -656,7 +680,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_epoch_reader() -> Result<()> {
-        let (anvil, provider, _, consensus_address) = spawn_anvil_and_provider();
+        let (anvil, provider, _, consensus_address, initial_state) = spawn_anvil_and_provider();
         let daveconsensus = DaveConsensus::new(consensus_address, &provider);
 
         let epoch_reader = create_epoch_reader();
@@ -666,7 +690,7 @@ mod blockchain_reader_tests {
         assert_eq!(read_epochs.len(), 1);
         assert_eq!(
             &read_epochs[0].initialMachineStateHash.abi_encode(),
-            Digest::from_digest_hex(INITIAL_STATE).unwrap().slice()
+            initial_state.slice()
         );
 
         drop(anvil);
@@ -675,7 +699,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_blockchain_reader_aaa() -> Result<()> {
-        let (anvil, provider, input_box_address, consensus_address) = spawn_anvil_and_provider();
+        let (anvil, provider, input_box_address, consensus_address, _) = spawn_anvil_and_provider();
 
         let inputbox = InputBox::new(input_box_address, &provider);
         let state_manager = Arc::new(PersistentStateAccess::new(

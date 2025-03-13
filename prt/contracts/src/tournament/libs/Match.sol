@@ -150,7 +150,7 @@ library Match {
                 state._setDivergenceOnRightLeaf(rightLeaf);
         }
 
-        // Prove initial hash is in commitment
+        // Prove agree hash is in commitment
         if (state.runningLeafPosition == 0) {
             require(
                 agreeState.eq(initialState),

@@ -14,7 +14,7 @@ repository = { workspace = true }
 [features]
 remote_machine = []
 
-# default
+# Downloads from emulator's GitHub release
 download_uarch = ["reqwest", "bytes"]
 
 # requires docker daemon to be running
@@ -26,15 +26,13 @@ copy_uarch = []
 # requires setting env vars LIBCARTESI_PATH and INCLUDECARTESI_PATH
 external_cartesi = []
 
-default = ["download_uarch"]
-
 
 [dependencies]
 link-cplusplus = "1.0"
 
 
 [build-dependencies]
-bindgen = "0.69"
+bindgen = "0.71"
 cfg-if = "1.0"
 
 hex-literal = "0.4.1"
