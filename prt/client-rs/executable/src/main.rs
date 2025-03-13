@@ -17,9 +17,9 @@ fn touch(path: &Path) -> io::Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    info!("Hello from Dave!");
-
     env_logger::init();
+
+    info!("Hello from Dave!");
 
     let config = ComputeConfig::parse();
     let blockchain_config = config.blockchain_config;
