@@ -1,12 +1,13 @@
-use anyhow::Result;
 use cartesi_prt_core::arena::EthArenaSender;
-use clap::Parser;
 use dave_rollups::{
     create_blockchain_reader_task, create_compute_runner_task, create_epoch_manager_task,
     create_machine_runner_task, DaveParameters,
 };
-use log::info;
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
+
+use anyhow::Result;
+use clap::Parser;
+use log::info;
 use rusqlite::Connection;
 use std::sync::Arc;
 
