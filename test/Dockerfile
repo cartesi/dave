@@ -112,3 +112,5 @@ RUN \
   cp target/debug/dave-rollups .
 
 RUN mkdir -p target/debug && mv dave-rollups target/debug/
+
+COPY common-rs/kms/aws.sh /dave/aws.sh
