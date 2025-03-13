@@ -16,7 +16,6 @@ cartesi-dave-contracts = { workspace = true }
 cartesi-rollups-contracts = { workspace = true }
 
 alloy = { workspace = true }
-alloy-rpc-types-eth = "0.8.0"
 async-recursion = { workspace = true }
 clap = { workspace = true }
 log = { workspace = true }
