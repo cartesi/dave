@@ -4,18 +4,16 @@ mod error;
 
 use crate::error::{ProviderErrors, Result};
 
+use alloy::rpc::types::Topic;
 use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
     hex::ToHexExt,
     primitives::Address,
-    providers::{
-        network::primitives::BlockTransactionsKind, Provider, ProviderBuilder, RootProvider,
-    },
+    providers::{DynProvider, Provider, ProviderBuilder},
     sol_types::SolEvent,
-    transports::http::{reqwest::Url, Client, Http},
+    transports::http::reqwest::Url,
 };
-use alloy_rpc_types_eth::Topic;
 use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
@@ -326,7 +324,7 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
 }
 
 struct PartitionProvider {
-    inner: RootProvider<Http<Client>>,
+    inner: DynProvider,
 }
 
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
@@ -334,7 +332,7 @@ struct PartitionProvider {
 impl PartitionProvider {
     fn new(provider_url: &str) -> std::result::Result<Self, <Url as FromStr>::Err> {
         let url = provider_url.parse()?;
-        let provider = ProviderBuilder::new().on_http(url);
+        let provider = ProviderBuilder::new().on_http(url).erased();
         Ok(PartitionProvider { inner: provider })
     }
 
@@ -358,7 +356,7 @@ impl PartitionProvider {
         end_block: u64,
     ) -> std::result::Result<Vec<E>, Vec<Error>> {
         // TODO: partition log queries if range too large
-        let event = {
+        let event: Event<(), &DynProvider, E> = {
             let mut e = Event::new_sol(&self.inner, read_from)
                 .from_block(start_block)
                 .to_block(end_block)
@@ -415,7 +413,7 @@ impl PartitionProvider {
     async fn latest_finalized_block(&self) -> std::result::Result<u64, ProviderErrors> {
         let block_number = self
             .inner
-            .get_block(Finalized.into(), BlockTransactionsKind::Hashes)
+            .get_block(Finalized.into())
             .await
             .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?
             .expect("block is empty")
@@ -447,14 +445,12 @@ mod blockchain_reader_tests {
         network::EthereumWallet,
         node_bindings::{Anvil, AnvilInstance},
         primitives::Address,
-        providers::ProviderBuilder,
+        providers::{DynProvider, ProviderBuilder},
         signers::{local::PrivateKeySigner, Signer},
         sol_types::{SolCall, SolValue},
-        transports::http::{Client, Http},
     };
     use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
     use cartesi_dave_merkle::Digest;
-    use cartesi_prt_core::arena::SenderFiller;
     use cartesi_rollups_contracts::{
         inputbox::InputBox::{self, InputAdded},
         inputs::Inputs::EvmAdvanceCall,
@@ -476,7 +472,7 @@ mod blockchain_reader_tests {
     const INPUT_PAYLOAD: &str = "Hello!";
     const INPUT_PAYLOAD2: &str = "Hello Two!";
 
-    fn spawn_anvil_and_provider() -> (AnvilInstance, SenderFiller, Address, Address) {
+    fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, Address, Address) {
         let anvil = Anvil::default()
             .block_time(1)
             .args([
@@ -495,13 +491,12 @@ mod blockchain_reader_tests {
         let wallet = EthereumWallet::from(signer);
 
         let provider = ProviderBuilder::new()
-            .with_recommended_fillers()
             .wallet(wallet)
             .on_http(anvil.endpoint_url());
 
         (
             anvil,
-            provider,
+            provider.erased(),
             Address::from_hex("0x5fbdb2315678afecb367f032d93f642f64180aa3").unwrap(),
             Address::from_hex("0xa513e6e4b8f2a923d98304ec87f64353c4d5c853").unwrap(),
         )
@@ -521,7 +516,7 @@ mod blockchain_reader_tests {
     }
 
     async fn add_input(
-        inputbox: &InputBox::InputBoxInstance<Http<Client>, impl Provider<Http<Client>>>,
+        inputbox: &InputBox::InputBoxInstance<(), DynProvider>,
         input_payload: &'static str,
         count: usize,
     ) -> Result<()> {

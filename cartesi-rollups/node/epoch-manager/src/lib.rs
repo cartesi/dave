@@ -1,15 +1,14 @@
-use alloy::{hex::ToHexExt, primitives::Address};
+use alloy::{hex::ToHexExt, primitives::Address, providers::DynProvider};
 use anyhow::Result;
 use log::{error, info};
 use num_traits::cast::ToPrimitive;
 use std::{sync::Arc, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus;
-use cartesi_prt_core::arena::SenderFiller;
 use rollups_state_manager::StateManager;
 
 pub struct EpochManager<SM: StateManager> {
-    client: Arc<SenderFiller>,
+    client: DynProvider,
     consensus: Address,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
@@ -20,7 +19,7 @@ where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
     pub fn new(
-        client: Arc<SenderFiller>,
+        client: DynProvider,
         consensus_address: Address,
         state_manager: Arc<SM>,
         sleep_duration: u64,

@@ -1,11 +1,11 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use rollups_state_manager::StateManager;
-
 use alloy::{contract::Error as ContractError, transports::http::reqwest::Url};
 use std::str::FromStr;
 use thiserror::Error;
+
+use rollups_state_manager::StateManager;
 
 #[derive(Error, Debug)]
 pub struct ProviderErrors(pub Vec<ContractError>);

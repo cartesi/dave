@@ -1,16 +1,17 @@
-use cartesi_prt_core::arena::{BlockchainConfig, EthArenaSender, SenderFiller};
-
+use alloy::providers::DynProvider;
 use clap::Parser;
 use log::error;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::task::JoinHandle;
+use tokio::task::{spawn, spawn_blocking};
+
+use cartesi_prt_core::arena::{BlockchainConfig, EthArenaSender};
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
 use rollups_prt_runner::ComputeRunner;
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::task::JoinHandle;
-use tokio::task::{spawn, spawn_blocking};
 
 const SLEEP_DURATION: u64 = 30;
 const SNAPSHOT_DURATION: u64 = 30;
@@ -82,7 +83,7 @@ pub fn create_compute_runner_task(
 }
 
 pub fn create_epoch_manager_task(
-    client: Arc<SenderFiller>,
+    client: DynProvider,
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
