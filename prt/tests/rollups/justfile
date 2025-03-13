@@ -1,10 +1,18 @@
+ECHO_DIR := "../../../test/programs/echo"
+
+INPUT_BOX := `head -n 1 ../../../test/programs/echo/addresses`
+CONSENSUS := `head -n 2 ../../../test/programs/echo/addresses | tail -n 1`
+
 # run PRT rollups test
 test MACH_PATH:
   rm -rf _state
+  CONSENSUS={{CONSENSUS}} \
+  INPUT_BOX={{INPUT_BOX}} \
   MACHINE_PATH={{MACH_PATH}} lua prt_rollups.lua
 
 # run PRT rollups echo test
-test-echo: (test "../../../test/programs/echo")
+test-echo: 
+  just test {{ECHO_DIR}}
 
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:
