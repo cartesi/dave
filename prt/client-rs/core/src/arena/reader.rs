@@ -8,11 +8,8 @@ use async_recursion::async_recursion;
 
 use alloy::{
     eips::BlockNumberOrTag::Latest,
-    providers::{
-        network::primitives::BlockTransactionsKind, Provider, ProviderBuilder, RootProvider,
-    },
+    providers::{DynProvider, Provider, ProviderBuilder},
     sol_types::private::{Address, B256},
-    transports::http::{Client, Http},
 };
 use num_traits::cast::ToPrimitive;
 
@@ -31,13 +28,13 @@ use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament
 
 #[derive(Clone)]
 pub struct StateReader {
-    client: Arc<RootProvider<Http<Client>>>,
+    client: Arc<DynProvider>,
 }
 
 impl StateReader {
     pub fn new(config: &BlockchainConfig) -> Result<Self> {
         let url = config.web3_rpc_url.parse()?;
-        let provider = ProviderBuilder::new().on_http(url);
+        let provider = ProviderBuilder::new().on_http(url).erased();
         let client = Arc::new(provider);
 
         Ok(Self { client })
@@ -163,7 +160,7 @@ impl StateReader {
 
         let block_number = self
             .client
-            .get_block(Latest.into(), BlockTransactionsKind::Hashes)
+            .get_block(Latest.into())
             .await?
             .expect("cannot get last block")
             .header
