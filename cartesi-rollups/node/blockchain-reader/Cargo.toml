@@ -26,7 +26,6 @@ num-traits = { workspace = true }
 [dev-dependencies]
 alloy = { workspace = true, features = ["node-bindings"] }
 cartesi-dave-merkle = { workspace = true }
-cartesi-prt-core = { workspace = true }
 cartesi-prt-contracts = { workspace = true }
 
 rusqlite = { workspace = true }

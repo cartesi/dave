@@ -1,4 +1,4 @@
-FROM rust:1.81.0-bookworm AS chef
+FROM rust:1.85.0-bookworm AS chef
 
 ENV CARGO_REGISTRIES_CARTESI_INDEX=https://github.com/cartesi/crates-index
 RUN rustup component add rustfmt

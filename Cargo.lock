@@ -3448,7 +3448,6 @@ dependencies = [
  "cartesi-dave-contracts",
  "cartesi-dave-merkle",
  "cartesi-prt-contracts",
- "cartesi-prt-core",
  "cartesi-rollups-contracts",
  "clap",
  "log",
@@ -3467,7 +3466,6 @@ dependencies = [
  "alloy 0.12.4",
  "anyhow",
  "cartesi-dave-contracts",
- "cartesi-prt-core",
  "log",
  "num-traits",
  "rollups-state-manager",
@@ -3479,7 +3477,6 @@ name = "rollups-machine-runner"
 version = "0.1.0"
 dependencies = [
  "alloy 0.12.4",
- "cartesi-dave-arithmetic",
  "cartesi-dave-merkle",
  "cartesi-machine",
  "cartesi-prt-core",

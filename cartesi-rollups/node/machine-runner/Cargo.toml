@@ -11,7 +11,6 @@ repository.workspace = true
 
 [dependencies]
 alloy = { workspace = true }
-cartesi-dave-arithmetic = { workspace = true }
 cartesi-dave-merkle = { workspace = true }
 cartesi-prt-core = { workspace = true }
 cartesi-machine = { workspace = true }

@@ -8,7 +8,7 @@ use cartesi_dave_contracts::daveconsensus;
 use rollups_state_manager::StateManager;
 
 pub struct EpochManager<SM: StateManager> {
-    client: Arc<DynProvider>,
+    client: DynProvider,
     consensus: Address,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
@@ -19,7 +19,7 @@ where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
     pub fn new(
-        client: Arc<DynProvider>,
+        client: DynProvider,
         consensus_address: Address,
         state_manager: Arc<SM>,
         sleep_duration: u64,

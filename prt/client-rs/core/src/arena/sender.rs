@@ -25,7 +25,7 @@ type Result<T> = std::result::Result<T, ContractError>;
 
 #[derive(Clone)]
 pub struct EthArenaSender {
-    client: Arc<DynProvider>,
+    client: DynProvider,
     wallet_address: Address,
 }
 
@@ -37,7 +37,7 @@ impl EthArenaSender {
             <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
         let url = config.web3_rpc_url.parse()?;
-        let provider = ProviderBuilder::new()
+        let client = ProviderBuilder::new()
             .wallet(wallet)
             .with_chain(
                 config
@@ -45,15 +45,16 @@ impl EthArenaSender {
                     .try_into()
                     .expect("fail to convert chain id"),
             )
-            .on_http(url);
+            .on_http(url)
+            .erased();
 
         Ok(Self {
-            client: Arc::new(provider.erased()),
+            client,
             wallet_address,
         })
     }
 
-    pub fn client(&self) -> Arc<DynProvider> {
+    pub fn client(&self) -> DynProvider {
         self.client.clone()
     }
 

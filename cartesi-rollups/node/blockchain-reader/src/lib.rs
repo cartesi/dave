@@ -445,10 +445,9 @@ mod blockchain_reader_tests {
         network::EthereumWallet,
         node_bindings::{Anvil, AnvilInstance},
         primitives::Address,
-        providers::ProviderBuilder,
+        providers::{DynProvider, ProviderBuilder},
         signers::{local::PrivateKeySigner, Signer},
         sol_types::{SolCall, SolValue},
-        transports::http::{Client, Http},
     };
     use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
     use cartesi_dave_merkle::Digest;
@@ -497,7 +496,7 @@ mod blockchain_reader_tests {
 
         (
             anvil,
-            provider,
+            provider.erased(),
             Address::from_hex("0x5fbdb2315678afecb367f032d93f642f64180aa3").unwrap(),
             Address::from_hex("0xa513e6e4b8f2a923d98304ec87f64353c4d5c853").unwrap(),
         )
@@ -517,7 +516,7 @@ mod blockchain_reader_tests {
     }
 
     async fn add_input(
-        inputbox: &InputBox::InputBoxInstance<Http<Client>, DynProvider>,
+        inputbox: &InputBox::InputBoxInstance<(), DynProvider>,
         input_payload: &'static str,
         count: usize,
     ) -> Result<()> {
