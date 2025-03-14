@@ -24,6 +24,8 @@ import "src/tournament/factories/multilevel/TopTournamentFactory.sol";
 import "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
 import "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
 
+import "src/TransitionState.sol";
+
 pragma solidity ^0.8.0;
 
 contract Util {
@@ -289,7 +291,8 @@ contract Util {
             ArbitrationConstants.MATCH_EFFORT,
             ArbitrationConstants.MAX_ALLOWANCE,
             ArbitrationConstants.log2step(0),
-            ArbitrationConstants.height(0)
+            ArbitrationConstants.height(0),
+            new TransitionState()
         );
 
         return singleLevelFactory;
@@ -304,7 +307,8 @@ contract Util {
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
-            new CanonicalTournamentParametersProvider()
+            new CanonicalTournamentParametersProvider(),
+            new TransitionState()
         );
     }
 }
