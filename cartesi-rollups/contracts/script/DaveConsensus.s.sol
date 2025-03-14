@@ -9,6 +9,7 @@ import {Machine} from "prt-contracts/Machine.sol";
 
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import "prt-contracts/CanonicalTournamentParametersProvider.sol";
+import "prt-contracts/TransitionState.sol";
 import "rollups-contracts/inputs/IInputBox.sol";
 import "src/DaveConsensus.sol";
 
@@ -20,7 +21,8 @@ contract DaveConsensusScript is Script {
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
-            new CanonicalTournamentParametersProvider()
+            new CanonicalTournamentParametersProvider(),
+            new TransitionState()
         );
 
         new DaveConsensus(inputBox, address(0x0), factory, initialHash);

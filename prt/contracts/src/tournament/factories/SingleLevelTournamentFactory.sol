@@ -12,17 +12,20 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
     uint64 immutable height0;
     Time.Duration immutable matchEffort;
     Time.Duration immutable maxAllowance;
+    ITransitionState immutable transitionState;
 
     constructor(
         Time.Duration _matchEffort,
         Time.Duration _maxAllowance,
         uint64 _log2step,
-        uint64 _height
+        uint64 _height,
+        ITransitionState _transitionState
     ) {
         matchEffort = _matchEffort;
         maxAllowance = _maxAllowance;
         log2step0 = _log2step;
         height0 = _height;
+        transitionState = _transitionState;
     }
 
     function instantiateSingleLevel(
@@ -30,7 +33,7 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
         IDataProvider _provider
     ) external returns (SingleLevelTournament) {
         SingleLevelTournament _tournament = new SingleLevelTournament(
-            _initialHash, _getTournamentParameters(), _provider
+            _initialHash, _getTournamentParameters(), _provider, transitionState
         );
 
         emit tournamentCreated(_tournament);

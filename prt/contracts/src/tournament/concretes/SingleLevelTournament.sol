@@ -12,9 +12,10 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
     constructor(
         Machine.Hash _initialHash,
         TournamentParameters memory _tournamentParameters,
-        IDataProvider _provider
+        IDataProvider _provider,
+        ITransitionState _transitionState
     )
-        LeafTournament()
+        LeafTournament(_transitionState)
         RootTournament(_initialHash, _tournamentParameters, _provider)
     {}
 }

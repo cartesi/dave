@@ -5,11 +5,9 @@ pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
 import "../libs/Commitment.sol";
+import "../../ITransitionState.sol";
 
 import "step/src/EmulatorConstants.sol";
-import "step/src/SendCmioResponse.sol";
-import "step/src/UArchStep.sol";
-import "step/src/UArchReset.sol";
 
 /// @notice Leaf tournament is the one that seals leaf match
 abstract contract LeafTournament is Tournament {
@@ -20,7 +18,11 @@ abstract contract LeafTournament is Tournament {
     using Match for Match.Id;
     using Match for Match.State;
 
-    constructor() {}
+    ITransitionState immutable transitionState;
+
+    constructor(ITransitionState _transitionState) {
+        transitionState = _transitionState;
+    }
 
     function sealLeafMatch(
         Match.Id calldata _matchId,
@@ -81,7 +83,9 @@ abstract contract LeafTournament is Tournament {
         ) = _matchState.getDivergence(startCycle);
 
         Machine.Hash _finalState = Machine.Hash.wrap(
-            metaStep(Machine.Hash.unwrap(_agreeHash), _agreeCycle, proofs)
+            transitionState.transition(
+                Machine.Hash.unwrap(_agreeHash), _agreeCycle, proofs, provider
+            )
         );
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
@@ -110,68 +114,5 @@ abstract contract LeafTournament is Tournament {
 
         // delete storage
         deleteMatch(_matchId.hashFromId());
-    }
-
-    uint64 constant LOG2_UARCH_SPAN = 20;
-    uint64 constant LOG2_EMULATOR_SPAN = 48;
-    uint64 constant LOG2_INPUT_SPAN = 24;
-
-    // TODO: move to step repo
-    function metaStep(
-        bytes32 machineState,
-        uint256 counter,
-        bytes calldata proofs
-    ) internal view returns (bytes32 newMachineState) {
-        // TODO: create a more convinient constructor.
-        AccessLogs.Context memory accessLogs =
-            AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-
-        uint256 uarch_step_mask = (1 << LOG2_UARCH_SPAN) - 1;
-        uint256 big_step_mask =
-            (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
-
-        if (address(provider) == address(0)) {
-            // this is a inputless version of the meta step implementation primarily used for testing
-            if ((counter + 1) & uarch_step_mask == 0) {
-                UArchReset.reset(accessLogs);
-            } else {
-                UArchStep.step(accessLogs);
-            }
-        } else {
-            // rollups meta step handles input
-            if (counter & big_step_mask == 0) {
-                uint256 inputLength = uint256(bytes32(proofs[:32]));
-                accessLogs = AccessLogs.Context(
-                    machineState, Buffer.Context(proofs, 32 + inputLength)
-                );
-
-                if (inputLength > 0) {
-                    bytes calldata input = proofs[32:32 + inputLength];
-                    uint256 inputIndexWithinEpoch =
-                        counter >> (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
-
-                    // TODO: maybe assert retrieved input length matches?
-                    bytes32 inputMerkleRoot = provider.provideMerkleRootOfInput(
-                        inputIndexWithinEpoch, input
-                    );
-
-                    require(inputMerkleRoot != bytes32(0));
-                    SendCmioResponse.sendCmioResponse(
-                        accessLogs,
-                        EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
-                        inputMerkleRoot,
-                        uint32(inputLength)
-                    );
-                    UArchStep.step(accessLogs);
-                } else {
-                    UArchStep.step(accessLogs);
-                }
-            } else if ((counter + 1) & uarch_step_mask == 0) {
-                UArchReset.reset(accessLogs);
-            } else {
-                UArchStep.step(accessLogs);
-            }
-        }
-        newMachineState = accessLogs.currentRootHash;
     }
 }
