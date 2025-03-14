@@ -58,5 +58,15 @@ test-rollups-echo:
 view-rollups-echo:
     just -f ./prt/tests/rollups/justfile read-node-logs
 
+kms-test-start:
+  docker compose -f common-rs/kms/compose.yaml up --wait
+kms-test-stop:
+  docker compose -f common-rs/kms/compose.yaml down --volumes --remove-orphans
+kms-test-restart: kms-test-stop kms-test-start
+kms-test-logs:
+  docker compose -f common-rs/kms/compose.yaml logs -f
+kms-test-exec +CMD: kms-test-start
+    docker compose -f common-rs/kms/compose.yaml exec dave-rollups {{CMD}}
+
 hello:
   echo $(echo "Hello")
