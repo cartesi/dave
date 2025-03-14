@@ -65,8 +65,8 @@ kms-test-stop:
 kms-test-restart: kms-test-stop kms-test-start
 kms-test-logs:
   docker compose -f common-rs/kms/compose.yaml logs -f
-kms-test-exec +CMD: kms-test-start
-    docker compose -f common-rs/kms/compose.yaml exec dave-rollups {{CMD}}
+kms-test-dave-logs:
+  docker compose -f common-rs/kms/compose.yaml exec dave-kms tail -f ./prt/tests/rollups/dave.log
 
 hello:
   echo $(echo "Hello")
