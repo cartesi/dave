@@ -10,7 +10,7 @@ download-deps:
 build-programs:
   just -f ./test/programs/justfile build-programs
 
-setup: update-submodules clean-emulator download-deps build-programs
+setup: update-submodules clean-emulator download-deps build-programs bind
 
 build-consensus:
     just -f ./cartesi-rollups/contracts/justfile build
