@@ -6,7 +6,7 @@ mkdir -p $program_path
 
 # start anvil with dump state
 rm -f $program_path/anvil_state.json
-anvil --disable-code-size-limit --preserve-historical-states --slots-in-an-epoch 1 \
+anvil --preserve-historical-states --slots-in-an-epoch 1 \
     --dump-state $program_path/anvil_state.json > $program_path/_anvil.log 2>&1 &
 anvil_pid=$!
 sleep 5

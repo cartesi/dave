@@ -10,6 +10,8 @@ import {Machine} from "src/Machine.sol";
 import "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import "src/CanonicalTournamentParametersProvider.sol";
 import "src/IDataProvider.sol";
+import "src/TransitionPrimitives.sol";
+import "src/TransitionPrimitivesCmio.sol";
 import "src/TransitionState.sol";
 
 contract TopTournamentScript is Script {
@@ -21,7 +23,9 @@ contract TopTournamentScript is Script {
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
             new CanonicalTournamentParametersProvider(),
-            new TransitionState()
+            new TransitionState(
+                new TransitionPrimitives(), new TransitionPrimitivesCmio()
+            )
         );
 
         factory.instantiate(initialHash, IDataProvider(address(0x0)));

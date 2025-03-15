@@ -43,7 +43,6 @@ deploy-dev INITIAL_HASH:
     forge script \
         script/DaveConsensus.s.sol \
         --fork-url {{ANVIL_ENDPOINT}} \
-        --code-size-limit 65536 \
         --broadcast \
         --non-interactive \
         --sig 'run(bytes32,address)' \

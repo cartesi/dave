@@ -480,7 +480,6 @@ mod blockchain_reader_tests {
         let anvil = Anvil::default()
             .block_time(1)
             .args([
-                "--disable-code-size-limit",
                 "--preserve-historical-states",
                 "--slots-in-an-epoch",
                 "1",

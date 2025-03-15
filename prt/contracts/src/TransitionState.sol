@@ -19,27 +19,36 @@
 
 pragma solidity ^0.8.0;
 
+import "./ITransitionPrimitives.sol";
+import "./ITransitionPrimitivesCmio.sol";
 import "./ITransitionState.sol";
-import "step/src/SendCmioResponse.sol";
-import "step/src/UArchReset.sol";
-import "step/src/UArchStep.sol";
-import "step/src/AccessLogs.sol";
 
 contract TransitionState is ITransitionState {
     uint64 constant LOG2_UARCH_SPAN = 20;
     uint64 constant LOG2_EMULATOR_SPAN = 48;
-    uint64 constant LOG2_INPUT_SPAN = 24;
+    // uint64 constant LOG2_INPUT_SPAN = 24;
 
     uint256 constant UARCH_STEP_MASK = (1 << LOG2_UARCH_SPAN) - 1;
     uint256 constant BIG_STEP_MASK =
         (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
+
+    ITransitionPrimitives immutable primitives;
+    ITransitionPrimitivesCmio immutable primitivesCmio;
+
+    constructor(
+        ITransitionPrimitives _primitives,
+        ITransitionPrimitivesCmio _primitivesCmio
+    ) {
+        primitives = _primitives;
+        primitivesCmio = _primitivesCmio;
+    }
 
     function transition(
         bytes32 machineState,
         uint256 counter,
         bytes calldata proofs,
         IDataProvider provider
-    ) external view returns (bytes32 newMachineState) {
+    ) external view returns (bytes32) {
         if (address(provider) == address(0)) {
             return transitionCompute(machineState, counter, proofs);
         } else {
@@ -51,16 +60,16 @@ contract TransitionState is ITransitionState {
         bytes32 machineState,
         uint256 counter,
         bytes calldata proofs
-    ) internal pure returns (bytes32 newMachineState) {
-        // this is a inputless version of the meta step implementation primarily used for testing
+    ) internal view returns (bytes32 newMachineState) {
+        // Inputless version for testing
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-
         if ((counter + 1) & UARCH_STEP_MASK == 0) {
-            UArchReset.reset(accessLogs);
+            accessLogs = primitives.reset(accessLogs);
         } else {
-            UArchStep.step(accessLogs);
+            accessLogs = primitives.step(accessLogs);
         }
+
         newMachineState = accessLogs.currentRootHash;
     }
 
@@ -70,10 +79,9 @@ contract TransitionState is ITransitionState {
         bytes calldata proofs,
         IDataProvider provider
     ) internal view returns (bytes32 newMachineState) {
-        // rollups meta step handles input
+        // Rollups meta step handles input
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-
         if (counter & BIG_STEP_MASK == 0) {
             uint256 inputLength = uint256(bytes32(proofs[:32]));
             accessLogs = AccessLogs.Context(
@@ -91,21 +99,20 @@ contract TransitionState is ITransitionState {
                 );
 
                 require(inputMerkleRoot != bytes32(0));
-                SendCmioResponse.sendCmioResponse(
+                accessLogs = primitivesCmio.sendCmio(
                     accessLogs,
                     EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
                     inputMerkleRoot,
                     uint32(inputLength)
                 );
-                UArchStep.step(accessLogs);
-            } else {
-                UArchStep.step(accessLogs);
             }
+            accessLogs = primitives.step(accessLogs);
         } else if ((counter + 1) & UARCH_STEP_MASK == 0) {
-            UArchReset.reset(accessLogs);
+            accessLogs = primitives.reset(accessLogs);
         } else {
-            UArchStep.step(accessLogs);
+            accessLogs = primitives.step(accessLogs);
         }
+
         newMachineState = accessLogs.currentRootHash;
     }
 }
