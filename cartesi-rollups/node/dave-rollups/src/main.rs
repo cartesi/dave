@@ -12,16 +12,16 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    info!("Hello from Dave Rollups!");
-
     env_logger::init();
+
+    info!("Hello from Dave Rollups!");
 
     let parameters = DaveParameters::parse();
     let state_manager = Arc::new(PersistentStateAccess::new(Connection::open(
         parameters.state_dir.join("state.db"),
     )?)?);
 
-    let arena_sender = EthArenaSender::new(&parameters.blockchain_config)?;
+    let arena_sender = EthArenaSender::new(&parameters.blockchain_config).await?;
     let client = arena_sender.client();
 
     let blockchain_reader_task = create_blockchain_reader_task(state_manager.clone(), &parameters);

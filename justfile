@@ -10,7 +10,7 @@ download-deps:
 build-programs:
   just -f ./test/programs/justfile build-programs
 
-setup: update-submodules clean-emulator download-deps build-programs
+setup: update-submodules clean-emulator download-deps build-programs bind
 
 build-consensus:
     just -f ./cartesi-rollups/contracts/justfile build
@@ -57,6 +57,16 @@ test-rollups-echo:
     just -f ./prt/tests/rollups/justfile test-echo
 view-rollups-echo:
     just -f ./prt/tests/rollups/justfile read-node-logs
+
+kms-test-start:
+  docker compose -f common-rs/kms/compose.yaml up --wait
+kms-test-stop:
+  docker compose -f common-rs/kms/compose.yaml down --volumes --remove-orphans
+kms-test-restart: kms-test-stop kms-test-start
+kms-test-logs:
+  docker compose -f common-rs/kms/compose.yaml logs -f
+kms-test-dave-logs:
+  docker compose -f common-rs/kms/compose.yaml exec dave-kms tail -f ./prt/tests/rollups/dave.log
 
 hello:
   echo $(echo "Hello")

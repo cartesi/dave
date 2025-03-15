@@ -1,0 +1,31 @@
+services:
+  localstack:
+    container_name: "${LOCALSTACK_DOCKER_NAME:-localstack-main}"
+    image: localstack/localstack:4.1.1
+    ports:
+      - "127.0.0.1:4566:4566" # LocalStack Gateway
+      - "127.0.0.1:4510-4559:4510-4559" # external services port range
+    environment:
+      # LocalStack configuration: https://docs.localstack.cloud/references/configuration/
+      - DEBUG=${DEBUG:-0}
+      - SERVICES=kms
+    volumes:
+      - localstackdata:/var/lib/localstack
+  dave-rollups:
+    build:
+      context: ../..
+      dockerfile: test/Dockerfile
+    command: ["bash", "-c", "/dave/aws.sh"]
+    volumes:
+      - ./aws.sh:/dave/aws.sh:ro
+    environment:
+      # AWS credentials
+      - AWS_ACCESS_KEY_ID=ANOTREAL
+      - AWS_SECRET_ACCESS_KEY=notrealrnrELgWzOk3IfjzDKtFBhDby
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_REGION=us-east-1
+    depends_on:
+      localstack:
+        condition: service_healthy
+volumes:
+  localstackdata:
