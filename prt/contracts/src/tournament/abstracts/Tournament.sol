@@ -71,6 +71,7 @@ abstract contract Tournament {
     event matchCreated(
         Tree.Node indexed one, Tree.Node indexed two, Tree.Node leftOfTwo
     );
+    event matchDeleted(Match.IdHash);
     event commitmentJoined(Tree.Node root);
 
     //
@@ -130,7 +131,9 @@ abstract contract Tournament {
     // Methods
     //
 
-    /// @dev root tournaments are open to everyone, while non-root tournaments are open to anyone who's final state hash matches the one of the two in the tournament
+    /// @dev root tournaments are open to everyone,
+    /// while non-root tournaments are open to anyone
+    /// who's final state hash matches the one of the two in the tournament
     function joinTournament(
         Machine.Hash _finalState,
         bytes32[] calldata _proof,
@@ -396,6 +399,7 @@ abstract contract Tournament {
     function deleteMatch(Match.IdHash _matchIdHash) internal {
         matchCount--;
         delete matches[_matchIdHash];
+        emit matchDeleted(_matchIdHash);
     }
 
     //

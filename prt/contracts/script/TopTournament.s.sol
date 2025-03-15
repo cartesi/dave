@@ -8,8 +8,11 @@ import {Script} from "forge-std/Script.sol";
 import {Machine} from "src/Machine.sol";
 
 import "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import "src/IDataProvider.sol";
 import "src/CanonicalTournamentParametersProvider.sol";
+import "src/IDataProvider.sol";
+import "src/TransitionPrimitives.sol";
+import "src/TransitionPrimitivesCmio.sol";
+import "src/TransitionState.sol";
 
 contract TopTournamentScript is Script {
     function run(Machine.Hash initialHash) external {
@@ -19,7 +22,10 @@ contract TopTournamentScript is Script {
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
-            new CanonicalTournamentParametersProvider()
+            new CanonicalTournamentParametersProvider(),
+            new TransitionState(
+                new TransitionPrimitives(), new TransitionPrimitivesCmio()
+            )
         );
 
         factory.instantiate(initialHash, IDataProvider(address(0x0)));
