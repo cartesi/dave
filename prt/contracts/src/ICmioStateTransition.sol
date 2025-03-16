@@ -13,32 +13,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-
-/// @title TransitionPrimitives
-/// @notice Contain three primitives that transitions machine state from s to s+1
-
 pragma solidity ^0.8.0;
 
-import "./ITransitionPrimitives.sol";
-import "step/src/UArchReset.sol";
-import "step/src/UArchStep.sol";
+import "step/src/AccessLogs.sol";
 
-contract TransitionPrimitives is ITransitionPrimitives {
-    function step(AccessLogs.Context memory a)
-        external
-        pure
-        returns (AccessLogs.Context memory)
-    {
-        UArchStep.step(a);
-        return a;
-    }
-
-    function reset(AccessLogs.Context memory a)
-        external
-        pure
-        returns (AccessLogs.Context memory)
-    {
-        UArchReset.reset(a);
-        return a;
-    }
+/// @title ICmioStateTransition
+/// @notice Contain CMIO operations
+interface ICmioStateTransition {
+    function sendCmio(
+        AccessLogs.Context memory a,
+        uint16 reason,
+        bytes32 dataHash,
+        uint32 dataLength
+    ) external pure returns (AccessLogs.Context memory);
 }

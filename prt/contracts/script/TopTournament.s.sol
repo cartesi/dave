@@ -10,9 +10,9 @@ import {Machine} from "src/Machine.sol";
 import "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import "src/CanonicalTournamentParametersProvider.sol";
 import "src/IDataProvider.sol";
-import "src/TransitionPrimitives.sol";
-import "src/TransitionPrimitivesCmio.sol";
-import "src/TransitionState.sol";
+import "src/CmioStateTransition.sol";
+import "src/RiscVStateTransition.sol";
+import "src/StateTransition.sol";
 
 contract TopTournamentScript is Script {
     function run(Machine.Hash initialHash) external {
@@ -23,8 +23,8 @@ contract TopTournamentScript is Script {
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
             new CanonicalTournamentParametersProvider(),
-            new TransitionState(
-                new TransitionPrimitives(), new TransitionPrimitivesCmio()
+            new StateTransition(
+                new RiscVStateTransition(), new CmioStateTransition()
             )
         );
 

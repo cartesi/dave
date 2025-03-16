@@ -14,16 +14,16 @@
 // limitations under the License.
 //
 
-/// @title TransitionState
+/// @title StateTransition
 /// @notice Transitions machine state from s to s+1
 
 pragma solidity ^0.8.0;
 
-import "./ITransitionPrimitives.sol";
-import "./ITransitionPrimitivesCmio.sol";
-import "./ITransitionState.sol";
+import "./IRiscVStateTransition.sol";
+import "./ICmioStateTransition.sol";
+import "./IStateTransition.sol";
 
-contract TransitionState is ITransitionState {
+contract StateTransition is IStateTransition {
     uint64 constant LOG2_UARCH_SPAN = 20;
     uint64 constant LOG2_EMULATOR_SPAN = 48;
     // uint64 constant LOG2_INPUT_SPAN = 24;
@@ -32,18 +32,18 @@ contract TransitionState is ITransitionState {
     uint256 constant BIG_STEP_MASK =
         (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
 
-    ITransitionPrimitives immutable primitives;
-    ITransitionPrimitivesCmio immutable primitivesCmio;
+    IRiscVStateTransition immutable primitives;
+    ICmioStateTransition immutable primitivesCmio;
 
     constructor(
-        ITransitionPrimitives _primitives,
-        ITransitionPrimitivesCmio _primitivesCmio
+        IRiscVStateTransition _primitives,
+        ICmioStateTransition _primitivesCmio
     ) {
         primitives = _primitives;
         primitivesCmio = _primitivesCmio;
     }
 
-    function transition(
+    function transitionState(
         bytes32 machineState,
         uint256 counter,
         bytes calldata proofs,

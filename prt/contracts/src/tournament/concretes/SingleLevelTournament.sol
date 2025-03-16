@@ -13,9 +13,9 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
         Machine.Hash _initialHash,
         TournamentParameters memory _tournamentParameters,
         IDataProvider _provider,
-        ITransitionState _transitionState
+        IStateTransition _stateTransition
     )
-        LeafTournament(_transitionState)
+        LeafTournament(_stateTransition)
         RootTournament(_initialHash, _tournamentParameters, _provider)
     {}
 }
