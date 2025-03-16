@@ -13,12 +13,12 @@
 import "forge-std/Test.sol";
 
 import "./Util.sol";
-import "src/StateTransition.sol";
+import "src/state-transition/CartesiStateTransition.sol";
 
 pragma solidity ^0.8.0;
 
 contract StateTransitionTest is Util, Test {
-    StateTransition immutable stateTransition;
+    CartesiStateTransition immutable stateTransition;
     RiscVStateTransition immutable riscVStateTransition;
     CmioStateTransition immutable cmioStateTransition;
 

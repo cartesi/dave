@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "./Tournament.sol";
-import "../libs/Commitment.sol";
-import "../../IStateTransition.sol";
+import "prt-contracts/tournament/abstracts/Tournament.sol";
+import "prt-contracts/tournament/libs/Commitment.sol";
+import "prt-contracts/IStateTransition.sol";
 
 import "step/src/EmulatorConstants.sol";
 

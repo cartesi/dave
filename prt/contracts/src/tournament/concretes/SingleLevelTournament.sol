@@ -3,10 +3,10 @@
 
 pragma solidity ^0.8.17;
 
-import "../abstracts/RootTournament.sol";
-import "../abstracts/LeafTournament.sol";
+import "prt-contracts/tournament/abstracts/RootTournament.sol";
+import "prt-contracts/tournament/abstracts/LeafTournament.sol";
 
-import "../../TournamentParameters.sol";
+import "prt-contracts/types/TournamentParameters.sol";
 
 contract SingleLevelTournament is LeafTournament, RootTournament {
     constructor(

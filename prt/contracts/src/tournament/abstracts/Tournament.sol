@@ -3,16 +3,16 @@
 
 pragma solidity ^0.8.17;
 
-import "../../CanonicalConstants.sol";
-import "../../IDataProvider.sol";
-import "../../TournamentParameters.sol";
-import "../../Machine.sol";
-import "../../Tree.sol";
+import "prt-contracts/arbitration-config/CanonicalConstants.sol";
+import "prt-contracts/IDataProvider.sol";
+import "prt-contracts/types/TournamentParameters.sol";
+import "prt-contracts/types/Machine.sol";
+import "prt-contracts/types/Tree.sol";
 
-import "../libs/Commitment.sol";
-import "../libs/Time.sol";
-import "../libs/Clock.sol";
-import "../libs/Match.sol";
+import "prt-contracts/tournament/libs/Commitment.sol";
+import "prt-contracts/tournament/libs/Time.sol";
+import "prt-contracts/tournament/libs/Clock.sol";
+import "prt-contracts/tournament/libs/Match.sol";
 
 /// @notice Implements the core functionalities of a permissionless tournament that resolves
 /// disputes of n parties in O(log(n))
