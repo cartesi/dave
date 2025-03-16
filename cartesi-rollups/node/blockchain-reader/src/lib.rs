@@ -463,6 +463,10 @@ mod blockchain_reader_tests {
 
     use rusqlite::Connection;
     use std::sync::Arc;
+    use std::{
+        fs::File,
+        io::{self, BufRead},
+    };
     use tokio::{
         task::spawn,
         time::{sleep, Duration},
@@ -475,6 +479,40 @@ mod blockchain_reader_tests {
         "0x84c8181abd120e0281f5032d22422b890f79880ae90d9a1416be1afccb8182a0";
     const INPUT_PAYLOAD: &str = "Hello!";
     const INPUT_PAYLOAD2: &str = "Hello Two!";
+
+    fn read_two_lines_from_file(file_path: &str) -> io::Result<(String, String)> {
+        // Open the file in read-only mode (ignoring errors for simplicity)
+        let file = File::open(file_path)?;
+        let reader = io::BufReader::new(file);
+
+        // Create a vector to store the lines
+        let mut lines = Vec::new();
+
+        // Read lines from the file
+        for line in reader.lines() {
+            match line {
+                Ok(content) => lines.push(content),
+                Err(e) => return Err(e), // Handle any errors
+            }
+
+            // Stop reading after two lines
+            if lines.len() == 2 {
+                break;
+            }
+        }
+
+        // Ensure we have exactly two lines
+        if lines.len() != 2 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "File has less than two lines",
+            ));
+        }
+
+        // first line is input box address
+        // second line is consensus address
+        Ok((lines[0].clone(), lines[1].clone()))
+    }
 
     fn spawn_anvil_and_provider() -> (AnvilInstance, SenderFiller, Address, Address) {
         let anvil = Anvil::default()
@@ -493,6 +531,9 @@ mod blockchain_reader_tests {
         signer.set_chain_id(Some(anvil.chain_id()));
         let wallet = EthereumWallet::from(signer);
 
+        let (input_box, consensus) =
+            read_two_lines_from_file("../../../test/programs/echo/addresses").unwrap();
+
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
             .wallet(wallet)
@@ -501,8 +542,8 @@ mod blockchain_reader_tests {
         (
             anvil,
             provider,
-            Address::from_hex("0x5fbdb2315678afecb367f032d93f642f64180aa3").unwrap(),
-            Address::from_hex("0xa513e6e4b8f2a923d98304ec87f64353c4d5c853").unwrap(),
+            Address::from_hex(input_box).unwrap(),
+            Address::from_hex(consensus).unwrap(),
         )
     }
 
@@ -673,7 +714,7 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
-    async fn test_blockchain_reader_aaa() -> Result<()> {
+    async fn test_blockchain_reader() -> Result<()> {
         let (anvil, provider, input_box_address, consensus_address) = spawn_anvil_and_provider();
 
         let inputbox = InputBox::new(input_box_address, &provider);
