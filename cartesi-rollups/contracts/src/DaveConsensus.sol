@@ -8,7 +8,7 @@ import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
-import {Machine} from "prt-contracts/Machine.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
 
 import {Merkle} from "./Merkle.sol";
 

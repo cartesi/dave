@@ -12,8 +12,8 @@
 
 import "forge-std/Test.sol";
 
-import "src/Machine.sol";
-import "src/tournament/libs/Time.sol";
+import "prt-contracts/types/Machine.sol";
+import "prt-contracts/tournament/libs/Time.sol";
 
 pragma solidity ^0.8.0;
 
