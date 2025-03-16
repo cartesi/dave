@@ -8,7 +8,8 @@ import {Script} from "forge-std/Script.sol";
 import {Machine} from "src/types/Machine.sol";
 
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import
+    "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import "prt-contracts/IDataProvider.sol";
 import "prt-contracts/state-transition/CmioStateTransition.sol";
 import "prt-contracts/state-transition/RiscVStateTransition.sol";

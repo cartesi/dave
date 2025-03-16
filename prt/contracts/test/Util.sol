@@ -273,7 +273,8 @@ contract Util {
         internal
         returns (MultiLevelTournamentFactory, CartesiStateTransition)
     {
-        (CartesiStateTransition stateTransition,,) = instantiateStateTransition();
+        (CartesiStateTransition stateTransition,,) =
+            instantiateStateTransition();
         return (
             new MultiLevelTournamentFactory(
                 new TopTournamentFactory(),
@@ -289,12 +290,17 @@ contract Util {
     // instantiates StateTransition
     function instantiateStateTransition()
         internal
-        returns (CartesiStateTransition, RiscVStateTransition, CmioStateTransition)
+        returns (
+            CartesiStateTransition,
+            RiscVStateTransition,
+            CmioStateTransition
+        )
     {
         RiscVStateTransition riscVStateTransition = new RiscVStateTransition();
         CmioStateTransition cmioStateTransition = new CmioStateTransition();
-        CartesiStateTransition stateTransition =
-            new CartesiStateTransition(riscVStateTransition, cmioStateTransition);
+        CartesiStateTransition stateTransition = new CartesiStateTransition(
+            riscVStateTransition, cmioStateTransition
+        );
 
         return (stateTransition, riscVStateTransition, cmioStateTransition);
     }
