@@ -3,12 +3,12 @@
 
 pragma solidity ^0.8.17;
 
-import "./ITournament.sol";
-import "./tournament/abstracts/Tournament.sol";
-import "./IDataProvider.sol";
+import "prt-contracts/ITournament.sol";
+import "prt-contracts/tournament/abstracts/Tournament.sol";
+import "prt-contracts/IDataProvider.sol";
 
 interface ITournamentFactory {
-    event tournamentCreated(Tournament);
+    event tournamentCreated(ITournament);
 
     function instantiate(Machine.Hash initialState, IDataProvider provider)
         external

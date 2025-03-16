@@ -12,9 +12,10 @@
 
 import "forge-std/console.sol";
 
+import "src/arbitration-config/CanonicalConstants.sol";
+import "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
+
 import "src/tournament/libs/Match.sol";
-import "src/CanonicalConstants.sol";
-import "src/CanonicalTournamentParametersProvider.sol";
 import "src/tournament/concretes/TopTournament.sol";
 import "src/tournament/concretes/MiddleTournament.sol";
 
@@ -24,9 +25,9 @@ import "src/tournament/factories/multilevel/TopTournamentFactory.sol";
 import "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
 import "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
 
-import "src/CmioStateTransition.sol";
-import "src/RiscVStateTransition.sol";
-import "src/StateTransition.sol";
+import "src/state-transition/CmioStateTransition.sol";
+import "src/state-transition/RiscVStateTransition.sol";
+import "src/state-transition/CartesiStateTransition.sol";
 
 pragma solidity ^0.8.0;
 
@@ -259,7 +260,7 @@ contract Util {
             ArbitrationConstants.MAX_ALLOWANCE,
             ArbitrationConstants.log2step(0),
             ArbitrationConstants.height(0),
-            new StateTransition(
+            new CartesiStateTransition(
                 new RiscVStateTransition(), new CmioStateTransition()
             )
         );
@@ -270,9 +271,9 @@ contract Util {
     // instantiates all sub-factories and TournamentFactory
     function instantiateTournamentFactory()
         internal
-        returns (MultiLevelTournamentFactory, StateTransition)
+        returns (MultiLevelTournamentFactory, CartesiStateTransition)
     {
-        (StateTransition stateTransition,,) = instantiateStateTransition();
+        (CartesiStateTransition stateTransition,,) = instantiateStateTransition();
         return (
             new MultiLevelTournamentFactory(
                 new TopTournamentFactory(),
@@ -288,12 +289,12 @@ contract Util {
     // instantiates StateTransition
     function instantiateStateTransition()
         internal
-        returns (StateTransition, RiscVStateTransition, CmioStateTransition)
+        returns (CartesiStateTransition, RiscVStateTransition, CmioStateTransition)
     {
         RiscVStateTransition riscVStateTransition = new RiscVStateTransition();
         CmioStateTransition cmioStateTransition = new CmioStateTransition();
-        StateTransition stateTransition =
-            new StateTransition(riscVStateTransition, cmioStateTransition);
+        CartesiStateTransition stateTransition =
+            new CartesiStateTransition(riscVStateTransition, cmioStateTransition);
 
         return (stateTransition, riscVStateTransition, cmioStateTransition);
     }

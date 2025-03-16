@@ -3,15 +3,15 @@
 
 pragma solidity ^0.8.17;
 
-import "../../abstracts/NonLeafTournament.sol";
-import "../../concretes/MiddleTournament.sol";
+import "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
+import "prt-contracts/tournament/concretes/MiddleTournament.sol";
 
-import "../../../TournamentParameters.sol";
-import "../../../IMultiLevelTournamentFactory.sol";
+import "prt-contracts/types/TournamentParameters.sol";
+import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 
-import "../../../Machine.sol";
-import "../../../Tree.sol";
-import "../../libs/Time.sol";
+import "prt-contracts/types/Machine.sol";
+import "prt-contracts/types/Tree.sol";
+import "prt-contracts/tournament/libs/Time.sol";
 
 contract MiddleTournamentFactory {
     constructor() {}

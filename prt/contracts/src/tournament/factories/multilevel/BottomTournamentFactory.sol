@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "../../concretes/BottomTournament.sol";
+import "prt-contracts/tournament/concretes/BottomTournament.sol";
 
-import "../../../TournamentParameters.sol";
+import "prt-contracts/types/TournamentParameters.sol";
 
 contract BottomTournamentFactory {
     constructor() {}

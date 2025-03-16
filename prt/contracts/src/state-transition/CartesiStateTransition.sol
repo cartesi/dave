@@ -19,11 +19,11 @@
 
 pragma solidity ^0.8.0;
 
-import "./IRiscVStateTransition.sol";
-import "./ICmioStateTransition.sol";
-import "./IStateTransition.sol";
+import "prt-contracts/state-transition/IRiscVStateTransition.sol";
+import "prt-contracts/state-transition/ICmioStateTransition.sol";
+import "prt-contracts/IStateTransition.sol";
 
-contract StateTransition is IStateTransition {
+contract CartesiStateTransition is IStateTransition {
     uint64 constant LOG2_UARCH_SPAN = 20;
     uint64 constant LOG2_EMULATOR_SPAN = 48;
     // uint64 constant LOG2_INPUT_SPAN = 24;

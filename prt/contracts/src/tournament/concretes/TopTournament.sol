@@ -3,13 +3,13 @@
 
 pragma solidity ^0.8.17;
 
-import "../abstracts/RootTournament.sol";
-import "../abstracts/NonLeafTournament.sol";
+import "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
+import "prt-contracts/tournament/abstracts/RootTournament.sol";
 
-import "../../TournamentParameters.sol";
-import "../../IMultiLevelTournamentFactory.sol";
+import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 
-import "../../Machine.sol";
+import "prt-contracts/types/TournamentParameters.sol";
+import "prt-contracts/types/Machine.sol";
 
 /// @notice Top tournament of a multi-level instance
 contract TopTournament is NonLeafTournament, RootTournament {
