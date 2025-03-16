@@ -13,23 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-
-/// @title TransitionPrimitives
-/// @notice Contain three primitives that transitions machine state from s to s+1
-
 pragma solidity ^0.8.0;
 
-import "./ITransitionPrimitivesCmio.sol";
-import "step/src/SendCmioResponse.sol";
+import "step/src/AccessLogs.sol";
 
-contract TransitionPrimitivesCmio is ITransitionPrimitivesCmio {
-    function sendCmio(
-        AccessLogs.Context memory a,
-        uint16 reason,
-        bytes32 dataHash,
-        uint32 dataLength
-    ) external pure returns (AccessLogs.Context memory) {
-        SendCmioResponse.sendCmioResponse(a, reason, dataHash, dataLength);
-        return a;
-    }
+/// @title IRiscVStateTransition
+/// @notice Contain two primitives that transitions machine state from s to s+1
+interface IRiscVStateTransition {
+    function step(AccessLogs.Context memory a)
+        external
+        pure
+        returns (AccessLogs.Context memory);
+
+    function reset(AccessLogs.Context memory a)
+        external
+        pure
+        returns (AccessLogs.Context memory);
 }

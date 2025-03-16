@@ -5,7 +5,7 @@ pragma solidity ^0.8.17;
 
 import "./Tournament.sol";
 import "../libs/Commitment.sol";
-import "../../ITransitionState.sol";
+import "../../IStateTransition.sol";
 
 import "step/src/EmulatorConstants.sol";
 
@@ -18,10 +18,10 @@ abstract contract LeafTournament is Tournament {
     using Match for Match.Id;
     using Match for Match.State;
 
-    ITransitionState immutable transitionState;
+    IStateTransition immutable stateTransition;
 
-    constructor(ITransitionState _transitionState) {
-        transitionState = _transitionState;
+    constructor(IStateTransition _stateTransition) {
+        stateTransition = _stateTransition;
     }
 
     function sealLeafMatch(
@@ -83,7 +83,7 @@ abstract contract LeafTournament is Tournament {
         ) = _matchState.getDivergence(startCycle);
 
         Machine.Hash _finalState = Machine.Hash.wrap(
-            transitionState.transition(
+            stateTransition.transitionState(
                 Machine.Hash.unwrap(_agreeHash), _agreeCycle, proofs, provider
             )
         );

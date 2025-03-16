@@ -15,15 +15,15 @@
 //
 pragma solidity ^0.8.0;
 
-import "step/src/AccessLogs.sol";
+import "./IDataProvider.sol";
 
-/// @title ITransitionPrimitives
-/// @notice Contain three primitives that transitions machine state from s to s+1
-interface ITransitionPrimitivesCmio {
-    function sendCmio(
-        AccessLogs.Context memory a,
-        uint16 reason,
-        bytes32 dataHash,
-        uint32 dataLength
-    ) external pure returns (AccessLogs.Context memory);
+/// @title IStateTransition
+/// @notice Transitions machine state from s to s+1
+interface IStateTransition {
+    function transitionState(
+        bytes32 machineState,
+        uint256 counter,
+        bytes calldata proofs,
+        IDataProvider provider
+    ) external view returns (bytes32 newMachineState);
 }

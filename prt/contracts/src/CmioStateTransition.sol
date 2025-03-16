@@ -15,15 +15,17 @@
 //
 pragma solidity ^0.8.0;
 
-import "./IDataProvider.sol";
+import "./ICmioStateTransition.sol";
+import "step/src/SendCmioResponse.sol";
 
-/// @title ITransitionState
-/// @notice Transitions machine state from s to s+1
-interface ITransitionState {
-    function transition(
-        bytes32 machineState,
-        uint256 counter,
-        bytes calldata proofs,
-        IDataProvider provider
-    ) external view returns (bytes32 newMachineState);
+contract CmioStateTransition is ICmioStateTransition {
+    function sendCmio(
+        AccessLogs.Context memory a,
+        uint16 reason,
+        bytes32 dataHash,
+        uint32 dataLength
+    ) external pure returns (AccessLogs.Context memory) {
+        SendCmioResponse.sendCmioResponse(a, reason, dataHash, dataLength);
+        return a;
+    }
 }

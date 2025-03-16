@@ -21,7 +21,7 @@ contract BottomTournamentFactory {
         uint64 _level,
         TournamentParameters memory _tournamentParameters,
         IDataProvider _provider,
-        ITransitionState _transitionState
+        IStateTransition _stateTransition
     ) external returns (BottomTournament) {
         BottomTournament _tournament = new BottomTournament(
             _initialHash,
@@ -34,7 +34,7 @@ contract BottomTournamentFactory {
             _level,
             _tournamentParameters,
             _provider,
-            _transitionState
+            _stateTransition
         );
 
         return _tournament;
