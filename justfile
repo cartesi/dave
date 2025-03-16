@@ -36,7 +36,7 @@ check-fmt-rust-workspace: bind
   cargo fmt --check
 check-rust-workspace: bind
   cargo check
-test-rust-workspace: bind
+test-rust-workspace: bind build-programs
   cargo test
 build-rust-workspace *ARGS: bind
   cargo build {{ARGS}}
