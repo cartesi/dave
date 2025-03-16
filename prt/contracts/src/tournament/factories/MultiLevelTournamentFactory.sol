@@ -8,8 +8,10 @@ import "prt-contracts/types/TournamentParameters.sol";
 import "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
 
 import "prt-contracts/tournament/factories/multilevel/TopTournamentFactory.sol";
-import "prt-contracts/tournament/factories/multilevel/MiddleTournamentFactory.sol";
-import "prt-contracts/tournament/factories/multilevel/BottomTournamentFactory.sol";
+import
+    "prt-contracts/tournament/factories/multilevel/MiddleTournamentFactory.sol";
+import
+    "prt-contracts/tournament/factories/multilevel/BottomTournamentFactory.sol";
 
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
@@ -51,7 +53,6 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         );
         return _tournament;
     }
-
 
     function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
         public
