@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "./tournament/libs/Time.sol";
+import "prt-contracts/tournament/libs/Time.sol";
 
 struct TournamentParameters {
     uint64 levels;

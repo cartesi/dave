@@ -14,8 +14,8 @@ import {InputBox} from "rollups-contracts/inputs/InputBox.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
-import {Machine} from "prt-contracts/Machine.sol";
-import {Tree} from "prt-contracts/Tree.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 import {DaveConsensus} from "src/DaveConsensus.sol";
 import {Merkle} from "src/Merkle.sol";

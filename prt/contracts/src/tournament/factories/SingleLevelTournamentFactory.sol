@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "../concretes/SingleLevelTournament.sol";
-import "../../ITournamentFactory.sol";
-import "../../TournamentParameters.sol";
+import "prt-contracts/tournament/concretes/SingleLevelTournament.sol";
+import "prt-contracts/ITournamentFactory.sol";
+import "prt-contracts/types/TournamentParameters.sol";
 
 contract SingleLevelTournamentFactory is ITournamentFactory {
     uint64 immutable log2step0;

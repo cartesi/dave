@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "./Tournament.sol";
-import "../../ITournament.sol";
-import "../../TournamentParameters.sol";
+import "prt-contracts/ITournament.sol";
+import "prt-contracts/tournament/abstracts/Tournament.sol";
+import "prt-contracts/types/TournamentParameters.sol";
 
 /// @notice Root tournament has no parent
 abstract contract RootTournament is Tournament, ITournament {

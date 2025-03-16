@@ -3,10 +3,10 @@
 
 pragma solidity ^0.8.17;
 
-import "../abstracts/LeafTournament.sol";
-import "../abstracts/NonRootTournament.sol";
+import "prt-contracts/tournament/abstracts/LeafTournament.sol";
+import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
 
-import "../../TournamentParameters.sol";
+import "prt-contracts/types/TournamentParameters.sol";
 
 /// @notice Bottom tournament of a multi-level instance
 contract BottomTournament is LeafTournament, NonRootTournament {
