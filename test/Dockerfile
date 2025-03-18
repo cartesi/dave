@@ -1,7 +1,7 @@
 # syntax=docker.io/docker/dockerfile-upstream:1.12.1-labs
 
 # start from rust
-FROM rust:1.83
+FROM rust:1.85
 
 # install `just`
 RUN \
@@ -24,10 +24,11 @@ RUN \
 ENV DEBIAN_FRONTEND=noninteractive
 RUN \
   apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git wget \
-    liblua5.4-dev lua5.4 \
-    libclang-dev \
-    xxd jq sqlite3; \
+  build-essential git wget \
+  liblua5.4-dev lua5.4 \
+  libclang-dev \
+  libslirp-dev \
+  xxd jq sqlite3; \
   rm -rf /var/cache/apt;
 
 WORKDIR /dave

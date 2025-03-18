@@ -66,12 +66,11 @@ impl MachineInstance {
     }
     pub fn take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
         let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
-        if db.handle_rollups && base_cycle & mask == 0 {
-            // don't snapshot a machine state that's freshly fed with input without advance
-            assert!(
-                self.machine_state()?.yielded,
-                "don't snapshot a machine state that's freshly fed with input without advance",
-            );
+        if db.handle_rollups && ((base_cycle & mask) == 0) {
+            if !self.machine_state()?.yielded {
+                // don't snapshot a machine state that's freshly fed with input without advance
+                return Ok(());
+            }
         }
 
         let snapshot_path = db.work_path.join(format!("{}", base_cycle));
