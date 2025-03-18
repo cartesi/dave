@@ -22,9 +22,9 @@ function ComputationState.from_current_machine_state(machine)
     local hash = Hash:from_digest(machine:get_root_hash())
     return ComputationState:new(
         hash,
-        machine:read_reg("iflags_H"),
-        machine:read_reg("iflags_Y"),
-        machine:read_reg("uarch_halt_flag")
+        machine:read_reg("iflags_H") ~= 0,
+        machine:read_reg("iflags_Y") ~= 0,
+        machine:read_reg("uarch_halt_flag") ~= 0
     )
 end
 
@@ -122,9 +122,11 @@ end
 
 function Machine:take_snapshot(snapshot_dir, cycle, handle_rollups)
     local input_mask = arithmetic.max_uint(consts.log2_emulator_span)
-    if handle_rollups and cycle & input_mask == 0 then
-        -- dont snapshot a machine state that's freshly fed with input without advance
-        assert(not self.yielded, "don't snapshot a machine state that's freshly fed with input without advance")
+    if handle_rollups and ((cycle & input_mask) == 0) then
+        if (not self.yielded) then
+            -- don't snapshot a machine state that's freshly fed with input without advance
+            return
+        end
     end
 
     if not helper.exists(snapshot_dir) then
@@ -170,7 +172,21 @@ function Machine:run(cycle)
     local mcycle = machine:read_reg("mcycle")
     local physical_cycle = add_and_clamp(mcycle, cycle - self.cycle) -- TODO reconsider for lambda
 
-    while not (machine:read_reg("iflags_H") or machine:read_reg("iflags_Y") or machine:read_reg("mcycle") == physical_cycle) do
+    while true do
+        if machine:read_reg("iflags_H") ~= 0 then
+            -- print("break with halt")
+            break
+        end
+
+        if machine:read_reg("iflags_Y") ~= 0 then
+            -- print("break with yield")
+            break
+        end
+
+        if machine:read_reg("mcycle") == physical_cycle then
+            -- print("break with with meeting physical cycle")
+        end
+
         machine:run(physical_cycle)
     end
 
@@ -304,7 +320,6 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
     local machine = Machine:new_from_path(path)
     machine:load_snapshot(snapshot_dir, cycle)
     local logs = {}
-    local log_type = { annotations = true, proofs = true }
     local encode_input = nil
     if inputs then
         -- treat it as rollups
@@ -332,12 +347,13 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
                     table.insert(logs,
                         machine.machine:log_send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
                             data_hex,
-                            log_type
+                            cartesi.ACCESS_LOG_TYPE_LARGE_DATA
                         ))
-                    table.insert(logs, machine.machine:log_uarch_step(log_type))
+                    table.insert(logs, machine.machine:log_step_uarch(cartesi.ACCESS_LOG_TYPE_LARGE_DATA))
                     return encode_access_logs(logs, input)
                 else
-                    machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, data_hex)
+                    machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, data_hex,
+                        cartesi.ACCESS_LOG_TYPE_LARGE_DATA)
                 end
             else
                 if ucycle == 0 then
@@ -352,9 +368,9 @@ function Machine.get_logs(path, snapshot_dir, cycle, ucycle, inputs)
 
     machine:run_uarch(ucycle)
     if ucycle == consts.uarch_span then
-        table.insert(logs, machine.machine:log_uarch_reset(log_type))
+        table.insert(logs, machine.machine:log_reset_uarch(cartesi.ACCESS_LOG_TYPE_ANNOTATIONS))
     else
-        table.insert(logs, machine.machine:log_uarch_step(log_type))
+        table.insert(logs, machine.machine:log_step_uarch(cartesi.ACCESS_LOG_TYPE_LARGE_DATA))
     end
     return encode_access_logs(logs, encode_input)
 end
