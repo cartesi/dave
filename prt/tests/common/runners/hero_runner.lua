@@ -15,7 +15,7 @@ local function hero_runner(player_id, machine_path, root_commitment, root_tourna
         hook = false
     end
 
-    local snapshot_dir = string.format("/compute_data/%s", root_tournament)
+    local snapshot_dir = string.format("./_state/compute_path/%s", root_tournament)
     local strategy = HonestStrategy:new(
         CommitmentBuilder:new(machine_path, snapshot_dir, root_commitment),
         inputs,

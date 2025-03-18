@@ -62,7 +62,7 @@ local function setup_players(use_lua_node, extra_data, root_tournament, machine_
     local player_coroutines = {}
     local player_index = 1
     print("Calculating root commitment...")
-    local snapshot_dir = string.format("/compute_data/%s", root_tournament)
+    local snapshot_dir = string.format("./_state/compute_path/%s", root_tournament)
     local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
     local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height, inputs)
 
