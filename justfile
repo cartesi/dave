@@ -4,7 +4,13 @@ update-submodules:
 clean-emulator:
   make -C machine/emulator clean depclean distclean
 
-setup: update-submodules clean-emulator
+clean-contracts: clean-bindings
+  just -f ./cartesi-rollups/contracts/justfile clean-smart-contracts
+  just -f ./prt/contracts/justfile clean-smart-contracts
+
+  make -C machine/emulator clean depclean distclean
+
+setup: update-submodules clean-emulator clean-contracts
   make -C machine/emulator uarch-with-toolchain # Requries docker, necessary for machine bindings
   just -f ./test/programs/justfile build-honeypot-snapshot # Requries docker, necessary for tests
 
@@ -18,6 +24,8 @@ setup-local: setup
 
 build-consensus:
     just -f ./cartesi-rollups/contracts/justfile build
+test-consensus:
+    just -f ./cartesi-rollups/contracts/justfile test
 clean-consensus-bindings:
     just -f ./cartesi-rollups/contracts/justfile clean-bindings
 bind-consensus:
@@ -25,12 +33,15 @@ bind-consensus:
 
 build-prt:
     just -f ./prt/contracts/justfile build
+test-prt:
+    just -f ./prt/contracts/justfile test
 clean-prt-bindings:
     just -f ./prt/contracts/justfile clean-bindings
 bind-prt:
     just -f ./prt/contracts/justfile bind
 
 build-smart-contracts: build-consensus build-prt
+test-smart-contracts: build-smart-contracts test-consensus test-prt
 bind: bind-consensus bind-prt
 clean-bindings: clean-consensus-bindings clean-prt-bindings
 

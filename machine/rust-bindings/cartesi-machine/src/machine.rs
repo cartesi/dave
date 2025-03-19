@@ -126,8 +126,6 @@ impl Machine {
 
     /// Stores a machine instance to a directory, serializing its entire state.
     pub fn store(&mut self, dir: &Path) -> Result<()> {
-        // CM_API cm_error cm_store(const cm_machine *m, const char *dir);
-        // todo!()
         let dir_cstr = path_to_cstring(dir);
         let err_code = unsafe { cartesi_machine_sys::cm_store(self.machine, dir_cstr.as_ptr()) };
         check_err!(err_code)?;
@@ -478,7 +476,11 @@ impl Machine {
     pub fn log_step_uarch(&mut self, log_type: LogType) -> Result<AccessLog> {
         let mut log_ptr: *const c_char = ptr::null();
         let err_code = unsafe {
-            cartesi_machine_sys::cm_log_step_uarch(self.machine, log_type as i32, &mut log_ptr)
+            cartesi_machine_sys::cm_log_step_uarch(
+                self.machine,
+                log_type.to_bitflag(),
+                &mut log_ptr,
+            )
         };
         check_err!(err_code)?;
 
@@ -491,7 +493,11 @@ impl Machine {
     pub fn log_reset_uarch(&mut self, log_type: LogType) -> Result<AccessLog> {
         let mut log_ptr: *const c_char = ptr::null();
         let err_code = unsafe {
-            cartesi_machine_sys::cm_log_reset_uarch(self.machine, log_type as i32, &mut log_ptr)
+            cartesi_machine_sys::cm_log_reset_uarch(
+                self.machine,
+                log_type.to_bitflag(),
+                &mut log_ptr,
+            )
         };
         check_err!(err_code)?;
 
@@ -514,7 +520,7 @@ impl Machine {
                 reason as u16,
                 data.as_ptr(),
                 data.len() as u64,
-                log_type as i32,
+                log_type.to_bitflag(),
                 &mut log_ptr,
             )
         };
@@ -784,7 +790,7 @@ mod tests {
         let mut machine = create_machine(&config)?;
 
         let root_hash_before = machine.root_hash()?;
-        let access_log: AccessLog = machine.log_step_uarch(LogType::LargeData)?;
+        let access_log: AccessLog = machine.log_step_uarch(LogType::default().with_large_data())?;
         let root_hash_after = machine.root_hash()?;
 
         Machine::verify_step_uarch(&root_hash_before, &access_log, &root_hash_after)?;
@@ -798,7 +804,7 @@ mod tests {
         let mut machine = create_machine(&config)?;
 
         let root_hash_before = machine.root_hash()?;
-        let reset_log = machine.log_reset_uarch(LogType::Annotations)?;
+        let reset_log = machine.log_reset_uarch(LogType::default().with_annotations())?;
         let root_hash_after = machine.root_hash()?;
 
         Machine::verify_reset_uarch(&root_hash_before, &reset_log, &root_hash_after)?;
@@ -826,7 +832,7 @@ mod tests {
         let access_log: AccessLog = machine.log_send_cmio_response(
             CmioResponseReason::Advance,
             response_data,
-            LogType::LargeData,
+            LogType::default().with_large_data(),
         )?;
 
         let root_hash_after = machine.root_hash()?;

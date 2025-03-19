@@ -476,7 +476,7 @@ mod blockchain_reader_tests {
         PathBuf::from(PROGRAM).canonicalize().unwrap()
     }
 
-    fn spawn_anvil_and_provider() -> (AnvilInstance, SenderFiller, Address, Address, Digest) {
+    fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, Address, Address, Digest) {
         let program_path = program_path();
 
         let anvil = Anvil::default()
@@ -486,10 +486,9 @@ mod blockchain_reader_tests {
                 "--slots-in-an-epoch",
                 "1",
                 "--load-state",
-                "../../../test/programs/echo/anvil_state.json",
+                program_path.join("anvil_state.json").to_str().unwrap(),
                 "--block-base-fee-per-gas",
                 "0",
-                program_path.join("anvil_state.json").to_str().unwrap(),
             ])
             .spawn();
 
