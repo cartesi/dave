@@ -5,10 +5,10 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-          
+
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -34,8 +34,9 @@ jobs:
       - name: Deps
         run: |
           export CARTESI_MACHINE_VERSION=0.18.1
-          sudo apt-get install -y libboost-all-dev lua5.4 libslirp0
-          wget https://github.com/cartesi/machine-emulator/releases/download/v0.18.1/cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
+          sudo apt-get update
+          sudo apt-get install -y libboost-all-dev lua5.4 libslirp0 xxd libc6 clang
+          wget https://github.com/cartesi/machine-emulator/releases/download/v${CARTESI_MACHINE_VERSION}/cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
           sudo dpkg -i ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
           rm ./cartesi-machine-v${CARTESI_MACHINE_VERSION}_amd64.deb
 
@@ -53,3 +54,15 @@ jobs:
         run: |
           just test-rust-workspace
 
+      - name: Build dave-rollups
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cargo build -p dave-rollups --release --locked --target x86_64-unknown-linux-gnu
+
+      - name: Publish artifacts and release
+        uses: houseabsolute/actions-rust-release@v0
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          executable-name: dave-rollups
+          target: x86_64-unknown-linux-gnu
+          changes-file: CHANGELOG.md
