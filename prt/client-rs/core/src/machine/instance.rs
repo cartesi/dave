@@ -133,10 +133,10 @@ impl MachineInstance {
                         let cmio_logs = self.machine.log_send_cmio_response(
                             CmioResponseReason::Advance,
                             data,
-                            LogType::LargeData,
+                            LogType::default(),
                         )?;
                         // append step logs to cmio logs
-                        let step_logs = self.machine.log_step_uarch(LogType::LargeData)?;
+                        let step_logs = self.machine.log_step_uarch(LogType::default())?;
                         logs.push(&cmio_logs);
                         logs.push(&step_logs);
                         return Ok(encode_access_logs(logs, Some(Input(data.clone()))));
@@ -155,11 +155,11 @@ impl MachineInstance {
 
         self.run_uarch(ucycle)?;
         if ucycle == constants::UARCH_SPAN {
-            let reset_logs = self.machine.log_reset_uarch(LogType::LargeData)?;
+            let reset_logs = self.machine.log_reset_uarch(LogType::default())?;
             logs.push(&reset_logs);
             Ok(encode_access_logs(logs, encode_input))
         } else {
-            let step_logs = self.machine.log_step_uarch(LogType::LargeData)?;
+            let step_logs = self.machine.log_step_uarch(LogType::default())?;
             logs.push(&step_logs);
             Ok(encode_access_logs(logs, encode_input))
         }
