@@ -32,7 +32,7 @@ contract MiddleTournamentTest is Util, Test {
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     constructor() {
-        factory = Util.instantiateTournamentFactory();
+        (factory,) = Util.instantiateTournamentFactory();
     }
 
     function setUp() public {}

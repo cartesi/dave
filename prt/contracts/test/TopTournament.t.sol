@@ -29,7 +29,7 @@ contract TopTournamentTest is Util, Test {
     TopTournament topTournament;
 
     constructor() {
-        factory = Util.instantiateTournamentFactory();
+        (factory,) = Util.instantiateTournamentFactory();
     }
 
     function setUp() public {}
