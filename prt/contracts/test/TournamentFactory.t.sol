@@ -27,7 +27,7 @@ contract TournamentFactoryTest is Util, Test {
 
     function setUp() public {
         singleLevelfactory = Util.instantiateSingleLevelTournamentFactory();
-        multiLevelfactory = Util.instantiateTournamentFactory();
+        (multiLevelfactory,) = Util.instantiateTournamentFactory();
     }
 
     function testRootTournament() public {

@@ -35,7 +35,7 @@ contract TournamentTest is Util, Test {
     );
 
     constructor() {
-        factory = Util.instantiateTournamentFactory();
+        (factory,) = Util.instantiateTournamentFactory();
     }
 
     function setUp() public {}
