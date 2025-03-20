@@ -127,13 +127,15 @@ function Machine:take_snapshot(snapshot_dir, cycle, handle_rollups)
         assert(not self.yielded, "don't snapshot a machine state that's freshly fed with input without advance")
     end
 
-    if helper.exists(snapshot_dir) then
-        local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
+    if not helper.exists(snapshot_dir) then
+        helper.mkdir_p(snapshot_dir)
+    end
 
-        if not helper.exists(snapshot_path) then
-            -- print("saving snapshot", snapshot_path)
-            self.machine:store(snapshot_path)
-        end
+    local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
+
+    if not helper.exists(snapshot_path) then
+        -- print("saving snapshot", snapshot_path)
+        self.machine:store(snapshot_path)
     end
 end
 
