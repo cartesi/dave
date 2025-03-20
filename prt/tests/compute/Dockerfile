@@ -37,11 +37,13 @@ ADD ./prt/contracts/deploy_anvil.sh .
 WORKDIR "/app/client-lua"
 COPY ./prt/client-lua/ .
 
-WORKDIR "/app/tests/compute"
-COPY ./prt/tests/compute/ .
-RUN chmod +x entrypoint.sh
-RUN chmod +x prt_compute.lua
-RUN chmod +x doom_showcase/process_doom_graphics.lua
+WORKDIR "/app/tests"
+COPY ./prt/tests/common/ ./common
+COPY ./prt/tests/compute/ ./compute
+
+RUN chmod +x ./compute/entrypoint.sh
+RUN chmod +x ./compute/prt_compute.lua
+RUN chmod +x ./compute/doom_showcase/process_doom_graphics.lua
 
 WORKDIR "/app"
 RUN mkdir -p pixels
