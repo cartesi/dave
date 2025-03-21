@@ -3,11 +3,11 @@
 
 pragma solidity ^0.8.17;
 
-import "../abstracts/NonLeafTournament.sol";
-import "../abstracts/NonRootTournament.sol";
+import "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
+import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
 
-import "../../TournamentParameters.sol";
-import "../../IMultiLevelTournamentFactory.sol";
+import "prt-contracts/types/TournamentParameters.sol";
+import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 
 /// @notice Middle tournament is non-top, non-bottom of a multi-level instance
 contract MiddleTournament is NonLeafTournament, NonRootTournament {

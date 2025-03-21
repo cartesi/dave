@@ -5,13 +5,13 @@ pragma solidity ^0.8.17;
 
 import {Script} from "forge-std/Script.sol";
 
-import {Machine} from "prt-contracts/Machine.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
 
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/CanonicalTournamentParametersProvider.sol";
-import "prt-contracts/CmioStateTransition.sol";
-import "prt-contracts/RiscVStateTransition.sol";
-import "prt-contracts/StateTransition.sol";
+import "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import "prt-contracts/state-transition/CmioStateTransition.sol";
+import "prt-contracts/state-transition/RiscVStateTransition.sol";
+import "prt-contracts/state-transition/CartesiStateTransition.sol";
 import "rollups-contracts/inputs/IInputBox.sol";
 import "src/DaveConsensus.sol";
 
@@ -24,7 +24,7 @@ contract DaveConsensusScript is Script {
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
             new CanonicalTournamentParametersProvider(),
-            new StateTransition(new RiscVStateTransition(), new CmioStateTransition())
+            new CartesiStateTransition(new RiscVStateTransition(), new CmioStateTransition())
         );
 
         new DaveConsensus(inputBox, address(0x0), factory, initialHash);

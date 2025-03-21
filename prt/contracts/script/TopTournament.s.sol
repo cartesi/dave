@@ -5,14 +5,15 @@ pragma solidity ^0.8.17;
 
 import {Script} from "forge-std/Script.sol";
 
-import {Machine} from "src/Machine.sol";
+import {Machine} from "src/types/Machine.sol";
 
-import "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import "src/CanonicalTournamentParametersProvider.sol";
-import "src/IDataProvider.sol";
-import "src/CmioStateTransition.sol";
-import "src/RiscVStateTransition.sol";
-import "src/StateTransition.sol";
+import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
+import
+    "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import "prt-contracts/IDataProvider.sol";
+import "prt-contracts/state-transition/CmioStateTransition.sol";
+import "prt-contracts/state-transition/RiscVStateTransition.sol";
+import "prt-contracts/state-transition/CartesiStateTransition.sol";
 
 contract TopTournamentScript is Script {
     function run(Machine.Hash initialHash) external {
@@ -23,7 +24,7 @@ contract TopTournamentScript is Script {
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
             new CanonicalTournamentParametersProvider(),
-            new StateTransition(
+            new CartesiStateTransition(
                 new RiscVStateTransition(), new CmioStateTransition()
             )
         );

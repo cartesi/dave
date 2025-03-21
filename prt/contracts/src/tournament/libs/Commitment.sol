@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "../../CanonicalConstants.sol";
-import "../../Tree.sol";
-import "../../Machine.sol";
+import "prt-contracts/arbitration-config/CanonicalConstants.sol";
+import "prt-contracts/types/Tree.sol";
+import "prt-contracts/types/Machine.sol";
 
 library Commitment {
     using Tree for Tree.Node;

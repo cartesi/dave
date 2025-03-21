@@ -3,13 +3,15 @@
 
 pragma solidity ^0.8.17;
 
-import "../../IMultiLevelTournamentFactory.sol";
-import "../../TournamentParameters.sol";
-import "../../ITournamentParametersProvider.sol";
+import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import "prt-contracts/types/TournamentParameters.sol";
+import "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
 
-import "./multilevel/TopTournamentFactory.sol";
-import "./multilevel/MiddleTournamentFactory.sol";
-import "./multilevel/BottomTournamentFactory.sol";
+import "prt-contracts/tournament/factories/multilevel/TopTournamentFactory.sol";
+import
+    "prt-contracts/tournament/factories/multilevel/MiddleTournamentFactory.sol";
+import
+    "prt-contracts/tournament/factories/multilevel/BottomTournamentFactory.sol";
 
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
@@ -37,20 +39,27 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         override
         returns (ITournament)
     {
-        TopTournament _tournament = instantiateTop(_initialHash, _provider);
+        ITournament _tournament = instantiateTop_(_initialHash, _provider);
         emit tournamentCreated(_tournament);
         return _tournament;
     }
 
-    function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
-        public
-        override
+    function instantiateTop_(Machine.Hash _initialHash, IDataProvider _provider)
+        private
         returns (TopTournament)
     {
         TopTournament _tournament = topFactory.instantiate(
             _initialHash, _getTopTournamentParameters(), _provider, this
         );
         return _tournament;
+    }
+
+    function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
+        public
+        override
+        returns (Tournament)
+    {
+        return instantiateTop_(_initialHash, _provider);
     }
 
     function instantiateMiddle(
@@ -63,7 +72,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external override returns (MiddleTournament) {
+    ) external override returns (Tournament) {
         MiddleTournament _tournament = middleFactory.instantiate(
             _initialHash,
             _contestedCommitmentOne,
@@ -91,7 +100,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external override returns (BottomTournament) {
+    ) external override returns (Tournament) {
         BottomTournament _tournament = bottomFactory.instantiate(
             _initialHash,
             _contestedCommitmentOne,

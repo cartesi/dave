@@ -19,11 +19,11 @@
 
 pragma solidity ^0.8.0;
 
-import "./IRiscVStateTransition.sol";
-import "./ICmioStateTransition.sol";
-import "./IStateTransition.sol";
+import "prt-contracts/state-transition/IRiscVStateTransition.sol";
+import "prt-contracts/state-transition/ICmioStateTransition.sol";
+import "prt-contracts/IStateTransition.sol";
 
-contract StateTransition is IStateTransition {
+contract CartesiStateTransition is IStateTransition {
     uint64 constant LOG2_UARCH_SPAN = 20;
     uint64 constant LOG2_EMULATOR_SPAN = 48;
     // uint64 constant LOG2_INPUT_SPAN = 24;
@@ -32,15 +32,15 @@ contract StateTransition is IStateTransition {
     uint256 constant BIG_STEP_MASK =
         (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
 
-    IRiscVStateTransition immutable primitives;
-    ICmioStateTransition immutable primitivesCmio;
+    IRiscVStateTransition immutable riscVStateTransition;
+    ICmioStateTransition immutable cmioStateTransition;
 
     constructor(
-        IRiscVStateTransition _primitives,
-        ICmioStateTransition _primitivesCmio
+        IRiscVStateTransition _riscVStateTransition,
+        ICmioStateTransition _cmioStateTransition
     ) {
-        primitives = _primitives;
-        primitivesCmio = _primitivesCmio;
+        riscVStateTransition = _riscVStateTransition;
+        cmioStateTransition = _cmioStateTransition;
     }
 
     function transitionState(
@@ -65,9 +65,9 @@ contract StateTransition is IStateTransition {
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
         if ((counter + 1) & UARCH_STEP_MASK == 0) {
-            accessLogs = primitives.reset(accessLogs);
+            accessLogs = riscVStateTransition.reset(accessLogs);
         } else {
-            accessLogs = primitives.step(accessLogs);
+            accessLogs = riscVStateTransition.step(accessLogs);
         }
 
         newMachineState = accessLogs.currentRootHash;
@@ -79,40 +79,44 @@ contract StateTransition is IStateTransition {
         bytes calldata proofs,
         IDataProvider provider
     ) internal view returns (bytes32 newMachineState) {
-        // Rollups meta step handles input
-        AccessLogs.Context memory accessLogs =
-            AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
         if (counter & BIG_STEP_MASK == 0) {
-            uint256 inputLength = uint256(bytes32(proofs[:32]));
-            accessLogs = AccessLogs.Context(
-                machineState, Buffer.Context(proofs, 32 + inputLength)
+            // cmio + uarch step
+
+            uint64 inputLength = uint64(bytes8(proofs[:8]));
+            AccessLogs.Context memory accessLogs = AccessLogs.Context(
+                machineState, Buffer.Context(proofs, 8 + inputLength)
             );
 
-            if (inputLength > 0) {
-                bytes calldata input = proofs[32:32 + inputLength];
-                uint256 inputIndexWithinEpoch =
-                    counter >> (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
+            bytes calldata input = proofs[8:8 + inputLength];
+            uint256 inputIndexWithinEpoch =
+                counter >> (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
+            bytes32 inputMerkleRoot =
+                provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
 
-                // TODO: maybe assert retrieved input length matches?
-                bytes32 inputMerkleRoot = provider.provideMerkleRootOfInput(
-                    inputIndexWithinEpoch, input
-                );
-
-                require(inputMerkleRoot != bytes32(0));
-                accessLogs = primitivesCmio.sendCmio(
+            if (inputMerkleRoot != bytes32(0x0)) {
+                accessLogs = cmioStateTransition.sendCmio(
                     accessLogs,
                     EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
                     inputMerkleRoot,
                     uint32(inputLength)
                 );
             }
-            accessLogs = primitives.step(accessLogs);
-        } else if ((counter + 1) & UARCH_STEP_MASK == 0) {
-            accessLogs = primitives.reset(accessLogs);
-        } else {
-            accessLogs = primitives.step(accessLogs);
-        }
+            accessLogs = riscVStateTransition.step(accessLogs);
 
-        newMachineState = accessLogs.currentRootHash;
+            newMachineState = accessLogs.currentRootHash;
+        } else {
+            AccessLogs.Context memory accessLogs =
+                AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
+
+            if ((counter + 1) & UARCH_STEP_MASK == 0) {
+                // uarch reset
+                accessLogs = riscVStateTransition.reset(accessLogs);
+            } else {
+                // uarch step
+                accessLogs = riscVStateTransition.step(accessLogs);
+            }
+
+            newMachineState = accessLogs.currentRootHash;
+        }
     }
 }

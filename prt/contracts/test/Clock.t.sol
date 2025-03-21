@@ -12,7 +12,7 @@
 
 import "forge-std/Test.sol";
 
-import "src/tournament/libs/Clock.sol";
+import "prt-contracts/tournament/libs/Clock.sol";
 
 pragma solidity ^0.8.0;
 

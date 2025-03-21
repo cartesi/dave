@@ -13,8 +13,8 @@
 import "forge-std/Test.sol";
 
 import "./Util.sol";
-import "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import "src/CanonicalConstants.sol";
+import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
+import "prt-contracts/arbitration-config/CanonicalConstants.sol";
 
 pragma solidity ^0.8.0;
 
@@ -26,7 +26,7 @@ contract BottomTournamentTest is Util, Test {
     using Machine for Machine.Hash;
 
     MultiLevelTournamentFactory immutable factory;
-    StateTransition immutable stateTransition;
+    CartesiStateTransition immutable stateTransition;
     TopTournament topTournament;
     MiddleTournament middleTournament;
     BottomTournament bottomTournament;

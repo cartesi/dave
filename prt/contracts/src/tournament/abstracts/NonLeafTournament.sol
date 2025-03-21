@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "../../IMultiLevelTournamentFactory.sol";
-import "./Tournament.sol";
-import "./NonRootTournament.sol";
+import "prt-contracts/tournament/abstracts/Tournament.sol";
+import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
+import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 
 /// @notice Non-leaf tournament can create inner tournaments and matches
 abstract contract NonLeafTournament is Tournament {
