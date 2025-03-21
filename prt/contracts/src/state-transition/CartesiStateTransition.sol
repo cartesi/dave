@@ -32,15 +32,15 @@ contract CartesiStateTransition is IStateTransition {
     uint256 constant BIG_STEP_MASK =
         (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
 
-    IRiscVStateTransition immutable primitives;
-    ICmioStateTransition immutable primitivesCmio;
+    IRiscVStateTransition immutable riscVStateTransition;
+    ICmioStateTransition immutable cmioStateTransition;
 
     constructor(
-        IRiscVStateTransition _primitives,
-        ICmioStateTransition _primitivesCmio
+        IRiscVStateTransition _riscVStateTransition,
+        ICmioStateTransition _cmioStateTransition
     ) {
-        primitives = _primitives;
-        primitivesCmio = _primitivesCmio;
+        riscVStateTransition = _riscVStateTransition;
+        cmioStateTransition = _cmioStateTransition;
     }
 
     function transitionState(
@@ -65,9 +65,9 @@ contract CartesiStateTransition is IStateTransition {
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
         if ((counter + 1) & UARCH_STEP_MASK == 0) {
-            accessLogs = primitives.reset(accessLogs);
+            accessLogs = riscVStateTransition.reset(accessLogs);
         } else {
-            accessLogs = primitives.step(accessLogs);
+            accessLogs = riscVStateTransition.step(accessLogs);
         }
 
         newMachineState = accessLogs.currentRootHash;
@@ -94,14 +94,14 @@ contract CartesiStateTransition is IStateTransition {
                 provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
 
             if (inputMerkleRoot != bytes32(0x0)) {
-                accessLogs = primitivesCmio.sendCmio(
+                accessLogs = cmioStateTransition.sendCmio(
                     accessLogs,
                     EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
                     inputMerkleRoot,
                     uint32(inputLength)
                 );
             }
-            accessLogs = primitives.step(accessLogs);
+            accessLogs = riscVStateTransition.step(accessLogs);
 
             newMachineState = accessLogs.currentRootHash;
         } else {
@@ -110,10 +110,10 @@ contract CartesiStateTransition is IStateTransition {
 
             if ((counter + 1) & UARCH_STEP_MASK == 0) {
                 // uarch reset
-                accessLogs = primitives.reset(accessLogs);
+                accessLogs = riscVStateTransition.reset(accessLogs);
             } else {
                 // uarch step
-                accessLogs = primitives.step(accessLogs);
+                accessLogs = riscVStateTransition.step(accessLogs);
             }
 
             newMachineState = accessLogs.currentRootHash;
