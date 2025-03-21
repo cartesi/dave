@@ -18,4 +18,4 @@
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
 [submodule "test/programs/honeypot/honeypot"]
 	path = test/programs/honeypot/honeypot
-	url = https://github.com/edubart/honeypot
+	url = https://github.com/cartesi/honeypot
