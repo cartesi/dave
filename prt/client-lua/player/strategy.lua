@@ -125,10 +125,8 @@ function HonestStrategy:_react_match(match, commitment, log)
                 match.running_leaf
             ))
 
-            local cycle = match.base_big_cycle
-            local ucycle = (match.leaf_cycle & constants.uarch_span):touinteger()
-            local logs = Machine.get_logs(self.machine_path, self.commitment_builder.snapshot_dir, cycle, ucycle,
-                self.inputs)
+            local meta_cycle = match.leaf_cycle
+            local logs = Machine.get_logs(self.machine_path, match.current_other_parent, meta_cycle, self.inputs)
 
             helper.log_full(self.sender.index, string.format(
                 "win leaf match in tournament %s of level %d for commitment %s",

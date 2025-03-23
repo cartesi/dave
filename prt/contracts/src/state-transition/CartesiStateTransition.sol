@@ -24,12 +24,14 @@ import "prt-contracts/state-transition/ICmioStateTransition.sol";
 import "prt-contracts/IStateTransition.sol";
 
 contract CartesiStateTransition is IStateTransition {
+    // TODO add CM_MARCHID
+
     uint64 constant LOG2_UARCH_SPAN = 20;
     uint64 constant LOG2_EMULATOR_SPAN = 48;
     // uint64 constant LOG2_INPUT_SPAN = 24;
 
-    uint256 constant UARCH_STEP_MASK = (1 << LOG2_UARCH_SPAN) - 1;
-    uint256 constant BIG_STEP_MASK =
+    uint256 constant BIG_STEP_MASK = (1 << LOG2_UARCH_SPAN) - 1;
+    uint256 constant INPUT_MASK =
         (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
 
     IRiscVStateTransition immutable riscVStateTransition;
@@ -64,7 +66,7 @@ contract CartesiStateTransition is IStateTransition {
         // Inputless version for testing
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-        if ((counter + 1) & UARCH_STEP_MASK == 0) {
+        if ((counter + 1) & BIG_STEP_MASK == 0) {
             accessLogs = riscVStateTransition.reset(accessLogs);
         } else {
             accessLogs = riscVStateTransition.step(accessLogs);
@@ -78,45 +80,54 @@ contract CartesiStateTransition is IStateTransition {
         uint256 counter,
         bytes calldata proofs,
         IDataProvider provider
-    ) internal view returns (bytes32 newMachineState) {
-        if (counter & BIG_STEP_MASK == 0) {
+    ) internal view returns (bytes32) {
+        // lower bits (uarch + big arch) are zero: add input.
+        if (counter & INPUT_MASK == 0) {
             // cmio + uarch step
 
+            // first eight bytes of the proof are the size of the input, big-endian.
+            // next `inputLength` bytes of the proof are the input itself.
             uint64 inputLength = uint64(bytes8(proofs[:8]));
+            bytes calldata input = proofs[8:8 + inputLength];
+
+            // the rest is the access log proofs
             AccessLogs.Context memory accessLogs = AccessLogs.Context(
-                machineState, Buffer.Context(proofs, 8 + inputLength)
+                machineState, Buffer.Context(proofs[8 + inputLength:], 0)
             );
 
-            bytes calldata input = proofs[8:8 + inputLength];
             uint256 inputIndexWithinEpoch =
                 counter >> (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
             bytes32 inputMerkleRoot =
                 provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
 
+            // check if input is out-of-bounds of input box for this epoch
             if (inputMerkleRoot != bytes32(0x0)) {
                 accessLogs = cmioStateTransition.sendCmio(
                     accessLogs,
-                    EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
+                    EmulatorConstants.CMIO_YIELD_REASON_ADVANCE_STATE,
                     inputMerkleRoot,
                     uint32(inputLength)
                 );
             }
+
             accessLogs = riscVStateTransition.step(accessLogs);
 
-            newMachineState = accessLogs.currentRootHash;
+            return accessLogs.currentRootHash;
         } else {
             AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-            if ((counter + 1) & UARCH_STEP_MASK == 0) {
+            // lower bits (uarch) are all 1s: reset uarch.
+            if ((counter + 1) & BIG_STEP_MASK == 0) {
                 // uarch reset
+                accessLogs = riscVStateTransition.step(accessLogs);
                 accessLogs = riscVStateTransition.reset(accessLogs);
             } else {
                 // uarch step
                 accessLogs = riscVStateTransition.step(accessLogs);
             }
 
-            newMachineState = accessLogs.currentRootHash;
+            return accessLogs.currentRootHash;
         }
     }
 }

@@ -64,13 +64,12 @@ impl MachineInstance {
             ucycle: 0,
         })
     }
-    pub fn take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
+
+    fn _take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
         let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
-        if db.handle_rollups && ((base_cycle & mask) == 0) {
-            if !self.machine_state()?.yielded {
-                // don't snapshot a machine state that's freshly fed with input without advance
-                return Ok(());
-            }
+        if db.handle_rollups && ((base_cycle & mask) == 0) && !self.machine_state()?.yielded {
+            // don't snapshot a machine state that's freshly fed with input without advance
+            return Ok(());
         }
 
         let snapshot_path = db.work_path.join(format!("{}", base_cycle));
@@ -243,9 +242,6 @@ impl MachineInstance {
             trace!("next input index: {}", next_input_index);
             trace!("run to next input cycle: {}", next_input_cycle);
             machine_state_without_input = self.run(next_input_cycle)?;
-            if next_input_cycle == cycle {
-                self.take_snapshot(next_input_cycle, db)?;
-            }
 
             let input = inputs.get(next_input_index as usize);
             if let Some(data) = input {
@@ -269,7 +265,6 @@ impl MachineInstance {
         }
         if cycle > self.cycle {
             machine_state_without_input = self.run(cycle)?;
-            self.take_snapshot(cycle, db)?;
         }
         Ok(machine_state_without_input)
     }

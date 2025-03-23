@@ -11,7 +11,8 @@ build-smart-contracts:
     forge build
 
 test:
-    forge test
+    forge test --no-match-contract ".*FfiTest"
+    forge test --match-contract ".*FfiTest" --ffi
 
 clean-smart-contracts:
     forge clean
