@@ -11,7 +11,7 @@ import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
 import {Machine} from "prt-contracts/Machine.sol";
 
-event DaveConsensusCreation(IDataProvider daveConsensus);
+event DaveConsensusCreated(IDataProvider daveConsensus);
 
 /// @title Dave Consensus Factory
 /// @notice Allows anyone to reliably deploy a new `IDataProvider` contract.
@@ -25,7 +25,7 @@ contract DaveConsensusFactory {
         IDataProvider daveConsensus =
             new DaveConsensus(inputBox, appContract, tournamentFactory, initialMachineStateHash);
 
-        emit DaveConsensusCreation(daveConsensus);
+        emit DaveConsensusCreated(daveConsensus);
 
         return daveConsensus;
     }
@@ -40,7 +40,7 @@ contract DaveConsensusFactory {
         IDataProvider daveConsensus =
             new DaveConsensus{salt: salt}(inputBox, appContract, tournamentFactory, initialMachineStateHash);
 
-        emit DaveConsensusCreation(daveConsensus);
+        emit DaveConsensusCreated(daveConsensus);
 
         return daveConsensus;
     }
