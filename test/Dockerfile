@@ -64,6 +64,8 @@ ENV INCLUDECARTESI_PATH="/usr/include/cartesi-machine/"
 
 WORKDIR /dave
 
+ENV ANVIL_IP_ADDR="0.0.0.0"
+EXPOSE 8545
 
 COPY test/programs/ test/programs/
 RUN just -f test/programs/justfile download-deps
