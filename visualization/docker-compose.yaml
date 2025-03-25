@@ -1,0 +1,33 @@
+services:
+  sourcify:
+    image: sourcify:devel
+    ports:
+      - 5555:5555
+    container_name: sourcify-devel
+    environment:
+      NODE_ENV: "development"
+      NODE_CONFIG_ENV: "devel"
+    volumes:
+      - sourcify-data:/tmp/sourcify/repository
+
+  otterscan:
+    image: otterscan/otterscan:v2.8.0
+    ports:
+      - 5100:80
+    container_name: otterscan
+    environment:
+      - 'OTTERSCAN_CONFIG={"erigonURL": "http://0.0.0.0:8545",
+        "experimental": false, "branding": {
+        "siteName": "Dave Otterscan", "networkTitle": "Dev Network" },
+        "sourcify": {
+        "sources": {
+        "Local Sourcify Repo": {
+        "url": "http://localhost:5555/repository",
+        "backendFormat": "RepositoryV1"
+        },
+        "Sourcify Servers": {
+        "url": "https://repo.sourcify.dev",
+        "backendFormat": "RepositoryV1"
+        }}}}'
+volumes:
+  sourcify-data:

@@ -1,0 +1,76 @@
+sourcify_server_path := join("sourcify", "services", "server")
+sourcify_server_src_path := join(sourcify_server_path, "src")
+sourcify_server_config_path := join(sourcify_server_src_path, "config")
+
+configs_sourcify_path := join("configs", "sourcify")
+sourcify_chains_config := join(configs_sourcify_path, "sourcify-chains.json")
+local_js_config := join(configs_sourcify_path, "devel.js")
+
+cp_local_js_args := local_js_config + " " + sourcify_server_config_path
+cp_sourcify_chains_args := sourcify_chains_config + " " + sourcify_server_src_path 
+
+vis_dir := justfile_directory()
+
+# anvil dev private-key
+export PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+top_tournament_addr := "0x75537828f2ce51be7289709686A69CbFDbB714F1"
+
+default:
+  just --list
+
+[private]
+validate-top-tournament address=top_tournament_addr:
+ cd {{vis_dir}}/../prt/contracts/ && forge verify-contract \
+ --via-ir \
+ --verifier sourcify \
+ --verifier-url http://localhost:5555/ \
+ --rpc-url http://localhost:8545 {{address}} ./src/tournament/concretes/TopTournament.sol:TopTournament
+
+[private]
+validate-dave-consensus: 
+  cd {{vis_dir}}/../cartesi-rollups/contracts && forge script \
+  script/DaveConsensus.s.sol \
+  --chain-id 31337 \
+  --rpc-url http://localhost:8545 \
+  --private-key $PRIVATE_KEY \
+  --verifier sourcify \
+  --verifier-url http://localhost:5555/ \
+  --verify \
+  --resume
+
+[private]
+validate-input-box:
+  cd {{vis_dir}}/../cartesi-rollups/contracts && forge script \
+  script/InputBox.s.sol \
+  --chain-id 31337 \
+  --rpc-url http://localhost:8545 \
+  --private-key $PRIVATE_KEY \
+  --verifier sourcify \
+  --verifier-url http://localhost:5555/ \
+  --verify \
+  --resume
+
+validate-contracts: validate-input-box validate-dave-consensus validate-top-tournament
+
+[private]
+@prepare-sourcify:
+    -cp {{ cp_local_js_args }}
+    -cp {{ cp_sourcify_chains_args }}
+    echo "Sourcify configs updated!"
+
+[doc("Build a sourcify image to be used on development mode."), private]
+build-sourcify-image TAG="sourcify:devel": prepare-sourcify
+  cd {{vis_dir}}/sourcify/ && docker build -f services/server/Dockerfile -t {{TAG}} .
+
+[doc("Build the necessary artefacts to be used under visualization.")]
+build: build-sourcify-image
+
+[doc("Start a docker-compose file under visualization. It will start the block explorer looking to an anvil (i.e. localhost:8545)")]
+up *FLAGS: build
+  docker compose up {{FLAGS}}
+[doc("Stop the docker-compose registered services.")]
+down:
+  docker compose down
+[doc("Checkout sourcify source code")]
+update-submodules:
+  git submodule update --recursive --init
