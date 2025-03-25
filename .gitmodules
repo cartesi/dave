@@ -19,3 +19,6 @@
 [submodule "test/programs/honeypot/honeypot"]
 	path = test/programs/honeypot/honeypot
 	url = https://github.com/cartesi/honeypot
+[submodule "visualization/sourcify"]
+	path = visualization/sourcify
+	url = https://github.com/ethereum/sourcify
