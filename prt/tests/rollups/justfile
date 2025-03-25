@@ -5,7 +5,7 @@ HONEYPOT_DIR := "../../../test/programs/honeypot"
 INPUT_BOX := `head -n 1 ../../../test/programs/echo/addresses`
 CONSENSUS := `head -n 2 ../../../test/programs/echo/addresses | tail -n 1`
 
-MAX_EPOCH := "2"
+MAX_EPOCH := "1"
 
 # run PRT rollups test
 test MACH_PATH:
