@@ -18,14 +18,6 @@ contract DaveConsensusFactoryTest is Test {
         _factory = new DaveConsensusFactory();
     }
 
-    function testRevertsAppContractAddressZero(
-        IInputBox inputBox,
-        ITournamentFactory tournamentFactory,
-        Machine.Hash initialMachineStateHash
-    ) public {
-        vm.expectRevert("app contract address must not be zero");
-        _factory.newDaveConsensus(inputBox, address(0), tournamentFactory, initialMachineStateHash);
-    }
 
     function testNewDaveConsensus(
         IInputBox inputBox,
@@ -33,7 +25,6 @@ contract DaveConsensusFactoryTest is Test {
         ITournamentFactory tournamentFactory,
         Machine.Hash initialMachineStateHash
     ) public {
-        vm.assume(appContract != address(0));
         
         vm.recordLogs();
 
@@ -51,7 +42,6 @@ contract DaveConsensusFactoryTest is Test {
         Machine.Hash initialMachineStateHash,
         bytes32 salt
     ) public {
-        vm.assume(appContract != address(0));
         
         address precalculatedAddress = _factory.calculateDaveConsensusAddress(
             inputBox, appContract, tournamentFactory, initialMachineStateHash, salt
@@ -95,3 +85,4 @@ contract DaveConsensusFactoryTest is Test {
         assertEq(numOfConsensusCreated, 1);
     }
 }
+
