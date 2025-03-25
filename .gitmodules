@@ -16,3 +16,6 @@
 [submodule "cartesi-rollups/contracts/lib/openzeppelin-contracts"]
 	path = cartesi-rollups/contracts/lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "visualization/sourcify"]
+	path = visualization/sourcify
+	url = https://github.com/ethereum/sourcify
