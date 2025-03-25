@@ -81,6 +81,11 @@ jobs:
         run: |
           just test-rust-workspace
 
+      - name: Test dave-rollups
+        working-directory: ./prt/tests/rollups
+        run: |
+          just test-echo
+
       - name: Build dave-rollups
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
