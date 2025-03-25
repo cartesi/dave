@@ -27,8 +27,8 @@ end
 -- The Rust Compute reacts once and exits, the coroutine periodically spawn a new process until the tournament ends
 local function create_react_once_runner(player_id, machine_path)
     local rust_compute_cmd = string.format(
-        [[sh -c "echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
-        ./cartesi-prt-compute 2>&1 | tee -a honest.log"]],
+        [[echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
+        ./cartesi-prt-compute 2>&1 | tee -a honest.log]],
         machine_path)
 
     return coroutine.create(function()
@@ -61,8 +61,8 @@ end
 local function create_runner(player_id, machine_path)
     local hero_react_interval = 3
     local rust_compute_cmd = string.format(
-        [[sh -c "echo $$ ; exec env INTERVAL='%d' MACHINE_PATH='%s' RUST_LOG='info' \
-    ./cartesi-prt-compute 2>&1 | tee honest.log"]],
+        [[echo $$ ; exec env INTERVAL='%d' MACHINE_PATH='%s' RUST_LOG='info' \
+    ./cartesi-prt-compute 2>&1 | tee honest.log]],
         hero_react_interval, machine_path)
 
     return coroutine.create(function()
