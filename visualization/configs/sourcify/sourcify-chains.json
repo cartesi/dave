@@ -1,0 +1,9 @@
+{
+  "31337": {
+    "sourcifyName": "Local chain (Anvil)",
+    "supported": true,
+    "rpc": [
+      "http://host.docker.internal:8545"
+    ]
+  }
+}
