@@ -4,3 +4,6 @@
 [submodule "machine/emulator"]
 	path = machine/emulator
 	url = https://github.com/cartesi/machine-emulator
+[submodule "visualization/sourcify"]
+	path = visualization/sourcify
+	url = https://github.com/ethereum/sourcify
