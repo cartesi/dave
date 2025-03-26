@@ -4,10 +4,13 @@ description = 'Cartesi PRT contracts'
 
 [deploy.RiscVStateTransition]
 artifact = "RiscVStateTransition"
+create2 = true
 salt = "<%= zeroHash %>"
 
 [deploy.CmioStateTransition]
 artifact = "CmioStateTransition"
+create2 = true
+salt = "<%= zeroHash %>"
 
 [deploy.StateTransition]
 artifact = "StateTransition"
@@ -16,22 +19,27 @@ args = [
     "<%= contracts.CmioStateTransition.address %>",
 ]
 salt = "<%= zeroHash %>"
+create2 = true
 
 [deploy.TopTournamentFactory]
 artifact = "TopTournamentFactory"
 salt = "<%= zeroHash %>"
+create2 = true
 
 [deploy.MiddleTournamentFactory]
 artifact = "MiddleTournamentFactory"
 salt = "<%= zeroHash %>"
+create2 = true
 
 [deploy.BottomTournamentFactory]
 artifact = "BottomTournamentFactory"
 salt = "<%= zeroHash %>"
+create2 = true
 
 [deploy.CanonicalTournamentParametersProvider]
 artifact = "CanonicalTournamentParametersProvider"
 salt = "<%= zeroHash %>"
+create2 = true
 
 [deploy.MultiLevelTournamentFactory]
 artifact = "MultiLevelTournamentFactory"
@@ -43,3 +51,4 @@ args = [
     "<%= contracts.StateTransition.address %>",
 ]
 salt = "<%= zeroHash %>"
+create2 = true
