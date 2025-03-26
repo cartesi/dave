@@ -2,9 +2,11 @@ sourcify_server_path := join("sourcify", "services", "server")
 sourcify_server_src_path := join(sourcify_server_path, "src")
 sourcify_server_config_path := join(sourcify_server_src_path, "config")
 
+devel_config_filename := "devel.js"
+sourcify_chains_filename := "sourcify-chains.json"
 configs_sourcify_path := join("configs", "sourcify")
-sourcify_chains_config := join(configs_sourcify_path, "sourcify-chains.json")
-local_js_config := join(configs_sourcify_path, "devel.js")
+sourcify_chains_config := join(configs_sourcify_path, sourcify_chains_filename)
+local_js_config := join(configs_sourcify_path, devel_config_filename)
 
 cp_local_js_args := local_js_config + " " + sourcify_server_config_path
 cp_sourcify_chains_args := sourcify_chains_config + " " + sourcify_server_src_path 
@@ -15,6 +17,7 @@ vis_dir := justfile_directory()
 export PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 top_tournament_addr := "0x75537828f2ce51be7289709686A69CbFDbB714F1"
 
+[private]
 default:
   just --list
 
@@ -58,19 +61,32 @@ validate-contracts: validate-input-box validate-dave-consensus validate-top-tour
     -cp {{ cp_sourcify_chains_args }}
     echo "Sourcify configs updated!"
 
+[doc("Remove both storage and chains config from the local sourcify/ project. Should be used as an post-image-build cleanup."), private]
+remove-sourcify-configs:
+  rm {{ join(sourcify_server_config_path, devel_config_filename) }} {{ join(sourcify_server_src_path, sourcify_chains_filename) }}
+  echo "Sourcify configs removed"
+
+[doc("Cleanup recipe calls after docker image build."), private]
+post-image-build: remove-sourcify-configs
+
 [doc("Build a sourcify image to be used on development mode."), private]
 build-sourcify-image TAG="sourcify:devel": prepare-sourcify
   cd {{vis_dir}}/sourcify/ && docker build -f services/server/Dockerfile -t {{TAG}} .
 
 [doc("Build the necessary artefacts to be used under visualization.")]
-build: build-sourcify-image
+build: build-sourcify-image post-image-build
 
 [doc("Start a docker-compose file under visualization. It will start the block explorer looking to an anvil (i.e. localhost:8545)")]
+[group('Docker')]
 up *FLAGS: build
   docker compose up {{FLAGS}}
+
 [doc("Stop the docker-compose registered services.")]
+[group('Docker')]
 down:
   docker compose down
+
 [doc("Checkout sourcify source code")]
+[group("Git dependencies")]
 update-submodules:
   git submodule update --recursive --init
