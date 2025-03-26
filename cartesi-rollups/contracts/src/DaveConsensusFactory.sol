@@ -11,11 +11,11 @@ import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
 import {Machine} from "prt-contracts/Machine.sol";
 
-
 /// @title Dave Consensus Factory
 /// @notice Allows anyone to reliably deploy a new `IDataProvider` contract.
 contract DaveConsensusFactory {
     event DaveConsensusCreated(IDataProvider daveConsensus);
+
     function newDaveConsensus(
         IInputBox inputBox,
         address appContract,

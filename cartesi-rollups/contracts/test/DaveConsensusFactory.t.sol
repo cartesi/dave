@@ -91,7 +91,7 @@ contract DaveConsensusFactoryTest is Test {
         vm.recordLogs();
 
         IDataProvider daveConsensus =
-        _factory.newDaveConsensus(_inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt);
+            _factory.newDaveConsensus(_inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt);
 
         _testNewDaveConsensusAux(daveConsensus);
 
