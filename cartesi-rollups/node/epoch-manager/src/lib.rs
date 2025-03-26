@@ -1,6 +1,6 @@
 use alloy::{hex::ToHexExt, primitives::Address, providers::DynProvider};
 use anyhow::Result;
-use log::{error, info};
+use log::{error, info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{sync::Arc, time::Duration};
 
@@ -45,6 +45,11 @@ where
                         .expect("fail to convert epoch number to u64"),
                 )? {
                     Some(computation_hash) => {
+                        assert_eq!(
+                            computation_hash,
+                            can_settle.winnerCommitment.to_vec(),
+                            "Winner commitment mismatch, notify all users!"
+                        );
                         info!(
                             "settle epoch {} with claim 0x{}",
                             can_settle.epochNumber,
@@ -57,12 +62,13 @@ where
                             // allow retry when errors happen
                             Err(e) => error!("{e}"),
                         }
-                        // TODO: if claim doesn't match, that can be a serious problem, send out alert
                     }
                     None => {
-                        // wait for the `machine-runner` to insert the value
+                        trace!("wait for the `machine-runner` to insert the value");
                     }
                 }
+            } else {
+                trace!("epoch not ready to be settled");
             }
             tokio::time::sleep(self.sleep_duration).await;
         }

@@ -18,6 +18,7 @@ use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
 use log::{info, trace};
+use num_traits::cast::ToPrimitive;
 use std::{
     iter::Peekable,
     marker::{Send, Sync},
@@ -164,11 +165,11 @@ where
                 let epoch = Epoch {
                     epoch_number: e
                         .epochNumber
-                        .try_into()
+                        .to_u64()
                         .expect("fail to convert epoch number"),
                     input_index_boundary: e
                         .inputIndexUpperBound
-                        .try_into()
+                        .to_u64()
                         .expect("fail to convert epoch boundary"),
                     root_tournament: e.tournament.to_string(),
                 };
