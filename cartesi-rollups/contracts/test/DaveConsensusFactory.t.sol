@@ -62,6 +62,7 @@ contract DaveConsensusFactoryTest is Test {
     DaveConsensusFactory _factory;
     MockInputBox _inputBox;
     MockTournamentFactory _tournamentFactory;
+    MockTournament _tournament;
     address _appContract;
     Machine.Hash _initialMachineStateHash;
 
@@ -90,7 +91,7 @@ contract DaveConsensusFactoryTest is Test {
         vm.recordLogs();
 
         IDataProvider daveConsensus =
-            _factory.newDaveConsensus(_inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt);
+        _factory.newDaveConsensus(_inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt);
 
         _testNewDaveConsensusAux(daveConsensus);
 
@@ -114,7 +115,7 @@ contract DaveConsensusFactoryTest is Test {
         for (uint256 i; i < entries.length; ++i) {
             Vm.Log memory entry = entries[i];
 
-            if (entry.topics[0] == keccak256("DaveConsensusCreation(IDataProvider)")) {
+            if (entry.topics[0] == DaveConsensusFactory.DaveConsensusCreated.selector) {
                 ++numOfConsensusCreated;
                 address emittedAddress = abi.decode(entry.data, (address));
                 assertEq(emittedAddress, address(daveConsensus));
