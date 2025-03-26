@@ -1,0 +1,34 @@
+name = 'dave-consensus-factory'
+version = '0.0.1'
+description = 'Cartesi Dave Consensus Factory'
+
+[pull.prtContracts]
+source = "cartesi-prt-multilevel:0.0.1@main"
+
+[pull.cartesiRollups]
+source = "cartesi-rollups:2.0.0-rc.17@main"
+
+[var.Settings]
+initialHash = "<%= zeroHash %>"
+appContract = "<%= zeroAddress %>"
+salt = "<%= zeroHash %>"
+
+[deploy.DaveConsensusFactory]
+artifact = "DaveConsensusFactory"
+salt = "<%= zeroHash %>"
+create2 = true
+
+
+[invoke.deployment]
+target = ["DaveConsensusFactory"]
+func = "newDaveConsensus"
+factory.DaveConsensus.artifact = "DaveConsensus"
+args = [ 
+  "<%= cartesiRollups.InputBox.address %>",
+  "<%= settings.appContract %>",
+  "<%= prtContracts.MultiLevelTournamentFactory.address %>",
+  "<%= settings.initialHash %>",
+  "<%= settings.salt %>",
+]
+factory.DaveConsensus.event = "DaveConsensusCreated"
+factory.DaveConsensus.arg = 0
