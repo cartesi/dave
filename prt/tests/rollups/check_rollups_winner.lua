@@ -21,7 +21,7 @@ for line in file:lines() do
     local commitment_join = line:match("join tournament .- level 0 with commitment (0x%x+)")
 
     -- Pattern to match the winner commitments
-    local commitment_winner = line:match("tournament finished, winner commitment: (0x%x+)")
+    local commitment_winner = line:match("settle epoch %d+ with claim (0x%x+)")
 
     if commitment_join and not joined_commitments[commitment_join] and joined_count < MAX_EPOCH then
         joined_commitments[commitment_join] = true

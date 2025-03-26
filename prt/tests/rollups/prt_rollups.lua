@@ -10,7 +10,7 @@ local MAX_EPOCH = tonumber(os.getenv("MAX_EPOCH")) or false
 -- amount of time sleep between each react
 local SLEEP_TIME = 2
 -- amount of blocks to fastforward if all players are idle
-local FAST_FORWARD_TIME = 320
+local FAST_FORWARD_TIME = 32
 -- delay time for background software to be ready
 local NODE_DELAY = 3
 -- number of fake commitment to make
@@ -166,7 +166,7 @@ local function run_players(player_coroutines)
         end
 
         -- 4 consecutive idle will advance blockchain for faster outcome
-        if idle_1 and idle_2 and idle_3 and idle then
+        if idle and idle_1 and idle_2 and idle_3 then
             print(string.format("All players idle, fastforward blockchain for %d blocks...", FAST_FORWARD_TIME))
             blockchain_utils.advance_time(FAST_FORWARD_TIME, blockchain_constants.endpoint)
         end
@@ -232,4 +232,3 @@ while true do
 end
 
 print("Good-bye, world!")
-time.sleep(NODE_DELAY)
