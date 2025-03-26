@@ -1,0 +1,45 @@
+name = 'cartesi-prt-multilevel'
+version = '0.0.1'
+description = 'Cartesi PRT contracts'
+
+[deploy.RiscVStateTransition]
+artifact = "RiscVStateTransition"
+salt = "<%= zeroHash %>"
+
+[deploy.CmioStateTransition]
+artifact = "CmioStateTransition"
+
+[deploy.StateTransition]
+artifact = "StateTransition"
+args = [
+    "<%= contracts.RiscVStateTransition.address %>",
+    "<%= contracts.CmioStateTransition.address %>",
+]
+salt = "<%= zeroHash %>"
+
+[deploy.TopTournamentFactory]
+artifact = "TopTournamentFactory"
+salt = "<%= zeroHash %>"
+
+[deploy.MiddleTournamentFactory]
+artifact = "MiddleTournamentFactory"
+salt = "<%= zeroHash %>"
+
+[deploy.BottomTournamentFactory]
+artifact = "BottomTournamentFactory"
+salt = "<%= zeroHash %>"
+
+[deploy.CanonicalTournamentParametersProvider]
+artifact = "CanonicalTournamentParametersProvider"
+salt = "<%= zeroHash %>"
+
+[deploy.MultiLevelTournamentFactory]
+artifact = "MultiLevelTournamentFactory"
+args = [
+    "<%= contracts.TopTournamentFactory.address %>",
+    "<%= contracts.MiddleTournamentFactory.address %>",
+    "<%= contracts.BottomTournamentFactory.address %>",
+    "<%= contracts.CanonicalTournamentParametersProvider.address %>",
+    "<%= contracts.StateTransition.address %>",
+]
+salt = "<%= zeroHash %>"
