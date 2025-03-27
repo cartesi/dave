@@ -14,12 +14,17 @@ import {Machine} from "prt-contracts/Machine.sol";
 /// @title Dave Consensus Factory
 /// @notice Allows anyone to reliably deploy a new `IDataProvider` contract.
 contract DaveConsensusFactory {
+        IInputBox inputBox;
+        ITournamentFactory tournamentFactory;
     event DaveConsensusCreated(IDataProvider daveConsensus);
 
+    constructor (IInputBox _inputBox, ITournamentFactory _tournament) {
+        inputBox = _inputBox;
+        tournamentFactory = _tournament;
+    }
+
     function newDaveConsensus(
-        IInputBox inputBox,
         address appContract,
-        ITournamentFactory tournamentFactory,
         Machine.Hash initialMachineStateHash
     ) external returns (IDataProvider) {
         IDataProvider daveConsensus =
@@ -31,9 +36,7 @@ contract DaveConsensusFactory {
     }
 
     function newDaveConsensus(
-        IInputBox inputBox,
         address appContract,
-        ITournamentFactory tournamentFactory,
         Machine.Hash initialMachineStateHash,
         bytes32 salt
     ) external returns (IDataProvider) {
@@ -46,9 +49,7 @@ contract DaveConsensusFactory {
     }
 
     function calculateDaveConsensusAddress(
-        IInputBox inputBox,
         address appContract,
-        ITournamentFactory tournamentFactory,
         Machine.Hash initialMachineStateHash,
         bytes32 salt
     ) external view returns (address) {
