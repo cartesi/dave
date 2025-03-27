@@ -1,13 +1,9 @@
 {
-  "name": "contracts",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.7.0"
+  "name": "@cartesi/dave-consensus",
+  "version": "0.0.1",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.7.0",
+  "dependencies": {
+    "@usecannon/cli": "^2.21.5"
+  }
 }
