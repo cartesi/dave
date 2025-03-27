@@ -14,19 +14,20 @@ import {Machine} from "prt-contracts/Machine.sol";
 /// @title Dave Consensus Factory
 /// @notice Allows anyone to reliably deploy a new `IDataProvider` contract.
 contract DaveConsensusFactory {
-        IInputBox inputBox;
-        ITournamentFactory tournamentFactory;
+    IInputBox inputBox;
+    ITournamentFactory tournamentFactory;
+
     event DaveConsensusCreated(IDataProvider daveConsensus);
 
-    constructor (IInputBox _inputBox, ITournamentFactory _tournament) {
+    constructor(IInputBox _inputBox, ITournamentFactory _tournament) {
         inputBox = _inputBox;
         tournamentFactory = _tournament;
     }
 
-    function newDaveConsensus(
-        address appContract,
-        Machine.Hash initialMachineStateHash
-    ) external returns (IDataProvider) {
+    function newDaveConsensus(address appContract, Machine.Hash initialMachineStateHash)
+        external
+        returns (IDataProvider)
+    {
         IDataProvider daveConsensus =
             new DaveConsensus(inputBox, appContract, tournamentFactory, initialMachineStateHash);
 
@@ -35,11 +36,10 @@ contract DaveConsensusFactory {
         return daveConsensus;
     }
 
-    function newDaveConsensus(
-        address appContract,
-        Machine.Hash initialMachineStateHash,
-        bytes32 salt
-    ) external returns (IDataProvider) {
+    function newDaveConsensus(address appContract, Machine.Hash initialMachineStateHash, bytes32 salt)
+        external
+        returns (IDataProvider)
+    {
         IDataProvider daveConsensus =
             new DaveConsensus{salt: salt}(inputBox, appContract, tournamentFactory, initialMachineStateHash);
 
@@ -48,11 +48,11 @@ contract DaveConsensusFactory {
         return daveConsensus;
     }
 
-    function calculateDaveConsensusAddress(
-        address appContract,
-        Machine.Hash initialMachineStateHash,
-        bytes32 salt
-    ) external view returns (address) {
+    function calculateDaveConsensusAddress(address appContract, Machine.Hash initialMachineStateHash, bytes32 salt)
+        external
+        view
+        returns (address)
+    {
         return Create2.computeAddress(
             salt,
             keccak256(
