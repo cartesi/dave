@@ -10,87 +10,53 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournamentFactory.sol";
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
+import {InputBox} from "rollups-contracts/inputs/InputBox.sol";
 import {Machine} from "prt-contracts/Machine.sol";
 import {Tree} from "prt-contracts/Tree.sol";
 
-contract MockInputBox is IInputBox {
-    mapping(address => bytes32[]) private _inputs;
-    uint256 private _deploymentBlock;
-
-    constructor() {
-        _deploymentBlock = block.number;
-    }
-
-    function addInput(address appContract, bytes calldata payload) external returns (bytes32) {
-        bytes32 inputHash = keccak256(payload);
-        _inputs[appContract].push(inputHash);
-        emit InputAdded(appContract, _inputs[appContract].length - 1, payload);
-        return inputHash;
-    }
-
-    function getNumberOfInputs(address appContract) external view returns (uint256) {
-        return _inputs[appContract].length;
-    }
-
-    function getInputHash(address appContract, uint256 index) external view returns (bytes32) {
-        require(index < _inputs[appContract].length, "Invalid index");
-        return _inputs[appContract][index];
-    }
-
-    function getDeploymentBlockNumber() external view returns (uint256) {
-        return _deploymentBlock;
-    }
-}
-
 contract MockTournamentFactory is ITournamentFactory {
-    function instantiate(Machine.Hash initialState, IDataProvider provider) external returns (ITournament) {
-        return ITournament(address(0));
+    address tournamentAddress;
+
+    function setAddress(address _addr) external {
+        tournamentAddress = _addr;
     }
-}
 
-contract MockTournament is ITournament {
-    bool private _finished;
-    Tree.Node private _winnerCommitment;
-    Machine.Hash private _finalState;
-
-    function arbitrationResult() external view override returns (bool, Tree.Node, Machine.Hash) {
-        return (_finished, _winnerCommitment, _finalState);
+    function instantiate(Machine.Hash initialState, IDataProvider provider) external returns (ITournament) {
+        return ITournament(tournamentAddress);
     }
 }
 
 contract DaveConsensusFactoryTest is Test {
     DaveConsensusFactory _factory;
-    MockInputBox _inputBox;
+    InputBox _inputBox;
     MockTournamentFactory _tournamentFactory;
-    MockTournament _tournament;
     address _appContract;
     Machine.Hash _initialMachineStateHash;
 
     function setUp() public {
-        _inputBox = new MockInputBox();
+        _inputBox = new InputBox();
         _tournamentFactory = new MockTournamentFactory();
         _factory = new DaveConsensusFactory(_inputBox, _tournamentFactory);
-        _appContract = address(0x1234);
         _initialMachineStateHash = Machine.Hash.wrap(0x0);
     }
 
-    function testNewDaveConsensus(address appContract) public {
+    function testNewDaveConsensus(address appContract, address _tournamentAddress) public {
         vm.recordLogs();
-
-        IDataProvider daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash);
-
-        _testNewDaveConsensusAux(daveConsensus);
+        _tournamentFactory.setAddress(_tournamentAddress);
+        DaveConsensus daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash);
+        _testNewDaveConsensusAux(daveConsensus, _tournamentAddress);
     }
 
-    function testNewDaveConsensusDeterministic(address appContract, bytes32 salt) public {
+    function testNewDaveConsensusDeterministic(address appContract, address _tournamentAddress, bytes32 salt) public {
         address precalculatedAddress =
             _factory.calculateDaveConsensusAddress(appContract, _initialMachineStateHash, salt);
 
         vm.recordLogs();
 
-        IDataProvider daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash, salt);
+        _tournamentFactory.setAddress(_tournamentAddress);
+        DaveConsensus daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash, salt);
 
-        _testNewDaveConsensusAux(daveConsensus);
+        _testNewDaveConsensusAux(daveConsensus, _tournamentAddress);
 
         assertEq(precalculatedAddress, address(daveConsensus));
 
@@ -103,7 +69,7 @@ contract DaveConsensusFactoryTest is Test {
         _factory.newDaveConsensus(appContract, _initialMachineStateHash, salt);
     }
 
-    function _testNewDaveConsensusAux(IDataProvider daveConsensus) internal {
+    function _testNewDaveConsensusAux(DaveConsensus daveConsensus, address fuzzAddress) internal {
         Vm.Log[] memory entries = vm.getRecordedLogs();
         uint256 numOfConsensusCreated;
 
@@ -114,6 +80,18 @@ contract DaveConsensusFactoryTest is Test {
                 ++numOfConsensusCreated;
                 address emittedAddress = abi.decode(entry.data, (address));
                 assertEq(emittedAddress, address(daveConsensus));
+            }
+            if (entry.topics[0] == DaveConsensus.EpochSealed.selector) {
+                (
+                    uint256 epochNumber,
+                    uint256 inputIndexLowerBound,
+                    uint256 inputIndexUpperBound,
+                    Machine.Hash initialMachineStateHash,
+                    ITournament tournamentAddress
+                ) = abi.decode(entry.data, (uint256, uint256, uint256, Machine.Hash, ITournament));
+
+                // Validate the tournament address
+                assertEq(address(tournamentAddress), fuzzAddress);
             }
         }
 
