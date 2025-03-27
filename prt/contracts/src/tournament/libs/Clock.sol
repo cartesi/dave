@@ -3,8 +3,8 @@
 
 pragma solidity ^0.8.17;
 
-import "./Time.sol";
-import "../../CanonicalConstants.sol";
+import "prt-contracts/tournament/libs/Time.sol";
+import "prt-contracts/arbitration-config/CanonicalConstants.sol";
 
 library Clock {
     using Time for Time.Instant;

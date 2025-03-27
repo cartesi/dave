@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {TournamentParameters} from "./TournamentParameters.sol";
+import "prt-contracts/types/TournamentParameters.sol";
 
 interface ITournamentParametersProvider {
     /// @notice Get tournament parameters for a given level.

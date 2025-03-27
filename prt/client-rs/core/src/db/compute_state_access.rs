@@ -55,8 +55,7 @@ impl ComputeStateAccess {
         // fill the database from a json-format file, or the parameters
         // the database should be "/compute_data/0x_root_tournament_address/db"
         // the json file should be "/compute_data/0x_root_tournament_address/inputs_and_leafs.json"
-        let work_dir = compute_data_path.join(root_tournament);
-        let work_path = PathBuf::from(work_dir);
+        let work_path = compute_data_path.join(root_tournament);
         if !work_path.exists() {
             fs::create_dir_all(&work_path)?;
         }
@@ -67,11 +66,11 @@ impl ComputeStateAccess {
             // database already exists, return it
             Ok(connection) => {
                 handle_rollups = compute_data::handle_rollups(&connection)?;
-                return Ok(Self {
+                Ok(Self {
                     connection: Mutex::new(connection),
                     handle_rollups,
                     work_path,
-                });
+                })
             }
             Err(_) => {
                 info!("create new database for dispute");
@@ -142,7 +141,7 @@ impl ComputeStateAccess {
         let mut tree = Vec::new();
         for leaf in leafs {
             let tree_leafs = compute_data::compute_tree(&conn, &leaf.0)?;
-            if tree_leafs.len() > 0 {
+            if tree_leafs.is_empty() {
                 // if leaf is also tree, rebuild it from nested leafs
                 let mut builder = MerkleBuilder::default();
                 for tree_leaf in tree_leafs {
@@ -163,7 +162,7 @@ impl ComputeStateAccess {
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
         let tx = conn.unchecked_transaction()?;
-        for (_, digest_and_leaf) in compute_trees.enumerate() {
+        for digest_and_leaf in compute_trees {
             compute_data::insert_compute_tree(
                 &tx,
                 digest_and_leaf.0.slice(),

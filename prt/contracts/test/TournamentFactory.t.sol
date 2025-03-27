@@ -13,9 +13,9 @@
 import "forge-std/console.sol";
 import "forge-std/Test.sol";
 
-import "src/tournament/abstracts/RootTournament.sol";
-import "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import "src/CanonicalConstants.sol";
+import "prt-contracts/tournament/abstracts/RootTournament.sol";
+import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
+import "prt-contracts/arbitration-config/CanonicalConstants.sol";
 
 import "./Util.sol";
 

@@ -48,19 +48,17 @@ impl CachingMachineCommitmentBuilder {
         let initial_state = {
             if db.handle_rollups {
                 // treat it as rollups
-                machine.run_with_inputs(base_cycle, &db)?.root_hash
+                machine.run_with_inputs(base_cycle, db)?.root_hash
             } else {
                 // treat it as compute
-                let root_hash = machine.run(base_cycle)?.root_hash;
-                machine.take_snapshot(base_cycle, &db)?;
-                root_hash
+                machine.run(base_cycle)?.root_hash
             }
         };
         trace!("initial state for commitment: {}", initial_state);
         let commitment = {
             let leafs = db.compute_leafs(level, base_cycle)?;
             // leafs are cached in database, use it to calculate merkle
-            if leafs.len() > 0 {
+            if leafs.is_empty() {
                 build_machine_commitment_from_leafs(leafs, initial_state)?
             } else {
                 // leafs are not cached, build merkle by running the machine

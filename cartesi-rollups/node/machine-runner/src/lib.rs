@@ -66,7 +66,8 @@ where
 
             epoch_number,
             next_input_index_in_epoch,
-            state_hash_index_in_epoch: 0,
+            state_hash_index_in_epoch: 0, // TODO: currently this works because we only save
+                                          // snapshot in the begining of the epoch.
         })
     }
 

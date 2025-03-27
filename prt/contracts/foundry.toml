@@ -6,6 +6,7 @@ via_ir = true
 
 allow_paths = ['../../machine/step/']
 remappings = [
+    'prt-contracts/=./src',
     'step/=../../machine/step/',
 ]
 solc-version = "0.8.27"

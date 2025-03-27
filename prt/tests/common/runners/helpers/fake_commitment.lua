@@ -79,8 +79,8 @@ local function build_commitment(cached_commitments, machine_path, snapshot_dir, 
         local scoped_require = new_scoped_require(_ENV)
         local CommitmentBuilder = scoped_require "computation.commitment"
 
-        local builder = CommitmentBuilder:new(machine_path, snapshot_dir)
-        local commitment = builder:build(base_cycle, level, log2_stride, log2_stride_count, inputs)
+        local builder = CommitmentBuilder:new(machine_path, inputs)
+        local commitment = builder:build(base_cycle, level, log2_stride, log2_stride_count)
         coroutine.yield(commitment)
     end)
 
