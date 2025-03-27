@@ -67,9 +67,9 @@ contract DaveConsensusFactoryTest is Test {
     Machine.Hash _initialMachineStateHash;
 
     function setUp() public {
-        _factory = new DaveConsensusFactory();
         _inputBox = new MockInputBox();
         _tournamentFactory = new MockTournamentFactory();
+        _factory = new DaveConsensusFactory(_inputBox, _tournamentFactory);
         _appContract = address(0x1234);
         _initialMachineStateHash = Machine.Hash.wrap(0x0);
     }
@@ -78,20 +78,20 @@ contract DaveConsensusFactoryTest is Test {
         vm.recordLogs();
 
         IDataProvider daveConsensus =
-            _factory.newDaveConsensus(_inputBox, appContract, _tournamentFactory, _initialMachineStateHash);
+            _factory.newDaveConsensus(appContract,_initialMachineStateHash);
 
         _testNewDaveConsensusAux(daveConsensus);
     }
 
     function testNewDaveConsensusDeterministic(address appContract, bytes32 salt) public {
         address precalculatedAddress = _factory.calculateDaveConsensusAddress(
-            _inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt
+            appContract, _initialMachineStateHash, salt
         );
 
         vm.recordLogs();
 
         IDataProvider daveConsensus =
-            _factory.newDaveConsensus(_inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt);
+            _factory.newDaveConsensus(appContract,_initialMachineStateHash, salt);
 
         _testNewDaveConsensusAux(daveConsensus);
 
@@ -99,13 +99,13 @@ contract DaveConsensusFactoryTest is Test {
 
         // Ensure the address remains the same when recalculated
         precalculatedAddress = _factory.calculateDaveConsensusAddress(
-            _inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt
+            appContract, _initialMachineStateHash, salt
         );
         assertEq(precalculatedAddress, address(daveConsensus));
 
         // Cannot deploy the same contract twice with the same salt
         vm.expectRevert();
-        _factory.newDaveConsensus(_inputBox, appContract, _tournamentFactory, _initialMachineStateHash, salt);
+        _factory.newDaveConsensus(appContract,_initialMachineStateHash, salt);
     }
 
     function _testNewDaveConsensusAux(IDataProvider daveConsensus) internal {
