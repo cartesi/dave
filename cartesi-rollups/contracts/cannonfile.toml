@@ -1,4 +1,4 @@
-name = 'dave-consensus-factory'
+name = 'cartesi-dave-consensus-factory'
 version = '0.0.1'
 description = 'Cartesi Dave Consensus Factory'
 
@@ -14,7 +14,7 @@ args = [
   "<%= cartesiRollups.InputBox.address %>",
   "<%= prtContracts.MultiLevelTournamentFactory.address %>",
 ]
-salt = "<%= zeroHash %>"
 create2 = true
+salt = "<%= zeroHash %>"
 
 

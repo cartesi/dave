@@ -18,28 +18,28 @@ args = [
     "<%= contracts.RiscVStateTransition.address %>",
     "<%= contracts.CmioStateTransition.address %>",
 ]
-salt = "<%= zeroHash %>"
 create2 = true
+salt = "<%= zeroHash %>"
 
 [deploy.TopTournamentFactory]
 artifact = "TopTournamentFactory"
-salt = "<%= zeroHash %>"
 create2 = true
+salt = "<%= zeroHash %>"
 
 [deploy.MiddleTournamentFactory]
 artifact = "MiddleTournamentFactory"
-salt = "<%= zeroHash %>"
 create2 = true
+salt = "<%= zeroHash %>"
 
 [deploy.BottomTournamentFactory]
 artifact = "BottomTournamentFactory"
-salt = "<%= zeroHash %>"
 create2 = true
+salt = "<%= zeroHash %>"
 
 [deploy.CanonicalTournamentParametersProvider]
 artifact = "CanonicalTournamentParametersProvider"
-salt = "<%= zeroHash %>"
 create2 = true
+salt = "<%= zeroHash %>"
 
 [deploy.MultiLevelTournamentFactory]
 artifact = "MultiLevelTournamentFactory"
@@ -50,5 +50,5 @@ args = [
     "<%= contracts.CanonicalTournamentParametersProvider.address %>",
     "<%= contracts.StateTransition.address %>",
 ]
-salt = "<%= zeroHash %>"
 create2 = true
+salt = "<%= zeroHash %>"
