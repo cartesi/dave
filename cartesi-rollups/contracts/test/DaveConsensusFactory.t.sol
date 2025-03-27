@@ -77,35 +77,30 @@ contract DaveConsensusFactoryTest is Test {
     function testNewDaveConsensus(address appContract) public {
         vm.recordLogs();
 
-        IDataProvider daveConsensus =
-            _factory.newDaveConsensus(appContract,_initialMachineStateHash);
+        IDataProvider daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash);
 
         _testNewDaveConsensusAux(daveConsensus);
     }
 
     function testNewDaveConsensusDeterministic(address appContract, bytes32 salt) public {
-        address precalculatedAddress = _factory.calculateDaveConsensusAddress(
-            appContract, _initialMachineStateHash, salt
-        );
+        address precalculatedAddress =
+            _factory.calculateDaveConsensusAddress(appContract, _initialMachineStateHash, salt);
 
         vm.recordLogs();
 
-        IDataProvider daveConsensus =
-            _factory.newDaveConsensus(appContract,_initialMachineStateHash, salt);
+        IDataProvider daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash, salt);
 
         _testNewDaveConsensusAux(daveConsensus);
 
         assertEq(precalculatedAddress, address(daveConsensus));
 
         // Ensure the address remains the same when recalculated
-        precalculatedAddress = _factory.calculateDaveConsensusAddress(
-            appContract, _initialMachineStateHash, salt
-        );
+        precalculatedAddress = _factory.calculateDaveConsensusAddress(appContract, _initialMachineStateHash, salt);
         assertEq(precalculatedAddress, address(daveConsensus));
 
         // Cannot deploy the same contract twice with the same salt
         vm.expectRevert();
-        _factory.newDaveConsensus(appContract,_initialMachineStateHash, salt);
+        _factory.newDaveConsensus(appContract, _initialMachineStateHash, salt);
     }
 
     function _testNewDaveConsensusAux(IDataProvider daveConsensus) internal {
