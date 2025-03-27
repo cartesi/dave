@@ -4,14 +4,14 @@ require "setup_path"
 local CONSENSUS_ADDRESS = os.getenv("CONSENSUS") or "0x0165878A594ca255338adfa4d48449f69242Eb8F"
 -- input contract address in anvil deployment
 local INPUT_BOX_ADDRESS = os.getenv("INPUT_BOX") or "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+-- number of epochs to run the rollups test
+local MAX_EPOCH = tonumber(os.getenv("MAX_EPOCH")) or false
 
 -- amount of time sleep between each react
 local SLEEP_TIME = 2
--- amount of time to fastforward if `IDLE_LIMIT` is reached
+-- amount of blocks to fastforward if all players are idle
 local FAST_FORWARD_TIME = 32
--- amount of time to fastforward to advance an epoch
--- local EPOCH_TIME = 60 * 60 * 24 * 7
--- delay time for blockchain node to be ready
+-- delay time for background software to be ready
 local NODE_DELAY = 3
 -- number of fake commitment to make
 local FAKE_COMMITMENT_COUNT = 1
@@ -137,6 +137,9 @@ end
 
 -- Function to run players
 local function run_players(player_coroutines)
+    local idle_1 = false
+    local idle_2 = false
+    local idle_3 = false
     while true do
         local idle = true
         local has_live_coroutine = false
@@ -162,10 +165,15 @@ local function run_players(player_coroutines)
             break
         end
 
-        if idle then
+        -- 4 consecutive idle will advance blockchain for faster outcome
+        if idle and idle_1 and idle_2 and idle_3 then
             print(string.format("All players idle, fastforward blockchain for %d blocks...", FAST_FORWARD_TIME))
             blockchain_utils.advance_time(FAST_FORWARD_TIME, blockchain_constants.endpoint)
         end
+        idle_3 = idle_2
+        idle_2 = idle_1
+        idle_1 = idle
+
         time.sleep(SLEEP_TIME)
     end
 end
@@ -177,9 +185,6 @@ rpath:close()
 
 local blockchain_node = Blockchain:new(rollups_machine_path .. "/anvil_state.json")
 time.sleep(NODE_DELAY)
-
--- blockchain_utils.deploy_contracts("../../../cartesi-rollups/contracts")
--- time.sleep(NODE_DELAY)
 
 -- trace, debug, info, warn, error
 local verbosity = os.getenv("VERBOSITY") or 'debug'
@@ -193,11 +198,18 @@ local reader = Reader:new(blockchain_constants.endpoint)
 local sender = Sender:new(blockchain_constants.pks[1], blockchain_constants.endpoint)
 
 print("Hello from Dave rollups lua prototype!")
+if MAX_EPOCH then
+    print(string.format("rollups test will only run %d epoch(s)", MAX_EPOCH))
+end
 
 local input_index = 1
-
 while true do
     local sealed_epochs = reader:read_epochs_sealed(CONSENSUS_ADDRESS)
+
+    if #sealed_epochs > MAX_EPOCH then
+        print(string.format("rollups test ends with %d epoch(s)", MAX_EPOCH))
+        break
+    end
 
     if #sealed_epochs > 0 then
         local last_sealed_epoch = sealed_epochs[#sealed_epochs]
@@ -216,7 +228,6 @@ while true do
             run_players(player_coroutines)
         end
     end
-    -- blockchain_utils.advance_time(EPOCH_TIME, blockchain_constants.endpoint)
     time.sleep(SLEEP_TIME)
 end
 

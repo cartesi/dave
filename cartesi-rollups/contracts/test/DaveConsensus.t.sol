@@ -164,7 +164,7 @@ contract DaveConsensusTest is Test {
             bool isFinished;
             uint256 epochNumber;
 
-            (isFinished, epochNumber) = daveConsensus.canSettle();
+            (isFinished, epochNumber,) = daveConsensus.canSettle();
 
             assertFalse(isFinished);
             assertEq(epochNumber, 0);
@@ -217,7 +217,7 @@ contract DaveConsensusTest is Test {
             bool isFinished;
             uint256 epochNumber;
 
-            (isFinished, epochNumber) = daveConsensus.canSettle();
+            (isFinished, epochNumber,) = daveConsensus.canSettle();
 
             assertTrue(isFinished);
             assertEq(epochNumber, 0);
@@ -242,7 +242,7 @@ contract DaveConsensusTest is Test {
             bool isFinished;
             uint256 epochNumber;
 
-            (isFinished, epochNumber) = daveConsensus.canSettle();
+            (isFinished, epochNumber,) = daveConsensus.canSettle();
 
             assertFalse(isFinished);
             assertEq(epochNumber, 1);

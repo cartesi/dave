@@ -9,6 +9,7 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {Machine} from "prt-contracts/Machine.sol";
+import {Tree} from "prt-contracts/Tree.sol";
 
 import {Merkle} from "./Merkle.sol";
 
@@ -111,8 +112,8 @@ contract DaveConsensus is IDataProvider {
         emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, tournament);
     }
 
-    function canSettle() external view returns (bool isFinished, uint256 epochNumber) {
-        (isFinished,,) = _tournament.arbitrationResult();
+    function canSettle() external view returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment) {
+        (isFinished, winnerCommitment,) = _tournament.arbitrationResult();
         epochNumber = _epochNumber;
     }
 
