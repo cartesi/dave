@@ -6,18 +6,17 @@ pragma solidity ^0.8.8;
 import {Create2} from "openzeppelin-contracts/utils/Create2.sol";
 
 import {DaveConsensus} from "./DaveConsensus.sol";
-import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
 import {Machine} from "prt-contracts/Machine.sol";
 
 /// @title Dave Consensus Factory
-/// @notice Allows anyone to reliably deploy a new `IDataProvider` contract.
+/// @notice Allows anyone to reliably deploy a new `DaveConsensus` contract.
 contract DaveConsensusFactory {
     IInputBox inputBox;
     ITournamentFactory tournamentFactory;
 
-    event DaveConsensusCreated(IDataProvider daveConsensus);
+    event DaveConsensusCreated(DaveConsensus daveConsensus);
 
     constructor(IInputBox _inputBox, ITournamentFactory _tournament) {
         inputBox = _inputBox;
@@ -26,9 +25,9 @@ contract DaveConsensusFactory {
 
     function newDaveConsensus(address appContract, Machine.Hash initialMachineStateHash)
         external
-        returns (IDataProvider)
+        returns (DaveConsensus)
     {
-        IDataProvider daveConsensus =
+        DaveConsensus daveConsensus =
             new DaveConsensus(inputBox, appContract, tournamentFactory, initialMachineStateHash);
 
         emit DaveConsensusCreated(daveConsensus);
@@ -38,9 +37,9 @@ contract DaveConsensusFactory {
 
     function newDaveConsensus(address appContract, Machine.Hash initialMachineStateHash, bytes32 salt)
         external
-        returns (IDataProvider)
+        returns (DaveConsensus)
     {
-        IDataProvider daveConsensus =
+        DaveConsensus daveConsensus =
             new DaveConsensus{salt: salt}(inputBox, appContract, tournamentFactory, initialMachineStateHash);
 
         emit DaveConsensusCreated(daveConsensus);
