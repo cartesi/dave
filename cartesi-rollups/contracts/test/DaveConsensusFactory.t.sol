@@ -30,7 +30,6 @@ contract DaveConsensusFactoryTest is Test {
     DaveConsensusFactory _factory;
     InputBox _inputBox;
     MockTournamentFactory _tournamentFactory;
-    address _appContract;
     Machine.Hash _initialMachineStateHash;
 
     function setUp() public {
@@ -40,23 +39,36 @@ contract DaveConsensusFactoryTest is Test {
         _initialMachineStateHash = Machine.Hash.wrap(0x0);
     }
 
-    function testNewDaveConsensus(address appContract, address _tournamentAddress) public {
+    function testNewDaveConsensus(address appContract, address _tournamentAddress, uint256 numberOfInputs) public {
+        numberOfInputs = bound(numberOfInputs, 0, 10);
         vm.recordLogs();
         _tournamentFactory.setAddress(_tournamentAddress);
+        for (uint256 i = 0; i < numberOfInputs; ++i) {
+            _inputBox.addInput(appContract, new bytes(i));
+        }
         DaveConsensus daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash);
-        _testNewDaveConsensusAux(daveConsensus, _tournamentAddress);
+        _testNewDaveConsensusAux(daveConsensus, _tournamentAddress, numberOfInputs);
     }
 
-    function testNewDaveConsensusDeterministic(address appContract, address _tournamentAddress, bytes32 salt) public {
+    function testNewDaveConsensusDeterministic(
+        address appContract,
+        address _tournamentAddress,
+        uint256 numberOfInputs,
+        bytes32 salt
+    ) public {
         address precalculatedAddress =
             _factory.calculateDaveConsensusAddress(appContract, _initialMachineStateHash, salt);
 
         vm.recordLogs();
 
         _tournamentFactory.setAddress(_tournamentAddress);
+        numberOfInputs = bound(numberOfInputs, 0, 10);
+        for (uint256 i = 0; i < numberOfInputs; ++i) {
+            _inputBox.addInput(appContract, new bytes(i));
+        }
         DaveConsensus daveConsensus = _factory.newDaveConsensus(appContract, _initialMachineStateHash, salt);
 
-        _testNewDaveConsensusAux(daveConsensus, _tournamentAddress);
+        _testNewDaveConsensusAux(daveConsensus, _tournamentAddress, numberOfInputs);
 
         assertEq(precalculatedAddress, address(daveConsensus));
 
@@ -69,7 +81,7 @@ contract DaveConsensusFactoryTest is Test {
         _factory.newDaveConsensus(appContract, _initialMachineStateHash, salt);
     }
 
-    function _testNewDaveConsensusAux(DaveConsensus daveConsensus, address fuzzAddress) internal {
+    function _testNewDaveConsensusAux(DaveConsensus daveConsensus, address fuzzAddress, uint256 nInputs) internal {
         Vm.Log[] memory entries = vm.getRecordedLogs();
         uint256 numOfConsensusCreated;
 
@@ -90,8 +102,10 @@ contract DaveConsensusFactoryTest is Test {
                     ITournament tournamentAddress
                 ) = abi.decode(entry.data, (uint256, uint256, uint256, Machine.Hash, ITournament));
 
-                // Validate the tournament address
                 assertEq(address(tournamentAddress), fuzzAddress);
+                assertEq(inputIndexLowerBound, 0);
+                assertEq(inputIndexUpperBound, nInputs);
+                assertEq(Machine.Hash.unwrap(initialMachineStateHash), Machine.Hash.unwrap(_initialMachineStateHash));
             }
         }
 
