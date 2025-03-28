@@ -1,0 +1,31 @@
+{
+    "name": "indexer",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "ponder dev",
+        "start": "ponder start",
+        "db": "ponder db",
+        "codegen": "ponder codegen",
+        "lint": "eslint .",
+        "typecheck": "tsc",
+        "format:check": "prettier \"**/*.ts\" --check",
+        "format:fix": "prettier --write \"**/*.ts\""
+    },
+    "dependencies": {
+        "hono": "^4.5.0",
+        "ponder": "^0.10.6",
+        "viem": "^2.21.3"
+    },
+    "devDependencies": {
+        "@types/node": "^20.9.0",
+        "eslint": "^8.53.0",
+        "eslint-config-ponder": "^0.10.6",
+        "prettier": "^3.5.3",
+        "typescript": "^5.2.2"
+    },
+    "engines": {
+        "node": ">=18.14"
+    }
+}
