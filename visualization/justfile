@@ -1,3 +1,5 @@
+import 'codegen.just'
+
 sourcify_server_path := join("sourcify", "services", "server")
 sourcify_server_src_path := join(sourcify_server_path, "src")
 sourcify_server_config_path := join(sourcify_server_src_path, "config")
