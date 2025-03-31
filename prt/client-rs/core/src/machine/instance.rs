@@ -1,5 +1,8 @@
-use crate::db::compute_state_access::{ComputeStateAccess, Input};
-use crate::machine::constants;
+use crate::db::compute_state_access::ComputeStateAccess;
+use crate::machine::constants::{
+    self, INPUT_SPAN_TO_EPOCH, LOG2_INPUT_SPAN_FROM_UARCH, LOG2_UARCH_SPAN_TO_BARCH, UARCH_SPAN,
+};
+use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
 use cartesi_machine::types::cmio::CmioResponseReason;
@@ -8,11 +11,11 @@ use cartesi_machine::{
     config::runtime::RuntimeConfig, machine::Machine, types::access_proof::AccessLog,
 };
 use log::{debug, trace};
+use num_traits::{One, ToPrimitive};
 
-use alloy::hex::ToHexExt;
-use anyhow::Result;
-use ruint::aliases::U256;
-use std::path::Path;
+use alloy::primitives::U256;
+use std::path::{Path, PathBuf};
+use std::u64;
 
 #[derive(Debug)]
 pub struct MachineState {
@@ -35,21 +38,34 @@ impl std::fmt::Display for MachineState {
     }
 }
 
+impl MachineState {
+    pub fn from_current_machine_state(machine: &mut MachineInstance) -> Result<MachineState> {
+        let root_hash = machine.root_hash()?;
+        Ok(MachineState {
+            root_hash,
+            halted: machine.is_halted()?,
+            yielded: machine.is_yielded()?,
+            uhalted: machine.is_uarch_halted()?,
+        })
+    }
+}
+
 pub type MachineProof = Vec<u8>;
 
 pub struct MachineInstance {
     machine: Machine,
-    root_hash: Digest,
+    path: PathBuf,
     start_cycle: u64,
+    input_count: u64,
     cycle: u64,
     ucycle: u64,
 }
 
 impl MachineInstance {
-    pub fn new(snapshot_path: &str) -> Result<Self> {
-        let mut machine = Machine::load(Path::new(snapshot_path), &RuntimeConfig::default())?;
+    pub fn new_from_path(path: &str) -> Result<Self> {
+        let path = PathBuf::from(path);
+        let mut machine = Machine::load(&path, &RuntimeConfig::default())?;
 
-        let root_hash = machine.root_hash()?;
         let start_cycle = machine.mcycle()?;
 
         // Machine can never be advanced on the micro arch.
@@ -58,16 +74,17 @@ impl MachineInstance {
 
         Ok(MachineInstance {
             machine,
+            path,
             start_cycle,
-            root_hash: Digest::from_digest(&root_hash)?,
+            input_count: 0,
             cycle: 0,
             ucycle: 0,
         })
     }
 
     fn _take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
-        let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
-        if db.handle_rollups && ((base_cycle & mask) == 0) && !self.machine_state()?.yielded {
+        let mask = arithmetic::max_uint(constants::LOG2_BARCH_SPAN_TO_INPUT);
+        if db.handle_rollups && ((base_cycle & mask) == 0) && !self.is_yielded()? {
             // don't snapshot a machine state that's freshly fed with input without advance
             return Ok(());
         }
@@ -81,9 +98,11 @@ impl MachineInstance {
 
     // load inner machine with snapshot, update cycle, keep everything else the same
     pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
+        debug!("load snapshot from {}", snapshot_path.display());
         let mut machine = Machine::load(Path::new(snapshot_path), &RuntimeConfig::default())?;
 
         let cycle = machine.mcycle()?;
+        debug!("cycle: {}, start_cycle: {}", cycle, self.start_cycle);
 
         // Machine can not go backward behind the initial machine
         assert!(cycle >= self.start_cycle);
@@ -93,110 +112,112 @@ impl MachineInstance {
 
         self.machine = machine;
 
-        debug!("load snapshot from {}", snapshot_path.display());
-        debug!("loaded machine: {}", self.machine_state()?);
+        Ok(())
+    }
+
+    pub fn advance_rollups(&mut self, meta_cycle: U256, db: &ComputeStateAccess) -> Result<()> {
+        assert!(self.is_yielded()?);
+
+        let meta_cycle_u128 = meta_cycle
+            .to_u128()
+            .expect("meta_cycle is too large to fit in u128");
+        let input_count = (meta_cycle >> LOG2_INPUT_SPAN_FROM_UARCH)
+            .to_u64()
+            .expect("input count too big to fit in u64");
+        let cycle = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_BARCH) as u64;
+        let ucycle = (meta_cycle_u128 & (UARCH_SPAN as u128)) as u64;
+
+        while self.input_count < input_count {
+            let input = db.input(self.input_count)?;
+            if input.is_none() {
+                self.input_count = input_count;
+                break;
+            }
+
+            let input_bin = input.unwrap();
+            self.machine
+                .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
+
+            loop {
+                self.machine.run(u64::MAX)?;
+                if self.is_halted()? | self.is_yielded()? {
+                    break;
+                }
+            }
+            assert!(!self.is_halted()?);
+
+            self.input_count += 1;
+        }
+        assert!(self.input_count == input_count);
+
+        if cycle == 0 && ucycle == 0 {
+            return Ok(());
+        }
+
+        let input = db.input(self.input_count)?;
+        if let Some(input_bin) = input {
+            self.machine
+                .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
+        }
+
+        self.run(cycle)?;
+        self.run_uarch(ucycle)?;
 
         Ok(())
     }
 
-    pub fn root_hash(&self) -> Digest {
-        self.root_hash
-    }
-
-    pub fn get_logs(
-        &mut self,
-        cycle: u64,
-        ucycle: u64,
+    pub fn new_rollups_advanced_until(
+        path: &str,
+        meta_cycle: U256,
         db: &ComputeStateAccess,
-    ) -> Result<MachineProof> {
-        let mut logs = Vec::new();
-        let mut encode_input = None;
-        if db.handle_rollups {
-            // treat it as rollups
-            // the cycle may be the cycle to receive input,
-            // we need to include the process of feeding input to the machine in the log
-            if cycle == 0 {
-                self.run(cycle)?;
-            } else {
-                self.run_with_inputs(cycle - 1, db)?;
-                self.run(cycle)?;
-            }
+    ) -> Result<MachineInstance> {
+        let meta_cycle_u128 = meta_cycle
+            .to_u128()
+            .expect("meta_cycle is too large to fit in u128");
 
-            let mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
-            let inputs = &db.inputs()?;
-            let input = inputs.get((cycle >> constants::LOG2_EMULATOR_SPAN) as usize);
-            if cycle & mask == 0 {
-                if let Some(data) = input {
-                    // need to process input
-                    if ucycle == 0 {
-                        let cmio_logs = self.machine.log_send_cmio_response(
-                            CmioResponseReason::Advance,
-                            data,
-                            LogType::default(),
-                        )?;
-                        // append step logs to cmio logs
-                        let step_logs = self.machine.log_step_uarch(LogType::default())?;
-                        logs.push(&cmio_logs);
-                        logs.push(&step_logs);
-                        return Ok(encode_access_logs(logs, Some(Input(data.clone()))));
-                    } else {
-                        self.machine
-                            .send_cmio_response(CmioResponseReason::Advance, data)?;
-                    }
-                } else if ucycle == 0 {
-                    encode_input = Some(Input(Vec::new()));
-                }
-            }
-        } else {
-            // treat it as compute
-            self.run(cycle)?;
-        }
+        let input_count = (meta_cycle_u128 >> LOG2_INPUT_SPAN_FROM_UARCH) as u64;
+        assert!(input_count <= INPUT_SPAN_TO_EPOCH);
 
-        self.run_uarch(ucycle)?;
-        if ucycle == constants::UARCH_SPAN {
-            let reset_logs = self.machine.log_reset_uarch(LogType::default())?;
-            logs.push(&reset_logs);
-            Ok(encode_access_logs(logs, encode_input))
-        } else {
-            let step_logs = self.machine.log_step_uarch(LogType::default())?;
-            logs.push(&step_logs);
-            Ok(encode_access_logs(logs, encode_input))
-        }
+        let mut machine = MachineInstance::new_from_path(path)?;
+
+        // load snapshot
+        // let base_cycle = (meta_cycle >> LOG2_UARCH_SPAN_TO_BARCH)
+        //     .to_u64()
+        //     .expect("base_cycle is too large to fit in u64");
+        // if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
+        //     machine.load_snapshot(&snapshot.1, snapshot.0)?;
+        // };
+
+        machine.advance_rollups(meta_cycle, db)?;
+        Ok(machine)
     }
 
-    // Runs to the `cycle` directly and returns the machine state after the run
-    pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
-        assert!(self.cycle <= cycle);
+    pub fn state(&mut self) -> Result<MachineState> {
+        MachineState::from_current_machine_state(self)
+    }
 
-        let mcycle = self.machine.mcycle()?;
+    pub fn root_hash(&mut self) -> Result<Digest> {
+        Ok(self.machine.root_hash()?.into())
+    }
 
-        let physical_cycle = arithmetic::add_and_clamp(mcycle, cycle - self.cycle);
-        trace!("physical cycle {}", physical_cycle);
+    pub fn is_halted(&mut self) -> Result<bool> {
+        Ok(self.machine.iflags_h()?)
+    }
 
-        loop {
-            let halted = self.machine.iflags_h()?;
-            if halted {
-                trace!("run break with halt");
-                break;
-            }
+    pub fn is_yielded(&mut self) -> Result<bool> {
+        Ok(self.machine.iflags_y()?)
+    }
 
-            let yielded = self.machine.iflags_y()?;
-            if yielded {
-                trace!("run break with yield");
-                break;
-            }
+    pub fn is_uarch_halted(&mut self) -> Result<bool> {
+        Ok(self.machine.uarch_halt_flag()?)
+    }
 
-            if self.machine.mcycle()? == physical_cycle {
-                trace!("run break with meeting physical cycle");
-                break;
-            }
+    pub fn physical_cycle(&mut self) -> Result<u64> {
+        Ok(self.machine.mcycle()?)
+    }
 
-            self.machine.run(physical_cycle)?;
-        }
-
-        self.cycle = cycle;
-
-        self.machine_state()
+    pub fn physical_uarch_cycle(&mut self) -> Result<u64> {
+        Ok(self.machine.ucycle()?)
     }
 
     pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
@@ -212,129 +233,177 @@ impl MachineInstance {
         Ok(())
     }
 
-    // Runs to the `cycle` with all necessary inputs added to the machine
-    // Returns the machine state after the run;
-    // One exception is that if `cycle` is supposed to receive an input, in this case
-    // the machine state would be `without` input included in the machine,
-    // this is useful when we need the initial state to compute the commitments
-    pub fn run_with_inputs(&mut self, cycle: u64, db: &ComputeStateAccess) -> Result<MachineState> {
-        trace!(
-            "run_with_inputs self cycle: {}, target cycle: {}",
-            self.cycle,
-            cycle
-        );
+    // Runs to the `cycle` directly and returns the machine state after the run
+    pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
+        assert!(self.cycle <= cycle);
 
-        let inputs = &db.inputs()?;
-        let mut machine_state_without_input = self.machine_state()?;
-        let input_mask = arithmetic::max_uint(constants::LOG2_EMULATOR_SPAN);
-        let current_input_index = self.cycle >> constants::LOG2_EMULATOR_SPAN;
+        let target_physical_cycle =
+            arithmetic::add_and_clamp(self.physical_cycle()?, cycle - self.cycle);
 
-        let mut next_input_index;
+        loop {
+            self.machine.run(target_physical_cycle)?;
 
-        if self.cycle & input_mask == 0 {
-            next_input_index = current_input_index;
-        } else {
-            next_input_index = current_input_index + 1;
-        }
-        let mut next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
-
-        while next_input_cycle <= cycle {
-            trace!("next input index: {}", next_input_index);
-            trace!("run to next input cycle: {}", next_input_cycle);
-            machine_state_without_input = self.run(next_input_cycle)?;
-
-            let input = inputs.get(next_input_index as usize);
-            if let Some(data) = input {
-                trace!(
-                    "before input, machine state: {}",
-                    self.machine_state()?.root_hash
-                );
-                trace!("input: 0x{}", data.encode_hex());
-
-                self.machine
-                    .send_cmio_response(CmioResponseReason::Advance, data)?;
-
-                trace!(
-                    "after input, machine state: {}",
-                    self.machine_state()?.root_hash
-                );
+            let halted = self.is_halted()?;
+            if halted {
+                trace!("run break with halt");
+                break;
             }
 
-            next_input_index += 1;
-            next_input_cycle = next_input_index << constants::LOG2_EMULATOR_SPAN;
+            let yielded = self.is_yielded()?;
+            if yielded {
+                trace!("run break with yield");
+                break;
+            }
+
+            if self.physical_cycle()? == target_physical_cycle {
+                trace!("run break with meeting physical cycle");
+                break;
+            }
         }
-        if cycle > self.cycle {
-            machine_state_without_input = self.run(cycle)?;
-        }
-        Ok(machine_state_without_input)
+
+        self.cycle = cycle;
+
+        self.state()
     }
 
     pub fn increment_uarch(&mut self) -> Result<MachineState> {
         self.machine.run_uarch(self.ucycle + 1)?;
         self.ucycle += 1;
-        self.machine_state()
+        self.state()
     }
 
     pub fn ureset(&mut self) -> Result<MachineState> {
         self.machine.reset_uarch()?;
         self.cycle += 1;
         self.ucycle = 0;
-        self.machine_state()
+        self.state()
     }
 
-    pub fn machine_state(&mut self) -> Result<MachineState> {
-        let root_hash = self.machine.root_hash()?;
-        let halted = self.machine.iflags_h()?;
-        let yielded = self.machine.iflags_y()?;
-        let uhalted = self.machine.uarch_halt_flag()?;
+    fn encode_access_logs(logs: Vec<&AccessLog>) -> Vec<u8> {
+        let mut encoded: Vec<Vec<u8>> = Vec::new();
 
-        Ok(MachineState {
-            root_hash: Digest::from_digest(&root_hash)?,
-            halted,
-            yielded,
-            uhalted,
-        })
-    }
+        for log in logs.into_iter() {
+            for a in log.accesses.iter() {
+                if a.log2_size == 3 {
+                    encoded.push(a.read.clone().unwrap());
+                } else {
+                    encoded.push(a.read_hash.to_vec());
+                }
 
-    pub fn write_memory(&mut self, address: u64, data: String) -> Result<()> {
-        self.machine
-            .write_memory(address, &hex::decode(data.as_bytes())?)?;
-        Ok(())
-    }
-
-    pub fn position(&mut self) -> Result<(u64, u64, u64)> {
-        Ok((self.cycle, self.ucycle, self.machine.mcycle()?))
-    }
-}
-
-fn encode_access_logs(logs: Vec<&AccessLog>, encode_input: Option<Input>) -> Vec<u8> {
-    let mut encoded: Vec<Vec<u8>> = Vec::new();
-
-    if let Some(i) = encode_input {
-        encoded.push(U256::from(i.0.len()).to_be_bytes_vec());
-        if !i.0.is_empty() {
-            encoded.push(i.0);
+                let decoded_siblings: Vec<Vec<u8>> = a
+                    .sibling_hashes
+                    .clone()
+                    .unwrap()
+                    .iter()
+                    .map(|h| h.to_vec())
+                    .collect();
+                encoded.extend_from_slice(&decoded_siblings);
+            }
         }
+
+        encoded.iter().flatten().cloned().collect()
     }
 
-    for log in logs.iter() {
-        for a in log.accesses.iter() {
-            if a.log2_size == 3 {
-                encoded.push(a.read.clone().unwrap());
+    fn get_logs_compute(
+        _path: &str,
+        _agree_hash: Digest,
+        _meta_cycle: u64,
+    ) -> Result<(Vec<u8>, Digest)> {
+        unimplemented!();
+    }
+
+    fn encode_da(input_bin: &[u8]) -> Vec<u8> {
+        let input_size_be = (input_bin.len() as u64).to_be_bytes().to_vec();
+        let mut da_proof = input_size_be;
+        da_proof.extend_from_slice(input_bin);
+        da_proof
+    }
+
+    fn get_logs_rollups(
+        path: &str,
+        agree_hash: Digest,
+        meta_cycle: U256,
+        db: &ComputeStateAccess,
+    ) -> Result<(Vec<u8>, Digest)> {
+        let input_mask = (U256::one() << LOG2_INPUT_SPAN_FROM_UARCH) - U256::one();
+        let big_step_mask = arithmetic::max_uint(LOG2_UARCH_SPAN_TO_BARCH);
+
+        assert!(((meta_cycle >> LOG2_INPUT_SPAN_FROM_UARCH) & !input_mask).is_zero());
+
+        let meta_cycle_u128 = meta_cycle
+            .to_u128()
+            .expect("meta_cycle is too large to fit in u128");
+        let input_count = (meta_cycle_u128 >> LOG2_INPUT_SPAN_FROM_UARCH) as u64;
+
+        let mut logs = Vec::new();
+
+        let mut machine = MachineInstance::new_rollups_advanced_until(path, meta_cycle, db)?;
+        assert_eq!(machine.state()?.root_hash, agree_hash);
+
+        if (meta_cycle & input_mask).is_zero() {
+            let input = db.input(input_count)?;
+            let da_proof;
+            let cmio_log;
+
+            if let Some(input_bin) = input {
+                cmio_log = machine.machine.log_send_cmio_response(
+                    CmioResponseReason::Advance,
+                    &input_bin,
+                    LogType::default(),
+                )?;
+
+                logs.push(&cmio_log);
+                da_proof = Self::encode_da(&input_bin);
             } else {
-                encoded.push(a.read_hash.to_vec());
+                da_proof = Self::encode_da(&[]);
             }
 
-            let decoded_siblings: Vec<Vec<u8>> = a
-                .sibling_hashes
-                .clone()
-                .unwrap()
-                .iter()
-                .map(|h| h.to_vec())
-                .collect();
-            encoded.extend_from_slice(&decoded_siblings);
+            let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
+            logs.push(&uarch_step_log);
+
+            let step_proof = Self::encode_access_logs(logs);
+            let proof = [da_proof, step_proof].concat();
+            return Ok((proof, machine.state()?.root_hash));
+        } else {
+            if ((meta_cycle_u128 + 1) & (big_step_mask as u128)) == 0 {
+                assert!(machine.is_uarch_halted()?);
+
+                let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
+                logs.push(&uarch_step_log);
+                let ureset_log = machine.machine.log_reset_uarch(LogType::default())?;
+                logs.push(&ureset_log);
+
+                return Ok((Self::encode_access_logs(logs), machine.state()?.root_hash));
+            } else {
+                let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
+                logs.push(&uarch_step_log);
+                return Ok((Self::encode_access_logs(logs), machine.state()?.root_hash));
+            }
         }
     }
 
-    encoded.iter().flatten().cloned().collect()
+    pub fn get_logs(
+        path: &str,
+        agree_hash: Digest,
+        meta_cycle: U256,
+        db: &ComputeStateAccess,
+    ) -> Result<(Vec<u8>, Digest)> {
+        let (proofs, next_hash);
+
+        if db.handle_rollups {
+            let result = Self::get_logs_rollups(path, agree_hash, meta_cycle, db)?;
+            proofs = result.0;
+            next_hash = result.1;
+        } else {
+            let result = Self::get_logs_compute(path, agree_hash, meta_cycle.to_u64().unwrap())?;
+            proofs = result.0;
+            next_hash = result.1;
+        }
+
+        Ok((proofs, next_hash))
+    }
+
+    pub fn position(&mut self) -> Result<(u64, u64)> {
+        Ok((self.cycle, self.ucycle))
+    }
 }

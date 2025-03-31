@@ -22,10 +22,11 @@ contract StateTransitionTest is Util, Test {
     RiscVStateTransition immutable riscVStateTransition;
     CmioStateTransition immutable cmioStateTransition;
 
-    uint64 constant LOG2_UARCH_SPAN = 20;
-    uint64 constant LOG2_EMULATOR_SPAN = 48;
-    uint256 constant UARCH_SPAN = 1 << LOG2_UARCH_SPAN;
-    uint256 constant FULL_SPAN = 1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
+    uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
+    uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
+    uint256 constant UARCH_SPAN = 1 << LOG2_UARCH_SPAN_TO_BARCH;
+    uint256 constant FULL_SPAN =
+        1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
 
     constructor() {
         (stateTransition, riscVStateTransition, cmioStateTransition) =
@@ -166,6 +167,11 @@ contract StateTransitionTest is Util, Test {
             bytes32(uint256(0x123)), Buffer.Context(new bytes(0), 0)
         );
 
+        vm.mockCall(
+            address(riscVStateTransition),
+            abi.encode(riscVStateTransition.step.selector),
+            abi.encode(accessLogs)
+        );
         vm.mockCall(
             address(riscVStateTransition),
             abi.encode(riscVStateTransition.reset.selector),

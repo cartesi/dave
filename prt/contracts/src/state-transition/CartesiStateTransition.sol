@@ -26,13 +26,13 @@ import "prt-contracts/IStateTransition.sol";
 contract CartesiStateTransition is IStateTransition {
     // TODO add CM_MARCHID
 
-    uint64 constant LOG2_UARCH_SPAN = 20;
-    uint64 constant LOG2_EMULATOR_SPAN = 48;
+    uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
+    uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
     // uint64 constant LOG2_INPUT_SPAN = 24;
 
-    uint256 constant BIG_STEP_MASK = (1 << LOG2_UARCH_SPAN) - 1;
+    uint256 constant BIG_STEP_MASK = (1 << LOG2_UARCH_SPAN_TO_BARCH) - 1;
     uint256 constant INPUT_MASK =
-        (1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN)) - 1;
+        (1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH)) - 1;
 
     IRiscVStateTransition immutable riscVStateTransition;
     ICmioStateTransition immutable cmioStateTransition;
@@ -96,7 +96,7 @@ contract CartesiStateTransition is IStateTransition {
             );
 
             uint256 inputIndexWithinEpoch =
-                counter >> (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
+                counter >> (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
             bytes32 inputMerkleRoot =
                 provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
 

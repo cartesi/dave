@@ -78,14 +78,15 @@ contract StateTransitionFfiTest is Util, Test {
     RiscVStateTransition immutable riscVStateTransition;
     CmioStateTransition immutable cmioStateTransition;
 
-    uint64 constant LOG2_UARCH_SPAN = 20;
-    uint64 constant LOG2_EMULATOR_SPAN = 48;
+    uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
+    uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
     uint64 constant LOG2_INPUT_SPAN = 24;
 
     uint64 constant LOG2_FULL_SPAN =
-        LOG2_UARCH_SPAN + LOG2_EMULATOR_SPAN + LOG2_INPUT_SPAN;
-    uint256 constant UARCH_SPAN = 1 << LOG2_UARCH_SPAN;
-    uint256 constant FULL_SPAN = 1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN);
+        LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_INPUT_SPAN;
+    uint256 constant UARCH_SPAN = 1 << LOG2_UARCH_SPAN_TO_BARCH;
+    uint256 constant FULL_SPAN =
+        1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
 
     constructor() {
         (stateTransition, riscVStateTransition, cmioStateTransition) =
@@ -136,19 +137,19 @@ contract StateTransitionFfiTest is Util, Test {
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = 1 << (LOG2_UARCH_SPAN + LOG2_EMULATOR_SPAN);
+        counter = 1 << (LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT);
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = 2 << (LOG2_UARCH_SPAN + LOG2_EMULATOR_SPAN);
+        counter = 2 << (LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT);
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = 3 << (LOG2_UARCH_SPAN + LOG2_EMULATOR_SPAN);
+        counter = 3 << (LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT);
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
@@ -156,7 +157,7 @@ contract StateTransitionFfiTest is Util, Test {
     }
 
     function testTransitionReset() public {
-        uint256 mask = (1 << LOG2_UARCH_SPAN) - 1;
+        uint256 mask = (1 << LOG2_UARCH_SPAN_TO_BARCH) - 1;
         uint256 counter;
 
         counter = mask;
@@ -165,19 +166,20 @@ contract StateTransitionFfiTest is Util, Test {
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = (1 << LOG2_UARCH_SPAN) + mask;
+        counter = (1 << LOG2_UARCH_SPAN_TO_BARCH) + mask;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = (2 << LOG2_UARCH_SPAN) + mask;
+        counter = (2 << LOG2_UARCH_SPAN_TO_BARCH) + mask;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = ((1 << LOG2_EMULATOR_SPAN) << LOG2_UARCH_SPAN) + mask;
+        counter =
+            ((1 << LOG2_BARCH_SPAN_TO_INPUT) << LOG2_UARCH_SPAN_TO_BARCH) + mask;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
@@ -193,19 +195,20 @@ contract StateTransitionFfiTest is Util, Test {
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = (1 << LOG2_UARCH_SPAN) + 2;
+        counter = (1 << LOG2_UARCH_SPAN_TO_BARCH) + 2;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = (2 << LOG2_UARCH_SPAN) + 3;
+        counter = (2 << LOG2_UARCH_SPAN_TO_BARCH) + 3;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = ((1 << LOG2_EMULATOR_SPAN) << LOG2_UARCH_SPAN) + 1;
+        counter =
+            ((1 << LOG2_BARCH_SPAN_TO_INPUT) << LOG2_UARCH_SPAN_TO_BARCH) + 1;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);

@@ -114,7 +114,7 @@ function StateFetcher:_capture_matches(tournament)
 
             local leaf_cycle = self.reader:read_cycle(tournament.address, match.match_id_hash)
             match.leaf_cycle = bint(leaf_cycle)
-            match.base_big_cycle = (match.leaf_cycle >> constants.log2_uarch_span):touinteger()
+            match.base_big_cycle = (match.leaf_cycle >> constants.log2_uarch_span_to_barch):touinteger()
         end
     end
 
