@@ -4,9 +4,6 @@ local cartesi = require "cartesi"
 local consts = require "computation.constants"
 local conversion = require "utils.conversion"
 
-
-local log2_input_span = consts.log2_uarch_span + consts.log2_emulator_span
-
 local ComputationState = {}
 ComputationState.__index = ComputationState
 
@@ -25,9 +22,9 @@ function ComputationState.from_current_machine_state(machine)
     local hash = Hash:from_digest(machine.machine:get_root_hash())
     return ComputationState:new(
         hash,
-        machine:is_halted() ~= 0,
-        machine:is_yielded() ~= 0,
-        machine:is_uarch_halted() ~= 0
+        machine:is_halted(),
+        machine:is_yielded(),
+        machine:is_uarch_halted()
     )
 end
 
@@ -83,8 +80,8 @@ end
 
 local function advance_rollup(self, meta_cycle, inputs)
     assert(self:is_yielded())
-    local input_count = (meta_cycle >> log2_input_span):tointeger()
-    local cycle = ((meta_cycle >> consts.log2_emulator_span) & consts.emulator_span):tointeger()
+    local input_count = (meta_cycle >> consts.log2_input_span_from_uarch):tointeger()
+    local cycle = (meta_cycle >> consts.log2_uarch_span_to_barch):tointeger()
     local ucycle = (meta_cycle & consts.uarch_span):tointeger()
 
     while self.input_count < input_count do
@@ -122,8 +119,8 @@ local function advance_rollup(self, meta_cycle, inputs)
 end
 
 function Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
-    local input_count = (meta_cycle >> log2_input_span):tointeger()
-    assert(arithmetic.ulte(input_count, consts.input_span))
+    local input_count = (meta_cycle >> consts.log2_input_span_from_uarch):tointeger()
+    assert(arithmetic.ulte(input_count, consts.input_span_to_epoch))
 
     local machine = Machine:new_from_path(path)
     advance_rollup(machine, meta_cycle, inputs)
@@ -242,11 +239,11 @@ local function encode_da(input_bin)
 end
 
 local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
-    local input_mask = (uint256.one() << log2_input_span) - 1
-    local big_step_mask = arithmetic.max_uint(consts.log2_uarch_span)
+    local input_mask = (uint256.one() << consts.log2_input_span_from_uarch) - 1
+    local big_step_mask = arithmetic.max_uint(consts.log2_uarch_span_to_barch)
 
-    assert(((meta_cycle >> log2_input_span) & (~input_mask)):iszero())
-    local input_count = (meta_cycle >> log2_input_span):tointeger()
+    assert(((meta_cycle >> consts.log2_input_span_from_uarch) & (~input_mask)):iszero())
+    local input_count = (meta_cycle >> consts.log2_input_span_from_uarch):tointeger()
 
     local logs = {}
 

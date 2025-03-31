@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
-use cartesi_prt_core::arena::{BlockchainConfig, EthArenaSender};
+use cartesi_prt_core::tournament::{BlockchainConfig, EthArenaSender};
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;

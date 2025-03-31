@@ -1,9 +1,9 @@
+use crate::strategy::error::Result;
 use ::log::info;
 use alloy::primitives::Address;
-use anyhow::Result;
 use async_recursion::async_recursion;
 
-use crate::arena::{ArenaSender, MatchState, TournamentStateMap};
+use crate::tournament::{ArenaSender, MatchState, TournamentStateMap};
 
 pub struct GarbageCollector {
     root_tournamet: Address,

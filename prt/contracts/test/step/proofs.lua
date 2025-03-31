@@ -13,7 +13,8 @@ assert(type(assert(args[1])) == "string")
 assert(type(assert(args[2])) == "string")
 local meta_cycle = uint256.parse(args[1])
 local input_size = assert(tonumber(args[2]))
-assert((meta_cycle >> (consts.log2_uarch_span + consts.log2_emulator_span + consts.log2_input_span)):iszero())
+assert((meta_cycle >> (consts.log2_uarch_span_to_barch + consts.log2_barch_span_to_input + consts.log2_input_span_to_epoch))
+    :iszero())
 
 for i = 0, input_size - 1 do
     local val = uint256.frominteger(i):tobe(false)

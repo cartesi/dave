@@ -141,7 +141,7 @@ impl ComputeStateAccess {
         let mut tree = Vec::new();
         for leaf in leafs {
             let tree_leafs = compute_data::compute_tree(&conn, &leaf.0)?;
-            if tree_leafs.is_empty() {
+            if !tree_leafs.is_empty() {
                 // if leaf is also tree, rebuild it from nested leafs
                 let mut builder = MerkleBuilder::default();
                 for tree_leaf in tree_leafs {

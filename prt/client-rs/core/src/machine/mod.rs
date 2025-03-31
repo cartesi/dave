@@ -12,3 +12,5 @@ pub use commitment::*;
 
 mod commitment_builder;
 pub use commitment_builder::*;
+
+pub mod error;
