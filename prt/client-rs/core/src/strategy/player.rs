@@ -1,21 +1,21 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::strategy::error::Result;
 use ::log::{debug, error, info};
 use alloy::primitives::Address;
-use anyhow::Result;
 use async_recursion::async_recursion;
-use num_traits::{cast::ToPrimitive, One};
+use num_traits::One;
 use ruint::aliases::U256;
 
 use crate::{
-    arena::{
+    db::compute_state_access::{ComputeStateAccess, Input, Leaf},
+    machine::{CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
+    strategy::gc::GarbageCollector,
+    tournament::{
         ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
         TournamentState, TournamentStateMap, TournamentWinner,
     },
-    db::compute_state_access::{ComputeStateAccess, Input, Leaf},
-    machine::{constants, CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
-    strategy::gc::GarbageCollector,
 };
 use cartesi_dave_merkle::{Digest, MerkleProof};
 
@@ -361,17 +361,13 @@ impl Player {
                 return Ok(());
             }
 
-            let cycle = match_state.base_big_cycle;
-            let ucycle = (match_state.leaf_cycle & U256::from(constants::UARCH_SPAN))
-                .to_u64()
-                .expect("fail to convert ucycle");
-
             let proof = {
-                let mut machine = MachineInstance::new(&self.machine_path)?;
-                if let Some(snapshot) = self.db.closest_snapshot(cycle)? {
-                    machine.load_snapshot(&snapshot.1, snapshot.0)?;
-                };
-                machine.get_logs(cycle, ucycle, &self.db)?
+                MachineInstance::get_logs(
+                    &self.machine_path,
+                    match_state.other_parent,
+                    match_state.leaf_cycle,
+                    &self.db,
+                )?
             };
 
             info!(
@@ -386,7 +382,7 @@ impl Player {
                     match_state.id,
                     left.root_hash(),
                     right.root_hash(),
-                    proof,
+                    proof.0,
                 )
                 .await?;
         } else {

@@ -47,7 +47,7 @@ end
 
 local function build_small_machine_commitment(log2_stride_count, machine, initial_state)
     local builder = MerkleBuilder:new()
-    local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span)
+    local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span_to_barch)
     local instruction = 0
     while ulte(instruction, instruction_count) do
         print_flush_same_line(string.format(
@@ -82,7 +82,7 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
             instruction, instruction_count
         ))
 
-        local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span))
+        local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span_to_barch))
         local machine_state = machine:run(base_cycle + cycle)
 
         if machine_state.halted or machine_state.yielded then
@@ -105,7 +105,8 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
     local initial_state
     if inputs then
         -- treat it as rollups
-        local meta_cycle = uint256(base_cycle) << consts.log2_uarch_span
+        local meta_cycle = uint256(base_cycle) << consts.log2_uarch_span_to_barch
+        print(machine_path)
         machine = Machine:new_rollup_advanced_until(machine_path, meta_cycle, inputs)
         initial_state = machine:state().root_hash
     else
@@ -114,10 +115,10 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
         initial_state = machine:run(base_cycle).root_hash
     end
 
-    if log2_stride >= consts.log2_uarch_span then
+    if log2_stride >= consts.log2_uarch_span_to_barch then
         assert(
             log2_stride + log2_stride_count <=
-            consts.log2_input_span + consts.log2_emulator_span + consts.log2_uarch_span
+            consts.log2_input_span_to_epoch + consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch
         )
         return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state)
     else

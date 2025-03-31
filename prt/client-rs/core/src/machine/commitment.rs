@@ -1,13 +1,13 @@
 //! This module defines a struct [MachineCommitment] that is used to represent a `computation hash`
 //! described on the paper https://arxiv.org/pdf/2212.12439.pdf.
 
-use anyhow::Result;
 use log::trace;
 use std::io::{self, Write};
 use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
     db::compute_state_access::{ComputeStateAccess, Leaf},
+    machine::error::Result,
     machine::{constants, MachineInstance, MachineState},
 };
 use cartesi_dave_arithmetic as arithmetic;
@@ -51,12 +51,12 @@ pub fn build_machine_commitment(
     initial_state: Digest,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    if log2_stride >= constants::LOG2_UARCH_SPAN {
+    if log2_stride >= constants::LOG2_UARCH_SPAN_TO_BARCH {
         assert!(
             log2_stride + log2_stride_count
-                <= constants::LOG2_INPUT_SPAN
-                    + constants::LOG2_EMULATOR_SPAN
-                    + constants::LOG2_UARCH_SPAN
+                <= constants::LOG2_INPUT_SPAN_TO_EPOCH
+                    + constants::LOG2_BARCH_SPAN_TO_INPUT
+                    + constants::LOG2_UARCH_SPAN_TO_BARCH
         );
         build_big_machine_commitment(
             machine,
@@ -134,7 +134,7 @@ fn advance_instruction(
     instruction_count: u64,
     leafs: &mut Vec<(Digest, u64)>,
 ) -> Result<ControlFlow<()>> {
-    let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN);
+    let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN_TO_BARCH);
     let state = machine.run(base_cycle + cycle)?;
     let control_flow = if state.halted | state.yielded {
         leafs.push((state.root_hash, instruction_count - instruction + 1));
@@ -160,7 +160,8 @@ pub fn build_small_machine_commitment(
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
     let mut uarch_span_and_leafs = Vec::new();
-    let instruction_count = arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN);
+    let instruction_count =
+        arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH);
     let mut instruction = 0;
     loop {
         if instruction > instruction_count {
@@ -207,7 +208,7 @@ pub fn build_small_machine_commitment(
 fn run_uarch_span(
     machine: &mut MachineInstance,
 ) -> Result<(Arc<MerkleTree>, MachineState, Vec<Leaf>)> {
-    let (_, ucycle, _) = machine.position()?;
+    let (_, ucycle) = machine.position()?;
     assert!(ucycle == 0);
 
     let mut machine_state = machine.increment_uarch()?;

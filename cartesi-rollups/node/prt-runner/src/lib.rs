@@ -5,9 +5,9 @@ use std::result::Result;
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use cartesi_prt_core::{
-    arena::{BlockchainConfig, EthArenaSender},
     db::compute_state_access::{Input, Leaf},
     strategy::player::Player,
+    tournament::{BlockchainConfig, EthArenaSender},
 };
 use rollups_state_manager::StateManager;
 

@@ -2,8 +2,8 @@
 //! of tournaments; and the struct [EthArenaSender] that is responsible for the sending transactions
 //! to tournaments
 
-mod arena;
-pub use arena::*;
+mod tournament;
+pub use tournament::*;
 
 mod config;
 pub use config::*;

@@ -18,7 +18,9 @@ use cartesi_machine::{
     machine::Machine,
     types::{cmio::CmioResponseReason, Hash},
 };
-use cartesi_prt_core::machine::constants::{LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_UARCH_SPAN};
+use cartesi_prt_core::machine::constants::{
+    LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
+};
 use rollups_state_manager::{InputId, StateManager};
 
 // gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
@@ -139,8 +141,11 @@ where
             .state_manager
             .machine_state_hashes(self.epoch_number)
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
-        let stride_count_in_epoch =
-            1 << (LOG2_INPUT_SPAN + LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
+        let stride_count_in_epoch = 1
+            << (LOG2_INPUT_SPAN_TO_EPOCH
+                + LOG2_BARCH_SPAN_TO_INPUT
+                + LOG2_UARCH_SPAN_TO_BARCH
+                - LOG2_STRIDE);
         if state_hashes.is_empty() {
             // no inputs in current epoch, add machine state hash repeatedly
             let machine_state_hash = self.add_state_hash(stride_count_in_epoch)?;
@@ -166,8 +171,9 @@ where
 
     fn process_input(&mut self, data: &[u8]) -> Result<(), SM> {
         // TODO: review caclulations
-        let big_steps_in_stride = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN);
-        let stride_count_in_input = 1 << (LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
+        let big_steps_in_stride = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
+        let stride_count_in_input =
+            1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - LOG2_STRIDE);
 
         self.feed_input(data)?;
         self.run_machine(big_steps_in_stride)?;
@@ -231,7 +237,7 @@ where
 
         let snapshot_path = epoch_path.join(format!(
             "{}",
-            self.next_input_index_in_epoch << LOG2_EMULATOR_SPAN
+            self.next_input_index_in_epoch << LOG2_BARCH_SPAN_TO_INPUT
         ));
 
         if !snapshot_path.exists() {
@@ -282,8 +288,8 @@ fn build_commitment_from_hashes(
 #[cfg(test)]
 mod tests {
     use crate::{
-        build_commitment_from_hashes, LOG2_EMULATOR_SPAN, LOG2_INPUT_SPAN, LOG2_STRIDE,
-        LOG2_UARCH_SPAN,
+        build_commitment_from_hashes, LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH,
+        LOG2_STRIDE, LOG2_UARCH_SPAN_TO_BARCH,
     };
 
     fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
@@ -303,8 +309,11 @@ mod tests {
     #[test]
     fn test_commitment_builder() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let repetitions = vec![1, 2, 1 << 24, (1 << 48) - 1, 1 << 48];
-        let stride_count_in_epoch =
-            1 << (LOG2_INPUT_SPAN + LOG2_EMULATOR_SPAN + LOG2_UARCH_SPAN - LOG2_STRIDE);
+        let stride_count_in_epoch = 1
+            << (LOG2_INPUT_SPAN_TO_EPOCH
+                + LOG2_BARCH_SPAN_TO_INPUT
+                + LOG2_UARCH_SPAN_TO_BARCH
+                - LOG2_STRIDE);
         let mut machine_state_hash =
             hex_to_bytes("AAA646181BF25FD29FBB7D468E786F8B6F7215D53CE4F7C69A108FB8099555B7")
                 .unwrap();

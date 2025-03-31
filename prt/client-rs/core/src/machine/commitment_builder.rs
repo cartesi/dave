@@ -4,13 +4,13 @@
 use crate::{
     db::compute_state_access::ComputeStateAccess,
     machine::{
-        build_machine_commitment, build_machine_commitment_from_leafs, MachineCommitment,
-        MachineInstance,
+        build_machine_commitment, build_machine_commitment_from_leafs,
+        constants::LOG2_UARCH_SPAN_TO_BARCH, error::Result, MachineCommitment, MachineInstance,
     },
 };
 
-use anyhow::Result;
-use log::trace;
+use alloy::primitives::U256;
+use log::{info, trace};
 use std::collections::{hash_map::Entry, HashMap};
 
 pub struct CachingMachineCommitmentBuilder {
@@ -40,17 +40,22 @@ impl CachingMachineCommitmentBuilder {
             return Ok(commitment.clone());
         }
 
-        let mut machine = MachineInstance::new(&self.machine_path)?;
-        if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
-            machine.load_snapshot(&snapshot.1, snapshot.0)?;
-        };
-
+        let mut machine = MachineInstance::new_from_path(&self.machine_path)?;
         let initial_state = {
             if db.handle_rollups {
                 // treat it as rollups
-                machine.run_with_inputs(base_cycle, db)?.root_hash
+                let meta_cycle = U256::from(base_cycle) << LOG2_UARCH_SPAN_TO_BARCH;
+                machine = MachineInstance::new_rollups_advanced_until(
+                    &self.machine_path,
+                    meta_cycle,
+                    db,
+                )?;
+                machine.state()?.root_hash
             } else {
                 // treat it as compute
+                if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
+                    machine.load_snapshot(&snapshot.1, snapshot.0)?;
+                };
                 machine.run(base_cycle)?.root_hash
             }
         };
@@ -58,7 +63,7 @@ impl CachingMachineCommitmentBuilder {
         let commitment = {
             let leafs = db.compute_leafs(level, base_cycle)?;
             // leafs are cached in database, use it to calculate merkle
-            if leafs.is_empty() {
+            if !leafs.is_empty() {
                 build_machine_commitment_from_leafs(leafs, initial_state)?
             } else {
                 // leafs are not cached, build merkle by running the machine

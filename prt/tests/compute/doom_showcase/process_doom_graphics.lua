@@ -31,7 +31,7 @@ end
 while (true)
 do
     local start_cycle = machine:read_mcycle()
-    local reason = machine:run(1 << constants.log2_emulator_span)
+    local reason = machine:run(1 << constants.log2_barch_span_to_input)
     if reason == cartesi.BREAK_REASON_YIELDED_SOFTLY then
         local end_cycle = machine:read_mcycle()
         output_pixel(start_cycle, end_cycle)
