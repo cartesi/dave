@@ -10,7 +10,7 @@ local function build_zero_uarch()
     local builder = MerkleBuilder:new()
 
     -- all uarch states are zero including the reset state
-    builder:add(Hash.zero, consts.uarch_span + 1)
+    builder:add(Hash.zero, consts.uarch_span_to_barch + 1)
 
     return builder:build()
 end

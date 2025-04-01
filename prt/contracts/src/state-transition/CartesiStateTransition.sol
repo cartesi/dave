@@ -28,7 +28,6 @@ contract CartesiStateTransition is IStateTransition {
 
     uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
     uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
-    // uint64 constant LOG2_INPUT_SPAN = 24;
 
     uint256 constant BIG_STEP_MASK = (1 << LOG2_UARCH_SPAN_TO_BARCH) - 1;
     uint256 constant INPUT_MASK =

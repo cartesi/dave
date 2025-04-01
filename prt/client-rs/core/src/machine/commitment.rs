@@ -229,8 +229,8 @@ fn run_uarch_span(
         }
     }
 
-    leafs.push((machine_state.root_hash, constants::UARCH_SPAN - i));
-    builder.append_repeated(machine_state.root_hash, constants::UARCH_SPAN - i);
+    leafs.push((machine_state.root_hash, constants::UARCH_SPAN_TO_BARCH - i));
+    builder.append_repeated(machine_state.root_hash, constants::UARCH_SPAN_TO_BARCH - i);
 
     trace!("state before reset {}", machine_state.root_hash);
     machine_state = machine.ureset()?;
