@@ -80,13 +80,11 @@ contract StateTransitionFfiTest is Util, Test {
 
     uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
     uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
-    uint64 constant LOG2_INPUT_SPAN = 24;
+    uint64 constant LOG2_INPUT_SPAN_TO_EPOCH = 24;
 
-    uint64 constant LOG2_FULL_SPAN =
-        LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_INPUT_SPAN;
-    uint256 constant UARCH_SPAN = 1 << LOG2_UARCH_SPAN_TO_BARCH;
-    uint256 constant FULL_SPAN =
-        1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
+    uint64 constant LOG2_UARCH_SPAN_TO_EPOCH = LOG2_UARCH_SPAN_TO_BARCH
+        + LOG2_BARCH_SPAN_TO_INPUT + LOG2_INPUT_SPAN_TO_EPOCH;
+    uint256 constant UARCH_SPAN_TO_BARCH = 1 << LOG2_UARCH_SPAN_TO_BARCH;
 
     constructor() {
         (stateTransition, riscVStateTransition, cmioStateTransition) =
@@ -108,7 +106,7 @@ contract StateTransitionFfiTest is Util, Test {
     }
 
     function assertStf(uint256 counter, uint256 numInputs) private {
-        vm.assume((counter >> LOG2_FULL_SPAN) == 0);
+        vm.assume((counter >> LOG2_UARCH_SPAN_TO_EPOCH) == 0);
         IDataProvider provider = new Provider(numInputs);
 
         (bytes32 before, bytes32 next, bytes memory proof) =

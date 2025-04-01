@@ -1,6 +1,7 @@
 use crate::db::compute_state_access::ComputeStateAccess;
 use crate::machine::constants::{
-    self, INPUT_SPAN_TO_EPOCH, LOG2_INPUT_SPAN_FROM_UARCH, LOG2_UARCH_SPAN_TO_BARCH, UARCH_SPAN,
+    self, INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH, LOG2_UARCH_SPAN_TO_INPUT,
+    UARCH_SPAN_TO_BARCH,
 };
 use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
@@ -121,11 +122,11 @@ impl MachineInstance {
         let meta_cycle_u128 = meta_cycle
             .to_u128()
             .expect("meta_cycle is too large to fit in u128");
-        let input_count = (meta_cycle >> LOG2_INPUT_SPAN_FROM_UARCH)
+        let input_count = (meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT)
             .to_u64()
             .expect("input count too big to fit in u64");
         let cycle = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_BARCH) as u64;
-        let ucycle = (meta_cycle_u128 & (UARCH_SPAN as u128)) as u64;
+        let ucycle = (meta_cycle_u128 & (UARCH_SPAN_TO_BARCH as u128)) as u64;
 
         while self.input_count < input_count {
             let input = db.input(self.input_count)?;
@@ -175,7 +176,7 @@ impl MachineInstance {
             .to_u128()
             .expect("meta_cycle is too large to fit in u128");
 
-        let input_count = (meta_cycle_u128 >> LOG2_INPUT_SPAN_FROM_UARCH) as u64;
+        let input_count = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_INPUT) as u64;
         assert!(input_count <= INPUT_SPAN_TO_EPOCH);
 
         let mut machine = MachineInstance::new_from_path(path)?;
@@ -325,15 +326,15 @@ impl MachineInstance {
         meta_cycle: U256,
         db: &ComputeStateAccess,
     ) -> Result<(Vec<u8>, Digest)> {
-        let input_mask = (U256::one() << LOG2_INPUT_SPAN_FROM_UARCH) - U256::one();
+        let input_mask = (U256::one() << LOG2_UARCH_SPAN_TO_INPUT) - U256::one();
         let big_step_mask = arithmetic::max_uint(LOG2_UARCH_SPAN_TO_BARCH);
 
-        assert!(((meta_cycle >> LOG2_INPUT_SPAN_FROM_UARCH) & !input_mask).is_zero());
+        assert!(((meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT) & !input_mask).is_zero());
 
         let meta_cycle_u128 = meta_cycle
             .to_u128()
             .expect("meta_cycle is too large to fit in u128");
-        let input_count = (meta_cycle_u128 >> LOG2_INPUT_SPAN_FROM_UARCH) as u64;
+        let input_count = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_INPUT) as u64;
 
         let mut logs = Vec::new();
 

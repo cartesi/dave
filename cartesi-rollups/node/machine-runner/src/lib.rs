@@ -142,9 +142,7 @@ where
             .machine_state_hashes(self.epoch_number)
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
         let stride_count_in_epoch = 1
-            << (LOG2_INPUT_SPAN_TO_EPOCH
-                + LOG2_BARCH_SPAN_TO_INPUT
-                + LOG2_UARCH_SPAN_TO_BARCH
+            << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
                 - LOG2_STRIDE);
         if state_hashes.is_empty() {
             // no inputs in current epoch, add machine state hash repeatedly
@@ -310,9 +308,7 @@ mod tests {
     fn test_commitment_builder() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let repetitions = vec![1, 2, 1 << 24, (1 << 48) - 1, 1 << 48];
         let stride_count_in_epoch = 1
-            << (LOG2_INPUT_SPAN_TO_EPOCH
-                + LOG2_BARCH_SPAN_TO_INPUT
-                + LOG2_UARCH_SPAN_TO_BARCH
+            << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
                 - LOG2_STRIDE);
         let mut machine_state_hash =
             hex_to_bytes("AAA646181BF25FD29FBB7D468E786F8B6F7215D53CE4F7C69A108FB8099555B7")

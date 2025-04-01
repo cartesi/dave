@@ -24,7 +24,7 @@ contract StateTransitionTest is Util, Test {
 
     uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
     uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
-    uint256 constant UARCH_SPAN = 1 << LOG2_UARCH_SPAN_TO_BARCH;
+    uint256 constant UARCH_SPAN_TO_BARCH = 1 << LOG2_UARCH_SPAN_TO_BARCH;
     uint256 constant FULL_SPAN =
         1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
 
@@ -45,7 +45,7 @@ contract StateTransitionTest is Util, Test {
             abi.encode(accessLogs)
         );
 
-        uint256 counter = (counterBase * UARCH_SPAN) - 1;
+        uint256 counter = (counterBase * UARCH_SPAN_TO_BARCH) - 1;
         bytes32 mockState = stateTransition.transitionState(
             bytes32(0), counter, new bytes(0), IDataProvider(address(0))
         );
@@ -153,7 +153,7 @@ contract StateTransitionTest is Util, Test {
             abi.encode(accessLogs)
         );
 
-        uint256 counter = (counterBase * UARCH_SPAN) - offset;
+        uint256 counter = (counterBase * UARCH_SPAN_TO_BARCH) - offset;
         bytes32 mockState = stateTransition.transitionState(
             bytes32(0), counter, new bytes(0), IDataProvider(address(0x123))
         );
@@ -178,7 +178,7 @@ contract StateTransitionTest is Util, Test {
             abi.encode(accessLogs)
         );
 
-        uint256 counter = (counterBase * UARCH_SPAN) - 1;
+        uint256 counter = (counterBase * UARCH_SPAN_TO_BARCH) - 1;
         bytes32 mockState = stateTransition.transitionState(
             bytes32(0), counter, new bytes(0), IDataProvider(address(0x123))
         );
