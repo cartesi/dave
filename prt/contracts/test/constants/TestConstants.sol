@@ -5,16 +5,10 @@ pragma solidity ^0.8.17;
 
 import "prt-contracts/tournament/libs/Time.sol";
 
-library ArbitrationConstants {
-    // Maximum number of blocks for computing the commitments offchain
-    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
-
-    // Maximum censorhip in number of blocks
-    // TODO: update for main net
-    Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(5 * 60 * 8);
-
-    // Maximum time for bisections in a match
-    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5 * 5 * 92);
+library TestArbitrationConstants {
+    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(60 * 60);
+    Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(60 * 5);
+    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(60 * 2);
 
     Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(
         Time.Duration.unwrap(CENSORSHIP_TOLERANCE)

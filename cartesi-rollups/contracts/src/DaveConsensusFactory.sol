@@ -8,7 +8,7 @@ import {Create2} from "openzeppelin-contracts/utils/Create2.sol";
 import {DaveConsensus} from "./DaveConsensus.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
-import {Machine} from "prt-contracts/Machine.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
 
 /// @title Dave Consensus Factory
 /// @notice Allows anyone to reliably deploy a new `DaveConsensus` contract.

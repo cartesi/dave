@@ -12,8 +12,8 @@ artifact = "CmioStateTransition"
 create2 = true
 salt = "<%= zeroHash %>"
 
-[deploy.StateTransition]
-artifact = "StateTransition"
+[deploy.CartesiStateTransition]
+artifact = "CartesiStateTransition"
 args = [
     "<%= contracts.RiscVStateTransition.address %>",
     "<%= contracts.CmioStateTransition.address %>",
@@ -48,7 +48,7 @@ args = [
     "<%= contracts.MiddleTournamentFactory.address %>",
     "<%= contracts.BottomTournamentFactory.address %>",
     "<%= contracts.CanonicalTournamentParametersProvider.address %>",
-    "<%= contracts.StateTransition.address %>",
+    "<%= contracts.CartesiStateTransition.address %>",
 ]
 create2 = true
 salt = "<%= zeroHash %>"

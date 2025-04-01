@@ -11,8 +11,8 @@ import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournamentFactory.sol";
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
 import {InputBox} from "rollups-contracts/inputs/InputBox.sol";
-import {Machine} from "prt-contracts/Machine.sol";
-import {Tree} from "prt-contracts/Tree.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 contract MockTournamentFactory is ITournamentFactory {
     address tournamentAddress;
@@ -21,7 +21,7 @@ contract MockTournamentFactory is ITournamentFactory {
         tournamentAddress = _addr;
     }
 
-    function instantiate(Machine.Hash initialState, IDataProvider provider) external returns (ITournament) {
+    function instantiate(Machine.Hash, IDataProvider) external view returns (ITournament) {
         return ITournament(tournamentAddress);
     }
 }
@@ -95,7 +95,7 @@ contract DaveConsensusFactoryTest is Test {
             }
             if (entry.topics[0] == DaveConsensus.EpochSealed.selector) {
                 (
-                    uint256 epochNumber,
+                    ,
                     uint256 inputIndexLowerBound,
                     uint256 inputIndexUpperBound,
                     Machine.Hash initialMachineStateHash,
