@@ -9,12 +9,14 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import "prt-contracts/../test/constants/TestTournamentParametersProvider.sol";
 import "prt-contracts/state-transition/CmioStateTransition.sol";
 import "prt-contracts/state-transition/RiscVStateTransition.sol";
 import "prt-contracts/state-transition/CartesiStateTransition.sol";
 import "rollups-contracts/inputs/IInputBox.sol";
 import "src/DaveConsensus.sol";
 
+// Only used for tests
 contract DaveConsensusScript is Script {
     function run(Machine.Hash initialHash, IInputBox inputBox) external {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
@@ -23,7 +25,7 @@ contract DaveConsensusScript is Script {
             new TopTournamentFactory(),
             new MiddleTournamentFactory(),
             new BottomTournamentFactory(),
-            new CanonicalTournamentParametersProvider(),
+            new TestTournamentParametersProvider(),
             new CartesiStateTransition(new RiscVStateTransition(), new CmioStateTransition())
         );
 
