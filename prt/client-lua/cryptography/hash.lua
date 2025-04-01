@@ -1,19 +1,5 @@
 local keccak = require "cartesi".keccak
-
-local function hex_from_bin(bin)
-    assert(bin:len() == 32)
-    return "0x" .. (bin:gsub('.', function(c)
-        return string.format('%02x', string.byte(c))
-    end))
-end
-
-local function bin_from_hex(hex)
-    assert(hex:len() == 66, string.format("%s %d", hex, hex:len()))
-    local h = assert(hex:match("0x(%x+)"), hex)
-    return (h:gsub('..', function(cc)
-        return string.char(tonumber(cc, 16))
-    end))
-end
+local conversion = require "utils.conversion"
 
 local interned_hashes = {}
 local iterateds = {}
@@ -36,7 +22,7 @@ end
 
 function Hash:from_digest_hex(digest_hex)
     assert(type(digest_hex) == "string", digest_hex:len() == 66)
-    local digest = bin_from_hex(digest_hex)
+    local digest = conversion.bin_from_hex(digest_hex)
     return self:from_digest(digest)
 end
 
@@ -83,7 +69,7 @@ function Hash:iterated_merkle(level)
 end
 
 function Hash:hex_string()
-    return hex_from_bin(self.digest)
+    return conversion.hex_from_bin(self.digest)
 end
 
 Hash.__eq = function(x, y)
@@ -91,7 +77,7 @@ Hash.__eq = function(x, y)
 end
 
 Hash.__tostring = function(x)
-    return hex_from_bin(x.digest)
+    return conversion.hex_from_bin(x.digest)
 end
 
 local zero_bytes32 = "0x0000000000000000000000000000000000000000000000000000000000000000"

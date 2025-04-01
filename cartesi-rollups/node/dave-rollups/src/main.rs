@@ -1,4 +1,4 @@
-use cartesi_prt_core::arena::EthArenaSender;
+use cartesi_prt_core::tournament::EthArenaSender;
 use dave_rollups::{
     create_blockchain_reader_task, create_compute_runner_task, create_epoch_manager_task,
     create_machine_runner_task, DaveParameters,

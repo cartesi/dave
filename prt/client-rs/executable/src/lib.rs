@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use alloy::primitives::Address;
-use cartesi_prt_core::arena::BlockchainConfig;
+use cartesi_prt_core::tournament::BlockchainConfig;
 use clap::Parser;
 
 const ANVIL_ROOT_TOURNAMENT: &str = "0xa16E02E87b7454126E5E10d957A927A7F5B5d2be";

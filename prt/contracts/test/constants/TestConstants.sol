@@ -3,24 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "./tournament/libs/Time.sol";
+import "prt-contracts/tournament/libs/Time.sol";
 
-library ArbitrationConstants {
-    // maximum time for computing the commitments offchain
-    // should be root_tournament_slowdown * (direct final state execution time of the application)
-    // Time.Duration constant COMMITMENT_EFFORT =
-    //     Time.Duration.wrap(60 * 60 * 4); // TODO
-
-    // maximum tolerance time for participant being censored, relating to the blockchain loading
-    // should be constant
-    // Time.Duration constant CENSORSHIP_TOLERANCE =
-    //     Time.Duration.wrap(60 * 60 * 24 * 7);
-
-    // maximum time for interacting with a divergence search (match), relating to the height of the match
-    // should be constant
-    // Time.Duration constant MATCH_EFFORT =
-    //     Time.Duration.wrap(60 * 60); // TODO
-
+library TestArbitrationConstants {
     Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(60 * 60);
     Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(60 * 5);
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(60 * 2);

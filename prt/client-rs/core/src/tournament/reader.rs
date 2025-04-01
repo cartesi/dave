@@ -1,10 +1,9 @@
 //! This module defines the struct [StateReader] that is responsible for the reading the states
 //! of tournaments
 
-use std::collections::HashMap;
-
 use anyhow::Result;
 use async_recursion::async_recursion;
+use std::collections::HashMap;
 
 use alloy::{
     eips::BlockNumberOrTag::Latest,
@@ -14,14 +13,14 @@ use alloy::{
 use num_traits::cast::ToPrimitive;
 
 use crate::{
-    arena::{
-        arena::{
+    machine::constants,
+    tournament::{
+        config::BlockchainConfig,
+        tournament::{
             ClockState, CommitmentState, MatchID, MatchState, TournamentState, TournamentStateMap,
             TournamentWinner,
         },
-        config::BlockchainConfig,
     },
-    machine::constants,
 };
 use cartesi_dave_merkle::Digest;
 use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament, tournament};
@@ -80,7 +79,7 @@ impl StateReader {
                     .call()
                     .await?
                     ._0;
-                let base_big_cycle = (leaf_cycle >> constants::LOG2_UARCH_SPAN)
+                let base_big_cycle = (leaf_cycle >> constants::LOG2_UARCH_SPAN_TO_BARCH)
                     .to_u64()
                     .expect("fail to convert base big cycle");
 

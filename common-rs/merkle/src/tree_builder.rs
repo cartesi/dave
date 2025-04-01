@@ -20,15 +20,13 @@ pub struct MerkleBuilder {
 impl MerkleBuilder {
     /// Returns the height of the leaf trees, or none if there are no leafs added.
     pub fn height(&self) -> Option<u32> {
-        self.trees.last().and_then(|last| Some(last.tree.height()))
+        self.trees.last().map(|last| last.tree.height())
     }
 
     /// Returns the number of leafs (with repetition) in the builder, or none if there are no
     /// leafs. Zero means 2^256 leafs.
     pub fn count(&self) -> Option<U256> {
-        self.trees
-            .last()
-            .and_then(|last| Some(last.accumulated_count))
+        self.trees.last().map(|last| last.accumulated_count)
     }
 
     /// Returns whether the builder has a balanced (i.e. power of two) number of leaves.
@@ -78,7 +76,7 @@ impl MerkleBuilder {
         );
 
         let log2_size = count.trailing_zeros();
-        self.build_merkle(self.trees.as_slice(), log2_size, U256::ZERO)
+        MerkleBuilder::build_merkle(self.trees.as_slice(), log2_size, U256::ZERO)
     }
 }
 
@@ -96,7 +94,7 @@ impl MerkleBuilder {
         }
     }
 
-    fn build_merkle(&self, trees: &[Node], log2_size: usize, stride: U256) -> Arc<MerkleTree> {
+    fn build_merkle(trees: &[Node], log2_size: usize, stride: U256) -> Arc<MerkleTree> {
         let one = U256::from(1);
         let size = one.wrapping_shl(log2_size);
 
@@ -112,12 +110,12 @@ impl MerkleBuilder {
             return iterated;
         }
 
-        let left = self.build_merkle(
+        let left = MerkleBuilder::build_merkle(
             &trees[first_cell..(last_cell + 1)],
             log2_size - 1,
             stride << 1,
         );
-        let right = self.build_merkle(
+        let right = MerkleBuilder::build_merkle(
             &trees[first_cell..(last_cell + 1)],
             log2_size - 1,
             (stride << 1) + one,

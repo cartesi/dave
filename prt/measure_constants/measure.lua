@@ -21,13 +21,13 @@ local inner_tournament_timeout = 5
 
 -- Log2 of the number of micro-instructions to emulate a big instruction.
 -- Must match the configured emulator/metastep
-local log2_uarch_span = 20
+local log2_uarch_span_to_barch = 20
 
 -- Log2 of maximum mcycle value
-local log2_emulator_span = 48
+local log2_barch_span_to_input = 48
 
 -- Log2 of maximum inputs per echo
-local log2_input_span = 24
+local log2_input_span_to_epoch = 24
 
 -- Big Machine increment roughly 2^26 big instructions per second
 local default_log2_big_machine_span = 26
@@ -117,7 +117,7 @@ local function run_uarch_until_timeout()
 
     start_timer()
     for _ = 1, iterations do
-      local status = machine:run_uarch(1 << log2_uarch_span)
+      local status = machine:run_uarch(1 << log2_uarch_span_to_barch)
       assert(status == halted, "error: uarch not halted")
       machine:reset_uarch()
     end
@@ -161,7 +161,7 @@ end
 
 
 local function run_big_machine_until_timeout(log2_stride)
-  local snapshot_frequency = 1 << (log2_stride - log2_uarch_span)
+  local snapshot_frequency = 1 << (log2_stride - log2_uarch_span_to_barch)
   -- we pick the smaller value from (snapshot_frequency, default_big_machine_span)
   -- to increment the machine, so we don't overshoot the timeout too much but also run fast
   local big_machine_span = math.min(snapshot_frequency, default_big_machine_span)
@@ -238,7 +238,7 @@ print(string.format("Average ucycles to run a big instruction: %d", uinstruction
 print(string.format("leaf slowdown: %.1f", uslowdown / 10))
 
 levels = 1
-local leaf_height = log2_iterations + log2_uarch_span
+local leaf_height = log2_iterations + log2_uarch_span_to_barch
 table.insert(log2_strides, 1, 0)
 table.insert(heights, 1, leaf_height)
 output_results()
@@ -257,7 +257,8 @@ repeat
     output_results()
     print "CONTINUE\n"
   else
-    table.insert(heights, 1, log2_input_span + log2_emulator_span + log2_uarch_span - log2_strides[1])
+    table.insert(heights, 1,
+      log2_input_span_to_epoch + log2_barch_span_to_input + log2_uarch_span_to_barch - log2_strides[1])
     output_results()
     print "FINISHED\n"
     return

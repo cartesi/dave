@@ -1,5 +1,5 @@
 use cartesi_prt_compute::ComputeConfig;
-use cartesi_prt_core::{arena::EthArenaSender, strategy::player::Player};
+use cartesi_prt_core::{strategy::player::Player, tournament::EthArenaSender};
 
 use anyhow::Result;
 use clap::Parser;

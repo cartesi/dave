@@ -73,13 +73,16 @@ Choose the setup that best fits your workflow.
 
 **Dependencies:**
 
+- git
 - Docker
+- pnpm
 - just
-- make
+- GNU make
+- [foundry](https://github.com/foundry-rs/foundry)
 
 **Setup Steps:**
 
-1. **Clone the Repository:**  
+1. **Clone the Repository:**
    Ensure you have cloned the repository to your local machine.
 
 2. **Initialize the Docker Environment:**
@@ -102,6 +105,9 @@ If you prefer running Dave natively on your machine, you'll need additional depe
 
 - A C++ compiler
 - A local installation of the Cartesi machine
+- Lua 5.4
+- Rust
+- [`xgenext2fs`](https://github.com/cartesi/genext2fs)
 
 **Setup Steps:**
 

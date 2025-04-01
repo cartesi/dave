@@ -1,12 +1,12 @@
 //! This module defines the struct [EthArenaSender] that is responsible for the sending transactions
 //! to tournaments
 
+use anyhow::Result;
 use async_trait::async_trait;
 use log::trace;
 use std::str::FromStr;
 
 use alloy::{
-    contract::Error as ContractError,
     network::{Ethereum, EthereumWallet, NetworkWallet},
     providers::{DynProvider, Provider, ProviderBuilder},
     signers::local::PrivateKeySigner,
@@ -15,14 +15,12 @@ use alloy::{
 };
 
 use crate::{
-    arena::{arena::MatchID, config::BlockchainConfig},
     machine::MachineProof,
+    tournament::{config::BlockchainConfig, tournament::MatchID},
 };
 use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
 use cartesi_dave_merkle::{Digest, MerkleProof};
 use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
-
-type Result<T> = std::result::Result<T, ContractError>;
 
 #[derive(Clone)]
 pub struct EthArenaSender {
