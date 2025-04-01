@@ -12,7 +12,10 @@ build-smart-contracts:
 
 test:
     forge test --no-match-contract ".*FfiTest"
-    forge test --match-contract ".*FfiTest" --ffi
+    forge test --match-contract ".*FfiTest" --no-match-test ".*Fuzzy" --ffi
+
+test-fuzzy:
+    forge test --match-contract ".*FfiTest" --match-test ".*Fuzzy" --ffi
 
 clean-smart-contracts:
     forge clean
