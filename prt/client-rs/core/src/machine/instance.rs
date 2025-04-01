@@ -55,7 +55,6 @@ pub type MachineProof = Vec<u8>;
 
 pub struct MachineInstance {
     machine: Machine,
-    path: PathBuf,
     start_cycle: u64,
     input_count: u64,
     cycle: u64,
@@ -75,7 +74,6 @@ impl MachineInstance {
 
         Ok(MachineInstance {
             machine,
-            path,
             start_cycle,
             input_count: 0,
             cycle: 0,

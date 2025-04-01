@@ -10,7 +10,7 @@ use crate::{
 };
 
 use alloy::primitives::U256;
-use log::{info, trace};
+use log::trace;
 use std::collections::{hash_map::Entry, HashMap};
 
 pub struct CachingMachineCommitmentBuilder {
