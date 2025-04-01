@@ -118,11 +118,11 @@ contract StateTransitionFfiTest is Util, Test {
         assertEq(result, next);
     }
 
-    function testTransitionNoInputs(uint256 counter) public {
+    function testTransitionNoInputsFuzzy(uint256 counter) public {
         assertStf(counter, 0);
     }
 
-    function testTransitionWithInputs(uint256 counter) public {
+    function testTransitionWithInputsFuzzy(uint256 counter) public {
         assertStf(counter, 37);
     }
 
