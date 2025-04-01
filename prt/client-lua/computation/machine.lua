@@ -80,9 +80,9 @@ end
 
 local function advance_rollup(self, meta_cycle, inputs)
     assert(self:is_yielded())
-    local input_count = (meta_cycle >> consts.log2_input_span_from_uarch):tointeger()
+    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
     local cycle = (meta_cycle >> consts.log2_uarch_span_to_barch):tointeger()
-    local ucycle = (meta_cycle & consts.uarch_span):tointeger()
+    local ucycle = (meta_cycle & consts.uarch_span_to_barch):tointeger()
 
     while self.input_count < input_count do
         local input = inputs[self.input_count + 1]
@@ -119,7 +119,7 @@ local function advance_rollup(self, meta_cycle, inputs)
 end
 
 function Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
-    local input_count = (meta_cycle >> consts.log2_input_span_from_uarch):tointeger()
+    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
     assert(arithmetic.ulte(input_count, consts.input_span_to_epoch))
 
     local machine = Machine:new_from_path(path)
@@ -239,11 +239,11 @@ local function encode_da(input_bin)
 end
 
 local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
-    local input_mask = (uint256.one() << consts.log2_input_span_from_uarch) - 1
+    local input_mask = (uint256.one() << consts.log2_uarch_span_to_input) - 1
     local big_step_mask = arithmetic.max_uint(consts.log2_uarch_span_to_barch)
 
-    assert(((meta_cycle >> consts.log2_input_span_from_uarch) & (~input_mask)):iszero())
-    local input_count = (meta_cycle >> consts.log2_input_span_from_uarch):tointeger()
+    assert(((meta_cycle >> consts.log2_uarch_span_to_input) & (~input_mask)):iszero())
+    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
 
     local logs = {}
 

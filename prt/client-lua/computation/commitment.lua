@@ -32,7 +32,7 @@ local function run_uarch_span(machine)
     until machine_state.uhalted
 
     -- Add all remaining fixed-point states, filling the tree up to the last leaf.
-    builder:add(machine_state.root_hash, consts.uarch_span - i)
+    builder:add(machine_state.root_hash, consts.uarch_span_to_barch - i)
 
     -- At this point, we've added `2^a - 1` hashes to the inner merkle builder.
     -- Note that these states range from "meta" ucycle `1` to `2^a - 1`.
