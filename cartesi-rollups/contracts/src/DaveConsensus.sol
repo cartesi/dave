@@ -3,6 +3,10 @@
 
 pragma solidity ^0.8.8;
 
+import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
+import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.sol";
+
+import {IOutputsMerkleRootValidator} from "rollups-contracts/consensus/IOutputsMerkleRootValidator.sol";
 import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
@@ -36,7 +40,7 @@ import {Merkle} from "./Merkle.sol";
 /// the accumlating epoch will be sealed, and a new
 /// accumulating epoch will be created.
 ///
-contract DaveConsensus is IDataProvider {
+contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     using Merkle for bytes;
 
     /// @notice The input box contract
@@ -184,5 +188,21 @@ contract DaveConsensus is IDataProvider {
 
         uint256 log2SizeOfDrive = input.getMinLog2SizeOfDrive();
         return input.getMerkleRootFromBytes(log2SizeOfDrive);
+    }
+
+    /// @inheritdoc IOutputsMerkleRootValidator
+    function isOutputsMerkleRootValid(address appContract, bytes32 outputsMerkleRoot)
+        public
+        view
+        override
+        returns (bool)
+    {
+        require(false, "unimplemented");
+    }
+
+    /// @inheritdoc ERC165
+    function supportsInterface(bytes4 interfaceId) public view override(IERC165, ERC165) returns (bool) {
+        return interfaceId == type(IDataProvider).interfaceId
+            || interfaceId == type(IOutputsMerkleRootValidator).interfaceId || super.supportsInterface(interfaceId);
     }
 }

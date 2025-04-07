@@ -2,6 +2,10 @@
 cache/
 out/
 
+
+# soldeer
+/dependencies
+
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
