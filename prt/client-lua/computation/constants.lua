@@ -8,6 +8,8 @@ local log2_barch_span_to_input = 48
 local log2_input_span_to_epoch = 24
 -- log2 value of the maximal number of micro instructions that executes an input
 local log2_uarch_span_to_input = log2_uarch_span_to_barch + log2_barch_span_to_input
+-- log2 value of the maximal number of meta instructions
+local log2_uarch_span_to_epoch = log2_input_span_to_epoch + log2_barch_span_to_input + log2_uarch_span_to_barch
 
 local constants = {
     log2_uarch_span_to_barch = log2_uarch_span_to_barch,
@@ -19,7 +21,8 @@ local constants = {
     log2_input_span_to_epoch = log2_input_span_to_epoch,
     input_span_to_epoch = arithmetic.max_uint(log2_input_span_to_epoch),
 
-    log2_uarch_span_to_input = log2_uarch_span_to_input
+    log2_uarch_span_to_input = log2_uarch_span_to_input,
+    log2_uarch_span_to_epoch = log2_uarch_span_to_epoch
 }
 
 return constants

@@ -57,7 +57,7 @@ function Machine:new_from_path(path)
     assert(machine:read_reg("uarch_cycle") == 0)
 
     local b = {
-        path = path,
+        -- path = path,
         machine = machine,
         input_count = 0,
         cycle = 0,

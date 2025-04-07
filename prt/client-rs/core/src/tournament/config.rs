@@ -29,7 +29,7 @@ pub struct BlockchainConfig {
 #[derive(Args, Debug, Clone)]
 #[group()]
 pub struct AWSConfig {
-    /// aws kms key id
+    /// aws kms key id (optional)
     #[arg(long, env)]
     pub aws_kms_key_id: Option<String>,
     /// aws endpoint url

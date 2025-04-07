@@ -116,10 +116,7 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
     end
 
     if log2_stride >= consts.log2_uarch_span_to_barch then
-        assert(
-            log2_stride + log2_stride_count <=
-            consts.log2_input_span_to_epoch + consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch
-        )
+        assert(log2_stride + log2_stride_count <= consts.log2_uarch_span_to_epoch)
         return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state)
     else
         assert(log2_stride == 0)
