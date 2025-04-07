@@ -6,6 +6,13 @@ checksum = "6dbd0440446b2ed16ca25e9f1af08fc0c5c1e73e71fee86ae8a00daa774e3817"
 integrity = "4cb7f3777f67fdf4b7d0e2f94d2f93f198b2e5dce718b7062ac7c2c83e1183bd"
 
 [[dependencies]]
+name = "cartesi-rollups-contracts"
+version = "2.0.0-rc.17"
+url = "https://soldeer-revisions.s3.amazonaws.com/cartesi-rollups-contracts/2_0_0-rc_17_28-03-2025_19:26:24_rollups-contracts.zip"
+checksum = "72fed984d9d6464041fe038f9740c2ddb7eb478fc3959f050a0605e8d346fe08"
+integrity = "6f9cdd1a1eedafe1d71e767492bbad9f6aaf5eec73b3bdd919152b6b65a6aa72"
+
+[[dependencies]]
 name = "forge-std"
 version = "1.9.6"
 url = "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_9_6_01-02-2025_20:49:10_forge-std-1.9.zip"

@@ -5,13 +5,14 @@ import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 
+import {IInputBox} from "cartesi-rollups-contracts/inputs/IInputBox.sol";
+import {InputBox} from "cartesi-rollups-contracts/inputs/InputBox.sol";
+
 import {DaveConsensusFactory} from "src/DaveConsensusFactory.sol";
 import {DaveConsensus} from "src/DaveConsensus.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournamentFactory.sol";
-import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
-import {InputBox} from "rollups-contracts/inputs/InputBox.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 

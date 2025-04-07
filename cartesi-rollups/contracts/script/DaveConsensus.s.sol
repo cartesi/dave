@@ -12,7 +12,7 @@ import "prt-contracts/../test/constants/TestTournamentParametersProvider.sol";
 import "prt-contracts/state-transition/CmioStateTransition.sol";
 import "prt-contracts/state-transition/RiscVStateTransition.sol";
 import "prt-contracts/state-transition/CartesiStateTransition.sol";
-import "rollups-contracts/inputs/IInputBox.sol";
+import "cartesi-rollups-contracts/inputs/IInputBox.sol";
 import "src/DaveConsensus.sol";
 
 // Only used for tests

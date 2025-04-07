@@ -7,9 +7,6 @@
 [submodule "machine/emulator"]
 	path = machine/emulator
 	url = https://github.com/cartesi/machine-emulator
-[submodule "cartesi-rollups/contracts/lib/rollups-contracts"]
-	path = cartesi-rollups/contracts/lib/rollups-contracts
-	url = https://github.com/cartesi/rollups-contracts
 [submodule "test/programs/honeypot/honeypot"]
 	path = test/programs/honeypot/honeypot
 	url = https://github.com/cartesi/honeypot
