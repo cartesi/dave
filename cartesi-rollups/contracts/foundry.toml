@@ -6,7 +6,7 @@ via_ir = true
 
 remappings = [
     'openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/',
-    'rollups-contracts/=lib/rollups-contracts/contracts/',
+    'rollups-contracts/=lib/rollups-contracts/src/',
     'prt-contracts/=../../prt/contracts/src/',
     'step/=../../machine/step/',
 ]
