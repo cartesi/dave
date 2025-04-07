@@ -10,6 +10,7 @@ import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 
 import {IInputBox} from "cartesi-rollups-contracts/inputs/IInputBox.sol";
 import {InputBox} from "cartesi-rollups-contracts/inputs/InputBox.sol";
+import {LibMerkle32} from "cartesi-rollups-contracts/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
@@ -108,10 +109,37 @@ contract MockTournamentFactory is ITournamentFactory {
     }
 }
 
+contract LibMerkle32Wrapper {
+    function merkleRootAfterReplacement(bytes32[] calldata sibs, uint256 index, bytes32 leaf)
+        external
+        pure
+        returns (bytes32)
+    {
+        return LibMerkle32.merkleRootAfterReplacement(sibs, index, leaf);
+    }
+}
+
 contract DaveConsensusTest is Test {
     IInputBox _inputBox;
     MockTournamentFactory _mockTournamentFactory;
     MerkleProxy _merkleProxy;
+
+    function statesAndProofs(uint256 value) private returns (Machine.Hash, bytes32[] memory, bytes32) {
+        uint256 iterations = 64 - 5;
+        bytes32[] memory siblings = new bytes32[](iterations);
+
+        bytes32 leaf = keccak256(abi.encode(bytes32(value)));
+        bytes32 current = leaf;
+        for (uint256 i = 0; i < iterations; i++) {
+            siblings[i] = current;
+            current = keccak256(abi.encodePacked(current, current));
+        }
+
+        bytes32 root = new LibMerkle32Wrapper().merkleRootAfterReplacement(siblings, 0, leaf);
+        assertEq(current, root);
+
+        return (Machine.Hash.wrap(current), siblings, bytes32(value));
+    }
 
     function setUp() external {
         _inputBox = new InputBox();
@@ -130,7 +158,7 @@ contract DaveConsensusTest is Test {
 
     function testConstructorAndSettle(
         address appContract,
-        Machine.Hash[3] calldata states,
+        uint256[3] calldata states,
         uint256[2] memory inputCounts,
         bytes32[3] calldata salts,
         Tree.Node[2] calldata winnerCommitments
@@ -141,19 +169,20 @@ contract DaveConsensusTest is Test {
 
         _addInputs(appContract, inputCounts[0]);
 
-        address daveConsensusAddress = _calculateNewDaveConsensus(appContract, states[0], salts[0]);
+        (Machine.Hash state0,,) = statesAndProofs(states[0]);
+        address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
         _mockTournamentFactory.setSalt(salts[1]);
         address mockTournamentAddress =
-            _mockTournamentFactory.calculateTournamentAddress(states[0], IDataProvider(daveConsensusAddress));
+            _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
 
         vm.expectEmit(daveConsensusAddress);
         emit DaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
 
         vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.EpochSealed(0, 0, inputCounts[0], states[0], ITournament(mockTournamentAddress));
+        emit DaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, ITournament(mockTournamentAddress));
 
-        DaveConsensus daveConsensus = _newDaveConsensus(appContract, states[0], salts[0]);
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
 
         assertEq(address(daveConsensus), daveConsensusAddress);
         assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
@@ -190,7 +219,7 @@ contract DaveConsensusTest is Test {
 
         MockTournament mockTournament = MockTournament(mockTournamentAddress);
 
-        assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(states[0]));
+        assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state0));
         assertEq(address(mockTournament.getProvider()), address(daveConsensus));
 
         {
@@ -199,7 +228,8 @@ contract DaveConsensusTest is Test {
             assertFalse(isFinished);
         }
 
-        mockTournament.finish(winnerCommitments[0], states[1]);
+        (Machine.Hash state1, bytes32[] memory proof1, bytes32 leaf1) = statesAndProofs(states[1]);
+        mockTournament.finish(winnerCommitments[0], state1);
 
         {
             bool isFinished;
@@ -210,7 +240,7 @@ contract DaveConsensusTest is Test {
 
             assertTrue(isFinished);
             assertEq(Tree.Node.unwrap(winnerCommitmentTmp), Tree.Node.unwrap(winnerCommitments[0]));
-            assertEq(Machine.Hash.unwrap(finalStateTmp), Machine.Hash.unwrap(states[1]));
+            assertEq(Machine.Hash.unwrap(finalStateTmp), Machine.Hash.unwrap(state1));
         }
 
         {
@@ -229,14 +259,14 @@ contract DaveConsensusTest is Test {
 
         _mockTournamentFactory.setSalt(salts[2]);
         mockTournamentAddress =
-            _mockTournamentFactory.calculateTournamentAddress(states[1], IDataProvider(daveConsensusAddress));
+            _mockTournamentFactory.calculateTournamentAddress(state1, IDataProvider(daveConsensusAddress));
 
         vm.expectEmit(daveConsensusAddress);
         emit DaveConsensus.EpochSealed(
-            1, inputCounts[0], inputCounts[0] + inputCounts[1], states[1], ITournament(mockTournamentAddress)
+            1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, ITournament(mockTournamentAddress)
         );
 
-        daveConsensus.settle(0);
+        daveConsensus.settle(0, leaf1, proof1);
 
         {
             bool isFinished;
@@ -269,7 +299,7 @@ contract DaveConsensusTest is Test {
 
         mockTournament = MockTournament(mockTournamentAddress);
 
-        assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(states[1]));
+        assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state1));
         assertEq(address(mockTournament.getProvider()), address(daveConsensus));
 
         {
@@ -278,7 +308,8 @@ contract DaveConsensusTest is Test {
             assertFalse(isFinished);
         }
 
-        mockTournament.finish(winnerCommitments[1], states[2]);
+        (Machine.Hash state2,,) = statesAndProofs(states[2]);
+        mockTournament.finish(winnerCommitments[1], state2);
 
         {
             bool isFinished;
@@ -289,7 +320,7 @@ contract DaveConsensusTest is Test {
 
             assertTrue(isFinished);
             assertEq(Tree.Node.unwrap(winnerCommitmentTmp), Tree.Node.unwrap(winnerCommitments[1]));
-            assertEq(Machine.Hash.unwrap(finalStateTmp), Machine.Hash.unwrap(states[2]));
+            assertEq(Machine.Hash.unwrap(finalStateTmp), Machine.Hash.unwrap(state2));
         }
     }
 
@@ -315,10 +346,10 @@ contract DaveConsensusTest is Test {
         _addInputs(appContract, inputCounts[1]);
 
         vm.expectRevert(abi.encodeWithSelector(DaveConsensus.IncorrectEpochNumber.selector, wrongEpochNumber, 0));
-        daveConsensus.settle(wrongEpochNumber);
+        daveConsensus.settle(wrongEpochNumber, bytes32(0), new bytes32[](0));
 
         vm.expectRevert(DaveConsensus.TournamentNotFinishedYet.selector);
-        daveConsensus.settle(0);
+        daveConsensus.settle(0, bytes32(0), new bytes32[](0));
     }
 
     function testProvideMerkleRootOfInput(
