@@ -1,4 +1,13 @@
 services:
+  dave:
+    image: dave:dev
+    container_name: dave-node
+    command: ["just", "-f", "./prt/tests/rollups/justfile", "test-echo"]
+    environment:
+      ANVIL_IP_ADDR: 0.0.0.0
+    ports:
+      - 8545:8545
+
   sourcify:
     image: sourcify:devel
     ports:
@@ -9,14 +18,17 @@ services:
       NODE_CONFIG_ENV: "devel"
     volumes:
       - sourcify-data:/tmp/sourcify/repository
+    depends_on:
+      dave:
+        condition: service_started
 
   otterscan:
     image: otterscan/otterscan:v2.8.0
+    container_name: otterscan
     ports:
       - 5100:80
-    container_name: otterscan
     environment:
-      - 'OTTERSCAN_CONFIG={"erigonURL": "http://0.0.0.0:8545",
+      - 'OTTERSCAN_CONFIG={"erigonURL": "http://localhost:8545",
         "experimental": false, "branding": {
         "siteName": "Dave Otterscan", "networkTitle": "Dev Network" },
         "sourcify": {
@@ -29,5 +41,9 @@ services:
         "url": "https://repo.sourcify.dev",
         "backendFormat": "RepositoryV1"
         }}}}'
+    depends_on:
+      dave:
+        condition: service_started
+
 volumes:
   sourcify-data:
