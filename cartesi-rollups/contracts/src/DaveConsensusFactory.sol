@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.8;
 
-import {Create2} from "openzeppelin-contracts/utils/Create2.sol";
+import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 
 import {DaveConsensus} from "./DaveConsensus.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";

@@ -1,8 +1,9 @@
 pragma solidity ^0.8.22;
 
-import {Vm} from "forge-std/Vm.sol";
-import {Test} from "forge-std/Test.sol";
-import {Create2} from "openzeppelin-contracts/utils/Create2.sol";
+import {Vm} from "forge-std-1.9.6/src/Vm.sol";
+import {Test} from "forge-std-1.9.6/src/Test.sol";
+
+import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 
 import {DaveConsensusFactory} from "src/DaveConsensusFactory.sol";
 import {DaveConsensus} from "src/DaveConsensus.sol";
