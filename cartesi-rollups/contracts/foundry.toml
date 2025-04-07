@@ -1,12 +1,14 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["lib", "dependencies", "../../prt/contracts", "../../machine/step"]
+libs = ["dependencies", "../../prt/contracts", "../../machine/step"]
 via_ir = true
 
 remappings = [
-    'openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/',
-    'rollups-contracts/=lib/rollups-contracts/src/',
+    '@openzeppelin-contracts-5.2.0/=dependencies/@openzeppelin-contracts-5.2.0/',
+    'forge-std-1.9.6/=dependencies/forge-std-1.9.6/',
+    'cartesi-rollups-contracts/=dependencies/cartesi-rollups-contracts-2.0.0-rc.17/src/',
+
     'prt-contracts/=../../prt/contracts/src/',
     'step/=../../machine/step/',
 ]
@@ -16,3 +18,4 @@ solc-version = "0.8.27"
 [dependencies]
 "@openzeppelin-contracts" = "5.2.0"
 forge-std = "1.9.6"
+cartesi-rollups-contracts = "2.0.0-rc.17"

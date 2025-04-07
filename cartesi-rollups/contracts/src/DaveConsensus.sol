@@ -6,8 +6,8 @@ pragma solidity ^0.8.8;
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.sol";
 
-import {IOutputsMerkleRootValidator} from "rollups-contracts/consensus/IOutputsMerkleRootValidator.sol";
-import {IInputBox} from "rollups-contracts/inputs/IInputBox.sol";
+import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts/consensus/IOutputsMerkleRootValidator.sol";
+import {IInputBox} from "cartesi-rollups-contracts/inputs/IInputBox.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
