@@ -8,6 +8,7 @@ import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.s
 
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts/consensus/IOutputsMerkleRootValidator.sol";
 import {IInputBox} from "cartesi-rollups-contracts/inputs/IInputBox.sol";
+import {LibMerkle32} from "cartesi-rollups-contracts/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
@@ -15,6 +16,8 @@ import {ITournament} from "prt-contracts/ITournament.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
+
+import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 
 import {Merkle} from "./Merkle.sol";
 
@@ -42,6 +45,7 @@ import {Merkle} from "./Merkle.sol";
 ///
 contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     using Merkle for bytes;
+    using LibMerkle32 for bytes32[];
 
     /// @notice The input box contract
     IInputBox immutable _inputBox;
@@ -63,6 +67,9 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
 
     /// @notice Current sealed epoch tournament
     ITournament _tournament;
+
+    /// @notice Settled output trees' merkle root hash
+    mapping(bytes32 => bool) _outputsMerkleRoots;
 
     /// @notice Consensus contract was created
     /// @param inputBox the input box contract
@@ -97,6 +104,23 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     /// @param fromInputBox Hash of input stored on the input box contract
     error InputHashMismatch(bytes32 fromReceivedInput, bytes32 fromInputBox);
 
+    /// @notice Hash of received input blob is different from stored on-chain
+    /// @param fromReceivedInput Hash of received input blob
+    /// @param fromInputBox Hash of input stored on the input box contract
+
+    /// @notice Supplied output tree proof not consistent with settled machine hash
+    /// @param settledState Settled machine state hash
+    error OutputTreeInvalidProof(Machine.Hash settledState);
+
+    /// @notice Supplied output tree proof size is incorrect
+    /// @param suppliedProofSize Supplied proof size
+    error OutputTreeProofWrongSize(uint256 suppliedProofSize);
+
+    /// @notice Application address does not match
+    /// @param expected Expected application address
+    /// @param received Received application address
+    error ApplicationMismatch(address expected, address received);
+
     constructor(
         IInputBox inputBox,
         address appContract,
@@ -122,7 +146,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         epochNumber = _epochNumber;
     }
 
-    function settle(uint256 epochNumber) external {
+    function settle(uint256 epochNumber, bytes32 outputTreeHash, bytes32[] calldata proof) external {
         // Check tournament settlement
         uint256 actualEpochNumber = _epochNumber;
         require(epochNumber == actualEpochNumber, IncorrectEpochNumber(epochNumber, actualEpochNumber));
@@ -137,6 +161,18 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         _inputIndexUpperBound = inputIndexUpperBound;
         ITournament tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
         _tournament = tournament;
+
+        // Extract and save settled output tree
+        {
+            require(proof.length == 59, OutputTreeProofWrongSize(proof.length));
+            bytes32 machineStateHash = Machine.Hash.unwrap(finalMachineStateHash);
+            bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
+                EmulatorConstants.PMA_CMIO_TX_BUFFER_START, keccak256(abi.encode(outputTreeHash))
+            );
+            require(machineStateHash == allegedStateHash, OutputTreeInvalidProof(finalMachineStateHash));
+        }
+        _outputsMerkleRoots[outputTreeHash] = true;
+
         emit EpochSealed(epochNumber, inputIndexLowerBound, inputIndexUpperBound, finalMachineStateHash, tournament);
     }
 
@@ -197,7 +233,8 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         override
         returns (bool)
     {
-        require(false, "unimplemented");
+        require(_appContract == appContract, ApplicationMismatch(_appContract, appContract));
+        return _outputsMerkleRoots[outputsMerkleRoot];
     }
 
     /// @inheritdoc ERC165
