@@ -18,6 +18,7 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
+import {Memory} from "step/src/Memory.sol";
 
 import {Merkle} from "./Merkle.sol";
 
@@ -164,7 +165,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
 
         // Extract and save settled output tree
         {
-            require(proof.length == 59, OutputTreeProofWrongSize(proof.length));
+            require(proof.length == Memory.LOG2_MAX_SIZE, OutputTreeProofWrongSize(proof.length));
             bytes32 machineStateHash = Machine.Hash.unwrap(finalMachineStateHash);
             bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
                 EmulatorConstants.PMA_CMIO_TX_BUFFER_START, keccak256(abi.encode(outputTreeHash))
