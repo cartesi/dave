@@ -5,6 +5,7 @@ out/
 
 # soldeer
 /dependencies
+remappings.txt
 
 # Ignores development broadcast logs
 !/broadcast
