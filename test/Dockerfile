@@ -45,10 +45,7 @@ COPY --from=tools /usr/local/cargo/bin/  /usr/local/bin/
 
 WORKDIR /dave
 
-ENV ANVIL_IP_ADDR="0.0.0.0"
-EXPOSE 8545
 # download linux.bin and rootfs.ext2
-
 COPY test/programs/ test/programs/
 RUN just -f test/programs/justfile download-deps
 

@@ -3,15 +3,7 @@
 
 # Visualization [WIP]
 
-Currently you can run a block explorer (otterscan + sourcify) to check what is going on when dave is simulating its Tournament, but first, you should run Dave in a docker container by executing the following command in the root folder (i.e. /dave)
-
-```
-just run-dockered just test-rollups-echo
-```
-
-## Block Explorer (Anvil Devnet)
-
-After running the above required steps you can open a new shell and inside this folder we have a [justfile](./justfile) to simplify the process to get it up-and-running.
+To be able to run the visualization assuming you are under `/visualization` we have a [justfile](./justfile) to simplify the process to get it up-and-running.
 
 You can execute the following
 
@@ -20,11 +12,11 @@ just up
 ```
 
 > [!NOTE]  
-> This will take care of setting configurations, building a sourcify docker-image and start both otterscan and sourcify using docker.
+> This will take care of setting configurations, building a dave and sourcify docker-images, also starting both built images + an otterscan(block explorer) instance.
 
 **You can access Otterscan on http://localhost:5100**.
 
-If Dave is already running and simulating its tournament you can verify a few contracts so it becomes a bit more friendly to the reader.
+By the logs you will notice Dave is already running and simulating its tournament, therefore you can verify a few contracts so it becomes a bit more friendly to the reader in case of accessing otterscan.
 
 Execute the following command.
 
@@ -39,4 +31,3 @@ Execute the following command.
 
 - Indexer
 - User interface to present what is going on during the PRT events.
-- Include the dave-node as an service in the docker-compose. (DX)
