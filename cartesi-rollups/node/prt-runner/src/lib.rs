@@ -45,7 +45,7 @@ where
             if let Some(last_sealed_epoch) = self.state_manager.last_sealed_epoch()? {
                 match self
                     .state_manager
-                    .computation_hash(last_sealed_epoch.epoch_number)?
+                    .settlement_info(last_sealed_epoch.epoch_number)?
                 {
                     Some(_) => {
                         if let Some(snapshot) = self
