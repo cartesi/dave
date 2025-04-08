@@ -6,8 +6,47 @@ pub mod persistent_state_access;
 pub(crate) mod sql;
 
 use std::error::Error;
-
 pub type Blob = Vec<u8>;
+
+#[derive(Debug, PartialEq)]
+pub struct Proof(Vec<[u8; 32]>);
+impl From<Vec<u8>> for Proof {
+    fn from(input: Vec<u8>) -> Self {
+        // Ensure the length is a multiple of 32
+        assert!(
+            input.len() % 32 == 0,
+            "Input length must be a multiple of 32"
+        );
+
+        let mut result = Vec::new();
+
+        for chunk in input.chunks(32) {
+            let mut array = [0u8; 32];
+            array.copy_from_slice(chunk);
+            result.push(array);
+        }
+
+        Proof(result)
+    }
+}
+
+impl Proof {
+    pub fn new(siblings: Vec<[u8; 32]>) -> Self {
+        Self(siblings)
+    }
+
+    pub fn inner(&self) -> Vec<[u8; 32]> {
+        self.0.clone()
+    }
+
+    fn flatten(&self) -> Vec<u8> {
+        self.0
+            .iter()
+            .flat_map(|array| array.iter())
+            .copied()
+            .collect()
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct InputId {
@@ -104,10 +143,15 @@ pub trait StateManager {
         state_hash_index_in_epoch: u64,
     ) -> Result<(Vec<u8>, u64), Self::Error>;
     fn machine_state_hashes(&self, epoch_number: u64) -> Result<Vec<(Vec<u8>, u64)>, Self::Error>;
-    fn computation_hash(&self, epoch_number: u64) -> Result<Option<Vec<u8>>, Self::Error>;
-    fn add_computation_hash(
+    fn settlement_info(
+        &self,
+        epoch_number: u64,
+    ) -> Result<Option<(Vec<u8>, Vec<u8>, Proof)>, Self::Error>;
+    fn add_settlement_info(
         &self,
         computation_hash: &[u8],
+        output_merkle: &[u8],
+        output_proof: &Proof,
         epoch_number: u64,
     ) -> Result<(), Self::Error>;
     fn add_snapshot(

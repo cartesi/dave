@@ -1,11 +1,15 @@
-use alloy::{hex::ToHexExt, primitives::Address, providers::DynProvider};
+use alloy::{
+    hex::ToHexExt,
+    primitives::{Address, B256},
+    providers::DynProvider,
+};
 use anyhow::Result;
 use log::{error, info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{sync::Arc, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus;
-use rollups_state_manager::StateManager;
+use rollups_state_manager::{Proof, StateManager};
 
 pub struct EpochManager<SM: StateManager> {
     client: DynProvider,
@@ -38,13 +42,13 @@ where
             let can_settle = dave_consensus.canSettle().call().await?;
 
             if can_settle.isFinished {
-                match self.state_manager.computation_hash(
+                match self.state_manager.settlement_info(
                     can_settle
                         .epochNumber
                         .to_u64()
                         .expect("fail to convert epoch number to u64"),
                 )? {
-                    Some(computation_hash) => {
+                    Some((computation_hash, output_merkle, output_proof)) => {
                         assert_eq!(
                             computation_hash,
                             can_settle.winnerCommitment.to_vec(),
@@ -55,7 +59,15 @@ where
                             can_settle.epochNumber,
                             computation_hash.encode_hex()
                         );
-                        match dave_consensus.settle(can_settle.epochNumber).send().await {
+                        match dave_consensus
+                            .settle(
+                                can_settle.epochNumber,
+                                Self::vec_u8_to_bytes_32(output_merkle),
+                                Self::to_bytes_32_vec(output_proof),
+                            )
+                            .send()
+                            .await
+                        {
                             Ok(tx_builder) => {
                                 let _ = tx_builder.watch().await.inspect_err(|e| error!("{}", e));
                             }
@@ -72,5 +84,15 @@ where
             }
             tokio::time::sleep(self.sleep_duration).await;
         }
+    }
+
+    fn to_bytes_32_vec(proof: Proof) -> Vec<B256> {
+        proof.inner().iter().map(|hash| B256::from(hash)).collect()
+    }
+
+    fn vec_u8_to_bytes_32(vec: Vec<u8>) -> B256 {
+        let mut array = [0u8; 32];
+        array.copy_from_slice(&vec[..32]);
+        B256::from(array)
     }
 }
