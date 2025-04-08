@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::sql::{consensus_data, error::*, migrations};
-use crate::{Epoch, Input, InputId, StateManager};
+use crate::{Epoch, Input, InputId, Proof, StateManager};
 
 use rusqlite::{Connection, OptionalExtension};
 use std::sync::Mutex;
@@ -179,25 +179,35 @@ impl StateManager for PersistentStateAccess {
         Ok(())
     }
 
-    fn computation_hash(&self, epoch_number: u64) -> Result<Option<Vec<u8>>> {
+    fn settlement_info(&self, epoch_number: u64) -> Result<Option<(Vec<u8>, Vec<u8>, Proof)>> {
         let conn = self.connection.lock().unwrap();
         let mut stmt = conn.prepare(
             "\
-            SELECT computation_hash FROM computation_hashes
+            SELECT computation_hash, output_merkle, output_proof FROM settlement_info
             WHERE epoch_number = ?1
             ",
         )?;
 
         Ok(stmt
-            .query_row([epoch_number], |row| Ok(row.get(0)?))
+            .query_row([epoch_number], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get::<_, Vec<u8>>(2)?.into()))
+            })
             .optional()?)
     }
 
-    fn add_computation_hash(&self, computation_hash: &[u8], epoch_number: u64) -> Result<()> {
-        match self.computation_hash(epoch_number)? {
-            Some(c) => {
-                // previous row with same key found, all values should match
+    fn add_settlement_info(
+        &self,
+        computation_hash: &[u8],
+        output_merkle: &[u8],
+        output_proof: &Proof,
+        epoch_number: u64,
+    ) -> Result<()> {
+        match self.settlement_info(epoch_number)? {
+            Some((c, o_m, o_p)) => {
+                // a row with same key found, all values should match
                 assert!(c == computation_hash.to_vec());
+                assert!(o_m == output_merkle.to_vec());
+                assert!(o_p == *output_proof);
 
                 return Ok(());
             }
@@ -206,10 +216,16 @@ impl StateManager for PersistentStateAccess {
 
         let conn = self.connection.lock().unwrap();
         let mut sttm = conn.prepare(
-            "INSERT INTO computation_hashes (epoch_number, computation_hash) VALUES (?1, ?2)",
+            "INSERT INTO settlement_info (epoch_number, computation_hash, output_merkle, output_proof) VALUES (?1, ?2, ?3, ?4)",
         )?;
 
-        if sttm.execute((epoch_number, computation_hash))? != 1 {
+        if sttm.execute((
+            epoch_number,
+            computation_hash,
+            output_merkle,
+            output_proof.flatten(),
+        ))? != 1
+        {
             return Err(PersistentStateAccessError::InsertionFailed {
                 description: "machine computation_hash insertion failed".to_owned(),
             });
@@ -577,17 +593,23 @@ mod tests {
         );
 
         assert!(
-            access.computation_hash(0)?.is_none(),
+            access.settlement_info(0)?.is_none(),
             "computation_hash shouldn't exist"
         );
 
         let computation_hash_1 = vec![1, 2, 3, 4, 5];
-        access.add_computation_hash(&computation_hash_1, 0)?;
+        let output_merkle_1 = vec![1, 2, 3, 4, 4];
+        let output_proof_1: Proof = vec![
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+            25, 26, 27, 28, 29, 30, 31, 32,
+        ]
+        .into();
+        access.add_settlement_info(&computation_hash_1, &output_merkle_1, &output_proof_1, 0)?;
 
         assert_eq!(
-            access.computation_hash(0)?,
-            Some(computation_hash_1),
-            "computation_hash 1 should match"
+            access.settlement_info(0)?,
+            Some((computation_hash_1, output_merkle_1, output_proof_1)),
+            "settlement info of epoch 0 should match"
         );
 
         Ok(())

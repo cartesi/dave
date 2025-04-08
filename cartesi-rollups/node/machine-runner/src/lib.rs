@@ -14,14 +14,14 @@ use std::{
 use cartesi_dave_merkle::{Digest, DigestError, MerkleBuilder};
 use cartesi_machine::{
     config::runtime::RuntimeConfig,
-    constants::break_reason,
+    constants::{break_reason, pma::TX_START},
     machine::Machine,
     types::{cmio::CmioResponseReason, Hash},
 };
 use cartesi_prt_core::machine::constants::{
     LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
 };
-use rollups_state_manager::{InputId, StateManager};
+use rollups_state_manager::{InputId, Proof, StateManager};
 
 // gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
 const LOG2_STRIDE: u64 = 44;
@@ -101,7 +101,9 @@ where
                 assert!(self.epoch_number < latest_epoch);
 
                 let commitment = self.build_commitment()?;
-                self.save_commitment(&commitment)?;
+                let (output_merkle, output_proof) = self.get_output_merkle_and_proof()?;
+
+                self.save_settlement_info(&commitment, &output_merkle, &output_proof)?;
 
                 // end of current epoch
                 self.epoch_number += 1;
@@ -159,9 +161,31 @@ where
         Ok(computation_hash)
     }
 
-    fn save_commitment(&self, computation_hash: &[u8]) -> Result<(), SM> {
+    /// get output merkle and output proof
+    fn get_output_merkle_and_proof(&mut self) -> Result<(Vec<u8>, Proof), SM> {
+        let proof = self.machine.proof(TX_START, 5)?;
+        let output_merkle = self.machine.read_memory(TX_START, 32)?;
+
+        Ok((
+            output_merkle,
+            // the siblings returned by the machine are reversed, reverse again before storing them
+            Proof::new(proof.sibling_hashes.into_iter().rev().collect()),
+        ))
+    }
+
+    fn save_settlement_info(
+        &self,
+        computation_hash: &[u8],
+        output_merkle: &[u8],
+        output_proof: &Proof,
+    ) -> Result<(), SM> {
         self.state_manager
-            .add_computation_hash(computation_hash, self.epoch_number)
+            .add_settlement_info(
+                computation_hash,
+                output_merkle,
+                output_proof,
+                self.epoch_number,
+            )
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
 
         Ok(())
