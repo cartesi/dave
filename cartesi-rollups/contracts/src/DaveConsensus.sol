@@ -6,9 +6,9 @@ pragma solidity ^0.8.8;
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.sol";
 
-import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts/consensus/IOutputsMerkleRootValidator.sol";
-import {IInputBox} from "cartesi-rollups-contracts/inputs/IInputBox.sol";
-import {LibMerkle32} from "cartesi-rollups-contracts/library/LibMerkle32.sol";
+import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-2.0.0/consensus/IOutputsMerkleRootValidator.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.0.0/inputs/IInputBox.sol";
+import {LibMerkle32} from "cartesi-rollups-contracts-2.0.0/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
@@ -105,17 +105,13 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     /// @param fromInputBox Hash of input stored on the input box contract
     error InputHashMismatch(bytes32 fromReceivedInput, bytes32 fromInputBox);
 
-    /// @notice Hash of received input blob is different from stored on-chain
-    /// @param fromReceivedInput Hash of received input blob
-    /// @param fromInputBox Hash of input stored on the input box contract
-
     /// @notice Supplied output tree proof not consistent with settled machine hash
     /// @param settledState Settled machine state hash
-    error OutputTreeInvalidProof(Machine.Hash settledState);
+    error InvalidOutputsMerkleRootProof(Machine.Hash settledState);
 
     /// @notice Supplied output tree proof size is incorrect
     /// @param suppliedProofSize Supplied proof size
-    error OutputTreeProofWrongSize(uint256 suppliedProofSize);
+    error InvalidOutputsMerkleRootProofSize(uint256 suppliedProofSize);
 
     /// @notice Application address does not match
     /// @param expected Expected application address
@@ -147,7 +143,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         epochNumber = _epochNumber;
     }
 
-    function settle(uint256 epochNumber, bytes32 outputTreeHash, bytes32[] calldata proof) external {
+    function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external {
         // Check tournament settlement
         uint256 actualEpochNumber = _epochNumber;
         require(epochNumber == actualEpochNumber, IncorrectEpochNumber(epochNumber, actualEpochNumber));
@@ -165,14 +161,14 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
 
         // Extract and save settled output tree
         {
-            require(proof.length == Memory.LOG2_MAX_SIZE, OutputTreeProofWrongSize(proof.length));
+            require(proof.length == Memory.LOG2_MAX_SIZE, InvalidOutputsMerkleRootProofSize(proof.length));
             bytes32 machineStateHash = Machine.Hash.unwrap(finalMachineStateHash);
             bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
-                EmulatorConstants.PMA_CMIO_TX_BUFFER_START, keccak256(abi.encode(outputTreeHash))
+                EmulatorConstants.PMA_CMIO_TX_BUFFER_START, keccak256(abi.encode(outputsMerkleRoot))
             );
-            require(machineStateHash == allegedStateHash, OutputTreeInvalidProof(finalMachineStateHash));
+            require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
         }
-        _outputsMerkleRoots[outputTreeHash] = true;
+        _outputsMerkleRoots[outputsMerkleRoot] = true;
 
         emit EpochSealed(epochNumber, inputIndexLowerBound, inputIndexUpperBound, finalMachineStateHash, tournament);
     }
