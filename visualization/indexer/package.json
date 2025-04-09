@@ -4,6 +4,7 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "dev:db:clean": "rimraf .ponder/pglite",
         "dev": "ponder dev",
         "start": "ponder start",
         "db": "ponder db",
@@ -16,16 +17,18 @@
     "dependencies": {
         "hono": "^4.5.0",
         "ponder": "^0.10.6",
-        "viem": "^2.21.3"
+        "viem": "^2.21.3",
+        "winston": "^3.17.0"
     },
     "devDependencies": {
-        "@types/node": "^20.9.0",
+        "@types/node": "^22.6.0",
         "eslint": "^8.53.0",
         "eslint-config-ponder": "^0.10.6",
         "prettier": "^3.5.3",
+        "rimraf": "^6.0.1",
         "typescript": "^5.2.2"
     },
     "engines": {
-        "node": ">=18.14"
+        "node": ">=22.6.0"
     }
 }
