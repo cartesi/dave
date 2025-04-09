@@ -164,14 +164,12 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         _tournament = tournament;
 
         // Extract and save settled output tree
-        {
-            require(proof.length == Memory.LOG2_MAX_SIZE, OutputTreeProofWrongSize(proof.length));
-            bytes32 machineStateHash = Machine.Hash.unwrap(finalMachineStateHash);
-            bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
-                EmulatorConstants.PMA_CMIO_TX_BUFFER_START, keccak256(abi.encode(outputTreeHash))
-            );
-            require(machineStateHash == allegedStateHash, OutputTreeInvalidProof(finalMachineStateHash));
-        }
+        require(proof.length == Memory.LOG2_MAX_SIZE, OutputTreeProofWrongSize(proof.length));
+        bytes32 machineStateHash = Machine.Hash.unwrap(finalMachineStateHash);
+        bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
+          EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> 5, keccak256(abi.encode(outputTreeHash))
+        );
+        require(machineStateHash == allegedStateHash, OutputTreeInvalidProof(finalMachineStateHash));
         _outputsMerkleRoots[outputTreeHash] = true;
 
         emit EpochSealed(epochNumber, inputIndexLowerBound, inputIndexUpperBound, finalMachineStateHash, tournament);

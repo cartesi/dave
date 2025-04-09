@@ -87,12 +87,10 @@ where
     }
 
     fn to_bytes_32_vec(proof: Proof) -> Vec<B256> {
-        proof.inner().iter().map(|hash| B256::from(hash)).collect()
+        proof.inner().iter().map(B256::from).collect()
     }
 
-    fn vec_u8_to_bytes_32(vec: Vec<u8>) -> B256 {
-        let mut array = [0u8; 32];
-        array.copy_from_slice(&vec[..32]);
-        B256::from(array)
+    fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
+        B256::from_slice(&hash)
     }
 }
