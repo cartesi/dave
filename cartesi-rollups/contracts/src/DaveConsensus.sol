@@ -164,7 +164,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
             require(proof.length == Memory.LOG2_MAX_SIZE, InvalidOutputsMerkleRootProofSize(proof.length));
             bytes32 machineStateHash = Machine.Hash.unwrap(finalMachineStateHash);
             bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
-                EmulatorConstants.PMA_CMIO_TX_BUFFER_START, keccak256(abi.encode(outputsMerkleRoot))
+                EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> 5, keccak256(abi.encode(outputsMerkleRoot))
             );
             require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
         }
