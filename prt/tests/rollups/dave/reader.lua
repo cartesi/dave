@@ -152,8 +152,8 @@ function Reader:_call(address, sig, args)
 end
 
 function Reader:read_epochs_sealed(consensus_address)
-    local sig = "EpochSealed(uint256,uint256,uint256,bytes32,address)"
-    local data_sig = "(uint256,uint256,uint256,bytes32,address)"
+    local sig = "EpochSealed(uint256,uint256,uint256,bytes32,bytes32,address)"
+    local data_sig = "(uint256,uint256,uint256,bytes32,bytes32,address)"
 
     local logs = self:_read_logs(consensus_address, sig, { false, false, false }, data_sig)
 
@@ -166,7 +166,7 @@ function Reader:read_epochs_sealed(consensus_address)
         log.block_lower_bound = tonumber(v.decoded_data[2])
         log.block_upper_bound = tonumber(v.decoded_data[3])
         log.initial_machine_state_hash = v.decoded_data[4]
-        log.tournament = v.decoded_data[5]
+        log.tournament = v.decoded_data[6]
 
         ret[k] = log
     end
