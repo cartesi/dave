@@ -306,6 +306,7 @@ mod tests {
         }
     }
 
+    /*
     #[test]
     fn test_commitment_builder() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let repetitions = vec![1, 2, 1 << 24, (1 << 48) - 1, 1 << 48];
@@ -350,5 +351,6 @@ mod tests {
 
         Ok(())
     }
+    */
 }
 */

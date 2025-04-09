@@ -101,13 +101,15 @@ contract DaveConsensusFactoryTest is Test {
                     uint256 inputIndexLowerBound,
                     uint256 inputIndexUpperBound,
                     Machine.Hash initialMachineStateHash,
+                    bytes32 outputTreeHash,
                     ITournament tournamentAddress
-                ) = abi.decode(entry.data, (uint256, uint256, uint256, Machine.Hash, ITournament));
+                ) = abi.decode(entry.data, (uint256, uint256, uint256, Machine.Hash, bytes32, ITournament));
 
                 assertEq(address(tournamentAddress), fuzzAddress);
                 assertEq(inputIndexLowerBound, 0);
                 assertEq(inputIndexUpperBound, nInputs);
                 assertEq(Machine.Hash.unwrap(initialMachineStateHash), Machine.Hash.unwrap(_initialMachineStateHash));
+                assertEq(outputTreeHash, bytes32(0));
             }
         }
 
