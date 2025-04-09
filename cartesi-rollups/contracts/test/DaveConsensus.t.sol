@@ -18,6 +18,9 @@ import {ITournament} from "prt-contracts/ITournament.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
+import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
+import {Memory} from "step/src/Memory.sol";
+
 import {DaveConsensus} from "src/DaveConsensus.sol";
 import {Merkle} from "src/Merkle.sol";
 
@@ -124,23 +127,6 @@ contract DaveConsensusTest is Test {
     MockTournamentFactory _mockTournamentFactory;
     MerkleProxy _merkleProxy;
 
-    function statesAndProofs(uint256 value) private returns (Machine.Hash, bytes32[] memory, bytes32) {
-        uint256 iterations = 64 - 5;
-        bytes32[] memory siblings = new bytes32[](iterations);
-
-        bytes32 leaf = keccak256(abi.encode(bytes32(value)));
-        bytes32 current = leaf;
-        for (uint256 i = 0; i < iterations; i++) {
-            siblings[i] = current;
-            current = keccak256(abi.encodePacked(current, current));
-        }
-
-        bytes32 root = new LibMerkle32Wrapper().merkleRootAfterReplacement(siblings, 0, leaf);
-        assertEq(current, root);
-
-        return (Machine.Hash.wrap(current), siblings, bytes32(value));
-    }
-
     function setUp() external {
         _inputBox = new InputBox();
         _mockTournamentFactory = new MockTournamentFactory();
@@ -158,7 +144,7 @@ contract DaveConsensusTest is Test {
 
     function testConstructorAndSettle(
         address appContract,
-        uint256[3] calldata states,
+        bytes32[3] calldata outputsMerkleRoots,
         uint256[2] memory inputCounts,
         bytes32[3] calldata salts,
         Tree.Node[2] calldata winnerCommitments
@@ -169,7 +155,7 @@ contract DaveConsensusTest is Test {
 
         _addInputs(appContract, inputCounts[0]);
 
-        (Machine.Hash state0,,) = statesAndProofs(states[0]);
+        (Machine.Hash state0,,) = _statesAndProofs(outputsMerkleRoots[0]);
         address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
         _mockTournamentFactory.setSalt(salts[1]);
@@ -180,7 +166,7 @@ contract DaveConsensusTest is Test {
         emit DaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
 
         vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, ITournament(mockTournamentAddress));
+        emit DaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress));
 
         DaveConsensus daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
 
@@ -228,7 +214,7 @@ contract DaveConsensusTest is Test {
             assertFalse(isFinished);
         }
 
-        (Machine.Hash state1, bytes32[] memory proof1, bytes32 leaf1) = statesAndProofs(states[1]);
+        (Machine.Hash state1, bytes32[] memory proof1, bytes32 leaf1) = _statesAndProofs(outputsMerkleRoots[1]);
         mockTournament.finish(winnerCommitments[0], state1);
 
         {
@@ -263,7 +249,7 @@ contract DaveConsensusTest is Test {
 
         vm.expectEmit(daveConsensusAddress);
         emit DaveConsensus.EpochSealed(
-            1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, ITournament(mockTournamentAddress)
+            1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITournament(mockTournamentAddress)
         );
 
         daveConsensus.settle(0, leaf1, proof1);
@@ -308,7 +294,7 @@ contract DaveConsensusTest is Test {
             assertFalse(isFinished);
         }
 
-        (Machine.Hash state2,,) = statesAndProofs(states[2]);
+        (Machine.Hash state2,,) = _statesAndProofs(outputsMerkleRoots[2]);
         mockTournament.finish(winnerCommitments[1], state2);
 
         {
@@ -435,5 +421,24 @@ contract DaveConsensusTest is Test {
         returns (DaveConsensus)
     {
         return new DaveConsensus{salt: salt}(_inputBox, appContract, _mockTournamentFactory, initialState);
+    }
+
+    function _statesAndProofs(bytes32 outputsMerkleRoot) private returns (Machine.Hash, bytes32[] memory, bytes32) {
+        uint256 levels = Memory.LOG2_MAX_SIZE;
+        bytes32[] memory siblings = new bytes32[](levels);
+
+        bytes32 leaf = keccak256(abi.encode(outputsMerkleRoot));
+        bytes32 current = leaf;
+        for (uint256 i = 0; i < levels; i++) {
+            siblings[i] = current;
+            current = keccak256(abi.encodePacked(current, current));
+        }
+
+        bytes32 root = new LibMerkle32Wrapper().merkleRootAfterReplacement(
+            siblings, EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> 5, leaf
+        );
+        assertEq(current, root);
+
+        return (Machine.Hash.wrap(current), siblings, outputsMerkleRoot);
     }
 }
