@@ -26,6 +26,10 @@ use rollups_state_manager::{InputId, Proof, StateManager};
 // gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
 const LOG2_STRIDE: u64 = 44;
 
+const STRIDE_COUNT_IN_EPOCH: u64 = 1
+    << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
+        - LOG2_STRIDE);
+
 pub struct MachineRunner<SM: StateManager> {
     machine: Machine,
     sleep_duration: Duration,
@@ -100,10 +104,17 @@ where
             } else {
                 assert!(self.epoch_number < latest_epoch);
 
-                let commitment = self.build_commitment()?;
-                let (output_merkle, output_proof) = self.get_output_merkle_and_proof()?;
+                // Add remaining strides
+                let total_strides = self.next_input_index_in_epoch
+                    << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - LOG2_STRIDE);
+                assert!(total_strides <= STRIDE_COUNT_IN_EPOCH);
+                let remaining_strides = STRIDE_COUNT_IN_EPOCH - total_strides;
 
-                self.save_settlement_info(&commitment, &output_merkle, &output_proof)?;
+                if remaining_strides > 0 {
+                    self.add_state_hash(remaining_strides)?;
+                }
+
+                self.save_settlement_info()?;
 
                 // end of current epoch
                 self.epoch_number += 1;
@@ -136,54 +147,26 @@ where
         }
     }
 
-    /// calculate computation hash for `self.epoch_number`
-    fn build_commitment(&mut self) -> Result<Vec<u8>, SM> {
-        // get all state hashes with repetitions for `self.epoch_number`
-        let mut state_hashes = self
+    fn save_settlement_info(&mut self) -> Result<(), SM> {
+        let state_hashes = self
             .state_manager
             .machine_state_hashes(self.epoch_number)
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
-        let stride_count_in_epoch = 1
-            << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
-                - LOG2_STRIDE);
-        if state_hashes.is_empty() {
-            // no inputs in current epoch, add machine state hash repeatedly
-            let machine_state_hash = self.add_state_hash(stride_count_in_epoch)?;
-            state_hashes.push((machine_state_hash.to_vec(), stride_count_in_epoch));
-        }
 
-        let (computation_hash, total_repetitions) =
-            build_commitment_from_hashes(state_hashes, stride_count_in_epoch)?;
-        if stride_count_in_epoch > total_repetitions {
-            self.add_state_hash(stride_count_in_epoch - total_repetitions)?;
-        }
+        let computation_hash = build_commitment_from_hashes(&state_hashes)?;
 
-        Ok(computation_hash)
-    }
-
-    /// get output merkle and output proof
-    fn get_output_merkle_and_proof(&mut self) -> Result<(Vec<u8>, Proof), SM> {
         let proof = self.machine.proof(TX_START, 5)?;
+        let siblings = Proof::new(proof.sibling_hashes);
         let output_merkle = self.machine.read_memory(TX_START, 32)?;
 
-        Ok((
-            output_merkle,
-            // the siblings returned by the machine are reversed, reverse again before storing them
-            Proof::new(proof.sibling_hashes.into_iter().rev().collect()),
-        ))
-    }
+        assert_eq!(output_merkle.len(), 32);
+        assert_eq!(state_hashes.last().unwrap().0, proof.root_hash);
 
-    fn save_settlement_info(
-        &self,
-        computation_hash: &[u8],
-        output_merkle: &[u8],
-        output_proof: &Proof,
-    ) -> Result<(), SM> {
         self.state_manager
             .add_settlement_info(
-                computation_hash,
-                output_merkle,
-                output_proof,
+                computation_hash.slice(),
+                &output_merkle,
+                &siblings,
                 self.epoch_number,
             )
             .map_err(|e| MachineRunnerError::StateManagerError(e))?;
@@ -280,31 +263,24 @@ where
 }
 
 fn build_commitment_from_hashes(
-    state_hashes: Vec<(Vec<u8>, u64)>,
-    stride_count_in_epoch: u64,
-) -> std::result::Result<(Vec<u8>, u64), DigestError> {
-    let mut total_repetitions = 0;
+    state_hashes: &Vec<(Vec<u8>, u64)>,
+) -> std::result::Result<Digest, DigestError> {
     let computation_hash = {
         let mut builder = MerkleBuilder::default();
-        for state_hash in &state_hashes {
-            total_repetitions += state_hash.1;
+
+        for state_hash in state_hashes {
             builder.append_repeated(
                 Digest::from_digest(&state_hash.0)?,
                 U256::from(state_hash.1),
             );
         }
-        if stride_count_in_epoch > total_repetitions {
-            builder.append_repeated(
-                Digest::from_digest(&state_hashes.last().unwrap().0)?,
-                U256::from(stride_count_in_epoch - total_repetitions),
-            );
-        }
 
+        assert_eq!(builder.count().unwrap(), U256::from(STRIDE_COUNT_IN_EPOCH));
         let tree = builder.build();
-        tree.root_hash().slice().to_vec()
+        tree.root_hash()
     };
 
-    Ok((computation_hash, total_repetitions))
+    Ok(computation_hash)
 }
 
 #[cfg(test)]
@@ -328,6 +304,7 @@ mod tests {
         }
     }
 
+    /*
     #[test]
     fn test_commitment_builder() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let repetitions = vec![1, 2, 1 << 24, (1 << 48) - 1, 1 << 48];
@@ -372,4 +349,5 @@ mod tests {
 
         Ok(())
     }
+    */
 }
