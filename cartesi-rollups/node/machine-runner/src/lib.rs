@@ -55,7 +55,7 @@ where
     ) -> Result<Self, SM> {
         let (snapshot, epoch_number, next_input_index_in_epoch) = match state_manager
             .latest_snapshot()
-            .map_err(|e| MachineRunnerError::StateManagerError(e))?
+            .map_err(MachineRunnerError::StateManagerError)?
         {
             Some(r) => (r.0, r.1, r.2 + 1),
             None => (initial_machine.to_string(), 0, 0),
@@ -95,13 +95,14 @@ where
             let latest_epoch = self
                 .state_manager
                 .epoch_count()
-                .map_err(|e| MachineRunnerError::StateManagerError(e))?;
+                .map_err(MachineRunnerError::StateManagerError)?;
 
             if self.epoch_number == latest_epoch {
                 // all inputs processed in current epoch
                 // epoch may still be open, come back later
                 break Ok(());
             } else {
+                // epoch has advanced, fill in the rest of machine state hashes of self.epoch_number
                 assert!(self.epoch_number < latest_epoch);
 
                 // Add remaining strides
@@ -135,7 +136,7 @@ where
                     epoch_number: self.epoch_number,
                     input_index_in_epoch: self.next_input_index_in_epoch,
                 })
-                .map_err(|e| MachineRunnerError::StateManagerError(e))?;
+                .map_err(MachineRunnerError::StateManagerError)?;
 
             match next {
                 Some(input) => {
@@ -151,7 +152,7 @@ where
         let state_hashes = self
             .state_manager
             .machine_state_hashes(self.epoch_number)
-            .map_err(|e| MachineRunnerError::StateManagerError(e))?;
+            .map_err(MachineRunnerError::StateManagerError)?;
 
         let computation_hash = build_commitment_from_hashes(&state_hashes)?;
 
@@ -169,7 +170,7 @@ where
                 &siblings,
                 self.epoch_number,
             )
-            .map_err(|e| MachineRunnerError::StateManagerError(e))?;
+            .map_err(MachineRunnerError::StateManagerError)?;
 
         Ok(())
     }
@@ -224,7 +225,7 @@ where
                 self.state_hash_index_in_epoch,
                 repetitions,
             )
-            .map_err(|e| MachineRunnerError::StateManagerError(e))?;
+            .map_err(MachineRunnerError::StateManagerError)?;
         self.state_hash_index_in_epoch += 1;
 
         Ok(machine_state_hash)
@@ -254,7 +255,7 @@ where
                     self.epoch_number,
                     self.next_input_index_in_epoch,
                 )
-                .map_err(|e| MachineRunnerError::StateManagerError(e))?;
+                .map_err(MachineRunnerError::StateManagerError)?;
             self.machine.store(&snapshot_path)?;
         }
 
@@ -283,6 +284,7 @@ fn build_commitment_from_hashes(
     Ok(computation_hash)
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -304,7 +306,6 @@ mod tests {
         }
     }
 
-    /*
     #[test]
     fn test_commitment_builder() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let repetitions = vec![1, 2, 1 << 24, (1 << 48) - 1, 1 << 48];
@@ -349,5 +350,5 @@ mod tests {
 
         Ok(())
     }
-    */
 }
+*/
