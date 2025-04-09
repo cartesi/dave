@@ -69,12 +69,12 @@ where
         provider_url: &str,
         sleep_duration: u64,
     ) -> Result<Self, SM> {
-        let partition_provider = PartitionProvider::new(provider_url)
-            .map_err(|e| BlockchainReaderError::ParseError(e))?;
+        let partition_provider =
+            PartitionProvider::new(provider_url).map_err(BlockchainReaderError::ParseError)?;
         // read from DB the block of the most recent processed
         let prev_block = state_manager
             .latest_processed_block()
-            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
+            .map_err(BlockchainReaderError::StateManagerError)?;
 
         Ok(Self {
             state_manager,
@@ -108,7 +108,7 @@ where
                 inputs.iter().collect::<Vec<&Input>>().into_iter(),
                 epochs.iter().collect::<Vec<&Epoch>>().into_iter(),
             )
-            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
+            .map_err(BlockchainReaderError::StateManagerError)?;
 
         Ok(())
     }
@@ -126,7 +126,7 @@ where
         let last_sealed_epoch_opt = self
             .state_manager
             .last_sealed_epoch()
-            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
+            .map_err(BlockchainReaderError::StateManagerError)?;
         let mut merged_sealed_epochs = Vec::new();
         if let Some(last_sealed_epoch) = last_sealed_epoch_opt {
             merged_sealed_epochs.push(last_sealed_epoch);
@@ -203,7 +203,7 @@ where
         let last_input = self
             .state_manager
             .last_input()
-            .map_err(|e| BlockchainReaderError::StateManagerError(e))?;
+            .map_err(BlockchainReaderError::StateManagerError)?;
 
         let (mut next_input_index_in_epoch, mut last_input_epoch_number) = {
             match last_input {
