@@ -75,9 +75,9 @@ post-image-build: remove-sourcify-configs
 build-sourcify-image TAG="sourcify:devel": prepare-sourcify
   cd {{vis_dir}}/sourcify/ && docker build -f services/server/Dockerfile -t {{TAG}} .
 
-[doc("Build dave image tagged as dave:dev"), private]
+[doc("Build dave image tagged as dave:dev")]
 [group('Docker')]
-build-dave-image TAG="davelus:dev":
+build-dave-image TAG="dave:dev":
   cd {{vis_dir}}/.. && just -f ./justfile build-docker-image {{TAG}}
 
 [doc("Build the necessary artefacts to be used under visualization.")]
@@ -85,7 +85,7 @@ build: build-dave-image build-sourcify-image post-image-build
 
 [doc("Start a docker-compose file under visualization. It will start the block explorer looking to an anvil (i.e. localhost:8545)")]
 [group('Docker')]
-up *FLAGS: build
+up *FLAGS:
   docker compose up {{FLAGS}}
 
 [doc("Stop the docker-compose registered services.")]
