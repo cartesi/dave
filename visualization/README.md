@@ -3,6 +3,9 @@
 
 # Visualization [WIP]
 
+> [!IMPORTANT]  
+> Make sure to be docker logged with a valid GHCR credential [reference here](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic) to avoid failure when trying to run the docker-compose.
+
 To be able to run the visualization assuming you are under `/visualization` we have a [justfile](./justfile) to simplify the process to get it up-and-running.
 
 You can execute the following

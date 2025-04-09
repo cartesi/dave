@@ -25,39 +25,39 @@ tmpDir := join(cwd, 'tmp')
 	cd ../{{rollups_contracts_path}} && \
 	forge inspect \
 		--json {{input_box_contract}} abi \
-		| sed '1s/^/export const InputBox = /; $s/$/ as const/' > {{indexer_abis_folder}}/InputBox.ts
+		| sed '1s/^/export const InputBoxAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/InputBox.ts
 	echo "{{ GREEN }} InputBox.sol done!"
 	cd ../{{rollups_contracts_path}} && \
 	forge inspect \
 		--json {{dave_consensus_contract}} abi \
-		| sed '1s/^/export const DaveConsensus = /; $s/$/ as const/' > {{indexer_abis_folder}}/DaveConsensus.ts
+		| sed '1s/^/export const DaveConsensusAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/DaveConsensus.ts
 	echo "{{ GREEN }} DaveConsensus.sol done!"
 
 [private]
 @gen-prt-factory-abis:
 	cd ../{{prt_contracts_path}} && forge inspect --json {{multi_level_factory_contract}} abi \
-	| sed '1s/^/export const MultiLevelTournamentFactory = /; $s/$/ as const/' > {{indexer_abis_folder}}/MultiLevelTournamentFactory.ts
+	| sed '1s/^/export const MultiLevelTournamentFactoryAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/MultiLevelTournamentFactory.ts
 	echo "{{ GREEN }} MultiLevelTournamentFactory.sol done!"
 	cd ../{{prt_contracts_path}} && forge inspect --json {{top_tournament_factory_contract}} abi \
-	| sed '1s/^/export const TopTournamentFactory = /; $s/$/ as const/' > {{indexer_abis_folder}}/TopTournamentFactory.ts
+	| sed '1s/^/export const TopTournamentFactoryAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/TopTournamentFactory.ts
 	echo "{{ GREEN }} TopTournamentFactory.sol done!"
 	cd ../{{prt_contracts_path}} && forge inspect --json {{middle_tournament_factory_contract}} abi \
-	| sed '1s/^/export const MiddleTournamentFactory = /; $s/$/ as const/' > {{indexer_abis_folder}}/MiddleTournamentFactory.ts
+	| sed '1s/^/export const MiddleTournamentFactoryAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/MiddleTournamentFactory.ts
 	echo "{{ GREEN }} MiddleTournamentFactory.sol done!"
 	cd ../{{prt_contracts_path}} && forge inspect --json {{bottom_tournament_factory_contract}} abi \
-	| sed '1s/^/export const BottomTournamentFactory = /; $s/$/ as const/' > {{indexer_abis_folder}}/BottomTournamentFactory.ts
+	| sed '1s/^/export const BottomTournamentFactoryAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/BottomTournamentFactory.ts
 	echo "{{ GREEN }} BottomTournamentFactory.sol done!"
 
 [private]
 @gen-prt-concrete-abis:
 	cd ../{{prt_contracts_path}} && forge inspect --json {{top_tournament_contract}} abi \
-	| sed '1s/^/export const TopTournament = /; $s/$/ as const/' > {{indexer_abis_folder}}/TopTournament.ts
+	| sed '1s/^/export const TopTournamentAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/TopTournament.ts
 	echo "{{ GREEN }} TopTournament.sol done!"
 	cd ../{{prt_contracts_path}} && forge inspect --json {{middle_tournament_contract}} abi \
-	| sed '1s/^/export const MiddleTournament = /; $s/$/ as const/' > {{indexer_abis_folder}}/MiddleTournament.ts
+	| sed '1s/^/export const MiddleTournamentAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/MiddleTournament.ts
 	echo "{{ GREEN }} MiddleTournament.sol done!" 
 	cd ../{{prt_contracts_path}} && forge inspect --json {{bottom_tournament_contract}} abi \
-	| sed '1s/^/export const BottomTournament = /; $s/$/ as const/' > {{indexer_abis_folder}}/BottomTournament.ts
+	| sed '1s/^/export const BottomTournamentAbi = /; $s/$/ as const/' > {{indexer_abis_folder}}/BottomTournament.ts
 	echo "{{ GREEN }} BottomTournament.sol done!"
 
 [private]
