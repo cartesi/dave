@@ -147,31 +147,32 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
 
     function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external {
         // Check tournament settlement
-        uint256 actualEpochNumber = _epochNumber;
-        require(epochNumber == actualEpochNumber, IncorrectEpochNumber(epochNumber, actualEpochNumber));
+        require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
+
+        // Check tournament finished
         (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournament.arbitrationResult();
         require(isFinished, TournamentNotFinishedYet());
+        _tournament = ITournament(address(0));
 
-        // Seal current accumulating epoch
-        _epochNumber = ++epochNumber;
-        uint256 inputIndexLowerBound = _inputIndexUpperBound;
-        _inputIndexLowerBound = inputIndexLowerBound;
-        uint256 inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
-        _inputIndexUpperBound = inputIndexUpperBound;
-        ITournament tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
-        _tournament = tournament;
-
-        // Extract and save settled output tree
+        // Check outputs Merkle root
         _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
+
+        // Seal current accumulating epoch, save settled output tree
+        _epochNumber++;
+        _inputIndexLowerBound = _inputIndexUpperBound;
+        _inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
         _outputsMerkleRoots[outputsMerkleRoot] = true;
 
+        // Start new tournament
+        _tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
+
         emit EpochSealed(
-            epochNumber,
-            inputIndexLowerBound,
-            inputIndexUpperBound,
+            _epochNumber,
+            _inputIndexLowerBound,
+            _inputIndexUpperBound,
             finalMachineStateHash,
             outputsMerkleRoot,
-            tournament
+            _tournament
         );
     }
 
@@ -251,7 +252,8 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
 
         require(proof.length == Memory.LOG2_MAX_SIZE, InvalidOutputsMerkleRootProofSize(proof.length));
         bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
-            EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> 5, keccak256(abi.encode(outputsMerkleRoot))
+            EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE,
+            keccak256(abi.encode(outputsMerkleRoot))
         );
 
         require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
