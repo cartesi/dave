@@ -1,61 +1,54 @@
 import { and, eq, or } from 'ponder';
 import { ponder } from 'ponder:registry';
-import { commitment, match, step, tournament } from 'ponder:schema';
+import {
+    CommitmentTable,
+    MatchTable,
+    StepTable,
+    TournamentTable,
+} from 'ponder:schema';
 import { decodeFunctionData, getAbiItem } from 'viem';
+import {
+    CommitmentEvent,
+    commitmentJoinedHandler,
+} from './handlers/commitmentJoinedHandler';
 import { generateId, generateMatchID, stringifyContent } from './utils';
+import createLogger from './utils/logger';
+
+const topTournamentLogger = createLogger(
+    'TopTournament',
+    'top-tournament-indexing-fn',
+);
+const commitmentLogger = topTournamentLogger.child({
+    eventName: ':commitmentJoined',
+});
 
 ponder.on('TopTournament:commitmentJoined', async ({ event, context }) => {
-    const playerCommitment = event.args.root;
-    const tournamentAddress = event.log.address;
-    const playerAddress = event.transaction.from;
-
     const abi = context.contracts.TopTournament.abi;
     const joinTournament = getAbiItem({ abi, name: 'joinTournament' });
     const { args } = decodeFunctionData<readonly [typeof joinTournament]>({
         abi: [joinTournament],
         data: event.transaction.input,
     });
-
     const [machineHash, proof, leftNode, rightNode] = args;
 
-    // The events are in a non-logical order, so match-created is preceding the second player joining.
-    // Therefore, we make sure the second player has correct status and match-id set in the commitment table.
-    const game = await context.db.sql.query.match.findFirst({
-        where: and(
-            eq(match.tournamentId, tournamentAddress),
-            or(
-                eq(match.commitmentOne, playerCommitment),
-                eq(match.commitmentTwo, playerCommitment),
-            ),
-        ),
-    });
-
-    if (game) {
-        console.info(
-            `->-> (TopTournament:commitmentJoined:match_found) \n\t ${stringifyContent(game)}`,
-        );
-    }
-
-    const id = generateId([playerCommitment, tournamentAddress]);
-
-    // await context.db.insert(lobbies).values({
-    await context.db.insert(commitment).values({
-        id,
-        commitmentHash: playerCommitment,
+    const commitment: CommitmentEvent = {
+        player: event.transaction.from,
+        playerCommitment: event.args.root,
+        tournament: event.log.address,
         timestamp: event.block.timestamp,
-        playerAddress,
-        lNode: leftNode,
-        rNode: rightNode,
-        proof,
-        machineHash,
-        status: game !== undefined ? 'PLAYING' : 'WAITING',
-        matchId: game?.id,
-        tournamentId: tournamentAddress,
-    });
+        transaction: {
+            leftNode,
+            rightNode,
+            machineHash,
+            proof,
+        },
+    };
 
-    console.info(
-        `->-> (TopTournament:commitmentJoined) \n\troot(${playerCommitment}) \n\tplayerAddress(${playerAddress}) \n\tjoinedTournament(${tournamentAddress})`,
-    );
+    await commitmentJoinedHandler({
+        context,
+        meta: commitment,
+        logger: commitmentLogger,
+    }).catch((err) => commitmentLogger.error(err));
 });
 
 ponder.on('TopTournament:matchCreated', async ({ event, context }) => {
@@ -64,7 +57,7 @@ ponder.on('TopTournament:matchCreated', async ({ event, context }) => {
 
     const matchId = generateMatchID(one, two);
 
-    await context.db.insert(match).values({
+    await context.db.insert(MatchTable).values({
         id: matchId,
         commitmentOne: one,
         commitmentTwo: two,
@@ -74,15 +67,15 @@ ponder.on('TopTournament:matchCreated', async ({ event, context }) => {
     });
 
     const updatedRows = await context.db.sql
-        .update(commitment)
+        .update(CommitmentTable)
         .set({ status: 'PLAYING', matchId })
         .where(
             or(
-                eq(commitment.id, generateId([one, tournamentAddress])),
-                eq(commitment.id, generateId([two, tournamentAddress])),
+                eq(CommitmentTable.id, generateId([one, tournamentAddress])),
+                eq(CommitmentTable.id, generateId([two, tournamentAddress])),
             ),
         )
-        .returning({ id: commitment.id });
+        .returning({ id: CommitmentTable.id });
 
     console.info(
         `->-> (TopTournament:matchCreated (${tournamentAddress})) \n\t\tMatchId:${matchId} \n\t\tone:${event.args.one} \n\t\ttwo: ${event.args.two} \n\t\tlNodeTwo:${event.args.leftOfTwo}`,
@@ -106,7 +99,7 @@ ponder.on('TopTournament:matchAdvanced', async ({ event, context }) => {
     const tournamentAddress = event.log.address;
     const playerAddress = event.transaction.from;
 
-    await context.db.insert(step).values({
+    await context.db.insert(StepTable).values({
         id: generateId([matchIdHash, parentNodeHash, leftNodeHash]),
         advancedBy: playerAddress,
         leftNodeHash: leftNodeHash,
@@ -122,9 +115,7 @@ ponder.on('TopTournament:matchAdvanced', async ({ event, context }) => {
         },
     });
 
-    console.info(
-        `->-> (TopTournament:matchAdvanced: ${tournamentAddress}) \n\t${stringifyContent(event.args)}`,
-    );
+    console.info(`->-> (TopTournament:matchAdvanced: ${tournamentAddress})`);
 });
 
 ponder.on('TopTournament:matchDeleted', async ({ event, context }) => {
@@ -133,12 +124,12 @@ ponder.on('TopTournament:matchDeleted', async ({ event, context }) => {
     const { client } = context;
 
     const [game] = await context.db.sql
-        .update(match)
+        .update(MatchTable)
         .set({ status: 'FINISHED' })
         .where(
             and(
-                eq(match.id, matchIdHash),
-                eq(match.tournamentId, tournamentAddress),
+                eq(MatchTable.id, matchIdHash),
+                eq(MatchTable.tournamentId, tournamentAddress),
             ),
         )
         .returning();
@@ -157,19 +148,25 @@ ponder.on('TopTournament:matchDeleted', async ({ event, context }) => {
 
         if (hasResult) {
             const { commitmentOne, commitmentTwo } = game;
-            const players = await context.db.sql.query.commitment.findMany({
-                where: or(
-                    eq(
-                        commitment.id,
-                        generateId([commitmentOne, tournamentAddress]),
+            const players = await context.db.sql.query.CommitmentTable.findMany(
+                {
+                    where: or(
+                        eq(
+                            CommitmentTable.id,
+                            generateId([commitmentOne, tournamentAddress]),
+                        ),
+                        eq(
+                            CommitmentTable.id,
+                            generateId([commitmentTwo, tournamentAddress]),
+                        ),
                     ),
-                    eq(
-                        commitment.id,
-                        generateId([commitmentTwo, tournamentAddress]),
-                    ),
-                ),
-                columns: { commitmentHash: true, machineHash: true, id: true },
-            });
+                    columns: {
+                        commitmentHash: true,
+                        machineHash: true,
+                        id: true,
+                    },
+                },
+            );
 
             const promises = players.map((player) => {
                 const status =
@@ -179,7 +176,7 @@ ponder.on('TopTournament:matchDeleted', async ({ event, context }) => {
                         : 'LOST';
 
                 return context.db
-                    .update(commitment, { id: player.id })
+                    .update(CommitmentTable, { id: player.id })
                     .set({ status });
             });
 
@@ -198,7 +195,7 @@ ponder.on('TopTournament:newInnerTournament', async ({ event, context }) => {
     const [matchIdHash, innerTournamentAddress] = event.args;
     const parentTournament = event.log.address;
 
-    await context.db.insert(tournament).values({
+    await context.db.insert(TournamentTable).values({
         id: innerTournamentAddress,
         level: 1n,
         timestamp: event.block.timestamp,

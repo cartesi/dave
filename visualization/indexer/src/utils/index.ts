@@ -1,5 +1,5 @@
 import { Context } from 'ponder:registry';
-import { tournament as TournamentTable } from 'ponder:schema';
+import { TournamentTable } from 'ponder:schema';
 import { encodeAbiParameters, Hex, keccak256, toHex } from 'viem';
 
 export const generateMatchID = (r1: Hex, r2: Hex) => {

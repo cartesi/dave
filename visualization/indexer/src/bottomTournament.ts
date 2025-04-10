@@ -1,6 +1,6 @@
 import { and, eq } from 'ponder';
 import { ponder } from 'ponder:registry';
-import { match } from 'ponder:schema';
+import { MatchTable } from 'ponder:schema';
 import { generateMatchID, shouldSkipTournamentEvent } from './utils';
 
 const TOURNAMENT_LEVEL = 2n as const;
@@ -20,7 +20,7 @@ ponder.on('BottomTournament:matchCreated', async ({ event, context }) => {
     const matchId = generateMatchID(one, two);
     const { timestamp } = event.block;
 
-    await context.db.insert(match).values({
+    await context.db.insert(MatchTable).values({
         id: matchId,
         commitmentOne: one,
         commitmentTwo: two,
@@ -47,12 +47,12 @@ ponder.on('BottomTournament:matchDeleted', async ({ event, context }) => {
     const [matchIdHash] = event.args;
 
     const result = await context.db.sql
-        .update(match)
+        .update(MatchTable)
         .set({ status: 'FINISHED' })
         .where(
             and(
-                eq(match.id, matchIdHash),
-                eq(match.tournamentId, tournamentAddress),
+                eq(MatchTable.id, matchIdHash),
+                eq(MatchTable.tournamentId, tournamentAddress),
             ),
         );
 

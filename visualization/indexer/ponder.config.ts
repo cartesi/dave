@@ -38,12 +38,24 @@ export default createConfig({
             abi: MiddleTournamentAbi,
             filter: [
                 {
-                    event: 'newInnerTournament',
+                    event: 'commitmentJoined',
                     args: [],
                 },
                 {
                     event: 'matchCreated',
                     args: {},
+                },
+                {
+                    event: 'matchAdvanced',
+                    args: [],
+                },
+                {
+                    event: 'matchDeleted',
+                    args: [],
+                },
+                {
+                    event: 'newInnerTournament',
+                    args: [],
                 },
             ],
             startBlock: 0,

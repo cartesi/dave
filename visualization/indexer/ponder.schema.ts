@@ -8,7 +8,7 @@ export const commitmentStatus = onchainEnum('commitment_status', [
     'LOST',
 ]);
 
-export const tournament = onchainTable('tournament', (t) => ({
+export const TournamentTable = onchainTable('tournament', (t) => ({
     id: t.hex().primaryKey(),
     timestamp: t.bigint().notNull(),
     level: t.bigint().default(0n),
@@ -17,7 +17,7 @@ export const tournament = onchainTable('tournament', (t) => ({
 }));
 
 //matchCreated(p1_keccak256(lNode + rNode), p2_keccak256(lnode + rnode), p2LeftNodeHash)
-export const match = onchainTable('match', (t) => ({
+export const MatchTable = onchainTable('match', (t) => ({
     id: t.hex().primaryKey(),
     commitmentOne: t.hex().notNull(),
     commitmentTwo: t.hex().notNull(),
@@ -28,7 +28,7 @@ export const match = onchainTable('match', (t) => ({
 }));
 
 // represent matchAdvanced(matchId_hash, parent_node_hash, left_node_hash)
-export const step = onchainTable('step', (t) => ({
+export const StepTable = onchainTable('step', (t) => ({
     id: t.hex().primaryKey(),
     advancedBy: t.hex().notNull(),
     parentNodeHash: t.hex().notNull(),
@@ -41,7 +41,7 @@ export const step = onchainTable('step', (t) => ({
 // commitmentJoined(rootHash(keccak256(lNode, rNode)))
 // holds information about the sender, transaction and event-emitted
 // Adding the machine-hash when for matching arbitration result after a game is finished
-export const commitment = onchainTable('commitment', (t) => ({
+export const CommitmentTable = onchainTable('commitment', (t) => ({
     id: t.hex().primaryKey(),
     commitmentHash: t.hex().notNull(),
     status: commitmentStatus('commitment_status').default('WAITING'),
@@ -56,35 +56,41 @@ export const commitment = onchainTable('commitment', (t) => ({
     rNode: t.hex().notNull(),
 }));
 
-export const tournamentRelations = relations(tournament, ({ many, one }) => ({
-    parent: one(tournament, {
-        fields: [tournament.parentId],
-        references: [tournament.id],
+export const tournamentRelations = relations(
+    TournamentTable,
+    ({ many, one }) => ({
+        parent: one(TournamentTable, {
+            fields: [TournamentTable.parentId],
+            references: [TournamentTable.id],
+        }),
+        innerTournaments: many(TournamentTable),
+        matches: many(MatchTable),
+        commitments: many(CommitmentTable),
     }),
-    innerTournaments: many(tournament),
-    matches: many(match),
-    commitments: many(commitment),
+);
+
+export const commitmentRelations = relations(CommitmentTable, ({ one }) => ({
+    tournament: one(TournamentTable, {
+        fields: [CommitmentTable.tournamentId],
+        references: [TournamentTable.id],
+    }),
+    match: one(MatchTable, {
+        fields: [CommitmentTable.matchId],
+        references: [MatchTable.id],
+    }),
 }));
 
-export const commitmentRelations = relations(commitment, ({ one }) => ({
-    tournament: one(tournament, {
-        fields: [commitment.tournamentId],
-        references: [tournament.id],
+export const matchesRelations = relations(MatchTable, ({ one, many }) => ({
+    tournament: one(TournamentTable, {
+        fields: [MatchTable.tournamentId],
+        references: [TournamentTable.id],
     }),
-    match: one(match, {
-        fields: [commitment.matchId],
-        references: [match.id],
-    }),
+    steps: many(StepTable),
 }));
 
-export const matchesRelations = relations(match, ({ one, many }) => ({
-    tournament: one(tournament, {
-        fields: [match.tournamentId],
-        references: [tournament.id],
+export const stepsRelations = relations(StepTable, ({ one }) => ({
+    match: one(MatchTable, {
+        fields: [StepTable.matchId],
+        references: [MatchTable.id],
     }),
-    steps: many(step),
-}));
-
-export const stepsRelations = relations(step, ({ one }) => ({
-    match: one(match, { fields: [step.matchId], references: [match.id] }),
 }));
