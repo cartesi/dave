@@ -31,12 +31,12 @@ async fn main() -> Result<()> {
     let compute_runner_task =
         create_compute_runner_task(arena_sender, state_manager.clone(), &parameters);
 
-    let (_blockchain_reader_res, _epoch_manager_res, _machine_runner_res, _compute_runner_res) = futures::join!(
+    futures::try_join!(
         blockchain_reader_task,
         epoch_manager_task,
         machine_runner_task,
         compute_runner_task
-    );
+    )?;
 
-    Ok(())
+    unreachable!("node services should run forever")
 }
