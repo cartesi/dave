@@ -4,6 +4,7 @@ local Machine = require "computation.machine"
 local arithmetic = require "utils.arithmetic"
 local consts = require "computation.constants"
 local uint256 = require "utils.bint" (256)
+local helper = require "utils.helper"
 
 local ulte = arithmetic.ulte
 
@@ -99,20 +100,23 @@ local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride
     return initial_state, builder:build(initial_state)
 end
 
-local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, inputs)
+local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, inputs, snapshot_dir)
     local machine
 
     local initial_state
     if inputs then
         -- treat it as rollups
         local meta_cycle = uint256(base_cycle) << consts.log2_uarch_span_to_barch
-        print(machine_path)
         machine = Machine:new_rollup_advanced_until(machine_path, meta_cycle, inputs)
         initial_state = machine:state().root_hash
     else
         -- treat it as compute
+
         machine = Machine:new_from_path(machine_path)
+        machine:load_snapshot(snapshot_dir, base_cycle)
         initial_state = machine:run(base_cycle).root_hash
+        helper.log_timestamp("run to base cycle: " .. base_cycle)
+        machine:take_snapshot(snapshot_dir, base_cycle, false)
     end
 
     if log2_stride >= consts.log2_uarch_span_to_barch then
@@ -127,7 +131,7 @@ end
 local CommitmentBuilder = {}
 CommitmentBuilder.__index = CommitmentBuilder
 
-function CommitmentBuilder:new(machine_path, inputs, root_commitment)
+function CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_dir)
     -- receive honest root commitment from main process
     local commitments = { [0] = { [0] = root_commitment } }
 
@@ -135,6 +139,7 @@ function CommitmentBuilder:new(machine_path, inputs, root_commitment)
         commitments = commitments,
         machine_path = machine_path,
         inputs = inputs,
+        snapshot_dir = snapshot_dir
     }
     setmetatable(c, self)
     return c
@@ -147,7 +152,8 @@ function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_cou
         return self.commitments[level][base_cycle]
     end
 
-    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path, self.inputs)
+    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path, self.inputs,
+        self.snapshot_dir)
     self.commitments[level][base_cycle] = commitment
     return commitment
 end

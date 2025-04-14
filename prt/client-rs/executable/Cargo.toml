@@ -19,4 +19,5 @@ alloy = { workspace = true, features = ["sol-types"] }
 clap = { workspace = true, features = ["derive", "env"] }
 env_logger = "0.11.5"
 log = "0.4"
+tempfile = "3.3"
 tokio = { workspace = true, features = ["full"] }

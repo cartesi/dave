@@ -116,8 +116,7 @@ pub fn build_big_machine_commitment(
     finish_print_flush_same_line();
 
     let merkle = builder.build();
-    let compute_leafs: Vec<Leaf> = leafs.iter().map(|l| Leaf(l.0.data(), l.1)).collect();
-    db.insert_compute_leafs(level, base_cycle, compute_leafs.iter())?;
+    db.insert_compute_leafs(level, base_cycle, leafs.iter())?;
 
     Ok(MachineCommitment {
         implicit_hash: initial_state,
@@ -132,17 +131,23 @@ fn advance_instruction(
     base_cycle: u64,
     builder: &mut MerkleBuilder,
     instruction_count: u64,
-    leafs: &mut Vec<(Digest, u64)>,
+    leafs: &mut Vec<Leaf>,
 ) -> Result<ControlFlow<()>> {
     let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN_TO_BARCH);
     let state = machine.run(base_cycle + cycle)?;
     let control_flow = if state.halted | state.yielded {
-        leafs.push((state.root_hash, instruction_count - instruction + 1));
+        leafs.push(Leaf {
+            hash: state.root_hash.into(),
+            repetitions: instruction_count - instruction + 1,
+        });
         trace!("big advance halted/yielded",);
         builder.append_repeated(state.root_hash, instruction_count - instruction + 1);
         ControlFlow::Break(())
     } else {
-        leafs.push((state.root_hash, 1));
+        leafs.push(Leaf {
+            hash: state.root_hash.into(),
+            repetitions: 1,
+        });
         builder.append(state.root_hash);
         ControlFlow::Continue(())
     };
@@ -175,7 +180,10 @@ pub fn build_small_machine_commitment(
 
         let (mut uarch_tree, machine_state, mut uarch_leafs) = run_uarch_span(machine)?;
         uarch_span_and_leafs.push((uarch_tree.root_hash(), uarch_leafs.clone()));
-        leafs.push((uarch_tree.root_hash(), 1));
+        leafs.push(Leaf {
+            hash: uarch_tree.root_hash().into(),
+            repetitions: 1,
+        });
         builder.append(uarch_tree.clone());
         instruction += 1;
 
@@ -187,7 +195,10 @@ pub fn build_small_machine_commitment(
                 instruction
             );
             uarch_span_and_leafs.push((uarch_tree.root_hash(), uarch_leafs));
-            leafs.push((uarch_tree.root_hash(), instruction_count - instruction + 1));
+            leafs.push(Leaf {
+                hash: uarch_tree.root_hash().into(),
+                repetitions: instruction_count - instruction + 1,
+            });
             builder.append_repeated(uarch_tree, instruction_count - instruction + 1);
             break;
         }
@@ -195,8 +206,7 @@ pub fn build_small_machine_commitment(
     finish_print_flush_same_line();
 
     let merkle = builder.build();
-    let compute_leafs: Vec<Leaf> = leafs.iter().map(|l| Leaf(l.0.data(), l.1)).collect();
-    db.insert_compute_leafs(level, base_cycle, compute_leafs.iter())?;
+    db.insert_compute_leafs(level, base_cycle, leafs.iter())?;
     db.insert_compute_trees(uarch_span_and_leafs.iter())?;
 
     Ok(MachineCommitment {
@@ -218,7 +228,10 @@ fn run_uarch_span(
     let mut i = 0;
 
     loop {
-        leafs.push((machine_state.root_hash, 1));
+        leafs.push(Leaf {
+            hash: machine_state.root_hash.into(),
+            repetitions: 1,
+        });
         builder.append(machine_state.root_hash);
 
         machine_state = machine.increment_uarch()?;
@@ -229,20 +242,23 @@ fn run_uarch_span(
         }
     }
 
-    leafs.push((machine_state.root_hash, constants::UARCH_SPAN_TO_BARCH - i));
+    leafs.push(Leaf {
+        hash: machine_state.root_hash.into(),
+        repetitions: constants::UARCH_SPAN_TO_BARCH - i,
+    });
     builder.append_repeated(machine_state.root_hash, constants::UARCH_SPAN_TO_BARCH - i);
 
     trace!("state before reset {}", machine_state.root_hash);
     machine_state = machine.ureset()?;
     trace!("state after reset {}", machine_state.root_hash);
-    leafs.push((machine_state.root_hash, 1));
+    leafs.push(Leaf {
+        hash: machine_state.root_hash.into(),
+        repetitions: 1,
+    });
     builder.append(machine_state.root_hash);
     let uarch_span = builder.build();
 
-    // prepare uarch leafs for later db insertion
-    let tree_leafs: Vec<Leaf> = leafs.iter().map(|l| Leaf(l.0.data(), l.1)).collect();
-
-    Ok((uarch_span, machine_state, tree_leafs))
+    Ok((uarch_span, machine_state, leafs))
 }
 
 fn print_flush_same_line(args: &str) {

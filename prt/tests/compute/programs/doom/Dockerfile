@@ -1,4 +1,4 @@
-FROM cartesi/machine-emulator:0.18.1
+FROM cartesi/machine-emulator:0.19.0-alpha3
 USER root
 ENV FREEDOOM_VER=v0.2.0
 ENV KERNEL_VER=v0.19.1-riv1
@@ -15,5 +15,4 @@ RUN wget -O freedoom.sqfs https://github.com/rives-io/cartridge-freedoom/release
 COPY ./Makefile .
 COPY ./gameplay-example.rivtape .
 COPY ./entrypoint.sh .
-RUN make doom-compute-machine
-RUN tar --sparse --hole-detection=seek -zvcf /doom-compute-machine.tar.gz doom-compute-machine
+RUN make machine-image

@@ -1,0 +1,37 @@
+DOOM_DIR := "./programs/doom"
+SIMPLE_DIR := "./programs/simple"
+STRESS_DIR := "./programs/stress"
+
+# TODO each program should get its own, from its own dir.
+ROOT_TOURNAMENT := `head -n 1 ./programs/simple/addresses`
+LUA_NODE := "false"
+
+# build compute test programs 
+build-programs:
+  just -f programs/justfile build-programs
+
+# run PRT compute test
+test MACH_PATH:
+  rm -rf _state
+  EXTRA_DATA="false" \
+  LUA_NODE={{LUA_NODE}} \
+  ROOT_TOURNAMENT={{ROOT_TOURNAMENT}} \
+  MACHINE_PATH={{MACH_PATH}} \
+  lua prt_compute.lua
+
+# run PRT compute doom test
+test-doom:
+  just test {{DOOM_DIR}}
+
+# run PRT compute simple test
+test-simple:
+  just test {{SIMPLE_DIR}}
+
+# run PRT compute stress test
+test-stress:
+  just test {{STRESS_DIR}}
+
+# read logs from PRT Compute node, run in separate terminal after `test-[example]`
+# to make things look better, the logs are printed in blue
+read-node-logs:
+  echo -e "\033[34m"; cat honest.log; tail -f honest.log; echo -e "\033[0m"

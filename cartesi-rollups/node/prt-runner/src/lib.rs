@@ -80,13 +80,13 @@ where
             let inputs = Some(inputs.into_iter().map(Input).collect());
             let leafs = leafs
                 .into_iter()
-                .map(|l| {
-                    Leaf(
-                        l.0.as_slice()
-                            .try_into()
-                            .expect("fail to convert leafs from machine state hash"),
-                        l.1,
-                    )
+                .map(|l| Leaf {
+                    hash: l
+                        .0
+                        .as_slice()
+                        .try_into()
+                        .expect("fail to convert leafs from machine state hash"),
+                    repetitions: l.1,
                 })
                 .collect();
 

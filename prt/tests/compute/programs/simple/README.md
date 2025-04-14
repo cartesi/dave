@@ -6,5 +6,5 @@ From this directory, run the following:
 
 ```
 docker build -t simple:test .
-docker cp $(docker create simple:test):/simple-program.tar.gz .
+docker cp $(docker create simple:test):/opt/cartesi/machine-image .
 ```

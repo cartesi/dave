@@ -2,6 +2,8 @@
 local blockchain_consts = require "blockchain.constants"
 local helper = require "utils.helper"
 
+local COMPUTE_BIN = "../../../target/debug/cartesi-prt-compute"
+
 local function set_int_handler(reader, pid)
     local signal = require("posix.signal")
     signal.signal(signal.SIGINT, function()
@@ -25,29 +27,41 @@ local function get_hero_nonce()
 end
 
 -- The Rust Compute reacts once and exits, the coroutine periodically spawn a new process until the tournament ends
-local function create_react_once_runner(player_id, machine_path)
+local function create_react_once_runner(player_id, machine_path, root_tournament)
     local rust_compute_cmd = string.format(
-        [[echo $$ ; exec env MACHINE_PATH='%s' RUST_LOG='info' \
-        ./cartesi-prt-compute 2>&1 | tee -a honest.log]],
-        machine_path)
+        [[echo $$ ; exec env MACHINE_PATH='%s' ROOT_TOURNAMENT='%s' RUST_LOG='info' %s 2>&1 | tee -a honest.log]],
+        machine_path, root_tournament, COMPUTE_BIN)
 
     return coroutine.create(function()
+        local temp_file = os.tmpname()
+
+        -- Prepare temp directory for the Rust compute node to exchange information
+        local temp_dir = temp_file:match("(.*/)")
+        assert(temp_dir, "No temp directory to receive notification from Rust node")
+        local tournament_dir = temp_dir .. string.upper(root_tournament)
+        helper.mkdir_p(tournament_dir)
+        local finished = tournament_dir .. "/finished"
+        helper.remove_file(finished)
+        helper.remove_file("honest.log")
+        print("Monitoring finished temp file: " .. finished)
+
         while true do
             local tx_count = get_hero_nonce()
-            local reader = io.popen(rust_compute_cmd)
-            assert(reader, "Failed to open process for Rust compute: " .. rust_compute_cmd)
+            local reader = assert(io.popen(rust_compute_cmd))
             local hero_pid = tonumber(reader:read())
 
             while true do
                 local output = reader:read()
                 if not output then break end
                 helper.log_color(player_id, output)
+                io.flush()
             end
 
             local success, _, code = reader:close()
             assert(success, string.format("Rust compute command failed to close:\n%d", code))
 
-            if helper.exists("/root/prt/tests/compute/finished") then
+            if helper.exists(finished) then
+                print("Rust compute finished")
                 break
             end
 
@@ -58,12 +72,11 @@ local function create_react_once_runner(player_id, machine_path)
 end
 
 -- The Rust Compute reacts in a loop until the tournament ends, the coroutine pulls its state periodically until the process ends
-local function create_runner(player_id, machine_path)
+local function create_runner(player_id, machine_path, root_tournament)
     local hero_react_interval = 3
     local rust_compute_cmd = string.format(
-        [[echo $$ ; exec env INTERVAL='%d' MACHINE_PATH='%s' RUST_LOG='info' \
-    ./cartesi-prt-compute 2>&1 | tee honest.log]],
-        hero_react_interval, machine_path)
+        [[echo $$ ; exec env INTERVAL='%d' MACHINE_PATH='%s' ROOT_TOURNAMENT='%s' RUST_LOG='info' %s 2>&1 | tee honest.log]],
+        hero_react_interval, machine_path, root_tournament, COMPUTE_BIN)
 
     return coroutine.create(function()
         local start_time = os.time()

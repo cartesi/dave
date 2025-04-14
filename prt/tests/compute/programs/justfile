@@ -1,0 +1,31 @@
+# all programs
+build-programs: build-simple build-doom build-stress
+clean-programs: clean-simple clean-doom clean-stress
+clean-program prog:
+  rm -f {{prog}}/_anvil.log {{prog}}/addresses {{prog}}/anvil_state.json
+  rm -rf {{prog}}/machine-image
+
+# simple
+build-simple: clean-simple
+  cd simple && \
+  docker build -t simple:test . &&  \
+  docker cp $(docker create simple:test):/opt/cartesi/machine-image .
+  ./build_anvil_state.sh "simple"
+clean-simple: (clean-program "simple")
+
+# doom
+build-doom: clean-doom
+  cd doom && \
+  docker build -t doom:test . && \
+  docker cp $(docker create doom:test):/root/machine-image .
+  ./build_anvil_state.sh "doom"
+clean-doom: (clean-program "doom")
+
+# stress
+build-stress: clean-stress
+  cd stress && \
+  docker build -t debootstrap:test . && \
+  docker cp $(docker create debootstrap:test):/opt/cartesi/machine-image .
+  ./build_anvil_state.sh "stress"
+clean-stress: (clean-program "stress")
+

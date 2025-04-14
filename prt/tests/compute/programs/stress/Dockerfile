@@ -41,7 +41,7 @@ RUN rm -rf /replicate/release /replicate/release.tar
 
 COPY --from=cartesi/linux-kernel:0.20.0 /opt/riscv/kernel/artifacts/linux-6.5.13-ctsi-1-v0.20.0.bin /usr/share/cartesi-machine/images/linux.bin
 #20231201T000000Z
-FROM cartesi/machine-emulator:0.18.1 AS cartesi-base
+FROM cartesi/machine-emulator:0.19.0-alpha3 AS cartesi-base
 COPY --from=build /replicate/source.ext2 /source.ext2
 COPY --from=build /usr/share/cartesi-machine/images /usr/share/cartesi-machine/images
 USER root
@@ -52,5 +52,4 @@ RUN truncate -s 2G /image.ext2
 RUN cartesi-machine --skip-root-hash-check --append-bootargs="loglevel=8 init=/debootstrap/copy" --flash-drive=label:root,filename:/source.ext2 --flash-drive=label:dest,filename:/image.ext2,shared --ram-length=2Gi --uarch-ram-image="/usr/share/cartesi-machine/uarch/uarch-ram.bin" || true
 # actually debootstrap
 RUN cartesi-machine --skip-root-hash-check --append-bootargs="loglevel=8 init=/debootstrap/bootstrap" --flash-drive=label:root,filename:/image.ext2 --ram-length=2Gi --max-mcycle=0 --store=debootstrap-machine --uarch-ram-image="/usr/share/cartesi-machine/uarch/uarch-ram.bin" && \
-    cp -v --sparse=always -r debootstrap-machine debootstrap-machine-sparsed && rm -rf debootstrap-machine && \
-    tar --sparse --hole-detection=seek -zvcf /debootstrap-machine-sparsed.tar.gz debootstrap-machine-sparsed  && rm -rf /source.ext2 /image.ext2 && rm -rf debootstrap-machine-sparsed
+    cp -v --sparse=always -r debootstrap-machine machine-image

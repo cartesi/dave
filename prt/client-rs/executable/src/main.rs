@@ -6,10 +6,14 @@ use clap::Parser;
 use log::{error, info};
 use std::{fs::OpenOptions, io, path::Path};
 
-const FINISHED_PATH: &str = "/root/prt/tests/compute/finished";
 // A simple implementation of `% touch path` (ignores existing files)
 fn touch(path: &Path) -> io::Result<()> {
-    match OpenOptions::new().create(true).write(true).open(path) {
+    match OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open(path)
+    {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }
@@ -36,12 +40,22 @@ async fn main() -> Result<()> {
     )
     .expect("fail to create player object");
 
+    let finished = tempfile::tempdir()
+        .expect("Failed to create temp directory")
+        .path()
+        .parent()
+        .expect("No temp directory to create finished notification")
+        .join(config.root_tournament.to_string().to_uppercase())
+        .join("finished");
+
     if config.interval == u64::MAX {
         match player.react_once(&sender).await {
             Ok(Some(state)) => {
-                info!("Tournament finished, {:?}", state);
-                let finished_path = Path::new(FINISHED_PATH);
-                touch(finished_path)?;
+                info!(
+                    "Tournament finished, {:?}, touching finished path {:#?}",
+                    state, finished
+                );
+                touch(&finished)?;
             }
             Err(e) => {
                 error!("{}", e);

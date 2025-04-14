@@ -48,6 +48,9 @@ local Machine = require "computation.machine"
 local MerkleBuilder = require "cryptography.merkle_builder"
 local Reader = require "dave.reader"
 local Sender = require "dave.sender"
+local rpath = assert(io.popen("realpath " .. assert(os.getenv("MACHINE_PATH"))))
+local rollups_machine_path = assert(rpath:read())
+rpath:close()
 
 os.execute("rm -rf _state")
 
@@ -59,7 +62,7 @@ local function build_root_commitment_from_db(machine_path, root_tournament)
     local machine = Machine:new_from_path(machine_path)
     local initial_state = machine:state()
 
-    local handle = io.popen(string.format(ROOT_LEAFS_QUERY, root_tournament))
+    local handle = io.popen(string.format(ROOT_LEAFS_QUERY, string.upper(root_tournament)))
     assert(handle)
     local rows = handle:read "*a"
     handle:close()
@@ -86,7 +89,7 @@ local INPUTS_QUERY =
 [[sqlite3 ./_state/compute_path/%s/db 'select HEX(input)
 from inputs ORDER BY input_index ASC']]
 local function get_inputs_from_db(root_tournament)
-    local handle = io.popen(string.format(INPUTS_QUERY, root_tournament))
+    local handle = io.popen(string.format(INPUTS_QUERY, string.upper(root_tournament)))
     assert(handle)
     local rows = handle:read "*a"
     handle:close()
@@ -179,10 +182,6 @@ local function run_players(player_coroutines)
 end
 
 -- Main Execution
-local rpath = assert(io.popen("realpath " .. assert(os.getenv("MACHINE_PATH"))))
-local rollups_machine_path = assert(rpath:read())
-rpath:close()
-
 local blockchain_node = Blockchain:new(rollups_machine_path .. "/anvil_state.json")
 time.sleep(NODE_DELAY)
 
@@ -210,7 +209,6 @@ while true do
         print(string.format("rollups test ends with %d epoch(s)", MAX_EPOCH))
         break
     end
-
     if #sealed_epochs > 0 then
         local last_sealed_epoch = sealed_epochs[#sealed_epochs]
         for _ = input_index, input_index + 2 do
@@ -219,13 +217,15 @@ while true do
 
         -- react to last sealed epoch
         local root_tournament = sealed_epochs[#sealed_epochs].tournament
-        local work_path = string.format("./_state/compute_path/%s", root_tournament)
+        local work_path = string.format("./_state/compute_path/%s", string.upper(root_tournament))
         if helper.exists(work_path) then
             print(string.format("sybil player attacking epoch %d",
                 last_sealed_epoch.epoch_number))
             local epoch_machine_path = string.format("./_state/snapshots/%d/0", last_sealed_epoch.epoch_number)
             local player_coroutines = setup_players(root_tournament, epoch_machine_path)
             run_players(player_coroutines)
+        else
+            error("work directory doesn't exist!")
         end
     end
     time.sleep(SLEEP_TIME)

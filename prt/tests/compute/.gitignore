@@ -1,2 +1,5 @@
 outputs
 pixels
+*.log
+_state/
+

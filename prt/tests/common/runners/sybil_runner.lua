@@ -36,8 +36,8 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint, fake
 end
 
 
-local function sybil_runner(player_id, machine_path, root_commitment, root_tournament, fake_commitment_count, inputs)
-    local snapshot_dir = string.format("./_state/compute_path/%s", root_tournament)
+local function sybil_runner(player_id, machine_path, root_commitment, root_tournament, fake_commitment_count, inputs,
+                            snapshot_dir)
     local strategy = HonestStrategy:new(
         FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir),
         inputs,

@@ -75,8 +75,8 @@ pub fn insert_compute_leafs<'a>(
 ) -> Result<()> {
     let mut stmt = insert_compute_leaf_statement(&conn)?;
     for (i, leaf) in leafs.enumerate() {
-        assert!(leaf.1 > 0);
-        stmt.execute(params![level, base_cycle, i, leaf.0, leaf.1])?;
+        assert!(leaf.repetitions > 0);
+        stmt.execute(params![level, base_cycle, i, leaf.hash, leaf.repetitions])?;
     }
 
     Ok(())
@@ -129,8 +129,8 @@ pub fn insert_compute_tree<'a>(
     if compute_tree_count(conn, tree_root)? == 0 {
         let mut stmt = insert_compute_tree_statement(&conn)?;
         for (i, leaf) in tree_leafs.enumerate() {
-            assert!(leaf.1 > 0);
-            stmt.execute(params![tree_root, i, leaf.0, leaf.1])?;
+            assert!(leaf.repetitions > 0);
+            stmt.execute(params![tree_root, i, leaf.hash, leaf.repetitions])?;
         }
     }
 
@@ -290,7 +290,22 @@ mod leafs_tests {
         ];
 
         assert!(matches!(
-            insert_compute_leafs(&conn, 0, 0, [Leaf(data, 1), Leaf(data, 2)].iter(),),
+            insert_compute_leafs(
+                &conn,
+                0,
+                0,
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
+            ),
             Ok(())
         ));
         assert!(matches!(compute_leafs(&conn, 0, 0).unwrap().len(), 2));
@@ -300,7 +315,17 @@ mod leafs_tests {
                 &conn,
                 0,
                 0,
-                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
             ),
             Err(_)
         ));
@@ -309,7 +334,17 @@ mod leafs_tests {
                 &conn,
                 0,
                 1,
-                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
             ),
             Ok(())
         ));
@@ -319,7 +354,17 @@ mod leafs_tests {
                 &conn,
                 1,
                 0,
-                [Leaf(data.clone(), 1), Leaf(data.clone(), 2)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
             ),
             Ok(())
         ));
@@ -348,7 +393,21 @@ mod trees_tests {
         ];
 
         assert!(matches!(
-            insert_compute_tree(&conn, &root, [Leaf(data, 1), Leaf(data, 2)].iter(),),
+            insert_compute_tree(
+                &conn,
+                &root,
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                ]
+                .iter(),
+            ),
             Ok(())
         ));
         assert!(matches!(compute_tree(&conn, &root).unwrap().len(), 2));
@@ -358,7 +417,21 @@ mod trees_tests {
             insert_compute_tree(
                 &conn,
                 &root,
-                [Leaf(data, 1), Leaf(data, 2), Leaf(data, 3)].iter(),
+                [
+                    Leaf {
+                        hash: data,
+                        repetitions: 1
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 2
+                    },
+                    Leaf {
+                        hash: data,
+                        repetitions: 3
+                    }
+                ]
+                .iter(),
             ),
             Ok(())
         ));
