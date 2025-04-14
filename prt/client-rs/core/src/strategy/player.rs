@@ -41,6 +41,7 @@ impl Player {
         blockchain_config: &BlockchainConfig,
         machine_path: String,
         root_tournament: Address,
+        block_created_number: u64,
         state_dir: PathBuf,
     ) -> Result<Self> {
         let db = ComputeStateAccess::new(
@@ -49,7 +50,7 @@ impl Player {
             root_tournament.to_string(),
             state_dir.join("compute_path"),
         )?;
-        let reader = StateReader::new(blockchain_config)?;
+        let reader = StateReader::new(blockchain_config, block_created_number)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
@@ -62,9 +63,9 @@ impl Player {
         })
     }
 
-    pub async fn react<'a>(
+    pub async fn react(
         &mut self,
-        arena_sender: &'a impl ArenaSender,
+        arena_sender: &impl ArenaSender,
         interval: u64,
     ) -> Result<PlayerTournamentResult> {
         loop {
@@ -81,9 +82,9 @@ impl Player {
         }
     }
 
-    pub async fn react_once<'a>(
+    pub async fn react_once(
         &mut self,
-        arena_sender: &'a impl ArenaSender,
+        arena_sender: &impl ArenaSender,
     ) -> Result<Option<PlayerTournamentResult>> {
         let tournament_states = self.reader.fetch_from_root(self.root_tournament).await?;
         self.gc.react_once(arena_sender, &tournament_states).await?;
@@ -185,7 +186,7 @@ impl Player {
 
                     self.react_match(
                         arena_sender,
-                        &match_state,
+                        match_state,
                         commitments,
                         tournament_state,
                         tournament_states,
@@ -199,7 +200,7 @@ impl Player {
                 }
             }
             None => {
-                self.join_tournament_if_needed(arena_sender, tournament_state, &commitment)
+                self.join_tournament_if_needed(arena_sender, tournament_state, commitment)
                     .await?;
             }
         }
@@ -207,9 +208,9 @@ impl Player {
         Ok(None)
     }
 
-    async fn join_tournament_if_needed<'a>(
+    async fn join_tournament_if_needed(
         &mut self,
-        arena_sender: &'a impl ArenaSender,
+        arena_sender: &impl ArenaSender,
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
     ) -> Result<()> {
@@ -292,26 +293,25 @@ impl Player {
         Ok(())
     }
 
-    async fn win_timeout_match<'a>(
+    async fn win_timeout_match(
         &mut self,
-        arena_sender: &'a impl ArenaSender,
+        arena_sender: &impl ArenaSender,
         match_state: &MatchState,
         commitment: &MachineCommitment,
         commitment_states: &HashMap<Digest, CommitmentState>,
         tournament_level: u64,
     ) -> Result<()> {
-        let opponent_clock;
-        if commitment.merkle.root_hash() == match_state.id.commitment_one {
-            opponent_clock = commitment_states
+        let opponent_clock = if commitment.merkle.root_hash() == match_state.id.commitment_one {
+            commitment_states
                 .get(&match_state.id.commitment_two)
                 .unwrap()
-                .clock;
+                .clock
         } else {
-            opponent_clock = commitment_states
+            commitment_states
                 .get(&match_state.id.commitment_one)
                 .unwrap()
-                .clock;
-        }
+                .clock
+        };
 
         if !opponent_clock.has_time() {
             let (left, right) = commitment
@@ -400,9 +400,9 @@ impl Player {
         Ok(())
     }
 
-    async fn react_unsealed_match<'a>(
+    async fn react_unsealed_match(
         &mut self,
-        arena_sender: &'a impl ArenaSender,
+        arena_sender: &impl ArenaSender,
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,
@@ -470,9 +470,9 @@ impl Player {
         Ok(())
     }
 
-    async fn react_running_match<'a>(
+    async fn react_running_match(
         &mut self,
-        arena_sender: &'a impl ArenaSender,
+        arena_sender: &impl ArenaSender,
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,

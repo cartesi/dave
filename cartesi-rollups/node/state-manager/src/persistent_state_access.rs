@@ -378,6 +378,7 @@ mod tests {
                 epoch_number: 0,
                 input_index_boundary: 12,
                 root_tournament: String::new(),
+                block_created_number: 0,
             }]
             .into_iter(),
         )?;

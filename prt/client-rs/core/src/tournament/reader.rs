@@ -28,17 +28,20 @@ use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament
 #[derive(Clone)]
 pub struct StateReader {
     client: DynProvider,
+    block_created_number: u64,
 }
 
 impl StateReader {
-    pub fn new(config: &BlockchainConfig) -> Result<Self> {
+    pub fn new(config: &BlockchainConfig, block_created_number: u64) -> Result<Self> {
         let url = config.web3_rpc_url.parse()?;
         let client = ProviderBuilder::new().on_http(url).erased();
 
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            block_created_number,
+        })
     }
 
-    // TODO: update from_block
     async fn created_tournament(
         &self,
         tournament_address: Address,
@@ -50,7 +53,7 @@ impl StateReader {
             .newInnerTournament_filter()
             .address(tournament_address)
             .topic1::<B256>(match_id.hash().into())
-            .from_block(0)
+            .from_block(self.block_created_number)
             .to_block(Latest)
             .query()
             .await?;
@@ -109,7 +112,7 @@ impl StateReader {
         let events: Vec<MatchCreatedEvent> = tournament
             .matchCreated_filter()
             .address(tournament_address)
-            .from_block(0)
+            .from_block(self.block_created_number)
             .to_block(Latest)
             .query()
             .await?
@@ -133,7 +136,7 @@ impl StateReader {
         let events = tournament
             .commitmentJoined_filter()
             .address(tournament_address)
-            .from_block(0)
+            .from_block(self.block_created_number)
             .to_block(Latest)
             .query()
             .await?

@@ -4,7 +4,7 @@ mod error;
 
 use crate::error::{ProviderErrors, Result};
 
-use alloy::rpc::types::Topic;
+use alloy::rpc::types::{Log, Topic};
 use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
@@ -81,8 +81,8 @@ where
             address_book,
             prev_block,
             provider: partition_provider,
-            input_reader: EventReader::<InputAdded>::new(),
-            epoch_reader: EventReader::<EpochSealed>::new(),
+            input_reader: EventReader::<InputAdded>::default(),
+            epoch_reader: EventReader::<EpochSealed>::default(),
             sleep_duration: Duration::from_secs(sleep_duration),
         })
     }
@@ -161,7 +161,7 @@ where
             )
             .await?
             .iter()
-            .map(|e| {
+            .map(|(e, meta)| {
                 let epoch = Epoch {
                     epoch_number: e
                         .epochNumber
@@ -172,6 +172,7 @@ where
                         .to_u64()
                         .expect("fail to convert epoch boundary"),
                     root_tournament: e.tournament.to_string(),
+                    block_created_number: meta.block_number.expect("block number should exist"),
                 };
                 info!(
                     "epoch received: epoch_number {}, input_index_boundary {}, root_tournament {}",
@@ -189,7 +190,7 @@ where
         sealed_epochs_iter: impl Iterator<Item = &Epoch>,
     ) -> Result<Vec<Input>, SM> {
         // read new inputs from blockchain
-        let input_events = self
+        let input_events: Vec<_> = self
             .input_reader
             .next(
                 Some(&self.address_book.app.into_word().into()),
@@ -198,7 +199,10 @@ where
                 current_block,
                 &self.provider,
             )
-            .await?;
+            .await?
+            .into_iter()
+            .map(|i| i.0)
+            .collect();
 
         let last_input = self
             .state_manager
@@ -288,12 +292,6 @@ pub struct EventReader<E: SolEvent + Send + Sync> {
 }
 
 impl<E: SolEvent + Send + Sync> EventReader<E> {
-    pub fn new() -> Self {
-        Self {
-            __phantom: std::marker::PhantomData,
-        }
-    }
-
     async fn next(
         &self,
         topic1: Option<&Topic>,
@@ -301,7 +299,7 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
         prev_finalized: u64,
         current_finalized: u64,
         provider: &PartitionProvider,
-    ) -> std::result::Result<Vec<E>, ProviderErrors> {
+    ) -> std::result::Result<Vec<(E, Log)>, ProviderErrors> {
         assert!(current_finalized > prev_finalized);
 
         let logs = provider
@@ -316,6 +314,14 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
             .map_err(ProviderErrors)?;
 
         Ok(logs)
+    }
+}
+
+impl<E: SolEvent + Send + Sync> Default for EventReader<E> {
+    fn default() -> Self {
+        Self {
+            __phantom: std::marker::PhantomData,
+        }
     }
 }
 
@@ -338,7 +344,7 @@ impl PartitionProvider {
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> std::result::Result<Vec<E>, Vec<Error>> {
+    ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
         self.get_events_rec(topic1, read_from, start_block, end_block)
             .await
     }
@@ -350,7 +356,7 @@ impl PartitionProvider {
         read_from: &Address,
         start_block: u64,
         end_block: u64,
-    ) -> std::result::Result<Vec<E>, Vec<Error>> {
+    ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
         // TODO: partition log queries if range too large
         let event: Event<(), &DynProvider, E> = {
             let mut e = Event::new_sol(&self.inner, read_from)
@@ -366,11 +372,7 @@ impl PartitionProvider {
         };
 
         match event.query().await {
-            Ok(l) => {
-                let logs = l.into_iter().map(|x| x.0).collect();
-
-                Ok(logs)
-            }
+            Ok(l) => Ok(l),
             Err(e) => {
                 if Self::should_retry_with_partition(&e) {
                     let middle = {
@@ -535,11 +537,11 @@ mod blockchain_reader_tests {
     }
 
     fn create_epoch_reader() -> EventReader<EpochSealed> {
-        EventReader::<EpochSealed>::new()
+        EventReader::<EpochSealed>::default()
     }
 
     fn create_input_reader() -> EventReader<InputAdded> {
-        EventReader::<InputAdded>::new()
+        EventReader::<InputAdded>::default()
     }
 
     async fn add_input(
@@ -580,7 +582,10 @@ mod blockchain_reader_tests {
                     latest_finalized_block,
                     &partition_provider,
                 )
-                .await?;
+                .await?
+                .into_iter()
+                .map(|x| x.0)
+                .collect();
             // wait a few seconds for the input added block to be finalized
             sleep(Duration::from_secs(1)).await;
         }
@@ -609,7 +614,10 @@ mod blockchain_reader_tests {
                     latest_finalized_block,
                     &partition_provider,
                 )
-                .await?;
+                .await?
+                .into_iter()
+                .map(|x| x.0)
+                .collect();
             // wait a few seconds for the input added block to be finalized
             sleep(Duration::from_secs(1)).await;
         }

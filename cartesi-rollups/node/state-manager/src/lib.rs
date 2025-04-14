@@ -102,6 +102,7 @@ pub struct Epoch {
     pub epoch_number: u64,
     pub input_index_boundary: u64,
     pub root_tournament: String,
+    pub block_created_number: u64,
 }
 
 pub trait StateManager {

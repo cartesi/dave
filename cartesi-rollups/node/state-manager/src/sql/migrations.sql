@@ -8,7 +8,8 @@ CREATE TABLE settlement_info (
 CREATE TABLE epochs (
     epoch_number INTEGER NOT NULL PRIMARY KEY,
     input_index_boundary INTEGER NOT NULL,
-    root_tournament TEXT NOT NULL
+    root_tournament TEXT NOT NULL,
+    block_created_number INTEGER NOT NULL
 );
 
 CREATE TABLE inputs (
