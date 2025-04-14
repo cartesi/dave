@@ -26,4 +26,4 @@ test-honeypot:
 
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:
-  tail -f dave.log
+  cat dave.log; tail -f dave.log

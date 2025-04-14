@@ -9,17 +9,17 @@ You need a docker installation to run the Dave Lua node.
 
 ## Build test image
 
-In order to run tests in this directory, a docker image must be built to prepare the test environment.
+In order to run tests in this directory, machine images must be built with docker to prepare the test environment.
 Once the test image is built, the user can run all the tests supported by swapping the `MACHINE_PATH` env variable.
 
 ```bash
-make create-image
+just build-programs
 ```
 
 ## Run simple test
 
 This directory also has an example _verification tournament_ program, in which players compete against each other to prove the correct result of a computation.
-The computation binary is specified in the [`program`](program) directory.
+The computation binary is specified in the [`programs`](programs) directory.
 From this binary, the example program first generates a Cartesi Machine image, which fully specifies a computation.
 Then, it creates a local blockchain and deploys all the Dave smart contracts to it.
 Finally, it spawns multiple players to fight each other.
@@ -40,27 +40,34 @@ These players come in multiple flavours:
 To add more players of different kinds, you can edit the [`prt_compute.lua`](prt_compute.lua) file.
 To run the full example, execute one of the following commands from the current path:
 
+## Run simple test
+
+A [simple program](./programs/simple/README.md) is provided to test the compute.
+
 ```bash
-make test-simple
+just test-simple
+```
+
+## Run doom test
+
+A [doom program](./programs/doom/README.md) is provided to test the compute.
+
+```bash
+just test-doom
 ```
 
 ## Run stress test
 
-```bash
-make test-stress
-```
-
-## Run doom showcase
+A [debootstrap program](./programs/stress/README.md) is provided to test the compute.
 
 ```bash
-make test-doom
+just test-stress
 ```
 
-## Run doom showcase with graphics on
+## Read node logs
+
+To get more information of the honest player's machine execution in a separate terminal
 
 ```bash
-make test-doom-with-graphics
+just read-node-logs
 ```
-
-After execution, the `pixels` directory will contain all snapshots of the full gameplay.
-Two files `current-state.json` and `hero-claims.json` in the `outputs` directory.

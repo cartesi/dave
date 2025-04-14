@@ -123,6 +123,14 @@ function helper.exists(file)
     return ok, err
 end
 
+function helper.remove_file(file)
+    local success, err = pcall(os.remove, file)
+    if not success then
+        -- Ignore the error or handle it if needed
+        print("Error removing file:", err) -- Optional: print the error message
+    end
+end
+
 function helper.is_pid_alive(pid)
     -- Check if the process is alive
     local ok, _, code = os.execute("kill -0 " .. pid .. " 2>/dev/null")
@@ -142,10 +150,8 @@ function helper.mkdir_p(path)
     local result = os.execute(command)
 
     -- Check if the command was successful
-    if result then
-        print("Directory created successfully: " .. path)
-    else
-        print("Failed to create directory: " .. path)
+    if not result then
+        error("Failed to create directory: " .. path)
     end
 end
 

@@ -10,7 +10,7 @@ use crate::{
 };
 
 use alloy::primitives::U256;
-use log::trace;
+use log::{info, trace};
 use std::collections::{hash_map::Entry, HashMap};
 
 pub struct CachingMachineCommitmentBuilder {
@@ -40,7 +40,7 @@ impl CachingMachineCommitmentBuilder {
             return Ok(commitment.clone());
         }
 
-        let mut machine = MachineInstance::new_from_path(&self.machine_path)?;
+        let mut machine;
         let initial_state = {
             if db.handle_rollups {
                 // treat it as rollups
@@ -53,10 +53,14 @@ impl CachingMachineCommitmentBuilder {
                 machine.state()?.root_hash
             } else {
                 // treat it as compute
+                machine = MachineInstance::new_from_path(&self.machine_path)?;
                 if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
                     machine.load_snapshot(&snapshot.1, snapshot.0)?;
                 };
-                machine.run(base_cycle)?.root_hash
+                let root_hash = machine.run(base_cycle)?.root_hash;
+                info!("run to base cycle: {}", base_cycle);
+                machine.take_snapshot(base_cycle, &db)?;
+                root_hash
             }
         };
         trace!("initial state for commitment: {}", initial_state);

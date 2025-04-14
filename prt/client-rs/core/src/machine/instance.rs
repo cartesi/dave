@@ -6,6 +6,7 @@ use crate::machine::constants::{
 use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
+use cartesi_machine::config::runtime::HTIFRuntimeConfig;
 use cartesi_machine::types::cmio::CmioResponseReason;
 use cartesi_machine::types::LogType;
 use cartesi_machine::{
@@ -63,8 +64,14 @@ pub struct MachineInstance {
 
 impl MachineInstance {
     pub fn new_from_path(path: &str) -> Result<Self> {
+        let runtime_config = RuntimeConfig {
+            htif: Some(HTIFRuntimeConfig {
+                no_console_putchar: Some(true),
+            }),
+            ..Default::default()
+        };
         let path = PathBuf::from(path);
-        let mut machine = Machine::load(&path, &RuntimeConfig::default())?;
+        let mut machine = Machine::load(&path, &runtime_config)?;
 
         let start_cycle = machine.mcycle()?;
 
@@ -81,7 +88,7 @@ impl MachineInstance {
         })
     }
 
-    fn _take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
+    pub fn take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
         let mask = arithmetic::max_uint(constants::LOG2_BARCH_SPAN_TO_INPUT);
         if db.handle_rollups && ((base_cycle & mask) == 0) && !self.is_yielded()? {
             // don't snapshot a machine state that's freshly fed with input without advance
@@ -98,7 +105,13 @@ impl MachineInstance {
     // load inner machine with snapshot, update cycle, keep everything else the same
     pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
         debug!("load snapshot from {}", snapshot_path.display());
-        let mut machine = Machine::load(Path::new(snapshot_path), &RuntimeConfig::default())?;
+        let runtime_config = RuntimeConfig {
+            htif: Some(HTIFRuntimeConfig {
+                no_console_putchar: Some(true),
+            }),
+            ..Default::default()
+        };
+        let mut machine = Machine::load(Path::new(snapshot_path), &runtime_config)?;
 
         let cycle = machine.mcycle()?;
         debug!("cycle: {}, start_cycle: {}", cycle, self.start_cycle);
@@ -304,11 +317,39 @@ impl MachineInstance {
     }
 
     fn get_logs_compute(
-        _path: &str,
-        _agree_hash: Digest,
-        _meta_cycle: u64,
+        path: &str,
+        agree_hash: Digest,
+        meta_cycle: U256,
+        db: &ComputeStateAccess,
     ) -> Result<(Vec<u8>, Digest)> {
-        unimplemented!();
+        let meta_cycle_u128 = meta_cycle
+            .to_u128()
+            .expect("meta_cycle is too large to fit in u128");
+        let big_step_mask = UARCH_SPAN_TO_BARCH as u128;
+
+        let base_cycle = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_BARCH) as u64;
+        let ucycle = (meta_cycle_u128 & big_step_mask) as u64;
+
+        let mut machine = MachineInstance::new_from_path(path)?;
+        if let Some(snapshot_path) = db.closest_snapshot(base_cycle)? {
+            machine.load_snapshot(&snapshot_path.1, snapshot_path.0)?;
+        }
+        machine.run(base_cycle)?;
+        machine.run_uarch(ucycle)?;
+        assert_eq!(machine.state()?.root_hash, agree_hash);
+
+        let log = {
+            if (meta_cycle_u128 + 1) & big_step_mask == 0 {
+                machine.machine.log_reset_uarch(LogType::default())?
+            } else {
+                machine.machine.log_step_uarch(LogType::default())?
+            }
+        };
+
+        Ok((
+            Self::encode_access_logs(vec![&log]),
+            machine.state()?.root_hash,
+        ))
     }
 
     fn encode_da(input_bin: &[u8]) -> Vec<u8> {
@@ -325,7 +366,7 @@ impl MachineInstance {
         db: &ComputeStateAccess,
     ) -> Result<(Vec<u8>, Digest)> {
         let input_mask = (U256::one() << LOG2_UARCH_SPAN_TO_INPUT) - U256::one();
-        let big_step_mask = arithmetic::max_uint(LOG2_UARCH_SPAN_TO_BARCH);
+        let big_step_mask = UARCH_SPAN_TO_BARCH;
 
         assert!(((meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT) & !input_mask).is_zero());
 
@@ -394,7 +435,7 @@ impl MachineInstance {
             proofs = result.0;
             next_hash = result.1;
         } else {
-            let result = Self::get_logs_compute(path, agree_hash, meta_cycle.to_u64().unwrap())?;
+            let result = Self::get_logs_compute(path, agree_hash, meta_cycle, db)?;
             proofs = result.0;
             next_hash = result.1;
         }

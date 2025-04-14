@@ -20,7 +20,13 @@ local blockchain_constants = require "blockchain.constants"
 local Blockchain = require "blockchain.node"
 local CommitmentBuilder = require "computation.commitment"
 
-local function write_json_file(leafs, root_tournament)
+local rpath = assert(io.popen("realpath " .. assert(os.getenv("MACHINE_PATH"))))
+local compute_machine_path = assert(rpath:read())
+rpath:close()
+local lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
+local extra_data = helper.str_to_bool(os.getenv("EXTRA_DATA"))
+
+local function write_json_file(leafs, compute_path)
     local prev_accumulated = 0
     local new_leafs = {}
     for i, leaf in ipairs(leafs) do
@@ -36,11 +42,10 @@ local function write_json_file(leafs, root_tournament)
 
     local flat = require "utils.flat"
     local json = require "utils.json"
-    local work_path = string.format("/compute_data/%s", root_tournament)
-    if not helper.exists(work_path) then
-        helper.mkdir_p(work_path)
+    if not helper.exists(compute_path) then
+        helper.mkdir_p(compute_path)
     end
-    local file_path = string.format("%s/inputs_and_leafs.json", work_path)
+    local file_path = compute_path .. "/inputs_and_leafs.json"
     local file = assert(io.open(file_path, "w"))
     file:write(json.encode(flat.flatten(inputs_and_leafs).flat_object))
     assert(file:close())
@@ -55,30 +60,30 @@ local function get_root_constants(root_tournament)
 end
 
 -- Function to setup players
-local function setup_players(use_lua_node, extra_data, root_tournament, machine_path)
+local function setup_players(use_lua_node, use_extra_data, root_tournament, machine_path, compute_path)
     local root_constants = get_root_constants(root_tournament)
 
     local inputs = nil
     local player_coroutines = {}
     local player_index = 1
     print("Calculating root commitment...")
-    local snapshot_dir = string.format("./_state/compute_path/%s", root_tournament)
-    local builder = CommitmentBuilder:new(machine_path)
-    local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height, inputs)
+    local builder = CommitmentBuilder:new(machine_path, nil, nil, compute_path)
+    local root_commitment = builder:build(0, 0, root_constants.log2_step, root_constants.height)
 
     if use_lua_node then
         -- use Lua node to defend
         print("Setting up Lua honest player")
         local start_hero = require "runners.hero_runner"
         player_coroutines[player_index] = start_hero(player_index, machine_path, root_commitment, root_tournament,
-            extra_data, inputs)
+            use_extra_data, inputs, compute_path)
     else
         -- use Rust node to defend
         print("Setting up Rust honest player")
         local rust_hero_runner = require "runners.rust_hero_runner"
-        player_coroutines[player_index] = rust_hero_runner.create_react_once_runner(player_index, machine_path)
+        player_coroutines[player_index] = rust_hero_runner.create_react_once_runner(player_index, machine_path,
+            root_tournament)
         -- write leafs to json file for rust node to use
-        write_json_file(root_commitment.leafs, root_tournament)
+        write_json_file(root_commitment.leafs, compute_path)
     end
     player_index = player_index + 1
 
@@ -87,7 +92,7 @@ local function setup_players(use_lua_node, extra_data, root_tournament, machine_
         local scoped_require = new_scoped_require(_ENV)
         local start_sybil = scoped_require "runners.sybil_runner"
         player_coroutines[player_index] = start_sybil(player_index, machine_path, root_commitment, root_tournament,
-            FAKE_COMMITMENT_COUNT, inputs)
+            FAKE_COMMITMENT_COUNT, inputs, compute_path)
         player_index = player_index + 1
     end
 
@@ -138,19 +143,17 @@ local function run_players(player_coroutines)
     end
 end
 
+
+local root_tournament = assert(os.getenv("ROOT_TOURNAMENT"))
+local compute_path = "./_state/compute_path/" .. string.upper(root_tournament)
+
 -- Main Execution
-local machine_path = os.getenv("MACHINE_PATH")
-local use_lua_node = helper.str_to_bool(os.getenv("LUA_NODE"))
-local extra_data = helper.str_to_bool(os.getenv("EXTRA_DATA"))
-local root_tournament = blockchain_constants.root_tournament
-
-local blockchain_node = Blockchain:new()
+local blockchain_node = Blockchain:new(compute_machine_path .. "/anvil_state.json")
 time.sleep(NODE_DELAY)
 
-blockchain_utils.deploy_contracts("../../contracts")
-time.sleep(NODE_DELAY)
+local player_coroutines = setup_players(lua_node, extra_data, root_tournament,
+    compute_machine_path .. "/machine-image", compute_path)
 
-local player_coroutines = setup_players(use_lua_node, extra_data, root_tournament, machine_path)
 print("Hello from Dave compute lua prototype!")
 
 run_players(player_coroutines)

@@ -4,7 +4,7 @@ RIV_VER=v0.3-rc10
 LINUX_VER=linux-6.5.9-ctsi-1-$(KERNEL_VER)
 TAPE=gameplay-example.rivtape
 
-doom-compute-machine:
+machine-image:
 	@cp $(TAPE) $(TAPE).tmp && truncate -s 64K $(TAPE).tmp
 	@rm -f $(TAPE).json && truncate -s 64K $(TAPE).json
 	cartesi-machine \
@@ -16,5 +16,5 @@ doom-compute-machine:
 		--flash-drive=start:0xb0000000000000,length:64Ki,label:outcard \
 		--replace-flash-drive=start:0xa0000000000000,length:64Ki,filename:$(TAPE).tmp \
 		--max-mcycle=0 \
-		--store=doom-compute-machine \
+		--store=machine-image \
 		--append-entrypoint-file=entrypoint.sh

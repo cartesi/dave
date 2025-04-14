@@ -24,7 +24,11 @@ pub struct InputsAndLeafs {
 pub struct Input(#[serde(with = "alloy_hex::serde")] pub Vec<u8>);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Leaf(#[serde(with = "alloy_hex::serde")] pub [u8; 32], pub u64);
+pub struct Leaf {
+    #[serde(with = "alloy_hex::serde")]
+    pub hash: [u8; 32],
+    pub repetitions: u64,
+}
 
 #[derive(Debug)]
 pub struct ComputeStateAccess {
@@ -55,7 +59,7 @@ impl ComputeStateAccess {
         // fill the database from a json-format file, or the parameters
         // the database should be "/compute_data/0x_root_tournament_address/db"
         // the json file should be "/compute_data/0x_root_tournament_address/inputs_and_leafs.json"
-        let work_path = compute_data_path.join(root_tournament);
+        let work_path = compute_data_path.join(root_tournament.to_uppercase());
         if !work_path.exists() {
             fs::create_dir_all(&work_path)?;
         }
@@ -81,6 +85,7 @@ impl ComputeStateAccess {
                 // prioritize json file over parameters
                 match read_json_file(&json_path) {
                     Ok(inputs_and_leafs) => {
+                        info!("load inputs and leafs from json file");
                         handle_rollups = inputs_and_leafs.inputs.is_some();
                         compute_data::insert_handle_rollups(&connection, handle_rollups)?;
                         compute_data::insert_compute_data(
@@ -89,7 +94,8 @@ impl ComputeStateAccess {
                             inputs_and_leafs.leafs.iter(),
                         )?;
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        info!("cannot load from json file: {}", e);
                         info!("load inputs and leafs from parameters");
                         handle_rollups = inputs.is_some();
                         compute_data::insert_handle_rollups(&connection, handle_rollups)?;
@@ -253,14 +259,14 @@ mod compute_state_access_tests {
     }
 
     fn test_closest_snapshot() {
-        let work_dir = PathBuf::from("/tmp/0x12345678");
+        let work_dir = PathBuf::from("/tmp/12345678");
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         {
             let access = ComputeStateAccess::new(
                 None,
                 Vec::new(),
-                String::from("0x12345678"),
+                String::from("12345678"),
                 PathBuf::from("/tmp"),
             )
             .unwrap();
@@ -317,14 +323,14 @@ mod compute_state_access_tests {
     }
 
     fn test_none_match() {
-        let work_dir = PathBuf::from("/tmp/0x12345678");
+        let work_dir = PathBuf::from("/tmp/12345678");
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         {
             let access = ComputeStateAccess::new(
                 None,
                 Vec::new(),
-                String::from("0x12345678"),
+                String::from("12345678"),
                 PathBuf::from("/tmp"),
             )
             .unwrap();
@@ -353,13 +359,13 @@ mod compute_state_access_tests {
     }
 
     fn test_compute_tree() {
-        let work_dir = PathBuf::from("/tmp/0x12345678");
+        let work_dir = PathBuf::from("/tmp/12345678");
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         let access = ComputeStateAccess::new(
             None,
             Vec::new(),
-            String::from("0x12345678"),
+            String::from("12345678"),
             PathBuf::from("/tmp"),
         )
         .unwrap();
@@ -368,7 +374,10 @@ mod compute_state_access_tests {
             1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1,
             2, 3, 4,
         ];
-        let leafs = vec![Leaf(root, 2)];
+        let leafs = vec![Leaf {
+            hash: root,
+            repetitions: 2,
+        }];
 
         access.insert_compute_leafs(0, 0, leafs.iter()).unwrap();
         let mut compute_leafs = access.compute_leafs(0, 0).unwrap();
@@ -382,13 +391,13 @@ mod compute_state_access_tests {
     }
 
     fn test_compute_or_rollups_true() {
-        let work_dir = PathBuf::from("/tmp/0x12345678");
+        let work_dir = PathBuf::from("/tmp/12345678");
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         let access = ComputeStateAccess::new(
             Some(Vec::new()),
             Vec::new(),
-            String::from("0x12345678"),
+            String::from("12345678"),
             PathBuf::from("/tmp"),
         )
         .unwrap();
@@ -397,13 +406,13 @@ mod compute_state_access_tests {
     }
 
     fn test_compute_or_rollups_false() {
-        let work_dir = PathBuf::from("/tmp/0x12345678");
+        let work_dir = PathBuf::from("/tmp/12345678");
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         let access = ComputeStateAccess::new(
             None,
             Vec::new(),
-            String::from("0x12345678"),
+            String::from("12345678"),
             PathBuf::from("/tmp"),
         )
         .unwrap();
@@ -413,31 +422,37 @@ mod compute_state_access_tests {
 
     #[test]
     fn test_deserialize() {
-        let json_str_1 = r#"{"leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
+        let json_str_1 = r#"{"leafs": [
+            {"hash":"0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", "repetitions":20}, 
+            {"hash":"0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", "repetitions":13}]}"#;
         let inputs_and_leafs_1: InputsAndLeafs = serde_json::from_str(json_str_1).unwrap();
         assert_eq!(inputs_and_leafs_1.inputs.unwrap_or_default().len(), 0);
         assert_eq!(inputs_and_leafs_1.leafs.len(), 2);
         assert_eq!(
-            inputs_and_leafs_1.leafs[0].0,
+            inputs_and_leafs_1.leafs[0].hash,
             [
                 1, 2, 3, 4, 5, 6, 7, 171, 205, 239, 1, 2, 3, 4, 5, 6, 7, 171, 205, 239, 1, 2, 3, 4,
                 5, 6, 7, 171, 205, 239, 1, 2
             ]
         );
         assert_eq!(
-            inputs_and_leafs_1.leafs[1].0,
+            inputs_and_leafs_1.leafs[1].hash,
             [
                 1, 2, 3, 4, 5, 6, 7, 254, 220, 186, 1, 2, 3, 4, 5, 6, 7, 254, 220, 186, 1, 2, 3, 4,
                 5, 6, 7, 254, 220, 186, 1, 2
             ]
         );
 
-        let json_str_2 = r#"{"inputs": [], "leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
+        let json_str_2 = r#"{"inputs": [], "leafs": [
+            {"hash":"0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", "repetitions": 20}, 
+            {"hash":"0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", "repetitions": 13}]}"#;
         let inputs_and_leafs_2: InputsAndLeafs = serde_json::from_str(json_str_2).unwrap();
         assert_eq!(inputs_and_leafs_2.inputs.unwrap_or_default().len(), 0);
         assert_eq!(inputs_and_leafs_2.leafs.len(), 2);
 
-        let json_str_3 = r#"{"inputs": ["0x12345678", "0x22345678"], "leafs": [["0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", 20], ["0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", 13]]}"#;
+        let json_str_3 = r#"{"inputs": ["0x12345678", "0x22345678"], "leafs": [
+            {"hash":"0x01020304050607abcdef01020304050607abcdef01020304050607abcdef0102", "repetitions": 20}, 
+            {"hash":"0x01020304050607fedcba01020304050607fedcba01020304050607fedcba0102", "repetitions": 13}]}"#;
         let inputs_and_leafs_3: InputsAndLeafs = serde_json::from_str(json_str_3).unwrap();
         let inputs_3 = inputs_and_leafs_3.inputs.unwrap();
         assert_eq!(inputs_3.len(), 2);
