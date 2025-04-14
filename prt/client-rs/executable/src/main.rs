@@ -31,6 +31,7 @@ async fn main() -> Result<()> {
         &blockchain_config,
         config.machine_path,
         config.root_tournament,
+        0, // TODO update to a sensible block number
         config.state_dir,
     )
     .expect("fail to create player object");

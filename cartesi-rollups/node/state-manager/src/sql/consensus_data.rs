@@ -43,7 +43,7 @@ pub fn last_processed_block(conn: &rusqlite::Connection) -> Result<u64> {
 
 fn validate_insert(current: &Option<InputId>, next: &InputId) -> bool {
     match &current {
-        Some(i) if !i.validate_next(&next) => false,
+        Some(i) if !i.validate_next(next) => false,
         None if next.input_index_in_epoch != 0 => false,
         _ => true,
     }
@@ -58,9 +58,9 @@ pub fn insert_inputs<'a>(
         return Ok(());
     }
 
-    let mut current_input = last_input(&conn)?;
+    let mut current_input = last_input(conn)?;
 
-    let mut stmt = insert_input_statement(&conn)?;
+    let mut stmt = insert_input_statement(conn)?;
     for input in inputs {
         if !validate_insert(&current_input, &input.id) {
             return Err(PersistentStateAccessError::InconsistentInput {
@@ -80,7 +80,7 @@ pub fn insert_inputs<'a>(
     Ok(())
 }
 
-fn insert_input_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite::Statement<'a>> {
+fn insert_input_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
     Ok(conn.prepare(
         "\
         INSERT INTO inputs (epoch_number, input_index_in_epoch, input) VALUES (?1, ?2, ?3)
@@ -136,7 +136,7 @@ pub fn inputs(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Vec<Vec<
         ",
     )?;
 
-    let query = stmt.query_map([epoch_number], |r| Ok(r.get(0)?))?;
+    let query = stmt.query_map([epoch_number], |r| r.get(0))?;
 
     let mut res = vec![];
     for row in query {
@@ -146,7 +146,7 @@ pub fn inputs(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Vec<Vec<
     Ok(res)
 }
 
-pub fn input_count<'a>(conn: &'a rusqlite::Connection, epoch_number: u64) -> Result<u64> {
+pub fn input_count(conn: &rusqlite::Connection, epoch_number: u64) -> Result<u64> {
     Ok(conn.query_row(
         "\
         SELECT MAX(input_index_in_epoch) FROM inputs WHERE epoch_number = ?1
@@ -172,9 +172,9 @@ pub fn insert_epochs<'a>(
         return Ok(());
     }
 
-    let mut next_epoch = epoch_count(&conn)?;
+    let mut next_epoch = epoch_count(conn)?;
 
-    let mut stmt = insert_epoch_statement(&conn)?;
+    let mut stmt = insert_epoch_statement(conn)?;
     for epoch in epochs {
         if epoch.epoch_number != next_epoch {
             return Err(PersistentStateAccessError::InconsistentEpoch {
@@ -186,17 +186,18 @@ pub fn insert_epochs<'a>(
         stmt.execute(params![
             epoch.epoch_number,
             epoch.input_index_boundary,
-            epoch.root_tournament
+            epoch.root_tournament,
+            epoch.block_created_number
         ])?;
         next_epoch += 1;
     }
     Ok(())
 }
 
-fn insert_epoch_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite::Statement<'a>> {
+fn insert_epoch_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
     Ok(conn.prepare(
         "\
-        INSERT INTO epochs (epoch_number, input_index_boundary, root_tournament) VALUES (?1, ?2, ?3)
+        INSERT INTO epochs (epoch_number, input_index_boundary, root_tournament, block_created_number) VALUES (?1, ?2, ?3, ?4)
         ",
     )?)
 }
@@ -204,7 +205,7 @@ fn insert_epoch_statement<'a>(conn: &'a rusqlite::Connection) -> Result<rusqlite
 pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
     let mut stmt = conn.prepare(
         "\
-        SELECT epoch_number, input_index_boundary, root_tournament FROM epochs
+        SELECT epoch_number, input_index_boundary, root_tournament, block_created_number FROM epochs
         ORDER BY epoch_number DESC
         LIMIT 1
         ",
@@ -216,6 +217,7 @@ pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
                 epoch_number: row.get(0)?,
                 input_index_boundary: row.get(1)?,
                 root_tournament: row.get(2)?,
+                block_created_number: row.get(3)?,
             })
         })
         .optional()?)
@@ -224,7 +226,7 @@ pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
 pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Epoch>> {
     let mut stmt = conn.prepare(
         "\
-        SELECT input_index_boundary, root_tournament FROM epochs
+        SELECT input_index_boundary, root_tournament, block_created_number FROM epochs
         WHERE epoch_number = ?1
         ",
     )?;
@@ -235,6 +237,7 @@ pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Ep
                 epoch_number,
                 input_index_boundary: row.get(0)?,
                 root_tournament: row.get(1)?,
+                block_created_number: row.get(2)?,
             })
         })
         .optional()?;
@@ -242,7 +245,7 @@ pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Ep
     Ok(e)
 }
 
-pub fn epoch_count<'a>(conn: &'a rusqlite::Connection) -> Result<u64> {
+pub fn epoch_count(conn: &rusqlite::Connection) -> Result<u64> {
     Ok(conn.query_row(
         "\
         SELECT MAX(epoch_number) FROM epochs
@@ -540,6 +543,7 @@ mod epochs_tests {
                     epoch_number: 1,
                     input_index_boundary: 0,
                     root_tournament: String::new(),
+                    block_created_number: 3,
                 }]
                 .into_iter(),
             ),
@@ -557,6 +561,7 @@ mod epochs_tests {
                     epoch_number: 0,
                     input_index_boundary: 0,
                     root_tournament: String::new(),
+                    block_created_number: 3,
                 }]
                 .into_iter(),
             ),
@@ -571,6 +576,7 @@ mod epochs_tests {
                     epoch_number: 0,
                     input_index_boundary: 0,
                     root_tournament: String::new(),
+                    block_created_number: 3,
                 }]
                 .into_iter(),
             ),
@@ -586,6 +592,7 @@ mod epochs_tests {
                 epoch_number: i,
                 input_index_boundary: 0,
                 root_tournament: String::new(),
+                block_created_number: i * 2,
             })
             .collect();
         assert!(matches!(insert_epochs(&conn, x.iter()), Ok(())));
@@ -599,16 +606,19 @@ mod epochs_tests {
                         epoch_number: 128,
                         input_index_boundary: 0,
                         root_tournament: String::new(),
+                        block_created_number: 256,
                     },
                     &Epoch {
                         epoch_number: 129,
                         input_index_boundary: 0,
                         root_tournament: String::new(),
+                        block_created_number: 258,
                     },
                     &Epoch {
                         epoch_number: 131,
                         input_index_boundary: 0,
                         root_tournament: String::new(),
+                        block_created_number: 262,
                     }
                 ]
                 .into_iter(),
@@ -629,6 +639,7 @@ mod epochs_tests {
                     epoch_number: 130,
                     input_index_boundary: 99,
                     root_tournament: tournament_address,
+                    block_created_number: 260,
                 }]
                 .into_iter(),
             ),
@@ -639,6 +650,7 @@ mod epochs_tests {
             Ok(Some(Epoch {
                 epoch_number: 130,
                 input_index_boundary: 99,
+                block_created_number: 260,
                 ..
             }))
         ));
