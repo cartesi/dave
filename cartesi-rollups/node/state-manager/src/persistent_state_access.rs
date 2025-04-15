@@ -202,16 +202,13 @@ impl StateManager for PersistentStateAccess {
         output_proof: &Proof,
         epoch_number: u64,
     ) -> Result<()> {
-        match self.settlement_info(epoch_number)? {
-            Some((c, o_m, o_p)) => {
-                // a row with same key found, all values should match
-                assert!(c == computation_hash.to_vec());
-                assert!(o_m == output_merkle.to_vec());
-                assert!(o_p == *output_proof);
+        if let Some((c, o_m, o_p)) = self.settlement_info(epoch_number)? {
+            // a row with same key found, all values should match
+            assert!(c == computation_hash.to_vec());
+            assert!(o_m == output_merkle.to_vec());
+            assert!(o_p == *output_proof);
 
-                return Ok(());
-            }
-            None => {}
+            return Ok(());
         }
 
         let conn = self.connection.lock().unwrap();
