@@ -197,7 +197,7 @@ mod build_cm {
             process::{Command, Stdio},
         };
 
-        const VERSION_STRING: &str = "v0.19.0-test2";
+        const VERSION_STRING: &str = "v0.19.0-alpha3";
 
         pub fn download(machine_dir_path: &Path) {
             let patch_file = machine_dir_path.join("add-generated-files.diff");
