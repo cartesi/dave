@@ -66,6 +66,7 @@ contract CartesiStateTransition is IStateTransition {
         AccessLogs.Context memory accessLogs =
             AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
         if ((counter + 1) & BIG_STEP_MASK == 0) {
+            accessLogs = riscVStateTransition.step(accessLogs);
             accessLogs = riscVStateTransition.reset(accessLogs);
         } else {
             accessLogs = riscVStateTransition.step(accessLogs);

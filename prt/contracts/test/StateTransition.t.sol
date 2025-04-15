@@ -41,6 +41,11 @@ contract StateTransitionTest is Util, Test {
 
         vm.mockCall(
             address(riscVStateTransition),
+            abi.encode(riscVStateTransition.step.selector),
+            abi.encode(accessLogs)
+        );
+        vm.mockCall(
+            address(riscVStateTransition),
             abi.encode(riscVStateTransition.reset.selector),
             abi.encode(accessLogs)
         );
