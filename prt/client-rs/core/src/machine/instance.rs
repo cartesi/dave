@@ -338,18 +338,18 @@ impl MachineInstance {
         machine.run_uarch(ucycle)?;
         assert_eq!(machine.state()?.root_hash, agree_hash);
 
-        let log = {
-            if (meta_cycle_u128 + 1) & big_step_mask == 0 {
-                machine.machine.log_reset_uarch(LogType::default())?
-            } else {
-                machine.machine.log_step_uarch(LogType::default())?
-            }
-        };
-
-        Ok((
-            Self::encode_access_logs(vec![&log]),
-            machine.state()?.root_hash,
-        ))
+        let mut logs = Vec::new();
+        if (meta_cycle_u128 + 1) & big_step_mask == 0 {
+            let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
+            logs.push(&uarch_step_log);
+            let ureset_log = machine.machine.log_reset_uarch(LogType::default())?;
+            logs.push(&ureset_log);
+            Ok((Self::encode_access_logs(logs), machine.state()?.root_hash))
+        } else {
+            let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
+            logs.push(&uarch_step_log);
+            Ok((Self::encode_access_logs(logs), machine.state()?.root_hash))
+        }
     }
 
     fn encode_da(input_bin: &[u8]) -> Vec<u8> {

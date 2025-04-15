@@ -321,6 +321,7 @@ local function get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
 
     local logs = {}
     if ((meta_cycle + 1) & big_step_mask):iszero() then
+        table.insert(logs, machine.machine:log_step_uarch())
         table.insert(logs, machine.machine:log_reset_uarch())
     else
         table.insert(logs, machine.machine:log_step_uarch())
