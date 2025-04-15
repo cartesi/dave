@@ -81,7 +81,13 @@ jobs:
         run: |
           just test-rust-workspace
 
-      - name: Test dave-rollups
+      - name: Test prt-compute
+        working-directory: ./prt/tests/compute
+        run: |
+          just -f ./programs/justfile build-simple
+          just test-simple
+
+      - name: Test prt-rollups
         if: startsWith(github.ref, 'refs/tags/v')
         working-directory: ./prt/tests/rollups
         run: |
