@@ -224,8 +224,6 @@ while true do
             local epoch_machine_path = string.format("./_state/snapshots/%d/0", last_sealed_epoch.epoch_number)
             local player_coroutines = setup_players(root_tournament, epoch_machine_path)
             run_players(player_coroutines)
-        else
-            error("work directory doesn't exist!")
         end
     end
     time.sleep(SLEEP_TIME)
