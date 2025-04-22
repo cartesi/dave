@@ -17,7 +17,7 @@ use cartesi_prt_core::tournament::{BlockchainConfig, EthArenaSender};
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
-use rollups_prt_runner::ComputeRunner;
+use rollups_prt_runner::PRTRunner;
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
 const SLEEP_DURATION: u64 = 30;
@@ -123,7 +123,7 @@ pub fn create_compute_runner_task(
     let params = parameters.clone();
 
     spawn(async move {
-        let mut compute_runner = ComputeRunner::new(
+        let mut compute_runner = PRTRunner::new(
             arena_sender,
             provider,
             state_manager,

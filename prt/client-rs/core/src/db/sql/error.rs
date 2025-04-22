@@ -29,14 +29,8 @@ pub enum ComputeStateAccessError {
         source: rusqlite::Error,
     },
 
-    #[error("Duplicate entry: `{description}`")]
-    DuplicateEntry { description: String },
-
     #[error("Failed to insert data: `{description}`")]
     InsertionFailed { description: String },
-
-    #[error("Couldn't find data: `{description}`")]
-    DataNotFound { description: String },
 }
 
 pub type Result<T> = std::result::Result<T, ComputeStateAccessError>;

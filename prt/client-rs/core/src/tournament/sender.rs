@@ -1,9 +1,9 @@
 //! This module defines the struct [EthArenaSender] that is responsible for the sending transactions
 //! to tournaments
 
-use anyhow::Result;
 use async_trait::async_trait;
-use log::trace;
+use log::{error, trace};
+use std::str::FromStr;
 
 use alloy::{
     providers::DynProvider,
@@ -34,7 +34,7 @@ pub trait ArenaSender: Send + Sync {
         proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
-    ) -> Result<()>;
+    );
 
     async fn advance_match(
         &self,
@@ -44,7 +44,7 @@ pub trait ArenaSender: Send + Sync {
         right_node: Digest,
         new_left_node: Digest,
         new_right_node: Digest,
-    ) -> Result<()>;
+    );
 
     async fn seal_inner_match(
         &self,
@@ -53,7 +53,7 @@ pub trait ArenaSender: Send + Sync {
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()>;
+    );
 
     async fn win_inner_match(
         &self,
@@ -61,7 +61,7 @@ pub trait ArenaSender: Send + Sync {
         child_tournament: Address,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()>;
+    );
 
     async fn win_timeout_match(
         &self,
@@ -69,7 +69,7 @@ pub trait ArenaSender: Send + Sync {
         match_id: MatchID,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()>;
+    );
 
     async fn seal_leaf_match(
         &self,
@@ -78,7 +78,7 @@ pub trait ArenaSender: Send + Sync {
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()>;
+    );
 
     async fn win_leaf_match(
         &self,
@@ -87,9 +87,9 @@ pub trait ArenaSender: Send + Sync {
         left_node: Digest,
         right_node: Digest,
         proofs: MachineProof,
-    ) -> Result<()>;
+    );
 
-    async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()>;
+    async fn eliminate_match(&self, tournament: Address, match_id: MatchID);
 }
 
 #[async_trait]
@@ -100,7 +100,7 @@ impl ArenaSender for EthArenaSender {
         proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
-    ) -> Result<()> {
+    ) {
         let tournament = tournament::Tournament::new(tournament, &self.client);
         let siblings = proof
             .siblings
@@ -111,7 +111,7 @@ impl ArenaSender for EthArenaSender {
             "final state for tournament {} at position {}",
             proof.node, proof.position
         );
-        tournament
+        if let Ok(tx) = tournament
             .joinTournament(
                 proof.node.into(),
                 siblings,
@@ -119,10 +119,13 @@ impl ArenaSender for EthArenaSender {
                 right_child.into(),
             )
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to joinTournament {}", e));
+        }
     }
 
     async fn advance_match(
@@ -133,9 +136,9 @@ impl ArenaSender for EthArenaSender {
         right_node: Digest,
         new_left_node: Digest,
         new_right_node: Digest,
-    ) -> Result<()> {
+    ) {
         let tournament = tournament::Tournament::new(tournament, &self.client);
-        tournament
+        if let Ok(tx) = tournament
             .advanceMatch(
                 match_id.into(),
                 left_node.into(),
@@ -144,10 +147,13 @@ impl ArenaSender for EthArenaSender {
                 new_right_node.into(),
             )
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to advanceMatch {}", e));
+        }
     }
 
     async fn seal_inner_match(
@@ -157,14 +163,14 @@ impl ArenaSender for EthArenaSender {
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()> {
+    ) {
         let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.client);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
             .map(|h| -> B256 { (*h).into() })
             .collect();
-        tournament
+        if let Ok(tx) = tournament
             .sealInnerMatchAndCreateInnerTournament(
                 match_id.into(),
                 left_leaf.into(),
@@ -173,10 +179,13 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_siblings,
             )
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to sealInnerMatchAndCreateInnerTournament {}", e));
+        }
     }
 
     async fn win_inner_match(
@@ -185,15 +194,18 @@ impl ArenaSender for EthArenaSender {
         child_tournament: Address,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()> {
+    ) {
         let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.client);
-        tournament
+        if let Ok(tx) = tournament
             .winInnerMatch(child_tournament, left_node.into(), right_node.into())
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to winInnerMatch {}", e));
+        }
     }
 
     async fn win_timeout_match(
@@ -202,15 +214,18 @@ impl ArenaSender for EthArenaSender {
         match_id: MatchID,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()> {
+    ) {
         let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.client);
-        tournament
+        if let Ok(tx) = tournament
             .winMatchByTimeout(match_id.into(), left_node.into(), right_node.into())
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to winMatchByTimeout {}", e));
+        }
     }
 
     async fn seal_leaf_match(
@@ -220,14 +235,14 @@ impl ArenaSender for EthArenaSender {
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()> {
+    ) {
         let tournament = leaftournament::LeafTournament::new(tournament, &self.client);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
             .map(|h| -> B256 { (*h).into() })
             .collect();
-        tournament
+        if let Ok(tx) = tournament
             .sealLeafMatch(
                 match_id.into(),
                 left_leaf.into(),
@@ -236,10 +251,13 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_siblings,
             )
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to sealLeafMatch {}", e));
+        }
     }
 
     async fn win_leaf_match(
@@ -249,9 +267,9 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
         proofs: MachineProof,
-    ) -> Result<()> {
+    ) {
         let tournament = leaftournament::LeafTournament::new(tournament, &self.client);
-        tournament
+        if let Ok(tx) = tournament
             .winLeafMatch(
                 match_id.into(),
                 left_node.into(),
@@ -259,20 +277,26 @@ impl ArenaSender for EthArenaSender {
                 Bytes::from(proofs),
             )
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to winLeafMatch {}", e));
+        }
     }
 
-    async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()> {
+    async fn eliminate_match(&self, tournament: Address, match_id: MatchID) {
         let tournament = tournament::Tournament::new(tournament, &self.client);
-        tournament
+        if let Ok(tx) = tournament
             .eliminateMatchByTimeout(match_id.into())
             .send()
-            .await?
-            .watch()
-            .await?;
-        Ok(())
+            .await
+        {
+            let _ = tx
+                .watch()
+                .await
+                .inspect_err(|e| error!("fail to eliminateMatchByTimeout {}", e));
+        }
     }
 }

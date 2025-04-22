@@ -7,7 +7,7 @@ use alloy::{
 };
 use cartesi_prt_compute::ComputeConfig;
 use cartesi_prt_core::{
-    strategy::player::Player,
+    strategy::player::{Player, PlayerTournamentResult},
     tournament::{BlockchainConfig, EthArenaSender},
 };
 
@@ -85,17 +85,18 @@ async fn main() -> Result<()> {
 
     if config.interval == u64::MAX {
         match player.react_once(&sender).await {
-            Ok(Some(state)) => {
-                info!(
-                    "Tournament finished, {:?}, touching finished path {:#?}",
-                    state, finished
-                );
-                touch(&finished)?;
+            Ok(state) => {
+                if state != PlayerTournamentResult::TournamentRunning {
+                    info!(
+                        "Tournament finished, {:?}, touching finished path {:#?}",
+                        state, finished
+                    );
+                    touch(&finished)?;
+                }
             }
             Err(e) => {
                 error!("{}", e);
             }
-            _ => {}
         }
     } else {
         let res = player.react(&sender, config.interval).await;
