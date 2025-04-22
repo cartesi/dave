@@ -35,7 +35,7 @@ authors = [
   "Stephen Chen <stephenx747@gmail.com>",
 ]
 description = "A Cartesi validator reference implementation"
-edition = "2021"
+edition = "2024"
 homepage = "https://github.com/cartesi/dave"
 license-file = "LICENSE"
 readme = "README.md"
@@ -85,7 +85,6 @@ alloy = { version = "0.12.4", features = [
   "sol-types",
 ] }
 alloy-transport = { version = "0.12", features = ["throttle"] }
-# alloy = { version = "0.8", features = ["contract", "network", "reqwest", "rpc-types", "signers", "signer-local", "sol-types"] }
 ruint = "1.12"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
 

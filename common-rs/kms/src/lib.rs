@@ -5,8 +5,8 @@ use alloy::{
 use anyhow::{self, Context};
 use aws_config::BehaviorVersion;
 use aws_sdk_kms::{
-    types::{KeySpec, KeyUsageType},
     Client,
+    types::{KeySpec, KeyUsageType},
 };
 
 pub type CommonSignature = dyn alloy::network::TxSigner<PrimitiveSignature> + Send + Sync;
@@ -73,7 +73,7 @@ mod kms {
     use std::{
         env::set_var,
         future::Future,
-        panic::{catch_unwind, UnwindSafe},
+        panic::{UnwindSafe, catch_unwind},
     };
 
     use alloy::{
@@ -84,7 +84,7 @@ mod kms {
     use testcontainers_modules::{
         localstack::LocalStack,
         testcontainers::{
-            core::ContainerPort, runners::AsyncRunner, ContainerAsync, ContainerRequest, ImageExt,
+            ContainerAsync, ContainerRequest, ImageExt, core::ContainerPort, runners::AsyncRunner,
         },
     };
     use tokio::sync::Mutex;
@@ -98,9 +98,11 @@ mod kms {
 
     fn set_aws_test_env_vars() {
         // set later on
-        set_var("AWS_KMS_KEY_ID", "");
-        set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
-        set_var("AWS_REGION", "us-east-1");
+        unsafe {
+            set_var("AWS_KMS_KEY_ID", "");
+            set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
+            set_var("AWS_REGION", "us-east-1");
+        }
     }
 
     fn create_localstack() -> ContainerRequest<LocalStack> {
