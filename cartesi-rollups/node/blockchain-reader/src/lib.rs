@@ -10,9 +10,8 @@ use alloy::{
     eips::BlockNumberOrTag::Finalized,
     hex::ToHexExt,
     primitives::{Address, U256},
-    providers::{DynProvider, Provider, ProviderBuilder},
+    providers::{DynProvider, Provider},
     sol_types::SolEvent,
-    transports::http::reqwest::Url,
 };
 use async_recursion::async_recursion;
 use clap::Parser;
@@ -22,7 +21,6 @@ use num_traits::cast::ToPrimitive;
 use std::{
     iter::Peekable,
     marker::{Send, Sync},
-    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -66,11 +64,10 @@ where
     pub fn new(
         state_manager: Arc<SM>,
         address_book: AddressBook,
-        provider_url: &str,
+        provider: Arc<DynProvider>,
         sleep_duration: u64,
     ) -> Result<Self, SM> {
-        let partition_provider =
-            PartitionProvider::new(provider_url).map_err(BlockchainReaderError::ParseError)?;
+        let partition_provider = PartitionProvider::new(provider);
         // read from DB the block of the most recent processed
         let prev_block = state_manager
             .latest_processed_block()
@@ -326,16 +323,14 @@ impl<E: SolEvent + Send + Sync> Default for EventReader<E> {
 }
 
 struct PartitionProvider {
-    inner: DynProvider,
+    inner: Arc<DynProvider>,
 }
 
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
 // ParitionProvider will attempt to fetch events in smaller partition if the original request is too large
 impl PartitionProvider {
-    fn new(provider_url: &str) -> std::result::Result<Self, <Url as FromStr>::Err> {
-        let url = provider_url.parse()?;
-        let provider = ProviderBuilder::new().on_http(url).erased();
-        Ok(PartitionProvider { inner: provider })
+    fn new(provider: Arc<DynProvider>) -> Self {
+        PartitionProvider { inner: provider }
     }
 
     async fn get_events<E: SolEvent + Send + Sync>(
@@ -359,7 +354,7 @@ impl PartitionProvider {
     ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
         // TODO: partition log queries if range too large
         let event: Event<(), &DynProvider, E> = {
-            let mut e = Event::new_sol(&self.inner, read_from)
+            let mut e = Event::new_sol(self.inner.as_ref(), read_from)
                 .from_block(start_block)
                 .to_block(end_block)
                 .event(E::SIGNATURE);
@@ -532,7 +527,9 @@ mod blockchain_reader_tests {
     }
 
     fn create_partition_rovider(url: &str) -> Result<PartitionProvider> {
-        let partition_provider = PartitionProvider::new(url)?;
+        let url = url.parse()?;
+        let provider = ProviderBuilder::new().on_http(url).erased();
+        let partition_provider = PartitionProvider::new(Arc::new(provider));
         Ok(partition_provider)
     }
 

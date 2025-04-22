@@ -4,81 +4,25 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use log::trace;
-use std::str::FromStr;
+use std::sync::Arc;
 
 use alloy::{
-    network::{Ethereum, EthereumWallet, NetworkWallet},
-    providers::{DynProvider, Provider, ProviderBuilder},
-    signers::local::PrivateKeySigner,
+    providers::DynProvider,
     sol_types::private::{Address, Bytes, B256},
-    transports::{RpcError, TransportErrorKind},
 };
 
-use crate::{
-    machine::MachineProof,
-    tournament::{config::BlockchainConfig, tournament::MatchID},
-};
-use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
+use crate::{machine::MachineProof, tournament::MatchID};
 use cartesi_dave_merkle::{Digest, MerkleProof};
 use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EthArenaSender {
-    client: DynProvider,
-    wallet_address: Address,
+    client: Arc<DynProvider>,
 }
 
 impl EthArenaSender {
-    pub async fn new(config: &BlockchainConfig) -> anyhow::Result<Self> {
-        let signer: Box<CommonSignature>;
-
-        let has_awsconfig = config.aws_config.aws_kms_key_id.is_some();
-
-        if has_awsconfig {
-            let key_id = config.aws_config.aws_kms_key_id.clone().unwrap();
-            let kms_signer = KmsSignerBuilder::new()
-                .await
-                .with_chain_id(config.web3_chain_id)
-                .with_key_id(key_id)
-                .build()
-                .await?;
-            signer = Box::new(kms_signer);
-        } else {
-            let local_signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())?;
-            signer = Box::new(local_signer);
-        }
-
-        let wallet = EthereumWallet::from(signer);
-        let wallet_address =
-            <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
-
-        let url = config.web3_rpc_url.parse()?;
-        let client = ProviderBuilder::new()
-            .wallet(wallet)
-            .with_chain(
-                config
-                    .web3_chain_id
-                    .try_into()
-                    .expect("fail to convert chain id"),
-            )
-            .on_http(url)
-            .erased();
-
-        Ok(Self {
-            client,
-            wallet_address,
-        })
-    }
-
-    pub fn client(&self) -> DynProvider {
-        self.client.clone()
-    }
-
-    pub async fn nonce(&self) -> std::result::Result<u64, RpcError<TransportErrorKind>> {
-        Ok(self
-            .client
-            .get_transaction_count(self.wallet_address)
-            .await?)
+    pub fn new(client: Arc<DynProvider>) -> anyhow::Result<Self> {
+        Ok(Self { client })
     }
 }
 

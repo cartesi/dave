@@ -17,10 +17,13 @@ rollups-epoch-manager = { workspace = true }
 rollups-machine-runner = { workspace = true }
 rollups-state-manager = { workspace = true }
 
+cartesi-dave-kms = { workspace = true }
+
 cartesi-rollups-contracts = { workspace = true }
 cartesi-prt-core = { workspace = true }
 
 alloy = { workspace = true }
+alloy-transport = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
