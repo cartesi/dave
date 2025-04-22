@@ -3,7 +3,7 @@
 
 use crate::Digest;
 
-use ruint::{aliases::U256, UintTryFrom};
+use ruint::{UintTryFrom, aliases::U256};
 use std::{ops::Rem, sync::Arc};
 
 /// A [MerkleProof] is used to verify that a leaf is part of a [MerkleTree].

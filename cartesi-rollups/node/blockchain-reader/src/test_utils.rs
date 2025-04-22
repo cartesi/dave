@@ -4,7 +4,7 @@ use alloy::{
     node_bindings::{Anvil, AnvilInstance},
     primitives::Address,
     providers::{DynProvider, Provider, ProviderBuilder},
-    signers::{local::PrivateKeySigner, Signer},
+    signers::{Signer, local::PrivateKeySigner},
 };
 use cartesi_dave_merkle::Digest;
 use std::{

@@ -8,7 +8,7 @@ use std::{ops::ControlFlow, sync::Arc};
 use crate::{
     db::compute_state_access::{ComputeStateAccess, Leaf},
     machine::error::Result,
-    machine::{constants, MachineInstance, MachineState},
+    machine::{MachineInstance, MachineState, constants},
 };
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};

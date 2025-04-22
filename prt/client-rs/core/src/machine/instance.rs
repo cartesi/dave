@@ -7,8 +7,8 @@ use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
 use cartesi_machine::config::runtime::HTIFRuntimeConfig;
-use cartesi_machine::types::cmio::CmioResponseReason;
 use cartesi_machine::types::LogType;
+use cartesi_machine::types::cmio::CmioResponseReason;
 use cartesi_machine::{
     config::runtime::RuntimeConfig, machine::Machine, types::access_proof::AccessLog,
 };

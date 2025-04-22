@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::types::{base64_decode::*, Hash};
+use crate::types::{Hash, base64_decode::*};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

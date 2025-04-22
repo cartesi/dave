@@ -4,7 +4,7 @@
 use super::error::*;
 use crate::db::compute_state_access::{Input, Leaf};
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 //
 // Inputs

@@ -62,12 +62,12 @@ impl GarbageCollector {
                 let elim = arena_sender.eliminate_match(tournament_address, m.id).await;
                 if elim.is_err() {
                     info!(
-                    "failed to eliminate match for commitment {} and {} at tournament {} of level {}",
-                    m.id.commitment_one,
-                    m.id.commitment_two,
-                    tournament_address,
-                    tournament_state.level
-                );
+                        "failed to eliminate match for commitment {} and {} at tournament {} of level {}",
+                        m.id.commitment_one,
+                        m.id.commitment_two,
+                        tournament_address,
+                        tournament_state.level
+                    );
                 }
             }
         }

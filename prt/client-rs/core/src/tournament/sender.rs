@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use alloy::{
     providers::DynProvider,
-    sol_types::private::{Address, Bytes, B256},
+    sol_types::private::{Address, B256, Bytes},
 };
 
 use crate::{machine::MachineProof, tournament::MatchID};
@@ -110,8 +110,7 @@ impl ArenaSender for EthArenaSender {
             .collect();
         trace!(
             "final state for tournament {} at position {}",
-            proof.node,
-            proof.position
+            proof.node, proof.position
         );
         tournament
             .joinTournament(
