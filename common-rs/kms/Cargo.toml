@@ -10,11 +10,11 @@ readme.workspace = true
 repository.workspace = true
 
 [dependencies]
-aws-config = { version = "1.5", default-features = false, features = [
+aws-config = { version = "1.6", default-features = false, features = [
     "rustls",
     "rt-tokio",
 ] }
-aws-sdk-kms = { version = "1.51", default-features = false, features = [
+aws-sdk-kms = { version = "1.65", default-features = false, features = [
     "rustls",
     "rt-tokio",
 ] }
