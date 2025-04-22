@@ -95,12 +95,13 @@ pub fn create_blockchain_reader_task(
     let params = parameters.clone();
 
     spawn(async move {
-        let mut blockchain_reader = BlockchainReader::new(
+        let blockchain_reader = BlockchainReader::new(
             state_manager,
             params.address_book,
             provider,
             params.sleep_duration,
         )
+        .await
         .inspect_err(|e| error!("{e}"))
         .unwrap();
 
