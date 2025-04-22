@@ -286,7 +286,9 @@ mod feature_checks {
         feature = "build_uarch",
         feature = "external_cartesi",
     )))]
-    compile_error!("At least one of `build_uarch`, `copy_uarch`, `download_uarch`, and `external_cartesi` must be set");
+    compile_error!(
+        "At least one of `build_uarch`, `copy_uarch`, `download_uarch`, and `external_cartesi` must be set"
+    );
 }
 
 #[allow(unused)]

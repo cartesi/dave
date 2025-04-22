@@ -4,14 +4,14 @@
 use crate::{
     db::compute_state_access::ComputeStateAccess,
     machine::{
-        build_machine_commitment, build_machine_commitment_from_leafs,
-        constants::LOG2_UARCH_SPAN_TO_BARCH, error::Result, MachineCommitment, MachineInstance,
+        MachineCommitment, MachineInstance, build_machine_commitment,
+        build_machine_commitment_from_leafs, constants::LOG2_UARCH_SPAN_TO_BARCH, error::Result,
     },
 };
 
 use alloy::primitives::U256;
 use log::{info, trace};
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 
 pub struct CachingMachineCommitmentBuilder {
     machine_path: String,

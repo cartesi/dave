@@ -10,7 +10,7 @@ use cartesi_machine::{
     constants::{break_reason, pma::TX_START},
     error::MachineResult,
     machine::Machine,
-    types::{cmio::CmioResponseReason, Hash},
+    types::{Hash, cmio::CmioResponseReason},
 };
 use rollups_state_manager::Proof;
 
@@ -113,7 +113,7 @@ impl RollupsMachine {
                 break_reason::YIELDED_AUTOMATICALLY | break_reason::YIELDED_SOFTLY => continue,
 
                 break_reason::YIELDED_MANUALLY | break_reason::REACHED_TARGET_MCYCLE => {
-                    break Ok(())
+                    break Ok(());
                 }
 
                 _ => panic!("machine returned invalid `break_reason` {reason}"),

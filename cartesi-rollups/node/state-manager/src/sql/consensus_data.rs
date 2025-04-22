@@ -4,7 +4,7 @@
 use super::error::*;
 use crate::{Epoch, Input, InputId};
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 //
 // Last Processed

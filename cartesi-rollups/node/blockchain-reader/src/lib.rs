@@ -465,7 +465,7 @@ mod blockchain_reader_tests {
     use std::sync::Arc;
     use tokio::{
         task::spawn,
-        time::{sleep, Duration},
+        time::{Duration, sleep},
     };
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;

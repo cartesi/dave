@@ -2,7 +2,7 @@
 
 use crate::MerkleTree;
 
-use ruint::{aliases::U256, UintTryFrom};
+use ruint::{UintTryFrom, aliases::U256};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
