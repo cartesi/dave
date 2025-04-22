@@ -3,11 +3,11 @@
 
 use anyhow::Result;
 use async_recursion::async_recursion;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use alloy::{
     eips::BlockNumberOrTag::Latest,
-    providers::{DynProvider, Provider, ProviderBuilder},
+    providers::{DynProvider, Provider},
     sol_types::private::{Address, B256},
 };
 use num_traits::cast::ToPrimitive;
@@ -15,11 +15,8 @@ use num_traits::cast::ToPrimitive;
 use crate::{
     machine::constants,
     tournament::{
-        config::BlockchainConfig,
-        tournament::{
-            ClockState, CommitmentState, MatchID, MatchState, TournamentState, TournamentStateMap,
-            TournamentWinner,
-        },
+        ClockState, CommitmentState, MatchID, MatchState, TournamentState, TournamentStateMap,
+        TournamentWinner,
     },
 };
 use cartesi_dave_merkle::Digest;
@@ -27,15 +24,12 @@ use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament
 
 #[derive(Clone)]
 pub struct StateReader {
-    client: DynProvider,
+    client: Arc<DynProvider>,
     block_created_number: u64,
 }
 
 impl StateReader {
-    pub fn new(config: &BlockchainConfig, block_created_number: u64) -> Result<Self> {
-        let url = config.web3_rpc_url.parse()?;
-        let client = ProviderBuilder::new().on_http(url).erased();
-
+    pub fn new(client: Arc<DynProvider>, block_created_number: u64) -> Result<Self> {
         Ok(Self {
             client,
             block_created_number,

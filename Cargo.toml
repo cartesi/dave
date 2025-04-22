@@ -1,30 +1,30 @@
 [workspace]
 resolver = "2"
 members = [
-    # Solidity bindings
-    "cartesi-rollups/contracts/bindings-rs",
-    "prt/contracts/bindings-rs",
+  # Solidity bindings
+  "cartesi-rollups/contracts/bindings-rs",
+  "prt/contracts/bindings-rs",
 
-    # common-rs
-    "common-rs/merkle",
-    "common-rs/arithmetic",
-    "common-rs/kms",
+  # common-rs
+  "common-rs/merkle",
+  "common-rs/arithmetic",
+  "common-rs/kms",
 
-    # prt
-    "prt/client-rs/core",
-    "prt/client-rs/executable",
+  # prt
+  "prt/client-rs/core",
+  "prt/client-rs/executable",
 
-    # rollups-node
-    "cartesi-rollups/node/blockchain-reader",
-    "cartesi-rollups/node/prt-runner",
-    "cartesi-rollups/node/dave-rollups",
-    "cartesi-rollups/node/epoch-manager",
-    "cartesi-rollups/node/machine-runner",
-    "cartesi-rollups/node/state-manager",
+  # rollups-node
+  "cartesi-rollups/node/blockchain-reader",
+  "cartesi-rollups/node/prt-runner",
+  "cartesi-rollups/node/dave-rollups",
+  "cartesi-rollups/node/epoch-manager",
+  "cartesi-rollups/node/machine-runner",
+  "cartesi-rollups/node/state-manager",
 
-    # machine bindings
-    "machine/rust-bindings/cartesi-machine",
-    "machine/rust-bindings/cartesi-machine-sys",
+  # machine bindings
+  "machine/rust-bindings/cartesi-machine",
+  "machine/rust-bindings/cartesi-machine-sys",
 ]
 
 [workspace.package]
@@ -46,7 +46,9 @@ repository = "https://github.com/cartesi/dave"
 ## Workspace crates
 
 # machine bindings
-cartesi-machine = { path = "machine/rust-bindings/cartesi-machine", features = ["build_uarch"] }
+cartesi-machine = { path = "machine/rust-bindings/cartesi-machine", features = [
+  "build_uarch",
+] }
 
 # solidity bindings
 cartesi-dave-contracts = { path = "cartesi-rollups/contracts/bindings-rs" }
@@ -74,7 +76,15 @@ cartesi-prt-core = { path = "prt/client-rs/core" }
 cartesi-rollups-contracts = "=2.0.0-rc.16"
 
 # eth
-alloy = { version = "0.12.4", features = ["sol-types", "contract", "network", "reqwest", "signers", "signer-local"] }
+alloy = { version = "0.12.4", features = [
+  "contract",
+  "network",
+  "reqwest",
+  "signer-local",
+  "signers",
+  "sol-types",
+] }
+alloy-transport = { version = "0.12", features = ["throttle"] }
 # alloy = { version = "0.8", features = ["contract", "network", "reqwest", "rpc-types", "signers", "signer-local", "sol-types"] }
 ruint = "1.12"
 tiny-keccak = { version = "2.0", features = ["keccak"] }

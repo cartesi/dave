@@ -12,7 +12,7 @@ use cartesi_dave_contracts::daveconsensus;
 use rollups_state_manager::{Proof, StateManager};
 
 pub struct EpochManager<SM: StateManager> {
-    client: DynProvider,
+    provider: Arc<DynProvider>,
     consensus: Address,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
@@ -23,7 +23,7 @@ where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
     pub fn new(
-        client: DynProvider,
+        provider: Arc<DynProvider>,
         consensus_address: Address,
         state_manager: Arc<SM>,
         sleep_duration: u64,
@@ -32,12 +32,12 @@ where
             consensus: consensus_address,
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
-            client,
+            provider,
         }
     }
 
     pub async fn start(&self) -> Result<()> {
-        let dave_consensus = daveconsensus::DaveConsensus::new(self.consensus, &self.client);
+        let dave_consensus = daveconsensus::DaveConsensus::new(self.consensus, &self.provider);
         loop {
             let can_settle = dave_consensus.canSettle().call().await?;
 

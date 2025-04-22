@@ -1,11 +1,18 @@
-use alloy::providers::DynProvider;
+use alloy::{
+    network::EthereumWallet,
+    providers::{DynProvider, Provider, ProviderBuilder},
+    rpc::client::RpcClient,
+    signers::local::PrivateKeySigner,
+    transports::{http::reqwest::Url, layers::RetryBackoffLayer},
+};
 use clap::Parser;
 use log::error;
-use std::path::PathBuf;
 use std::sync::Arc;
+use std::{path::PathBuf, str::FromStr};
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
+use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
 use cartesi_prt_core::tournament::{BlockchainConfig, EthArenaSender};
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_epoch_manager::EpochManager;
@@ -34,8 +41,55 @@ pub struct DaveParameters {
     pub state_dir: PathBuf,
 }
 
+pub async fn create_provider(config: &BlockchainConfig) -> Arc<DynProvider> {
+    let endpoint_url: Url = Url::parse(&config.web3_rpc_url).expect("invalid rpc url");
+
+    // let throttle = ThrottleLayer::new(20);
+
+    let retry = RetryBackoffLayer::new(
+        5,   // max_rate_limit_retries
+        200, // initial_backoff_ms
+        500, // compute_units_per_sec
+    );
+
+    let client = RpcClient::builder()
+        // .layer(throttle) // first throttle outbound QPS
+        .layer(retry) // then retry failed requests with backoff
+        .http(endpoint_url);
+
+    let signer: Box<CommonSignature> = if let Some(key_id) = &config.aws_config.aws_kms_key_id {
+        let kms_signer = KmsSignerBuilder::new()
+            .await
+            .with_chain_id(config.web3_chain_id)
+            .with_key_id(key_id.clone())
+            .build()
+            .await
+            .expect("could not create Kms signer");
+        Box::new(kms_signer)
+    } else {
+        let local_signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())
+            .expect("could not create private key signer");
+        Box::new(local_signer)
+    };
+
+    let wallet = EthereumWallet::from(signer);
+
+    let provider = ProviderBuilder::new()
+        .wallet(wallet)
+        .with_chain(
+            config
+                .web3_chain_id
+                .try_into()
+                .expect("fail to convert chain id"),
+        )
+        .on_client(client);
+
+    Arc::new(provider.erased())
+}
+
 pub fn create_blockchain_reader_task(
     state_manager: Arc<PersistentStateAccess>,
+    provider: Arc<DynProvider>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
     let params = parameters.clone();
@@ -44,7 +98,7 @@ pub fn create_blockchain_reader_task(
         let mut blockchain_reader = BlockchainReader::new(
             state_manager,
             params.address_book,
-            params.blockchain_config.web3_rpc_url.as_str(),
+            provider,
             params.sleep_duration,
         )
         .inspect_err(|e| error!("{e}"))
@@ -59,16 +113,18 @@ pub fn create_blockchain_reader_task(
 }
 
 pub fn create_compute_runner_task(
-    arena_sender: EthArenaSender,
     state_manager: Arc<PersistentStateAccess>,
+    provider: Arc<DynProvider>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
+    let arena_sender =
+        EthArenaSender::new(Arc::clone(&provider)).expect("could not create arena sender");
     let params = parameters.clone();
 
     spawn(async move {
         let mut compute_runner = ComputeRunner::new(
             arena_sender,
-            &params.blockchain_config,
+            provider,
             state_manager,
             params.sleep_duration,
             params.state_dir,
@@ -83,7 +139,7 @@ pub fn create_compute_runner_task(
 }
 
 pub fn create_epoch_manager_task(
-    client: DynProvider,
+    provider: Arc<DynProvider>,
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
@@ -91,7 +147,7 @@ pub fn create_epoch_manager_task(
 
     spawn(async move {
         let epoch_manager = EpochManager::new(
-            client,
+            provider,
             params.address_book.consensus,
             state_manager,
             params.sleep_duration,

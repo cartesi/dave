@@ -1,4 +1,5 @@
 use alloy::primitives::Address;
+use alloy::providers::DynProvider;
 use log::{error, trace};
 use std::path::PathBuf;
 use std::result::Result;
@@ -7,13 +8,13 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use cartesi_prt_core::{
     db::compute_state_access::{Input, Leaf},
     strategy::player::Player,
-    tournament::{BlockchainConfig, EthArenaSender},
+    tournament::EthArenaSender,
 };
 use rollups_state_manager::{Epoch, StateManager};
 
 pub struct ComputeRunner<SM: StateManager> {
     arena_sender: EthArenaSender,
-    config: BlockchainConfig,
+    provider: Arc<DynProvider>,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
     state_dir: PathBuf,
@@ -25,14 +26,14 @@ where
 {
     pub fn new(
         arena_sender: EthArenaSender,
-        config: &BlockchainConfig,
+        provider: Arc<DynProvider>,
         state_manager: Arc<SM>,
         sleep_duration: u64,
         state_dir: PathBuf,
     ) -> Self {
         Self {
             arena_sender,
-            config: config.clone(),
+            provider,
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
             state_dir,
@@ -96,7 +97,7 @@ where
             Player::new(
                 inputs,
                 leafs,
-                &self.config,
+                Arc::clone(&self.provider),
                 snapshot,
                 address,
                 last_sealed_epoch.block_created_number,

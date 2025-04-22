@@ -1,22 +1,56 @@
+use alloy::{
+    network::EthereumWallet,
+    providers::{DynProvider, Provider, ProviderBuilder},
+    rpc::client::RpcClient,
+    signers::local::PrivateKeySigner,
+    transports::{http::reqwest::Url, layers::RetryBackoffLayer},
+};
 use cartesi_prt_compute::ComputeConfig;
-use cartesi_prt_core::{strategy::player::Player, tournament::EthArenaSender};
+use cartesi_prt_core::{
+    strategy::player::Player,
+    tournament::{BlockchainConfig, EthArenaSender},
+};
 
 use anyhow::Result;
 use clap::Parser;
 use log::{error, info};
-use std::{fs::OpenOptions, io, path::Path};
+use std::{fs::OpenOptions, io, path::Path, str::FromStr, sync::Arc};
 
 // A simple implementation of `% touch path` (ignores existing files)
 fn touch(path: &Path) -> io::Result<()> {
-    match OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(true)
-        .open(path)
-    {
+    match OpenOptions::new().create(true).append(true).open(path) {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+fn create_provider(config: &BlockchainConfig) -> Arc<DynProvider> {
+    let endpoint_url: Url = Url::parse(&config.web3_rpc_url).expect("invalid rpc url");
+
+    let retry = RetryBackoffLayer::new(
+        5,   // max_rate_limit_retries
+        200, // initial_backoff_ms
+        500, // compute_units_per_sec
+    );
+
+    let client = RpcClient::builder().layer(retry).http(endpoint_url);
+
+    let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())
+        .expect("could not create private key signer");
+
+    let wallet = EthereumWallet::from(signer);
+
+    let provider = ProviderBuilder::new()
+        .wallet(wallet)
+        .with_chain(
+            config
+                .web3_chain_id
+                .try_into()
+                .expect("fail to convert chain id"),
+        )
+        .on_client(client);
+
+    Arc::new(provider.erased())
 }
 
 #[tokio::main]
@@ -27,12 +61,13 @@ async fn main() -> Result<()> {
 
     let config = ComputeConfig::parse();
     let blockchain_config = config.blockchain_config;
-    let sender = EthArenaSender::new(&blockchain_config).await?;
+    let provider = create_provider(&blockchain_config);
+    let sender = EthArenaSender::new(Arc::clone(&provider))?;
 
     let mut player = Player::new(
         None,
         Vec::new(),
-        &blockchain_config,
+        provider,
         config.machine_path,
         config.root_tournament,
         0, // TODO update to a sensible block number

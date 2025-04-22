@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::strategy::error::Result;
 use ::log::{debug, error, info};
-use alloy::primitives::Address;
+use alloy::{primitives::Address, providers::DynProvider};
 use async_recursion::async_recursion;
 use num_traits::One;
 use ruint::aliases::U256;
@@ -13,8 +13,8 @@ use crate::{
     machine::{CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
     strategy::gc::GarbageCollector,
     tournament::{
-        ArenaSender, BlockchainConfig, CommitmentMap, CommitmentState, MatchState, StateReader,
-        TournamentState, TournamentStateMap, TournamentWinner,
+        ArenaSender, CommitmentMap, CommitmentState, MatchState, StateReader, TournamentState,
+        TournamentStateMap, TournamentWinner,
     },
 };
 use cartesi_dave_merkle::{Digest, MerkleProof};
@@ -38,7 +38,7 @@ impl Player {
     pub fn new(
         inputs: Option<Vec<Input>>,
         leafs: Vec<Leaf>,
-        blockchain_config: &BlockchainConfig,
+        provider: Arc<DynProvider>,
         machine_path: String,
         root_tournament: Address,
         block_created_number: u64,
@@ -50,7 +50,7 @@ impl Player {
             root_tournament.to_string(),
             state_dir.join("compute_path"),
         )?;
-        let reader = StateReader::new(blockchain_config, block_created_number)?;
+        let reader = StateReader::new(Arc::clone(&provider), block_created_number)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
