@@ -143,7 +143,7 @@ impl StateManager for PersistentStateAccess {
         )?;
 
         let current_machine_state_index: Option<u64> = sttm
-            .query_row([epoch_number], |row| Ok(row.get(0)?))
+            .query_row([epoch_number], |row| row.get(0))
             .optional()?;
 
         match current_machine_state_index {
@@ -263,13 +263,11 @@ impl StateManager for PersistentStateAccess {
             Some(r) => {
                 let state = r.get("machine_state_hash")?;
                 let repetitions = r.get("repetitions")?;
-                return Ok((state, repetitions));
+                Ok((state, repetitions))
             }
-            None => {
-                return Err(PersistentStateAccessError::DataNotFound {
-                    description: "machine state hash doesn't exist".to_owned(),
-                });
-            }
+            None => Err(PersistentStateAccessError::DataNotFound {
+                description: "machine state hash doesn't exist".to_owned(),
+            }),
         }
     }
 
@@ -328,7 +326,7 @@ impl StateManager for PersistentStateAccess {
         )?;
 
         Ok(sttm
-            .query_row([epoch_number, input_index_in_epoch], |row| Ok(row.get(0)?))
+            .query_row([epoch_number, input_index_in_epoch], |row| row.get(0))
             .optional()?)
     }
 }
@@ -341,8 +339,7 @@ mod tests {
 
     pub fn setup() -> PersistentStateAccess {
         let conn = Connection::open_in_memory().unwrap();
-        let access = PersistentStateAccess::new(conn).unwrap();
-        access
+        PersistentStateAccess::new(conn).unwrap()
     }
 
     #[test]
@@ -422,7 +419,7 @@ mod tests {
                         data: input_0_bytes.to_vec(),
                     }]
                     .into_iter(),
-                    [].into_iter().into_iter(),
+                    [].into_iter(),
                 )
                 .is_err(),
             "duplicate input index should fail"
@@ -439,7 +436,7 @@ mod tests {
                         data: input_0_bytes.to_vec(),
                     }]
                     .into_iter(),
-                    [].into_iter().into_iter(),
+                    [].into_iter(),
                 )
                 .is_err(),
             "input index should be sequential"
@@ -456,7 +453,7 @@ mod tests {
                         data: input_1_bytes.to_vec(),
                     }]
                     .into_iter(),
-                    [].into_iter().into_iter(),
+                    [].into_iter(),
                 )
                 .is_ok(),
             "add sequential input should succeed"
@@ -468,9 +465,8 @@ mod tests {
             "latest block should match"
         );
 
-        assert_eq!(
+        assert!(
             access.latest_snapshot()?.is_none(),
-            true,
             "latest snapshot should be empty"
         );
 

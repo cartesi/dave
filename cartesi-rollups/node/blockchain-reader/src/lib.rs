@@ -1,6 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 mod error;
+mod find_contract_creation;
 
 use crate::error::{ProviderErrors, Result};
 
@@ -16,6 +17,7 @@ use alloy::{
 use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
+use find_contract_creation::find_contract_creation_block;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{
@@ -61,17 +63,27 @@ impl<SM: StateManager> BlockchainReader<SM>
 where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
-    pub fn new(
+    pub async fn new(
         state_manager: Arc<SM>,
         address_book: AddressBook,
         provider: Arc<DynProvider>,
         sleep_duration: u64,
     ) -> Result<Self, SM> {
-        let partition_provider = PartitionProvider::new(provider);
         // read from DB the block of the most recent processed
-        let prev_block = state_manager
-            .latest_processed_block()
-            .map_err(BlockchainReaderError::StateManagerError)?;
+        let prev_block = {
+            let input_box_creation =
+                find_contract_creation_block(&provider, address_book.input_box)
+                    .await
+                    .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?;
+
+            let latest_processed = state_manager
+                .latest_processed_block()
+                .map_err(BlockchainReaderError::StateManagerError)?;
+
+            std::cmp::max(input_box_creation, latest_processed)
+        };
+
+        let partition_provider = PartitionProvider::new(provider);
 
         Ok(Self {
             state_manager,
@@ -84,7 +96,7 @@ where
         })
     }
 
-    pub async fn start(&mut self) -> Result<(), SM> {
+    pub async fn start(mut self) -> Result<(), SM> {
         loop {
             let current_block = self.provider.latest_finalized_block().await?;
 
@@ -431,20 +443,18 @@ impl PartitionProvider {
 }
 
 #[cfg(test)]
+mod test_utils;
+
+#[cfg(test)]
 mod blockchain_reader_tests {
     use crate::*;
 
     use alloy::{
-        hex::FromHex,
-        network::EthereumWallet,
-        node_bindings::{Anvil, AnvilInstance},
         primitives::Address,
         providers::{DynProvider, ProviderBuilder},
-        signers::{local::PrivateKeySigner, Signer},
         sol_types::{SolCall, SolValue},
     };
     use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
-    use cartesi_dave_merkle::Digest;
     use cartesi_rollups_contracts::{
         inputbox::InputBox::{self, InputAdded},
         inputs::Inputs::EvmAdvanceCall,
@@ -452,12 +462,7 @@ mod blockchain_reader_tests {
     use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
     use rusqlite::Connection;
-    use std::{
-        fs::{self, File},
-        io::Read,
-        path::PathBuf,
-        sync::Arc,
-    };
+    use std::sync::Arc;
     use tokio::{
         task::spawn,
         time::{sleep, Duration},
@@ -468,65 +473,9 @@ mod blockchain_reader_tests {
     const INPUT_PAYLOAD: &str = "Hello!";
     const INPUT_PAYLOAD2: &str = "Hello Two!";
 
-    const PROGRAM: &str = "../../../test/programs/echo/";
+    use crate::test_utils::*;
 
-    fn program_path() -> PathBuf {
-        PathBuf::from(PROGRAM).canonicalize().unwrap()
-    }
-
-    fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, Address, Address, Digest) {
-        let program_path = program_path();
-
-        let anvil = Anvil::default()
-            .block_time(1)
-            .args([
-                "--preserve-historical-states",
-                "--slots-in-an-epoch",
-                "1",
-                "--load-state",
-                program_path.join("anvil_state.json").to_str().unwrap(),
-                "--block-base-fee-per-gas",
-                "0",
-            ])
-            .spawn();
-
-        let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
-
-        signer.set_chain_id(Some(anvil.chain_id()));
-        let wallet = EthereumWallet::from(signer);
-
-        let provider = ProviderBuilder::new()
-            .wallet(wallet)
-            .on_http(anvil.endpoint_url())
-            .erased();
-
-        let (input_box_address, consensus_address) = {
-            let addresses = fs::read_to_string(program_path.join("addresses")).unwrap();
-            let mut lines = addresses.lines().map(str::trim);
-            (
-                Address::from_hex(lines.next().unwrap()).unwrap(),
-                Address::from_hex(lines.next().unwrap()).unwrap(),
-            )
-        };
-
-        let initial_hash = {
-            // $ xxd -p -c32 test/programs/echo/machine-image/hash
-            let mut file = File::open(program_path.join("machine-image").join("hash")).unwrap();
-            let mut buffer = [0u8; 32];
-            file.read_exact(&mut buffer).unwrap();
-            buffer
-        };
-
-        (
-            anvil,
-            provider,
-            input_box_address,
-            consensus_address,
-            Digest::from_digest(&initial_hash).unwrap(),
-        )
-    }
-
-    fn create_partition_rovider(url: &str) -> Result<PartitionProvider> {
+    fn create_partition_provider(url: &str) -> Result<PartitionProvider> {
         let url = url.parse()?;
         let provider = ProviderBuilder::new().on_http(url).erased();
         let partition_provider = PartitionProvider::new(Arc::new(provider));
@@ -564,7 +513,7 @@ mod blockchain_reader_tests {
         epoch_reader: &EventReader<EpochSealed>,
         count: usize,
     ) -> Result<Vec<EpochSealed>> {
-        let partition_provider = create_partition_rovider(url)?;
+        let partition_provider = create_partition_provider(url)?;
         let mut read_epochs = Vec::new();
         while read_epochs.len() != count {
             // latest finalized block must be greater than 0
@@ -596,7 +545,7 @@ mod blockchain_reader_tests {
         input_reader: &EventReader<InputAdded>,
         count: usize,
     ) -> Result<Vec<InputAdded>> {
-        let partition_provider = create_partition_rovider(url)?;
+        let partition_provider = create_partition_provider(url)?;
         let mut read_inputs = Vec::new();
         while read_inputs.len() != count {
             // latest finalized block must be greater than 0
@@ -716,16 +665,17 @@ mod blockchain_reader_tests {
         add_input(&inputbox, INPUT_PAYLOAD, input_count_1).await?;
 
         let daveconsensus = DaveConsensus::new(consensus_address, &provider);
-        let mut blockchain_reader = BlockchainReader::new(
+        let blockchain_reader = BlockchainReader::new(
             state_manager.clone(),
             AddressBook {
                 app: APP_ADDRESS,
                 consensus: *daveconsensus.address(),
                 input_box: *inputbox.address(),
             },
-            &anvil.endpoint(),
+            Arc::new(provider.clone().erased()),
             1,
-        )?;
+        )
+        .await?;
 
         let r = spawn(async move {
             blockchain_reader.start().await.unwrap();
