@@ -1,8 +1,8 @@
-use alloy::primitives::Address;
-use alloy::providers::DynProvider;
-use log::{error, trace};
+mod error;
+
+use alloy::{primitives::Address, providers::DynProvider};
+use log::trace;
 use std::path::PathBuf;
-use std::result::Result;
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use cartesi_prt_core::{
@@ -10,9 +10,10 @@ use cartesi_prt_core::{
     strategy::player::Player,
     tournament::EthArenaSender,
 };
+use error::{PRTRunnerError, Result};
 use rollups_state_manager::{Epoch, StateManager};
 
-pub struct ComputeRunner<SM: StateManager> {
+pub struct PRTRunner<SM: StateManager> {
     arena_sender: EthArenaSender,
     provider: DynProvider,
     sleep_duration: Duration,
@@ -20,7 +21,7 @@ pub struct ComputeRunner<SM: StateManager> {
     state_dir: PathBuf,
 }
 
-impl<SM: StateManager> ComputeRunner<SM>
+impl<SM: StateManager> PRTRunner<SM>
 where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
@@ -40,13 +41,18 @@ where
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), <SM as StateManager>::Error> {
+    pub async fn start(&mut self) -> Result<(), SM> {
         loop {
             // participate in last sealed epoch tournament
-            if let Some(last_sealed_epoch) = self.state_manager.last_sealed_epoch()? {
+            if let Some(last_sealed_epoch) = self
+                .state_manager
+                .last_sealed_epoch()
+                .map_err(PRTRunnerError::StateManagerError)?
+            {
                 match self
                     .state_manager
-                    .settlement_info(last_sealed_epoch.epoch_number)?
+                    .settlement_info(last_sealed_epoch.epoch_number)
+                    .map_err(PRTRunnerError::StateManagerError)?
                 {
                     Some(_) => {
                         self.react_dispute(&last_sealed_epoch).await?;
@@ -60,22 +66,24 @@ where
         }
     }
 
-    async fn react_dispute(
-        &mut self,
-        last_sealed_epoch: &Epoch,
-    ) -> Result<(), <SM as StateManager>::Error> {
+    async fn react_dispute(&mut self, last_sealed_epoch: &Epoch) -> Result<(), SM> {
         let Some(snapshot) = self
             .state_manager
-            .snapshot(last_sealed_epoch.epoch_number, 0)?
+            .snapshot(last_sealed_epoch.epoch_number, 0)
+            .map_err(PRTRunnerError::StateManagerError)?
         else {
-            trace!("waiting for `machine-runner` to save machine snapshot");
+            trace!("wait for `machine-runner` to save machine snapshot");
             return Ok(());
         };
 
-        let inputs = self.state_manager.inputs(last_sealed_epoch.epoch_number)?;
+        let inputs = self
+            .state_manager
+            .inputs(last_sealed_epoch.epoch_number)
+            .map_err(PRTRunnerError::StateManagerError)?;
         let leafs = self
             .state_manager
-            .machine_state_hashes(last_sealed_epoch.epoch_number)?;
+            .machine_state_hashes(last_sealed_epoch.epoch_number)
+            .map_err(PRTRunnerError::StateManagerError)?;
 
         let mut player = {
             let inputs = Some(inputs.into_iter().map(Input).collect());
@@ -92,7 +100,7 @@ where
                 .collect();
 
             let address = Address::from_str(&last_sealed_epoch.root_tournament)
-                .expect("fail to convert tournament address");
+                .expect("fail to convert tournament address from string");
 
             Player::new(
                 inputs,
@@ -103,16 +111,12 @@ where
                 last_sealed_epoch.block_created_number,
                 self.state_dir.clone(),
             )
-            .expect("fail to initialize compute player")
+            .expect("fail to initialize prt player")
         };
 
         // TODO: there are errors which are irrecoverable!
         // We should bail on these cases.
-        let _ = player
-            .react_once(&self.arena_sender)
-            .await
-            .inspect_err(|e| error!("{e}"));
-
+        player.react_once(&self.arena_sender).await?;
         Ok(())
     }
 }

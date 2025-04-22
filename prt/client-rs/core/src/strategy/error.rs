@@ -6,7 +6,7 @@ use anyhow::Error as AnyhowError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ReactionError {
+pub enum ReactError {
     #[error(transparent)]
     MachineInstance {
         #[from]
@@ -32,4 +32,4 @@ pub enum ReactionError {
     },
 }
 
-pub type Result<T> = std::result::Result<T, ReactionError>;
+pub type Result<T> = std::result::Result<T, ReactError>;

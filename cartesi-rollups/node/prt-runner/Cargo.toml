@@ -15,3 +15,4 @@ rollups-state-manager = { workspace = true }
 
 alloy = { workspace = true }
 log = { workspace = true }
+thiserror = { workspace = true }

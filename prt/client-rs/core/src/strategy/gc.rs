@@ -1,4 +1,3 @@
-use crate::strategy::error::Result;
 use ::log::info;
 use alloy::primitives::Address;
 use async_recursion::async_recursion;
@@ -18,7 +17,7 @@ impl GarbageCollector {
         &self,
         arena_sender: &'a impl ArenaSender,
         tournament_states: &TournamentStateMap,
-    ) -> Result<()> {
+    ) {
         self.react_tournament(arena_sender, self.root_tournamet, tournament_states)
             .await
     }
@@ -29,14 +28,14 @@ impl GarbageCollector {
         arena_sender: &'a impl ArenaSender,
         tournament_address: Address,
         tournament_states: &TournamentStateMap,
-    ) -> Result<()> {
+    ) {
         let tournament_state = tournament_states
             .get(&tournament_address)
             .expect("tournament state not found");
 
         for m in tournament_state.matches.iter() {
             self.react_match(arena_sender, m, tournament_states, tournament_address)
-                .await?;
+                .await;
 
             let status_1 = tournament_state
                 .commitment_states
@@ -59,19 +58,9 @@ impl GarbageCollector {
                     tournament_state.level
                 );
 
-                let elim = arena_sender.eliminate_match(tournament_address, m.id).await;
-                if elim.is_err() {
-                    info!(
-                        "failed to eliminate match for commitment {} and {} at tournament {} of level {}",
-                        m.id.commitment_one,
-                        m.id.commitment_two,
-                        tournament_address,
-                        tournament_state.level
-                    );
-                }
+                arena_sender.eliminate_match(tournament_address, m.id).await;
             }
         }
-        Ok(())
     }
 
     #[async_recursion]
@@ -81,7 +70,7 @@ impl GarbageCollector {
         match_state: &MatchState,
         tournament_states: &TournamentStateMap,
         tournament_address: Address,
-    ) -> Result<()> {
+    ) {
         info!(
             "Garbage collect match at HEIGHT: {}, of tournament: {}",
             match_state.current_height, tournament_address
@@ -91,7 +80,5 @@ impl GarbageCollector {
                 .react_tournament(arena_sender, inner_tournament, tournament_states)
                 .await;
         }
-
-        Ok(())
     }
 }

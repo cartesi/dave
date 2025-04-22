@@ -16,7 +16,11 @@ pub fn insert_inputs<'a>(
 ) -> Result<()> {
     let mut stmt = insert_input_statement(&conn)?;
     for (i, input) in inputs.enumerate() {
-        stmt.execute(params![i, input.0])?;
+        if stmt.execute(params![i, input.0])? != 1 {
+            return Err(ComputeStateAccessError::InsertionFailed {
+                description: "input insertion failed".to_owned(),
+            });
+        }
     }
 
     Ok(())
@@ -76,7 +80,11 @@ pub fn insert_compute_leafs<'a>(
     let mut stmt = insert_compute_leaf_statement(&conn)?;
     for (i, leaf) in leafs.enumerate() {
         assert!(leaf.repetitions > 0);
-        stmt.execute(params![level, base_cycle, i, leaf.hash, leaf.repetitions])?;
+        if stmt.execute(params![level, base_cycle, i, leaf.hash, leaf.repetitions])? != 1 {
+            return Err(ComputeStateAccessError::InsertionFailed {
+                description: "compute leafs insertion failed".to_owned(),
+            });
+        }
     }
 
     Ok(())
@@ -130,7 +138,11 @@ pub fn insert_compute_tree<'a>(
         let mut stmt = insert_compute_tree_statement(&conn)?;
         for (i, leaf) in tree_leafs.enumerate() {
             assert!(leaf.repetitions > 0);
-            stmt.execute(params![tree_root, i, leaf.hash, leaf.repetitions])?;
+            if stmt.execute(params![tree_root, i, leaf.hash, leaf.repetitions])? != 1 {
+                return Err(ComputeStateAccessError::InsertionFailed {
+                    description: "compute tree insertion failed".to_owned(),
+                });
+            }
         }
     }
 
@@ -193,7 +205,11 @@ fn insert_handle_rollups_statement(conn: &rusqlite::Connection) -> Result<rusqli
 
 pub fn insert_handle_rollups(conn: &rusqlite::Connection, handle_rollups: bool) -> Result<()> {
     let mut stmt = insert_handle_rollups_statement(&conn)?;
-    stmt.execute(params![handle_rollups])?;
+    if stmt.execute(params![handle_rollups])? != 1 {
+        return Err(ComputeStateAccessError::InsertionFailed {
+            description: "rollups operation mode insertion failed".to_owned(),
+        });
+    }
 
     Ok(())
 }
