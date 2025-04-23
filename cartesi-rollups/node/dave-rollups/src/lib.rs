@@ -41,7 +41,7 @@ pub struct DaveParameters {
     pub state_dir: PathBuf,
 }
 
-pub async fn create_provider(config: &BlockchainConfig) -> Arc<DynProvider> {
+pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
     let endpoint_url: Url = Url::parse(&config.web3_rpc_url).expect("invalid rpc url");
 
     // let throttle = ThrottleLayer::new(20);
@@ -84,12 +84,12 @@ pub async fn create_provider(config: &BlockchainConfig) -> Arc<DynProvider> {
         )
         .on_client(client);
 
-    Arc::new(provider.erased())
+    provider.erased()
 }
 
 pub fn create_blockchain_reader_task(
     state_manager: Arc<PersistentStateAccess>,
-    provider: Arc<DynProvider>,
+    provider: DynProvider,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
     let params = parameters.clone();
@@ -115,11 +115,11 @@ pub fn create_blockchain_reader_task(
 
 pub fn create_compute_runner_task(
     state_manager: Arc<PersistentStateAccess>,
-    provider: Arc<DynProvider>,
+    provider: DynProvider,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
     let arena_sender =
-        EthArenaSender::new(Arc::clone(&provider)).expect("could not create arena sender");
+        EthArenaSender::new(provider.clone()).expect("could not create arena sender");
     let params = parameters.clone();
 
     spawn(async move {
@@ -140,7 +140,7 @@ pub fn create_compute_runner_task(
 }
 
 pub fn create_epoch_manager_task(
-    provider: Arc<DynProvider>,
+    provider: DynProvider,
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {

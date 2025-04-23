@@ -14,7 +14,7 @@ use rollups_state_manager::{Epoch, StateManager};
 
 pub struct ComputeRunner<SM: StateManager> {
     arena_sender: EthArenaSender,
-    provider: Arc<DynProvider>,
+    provider: DynProvider,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
     state_dir: PathBuf,
@@ -26,7 +26,7 @@ where
 {
     pub fn new(
         arena_sender: EthArenaSender,
-        provider: Arc<DynProvider>,
+        provider: DynProvider,
         state_manager: Arc<SM>,
         sleep_duration: u64,
         state_dir: PathBuf,
@@ -97,7 +97,7 @@ where
             Player::new(
                 inputs,
                 leafs,
-                Arc::clone(&self.provider),
+                self.provider.clone(),
                 snapshot,
                 address,
                 last_sealed_epoch.block_created_number,

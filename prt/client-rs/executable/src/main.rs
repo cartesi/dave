@@ -14,7 +14,7 @@ use cartesi_prt_core::{
 use anyhow::Result;
 use clap::Parser;
 use log::{error, info};
-use std::{fs::OpenOptions, io, path::Path, str::FromStr, sync::Arc};
+use std::{fs::OpenOptions, io, path::Path, str::FromStr};
 
 // A simple implementation of `% touch path` (ignores existing files)
 fn touch(path: &Path) -> io::Result<()> {
@@ -24,7 +24,7 @@ fn touch(path: &Path) -> io::Result<()> {
     }
 }
 
-fn create_provider(config: &BlockchainConfig) -> Arc<DynProvider> {
+fn create_provider(config: &BlockchainConfig) -> DynProvider {
     let endpoint_url: Url = Url::parse(&config.web3_rpc_url).expect("invalid rpc url");
 
     let retry = RetryBackoffLayer::new(
@@ -50,7 +50,7 @@ fn create_provider(config: &BlockchainConfig) -> Arc<DynProvider> {
         )
         .on_client(client);
 
-    Arc::new(provider.erased())
+    provider.erased()
 }
 
 #[tokio::main]
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     let config = ComputeConfig::parse();
     let blockchain_config = config.blockchain_config;
     let provider = create_provider(&blockchain_config);
-    let sender = EthArenaSender::new(Arc::clone(&provider))?;
+    let sender = EthArenaSender::new(provider.clone())?;
 
     let mut player = Player::new(
         None,

@@ -12,7 +12,7 @@ use cartesi_dave_contracts::daveconsensus;
 use rollups_state_manager::{Proof, StateManager};
 
 pub struct EpochManager<SM: StateManager> {
-    provider: Arc<DynProvider>,
+    provider: DynProvider,
     consensus: Address,
     sleep_duration: Duration,
     state_manager: Arc<SM>,
@@ -23,7 +23,7 @@ where
     <SM as StateManager>::Error: Send + Sync + 'static,
 {
     pub fn new(
-        provider: Arc<DynProvider>,
+        provider: DynProvider,
         consensus_address: Address,
         state_manager: Arc<SM>,
         sleep_duration: u64,

@@ -1,5 +1,5 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::{collections::HashMap, sync::Arc};
 
 use crate::strategy::error::Result;
 use ::log::{debug, error, info};
@@ -38,7 +38,7 @@ impl Player {
     pub fn new(
         inputs: Option<Vec<Input>>,
         leafs: Vec<Leaf>,
-        provider: Arc<DynProvider>,
+        provider: DynProvider,
         machine_path: String,
         root_tournament: Address,
         block_created_number: u64,
@@ -50,7 +50,7 @@ impl Player {
             root_tournament.to_string(),
             state_dir.join("compute_path"),
         )?;
-        let reader = StateReader::new(Arc::clone(&provider), block_created_number)?;
+        let reader = StateReader::new(provider.clone(), block_created_number)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
