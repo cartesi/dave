@@ -1,7 +1,8 @@
-use ::log::info;
+use ::log::debug;
 use alloy::primitives::Address;
 use async_recursion::async_recursion;
 
+use crate::strategy::error::Result;
 use crate::tournament::{ArenaSender, MatchState, TournamentStateMap};
 
 pub struct GarbageCollector {
@@ -17,7 +18,7 @@ impl GarbageCollector {
         &self,
         arena_sender: &'a impl ArenaSender,
         tournament_states: &TournamentStateMap,
-    ) {
+    ) -> Result<()> {
         self.react_tournament(arena_sender, self.root_tournamet, tournament_states)
             .await
     }
@@ -28,14 +29,14 @@ impl GarbageCollector {
         arena_sender: &'a impl ArenaSender,
         tournament_address: Address,
         tournament_states: &TournamentStateMap,
-    ) {
+    ) -> Result<()> {
         let tournament_state = tournament_states
             .get(&tournament_address)
             .expect("tournament state not found");
 
         for m in tournament_state.matches.iter() {
             self.react_match(arena_sender, m, tournament_states, tournament_address)
-                .await;
+                .await?;
 
             let status_1 = tournament_state
                 .commitment_states
@@ -50,7 +51,7 @@ impl GarbageCollector {
                 || (!status_2.clock.has_time()
                     && (status_2.clock.time_since_timeout() > status_1.clock.allowance))
             {
-                info!(
+                debug!(
                     "eliminate match for commitment {} and {} at tournament {} of level {}",
                     m.id.commitment_one,
                     m.id.commitment_two,
@@ -58,9 +59,12 @@ impl GarbageCollector {
                     tournament_state.level
                 );
 
-                arena_sender.eliminate_match(tournament_address, m.id).await;
+                arena_sender
+                    .eliminate_match(tournament_address, m.id)
+                    .await?;
             }
         }
+        Ok(())
     }
 
     #[async_recursion]
@@ -70,15 +74,15 @@ impl GarbageCollector {
         match_state: &MatchState,
         tournament_states: &TournamentStateMap,
         tournament_address: Address,
-    ) {
-        info!(
+    ) -> Result<()> {
+        debug!(
             "Garbage collect match at HEIGHT: {}, of tournament: {}",
             match_state.current_height, tournament_address
         );
         if let Some(inner_tournament) = match_state.inner_tournament {
-            return self
-                .react_tournament(arena_sender, inner_tournament, tournament_states)
-                .await;
+            self.react_tournament(arena_sender, inner_tournament, tournament_states)
+                .await?;
         }
+        Ok(())
     }
 }

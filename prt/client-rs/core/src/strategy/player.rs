@@ -88,7 +88,7 @@ impl Player {
         arena_sender: &impl ArenaSender,
     ) -> Result<PlayerTournamentResult> {
         let tournament_states = self.reader.fetch_from_root(self.root_tournament).await?;
-        self.gc.react_once(arena_sender, &tournament_states).await;
+        self.gc.react_once(arena_sender, &tournament_states).await?;
         self.react_tournament(
             arena_sender,
             HashMap::new(),
@@ -130,8 +130,10 @@ impl Player {
                         winner_commitment, winner_state,
                     );
                     if commitment.merkle.root_hash() == *winner_commitment {
+                        info!("player won tournament {}", tournament_state.address);
                         return Ok(PlayerTournamentResult::TournamentWon);
                     } else {
+                        error!("player lost tournament {}", tournament_state.address);
                         return Ok(PlayerTournamentResult::TournamentLost);
                     }
                 }
@@ -143,7 +145,7 @@ impl Player {
                             .expect("parent tournament state not found"),
                     );
                     if *parent_commitment != old_commitment.merkle.root_hash() {
-                        info!("player lost tournament {}", tournament_state.address);
+                        error!("player lost tournament {}", tournament_state.address);
                         return Ok(PlayerTournamentResult::TournamentLost);
                     } else {
                         info!(
@@ -165,7 +167,7 @@ impl Player {
                                 left.root_hash(),
                                 right.root_hash(),
                             )
-                            .await;
+                            .await?;
 
                         return Ok(PlayerTournamentResult::TournamentRunning);
                     }
@@ -202,7 +204,7 @@ impl Player {
             }
             None => {
                 self.join_tournament_if_needed(arena_sender, tournament_state, commitment)
-                    .await;
+                    .await?;
             }
         }
 
@@ -214,7 +216,7 @@ impl Player {
         arena_sender: &impl ArenaSender,
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
-    ) {
+    ) -> Result<()> {
         let (left, right) = commitment
             .merkle
             .subtrees()
@@ -234,7 +236,9 @@ impl Player {
                 left.root_hash(),
                 right.root_hash(),
             )
-            .await;
+            .await?;
+
+        Ok(())
     }
 
     #[async_recursion]
@@ -258,7 +262,7 @@ impl Player {
             commitment_states,
             tournament_state.level,
         )
-        .await;
+        .await?;
 
         if match_state.current_height == 0 {
             self.react_sealed_match(
@@ -278,7 +282,7 @@ impl Player {
                 tournament_state.level,
                 tournament_state.max_level,
             )
-            .await;
+            .await?;
         } else {
             self.react_running_match(
                 arena_sender,
@@ -286,7 +290,7 @@ impl Player {
                 commitment,
                 tournament_state.level,
             )
-            .await;
+            .await?;
         }
         Ok(())
     }
@@ -298,7 +302,7 @@ impl Player {
         commitment: &MachineCommitment,
         commitment_states: &HashMap<Digest, CommitmentState>,
         tournament_level: u64,
-    ) {
+    ) -> Result<()> {
         let opponent_clock = if commitment.merkle.root_hash() == match_state.id.commitment_one {
             commitment_states
                 .get(&match_state.id.commitment_two)
@@ -331,8 +335,9 @@ impl Player {
                     left.root_hash(),
                     right.root_hash(),
                 )
-                .await;
+                .await?;
         }
+        Ok(())
     }
 
     #[async_recursion]
@@ -380,7 +385,7 @@ impl Player {
                     right.root_hash(),
                     proof.0,
                 )
-                .await;
+                .await?;
         } else {
             self.react_tournament(
                 arena_sender,
@@ -403,10 +408,10 @@ impl Player {
         commitment: &MachineCommitment,
         tournament_level: u64,
         tournament_max_level: u64,
-    ) {
+    ) -> Result<()> {
         let Some(r) = commitment.merkle.find_child(&match_state.other_parent) else {
-            info!("not my turn to react");
-            return;
+            debug!("not my turn to react");
+            return Ok(());
         };
 
         let (left, right) = r.subtrees().expect("merkle tree should have subtrees");
@@ -444,7 +449,7 @@ impl Player {
                     right.root_hash(),
                     &agree_state_proof,
                 )
-                .await;
+                .await?;
         } else {
             info!(
                 "seal inner match in tournament {} of level {} for commitment {}",
@@ -460,8 +465,9 @@ impl Player {
                     right.root_hash(),
                     &agree_state_proof,
                 )
-                .await;
+                .await?;
         }
+        Ok(())
     }
 
     async fn react_running_match(
@@ -470,10 +476,10 @@ impl Player {
         match_state: &MatchState,
         commitment: &MachineCommitment,
         tournament_level: u64,
-    ) {
+    ) -> Result<()> {
         let Some(r) = commitment.merkle.find_child(&match_state.other_parent) else {
-            info!("not my turn to react");
-            return;
+            debug!("not my turn to react");
+            return Ok(());
         };
 
         let (left, right) = r.subtrees().expect("merkle tree should have subtrees");
@@ -502,7 +508,8 @@ impl Player {
                 new_left.root_hash(),
                 new_right.root_hash(),
             )
-            .await;
+            .await?;
+        Ok(())
     }
 }
 
