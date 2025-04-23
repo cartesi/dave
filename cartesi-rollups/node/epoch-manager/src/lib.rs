@@ -6,7 +6,7 @@ use alloy::{
     providers::DynProvider,
 };
 use error::{EpochManagerError, Result};
-use log::{error, info, trace};
+use log::{info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
@@ -14,7 +14,7 @@ use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
     db::compute_state_access::{Input, Leaf},
     strategy::player::Player,
-    tournament::EthArenaSender,
+    tournament::{EthArenaSender, allow_revert_rethrow_others},
 };
 use rollups_state_manager::{Epoch, Proof, StateManager};
 
@@ -86,21 +86,15 @@ where
                         can_settle.epochNumber,
                         computation_hash.encode_hex()
                     );
-                    match dave_consensus
+                    let tx_result = dave_consensus
                         .settle(
                             can_settle.epochNumber,
                             Self::vec_u8_to_bytes_32(output_merkle),
                             Self::to_bytes_32_vec(output_proof),
                         )
                         .send()
-                        .await
-                    {
-                        Ok(tx_builder) => {
-                            let _ = tx_builder.watch().await.inspect_err(|e| error!("{}", e));
-                        }
-                        // allow retry when errors happen
-                        Err(e) => error!("{e}"),
-                    }
+                        .await;
+                    allow_revert_rethrow_others("settle", tx_result).await?;
                 }
                 None => {
                     trace!("wait for the `machine-runner` to insert the value");
@@ -124,7 +118,13 @@ where
                 .settlement_info(last_sealed_epoch.epoch_number)
                 .map_err(EpochManagerError::StateManagerError)?
             {
-                Some(_) => self.react_dispute(&last_sealed_epoch).await?,
+                Some(_) => {
+                    info!(
+                        "dispute tournaments for epoch {}",
+                        last_sealed_epoch.epoch_number
+                    );
+                    self.react_dispute(&last_sealed_epoch).await?
+                }
                 None => {
                     trace!("wait for `machine-runner` to insert settlement values");
                 }
@@ -181,8 +181,6 @@ where
             .expect("fail to initialize prt player")
         };
 
-        // TODO: there are errors which are irrecoverable!
-        // We should bail on these cases.
         player.react_once(&self.arena_sender).await?;
         Ok(())
     }
