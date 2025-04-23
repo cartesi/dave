@@ -4,7 +4,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use log::trace;
-use std::sync::Arc;
 
 use alloy::{
     providers::DynProvider,
@@ -17,11 +16,11 @@ use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
 
 #[derive(Clone, Debug)]
 pub struct EthArenaSender {
-    client: Arc<DynProvider>,
+    client: DynProvider,
 }
 
 impl EthArenaSender {
-    pub fn new(client: Arc<DynProvider>) -> anyhow::Result<Self> {
+    pub fn new(client: DynProvider) -> anyhow::Result<Self> {
         Ok(Self { client })
     }
 }

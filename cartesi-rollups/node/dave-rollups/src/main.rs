@@ -23,15 +23,15 @@ async fn main() -> Result<()> {
     let provider = create_provider(&parameters.blockchain_config).await;
 
     let blockchain_reader_task =
-        create_blockchain_reader_task(state_manager.clone(), Arc::clone(&provider), &parameters);
+        create_blockchain_reader_task(state_manager.clone(), provider.clone(), &parameters);
 
     let epoch_manager_task =
-        create_epoch_manager_task(Arc::clone(&provider), state_manager.clone(), &parameters);
+        create_epoch_manager_task(provider.clone(), state_manager.clone(), &parameters);
 
     let machine_runner_task = create_machine_runner_task(state_manager.clone(), &parameters);
 
     let compute_runner_task =
-        create_compute_runner_task(state_manager.clone(), Arc::clone(&provider), &parameters);
+        create_compute_runner_task(state_manager.clone(), provider.clone(), &parameters);
 
     futures::try_join!(
         blockchain_reader_task,

@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use async_recursion::async_recursion;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use alloy::{
     eips::BlockNumberOrTag::Latest,
@@ -24,12 +24,12 @@ use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament
 
 #[derive(Clone)]
 pub struct StateReader {
-    client: Arc<DynProvider>,
+    client: DynProvider,
     block_created_number: u64,
 }
 
 impl StateReader {
-    pub fn new(client: Arc<DynProvider>, block_created_number: u64) -> Result<Self> {
+    pub fn new(client: DynProvider, block_created_number: u64) -> Result<Self> {
         Ok(Self {
             client,
             block_created_number,
