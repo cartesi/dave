@@ -17,7 +17,6 @@ use cartesi_prt_core::tournament::{BlockchainConfig, EthArenaSender};
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
-use rollups_prt_runner::PRTRunner;
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
 const SLEEP_DURATION: u64 = 30;
@@ -113,9 +112,9 @@ pub fn create_blockchain_reader_task(
     })
 }
 
-pub fn create_compute_runner_task(
-    state_manager: Arc<PersistentStateAccess>,
+pub fn create_epoch_manager_task(
     provider: DynProvider,
+    state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> JoinHandle<()> {
     let arena_sender =
@@ -123,35 +122,13 @@ pub fn create_compute_runner_task(
     let params = parameters.clone();
 
     spawn(async move {
-        let mut compute_runner = PRTRunner::new(
-            arena_sender,
-            provider,
-            state_manager,
-            params.sleep_duration,
-            params.state_dir,
-        );
-
-        compute_runner
-            .start()
-            .await
-            .inspect_err(|e| error!("{e}"))
-            .unwrap();
-    })
-}
-
-pub fn create_epoch_manager_task(
-    provider: DynProvider,
-    state_manager: Arc<PersistentStateAccess>,
-    parameters: &DaveParameters,
-) -> JoinHandle<()> {
-    let params = parameters.clone();
-
-    spawn(async move {
         let epoch_manager = EpochManager::new(
+            arena_sender,
             provider,
             params.address_book.consensus,
             state_manager,
             params.sleep_duration,
+            params.state_dir,
         );
 
         epoch_manager

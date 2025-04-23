@@ -11,10 +11,11 @@ repository.workspace = true
 
 [dependencies]
 cartesi-dave-contracts = { workspace = true }
+cartesi-prt-core = { workspace = true }
 rollups-state-manager = { workspace = true }
 
 alloy = { workspace = true }
-anyhow = { workspace = true }
 log = { workspace = true }
 num-traits = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }

@@ -12,7 +12,6 @@ repository = { workspace = true }
 
 [dependencies]
 rollups-blockchain-reader = { workspace = true }
-rollups-prt-runner = { workspace = true }
 rollups-epoch-manager = { workspace = true }
 rollups-machine-runner = { workspace = true }
 rollups-state-manager = { workspace = true }

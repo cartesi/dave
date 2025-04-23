@@ -3,7 +3,6 @@
 
 use async_trait::async_trait;
 use log::{error, trace};
-use std::str::FromStr;
 
 use alloy::{
     providers::DynProvider,
