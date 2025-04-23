@@ -1971,7 +1971,6 @@ dependencies = [
  "rollups-blockchain-reader",
  "rollups-epoch-manager",
  "rollups-machine-runner",
- "rollups-prt-runner",
  "rollups-state-manager",
  "rusqlite",
  "tokio",
@@ -4139,11 +4138,12 @@ name = "rollups-epoch-manager"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "anyhow",
  "cartesi-dave-contracts",
+ "cartesi-prt-core",
  "log",
  "num-traits",
  "rollups-state-manager",
+ "thiserror",
  "tokio",
 ]
 
@@ -4157,17 +4157,6 @@ dependencies = [
  "cartesi-prt-core",
  "cartesi-rollups-contracts",
  "hex",
- "rollups-state-manager",
- "thiserror",
-]
-
-[[package]]
-name = "rollups-prt-runner"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "cartesi-prt-core",
- "log",
  "rollups-state-manager",
  "thiserror",
 ]

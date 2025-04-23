@@ -16,7 +16,6 @@ members = [
 
   # rollups-node
   "cartesi-rollups/node/blockchain-reader",
-  "cartesi-rollups/node/prt-runner",
   "cartesi-rollups/node/dave-rollups",
   "cartesi-rollups/node/epoch-manager",
   "cartesi-rollups/node/machine-runner",
@@ -56,7 +55,6 @@ cartesi-prt-contracts = { path = "prt/contracts/bindings-rs" }
 
 # rollups-node
 rollups-blockchain-reader = { version = "0.1", path = "cartesi-rollups/node/blockchain-reader" }
-rollups-prt-runner = { version = "0.1", path = "cartesi-rollups/node/prt-runner" }
 rollups-epoch-manager = { version = "0.1", path = "cartesi-rollups/node/epoch-manager" }
 rollups-machine-runner = { version = "0.1", path = "cartesi-rollups/node/machine-runner" }
 rollups-state-manager = { version = "0.1", path = "cartesi-rollups/node/state-manager" }
