@@ -1,7 +1,7 @@
 # syntax=docker.io/docker/dockerfile-upstream:1.12.1-labs
 
 # start from rust
-FROM rust:1.85
+FROM rust:1.86
 
 # install `just`
 RUN \

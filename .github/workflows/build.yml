@@ -1,45 +1,171 @@
 name: Build
 on:
   push:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  prt-contracts:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Set up QEMU for riscv support
-        uses: docker/setup-qemu-action@v2
-
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt
-          target: x86_64-unknown-linux-gnu
-          toolchain: 1.85
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+      - name: Install Cartesi Machine
+        uses: ./.github/actions/cartesi-machine
         with:
-          version: stable
+          version: 0.19.0
+          suffix-version: "-alpha3"
 
-      - name: Install just
-        uses: extractions/setup-just@v2
+      - name: Setup env
+        run: |
+          just setup-local
+
+      - name: Build, format check and test prt contracts
+        working-directory: ./prt/contracts
+        run: |
+          just check-fmt
+          just build-smart-contracts
+          just test
+
+  dave-contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
+
+      - name: Download PRT contracts
+        working-directory: ./prt/contracts
+        run: |
+          just install-deps
+
+      - name: Download Rollups contracts
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          just install-deps
+
+      - name: Build, format check and test Dave consensus contracts
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          just check-fmt
+          just build-smart-contracts
+          just test
+
+  prt-compute:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
+
+      - name: Install Cartesi Machine
+        uses: ./.github/actions/cartesi-machine
+        with:
+          version: 0.19.0
+          suffix-version: "-alpha3"
+
+      - name: Download PRT contracts
+        working-directory: ./prt/contracts
+        run: |
+          just install-deps
+
+      - name: Download Rollups contracts
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          just install-deps
+
+      - name: Build cartesi-prt-compute
+        run: |
+          just bind
+          cargo build -p cartesi-prt-compute --locked
+
+      - name: Test prt-compute
+        working-directory: ./prt/tests/compute
+        run: |
+          just -f programs/justfile build-simple
+          just test-simple
+
+  prt-rollups:
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
+
+      - name: Install Cartesi Machine
+        uses: ./.github/actions/cartesi-machine
+        with:
+          version: 0.19.0
+          suffix-version: "-alpha3"
+
+      - name: Download PRT contracts
+        working-directory: ./prt/contracts
+        run: |
+          just install-deps
+
+      - name: Download Rollups contracts
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          just install-deps
+
+      - name: Download deps
+        working-directory: ./test/programs/
+        run: |
+          just download-deps
+
+      - name: Rust build
+        run: |
+          just build
+
+      - name: Build echo
+        working-directory: ./test/programs/
+        run: |
+          just build-echo
+
+      - name: Test prt-rollups
+        timeout-minutes: 30
+        run: |
+          just test-rollups-echo
+
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
 
       - name: Install dependencies
+        env:
+          XGENEXT2_VERSION: 1.5.6
+          ARCH: amd64
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends \
             build-essential git wget \
             libslirp-dev \
             libclang-dev \
             liblua5.4-dev lua5.4 \
-            xxd jq sqlite3 libc6 clang
+            xxd jq sqlite3 libc6 clang libarchive13
 
-          export XGENEXT2_VERSION=1.5.6
-          export ARCH=amd64
           wget -O xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
-          sudo dpkg -i ./xgenext2fs.deb
+          sudo apt-get install -y ./xgenext2fs.deb
           rm ./xgenext2fs.deb
           xgenext2fs --version
 
@@ -54,20 +180,6 @@ jobs:
         run: |
           just setup-local
 
-      - name: Build, format check and test prt contracts
-        working-directory: ./prt/contracts
-        run: |
-          just check-fmt
-          just build-smart-contracts
-          just test
-
-      - name: Build, format check and test Dave consensus contracts
-        working-directory: ./cartesi-rollups/contracts
-        run: |
-          just check-fmt
-          just build-smart-contracts
-          just test
-
       - name: Rust fmt and check
         run: |
           just check-fmt-rust-workspace
@@ -75,33 +187,109 @@ jobs:
 
       - name: Rust build
         run: |
-          just build-rust-workspace
+          just build
 
       - name: Rust test workspace
         run: |
           just test-rust-workspace
 
-      - name: Test prt-compute
-        working-directory: ./prt/tests/compute
-        run: |
-          just -f ./programs/justfile build-simple
-          just test-simple
+  build-release:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - arch: arm64
+            target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    container:
+      image: rust:1.86-bookworm
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Test prt-rollups
-        if: startsWith(github.ref, 'refs/tags/v')
-        working-directory: ./prt/tests/rollups
+      - name: Setup dependencies
         run: |
-          just test-echo
+          apt-get update
+          apt-get install -y --no-install-recommends \
+          build-essential git wget curl \
+          liblua5.4-dev lua5.4 \
+          libslirp-dev libboost1.81-dev \
+          libclang-dev \
+          xxd jq sqlite3
 
-      - name: Build cartesi-rollups-prt-node
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Install dependency for ARM
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
-          cargo build -p cartesi-rollups-prt-node --release --locked --target x86_64-unknown-linux-gnu
+          apt-get install -y --no-install-recommends \
+            g++-aarch64-linux-gnu
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install just
+        uses: extractions/setup-just@v3
+
+      - name: Contracts
+        run: |
+          just -f test/programs/justfile download-deps
+          just -f prt/contracts/justfile install-deps
+          just -f cartesi-rollups/contracts/justfile install-deps
+          just build-smart-contracts
+          just bind
+
+      - name: Cartesi Machine Sys
+        working-directory: machine/rust-bindings
+        run: |
+          cargo build --release -p cartesi-machine-sys --features download_uarch --target ${{ matrix.target }}
+
+      - name: Build release
+        run: |
+          cargo build --release -p cartesi-rollups-prt-node --target ${{ matrix.target }}
+          cp -v ./target/${{ matrix.target }}/release/cartesi-rollups-prt-node cartesi-rollups-prt-node
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cartesi-rollups-prt-node-linux-${{ matrix.arch }}
+          path: |
+            ./cartesi-rollups-prt-node
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [prt-contracts, dave-contracts, prt-compute, prt-rollups, build, build-release]
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            target: x86_64-unknown-linux-gnu
+          - arch: arm64
+            target: aarch64-unknown-linux-gnu
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create directory
+        run: |
+          mkdir -pv target/${{ matrix.target }}/release
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cartesi-rollups-prt-node-linux-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release
 
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           executable-name: cartesi-rollups-prt-node
-          target: x86_64-unknown-linux-gnu
+          target: ${{ matrix.target }}
           changes-file: CHANGELOG.md
