@@ -2,6 +2,7 @@
 src = "src"
 out = "out"
 libs = ["dependencies", "../../prt/contracts", "../../machine/step"]
+optimizer = true
 via_ir = true
 
 remappings = [
