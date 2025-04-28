@@ -17,3 +17,6 @@ docs/
 report
 lcov.info
 lcov.info.pruned
+
+# Gas snapshot
+.gas-snapshot
