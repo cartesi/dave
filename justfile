@@ -19,6 +19,7 @@ setup-docker: setup build-docker-image
 
 # Run this once after cloning, if using local environment
 setup-local: setup
+  just -f ./prt/contracts/justfile install-deps
   just -f ./cartesi-rollups/contracts/justfile install-deps
   just -f ./test/programs/justfile download-deps
   just -f ./test/programs/justfile build-programs

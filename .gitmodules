@@ -1,9 +1,6 @@
 [submodule "machine/step"]
 	path = machine/step
 	url = https://github.com/cartesi/machine-solidity-step
-[submodule "prt/contracts/lib/forge-std"]
-	path = prt/contracts/lib/forge-std
-	url = https://github.com/foundry-rs/forge-std
 [submodule "machine/emulator"]
 	path = machine/emulator
 	url = https://github.com/cartesi/machine-emulator

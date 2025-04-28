@@ -10,8 +10,8 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std/console.sol";
-import "forge-std/Test.sol";
+import "forge-std-1.9.6/src/console.sol";
+import "forge-std-1.9.6/src/Test.sol";
 
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";

@@ -10,7 +10,7 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std/console.sol";
+import "forge-std-1.9.6/src/console.sol";
 
 import "src/arbitration-config/CanonicalConstants.sol";
 import "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
