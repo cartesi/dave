@@ -30,6 +30,9 @@ fmt:
 check-fmt:
     forge fmt --check
 
+install-deps:
+   forge soldeer install
+
 clean-bindings:
     rm -rf {{BINDINGS_DIR}}
 
