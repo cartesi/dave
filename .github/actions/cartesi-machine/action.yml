@@ -1,0 +1,52 @@
+name: cartesi-machine
+description: Install Cartesi Machine
+inputs:
+  version:
+    description: 'Version of Cartesi Machine to install'
+    required: false
+    default: 0.18.1
+  suffix-version:
+    description: 'Suffix of Cartesi Machine to install'
+    required: false
+    default: ''
+  arch:
+    description: 'Architecture of Cartesi Machine to install'
+    required: false
+    default: 'amd64'
+  xgenext2fs-version:
+    description: 'Version of xgenext2fs to install'
+    required: false
+    default: '1.5.6'
+runs:
+  using: composite
+  steps:
+    - name: Install dependencies
+      shell: bash
+      env:
+        XGENEXT2_VERSION: ${{ inputs.xgenext2fs-version }}
+        ARCH: ${{ inputs.arch }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+            build-essential git wget \
+            libslirp-dev \
+            libclang-dev \
+            liblua5.4-dev lua5.4 \
+            xxd jq sqlite3 libc6 clang libarchive13
+
+          wget -O xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
+          sudo apt-get install -y ./xgenext2fs.deb
+          rm ./xgenext2fs.deb
+          xgenext2fs --version
+
+    - name: Download Cartesi Machine
+      shell: bash
+      run: |
+        curl -fsSL https://github.com/cartesi/machine-emulator/releases/download/v${{ inputs.version }}${{ inputs.suffix-version }}/cartesi-machine-v${{ inputs.version }}_${{ inputs.arch }}.deb -o /tmp/cartesi-machine.deb
+
+    - name: Install Cartesi Machine
+      shell: bash
+      run: |
+        sudo apt-get install -y /tmp/cartesi-machine.deb
+        rm -v /tmp/cartesi-machine.deb
+        cartesi-machine --version
