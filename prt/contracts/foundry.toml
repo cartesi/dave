@@ -3,6 +3,7 @@ src = "src"
 out = "out"
 libs = ["lib"]
 via_ir = true
+optimizer = true
 
 allow_paths = ['../../machine/step/']
 remappings = [
