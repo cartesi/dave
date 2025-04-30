@@ -21,18 +21,36 @@ args = [
 create2 = true
 salt = "<%= zeroHash %>"
 
+[deploy.TopTournament]
+artifact = "TopTournament"
+create2 = true
+salt = "<%= zeroHash %>"
+
 [deploy.TopTournamentFactory]
 artifact = "TopTournamentFactory"
+args = ["<%= contracts.TopTournament.address %>"]
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.MiddleTournament]
+artifact = "MiddleTournament"
 create2 = true
 salt = "<%= zeroHash %>"
 
 [deploy.MiddleTournamentFactory]
 artifact = "MiddleTournamentFactory"
+args = ["<%= contracts.MiddleTournament.address %>"]
+create2 = true
+salt = "<%= zeroHash %>"
+
+[deploy.BottomTournament]
+artifact = "BottomTournament"
 create2 = true
 salt = "<%= zeroHash %>"
 
 [deploy.BottomTournamentFactory]
 artifact = "BottomTournamentFactory"
+args = ["<%= contracts.BottomTournament.address %>"]
 create2 = true
 salt = "<%= zeroHash %>"
 
