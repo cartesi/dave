@@ -22,9 +22,9 @@ contract DaveConsensusScript is Script {
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
         MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
-            new TopTournamentFactory(),
-            new MiddleTournamentFactory(),
-            new BottomTournamentFactory(),
+            new TopTournamentFactory(new TopTournament()),
+            new MiddleTournamentFactory(new MiddleTournament()),
+            new BottomTournamentFactory(new BottomTournament()),
             new TestTournamentParametersProvider(),
             new CartesiStateTransition(new RiscVStateTransition(), new CmioStateTransition())
         );
