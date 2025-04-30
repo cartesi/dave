@@ -3,19 +3,38 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/tournament/abstracts/RootTournament.sol";
-import "prt-contracts/tournament/abstracts/LeafTournament.sol";
+import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
-import "prt-contracts/types/TournamentParameters.sol";
+import "prt-contracts/tournament/abstracts/LeafTournament.sol";
+import "prt-contracts/tournament/abstracts/RootTournament.sol";
 
 contract SingleLevelTournament is LeafTournament, RootTournament {
-    constructor(
-        Machine.Hash _initialHash,
-        TournamentParameters memory _tournamentParameters,
-        IDataProvider _provider,
-        IStateTransition _stateTransition
-    )
-        LeafTournament(_stateTransition)
-        RootTournament(_initialHash, _tournamentParameters, _provider)
-    {}
+    using Clones for address;
+
+    struct Args {
+        TournamentArgs tournamentArgs;
+        IStateTransition stateTransition;
+    }
+
+    function _args() internal view returns (Args memory) {
+        return abi.decode(address(this).fetchCloneArgs(), (Args));
+    }
+
+    function _tournamentArgs()
+        internal
+        view
+        override
+        returns (TournamentArgs memory)
+    {
+        return _args().tournamentArgs;
+    }
+
+    function _stateTransition()
+        internal
+        view
+        override
+        returns (IStateTransition)
+    {
+        return _args().stateTransition;
+    }
 }

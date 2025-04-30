@@ -3,62 +3,74 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/tournament/concretes/SingleLevelTournament.sol";
+import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
+
+import "prt-contracts/IStateTransition.sol";
 import "prt-contracts/ITournamentFactory.sol";
-import "prt-contracts/types/TournamentParameters.sol";
+import "prt-contracts/tournament/abstracts/Tournament.sol";
+import "prt-contracts/tournament/concretes/SingleLevelTournament.sol";
+import "prt-contracts/tournament/libs/Time.sol";
 
 contract SingleLevelTournamentFactory is ITournamentFactory {
-    uint64 immutable log2step0;
-    uint64 immutable height0;
-    Time.Duration immutable matchEffort;
-    Time.Duration immutable maxAllowance;
-    IStateTransition immutable stateTransition;
+    using Clones for address;
+
+    uint64 constant START_CYCLE = 0;
+    uint64 constant LEVEL = 0;
+    uint64 constant LEVELS = 1;
+
+    SingleLevelTournament immutable _impl;
+    IStateTransition immutable _stateTransition;
+    uint64 immutable _log2step;
+    uint64 immutable _height;
+    Time.Duration immutable _maxAllowance;
+    Time.Duration immutable _matchEffort;
 
     constructor(
-        Time.Duration _matchEffort,
-        Time.Duration _maxAllowance,
-        uint64 _log2step,
-        uint64 _height,
-        IStateTransition _stateTransition
+        SingleLevelTournament impl,
+        IStateTransition stateTransition,
+        uint64 log2step,
+        uint64 height,
+        Time.Duration maxAllowance,
+        Time.Duration matchEffort
     ) {
-        matchEffort = _matchEffort;
-        maxAllowance = _maxAllowance;
-        log2step0 = _log2step;
-        height0 = _height;
-        stateTransition = _stateTransition;
+        _impl = impl;
+        _stateTransition = stateTransition;
+        _log2step = log2step;
+        _height = height;
+        _maxAllowance = maxAllowance;
+        _matchEffort = matchEffort;
     }
 
     function instantiateSingleLevel(
-        Machine.Hash _initialHash,
-        IDataProvider _provider
-    ) external returns (SingleLevelTournament) {
-        SingleLevelTournament _tournament = new SingleLevelTournament(
-            _initialHash, _getTournamentParameters(), _provider, stateTransition
-        );
-
-        emit tournamentCreated(_tournament);
-
-        return _tournament;
+        Machine.Hash initialHash,
+        IDataProvider provider
+    ) public returns (SingleLevelTournament) {
+        SingleLevelTournament.Args memory args = SingleLevelTournament.Args({
+            tournamentArgs: TournamentArgs({
+                initialHash: initialHash,
+                startCycle: START_CYCLE,
+                level: LEVEL,
+                levels: LEVELS,
+                log2step: _log2step,
+                height: _height,
+                startInstant: Time.currentTime(),
+                allowance: _maxAllowance,
+                maxAllowance: _maxAllowance,
+                matchEffort: _matchEffort,
+                provider: provider
+            }),
+            stateTransition: _stateTransition
+        });
+        address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
+        SingleLevelTournament tournament = SingleLevelTournament(clone);
+        emit tournamentCreated(tournament);
+        return tournament;
     }
 
-    function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
+    function instantiate(Machine.Hash initialHash, IDataProvider provider)
         external
         returns (ITournament)
     {
-        return this.instantiateSingleLevel(_initialHash, _provider);
-    }
-
-    function _getTournamentParameters()
-        internal
-        view
-        returns (TournamentParameters memory)
-    {
-        return TournamentParameters({
-            levels: 1,
-            log2step: log2step0,
-            height: height0,
-            matchEffort: matchEffort,
-            maxAllowance: maxAllowance
-        });
+        return instantiateSingleLevel(initialHash, provider);
     }
 }
