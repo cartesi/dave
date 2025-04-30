@@ -11,11 +11,11 @@ services:
       - SERVICES=kms
     volumes:
       - localstackdata:/var/lib/localstack
-  dave-rollups:
+  cartesi-rollups-prt-node:
     build:
       context: ../..
       dockerfile: test/Dockerfile
-    command: ["bash", "-c", "/dave/aws.sh"]
+    command: [ "bash", "-c", "/dave/aws.sh" ]
     volumes:
       - ./aws.sh:/dave/aws.sh:ro
     environment:

@@ -1,4 +1,6 @@
 //! Module for configuration of an Arena.
+use std::{fs, path::PathBuf};
+
 use clap::{ArgGroup, Args, Parser};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
@@ -21,6 +23,9 @@ pub struct BlockchainConfig {
     /// private key of player's wallet
     #[arg(long, env, group = "auth")]
     pub web3_private_key: Option<String>,
+    /// private key of player's wallet
+    #[arg(long, env, group = "auth")]
+    pub web3_private_key_file: Option<PathBuf>,
     #[command(flatten)]
     pub aws_config: AWSConfig,
 }
@@ -30,6 +35,9 @@ pub struct AWSConfig {
     /// aws kms key id (optional)
     #[arg(long, env, group = "auth")]
     pub aws_kms_key_id: Option<String>,
+    /// aws kms key id (optional)
+    #[arg(long, env, group = "auth")]
+    pub aws_kms_key_id_file: Option<PathBuf>,
     /// aws endpoint url
     #[arg(long, env)]
     pub aws_endpoint_url: Option<String>,
@@ -38,10 +46,22 @@ pub struct AWSConfig {
     pub aws_region: String,
 }
 
-impl AWSConfig {
-    pub fn initialize_endpoint(&mut self) {
-        if self.aws_endpoint_url.is_none() {
-            self.aws_endpoint_url = Some(format!("https://kms.{}.amazonaws.com", self.aws_region));
+impl BlockchainConfig {
+    pub fn initialize(&mut self) {
+        if self.aws_config.aws_endpoint_url.is_none() {
+            self.aws_config.aws_endpoint_url = Some(format!(
+                "https://kms.{}.amazonaws.com",
+                self.aws_config.aws_region
+            ));
+        }
+
+        if let Some(file) = &self.web3_private_key_file {
+            self.web3_private_key =
+                Some(fs::read_to_string(file).expect("fail to read key from file"));
+        }
+        if let Some(file) = &self.aws_config.aws_kms_key_id_file {
+            self.aws_config.aws_kms_key_id =
+                Some(fs::read_to_string(file).expect("fail to read key from kws file"));
         }
     }
 }

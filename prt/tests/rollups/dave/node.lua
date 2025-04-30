@@ -6,7 +6,7 @@ local function start_dave_node(machine_path, db_path, consensus, input_box, slee
         CONSENSUS='%s' INPUT_BOX='%s' \
         SLEEP_DURATION=%d RUST_BACKTRACE='%s' \
         RUST_LOG='none',cartesi_prt_core='%s',rollups_epoch_manager='%s' \
-        ../../../target/debug/dave-rollups > dave.log 2>&1]],
+        ../../../target/debug/cartesi-rollups-prt-node > dave.log 2>&1]],
         machine_path, db_path, consensus, input_box, sleep_duration, trace_level, verbosity, verbosity
     )
 

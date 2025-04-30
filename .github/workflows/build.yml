@@ -93,15 +93,15 @@ jobs:
         run: |
           just test-echo
 
-      - name: Build dave-rollups
+      - name: Build cartesi-rollups-prt-node
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          cargo build -p dave-rollups --release --locked --target x86_64-unknown-linux-gnu
+          cargo build -p cartesi-rollups-prt-node --release --locked --target x86_64-unknown-linux-gnu
 
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          executable-name: dave-rollups
+          executable-name: cartesi-rollups-prt-node
           target: x86_64-unknown-linux-gnu
           changes-file: CHANGELOG.md

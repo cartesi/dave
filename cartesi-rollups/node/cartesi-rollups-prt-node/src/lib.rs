@@ -7,8 +7,7 @@ use alloy::{
 };
 use clap::Parser;
 use log::error;
-use std::sync::Arc;
-use std::{path::PathBuf, str::FromStr};
+use std::{env, path::PathBuf, str::FromStr, sync::Arc};
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
@@ -36,7 +35,7 @@ pub struct DaveParameters {
     sleep_duration: u64,
     #[arg(long, env, default_value_t = SNAPSHOT_DURATION)]
     snapshot_duration: u64,
-    #[arg(long, env)] // TODO: add default
+    #[arg(long, env, default_value_os_t = env::temp_dir())]
     pub state_dir: PathBuf,
 }
 

@@ -6,21 +6,20 @@ use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
 use anyhow::Result;
 use clap::Parser;
+use env_logger::Env;
 use log::info;
 use rusqlite::Connection;
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    // This safely uses RUST_LOG if it exists, or falls back to "info"
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!("Hello from Dave Rollups!");
 
     let mut parameters = DaveParameters::parse();
-    parameters
-        .blockchain_config
-        .aws_config
-        .initialize_endpoint();
+    parameters.blockchain_config.initialize();
 
     let state_manager = Arc::new(PersistentStateAccess::new(Connection::open(
         parameters.state_dir.join("state.db"),
