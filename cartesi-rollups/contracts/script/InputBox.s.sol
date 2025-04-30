@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {Script} from "forge-std/Script.sol";
+import {Script} from "forge-std-1.9.6/src/Script.sol";
 
 import "cartesi-rollups-contracts-2.0.0/inputs/InputBox.sol";
 

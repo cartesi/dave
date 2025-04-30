@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {Script} from "forge-std/Script.sol";
+import {Script} from "forge-std-1.9.6/src/Script.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
