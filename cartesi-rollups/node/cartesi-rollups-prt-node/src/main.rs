@@ -16,7 +16,12 @@ async fn main() -> Result<()> {
 
     info!("Hello from Dave Rollups!");
 
-    let parameters = DaveParameters::parse();
+    let mut parameters = DaveParameters::parse();
+    parameters
+        .blockchain_config
+        .aws_config
+        .initialize_endpoint();
+
     let state_manager = Arc::new(PersistentStateAccess::new(Connection::open(
         parameters.state_dir.join("state.db"),
     )?)?);
