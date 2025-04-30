@@ -6,48 +6,17 @@ pragma solidity ^0.8.17;
 import "prt-contracts/tournament/abstracts/Tournament.sol";
 import "prt-contracts/types/TournamentParameters.sol";
 
+struct NonRootTournamentArgs {
+    Tree.Node contestedCommitmentOne;
+    Machine.Hash contestedFinalStateOne;
+    Tree.Node contestedCommitmentTwo;
+    Machine.Hash contestedFinalStateTwo;
+}
+
 /// @notice Non-root tournament needs to propagate side-effects to its parent
 abstract contract NonRootTournament is Tournament {
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
-
-    //
-    // Constants
-    //
-    Tree.Node immutable contestedCommitmentOne;
-    Machine.Hash immutable contestedFinalStateOne;
-    Tree.Node immutable contestedCommitmentTwo;
-    Machine.Hash immutable contestedFinalStateTwo;
-
-    //
-    // Constructor
-    //
-    constructor(
-        Machine.Hash _initialHash,
-        Tree.Node _contestedCommitmentOne,
-        Machine.Hash _contestedFinalStateOne,
-        Tree.Node _contestedCommitmentTwo,
-        Machine.Hash _contestedFinalStateTwo,
-        Time.Duration _allowance,
-        uint256 _startCycle,
-        uint64 _level,
-        TournamentParameters memory _tournamentParameters,
-        IDataProvider _provider
-    )
-        Tournament(
-            _initialHash,
-            _allowance,
-            _startCycle,
-            _level,
-            _tournamentParameters,
-            _provider
-        )
-    {
-        contestedCommitmentOne = _contestedCommitmentOne;
-        contestedFinalStateOne = _contestedFinalStateOne;
-        contestedCommitmentTwo = _contestedCommitmentTwo;
-        contestedFinalStateTwo = _contestedFinalStateTwo;
-    }
 
     /// @notice get the dangling commitment at current level and then retrieve the winner commitment
     /// @return (bool, Tree.Node, Tree.Node)
@@ -70,6 +39,19 @@ abstract contract NonRootTournament is Tournament {
 
         Machine.Hash _finalState = finalStates[_danglingCommitment];
 
+        Machine.Hash contestedFinalStateOne;
+        Tree.Node contestedCommitmentOne;
+        Machine.Hash contestedFinalStateTwo;
+        Tree.Node contestedCommitmentTwo;
+        {
+            NonRootTournamentArgs memory args;
+            args = _nonRootTournamentArgs();
+            contestedFinalStateOne = args.contestedFinalStateOne;
+            contestedCommitmentOne = args.contestedCommitmentOne;
+            contestedFinalStateTwo = args.contestedFinalStateTwo;
+            contestedCommitmentTwo = args.contestedCommitmentTwo;
+        }
+
         if (_finalState.eq(contestedFinalStateOne)) {
             return (true, contestedCommitmentOne, _danglingCommitment);
         } else {
@@ -85,6 +67,15 @@ abstract contract NonRootTournament is Tournament {
         override
         returns (bool, Machine.Hash, Machine.Hash)
     {
+        Machine.Hash contestedFinalStateOne;
+        Machine.Hash contestedFinalStateTwo;
+        {
+            NonRootTournamentArgs memory args;
+            args = _nonRootTournamentArgs();
+            contestedFinalStateOne = args.contestedFinalStateOne;
+            contestedFinalStateTwo = args.contestedFinalStateTwo;
+        }
+
         return (
             contestedFinalStateOne.eq(_finalState)
                 || contestedFinalStateTwo.eq(_finalState),
@@ -92,4 +83,10 @@ abstract contract NonRootTournament is Tournament {
             contestedFinalStateTwo
         );
     }
+
+    function _nonRootTournamentArgs()
+        internal
+        view
+        virtual
+        returns (NonRootTournamentArgs memory);
 }

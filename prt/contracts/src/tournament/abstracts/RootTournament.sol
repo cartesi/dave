@@ -9,24 +9,6 @@ import "prt-contracts/types/TournamentParameters.sol";
 
 /// @notice Root tournament has no parent
 abstract contract RootTournament is Tournament, ITournament {
-    //
-    // Constructor
-    //
-    constructor(
-        Machine.Hash _initialHash,
-        TournamentParameters memory _tournamentParameters,
-        IDataProvider _provider
-    )
-        Tournament(
-            _initialHash,
-            _tournamentParameters.maxAllowance,
-            0,
-            0,
-            _tournamentParameters,
-            _provider
-        )
-    {}
-
     function validContestedFinalState(Machine.Hash)
         internal
         pure

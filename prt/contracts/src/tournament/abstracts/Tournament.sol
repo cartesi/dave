@@ -14,6 +14,20 @@ import "prt-contracts/tournament/libs/Time.sol";
 import "prt-contracts/tournament/libs/Clock.sol";
 import "prt-contracts/tournament/libs/Match.sol";
 
+struct TournamentArgs {
+    Machine.Hash initialHash;
+    uint256 startCycle;
+    uint64 level;
+    uint64 levels;
+    uint64 log2step;
+    uint64 height;
+    Time.Instant startInstant;
+    Time.Duration allowance;
+    Time.Duration maxAllowance;
+    Time.Duration matchEffort;
+    IDataProvider provider;
+}
+
 /// @notice Implements the core functionalities of a permissionless tournament that resolves
 /// disputes of n parties in O(log(n))
 /// @dev tournaments and matches are nested alternately. Anyone can join a tournament
@@ -35,24 +49,6 @@ abstract contract Tournament {
     using Match for Match.Id;
     using Match for Match.IdHash;
     using Match for Match.State;
-
-    //
-    // Constants
-    //
-    Machine.Hash immutable initialHash;
-
-    uint256 immutable startCycle;
-    uint64 immutable level;
-    uint64 immutable levels;
-    uint64 immutable log2step;
-    uint64 immutable height;
-
-    Time.Instant immutable startInstant;
-    Time.Duration immutable allowance;
-    Time.Duration immutable maxAllowance;
-    Time.Duration immutable matchEffort;
-
-    IDataProvider immutable provider;
 
     //
     // Storage
@@ -93,30 +89,6 @@ abstract contract Tournament {
     }
 
     //
-    // Constructor
-    //
-    constructor(
-        Machine.Hash _initialHash,
-        Time.Duration _allowance,
-        uint256 _startCycle,
-        uint64 _level,
-        TournamentParameters memory _tournamentParameters,
-        IDataProvider _provider
-    ) {
-        initialHash = _initialHash;
-        startCycle = _startCycle;
-        level = _level;
-        levels = _tournamentParameters.levels;
-        log2step = _tournamentParameters.log2step;
-        height = _tournamentParameters.height;
-        startInstant = Time.currentTime();
-        allowance = _allowance.min(_tournamentParameters.maxAllowance);
-        matchEffort = _tournamentParameters.matchEffort;
-        maxAllowance = _tournamentParameters.maxAllowance;
-        provider = _provider;
-    }
-
-    //
     // Virtual Methods
     //
 
@@ -141,6 +113,17 @@ abstract contract Tournament {
         Tree.Node _rightNode
     ) external tournamentOpen {
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
+
+        uint64 height;
+        Time.Instant startInstant;
+        Time.Duration allowance;
+        {
+            TournamentArgs memory args;
+            args = _tournamentArgs();
+            height = args.height;
+            startInstant = args.startInstant;
+            allowance = args.allowance;
+        }
 
         // Prove final state is in commitmentRoot
         _commitmentRoot.requireFinalState(height, _finalState, _proof);
@@ -291,6 +274,12 @@ abstract contract Tournament {
         returns (uint256)
     {
         Match.State memory _m = getMatch(_matchIdHash);
+        uint256 startCycle;
+        {
+            TournamentArgs memory args;
+            args = _tournamentArgs();
+            startCycle = args.startCycle;
+        }
         return _m.toCycle(startCycle);
     }
 
@@ -298,16 +287,18 @@ abstract contract Tournament {
         external
         view
         returns (
-            uint64 _max_level,
+            uint64 _maxLevel,
             uint64 _level,
             uint64 _log2step,
             uint64 _height
         )
     {
-        _max_level = levels;
-        _level = level;
-        _log2step = log2step;
-        _height = height;
+        TournamentArgs memory args;
+        args = _tournamentArgs();
+        _maxLevel = args.levels;
+        _level = args.level;
+        _log2step = args.log2step;
+        _height = args.height;
     }
 
     //
@@ -367,6 +358,18 @@ abstract contract Tournament {
             hasDanglingCommitment();
 
         if (_hasDanglingCommitment) {
+            uint64 log2step;
+            uint64 height;
+            Time.Duration maxAllowance;
+            Time.Duration matchEffort;
+            {
+                TournamentArgs memory args;
+                args = _tournamentArgs();
+                log2step = args.log2step;
+                height = args.height;
+                maxAllowance = args.maxAllowance;
+                matchEffort = args.matchEffort;
+            }
             (Match.IdHash _matchId, Match.State memory _matchState) = Match
                 .createMatch(
                 _danglingCommitment,
@@ -408,6 +411,14 @@ abstract contract Tournament {
 
     /// @return bool if the tournament is still open to join
     function isClosed() internal view returns (bool) {
+        Time.Instant startInstant;
+        Time.Duration allowance;
+        {
+            TournamentArgs memory args;
+            args = _tournamentArgs();
+            startInstant = args.startInstant;
+            allowance = args.allowance;
+        }
         return startInstant.timeoutElapsed(allowance);
     }
 
@@ -415,4 +426,13 @@ abstract contract Tournament {
     function isFinished() internal view returns (bool) {
         return isClosed() && matchCount == 0;
     }
+
+    //
+    // Internal functions
+    //
+    function _tournamentArgs()
+        internal
+        view
+        virtual
+        returns (TournamentArgs memory);
 }
