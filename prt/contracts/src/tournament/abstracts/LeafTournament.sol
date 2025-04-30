@@ -18,12 +18,6 @@ abstract contract LeafTournament is Tournament {
     using Match for Match.Id;
     using Match for Match.State;
 
-    IStateTransition immutable stateTransition;
-
-    constructor(IStateTransition _stateTransition) {
-        stateTransition = _stateTransition;
-    }
-
     function sealLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftLeaf,
@@ -45,6 +39,12 @@ abstract contract LeafTournament is Tournament {
             _clock2.advanceClock();
         }
 
+        Machine.Hash initialHash;
+        {
+            TournamentArgs memory args;
+            args = _tournamentArgs();
+            initialHash = args.initialHash;
+        }
         _matchState.sealMatch(
             _matchId,
             initialHash,
@@ -75,6 +75,14 @@ abstract contract LeafTournament is Tournament {
         _matchState.requireExist();
         _matchState.requireIsFinished();
 
+        uint256 startCycle;
+        IDataProvider provider;
+        {
+            TournamentArgs memory args;
+            args = _tournamentArgs();
+            startCycle = args.startCycle;
+            provider = args.provider;
+        }
         (
             Machine.Hash _agreeHash,
             uint256 _agreeCycle,
@@ -82,6 +90,7 @@ abstract contract LeafTournament is Tournament {
             Machine.Hash _finalStateTwo
         ) = _matchState.getDivergence(startCycle);
 
+        IStateTransition stateTransition = _stateTransition();
         Machine.Hash _finalState = Machine.Hash.wrap(
             stateTransition.transitionState(
                 Machine.Hash.unwrap(_agreeHash), _agreeCycle, proofs, provider
@@ -115,4 +124,10 @@ abstract contract LeafTournament is Tournament {
         // delete storage
         deleteMatch(_matchId.hashFromId());
     }
+
+    function _stateTransition()
+        internal
+        view
+        virtual
+        returns (IStateTransition);
 }

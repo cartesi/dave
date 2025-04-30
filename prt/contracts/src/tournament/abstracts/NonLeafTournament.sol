@@ -19,11 +19,6 @@ abstract contract NonLeafTournament is Tournament {
     using Match for Match.IdHash;
 
     //
-    // Constants
-    //
-    IMultiLevelTournamentFactory immutable tournamentFactory;
-
-    //
     // Storage
     //
     mapping(NonRootTournament => Match.IdHash) matchIdFromInnerTournaments;
@@ -32,13 +27,6 @@ abstract contract NonLeafTournament is Tournament {
     // Events
     //
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
-
-    //
-    // Constructor
-    //
-    constructor(IMultiLevelTournamentFactory _tournamentFactory) {
-        tournamentFactory = _tournamentFactory;
-    }
 
     function sealInnerMatchAndCreateInnerTournament(
         Match.Id calldata _matchId,
@@ -57,6 +45,16 @@ abstract contract NonLeafTournament is Tournament {
             _clock1.setPaused();
             _clock2.setPaused();
             _maxDuration = Clock.max(_clock1, _clock2);
+        }
+        Machine.Hash initialHash;
+        uint256 startCycle;
+        uint64 level;
+        {
+            TournamentArgs memory args;
+            args = _tournamentArgs();
+            initialHash = args.initialHash;
+            startCycle = args.startCycle;
+            level = args.level;
         }
         (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
             .sealMatch(
@@ -134,7 +132,17 @@ abstract contract NonLeafTournament is Tournament {
     ) private returns (NonRootTournament) {
         // the inner tournament is bottom tournament at last level
         // else instantiate middle tournament
+        uint256 levels;
+        IDataProvider provider;
+        {
+            TournamentArgs memory args;
+            args = _tournamentArgs();
+            levels = args.levels;
+            provider = args.provider;
+        }
         Tournament _tournament;
+        IMultiLevelTournamentFactory tournamentFactory;
+        tournamentFactory = _tournamentFactory();
         if (_level == levels - 1) {
             _tournament = tournamentFactory.instantiateBottom(
                 _initialHash,
@@ -163,4 +171,10 @@ abstract contract NonLeafTournament is Tournament {
 
         return NonRootTournament(address(_tournament));
     }
+
+    function _tournamentFactory()
+        internal
+        view
+        virtual
+        returns (IMultiLevelTournamentFactory);
 }
