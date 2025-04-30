@@ -16,7 +16,7 @@ members = [
 
   # rollups-node
   "cartesi-rollups/node/blockchain-reader",
-  "cartesi-rollups/node/dave-rollups",
+  "cartesi-rollups/node/cartesi-rollups-prt-node",
   "cartesi-rollups/node/epoch-manager",
   "cartesi-rollups/node/machine-runner",
   "cartesi-rollups/node/state-manager",
