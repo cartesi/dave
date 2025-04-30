@@ -1,6 +1,10 @@
 //! Module for configuration of an Arena.
-use std::{fs, path::PathBuf};
+use std::{fmt, fs, path::PathBuf, str::FromStr};
 
+use alloy::{
+    network::{Ethereum, EthereumWallet, NetworkWallet},
+    signers::local::PrivateKeySigner,
+};
 use clap::{ArgGroup, Args, Parser};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
@@ -56,12 +60,90 @@ impl BlockchainConfig {
         }
 
         if let Some(file) = &self.web3_private_key_file {
-            self.web3_private_key =
-                Some(fs::read_to_string(file).expect("fail to read key from file"));
+            self.web3_private_key = Some(
+                fs::read_to_string(file)
+                    .expect("fail to read key from file")
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+            );
         }
         if let Some(file) = &self.aws_config.aws_kms_key_id_file {
-            self.aws_config.aws_kms_key_id =
-                Some(fs::read_to_string(file).expect("fail to read key from kws file"));
+            self.aws_config.aws_kms_key_id = Some(
+                fs::read_to_string(file)
+                    .expect("fail to read key from kws file")
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+            );
         }
     }
+}
+
+impl fmt::Display for BlockchainConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "    Web3 RPC URL: {}", self.web3_rpc_url)?;
+        writeln!(f, "    Web3 Chain ID: {}", self.web3_chain_id)?;
+
+        if self.web3_private_key_file.is_some() {
+            writeln!(
+                f,
+                "    Web3 Private Key File: {:?}",
+                self.web3_private_key_file
+            )?;
+            let wallet = get_wallet_from_private(&self.web3_private_key.as_deref().unwrap());
+            writeln!(
+                f,
+                "    Wallet Public Address: {}",
+                <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet)
+            )?;
+        } else if self.web3_private_key.is_some() {
+            let wallet = get_wallet_from_private(&self.web3_private_key.as_deref().unwrap());
+            writeln!(
+                f,
+                "    Wallet Public Address: {}",
+                <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet)
+            )?;
+            writeln!(f, "    Web3 Private Key: [REDACTED]")?;
+        }
+
+        writeln!(f, "    AWS Config:")?;
+        write!(f, "{}", self.aws_config)?;
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for AWSConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.aws_kms_key_id_file.is_some() {
+            writeln!(
+                f,
+                "      AWS KMS Key ID File: {:?}",
+                self.aws_kms_key_id_file
+            )?;
+        } else if self.aws_kms_key_id.is_some() {
+            writeln!(f, "      AWS KMS Key ID: [REDACTED]")?;
+        }
+
+        if let Some(ref endpoint) = self.aws_endpoint_url {
+            writeln!(f, "      AWS Endpoint URL: {}", endpoint)?;
+        } else {
+            writeln!(f, "      AWS Endpoint URL: <not set>")?;
+        }
+
+        writeln!(f, "      AWS Region: {}", self.aws_region)?;
+        Ok(())
+    }
+}
+
+pub fn get_wallet_from_private(web3_private_key: &str) -> EthereumWallet {
+    let signer =
+        PrivateKeySigner::from_str(web3_private_key).expect("could not create private key signer");
+
+    EthereumWallet::from(signer)
 }

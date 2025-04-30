@@ -7,7 +7,7 @@ use alloy::{
 };
 use clap::Parser;
 use log::error;
-use std::{env, path::PathBuf, str::FromStr, sync::Arc};
+use std::{env, fmt, path::PathBuf, str::FromStr, sync::Arc};
 use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
@@ -24,7 +24,7 @@ const SNAPSHOT_DURATION: u64 = 30;
 #[derive(Debug, Clone, Parser)]
 #[command(name = "cartesi_dave_config")]
 #[command(about = "Config of Cartesi Dave")]
-pub struct DaveParameters {
+pub struct PRTParameters {
     #[command(flatten)]
     pub address_book: AddressBook,
     #[command(flatten)]
@@ -37,6 +37,20 @@ pub struct DaveParameters {
     snapshot_duration: u64,
     #[arg(long, env, default_value_os_t = env::temp_dir())]
     pub state_dir: PathBuf,
+}
+
+impl fmt::Display for PRTParameters {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "PRTParameters:")?;
+        writeln!(f, "  Address Book:\n{}", self.address_book)?; // Replace with `self.address_book` if it implements Display
+        writeln!(f, "  Blockchain Config:\n{}", self.blockchain_config)?; // Same here
+        writeln!(f, "  Machine Path: {}", self.machine_path)?;
+        writeln!(f, "  Sleep Duration: {} seconds", self.sleep_duration)?;
+        writeln!(f, "  Snapshot Duration: {} seconds", self.snapshot_duration)?;
+        writeln!(f, "  State Directory: {}", self.state_dir.display())?;
+        writeln!(f, "  Version: {}", env!("CARGO_PKG_VERSION"))?;
+        Ok(())
+    }
 }
 
 pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
@@ -94,7 +108,7 @@ pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
 pub fn create_blockchain_reader_task(
     state_manager: Arc<PersistentStateAccess>,
     provider: DynProvider,
-    parameters: &DaveParameters,
+    parameters: &PRTParameters,
 ) -> JoinHandle<()> {
     let params = parameters.clone();
 
@@ -120,7 +134,7 @@ pub fn create_blockchain_reader_task(
 pub fn create_epoch_manager_task(
     provider: DynProvider,
     state_manager: Arc<PersistentStateAccess>,
-    parameters: &DaveParameters,
+    parameters: &PRTParameters,
 ) -> JoinHandle<()> {
     let arena_sender =
         EthArenaSender::new(provider.clone()).expect("could not create arena sender");
@@ -146,7 +160,7 @@ pub fn create_epoch_manager_task(
 
 pub fn create_machine_runner_task(
     state_manager: Arc<PersistentStateAccess>,
-    parameters: &DaveParameters,
+    parameters: &PRTParameters,
 ) -> JoinHandle<()> {
     let params = parameters.clone();
 
