@@ -3,40 +3,60 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/tournament/concretes/BottomTournament.sol";
+import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
+import "prt-contracts/IStateTransition.sol";
+import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
+import "prt-contracts/tournament/abstracts/Tournament.sol";
+import "prt-contracts/tournament/concretes/BottomTournament.sol";
+import "prt-contracts/tournament/libs/Time.sol";
 import "prt-contracts/types/TournamentParameters.sol";
 
 contract BottomTournamentFactory {
-    constructor() {}
+    using Clones for address;
+
+    BottomTournament immutable _impl;
+
+    constructor(BottomTournament impl) {
+        _impl = impl;
+    }
 
     function instantiate(
-        Machine.Hash _initialHash,
-        Tree.Node _contestedCommitmentOne,
-        Machine.Hash _contestedFinalStateOne,
-        Tree.Node _contestedCommitmentTwo,
-        Machine.Hash _contestedFinalStateTwo,
-        Time.Duration _allowance,
-        uint256 _startCycle,
-        uint64 _level,
-        TournamentParameters memory _tournamentParameters,
-        IDataProvider _provider,
-        IStateTransition _stateTransition
+        Machine.Hash initialHash,
+        Tree.Node contestedCommitmentOne,
+        Machine.Hash contestedFinalStateOne,
+        Tree.Node contestedCommitmentTwo,
+        Machine.Hash contestedFinalStateTwo,
+        Time.Duration allowance,
+        uint256 startCycle,
+        uint64 level,
+        TournamentParameters calldata tournamentParameters,
+        IDataProvider provider,
+        IStateTransition stateTransition
     ) external returns (BottomTournament) {
-        BottomTournament _tournament = new BottomTournament(
-            _initialHash,
-            _contestedCommitmentOne,
-            _contestedFinalStateOne,
-            _contestedCommitmentTwo,
-            _contestedFinalStateTwo,
-            _allowance,
-            _startCycle,
-            _level,
-            _tournamentParameters,
-            _provider,
-            _stateTransition
-        );
-
-        return _tournament;
+        BottomTournament.Args memory args = BottomTournament.Args({
+            tournamentArgs: TournamentArgs({
+                initialHash: initialHash,
+                startCycle: startCycle,
+                level: level,
+                levels: tournamentParameters.levels,
+                log2step: tournamentParameters.log2step,
+                height: tournamentParameters.height,
+                startInstant: Time.currentTime(),
+                allowance: allowance,
+                maxAllowance: tournamentParameters.maxAllowance,
+                matchEffort: tournamentParameters.matchEffort,
+                provider: provider
+            }),
+            nonRootTournamentArgs: NonRootTournamentArgs({
+                contestedCommitmentOne: contestedCommitmentOne,
+                contestedFinalStateOne: contestedFinalStateOne,
+                contestedCommitmentTwo: contestedCommitmentTwo,
+                contestedFinalStateTwo: contestedFinalStateTwo
+            }),
+            stateTransition: stateTransition
+        });
+        address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
+        return BottomTournament(clone);
     }
 }
