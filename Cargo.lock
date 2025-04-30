@@ -1672,6 +1672,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "cartesi-rollups-prt-node"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "alloy-transport",
+ "anyhow",
+ "cartesi-dave-kms",
+ "cartesi-prt-core",
+ "cartesi-rollups-contracts",
+ "clap",
+ "env_logger",
+ "futures",
+ "log",
+ "rollups-blockchain-reader",
+ "rollups-epoch-manager",
+ "rollups-machine-runner",
+ "rollups-state-manager",
+ "rusqlite",
+ "tokio",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1952,28 +1974,6 @@ dependencies = [
  "lock_api",
  "once_cell",
  "parking_lot_core",
-]
-
-[[package]]
-name = "dave-rollups"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "alloy-transport",
- "anyhow",
- "cartesi-dave-kms",
- "cartesi-prt-core",
- "cartesi-rollups-contracts",
- "clap",
- "env_logger",
- "futures",
- "log",
- "rollups-blockchain-reader",
- "rollups-epoch-manager",
- "rollups-machine-runner",
- "rollups-state-manager",
- "rusqlite",
- "tokio",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-use dave_rollups::{
+use cartesi_rollups_prt_node::{
     DaveParameters, create_blockchain_reader_task, create_epoch_manager_task,
     create_machine_runner_task, create_provider,
 };
