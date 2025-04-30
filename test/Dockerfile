@@ -24,11 +24,11 @@ RUN \
 ENV DEBIAN_FRONTEND=noninteractive
 RUN \
   apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git wget \
-    liblua5.4-dev lua5.4 \
-    libslirp-dev \
-    libclang-dev \
-    xxd jq sqlite3; \
+  build-essential git wget \
+  liblua5.4-dev lua5.4 \
+  libslirp-dev \
+  libclang-dev \
+  xxd jq sqlite3; \
   rm -rf /var/cache/apt;
 
 WORKDIR /dave
@@ -88,7 +88,7 @@ RUN \
   --mount=type=cache,target=prt/contracts/out,sharing=locked \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
   just build-rust-workspace; \
-  cp target/debug/dave-rollups .
+  cp target/debug/cartesi-rollups-prt-node .
 
 # because of `--mount`, we need to do this.
-RUN mkdir -p target/debug && mv dave-rollups target/debug/
+RUN mkdir -p target/debug && mv cartesi-rollups-prt-node target/debug/

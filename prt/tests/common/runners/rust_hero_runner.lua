@@ -29,16 +29,14 @@ end
 -- The Rust Compute reacts once and exits, the coroutine periodically spawn a new process until the tournament ends
 local function create_react_once_runner(player_id, machine_path, root_tournament)
     local rust_compute_cmd = string.format(
-        [[echo $$ ; exec env MACHINE_PATH='%s' ROOT_TOURNAMENT='%s' RUST_LOG='info' %s 2>&1 | tee -a honest.log]],
-        machine_path, root_tournament, COMPUTE_BIN)
+        [[echo $$ ; exec env WEB3_PRIVATE_KEY='%s' MACHINE_PATH='%s' ROOT_TOURNAMENT='%s' RUST_LOG='info' %s 2>&1 | tee -a honest.log]],
+        blockchain_consts.pks[1], machine_path, root_tournament, COMPUTE_BIN)
 
     return coroutine.create(function()
-        local temp_file = os.tmpname()
-
         -- Prepare temp directory for the Rust compute node to exchange information
-        local temp_dir = temp_file:match("(.*/)")
+        local temp_dir = os.getenv("TMPDIR") or os.getenv("TEMP") or os.getenv("TMP") or "/tmp"
         assert(temp_dir, "No temp directory to receive notification from Rust node")
-        local tournament_dir = temp_dir .. string.upper(root_tournament)
+        local tournament_dir = temp_dir .. "/" .. string.upper(root_tournament)
         helper.mkdir_p(tournament_dir)
         local finished = tournament_dir .. "/finished"
         helper.remove_file(finished)
@@ -75,8 +73,8 @@ end
 local function create_runner(player_id, machine_path, root_tournament)
     local hero_react_interval = 3
     local rust_compute_cmd = string.format(
-        [[echo $$ ; exec env INTERVAL='%d' MACHINE_PATH='%s' ROOT_TOURNAMENT='%s' RUST_LOG='info' %s 2>&1 | tee honest.log]],
-        hero_react_interval, machine_path, root_tournament, COMPUTE_BIN)
+        [[echo $$ ; exec env WEB3_PRIVATE_KEY='%s' INTERVAL='%d' MACHINE_PATH='%s' ROOT_TOURNAMENT='%s' %s 2>&1 | tee honest.log]],
+        blockchain_consts.pks[1], hero_react_interval, machine_path, root_tournament, COMPUTE_BIN)
 
     return coroutine.create(function()
         local start_time = os.time()
