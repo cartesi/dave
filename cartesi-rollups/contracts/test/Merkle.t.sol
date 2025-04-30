@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.0;
 
-import {Test} from "forge-std/Test.sol";
+import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {MerkleConstants} from "src/MerkleConstants.sol";
 import {PristineMerkleTree} from "src/PristineMerkleTree.sol";
