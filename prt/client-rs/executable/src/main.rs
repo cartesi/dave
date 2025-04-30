@@ -8,7 +8,7 @@ use alloy::{
 use cartesi_prt_compute::ComputeConfig;
 use cartesi_prt_core::{
     strategy::player::{Player, PlayerTournamentResult},
-    tournament::{BlockchainConfig, EthArenaSender},
+    tournament::{ANVIL_KEY_1, BlockchainConfig, EthArenaSender},
 };
 
 use anyhow::Result;
@@ -35,8 +35,14 @@ fn create_provider(config: &BlockchainConfig) -> DynProvider {
 
     let client = RpcClient::builder().layer(retry).http(endpoint_url);
 
-    let signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())
-        .expect("could not create private key signer");
+    let signer = PrivateKeySigner::from_str(
+        config
+            .web3_private_key
+            .clone()
+            .unwrap_or(ANVIL_KEY_1.to_string())
+            .as_str(),
+    )
+    .expect("could not create private key signer");
 
     let wallet = EthereumWallet::from(signer);
 

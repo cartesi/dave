@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
 use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
-use cartesi_prt_core::tournament::{BlockchainConfig, EthArenaSender};
+use cartesi_prt_core::tournament::{ANVIL_KEY_1, BlockchainConfig, EthArenaSender};
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
@@ -66,8 +66,14 @@ pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
             .expect("could not create Kms signer");
         Box::new(kms_signer)
     } else {
-        let local_signer = PrivateKeySigner::from_str(config.web3_private_key.as_str())
-            .expect("could not create private key signer");
+        let local_signer = PrivateKeySigner::from_str(
+            config
+                .web3_private_key
+                .clone()
+                .unwrap_or(ANVIL_KEY_1.to_string())
+                .as_str(),
+        )
+        .expect("could not create private key signer");
         Box::new(local_signer)
     };
 
