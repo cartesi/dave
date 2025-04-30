@@ -21,6 +21,7 @@ use find_contract_creation::find_contract_creation_block;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{
+    fmt,
     iter::Peekable,
     marker::{Send, Sync},
     sync::Arc,
@@ -47,6 +48,15 @@ pub struct AddressBook {
     /// address of input box
     #[arg(long, env, default_value = DEVNET_INPUT_BOX_ADDRESS)]
     input_box: Address,
+}
+
+impl fmt::Display for AddressBook {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "    App Address: {}", self.app)?;
+        writeln!(f, "    Consensus Address: {}", self.consensus)?;
+        writeln!(f, "    Input Box Address: {}", self.input_box)?;
+        Ok(())
+    }
 }
 
 pub struct BlockchainReader<SM: StateManager> {
