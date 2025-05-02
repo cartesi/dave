@@ -11,8 +11,12 @@ readme = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+cartesi-dave-merkle = { workspace = true }
+cartesi-machine = { workspace = true }
+
 lazy_static = { workspace = true }
 rusqlite = { workspace = true }
 rusqlite_migration = { workspace = true }
 
+anyhow = { workspace = true }
 thiserror = { workspace = true }

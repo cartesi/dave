@@ -1,15 +1,13 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use alloy::contract::Error as AlloyContractError;
-
 use cartesi_prt_core::strategy::error::ReactError;
-use rollups_state_manager::StateManager;
 
+use alloy::contract::Error as AlloyContractError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum EpochManagerError<SM: StateManager> {
+pub enum EpochManagerError {
     #[error(transparent)]
     AlloyContract {
         #[from]
@@ -22,8 +20,11 @@ pub enum EpochManagerError<SM: StateManager> {
         source: ReactError,
     },
 
-    #[error("State manager error: {0}")]
-    StateManagerError(<SM as StateManager>::Error),
+    #[error(transparent)]
+    StateManagerError {
+        #[from]
+        source: rollups_state_manager::StateAccessError,
+    },
 }
 
-pub type Result<T, SM> = std::result::Result<T, EpochManagerError<SM>>;
+pub type Result<T> = std::result::Result<T, EpochManagerError>;

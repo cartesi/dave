@@ -3,12 +3,12 @@
 
 use cartesi_dave_merkle::DigestError;
 use cartesi_machine::error::MachineError;
-use rollups_state_manager::StateManager;
+use rollups_state_manager::StateAccessError;
 
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum MachineRunnerError<SM: StateManager> {
+pub enum MachineRunnerError {
     #[error(transparent)]
     Digest {
         #[from]
@@ -30,8 +30,11 @@ pub enum MachineRunnerError<SM: StateManager> {
     #[error("Couldn't complete machine run with: `{reason}`")]
     MachineRunFail { reason: u32 },
 
-    #[error("State manager error: {0}")]
-    StateManagerError(<SM as StateManager>::Error),
+    #[error(transparent)]
+    StateManagerError {
+        #[from]
+        source: StateAccessError,
+    },
 }
 
-pub type Result<T, SM> = std::result::Result<T, MachineRunnerError<SM>>;
+pub type Result<T> = std::result::Result<T, MachineRunnerError>;
