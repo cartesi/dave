@@ -114,19 +114,10 @@ abstract contract Tournament {
     ) external tournamentOpen {
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
-        uint64 height;
-        Time.Instant startInstant;
-        Time.Duration allowance;
-        {
-            TournamentArgs memory args;
-            args = _tournamentArgs();
-            height = args.height;
-            startInstant = args.startInstant;
-            allowance = args.allowance;
-        }
+        TournamentArgs memory args = _tournamentArgs();
 
         // Prove final state is in commitmentRoot
-        _commitmentRoot.requireFinalState(height, _finalState, _proof);
+        _commitmentRoot.requireFinalState(args.height, _finalState, _proof);
 
         // Verify whether finalState is one of the two allowed of tournament if nested
         requireValidContestedFinalState(_finalState);
@@ -134,7 +125,7 @@ abstract contract Tournament {
 
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.requireNotInitialized(); // reverts if commitment is duplicate
-        _clock.setNewPaused(startInstant, allowance);
+        _clock.setNewPaused(args.startInstant, args.allowance);
 
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
         emit commitmentJoined(_commitmentRoot);
@@ -353,26 +344,15 @@ abstract contract Tournament {
             hasDanglingCommitment();
 
         if (_hasDanglingCommitment) {
-            uint64 log2step;
-            uint64 height;
-            Time.Duration maxAllowance;
-            Time.Duration matchEffort;
-            {
-                TournamentArgs memory args;
-                args = _tournamentArgs();
-                log2step = args.log2step;
-                height = args.height;
-                maxAllowance = args.maxAllowance;
-                matchEffort = args.matchEffort;
-            }
+            TournamentArgs memory args = _tournamentArgs();
             (Match.IdHash _matchId, Match.State memory _matchState) = Match
                 .createMatch(
                 _danglingCommitment,
                 _rootHash,
                 _leftNode,
                 _rightNode,
-                log2step,
-                height
+                args.log2step,
+                args.height
             );
 
             matches[_matchId] = _matchState;
@@ -380,8 +360,8 @@ abstract contract Tournament {
             Clock.State storage _firstClock = clocks[_danglingCommitment];
 
             // grant extra match effort for both clocks
-            _firstClock.addMatchEffort(matchEffort, maxAllowance);
-            _newClock.addMatchEffort(matchEffort, maxAllowance);
+            _firstClock.addMatchEffort(args.matchEffort, args.maxAllowance);
+            _newClock.addMatchEffort(args.matchEffort, args.maxAllowance);
 
             _firstClock.advanceClock();
 
