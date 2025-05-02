@@ -129,6 +129,7 @@ local function run_players(player_coroutines)
                     idle = idle and ret.idle
                 end
             end
+            time.sleep(1)
         end
 
         if not has_live_coroutine then
