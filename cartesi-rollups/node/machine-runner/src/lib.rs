@@ -1,16 +1,15 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-mod error;
+pub mod error;
 mod rollups_machine;
 
 use alloy::sol_types::private::U256;
-use error::{MachineRunnerError, Result};
-use rollups_machine::{RollupsMachine, StateHash};
+use error::Result;
+use rollups_machine::RollupsMachine;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
     time::Duration,
 };
 
@@ -18,7 +17,7 @@ use cartesi_dave_merkle::{Digest, DigestError, MerkleBuilder};
 use cartesi_prt_core::machine::constants::{
     LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
 };
-use rollups_state_manager::{InputId, StateManager};
+use rollups_state_manager::{CommitmentLeaf, InputId, Settlement, StateManager};
 
 // gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
 const LOG2_STRIDE: u64 = 44;
@@ -33,7 +32,7 @@ const LOG2_STRIDES_PER_INPUT: u64 =
 const INPUTS_PER_EPOCH: u64 = 1 << LOG2_INPUT_SPAN_TO_EPOCH;
 
 pub struct MachineRunner<SM: StateManager> {
-    state_manager: Arc<SM>,
+    state_manager: SM,
     state_dir: PathBuf,
 
     sleep_duration: Duration,
@@ -44,24 +43,22 @@ pub struct MachineRunner<SM: StateManager> {
     rollups_machine: RollupsMachine,
 }
 
-impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM>
-where
-    <SM as StateManager>::Error: Send + Sync + 'static,
-{
+impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
     pub fn new(
-        state_manager: Arc<SM>,
+        mut state_manager: SM,
         initial_machine: &str,
         sleep_duration: u64,
         snapshot_frequency: u64,
         state_dir: PathBuf,
-    ) -> Result<Self, SM> {
-        let (snapshot, epoch_number, next_input_index_in_epoch) = match state_manager
-            .latest_snapshot()
-            .map_err(MachineRunnerError::StateManagerError)?
-        {
-            Some(r) => (r.0, r.1, r.2 + 1),
-            None => (initial_machine.to_string(), 0, 0),
-        };
+    ) -> Result<Self> {
+        let (snapshot, epoch_number, next_input_index_in_epoch) =
+            match state_manager.latest_snapshot()? {
+                Some(r) => (r.0, r.1, r.2 + 1),
+                None => (initial_machine.to_string(), 0, 0),
+            };
+
+        // TODO as an optimization, advance snapshot to latest without computation hash, since it's
+        // faster.
 
         let rollups_machine = RollupsMachine::new(
             Path::new(&snapshot),
@@ -84,7 +81,7 @@ where
         })
     }
 
-    pub fn start(&mut self) -> Result<(), SM> {
+    pub fn start(&mut self) -> Result<()> {
         self.take_snapshot()?; // checkpoint
 
         loop {
@@ -98,15 +95,12 @@ where
         }
     }
 
-    fn process_rollup(&mut self) -> Result<(), SM> {
+    fn process_rollup(&mut self) -> Result<()> {
         // process all inputs that are currently availalble
         loop {
             self.advance_epoch()?;
 
-            let latest_epoch = self
-                .state_manager
-                .epoch_count()
-                .map_err(MachineRunnerError::StateManagerError)?;
+            let latest_epoch = self.state_manager.epoch_count()?;
 
             if self.rollups_machine.epoch() == latest_epoch {
                 // all inputs processed in current epoch
@@ -125,15 +119,12 @@ where
         }
     }
 
-    fn advance_epoch(&mut self) -> Result<(), SM> {
+    fn advance_epoch(&mut self) -> Result<()> {
         loop {
-            let next = self
-                .state_manager
-                .input(&InputId {
-                    epoch_number: self.rollups_machine.epoch(),
-                    input_index_in_epoch: self.rollups_machine.input_index_in_epoch(),
-                })
-                .map_err(MachineRunnerError::StateManagerError)?;
+            let next = self.state_manager.input(&InputId {
+                epoch_number: self.rollups_machine.epoch(),
+                input_index_in_epoch: self.rollups_machine.input_index_in_epoch(),
+            })?;
 
             match next {
                 Some(input) => {
@@ -145,7 +136,7 @@ where
         }
     }
 
-    fn add_remaining_strides(&mut self) -> Result<(), SM> {
+    fn add_remaining_strides(&mut self) -> Result<()> {
         assert!(self.rollups_machine.input_index_in_epoch() < INPUTS_PER_EPOCH);
 
         let remaining_inputs = INPUTS_PER_EPOCH - self.rollups_machine.input_index_in_epoch();
@@ -153,63 +144,49 @@ where
 
         if remaining_strides > 0 {
             let hash = self.rollups_machine.state_hash()?;
-            self.add_state_hash(&StateHash {
+            self.add_state_hashes(&[CommitmentLeaf {
                 hash,
                 repetitions: remaining_strides,
-            })?;
+            }])?;
         }
 
         Ok(())
     }
 
-    fn add_state_hashes(&mut self, state_hashes: &[StateHash]) -> Result<(), SM> {
-        for state_hash in state_hashes {
-            self.add_state_hash(state_hash)?;
-        }
+    fn add_state_hashes(&mut self, state_hashes: &[CommitmentLeaf]) -> Result<()> {
+        self.state_manager.add_machine_state_hashes(
+            self.rollups_machine.epoch(),
+            self.state_hash_index_in_epoch,
+            state_hashes,
+        )?;
+
+        self.state_hash_index_in_epoch += state_hashes.len() as u64;
 
         Ok(())
     }
 
-    fn add_state_hash(&mut self, state_hash: &StateHash) -> Result<(), SM> {
-        self.state_manager
-            .add_machine_state_hash(
-                &state_hash.hash,
-                self.rollups_machine.epoch(),
-                self.state_hash_index_in_epoch,
-                state_hash.repetitions,
-            )
-            .map_err(MachineRunnerError::StateManagerError)?;
-
-        self.state_hash_index_in_epoch += 1;
-
-        Ok(())
-    }
-
-    fn save_settlement_info(&mut self) -> Result<(), SM> {
+    fn save_settlement_info(&mut self) -> Result<()> {
         let epoch_number = self.rollups_machine.epoch();
 
-        let state_hashes = self
-            .state_manager
-            .machine_state_hashes(epoch_number)
-            .map_err(MachineRunnerError::StateManagerError)?;
+        let state_hashes = self.state_manager.machine_state_hashes(epoch_number)?;
 
         let computation_hash = build_commitment_from_hashes(&state_hashes)?;
 
-        let (outputs_merkle, outputs_proof) = self.rollups_machine.outputs_proof()?;
+        let (output_merkle, output_proof) = self.rollups_machine.outputs_proof()?;
 
-        self.state_manager
-            .add_settlement_info(
-                computation_hash.slice(),
-                &outputs_merkle,
-                &outputs_proof,
-                epoch_number,
-            )
-            .map_err(MachineRunnerError::StateManagerError)?;
+        self.state_manager.add_settlement_info(
+            &Settlement {
+                computation_hash,
+                output_merkle,
+                output_proof,
+            },
+            epoch_number,
+        )?;
 
         Ok(())
     }
 
-    fn take_snapshot(&mut self) -> Result<(), SM> {
+    fn take_snapshot(&mut self) -> Result<()> {
         let epoch_number = self.rollups_machine.epoch();
         let input_index_in_epoch = self.rollups_machine.input_index_in_epoch();
 
@@ -230,15 +207,13 @@ where
         if !snapshot_path.exists() {
             self.rollups_machine.store(&snapshot_path)?;
 
-            self.state_manager
-                .add_snapshot(
-                    snapshot_path
-                        .to_str()
-                        .expect("fail to convert snapshot path"),
-                    epoch_number,
-                    input_index_in_epoch,
-                )
-                .map_err(MachineRunnerError::StateManagerError)?;
+            self.state_manager.add_snapshot(
+                snapshot_path
+                    .to_str()
+                    .expect("fail to convert snapshot path"),
+                epoch_number,
+                input_index_in_epoch,
+            )?;
         }
 
         Ok(())
@@ -246,15 +221,15 @@ where
 }
 
 fn build_commitment_from_hashes(
-    state_hashes: &Vec<(Vec<u8>, u64)>,
+    state_hashes: &Vec<CommitmentLeaf>,
 ) -> std::result::Result<Digest, DigestError> {
     let computation_hash = {
         let mut builder = MerkleBuilder::default();
 
         for state_hash in state_hashes {
             builder.append_repeated(
-                Digest::from_digest(&state_hash.0)?,
-                U256::from(state_hash.1),
+                Digest::from_digest(&state_hash.hash)?,
+                state_hash.repetitions,
             );
         }
 

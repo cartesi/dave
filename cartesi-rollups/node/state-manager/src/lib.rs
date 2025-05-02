@@ -2,16 +2,38 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 pub mod persistent_state_access;
+pub mod state_manager;
+pub mod sync;
+
+pub use state_manager::StateAccessError;
+pub use state_manager::StateManager;
 
 pub(crate) mod sql;
 
-use std::error::Error;
+use cartesi_dave_merkle::Digest;
+use cartesi_machine::types::Hash;
+
 pub type Blob = Vec<u8>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommitmentLeaf {
+    pub hash: Hash,
+    pub repetitions: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proof(Vec<[u8; 32]>);
-impl From<Vec<u8>> for Proof {
-    fn from(input: Vec<u8>) -> Self {
+
+impl Proof {
+    pub fn new(siblings: Vec<[u8; 32]>) -> Self {
+        Self(siblings)
+    }
+
+    pub fn inner(&self) -> Vec<[u8; 32]> {
+        self.0.clone()
+    }
+
+    fn from_flattened(input: Vec<u8>) -> Self {
         // Ensure the length is a multiple of 32
         assert!(
             input.len() % 32 == 0,
@@ -28,16 +50,6 @@ impl From<Vec<u8>> for Proof {
 
         Proof(result)
     }
-}
-
-impl Proof {
-    pub fn new(siblings: Vec<[u8; 32]>) -> Self {
-        Self(siblings)
-    }
-
-    pub fn inner(&self) -> Vec<[u8; 32]> {
-        self.0.clone()
-    }
 
     fn flatten(&self) -> Vec<u8> {
         self.0
@@ -46,6 +58,13 @@ impl Proof {
             .copied()
             .collect()
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Settlement {
+    pub computation_hash: Digest,
+    pub output_merkle: Hash,
+    pub output_proof: Proof,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -103,68 +122,4 @@ pub struct Epoch {
     pub input_index_boundary: u64,
     pub root_tournament: String,
     pub block_created_number: u64,
-}
-
-pub trait StateManager {
-    type Error: Error;
-
-    //
-    // Consensus Data
-    //
-
-    fn epoch(&self, epoch_number: u64) -> Result<Option<Epoch>, Self::Error>;
-    fn epoch_count(&self) -> Result<u64, Self::Error>;
-    fn last_sealed_epoch(&self) -> Result<Option<Epoch>, Self::Error>;
-    fn input(&self, id: &InputId) -> Result<Option<Input>, Self::Error>;
-    fn inputs(&self, epoch_number: u64) -> Result<Vec<Vec<u8>>, Self::Error>;
-    fn input_count(&self, epoch_number: u64) -> Result<u64, Self::Error>;
-    fn last_input(&self) -> Result<Option<InputId>, Self::Error>;
-    fn insert_consensus_data<'a>(
-        &self,
-        last_processed_block: u64,
-        inputs: impl Iterator<Item = &'a Input>,
-        epochs: impl Iterator<Item = &'a Epoch>,
-    ) -> Result<(), Self::Error>;
-    fn latest_processed_block(&self) -> Result<u64, Self::Error>;
-
-    //
-    // Rollup Data
-    //
-
-    fn add_machine_state_hash(
-        &self,
-        machine_state_hash: &[u8],
-        epoch_number: u64,
-        state_hash_index_in_epoch: u64,
-        repetitions: u64,
-    ) -> Result<(), Self::Error>;
-    fn machine_state_hash(
-        &self,
-        epoch_number: u64,
-        state_hash_index_in_epoch: u64,
-    ) -> Result<(Vec<u8>, u64), Self::Error>;
-    fn machine_state_hashes(&self, epoch_number: u64) -> Result<Vec<(Vec<u8>, u64)>, Self::Error>;
-    fn settlement_info(
-        &self,
-        epoch_number: u64,
-    ) -> Result<Option<(Vec<u8>, Vec<u8>, Proof)>, Self::Error>;
-    fn add_settlement_info(
-        &self,
-        computation_hash: &[u8],
-        output_merkle: &[u8],
-        output_proof: &Proof,
-        epoch_number: u64,
-    ) -> Result<(), Self::Error>;
-    fn add_snapshot(
-        &self,
-        path: &str,
-        epoch_number: u64,
-        input_index_in_epoch: u64,
-    ) -> Result<(), Self::Error>;
-    fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>, Self::Error>;
-    fn snapshot(
-        &self,
-        epoch_number: u64,
-        input_index_in_epoch: u64,
-    ) -> Result<Option<String>, Self::Error>;
 }

@@ -5,7 +5,7 @@ use alloy::{contract::Error as ContractError, transports::http::reqwest::Url};
 use std::str::FromStr;
 use thiserror::Error;
 
-use rollups_state_manager::StateManager;
+use rollups_state_manager::StateAccessError;
 
 #[derive(Error, Debug)]
 pub struct ProviderErrors(pub Vec<ContractError>);
@@ -17,7 +17,7 @@ impl std::fmt::Display for ProviderErrors {
 }
 
 #[derive(Error, Debug)]
-pub enum BlockchainReaderError<SM: StateManager> {
+pub enum BlockchainReaderError {
     #[error(transparent)]
     Providers {
         #[from]
@@ -27,8 +27,11 @@ pub enum BlockchainReaderError<SM: StateManager> {
     #[error("Parse error: {0}")]
     ParseError(<Url as FromStr>::Err),
 
-    #[error("State manager error: {0}")]
-    StateManagerError(<SM as StateManager>::Error),
+    #[error(transparent)]
+    StateManagerError {
+        #[from]
+        source: StateAccessError,
+    },
 }
 
-pub type Result<T, SM> = std::result::Result<T, BlockchainReaderError<SM>>;
+pub type Result<T> = std::result::Result<T, BlockchainReaderError>;

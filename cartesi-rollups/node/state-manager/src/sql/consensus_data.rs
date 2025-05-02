@@ -1,8 +1,10 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use super::error::*;
-use crate::{Epoch, Input, InputId};
+use crate::{
+    Epoch, Input, InputId,
+    state_manager::{Result, StateAccessError},
+};
 
 use rusqlite::{OptionalExtension, params};
 
@@ -14,7 +16,7 @@ pub fn update_last_processed_block(conn: &rusqlite::Connection, block: u64) -> R
     let previous = last_processed_block(conn)?;
 
     if previous >= block {
-        return Err(PersistentStateAccessError::InconsistentLastProcessed {
+        return Err(StateAccessError::InconsistentLastProcessed {
             last: previous,
             provided: block,
         });
@@ -23,18 +25,22 @@ pub fn update_last_processed_block(conn: &rusqlite::Connection, block: u64) -> R
     conn.execute(
         "UPDATE latest_processed SET block = ?1 WHERE id = 1",
         params![block],
-    )?;
+    )
+    .map_err(anyhow::Error::from)?;
+
     Ok(())
 }
 
 pub fn last_processed_block(conn: &rusqlite::Connection) -> Result<u64> {
-    Ok(conn.query_row(
-        "\
+    Ok(conn
+        .query_row(
+            "\
         SELECT block FROM latest_processed WHERE id = 1
         ",
-        [],
-        |r| r.get(0),
-    )?)
+            [],
+            |r| r.get(0),
+        )
+        .map_err(anyhow::Error::from)?)
 }
 
 //
@@ -63,7 +69,7 @@ pub fn insert_inputs<'a>(
     let mut stmt = insert_input_statement(conn)?;
     for input in inputs {
         if !validate_insert(&current_input, &input.id) {
-            return Err(PersistentStateAccessError::InconsistentInput {
+            return Err(StateAccessError::InconsistentInput {
                 previous: current_input,
                 provided: input.id.clone(),
             });
@@ -73,7 +79,9 @@ pub fn insert_inputs<'a>(
             input.id.epoch_number,
             input.id.input_index_in_epoch,
             input.data
-        ])?;
+        ])
+        .map_err(anyhow::Error::from)?;
+
         current_input = Some(input.id.clone());
     }
 
@@ -81,21 +89,25 @@ pub fn insert_inputs<'a>(
 }
 
 fn insert_input_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
-    Ok(conn.prepare(
-        "\
+    Ok(conn
+        .prepare(
+            "\
         INSERT INTO inputs (epoch_number, input_index_in_epoch, input) VALUES (?1, ?2, ?3)
         ",
-    )?)
+        )
+        .map_err(anyhow::Error::from)?)
 }
 
 pub fn last_input(conn: &rusqlite::Connection) -> Result<Option<InputId>> {
-    let mut stmt = conn.prepare(
-        "\
+    let mut stmt = conn
+        .prepare(
+            "\
         SELECT epoch_number, input_index_in_epoch FROM inputs
         ORDER BY epoch_number DESC, input_index_in_epoch DESC
         LIMIT 1
         ",
-    )?;
+        )
+        .map_err(anyhow::Error::from)?;
 
     Ok(stmt
         .query_row([], |row| {
@@ -104,16 +116,19 @@ pub fn last_input(conn: &rusqlite::Connection) -> Result<Option<InputId>> {
                 input_index_in_epoch: row.get(1)?,
             })
         })
-        .optional()?)
+        .optional()
+        .map_err(anyhow::Error::from)?)
 }
 
 pub fn input(conn: &rusqlite::Connection, id: &InputId) -> Result<Option<Input>> {
-    let mut stmt = conn.prepare(
-        "\
+    let mut stmt = conn
+        .prepare(
+            "\
         SELECT * FROM inputs
         WHERE epoch_number = ?1 AND input_index_in_epoch = ?2
         ",
-    )?;
+        )
+        .map_err(anyhow::Error::from)?;
 
     let i = stmt
         .query_row(params![id.epoch_number, id.input_index_in_epoch], |row| {
@@ -122,41 +137,48 @@ pub fn input(conn: &rusqlite::Connection, id: &InputId) -> Result<Option<Input>>
                 data: row.get(2)?,
             })
         })
-        .optional()?;
+        .optional()
+        .map_err(anyhow::Error::from)?;
 
     Ok(i)
 }
 
 pub fn inputs(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Vec<Vec<u8>>> {
-    let mut stmt = conn.prepare(
-        "\
+    let mut stmt = conn
+        .prepare(
+            "\
         SELECT input FROM inputs
         WHERE epoch_number = ?1
         ORDER BY input_index_in_epoch ASC
         ",
-    )?;
+        )
+        .map_err(anyhow::Error::from)?;
 
-    let query = stmt.query_map([epoch_number], |r| r.get(0))?;
+    let query = stmt
+        .query_map([epoch_number], |r| r.get(0))
+        .map_err(anyhow::Error::from)?;
 
     let mut res = vec![];
     for row in query {
-        res.push(row?);
+        res.push(row.map_err(anyhow::Error::from)?);
     }
 
     Ok(res)
 }
 
 pub fn input_count(conn: &rusqlite::Connection, epoch_number: u64) -> Result<u64> {
-    Ok(conn.query_row(
-        "\
+    Ok(conn
+        .query_row(
+            "\
         SELECT MAX(input_index_in_epoch) FROM inputs WHERE epoch_number = ?1
         ",
-        [epoch_number],
-        |row| {
-            let x: Option<u64> = row.get(0)?;
-            Ok(x.map(|x: u64| x + 1).unwrap_or(0))
-        },
-    )?)
+            [epoch_number],
+            |row| {
+                let x: Option<u64> = row.get(0)?;
+                Ok(x.map(|x: u64| x + 1).unwrap_or(0))
+            },
+        )
+        .map_err(anyhow::Error::from)?)
 }
 
 //
@@ -177,7 +199,7 @@ pub fn insert_epochs<'a>(
     let mut stmt = insert_epoch_statement(conn)?;
     for epoch in epochs {
         if epoch.epoch_number != next_epoch {
-            return Err(PersistentStateAccessError::InconsistentEpoch {
+            return Err(StateAccessError::InconsistentEpoch {
                 expected: next_epoch,
                 provided: epoch.epoch_number,
             });
@@ -188,7 +210,9 @@ pub fn insert_epochs<'a>(
             epoch.input_index_boundary,
             epoch.root_tournament,
             epoch.block_created_number
-        ])?;
+        ])
+        .map_err(anyhow::Error::from)?;
+
         next_epoch += 1;
     }
     Ok(())
@@ -199,17 +223,19 @@ fn insert_epoch_statement(conn: &rusqlite::Connection) -> Result<rusqlite::State
         "\
         INSERT INTO epochs (epoch_number, input_index_boundary, root_tournament, block_created_number) VALUES (?1, ?2, ?3, ?4)
         ",
-    )?)
+    ).map_err(anyhow::Error::from)?)
 }
 
 pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
-    let mut stmt = conn.prepare(
-        "\
+    let mut stmt = conn
+        .prepare(
+            "\
         SELECT epoch_number, input_index_boundary, root_tournament, block_created_number FROM epochs
         ORDER BY epoch_number DESC
         LIMIT 1
         ",
-    )?;
+        )
+        .map_err(anyhow::Error::from)?;
 
     Ok(stmt
         .query_row([], |row| {
@@ -220,16 +246,19 @@ pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
                 block_created_number: row.get(3)?,
             })
         })
-        .optional()?)
+        .optional()
+        .map_err(anyhow::Error::from)?)
 }
 
 pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Epoch>> {
-    let mut stmt = conn.prepare(
-        "\
+    let mut stmt = conn
+        .prepare(
+            "\
         SELECT input_index_boundary, root_tournament, block_created_number FROM epochs
         WHERE epoch_number = ?1
         ",
-    )?;
+        )
+        .map_err(anyhow::Error::from)?;
 
     let e = stmt
         .query_row(params![epoch_number], |row| {
@@ -240,22 +269,25 @@ pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Ep
                 block_created_number: row.get(2)?,
             })
         })
-        .optional()?;
+        .optional()
+        .map_err(anyhow::Error::from)?;
 
     Ok(e)
 }
 
 pub fn epoch_count(conn: &rusqlite::Connection) -> Result<u64> {
-    Ok(conn.query_row(
-        "\
+    Ok(conn
+        .query_row(
+            "\
         SELECT MAX(epoch_number) FROM epochs
         ",
-        [],
-        |row| {
-            let x: Option<u64> = row.get(0)?;
-            Ok(x.map(|x: u64| x + 1).unwrap_or(0))
-        },
-    )?)
+            [],
+            |row| {
+                let x: Option<u64> = row.get(0)?;
+                Ok(x.map(|x: u64| x + 1).unwrap_or(0))
+            },
+        )
+        .map_err(anyhow::Error::from)?)
 }
 
 //
@@ -263,20 +295,9 @@ pub fn epoch_count(conn: &rusqlite::Connection) -> Result<u64> {
 //
 
 #[cfg(test)]
-mod test_helper {
-    use crate::sql::migrations;
-    use rusqlite::Connection;
-
-    pub fn setup_db() -> Connection {
-        let mut conn = Connection::open_in_memory().unwrap();
-        migrations::MIGRATIONS.to_latest(&mut conn).unwrap();
-        conn
-    }
-}
-
-#[cfg(test)]
 mod last_processed_block_tests {
     use super::*;
+    use crate::sql::test_helper;
 
     #[test]
     fn test_last_processed_block() {
@@ -284,7 +305,7 @@ mod last_processed_block_tests {
 
         assert!(matches!(
             update_last_processed_block(&conn, 0),
-            Err(PersistentStateAccessError::InconsistentLastProcessed {
+            Err(StateAccessError::InconsistentLastProcessed {
                 last: 0,
                 provided: 0
             })
@@ -295,14 +316,14 @@ mod last_processed_block_tests {
 
         assert!(matches!(
             update_last_processed_block(&conn, 0),
-            Err(PersistentStateAccessError::InconsistentLastProcessed {
+            Err(StateAccessError::InconsistentLastProcessed {
                 last: 1,
                 provided: 0
             })
         ));
         assert!(matches!(
             update_last_processed_block(&conn, 1),
-            Err(PersistentStateAccessError::InconsistentLastProcessed {
+            Err(StateAccessError::InconsistentLastProcessed {
                 last: 1,
                 provided: 1
             })
@@ -315,6 +336,8 @@ mod last_processed_block_tests {
 
 #[cfg(test)]
 mod inputs_tests {
+    use crate::sql::test_helper;
+
     use super::*;
 
     #[test]
@@ -529,6 +552,7 @@ mod inputs_tests {
 #[cfg(test)]
 mod epochs_tests {
     use super::*;
+    use crate::sql::test_helper;
 
     #[test]
     fn test_epoch() {
@@ -547,7 +571,7 @@ mod epochs_tests {
                 }]
                 .into_iter(),
             ),
-            Err(PersistentStateAccessError::InconsistentEpoch {
+            Err(StateAccessError::InconsistentEpoch {
                 expected: 0,
                 provided: 1
             })
@@ -580,7 +604,7 @@ mod epochs_tests {
                 }]
                 .into_iter(),
             ),
-            Err(PersistentStateAccessError::InconsistentEpoch {
+            Err(StateAccessError::InconsistentEpoch {
                 expected: 1,
                 provided: 0
             })
@@ -623,7 +647,7 @@ mod epochs_tests {
                 ]
                 .into_iter(),
             ),
-            Err(PersistentStateAccessError::InconsistentEpoch {
+            Err(StateAccessError::InconsistentEpoch {
                 expected: 130,
                 provided: 131
             })

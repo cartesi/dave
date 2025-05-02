@@ -4118,6 +4118,7 @@ name = "rollups-blockchain-reader"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "anyhow",
  "async-recursion",
  "cartesi-dave-contracts",
  "cartesi-dave-merkle",
@@ -4129,6 +4130,7 @@ dependencies = [
  "rollups-state-manager",
  "rusqlite",
  "rusqlite_migration",
+ "tempfile",
  "thiserror",
  "tokio",
 ]
@@ -4138,6 +4140,7 @@ name = "rollups-epoch-manager"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "anyhow",
  "cartesi-dave-contracts",
  "cartesi-prt-core",
  "log",
@@ -4165,6 +4168,9 @@ dependencies = [
 name = "rollups-state-manager"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "cartesi-dave-merkle",
+ "cartesi-machine",
  "lazy_static",
  "rusqlite",
  "rusqlite_migration",
