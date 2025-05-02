@@ -46,20 +46,11 @@ abstract contract NonLeafTournament is Tournament {
             _clock2.setPaused();
             _maxDuration = Clock.max(_clock1, _clock2);
         }
-        Machine.Hash initialHash;
-        uint256 startCycle;
-        uint64 level;
-        {
-            TournamentArgs memory args;
-            args = _tournamentArgs();
-            initialHash = args.initialHash;
-            startCycle = args.startCycle;
-            level = args.level;
-        }
+        TournamentArgs memory args = _tournamentArgs();
         (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
             .sealMatch(
             _matchId,
-            initialHash,
+            args.initialHash,
             _leftLeaf,
             _rightLeaf,
             _agreeHash,
@@ -72,8 +63,8 @@ abstract contract NonLeafTournament is Tournament {
             _matchId.commitmentTwo,
             _finalStateTwo,
             _maxDuration,
-            _matchState.toCycle(startCycle),
-            level + 1
+            _matchState.toCycle(args.startCycle),
+            args.level + 1
         );
         matchIdFromInnerTournaments[_inner] = _matchId.hashFromId();
 
@@ -132,18 +123,10 @@ abstract contract NonLeafTournament is Tournament {
     ) private returns (NonRootTournament) {
         // the inner tournament is bottom tournament at last level
         // else instantiate middle tournament
-        uint256 levels;
-        IDataProvider provider;
-        {
-            TournamentArgs memory args;
-            args = _tournamentArgs();
-            levels = args.levels;
-            provider = args.provider;
-        }
+        TournamentArgs memory args = _tournamentArgs();
         Tournament _tournament;
-        IMultiLevelTournamentFactory tournamentFactory;
-        tournamentFactory = _tournamentFactory();
-        if (_level == levels - 1) {
+        IMultiLevelTournamentFactory tournamentFactory = _tournamentFactory();
+        if (_level == args.levels - 1) {
             _tournament = tournamentFactory.instantiateBottom(
                 _initialHash,
                 _contestedCommitmentOne,
@@ -153,7 +136,7 @@ abstract contract NonLeafTournament is Tournament {
                 _allowance,
                 _startCycle,
                 _level,
-                provider
+                args.provider
             );
         } else {
             _tournament = tournamentFactory.instantiateMiddle(
@@ -165,7 +148,7 @@ abstract contract NonLeafTournament is Tournament {
                 _allowance,
                 _startCycle,
                 _level,
-                provider
+                args.provider
             );
         }
 

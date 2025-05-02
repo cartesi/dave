@@ -39,24 +39,12 @@ abstract contract NonRootTournament is Tournament {
 
         Machine.Hash _finalState = finalStates[_danglingCommitment];
 
-        Machine.Hash contestedFinalStateOne;
-        Tree.Node contestedCommitmentOne;
-        Machine.Hash contestedFinalStateTwo;
-        Tree.Node contestedCommitmentTwo;
-        {
-            NonRootTournamentArgs memory args;
-            args = _nonRootTournamentArgs();
-            contestedFinalStateOne = args.contestedFinalStateOne;
-            contestedCommitmentOne = args.contestedCommitmentOne;
-            contestedFinalStateTwo = args.contestedFinalStateTwo;
-            contestedCommitmentTwo = args.contestedCommitmentTwo;
-        }
-
-        if (_finalState.eq(contestedFinalStateOne)) {
-            return (true, contestedCommitmentOne, _danglingCommitment);
+        NonRootTournamentArgs memory args = _nonRootTournamentArgs();
+        if (_finalState.eq(args.contestedFinalStateOne)) {
+            return (true, args.contestedCommitmentOne, _danglingCommitment);
         } else {
-            assert(_finalState.eq(contestedFinalStateTwo));
-            return (true, contestedCommitmentTwo, _danglingCommitment);
+            assert(_finalState.eq(args.contestedFinalStateTwo));
+            return (true, args.contestedCommitmentTwo, _danglingCommitment);
         }
     }
 
@@ -67,20 +55,12 @@ abstract contract NonRootTournament is Tournament {
         override
         returns (bool, Machine.Hash, Machine.Hash)
     {
-        Machine.Hash contestedFinalStateOne;
-        Machine.Hash contestedFinalStateTwo;
-        {
-            NonRootTournamentArgs memory args;
-            args = _nonRootTournamentArgs();
-            contestedFinalStateOne = args.contestedFinalStateOne;
-            contestedFinalStateTwo = args.contestedFinalStateTwo;
-        }
-
+        NonRootTournamentArgs memory args = _nonRootTournamentArgs();
         return (
-            contestedFinalStateOne.eq(_finalState)
-                || contestedFinalStateTwo.eq(_finalState),
-            contestedFinalStateOne,
-            contestedFinalStateTwo
+            args.contestedFinalStateOne.eq(_finalState)
+                || args.contestedFinalStateTwo.eq(_finalState),
+            args.contestedFinalStateOne,
+            args.contestedFinalStateTwo
         );
     }
 
