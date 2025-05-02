@@ -39,12 +39,7 @@ abstract contract LeafTournament is Tournament {
             _clock2.advanceClock();
         }
 
-        Machine.Hash initialHash;
-        {
-            TournamentArgs memory args;
-            args = _tournamentArgs();
-            initialHash = args.initialHash;
-        }
+        Machine.Hash initialHash = _tournamentArgs().initialHash;
         _matchState.sealMatch(
             _matchId,
             initialHash,
