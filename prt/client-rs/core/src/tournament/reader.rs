@@ -201,7 +201,7 @@ impl StateReader {
             state.log2_stride,
             state.log2_stride_count,
         ) = (
-            level_constants_return._max_level,
+            level_constants_return._maxLevel,
             level_constants_return._level,
             level_constants_return._log2step,
             level_constants_return._height,
