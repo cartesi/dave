@@ -274,12 +274,7 @@ abstract contract Tournament {
         returns (uint256)
     {
         Match.State memory _m = getMatch(_matchIdHash);
-        uint256 startCycle;
-        {
-            TournamentArgs memory args;
-            args = _tournamentArgs();
-            startCycle = args.startCycle;
-        }
+        uint256 startCycle = _tournamentArgs().startCycle;
         return _m.toCycle(startCycle);
     }
 
