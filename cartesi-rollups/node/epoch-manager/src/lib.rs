@@ -1,11 +1,10 @@
 mod error;
 
 use alloy::{
-    hex::ToHexExt,
     primitives::{Address, B256},
     providers::DynProvider,
 };
-use error::{EpochManagerError, Result};
+use error::Result;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
@@ -27,10 +26,7 @@ pub struct EpochManager<SM: StateManager> {
     state_manager: Arc<SM>,
 }
 
-impl<SM: StateManager> EpochManager<SM>
-where
-    <SM as StateManager>::Error: Send + Sync + 'static,
-{
+impl<SM: StateManager> EpochManager<SM> {
     pub fn new(
         arena_sender: EthArenaSender,
         provider: DynProvider,
@@ -49,7 +45,7 @@ where
         }
     }
 
-    pub async fn start(&self) -> Result<(), SM> {
+    pub async fn start(&self) -> Result<()> {
         let dave_consensus = daveconsensus::DaveConsensus::new(self.consensus, &self.provider);
         loop {
             self.try_settle_epoch(&dave_consensus).await?;
@@ -61,36 +57,32 @@ where
     pub async fn try_settle_epoch(
         &self,
         dave_consensus: &DaveConsensus::DaveConsensusInstance<(), &DynProvider>,
-    ) -> Result<(), SM> {
+    ) -> Result<()> {
         let can_settle = dave_consensus.canSettle().call().await?;
 
         if can_settle.isFinished {
-            match self
-                .state_manager
-                .settlement_info(
-                    can_settle
-                        .epochNumber
-                        .to_u64()
-                        .expect("fail to convert epoch number to u64"),
-                )
-                .map_err(EpochManagerError::StateManagerError)?
-            {
-                Some((computation_hash, output_merkle, output_proof)) => {
+            match self.state_manager.settlement_info(
+                can_settle
+                    .epochNumber
+                    .to_u64()
+                    .expect("fail to convert epoch number to u64"),
+            )? {
+                Some(settlement) => {
                     assert_eq!(
-                        computation_hash,
-                        can_settle.winnerCommitment.to_vec(),
+                        settlement.computation_hash.data(),
+                        can_settle.winnerCommitment,
                         "Winner commitment mismatch, notify all users!"
                     );
                     info!(
-                        "settle epoch {} with claim 0x{}",
+                        "settle epoch {} with claim {}",
                         can_settle.epochNumber,
-                        computation_hash.encode_hex()
+                        settlement.computation_hash.to_hex()
                     );
                     let tx_result = dave_consensus
                         .settle(
                             can_settle.epochNumber,
-                            Self::vec_u8_to_bytes_32(output_merkle),
-                            Self::to_bytes_32_vec(output_proof),
+                            vec_u8_to_bytes_32(settlement.output_merkle.into()),
+                            to_bytes_32_vec(settlement.output_proof),
                         )
                         .send()
                         .await;
@@ -106,17 +98,15 @@ where
         Ok(())
     }
 
-    async fn try_react_epoch(&self) -> Result<(), SM> {
+    async fn try_react_epoch(&self) -> Result<()> {
         // participate in last sealed epoch tournament
-        if let Some(last_sealed_epoch) = self
-            .state_manager
-            .last_sealed_epoch()
-            .map_err(EpochManagerError::StateManagerError)?
+        if let Some(last_sealed_epoch) = self.state_manager.last_sealed_epoch()?
+        // .map_err(|err| EpochManagerError::StateManagerError(Box::new(err)))?
         {
             match self
                 .state_manager
-                .settlement_info(last_sealed_epoch.epoch_number)
-                .map_err(EpochManagerError::StateManagerError)?
+                .settlement_info(last_sealed_epoch.epoch_number)?
+                // .map_err(EpochManagerError::StateManagerError)?
             {
                 Some(_) => {
                     info!(
@@ -133,36 +123,30 @@ where
         Ok(())
     }
 
-    async fn react_dispute(&self, last_sealed_epoch: &Epoch) -> Result<(), SM> {
+    async fn react_dispute(&self, last_sealed_epoch: &Epoch) -> Result<()> {
         let Some(snapshot) = self
             .state_manager
-            .snapshot(last_sealed_epoch.epoch_number, 0)
-            .map_err(EpochManagerError::StateManagerError)?
+            .snapshot(last_sealed_epoch.epoch_number, 0)?
         else {
             trace!("wait for `machine-runner` to save machine snapshot");
             return Ok(());
         };
 
-        let inputs = self
-            .state_manager
-            .inputs(last_sealed_epoch.epoch_number)
-            .map_err(EpochManagerError::StateManagerError)?;
-        let leafs = self
-            .state_manager
-            .machine_state_hashes(last_sealed_epoch.epoch_number)
-            .map_err(EpochManagerError::StateManagerError)?;
-
         let mut player = {
-            let inputs = Some(inputs.into_iter().map(Input).collect());
-            let leafs = leafs
+            let inputs = self
+                .state_manager
+                .inputs(last_sealed_epoch.epoch_number)?
+                .into_iter()
+                .map(Input)
+                .collect();
+
+            let leafs = self
+                .state_manager
+                .machine_state_hashes(last_sealed_epoch.epoch_number)?
                 .into_iter()
                 .map(|l| Leaf {
-                    hash: l
-                        .0
-                        .as_slice()
-                        .try_into()
-                        .expect("fail to convert leafs from machine state hash"),
-                    repetitions: l.1,
+                    hash: l.hash,
+                    repetitions: l.repetitions,
                 })
                 .collect();
 
@@ -170,7 +154,7 @@ where
                 .expect("fail to convert tournament address from string");
 
             Player::new(
-                inputs,
+                Some(inputs),
                 leafs,
                 self.provider.clone(),
                 snapshot,
@@ -184,12 +168,12 @@ where
         player.react_once(&self.arena_sender).await?;
         Ok(())
     }
+}
 
-    fn to_bytes_32_vec(proof: Proof) -> Vec<B256> {
-        proof.inner().iter().map(B256::from).collect()
-    }
+fn to_bytes_32_vec(proof: Proof) -> Vec<B256> {
+    proof.inner().iter().map(B256::from).collect()
+}
 
-    fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
-        B256::from_slice(&hash)
-    }
+fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
+    B256::from_slice(&hash)
 }

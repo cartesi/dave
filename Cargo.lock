@@ -4138,6 +4138,7 @@ name = "rollups-epoch-manager"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "anyhow",
  "cartesi-dave-contracts",
  "cartesi-prt-core",
  "log",
@@ -4165,6 +4166,9 @@ dependencies = [
 name = "rollups-state-manager"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "cartesi-dave-merkle",
+ "cartesi-machine",
  "lazy_static",
  "rusqlite",
  "rusqlite_migration",

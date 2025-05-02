@@ -12,17 +12,12 @@ use cartesi_machine::{
     machine::Machine,
     types::{Hash, cmio::CmioResponseReason},
 };
-use rollups_state_manager::Proof;
+use rollups_state_manager::{CommitmentLeaf, Proof};
 
 const BIG_STEPS_IN_STRIDE: u64 = 1 << (super::LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
 
 const STRIDE_COUNT_IN_INPUT: u64 =
     1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - super::LOG2_STRIDE);
-
-pub struct StateHash {
-    pub hash: Hash,
-    pub repetitions: u64,
-}
 
 pub struct RollupsMachine {
     machine: Machine,
@@ -71,7 +66,7 @@ impl RollupsMachine {
         self.machine.root_hash()
     }
 
-    pub fn process_input(&mut self, data: &[u8]) -> MachineResult<Vec<StateHash>> {
+    pub fn process_input(&mut self, data: &[u8]) -> MachineResult<Vec<CommitmentLeaf>> {
         let mut state_hashes = Vec::with_capacity(1 << 20);
 
         self.feed_input(data)?;
@@ -81,7 +76,7 @@ impl RollupsMachine {
             self.run_machine(BIG_STEPS_IN_STRIDE)?;
 
             let hash = self.machine.root_hash()?;
-            state_hashes.push(StateHash {
+            state_hashes.push(CommitmentLeaf {
                 hash,
                 repetitions: 1,
             });
@@ -90,7 +85,7 @@ impl RollupsMachine {
         }
 
         let hash = self.machine.root_hash()?;
-        state_hashes.push(StateHash {
+        state_hashes.push(CommitmentLeaf {
             hash,
             repetitions: STRIDE_COUNT_IN_INPUT - i,
         });

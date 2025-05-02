@@ -9,7 +9,6 @@ use clap::Parser;
 use log::error;
 use std::sync::Arc;
 use std::{path::PathBuf, str::FromStr};
-use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
 use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
@@ -86,11 +85,11 @@ pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
     provider.erased()
 }
 
-pub fn create_blockchain_reader_task(
+pub async fn create_blockchain_reader_task(
     state_manager: Arc<PersistentStateAccess>,
     provider: DynProvider,
     parameters: &DaveParameters,
-) -> JoinHandle<()> {
+) -> Result<(), tokio::task::JoinError> {
     let params = parameters.clone();
 
     spawn(async move {
@@ -110,13 +109,14 @@ pub fn create_blockchain_reader_task(
             .inspect_err(|e| error!("{e}"))
             .unwrap();
     })
+    .await
 }
 
-pub fn create_epoch_manager_task(
+pub async fn create_epoch_manager_task(
     provider: DynProvider,
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
-) -> JoinHandle<()> {
+) -> Result<(), tokio::task::JoinError> {
     let arena_sender =
         EthArenaSender::new(provider.clone()).expect("could not create arena sender");
     let params = parameters.clone();
@@ -137,12 +137,13 @@ pub fn create_epoch_manager_task(
             .inspect_err(|e| error!("{e}"))
             .unwrap();
     })
+    .await
 }
 
-pub fn create_machine_runner_task(
+pub async fn create_machine_runner_task(
     state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
-) -> JoinHandle<()> {
+) -> Result<(), tokio::task::JoinError> {
     let params = parameters.clone();
 
     spawn_blocking(move || {
@@ -162,4 +163,5 @@ pub fn create_machine_runner_task(
             .inspect_err(|e| error!("{e}"))
             .unwrap();
     })
+    .await
 }

@@ -22,12 +22,14 @@ async fn main() -> Result<()> {
     )?)?);
     let provider = create_provider(&parameters.blockchain_config).await;
 
+    // prepare futures
     let blockchain_reader_task =
         create_blockchain_reader_task(state_manager.clone(), provider.clone(), &parameters);
     let epoch_manager_task =
         create_epoch_manager_task(provider.clone(), state_manager.clone(), &parameters);
     let machine_runner_task = create_machine_runner_task(state_manager.clone(), &parameters);
 
+    // run futures
     futures::try_join!(
         blockchain_reader_task,
         epoch_manager_task,

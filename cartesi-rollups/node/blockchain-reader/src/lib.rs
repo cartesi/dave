@@ -16,7 +16,6 @@ use alloy::{
 };
 use async_recursion::async_recursion;
 use clap::Parser;
-use error::BlockchainReaderError;
 use find_contract_creation::find_contract_creation_block;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
@@ -59,16 +58,13 @@ pub struct BlockchainReader<SM: StateManager> {
     sleep_duration: Duration,
 }
 
-impl<SM: StateManager> BlockchainReader<SM>
-where
-    <SM as StateManager>::Error: Send + Sync + 'static,
-{
+impl<SM: StateManager> BlockchainReader<SM> {
     pub async fn new(
         state_manager: Arc<SM>,
         address_book: AddressBook,
         provider: DynProvider,
         sleep_duration: u64,
-    ) -> Result<Self, SM> {
+    ) -> Result<Self> {
         // read from DB the block of the most recent processed
         let prev_block = {
             let input_box_creation =
@@ -76,9 +72,7 @@ where
                     .await
                     .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?;
 
-            let latest_processed = state_manager
-                .latest_processed_block()
-                .map_err(BlockchainReaderError::StateManagerError)?;
+            let latest_processed = state_manager.latest_processed_block()?;
 
             std::cmp::max(input_box_creation, latest_processed)
         };
@@ -96,7 +90,7 @@ where
         })
     }
 
-    pub async fn start(mut self) -> Result<(), SM> {
+    pub async fn start(mut self) -> Result<()> {
         loop {
             let current_block = self.provider.latest_finalized_block().await?;
 
@@ -108,16 +102,14 @@ where
         }
     }
 
-    async fn advance(&self, prev_block: u64, current_block: u64) -> Result<(), SM> {
+    async fn advance(&self, prev_block: u64, current_block: u64) -> Result<()> {
         let (inputs, epochs) = self.collect_events(prev_block, current_block).await?;
 
-        self.state_manager
-            .insert_consensus_data(
-                current_block,
-                inputs.iter().collect::<Vec<&Input>>().into_iter(),
-                epochs.iter().collect::<Vec<&Epoch>>().into_iter(),
-            )
-            .map_err(BlockchainReaderError::StateManagerError)?;
+        self.state_manager.insert_consensus_data(
+            current_block,
+            inputs.iter().collect::<Vec<&Input>>().into_iter(),
+            epochs.iter().collect::<Vec<&Epoch>>().into_iter(),
+        )?;
 
         Ok(())
     }
@@ -126,16 +118,13 @@ where
         &self,
         prev_block: u64,
         current_block: u64,
-    ) -> Result<(Vec<Input>, Vec<Epoch>), SM> {
+    ) -> Result<(Vec<Input>, Vec<Epoch>)> {
         // read sealed epochs from blockchain
         let sealed_epochs: Vec<Epoch> = self
             .collect_sealed_epochs(prev_block, current_block)
             .await?;
 
-        let last_sealed_epoch_opt = self
-            .state_manager
-            .last_sealed_epoch()
-            .map_err(BlockchainReaderError::StateManagerError)?;
+        let last_sealed_epoch_opt = self.state_manager.last_sealed_epoch()?;
         let mut merged_sealed_epochs = Vec::new();
         if let Some(last_sealed_epoch) = last_sealed_epoch_opt {
             merged_sealed_epochs.push(last_sealed_epoch);
@@ -158,7 +147,7 @@ where
         &self,
         prev_block: u64,
         current_block: u64,
-    ) -> Result<Vec<Epoch>, SM> {
+    ) -> Result<Vec<Epoch>> {
         Ok(self
             .epoch_reader
             .next(
@@ -197,7 +186,7 @@ where
         prev_block: u64,
         current_block: u64,
         sealed_epochs_iter: impl Iterator<Item = &Epoch>,
-    ) -> Result<Vec<Input>, SM> {
+    ) -> Result<Vec<Input>> {
         // read new inputs from blockchain
         let input_events: Vec<_> = self
             .input_reader
@@ -213,10 +202,7 @@ where
             .map(|i| i.0)
             .collect();
 
-        let last_input = self
-            .state_manager
-            .last_input()
-            .map_err(BlockchainReaderError::StateManagerError)?;
+        let last_input = self.state_manager.last_input()?;
 
         let (mut next_input_index_in_epoch, mut last_input_epoch_number) = {
             match last_input {
@@ -575,10 +561,7 @@ mod blockchain_reader_tests {
         state_manager: &Arc<SM>,
         epoch_number: u64,
         count: usize,
-    ) -> Result<Vec<Vec<u8>>>
-    where
-        <SM as StateManager>::Error: Send + Sync + 'static,
-    {
+    ) -> Result<Vec<Vec<u8>>> {
         let mut read_inputs = Vec::new();
         while read_inputs.len() != count {
             read_inputs = state_manager.inputs(epoch_number)?;
