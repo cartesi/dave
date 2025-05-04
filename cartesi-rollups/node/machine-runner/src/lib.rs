@@ -10,7 +10,6 @@ use rollups_machine::RollupsMachine;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
     time::Duration,
 };
 
@@ -33,7 +32,7 @@ const LOG2_STRIDES_PER_INPUT: u64 =
 const INPUTS_PER_EPOCH: u64 = 1 << LOG2_INPUT_SPAN_TO_EPOCH;
 
 pub struct MachineRunner<SM: StateManager> {
-    state_manager: Arc<SM>,
+    state_manager: SM,
     state_dir: PathBuf,
 
     sleep_duration: Duration,
@@ -46,7 +45,7 @@ pub struct MachineRunner<SM: StateManager> {
 
 impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
     pub fn new(
-        state_manager: Arc<SM>,
+        mut state_manager: SM,
         initial_machine: &str,
         sleep_duration: u64,
         snapshot_frequency: u64,

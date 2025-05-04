@@ -7,7 +7,7 @@ use alloy::{
 use error::Result;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
@@ -23,7 +23,7 @@ pub struct EpochManager<SM: StateManager> {
     consensus: Address,
     sleep_duration: Duration,
     state_dir: PathBuf,
-    state_manager: Arc<SM>,
+    state_manager: SM,
 }
 
 impl<SM: StateManager> EpochManager<SM> {
@@ -31,7 +31,7 @@ impl<SM: StateManager> EpochManager<SM> {
         arena_sender: EthArenaSender,
         provider: DynProvider,
         consensus_address: Address,
-        state_manager: Arc<SM>,
+        state_manager: SM,
         sleep_duration: u64,
         state_dir: PathBuf,
     ) -> Self {
@@ -45,8 +45,10 @@ impl<SM: StateManager> EpochManager<SM> {
         }
     }
 
-    pub async fn start(&self) -> Result<()> {
-        let dave_consensus = daveconsensus::DaveConsensus::new(self.consensus, &self.provider);
+    pub async fn start(mut self) -> Result<()> {
+        let dave_consensus =
+            daveconsensus::DaveConsensus::new(self.consensus, self.provider.clone());
+
         loop {
             self.try_settle_epoch(&dave_consensus).await?;
             self.try_react_epoch().await?;
@@ -55,8 +57,8 @@ impl<SM: StateManager> EpochManager<SM> {
     }
 
     pub async fn try_settle_epoch(
-        &self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<(), &DynProvider>,
+        &mut self,
+        dave_consensus: &DaveConsensus::DaveConsensusInstance<(), DynProvider>,
     ) -> Result<()> {
         let can_settle = dave_consensus.canSettle().call().await?;
 
@@ -98,7 +100,7 @@ impl<SM: StateManager> EpochManager<SM> {
         Ok(())
     }
 
-    async fn try_react_epoch(&self) -> Result<()> {
+    async fn try_react_epoch(&mut self) -> Result<()> {
         // participate in last sealed epoch tournament
         if let Some(last_sealed_epoch) = self.state_manager.last_sealed_epoch()?
         // .map_err(|err| EpochManagerError::StateManagerError(Box::new(err)))?
@@ -123,7 +125,7 @@ impl<SM: StateManager> EpochManager<SM> {
         Ok(())
     }
 
-    async fn react_dispute(&self, last_sealed_epoch: &Epoch) -> Result<()> {
+    async fn react_dispute(&mut self, last_sealed_epoch: &Epoch) -> Result<()> {
         let Some(snapshot) = self
             .state_manager
             .snapshot(last_sealed_epoch.epoch_number, 0)?

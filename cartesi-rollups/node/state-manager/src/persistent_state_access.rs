@@ -8,7 +8,6 @@ use crate::{
 };
 
 use rusqlite::{Connection, OptionalExtension};
-use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct PersistentStateAccess {
@@ -26,60 +25,60 @@ impl PersistentStateAccess {
         let connection = Connection::open(path)?;
         Ok(Self { connection })
     }
+
+    pub fn new_in_memory() -> std::result::Result<Self, rusqlite_migration::Error> {
+        let connection = Connection::open_in_memory()?;
+        Ok(Self { connection })
+    }
 }
 
 impl StateManager for PersistentStateAccess {
     //
     // Consensus Data
     //
-    fn epoch(&self, epoch_number: u64) -> Result<Option<Epoch>> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::epoch(&conn, epoch_number)
+    fn set_genesis(&mut self, block_number: u64) -> Result<()> {
+        consensus_data::update_last_processed_block(&self.connection, block_number)
     }
 
-    fn epoch_count(&self) -> Result<u64> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::epoch_count(&conn)
+    fn epoch(&mut self, epoch_number: u64) -> Result<Option<Epoch>> {
+        consensus_data::epoch(&self.connection, epoch_number)
     }
 
-    fn last_sealed_epoch(&self) -> Result<Option<Epoch>> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::last_sealed_epoch(&conn)
+    fn epoch_count(&mut self) -> Result<u64> {
+        consensus_data::epoch_count(&self.connection)
     }
 
-    fn input(&self, id: &InputId) -> Result<Option<Input>> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::input(&conn, id)
+    fn last_sealed_epoch(&mut self) -> Result<Option<Epoch>> {
+        consensus_data::last_sealed_epoch(&self.connection)
     }
 
-    fn inputs(&self, epoch_number: u64) -> Result<Vec<Vec<u8>>> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::inputs(&conn, epoch_number)
+    fn input(&mut self, id: &InputId) -> Result<Option<Input>> {
+        consensus_data::input(&self.connection, id)
     }
 
-    fn input_count(&self, epoch_number: u64) -> Result<u64> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::input_count(&conn, epoch_number)
+    fn inputs(&mut self, epoch_number: u64) -> Result<Vec<Vec<u8>>> {
+        consensus_data::inputs(&self.connection, epoch_number)
     }
 
-    fn last_input(&self) -> Result<Option<InputId>> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::last_input(&conn)
+    fn input_count(&mut self, epoch_number: u64) -> Result<u64> {
+        consensus_data::input_count(&self.connection, epoch_number)
     }
 
-    fn latest_processed_block(&self) -> Result<u64> {
-        let conn = self.connection.lock().unwrap();
-        consensus_data::last_processed_block(&conn)
+    fn last_input(&mut self) -> Result<Option<InputId>> {
+        consensus_data::last_input(&self.connection)
+    }
+
+    fn latest_processed_block(&mut self) -> Result<u64> {
+        consensus_data::last_processed_block(&self.connection)
     }
 
     fn insert_consensus_data<'a>(
-        &self,
+        &mut self,
         last_processed_block: u64,
         inputs: impl Iterator<Item = &'a Input>,
         epochs: impl Iterator<Item = &'a Epoch>,
     ) -> Result<()> {
-        let mut conn = self.connection.lock().unwrap();
-        let tx = conn.transaction().map_err(anyhow::Error::from)?;
+        let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
         consensus_data::update_last_processed_block(&tx, last_processed_block)?;
         consensus_data::insert_inputs(&tx, inputs)?;
         consensus_data::insert_epochs(&tx, epochs)?;
@@ -93,15 +92,14 @@ impl StateManager for PersistentStateAccess {
     //
 
     fn add_machine_state_hash(
-        &self,
+        &mut self,
         epoch_number: u64,
         state_hash_index_in_epoch: u64,
         leaf: &CommitmentLeaf,
     ) -> Result<()> {
         assert!(leaf.repetitions > 0);
 
-        let mut conn = self.connection.lock().unwrap();
-        let tx = conn.transaction().map_err(anyhow::Error::from)?;
+        let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
 
         // 1) Check existing, return if correct duplicate
         if let Some(ref existing) =
@@ -126,25 +124,25 @@ impl StateManager for PersistentStateAccess {
     }
 
     fn machine_state_hash(
-        &self,
+        &mut self,
         epoch_number: u64,
         state_hash_index_in_epoch: u64,
     ) -> Result<Option<CommitmentLeaf>> {
-        let conn = self.connection.lock().unwrap();
-        rollup_data::get_commitment_if_exists(&conn, epoch_number, state_hash_index_in_epoch)
+        rollup_data::get_commitment_if_exists(
+            &self.connection,
+            epoch_number,
+            state_hash_index_in_epoch,
+        )
     }
 
     // returns all state hashes and their repetitions in acending order of `state_hash_index_in_epoch`
-    fn machine_state_hashes(&self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>> {
-        let conn = self.connection.lock().unwrap();
-        rollup_data::get_all_commitments(&conn, epoch_number)
+    fn machine_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>> {
+        rollup_data::get_all_commitments(&self.connection, epoch_number)
     }
 
-    fn add_settlement_info(&self, settlement: &Settlement, epoch_number: u64) -> Result<()> {
-        let mut conn = self.connection.lock().unwrap();
-
+    fn add_settlement_info(&mut self, settlement: &Settlement, epoch_number: u64) -> Result<()> {
         // TODO update to an UPSERT?
-        let tx = conn.transaction().map_err(anyhow::Error::from)?;
+        let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
 
         if let Some(ref existing_settlement) = rollup_data::settlement_info(&tx, epoch_number)? {
             assert!(existing_settlement == settlement);
@@ -157,14 +155,17 @@ impl StateManager for PersistentStateAccess {
         Ok(())
     }
 
-    fn settlement_info(&self, epoch_number: u64) -> Result<Option<Settlement>> {
-        let conn = self.connection.lock().unwrap();
-        rollup_data::settlement_info(&conn, epoch_number)
+    fn settlement_info(&mut self, epoch_number: u64) -> Result<Option<Settlement>> {
+        rollup_data::settlement_info(&self.connection, epoch_number)
     }
 
-    fn add_snapshot(&self, path: &str, epoch_number: u64, input_index_in_epoch: u64) -> Result<()> {
-        let conn = self.connection.lock().unwrap();
-        let mut sttm = conn.prepare(
+    fn add_snapshot(
+        &mut self,
+        path: &str,
+        epoch_number: u64,
+        input_index_in_epoch: u64,
+    ) -> Result<()> {
+        let mut sttm = self.connection.prepare(
             "INSERT INTO snapshots (epoch_number, input_index_in_epoch, path) VALUES (?1, ?2, ?3)",
         ).map_err(anyhow::Error::from)?;
 
@@ -180,10 +181,9 @@ impl StateManager for PersistentStateAccess {
         Ok(())
     }
 
-    fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>> {
-        let conn = self.connection.lock().unwrap();
-
-        let mut sttm = conn
+    fn latest_snapshot(&mut self) -> Result<Option<(String, u64, u64)>> {
+        let mut sttm = self
+            .connection
             .prepare(
                 "\
             SELECT epoch_number, input_index_in_epoch, path FROM snapshots
@@ -206,9 +206,9 @@ impl StateManager for PersistentStateAccess {
         }
     }
 
-    fn snapshot(&self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<String>> {
-        let conn = self.connection.lock().unwrap();
-        let mut sttm = conn
+    fn snapshot(&mut self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<String>> {
+        let mut sttm = self
+            .connection
             .prepare(
                 "\
             SELECT path FROM snapshots
@@ -227,15 +227,12 @@ impl StateManager for PersistentStateAccess {
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::Connection;
-
     use crate::Proof;
 
     use super::*;
 
     pub fn setup() -> PersistentStateAccess {
-        let conn = Connection::open_in_memory().unwrap();
-        PersistentStateAccess::new(conn).unwrap()
+        PersistentStateAccess::new_in_memory().unwrap()
     }
 
     #[test]
@@ -243,7 +240,7 @@ mod tests {
         let input_0_bytes = b"hello";
         let input_1_bytes = b"world";
 
-        let access = setup();
+        let mut access = setup();
 
         access.insert_consensus_data(
             20,

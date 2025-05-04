@@ -86,13 +86,15 @@ pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
 }
 
 pub async fn create_blockchain_reader_task(
-    state_manager: Arc<PersistentStateAccess>,
     provider: DynProvider,
-    parameters: &DaveParameters,
+    parameters: DaveParameters,
 ) -> Result<(), tokio::task::JoinError> {
     let params = parameters.clone();
 
     spawn(async move {
+        let state_manager =
+            PersistentStateAccess::new(&parameters.state_dir.join("state.db")).unwrap();
+
         let blockchain_reader = BlockchainReader::new(
             state_manager,
             params.address_book,
@@ -114,7 +116,6 @@ pub async fn create_blockchain_reader_task(
 
 pub async fn create_epoch_manager_task(
     provider: DynProvider,
-    state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> Result<(), tokio::task::JoinError> {
     let arena_sender =
@@ -122,6 +123,8 @@ pub async fn create_epoch_manager_task(
     let params = parameters.clone();
 
     spawn(async move {
+        let state_manager = PersistentStateAccess::new(parameters.state_dir.join("state.db")?)?;
+
         let epoch_manager = EpochManager::new(
             arena_sender,
             provider,
@@ -141,12 +144,13 @@ pub async fn create_epoch_manager_task(
 }
 
 pub async fn create_machine_runner_task(
-    state_manager: Arc<PersistentStateAccess>,
     parameters: &DaveParameters,
 ) -> Result<(), tokio::task::JoinError> {
     let params = parameters.clone();
 
     spawn_blocking(move || {
+        let state_manager = PersistentStateAccess::new(parameters.state_dir.join("state.db")?)?;
+
         // `MachineRunner` has to be constructed in side the spawn block since `machine::Machine`` doesn't implement `Send`
         let mut machine_runner = MachineRunner::new(
             state_manager,

@@ -22,7 +22,6 @@ use num_traits::cast::ToPrimitive;
 use std::{
     iter::Peekable,
     marker::{Send, Sync},
-    sync::Arc,
     time::Duration,
 };
 
@@ -49,9 +48,8 @@ pub struct AddressBook {
 }
 
 pub struct BlockchainReader<SM: StateManager> {
-    state_manager: Arc<SM>,
+    state_manager: SM,
     address_book: AddressBook,
-    prev_block: u64,
     provider: PartitionProvider,
     input_reader: EventReader<InputAdded>,
     epoch_reader: EventReader<EpochSealed>,
@@ -59,30 +57,17 @@ pub struct BlockchainReader<SM: StateManager> {
 }
 
 impl<SM: StateManager> BlockchainReader<SM> {
-    pub async fn new(
-        state_manager: Arc<SM>,
+    pub fn new(
+        state_manager: SM,
         address_book: AddressBook,
         provider: DynProvider,
         sleep_duration: u64,
     ) -> Result<Self> {
-        // read from DB the block of the most recent processed
-        let prev_block = {
-            let input_box_creation =
-                find_contract_creation_block(&provider, address_book.input_box)
-                    .await
-                    .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?;
-
-            let latest_processed = state_manager.latest_processed_block()?;
-
-            std::cmp::max(input_box_creation, latest_processed)
-        };
-
         let partition_provider = PartitionProvider::new(provider);
 
         Ok(Self {
             state_manager,
             address_book,
-            prev_block,
             provider: partition_provider,
             input_reader: EventReader::<InputAdded>::default(),
             epoch_reader: EventReader::<EpochSealed>::default(),
@@ -90,19 +75,38 @@ impl<SM: StateManager> BlockchainReader<SM> {
         })
     }
 
-    pub async fn start(mut self) -> Result<()> {
+    pub fn start(self) -> Result<()> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        rt.block_on(async move { self.run().await })
+    }
+
+    async fn run(mut self) -> Result<()> {
+        let input_box_creation =
+            find_contract_creation_block(&self.provider.inner, self.address_book.input_box)
+                .await
+                .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?;
+        let latest_processed = self.state_manager.latest_processed_block()?;
+        if input_box_creation > latest_processed {
+            self.state_manager.set_genesis(input_box_creation)?;
+        }
+
         loop {
             let current_block = self.provider.latest_finalized_block().await?;
+            let prev_block = self.state_manager.latest_processed_block()?;
 
-            if current_block > self.prev_block {
-                self.advance(self.prev_block, current_block).await?;
-                self.prev_block = current_block;
+            if current_block > prev_block {
+                self.advance(prev_block, current_block).await?;
             }
+
             tokio::time::sleep(self.sleep_duration).await;
         }
     }
 
-    async fn advance(&self, prev_block: u64, current_block: u64) -> Result<()> {
+    async fn advance(&mut self, prev_block: u64, current_block: u64) -> Result<()> {
         let (inputs, epochs) = self.collect_events(prev_block, current_block).await?;
 
         self.state_manager.insert_consensus_data(
@@ -115,7 +119,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
     }
 
     async fn collect_events(
-        &self,
+        &mut self,
         prev_block: u64,
         current_block: u64,
     ) -> Result<(Vec<Input>, Vec<Epoch>)> {
@@ -182,7 +186,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
     }
 
     async fn collect_inputs(
-        &self,
+        &mut self,
         prev_block: u64,
         current_block: u64,
         sealed_epochs_iter: impl Iterator<Item = &Epoch>,
@@ -321,7 +325,7 @@ impl<E: SolEvent + Send + Sync> Default for EventReader<E> {
 }
 
 struct PartitionProvider {
-    inner: DynProvider,
+    pub inner: DynProvider,
 }
 
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
@@ -447,10 +451,8 @@ mod blockchain_reader_tests {
     };
     use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
-    use rusqlite::Connection;
-    use std::sync::Arc;
     use tokio::{
-        task::spawn,
+        task::spawn_blocking,
         time::{Duration, sleep},
     };
 
@@ -477,7 +479,7 @@ mod blockchain_reader_tests {
     }
 
     async fn add_input(
-        inputbox: &InputBox::InputBoxInstance<(), &DynProvider>,
+        inputbox: &InputBox::InputBoxInstance<(), DynProvider>,
         input_payload: &'static str,
         count: usize,
     ) -> Result<()> {
@@ -558,7 +560,7 @@ mod blockchain_reader_tests {
     }
 
     async fn read_inputs_from_db_until_count<SM: StateManager>(
-        state_manager: &Arc<SM>,
+        state_manager: &mut SM,
         epoch_number: u64,
         count: usize,
     ) -> Result<Vec<Vec<u8>>> {
@@ -575,7 +577,7 @@ mod blockchain_reader_tests {
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
         let (anvil, provider, input_box_address, _, _) = spawn_anvil_and_provider();
-        let inputbox = InputBox::new(input_box_address, &provider);
+        let inputbox = InputBox::new(input_box_address, provider.clone());
 
         let input_count_1 = 2;
         // Inputbox is deployed with 1 input already
@@ -634,49 +636,49 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
-    async fn test_blockchain_reader_aaa() -> Result<()> {
+    async fn test_blockchain_reader() -> Result<()> {
         let (anvil, provider, input_box_address, consensus_address, _) = spawn_anvil_and_provider();
 
-        let inputbox = InputBox::new(input_box_address, &provider);
-        let state_manager = Arc::new(PersistentStateAccess::new(
-            Connection::open_in_memory().unwrap(),
-        )?);
+        let inputbox = InputBox::new(input_box_address, provider.clone());
+        let mut state_manager = PersistentStateAccess::new_in_memory()?;
 
         // Note that inputbox is deployed with 1 input already
         // add inputs to epoch 0
         let input_count_1 = 2;
         add_input(&inputbox, INPUT_PAYLOAD, input_count_1).await?;
 
-        let daveconsensus = DaveConsensus::new(consensus_address, &provider);
-        let blockchain_reader = BlockchainReader::new(
-            state_manager.clone(),
-            AddressBook {
+        let r = spawn_blocking(move || {
+            let address_book = AddressBook {
                 app: APP_ADDRESS,
-                consensus: *daveconsensus.address(),
-                input_box: *inputbox.address(),
-            },
-            provider.clone(),
-            1,
-        )
-        .await?;
+                consensus: consensus_address,
+                input_box: input_box_address,
+            };
 
-        let r = spawn(async move {
-            blockchain_reader.start().await.unwrap();
+            let blockchain_reader = BlockchainReader::new(
+                PersistentStateAccess::new_in_memory().unwrap(),
+                address_book,
+                provider,
+                1,
+            )
+            .unwrap();
+
+            blockchain_reader.start().unwrap();
         });
 
-        read_inputs_from_db_until_count(&state_manager, 0, 1).await?;
-        read_inputs_from_db_until_count(&state_manager, 1, input_count_1).await?;
+        read_inputs_from_db_until_count(&mut state_manager, 0, 1).await?;
+        read_inputs_from_db_until_count(&mut state_manager, 1, input_count_1).await?;
 
         // add inputs to epoch 1
         let input_count_2 = 3;
         add_input(&inputbox, INPUT_PAYLOAD, input_count_2).await?;
-        read_inputs_from_db_until_count(&state_manager, 1, input_count_1 + input_count_2).await?;
+        read_inputs_from_db_until_count(&mut state_manager, 1, input_count_1 + input_count_2)
+            .await?;
 
         // add more inputs to epoch 1
         let input_count_3 = 3;
         add_input(&inputbox, INPUT_PAYLOAD, input_count_3).await?;
         read_inputs_from_db_until_count(
-            &state_manager,
+            &mut state_manager,
             1,
             input_count_1 + input_count_2 + input_count_3,
         )
@@ -684,6 +686,7 @@ mod blockchain_reader_tests {
 
         drop(anvil);
         drop(r);
+
         Ok(())
     }
 }

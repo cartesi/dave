@@ -9,49 +9,55 @@ pub trait StateManager {
     // Consensus Data
     //
 
-    fn epoch(&self, epoch_number: u64) -> Result<Option<Epoch>>;
-    fn epoch_count(&self) -> Result<u64>;
-    fn last_sealed_epoch(&self) -> Result<Option<Epoch>>;
-    fn input(&self, id: &InputId) -> Result<Option<Input>>;
-    fn inputs(&self, epoch_number: u64) -> Result<Vec<Vec<u8>>>;
-    fn input_count(&self, epoch_number: u64) -> Result<u64>;
-    fn last_input(&self) -> Result<Option<InputId>>;
+    fn set_genesis(&mut self, block_number: u64) -> Result<()>;
+    fn epoch(&mut self, epoch_number: u64) -> Result<Option<Epoch>>;
+    fn epoch_count(&mut self) -> Result<u64>;
+    fn last_sealed_epoch(&mut self) -> Result<Option<Epoch>>;
+    fn input(&mut self, id: &InputId) -> Result<Option<Input>>;
+    fn inputs(&mut self, epoch_number: u64) -> Result<Vec<Vec<u8>>>;
+    fn input_count(&mut self, epoch_number: u64) -> Result<u64>;
+    fn last_input(&mut self) -> Result<Option<InputId>>;
     fn insert_consensus_data<'a>(
-        &self,
+        &mut self,
         last_processed_block: u64,
         inputs: impl Iterator<Item = &'a Input>,
         epochs: impl Iterator<Item = &'a Epoch>,
     ) -> Result<()>;
-    fn latest_processed_block(&self) -> Result<u64>;
+    fn latest_processed_block(&mut self) -> Result<u64>;
 
     //
     // Rollup Data
     //
 
     fn add_machine_state_hash(
-        &self,
+        &mut self,
         epoch_number: u64,
         state_hash_index_in_epoch: u64,
         leaf: &CommitmentLeaf,
     ) -> Result<()>;
 
     fn machine_state_hash(
-        &self,
+        &mut self,
         epoch_number: u64,
         state_hash_index_in_epoch: u64,
     ) -> Result<Option<CommitmentLeaf>>;
 
-    fn machine_state_hashes(&self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>>;
+    fn machine_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>>;
 
-    fn settlement_info(&self, epoch_number: u64) -> Result<Option<Settlement>>;
+    fn settlement_info(&mut self, epoch_number: u64) -> Result<Option<Settlement>>;
 
-    fn add_settlement_info(&self, settlement: &Settlement, epoch_number: u64) -> Result<()>;
+    fn add_settlement_info(&mut self, settlement: &Settlement, epoch_number: u64) -> Result<()>;
 
-    fn add_snapshot(&self, path: &str, epoch_number: u64, input_index_in_epoch: u64) -> Result<()>;
+    fn add_snapshot(
+        &mut self,
+        path: &str,
+        epoch_number: u64,
+        input_index_in_epoch: u64,
+    ) -> Result<()>;
 
-    fn latest_snapshot(&self) -> Result<Option<(String, u64, u64)>>;
+    fn latest_snapshot(&mut self) -> Result<Option<(String, u64, u64)>>;
 
-    fn snapshot(&self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<String>>;
+    fn snapshot(&mut self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<String>>;
 }
 
 #[derive(Error, Debug)]
