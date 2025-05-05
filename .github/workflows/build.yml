@@ -246,7 +246,7 @@ jobs:
         with:
           name: cartesi-rollups-prt-node-linux-${{ matrix.arch }}
           path: |
-            ./cartesi-rollups-prt-node-linux-${{ matrix.arch }}
+            ./cartesi-rollups-prt-node
           if-no-files-found: error
           retention-days: 1
 
