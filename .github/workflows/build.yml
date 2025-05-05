@@ -275,7 +275,6 @@ jobs:
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
-          executable-name: cartesi-rollups-prt-node-linux-${{ matrix.arch }}
-          archive-name: cartesi-rollups-prt-node-linux-gnu-${{ matrix.arch }}-${{ github.ref_name }}.tar.gz
+          executable-name: cartesi-rollups-prt-node
           target: ${{ matrix.target }}
           changes-file: CHANGELOG.md
