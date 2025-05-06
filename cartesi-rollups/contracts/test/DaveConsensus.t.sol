@@ -24,15 +24,28 @@ import {Memory} from "step/src/Memory.sol";
 import {DaveConsensus} from "src/DaveConsensus.sol";
 import {Merkle} from "src/Merkle.sol";
 
-contract MerkleProxy {
+library ExternalMerkle {
     using Merkle for bytes;
+    using Merkle for uint256;
 
-    function getMinLog2SizeOfDrive(bytes calldata data) external pure returns (uint256) {
-        return data.getMinLog2SizeOfDrive();
+    function getMinLog2SizeOfDriveLength(uint256 dataLength) external pure returns (uint256) {
+        return dataLength.getMinLog2SizeOfDriveLength();
     }
 
     function getMerkleRootFromBytes(bytes calldata data, uint256 log2SizeOfDrive) external pure returns (bytes32) {
         return data.getMerkleRootFromBytes(log2SizeOfDrive);
+    }
+}
+
+library ExternalLibMerkle32 {
+    using LibMerkle32 for bytes32[];
+
+    function merkleRootAfterReplacement(bytes32[] calldata sibs, uint256 index, bytes32 leaf)
+        external
+        pure
+        returns (bytes32)
+    {
+        return sibs.merkleRootAfterReplacement(index, leaf);
     }
 }
 
@@ -112,25 +125,17 @@ contract MockTournamentFactory is ITournamentFactory {
     }
 }
 
-contract LibMerkle32Wrapper {
-    function merkleRootAfterReplacement(bytes32[] calldata sibs, uint256 index, bytes32 leaf)
-        external
-        pure
-        returns (bytes32)
-    {
-        return LibMerkle32.merkleRootAfterReplacement(sibs, index, leaf);
-    }
-}
-
 contract DaveConsensusTest is Test {
+    using ExternalMerkle for bytes;
+    using ExternalMerkle for uint256;
+    using ExternalLibMerkle32 for bytes32[];
+
     IInputBox _inputBox;
     MockTournamentFactory _mockTournamentFactory;
-    MerkleProxy _merkleProxy;
 
     function setUp() external {
         _inputBox = new InputBox();
         _mockTournamentFactory = new MockTournamentFactory();
-        _merkleProxy = new MerkleProxy();
     }
 
     function testMockTournamentFactory() external view {
@@ -356,8 +361,8 @@ contract DaveConsensusTest is Test {
             inputIndexWithinBounds = bound(inputIndexWithinBounds, 0, inputs.length - 1);
             bytes memory input = inputs[inputIndexWithinBounds];
             bytes32 root = daveConsensus.provideMerkleRootOfInput(inputIndexWithinBounds, input);
-            uint256 log2SizeOfDrive = _merkleProxy.getMinLog2SizeOfDrive(input);
-            assertEq(root, _merkleProxy.getMerkleRootFromBytes(input, log2SizeOfDrive));
+            uint256 log2SizeOfDrive = input.length.getMinLog2SizeOfDriveLength();
+            assertEq(root, input.getMerkleRootFromBytes(log2SizeOfDrive));
         }
 
         {
@@ -423,7 +428,11 @@ contract DaveConsensusTest is Test {
         return new DaveConsensus{salt: salt}(_inputBox, appContract, _mockTournamentFactory, initialState);
     }
 
-    function _statesAndProofs(bytes32 outputsMerkleRoot) private returns (Machine.Hash, bytes32[] memory, bytes32) {
+    function _statesAndProofs(bytes32 outputsMerkleRoot)
+        private
+        pure
+        returns (Machine.Hash, bytes32[] memory, bytes32)
+    {
         uint256 levels = Memory.LOG2_MAX_SIZE;
         bytes32[] memory siblings = new bytes32[](levels);
 
@@ -434,8 +443,8 @@ contract DaveConsensusTest is Test {
             current = keccak256(abi.encodePacked(current, current));
         }
 
-        bytes32 root = new LibMerkle32Wrapper().merkleRootAfterReplacement(
-            siblings, EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE, leaf
+        bytes32 root = siblings.merkleRootAfterReplacement(
+            EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE, leaf
         );
         assertEq(current, root);
 

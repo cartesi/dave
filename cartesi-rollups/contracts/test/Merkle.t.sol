@@ -32,8 +32,8 @@ library MerkleWrapper {
         );
     }
 
-    function getMinLog2SizeOfDrive(bytes calldata data) external pure returns (uint256) {
-        return Merkle.getMinLog2SizeOfDrive(data);
+    function getMinLog2SizeOfDriveLength(uint256 dataLength) external pure returns (uint256) {
+        return Merkle.getMinLog2SizeOfDriveLength(dataLength);
     }
 
     function getMerkleRootFromBytes(bytes calldata data, uint256 log2SizeOfDrive) external pure returns (bytes32) {
@@ -307,15 +307,18 @@ contract MerkleTest is Test {
         );
     }
 
-    function testGetMinLog2SizeOfDrive(bytes calldata data) external pure {
-        uint256 log2SizeOfDrive = MerkleWrapper.getMinLog2SizeOfDrive(data);
-        assertLe(data.length, 1 << log2SizeOfDrive);
-        if (data.length <= LEAF_SIZE) {
+    function testGetMinLog2SizeOfDrive(uint256 dataLength) external pure {
+        uint256 log2SizeOfDrive = MerkleWrapper.getMinLog2SizeOfDriveLength(dataLength);
+        if (log2SizeOfDrive < 256) {
+            // If log2SizeOfDrive >= 256, then the following would always be true
+            // (if it were not for the overflow that would happen)
+            assertLe(dataLength, 1 << log2SizeOfDrive);
+        }
+        if (dataLength <= LEAF_SIZE) {
             assertEq(log2SizeOfDrive, MerkleConstants.LOG2_LEAF_SIZE);
         } else {
-            assertGt(data.length, 1 << (log2SizeOfDrive - 1));
+            assertGt(dataLength, 1 << (log2SizeOfDrive - 1));
         }
-        MerkleWrapper.getMerkleRootFromBytes(data, log2SizeOfDrive);
     }
 
     function testGetMerkleRootFromBytes() external pure {

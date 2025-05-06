@@ -46,6 +46,7 @@ import {Merkle} from "./Merkle.sol";
 ///
 contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     using Merkle for bytes;
+    using Merkle for uint256;
     using LibMerkle32 for bytes32[];
 
     /// @notice The input box contract
@@ -222,7 +223,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         bytes32 realInputHash = _inputBox.getInputHash(_appContract, inputIndex);
         require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
 
-        uint256 log2SizeOfDrive = input.getMinLog2SizeOfDrive();
+        uint256 log2SizeOfDrive = input.length.getMinLog2SizeOfDriveLength();
         return input.getMerkleRootFromBytes(log2SizeOfDrive);
     }
 

@@ -59,13 +59,13 @@ library Merkle {
         return replacement;
     }
 
-    /// @notice Get the log2 of the smallest drive that first the provided data.
-    /// @param data the byte array
+    /// @notice Get the log2 of the smallest drive that first data with the provided length.
+    /// @param dataLength the length of the byte array
     /// @dev If data is smaller than the drive, it is padded with zeros.
     /// @dev The smallest tree covers at least one leaf.
     /// @dev See `MerkleConstants` for leaf size.
-    function getMinLog2SizeOfDrive(bytes calldata data) internal pure returns (uint256) {
-        return data.length.log2clp().max(MerkleConstants.LOG2_LEAF_SIZE);
+    function getMinLog2SizeOfDriveLength(uint256 dataLength) internal pure returns (uint256) {
+        return dataLength.log2clp().max(MerkleConstants.LOG2_LEAF_SIZE);
     }
 
     /// @notice Get the Merkle root of a byte array.
