@@ -239,7 +239,7 @@ jobs:
       - name: Build release
         run: |
           cargo build --release -p dave-rollups --target ${{ matrix.target }}
-          cp -v ./target/${{ matrix.target }}/release/dave-rollups cartesi-rollups-prt-node-linux-${{ matrix.arch }}
+          cp -v ./target/${{ matrix.target }}/release/dave-rollups cartesi-rollups-prt-node
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
