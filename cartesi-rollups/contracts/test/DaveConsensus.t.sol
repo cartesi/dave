@@ -315,6 +315,22 @@ contract DaveConsensusTest is Test {
         }
     }
 
+    function testSettleGas() external {
+        address appContract = vm.addr(1);
+        uint256 inputCount0 = uint256(keccak256("inputCount0")) % 10;
+        _addInputs(appContract, inputCount0);
+        Machine.Hash state0 = Machine.Hash.wrap(keccak256("state0"));
+        bytes32 salt0 = keccak256("salt0");
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, state0, salt0);
+        MockTournament tournament = _mockTournamentFactory.getMockTournament(0);
+        Tree.Node winnerCommitment = Tree.Node.wrap(keccak256("winnerCommitment"));
+        bytes32 outputsMerkleRoot1 = keccak256("outputsMerkleRoot1");
+        (Machine.Hash state1, bytes32[] memory proof1, bytes32 leaf1) = _statesAndProofs(outputsMerkleRoot1);
+        tournament.finish(winnerCommitment, state1);
+        uint256 epochNumber = 0;
+        daveConsensus.settle(epochNumber, leaf1, proof1);
+    }
+
     function testSettleReverts(
         address appContract,
         Machine.Hash[2] calldata states,
