@@ -5,6 +5,7 @@ pragma solidity ^0.8.8;
 
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.sol";
+import {SafeCast} from "@openzeppelin-contracts-5.2.0/utils/math/SafeCast.sol";
 
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-2.0.0/consensus/IOutputsMerkleRootValidator.sol";
 import {IInputBox} from "cartesi-rollups-contracts-2.0.0/inputs/IInputBox.sol";
@@ -48,6 +49,14 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     using Merkle for bytes;
     using Merkle for uint256;
     using LibMerkle32 for bytes32[];
+    using SafeCast for uint256;
+
+    struct SealedEpoch {
+        uint64 number;
+        uint64 inputIndexLowerBound;
+        uint64 inputIndexUpperBound;
+        ITournament tournament;
+    }
 
     /// @notice The input box contract
     IInputBox immutable _inputBox;
@@ -58,17 +67,8 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     /// @notice The contract used to instantiate tournaments
     ITournamentFactory immutable _tournamentFactory;
 
-    /// @notice Current sealed epoch number
-    uint256 _epochNumber;
-
-    /// @notice Input index (inclusive) lower bound of the current sealed epoch
-    uint256 _inputIndexLowerBound;
-
-    /// @notice Input index (exclusive) upper bound of the current sealed epoch
-    uint256 _inputIndexUpperBound;
-
-    /// @notice Current sealed epoch tournament
-    ITournament _tournament;
+    /// @notice The current sealed epoch
+    SealedEpoch _epoch;
 
     /// @notice Settled output trees' merkle root hash
     mapping(bytes32 => bool) _outputsMerkleRoots;
@@ -133,48 +133,35 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         _tournamentFactory = tournamentFactory;
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
-        // Initialize first sealed epoch
-        uint256 inputIndexUpperBound = inputBox.getNumberOfInputs(appContract);
-        _inputIndexUpperBound = inputIndexUpperBound;
-        ITournament tournament = tournamentFactory.instantiate(initialMachineStateHash, this);
-        _tournament = tournament;
-        emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, bytes32(0), tournament);
+        // Seal first epoch
+        _sealEpoch(0, 0, initialMachineStateHash, bytes32(0));
     }
 
     function canSettle() external view returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment) {
-        (isFinished, winnerCommitment,) = _tournament.arbitrationResult();
-        epochNumber = _epochNumber;
+        (isFinished, winnerCommitment,) = _epoch.tournament.arbitrationResult();
+        epochNumber = _epoch.number;
     }
 
     function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external {
-        // Check tournament settlement
-        require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
+        // Get current sealed epoch
+        SealedEpoch memory epoch = _epoch;
+
+        // Check epoch number
+        require(epochNumber == epoch.number, IncorrectEpochNumber(epochNumber, epoch.number));
 
         // Check tournament finished
-        (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournament.arbitrationResult();
+        (bool isFinished,, Machine.Hash finalMachineStateHash) = epoch.tournament.arbitrationResult();
         require(isFinished, TournamentNotFinishedYet());
-        _tournament = ITournament(address(0));
+        _epoch.tournament = ITournament(address(0));
 
         // Check outputs Merkle root
         _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
 
-        // Seal current accumulating epoch, save settled output tree
-        _epochNumber++;
-        _inputIndexLowerBound = _inputIndexUpperBound;
-        _inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
+        // Seal current accumulating epoch
+        _sealEpoch(epoch.number + 1, epoch.inputIndexUpperBound, finalMachineStateHash, outputsMerkleRoot);
+
+        // Save settled output tree
         _outputsMerkleRoots[outputsMerkleRoot] = true;
-
-        // Start new tournament
-        _tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
-
-        emit EpochSealed(
-            _epochNumber,
-            _inputIndexLowerBound,
-            _inputIndexUpperBound,
-            finalMachineStateHash,
-            outputsMerkleRoot,
-            _tournament
-        );
     }
 
     function getCurrentSealedEpoch()
@@ -187,10 +174,10 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
             ITournament tournament
         )
     {
-        epochNumber = _epochNumber;
-        inputIndexLowerBound = _inputIndexLowerBound;
-        inputIndexUpperBound = _inputIndexUpperBound;
-        tournament = _tournament;
+        epochNumber = _epoch.number;
+        inputIndexLowerBound = _epoch.inputIndexLowerBound;
+        inputIndexUpperBound = _epoch.inputIndexUpperBound;
+        tournament = _epoch.tournament;
     }
 
     function getInputBox() external view returns (IInputBox) {
@@ -212,9 +199,9 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         override
         returns (bytes32)
     {
-        uint256 inputIndex = _inputIndexLowerBound + inputIndexWithinEpoch;
+        uint256 inputIndex = uint256(_epoch.inputIndexLowerBound) + inputIndexWithinEpoch;
 
-        if (inputIndex >= _inputIndexUpperBound) {
+        if (inputIndex >= _epoch.inputIndexUpperBound) {
             // out-of-bounds index: repeat the state (as a fixpoint function)
             return bytes32(0);
         }
@@ -258,5 +245,26 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         );
 
         require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
+    }
+
+    function _sealEpoch(
+        uint64 number,
+        uint64 inputIndexLowerBound,
+        Machine.Hash initialMachineStateHash,
+        bytes32 outputsMerkleRoot
+    ) internal {
+        uint256 inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
+        ITournament tournament = _tournamentFactory.instantiate(initialMachineStateHash, this);
+
+        _epoch = SealedEpoch({
+            number: number,
+            inputIndexLowerBound: inputIndexLowerBound,
+            inputIndexUpperBound: inputIndexUpperBound.toUint64(),
+            tournament: tournament
+        });
+
+        emit EpochSealed(
+            number, inputIndexLowerBound, inputIndexUpperBound, initialMachineStateHash, outputsMerkleRoot, tournament
+        );
     }
 }
