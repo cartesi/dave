@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     info!("Hello from Dave Rollups!");
 
     let mut parameters = PRTParameters::parse();
-    parameters.blockchain_config.initialize();
+    parameters.initialize().await;
     info!("Running with config:\n{}", parameters);
 
     let state_manager = Arc::new(PersistentStateAccess::new(Connection::open(
