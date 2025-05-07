@@ -53,6 +53,14 @@ impl fmt::Display for PRTParameters {
     }
 }
 
+impl PRTParameters {
+    pub async fn initialize(&mut self) {
+        self.blockchain_config.initialize();
+        let provider = create_provider(&self.blockchain_config).await;
+        self.address_book.initialize(&provider).await;
+    }
+}
+
 pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
     let endpoint_url: Url = Url::parse(&config.web3_rpc_url).expect("invalid rpc url");
 

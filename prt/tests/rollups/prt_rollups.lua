@@ -1,7 +1,7 @@
 require "setup_path"
 
 -- consensus contract address in anvil deployment
-local CONSENSUS_ADDRESS = os.getenv("CONSENSUS") or "0x0165878A594ca255338adfa4d48449f69242Eb8F"
+local CONSENSUS_ADDRESS = os.getenv("CONSENSUS") or "0x610178da211fef7d417bc0e6fed39f05609ad788"
 -- input contract address in anvil deployment
 local INPUT_BOX_ADDRESS = os.getenv("INPUT_BOX") or "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 -- number of epochs to run the rollups test
