@@ -1,6 +1,5 @@
 use cartesi_rollups_prt_node::{
-    PRTParameters, create_blockchain_reader_task, create_epoch_manager_task,
-    create_machine_runner_task, create_provider,
+    PRTConfig, create_blockchain_reader_task, create_epoch_manager_task, create_machine_runner_task,
 };
 use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
@@ -18,14 +17,13 @@ async fn main() -> Result<()> {
 
     info!("Hello from Dave Rollups!");
 
-    let mut parameters = PRTParameters::parse();
-    parameters.initialize().await;
+    let mut parameters = PRTConfig::parse();
+    let provider = parameters.initialize().await;
     info!("Running with config:\n{}", parameters);
 
     let state_manager = Arc::new(PersistentStateAccess::new(Connection::open(
         parameters.state_dir.join("state.db"),
     )?)?);
-    let provider = create_provider(&parameters.blockchain_config).await;
 
     let blockchain_reader_task =
         create_blockchain_reader_task(state_manager.clone(), provider.clone(), &parameters);

@@ -12,7 +12,10 @@ use tokio::task::JoinHandle;
 use tokio::task::{spawn, spawn_blocking};
 
 use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
-use cartesi_prt_core::tournament::{ANVIL_KEY_1, BlockchainConfig, EthArenaSender};
+use cartesi_prt_core::{
+    machine::MachineInstance,
+    tournament::{ANVIL_KEY_1, BlockchainConfig, EthArenaSender},
+};
 use rollups_blockchain_reader::{AddressBook, BlockchainReader};
 use rollups_epoch_manager::EpochManager;
 use rollups_machine_runner::MachineRunner;
@@ -24,7 +27,7 @@ const SNAPSHOT_DURATION: u64 = 30;
 #[derive(Debug, Clone, Parser)]
 #[command(name = "cartesi_dave_config")]
 #[command(about = "Config of Cartesi Dave")]
-pub struct PRTParameters {
+pub struct PRTConfig {
     #[command(flatten)]
     pub address_book: AddressBook,
     #[command(flatten)]
@@ -39,9 +42,9 @@ pub struct PRTParameters {
     pub state_dir: PathBuf,
 }
 
-impl fmt::Display for PRTParameters {
+impl fmt::Display for PRTConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "PRTParameters:")?;
+        writeln!(f, "PRTConfig:")?;
         writeln!(f, "  Address Book:\n{}", self.address_book)?; // Replace with `self.address_book` if it implements Display
         writeln!(f, "  Blockchain Config:\n{}", self.blockchain_config)?; // Same here
         writeln!(f, "  Machine Path: {}", self.machine_path)?;
@@ -53,11 +56,21 @@ impl fmt::Display for PRTParameters {
     }
 }
 
-impl PRTParameters {
-    pub async fn initialize(&mut self) {
+impl PRTConfig {
+    pub async fn initialize(&mut self) -> DynProvider {
         self.blockchain_config.initialize();
         let provider = create_provider(&self.blockchain_config).await;
-        self.address_book.initialize(&provider).await;
+        let consensus_initial_hash = self.address_book.initialize(&provider).await;
+        let machine_initial_hash = MachineInstance::new_from_path(self.machine_path.as_str())
+            .expect("fail to load machine path")
+            .root_hash()
+            .expect("fail to get machine initial hash");
+        assert_eq!(
+            machine_initial_hash, consensus_initial_hash,
+            "local machine initial hash doesn't match on-chain"
+        );
+
+        provider
     }
 }
 
@@ -116,7 +129,7 @@ pub async fn create_provider(config: &BlockchainConfig) -> DynProvider {
 pub fn create_blockchain_reader_task(
     state_manager: Arc<PersistentStateAccess>,
     provider: DynProvider,
-    parameters: &PRTParameters,
+    parameters: &PRTConfig,
 ) -> JoinHandle<()> {
     let params = parameters.clone();
 
@@ -142,7 +155,7 @@ pub fn create_blockchain_reader_task(
 pub fn create_epoch_manager_task(
     provider: DynProvider,
     state_manager: Arc<PersistentStateAccess>,
-    parameters: &PRTParameters,
+    parameters: &PRTConfig,
 ) -> JoinHandle<()> {
     let arena_sender =
         EthArenaSender::new(provider.clone()).expect("could not create arena sender");
@@ -168,7 +181,7 @@ pub fn create_epoch_manager_task(
 
 pub fn create_machine_runner_task(
     state_manager: Arc<PersistentStateAccess>,
-    parameters: &PRTParameters,
+    parameters: &PRTConfig,
 ) -> JoinHandle<()> {
     let params = parameters.clone();
 

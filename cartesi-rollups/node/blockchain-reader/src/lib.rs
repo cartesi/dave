@@ -5,14 +5,13 @@ mod find_contract_creation;
 
 use crate::error::{ProviderErrors, Result};
 
-use alloy::rpc::types::{Log, Topic};
 use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
-    hex::FromHex,
-    hex::ToHexExt,
+    hex::{FromHex, ToHexExt},
     primitives::{Address, U256},
     providers::{DynProvider, Provider},
+    rpc::types::{Log, Topic},
     sol_types::SolEvent,
 };
 use async_recursion::async_recursion;
@@ -30,6 +29,7 @@ use std::{
 };
 
 use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
+use cartesi_dave_merkle::Digest;
 use cartesi_rollups_contracts::{application::Application, inputbox::InputBox::InputAdded};
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
@@ -61,28 +61,46 @@ impl fmt::Display for AddressBook {
 }
 
 impl AddressBook {
-    pub async fn initialize(&mut self, provider: &DynProvider) {
-        if self.app == Address::ZERO {
-            self.consensus = Address::from_hex(DEVNET_CONSENSUS_ADDRESS)
-                .expect("fail to load consensus address");
-            self.input_box = Address::from_hex(DEVNET_INPUT_BOX_ADDRESS)
-                .expect("fail to load input box address");
-        } else {
-            let application = Application::new(self.app, provider);
-            self.consensus = application
-                .getOutputsMerkleRootValidator()
-                .call()
-                .await
-                .expect("fail to query consensus address")
-                ._0;
-            let consensus = DaveConsensus::new(self.consensus, provider);
-            self.input_box = consensus
-                .getInputBox()
-                .call()
-                .await
-                .expect("fail to query input box address")
-                ._0;
-        }
+    // initialize `AddressBook` and return the machine initial hash of epoch 0
+    pub async fn initialize(&mut self, provider: &DynProvider) -> Digest {
+        let consensus_contract = {
+            if self.app == Address::ZERO {
+                self.consensus = Address::from_hex(DEVNET_CONSENSUS_ADDRESS)
+                    .expect("fail to load consensus address");
+                self.input_box = Address::from_hex(DEVNET_INPUT_BOX_ADDRESS)
+                    .expect("fail to load input box address");
+                DaveConsensus::new(self.consensus, provider)
+            } else {
+                let application = Application::new(self.app, provider);
+                self.consensus = application
+                    .getOutputsMerkleRootValidator()
+                    .call()
+                    .await
+                    .expect("fail to query consensus address")
+                    ._0;
+                let consensus = DaveConsensus::new(self.consensus, provider);
+                self.input_box = consensus
+                    .getInputBox()
+                    .call()
+                    .await
+                    .expect("fail to query input box address")
+                    ._0;
+                consensus
+            }
+        };
+        let consensus_created_block = find_contract_creation_block(provider, self.consensus)
+            .await
+            .expect("fail to get consensus creation block");
+        let sealed_epochs = consensus_contract
+            .EpochSealed_filter()
+            .address(self.consensus)
+            .from_block(consensus_created_block)
+            .to_block(consensus_created_block)
+            .query()
+            .await
+            .expect("fail to get sealed epoch 0");
+        assert!(sealed_epochs.len() == 1);
+        sealed_epochs[0].0.initialMachineStateHash.into()
     }
 }
 
