@@ -1,0 +1,33 @@
+name: setup-tools
+description: Install base tools
+inputs:
+  target:
+    description: 'Architecture to build for'
+    required: false
+    default: 'x86_64-unknown-linux-gnu'
+  rust_version:
+    description: 'Rust version to install'
+    required: false
+    default: '1.86'
+runs:
+  using: composite
+  steps:
+    - name: Set up QEMU for riscv support
+      uses: docker/setup-qemu-action@v3
+
+    - name: Install Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        components: rustfmt
+        target: ${{ inputs.target }}
+        toolchain: ${{ inputs.rust_version }}
+        cache-on-failure: false
+        cache-bin: false
+
+    - name: Install Foundry
+      uses: foundry-rs/foundry-toolchain@v1
+      with:
+        version: stable
+
+    - name: Install just
+      uses: extractions/setup-just@v3
