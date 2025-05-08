@@ -7,7 +7,7 @@ use alloy::{
 use error::Result;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
-use std::{path::PathBuf, str::FromStr, time::Duration};
+use std::{ops::ControlFlow, path::PathBuf, str::FromStr, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
@@ -15,7 +15,7 @@ use cartesi_prt_core::{
     strategy::player::Player,
     tournament::{EthArenaSender, allow_revert_rethrow_others},
 };
-use rollups_state_manager::{Epoch, Proof, StateManager};
+use rollups_state_manager::{Epoch, Proof, StateManager, sync::Watch};
 
 pub struct EpochManager<SM: StateManager> {
     provider: DynProvider,
@@ -45,14 +45,26 @@ impl<SM: StateManager> EpochManager<SM> {
         }
     }
 
-    pub async fn start(mut self) -> Result<()> {
+    pub fn start(self, watch: Watch) -> Result<()> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("`EpochManager` runtime build failure");
+
+        rt.block_on(async move { self.execution_loop(watch).await })
+    }
+
+    pub async fn execution_loop(mut self, watch: Watch) -> Result<()> {
         let dave_consensus =
             daveconsensus::DaveConsensus::new(self.consensus, self.provider.clone());
 
         loop {
             self.try_settle_epoch(&dave_consensus).await?;
             self.try_react_epoch().await?;
-            tokio::time::sleep(self.sleep_duration).await;
+
+            if matches!(watch.wait(self.sleep_duration), ControlFlow::Break(_)) {
+                break Ok(());
+            }
         }
     }
 

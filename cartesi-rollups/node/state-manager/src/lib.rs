@@ -3,6 +3,7 @@
 
 pub mod persistent_state_access;
 pub mod state_manager;
+pub mod sync;
 
 pub use state_manager::StateAccessError;
 pub use state_manager::StateManager;

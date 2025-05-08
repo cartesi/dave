@@ -57,6 +57,9 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
                 None => (initial_machine.to_string(), 0, 0),
             };
 
+        // TODO as an optimization, advance snapshot to latest without computation hash, since it's
+        // faster.
+
         let rollups_machine = RollupsMachine::new(
             Path::new(&snapshot),
             epoch_number,
@@ -141,31 +144,23 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
 
         if remaining_strides > 0 {
             let hash = self.rollups_machine.state_hash()?;
-            self.add_state_hash(&CommitmentLeaf {
+            self.add_state_hashes(&[CommitmentLeaf {
                 hash,
                 repetitions: remaining_strides,
-            })?;
+            }])?;
         }
 
         Ok(())
     }
 
     fn add_state_hashes(&mut self, state_hashes: &[CommitmentLeaf]) -> Result<()> {
-        for state_hash in state_hashes {
-            self.add_state_hash(state_hash)?;
-        }
-
-        Ok(())
-    }
-
-    fn add_state_hash(&mut self, state_hash: &CommitmentLeaf) -> Result<()> {
-        self.state_manager.add_machine_state_hash(
+        self.state_manager.add_machine_state_hashes(
             self.rollups_machine.epoch(),
             self.state_hash_index_in_epoch,
-            state_hash,
+            state_hashes,
         )?;
 
-        self.state_hash_index_in_epoch += 1;
+        self.state_hash_index_in_epoch += state_hashes.len() as u64;
 
         Ok(())
     }

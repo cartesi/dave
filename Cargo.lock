@@ -4118,6 +4118,7 @@ name = "rollups-blockchain-reader"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "anyhow",
  "async-recursion",
  "cartesi-dave-contracts",
  "cartesi-dave-merkle",
@@ -4129,6 +4130,7 @@ dependencies = [
  "rollups-state-manager",
  "rusqlite",
  "rusqlite_migration",
+ "tempfile",
  "thiserror",
  "tokio",
 ]

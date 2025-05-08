@@ -29,7 +29,7 @@ INSERT OR IGNORE INTO latest_processed (id, block)
 CREATE TABLE IF NOT EXISTS machine_state_hashes (
     epoch_number INTEGER NOT NULL,
     state_hash_index_in_epoch INTEGER NOT NULL,
-    repetitions INTEGER NOT NULL,
+    repetitions INTEGER NOT NULL CHECK (repetitions > 0),
     machine_state_hash BLOB NOT NULL,
     PRIMARY KEY (epoch_number, state_hash_index_in_epoch)
 );

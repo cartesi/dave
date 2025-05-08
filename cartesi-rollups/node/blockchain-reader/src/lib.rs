@@ -19,6 +19,8 @@ use clap::Parser;
 use find_contract_creation::find_contract_creation_block;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
+use rollups_state_manager::sync::Watch;
+use std::ops::ControlFlow;
 use std::{
     iter::Peekable,
     marker::{Send, Sync},
@@ -49,8 +51,8 @@ pub struct AddressBook {
 
 pub struct BlockchainReader<SM: StateManager> {
     state_manager: SM,
+    provider: DynProvider,
     address_book: AddressBook,
-    provider: PartitionProvider,
     input_reader: EventReader<InputAdded>,
     epoch_reader: EventReader<EpochSealed>,
     sleep_duration: Duration,
@@ -59,34 +61,33 @@ pub struct BlockchainReader<SM: StateManager> {
 impl<SM: StateManager> BlockchainReader<SM> {
     pub fn new(
         state_manager: SM,
-        address_book: AddressBook,
         provider: DynProvider,
+        address_book: AddressBook,
         sleep_duration: u64,
-    ) -> Result<Self> {
-        let partition_provider = PartitionProvider::new(provider);
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             state_manager,
             address_book,
-            provider: partition_provider,
+            provider,
             input_reader: EventReader::<InputAdded>::default(),
             epoch_reader: EventReader::<EpochSealed>::default(),
             sleep_duration: Duration::from_secs(sleep_duration),
-        })
+        }
     }
 
-    pub fn start(self) -> Result<()> {
+    pub fn start(self, watch: Watch) -> Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("runtime");
+            .expect("`BlockchainReader` runtime build failure");
 
-        rt.block_on(async move { self.run().await })
+        rt.block_on(async move { self.execution_loop(watch).await })
     }
 
-    async fn run(mut self) -> Result<()> {
+    async fn execution_loop(mut self, watch: Watch) -> Result<()> {
+        // TODO set genesis at main.rs
         let input_box_creation =
-            find_contract_creation_block(&self.provider.inner, self.address_book.input_box)
+            find_contract_creation_block(&self.provider, self.address_book.input_box)
                 .await
                 .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?;
         let latest_processed = self.state_manager.latest_processed_block()?;
@@ -95,14 +96,16 @@ impl<SM: StateManager> BlockchainReader<SM> {
         }
 
         loop {
-            let current_block = self.provider.latest_finalized_block().await?;
+            let current_block = latest_finalized_block(&self.provider).await?;
             let prev_block = self.state_manager.latest_processed_block()?;
 
             if current_block > prev_block {
                 self.advance(prev_block, current_block).await?;
             }
 
-            tokio::time::sleep(self.sleep_duration).await;
+            if matches!(watch.wait(self.sleep_duration), ControlFlow::Break(_)) {
+                break Ok(());
+            }
         }
     }
 
@@ -155,11 +158,11 @@ impl<SM: StateManager> BlockchainReader<SM> {
         Ok(self
             .epoch_reader
             .next(
+                &self.provider,
                 None,
                 &self.address_book.consensus,
                 prev_block,
                 current_block,
-                &self.provider,
             )
             .await?
             .iter()
@@ -195,11 +198,11 @@ impl<SM: StateManager> BlockchainReader<SM> {
         let input_events: Vec<_> = self
             .input_reader
             .next(
+                &self.provider,
                 Some(&self.address_book.app.into_word().into()),
                 &self.address_book.input_box,
                 prev_block,
                 current_block,
-                &self.provider,
             )
             .await?
             .into_iter()
@@ -293,24 +296,24 @@ pub struct EventReader<E: SolEvent + Send + Sync> {
 impl<E: SolEvent + Send + Sync> EventReader<E> {
     async fn next(
         &self,
+        provider: &impl Provider,
         topic1: Option<&Topic>,
         read_from: &Address,
         prev_finalized: u64,
         current_finalized: u64,
-        provider: &PartitionProvider,
     ) -> std::result::Result<Vec<(E, Log)>, ProviderErrors> {
         assert!(current_finalized > prev_finalized);
 
-        let logs = provider
-            .get_events(
-                topic1,
-                read_from,
-                // blocks are inclusive on both ends
-                prev_finalized + 1,
-                current_finalized,
-            )
-            .await
-            .map_err(ProviderErrors)?;
+        let logs = get_events(
+            provider,
+            topic1,
+            read_from,
+            // blocks are inclusive on both ends
+            prev_finalized + 1,
+            current_finalized,
+        )
+        .await
+        .map_err(ProviderErrors)?;
 
         Ok(logs)
     }
@@ -324,112 +327,100 @@ impl<E: SolEvent + Send + Sync> Default for EventReader<E> {
     }
 }
 
-struct PartitionProvider {
-    pub inner: DynProvider,
-}
-
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
 // ParitionProvider will attempt to fetch events in smaller partition if the original request is too large
-impl PartitionProvider {
-    fn new(provider: DynProvider) -> Self {
-        PartitionProvider { inner: provider }
-    }
+async fn get_events<E: SolEvent + Send + Sync>(
+    provider: &impl Provider,
+    topic1: Option<&Topic>,
+    read_from: &Address,
+    start_block: u64,
+    end_block: u64,
+) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
+    get_events_rec(provider, topic1, read_from, start_block, end_block).await
+}
 
-    async fn get_events<E: SolEvent + Send + Sync>(
-        &self,
-        topic1: Option<&Topic>,
-        read_from: &Address,
-        start_block: u64,
-        end_block: u64,
-    ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
-        self.get_events_rec(topic1, read_from, start_block, end_block)
-            .await
-    }
+#[async_recursion]
+async fn get_events_rec<E: SolEvent + Send + Sync>(
+    provider: &impl Provider,
+    topic1: Option<&Topic>,
+    read_from: &Address,
+    start_block: u64,
+    end_block: u64,
+) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
+    // TODO: partition log queries if range too large
+    let event: Event<(), _, E> = {
+        let mut e = Event::new_sol(provider, read_from)
+            .from_block(start_block)
+            .to_block(end_block)
+            .event(E::SIGNATURE);
 
-    #[async_recursion]
-    async fn get_events_rec<E: SolEvent + Send + Sync>(
-        &self,
-        topic1: Option<&Topic>,
-        read_from: &Address,
-        start_block: u64,
-        end_block: u64,
-    ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
-        // TODO: partition log queries if range too large
-        let event: Event<(), &DynProvider, E> = {
-            let mut e = Event::new_sol(&self.inner, read_from)
-                .from_block(start_block)
-                .to_block(end_block)
-                .event(E::SIGNATURE);
+        if let Some(t) = topic1 {
+            e = e.topic1(t.clone());
+        }
 
-            if let Some(t) = topic1 {
-                e = e.topic1(t.clone());
-            }
+        e
+    };
 
-            e
-        };
+    match event.query().await {
+        Ok(l) => Ok(l),
+        Err(e) => {
+            if should_retry_with_partition(&e) {
+                let middle = {
+                    let blocks = 1 + end_block - start_block;
+                    let half = blocks / 2;
+                    start_block + half - 1
+                };
 
-        match event.query().await {
-            Ok(l) => Ok(l),
-            Err(e) => {
-                if Self::should_retry_with_partition(&e) {
-                    let middle = {
-                        let blocks = 1 + end_block - start_block;
-                        let half = blocks / 2;
-                        start_block + half - 1
-                    };
+                let first_res =
+                    get_events_rec(provider, topic1, read_from, start_block, middle).await;
+                let second_res =
+                    get_events_rec(provider, topic1, read_from, middle + 1, end_block).await;
 
-                    let first_res = self
-                        .get_events_rec(topic1, read_from, start_block, middle)
-                        .await;
-                    let second_res = self
-                        .get_events_rec(topic1, read_from, middle + 1, end_block)
-                        .await;
-
-                    match (first_res, second_res) {
-                        (Ok(mut first), Ok(second)) => {
-                            first.extend(second);
-                            Ok(first)
-                        }
-
-                        (Err(mut first), Err(second)) => {
-                            first.extend(second);
-                            Err(first)
-                        }
-
-                        (Err(err), _) | (_, Err(err)) => Err(err),
+                match (first_res, second_res) {
+                    (Ok(mut first), Ok(second)) => {
+                        first.extend(second);
+                        Ok(first)
                     }
-                } else {
-                    Err(vec![e])
+
+                    (Err(mut first), Err(second)) => {
+                        first.extend(second);
+                        Err(first)
+                    }
+
+                    (Err(err), _) | (_, Err(err)) => Err(err),
                 }
+            } else {
+                Err(vec![e])
             }
         }
     }
+}
 
-    async fn latest_finalized_block(&self) -> std::result::Result<u64, ProviderErrors> {
-        let block_number = self
-            .inner
-            .get_block(Finalized.into())
-            .await
-            .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?
-            .expect("block is empty")
-            .header
-            .number;
+async fn latest_finalized_block(
+    provider: &impl Provider,
+) -> std::result::Result<u64, ProviderErrors> {
+    let block_number = provider
+        .get_block(Finalized.into())
+        .await
+        .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?
+        .expect("block is empty")
+        .header
+        .number;
 
-        Ok(block_number)
-    }
+    Ok(block_number)
+}
 
-    fn should_retry_with_partition(err: &Error) -> bool {
-        // infura limit error code: -32005
-        let query_limit_error_codes = [-32005];
-        for code in query_limit_error_codes {
-            let s = format!("{:?}", err);
-            if s.contains(&code.to_string()) {
-                return true;
-            }
+fn should_retry_with_partition(err: &Error) -> bool {
+    // infura limit error code: -32005
+    let query_limit_error_codes = [-32005];
+    for code in query_limit_error_codes {
+        let s = format!("{:?}", err);
+        if s.contains(&code.to_string()) {
+            return true;
         }
-
-        false
     }
+
+    false
 }
 
 #[cfg(test)]
@@ -437,6 +428,8 @@ mod test_utils;
 
 #[cfg(test)]
 mod blockchain_reader_tests {
+    use std::{sync::Arc, thread};
+
     use crate::*;
 
     use alloy::{
@@ -451,10 +444,7 @@ mod blockchain_reader_tests {
     };
     use rollups_state_manager::persistent_state_access::PersistentStateAccess;
 
-    use tokio::{
-        task::spawn_blocking,
-        time::{Duration, sleep},
-    };
+    use tokio::time::{Duration, sleep};
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
     const APP_ADDRESS: Address = Address::ZERO;
@@ -463,11 +453,9 @@ mod blockchain_reader_tests {
 
     use crate::test_utils::*;
 
-    fn create_partition_provider(url: &str) -> Result<PartitionProvider> {
-        let url = url.parse()?;
-        let provider = ProviderBuilder::new().on_http(url).erased();
-        let partition_provider = PartitionProvider::new(provider);
-        Ok(partition_provider)
+    fn create_provider(url: &str) -> DynProvider {
+        let url = url.parse().unwrap();
+        ProviderBuilder::new().on_http(url).erased()
     }
 
     fn create_epoch_reader() -> EventReader<EpochSealed> {
@@ -501,20 +489,19 @@ mod blockchain_reader_tests {
         epoch_reader: &EventReader<EpochSealed>,
         count: usize,
     ) -> Result<Vec<EpochSealed>> {
-        let partition_provider = create_partition_provider(url)?;
+        let provider = create_provider(url);
         let mut read_epochs = Vec::new();
         while read_epochs.len() != count {
             // latest finalized block must be greater than 0
-            let latest_finalized_block =
-                std::cmp::max(1, partition_provider.latest_finalized_block().await?);
+            let latest_finalized_block = std::cmp::max(1, latest_finalized_block(&provider).await?);
 
             read_epochs = epoch_reader
                 .next(
+                    &provider,
                     None,
                     consensus_address,
                     0,
                     latest_finalized_block,
-                    &partition_provider,
                 )
                 .await?
                 .into_iter()
@@ -533,20 +520,19 @@ mod blockchain_reader_tests {
         input_reader: &EventReader<InputAdded>,
         count: usize,
     ) -> Result<Vec<InputAdded>> {
-        let partition_provider = create_partition_provider(url)?;
+        let provider = create_provider(url);
         let mut read_inputs = Vec::new();
         while read_inputs.len() != count {
             // latest finalized block must be greater than 0
-            let latest_finalized_block =
-                std::cmp::max(1, partition_provider.latest_finalized_block().await?);
+            let latest_finalized_block = std::cmp::max(1, latest_finalized_block(&provider).await?);
 
             read_inputs = input_reader
                 .next(
+                    &provider,
                     Some(&APP_ADDRESS.into_word().into()),
                     inputbox_address,
                     0,
                     latest_finalized_block,
-                    &partition_provider,
                 )
                 .await?
                 .into_iter()
@@ -640,14 +626,21 @@ mod blockchain_reader_tests {
         let (anvil, provider, input_box_address, consensus_address, _) = spawn_anvil_and_provider();
 
         let inputbox = InputBox::new(input_box_address, provider.clone());
-        let mut state_manager = PersistentStateAccess::new_in_memory()?;
+
+        let dir = tempfile::TempDir::new()?;
+        let db_path = dir.path().join("my.db");
+        PersistentStateAccess::migrate(&db_path)?;
+        let mut state_manager = PersistentStateAccess::new(&db_path)?;
 
         // Note that inputbox is deployed with 1 input already
         // add inputs to epoch 0
         let input_count_1 = 2;
         add_input(&inputbox, INPUT_PAYLOAD, input_count_1).await?;
 
-        let r = spawn_blocking(move || {
+        let watch = Watch::default();
+
+        let watch_0 = watch.clone();
+        let r = thread::spawn(move || {
             let address_book = AddressBook {
                 app: APP_ADDRESS,
                 consensus: consensus_address,
@@ -655,20 +648,19 @@ mod blockchain_reader_tests {
             };
 
             let blockchain_reader = BlockchainReader::new(
-                PersistentStateAccess::new_in_memory().unwrap(),
-                address_book,
+                PersistentStateAccess::new(&db_path).unwrap(),
                 provider,
+                address_book,
                 1,
-            )
-            .unwrap();
+            );
 
-            blockchain_reader.start().unwrap();
+            blockchain_reader.start(watch_0).unwrap();
         });
 
         read_inputs_from_db_until_count(&mut state_manager, 0, 1).await?;
         read_inputs_from_db_until_count(&mut state_manager, 1, input_count_1).await?;
 
-        // add inputs to epoch 1
+        // add inputs ttest_blockchain_readero epoch 1
         let input_count_2 = 3;
         add_input(&inputbox, INPUT_PAYLOAD, input_count_2).await?;
         read_inputs_from_db_until_count(&mut state_manager, 1, input_count_1 + input_count_2)
@@ -684,8 +676,9 @@ mod blockchain_reader_tests {
         )
         .await?;
 
+        watch.notify(Arc::new(anyhow::anyhow!("".to_owned())));
+        r.join().unwrap();
         drop(anvil);
-        drop(r);
 
         Ok(())
     }

@@ -2,35 +2,40 @@ use dave_rollups::{
     DaveParameters, create_blockchain_reader_task, create_epoch_manager_task,
     create_machine_runner_task, create_provider,
 };
-use rollups_state_manager::persistent_state_access::PersistentStateAccess;
+use rollups_state_manager::sync::Watch;
 
 use anyhow::Result;
 use clap::Parser;
 use log::info;
-use rusqlite::Connection;
-use std::sync::Arc;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     env_logger::init();
 
     info!("Hello from Dave Rollups!");
 
     let parameters = DaveParameters::parse();
-    PersistentStateAccess::migrate(parameters.state_dir.join("state.db")?)?;
-    let provider = create_provider(&parameters.blockchain_config).await;
+    let provider = create_provider(&parameters.blockchain_config);
+    let watch = Watch::default();
 
-    // prepare futures
-    let blockchain_reader_task = create_blockchain_reader_task(provider.clone(), &parameters);
-    let epoch_manager_task = create_epoch_manager_task(provider.clone(), &parameters);
-    let machine_runner_task = create_machine_runner_task(&parameters);
+    // spawn workers
+    let blockchain_reader_task =
+        create_blockchain_reader_task(watch.clone(), provider.clone(), &parameters);
+    let epoch_manager_task =
+        create_epoch_manager_task(watch.clone(), provider.clone(), &parameters);
+    let machine_runner_task = create_machine_runner_task(watch.clone(), &parameters);
 
-    // run futures
-    futures::try_join!(
-        blockchain_reader_task,
-        epoch_manager_task,
-        machine_runner_task,
-    )?;
+    // monitor status
+    let err = loop {
+        match watch.wait(std::time::Duration::from_millis(1000)) {
+            std::ops::ControlFlow::Continue(()) => continue,
+            std::ops::ControlFlow::Break(e) => break e,
+        }
+    };
 
-    unreachable!("node services should run forever")
+    // shutdown
+    let _ = blockchain_reader_task.join();
+    let _ = epoch_manager_task.join();
+    let _ = machine_runner_task.join();
+
+    anyhow::bail!(err);
 }

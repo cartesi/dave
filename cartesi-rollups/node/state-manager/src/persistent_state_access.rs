@@ -27,7 +27,8 @@ impl PersistentStateAccess {
     }
 
     pub fn new_in_memory() -> std::result::Result<Self, rusqlite_migration::Error> {
-        let connection = Connection::open_in_memory()?;
+        let mut connection = Connection::open_in_memory()?;
+        migrations::migrate_to_latest(&mut connection).unwrap();
         Ok(Self { connection })
     }
 }
@@ -91,33 +92,45 @@ impl StateManager for PersistentStateAccess {
     // Rollup Data
     //
 
-    fn add_machine_state_hash(
+    fn add_machine_state_hashes(
         &mut self,
         epoch_number: u64,
-        state_hash_index_in_epoch: u64,
-        leaf: &CommitmentLeaf,
+        start_state_hash_index: u64,
+        leafs: &[CommitmentLeaf],
     ) -> Result<()> {
-        assert!(leaf.repetitions > 0);
-
         let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
 
-        // 1) Check existing, return if correct duplicate
-        if let Some(ref existing) =
-            rollup_data::get_commitment_if_exists(&tx, epoch_number, state_hash_index_in_epoch)?
-        {
-            assert!(existing == leaf);
-            return Ok(());
-        }
+        let (leafs, start_state_hash_index) =
+            match rollup_data::get_last_state_hash_index(&tx, epoch_number)? {
+                Some(last_idx) if start_state_hash_index <= last_idx => {
+                    let overlap_len = std::cmp::min(
+                        leafs.len(),
+                        (last_idx - start_state_hash_index + 1) as usize,
+                    );
 
-        // 2) Validate ordering. TODO: this should probably be an error, and not a panic.
-        if let Some(last_idx) = rollup_data::get_last_state_hash_index(&tx, epoch_number)? {
-            assert!(state_hash_index_in_epoch == last_idx + 1);
-        } else {
-            assert!(state_hash_index_in_epoch == 0);
-        }
+                    let (dup, new) = (&leafs[..overlap_len], &leafs[overlap_len..]);
+                    rollup_data::validate_dup_commitmets(
+                        &tx,
+                        dup,
+                        epoch_number,
+                        start_state_hash_index,
+                    )?;
 
-        // 3) Insert new
-        rollup_data::insert_commitment(&tx, epoch_number, state_hash_index_in_epoch, leaf)?;
+                    (new, start_state_hash_index + overlap_len as u64)
+                }
+
+                Some(last_idx) => {
+                    assert_eq!(start_state_hash_index, last_idx + 1);
+                    (leafs, start_state_hash_index)
+                }
+
+                None => {
+                    assert_eq!(start_state_hash_index, 0);
+                    (leafs, start_state_hash_index)
+                }
+            };
+
+        rollup_data::insert_commitments(&tx, epoch_number, start_state_hash_index, leafs)?;
 
         tx.commit().map_err(anyhow::Error::from)?;
         Ok(())
@@ -459,7 +472,7 @@ mod tests {
             repetitions: 5,
         };
         // lock problem
-        access.add_machine_state_hash(0, 0, &commitment_leaf_1)?;
+        access.add_machine_state_hashes(0, 0, &[commitment_leaf_1.clone()])?;
 
         assert_eq!(
             access.machine_state_hash(0, 0)?.unwrap(),
@@ -472,7 +485,7 @@ mod tests {
             "machine state 1 count shouldn't exist"
         );
 
-        access.add_machine_state_hash(0, 1, &commitment_leaf_2)?;
+        access.add_machine_state_hashes(0, 1, &[commitment_leaf_2.clone()])?;
 
         assert_eq!(
             access.machine_state_hash(0, 1)?.unwrap(),

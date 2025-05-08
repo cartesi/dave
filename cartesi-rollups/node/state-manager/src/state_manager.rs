@@ -29,11 +29,11 @@ pub trait StateManager {
     // Rollup Data
     //
 
-    fn add_machine_state_hash(
+    fn add_machine_state_hashes(
         &mut self,
         epoch_number: u64,
-        state_hash_index_in_epoch: u64,
-        leaf: &CommitmentLeaf,
+        start_state_hash_index: u64,
+        leafs: &[CommitmentLeaf],
     ) -> Result<()>;
 
     fn machine_state_hash(

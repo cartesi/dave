@@ -44,11 +44,13 @@ fn convert_row_to_settlement(row: &rusqlite::Row) -> rusqlite::Result<Settlement
 
 pub fn get_all_commitments(conn: &Connection, epoch_number: u64) -> Result<Vec<CommitmentLeaf>> {
     let mut stmt = conn
-        .prepare(
-            "SELECT machine_state_hash, repetitions \
-             FROM machine_state_hashes \
-             WHERE epoch_number = ?1
-             ORDER BY state_hash_index_in_epoch ASC",
+        .prepare_cached(
+            r#"
+            SELECT machine_state_hash, repetitions
+            FROM machine_state_hashes
+            WHERE epoch_number = ?1
+            ORDER BY state_hash_index_in_epoch ASC
+            "#,
         )
         .map_err(anyhow::Error::from)?;
 
@@ -68,12 +70,15 @@ pub fn get_commitment_if_exists(
     state_hash_index_in_epoch: u64,
 ) -> Result<Option<CommitmentLeaf>> {
     let mut stmt = conn
-        .prepare(
-            "SELECT machine_state_hash, repetitions \
-             FROM machine_state_hashes \
-             WHERE epoch_number = ?1 AND state_hash_index_in_epoch = ?2",
+        .prepare_cached(
+            r#"
+            SELECT machine_state_hash, repetitions
+            FROM machine_state_hashes
+            WHERE epoch_number = ?1 AND state_hash_index_in_epoch = ?2
+            "#,
         )
         .map_err(anyhow::Error::from)?;
+
     let row = stmt
         .query_row(
             params![epoch_number, state_hash_index_in_epoch],
@@ -86,11 +91,13 @@ pub fn get_commitment_if_exists(
 
 pub fn get_last_state_hash_index(conn: &Connection, epoch_number: u64) -> Result<Option<u64>> {
     let mut stmt = conn
-        .prepare(
-            "SELECT state_hash_index_in_epoch \
-             FROM machine_state_hashes \
-             WHERE epoch_number = ?1 \
-             ORDER BY state_hash_index_in_epoch DESC LIMIT 1",
+        .prepare_cached(
+            r#"
+            SELECT state_hash_index_in_epoch
+            FROM machine_state_hashes
+            WHERE epoch_number = ?1
+            ORDER BY state_hash_index_in_epoch DESC LIMIT 1
+            "#,
         )
         .map_err(anyhow::Error::from)?;
     let idx = stmt
@@ -100,40 +107,86 @@ pub fn get_last_state_hash_index(conn: &Connection, epoch_number: u64) -> Result
     Ok(idx)
 }
 
-pub fn insert_commitment(
+pub fn validate_dup_commitmets(
     conn: &Connection,
+    dups: &[CommitmentLeaf],
     epoch_number: u64,
-    state_hash_index_in_epoch: u64,
-    leaf: &CommitmentLeaf,
+    start_state_hash_index: u64,
 ) -> Result<()> {
-    let count = conn
-        .execute(
-            "INSERT INTO machine_state_hashes \
-             (epoch_number, state_hash_index_in_epoch, repetitions, machine_state_hash) \
-             VALUES (?1, ?2, ?3, ?4)",
-            params![
-                epoch_number,
-                state_hash_index_in_epoch,
-                leaf.repetitions,
-                leaf.hash.as_ref(),
-            ],
+    let mut stmt = conn
+        .prepare_cached(
+            r#"
+            SELECT machine_state_hash, repetitions
+            FROM machine_state_hashes
+            WHERE epoch_number = ?1
+            AND state_hash_index_in_epoch BETWEEN ?2 AND ?3
+            ORDER BY state_hash_index_in_epoch
+            "#,
         )
         .map_err(anyhow::Error::from)?;
 
-    assert_eq!(
-        count, 1,
-        "expected exactly one row to be inserted into machine_state_hashes"
-    );
+    let rows: Vec<CommitmentLeaf> = stmt
+        .query_map(
+            rusqlite::params![
+                epoch_number,
+                start_state_hash_index,
+                start_state_hash_index + dups.len() as u64 - 1
+            ],
+            convert_row_to_commitment_leaf,
+        )
+        .map_err(anyhow::Error::from)?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(anyhow::Error::from)?;
+
+    assert_eq!(rows, dups);
+
+    Ok(())
+}
+
+pub fn insert_commitments(
+    conn: &Connection,
+    epoch_number: u64,
+    start_index: u64,
+    leafs: &[CommitmentLeaf],
+) -> Result<()> {
+    let mut stmt = conn
+        .prepare_cached(
+            r#"
+            INSERT INTO machine_state_hashes
+            (epoch_number, state_hash_index_in_epoch, repetitions, machine_state_hash)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+        )
+        .map_err(anyhow::Error::from)?;
+
+    for (i, leaf) in leafs.iter().enumerate() {
+        let idx = start_index + i as u64;
+        let count = stmt
+            .execute(params![
+                epoch_number,
+                idx,
+                leaf.repetitions,
+                leaf.hash.as_ref(),
+            ])
+            .map_err(anyhow::Error::from)?;
+
+        assert_eq!(
+            count, 1,
+            "expected exactly one row to be inserted into machine_state_hashes"
+        );
+    }
 
     Ok(())
 }
 
 pub fn settlement_info(conn: &Connection, epoch_number: u64) -> Result<Option<Settlement>> {
     let mut stmt = conn
-        .prepare(
-            "SELECT computation_hash, output_merkle, output_proof
+        .prepare_cached(
+            r#"
+            SELECT computation_hash, output_merkle, output_proof
             FROM settlement_info
-            WHERE epoch_number = ?1",
+            WHERE epoch_number = ?1
+            "#,
         )
         .map_err(anyhow::Error::from)?;
 
@@ -150,18 +203,23 @@ pub fn insert_settlement_info(
     settlement: &Settlement,
     epoch_number: u64,
 ) -> Result<()> {
-    let count = conn
-        .execute(
-            "INSERT INTO settlement_info \
-            (epoch_number, computation_hash, output_merkle, output_proof) \
-            VALUES (?1, ?2, ?3, ?4)",
-            params![
-                epoch_number,
-                settlement.computation_hash.data(),
-                &settlement.output_merkle,
-                &settlement.output_proof.flatten(),
-            ],
+    let mut stmt = conn
+        .prepare_cached(
+            r#"
+            INSERT INTO settlement_info
+            (epoch_number, computation_hash, output_merkle, output_proof)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
         )
+        .map_err(anyhow::Error::from)?;
+
+    let count = stmt
+        .execute(params![
+            epoch_number,
+            settlement.computation_hash.data(),
+            &settlement.output_merkle,
+            &settlement.output_proof.flatten(),
+        ])
         .map_err(anyhow::Error::from)?;
 
     assert_eq!(count, 1, "expected exactly one row inserted");
@@ -190,7 +248,7 @@ mod tests {
             ],
             repetitions: 3,
         };
-        insert_commitment(&conn, 42, 7, &leaf).unwrap();
+        insert_commitments(&conn, 42, 7, &[leaf.clone()]).unwrap();
         let res = get_commitment_if_exists(&conn, 42, 7).unwrap();
         assert_eq!(res.unwrap(), leaf);
     }
@@ -212,9 +270,11 @@ mod tests {
         let leaf2 = CommitmentLeaf {
             hash: [2; 32],
             repetitions: 1,
+        };        let leaf3 = CommitmentLeaf {
+            hash: [3; 32],
+            repetitions: 1,
         };
-        insert_commitment(&conn, 5, 0, &leaf1).unwrap();
-        insert_commitment(&conn, 5, 2, &leaf2).unwrap();
+        insert_commitments(&conn, 5, 0, &[leaf1.clone(), leaf2.clone(), leaf3.clone()]).unwrap();
         let res = get_last_state_hash_index(&conn, 5).unwrap();
         assert_eq!(res, Some(2));
     }
@@ -226,7 +286,7 @@ mod tests {
             hash: [7; 32],
             repetitions: 5,
         };
-        insert_commitment(&conn, 42, 0, &leaf).unwrap();
+        insert_commitments(&conn, 42, 0, &[leaf.clone()]).unwrap();
         let fetched = get_all_commitments(&conn, 42).unwrap();
         assert_eq!(fetched, vec![leaf]);
     }
@@ -242,8 +302,7 @@ mod tests {
             hash: [4; 32],
             repetitions: 20,
         };
-        insert_commitment(&conn, 7, 0, &leaf1).unwrap();
-        insert_commitment(&conn, 7, 1, &leaf2).unwrap();
+        insert_commitments(&conn, 7, 0, &[leaf1.clone(), leaf2.clone()]).unwrap();
         let all = get_all_commitments(&conn, 7).unwrap();
         assert_eq!(all, vec![leaf1, leaf2]);
     }
