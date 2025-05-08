@@ -107,7 +107,7 @@ pub fn get_last_state_hash_index(conn: &Connection, epoch_number: u64) -> Result
     Ok(idx)
 }
 
-pub fn validate_dup_commitmets(
+pub fn validate_dup_commitments(
     conn: &Connection,
     dups: &[CommitmentLeaf],
     epoch_number: u64,
@@ -270,7 +270,8 @@ mod tests {
         let leaf2 = CommitmentLeaf {
             hash: [2; 32],
             repetitions: 1,
-        };        let leaf3 = CommitmentLeaf {
+        };
+        let leaf3 = CommitmentLeaf {
             hash: [3; 32],
             repetitions: 1,
         };
@@ -325,5 +326,124 @@ mod tests {
         insert_settlement_info(&conn, &settlement, 42).unwrap();
         let fetched = settlement_info(&conn, 42).unwrap().unwrap();
         assert_eq!(fetched, settlement);
+    }
+
+    #[test]
+    fn test_validate_dup_commitments_ok() {
+        let conn = setup_db();
+
+        let dups = vec![
+            CommitmentLeaf {
+                hash: [1; 32],
+                repetitions: 2,
+            },
+            CommitmentLeaf {
+                hash: [2; 32],
+                repetitions: 1,
+            },
+            CommitmentLeaf {
+                hash: [3; 32],
+                repetitions: 4,
+            },
+        ];
+        insert_commitments(&conn, 11, 5, &dups).unwrap();
+
+        // Should not panic / return Err
+        validate_dup_commitments(&conn, &dups, 11, 5).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion `left == right` failed")]
+    fn test_validate_dup_commitments_mismatch_panics() {
+        let conn = setup_db();
+
+        let stored = vec![
+            CommitmentLeaf {
+                hash: [9; 32],
+                repetitions: 1,
+            },
+            CommitmentLeaf {
+                hash: [8; 32],
+                repetitions: 1,
+            },
+        ];
+        insert_commitments(&conn, 22, 0, &stored).unwrap();
+
+        // Alter one repetition so the helper must panic
+        let wrong = vec![
+            CommitmentLeaf {
+                hash: [9; 32],
+                repetitions: 2,
+            }, // <- mismatch
+            CommitmentLeaf {
+                hash: [8; 32],
+                repetitions: 1,
+            },
+        ];
+
+        // Panics due to assert_eq! inside helper
+        validate_dup_commitments(&conn, &wrong, 22, 0).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "UNIQUE constraint failed")]
+    fn test_insert_duplicate_state_hash_index_panics() {
+        let conn = setup_db();
+
+        let leaf = CommitmentLeaf {
+            hash: [5; 32],
+            repetitions: 1,
+        };
+        insert_commitments(&conn, 33, 0, &[leaf.clone()]).unwrap();
+
+        // Attempt to insert another leaf at the same index ⇒ sqlite UNIQUE violation
+        insert_commitments(&conn, 33, 0, &[leaf]).unwrap();
+    }
+
+    #[test]
+    fn test_insert_commitments_sparse_indices() {
+        let conn = setup_db();
+
+        let batch1 = vec![
+            CommitmentLeaf {
+                hash: [1; 32],
+                repetitions: 1,
+            },
+            CommitmentLeaf {
+                hash: [2; 32],
+                repetitions: 1,
+            },
+        ];
+        insert_commitments(&conn, 44, 0, &batch1).unwrap();
+
+        let batch2 = vec![CommitmentLeaf {
+            hash: [3; 32],
+            repetitions: 1,
+        }];
+        // Insert starting at index 5 leaving gaps (allowed by schema)
+        insert_commitments(&conn, 44, 5, &batch2).unwrap();
+
+        // Should reflect the sparse insertion
+        let all = get_all_commitments(&conn, 44).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(get_commitment_if_exists(&conn, 44, 3).unwrap(), None);
+        assert_eq!(
+            get_commitment_if_exists(&conn, 44, 5).unwrap(),
+            Some(batch2[0].clone())
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "UNIQUE constraint failed")]
+    fn test_insert_settlement_info_duplicate_panics() {
+        let conn = setup_db();
+        let settlement = Settlement {
+            computation_hash: [0x11; 32].into(),
+            output_merkle: [0x22; 32],
+            output_proof: Proof::new(vec![[0; 32]]),
+        };
+        insert_settlement_info(&conn, &settlement, 55).unwrap();
+        // Second insert for same epoch violates PRIMARY KEY on epoch_number
+        insert_settlement_info(&conn, &settlement, 55).unwrap();
     }
 }

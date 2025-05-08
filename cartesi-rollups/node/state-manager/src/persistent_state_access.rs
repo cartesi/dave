@@ -109,7 +109,7 @@ impl StateManager for PersistentStateAccess {
                     );
 
                     let (dup, new) = (&leafs[..overlap_len], &leafs[overlap_len..]);
-                    rollup_data::validate_dup_commitmets(
+                    rollup_data::validate_dup_commitments(
                         &tx,
                         dup,
                         epoch_number,
