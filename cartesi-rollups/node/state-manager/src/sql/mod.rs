@@ -45,6 +45,10 @@ pub fn create_connection(state_dir: &Path) -> Result<Connection> {
     Ok(connection)
 }
 
+//
+// Directory structure
+//
+
 pub fn db_path(state_dir: &Path) -> PathBuf {
     state_dir.to_owned().join("db.sqlite3")
 }
@@ -67,4 +71,15 @@ pub fn create_directory_structure(state_dir: &Path) -> Result<()> {
         .with_context(|| format!("creating `{}`", &snapshots_path.display()))?;
 
     Ok(())
+}
+
+fn epoch_dir(state_dir: &Path, epoch_number: u64) -> PathBuf {
+    state_dir.join(epoch_number.to_string())
+}
+
+pub fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<PathBuf> {
+    let path = epoch_dir(state_dir, epoch_number);
+    fs::create_dir_all(&path).with_context(|| format!("creating `{}`", &path.display()))?;
+
+    Ok(path)
 }

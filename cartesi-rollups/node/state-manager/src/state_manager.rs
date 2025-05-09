@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::{CommitmentLeaf, Epoch, Input, InputId, Settlement, rollups_machine::RollupsMachine};
 use cartesi_machine::error::MachineError;
@@ -64,6 +64,13 @@ pub trait StateManager {
     fn snapshot(&mut self, epoch_number: u64) -> Result<Option<RollupsMachine>>;
 
     fn latest_snapshot(&mut self) -> Result<RollupsMachine>;
+
+    //
+    // Directory
+    //
+
+    fn snapshot_dir(&mut self, epoch_number: u64) -> Result<Option<PathBuf>>;
+    fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf>;
 }
 
 #[derive(Error, Debug)]

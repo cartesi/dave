@@ -7,7 +7,7 @@ use alloy::{
 use error::Result;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
-use std::{ops::ControlFlow, path::PathBuf, str::FromStr, time::Duration};
+use std::{ops::ControlFlow, str::FromStr, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
@@ -135,6 +135,14 @@ impl<SM: StateManager> EpochManager<SM> {
     }
 
     async fn react_dispute(&mut self, last_sealed_epoch: &Epoch) -> Result<()> {
+        let Some(snapshot) = self
+            .state_manager
+            .snapshot_dir(last_sealed_epoch.epoch_number)?
+        else {
+            trace!("wait for `machine-runner` to save machine snapshot");
+            return Ok(());
+        };
+
         let mut player = {
             let inputs = self
                 .state_manager
@@ -160,10 +168,11 @@ impl<SM: StateManager> EpochManager<SM> {
                 Some(inputs),
                 leafs,
                 self.provider.clone(),
-                snapshot,
+                snapshot.to_string_lossy().to_string(),
                 address,
                 last_sealed_epoch.block_created_number,
-                self.state_dir.clone(),
+                self.state_manager
+                    .epoch_directory(last_sealed_epoch.epoch_number)?,
             )
             .expect("fail to initialize prt player")
         };

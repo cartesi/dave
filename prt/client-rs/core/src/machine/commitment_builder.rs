@@ -59,7 +59,7 @@ impl CachingMachineCommitmentBuilder {
                 };
                 let root_hash = machine.run(base_cycle)?.root_hash;
                 info!("run to base cycle: {}", base_cycle);
-                machine.take_snapshot(base_cycle, &db)?;
+                machine.take_snapshot(base_cycle, db)?;
                 root_hash
             }
         };

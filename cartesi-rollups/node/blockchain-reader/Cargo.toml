@@ -24,12 +24,16 @@ tokio = { workspace = true }
 num-traits = { workspace = true }
 
 [dev-dependencies]
+cartesi-machine = { workspace = true }
+
 alloy = { workspace = true, features = ["node-bindings", "rpc-types"] }
 cartesi-dave-merkle = { workspace = true }
 cartesi-prt-contracts = { workspace = true }
 
 rusqlite = { workspace = true }
 rusqlite_migration = { workspace = true }
+
+tempfile = "3"
 
 anyhow = { workspace = true }
 clap = { workspace = true }

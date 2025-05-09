@@ -159,7 +159,6 @@ pub fn create_epoch_manager_task(
                 params.address_book.consensus,
                 state_manager,
                 params.sleep_duration,
-                params.state_dir,
             );
 
             epoch_manager

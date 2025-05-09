@@ -220,8 +220,10 @@ impl StateManager for PersistentStateAccess {
         machine_to_snapshot: &mut crate::rollups_machine::RollupsMachine,
     ) -> Result<()> {
         machine_to_snapshot.finish_epoch();
+
         let state_hash = machine_to_snapshot.state_hash()?;
         let epoch_number = machine_to_snapshot.epoch();
+        create_epoch_dir(&self.state_dir, epoch_number)?;
 
         let dest_dir = machine_path(&self.state_dir, &state_hash);
         if !dest_dir.exists() {
@@ -257,6 +259,18 @@ impl StateManager for PersistentStateAccess {
         };
 
         Ok(ret)
+    }
+
+    //
+    // Directory
+    //
+
+    fn snapshot_dir(&mut self, epoch_number: u64) -> Result<Option<PathBuf>> {
+        rollup_data::snapshot_path_for_epoch(&self.connection, epoch_number)
+    }
+
+    fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf> {
+        create_epoch_dir(&self.state_dir, epoch_number)
     }
 }
 
