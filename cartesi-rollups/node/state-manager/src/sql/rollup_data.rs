@@ -1,6 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
+use std::path::PathBuf;
+
 use crate::{CommitmentLeaf, Proof, Settlement, state_manager::Result};
 
 use cartesi_machine::types::Hash;
@@ -226,21 +228,122 @@ pub fn insert_settlement_info(
     Ok(())
 }
 
+pub fn insert_snapshot(
+    conn: &Connection,
+    epoch_number: u64,
+    state_hash: &cartesi_machine::types::Hash,
+    dest_dir: &std::path::Path,
+) -> Result<()> {
+    let mut sttm = conn
+        .prepare_cached(
+            r#"
+            INSERT INTO machine_state_snapshots(state_hash, file_path)
+            VALUES(?1, ?2)
+            ON CONFLICT(state_hash) DO NOTHING
+            "#,
+        )
+        .map_err(anyhow::Error::from)?;
+    sttm.execute(rusqlite::params![state_hash, dest_dir.to_string_lossy()])
+        .map_err(anyhow::Error::from)?;
+
+    let mut sttm = conn
+        .prepare_cached(
+            r#"
+            INSERT INTO epoch_snapshot_info(epoch_number, state_hash)
+            VALUES(?1, ?2)
+            "#,
+        )
+        .map_err(anyhow::Error::from)?;
+    let count = sttm
+        .execute(rusqlite::params![epoch_number, state_hash])
+        .map_err(anyhow::Error::from)?;
+    assert_eq!(
+        count, 1,
+        "expected exactly one row to be inserted into epoch_snapshot_info"
+    );
+
+    Ok(())
+}
+
+pub fn gc_old_epochs(conn: &Connection, max_epoch: u64) -> Result<()> {
+    conn.execute(
+        r#"
+        DELETE FROM epoch_snapshot_info
+        WHERE epoch_number <= ?1
+        "#,
+        [max_epoch],
+    )
+    .map_err(anyhow::Error::from)?;
+
+    conn.execute_batch(
+        r#"
+        DELETE FROM machine_state_snapshots
+        WHERE state_hash NOT IN (SELECT state_hash FROM epoch_snapshot_info);
+        "#,
+    )
+    .map_err(anyhow::Error::from)?;
+
+    Ok(())
+}
+
+pub fn latest_snapshot_path(conn: &Connection) -> Result<(PathBuf, u64)> {
+    let mut stmt = conn
+        .prepare_cached(
+            r#"
+            SELECT s.file_path, e.epoch_number
+            FROM epoch_snapshot_info AS e
+            JOIN machine_state_snapshots AS s
+            ON s.state_hash = e.state_hash
+            ORDER BY e.epoch_number DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(anyhow::Error::from)?;
+
+    let (path, epoch): (String, u64) = stmt
+        .query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("there should at least be a single machine");
+
+    Ok((path.into(), epoch))
+}
+
+pub fn snapshot_path_for_epoch(conn: &Connection, epoch_number: u64) -> Result<Option<PathBuf>> {
+    let mut stmt = conn
+        .prepare_cached(
+            r#"
+            SELECT s.file_path
+            FROM epoch_snapshot_info AS e
+            JOIN machine_state_snapshots AS s
+            ON s.state_hash = e.state_hash
+            WHERE e.epoch_number = ?1
+            "#,
+        )
+        .map_err(anyhow::Error::from)?;
+
+    Ok(stmt
+        .query_row([epoch_number], |row| row.get::<_, String>(0))
+        .optional()
+        .map(|opt| opt.map(PathBuf::from))
+        .map_err(anyhow::Error::from)?)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use crate::{Proof, sql::test_helper::*};
 
     #[test]
     fn test_get_commitment_if_exists_none() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let res = get_commitment_if_exists(&conn, 1, 0).unwrap();
         assert!(res.is_none());
     }
 
     #[test]
     fn test_insert_and_get_commitment() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let leaf = CommitmentLeaf {
             hash: [
                 0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -255,14 +358,14 @@ mod tests {
 
     #[test]
     fn test_get_last_state_hash_index_none() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let res = get_last_state_hash_index(&conn, 99).unwrap();
         assert!(res.is_none());
     }
 
     #[test]
     fn test_get_last_state_hash_index_some() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let leaf1 = CommitmentLeaf {
             hash: [1; 32],
             repetitions: 1,
@@ -282,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_get_all_commitments_single() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let leaf = CommitmentLeaf {
             hash: [7; 32],
             repetitions: 5,
@@ -294,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_get_all_commitments() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let leaf1 = CommitmentLeaf {
             hash: [3; 32],
             repetitions: 10,
@@ -310,14 +413,14 @@ mod tests {
 
     #[test]
     fn test_settlement_info_none() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let res = settlement_info(&conn, 1).unwrap();
         assert!(res.is_none());
     }
 
     #[test]
     fn test_insert_and_get_settlement_info() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let settlement = Settlement {
             computation_hash: [0xAA; 32].into(),
             output_merkle: [0xBB; 32],
@@ -330,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_validate_dup_commitments_ok() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
 
         let dups = vec![
             CommitmentLeaf {
@@ -355,7 +458,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "assertion `left == right` failed")]
     fn test_validate_dup_commitments_mismatch_panics() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
 
         let stored = vec![
             CommitmentLeaf {
@@ -388,7 +491,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "UNIQUE constraint failed")]
     fn test_insert_duplicate_state_hash_index_panics() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
 
         let leaf = CommitmentLeaf {
             hash: [5; 32],
@@ -402,7 +505,7 @@ mod tests {
 
     #[test]
     fn test_insert_commitments_sparse_indices() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
 
         let batch1 = vec![
             CommitmentLeaf {
@@ -436,7 +539,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "UNIQUE constraint failed")]
     fn test_insert_settlement_info_duplicate_panics() {
-        let conn = setup_db();
+        let (_handle, conn) = setup_db();
         let settlement = Settlement {
             computation_hash: [0x11; 32].into(),
             output_merkle: [0x22; 32],
@@ -445,5 +548,122 @@ mod tests {
         insert_settlement_info(&conn, &settlement, 55).unwrap();
         // Second insert for same epoch violates PRIMARY KEY on epoch_number
         insert_settlement_info(&conn, &settlement, 55).unwrap();
+    }
+
+    // helper: makes a fake path like "./snap_xx"
+    fn tmp_dir(idx: u8) -> PathBuf {
+        std::env::temp_dir().join(format!("snap_{idx}"))
+    }
+
+    #[test]
+    fn test_insert_snapshot_and_latest_path() {
+        let (_handle, conn) = setup_db();
+        fs::create_dir_all(tmp_dir(1)).unwrap();
+
+        insert_snapshot(&conn, 42, &[1u8; 32], &tmp_dir(1)).unwrap();
+        let (p, e) = latest_snapshot_path(&conn).unwrap();
+        assert_eq!(p, tmp_dir(1));
+        assert_eq!(e, 42);
+    }
+
+    #[test]
+    fn test_insert_snapshot_duplicate_state_hash() {
+        let (_handle, conn) = setup_db();
+        fs::create_dir_all(tmp_dir(2)).unwrap();
+        fs::create_dir_all(tmp_dir(3)).unwrap();
+
+        let h = &[2u8; 32];
+        insert_snapshot(&conn, 1, h, &tmp_dir(2)).unwrap();
+        insert_snapshot(&conn, 2, h, &tmp_dir(2)).unwrap();
+
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM machine_state_snapshots", [], |r| r
+                .get(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM epoch_snapshot_info", [], |r| r
+                .get(0))
+                .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "UNIQUE constraint failed")]
+    fn test_insert_snapshot_duplicate_epoch_panics() {
+        let (_handle, conn) = setup_db();
+        fs::create_dir_all(tmp_dir(4)).unwrap();
+
+        let h1 = &[4u8; 32];
+        insert_snapshot(&conn, 3, h1, &tmp_dir(4)).unwrap();
+
+        // same epoch_number → PK violation in epoch_snapshot_info
+        insert_snapshot(&conn, 3, h1, &tmp_dir(4)).unwrap();
+    }
+
+    #[test]
+    fn test_gc_old_epochs_removes_unreachable_snapshots() {
+        let (_handle, conn) = setup_db();
+        fs::create_dir_all(tmp_dir(5)).unwrap();
+        fs::create_dir_all(tmp_dir(6)).unwrap();
+        fs::create_dir_all(tmp_dir(7)).unwrap();
+
+        insert_snapshot(&conn, 0, &[5u8; 32], &tmp_dir(5)).unwrap();
+        insert_snapshot(&conn, 1, &[6u8; 32], &tmp_dir(6)).unwrap();
+        insert_snapshot(&conn, 2, &[7u8; 32], &tmp_dir(7)).unwrap();
+
+        // keep > epoch 2
+        gc_old_epochs(&conn, 1).unwrap();
+
+        // epoch 0 and 1 rows gone
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM epoch_snapshot_info", [], |r| r
+                .get(0))
+                .unwrap(),
+            1
+        );
+
+        // unreachable parent rows gone too
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM machine_state_snapshots", [], |r| r
+                .get(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_latest_snapshot_path_after_gc() {
+        let (_handle, conn) = setup_db();
+        fs::create_dir_all(tmp_dir(8)).unwrap();
+        fs::create_dir_all(tmp_dir(9)).unwrap();
+
+        insert_snapshot(&conn, 10, &[8u8; 32], &tmp_dir(8)).unwrap();
+        insert_snapshot(&conn, 11, &[9u8; 32], &tmp_dir(9)).unwrap();
+        gc_old_epochs(&conn, 10).unwrap();
+
+        let (p, e) = latest_snapshot_path(&conn).unwrap();
+        assert_eq!(p, tmp_dir(9));
+        assert_eq!(e, 11);
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion `left == right` failed")]
+    fn test_validate_dup_commitments_wrong_hash_panics() {
+        let (_handle, conn) = setup_db();
+        let stored = vec![CommitmentLeaf {
+            hash: [1; 32],
+            repetitions: 1,
+        }];
+        insert_commitments(&conn, 99, 0, &stored).unwrap();
+
+        let wrong = vec![CommitmentLeaf {
+            hash: [2; 32],
+            repetitions: 1,
+        }];
+
+        validate_dup_commitments(&conn, &wrong, 99, 0).unwrap();
     }
 }

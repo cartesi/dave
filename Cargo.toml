@@ -98,7 +98,7 @@ tokio = { version = "1", features = ["full"] }
 
 # sqlite
 lazy_static = "1.4"
-rusqlite = { version = "0.31.0", features = ["bundled"] }
+rusqlite = { version = "0.31.0", features = ["bundled", "functions"] }
 rusqlite_migration = "1.2.0"
 
 clap = { version = "4.5", features = ["derive", "env"] }

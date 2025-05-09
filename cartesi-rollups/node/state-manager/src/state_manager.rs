@@ -1,15 +1,24 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::{CommitmentLeaf, Epoch, Input, InputId, Settlement};
+use std::path::{Path, PathBuf};
+
+use crate::{CommitmentLeaf, Epoch, Input, InputId, Settlement, rollups_machine::RollupsMachine};
+use cartesi_machine::error::MachineError;
 use thiserror::Error;
 
 pub trait StateManager {
     //
-    // Consensus Data
+    // Setup
     //
 
     fn set_genesis(&mut self, block_number: u64) -> Result<()>;
+    fn set_initial_machine(&mut self, machine_path: &Path) -> Result<()>;
+
+    //
+    // Consensus Data
+    //
+
     fn epoch(&mut self, epoch_number: u64) -> Result<Option<Epoch>>;
     fn epoch_count(&mut self) -> Result<u64>;
     fn last_sealed_epoch(&mut self) -> Result<Option<Epoch>>;
@@ -46,18 +55,22 @@ pub trait StateManager {
 
     fn settlement_info(&mut self, epoch_number: u64) -> Result<Option<Settlement>>;
 
-    fn add_settlement_info(&mut self, settlement: &Settlement, epoch_number: u64) -> Result<()>;
-
-    fn add_snapshot(
+    fn finish_epoch(
         &mut self,
-        path: &str,
-        epoch_number: u64,
-        input_index_in_epoch: u64,
+        settlement: &Settlement,
+        machine_to_snapshot: &mut RollupsMachine,
     ) -> Result<()>;
 
-    fn latest_snapshot(&mut self) -> Result<Option<(String, u64, u64)>>;
+    fn snapshot(&mut self, epoch_number: u64) -> Result<Option<RollupsMachine>>;
 
-    fn snapshot(&mut self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<String>>;
+    fn latest_snapshot(&mut self) -> Result<RollupsMachine>;
+
+    //
+    // Directory
+    //
+
+    fn snapshot_dir(&mut self, epoch_number: u64) -> Result<Option<PathBuf>>;
+    fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf>;
 }
 
 #[derive(Error, Debug)]
@@ -86,6 +99,12 @@ pub enum StateAccessError {
 
     #[error("Couldn't find data: `{description}`")]
     DataNotFound { description: String },
+
+    #[error("Machine snapshot error")]
+    MachineError {
+        #[from]
+        source: MachineError,
+    },
 
     #[error("Inner error: `{0}`")]
     InnerError(#[from] anyhow::Error),
