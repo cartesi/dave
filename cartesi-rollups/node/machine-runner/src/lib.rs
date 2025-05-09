@@ -2,25 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 pub mod error;
-mod rollups_machine;
 
 use alloy::sol_types::private::U256;
 use error::Result;
-use rollups_machine::RollupsMachine;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{ops::ControlFlow, time::Duration};
 
 use cartesi_dave_merkle::{Digest, DigestError, MerkleBuilder};
 use cartesi_prt_core::machine::constants::{
     LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
 };
-use rollups_state_manager::{CommitmentLeaf, InputId, Settlement, StateManager};
-
-// gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
-const LOG2_STRIDE: u64 = 44;
+use rollups_state_manager::{
+    CommitmentLeaf, InputId, Settlement, StateManager,
+    rollups_machine::{LOG2_STRIDE, RollupsMachine},
+    sync::Watch,
+};
 
 const STRIDE_COUNT_IN_EPOCH: u64 = 1
     << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
@@ -33,65 +28,46 @@ const INPUTS_PER_EPOCH: u64 = 1 << LOG2_INPUT_SPAN_TO_EPOCH;
 
 pub struct MachineRunner<SM: StateManager> {
     state_manager: SM,
-    state_dir: PathBuf,
+
+    rollups_machine: RollupsMachine,
+    state_hash_index_in_epoch: u64,
 
     sleep_duration: Duration,
     _snapshot_frequency: Duration,
-
-    state_hash_index_in_epoch: u64,
-
-    rollups_machine: RollupsMachine,
 }
 
 impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
     pub fn new(
         mut state_manager: SM,
-        initial_machine: &str,
         sleep_duration: u64,
         snapshot_frequency: u64,
-        state_dir: PathBuf,
     ) -> Result<Self> {
-        let (snapshot, epoch_number, next_input_index_in_epoch) =
-            match state_manager.latest_snapshot()? {
-                Some(r) => (r.0, r.1, r.2 + 1),
-                None => (initial_machine.to_string(), 0, 0),
-            };
+        let rollups_machine = state_manager.latest_snapshot()?;
 
-        // TODO as an optimization, advance snapshot to latest without computation hash, since it's
+        // TODO: as an optimization, advance snapshot to latest without computation hash, since it's
         // faster.
-
-        let rollups_machine = RollupsMachine::new(
-            Path::new(&snapshot),
-            epoch_number,
-            next_input_index_in_epoch,
-        )?;
 
         Ok(Self {
             state_manager,
-            state_dir,
 
             sleep_duration: Duration::from_secs(sleep_duration),
             _snapshot_frequency: Duration::from_secs(snapshot_frequency),
 
-            // TODO: currently this works because we only save
-            // snapshot in the begining of the epoch.
-            state_hash_index_in_epoch: 0,
+            state_hash_index_in_epoch: 0, // snapshots are always at beginning.
 
             rollups_machine,
         })
     }
 
-    pub fn start(&mut self) -> Result<()> {
-        self.take_snapshot()?; // checkpoint
-
+    pub fn start(&mut self, watch: Watch) -> Result<()> {
         loop {
             self.process_rollup()?;
 
             // all inputs have been processed up to this point,
             // sleep and come back later
-            std::thread::sleep(self.sleep_duration);
-
-            // TODO: snapshot after some time
+            if matches!(watch.wait(self.sleep_duration), ControlFlow::Break(_)) {
+                break Ok(());
+            }
         }
     }
 
@@ -110,11 +86,7 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
                 // epoch has advanced, fill in the rest of machine state hashes of self.epoch_number, and checkpoint
                 assert!(self.rollups_machine.epoch() < latest_epoch);
 
-                self.add_remaining_strides()?;
-                self.save_settlement_info()?; // checkpoint
-                self.rollups_machine.finish_epoch();
-                self.state_hash_index_in_epoch = 0;
-                self.take_snapshot()?; // checkpoint
+                self.finish_epoch()?;
             }
         }
     }
@@ -165,57 +137,26 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
         Ok(())
     }
 
-    fn save_settlement_info(&mut self) -> Result<()> {
-        let epoch_number = self.rollups_machine.epoch();
+    fn finish_epoch(&mut self) -> Result<()> {
+        self.add_remaining_strides()?;
 
-        let state_hashes = self.state_manager.machine_state_hashes(epoch_number)?;
+        let settlement = {
+            let epoch_number = self.rollups_machine.epoch();
+            let state_hashes = self.state_manager.machine_state_hashes(epoch_number)?;
+            let computation_hash = build_commitment_from_hashes(&state_hashes)?;
+            let (output_merkle, output_proof) = self.rollups_machine.outputs_proof()?;
 
-        let computation_hash = build_commitment_from_hashes(&state_hashes)?;
-
-        let (output_merkle, output_proof) = self.rollups_machine.outputs_proof()?;
-
-        self.state_manager.add_settlement_info(
-            &Settlement {
+            Settlement {
                 computation_hash,
                 output_merkle,
                 output_proof,
-            },
-            epoch_number,
-        )?;
+            }
+        };
 
-        Ok(())
-    }
+        self.state_manager
+            .finish_epoch(&settlement, &mut self.rollups_machine)?;
 
-    fn take_snapshot(&mut self) -> Result<()> {
-        let epoch_number = self.rollups_machine.epoch();
-        let input_index_in_epoch = self.rollups_machine.input_index_in_epoch();
-
-        let epoch_path = self
-            .state_dir
-            .join("snapshots")
-            .join(epoch_number.to_string());
-
-        if !epoch_path.exists() {
-            fs::create_dir_all(&epoch_path)?;
-        }
-
-        let snapshot_path = epoch_path.join(format!(
-            "{}",
-            input_index_in_epoch << LOG2_BARCH_SPAN_TO_INPUT
-        ));
-
-        if !snapshot_path.exists() {
-            self.rollups_machine.store(&snapshot_path)?;
-
-            self.state_manager.add_snapshot(
-                snapshot_path
-                    .to_str()
-                    .expect("fail to convert snapshot path"),
-                epoch_number,
-                input_index_in_epoch,
-            )?;
-        }
-
+        self.state_hash_index_in_epoch = 0;
         Ok(())
     }
 }

@@ -301,7 +301,7 @@ mod last_processed_block_tests {
 
     #[test]
     fn test_last_processed_block() {
-        let conn = test_helper::setup_db();
+        let (_handle, conn) = test_helper::setup_db();
 
         assert!(matches!(
             update_last_processed_block(&conn, 0),
@@ -342,14 +342,14 @@ mod inputs_tests {
 
     #[test]
     fn test_empty() {
-        let conn = test_helper::setup_db();
+        let (_handle, conn) = test_helper::setup_db();
         assert!(matches!(last_input(&conn), Ok(None)));
         assert!(matches!(input(&conn, &InputId::default()), Ok(None)));
     }
 
     #[test]
     fn test_insert() {
-        let conn = test_helper::setup_db();
+        let (_handle, conn) = test_helper::setup_db();
         let data = vec![1];
 
         assert!(matches!(
@@ -455,10 +455,10 @@ mod inputs_tests {
 
     #[test]
     fn test_inconsistent_insert() {
-        let conn = test_helper::setup_db();
+        let (_handle, conn) = test_helper::setup_db();
         let data = vec![1];
 
-        assert!(matches!(
+        assert!(
             insert_inputs(
                 &conn,
                 [&Input {
@@ -469,10 +469,10 @@ mod inputs_tests {
                     data: data.clone(),
                 }]
                 .into_iter(),
-            ),
-            Err(_)
-        ));
-        assert!(matches!(
+            )
+            .is_err()
+        );
+        assert!(
             insert_inputs(
                 &conn,
                 [&Input {
@@ -483,9 +483,9 @@ mod inputs_tests {
                     data: data.clone(),
                 }]
                 .into_iter(),
-            ),
-            Err(_)
-        ));
+            )
+            .is_err()
+        );
 
         assert!(matches!(last_input(&conn), Ok(None)));
         assert!(matches!(
@@ -499,7 +499,7 @@ mod inputs_tests {
             Ok(None)
         ));
 
-        assert!(matches!(
+        assert!(
             insert_inputs(
                 &conn,
                 [
@@ -519,9 +519,9 @@ mod inputs_tests {
                     },
                 ]
                 .into_iter(),
-            ),
-            Err(_)
-        ));
+            )
+            .is_err()
+        );
         assert!(matches!(
             last_input(&conn),
             Ok(Some(InputId {
@@ -556,7 +556,7 @@ mod epochs_tests {
 
     #[test]
     fn test_epoch() {
-        let conn = test_helper::setup_db();
+        let (_handle, conn) = test_helper::setup_db();
 
         assert!(matches!(epoch_count(&conn), Ok(0)));
 

@@ -5,6 +5,7 @@ use std::path::Path;
 
 use cartesi_prt_core::machine::constants::{LOG2_BARCH_SPAN_TO_INPUT, LOG2_UARCH_SPAN_TO_BARCH};
 
+use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
     config::runtime::RuntimeConfig,
     constants::{break_reason, pma::TX_START},
@@ -12,12 +13,14 @@ use cartesi_machine::{
     machine::Machine,
     types::{Hash, cmio::CmioResponseReason},
 };
-use rollups_state_manager::{CommitmentLeaf, Proof};
 
-const BIG_STEPS_IN_STRIDE: u64 = 1 << (super::LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
+// gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
+pub const LOG2_STRIDE: u64 = 44;
+
+const BIG_STEPS_IN_STRIDE: u64 = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
 
 const STRIDE_COUNT_IN_INPUT: u64 =
-    1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - super::LOG2_STRIDE);
+    1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - LOG2_STRIDE);
 
 pub struct RollupsMachine {
     machine: Machine,

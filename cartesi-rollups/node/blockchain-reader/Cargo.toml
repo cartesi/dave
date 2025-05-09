@@ -33,4 +33,3 @@ rusqlite_migration = { workspace = true }
 
 anyhow = { workspace = true }
 clap = { workspace = true }
-tempfile = "3.19"

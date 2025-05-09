@@ -22,7 +22,6 @@ pub struct EpochManager<SM: StateManager> {
     arena_sender: EthArenaSender,
     consensus: Address,
     sleep_duration: Duration,
-    state_dir: PathBuf,
     state_manager: SM,
 }
 
@@ -33,7 +32,6 @@ impl<SM: StateManager> EpochManager<SM> {
         consensus_address: Address,
         state_manager: SM,
         sleep_duration: u64,
-        state_dir: PathBuf,
     ) -> Self {
         Self {
             arena_sender,
@@ -41,7 +39,6 @@ impl<SM: StateManager> EpochManager<SM> {
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
             provider,
-            state_dir,
         }
     }
 
@@ -138,14 +135,6 @@ impl<SM: StateManager> EpochManager<SM> {
     }
 
     async fn react_dispute(&mut self, last_sealed_epoch: &Epoch) -> Result<()> {
-        let Some(snapshot) = self
-            .state_manager
-            .snapshot(last_sealed_epoch.epoch_number, 0)?
-        else {
-            trace!("wait for `machine-runner` to save machine snapshot");
-            return Ok(());
-        };
-
         let mut player = {
             let inputs = self
                 .state_manager

@@ -627,9 +627,17 @@ mod blockchain_reader_tests {
 
         let inputbox = InputBox::new(input_box_address, provider.clone());
 
-        let dir = tempfile::TempDir::new()?;
+        let state_dir = std::env::temp_dir();
+        let machine_path = state_dir.join("_my_machine_image");
+        let mut machine = Machine::create(
+            &Machine::default_config().unwrap(),
+            &RuntimeConfig::default(),
+        )
+        .unwrap();
+        machine.store(&machine_path);
+
         let db_path = dir.path().join("my.db");
-        PersistentStateAccess::migrate(&db_path)?;
+        PersistentStateAccess::migrate(&state_dir, &machine_path, 0)?;
         let mut state_manager = PersistentStateAccess::new(&db_path)?;
 
         // Note that inputbox is deployed with 1 input already

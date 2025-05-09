@@ -4130,7 +4130,6 @@ dependencies = [
  "rollups-state-manager",
  "rusqlite",
  "rusqlite_migration",
- "tempfile",
  "thiserror",
  "tokio",
 ]
@@ -4171,9 +4170,12 @@ dependencies = [
  "anyhow",
  "cartesi-dave-merkle",
  "cartesi-machine",
+ "cartesi-prt-core",
+ "hex",
  "lazy_static",
  "rusqlite",
  "rusqlite_migration",
+ "tempfile",
  "thiserror",
 ]
 
