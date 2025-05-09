@@ -7,7 +7,7 @@ use alloy::{
 use error::Result;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
-use std::{ops::ControlFlow, path::PathBuf, str::FromStr, time::Duration};
+use std::{ops::ControlFlow, str::FromStr, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
@@ -22,7 +22,6 @@ pub struct EpochManager<SM: StateManager> {
     arena_sender: EthArenaSender,
     consensus: Address,
     sleep_duration: Duration,
-    state_dir: PathBuf,
     state_manager: SM,
 }
 
@@ -33,7 +32,6 @@ impl<SM: StateManager> EpochManager<SM> {
         consensus_address: Address,
         state_manager: SM,
         sleep_duration: u64,
-        state_dir: PathBuf,
     ) -> Self {
         Self {
             arena_sender,
@@ -41,7 +39,6 @@ impl<SM: StateManager> EpochManager<SM> {
             sleep_duration: Duration::from_secs(sleep_duration),
             state_manager,
             provider,
-            state_dir,
         }
     }
 
@@ -140,7 +137,7 @@ impl<SM: StateManager> EpochManager<SM> {
     async fn react_dispute(&mut self, last_sealed_epoch: &Epoch) -> Result<()> {
         let Some(snapshot) = self
             .state_manager
-            .snapshot(last_sealed_epoch.epoch_number, 0)?
+            .snapshot_dir(last_sealed_epoch.epoch_number)?
         else {
             trace!("wait for `machine-runner` to save machine snapshot");
             return Ok(());
@@ -171,10 +168,11 @@ impl<SM: StateManager> EpochManager<SM> {
                 Some(inputs),
                 leafs,
                 self.provider.clone(),
-                snapshot,
+                snapshot.to_string_lossy().to_string(),
                 address,
                 last_sealed_epoch.block_created_number,
-                self.state_dir.clone(),
+                self.state_manager
+                    .epoch_directory(last_sealed_epoch.epoch_number)?,
             )
             .expect("fail to initialize prt player")
         };

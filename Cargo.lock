@@ -4122,6 +4122,7 @@ dependencies = [
  "async-recursion",
  "cartesi-dave-contracts",
  "cartesi-dave-merkle",
+ "cartesi-machine",
  "cartesi-prt-contracts",
  "cartesi-rollups-contracts",
  "clap",
@@ -4171,9 +4172,12 @@ dependencies = [
  "anyhow",
  "cartesi-dave-merkle",
  "cartesi-machine",
+ "cartesi-prt-core",
+ "hex",
  "lazy_static",
  "rusqlite",
  "rusqlite_migration",
+ "tempfile",
  "thiserror",
 ]
 

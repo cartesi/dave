@@ -1,45 +1,102 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
+use std::path::{Path, PathBuf};
+
 use crate::{
     CommitmentLeaf, Epoch, Input, InputId, Settlement, StateManager,
-    sql::{consensus_data, migrations, rollup_data},
-    state_manager::Result,
+    rollups_machine::RollupsMachine, sql::*, state_manager::Result,
 };
 
-use rusqlite::{Connection, OptionalExtension};
+use cartesi_machine::{Machine, config::runtime::RuntimeConfig};
+use rusqlite::Connection;
 
 #[derive(Debug)]
 pub struct PersistentStateAccess {
     connection: Connection,
+    state_dir: PathBuf,
 }
 
 impl PersistentStateAccess {
-    pub fn migrate(path: &std::path::Path) -> std::result::Result<(), rusqlite_migration::Error> {
-        let mut connection = Connection::open(path)?;
-        migrations::migrate_to_latest(&mut connection).unwrap();
-        Ok(())
+    pub fn migrate(
+        state_dir: &Path,
+        initial_machine_path: &Path,
+        genesis_block_number: u64,
+    ) -> Result<Self> {
+        create_directory_structure(state_dir)?;
+
+        let mut connection = create_connection(state_dir)?;
+        migrations::migrate_to_latest(&mut connection).map_err(anyhow::Error::from)?;
+
+        let mut this = Self {
+            connection,
+            state_dir: state_dir.to_owned(),
+        };
+        this.set_genesis(genesis_block_number)?;
+        this.set_initial_machine(initial_machine_path)?;
+
+        Ok(this)
     }
 
-    pub fn new(path: &std::path::Path) -> std::result::Result<Self, rusqlite_migration::Error> {
-        let connection = Connection::open(path)?;
-        Ok(Self { connection })
+    pub fn new(state_dir: &Path) -> Result<Self> {
+        let connection = create_connection(state_dir)?;
+
+        Ok(Self {
+            connection,
+            state_dir: state_dir.to_owned(),
+        })
     }
 
-    pub fn new_in_memory() -> std::result::Result<Self, rusqlite_migration::Error> {
-        let mut connection = Connection::open_in_memory()?;
-        migrations::migrate_to_latest(&mut connection).unwrap();
-        Ok(Self { connection })
+    pub fn db_path(&self) -> PathBuf {
+        db_path(&self.state_dir)
+    }
+
+    pub fn state_dir(&self) -> &Path {
+        &self.state_dir
     }
 }
 
 impl StateManager for PersistentStateAccess {
     //
+    // Setup
+    //
+
+    fn set_genesis(&mut self, block_number: u64) -> Result<()> {
+        let last_processed = self.latest_processed_block()?;
+
+        if block_number > last_processed {
+            consensus_data::update_last_processed_block(&self.connection, block_number)?;
+        }
+        Ok(())
+    }
+
+    fn set_initial_machine(&mut self, source_machine_path: &Path) -> Result<()> {
+        assert!(
+            self.state_dir.is_dir(),
+            "`{}` should be a directory",
+            self.state_dir.display()
+        );
+        assert!(
+            source_machine_path.is_dir(),
+            "machine path `{}` must be an existing directory",
+            source_machine_path.display()
+        );
+
+        let mut machine = Machine::load(source_machine_path, &RuntimeConfig::default())?;
+        let state_hash = machine.root_hash()?;
+        let dest_machine_path = machine_path(&self.state_dir, &state_hash);
+
+        if !dest_machine_path.exists() {
+            machine.store(&dest_machine_path)?;
+            rollup_data::insert_snapshot(&self.connection, 0, &state_hash, &dest_machine_path)?;
+        }
+
+        Ok(())
+    }
+
+    //
     // Consensus Data
     //
-    fn set_genesis(&mut self, block_number: u64) -> Result<()> {
-        consensus_data::update_last_processed_block(&self.connection, block_number)
-    }
 
     fn epoch(&mut self, epoch_number: u64) -> Result<Option<Epoch>> {
         consensus_data::epoch(&self.connection, epoch_number)
@@ -153,99 +210,102 @@ impl StateManager for PersistentStateAccess {
         rollup_data::get_all_commitments(&self.connection, epoch_number)
     }
 
-    fn add_settlement_info(&mut self, settlement: &Settlement, epoch_number: u64) -> Result<()> {
-        // TODO update to an UPSERT?
-        let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
-
-        if let Some(ref existing_settlement) = rollup_data::settlement_info(&tx, epoch_number)? {
-            assert!(existing_settlement == settlement);
-            return Ok(());
-        }
-
-        rollup_data::insert_settlement_info(&tx, settlement, epoch_number)?;
-
-        tx.commit().map_err(anyhow::Error::from)?;
-        Ok(())
-    }
-
     fn settlement_info(&mut self, epoch_number: u64) -> Result<Option<Settlement>> {
         rollup_data::settlement_info(&self.connection, epoch_number)
     }
 
-    fn add_snapshot(
+    fn finish_epoch(
         &mut self,
-        path: &str,
-        epoch_number: u64,
-        input_index_in_epoch: u64,
+        settlement: &Settlement,
+        machine_to_snapshot: &mut crate::rollups_machine::RollupsMachine,
     ) -> Result<()> {
-        let mut sttm = self.connection.prepare(
-            "INSERT INTO snapshots (epoch_number, input_index_in_epoch, path) VALUES (?1, ?2, ?3)",
-        ).map_err(anyhow::Error::from)?;
+        machine_to_snapshot.finish_epoch();
 
-        let count = sttm
-            .execute((epoch_number, input_index_in_epoch, path))
-            .map_err(anyhow::Error::from)?;
+        let state_hash = machine_to_snapshot.state_hash()?;
+        let epoch_number = machine_to_snapshot.epoch();
+        create_epoch_dir(&self.state_dir, epoch_number)?;
 
-        assert_eq!(
-            count, 1,
-            "expected exactly one row to be inserted into snapshots"
-        );
+        let dest_dir = machine_path(&self.state_dir, &state_hash);
+        if !dest_dir.exists() {
+            machine_to_snapshot.store(&dest_dir)?;
+        }
+
+        let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
+
+        rollup_data::insert_snapshot(&tx, epoch_number, &state_hash, &dest_dir)?;
+        rollup_data::insert_settlement_info(&tx, settlement, epoch_number)?;
+
+        if epoch_number >= 2 {
+            rollup_data::gc_old_epochs(&tx, epoch_number - 2)?;
+        }
+
+        tx.commit().map_err(anyhow::Error::from)?;
 
         Ok(())
     }
 
-    fn latest_snapshot(&mut self) -> Result<Option<(String, u64, u64)>> {
-        let mut sttm = self
-            .connection
-            .prepare(
-                "\
-            SELECT epoch_number, input_index_in_epoch, path FROM snapshots
-            ORDER BY epoch_number DESC, input_index_in_epoch DESC LIMIT 1
-            ",
-            )
-            .map_err(anyhow::Error::from)?;
-
-        let mut query = sttm.query([]).map_err(anyhow::Error::from)?;
-
-        match query.next().map_err(anyhow::Error::from)? {
-            Some(r) => {
-                let epoch_number = r.get(0).map_err(anyhow::Error::from)?;
-                let input_index_in_epoch = r.get(1).map_err(anyhow::Error::from)?;
-                let path = r.get(2).map_err(anyhow::Error::from)?;
-
-                Ok(Some((path, epoch_number, input_index_in_epoch)))
-            }
-            None => Ok(None),
-        }
+    fn latest_snapshot(&mut self) -> Result<crate::rollups_machine::RollupsMachine> {
+        let (path, epoch_number) = rollup_data::latest_snapshot_path(&self.connection)?;
+        Ok(RollupsMachine::new(&path, epoch_number, 0)?)
     }
 
-    fn snapshot(&mut self, epoch_number: u64, input_index_in_epoch: u64) -> Result<Option<String>> {
-        let mut sttm = self
-            .connection
-            .prepare(
-                "\
-            SELECT path FROM snapshots
-            WHERE epoch_number = ?1
-            AND input_index_in_epoch = ?2
-            ",
-            )
-            .map_err(anyhow::Error::from)?;
+    fn snapshot(&mut self, epoch_number: u64) -> Result<Option<RollupsMachine>> {
+        let ret = if let Some(path) =
+            rollup_data::snapshot_path_for_epoch(&self.connection, epoch_number)?
+        {
+            Some(RollupsMachine::new(&path, epoch_number, 0)?)
+        } else {
+            None
+        };
 
-        Ok(sttm
-            .query_row([epoch_number, input_index_in_epoch], |row| row.get(0))
-            .optional()
-            .map_err(anyhow::Error::from)?)
+        Ok(ret)
+    }
+
+    //
+    // Directory
+    //
+
+    fn snapshot_dir(&mut self, epoch_number: u64) -> Result<Option<PathBuf>> {
+        rollup_data::snapshot_path_for_epoch(&self.connection, epoch_number)
+    }
+
+    fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf> {
+        create_epoch_dir(&self.state_dir, epoch_number)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use cartesi_machine::{
+        Machine,
+        config::{
+            machine::{MachineConfig, RAMConfig},
+            runtime::RuntimeConfig,
+        },
+    };
+
     use crate::Proof;
 
     use super::*;
 
-    pub fn setup() -> PersistentStateAccess {
-        PersistentStateAccess::new_in_memory().unwrap()
+    fn setup() -> (tempfile::TempDir, PersistentStateAccess) {
+        let state_dir_ = tempfile::tempdir().unwrap();
+        let state_dir = state_dir_.path();
+
+        let machine_path = state_dir.join("_my_machine_image");
+        let mut machine = Machine::create(
+            &MachineConfig::new_with_ram(RAMConfig {
+                length: 134217728,
+                image_filename: "../../../test/programs/linux.bin".into(),
+            }),
+            &RuntimeConfig::default(),
+        )
+        .unwrap();
+        machine.store(&machine_path).unwrap();
+
+        let acc = PersistentStateAccess::migrate(state_dir, &machine_path, 0).unwrap();
+
+        (state_dir_, acc)
     }
 
     #[test]
@@ -253,7 +313,10 @@ mod tests {
         let input_0_bytes = b"hello";
         let input_1_bytes = b"world";
 
-        let mut access = setup();
+        let (_handle, mut access) = setup();
+
+        let mut initial_snapshot = access.latest_snapshot().unwrap();
+        assert_eq!(initial_snapshot.epoch(), 0);
 
         access.insert_consensus_data(
             20,
@@ -371,88 +434,14 @@ mod tests {
             "latest block should match"
         );
 
-        assert!(
-            access.latest_snapshot()?.is_none(),
-            "latest snapshot should be empty"
-        );
+        let settlement_1 = Settlement {
+            computation_hash: [1; 32].into(),
+            output_merkle: [2; 32],
+            output_proof: Proof::new(vec![[0; 32]]),
+        };
 
-        let (latest_snapshot, epoch_number, input_index_in_epoch) = ("AAA", 0, 0);
-
-        access.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
-
-        assert_eq!(
-            access
-                .latest_snapshot()?
-                .expect("latest snapshot should exists"),
-            (
-                latest_snapshot.to_string(),
-                epoch_number,
-                input_index_in_epoch
-            ),
-            "latest snapshot should match"
-        );
-
-        let (latest_snapshot, epoch_number, input_index_in_epoch) = ("BBB", 0, 1);
-
-        access.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
-
-        assert_eq!(
-            access
-                .latest_snapshot()?
-                .expect("latest snapshot should exists"),
-            (
-                latest_snapshot.to_string(),
-                epoch_number,
-                input_index_in_epoch
-            ),
-            "latest snapshot should match"
-        );
-
-        let (latest_snapshot, epoch_number, input_index_in_epoch) = ("CCC", 0, 2);
-
-        access.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
-
-        assert_eq!(
-            access
-                .latest_snapshot()?
-                .expect("latest snapshot should exists"),
-            (
-                latest_snapshot.to_string(),
-                epoch_number,
-                input_index_in_epoch
-            ),
-            "latest snapshot should match"
-        );
-
-        let (latest_snapshot, epoch_number, input_index_in_epoch) = ("DDD", 3, 1);
-
-        access.add_snapshot(latest_snapshot, epoch_number, input_index_in_epoch)?;
-
-        assert_eq!(
-            access
-                .latest_snapshot()?
-                .expect("latest snapshot should exists"),
-            (
-                latest_snapshot.to_string(),
-                epoch_number,
-                input_index_in_epoch
-            ),
-            "latest snapshot should match"
-        );
-
-        access.add_snapshot("EEE", 0, 4)?;
-
-        assert_eq!(
-            access
-                .latest_snapshot()?
-                .expect("latest snapshot should exists"),
-            (
-                latest_snapshot.to_string(),
-                epoch_number,
-                input_index_in_epoch
-            ),
-            "latest snapshot should match"
-        );
+        access.finish_epoch(&settlement_1, &mut initial_snapshot)?;
+        assert_eq!(access.latest_snapshot()?.epoch(), 1);
 
         assert!(
             access.machine_state_hash(0, 0)?.is_none(),
@@ -471,7 +460,7 @@ mod tests {
             hash: [2; 32],
             repetitions: 5,
         };
-        // lock problem
+
         access.add_machine_state_hashes(0, 0, &[commitment_leaf_1.clone()])?;
 
         assert_eq!(
@@ -503,17 +492,18 @@ mod tests {
             "computation_hash shouldn't exist"
         );
 
-        let settlement_1 = Settlement {
+        let settlement_2 = Settlement {
             computation_hash: [3; 32].into(),
             output_merkle: [4; 32],
             output_proof: Proof::new(vec![[0; 32]]),
         };
 
-        access.add_settlement_info(&settlement_1, 0)?;
+        access.finish_epoch(&settlement_2, &mut initial_snapshot)?;
+        assert_eq!(access.latest_snapshot()?.epoch(), 2);
 
         assert_eq!(
-            access.settlement_info(0)?.unwrap(),
-            settlement_1,
+            access.settlement_info(2)?.unwrap(),
+            settlement_2,
             "settlement info of epoch 0 should match"
         );
 

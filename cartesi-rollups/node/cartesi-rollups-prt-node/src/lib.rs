@@ -205,7 +205,6 @@ pub fn create_epoch_manager_task(
                 params.address_book.consensus,
                 state_manager,
                 params.sleep_duration,
-                params.state_dir,
             );
 
             epoch_manager
@@ -228,15 +227,15 @@ pub fn create_machine_runner_task(watch: Watch, parameters: &PRTConfig) -> threa
             // `MachineRunner` has to be constructed in side the spawn block since `machine::Machine`` doesn't implement `Send`
             let mut machine_runner = MachineRunner::new(
                 state_manager,
-                params.machine_path.as_str(),
                 params.sleep_duration,
                 params.snapshot_duration,
-                params.state_dir.clone(),
             )
             .inspect_err(|e| error!("{e}"))
             .unwrap();
 
-            machine_runner.start().inspect_err(|e| error!("{e}"))
+            machine_runner
+                .start(watch.clone())
+                .inspect_err(|e| error!("{e}"))
         }));
 
         notify_all!("Machine runner", watch, res);

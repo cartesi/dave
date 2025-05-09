@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 pub mod persistent_state_access;
+pub mod rollups_machine;
 pub mod state_manager;
 pub mod sync;
 

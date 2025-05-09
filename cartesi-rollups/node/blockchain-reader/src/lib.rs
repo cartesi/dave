@@ -497,6 +497,13 @@ mod blockchain_reader_tests {
         sol_types::{SolCall, SolValue},
     };
     use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
+    use cartesi_machine::{
+        Machine,
+        config::{
+            machine::{MachineConfig, RAMConfig},
+            runtime::RuntimeConfig,
+        },
+    };
     use cartesi_rollups_contracts::{
         inputbox::InputBox::{self, InputAdded},
         inputs::Inputs::EvmAdvanceCall,
@@ -523,6 +530,26 @@ mod blockchain_reader_tests {
 
     fn create_input_reader() -> EventReader<InputAdded> {
         EventReader::<InputAdded>::default()
+    }
+
+    fn state_access() -> (tempfile::TempDir, PersistentStateAccess) {
+        let state_dir_ = tempfile::tempdir().unwrap();
+        let state_dir = state_dir_.path();
+
+        let machine_path = state_dir.join("_my_machine_image");
+        let mut machine = Machine::create(
+            &MachineConfig::new_with_ram(RAMConfig {
+                length: 134217728,
+                image_filename: "../../../test/programs/linux.bin".into(),
+            }),
+            &RuntimeConfig::default(),
+        )
+        .unwrap();
+        machine.store(&machine_path).unwrap();
+
+        let acc = PersistentStateAccess::migrate(state_dir, &machine_path, 0).unwrap();
+
+        (state_dir_, acc)
     }
 
     async fn add_input(
@@ -686,10 +713,20 @@ mod blockchain_reader_tests {
 
         let inputbox = InputBox::new(input_box_address, provider.clone());
 
-        let dir = tempfile::TempDir::new()?;
-        let db_path = dir.path().join("my.db");
-        PersistentStateAccess::migrate(&db_path)?;
-        let mut state_manager = PersistentStateAccess::new(&db_path)?;
+        // let state_dir = std::env::temp_dir();
+        // let machine_path = state_dir.join("_my_machine_image");
+        // let mut machine = Machine::create(
+        //     &Machine::default_config().unwrap(),
+        //     &RuntimeConfig::default(),
+        // )
+        // .unwrap();
+        // machine.store(&machine_path);
+        //
+        // let db_path = dir.path().join("my.db");
+        // PersistentStateAccess::migrate(&state_dir, &machine_path, 0)?;
+        // let mut state_manager = PersistentStateAccess::new(&db_path)?;
+
+        let (handle, mut state_manager) = state_access();
 
         // Note that inputbox is deployed with 1 input already
         // add inputs to epoch 0
@@ -707,7 +744,7 @@ mod blockchain_reader_tests {
             };
 
             let blockchain_reader = BlockchainReader::new(
-                PersistentStateAccess::new(&db_path).unwrap(),
+                PersistentStateAccess::new(handle.path()).unwrap(),
                 provider,
                 address_book,
                 1,
