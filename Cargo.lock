@@ -1679,6 +1679,7 @@ dependencies = [
  "alloy-transport",
  "anyhow",
  "cartesi-dave-kms",
+ "cartesi-machine",
  "cartesi-prt-core",
  "cartesi-rollups-contracts",
  "clap",
@@ -4169,6 +4170,7 @@ dependencies = [
 name = "rollups-state-manager"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "anyhow",
  "cartesi-dave-merkle",
  "cartesi-machine",

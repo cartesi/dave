@@ -16,6 +16,8 @@ cartesi-dave-contracts = { workspace = true }
 cartesi-rollups-contracts = { workspace = true }
 cartesi-dave-merkle = { workspace = true }
 
+cartesi-machine = { workspace = true }
+
 alloy = { workspace = true }
 async-recursion = { workspace = true }
 clap = { workspace = true }
@@ -25,8 +27,6 @@ tokio = { workspace = true }
 num-traits = { workspace = true }
 
 [dev-dependencies]
-cartesi-machine = { workspace = true }
-
 alloy = { workspace = true, features = ["node-bindings", "rpc-types"] }
 cartesi-prt-contracts = { workspace = true }
 

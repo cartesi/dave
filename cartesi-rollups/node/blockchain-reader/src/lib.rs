@@ -15,7 +15,7 @@ use alloy::{
     sol_types::SolEvent,
 };
 use async_recursion::async_recursion;
-use clap::Parser;
+use cartesi_machine::types::Hash;
 use find_contract_creation::find_contract_creation_block;
 use log::{debug, info, trace};
 use num_traits::cast::ToPrimitive;
@@ -31,79 +31,123 @@ use std::{
 };
 
 use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
-use cartesi_dave_merkle::Digest;
 use cartesi_rollups_contracts::{application::Application, inputbox::InputBox::InputAdded};
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
-#[derive(Debug, Clone, Parser)]
-#[command(name = "cartesi_rollups_config")]
-#[command(about = "Addresses of Cartesi Rollups")]
+#[derive(Debug, Clone)]
 pub struct AddressBook {
     /// address of app
-    #[arg(long, env, default_value_t = Address::ZERO)]
-    app: Address,
+    pub app: Address,
     /// address of Dave consensus
-    #[clap(skip)]
     pub consensus: Address,
     /// address of input box
-    #[clap(skip)]
-    input_box: Address,
+    pub input_box: Address,
+    /// earliest block number where contracts exist
+    pub genesis_block_number: u64,
+    /// initial state hash of application
+    pub initial_hash: Hash,
 }
 
 impl fmt::Display for AddressBook {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "    App Address: {}", self.app)?;
-        writeln!(f, "    Consensus Address: {}", self.consensus)?;
-        writeln!(f, "    Input Box Address: {}", self.input_box)?;
+        writeln!(f, "App Address: {}", self.app)?;
+        writeln!(f, "Consensus Address: {}", self.consensus)?;
+        writeln!(f, "Input Box Address: {}", self.input_box)?;
+        writeln!(f, "Genesis Block Number: {}", self.genesis_block_number)?;
+        writeln!(f, "Initial Hash: {}", alloy::hex::encode(self.initial_hash))?;
         Ok(())
     }
 }
 
 impl AddressBook {
-    // initialize `AddressBook` and return the machine initial hash of epoch 0
-    pub async fn initialize(&mut self, provider: &DynProvider) -> Digest {
-        if self.app == Address::ZERO {
-            self.consensus = Address::from_str(
-                var("CONSENSUS")
-                    .expect("fail to load consensus address")
-                    .as_str(),
-            )
-            .expect("fail to parse consensus address");
-        } else {
-            let application = Application::new(self.app, provider);
-            self.consensus = application
+    // fetch other addresses from application
+    pub async fn new(app: Address, provider: &impl Provider) -> Self {
+        if !app.is_zero() {
+            let application_contract = Application::new(app, provider);
+
+            let consensus = application_contract
                 .getOutputsMerkleRootValidator()
                 .call()
                 .await
                 .expect("fail to query consensus address")
                 ._0;
+
+            let input_box = {
+                let consensus_contract = DaveConsensus::new(consensus, provider);
+                consensus_contract
+                    .getInputBox()
+                    .call()
+                    .await
+                    .expect("fail to query input box address")
+                    ._0
+            };
+
+            let initial_hash = Self::initial_hash(consensus, provider).await;
+            let input_box_created_block = find_contract_creation_block(provider, input_box)
+                .await
+                .expect("fail to get input_box creation block");
+
+            Self {
+                app,
+                consensus,
+                input_box,
+                genesis_block_number: input_box_created_block,
+                initial_hash,
+            }
+        } else {
+            // Test case.
+            // TODO: redesign tests so that this is no longer needed.
+            let consensus = Address::from_str(
+                var("CONSENSUS")
+                    .expect("fail to load consensus address")
+                    .as_str(),
+            )
+            .expect("fail to parse consensus address");
+
+            let input_box = {
+                let consensus_contract = DaveConsensus::new(consensus, provider);
+                consensus_contract
+                    .getInputBox()
+                    .call()
+                    .await
+                    .expect("fail to query input box address")
+                    ._0
+            };
+
+            let initial_hash = Self::initial_hash(consensus, provider).await;
+
+            Self {
+                app,
+                consensus,
+                input_box,
+                genesis_block_number: 0,
+                initial_hash,
+            }
         }
-        let consensus_contract = DaveConsensus::new(self.consensus, provider);
-        let consensus_created_block = find_contract_creation_block(provider, self.consensus)
+    }
+
+    pub async fn initial_hash(consensus: Address, provider: &impl Provider) -> Hash {
+        let consensus_contract = DaveConsensus::new(consensus, provider);
+
+        let consensus_created_block = find_contract_creation_block(provider, consensus)
             .await
             .expect("fail to get consensus creation block");
 
         debug!(
             "consensus created {} at {}",
-            consensus_created_block, self.consensus
+            consensus_created_block, consensus
         );
-
-        self.input_box = consensus_contract
-            .getInputBox()
-            .call()
-            .await
-            .expect("fail to query input box address")
-            ._0;
 
         let sealed_epochs = consensus_contract
             .EpochSealed_filter()
-            .address(self.consensus)
+            .address(consensus)
             .from_block(consensus_created_block)
             .to_block(consensus_created_block)
             .query()
             .await
             .expect("fail to get sealed epoch 0");
         assert_eq!(sealed_epochs.len(), 1);
+
         sealed_epochs[0].0.initialMachineStateHash.into()
     }
 }
@@ -122,7 +166,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
         state_manager: SM,
         provider: DynProvider,
         address_book: AddressBook,
-        sleep_duration: u64,
+        sleep_duration: Duration,
     ) -> Self {
         Self {
             state_manager,
@@ -130,7 +174,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
             provider,
             input_reader: EventReader::<InputAdded>::default(),
             epoch_reader: EventReader::<EpochSealed>::default(),
-            sleep_duration: Duration::from_secs(sleep_duration),
+            sleep_duration,
         }
     }
 
@@ -235,7 +279,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
                         .inputIndexUpperBound
                         .to_u64()
                         .expect("fail to convert epoch boundary"),
-                    root_tournament: e.tournament.to_string(),
+                    root_tournament: e.tournament,
                     block_created_number: meta.block_number.expect("block number should exist"),
                 };
                 info!(
@@ -713,20 +757,14 @@ mod blockchain_reader_tests {
 
         let inputbox = InputBox::new(input_box_address, provider.clone());
 
-        // let state_dir = std::env::temp_dir();
-        // let machine_path = state_dir.join("_my_machine_image");
-        // let mut machine = Machine::create(
-        //     &Machine::default_config().unwrap(),
-        //     &RuntimeConfig::default(),
-        // )
-        // .unwrap();
-        // machine.store(&machine_path);
-        //
-        // let db_path = dir.path().join("my.db");
-        // PersistentStateAccess::migrate(&state_dir, &machine_path, 0)?;
-        // let mut state_manager = PersistentStateAccess::new(&db_path)?;
-
         let (handle, mut state_manager) = state_access();
+        let address_book = AddressBook {
+            app: APP_ADDRESS,
+            consensus: consensus_address,
+            input_box: input_box_address,
+            genesis_block_number: 0,
+            initial_hash: AddressBook::initial_hash(consensus_address, &provider).await,
+        };
 
         // Note that inputbox is deployed with 1 input already
         // add inputs to epoch 0
@@ -737,17 +775,11 @@ mod blockchain_reader_tests {
 
         let watch_0 = watch.clone();
         let r = thread::spawn(move || {
-            let address_book = AddressBook {
-                app: APP_ADDRESS,
-                consensus: consensus_address,
-                input_box: input_box_address,
-            };
-
             let blockchain_reader = BlockchainReader::new(
                 PersistentStateAccess::new(handle.path()).unwrap(),
                 provider,
                 address_book,
-                1,
+                Duration::from_secs(1),
             );
 
             blockchain_reader.start(watch_0).unwrap();

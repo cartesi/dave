@@ -7,7 +7,7 @@ use alloy::{
 use error::Result;
 use log::{info, trace};
 use num_traits::cast::ToPrimitive;
-use std::{ops::ControlFlow, str::FromStr, time::Duration};
+use std::{ops::ControlFlow, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
@@ -31,12 +31,12 @@ impl<SM: StateManager> EpochManager<SM> {
         provider: DynProvider,
         consensus_address: Address,
         state_manager: SM,
-        sleep_duration: u64,
+        sleep_duration: Duration,
     ) -> Self {
         Self {
             arena_sender,
             consensus: consensus_address,
-            sleep_duration: Duration::from_secs(sleep_duration),
+            sleep_duration,
             state_manager,
             provider,
         }
@@ -161,8 +161,7 @@ impl<SM: StateManager> EpochManager<SM> {
                 })
                 .collect();
 
-            let address = Address::from_str(&last_sealed_epoch.root_tournament)
-                .expect("fail to convert tournament address from string");
+            let address = last_sealed_epoch.root_tournament;
 
             Player::new(
                 Some(inputs),

@@ -15,13 +15,14 @@ cartesi-dave-merkle = { workspace = true }
 cartesi-machine = { workspace = true }
 cartesi-prt-core = { workspace = true }
 
+alloy = { workspace = true }
+
 lazy_static = { workspace = true }
 rusqlite = { workspace = true }
 rusqlite_migration = { workspace = true }
 
 hex = { workspace = true }
 tempfile = "3"
-
 
 anyhow = { workspace = true }
 thiserror = { workspace = true }

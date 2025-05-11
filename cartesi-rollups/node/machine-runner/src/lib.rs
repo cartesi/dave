@@ -33,15 +33,10 @@ pub struct MachineRunner<SM: StateManager> {
     state_hash_index_in_epoch: u64,
 
     sleep_duration: Duration,
-    _snapshot_frequency: Duration,
 }
 
 impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
-    pub fn new(
-        mut state_manager: SM,
-        sleep_duration: u64,
-        snapshot_frequency: u64,
-    ) -> Result<Self> {
+    pub fn new(mut state_manager: SM, sleep_duration: Duration) -> Result<Self> {
         let rollups_machine = state_manager.latest_snapshot()?;
 
         // TODO: as an optimization, advance snapshot to latest without computation hash, since it's
@@ -50,8 +45,7 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
         Ok(Self {
             state_manager,
 
-            sleep_duration: Duration::from_secs(sleep_duration),
-            _snapshot_frequency: Duration::from_secs(snapshot_frequency),
+            sleep_duration,
 
             state_hash_index_in_epoch: 0, // snapshots are always at beginning.
 
