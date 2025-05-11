@@ -6,6 +6,7 @@ pub mod rollups_machine;
 pub mod state_manager;
 pub mod sync;
 
+use alloy::primitives::Address;
 pub use state_manager::StateAccessError;
 pub use state_manager::StateManager;
 
@@ -121,6 +122,6 @@ pub struct Input {
 pub struct Epoch {
     pub epoch_number: u64,
     pub input_index_boundary: u64,
-    pub root_tournament: String,
+    pub root_tournament: Address,
     pub block_created_number: u64,
 }

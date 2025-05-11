@@ -6,7 +6,21 @@ use crate::{
     state_manager::{Result, StateAccessError},
 };
 
+use alloy::{
+    hex::{FromHex, ToHexExt},
+    primitives::Address,
+};
 use rusqlite::{OptionalExtension, params};
+
+fn convert_row_to_epoch(row: &rusqlite::Row) -> rusqlite::Result<Epoch> {
+    let tournament_str: String = row.get(2)?;
+    Ok(Epoch {
+        epoch_number: row.get(0)?,
+        input_index_boundary: row.get(1)?,
+        root_tournament: Address::from_hex(tournament_str).unwrap(),
+        block_created_number: row.get(3)?,
+    })
+}
 
 //
 // Last Processed
@@ -208,7 +222,7 @@ pub fn insert_epochs<'a>(
         stmt.execute(params![
             epoch.epoch_number,
             epoch.input_index_boundary,
-            epoch.root_tournament,
+            epoch.root_tournament.encode_hex(),
             epoch.block_created_number
         ])
         .map_err(anyhow::Error::from)?;
@@ -229,46 +243,34 @@ fn insert_epoch_statement(conn: &rusqlite::Connection) -> Result<rusqlite::State
 pub fn last_sealed_epoch(conn: &rusqlite::Connection) -> Result<Option<Epoch>> {
     let mut stmt = conn
         .prepare(
-            "\
-        SELECT epoch_number, input_index_boundary, root_tournament, block_created_number FROM epochs
-        ORDER BY epoch_number DESC
-        LIMIT 1
-        ",
+            r#"
+            SELECT epoch_number, input_index_boundary, root_tournament, block_created_number
+            FROM epochs
+            ORDER BY epoch_number DESC
+            LIMIT 1
+            "#,
         )
         .map_err(anyhow::Error::from)?;
 
     Ok(stmt
-        .query_row([], |row| {
-            Ok(Epoch {
-                epoch_number: row.get(0)?,
-                input_index_boundary: row.get(1)?,
-                root_tournament: row.get(2)?,
-                block_created_number: row.get(3)?,
-            })
-        })
+        .query_row([], convert_row_to_epoch)
         .optional()
         .map_err(anyhow::Error::from)?)
 }
 
 pub fn epoch(conn: &rusqlite::Connection, epoch_number: u64) -> Result<Option<Epoch>> {
     let mut stmt = conn
-        .prepare(
-            "\
-        SELECT input_index_boundary, root_tournament, block_created_number FROM epochs
-        WHERE epoch_number = ?1
-        ",
+        .prepare_cached(
+            r#"
+            SELECT epoch_number, input_index_boundary, root_tournament, block_created_number
+            FROM epochs
+            WHERE epoch_number = ?1
+            "#,
         )
         .map_err(anyhow::Error::from)?;
 
     let e = stmt
-        .query_row(params![epoch_number], |row| {
-            Ok(Epoch {
-                epoch_number,
-                input_index_boundary: row.get(0)?,
-                root_tournament: row.get(1)?,
-                block_created_number: row.get(2)?,
-            })
-        })
+        .query_row(params![epoch_number], convert_row_to_epoch)
         .optional()
         .map_err(anyhow::Error::from)?;
 
@@ -566,7 +568,7 @@ mod epochs_tests {
                 [&Epoch {
                     epoch_number: 1,
                     input_index_boundary: 0,
-                    root_tournament: String::new(),
+                    root_tournament: Address::ZERO,
                     block_created_number: 3,
                 }]
                 .into_iter(),
@@ -584,7 +586,7 @@ mod epochs_tests {
                 [&Epoch {
                     epoch_number: 0,
                     input_index_boundary: 0,
-                    root_tournament: String::new(),
+                    root_tournament: Address::ZERO,
                     block_created_number: 3,
                 }]
                 .into_iter(),
@@ -599,7 +601,7 @@ mod epochs_tests {
                 [&Epoch {
                     epoch_number: 0,
                     input_index_boundary: 0,
-                    root_tournament: String::new(),
+                    root_tournament: Address::ZERO,
                     block_created_number: 3,
                 }]
                 .into_iter(),
@@ -615,7 +617,7 @@ mod epochs_tests {
             .map(|i| Epoch {
                 epoch_number: i,
                 input_index_boundary: 0,
-                root_tournament: String::new(),
+                root_tournament: Address::ZERO,
                 block_created_number: i * 2,
             })
             .collect();
@@ -629,19 +631,19 @@ mod epochs_tests {
                     &Epoch {
                         epoch_number: 128,
                         input_index_boundary: 0,
-                        root_tournament: String::new(),
+                        root_tournament: Address::ZERO,
                         block_created_number: 256,
                     },
                     &Epoch {
                         epoch_number: 129,
                         input_index_boundary: 0,
-                        root_tournament: String::new(),
+                        root_tournament: Address::ZERO,
                         block_created_number: 258,
                     },
                     &Epoch {
                         epoch_number: 131,
                         input_index_boundary: 0,
-                        root_tournament: String::new(),
+                        root_tournament: Address::ZERO,
                         block_created_number: 262,
                     }
                 ]
@@ -654,7 +656,8 @@ mod epochs_tests {
         ));
         assert!(matches!(epoch_count(&conn), Ok(130)));
 
-        let tournament_address = "0x8dA443F84fEA710266C8eB6bC34B71702d033EF2".to_string();
+        let tournament_address =
+            Address::from_hex("0x8dA443F84fEA710266C8eB6bC34B71702d033EF2").unwrap();
         assert!(matches!(epoch(&conn, 130), Ok(None)));
         assert!(matches!(
             insert_epochs(
@@ -669,6 +672,7 @@ mod epochs_tests {
             ),
             Ok(())
         ));
+        println!("{:?}", epoch(&conn, 130));
         assert!(matches!(
             epoch(&conn, 130),
             Ok(Some(Epoch {

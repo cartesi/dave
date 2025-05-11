@@ -1,32 +1,28 @@
+// (c) Cartesi and individual authors (see AUTHORS)
+// SPDX-License-Identifier: Apache-2.0 (see LICENSE)
+
 use cartesi_rollups_prt_node::{
-    PRTConfig, create_blockchain_reader_task, create_epoch_manager_task, create_machine_runner_task,
+    args::PRTConfig, create_blockchain_reader_task, create_epoch_manager_task,
+    create_machine_runner_task,
 };
 use rollups_state_manager::sync::Watch;
 
 use anyhow::Result;
-use clap::Parser;
 use env_logger::Env;
 use log::info;
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-
     info!("Hello from Dave Rollups!");
 
-    let parameters = DaveParameters::parse();
-    let mut parameters = PRTConfig::parse();
-    info!("Running with config:\n{}", parameters);
-
-    PersistentStateAccess::migrate(parameters.state_dir.join("state.db")?)?;
-    let provider = create_provider(&parameters.blockchain_config);
-    let watch = Watch::default();
+    let (config, _state_manager) = PRTConfig::setup();
+    info!("Running with config:\n{}", config);
 
     // spawn workers
-    let blockchain_reader_task =
-        create_blockchain_reader_task(watch.clone(), provider.clone(), &parameters);
-    let epoch_manager_task =
-        create_epoch_manager_task(watch.clone(), provider.clone(), &parameters);
-    let machine_runner_task = create_machine_runner_task(watch.clone(), &parameters);
+    let watch = Watch::default();
+    let blockchain_reader_task = create_blockchain_reader_task(watch.clone(), &config);
+    let epoch_manager_task = create_epoch_manager_task(watch.clone(), &config);
+    let machine_runner_task = create_machine_runner_task(watch.clone(), &config);
 
     // monitor status
     let err = loop {

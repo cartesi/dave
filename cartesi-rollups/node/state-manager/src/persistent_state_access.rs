@@ -276,6 +276,7 @@ impl StateManager for PersistentStateAccess {
 
 #[cfg(test)]
 mod tests {
+    use alloy::primitives::Address;
     use cartesi_machine::{
         Machine,
         config::{
@@ -340,7 +341,7 @@ mod tests {
             [&Epoch {
                 epoch_number: 0,
                 input_index_boundary: 12,
-                root_tournament: String::new(),
+                root_tournament: Address::ZERO,
                 block_created_number: 0,
             }]
             .into_iter(),

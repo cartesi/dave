@@ -16,6 +16,7 @@ rollups-epoch-manager = { workspace = true }
 rollups-machine-runner = { workspace = true }
 rollups-state-manager = { workspace = true }
 
+cartesi-machine = { workspace = true }
 cartesi-dave-kms = { workspace = true }
 
 cartesi-rollups-contracts = { workspace = true }
