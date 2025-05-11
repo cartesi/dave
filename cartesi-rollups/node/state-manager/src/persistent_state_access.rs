@@ -231,15 +231,13 @@ impl StateManager for PersistentStateAccess {
         }
 
         let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
-
         rollup_data::insert_snapshot(&tx, epoch_number, &state_hash, &dest_dir)?;
         rollup_data::insert_settlement_info(&tx, settlement, epoch_number)?;
+        tx.commit().map_err(anyhow::Error::from)?;
 
         if epoch_number >= 2 {
-            rollup_data::gc_old_epochs(&tx, epoch_number - 2)?;
+            rollup_data::gc_old_epochs(&self.connection, epoch_number - 2)?;
         }
-
-        tx.commit().map_err(anyhow::Error::from)?;
 
         Ok(())
     }
