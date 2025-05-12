@@ -6,6 +6,7 @@ pragma solidity ^0.8.8;
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.sol";
 import {SafeCast} from "@openzeppelin-contracts-5.2.0/utils/math/SafeCast.sol";
+import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-2.0.0/consensus/IOutputsMerkleRootValidator.sol";
 import {IInputBox} from "cartesi-rollups-contracts-2.0.0/inputs/IInputBox.sol";
@@ -50,6 +51,14 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     using Merkle for uint256;
     using LibMerkle32 for bytes32[];
     using SafeCast for uint256;
+    using Clones for address;
+
+    struct Args {
+        IInputBox inputBox;
+        address appContract;
+        Machine.Hash initialMachineStateHash;
+        ITournamentFactory tournamentFactory;
+    }
 
     struct SealedEpoch {
         uint64 number;
@@ -58,26 +67,11 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         ITournament tournament;
     }
 
-    /// @notice The input box contract
-    IInputBox immutable _inputBox;
-
-    /// @notice The application contract
-    address immutable _appContract;
-
-    /// @notice The contract used to instantiate tournaments
-    ITournamentFactory immutable _tournamentFactory;
-
     /// @notice The current sealed epoch
     SealedEpoch _epoch;
 
     /// @notice Settled output trees' merkle root hash
     mapping(bytes32 => bool) _outputsMerkleRoots;
-
-    /// @notice Consensus contract was created
-    /// @param inputBox the input box contract
-    /// @param appContract the application contract
-    /// @param tournamentFactory the tournament factory contract
-    event ConsensusCreation(IInputBox inputBox, address appContract, ITournamentFactory tournamentFactory);
 
     /// @notice An epoch was sealed
     /// @param epochNumber the sealed epoch number
@@ -94,6 +88,9 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         bytes32 outputsMerkleRoot,
         ITournament tournament
     );
+
+    /// @notice Could not seal first epoch, because tournament already exists.
+    error TournamentExists();
 
     /// @notice Received epoch number is different from actual
     /// @param received The epoch number received as argument
@@ -121,20 +118,10 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     /// @param received Received application address
     error ApplicationMismatch(address expected, address received);
 
-    constructor(
-        IInputBox inputBox,
-        address appContract,
-        ITournamentFactory tournamentFactory,
-        Machine.Hash initialMachineStateHash
-    ) {
-        // Initialize immutable variables
-        _inputBox = inputBox;
-        _appContract = appContract;
-        _tournamentFactory = tournamentFactory;
-        emit ConsensusCreation(inputBox, appContract, tournamentFactory);
-
-        // Seal first epoch
-        _sealEpoch(0, 0, initialMachineStateHash, bytes32(0));
+    function sealFirstEpoch() external {
+        require(address(_epoch.tournament) == address(0), TournamentExists());
+        Args memory args = _args();
+        _sealEpoch(args, 0, 0, args.initialMachineStateHash, bytes32(0));
     }
 
     function canSettle() external view returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment) {
@@ -158,7 +145,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
 
         // Seal current accumulating epoch
-        _sealEpoch(epoch.number + 1, epoch.inputIndexUpperBound, finalMachineStateHash, outputsMerkleRoot);
+        _sealEpoch(_args(), epoch.number + 1, epoch.inputIndexUpperBound, finalMachineStateHash, outputsMerkleRoot);
 
         // Save settled output tree
         _outputsMerkleRoots[outputsMerkleRoot] = true;
@@ -181,15 +168,15 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     }
 
     function getInputBox() external view returns (IInputBox) {
-        return _inputBox;
+        return _args().inputBox;
     }
 
-    function getApplicationContract() external view returns (address) {
-        return _appContract;
+    function getApplicationContract() public view returns (address) {
+        return _args().appContract;
     }
 
     function getTournamentFactory() external view returns (ITournamentFactory) {
-        return _tournamentFactory;
+        return _args().tournamentFactory;
     }
 
     /// @inheritdoc IDataProvider
@@ -207,7 +194,8 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         }
 
         bytes32 calculatedInputHash = keccak256(input);
-        bytes32 realInputHash = _inputBox.getInputHash(_appContract, inputIndex);
+        Args memory args = _args();
+        bytes32 realInputHash = args.inputBox.getInputHash(args.appContract, inputIndex);
         require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
 
         uint256 log2SizeOfDrive = input.length.getMinLog2SizeOfDriveLength();
@@ -221,7 +209,8 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         override
         returns (bool)
     {
-        require(_appContract == appContract, ApplicationMismatch(_appContract, appContract));
+        address expectedAppContract = getApplicationContract();
+        require(expectedAppContract == appContract, ApplicationMismatch(expectedAppContract, appContract));
         return _outputsMerkleRoots[outputsMerkleRoot];
     }
 
@@ -247,14 +236,19 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
     }
 
+    function _args() internal view returns (Args memory) {
+        return abi.decode(address(this).fetchCloneArgs(), (Args));
+    }
+
     function _sealEpoch(
+        Args memory args,
         uint64 number,
         uint64 inputIndexLowerBound,
         Machine.Hash initialMachineStateHash,
         bytes32 outputsMerkleRoot
     ) internal {
-        uint256 inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
-        ITournament tournament = _tournamentFactory.instantiate(initialMachineStateHash, this);
+        uint256 inputIndexUpperBound = args.inputBox.getNumberOfInputs(args.appContract);
+        ITournament tournament = args.tournamentFactory.instantiate(initialMachineStateHash, this);
 
         _epoch = SealedEpoch({
             number: number,

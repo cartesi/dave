@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.8;
 
-import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
+import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
 import {IInputBox} from "cartesi-rollups-contracts-2.0.0/inputs/IInputBox.sol";
 
@@ -14,38 +14,48 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 /// @title Dave Consensus Factory
 /// @notice Allows anyone to reliably deploy a new `DaveConsensus` contract.
 contract DaveConsensusFactory {
-    IInputBox inputBox;
-    ITournamentFactory tournamentFactory;
+    using Clones for address;
+
+    DaveConsensus immutable _impl;
+    IInputBox immutable _inputBox;
+    ITournamentFactory immutable _tournamentFactory;
 
     event DaveConsensusCreated(DaveConsensus daveConsensus);
 
-    constructor(IInputBox _inputBox, ITournamentFactory _tournament) {
-        inputBox = _inputBox;
-        tournamentFactory = _tournament;
+    constructor(DaveConsensus impl, IInputBox inputBox, ITournamentFactory tournamentFactory) {
+        _impl = impl;
+        _inputBox = inputBox;
+        _tournamentFactory = tournamentFactory;
+    }
+
+    function getImplementation() external view returns (DaveConsensus) {
+        return _impl;
+    }
+
+    function getInputBox() external view returns (IInputBox) {
+        return _inputBox;
+    }
+
+    function getTournamentFactory() external view returns (ITournamentFactory) {
+        return _tournamentFactory;
     }
 
     function newDaveConsensus(address appContract, Machine.Hash initialMachineStateHash)
         external
         returns (DaveConsensus)
     {
-        DaveConsensus daveConsensus =
-            new DaveConsensus(inputBox, appContract, tournamentFactory, initialMachineStateHash);
-
-        emit DaveConsensusCreated(daveConsensus);
-
-        return daveConsensus;
+        bytes memory args = _encodeArgs(appContract, initialMachineStateHash);
+        address clone = address(_impl).cloneWithImmutableArgs(args);
+        return _init(clone);
     }
 
     function newDaveConsensus(address appContract, Machine.Hash initialMachineStateHash, bytes32 salt)
         external
         returns (DaveConsensus)
     {
-        DaveConsensus daveConsensus =
-            new DaveConsensus{salt: salt}(inputBox, appContract, tournamentFactory, initialMachineStateHash);
-
-        emit DaveConsensusCreated(daveConsensus);
-
-        return daveConsensus;
+        bytes memory args = _encodeArgs(appContract, initialMachineStateHash);
+        address clone = address(_impl).cloneDeterministicWithImmutableArgs(args, salt);
+        return _init(clone);
     }
 
     function calculateDaveConsensusAddress(address appContract, Machine.Hash initialMachineStateHash, bytes32 salt)
@@ -53,14 +63,29 @@ contract DaveConsensusFactory {
         view
         returns (address)
     {
-        return Create2.computeAddress(
-            salt,
-            keccak256(
-                abi.encodePacked(
-                    type(DaveConsensus).creationCode,
-                    abi.encode(inputBox, appContract, tournamentFactory, initialMachineStateHash)
-                )
-            )
+        bytes memory args = _encodeArgs(appContract, initialMachineStateHash);
+        return address(_impl).predictDeterministicAddressWithImmutableArgs(args, salt);
+    }
+
+    function _encodeArgs(address appContract, Machine.Hash initialMachineStateHash)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return abi.encode(
+            DaveConsensus.Args({
+                inputBox: _inputBox,
+                appContract: appContract,
+                initialMachineStateHash: initialMachineStateHash,
+                tournamentFactory: _tournamentFactory
+            })
         );
+    }
+
+    function _init(address clone) internal returns (DaveConsensus) {
+        DaveConsensus daveConsensus = DaveConsensus(clone);
+        daveConsensus.sealFirstEpoch();
+        emit DaveConsensusCreated(daveConsensus);
+        return daveConsensus;
     }
 }

@@ -22,6 +22,7 @@ import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {DaveConsensus} from "src/DaveConsensus.sol";
+import {DaveConsensusFactory} from "src/DaveConsensusFactory.sol";
 import {Merkle} from "src/Merkle.sol";
 
 library ExternalMerkle {
@@ -132,10 +133,12 @@ contract DaveConsensusTest is Test {
 
     IInputBox _inputBox;
     MockTournamentFactory _mockTournamentFactory;
+    DaveConsensusFactory _daveConsensusFactory;
 
     function setUp() external {
         _inputBox = new InputBox();
         _mockTournamentFactory = new MockTournamentFactory();
+        _daveConsensusFactory = new DaveConsensusFactory(new DaveConsensus(), _inputBox, _mockTournamentFactory);
     }
 
     function testMockTournamentFactory() external view {
@@ -166,9 +169,6 @@ contract DaveConsensusTest is Test {
         _mockTournamentFactory.setSalt(salts[1]);
         address mockTournamentAddress =
             _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
-
-        vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
 
         vm.expectEmit(daveConsensusAddress);
         emit DaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress));
@@ -426,22 +426,14 @@ contract DaveConsensusTest is Test {
         view
         returns (address)
     {
-        return Create2.computeAddress(
-            salt,
-            keccak256(
-                abi.encodePacked(
-                    type(DaveConsensus).creationCode,
-                    abi.encode(_inputBox, appContract, _mockTournamentFactory, initialState)
-                )
-            )
-        );
+        return _daveConsensusFactory.calculateDaveConsensusAddress(appContract, initialState, salt);
     }
 
     function _newDaveConsensus(address appContract, Machine.Hash initialState, bytes32 salt)
         internal
         returns (DaveConsensus)
     {
-        return new DaveConsensus{salt: salt}(_inputBox, appContract, _mockTournamentFactory, initialState);
+        return _daveConsensusFactory.newDaveConsensus(appContract, initialState, salt);
     }
 
     function _statesAndProofs(bytes32 outputsMerkleRoot)

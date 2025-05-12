@@ -37,7 +37,7 @@ contract DaveConsensusFactoryTest is Test {
     function setUp() public {
         _inputBox = new InputBox();
         _tournamentFactory = new MockTournamentFactory();
-        _factory = new DaveConsensusFactory(_inputBox, _tournamentFactory);
+        _factory = new DaveConsensusFactory(new DaveConsensus(), _inputBox, _tournamentFactory);
         _initialMachineStateHash = Machine.Hash.wrap(0x0);
     }
 
