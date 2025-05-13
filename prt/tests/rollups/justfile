@@ -3,6 +3,8 @@ HONEYPOT_DIR := "../../../test/programs/honeypot"
 
 # TODO each program should get its own, from its own dir.
 APP := "0x0000000000000000000000000000000000000000"
+INPUT_BOX := `head -n 1 ../../../test/programs/echo/addresses`
+CONSENSUS := `head -n 2 ../../../test/programs/echo/addresses | tail -n 1`
 WEB3_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 MAX_EPOCH := "1"
 
@@ -11,6 +13,8 @@ test MACH_PATH:
   rm -rf _state
   WEB3_PRIVATE_KEY={{WEB3_PRIVATE_KEY}} \
   APP={{APP}} \
+  CONSENSUS={{CONSENSUS}} \
+  INPUT_BOX={{INPUT_BOX}} \
   MACHINE_PATH={{MACH_PATH}} \
   MAX_EPOCH={{MAX_EPOCH}} lua prt_rollups.lua && \
   MAX_EPOCH={{MAX_EPOCH}} lua check_rollups_winner.lua

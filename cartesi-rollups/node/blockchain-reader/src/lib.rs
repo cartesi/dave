@@ -8,7 +8,7 @@ use crate::error::{ProviderErrors, Result};
 use alloy::{
     contract::{Error, Event},
     eips::BlockNumberOrTag::Finalized,
-    hex::{FromHex, ToHexExt},
+    hex::ToHexExt,
     primitives::{Address, U256},
     providers::{DynProvider, Provider},
     rpc::types::{Log, Topic},
@@ -18,12 +18,14 @@ use async_recursion::async_recursion;
 use clap::Parser;
 use error::BlockchainReaderError;
 use find_contract_creation::find_contract_creation_block;
-use log::{info, trace};
+use log::{debug, info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{
+    env::var,
     fmt,
     iter::Peekable,
     marker::{Send, Sync},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -32,9 +34,6 @@ use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
 use cartesi_dave_merkle::Digest;
 use cartesi_rollups_contracts::{application::Application, inputbox::InputBox::InputAdded};
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
-
-const DEVNET_INPUT_BOX_ADDRESS: &str = "5FbDB2315678afecb367f032d93F642f64180aa3";
-const DEVNET_CONSENSUS_ADDRESS: &str = "610178da211fef7d417bc0e6fed39f05609ad788";
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "cartesi_rollups_config")]
@@ -63,34 +62,39 @@ impl fmt::Display for AddressBook {
 impl AddressBook {
     // initialize `AddressBook` and return the machine initial hash of epoch 0
     pub async fn initialize(&mut self, provider: &DynProvider) -> Digest {
-        let consensus_contract = {
-            if self.app == Address::ZERO {
-                self.consensus = Address::from_hex(DEVNET_CONSENSUS_ADDRESS)
-                    .expect("fail to load consensus address");
-                self.input_box = Address::from_hex(DEVNET_INPUT_BOX_ADDRESS)
-                    .expect("fail to load input box address");
-                DaveConsensus::new(self.consensus, provider)
-            } else {
-                let application = Application::new(self.app, provider);
-                self.consensus = application
-                    .getOutputsMerkleRootValidator()
-                    .call()
-                    .await
-                    .expect("fail to query consensus address")
-                    ._0;
-                let consensus = DaveConsensus::new(self.consensus, provider);
-                self.input_box = consensus
-                    .getInputBox()
-                    .call()
-                    .await
-                    .expect("fail to query input box address")
-                    ._0;
-                consensus
-            }
-        };
+        if self.app == Address::ZERO {
+            self.consensus = Address::from_str(
+                var("CONSENSUS")
+                    .expect("fail to load consensus address")
+                    .as_str(),
+            )
+            .expect("fail to parse consensus address");
+        } else {
+            let application = Application::new(self.app, provider);
+            self.consensus = application
+                .getOutputsMerkleRootValidator()
+                .call()
+                .await
+                .expect("fail to query consensus address")
+                ._0;
+        }
+        let consensus_contract = DaveConsensus::new(self.consensus, provider);
         let consensus_created_block = find_contract_creation_block(provider, self.consensus)
             .await
             .expect("fail to get consensus creation block");
+
+        debug!(
+            "consensus created {} at {}",
+            consensus_created_block, self.consensus
+        );
+
+        self.input_box = consensus_contract
+            .getInputBox()
+            .call()
+            .await
+            .expect("fail to query input box address")
+            ._0;
+
         let sealed_epochs = consensus_contract
             .EpochSealed_filter()
             .address(self.consensus)
@@ -99,7 +103,7 @@ impl AddressBook {
             .query()
             .await
             .expect("fail to get sealed epoch 0");
-        assert!(sealed_epochs.len() == 1);
+        assert_eq!(sealed_epochs.len(), 1);
         sealed_epochs[0].0.initialMachineStateHash.into()
     }
 }
