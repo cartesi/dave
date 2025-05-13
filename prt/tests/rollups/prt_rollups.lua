@@ -1,9 +1,11 @@
 require "setup_path"
 
 -- consensus contract address in anvil deployment
-local CONSENSUS_ADDRESS = os.getenv("CONSENSUS") or "0x610178da211fef7d417bc0e6fed39f05609ad788"
+local CONSENSUS_ADDRESS = os.getenv("CONSENSUS") or nil
 -- input contract address in anvil deployment
-local INPUT_BOX_ADDRESS = os.getenv("INPUT_BOX") or "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+local INPUT_BOX_ADDRESS = os.getenv("INPUT_BOX") or nil
+-- app contract address in anvil deployment
+local APP_ADDRESS = os.getenv("APP") or nil
 -- number of epochs to run the rollups test
 local MAX_EPOCH = tonumber(os.getenv("MAX_EPOCH")) or false
 
@@ -17,8 +19,6 @@ local NODE_DELAY = 3
 local FAKE_COMMITMENT_COUNT = 1
 -- number of idle players
 local IDLE_PLAYER_COUNT = 0
--- app contract address in anvil deployment
-local APP_ADDRESS = "0x0000000000000000000000000000000000000000";
 -- Hello from Dave!
 local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
 -- Encoded Input blob
