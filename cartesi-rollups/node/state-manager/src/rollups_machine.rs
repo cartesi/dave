@@ -7,7 +7,7 @@ use cartesi_prt_core::machine::constants::{LOG2_BARCH_SPAN_TO_INPUT, LOG2_UARCH_
 
 use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
-    config::runtime::RuntimeConfig,
+    config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
     constants::{break_reason, pma::TX_START},
     error::MachineResult,
     machine::Machine,
@@ -30,7 +30,13 @@ pub struct RollupsMachine {
 
 impl RollupsMachine {
     pub fn new(path: &Path, epoch_number: u64, input_index_in_epoch: u64) -> MachineResult<Self> {
-        let machine = Machine::load(path, &RuntimeConfig::default())?;
+        let runtime_config = RuntimeConfig {
+            htif: Some(HTIFRuntimeConfig {
+                no_console_putchar: Some(true),
+            }),
+            ..Default::default()
+        };
+        let machine = Machine::load(path, &runtime_config)?;
 
         Ok(Self {
             machine,

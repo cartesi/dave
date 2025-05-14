@@ -219,11 +219,12 @@ impl StateManager for PersistentStateAccess {
         settlement: &Settlement,
         machine_to_snapshot: &mut crate::rollups_machine::RollupsMachine,
     ) -> Result<()> {
+        let previous_epoch_number = machine_to_snapshot.epoch();
         machine_to_snapshot.finish_epoch();
 
         let state_hash = machine_to_snapshot.state_hash()?;
-        let epoch_number = machine_to_snapshot.epoch();
-        create_epoch_dir(&self.state_dir, epoch_number)?;
+        let new_epoch_number = machine_to_snapshot.epoch();
+        create_epoch_dir(&self.state_dir, new_epoch_number)?;
 
         let dest_dir = machine_path(&self.state_dir, &state_hash);
         if !dest_dir.exists() {
@@ -231,12 +232,12 @@ impl StateManager for PersistentStateAccess {
         }
 
         let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
-        rollup_data::insert_snapshot(&tx, epoch_number, &state_hash, &dest_dir)?;
-        rollup_data::insert_settlement_info(&tx, settlement, epoch_number)?;
+        rollup_data::insert_snapshot(&tx, new_epoch_number, &state_hash, &dest_dir)?;
+        rollup_data::insert_settlement_info(&tx, settlement, previous_epoch_number)?;
         tx.commit().map_err(anyhow::Error::from)?;
 
-        if epoch_number >= 2 {
-            rollup_data::gc_old_epochs(&self.connection, epoch_number - 2)?;
+        if previous_epoch_number >= 1 {
+            rollup_data::gc_old_epochs(&self.connection, previous_epoch_number - 1)?;
         }
 
         Ok(())
