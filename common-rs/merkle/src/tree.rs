@@ -123,10 +123,7 @@ impl MerkleTree {
     }
 
     pub fn subtrees(&self) -> Option<(Arc<MerkleTree>, Arc<MerkleTree>)> {
-        match self.subtrees {
-            None => None,
-            Some(ref x) => Some(x.children()),
-        }
+        self.subtrees.as_ref().map(|x| x.children())
     }
 
     pub fn find_child(self: &Arc<Self>, digest: &Digest) -> Option<Arc<Self>> {
@@ -162,7 +159,6 @@ impl MerkleTree {
     }
 
     pub fn iterated(self: &Arc<Self>, rep: usize) -> Arc<Self> {
-        let rep = rep.into();
         let mut root = Arc::clone(self);
 
         for _ in 0..rep {
@@ -202,7 +198,7 @@ impl MerkleTree {
         let Some(subtree) = &self.subtrees else {
             assert_eq!(index, U256::ZERO);
             assert_eq!(self.height, 0);
-            return MerkleProof::leaf(self.root_hash, index.clone());
+            return MerkleProof::leaf(self.root_hash, index);
         };
 
         let shift = (self.height - 1) as usize;

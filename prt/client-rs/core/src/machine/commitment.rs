@@ -81,7 +81,7 @@ pub fn build_machine_commitment(
 }
 
 /// Builds a [MachineCommitment] Hash for the Cartesi Machine using the big machine model.
-pub fn build_big_machine_commitment(
+fn build_big_machine_commitment(
     machine: &mut MachineInstance,
     base_cycle: u64,
     level: u64,
@@ -154,7 +154,7 @@ fn advance_instruction(
     Ok(control_flow)
 }
 
-pub fn build_small_machine_commitment(
+fn build_small_machine_commitment(
     machine: &mut MachineInstance,
     base_cycle: u64,
     level: u64,

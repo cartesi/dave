@@ -54,12 +54,12 @@ impl CachingMachineCommitmentBuilder {
             } else {
                 // treat it as compute
                 machine = MachineInstance::new_from_path(&self.machine_path)?;
-                if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
-                    machine.load_snapshot(&snapshot.1, snapshot.0)?;
-                };
+                // if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
+                //     machine.load_snapshot(&snapshot.1, snapshot.0)?;
+                // };
                 let root_hash = machine.run(base_cycle)?.root_hash;
                 info!("run to base cycle: {}", base_cycle);
-                machine.take_snapshot(base_cycle, db)?;
+                // machine.take_snapshot(base_cycle, db)?;
                 root_hash
             }
         };
