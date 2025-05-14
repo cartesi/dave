@@ -17,6 +17,7 @@ RUN \
   --mount=type=cache,target=$CARGO_HOME/git,sharing=locked \
   --mount=type=cache,target=foundry-target,sharing=locked \
   cargo install --git https://github.com/foundry-rs/foundry \
+  --tag v1.1.0 \
   --profile release --locked --target-dir foundry-target \
   anvil cast chisel forge
 
@@ -45,8 +46,12 @@ RUN make
 RUN make install
 WORKDIR /dave
 
+# install solidity dependencies
 COPY prt/contracts/ prt/contracts/
 COPY cartesi-rollups/contracts/ cartesi-rollups/contracts/
+RUN just -f prt/contracts/justfile install-deps
+RUN just -f cartesi-rollups/contracts/justfile install-deps
+
 COPY machine/step/ machine/step/
 COPY justfile justfile
 
