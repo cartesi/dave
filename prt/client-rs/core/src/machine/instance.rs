@@ -1,7 +1,6 @@
 use crate::db::compute_state_access::ComputeStateAccess;
 use crate::machine::constants::{
-    self, INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH, LOG2_UARCH_SPAN_TO_INPUT,
-    UARCH_SPAN_TO_BARCH,
+    INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH, LOG2_UARCH_SPAN_TO_INPUT, UARCH_SPAN_TO_BARCH,
 };
 use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
@@ -12,12 +11,11 @@ use cartesi_machine::types::cmio::CmioResponseReason;
 use cartesi_machine::{
     config::runtime::RuntimeConfig, machine::Machine, types::access_proof::AccessLog,
 };
-use log::{debug, trace};
+use log::trace;
 use num_traits::{One, ToPrimitive};
 
 use alloy::primitives::U256;
-use std::path::{Path, PathBuf};
-use std::u64;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct MachineState {
@@ -56,7 +54,7 @@ pub type MachineProof = Vec<u8>;
 
 pub struct MachineInstance {
     machine: Machine,
-    start_cycle: u64,
+    _start_cycle: u64,
     input_count: u64,
     cycle: u64,
     ucycle: u64,
@@ -73,7 +71,7 @@ impl MachineInstance {
         let path = PathBuf::from(path);
         let mut machine = Machine::load(&path, &runtime_config)?;
 
-        let start_cycle = machine.mcycle()?;
+        let _start_cycle = machine.mcycle()?;
 
         // Machine can never be advanced on the micro arch.
         // Validators must verify this first
@@ -81,51 +79,53 @@ impl MachineInstance {
 
         Ok(MachineInstance {
             machine,
-            start_cycle,
+            _start_cycle,
             input_count: 0,
             cycle: 0,
             ucycle: 0,
         })
     }
 
-    pub fn take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
-        let mask = arithmetic::max_uint(constants::LOG2_BARCH_SPAN_TO_INPUT);
-        if db.handle_rollups && ((base_cycle & mask) == 0) && !self.is_yielded()? {
-            // don't snapshot a machine state that's freshly fed with input without advance
-            return Ok(());
+    /*
+        pub fn take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
+            let mask = arithmetic::max_uint(constants::LOG2_BARCH_SPAN_TO_INPUT);
+            if db.handle_rollups && ((base_cycle & mask) == 0) && !self.is_yielded()? {
+                // don't snapshot a machine state that's freshly fed with input without advance
+                return Ok(());
+            }
+
+            let snapshot_path = db.work_path.join(format!("{}", base_cycle));
+            if !snapshot_path.exists() {
+                self.machine.store(&snapshot_path)?;
+            }
+            Ok(())
         }
 
-        let snapshot_path = db.work_path.join(format!("{}", base_cycle));
-        if !snapshot_path.exists() {
-            self.machine.store(&snapshot_path)?;
+        // load inner machine with snapshot, update cycle, keep everything else the same
+        pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
+            debug!("load snapshot from {}", snapshot_path.display());
+            let runtime_config = RuntimeConfig {
+                htif: Some(HTIFRuntimeConfig {
+                    no_console_putchar: Some(true),
+                }),
+                ..Default::default()
+            };
+            let mut machine = Machine::load(Path::new(snapshot_path), &runtime_config)?;
+
+            let cycle = machine.mcycle()?;
+            debug!("cycle: {}, start_cycle: {}", cycle, self.start_cycle);
+
+            // Machine can not go backward behind the initial machine
+            assert!(cycle >= self.start_cycle);
+            self.cycle = snapshot_cycle;
+
+            assert_eq!(machine.ucycle()?, 0);
+
+            self.machine = machine;
+
+            Ok(())
         }
-        Ok(())
-    }
-
-    // load inner machine with snapshot, update cycle, keep everything else the same
-    pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
-        debug!("load snapshot from {}", snapshot_path.display());
-        let runtime_config = RuntimeConfig {
-            htif: Some(HTIFRuntimeConfig {
-                no_console_putchar: Some(true),
-            }),
-            ..Default::default()
-        };
-        let mut machine = Machine::load(Path::new(snapshot_path), &runtime_config)?;
-
-        let cycle = machine.mcycle()?;
-        debug!("cycle: {}, start_cycle: {}", cycle, self.start_cycle);
-
-        // Machine can not go backward behind the initial machine
-        assert!(cycle >= self.start_cycle);
-        self.cycle = snapshot_cycle;
-
-        assert_eq!(machine.ucycle()?, 0);
-
-        self.machine = machine;
-
-        Ok(())
-    }
+    */
 
     pub fn advance_rollups(&mut self, meta_cycle: U256, db: &ComputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
@@ -320,7 +320,7 @@ impl MachineInstance {
         path: &str,
         agree_hash: Digest,
         meta_cycle: U256,
-        db: &ComputeStateAccess,
+        _db: &ComputeStateAccess,
     ) -> Result<(Vec<u8>, Digest)> {
         let meta_cycle_u128 = meta_cycle
             .to_u128()
@@ -331,9 +331,9 @@ impl MachineInstance {
         let ucycle = (meta_cycle_u128 & big_step_mask) as u64;
 
         let mut machine = MachineInstance::new_from_path(path)?;
-        if let Some(snapshot_path) = db.closest_snapshot(base_cycle)? {
-            machine.load_snapshot(&snapshot_path.1, snapshot_path.0)?;
-        }
+        // if let Some(snapshot_path) = db.closest_snapshot(base_cycle)? {
+        //     machine.load_snapshot(&snapshot_path.1, snapshot_path.0)?;
+        // }
         machine.run(base_cycle)?;
         machine.run_uarch(ucycle)?;
         assert_eq!(machine.state()?.root_hash, agree_hash);
@@ -403,22 +403,20 @@ impl MachineInstance {
 
             let step_proof = Self::encode_access_logs(logs);
             let proof = [da_proof, step_proof].concat();
-            return Ok((proof, machine.state()?.root_hash));
+            Ok((proof, machine.state()?.root_hash))
+        } else if ((meta_cycle_u128 + 1) & (big_step_mask as u128)) == 0 {
+            assert!(machine.is_uarch_halted()?);
+
+            let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
+            logs.push(&uarch_step_log);
+            let ureset_log = machine.machine.log_reset_uarch(LogType::default())?;
+            logs.push(&ureset_log);
+
+            Ok((Self::encode_access_logs(logs), machine.state()?.root_hash))
         } else {
-            if ((meta_cycle_u128 + 1) & (big_step_mask as u128)) == 0 {
-                assert!(machine.is_uarch_halted()?);
-
-                let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
-                logs.push(&uarch_step_log);
-                let ureset_log = machine.machine.log_reset_uarch(LogType::default())?;
-                logs.push(&ureset_log);
-
-                return Ok((Self::encode_access_logs(logs), machine.state()?.root_hash));
-            } else {
-                let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
-                logs.push(&uarch_step_log);
-                return Ok((Self::encode_access_logs(logs), machine.state()?.root_hash));
-            }
+            let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
+            logs.push(&uarch_step_log);
+            Ok((Self::encode_access_logs(logs), machine.state()?.root_hash))
         }
     }
 
