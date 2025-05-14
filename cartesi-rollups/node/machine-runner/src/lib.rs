@@ -38,17 +38,19 @@ pub struct MachineRunner<SM: StateManager> {
 impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
     pub fn new(mut state_manager: SM, sleep_duration: Duration) -> Result<Self> {
         let rollups_machine = state_manager.latest_snapshot()?;
+        log::info!(
+            "loaded machine at epoch {} with input count {}",
+            rollups_machine.epoch(),
+            rollups_machine.input_index_in_epoch()
+        );
 
         // TODO: as an optimization, advance snapshot to latest without computation hash, since it's
         // faster.
 
         Ok(Self {
             state_manager,
-
             sleep_duration,
-
             state_hash_index_in_epoch: 0, // snapshots are always at beginning.
-
             rollups_machine,
         })
     }
@@ -79,7 +81,6 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
             } else {
                 // epoch has advanced, fill in the rest of machine state hashes of self.epoch_number, and checkpoint
                 assert!(self.rollups_machine.epoch() < latest_epoch);
-
                 self.finish_epoch()?;
             }
         }
@@ -94,6 +95,7 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
 
             match next {
                 Some(input) => {
+                    log::info!("processing input {}", input.id.input_index_in_epoch);
                     let state_hashes = self.rollups_machine.process_input(&input.data)?;
                     self.add_state_hashes(&state_hashes)?;
                 }
@@ -132,6 +134,12 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
     }
 
     fn finish_epoch(&mut self) -> Result<()> {
+        log::info!(
+            "finishing epoch {} with {} inputs",
+            self.rollups_machine.epoch(),
+            self.rollups_machine.input_index_in_epoch()
+        );
+
         self.add_remaining_strides()?;
 
         let settlement = {
@@ -151,6 +159,8 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
             .finish_epoch(&settlement, &mut self.rollups_machine)?;
 
         self.state_hash_index_in_epoch = 0;
+
+        log::info!("started new epoch {}", self.rollups_machine.epoch(),);
         Ok(())
     }
 }
@@ -175,74 +185,3 @@ fn build_commitment_from_hashes(
 
     Ok(computation_hash)
 }
-
-/*
-#[cfg(test)]
-mod tests {
-    use crate::{
-        build_commitment_from_hashes, LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH,
-        LOG2_STRIDE, LOG2_UARCH_SPAN_TO_BARCH,
-    };
-
-    fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
-        if s.len() % 2 == 0 {
-            (0..s.len())
-                .step_by(2)
-                .map(|i| {
-                    s.get(i..i + 2)
-                        .and_then(|sub| u8::from_str_radix(sub, 16).ok())
-                })
-                .collect()
-        } else {
-            None
-        }
-    }
-
-    /*
-    #[test]
-    fn test_commitment_builder() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let repetitions = vec![1, 2, 1 << 24, (1 << 48) - 1, 1 << 48];
-        let stride_count_in_epoch = 1
-            << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
-                - LOG2_STRIDE);
-        let mut machine_state_hash =
-            hex_to_bytes("AAA646181BF25FD29FBB7D468E786F8B6F7215D53CE4F7C69A108FB8099555B7")
-                .unwrap();
-        let mut computation_hash =
-            hex_to_bytes("FB6E8E3659EC96D086402465894894B0B4D267023A26D25F0147C1F00D350FAE")
-                .unwrap();
-
-        for rep in &repetitions {
-            assert_eq!(
-                build_commitment_from_hashes(
-                    vec![(machine_state_hash.clone(), *rep)],
-                    stride_count_in_epoch
-                )?,
-                (computation_hash.clone(), *rep),
-                "computation hash and repetition should match"
-            );
-        }
-
-        machine_state_hash =
-            hex_to_bytes("5F0F4E3F7F266592691376743C5D558C781654CDFDC5AC8B002ECF5F899B789C")
-                .unwrap();
-        computation_hash =
-            hex_to_bytes("8AC7CD8E381CCFF6DB21F66B30F9AC69794394EB352E533C5ED0A8C175AAAF47")
-                .unwrap();
-
-        for rep in &repetitions {
-            assert_eq!(
-                build_commitment_from_hashes(
-                    vec![(machine_state_hash.clone(), *rep)],
-                    stride_count_in_epoch
-                )?,
-                (computation_hash.clone(), *rep),
-                "computation hash and repetition should match"
-            );
-        }
-
-        Ok(())
-    }
-    */
-}
-*/

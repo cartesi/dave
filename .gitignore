@@ -8,3 +8,4 @@ node_modules
 **/snapshots/
 **/compute_data/
 **/rollups_data/
+soljson-latest.js

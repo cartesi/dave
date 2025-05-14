@@ -5,7 +5,7 @@ use alloy::{
     providers::DynProvider,
 };
 use error::Result;
-use log::{info, trace};
+use log::{debug, info, trace};
 use num_traits::cast::ToPrimitive;
 use std::{ops::ControlFlow, time::Duration};
 
@@ -111,23 +111,23 @@ impl<SM: StateManager> EpochManager<SM> {
 
     async fn try_react_epoch(&mut self) -> Result<()> {
         // participate in last sealed epoch tournament
-        if let Some(last_sealed_epoch) = self.state_manager.last_sealed_epoch()?
-        // .map_err(|err| EpochManagerError::StateManagerError(Box::new(err)))?
-        {
+        if let Some(last_sealed_epoch) = self.state_manager.last_sealed_epoch()? {
             match self
                 .state_manager
                 .settlement_info(last_sealed_epoch.epoch_number)?
-                // .map_err(EpochManagerError::StateManagerError)?
             {
                 Some(_) => {
-                    info!(
+                    trace!(
                         "dispute tournaments for epoch {}",
                         last_sealed_epoch.epoch_number
                     );
                     self.react_dispute(&last_sealed_epoch).await?
                 }
                 None => {
-                    trace!("wait for `machine-runner` to insert settlement values");
+                    debug!(
+                        "wait for `machine-runner` to insert settlement values for epoch {}",
+                        last_sealed_epoch.epoch_number
+                    );
                 }
             }
         }
@@ -135,13 +135,10 @@ impl<SM: StateManager> EpochManager<SM> {
     }
 
     async fn react_dispute(&mut self, last_sealed_epoch: &Epoch) -> Result<()> {
-        let Some(snapshot) = self
+        let snapshot = self
             .state_manager
             .snapshot_dir(last_sealed_epoch.epoch_number)?
-        else {
-            trace!("wait for `machine-runner` to save machine snapshot");
-            return Ok(());
-        };
+            .expect("snapshot is inserted atomically with settlement info");
 
         let mut player = {
             let inputs = self

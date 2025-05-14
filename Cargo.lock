@@ -4162,6 +4162,7 @@ dependencies = [
  "cartesi-prt-core",
  "cartesi-rollups-contracts",
  "hex",
+ "log",
  "rollups-state-manager",
  "thiserror",
 ]

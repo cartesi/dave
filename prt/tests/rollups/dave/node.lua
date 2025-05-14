@@ -1,13 +1,14 @@
 local helper = require "utils.helper"
 
-local function start_dave_node(machine_path, db_path, consensus, input_box, sleep_duration, verbosity, trace_level)
+local ANVIL_KEY_1 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+local APP_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+local function start_dave_node(machine_path, db_path, sleep_duration, verbosity, trace_level)
     local cmd = string.format(
-        [[echo $$ ; exec env MACHINE_PATH='%s' STATE_DIR='%s' \
-        CONSENSUS='%s' INPUT_BOX='%s' \
-        SLEEP_DURATION=%d RUST_BACKTRACE='%s' \
-        RUST_LOG='none',cartesi_prt_core='%s',rollups_epoch_manager='%s' \
-        ../../../target/debug/cartesi-rollups-prt-node > dave.log 2>&1]],
-        machine_path, db_path, consensus, input_box, sleep_duration, trace_level, verbosity, verbosity
+        [[echo $$ ; exec env MACHINE_PATH='%s' APP_ADDRESS='%s' STATE_DIR='%s' \
+        RUST_BACKTRACE='%s' RUST_LOG='info',cartesi_prt_core='%s',rollups_epoch_manager='%s' \
+        ../../../target/debug/cartesi-rollups-prt-node --sleep-duration-seconds %s pk --web3-private-key %s > dave.log 2>&1]],
+        machine_path, APP_ADDRESS, db_path, trace_level, verbosity, verbosity, sleep_duration, ANVIL_KEY_1
     )
 
     local reader = io.popen(cmd)
