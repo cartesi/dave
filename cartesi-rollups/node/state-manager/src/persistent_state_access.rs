@@ -434,13 +434,13 @@ mod tests {
             "latest block should match"
         );
 
-        let settlement_1 = Settlement {
+        let settlement_0 = Settlement {
             computation_hash: [1; 32].into(),
             output_merkle: [2; 32],
             output_proof: Proof::new(vec![[0; 32]]),
         };
 
-        access.finish_epoch(&settlement_1, &mut initial_snapshot)?;
+        access.finish_epoch(&settlement_0, &mut initial_snapshot)?;
         assert_eq!(access.latest_snapshot()?.epoch(), 1);
 
         assert!(
@@ -488,22 +488,22 @@ mod tests {
         );
 
         assert!(
-            access.settlement_info(0)?.is_none(),
+            access.settlement_info(1)?.is_none(),
             "computation_hash shouldn't exist"
         );
 
-        let settlement_2 = Settlement {
+        let settlement_1 = Settlement {
             computation_hash: [3; 32].into(),
             output_merkle: [4; 32],
             output_proof: Proof::new(vec![[0; 32]]),
         };
 
-        access.finish_epoch(&settlement_2, &mut initial_snapshot)?;
+        access.finish_epoch(&settlement_1, &mut initial_snapshot)?;
         assert_eq!(access.latest_snapshot()?.epoch(), 2);
 
         assert_eq!(
-            access.settlement_info(2)?.unwrap(),
-            settlement_2,
+            access.settlement_info(1)?.unwrap(),
+            settlement_1,
             "settlement info of epoch 0 should match"
         );
 
