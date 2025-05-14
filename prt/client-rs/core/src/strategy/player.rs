@@ -45,12 +45,7 @@ impl Player {
         block_created_number: u64,
         state_dir: PathBuf,
     ) -> Result<Self> {
-        let db = ComputeStateAccess::new(
-            inputs,
-            leafs,
-            root_tournament.to_string(),
-            state_dir.join("compute_path"),
-        )?;
+        let db = ComputeStateAccess::new(inputs, leafs, root_tournament.to_string(), state_dir)?;
         let reader = StateReader::new(provider.clone(), block_created_number)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());

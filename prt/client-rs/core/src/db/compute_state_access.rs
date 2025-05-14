@@ -52,14 +52,14 @@ impl ComputeStateAccess {
     pub fn new(
         inputs: Option<Vec<Input>>,
         leafs: Vec<Leaf>,
-        root_tournament: String,
+        _root_tournament: String,
         compute_data_path: PathBuf,
     ) -> Result<Self> {
         // initialize the database if it doesn't exist
         // fill the database from a json-format file, or the parameters
-        // the database should be "/compute_data/0x_root_tournament_address/db"
+        // the database should be "./db"
         // the json file should be "/compute_data/0x_root_tournament_address/inputs_and_leafs.json"
-        let work_path = compute_data_path.join(root_tournament.to_uppercase());
+        let work_path = compute_data_path;
         if !work_path.exists() {
             fs::create_dir_all(&work_path)?;
         }
@@ -193,6 +193,7 @@ impl ComputeStateAccess {
         Ok(())
     }
 
+    /*
     pub fn closest_snapshot(&self, base_cycle: u64) -> Result<Option<(u64, PathBuf)>> {
         let mut snapshots = Vec::new();
 
@@ -233,31 +234,23 @@ impl ComputeStateAccess {
 
         Ok(snapshot)
     }
+    */
 }
 
 #[cfg(test)]
 mod compute_state_access_tests {
     use super::*;
 
-    fn create_directory(path: &Path) -> std::io::Result<()> {
-        fs::create_dir_all(path)?;
-        Ok(())
-    }
-
-    fn remove_directory(path: &Path) -> std::io::Result<()> {
-        let _ = fs::remove_dir_all(path);
-        Ok(())
-    }
-
     #[test]
     fn test_access_sequentially() {
         test_compute_tree();
-        test_closest_snapshot();
         test_compute_or_rollups_true();
         test_compute_or_rollups_false();
-        test_none_match();
+        // test_closest_snapshot();
+        // test_none_match();
     }
 
+    /*
     fn test_closest_snapshot() {
         let work_dir = PathBuf::from("/tmp/12345678");
         remove_directory(&work_dir).unwrap();
@@ -285,37 +278,37 @@ mod compute_state_access_tests {
 
             assert_eq!(
                 access.closest_snapshot(100).unwrap(),
-                Some((99, access.work_path.join(format!("99"))))
+                Some((99, access.work_path.join("99")))
             );
 
             assert_eq!(
                 access.closest_snapshot(150).unwrap(),
-                Some((150, access.work_path.join(format!("150"))))
+                Some((150, access.work_path.join("150")))
             );
 
             assert_eq!(
                 access.closest_snapshot(200).unwrap(),
-                Some((200, access.work_path.join(format!("200"))))
+                Some((200, access.work_path.join("200")))
             );
 
             assert_eq!(
                 access.closest_snapshot(300).unwrap(),
-                Some((300, access.work_path.join(format!("300"))))
+                Some((300, access.work_path.join("300")))
             );
 
             assert_eq!(
                 access.closest_snapshot(7).unwrap(),
-                Some((5, access.work_path.join(format!("5"))))
+                Some((5, access.work_path.join("5")))
             );
 
             assert_eq!(
                 access.closest_snapshot(10000).unwrap(),
-                Some((300, access.work_path.join(format!("300"))))
+                Some((300, access.work_path.join("300")))
             );
 
             assert_eq!(
                 access.closest_snapshot(100000).unwrap(),
-                Some((99999, access.work_path.join(format!("99999"))))
+                Some((99999, access.work_path.join("99999")))
             );
         }
 
@@ -336,7 +329,8 @@ mod compute_state_access_tests {
             .unwrap();
 
             let cycle: u64 = 844424930131968;
-            for c in [cycle] {
+            {
+                let c = cycle;
                 create_directory(&access.work_path.join(format!("{c}"))).unwrap();
             }
 
@@ -357,16 +351,16 @@ mod compute_state_access_tests {
             remove_directory(&work_dir).unwrap();
         }
     }
+    */
 
     fn test_compute_tree() {
-        let work_dir = PathBuf::from("/tmp/12345678");
-        remove_directory(&work_dir).unwrap();
-        create_directory(&work_dir).unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let work_dir = state_dir.path();
         let access = ComputeStateAccess::new(
             None,
             Vec::new(),
             String::from("12345678"),
-            PathBuf::from("/tmp"),
+            work_dir.to_path_buf(),
         )
         .unwrap();
 
@@ -374,7 +368,7 @@ mod compute_state_access_tests {
             1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1,
             2, 3, 4,
         ];
-        let leafs = vec![Leaf {
+        let leafs = [Leaf {
             hash: root,
             repetitions: 2,
         }];
@@ -391,33 +385,31 @@ mod compute_state_access_tests {
     }
 
     fn test_compute_or_rollups_true() {
-        let work_dir = PathBuf::from("/tmp/12345678");
-        remove_directory(&work_dir).unwrap();
-        create_directory(&work_dir).unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let work_dir = state_dir.path();
         let access = ComputeStateAccess::new(
             Some(Vec::new()),
             Vec::new(),
             String::from("12345678"),
-            PathBuf::from("/tmp"),
+            work_dir.to_path_buf(),
         )
         .unwrap();
 
-        assert!(matches!(access.handle_rollups, true));
+        assert!(access.handle_rollups);
     }
 
     fn test_compute_or_rollups_false() {
-        let work_dir = PathBuf::from("/tmp/12345678");
-        remove_directory(&work_dir).unwrap();
-        create_directory(&work_dir).unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let work_dir = state_dir.path();
         let access = ComputeStateAccess::new(
             None,
             Vec::new(),
             String::from("12345678"),
-            PathBuf::from("/tmp"),
+            work_dir.to_path_buf(),
         )
         .unwrap();
 
-        assert!(matches!(access.handle_rollups, false));
+        assert!(!access.handle_rollups);
     }
 
     #[test]
