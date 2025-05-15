@@ -6,11 +6,13 @@ description = 'Cartesi PRT contracts'
 artifact = "RiscVStateTransition"
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.CmioStateTransition]
 artifact = "CmioStateTransition"
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.CartesiStateTransition]
 artifact = "CartesiStateTransition"
@@ -20,44 +22,52 @@ args = [
 ]
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.TopTournament]
 artifact = "TopTournament"
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.TopTournamentFactory]
 artifact = "TopTournamentFactory"
 args = ["<%= contracts.TopTournament.address %>"]
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.MiddleTournament]
 artifact = "MiddleTournament"
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.MiddleTournamentFactory]
 artifact = "MiddleTournamentFactory"
 args = ["<%= contracts.MiddleTournament.address %>"]
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.BottomTournament]
 artifact = "BottomTournament"
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.BottomTournamentFactory]
 artifact = "BottomTournamentFactory"
 args = ["<%= contracts.BottomTournament.address %>"]
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.CanonicalTournamentParametersProvider]
 artifact = "CanonicalTournamentParametersProvider"
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"
 
 [deploy.MultiLevelTournamentFactory]
 artifact = "MultiLevelTournamentFactory"
@@ -70,3 +80,4 @@ args = [
 ]
 create2 = true
 salt = "<%= zeroHash %>"
+ifExists = "continue"

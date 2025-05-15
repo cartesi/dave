@@ -16,5 +16,4 @@ args = [
 ]
 create2 = true
 salt = "<%= zeroHash %>"
-
-
+ifExists = "continue"
