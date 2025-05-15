@@ -1,4 +1,5 @@
 BINDINGS_DIR := "./bindings-rs/src/contract"
+DEPLOYMENTS_DIR := "./deployments"
 SRC_DIR := "."
 BINDINGS_FILTER := "^[^I].+TournamentFactory|LeafTournament|RootTournament|^Tournament$"
 
@@ -9,7 +10,7 @@ ANVIL_CHAIN_ID := "31337"
 default: build
 
 build: build-smart-contracts bind
-clean: clean-smart-contracts clean-bindings
+clean: clean-smart-contracts clean-bindings clean-deployments
 
 build-smart-contracts:
     forge build
@@ -37,17 +38,25 @@ install-deps:
 clean-bindings:
     rm -rf {{BINDINGS_DIR}}
 
+clean-deployments:
+    rm -rf {{DEPLOYMENTS_DIR}}
+
 bind: clean-bindings
     forge bind --alloy --select "{{BINDINGS_FILTER}}" \
     --module --bindings-path {{BINDINGS_DIR}} \
     --root {{SRC_DIR}}
 
-deploy-dev INITIAL_HASH:
-    forge script \
-        script/TopTournament.s.sol \
-        --fork-url {{ANVIL_ENDPOINT}} \
-        --broadcast \
-        --non-interactive \
-        --sig 'run(bytes32)' \
-        '{{INITIAL_HASH}}' \
-        -vvvv 2>&1
+deploy-dev INITIAL_HASH: deploy-core (deploy-instance INITIAL_HASH)
+
+deploy-core: (deploy "cannonfile.toml")
+
+deploy-instance INITIAL_HASH: deploy-core (deploy "cannonfile.instance.toml" ("initialHash=" + INITIAL_HASH))
+
+deploy CANNONFILE *SETTINGS:
+    pnpm cannon build \
+        --wipe \
+        --rpc-url {{ANVIL_ENDPOINT}} \
+        --private-key {{PRIVATE_KEY}} \
+        --write-deployments {{DEPLOYMENTS_DIR}} \
+        {{CANNONFILE}} \
+        {{SETTINGS}}
