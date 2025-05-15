@@ -31,7 +31,8 @@ check-fmt:
     forge fmt --check
 
 install-deps:
-   forge soldeer install
+    pnpm install
+    forge soldeer install
 
 clean-bindings:
     rm -rf {{BINDINGS_DIR}}

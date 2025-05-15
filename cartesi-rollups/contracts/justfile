@@ -18,7 +18,8 @@ check-fmt:
     forge fmt --check
 
 install-deps:
-   forge soldeer install
+    pnpm install
+    forge soldeer install
 
 # compile smart contracts
 build-smart-contracts:
