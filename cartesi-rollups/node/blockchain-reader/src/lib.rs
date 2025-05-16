@@ -22,11 +22,9 @@ use num_traits::cast::ToPrimitive;
 use rollups_state_manager::sync::Watch;
 use std::ops::ControlFlow;
 use std::{
-    env::var,
     fmt,
     iter::Peekable,
     marker::{Send, Sync},
-    str::FromStr,
     time::Duration,
 };
 
@@ -34,7 +32,7 @@ use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
 use cartesi_rollups_contracts::{application::Application, inputbox::InputBox::InputAdded};
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct AddressBook {
     /// address of app
     pub app: Address,
@@ -62,67 +60,36 @@ impl fmt::Display for AddressBook {
 impl AddressBook {
     // fetch other addresses from application
     pub async fn new(app: Address, provider: &impl Provider) -> Self {
-        if !app.is_zero() {
-            let application_contract = Application::new(app, provider);
+        let application_contract = Application::new(app, provider);
 
-            let consensus = application_contract
-                .getOutputsMerkleRootValidator()
+        let consensus = application_contract
+            .getOutputsMerkleRootValidator()
+            .call()
+            .await
+            .expect("fail to query consensus address")
+            ._0;
+
+        let input_box = {
+            let consensus_contract = DaveConsensus::new(consensus, provider);
+            consensus_contract
+                .getInputBox()
                 .call()
                 .await
-                .expect("fail to query consensus address")
-                ._0;
+                .expect("fail to query input box address")
+                ._0
+        };
 
-            let input_box = {
-                let consensus_contract = DaveConsensus::new(consensus, provider);
-                consensus_contract
-                    .getInputBox()
-                    .call()
-                    .await
-                    .expect("fail to query input box address")
-                    ._0
-            };
+        let initial_hash = Self::initial_hash(consensus, provider).await;
+        let input_box_created_block = find_contract_creation_block(provider, input_box)
+            .await
+            .expect("fail to get input_box creation block");
 
-            let initial_hash = Self::initial_hash(consensus, provider).await;
-            let input_box_created_block = find_contract_creation_block(provider, input_box)
-                .await
-                .expect("fail to get input_box creation block");
-
-            Self {
-                app,
-                consensus,
-                input_box,
-                genesis_block_number: input_box_created_block,
-                initial_hash,
-            }
-        } else {
-            // Test case.
-            // TODO: redesign tests so that this is no longer needed.
-            let consensus = Address::from_str(
-                var("CONSENSUS")
-                    .expect("fail to load consensus address")
-                    .as_str(),
-            )
-            .expect("fail to parse consensus address");
-
-            let input_box = {
-                let consensus_contract = DaveConsensus::new(consensus, provider);
-                consensus_contract
-                    .getInputBox()
-                    .call()
-                    .await
-                    .expect("fail to query input box address")
-                    ._0
-            };
-
-            let initial_hash = Self::initial_hash(consensus, provider).await;
-
-            Self {
-                app,
-                consensus,
-                input_box,
-                genesis_block_number: 0,
-                initial_hash,
-            }
+        Self {
+            app,
+            consensus,
+            input_box,
+            genesis_block_number: input_box_created_block,
+            initial_hash,
         }
     }
 
@@ -541,6 +508,7 @@ mod blockchain_reader_tests {
         sol_types::{SolCall, SolValue},
     };
     use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
+    use cartesi_dave_merkle::Digest;
     use cartesi_machine::{
         Machine,
         config::{
@@ -557,7 +525,6 @@ mod blockchain_reader_tests {
     use tokio::time::{Duration, sleep};
 
     type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-    const APP_ADDRESS: Address = Address::ZERO;
     const INPUT_PAYLOAD: &str = "Hello!";
     const INPUT_PAYLOAD2: &str = "Hello Two!";
 
@@ -598,12 +565,13 @@ mod blockchain_reader_tests {
 
     async fn add_input(
         inputbox: &InputBox::InputBoxInstance<(), DynProvider>,
+        application_address: Address,
         input_payload: &'static str,
         count: usize,
     ) -> Result<()> {
         for _ in 0..count {
             inputbox
-                .addInput(APP_ADDRESS, input_payload.as_bytes().into())
+                .addInput(application_address, input_payload.as_bytes().into())
                 .max_fee_per_gas(10000000000)
                 .send()
                 .await?
@@ -647,6 +615,7 @@ mod blockchain_reader_tests {
     async fn read_inputs_until_count(
         url: &str,
         inputbox_address: &Address,
+        application_address: &Address,
         input_reader: &EventReader<InputAdded>,
         count: usize,
     ) -> Result<Vec<InputAdded>> {
@@ -659,7 +628,7 @@ mod blockchain_reader_tests {
             read_inputs = input_reader
                 .next(
                     &provider,
-                    Some(&APP_ADDRESS.into_word().into()),
+                    Some(&application_address.into_word().into()),
                     inputbox_address,
                     0,
                     latest_finalized_block,
@@ -692,17 +661,18 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
-        let (anvil, provider, input_box_address, _, _) = spawn_anvil_and_provider();
-        let inputbox = InputBox::new(input_box_address, provider.clone());
+        let (anvil, provider, address_book) = spawn_anvil_and_provider();
+        let inputbox = InputBox::new(address_book.input_box, provider.clone());
 
         let input_count_1 = 2;
         // Inputbox is deployed with 1 input already
-        add_input(&inputbox, INPUT_PAYLOAD, input_count_1).await?;
+        add_input(&inputbox, address_book.app, INPUT_PAYLOAD, input_count_1).await?;
 
         let input_reader = create_input_reader();
         let mut read_inputs = read_inputs_until_count(
             &anvil.endpoint(),
             inputbox.address(),
+            &address_book.app,
             &input_reader,
             1 + input_count_1,
         )
@@ -714,10 +684,11 @@ mod blockchain_reader_tests {
         assert_eq!(received_payload.payload.as_ref(), INPUT_PAYLOAD.as_bytes());
 
         let input_count_2 = 3;
-        add_input(&inputbox, INPUT_PAYLOAD2, input_count_2).await?;
+        add_input(&inputbox, address_book.app, INPUT_PAYLOAD2, input_count_2).await?;
         read_inputs = read_inputs_until_count(
             &anvil.endpoint(),
             inputbox.address(),
+            &address_book.app,
             &input_reader,
             1 + input_count_1 + input_count_2,
         )
@@ -734,8 +705,8 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_epoch_reader() -> Result<()> {
-        let (anvil, provider, _, consensus_address, initial_state) = spawn_anvil_and_provider();
-        let daveconsensus = DaveConsensus::new(consensus_address, &provider);
+        let (anvil, provider, address_book) = spawn_anvil_and_provider();
+        let daveconsensus = DaveConsensus::new(address_book.consensus, &provider);
 
         let epoch_reader = create_epoch_reader();
         let read_epochs =
@@ -744,7 +715,9 @@ mod blockchain_reader_tests {
         assert_eq!(read_epochs.len(), 1);
         assert_eq!(
             &read_epochs[0].initialMachineStateHash.abi_encode(),
-            initial_state.slice()
+            Digest::from_digest(&address_book.initial_hash)
+                .unwrap()
+                .slice()
         );
 
         drop(anvil);
@@ -753,23 +726,16 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_blockchain_reader() -> Result<()> {
-        let (anvil, provider, input_box_address, consensus_address, _) = spawn_anvil_and_provider();
+        let (anvil, provider, address_book) = spawn_anvil_and_provider();
 
-        let inputbox = InputBox::new(input_box_address, provider.clone());
+        let inputbox = InputBox::new(address_book.input_box, provider.clone());
 
         let (handle, mut state_manager) = state_access();
-        let address_book = AddressBook {
-            app: APP_ADDRESS,
-            consensus: consensus_address,
-            input_box: input_box_address,
-            genesis_block_number: 0,
-            initial_hash: AddressBook::initial_hash(consensus_address, &provider).await,
-        };
 
         // Note that inputbox is deployed with 1 input already
         // add inputs to epoch 0
         let input_count_1 = 2;
-        add_input(&inputbox, INPUT_PAYLOAD, input_count_1).await?;
+        add_input(&inputbox, address_book.app, INPUT_PAYLOAD, input_count_1).await?;
 
         let watch = Watch::default();
 
@@ -790,13 +756,13 @@ mod blockchain_reader_tests {
 
         // add inputs ttest_blockchain_readero epoch 1
         let input_count_2 = 3;
-        add_input(&inputbox, INPUT_PAYLOAD, input_count_2).await?;
+        add_input(&inputbox, address_book.app, INPUT_PAYLOAD, input_count_2).await?;
         read_inputs_from_db_until_count(&mut state_manager, 1, input_count_1 + input_count_2)
             .await?;
 
         // add more inputs to epoch 1
         let input_count_3 = 3;
-        add_input(&inputbox, INPUT_PAYLOAD, input_count_3).await?;
+        add_input(&inputbox, address_book.app, INPUT_PAYLOAD, input_count_3).await?;
         read_inputs_from_db_until_count(
             &mut state_manager,
             1,
