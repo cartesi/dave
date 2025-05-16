@@ -1,0 +1,72 @@
+name = 'cartesi-dave-consensus-instance'
+version = '0.0.1'
+description = 'Cartesi Dave Consensus Instance'
+
+[var.Settings]
+appOwner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+initialHash = "<%= zeroHash %>"
+
+[pull.prtContracts]
+source = "cartesi-prt-multilevel:0.0.1@main"
+
+[deploy.InputBox]
+artifact = "InputBox"
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[deploy.DaveConsensusFactory]
+artifact = "DaveConsensusFactory"
+args = [
+  "<%= InputBox.address %>",
+  "<%= prtContracts.MultiLevelTournamentFactory.address %>",
+]
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[deploy.ApplicationFactory]
+artifact = "ApplicationFactory"
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[invoke.newApplication]
+target = "ApplicationFactory"
+func = "newApplication(address,address,bytes32,bytes)"
+args = [
+    "<%= zeroAddress %>",
+    "<%= settings.appOwner %>",
+    "<%= settings.initialHash %>",
+    "<%= concat([slice(keccak256('InputBox(address)'), 0, 4), pad(contracts.InputBox.address)]) %>"
+]
+factory.ApplicationInstance.artifact = "Application"
+factory.ApplicationInstance.event = "ApplicationCreated"
+factory.ApplicationInstance.arg = 4
+
+[invoke.addInput]
+target = "InputBox"
+func = "addInput"
+args = [
+    "<%= contracts.ApplicationInstance.address %>",
+    "<%= stringToHex('Hello, world!') %>",
+]
+var.firstInput.event = "InputAdded"
+var.firstInput.arg = 2
+
+[invoke.newDaveConsensus]
+target = "DaveConsensusFactory"
+func = "newDaveConsensus(address,bytes32)"
+args = [
+    "<%= contracts.ApplicationInstance.address %>",
+    "<%= settings.initialHash %>",
+]
+factory.DaveConsensusInstance.artifact = "DaveConsensus"
+factory.DaveConsensusInstance.event = "DaveConsensusCreated"
+factory.DaveConsensusInstance.arg = 0
+
+[invoke.migrateToOutputsMerkleRootValidator]
+target = "ApplicationInstance"
+func = "migrateToOutputsMerkleRootValidator"
+args = ["<%= contracts.DaveConsensusInstance.address %>"]
+from = "<%= settings.appOwner %>"
