@@ -24,3 +24,6 @@ lcov.info.pruned
 
 # Gas snapshot
 .gas-snapshot
+
+# Cannon
+/deployments

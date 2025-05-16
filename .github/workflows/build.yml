@@ -238,6 +238,17 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v3
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: 'prt/contracts/package.json'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: 'prt/contracts/pnpm-lock.yaml'
+
       - name: Contracts
         run: |
           just -f test/programs/justfile download-deps

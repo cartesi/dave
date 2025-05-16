@@ -80,31 +80,46 @@ mod tests {
 
     #[tokio::test]
     async fn test_predeployed_contracts_creation_blocks() {
-        // spawn Anvil + provider + the two contract addrs
-        let (_anvil, provider, input_box, consensus, _digest) = spawn_anvil_and_provider();
+        // spawn Anvil + provider + contracts
+        let (_anvil, provider, address_book) = spawn_anvil_and_provider();
 
         // find creation block for input_box
-        let input_block = find_contract_creation_block(&provider, input_box)
+        let input_block = find_contract_creation_block(&provider, address_book.input_box)
             .await
             .expect("failed to find input_box creation block");
         // one block before should have no code
         let prev_input = provider
-            .get_code_at(input_box)
+            .get_code_at(address_book.input_box)
             .block_id(BlockId::Number((input_block - 1).into()))
             .await
             .unwrap();
         assert!(prev_input.0.is_empty(), "input_box existed too early");
 
         // find creation block for consensus
-        let consensus_block = find_contract_creation_block(&provider, consensus)
+        let consensus_block = find_contract_creation_block(&provider, address_book.consensus)
             .await
             .expect("failed to find consensus creation block");
         // one block before should have no code
         let prev_consensus = provider
-            .get_code_at(consensus)
+            .get_code_at(address_book.consensus)
             .block_id(BlockId::Number((consensus_block - 1).into()))
             .await
             .unwrap();
         assert!(prev_consensus.0.is_empty(), "consensus existed too early");
+
+        // find creation block for application
+        let application_block = find_contract_creation_block(&provider, address_book.app)
+            .await
+            .expect("failed to find application creation block");
+        // one block before should have no code
+        let prev_application = provider
+            .get_code_at(address_book.app)
+            .block_id(BlockId::Number((application_block - 1).into()))
+            .await
+            .unwrap();
+        assert!(
+            prev_application.0.is_empty(),
+            "application existed too early"
+        );
     }
 }

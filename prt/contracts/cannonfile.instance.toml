@@ -1,0 +1,21 @@
+name = 'cartesi-prt-multilevel-instance'
+version = '0.0.1'
+description = 'Cartesi PRT contracts test'
+
+[pull.prtContracts]
+source = "cartesi-prt-multilevel:0.0.1@main"
+
+[var.Settings]
+initialHash = "<%= zeroHash %>"
+dataProvider = "<%= zeroAddress %>"
+
+[invoke.deployment]
+target = "prtContracts.MultiLevelTournamentFactory"
+func = "instantiate"
+args = [
+    "<%= settings.initialHash %>",
+    "<%= settings.dataProvider %>",
+]
+factory.TopTournamentInstance.abiOf = ["prtContracts.TopTournament"]
+factory.TopTournamentInstance.event = "tournamentCreated"
+factory.TopTournamentInstance.arg = 0

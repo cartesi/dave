@@ -19,3 +19,6 @@ docs/
 
 # Gas snapshot
 .gas-snapshot
+
+# Cannon
+/deployments

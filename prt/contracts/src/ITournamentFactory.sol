@@ -8,7 +8,7 @@ import "prt-contracts/tournament/abstracts/Tournament.sol";
 import "prt-contracts/IDataProvider.sol";
 
 interface ITournamentFactory {
-    event tournamentCreated(ITournament);
+    event tournamentCreated(ITournament tournament);
 
     function instantiate(Machine.Hash initialState, IDataProvider provider)
         external

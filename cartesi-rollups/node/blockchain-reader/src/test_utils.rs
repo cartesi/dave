@@ -1,3 +1,4 @@
+use crate::AddressBook;
 use alloy::{
     hex::FromHex,
     network::EthereumWallet,
@@ -6,7 +7,6 @@ use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder},
     signers::{Signer, local::PrivateKeySigner},
 };
-use cartesi_dave_merkle::Digest;
 use std::{
     fs::{self, File},
     io::Read,
@@ -19,7 +19,7 @@ pub fn program_path() -> PathBuf {
     PathBuf::from(PROGRAM).canonicalize().unwrap()
 }
 
-pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, Address, Address, Digest) {
+pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, AddressBook) {
     let program_path = program_path();
 
     let anvil = Anvil::default()
@@ -45,10 +45,11 @@ pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, Address, Addre
         .on_http(anvil.endpoint_url())
         .erased();
 
-    let (input_box_address, consensus_address) = {
+    let (input_box, consensus, app) = {
         let addresses = fs::read_to_string(program_path.join("addresses")).unwrap();
         let mut lines = addresses.lines().map(str::trim);
         (
+            Address::from_hex(lines.next().unwrap()).unwrap(),
             Address::from_hex(lines.next().unwrap()).unwrap(),
             Address::from_hex(lines.next().unwrap()).unwrap(),
         )
@@ -65,8 +66,12 @@ pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, Address, Addre
     (
         anvil,
         provider,
-        input_box_address,
-        consensus_address,
-        Digest::from_digest(&initial_hash).unwrap(),
+        AddressBook {
+            app,
+            consensus,
+            input_box,
+            genesis_block_number: 0,
+            initial_hash,
+        },
     )
 }

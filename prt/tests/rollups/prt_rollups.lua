@@ -207,7 +207,7 @@ time.sleep(NODE_DELAY)
 local verbosity = os.getenv("VERBOSITY") or 'debug'
 -- 0, 1, full
 local trace_level = os.getenv("TRACE_LEVEL") or 'full'
-local _dave_node = Dave:new(rollups_machine_path .. "/machine-image", SLEEP_TIME, verbosity, trace_level)
+local _dave_node = Dave:new(rollups_machine_path .. "/machine-image", APP_ADDRESS, SLEEP_TIME, verbosity, trace_level)
 time.sleep(NODE_DELAY)
 
 local reader = Reader:new(blockchain_constants.endpoint)

@@ -2,8 +2,6 @@ DOOM_DIR := "./programs/doom"
 SIMPLE_DIR := "./programs/simple"
 STRESS_DIR := "./programs/stress"
 
-# TODO each program should get its own, from its own dir.
-ROOT_TOURNAMENT := `head -n 1 ./programs/simple/addresses`
 LUA_NODE := "false"
 
 # build compute test programs 
@@ -15,7 +13,7 @@ test MACH_PATH:
   rm -rf _state
   EXTRA_DATA="false" \
   LUA_NODE={{LUA_NODE}} \
-  ROOT_TOURNAMENT={{ROOT_TOURNAMENT}} \
+  ROOT_TOURNAMENT=`head -n 1 -- {{MACH_PATH}}/addresses` \
   MACHINE_PATH={{MACH_PATH}} \
   lua prt_compute.lua
 
