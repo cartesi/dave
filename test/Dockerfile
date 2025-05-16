@@ -3,11 +3,14 @@
 #### prepare tools
 FROM rust:1.85 AS tools
 # foundry
-RUN set -eux; \
-  apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git; \
-  curl -L https://foundry.paradigm.xyz | bash; \
-  ~/.foundry/bin/foundryup --install stable; \
-  install -Dm755 ~/.foundry/bin/* /usr/local/bin/
+ARG DEBIAN_FRONTEND=noninteractive
+RUN <<EOF
+set -eu
+apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git
+curl -L https://foundry.paradigm.xyz | bash
+~/.foundry/bin/foundryup --install stable
+install -Dm755 ~/.foundry/bin/* /usr/local/bin/
+EOF
 # cargo binstall (to install just)
 RUN curl -L --proto '=https' --tlsv1.2 -sSf \
     https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
