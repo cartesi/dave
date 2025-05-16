@@ -6,7 +6,7 @@ description = 'Cartesi Dave Consensus Factory'
 source = "cartesi-prt-multilevel:0.0.1@main"
 
 [pull.cartesiRollups]
-source = "cartesi-rollups:2.0.0-rc.17@main"
+source = "cartesi-rollups:2.0.0-rc.18@main"
 
 [deploy.DaveConsensusFactory]
 artifact = "DaveConsensusFactory"
