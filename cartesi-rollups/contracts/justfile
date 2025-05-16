@@ -1,5 +1,6 @@
 # Variables
 BINDINGS_DIR := "./bindings-rs/src/contract"
+DEPLOYMENTS_DIR := "./deployments"
 SRC_DIR := "."
 BINDINGS_FILTER := "DaveConsensus"
 
@@ -10,6 +11,7 @@ ANVIL_CHAIN_ID := "31337"
 default: build
 
 build: build-smart-contracts bind
+clean: clean-smart-contracts clean-bindings clean-deployments
 
 fmt:
     forge fmt
@@ -36,26 +38,28 @@ clean-smart-contracts:
 clean-bindings:
     rm -rf {{BINDINGS_DIR}}
 
+# clean cannon deployments
+clean-deployments:
+    rm -rf {{DEPLOYMENTS_DIR}}
+
 # generate Rust bindings from Solidity code
 bind: clean-bindings
     forge bind --alloy --select {{BINDINGS_FILTER}} \
         --module --bindings-path {{BINDINGS_DIR}} \
         --root {{SRC_DIR}}
 
-deploy-dev INITIAL_HASH:
-    forge script \
-        script/InputBox.s.sol \
-        --fork-url {{ANVIL_ENDPOINT}} \
-        --broadcast \
-        --non-interactive \
-        --sig 'run()' \
-        -vvvv 2>&1
-    forge script \
-        script/DaveConsensus.s.sol \
-        --fork-url {{ANVIL_ENDPOINT}} \
-        --broadcast \
-        --non-interactive \
-        --sig 'run(bytes32,address)' \
-        {{INITIAL_HASH}} \
-        $(jq -r '.transactions[] | select(.transactionType=="CREATE").contractAddress' broadcast/InputBox.s.sol/{{ANVIL_CHAIN_ID}}/run-latest.json) \
-        -vvvv 2>&1
+deploy-dev INITIAL_HASH: deploy-prt-core (deploy-instance INITIAL_HASH)
+
+deploy-prt-core:
+    just -f ../../prt/contracts/justfile deploy-core
+
+deploy-instance INITIAL_HASH: deploy-prt-core (deploy "cannonfile.instance.toml" ("initialHash=" + INITIAL_HASH))
+
+deploy CANNONFILE *SETTINGS:
+    pnpm cannon build \
+        --wipe \
+        --rpc-url {{ANVIL_ENDPOINT}} \
+        --private-key {{PRIVATE_KEY}} \
+        --write-deployments {{DEPLOYMENTS_DIR}} \
+        {{CANNONFILE}} \
+        {{SETTINGS}}

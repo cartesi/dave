@@ -4,10 +4,7 @@ update-submodules:
 clean-emulator:
   make -C machine/emulator clean depclean distclean
 
-clean-contracts: clean-bindings
-  just -f ./cartesi-rollups/contracts/justfile clean-smart-contracts
-  just -f ./prt/contracts/justfile clean-smart-contracts
-
+clean-contracts: clean-consensus-contracts clean-prt-contracts clean-bindings clean-deployments
   make -C machine/emulator clean depclean distclean
 
 setup: update-submodules clean-emulator clean-contracts
@@ -28,8 +25,12 @@ build-consensus:
     just -f ./cartesi-rollups/contracts/justfile build
 test-consensus:
     just -f ./cartesi-rollups/contracts/justfile test
+clean-consensus-contracts:
+    just -f ./cartesi-rollups/contracts/justfile clean-smart-contracts
 clean-consensus-bindings:
     just -f ./cartesi-rollups/contracts/justfile clean-bindings
+clean-consensus-deployments:
+    just -f ./cartesi-rollups/contracts/justfile clean-deployments
 bind-consensus:
     just -f ./cartesi-rollups/contracts/justfile bind
 
@@ -37,8 +38,12 @@ build-prt:
     just -f ./prt/contracts/justfile build
 test-prt:
     just -f ./prt/contracts/justfile test
+clean-prt-contracts:
+    just -f ./prt/contracts/justfile clean-smart-contracts
 clean-prt-bindings:
     just -f ./prt/contracts/justfile clean-bindings
+clean-prt-deployments:
+    just -f ./prt/contracts/justfile clean-deployments
 bind-prt:
     just -f ./prt/contracts/justfile bind
 
@@ -46,6 +51,7 @@ build-smart-contracts: build-consensus build-prt
 test-smart-contracts: build-smart-contracts test-consensus test-prt
 bind: bind-consensus bind-prt
 clean-bindings: clean-consensus-bindings clean-prt-bindings
+clean-deployments: clean-consensus-deployments clean-prt-deployments
 
 fmt-rust-workspace: bind
   cargo fmt
