@@ -15,7 +15,7 @@
         "format:fix": "prettier --write \"**/*.ts\""
     },
     "dependencies": {
-        "hono": "^4.5.0",
+        "hono": "^4.7.6",
         "ponder": "^0.10.6",
         "viem": "^2.21.3",
         "winston": "^3.17.0"
@@ -26,7 +26,7 @@
         "eslint-config-ponder": "^0.10.6",
         "prettier": "^3.5.3",
         "rimraf": "^6.0.1",
-        "typescript": "^5.2.2"
+        "typescript": "^5.8.3"
     },
     "engines": {
         "node": ">=22.6.0"
