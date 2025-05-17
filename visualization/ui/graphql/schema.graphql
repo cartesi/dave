@@ -1,0 +1,394 @@
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+scalar BigInt
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type Meta {
+  status: JSON
+}
+
+type Query {
+  tournament(id: String!): Tournament
+  tournaments(where: TournamentFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): TournamentPage!
+  match(id: String!): Match
+  matchs(where: MatchFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): MatchPage!
+  step(id: String!): Step
+  steps(where: StepFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): StepPage!
+  commitment(id: String!): Commitment
+  commitments(where: CommitmentFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): CommitmentPage!
+  _meta: Meta
+}
+
+type Tournament {
+  id: String!
+  timestamp: BigInt!
+  level: BigInt
+  parentId: String
+  matchId: String
+  parent: Tournament
+  innerTournaments(where: TournamentFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): TournamentPage
+  matches(where: MatchFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): MatchPage
+  commitments(where: CommitmentFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): CommitmentPage
+}
+
+type TournamentPage {
+  items: [Tournament!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input TournamentFilter {
+  AND: [TournamentFilter]
+  OR: [TournamentFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  timestamp: BigInt
+  timestamp_not: BigInt
+  timestamp_in: [BigInt]
+  timestamp_not_in: [BigInt]
+  timestamp_gt: BigInt
+  timestamp_lt: BigInt
+  timestamp_gte: BigInt
+  timestamp_lte: BigInt
+  level: BigInt
+  level_not: BigInt
+  level_in: [BigInt]
+  level_not_in: [BigInt]
+  level_gt: BigInt
+  level_lt: BigInt
+  level_gte: BigInt
+  level_lte: BigInt
+  parentId: String
+  parentId_not: String
+  parentId_in: [String]
+  parentId_not_in: [String]
+  parentId_contains: String
+  parentId_not_contains: String
+  parentId_starts_with: String
+  parentId_ends_with: String
+  parentId_not_starts_with: String
+  parentId_not_ends_with: String
+  matchId: String
+  matchId_not: String
+  matchId_in: [String]
+  matchId_not_in: [String]
+  matchId_contains: String
+  matchId_not_contains: String
+  matchId_starts_with: String
+  matchId_ends_with: String
+  matchId_not_starts_with: String
+  matchId_not_ends_with: String
+}
+
+type MatchPage {
+  items: [Match!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type Match {
+  id: String!
+  commitmentOne: String!
+  commitmentTwo: String!
+  leftOfTwo: String!
+  status: matchStatus
+  tournamentId: String!
+  timestamp: BigInt!
+  tournament: Tournament
+  steps(where: StepFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): StepPage
+}
+
+enum matchStatus {
+  STARTED
+  FINISHED
+}
+
+type StepPage {
+  items: [Step!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type Step {
+  id: String!
+  advancedBy: String!
+  parentNodeHash: String!
+  leftNodeHash: String!
+  matchId: String!
+  timestamp: BigInt!
+  input: JSON!
+  match: Match
+}
+
+input StepFilter {
+  AND: [StepFilter]
+  OR: [StepFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  advancedBy: String
+  advancedBy_not: String
+  advancedBy_in: [String]
+  advancedBy_not_in: [String]
+  advancedBy_contains: String
+  advancedBy_not_contains: String
+  advancedBy_starts_with: String
+  advancedBy_ends_with: String
+  advancedBy_not_starts_with: String
+  advancedBy_not_ends_with: String
+  parentNodeHash: String
+  parentNodeHash_not: String
+  parentNodeHash_in: [String]
+  parentNodeHash_not_in: [String]
+  parentNodeHash_contains: String
+  parentNodeHash_not_contains: String
+  parentNodeHash_starts_with: String
+  parentNodeHash_ends_with: String
+  parentNodeHash_not_starts_with: String
+  parentNodeHash_not_ends_with: String
+  leftNodeHash: String
+  leftNodeHash_not: String
+  leftNodeHash_in: [String]
+  leftNodeHash_not_in: [String]
+  leftNodeHash_contains: String
+  leftNodeHash_not_contains: String
+  leftNodeHash_starts_with: String
+  leftNodeHash_ends_with: String
+  leftNodeHash_not_starts_with: String
+  leftNodeHash_not_ends_with: String
+  matchId: String
+  matchId_not: String
+  matchId_in: [String]
+  matchId_not_in: [String]
+  matchId_contains: String
+  matchId_not_contains: String
+  matchId_starts_with: String
+  matchId_ends_with: String
+  matchId_not_starts_with: String
+  matchId_not_ends_with: String
+  timestamp: BigInt
+  timestamp_not: BigInt
+  timestamp_in: [BigInt]
+  timestamp_not_in: [BigInt]
+  timestamp_gt: BigInt
+  timestamp_lt: BigInt
+  timestamp_gte: BigInt
+  timestamp_lte: BigInt
+}
+
+input MatchFilter {
+  AND: [MatchFilter]
+  OR: [MatchFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  commitmentOne: String
+  commitmentOne_not: String
+  commitmentOne_in: [String]
+  commitmentOne_not_in: [String]
+  commitmentOne_contains: String
+  commitmentOne_not_contains: String
+  commitmentOne_starts_with: String
+  commitmentOne_ends_with: String
+  commitmentOne_not_starts_with: String
+  commitmentOne_not_ends_with: String
+  commitmentTwo: String
+  commitmentTwo_not: String
+  commitmentTwo_in: [String]
+  commitmentTwo_not_in: [String]
+  commitmentTwo_contains: String
+  commitmentTwo_not_contains: String
+  commitmentTwo_starts_with: String
+  commitmentTwo_ends_with: String
+  commitmentTwo_not_starts_with: String
+  commitmentTwo_not_ends_with: String
+  leftOfTwo: String
+  leftOfTwo_not: String
+  leftOfTwo_in: [String]
+  leftOfTwo_not_in: [String]
+  leftOfTwo_contains: String
+  leftOfTwo_not_contains: String
+  leftOfTwo_starts_with: String
+  leftOfTwo_ends_with: String
+  leftOfTwo_not_starts_with: String
+  leftOfTwo_not_ends_with: String
+  status: matchStatus
+  status_not: matchStatus
+  status_in: [matchStatus]
+  status_not_in: [matchStatus]
+  tournamentId: String
+  tournamentId_not: String
+  tournamentId_in: [String]
+  tournamentId_not_in: [String]
+  tournamentId_contains: String
+  tournamentId_not_contains: String
+  tournamentId_starts_with: String
+  tournamentId_ends_with: String
+  tournamentId_not_starts_with: String
+  tournamentId_not_ends_with: String
+  timestamp: BigInt
+  timestamp_not: BigInt
+  timestamp_in: [BigInt]
+  timestamp_not_in: [BigInt]
+  timestamp_gt: BigInt
+  timestamp_lt: BigInt
+  timestamp_gte: BigInt
+  timestamp_lte: BigInt
+}
+
+type CommitmentPage {
+  items: [Commitment!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type Commitment {
+  id: String!
+  commitmentHash: String!
+  status: commitmentStatus
+  timestamp: BigInt!
+  tournamentId: String!
+  matchId: String
+  playerAddress: String!
+  machineHash: String!
+  proof: JSON!
+  lNode: String!
+  rNode: String!
+  tournament: Tournament
+  match: Match
+}
+
+enum commitmentStatus {
+  WAITING
+  PLAYING
+  WON
+  LOST
+}
+
+input CommitmentFilter {
+  AND: [CommitmentFilter]
+  OR: [CommitmentFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  commitmentHash: String
+  commitmentHash_not: String
+  commitmentHash_in: [String]
+  commitmentHash_not_in: [String]
+  commitmentHash_contains: String
+  commitmentHash_not_contains: String
+  commitmentHash_starts_with: String
+  commitmentHash_ends_with: String
+  commitmentHash_not_starts_with: String
+  commitmentHash_not_ends_with: String
+  status: commitmentStatus
+  status_not: commitmentStatus
+  status_in: [commitmentStatus]
+  status_not_in: [commitmentStatus]
+  timestamp: BigInt
+  timestamp_not: BigInt
+  timestamp_in: [BigInt]
+  timestamp_not_in: [BigInt]
+  timestamp_gt: BigInt
+  timestamp_lt: BigInt
+  timestamp_gte: BigInt
+  timestamp_lte: BigInt
+  tournamentId: String
+  tournamentId_not: String
+  tournamentId_in: [String]
+  tournamentId_not_in: [String]
+  tournamentId_contains: String
+  tournamentId_not_contains: String
+  tournamentId_starts_with: String
+  tournamentId_ends_with: String
+  tournamentId_not_starts_with: String
+  tournamentId_not_ends_with: String
+  matchId: String
+  matchId_not: String
+  matchId_in: [String]
+  matchId_not_in: [String]
+  matchId_contains: String
+  matchId_not_contains: String
+  matchId_starts_with: String
+  matchId_ends_with: String
+  matchId_not_starts_with: String
+  matchId_not_ends_with: String
+  playerAddress: String
+  playerAddress_not: String
+  playerAddress_in: [String]
+  playerAddress_not_in: [String]
+  playerAddress_contains: String
+  playerAddress_not_contains: String
+  playerAddress_starts_with: String
+  playerAddress_ends_with: String
+  playerAddress_not_starts_with: String
+  playerAddress_not_ends_with: String
+  machineHash: String
+  machineHash_not: String
+  machineHash_in: [String]
+  machineHash_not_in: [String]
+  machineHash_contains: String
+  machineHash_not_contains: String
+  machineHash_starts_with: String
+  machineHash_ends_with: String
+  machineHash_not_starts_with: String
+  machineHash_not_ends_with: String
+  lNode: String
+  lNode_not: String
+  lNode_in: [String]
+  lNode_not_in: [String]
+  lNode_contains: String
+  lNode_not_contains: String
+  lNode_starts_with: String
+  lNode_ends_with: String
+  lNode_not_starts_with: String
+  lNode_not_ends_with: String
+  rNode: String
+  rNode_not: String
+  rNode_in: [String]
+  rNode_not_in: [String]
+  rNode_contains: String
+  rNode_not_contains: String
+  rNode_starts_with: String
+  rNode_ends_with: String
+  rNode_not_starts_with: String
+  rNode_not_ends_with: String
+}
