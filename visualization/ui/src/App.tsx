@@ -1,20 +1,24 @@
 import { Route, Routes } from "react-router";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { Layout } from "./components/Layout";
 import { Redirect } from "./components/Redirect";
 import Home from "./home/Home";
-import { TournamentList } from "./tournament/TournamentList";
+import TournamentRoutes from "./tournament/routes";
 
 function App() {
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/tournaments" element={<TournamentList />} />
+    <ErrorBoundary fallback={<p>Hummm...</p>}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Home />} />
 
-        {/* Catch-all route */}
-        <Route path="*" element={<Redirect to="/" />} />
-      </Route>
-    </Routes>
+          {TournamentRoutes()}
+
+          {/* Catch-all route */}
+          <Route path="*" element={<Redirect to="/" />} />
+        </Route>
+      </Routes>
+    </ErrorBoundary>
   );
 }
 
