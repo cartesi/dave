@@ -96,52 +96,6 @@ jobs:
           just -f programs/justfile build-simple
           just test-simple
 
-  prt-rollups:
-    runs-on: ubuntu-24.04
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup tools
-        uses: ./.github/actions/setup-tools
-
-      - name: Install Cartesi Machine
-        uses: ./.github/actions/cartesi-machine
-        with:
-          version: 0.19.0
-          suffix-version: "-alpha3"
-
-      - name: Download PRT contracts
-        working-directory: ./prt/contracts
-        run: |
-          just install-deps
-
-      - name: Download Rollups contracts
-        working-directory: ./cartesi-rollups/contracts
-        run: |
-          just install-deps
-
-      - name: Download deps
-        working-directory: ./test/programs/
-        run: |
-          just download-deps
-
-      - name: Rust build
-        run: |
-          just build
-
-      - name: Build echo
-        working-directory: ./test/programs/
-        run: |
-          just build-echo
-
-      - name: Test prt-rollups
-        timeout-minutes: 30
-        run: |
-          just test-rollups-echo
-
   build:
     runs-on: ubuntu-24.04
     steps:
@@ -277,7 +231,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [prt-contracts, dave-contracts, prt-compute, prt-rollups, build, build-release]
+    needs: [prt-contracts, dave-contracts, prt-compute, build, build-release]
     runs-on: ubuntu-24.04
     strategy:
       matrix:
