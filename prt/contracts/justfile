@@ -3,9 +3,8 @@ DEPLOYMENTS_DIR := "./deployments"
 SRC_DIR := "."
 BINDINGS_FILTER := "^[^I].+TournamentFactory|LeafTournament|RootTournament|^Tournament$"
 
-export PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-ANVIL_ENDPOINT := "http://127.0.0.1:8545"
-ANVIL_CHAIN_ID := "31337"
+DEVNET_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+DEVNET_RPC_URL := "http://127.0.0.1:8545"
 
 default: build
 
@@ -46,17 +45,21 @@ bind: clean-bindings
     --module --bindings-path {{BINDINGS_DIR}} \
     --root {{SRC_DIR}}
 
-deploy-dev INITIAL_HASH: deploy-core (deploy-instance INITIAL_HASH)
+deploy-core *OPTS: \
+        (deploy "cannonfile.toml" OPTS)
 
-deploy-core: (deploy "cannonfile.toml")
+deploy-core-dev *OPTS: \
+        (deploy-dev "cannonfile.toml" OPTS)
 
-deploy-instance INITIAL_HASH: deploy-core (deploy "cannonfile.instance.toml" ("initialHash=" + INITIAL_HASH))
+deploy-instance-dev INITIAL_HASH *OPTS: \
+        (deploy-core-dev OPTS) \
+        (deploy-dev "cannonfile.dev-instance.toml" ("initialHash=" + INITIAL_HASH) OPTS)
 
-deploy CANNONFILE *SETTINGS:
-    pnpm cannon build \
-        --wipe \
-        --rpc-url {{ANVIL_ENDPOINT}} \
-        --private-key {{PRIVATE_KEY}} \
-        --write-deployments {{DEPLOYMENTS_DIR}} \
-        {{CANNONFILE}} \
-        {{SETTINGS}}
+deploy-dev CANNONFILE *OPTS: \
+        (deploy CANNONFILE OPTS \
+            "--wipe" \
+            "--rpc-url" DEVNET_RPC_URL \
+            "--private-key" DEVNET_PRIVATE_KEY)
+
+deploy CANNONFILE *OPTS:
+    pnpm cannon build {{CANNONFILE}} {{OPTS}}
