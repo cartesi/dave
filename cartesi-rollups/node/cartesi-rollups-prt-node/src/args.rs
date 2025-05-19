@@ -109,12 +109,16 @@ pub struct PRTConfig {
 
 impl fmt::Display for PRTConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.address_book)?;
+        write!(f, "{}", self.address_book)?;
         writeln!(f, "Machine path: {}", self.machine_path.display())?;
-        writeln!(f, "Ethereum gateway: <redacted>")?;
         writeln!(f, "Signer address: {}", self.signer_address)?;
+        writeln!(f, "Ethereum gateway: <redacted>")?;
         writeln!(f, "State directory: {}", self.state_dir.display())?;
-        writeln!(f, "Sleep duration: {}s", self.sleep_duration.as_secs())?;
+        writeln!(
+            f,
+            "Sleep duration: {} seconds",
+            self.sleep_duration.as_secs()
+        )?;
         Ok(())
     }
 }
@@ -155,7 +159,10 @@ impl PRTConfig {
         (
             Self {
                 address_book,
-                state_dir: state_manager.state_dir().to_owned(),
+                state_dir: state_manager
+                    .state_dir()
+                    .canonicalize()
+                    .expect("could not canonicalize state directory"),
                 machine_path: args.machine_path,
                 signer_address,
                 provider,
