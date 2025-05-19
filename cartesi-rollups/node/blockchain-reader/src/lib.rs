@@ -38,14 +38,18 @@ use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 pub struct AddressBook {
     /// address of app
     pub app: Address,
+
     /// address of Dave consensus
     pub consensus: Address,
+
     /// address of input box
     pub input_box: Address,
-    /// earliest block number where contracts exist
-    pub genesis_block_number: u64,
+
     /// initial state hash of application
     pub initial_hash: Hash,
+
+    /// earliest block number where contracts exist
+    pub genesis_block_number: u64,
 }
 
 impl fmt::Display for AddressBook {
@@ -53,8 +57,12 @@ impl fmt::Display for AddressBook {
         writeln!(f, "App Address: {}", self.app)?;
         writeln!(f, "Consensus Address: {}", self.consensus)?;
         writeln!(f, "Input Box Address: {}", self.input_box)?;
+        writeln!(
+            f,
+            "Initial Hash: 0x{}",
+            alloy::hex::encode(self.initial_hash)
+        )?;
         writeln!(f, "Genesis Block Number: {}", self.genesis_block_number)?;
-        writeln!(f, "Initial Hash: {}", alloy::hex::encode(self.initial_hash))?;
         Ok(())
     }
 }

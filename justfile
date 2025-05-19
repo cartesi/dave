@@ -71,9 +71,9 @@ run-dockered +CMD: build-docker-image
 exec-dockered +CMD:
   docker exec dave-node {{CMD}}
 
-test-rollups-echo:
+test-rollups-echo: build-rust-workspace
     just -f ./prt/tests/rollups/justfile test-echo
-test-rollups-honeypot:
+test-rollups-honeypot: build-rust-workspace
     just -f ./prt/tests/rollups/justfile test-honeypot
 view-rollups-logs:
     just -f ./prt/tests/rollups/justfile read-node-logs

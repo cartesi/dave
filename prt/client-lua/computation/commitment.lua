@@ -111,7 +111,6 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
         initial_state = machine:state().root_hash
     else
         -- treat it as compute
-
         machine = Machine:new_from_path(machine_path)
         machine:load_snapshot(snapshot_dir, base_cycle)
         initial_state = machine:run(base_cycle).root_hash
