@@ -25,13 +25,19 @@ sleep 5
 
 # deploy smart contracts
 initial_hash=0x`xxd -p -c32 "${program_path}/machine-image/hash"`
-just -f ../../../contracts/justfile deploy-dev $initial_hash
+contracts_dir=../../../contracts
+deployments_dir=deployments/dev-$initial_hash
+just -f $contracts_dir/justfile deploy-instance-dev $initial_hash --write-deployments $deployments_dir
 
 
 # generate address file
 rm -f $program_path/addresses
 
-jq -r '.address' ../../../contracts/deployments/TopTournamentInstance.json >> $program_path/addresses
+getaddress() {
+    jq -r '.address' "$contracts_dir/$deployments_dir/$1.json"
+}
+
+getaddress TopTournamentInstance >> $program_path/addresses
 
 cast rpc anvil_mine 2
 

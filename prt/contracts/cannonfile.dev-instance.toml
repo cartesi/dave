@@ -1,6 +1,6 @@
-name = 'cartesi-prt-multilevel-instance'
+name = 'cartesi-prt-multilevel-dev'
 version = '0.0.1'
-description = 'Cartesi PRT contracts test'
+description = 'Cartesi PRT contracts (dev)'
 
 [pull.prtContracts]
 source = "cartesi-prt-multilevel:0.0.1@main"

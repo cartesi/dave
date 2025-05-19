@@ -1,6 +1,6 @@
-name = 'cartesi-dave-consensus-instance'
+name = 'cartesi-dave-consensus-dev'
 version = '0.0.1'
-description = 'Cartesi Dave Consensus Instance'
+description = 'Cartesi Dave Consensus (dev)'
 
 [var.Settings]
 appOwner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
