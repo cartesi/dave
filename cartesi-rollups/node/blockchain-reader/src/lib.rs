@@ -10,7 +10,7 @@ use alloy::{
     eips::BlockNumberOrTag::Finalized,
     hex::ToHexExt,
     primitives::{Address, U256},
-    providers::{DynProvider, Provider},
+    providers::Provider,
     rpc::types::{Log, Topic},
     sol_types::SolEvent,
 };
@@ -129,7 +129,6 @@ impl AddressBook {
 
 pub struct BlockchainReader<SM: StateManager> {
     state_manager: SM,
-    provider: DynProvider,
     address_book: AddressBook,
     input_reader: EventReader<InputAdded>,
     epoch_reader: EventReader<EpochSealed>,
@@ -137,48 +136,23 @@ pub struct BlockchainReader<SM: StateManager> {
 }
 
 impl<SM: StateManager> BlockchainReader<SM> {
-    pub fn new(
-        state_manager: SM,
-        provider: DynProvider,
-        address_book: AddressBook,
-        sleep_duration: Duration,
-    ) -> Self {
+    pub fn new(state_manager: SM, address_book: AddressBook, sleep_duration: Duration) -> Self {
         Self {
             state_manager,
             address_book,
-            provider,
             input_reader: EventReader::<InputAdded>::default(),
             epoch_reader: EventReader::<EpochSealed>::default(),
             sleep_duration,
         }
     }
 
-    pub fn start(self, watch: Watch) -> Result<()> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("`BlockchainReader` runtime build failure");
-
-        rt.block_on(async move { self.execution_loop(watch).await })
-    }
-
-    async fn execution_loop(mut self, watch: Watch) -> Result<()> {
-        // TODO set genesis at main.rs
-        let input_box_creation =
-            find_contract_creation_block(&self.provider, self.address_book.input_box)
-                .await
-                .map_err(|e| ProviderErrors(vec![Error::TransportError(e)]))?;
-        let latest_processed = self.state_manager.latest_processed_block()?;
-        if input_box_creation > latest_processed {
-            self.state_manager.set_genesis(input_box_creation)?;
-        }
-
+    pub async fn execution_loop(mut self, watch: Watch, provider: impl Provider) -> Result<()> {
         loop {
-            let current_block = latest_finalized_block(&self.provider).await?;
+            let current_block = latest_finalized_block(&provider).await?;
             let prev_block = self.state_manager.latest_processed_block()?;
 
             if current_block > prev_block {
-                self.advance(prev_block, current_block).await?;
+                self.advance(&provider, prev_block, current_block).await?;
             }
 
             if matches!(watch.wait(self.sleep_duration), ControlFlow::Break(_)) {
@@ -187,8 +161,15 @@ impl<SM: StateManager> BlockchainReader<SM> {
         }
     }
 
-    async fn advance(&mut self, prev_block: u64, current_block: u64) -> Result<()> {
-        let (inputs, epochs) = self.collect_events(prev_block, current_block).await?;
+    async fn advance(
+        &mut self,
+        provider: &impl Provider,
+        prev_block: u64,
+        current_block: u64,
+    ) -> Result<()> {
+        let (inputs, epochs) = self
+            .collect_events(provider, prev_block, current_block)
+            .await?;
 
         self.state_manager.insert_consensus_data(
             current_block,
@@ -201,12 +182,13 @@ impl<SM: StateManager> BlockchainReader<SM> {
 
     async fn collect_events(
         &mut self,
+        provider: &impl Provider,
         prev_block: u64,
         current_block: u64,
     ) -> Result<(Vec<Input>, Vec<Epoch>)> {
         // read sealed epochs from blockchain
         let sealed_epochs: Vec<Epoch> = self
-            .collect_sealed_epochs(prev_block, current_block)
+            .collect_sealed_epochs(provider, prev_block, current_block)
             .await?;
 
         let last_sealed_epoch_opt = self.state_manager.last_sealed_epoch()?;
@@ -222,7 +204,12 @@ impl<SM: StateManager> BlockchainReader<SM> {
 
         // read inputs from blockchain
         let inputs = self
-            .collect_inputs(prev_block, current_block, merged_sealed_epochs_iter)
+            .collect_inputs(
+                provider,
+                prev_block,
+                current_block,
+                merged_sealed_epochs_iter,
+            )
             .await?;
 
         Ok((inputs, sealed_epochs))
@@ -230,13 +217,14 @@ impl<SM: StateManager> BlockchainReader<SM> {
 
     async fn collect_sealed_epochs(
         &self,
+        provider: &impl Provider,
         prev_block: u64,
         current_block: u64,
     ) -> Result<Vec<Epoch>> {
         Ok(self
             .epoch_reader
             .next(
-                &self.provider,
+                provider,
                 None,
                 &self.address_book.consensus,
                 prev_block,
@@ -268,6 +256,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
 
     async fn collect_inputs(
         &mut self,
+        provider: &impl Provider,
         prev_block: u64,
         current_block: u64,
         sealed_epochs_iter: impl Iterator<Item = &Epoch>,
@@ -276,7 +265,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
         let input_events: Vec<_> = self
             .input_reader
             .next(
-                &self.provider,
+                provider,
                 Some(&self.address_book.app.into_word().into()),
                 &self.address_book.input_box,
                 prev_block,
@@ -751,12 +740,21 @@ mod blockchain_reader_tests {
         let r = thread::spawn(move || {
             let blockchain_reader = BlockchainReader::new(
                 PersistentStateAccess::new(handle.path()).unwrap(),
-                provider,
                 address_book,
                 Duration::from_secs(1),
             );
 
-            blockchain_reader.start(watch_0).unwrap();
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("`BlockchainReader` runtime build failure");
+
+            rt.block_on(async move {
+                blockchain_reader
+                    .execution_loop(watch_0, provider)
+                    .await
+                    .unwrap();
+            })
         });
 
         read_inputs_from_db_until_count(&mut state_manager, 0, 1).await?;

@@ -76,6 +76,7 @@ checksum = "28e2652684758b0d9b389d248b209ed9fd9989ef489a550265fe4bb8454fe7eb"
 dependencies = [
  "alloy-primitives",
  "num_enum",
+ "serde",
  "strum",
 ]
 
@@ -1677,6 +1678,7 @@ name = "cartesi-rollups-prt-node"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "alloy-chains",
  "alloy-transport",
  "anyhow",
  "cartesi-dave-kms",

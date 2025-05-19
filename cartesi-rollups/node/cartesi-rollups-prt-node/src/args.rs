@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use alloy::{primitives::Address, providers::DynProvider, transports::http::reqwest::Url};
+use alloy_chains::NamedChain;
 use clap::{ArgGroup, Parser, Subcommand};
 use rollups_blockchain_reader::AddressBook;
 use rollups_state_manager::{
@@ -96,15 +97,18 @@ pub struct PRTConfig {
     pub machine_path: PathBuf,
 
     // Provider
+    pub chain_id: NamedChain,
     pub ethereum_gateway: Url,
     pub signer_address: Address,
-    pub provider: DynProvider,
 
     // State
     pub state_dir: PathBuf,
 
     // Misc
     pub sleep_duration: Duration,
+
+    // private
+    signer: SignerArgs,
 }
 
 impl fmt::Display for PRTConfig {
@@ -112,6 +116,7 @@ impl fmt::Display for PRTConfig {
         write!(f, "{}", self.address_book)?;
         writeln!(f, "Machine path: {}", self.machine_path.display())?;
         writeln!(f, "Signer address: {}", self.signer_address)?;
+        writeln!(f, "Chain Id: {}", self.chain_id)?;
         writeln!(f, "Ethereum gateway: <redacted>")?;
         writeln!(f, "State directory: {}", self.state_dir.display())?;
         writeln!(
@@ -136,10 +141,22 @@ impl PRTConfig {
         PersistentStateAccess::new(&self.state_dir)
     }
 
+    pub async fn provider(&self) -> DynProvider {
+        create_provider(&self.ethereum_gateway, self.chain_id, &self.signer)
+            .await
+            .1
+    }
+
     async fn _setup() -> (Self, PersistentStateAccess) {
         let args = PRTArgs::parse();
 
-        let (signer_address, provider) = create_provider(&args).await;
+        let chain_id = args
+            .web3_chain_id
+            .try_into()
+            .expect("fail to convert chain id");
+
+        let (signer_address, provider) =
+            create_provider(&args.web3_rpc_url, chain_id, &args.signer).await;
         let address_book = AddressBook::new(args.app_address, &provider).await;
 
         let mut state_manager = PersistentStateAccess::migrate(
@@ -164,10 +181,11 @@ impl PRTConfig {
                     .canonicalize()
                     .expect("could not canonicalize state directory"),
                 machine_path: args.machine_path,
+                chain_id,
                 signer_address,
-                provider,
                 ethereum_gateway: args.web3_rpc_url,
                 sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
+                signer: args.signer,
             },
             state_manager,
         )

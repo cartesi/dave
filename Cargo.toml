@@ -83,6 +83,7 @@ alloy = { version = "0.12.4", features = [
   "sol-types",
 ] }
 alloy-transport = { version = "0.12", features = ["throttle"] }
+alloy-chains = { version = "0.1" }
 ruint = "1.12"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
 
