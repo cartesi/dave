@@ -7,17 +7,20 @@ use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder},
     rpc::client::RpcClient,
     signers::local::PrivateKeySigner,
+    transports::http::reqwest::Url,
 };
+use alloy_chains::NamedChain;
 use alloy_transport::layers::RetryBackoffLayer;
 use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
 use std::{fs, str::FromStr};
 
-use crate::args::{PRTArgs, SignerArgs};
+use crate::args::SignerArgs;
 
-// const ANVIL_KEY_1: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-
-async fn create_signer(args: &PRTArgs) -> (Address, EthereumWallet) {
-    let signer: Box<CommonSignature> = match &args.signer {
+async fn create_signer(
+    chain_id: NamedChain,
+    signer_args: &SignerArgs,
+) -> (Address, EthereumWallet) {
+    let signer: Box<CommonSignature> = match signer_args {
         SignerArgs::Pk {
             web3_private_key,
             web3_private_key_file,
@@ -62,7 +65,7 @@ async fn create_signer(args: &PRTArgs) -> (Address, EthereumWallet) {
                 aws_kms_key_id.clone().unwrap()
             };
 
-            let kms_signer = KmsSignerBuilder::new(&key_id, args.web3_chain_id)
+            let kms_signer = KmsSignerBuilder::new(&key_id, chain_id.into())
                 .with_region(aws_region)
                 .with_endpoint(&endpoint_url)
                 .build()
@@ -80,7 +83,7 @@ async fn create_signer(args: &PRTArgs) -> (Address, EthereumWallet) {
     (wallet_address, wallet)
 }
 
-async fn create_client(args: &PRTArgs) -> RpcClient {
+async fn create_client(url: &Url) -> RpcClient {
     // let throttle = ThrottleLayer::new(20);
 
     let retry = RetryBackoffLayer::new(
@@ -92,20 +95,20 @@ async fn create_client(args: &PRTArgs) -> RpcClient {
     RpcClient::builder()
         // .layer(throttle)
         .layer(retry)
-        .http(args.web3_rpc_url.clone())
+        .http(url.clone())
 }
 
-pub async fn create_provider(args: &PRTArgs) -> (Address, DynProvider) {
-    let client = create_client(args).await;
-    let (address, wallet) = create_signer(args).await;
+pub async fn create_provider(
+    url: &Url,
+    arg_chain_id: NamedChain,
+    signer: &SignerArgs,
+) -> (Address, DynProvider) {
+    let client = create_client(url).await;
+    let (address, wallet) = create_signer(arg_chain_id, signer).await;
 
     let provider = ProviderBuilder::new()
         .wallet(wallet)
-        .with_chain(
-            args.web3_chain_id
-                .try_into()
-                .expect("fail to convert chain id"),
-        )
+        .with_chain(arg_chain_id)
         .on_client(client);
 
     let chain_id = provider
@@ -113,7 +116,7 @@ pub async fn create_provider(args: &PRTArgs) -> (Address, DynProvider) {
         .await
         .expect("failed to get chain_id from provider");
     assert_eq!(
-        chain_id, args.web3_chain_id,
+        chain_id, arg_chain_id as u64,
         "provider chain_id does not match args chain_id"
     );
 

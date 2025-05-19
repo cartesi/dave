@@ -2,7 +2,7 @@ mod error;
 
 use alloy::{
     primitives::{Address, B256},
-    providers::DynProvider,
+    providers::{DynProvider, Provider},
 };
 use error::Result;
 use log::{debug, info, trace};
@@ -18,7 +18,6 @@ use cartesi_prt_core::{
 use rollups_state_manager::{Epoch, Proof, StateManager, sync::Watch};
 
 pub struct EpochManager<SM: StateManager> {
-    provider: DynProvider,
     arena_sender: EthArenaSender,
     consensus: Address,
     sleep_duration: Duration,
@@ -28,7 +27,6 @@ pub struct EpochManager<SM: StateManager> {
 impl<SM: StateManager> EpochManager<SM> {
     pub fn new(
         arena_sender: EthArenaSender,
-        provider: DynProvider,
         consensus_address: Address,
         state_manager: SM,
         sleep_duration: Duration,
@@ -38,26 +36,15 @@ impl<SM: StateManager> EpochManager<SM> {
             consensus: consensus_address,
             sleep_duration,
             state_manager,
-            provider,
         }
     }
 
-    pub fn start(self, watch: Watch) -> Result<()> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("`EpochManager` runtime build failure");
-
-        rt.block_on(async move { self.execution_loop(watch).await })
-    }
-
-    pub async fn execution_loop(mut self, watch: Watch) -> Result<()> {
-        let dave_consensus =
-            daveconsensus::DaveConsensus::new(self.consensus, self.provider.clone());
+    pub async fn execution_loop(mut self, watch: Watch, provider: DynProvider) -> Result<()> {
+        let dave_consensus = daveconsensus::DaveConsensus::new(self.consensus, provider.clone());
 
         loop {
             self.try_settle_epoch(&dave_consensus).await?;
-            self.try_react_epoch().await?;
+            self.try_react_epoch(provider.clone()).await?;
 
             if matches!(watch.wait(self.sleep_duration), ControlFlow::Break(_)) {
                 break Ok(());
@@ -67,7 +54,7 @@ impl<SM: StateManager> EpochManager<SM> {
 
     pub async fn try_settle_epoch(
         &mut self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<(), DynProvider>,
+        dave_consensus: &DaveConsensus::DaveConsensusInstance<(), impl Provider>,
     ) -> Result<()> {
         let can_settle = dave_consensus.canSettle().call().await?;
 
@@ -109,7 +96,7 @@ impl<SM: StateManager> EpochManager<SM> {
         Ok(())
     }
 
-    async fn try_react_epoch(&mut self) -> Result<()> {
+    async fn try_react_epoch(&mut self, provider: DynProvider) -> Result<()> {
         // participate in last sealed epoch tournament
         if let Some(last_sealed_epoch) = self.state_manager.last_sealed_epoch()? {
             match self
@@ -121,7 +108,7 @@ impl<SM: StateManager> EpochManager<SM> {
                         "dispute tournaments for epoch {}",
                         last_sealed_epoch.epoch_number
                     );
-                    self.react_dispute(&last_sealed_epoch).await?
+                    self.react_dispute(provider, &last_sealed_epoch).await?
                 }
                 None => {
                     debug!(
@@ -134,7 +121,11 @@ impl<SM: StateManager> EpochManager<SM> {
         Ok(())
     }
 
-    async fn react_dispute(&mut self, last_sealed_epoch: &Epoch) -> Result<()> {
+    async fn react_dispute(
+        &mut self,
+        provider: DynProvider,
+        last_sealed_epoch: &Epoch,
+    ) -> Result<()> {
         let snapshot = self
             .state_manager
             .snapshot_dir(last_sealed_epoch.epoch_number)?
@@ -163,7 +154,7 @@ impl<SM: StateManager> EpochManager<SM> {
             Player::new(
                 Some(inputs),
                 leafs,
-                self.provider.clone(),
+                provider.erased(),
                 snapshot.to_string_lossy().to_string(),
                 address,
                 last_sealed_epoch.block_created_number,

@@ -35,27 +35,38 @@ macro_rules! notify_all {
     }};
 }
 
+fn create_runtime(service: &str) -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap_or_else(|e| panic!("`{}` runtime build failure: {e}", service))
+}
+
 pub fn create_blockchain_reader_task(
     watch: Watch,
     parameters: &PRTConfig,
 ) -> thread::JoinHandle<()> {
     let params = parameters.clone();
+    let inner_watch = watch.clone();
 
     thread::spawn(move || {
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let state_manager = params.state_access().unwrap();
+        let res = std::panic::catch_unwind(|| {
+            let rt = create_runtime("BlockchainReader");
 
-            let blockchain_reader = BlockchainReader::new(
-                state_manager,
-                params.provider,
-                params.address_book,
-                params.sleep_duration,
-            );
+            rt.block_on(async move {
+                let state_manager = params.state_access().unwrap();
+                let blockchain_reader = BlockchainReader::new(
+                    state_manager,
+                    params.address_book,
+                    params.sleep_duration,
+                );
 
-            blockchain_reader
-                .start(watch.clone())
-                .inspect_err(|e| error!("{e}"))
-        }));
+                blockchain_reader
+                    .execution_loop(inner_watch, params.provider().await)
+                    .await
+            })
+            .inspect_err(|e| error!("{e}"))
+        });
 
         notify_all!("Blockchain reader", watch, res);
     })
@@ -63,26 +74,28 @@ pub fn create_blockchain_reader_task(
 
 pub fn create_epoch_manager_task(watch: Watch, parameters: &PRTConfig) -> thread::JoinHandle<()> {
     let params = parameters.clone();
+    let inner_watch = watch.clone();
 
     thread::spawn(move || {
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let arena_sender = EthArenaSender::new(params.provider.clone())
-                .expect("could not create arena sender");
+        let res = std::panic::catch_unwind(|| {
+            let rt = create_runtime("EpochManager");
+            rt.block_on(async move {
+                let state_manager = params.state_access().unwrap();
+                let provider = params.provider().await;
+                let arena_sender =
+                    EthArenaSender::new(provider.clone()).expect("could not create arena sender");
 
-            let state_manager = params.state_access().unwrap();
+                let epoch_manager = EpochManager::new(
+                    arena_sender,
+                    params.address_book.consensus,
+                    state_manager,
+                    params.sleep_duration,
+                );
 
-            let epoch_manager = EpochManager::new(
-                arena_sender,
-                params.provider,
-                params.address_book.consensus,
-                state_manager,
-                params.sleep_duration,
-            );
-
-            epoch_manager
-                .start(watch.clone())
-                .inspect_err(|e| error!("{e}"))
-        }));
+                epoch_manager.execution_loop(inner_watch, provider).await
+            })
+            .inspect_err(|e| error!("{e}"))
+        });
 
         notify_all!("Epoch manager", watch, res);
     })
