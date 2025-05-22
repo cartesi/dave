@@ -1,3 +1,6 @@
+local Hash = require "cryptography.hash"
+local MerkleBuilder = require "cryptography.merkle_builder"
+local Machine = require "computation.machine"
 local helper = require "utils.helper"
 
 local ANVIL_KEY_7 = "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
@@ -30,7 +33,14 @@ local Dave = {}
 Dave.__index = Dave
 
 function Dave:new(machine_path, app_address, sleep_duration, verbosity, trace_level)
-    local n = {}
+    -- trace, debug, info, warn, error
+    verbosity = verbosity or os.getenv("VERBOSITY") or 'debug'
+
+    -- 0, 1, full
+    trace_level = trace_level or os.getenv("TRACE_LEVEL") or 'full'
+
+
+    local n = { initial_machine_path = assert(machine_path) }
     os.execute "rm -rf _state && mkdir _state"
 
     local handle = start_dave_node(machine_path, app_address, "_state/", sleep_duration, verbosity, trace_level)
@@ -39,6 +49,76 @@ function Dave:new(machine_path, app_address, sleep_duration, verbosity, trace_le
 
     setmetatable(n, self)
     return n
+end
+
+local ROOT_LEAFS_QUERY = [[
+sqlite3 ./_state/%d/db \
+'SELECT level,base_cycle,compute_leaf_index,repetitions,HEX(compute_leaf) FROM compute_leafs WHERE level=0 ORDER BY compute_leaf_index ASC'
+]]
+function Dave:root_commitment(epoch_index)
+    local builder = MerkleBuilder:new()
+    local machine = Machine:new_from_path(self:machine_path(epoch_index))
+    local initial_state = machine:state()
+    local handle = io.popen(string.format(ROOT_LEAFS_QUERY, epoch_index))
+    assert(handle)
+    local rows = handle:read "*a"
+    handle:close()
+
+    if rows:find "Error" then
+        error(string.format("Read leafs failed:\n%s", rows))
+    end
+
+    -- Iterate over each line in the input data
+    for line in rows:gmatch("[^\n]+") do
+        local _, _, _, repetitions, compute_leaf = line:match(
+            "([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)")
+        -- Convert values to appropriate types
+        repetitions = tonumber(repetitions)
+        compute_leaf = Hash:from_digest_hex("0x" .. compute_leaf)
+
+        builder:add(compute_leaf, repetitions)
+    end
+
+    return builder:build(initial_state.root_hash)
+end
+
+local MACHINE_PATH_QUERY = [[
+sqlite3 ./_state/db.sqlite3 \
+'SELECT s.file_path FROM epoch_snapshot_info AS e JOIN machine_state_snapshots AS s ON s.state_hash = e.state_hash WHERE e.epoch_number = %d']]
+function Dave:machine_path(epoch_index)
+    local cmd = string.format(MACHINE_PATH_QUERY, epoch_index)
+    local handle = io.popen(cmd)
+    assert(handle)
+    local path = handle:read()
+    local tail = handle:read "*a"
+    handle:close()
+    if path:find "Error" or tail:find "Error" then
+        error(string.format("Read machine path failed:\n%s", path))
+    end
+    return path
+end
+
+local INPUTS_QUERY =
+[[sqlite3 ./_state/%d/db 'select HEX(input)
+from inputs ORDER BY input_index ASC']]
+function Dave:inputs(epoch_index)
+    local handle = io.popen(string.format(INPUTS_QUERY, epoch_index))
+    assert(handle)
+    local rows = handle:read "*a"
+    handle:close()
+
+    if rows:find "Error" then
+        error(string.format("Read inputs failed:\n%s", rows))
+    end
+
+    local inputs = {}
+    -- Iterate over each line in the input data
+    for line in rows:gmatch("[^\n]+") do
+        local input = line:match("([^|]+)")
+        table.insert(inputs, "0x" .. input)
+    end
+
+    return inputs
 end
 
 return Dave
