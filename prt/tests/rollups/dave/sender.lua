@@ -1,5 +1,7 @@
 local Hash = require "cryptography.hash"
 local MerkleTree = require "cryptography.merkle_tree"
+local blockchain_constants = require "blockchain.constants"
+local blockchain_utils = require "blockchain.utils"
 
 local function quote_args(args, not_quote)
     local quoted_args = {}
@@ -36,10 +38,15 @@ end
 local Sender = {}
 Sender.__index = Sender
 
-function Sender:new(pk, endpoint)
+function Sender:new(input_box_address, app_contract_address, pk, endpoint)
+    pk = pk or blockchain_constants.pks[1]
+    endpoint = endpoint or blockchain_constants.endpoint
     local sender = {
         pk = pk,
-        endpoint = endpoint
+        endpoint = endpoint,
+
+        input_box_address = input_box_address,
+        app_contract_address = app_contract_address
     }
 
     setmetatable(sender, self)
@@ -76,15 +83,25 @@ function Sender:_send_tx(contract_address, sig, args)
     handle:close()
 end
 
-function Sender:tx_add_input(input_box_address, app_contract_address, payload)
+function Sender:tx_add_input(payload)
     local sig = [[addInput(address,bytes)(bytes32)]]
     return pcall(
         self._send_tx,
         self,
-        input_box_address,
+        self.input_box_address,
         sig,
-        { app_contract_address, payload }
+        { self.app_contract_address, payload }
     )
+end
+
+function Sender:tx_add_inputs(inputs)
+    for _,payload in ipairs(inputs) do
+        self.tx_add_input(payload)
+    end
+end
+
+function Sender:advance_blocks(blocks)
+    blockchain_utils.advance_time(blocks, self.endpoint)
 end
 
 return Sender

@@ -8,10 +8,11 @@ MAX_EPOCH := "1"
 test MACH_PATH:
   rm -rf _state
   WEB3_PRIVATE_KEY={{WEB3_PRIVATE_KEY}} \
-  INPUT_BOX=`sed '1q;d' {{MACH_PATH}}/addresses` \
-  CONSENSUS=`sed '2q;d' {{MACH_PATH}}/addresses` \
+  ANVIL_PATH=`realpath {{MACH_PATH}}/anvil_state.json` \
+  TEMPLATE_MACHINE=`realpath {{MACH_PATH}}/machine-image` \
   APP=`sed '3q;d' {{MACH_PATH}}/addresses` \
-  MACHINE_PATH={{MACH_PATH}} \
+  CONSENSUS=`sed '2q;d' {{MACH_PATH}}/addresses` \
+  INPUT_BOX=`sed '1q;d' {{MACH_PATH}}/addresses` \
   MAX_EPOCH={{MAX_EPOCH}} lua prt_rollups.lua && \
   MAX_EPOCH={{MAX_EPOCH}} lua check_rollups_winner.lua
 
