@@ -1,3 +1,6 @@
+// (c) Cartesi and individual authors (see AUTHORS)
+// SPDX-License-Identifier: Apache-2.0 (see LICENSE)
+
 mod error;
 
 use alloy::{
@@ -56,7 +59,11 @@ impl<SM: StateManager> EpochManager<SM> {
         &mut self,
         dave_consensus: &DaveConsensus::DaveConsensusInstance<(), impl Provider>,
     ) -> Result<()> {
-        let can_settle = dave_consensus.canSettle().call().await?;
+        let can_settle = dave_consensus
+            .canSettle()
+            .block(alloy::eips::BlockId::pending())
+            .call()
+            .await?;
 
         if can_settle.isFinished {
             match self.state_manager.settlement_info(

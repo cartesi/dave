@@ -7,12 +7,12 @@ use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder},
     rpc::client::RpcClient,
     signers::local::PrivateKeySigner,
-    transports::http::reqwest::Url,
+    transports::http::{Http, reqwest::Url},
 };
 use alloy_chains::NamedChain;
 use alloy_transport::layers::RetryBackoffLayer;
 use cartesi_dave_kms::{CommonSignature, KmsSignerBuilder};
-use std::{fs, str::FromStr};
+use std::{fs, str::FromStr, time::Duration};
 
 use crate::args::SignerArgs;
 
@@ -92,10 +92,24 @@ async fn create_client(url: &Url) -> RpcClient {
         500, // compute_units_per_sec
     );
 
+    let h2_client = reqwest::Client::builder()
+        .http2_adaptive_window(true)
+        .http2_keep_alive_interval(Duration::from_secs(30))
+        .http2_keep_alive_timeout(Duration::from_secs(10))
+        .http2_keep_alive_while_idle(true)
+        .pool_max_idle_per_host(1)
+        .pool_idle_timeout(Duration::from_secs(60))
+        .tcp_keepalive(Some(Duration::from_secs(60)))
+        .timeout(Duration::from_secs(20))
+        .build()
+        .expect("failed to build reqwest client");
+    let transport = Http::with_client(h2_client, url.clone());
+    let is_local = transport.guess_local();
+
     RpcClient::builder()
         // .layer(throttle)
         .layer(retry)
-        .http(url.clone())
+        .transport(transport, is_local)
 }
 
 pub async fn create_provider(
