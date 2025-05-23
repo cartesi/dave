@@ -84,8 +84,10 @@ alloy = { version = "0.12.4", features = [
 ] }
 alloy-transport = { version = "0.12", features = ["throttle"] }
 alloy-chains = { version = "0.1" }
+reqwest = { version = "0.12", features = ["http2"] }
 ruint = "1.12"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
+
 
 # error handling
 anyhow = "1.0"
