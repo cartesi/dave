@@ -25,6 +25,7 @@ cartesi-prt-core = { workspace = true }
 alloy = { workspace = true }
 alloy-transport = { workspace = true }
 alloy-chains = { workspace = true }
+reqwest = { workspace = true }
 
 anyhow = { workspace = true }
 clap = { workspace = true }

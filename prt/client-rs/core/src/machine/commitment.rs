@@ -1,8 +1,9 @@
 //! This module defines a struct [MachineCommitment] that is used to represent a `computation hash`
 //! described on the paper https://arxiv.org/pdf/2212.12439.pdf.
 
-use log::trace;
+use log::{info, trace};
 use std::io::{self, Write};
+use std::time::Instant;
 use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
@@ -51,7 +52,13 @@ pub fn build_machine_commitment(
     initial_state: Digest,
     db: &ComputeStateAccess,
 ) -> Result<MachineCommitment> {
-    if log2_stride >= constants::LOG2_UARCH_SPAN_TO_BARCH {
+    info!(
+        "Begin building commitment for level {level}: start cycle {base_cycle}, log2_stride {log2_stride} and log2_stride_count {log2_stride_count}"
+    );
+
+    let start = Instant::now();
+
+    let commitment = if log2_stride >= constants::LOG2_UARCH_SPAN_TO_BARCH {
         assert!(
             log2_stride + log2_stride_count
                 <= constants::LOG2_INPUT_SPAN_TO_EPOCH
@@ -77,7 +84,15 @@ pub fn build_machine_commitment(
             initial_state,
             db,
         )
-    }
+    }?;
+
+    info!(
+        "Finished building commitment {} for level {level} (start cycle {base_cycle}, log2_stride {log2_stride} and log2_stride_count {log2_stride_count}) in {} seconds",
+        commitment.merkle.root_hash(),
+        start.elapsed().as_secs()
+    );
+
+    Ok(commitment)
 }
 
 /// Builds a [MachineCommitment] Hash for the Cartesi Machine using the big machine model.
@@ -268,7 +283,7 @@ fn print_flush_same_line(args: &str) {
 }
 
 fn finish_print_flush_same_line() {
-    println!("");
+    println!();
     // Flush the output to ensure it appears immediately
     io::stdout().flush().unwrap();
 }

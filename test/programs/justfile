@@ -9,7 +9,7 @@ clean-deps:
   rm -f linux.bin
 
 # all programs
-build-programs: build-yield build-echo build-honeypot
+build-programs: build-yield build-echo build-honeypot build-compute
 clean-programs: clean-yield clean-echo clean-honeypot
 clean-program prog:
   rm -f {{prog}}/_anvil.log {{prog}}/addresses {{prog}}/anvil_state.json
@@ -45,3 +45,12 @@ build-honeypot-snapshot: clean-honeypot-snapshot
 clean-honeypot-snapshot: clean-honeypot
   make -C honeypot/honeypot clean
 
+# compute
+build-compute: clean-compute
+  cartesi-machine --ram-image=./linux.bin \
+    --flash-drive=label:root,filename:./rootfs.ext2 \
+    --no-rollback --store=./compute/machine-image \
+    --max-mcycle=0 \
+    -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"
+clean-compute:
+  rm -rf compute/machine-image

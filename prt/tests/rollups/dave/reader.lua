@@ -1,4 +1,5 @@
 local eth_abi = require "utils.eth_abi"
+local blockchain_constants = require "blockchain.constants"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -61,6 +62,7 @@ local Reader = {}
 Reader.__index = Reader
 
 function Reader:new(endpoint)
+    endpoint = endpoint or blockchain_constants.endpoint
     local reader = {
         endpoint = assert(endpoint)
     }

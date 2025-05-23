@@ -1,0 +1,3 @@
+measure:
+  make chronos.so
+  MACHINE_PATH=../../test/programs/compute/machine-image lua measure.lua
