@@ -25,7 +25,7 @@ library Tree {
         return l == r;
     }
 
-    // See cartesi-rollups/contracts/src/Merkle.sol:Merkle@join
+    // See cartesi-rollups/contracts/src/Merkle.sol:Merkle.join
     // for a more gas-efficient low-level implementation.
     // There are unit tests certifying its correctness.
     // I see prt/contracts/src/tournament/libs/Commitment.sol:Commitment

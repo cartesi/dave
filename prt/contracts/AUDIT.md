@@ -12,7 +12,7 @@ This PR contains audit notes in-code and in this file.
 - [ ] `CartesiStateTransition`
 - [ ] `Clock`
 - [ ] `CmioStateTransition`
-- [ ] `Commitment`
+- [x] `Commitment`
 - [ ] `ICmioStateTransition`
 - [x] `IDataProvider`
 - [ ] `IMultiLevelTournamentFactory`
@@ -36,6 +36,6 @@ This PR contains audit notes in-code and in this file.
 - [x] `Time`
 - [ ] `TopTournamentFactory`
 - [ ] `TopTournament`
-- [ ] `TournamentParameters`
+- [x] `TournamentParameters`
 - [ ] `Tournament`
 - [x] `Tree`
