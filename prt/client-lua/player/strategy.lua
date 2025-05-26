@@ -1,6 +1,5 @@
 local helper = require "utils.helper"
 local Machine = require "computation.machine"
-local constants = require "computation.constants"
 local GarbageCollector = require "player.gc"
 
 local HonestStrategy = {}
@@ -156,7 +155,7 @@ function HonestStrategy:_react_match(match, commitment, log)
         -- match to be sealed
         if not _is_my_turn(match, commitment) then return end
         local found, left, right = match.current_other_parent:children()
-        assert(found)
+        assert(found); assert(left); assert(right)
 
         local running_leaf
         if left ~= match.current_left then
@@ -277,7 +276,7 @@ end
 function HonestStrategy:_react_tournament(tournament, log)
     helper.log_full(self.sender.index, "Enter tournament at address: " .. tournament.address)
     local commitment = self.commitment_builder:build(
-        tournament.base_big_cycle,
+        tournament.base_cycle,
         tournament.level,
         tournament.log2_stride,
         tournament.log2_stride_count,
@@ -296,7 +295,7 @@ function HonestStrategy:_react_tournament(tournament, log)
             log.finished = true
         else
             local old_commitment = self.commitment_builder:build(
-                tournament.parent.base_big_cycle,
+                tournament.parent.base_cycle,
                 tournament.parent.level,
                 tournament.parent.log2_stride,
                 tournament.parent.log2_stride_count,
@@ -341,6 +340,9 @@ function HonestStrategy:_react_tournament(tournament, log)
         log.latest_match = latest_match
         if latest_match then
             return self:_react_match(latest_match, commitment, log)
+        elseif commitment_clock.last_resume ~= 0 then
+            helper.log_full(self.sender.index, string.format("commitment %s has met its match and is no more", commitment))
+            log.has_lost = true
         else
             helper.log_full(self.sender.index, string.format("no match found for commitment: %s", commitment))
         end
@@ -354,6 +356,7 @@ function HonestStrategy:react(tournament)
         tournaments = {},
         latest_match = false,
         finished = false,
+        has_lost = false,
     }
 
     self:_react_tournament(tournament, log)

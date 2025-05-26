@@ -11,7 +11,7 @@ pub type TournamentStateMap = HashMap<Address, TournamentState>;
 pub type CommitmentMap = HashMap<Address, MachineCommitment>;
 
 /// Struct used to identify a match.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct MatchID {
     pub commitment_one: Digest,
     pub commitment_two: Digest,
@@ -53,7 +53,7 @@ impl From<MatchID> for cartesi_prt_contracts::leaftournament::Match::Id {
 }
 
 /// Struct used to communicate the state of a commitment.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct CommitmentState {
     pub clock: ClockState,
     pub final_state: Digest,
@@ -61,7 +61,7 @@ pub struct CommitmentState {
 }
 
 /// Struct used to communicate the state of a clock.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ClockState {
     pub allowance: u64,
     pub start_instant: u64,
@@ -115,17 +115,17 @@ impl std::fmt::Display for ClockState {
 }
 
 /// Enum used to represent the winner of a tournament.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum TournamentWinner {
     Root(Digest, Digest),
     Inner(Digest, Digest),
 }
 
 /// Struct used to communicate the state of a tournament.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct TournamentState {
     pub address: Address,
-    pub base_big_cycle: u64,
+    pub base_cycle: U256,
     pub level: u64,
     pub log2_stride: u64,
     pub log2_stride_count: u64,
@@ -144,10 +144,10 @@ impl TournamentState {
         }
     }
 
-    pub fn new_inner(address: Address, level: u64, base_big_cycle: u64, parent: Address) -> Self {
+    pub fn new_inner(address: Address, level: u64, base_cycle: U256, parent: Address) -> Self {
         TournamentState {
             address,
-            base_big_cycle,
+            base_cycle,
             level: level + 1,
             parent: Some(parent),
             ..Default::default()
@@ -156,7 +156,7 @@ impl TournamentState {
 }
 
 /// Struct used to communicate the state of a match.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct MatchState {
     pub id: MatchID,
     pub other_parent: Digest,
@@ -165,7 +165,6 @@ pub struct MatchState {
     pub running_leaf_position: U256,
     pub current_height: u64,
     pub leaf_cycle: U256,
-    pub base_big_cycle: u64,
     pub tournament_address: Address,
     pub inner_tournament: Option<Address>,
 }

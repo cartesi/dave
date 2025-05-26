@@ -2,6 +2,7 @@ local Hash = require "cryptography.hash"
 local MerkleBuilder = require "cryptography.merkle_builder"
 local Machine = require "computation.machine"
 local helper = require "utils.helper"
+local time = require "utils.time"
 
 local ANVIL_KEY_7 = "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
 
@@ -25,6 +26,7 @@ local function start_dave_node(machine_path, app_address, db_path, sleep_duratio
         end
     })
 
+    time.sleep(5)
     print(string.format("Dave node running with pid %d", pid))
     return handle
 end
@@ -32,7 +34,7 @@ end
 local Dave = {}
 Dave.__index = Dave
 
-function Dave:new(machine_path, app_address, sleep_duration, verbosity, trace_level)
+function Dave:new(machine_path, app_address, sender, sleep_duration, verbosity, trace_level)
     -- trace, debug, info, warn, error
     verbosity = verbosity or os.getenv("VERBOSITY") or 'debug'
 
@@ -40,85 +42,132 @@ function Dave:new(machine_path, app_address, sleep_duration, verbosity, trace_le
     trace_level = trace_level or os.getenv("TRACE_LEVEL") or 'full'
 
 
-    local n = { initial_machine_path = assert(machine_path) }
+    local n = { initial_machine_path = assert(machine_path), sender = sender }
     os.execute "rm -rf _state && mkdir _state"
 
     local handle = start_dave_node(machine_path, app_address, "_state/", sleep_duration, verbosity, trace_level)
 
     n._handle = handle
 
-    setmetatable(n, self)
+    setmetatable(n, Dave)
     return n
+end
+
+local function db_exists(epoch_index)
+    local db_path = string.format("./_state/%d/db", epoch_index)
+    return helper.exists(db_path)
 end
 
 local ROOT_LEAFS_QUERY = [[
 sqlite3 ./_state/%d/db \
-'SELECT level,base_cycle,compute_leaf_index,repetitions,HEX(compute_leaf) FROM compute_leafs WHERE level=0 ORDER BY compute_leaf_index ASC'
+'SELECT repetitions, HEX(compute_leaf) FROM compute_leafs WHERE level=0 ORDER BY compute_leaf_index ASC' 2>&1
 ]]
 function Dave:root_commitment(epoch_index)
-    local builder = MerkleBuilder:new()
-    local machine = Machine:new_from_path(self:machine_path(epoch_index))
-    local initial_state = machine:state()
-    local handle = io.popen(string.format(ROOT_LEAFS_QUERY, epoch_index))
-    assert(handle)
-    local rows = handle:read "*a"
-    handle:close()
+    local query = function()
+        assert(db_exists(epoch_index), string.format("db %d doesn't exist ", epoch_index))
 
-    if rows:find "Error" then
-        error(string.format("Read leafs failed:\n%s", rows))
+        local builder = MerkleBuilder:new()
+        local machine = Machine:new_from_path(self:machine_path(epoch_index))
+        local initial_state = machine:state()
+        local query = string.format(ROOT_LEAFS_QUERY, epoch_index)
+        local handle = io.popen(query)
+        assert(handle)
+        local rows = handle:read "*a"
+        handle:close()
+
+        if rows:find "Error" then
+            error(string.format("Read leafs failed:\n%s", rows))
+        end
+
+        -- Iterate over each line in the input data
+        for line in rows:gmatch("[^\n]+") do
+            local repetitions, compute_leaf = line:match(
+                "([^|]+)|([^|]+)")
+            -- Convert values to appropriate types
+            repetitions = tonumber(assert(repetitions))
+            compute_leaf = Hash:from_digest_hex("0x" .. compute_leaf)
+            builder:add(compute_leaf, repetitions)
+        end
+
+        return initial_state, builder:build(initial_state.root_hash)
     end
 
-    -- Iterate over each line in the input data
-    for line in rows:gmatch("[^\n]+") do
-        local _, _, _, repetitions, compute_leaf = line:match(
-            "([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)")
-        -- Convert values to appropriate types
-        repetitions = tonumber(repetitions)
-        compute_leaf = Hash:from_digest_hex("0x" .. compute_leaf)
+    local initial_state, commitment
+    time.sleep_until(function()
+        self.sender:advance_blocks(1)
+        local ok
+        ok, initial_state, commitment = pcall(query)
+        return ok
+    end)
 
-        builder:add(compute_leaf, repetitions)
-    end
-
-    return builder:build(initial_state.root_hash)
+    return initial_state, commitment
 end
 
 local MACHINE_PATH_QUERY = [[
 sqlite3 ./_state/db.sqlite3 \
-'SELECT s.file_path FROM epoch_snapshot_info AS e JOIN machine_state_snapshots AS s ON s.state_hash = e.state_hash WHERE e.epoch_number = %d']]
+'SELECT s.file_path FROM epoch_snapshot_info AS e JOIN machine_state_snapshots AS s ON s.state_hash = e.state_hash WHERE e.epoch_number = %d' 2>&1]]
 function Dave:machine_path(epoch_index)
-    local cmd = string.format(MACHINE_PATH_QUERY, epoch_index)
-    local handle = io.popen(cmd)
-    assert(handle)
-    local path = handle:read()
-    local tail = handle:read "*a"
-    handle:close()
-    if path:find "Error" or tail:find "Error" then
-        error(string.format("Read machine path failed:\n%s", path))
+    local query = function()
+        assert(db_exists(epoch_index), string.format("db %d doesn't exist ", epoch_index))
+
+        local cmd = string.format(MACHINE_PATH_QUERY, epoch_index)
+        local handle = io.popen(cmd)
+        assert(handle)
+        local path = handle:read()
+        local tail = handle:read "*a"
+        handle:close()
+        if path:find "Error" or tail:find "Error" then
+            error(string.format("Read machine path failed:\n%s", path))
+        end
+        return path
     end
+
+    local path
+    time.sleep_until(function()
+        self.sender:advance_blocks(1)
+        local ok
+        ok, path = pcall(query)
+        return ok
+    end)
+
     return path
 end
 
 local INPUTS_QUERY =
 [[sqlite3 ./_state/%d/db 'select HEX(input)
-from inputs ORDER BY input_index ASC']]
+from inputs ORDER BY input_index ASC' 2>&1]]
 function Dave:inputs(epoch_index)
-    local handle = io.popen(string.format(INPUTS_QUERY, epoch_index))
-    assert(handle)
-    local rows = handle:read "*a"
-    handle:close()
+    local query = function()
+        assert(db_exists(epoch_index), string.format("db %d doesn't exist ", epoch_index))
 
-    if rows:find "Error" then
-        error(string.format("Read inputs failed:\n%s", rows))
+        local handle = io.popen(string.format(INPUTS_QUERY, epoch_index))
+        assert(handle)
+        local rows = handle:read "*a"
+        handle:close()
+
+        if rows:find "Error" then
+            error(string.format("Read inputs failed:\n%s", rows))
+        end
+
+        local inputs = {}
+        -- Iterate over each line in the input data
+        for line in rows:gmatch("[^\n]+") do
+            local input = line:match("([^|]+)")
+            table.insert(inputs, "0x" .. input)
+        end
+
+        return inputs
     end
 
-    local inputs = {}
-    -- Iterate over each line in the input data
-    for line in rows:gmatch("[^\n]+") do
-        local input = line:match("([^|]+)")
-        table.insert(inputs, "0x" .. input)
-    end
+    local inputs
+    time.sleep_until(function()
+        self.sender:advance_blocks(1)
+        local ok
+        ok, inputs = pcall(query)
+        return ok
+    end)
 
-    return inputs
+    return assert(inputs)
 end
 
 return Dave

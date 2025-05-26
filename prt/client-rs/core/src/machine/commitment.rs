@@ -1,17 +1,17 @@
 //! This module defines a struct [MachineCommitment] that is used to represent a `computation hash`
 //! described on the paper https://arxiv.org/pdf/2212.12439.pdf.
 
+use alloy::primitives::U256;
 use log::{info, trace};
 use std::io::{self, Write};
+use std::sync::Arc;
 use std::time::Instant;
-use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{
     db::compute_state_access::{ComputeStateAccess, Leaf},
     machine::error::Result,
     machine::{MachineInstance, MachineState, constants},
 };
-use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};
 
 /// The [MachineCommitment] struct represents a `computation hash`, that is a [MerkleTree] of a set
@@ -45,7 +45,7 @@ where
 /// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle.
 pub fn build_machine_commitment(
     machine: &mut MachineInstance,
-    base_cycle: u64,
+    base_cycle: U256,
     level: u64,
     log2_stride: u64,
     log2_stride_count: u64,
@@ -55,6 +55,14 @@ pub fn build_machine_commitment(
     info!(
         "Begin building commitment for level {level}: start cycle {base_cycle}, log2_stride {log2_stride} and log2_stride_count {log2_stride_count}"
     );
+
+    // If machine is at yielded awaiting input, we unyield it.
+    // This puts the machine in an in-between state transion;
+    // its state hash is now meaningless until we run an instruction.
+    if machine.cycle == 0 && machine.ucycle == 0 {
+        assert!(machine.is_yielded()?);
+        machine.feed_next_input(db)?;
+    }
 
     let start = Instant::now();
 
@@ -67,8 +75,8 @@ pub fn build_machine_commitment(
         );
         build_big_machine_commitment(
             machine,
-            base_cycle,
             level,
+            base_cycle,
             log2_stride,
             log2_stride_count,
             initial_state,
@@ -78,8 +86,8 @@ pub fn build_machine_commitment(
         assert!(log2_stride == 0);
         build_small_machine_commitment(
             machine,
-            base_cycle,
             level,
+            base_cycle,
             log2_stride_count,
             initial_state,
             db,
@@ -87,8 +95,9 @@ pub fn build_machine_commitment(
     }?;
 
     info!(
-        "Finished building commitment {} for level {level} (start cycle {base_cycle}, log2_stride {log2_stride} and log2_stride_count {log2_stride_count}) in {} seconds",
+        "Finished building commitment {} (height {}) for level {level} (start cycle {base_cycle}, log2_stride {log2_stride} and log2_stride_count {log2_stride_count}) in {} seconds",
         commitment.merkle.root_hash(),
+        commitment.merkle.height(),
         start.elapsed().as_secs()
     );
 
@@ -98,8 +107,8 @@ pub fn build_machine_commitment(
 /// Builds a [MachineCommitment] Hash for the Cartesi Machine using the big machine model.
 fn build_big_machine_commitment(
     machine: &mut MachineInstance,
-    base_cycle: u64,
     level: u64,
+    base_cycle: U256,
     log2_stride: u64,
     log2_stride_count: u64,
     initial_state: Digest,
@@ -107,24 +116,31 @@ fn build_big_machine_commitment(
 ) -> Result<MachineCommitment> {
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
-    let instruction_count = arithmetic::max_uint(log2_stride_count);
+    let instruction_count = 1 << log2_stride_count;
+    let stride = 1 << (log2_stride - constants::LOG2_UARCH_SPAN_TO_BARCH);
 
-    for instruction in 0..=instruction_count {
+    for instruction in 0..instruction_count {
         print_flush_same_line(&format!(
             "building big machine commitment ({}/{})...",
             instruction, instruction_count
         ));
 
-        let control_flow = advance_instruction(
-            instruction,
-            log2_stride,
-            machine,
-            base_cycle,
-            &mut builder,
-            instruction_count,
-            &mut leafs,
-        )?;
-        if let ControlFlow::Break(_) = control_flow {
+        let cycle = machine.cycle + stride;
+        let state = machine.run(cycle)?;
+
+        if !(state.halted | state.yielded) {
+            leafs.push(Leaf {
+                hash: state.root_hash.into(),
+                repetitions: 1,
+            });
+            builder.append(state.root_hash);
+        } else {
+            trace!("big advance halted/yielded",);
+            leafs.push(Leaf {
+                hash: state.root_hash.into(),
+                repetitions: instruction_count - instruction,
+            });
+            builder.append_repeated(state.root_hash, instruction_count - instruction);
             break;
         }
     }
@@ -139,40 +155,10 @@ fn build_big_machine_commitment(
     })
 }
 
-fn advance_instruction(
-    instruction: u64,
-    log2_stride: u64,
-    machine: &mut MachineInstance,
-    base_cycle: u64,
-    builder: &mut MerkleBuilder,
-    instruction_count: u64,
-    leafs: &mut Vec<Leaf>,
-) -> Result<ControlFlow<()>> {
-    let cycle = (instruction + 1) << (log2_stride - constants::LOG2_UARCH_SPAN_TO_BARCH);
-    let state = machine.run(base_cycle + cycle)?;
-    let control_flow = if state.halted | state.yielded {
-        leafs.push(Leaf {
-            hash: state.root_hash.into(),
-            repetitions: instruction_count - instruction + 1,
-        });
-        trace!("big advance halted/yielded",);
-        builder.append_repeated(state.root_hash, instruction_count - instruction + 1);
-        ControlFlow::Break(())
-    } else {
-        leafs.push(Leaf {
-            hash: state.root_hash.into(),
-            repetitions: 1,
-        });
-        builder.append(state.root_hash);
-        ControlFlow::Continue(())
-    };
-    Ok(control_flow)
-}
-
 fn build_small_machine_commitment(
     machine: &mut MachineInstance,
-    base_cycle: u64,
     level: u64,
+    base_cycle: U256,
     log2_stride_count: u64,
     initial_state: Digest,
     db: &ComputeStateAccess,
@@ -180,17 +166,13 @@ fn build_small_machine_commitment(
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
     let mut uarch_span_and_leafs = Vec::new();
-    let instruction_count =
-        arithmetic::max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH);
-    let mut instruction = 0;
-    loop {
-        if instruction > instruction_count {
-            break;
-        }
+    let span_count = 1 << (log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH);
 
+    let mut span = 0;
+    while span < span_count {
         print_flush_same_line(&format!(
             "building small machine commitment ({}/{})...",
-            instruction, instruction_count
+            span, span_count
         ));
 
         let (mut uarch_tree, machine_state, mut uarch_leafs) = run_uarch_span(machine)?;
@@ -200,21 +182,21 @@ fn build_small_machine_commitment(
             repetitions: 1,
         });
         builder.append(uarch_tree.clone());
-        instruction += 1;
+        span += 1;
 
         if machine_state.halted | machine_state.yielded {
             (uarch_tree, _, uarch_leafs) = run_uarch_span(machine)?;
             trace!(
                 "uarch span machine halted/yielded {} {}",
                 uarch_tree.root_hash(),
-                instruction
+                span
             );
             uarch_span_and_leafs.push((uarch_tree.root_hash(), uarch_leafs));
             leafs.push(Leaf {
                 hash: uarch_tree.root_hash().into(),
-                repetitions: instruction_count - instruction + 1,
+                repetitions: span_count - span,
             });
-            builder.append_repeated(uarch_tree, instruction_count - instruction + 1);
+            builder.append_repeated(uarch_tree, span_count - span);
             break;
         }
     }
@@ -266,13 +248,14 @@ fn run_uarch_span(
     trace!("state before reset {}", machine_state.root_hash);
     machine_state = machine.ureset()?;
     trace!("state after reset {}", machine_state.root_hash);
+
     leafs.push(Leaf {
         hash: machine_state.root_hash.into(),
         repetitions: 1,
     });
     builder.append(machine_state.root_hash);
-    let uarch_span = builder.build();
 
+    let uarch_span = builder.build();
     Ok((uarch_span, machine_state, leafs))
 }
 

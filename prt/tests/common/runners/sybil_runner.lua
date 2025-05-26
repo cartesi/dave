@@ -1,29 +1,18 @@
 -- Required Modules
 local blockchain_consts = require "blockchain.constants"
-local FakeCommitmentBuilder = require "runners.helpers.fake_commitment"
+local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local HonestStrategy = require "player.strategy"
 local Sender = require "player.sender"
 local helper = require "utils.helper"
 local StateFetcher = require "player.state"
 
-local function sybil_player(root_tournament, strategy, blockchain_endpoint, fake_commitment_count)
+local function sybil_player(root_tournament, strategy, blockchain_endpoint)
     local state_fetcher = StateFetcher:new(root_tournament, blockchain_endpoint)
 
     local function react()
-        local idle = true
-        local finished = true
-        for i = 1, fake_commitment_count do
-            local state = state_fetcher:fetch()
-            strategy.commitment_builder.fake_index = i
-            helper.log_timestamp(string.format("react with fake index: %d", i))
-
-            local log = strategy:react(state)
-            strategy.commitment_builder.fake_index = false
-            idle = idle and log.idle
-            finished = finished and log.finished
-        end
-
-        return { idle = idle, finished = finished }
+        local state = state_fetcher:fetch()
+        local log = strategy:react(state)
+        return { idle = log.idle, finished = log.finished, has_lost = log.has_lost }
     end
 
     return coroutine.create(function()
@@ -35,11 +24,9 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint, fake
     end)
 end
 
-
-local function sybil_runner(player_id, machine_path, root_commitment, root_tournament, fake_commitment_count, inputs,
-                            snapshot_dir)
+local function sybil_runner(patches, player_id, machine_path, root_commitment, root_tournament, inputs, snapshot_dir)
     local strategy = HonestStrategy:new(
-        FakeCommitmentBuilder:new(machine_path, root_commitment, snapshot_dir),
+        PatchedCommitmentBuilder:new(machine_path, root_commitment, inputs, patches, snapshot_dir),
         inputs,
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
@@ -49,8 +36,7 @@ local function sybil_runner(player_id, machine_path, root_commitment, root_tourn
     local react = sybil_player(
         root_tournament,
         strategy,
-        blockchain_consts.endpoint,
-        fake_commitment_count
+        blockchain_consts.endpoint
     )
 
     return react

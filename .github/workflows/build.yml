@@ -19,7 +19,7 @@ jobs:
         uses: ./.github/actions/cartesi-machine
         with:
           version: 0.19.0
-          suffix-version: "-alpha3"
+          suffix-version: ""
 
       - name: Setup env
         run: |
@@ -59,42 +59,79 @@ jobs:
           just build-smart-contracts
           just test
 
-  prt-compute:
+  # prt-compute:
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #
+  #     - name: Setup tools
+  #       uses: ./.github/actions/setup-tools
+  #
+  #     - name: Install Cartesi Machine
+  #       uses: ./.github/actions/cartesi-machine
+  #       with:
+  #         version: 0.19.0
+  #         suffix-version: "-alpha3"
+  #
+  #     - name: Download PRT contracts
+  #       working-directory: ./prt/contracts
+  #       run: |
+  #         just install-deps
+  #
+  #     - name: Download Rollups contracts
+  #       working-directory: ./cartesi-rollups/contracts
+  #       run: |
+  #         just install-deps
+  #
+  #     - name: Build cartesi-prt-compute
+  #       run: |
+  #         just bind
+  #         cargo build -p cartesi-prt-compute --locked
+  #
+  #     - name: Test prt-compute
+  #       working-directory: ./prt/tests/compute
+  #       run: |
+  #         just -f programs/justfile build-simple
+  #         just test-simple
+
+  prt-honeypot:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
       - name: Setup tools
         uses: ./.github/actions/setup-tools
-
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
           version: 0.19.0
-          suffix-version: "-alpha3"
-
       - name: Download PRT contracts
         working-directory: ./prt/contracts
         run: |
           just install-deps
-
       - name: Download Rollups contracts
         working-directory: ./cartesi-rollups/contracts
         run: |
           just install-deps
-
-      - name: Build cartesi-prt-compute
+      - name: Download deps
+        working-directory: ./test/programs/
         run: |
-          just bind
-          cargo build -p cartesi-prt-compute --locked
-
-      - name: Test prt-compute
-        working-directory: ./prt/tests/compute
+          just download-deps
+      - name: Rust build
         run: |
-          just -f programs/justfile build-simple
-          just test-simple
+          just build
+      - name: Build honeypot
+        working-directory: ./test/programs/
+        run: |
+          just build-honeypot-snapshot
+          just build-honeypot
+      - name: Test prt-rollups
+        timeout-minutes: 30
+        run: |
+          just test-rollups-honeypot
 
   build:
     runs-on: ubuntu-24.04
@@ -231,7 +268,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [prt-contracts, dave-contracts, prt-compute, build, build-release]
+    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release]
     runs-on: ubuntu-24.04
     strategy:
       matrix:

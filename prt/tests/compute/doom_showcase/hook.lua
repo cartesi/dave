@@ -76,7 +76,7 @@ local function pick_2_pngs(logs)
             agreed_leaf = bint(match.running_leaf) - 1
         end
         local disagreed_leaf = agreed_leaf + span
-        local base = bint(match.tournament.base_big_cycle)
+        local base = bint(match.tournament.base_cycle)
         local step = (bint(1) << match.tournament.log2_stride) >> comp_constants.log2_uarch_span_to_barch
         local agreed_cycle = base + (step * agreed_leaf)
         local disagreed_cycle = base + (step * disagreed_leaf)

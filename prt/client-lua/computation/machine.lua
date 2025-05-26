@@ -4,6 +4,8 @@ local cartesi = require "cartesi"
 local consts = require "computation.constants"
 local conversion = require "utils.conversion"
 local helper = require "utils.helper"
+local uint256 = require "utils.bint" (256)
+local MerkleBuilder = require "cryptography.merkle_builder"
 
 local ComputationState = {}
 ComputationState.__index = ComputationState
@@ -160,9 +162,12 @@ end
 
 local function advance_rollup(self, meta_cycle, inputs)
     assert(self:is_yielded())
-    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
-    local cycle = (meta_cycle >> consts.log2_uarch_span_to_barch):tointeger()
-    local ucycle = (meta_cycle & consts.uarch_span_to_barch):tointeger()
+    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):touinteger()
+    local cycle_mask = (uint256.one() << consts.log2_barch_span_to_input) - 1
+    local cycle = ((meta_cycle >> consts.log2_uarch_span_to_barch) & cycle_mask):touinteger()
+    local ucycle_mask = (uint256.one() << consts.log2_uarch_span_to_barch) - 1
+    local ucycle = (meta_cycle & ucycle_mask):touinteger()
+    assert(arithmetic.ulte(input_count, consts.input_span_to_epoch))
 
     while self.input_count < input_count do
         local input = inputs[self.input_count + 1]
@@ -199,13 +204,59 @@ local function advance_rollup(self, meta_cycle, inputs)
 end
 
 function Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
-    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
-    assert(arithmetic.ulte(input_count, consts.input_span_to_epoch))
-
     local machine = Machine:new_from_path(path)
     advance_rollup(machine, meta_cycle, inputs)
-
     return machine
+end
+
+local function process_input(machine, log2_stride)
+    local stride = 1 << (log2_stride - consts.log2_uarch_span_to_barch)
+
+    local iterations = 0
+    local builder = MerkleBuilder:new()
+    while true do -- will loop forever if machine never yields
+        machine:run(machine.cycle + stride)
+        local state = machine:state()
+        assert(not state.halted)
+
+        if not state.yielded then
+            builder:add(state.root_hash)
+            iterations = iterations + 1
+        else
+            local total = 1 << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch - log2_stride)
+            builder:add(state.root_hash, total - iterations)
+            return builder:build()
+        end
+    end
+end
+
+function Machine.root_rollup_commitment(pristine_path, log2_stride, inputs)
+    local machine = Machine:new_from_path(pristine_path)
+    assert(machine:is_yielded())
+    assert(consts.log2_barch_span_to_input > (log2_stride - consts.log2_uarch_span_to_barch))
+
+    local max_input_count = 1 << (consts.log2_input_span_to_epoch)
+
+    local builder = MerkleBuilder:new()
+    local state = machine:state()
+    local initial_hash = state.root_hash
+
+    local input_i = 0
+    while input_i < max_input_count do
+        if inputs[input_i + 1] then
+            local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
+            machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+            local tree = process_input(machine, log2_stride)
+            builder:add(tree)
+            input_i = input_i + 1
+        else
+            local tree = process_input(machine, log2_stride)
+            builder:add(tree, max_input_count - input_i)
+            break
+        end
+    end
+
+    return initial_hash, builder:build(initial_hash)
 end
 
 function Machine:state()
@@ -242,7 +293,7 @@ function Machine:run(cycle)
     assert(arithmetic.ulte(self.cycle, cycle))
 
     local machine = self.machine
-    local target_physical_cycle = add_and_clamp(self:physical_cycle(), cycle - self.cycle) -- TODO reconsider for lambda
+    local target_physical_cycle = add_and_clamp(self:physical_cycle(), cycle - self.cycle)
 
     repeat
         machine:run(target_physical_cycle)
@@ -269,6 +320,7 @@ function Machine:ureset()
     return self:state()
 end
 
+--[[
 local keccak = require "cartesi".keccak
 
 local function ver(t, p, s)
@@ -283,6 +335,7 @@ local function ver(t, p, s)
 
     return t
 end
+]]
 
 local function encode_access_logs(logs)
     local encoded = {}
@@ -305,7 +358,6 @@ local function encode_access_logs(logs)
     return data
 end
 
-local uint256 = require "utils.bint" (256)
 
 local function get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
     local big_step_mask = consts.uarch_span_to_barch
@@ -398,6 +450,7 @@ function Machine.get_logs(path, agree_hash, meta_cycle, inputs, snapshot_dir)
         proofs, next_hash = get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
     end
 
+    print("access logs size: ", proofs:len())
     return string.format('"%s"', conversion.hex_from_bin_n(proofs)), next_hash
 end
 

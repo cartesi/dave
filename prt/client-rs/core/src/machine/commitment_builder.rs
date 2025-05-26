@@ -15,7 +15,7 @@ use std::collections::{HashMap, hash_map::Entry};
 
 pub struct CachingMachineCommitmentBuilder {
     machine_path: String,
-    commitments: HashMap<u64, HashMap<u64, MachineCommitment>>,
+    commitments: HashMap<u64, HashMap<U256, MachineCommitment>>,
 }
 
 impl CachingMachineCommitmentBuilder {
@@ -28,7 +28,7 @@ impl CachingMachineCommitmentBuilder {
 
     pub fn build_commitment(
         &mut self,
-        base_cycle: u64,
+        base_cycle: U256,
         level: u64,
         log2_stride: u64,
         log2_stride_count: u64,
@@ -44,10 +44,9 @@ impl CachingMachineCommitmentBuilder {
         let initial_state = {
             if db.handle_rollups {
                 // treat it as rollups
-                let meta_cycle = U256::from(base_cycle) << LOG2_UARCH_SPAN_TO_BARCH;
                 machine = MachineInstance::new_rollups_advanced_until(
                     &self.machine_path,
-                    meta_cycle,
+                    base_cycle,
                     db,
                 )?;
                 machine.state()?.root_hash
@@ -57,7 +56,13 @@ impl CachingMachineCommitmentBuilder {
                 // if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
                 //     machine.load_snapshot(&snapshot.1, snapshot.0)?;
                 // };
-                let root_hash = machine.run(base_cycle)?.root_hash;
+                let root_hash = machine
+                    .run(
+                        (base_cycle >> LOG2_UARCH_SPAN_TO_BARCH)
+                            .try_into()
+                            .expect("could not convert to u64"),
+                    )?
+                    .root_hash;
                 info!("run to base cycle: {}", base_cycle);
                 // machine.take_snapshot(base_cycle, db)?;
                 root_hash

@@ -4,7 +4,7 @@ inputs:
   version:
     description: 'Version of Cartesi Machine to install'
     required: false
-    default: 0.18.1
+    default: 0.19.0
   suffix-version:
     description: 'Suffix of Cartesi Machine to install'
     required: false
@@ -42,7 +42,7 @@ runs:
     - name: Download Cartesi Machine
       shell: bash
       run: |
-        curl -fsSL https://github.com/cartesi/machine-emulator/releases/download/v${{ inputs.version }}${{ inputs.suffix-version }}/cartesi-machine-v${{ inputs.version }}_${{ inputs.arch }}.deb -o /tmp/cartesi-machine.deb
+        curl -fsSL https://github.com/cartesi/machine-emulator/releases/download/v${{ inputs.version }}${{ inputs.suffix-version }}/machine-emulator_${{ inputs.arch }}.deb -o /tmp/cartesi-machine.deb
 
     - name: Install Cartesi Machine
       shell: bash

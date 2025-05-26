@@ -672,7 +672,6 @@ mod epochs_tests {
             ),
             Ok(())
         ));
-        println!("{:?}", epoch(&conn, 130));
         assert!(matches!(
             epoch(&conn, 130),
             Ok(Some(Epoch {

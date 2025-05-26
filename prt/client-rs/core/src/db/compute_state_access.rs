@@ -4,7 +4,7 @@
 use crate::db::sql::{compute_data, error::*, migrations};
 use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};
 
-use alloy::hex as alloy_hex;
+use alloy::{hex as alloy_hex, primitives::U256};
 use log::info;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
@@ -129,7 +129,7 @@ impl ComputeStateAccess {
     pub fn insert_compute_leafs<'a>(
         &self,
         level: u64,
-        base_cycle: u64,
+        base_cycle: U256,
         leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
@@ -139,7 +139,7 @@ impl ComputeStateAccess {
     pub fn compute_leafs(
         &self,
         level: u64,
-        base_cycle: u64,
+        base_cycle: U256,
     ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
         let conn = self.connection.lock().unwrap();
         let leafs = compute_data::compute_leafs(&conn, level, base_cycle)?;
@@ -373,13 +373,15 @@ mod compute_state_access_tests {
             repetitions: 2,
         }];
 
-        access.insert_compute_leafs(0, 0, leafs.iter()).unwrap();
-        let mut compute_leafs = access.compute_leafs(0, 0).unwrap();
+        access
+            .insert_compute_leafs(0, U256::from(0), leafs.iter())
+            .unwrap();
+        let mut compute_leafs = access.compute_leafs(0, U256::from(0)).unwrap();
         let mut tree = compute_leafs.last().unwrap();
         assert!(tree.0.subtrees().is_none());
 
         access.insert_compute_tree(&root, leafs.iter()).unwrap();
-        compute_leafs = access.compute_leafs(0, 0).unwrap();
+        compute_leafs = access.compute_leafs(0, U256::from(0)).unwrap();
         tree = compute_leafs.last().unwrap();
         assert!(tree.0.subtrees().is_some());
     }

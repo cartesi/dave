@@ -1,7 +1,7 @@
 download-deps: clean-deps
   wget https://github.com/cartesi/image-kernel/releases/download/v0.20.0/linux-6.5.13-ctsi-1-v0.20.0.bin \
     -O ./linux.bin
-  wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.16.1/rootfs-tools-v0.16.1.ext2 \
+  wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.17.1/rootfs-tools.ext2 \
     -O ./rootfs.ext2
 
 clean-deps:
@@ -35,15 +35,18 @@ clean-echo: (clean-program "echo")
 
 # honeypot
 build-honeypot: clean-honeypot
-  cp -r honeypot/honeypot/snapshot honeypot/machine-image/
   ./build_anvil_state.sh "honeypot"
-clean-honeypot: (clean-program "honeypot")
+clean-honeypot:
+  rm -f clean-honeypot/_anvil.log clean-honeypot/addresses clean-honeypot/anvil_state.json
 
 # honeypot/honeypot (requires docker)
 build-honeypot-snapshot: clean-honeypot-snapshot
-  make -C honeypot/honeypot snapshot
+  mkdir -p honeypot/machine-image
+  curl -L \
+    https://github.com/cartesi/honeypot/releases/download/v2.0.0-rc-2/honeypot-snapshot-localhost.tar.gz | \
+    tar -xz -C honeypot/machine-image
 clean-honeypot-snapshot: clean-honeypot
-  make -C honeypot/honeypot clean
+  rm -rf honeypot/machine-image
 
 # compute
 build-compute: clean-compute

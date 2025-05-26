@@ -1,6 +1,7 @@
 use crate::db::compute_state_access::ComputeStateAccess;
 use crate::machine::constants::{
-    INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH, LOG2_UARCH_SPAN_TO_INPUT, UARCH_SPAN_TO_BARCH,
+    BARCH_SPAN_TO_INPUT, INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH, LOG2_UARCH_SPAN_TO_INPUT,
+    UARCH_SPAN_TO_BARCH,
 };
 use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
@@ -55,9 +56,9 @@ pub type MachineProof = Vec<u8>;
 pub struct MachineInstance {
     machine: Machine,
     _start_cycle: u64,
-    input_count: u64,
-    cycle: u64,
-    ucycle: u64,
+    pub input_count: u64,
+    pub cycle: u64,
+    pub ucycle: u64,
 }
 
 impl MachineInstance {
@@ -130,14 +131,16 @@ impl MachineInstance {
     pub fn advance_rollups(&mut self, meta_cycle: U256, db: &ComputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
 
-        let meta_cycle_u128 = meta_cycle
-            .to_u128()
-            .expect("meta_cycle is too large to fit in u128");
         let input_count = (meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT)
             .to_u64()
             .expect("input count too big to fit in u64");
-        let cycle = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_BARCH) as u64;
-        let ucycle = (meta_cycle_u128 & (UARCH_SPAN_TO_BARCH as u128)) as u64;
+        let cycle = {
+            let c = (meta_cycle >> LOG2_UARCH_SPAN_TO_BARCH) & U256::from(BARCH_SPAN_TO_INPUT);
+            c.to_u64().expect("cycle too big to fit in u64")
+        };
+        let ucycle = (meta_cycle & U256::from(UARCH_SPAN_TO_BARCH))
+            .to_u64()
+            .expect("ucycle too big to fit in u64");
 
         while self.input_count < input_count {
             let input = db.input(self.input_count)?;
@@ -183,25 +186,25 @@ impl MachineInstance {
         meta_cycle: U256,
         db: &ComputeStateAccess,
     ) -> Result<MachineInstance> {
-        let meta_cycle_u128 = meta_cycle
-            .to_u128()
-            .expect("meta_cycle is too large to fit in u128");
-
-        let input_count = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_INPUT) as u64;
+        let input_count = (meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT).to_u64().unwrap();
         assert!(input_count <= INPUT_SPAN_TO_EPOCH);
 
         let mut machine = MachineInstance::new_from_path(path)?;
-
-        // load snapshot
-        // let base_cycle = (meta_cycle >> LOG2_UARCH_SPAN_TO_BARCH)
-        //     .to_u64()
-        //     .expect("base_cycle is too large to fit in u64");
-        // if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
-        //     machine.load_snapshot(&snapshot.1, snapshot.0)?;
-        // };
+        assert!(machine.is_yielded()?);
 
         machine.advance_rollups(meta_cycle, db)?;
         Ok(machine)
+    }
+
+    pub fn feed_next_input(&mut self, db: &ComputeStateAccess) -> Result<()> {
+        assert!(self.is_yielded()?);
+        let input = db.input(self.input_count)?;
+        if let Some(input_bin) = input {
+            self.machine
+                .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
+        } else {
+        }
+        Ok(())
     }
 
     pub fn state(&mut self) -> Result<MachineState> {
