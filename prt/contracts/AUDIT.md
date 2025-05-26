@@ -4,6 +4,7 @@ This PR contains audit notes in-code and in this file.
 
 ## To-review list
 
+- [x] `ArbitrationConstants`
 - [ ] `BottomTournamentFactory`
 - [ ] `BottomTournament`
 - [ ] `CanonicalConstants`

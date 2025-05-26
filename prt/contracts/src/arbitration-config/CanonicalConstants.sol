@@ -5,6 +5,7 @@ pragma solidity ^0.8.17;
 
 import "prt-contracts/tournament/libs/Time.sol";
 
+// Define constant BLOCKS_PER_MINUTE = 5, and define other time constants with it?
 library ArbitrationConstants {
     // Maximum number of blocks for computing the commitments offchain
     Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
