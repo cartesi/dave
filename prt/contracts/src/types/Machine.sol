@@ -20,7 +20,7 @@ library Machine {
     // Contracts that use this function could use the following syntax
     // introduced in Solidity 0.8.19:
     //
-    // using {eq as ==} for Machine.Hash;
+    // using {Machine.eq as ==} for Machine.Hash;
     function eq(Hash left, Hash right) internal pure returns (bool) {
         bytes32 l = Hash.unwrap(left);
         bytes32 r = Hash.unwrap(right);
