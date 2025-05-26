@@ -83,6 +83,7 @@ impl Player {
         arena_sender: &impl ArenaSender,
     ) -> Result<PlayerTournamentResult> {
         let tournament_states = self.reader.fetch_from_root(self.root_tournament).await?;
+
         self.gc.react_once(arena_sender, &tournament_states).await?;
         self.react_tournament(
             arena_sender,
@@ -108,7 +109,7 @@ impl Player {
         commitments.insert(
             tournament_state.address,
             self.commitment_builder.build_commitment(
-                tournament_state.base_big_cycle,
+                tournament_state.base_cycle,
                 tournament_state.level,
                 tournament_state.log2_stride,
                 tournament_state.log2_stride_count,
@@ -367,10 +368,11 @@ impl Player {
             };
 
             info!(
-                "win leaf match in tournament {} of level {} for commitment {}",
+                "win leaf match in tournament {} of level {} for commitment {}, proof size {}",
                 match_state.tournament_address,
                 tournament_level,
                 commitment.merkle.root_hash(),
+                proof.0.len()
             );
             arena_sender
                 .win_leaf_match(

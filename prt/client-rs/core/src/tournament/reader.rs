@@ -10,14 +10,10 @@ use alloy::{
     providers::{DynProvider, Provider},
     sol_types::private::{Address, B256},
 };
-use num_traits::cast::ToPrimitive;
 
-use crate::{
-    machine::constants,
-    tournament::{
-        ClockState, CommitmentState, MatchID, MatchState, TournamentState, TournamentStateMap,
-        TournamentWinner,
-    },
+use crate::tournament::{
+    ClockState, CommitmentState, MatchID, MatchState, TournamentState, TournamentStateMap,
+    TournamentWinner,
 };
 use cartesi_dave_merkle::Digest;
 use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament, tournament};
@@ -70,16 +66,12 @@ impl StateReader {
             let match_id = match_event.id;
             let m = tournament.getMatch(match_id.hash().into()).call().await?._0;
 
-            if !m.otherParent.is_zero() || !m.leftNode.is_zero() || !m.rightNode.is_zero() {
+            if !m.otherParent.is_zero() {
                 let leaf_cycle = tournament
                     .getMatchCycle(match_id.hash().into())
                     .call()
                     .await?
                     ._0;
-                let base_big_cycle = (leaf_cycle >> constants::LOG2_UARCH_SPAN_TO_BARCH)
-                    .to_u64()
-                    .expect("fail to convert base big cycle");
-
                 let running_leaf_position = m.runningLeafPosition;
 
                 let match_state = MatchState {
@@ -91,7 +83,6 @@ impl StateReader {
                     current_height: m.currentHeight,
                     tournament_address,
                     leaf_cycle,
-                    base_big_cycle,
                     inner_tournament: None,
                 };
                 matches.push(match_state);
@@ -262,7 +253,7 @@ impl StateReader {
             let inner_tournament = TournamentState::new_inner(
                 inner.new_tournament_address,
                 tournament_level,
-                match_state.base_big_cycle,
+                match_state.leaf_cycle,
                 match_state.tournament_address,
             );
             self.fetch_tournament(inner_tournament, states).await?;

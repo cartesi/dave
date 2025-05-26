@@ -1,6 +1,8 @@
 local MerkleBuilder = require "cryptography.merkle_builder"
 local Machine = require "computation.machine"
 
+local conversion = require "utils.conversion"
+local cartesi = require "cartesi"
 local arithmetic = require "utils.arithmetic"
 local consts = require "computation.constants"
 local uint256 = require "utils.bint" (256)
@@ -72,27 +74,28 @@ local function build_small_machine_commitment(log2_stride_count, machine, initia
     return initial_state, builder:build(initial_state)
 end
 
-local function build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state)
+local function build_big_machine_commitment(log2_stride, log2_stride_count, machine, initial_state)
     local builder = MerkleBuilder:new()
-    local instruction_count = arithmetic.max_uint(log2_stride_count)
-    local instruction = 0
+    local instruction_count = 1 << log2_stride_count
 
-    while ulte(instruction, instruction_count) do
+    local big_arch_stride = 1 << (log2_stride - consts.log2_uarch_span_to_barch)
+
+    local iterations = 0
+    while math.ult(iterations, instruction_count) do
         print_flush_same_line(string.format(
             "building big machine commitment (%d/%d)...",
-            instruction, instruction_count
+            iterations, instruction_count
         ))
 
-        local cycle = ((instruction + 1) << (log2_stride - consts.log2_uarch_span_to_barch))
-        local machine_state = machine:run(base_cycle + cycle)
+        local machine_state = machine:run(machine.cycle + big_arch_stride)
 
-        if machine_state.halted or machine_state.yielded then
-            -- add this loop plus all remainings
-            builder:add(machine_state.root_hash, instruction_count - instruction + 1)
-            break
-        else
+        if not (machine_state.halted or machine_state.yielded) then
             builder:add(machine_state.root_hash)
-            instruction = instruction + 1
+            iterations = iterations + 1
+        else
+            -- add this loop plus all remainings
+            builder:add(machine_state.root_hash, instruction_count - iterations)
+            break
         end
     end
     finish_print_flush_same_line()
@@ -106,21 +109,32 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
     local initial_state
     if inputs then
         -- treat it as rollups
-        local meta_cycle = uint256(base_cycle) << consts.log2_uarch_span_to_barch
-        machine = Machine:new_rollup_advanced_until(machine_path, meta_cycle, inputs)
+        machine = Machine:new_rollup_advanced_until(machine_path, base_cycle, inputs)
+        local mask = (uint256.one() << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch)) - 1
         initial_state = machine:state().root_hash
+
+        if (base_cycle & mask):iszero() then
+            assert(machine:state().yielded)
+            local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
+            if inputs[input_i + 1] then
+                local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
+                machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+            end
+        end
+
     else
         -- treat it as compute
+        local big_cycle = base_cycle >> consts.log2_uarch_span_to_barch
         machine = Machine:new_from_path(machine_path)
-        machine:load_snapshot(snapshot_dir, base_cycle)
-        initial_state = machine:run(base_cycle).root_hash
-        helper.log_timestamp("run to base cycle: " .. base_cycle)
-        machine:take_snapshot(snapshot_dir, base_cycle, false)
+        machine:load_snapshot(snapshot_dir, big_cycle)
+        initial_state = machine:run(big_cycle).root_hash
+        helper.log_timestamp("run to base cycle: " .. big_cycle)
+        machine:take_snapshot(snapshot_dir, big_cycle, false)
     end
 
     if log2_stride >= consts.log2_uarch_span_to_barch then
         assert(log2_stride + log2_stride_count <= consts.log2_uarch_span_to_epoch)
-        return build_big_machine_commitment(base_cycle, log2_stride, log2_stride_count, machine, initial_state)
+        return build_big_machine_commitment(log2_stride, log2_stride_count, machine, initial_state)
     else
         assert(log2_stride == 0)
         return build_small_machine_commitment(log2_stride_count, machine, initial_state)
@@ -132,7 +146,11 @@ CommitmentBuilder.__index = CommitmentBuilder
 
 function CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_dir)
     -- receive honest root commitment from main process
-    local commitments = { [0] = { [0] = root_commitment } }
+    local commitments = {
+        [0] = {
+            [tostring(uint256.zero())] = root_commitment
+        }
+    }
 
     local c = {
         commitments = commitments,
@@ -145,15 +163,16 @@ function CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_d
 end
 
 function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count)
+    local base_cycle_str = tostring(base_cycle)
     if not self.commitments[level] then
         self.commitments[level] = {}
-    elseif self.commitments[level][base_cycle] then
-        return self.commitments[level][base_cycle]
+    elseif self.commitments[level][base_cycle_str] then
+        return self.commitments[level][base_cycle_str]
     end
 
     local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path, self.inputs,
         self.snapshot_dir)
-    self.commitments[level][base_cycle] = commitment
+    self.commitments[level][base_cycle_str] = commitment
     return commitment
 end
 

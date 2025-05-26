@@ -1,5 +1,6 @@
 local eth_abi = require "utils.eth_abi"
 local blockchain_constants = require "blockchain.constants"
+local InnerReader = require "player.reader"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -61,10 +62,13 @@ end
 local Reader = {}
 Reader.__index = Reader
 
-function Reader:new(endpoint)
+function Reader:new(input_box_address, consensus_address, endpoint)
     endpoint = endpoint or blockchain_constants.endpoint
     local reader = {
-        endpoint = assert(endpoint)
+        input_box_address = input_box_address,
+        consensus_address = consensus_address,
+        endpoint = assert(endpoint),
+        inner_reader = InnerReader:new(endpoint)
     }
 
     setmetatable(reader, self)
@@ -153,11 +157,11 @@ function Reader:_call(address, sig, args)
     return ret
 end
 
-function Reader:read_epochs_sealed(consensus_address)
+function Reader:read_epochs_sealed()
     local sig = "EpochSealed(uint256,uint256,uint256,bytes32,bytes32,address)"
     local data_sig = "(uint256,uint256,uint256,bytes32,bytes32,address)"
 
-    local logs = self:_read_logs(consensus_address, sig, { false, false, false }, data_sig)
+    local logs = self:_read_logs(self.consensus_address, sig, { false, false, false }, data_sig)
 
     local ret = {}
     for k, v in ipairs(logs) do
@@ -165,8 +169,8 @@ function Reader:read_epochs_sealed(consensus_address)
         log.meta = v.meta
 
         log.epoch_number = tonumber(v.decoded_data[1])
-        log.block_lower_bound = tonumber(v.decoded_data[2])
-        log.block_upper_bound = tonumber(v.decoded_data[3])
+        log.input_lower_bound = tonumber(v.decoded_data[2])
+        log.input_upper_bound = tonumber(v.decoded_data[3])
         log.initial_machine_state_hash = v.decoded_data[4]
         log.tournament = v.decoded_data[6]
 
@@ -176,11 +180,11 @@ function Reader:read_epochs_sealed(consensus_address)
     return ret
 end
 
-function Reader:read_inputs_added(input_box_address)
+function Reader:read_inputs_added()
     local sig = "InputAdded(address,uint256,bytes)"
     local data_sig = "(bytes)"
 
-    local logs = self:_read_logs(input_box_address, sig, { false, false, false }, data_sig)
+    local logs = self:_read_logs(self.input_box_address, sig, { false, false, false }, data_sig)
 
     local ret = {}
     for k, v in ipairs(logs) do
@@ -195,6 +199,10 @@ function Reader:read_inputs_added(input_box_address)
     end
 
     return ret
+end
+
+function Reader:root_tournament_winner(address)
+    return self.inner_reader:root_tournament_winner(address)
 end
 
 return Reader

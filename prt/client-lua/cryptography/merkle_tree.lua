@@ -1,17 +1,35 @@
 local arithmetic = require "utils.arithmetic"
+local bint256 = require("utils.bint")(256)
+local Hash = require "cryptography.hash"
 
 local MerkleTree = {}
 MerkleTree.__index = MerkleTree
 
 function MerkleTree:new(leafs, root_hash, log2size, implicit_hash)
+    local height = log2size
+
+    -- assert types
+    if Hash:is_of_type_hash(leafs[1].hash) then
+        for _,v in ipairs(leafs) do
+            assert(Hash:is_of_type_hash(v.hash))
+        end
+    else
+        local subtree_height = assert(leafs[1].hash.height)
+        for _,v in ipairs(leafs) do
+            local tree = v.hash
+            assert(subtree_height == assert(tree.height))
+        end
+        height = height + subtree_height
+    end
+
     local m = {
         leafs = leafs,
         root_hash = root_hash,
         digest_hex = root_hash.digest_hex,
-        log2size = log2size,
-        implicit_hash = implicit_hash
+        height = height,
+        implicit_hash = implicit_hash,
     }
-    setmetatable(m, self)
+    setmetatable(m, MerkleTree)
     return m
 end
 
@@ -60,17 +78,9 @@ local function generate_proof(proof, root, height, include_index)
 end
 
 function MerkleTree:prove_leaf(index)
-    local height
-    local l = assert(self.leafs[1].hash)
-    if l.log2size then
-        height = l.log2size + self.log2size
-    else
-        height = self.log2size
-    end
-
-    assert((index >> height):iszero())
+    assert((index >> self.height):iszero())
     local proof = {}
-    generate_proof(proof, self.root_hash, height, index)
+    generate_proof(proof, self.root_hash, self.height, index)
     return proof.leaf, proof
 end
 
@@ -88,20 +98,61 @@ function MerkleTree:last()
     return old_right, arithmetic.array_reverse(proof)
 end
 
--- local Hash = require "cryptography.hash"
--- local MerkleBuilder = require "cryptography.merkle_builder"
--- local builder = MerkleBuilder:new()
--- builder:add(Hash.zero, 1 << 8)
--- local mt = builder:build()
+function MerkleTree:validate_patch(patch)
+    assert(patch.log2size)
+    assert(patch.hash)
+    assert(patch.position)
 
--- local i, p = mt:last((1 << 8) - 1)
--- local r = assert(i)
--- print(i)
--- for _, v in ipairs(p) do
---     print(v)
---     r = v:join(r)
--- end
+    -- first log2size bits must be zero
+    local mask = (bint256.one() << patch.log2size) - 1
+    assert((mask & patch.position):iszero(), "patch position and log2size not compatible!")
+    assert(patch.position < (1 << self.height), "patch position beyond bounds!")
 
--- print("FINAL", r, mt.root_hash)
+    return patch
+end
+
+local function apply_patch(root, height, patch)
+    if height == patch.log2size then
+        return patch.hash:iterated_merkle(patch.log2size)
+    end
+
+    local ok, left, right = root:children()
+    assert(ok)
+
+    if patch.position & (1 << (height - 1)) == 0 then
+        local new_left = apply_patch(left, height - 1, patch)
+        return new_left:join(right)
+    else
+        local new_right = apply_patch(right, height - 1, patch)
+        return left:join(new_right)
+    end
+end
+
+function MerkleTree:apply_patches(patches)
+    local height = self.height
+    local new_commitment_root = self.root_hash
+
+    for _, patch in ipairs(patches) do
+        self:validate_patch(patch)
+        new_commitment_root = apply_patch(new_commitment_root, height, patch)
+    end
+
+    return new_commitment_root
+end
+
+function MerkleTree:clone_and_patch(patches)
+    local root_hash = self:apply_patches(patches)
+    local m = {
+        original = self,
+        patches = patches,
+
+        root_hash = root_hash,
+        digest_hex = root_hash.digest_hex,
+        height = self.height,
+        implicit_hash = self.implicit_hash,
+    }
+    setmetatable(m, MerkleTree)
+    return m
+end
 
 return MerkleTree

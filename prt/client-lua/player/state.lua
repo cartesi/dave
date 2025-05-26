@@ -1,6 +1,5 @@
 local bint = require 'utils.bint' (256) -- use 256 bits integers
 local Reader = require "player.reader"
-local constants = require "computation.constants"
 
 local StateFetcher = {}
 StateFetcher.__index = StateFetcher
@@ -18,7 +17,7 @@ end
 
 function StateFetcher:fetch()
     local root_tournament = {
-        base_big_cycle = 0,
+        base_cycle = bint.zero(),
         address = self.root_tournament_address,
         max_level = false,
         level = false,
@@ -85,7 +84,7 @@ function StateFetcher:_fetch_match(match)
                 address = address,
                 level = match.tournament.level + 1,
                 parent = match.tournament,
-                base_big_cycle = match.base_big_cycle,
+                base_cycle = match.leaf_cycle,
                 commitments = {},
             }
             match.inner_tournament = new_tournament
@@ -114,7 +113,6 @@ function StateFetcher:_capture_matches(tournament)
 
             local leaf_cycle = self.reader:read_cycle(tournament.address, match.match_id_hash)
             match.leaf_cycle = bint(leaf_cycle)
-            match.base_big_cycle = (match.leaf_cycle >> constants.log2_uarch_span_to_barch):touinteger()
         end
     end
 

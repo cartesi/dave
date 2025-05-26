@@ -46,7 +46,8 @@ function Sender:new(input_box_address, app_contract_address, pk, endpoint)
         endpoint = endpoint,
 
         input_box_address = input_box_address,
-        app_contract_address = app_contract_address
+        app_contract_address = app_contract_address,
+        tx_count = 0,
     }
 
     setmetatable(sender, self)
@@ -85,9 +86,7 @@ end
 
 function Sender:tx_add_input(payload)
     local sig = [[addInput(address,bytes)(bytes32)]]
-    return pcall(
-        self._send_tx,
-        self,
+    return self:_send_tx(
         self.input_box_address,
         sig,
         { self.app_contract_address, payload }
@@ -96,7 +95,9 @@ end
 
 function Sender:tx_add_inputs(inputs)
     for _,payload in ipairs(inputs) do
-        self.tx_add_input(payload)
+        self:advance_blocks(1)
+        self:tx_add_input(payload)
+        self:advance_blocks(1)
     end
 end
 

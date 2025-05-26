@@ -1,5 +1,7 @@
 package.path = "../client-lua/?.lua;" .. package.path
 
+print = function() end
+
 local Machine = require "computation.machine"
 local uint256 = require "utils.bint" (256)
 local consts = require "computation.constants"
@@ -11,7 +13,7 @@ local inputs = {}
 local args = { ... }
 assert(type(assert(args[1])) == "string")
 assert(type(assert(args[2])) == "string")
-local meta_cycle = uint256.parse(args[1])
+local meta_cycle = uint256.parse(assert(args[1]))
 local input_size = assert(tonumber(args[2]))
 assert((meta_cycle >> (consts.log2_uarch_span_to_barch + consts.log2_barch_span_to_input + consts.log2_input_span_to_epoch))
     :iszero())

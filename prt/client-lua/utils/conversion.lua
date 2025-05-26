@@ -21,9 +21,6 @@ local function bin_from_hex(hex)
     return bin_from_hex_n(hex)
 end
 
-
-
-
 return {
     hex_from_bin = hex_from_bin,
     bin_from_hex = bin_from_hex,
