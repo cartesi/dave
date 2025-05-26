@@ -20,7 +20,7 @@ import "prt-contracts/IDataProvider.sol";
 /// @title IStateTransition
 /// @notice Transitions machine state from s to s+1
 interface IStateTransition {
-    // lacks documentation
+    // Add documentation?
     function transitionState(
         bytes32 machineState,
         uint256 counter,

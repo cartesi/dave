@@ -19,7 +19,7 @@ This PR contains audit notes in-code and in this file.
 - [x] `IStateTransition`
 - [ ] `ITournamentFactory`
 - [ ] `ITournamentParametersProvider`
-- [ ] `ITournament`
+- [x] `ITournament`
 - [ ] `LeafTournament`
 - [x] `Machine`
 - [ ] `Match`
