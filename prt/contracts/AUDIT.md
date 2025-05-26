@@ -37,4 +37,4 @@ This PR contains audit notes in-code and in this file.
 - [ ] `TopTournament`
 - [ ] `TournamentParameters`
 - [ ] `Tournament`
-- [ ] `Tree`
+- [x] `Tree`
