@@ -32,7 +32,7 @@ This PR contains audit notes in-code and in this file.
 - [ ] `RootTournament`
 - [ ] `SingleLevelTournamentFactory`
 - [ ] `SingleLevelTournament`
-- [ ] `Time`
+- [x] `Time`
 - [ ] `TopTournamentFactory`
 - [ ] `TopTournament`
 - [ ] `TournamentParameters`
