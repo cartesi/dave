@@ -45,6 +45,7 @@ clean-deployments:
 bind: clean-bindings
     forge bind --alloy --select {{BINDINGS_FILTER}} \
         --module --bindings-path {{BINDINGS_DIR}} \
+        --skip-extra-derives \
         --root {{SRC_DIR}}
 
 deploy-core *OPTS: \
