@@ -6,10 +6,10 @@ pragma solidity ^0.8.17;
 library Machine {
     type Hash is bytes32;
 
-    // Rename to ZERO_HASH or ZERO_STATE_HASH?
+    // Rename as ZERO_HASH or ZERO_STATE_HASH?
     Hash constant ZERO_STATE = Hash.wrap(0x0);
 
-    // Rename to isZero or isZeroHash?
+    // Rename as isZero or isZeroHash?
     function notInitialized(Hash hash) internal pure returns (bool) {
         // It could use the `eq` function defined in this library
         // to compare `hash` with the ZERO_HASH constant.
