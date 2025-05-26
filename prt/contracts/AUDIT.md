@@ -21,7 +21,7 @@ This PR contains audit notes in-code and in this file.
 - [ ] `ITournamentParametersProvider`
 - [ ] `ITournament`
 - [ ] `LeafTournament`
-- [ ] `Machine`
+- [x] `Machine`
 - [ ] `Match`
 - [ ] `MiddleTournamentFactory`
 - [ ] `MiddleTournament`
