@@ -10,7 +10,7 @@ This PR contains audit notes in-code and in this file.
 - [ ] `CanonicalConstants`
 - [ ] `CanonicalTournamentParametersProvider`
 - [ ] `CartesiStateTransition`
-- [ ] `Clock`
+- [x] `Clock`
 - [ ] `CmioStateTransition`
 - [x] `Commitment`
 - [ ] `ICmioStateTransition`

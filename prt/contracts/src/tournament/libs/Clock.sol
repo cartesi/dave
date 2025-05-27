@@ -13,7 +13,7 @@ library Clock {
     using Clock for State;
 
     struct State {
-        Time.Duration allowance;
+        Time.Duration allowance; // Add documentation (that zero means clock was not initialized yet)?
         Time.Instant startInstant; // the block number when the clock started ticking, zero means clock is paused
     }
 
@@ -39,17 +39,29 @@ library Clock {
         } else {
             // otherwise the allowance must be greater than the timespan from current time to start instant
             return state.allowance.gt(
+                // This assumes that Time.currentTime() (the current block number) >= state.startInstant,
+                // because, otherwise, this expressions raises an arithmetic underflow error.
+                // This seems like a reasonable assumption, given that it is either zero,
+                // the number of a past block, or the number of the current block.
+                // And, in this file, this seems to be the case.
+                // On the factories, this is initialized with the current block number as well.
+                // However, a safer calculation than subtraction is addition.
+                // So, instead, you could check if state.startInstant.add(state.allowance).gt(Time.currentTime())
+                // You could even define an endInstant function that calculates the first part,
+                // and then you simply check whether the current time is past this end instant or not.
                 Time.timeSpan(Time.currentTime(), state.startInstant)
             );
         }
     }
 
+    // Rename as maxAllowance?
     /// @return max allowance of two paused clocks
     function max(State memory pausedState1, State memory pausedState2)
         internal
         pure
         returns (Time.Duration)
     {
+        // Define max for Time.Duration in Time?
         if (pausedState1.allowance.gt(pausedState2.allowance)) {
             return pausedState1.allowance;
         } else {
@@ -63,10 +75,15 @@ library Clock {
         view
         returns (Time.Duration)
     {
+        // Rewrite this with require?
         if (state.startInstant.isZero()) {
             revert("a paused clock can't timeout");
         }
 
+        // This expression also assumes that Time.currentTime() >= state.startInstant
+        // although it doesn't have to, given that it does a monus afterwards anyway.
+        // This could be rewritten as Time.currentTime.monus(state.startInstant.add(state.allowance))
+        // or, if there is an auxiliary endInstant function, Time.currentTime.monus(endInstant)
         return Time.timeSpan(Time.currentTime(), state.startInstant).monus(
             state.allowance
         );
@@ -80,6 +97,9 @@ library Clock {
         if (state.startInstant.isZero()) {
             return state.allowance;
         } else {
+            // Again, this could be rewritten as
+            // state.startInstant.add(state.allowance).monus(Time.currentTime()) or
+            // endInstant.monus(Time.currentTime())
             return state.allowance.monus(
                 Time.timeSpan(Time.currentTime(), state.startInstant)
             );
@@ -90,6 +110,7 @@ library Clock {
     // Storage methods
     //
 
+    // Rename as reinitialize?
     /// @notice re-initialize a clock with new state
     function reInitialized(State storage state, State memory newState)
         internal
@@ -103,6 +124,8 @@ library Clock {
         Time.Instant checkinInstant,
         Time.Duration initialAllowance
     ) internal {
+        // This could be rewritten as
+        // checkinInstant.add(initialAllowance).monus(Time.currentTime())
         Time.Duration _allowance =
             initialAllowance.monus(Time.currentTime().timeSpan(checkinInstant));
         _setNewPaused(state, _allowance);
@@ -161,6 +184,7 @@ library Clock {
     function _setNewPaused(State storage state, Time.Duration allowance)
         private
     {
+        // Rewrite this with require?
         if (allowance.isZero()) {
             revert("can't create clock with zero time");
         }
