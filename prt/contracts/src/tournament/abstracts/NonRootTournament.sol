@@ -18,12 +18,14 @@ abstract contract NonRootTournament is Tournament {
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
 
+    using Time for Time.Instant;
+    using Time for Time.Duration;
+
     /// @notice get the dangling commitment at current level and then retrieve the winner commitment
     /// @return (bool, Tree.Node, Tree.Node)
     /// - if the tournament is finished
     /// - the contested parent commitment
     /// - the dangling commitment
-    // TODO: handle when no one wins, i.e no one joins the tournament
     function innerTournamentWinner()
         external
         view
@@ -46,6 +48,38 @@ abstract contract NonRootTournament is Tournament {
             assert(_finalState.eq(args.contestedFinalStateTwo));
             return (true, args.contestedCommitmentTwo, _danglingCommitment);
         }
+    }
+    /// @notice returns whether this inner tournament can be safely eliminated.
+    /// @return (bool)
+    /// - if the tournament can be eliminated
+    function canBeEliminated() external view returns (bool) {
+        if (!isFinished()) {
+            return false;
+        }
+
+        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
+            hasDanglingCommitment();
+
+        // If the tournament is finished but has no winners,
+        // inner tournament can be eliminated
+        if (!_hasDanglingCommitment) {
+            return true;
+        }
+
+        (Clock.State memory clock,) = this.getCommitment(_danglingCommitment);
+
+        TournamentArgs memory args = _tournamentArgs();
+
+        // Here, we know that `lastMatchElimination` holds the Instant when `matchCount` became zero.
+        // We know that, after `lastMatchElimination` plus  winner's clock.allowance has elapsed,
+        // it is safe to elminate the tournament.
+        // However, we still must consider when the tournament was closed
+        Time.Instant tournamentClosed = args.startInstant.add(args.allowance);
+        Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchElimination);
+
+        // Otherwise, if winner allowance has elapsed since winner could have won,
+        // inner tournament can be eliminated
+        return winnerCouldWin.timeoutElapsed(clock.allowance);
     }
 
     /// @notice a final state is valid if it's equal to ContestedFinalStateOne or ContestedFinalStateTwo

@@ -55,6 +55,7 @@ abstract contract Tournament {
     //
     Tree.Node danglingCommitment;
     uint256 matchCount;
+    Time.Instant lastMatchElimination;
 
     mapping(Tree.Node => Clock.State) clocks;
     mapping(Tree.Node => Machine.Hash) finalStates;
@@ -376,6 +377,7 @@ abstract contract Tournament {
 
     function deleteMatch(Match.IdHash _matchIdHash) internal {
         matchCount--;
+        lastMatchElimination = Time.currentTime();
         delete matches[_matchIdHash];
         emit matchDeleted(_matchIdHash);
     }

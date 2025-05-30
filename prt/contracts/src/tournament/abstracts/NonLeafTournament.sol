@@ -72,6 +72,7 @@ abstract contract NonLeafTournament is Tournament {
     }
 
     error ChildTournamentNotFinished();
+    error ChildTournamentCannotBeEliminated();
     error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
 
     function winInnerMatch(
@@ -105,6 +106,28 @@ abstract contract NonLeafTournament is Tournament {
         _clock.reInitialized(_innerClock);
 
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
+
+        // delete storage
+        deleteMatch(_matchIdHash);
+        matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
+    }
+
+    function eliminateInnerMatch(NonRootTournament _childTournament)
+        external
+        tournamentNotFinished
+    {
+        Match.IdHash _matchIdHash =
+            matchIdFromInnerTournaments[_childTournament];
+        _matchIdHash.requireExist();
+
+        Match.State storage _matchState = matches[_matchIdHash];
+        _matchState.requireExist();
+        _matchState.requireIsFinished();
+
+        require(
+            _childTournament.canBeEliminated(),
+            ChildTournamentCannotBeEliminated()
+        );
 
         // delete storage
         deleteMatch(_matchIdHash);
