@@ -14,16 +14,17 @@ test MACH_PATH SCRIPT:
   INPUT_BOX=`sed '1q;d' {{MACH_PATH}}/addresses` \
   lua test_cases/{{SCRIPT}}.lua
 
-# MAX_EPOCH={{MAX_EPOCH}} lua check_rollups_winner.lua
-
 # run PRT rollups echo test
 test-echo:
   just test {{ECHO_DIR}} simple
 
 # run PRT rollups honeypot test
-test-honeypot:
+test-honeypot-all:
+  just test {{HONEYPOT_DIR}} stf_all
+  just test {{HONEYPOT_DIR}} big_input
+
+test-honeypot-ci:
   just test {{HONEYPOT_DIR}} simple
-  # just test {{HONEYPOT_DIR}} big_input
 
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:

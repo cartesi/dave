@@ -80,7 +80,9 @@ exec-dockered +CMD:
 test-rollups-echo: build-rust-workspace
     just -f ./prt/tests/rollups/justfile test-echo
 test-rollups-honeypot: build-rust-workspace
-    just -f ./prt/tests/rollups/justfile test-honeypot
+    just -f ./prt/tests/rollups/justfile test-honeypot-all
+test-rollups-honeypot-ci: build-rust-workspace
+    just -f ./prt/tests/rollups/justfile test-honeypot-ci
 view-rollups-logs:
     just -f ./prt/tests/rollups/justfile read-node-logs
 

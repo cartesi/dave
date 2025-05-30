@@ -19,7 +19,23 @@ env.spawn_node()
 local sealed_epoch = env.roll_epoch()
 
 -- run epoch 1
-env.run_epoch(sealed_epoch, {
+sealed_epoch = env.run_epoch(sealed_epoch, {
     -- ustep + reset
     { hash = Hash.zero, meta_cycle = 1 << 44 }
+})
+
+-- run epoch 2
+sealed_epoch = env.run_epoch(sealed_epoch, {
+    -- ustep
+    { hash = Hash.zero, meta_cycle = 1 << 44 },
+    { hash = Hash.zero, meta_cycle = 1 << 27 },
+    { hash = Hash.zero, meta_cycle = 1 << 1 },
+})
+
+-- run epoch 3
+sealed_epoch = env.run_epoch(sealed_epoch, {
+    -- add input 2 + ustep
+    { hash = Hash.zero, meta_cycle = (1 << 48) + (1 << 44) },
+    { hash = Hash.zero, meta_cycle = (1 << 48) + (1 << 27) },
+    { hash = Hash.zero, meta_cycle = (1 << 48) + (1) },
 })

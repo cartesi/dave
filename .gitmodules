@@ -4,6 +4,3 @@
 [submodule "machine/emulator"]
 	path = machine/emulator
 	url = https://github.com/cartesi/machine-emulator
-[submodule "test/programs/honeypot/honeypot"]
-	path = test/programs/honeypot/honeypot
-	url = https://github.com/cartesi/honeypot
