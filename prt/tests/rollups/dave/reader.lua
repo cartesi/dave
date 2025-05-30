@@ -205,4 +205,16 @@ function Reader:root_tournament_winner(address)
     return self.inner_reader:root_tournament_winner(address)
 end
 
+function Reader:commitment_exists(tournament, commitment)
+  local commitments = self.inner_reader:read_commitment_joined(tournament)
+
+    for _, log in ipairs(commitments) do
+        if log.root == commitment then
+            return true
+        end
+    end
+
+    return false
+end
+
 return Reader

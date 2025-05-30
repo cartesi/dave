@@ -26,7 +26,6 @@ local function start_dave_node(machine_path, app_address, db_path, sleep_duratio
         end
     })
 
-    time.sleep(5)
     print(string.format("Dave node running with pid %d", pid))
     return handle
 end
@@ -98,7 +97,7 @@ function Dave:root_commitment(epoch_index)
         local ok
         ok, initial_state, commitment = pcall(query)
         return ok
-    end)
+    end, 5)
 
     return initial_state, commitment
 end
@@ -128,7 +127,7 @@ function Dave:machine_path(epoch_index)
         local ok
         ok, path = pcall(query)
         return ok
-    end)
+    end, 5)
 
     return path
 end
@@ -165,7 +164,7 @@ function Dave:inputs(epoch_index)
         local ok
         ok, inputs = pcall(query)
         return ok
-    end)
+    end, 5)
 
     return assert(inputs)
 end

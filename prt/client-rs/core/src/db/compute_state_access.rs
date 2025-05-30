@@ -69,6 +69,10 @@ impl ComputeStateAccess {
         match Connection::open_with_flags(&db_path, no_create_flags) {
             // database already exists, return it
             Ok(connection) => {
+                connection
+                    .busy_timeout(std::time::Duration::from_secs(10))
+                    .map_err(anyhow::Error::from)
+                    .unwrap();
                 handle_rollups = compute_data::handle_rollups(&connection)?;
                 Ok(Self {
                     connection: Mutex::new(connection),
@@ -80,6 +84,10 @@ impl ComputeStateAccess {
                 info!("create new database for dispute");
                 let mut connection = Connection::open(&db_path)?;
                 migrations::migrate_to_latest(&mut connection).unwrap();
+                connection
+                    .busy_timeout(std::time::Duration::from_secs(10))
+                    .map_err(anyhow::Error::from)
+                    .unwrap();
 
                 let json_path = work_path.join("inputs_and_leafs.json");
                 // prioritize json file over parameters

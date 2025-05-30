@@ -40,6 +40,9 @@ pub fn set_scalar_function(connection: &Connection) -> Result<()> {
 pub fn create_connection(state_dir: &Path) -> Result<Connection> {
     let db_path = db_path(state_dir);
     let connection = Connection::open(db_path).map_err(anyhow::Error::from)?;
+    connection
+        .busy_timeout(std::time::Duration::from_secs(10))
+        .map_err(anyhow::Error::from)?;
     set_scalar_function(&connection)?;
 
     Ok(connection)

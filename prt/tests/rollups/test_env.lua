@@ -4,6 +4,7 @@ local Machine = require "computation.machine"
 local time = require "utils.time"
 local Reader = require "dave.reader"
 local Sender = require "dave.sender"
+local start_sybil = require "runners.sybil_runner"
 
 -- anvil deployment state dump
 local ANVIL_PATH = assert(os.getenv("ANVIL_PATH"))
@@ -76,8 +77,12 @@ function Env.roll_epoch()
     local epochs = Env.reader:read_epochs_sealed()
     local target_epoch = #epochs + 1
 
-    -- TODO verify (and wait otherwise) whether node makes claim in tournament.
-    -- Currently we hope the sleep inside spawn is enough.
+    -- wait until node has finished processing epoch
+    local _, commitment = Env.dave_node:root_commitment(#epochs - 1)
+    time.sleep_until(function()
+        return Env.reader:commitment_exists(epochs[#epochs].tournament, commitment)
+    end)
+
     Env.sender:advance_blocks(3000) -- TODO improve magic number
     time.sleep_until(function()
         epochs = Env.reader:read_epochs_sealed()
@@ -161,6 +166,35 @@ function Env.drive_player(player_coroutine)
         time.sleep(Env.sleep_time)
     until coroutine.status == "dead"
     return "dead"
+end
+
+
+function Env.run_epoch(sealed_epoch, patches)
+    local settlement = Env.epoch_settlement(sealed_epoch)
+
+    -- Setup player till completion
+    print("Setting up Sybil")
+    local player = start_sybil(patches, 1, settlement.machine_path, settlement.commitment, sealed_epoch.tournament,
+        settlement.inputs)
+
+    -- Run player till completion
+    print("Run Sybil")
+    assert(Env.drive_player(player) == "lost")
+
+    -- add inputs for next epoch (in case it happens!)
+    Env.sender:tx_add_inputs { Env.sample_inputs[1], Env.sample_inputs[1], Env.sample_inputs[1] }
+
+    -- Wait for node's claim to finally settle
+    local next_epoch = Env.wait_until_epoch(sealed_epoch.epoch_number + 1)
+
+    -- validate winners
+    local winner = Env.reader:root_tournament_winner(sealed_epoch.tournament)
+    assert(winner.has_winner)
+    assert(winner.commitment == settlement.commitment)
+    assert(winner.final == settlement.commitment:last())
+    print("Correct claim won for epoch ", sealed_epoch.epoch_number)
+
+    return next_epoch
 end
 
 return Env
