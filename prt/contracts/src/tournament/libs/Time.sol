@@ -112,4 +112,8 @@ library Time {
     {
         return left.gt(right) ? right : left;
     }
+
+    function max(Instant left, Instant right) internal pure returns (Instant) {
+        return left.gt(right) ? left : right;
+    }
 }
