@@ -181,7 +181,7 @@ abstract contract Tournament {
                 WrongChildren(1, _matchId.commitmentOne, _leftNode, _rightNode)
             );
 
-            _clockOne.deduct(_clockTwo.timeSinceTimeout());
+            _clockOne.deducted(_clockTwo.timeSinceTimeout());
             pairCommitment(
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
@@ -191,7 +191,7 @@ abstract contract Tournament {
                 WrongChildren(2, _matchId.commitmentTwo, _leftNode, _rightNode)
             );
 
-            _clockTwo.deduct(_clockOne.timeSinceTimeout());
+            _clockTwo.deducted(_clockOne.timeSinceTimeout());
             pairCommitment(
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
@@ -406,6 +406,25 @@ abstract contract Tournament {
     /// @return bool if the tournament is over
     function isFinished() public view returns (bool) {
         return isClosed() && matchCount == 0;
+    }
+
+    /// @notice returns if and when tournament was finished.
+    /// @return (bool)
+    /// - if the tournament can be eliminated
+    /// - the time when the tournament was finished
+    function timeFinished() public view returns (bool, Time.Instant) {
+        if (!isFinished()) {
+            return (false, Time.ZERO_INSTANT);
+        }
+        /// - the
+        TournamentArgs memory args = _tournamentArgs();
+
+        // Here, we know that `lastMatchElimination` holds the Instant when `matchCount` became zero.
+        // However, we still must consider when the tournament was closed.
+        Time.Instant tournamentClosed = args.startInstant.add(args.allowance);
+        Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchElimination);
+
+        return (true, winnerCouldWin);
     }
 
     //
