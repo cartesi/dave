@@ -73,9 +73,10 @@ abstract contract NonLeafTournament is Tournament {
 
     error ChildTournamentNotFinished();
     error ChildTournamentCannotBeEliminated();
+    error ChildTournamentMustBeEliminated();
     error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
 
-    function winInnerMatch(
+    function winInnerTournament(
         NonRootTournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
@@ -87,6 +88,11 @@ abstract contract NonLeafTournament is Tournament {
         Match.State storage _matchState = matches[_matchIdHash];
         _matchState.requireExist();
         _matchState.requireIsFinished();
+
+        require(
+            !_childTournament.canBeEliminated(),
+            ChildTournamentMustBeEliminated()
+        );
 
         (bool finished, Tree.Node _winner, Tree.Node _innerWinner) =
             _childTournament.innerTournamentWinner();
@@ -112,7 +118,7 @@ abstract contract NonLeafTournament is Tournament {
         matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
     }
 
-    function eliminateInnerMatch(NonRootTournament _childTournament)
+    function eliminateInnerTournament(NonRootTournament _childTournament)
         external
         tournamentNotFinished
     {

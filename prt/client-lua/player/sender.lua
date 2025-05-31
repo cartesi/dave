@@ -131,7 +131,7 @@ end
 
 function Sender:tx_win_inner_match(tournament_address, child_tournament_address, left, right)
     local sig =
-    [[winInnerMatch(address,bytes32,bytes32)]]
+    [[winInnerTournament(address,bytes32,bytes32)]]
     return pcall(
         self._send_tx,
         self,

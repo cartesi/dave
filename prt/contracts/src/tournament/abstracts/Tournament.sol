@@ -89,6 +89,10 @@ abstract contract Tournament {
         _;
     }
 
+    constructor() {
+        lastMatchElimination = Time.currentTime();
+    }
+
     //
     // Virtual Methods
     //
@@ -245,7 +249,7 @@ abstract contract Tournament {
     }
 
     function getCommitment(Tree.Node _commitmentRoot)
-        external
+        public
         view
         returns (Clock.State memory, Machine.Hash)
     {
@@ -387,7 +391,7 @@ abstract contract Tournament {
     //
 
     /// @return bool if the tournament is still open to join
-    function isClosed() internal view returns (bool) {
+    function isClosed() public view returns (bool) {
         Time.Instant startInstant;
         Time.Duration allowance;
         {
@@ -400,7 +404,7 @@ abstract contract Tournament {
     }
 
     /// @return bool if the tournament is over
-    function isFinished() internal view returns (bool) {
+    function isFinished() public view returns (bool) {
         return isClosed() && matchCount == 0;
     }
 
