@@ -122,9 +122,21 @@ library Clock {
 
     /// @notice Deduct duration from a clock and set it to paused.
     /// The clock must have time left after deduction.
-    function deduct(State storage state, Time.Duration deduction) internal {
+    function deducted(State storage state, Time.Duration deduction) internal {
         Time.Duration _timeLeft = state.allowance.monus(deduction);
         _setNewPaused(state, _timeLeft);
+    }
+
+    /// @notice Deduct duration from a clock and set it to paused.
+    /// The clock must have time left after deduction.
+    function deduct(State memory state, Time.Duration deduction)
+        internal
+        pure
+        returns (State memory)
+    {
+        assert(state.startInstant.isZero());
+        Time.Duration _timeLeft = state.allowance.monus(deduction);
+        return State({startInstant: Time.ZERO_INSTANT, allowance: _timeLeft});
     }
 
     /// @notice Add matchEffort to a clock and set it to paused.

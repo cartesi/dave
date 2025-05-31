@@ -41,12 +41,12 @@ contract Util {
     Tree.Node constant TWO_NODE = Tree.Node.wrap(bytes32(uint256(2)));
     Machine.Hash constant ONE_STATE = Machine.Hash.wrap(bytes32(uint256(1)));
     Machine.Hash constant TWO_STATE = Machine.Hash.wrap(bytes32(uint256(2)));
-    uint64 constant LOG2_MAX_HEIGHT = 67;
+    uint64 public constant LOG2_MAX_HEIGHT = 67;
 
     // players' commitment node at different height
     // player 0, player 1, and player 2
-    Tree.Node[][3] playerNodes;
-    Machine.Hash[3] finalStates;
+    Tree.Node[][3] public playerNodes;
+    Machine.Hash[3] public finalStates;
 
     constructor() {
         playerNodes[0] = new Tree.Node[](LOG2_MAX_HEIGHT + 1);

@@ -72,9 +72,11 @@ abstract contract NonLeafTournament is Tournament {
     }
 
     error ChildTournamentNotFinished();
+    error ChildTournamentCannotBeEliminated();
+    error ChildTournamentMustBeEliminated();
     error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
 
-    function winInnerMatch(
+    function winInnerTournament(
         NonRootTournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
@@ -87,7 +89,12 @@ abstract contract NonLeafTournament is Tournament {
         _matchState.requireExist();
         _matchState.requireIsFinished();
 
-        (bool finished, Tree.Node _winner, Tree.Node _innerWinner) =
+        require(
+            !_childTournament.canBeEliminated(),
+            ChildTournamentMustBeEliminated()
+        );
+
+        (bool finished, Tree.Node _winner,, Clock.State memory _innerClock) =
             _childTournament.innerTournamentWinner();
         require(finished, ChildTournamentNotFinished());
         _winner.requireExist();
@@ -98,13 +105,33 @@ abstract contract NonLeafTournament is Tournament {
             WrongTournamentWinner(_commitmentRoot, _winner)
         );
 
-        (Clock.State memory _innerClock,) =
-            _childTournament.getCommitment(_innerWinner);
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.requireInitialized();
         _clock.reInitialized(_innerClock);
 
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
+
+        // delete storage
+        deleteMatch(_matchIdHash);
+        matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
+    }
+
+    function eliminateInnerTournament(NonRootTournament _childTournament)
+        external
+        tournamentNotFinished
+    {
+        Match.IdHash _matchIdHash =
+            matchIdFromInnerTournaments[_childTournament];
+        _matchIdHash.requireExist();
+
+        Match.State storage _matchState = matches[_matchIdHash];
+        _matchState.requireExist();
+        _matchState.requireIsFinished();
+
+        require(
+            _childTournament.canBeEliminated(),
+            ChildTournamentCannotBeEliminated()
+        );
 
         // delete storage
         deleteMatch(_matchIdHash);
