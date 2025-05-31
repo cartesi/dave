@@ -21,39 +21,48 @@ abstract contract NonRootTournament is Tournament {
     using Time for Time.Instant;
     using Time for Time.Duration;
 
+    using Clock for Clock.State;
+
     /// @notice get the dangling commitment at current level and then retrieve the winner commitment
     /// @return (bool, Tree.Node, Tree.Node)
     /// - if the tournament is finished
     /// - the contested parent commitment
-    /// - the dangling commitment
+    /// - the winning inner commitment
     function innerTournamentWinner()
         external
         view
-        returns (bool, Tree.Node, Tree.Node)
+        returns (bool, Tree.Node, Tree.Node, Clock.State memory)
     {
-        if (!isFinished()) {
-            return (false, Tree.ZERO_NODE, Tree.ZERO_NODE);
+        if (!isFinished() || canBeEliminated()) {
+            Clock.State memory zeroClock;
+            return (false, Tree.ZERO_NODE, Tree.ZERO_NODE, zeroClock);
         }
 
-        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
+        (bool _hasDanglingCommitment, Tree.Node _winner) =
             hasDanglingCommitment();
         assert(_hasDanglingCommitment);
 
-        Machine.Hash _finalState = finalStates[_danglingCommitment];
+        (bool finished, Time.Instant timeFinished) = timeFinished();
+        assert(finished);
+
+        Clock.State memory _clock = clocks[_winner];
+        _clock = _clock.deduct(Time.currentTime().timeSpan(timeFinished));
 
         NonRootTournamentArgs memory args = _nonRootTournamentArgs();
+        Machine.Hash _finalState = finalStates[_winner];
+
         if (_finalState.eq(args.contestedFinalStateOne)) {
-            return (true, args.contestedCommitmentOne, _danglingCommitment);
+            return (true, args.contestedCommitmentOne, _winner, _clock);
         } else {
             assert(_finalState.eq(args.contestedFinalStateTwo));
-            return (true, args.contestedCommitmentTwo, _danglingCommitment);
+            return (true, args.contestedCommitmentTwo, _winner, _clock);
         }
     }
+
     /// @notice returns whether this inner tournament can be safely eliminated.
     /// @return (bool)
     /// - if the tournament can be eliminated
-
-    function canBeEliminated() external view returns (bool) {
+    function canBeEliminated() public view returns (bool) {
         if (!isFinished()) {
             return false;
         }
@@ -67,20 +76,12 @@ abstract contract NonRootTournament is Tournament {
             return true;
         }
 
-        (Clock.State memory clock,) = getCommitment(_danglingCommitment);
-
-        TournamentArgs memory args = _tournamentArgs();
-
-        // Here, we know that `lastMatchElimination` holds the Instant when `matchCount` became zero.
-        // We know that, after `lastMatchElimination` plus  winner's clock.allowance has elapsed,
+        // We know that, after `winnerCouldHaveWon` plus  winner's clock.allowance has elapsed,
         // it is safe to elminate the tournament.
-        // However, we still must consider when the tournament was closed
-        Time.Instant tournamentClosed = args.startInstant.add(args.allowance);
-        Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchElimination);
-
-        // Otherwise, if winner allowance has elapsed since winner could have won,
-        // inner tournament can be eliminated
-        return winnerCouldWin.timeoutElapsed(clock.allowance);
+        (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
+        assert(finished);
+        (Clock.State memory clock,) = getCommitment(_danglingCommitment);
+        return winnerCouldHaveWon.timeoutElapsed(clock.allowance);
     }
 
     /// @notice a final state is valid if it's equal to ContestedFinalStateOne or ContestedFinalStateTwo

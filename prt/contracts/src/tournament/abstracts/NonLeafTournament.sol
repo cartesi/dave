@@ -94,7 +94,7 @@ abstract contract NonLeafTournament is Tournament {
             ChildTournamentMustBeEliminated()
         );
 
-        (bool finished, Tree.Node _winner, Tree.Node _innerWinner) =
+        (bool finished, Tree.Node _winner,, Clock.State memory _innerClock) =
             _childTournament.innerTournamentWinner();
         require(finished, ChildTournamentNotFinished());
         _winner.requireExist();
@@ -105,8 +105,6 @@ abstract contract NonLeafTournament is Tournament {
             WrongTournamentWinner(_commitmentRoot, _winner)
         );
 
-        (Clock.State memory _innerClock,) =
-            _childTournament.getCommitment(_innerWinner);
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.requireInitialized();
         _clock.reInitialized(_innerClock);

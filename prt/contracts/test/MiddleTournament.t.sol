@@ -86,7 +86,7 @@ contract MiddleTournamentTest is Util, Test {
             address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
         );
 
-        (bool _finished, Tree.Node _winner,) =
+        (bool _finished, Tree.Node _winner,,) =
             middleTournament.innerTournamentWinner();
         assertFalse(_finished, "winner should be zero node");
 
@@ -101,7 +101,7 @@ contract MiddleTournamentTest is Util, Test {
         Util.joinTournament(middleTournament, 0);
 
         vm.roll(_rootTournamentFinish);
-        (_finished, _winner,) = middleTournament.innerTournamentWinner();
+        (_finished, _winner,,) = middleTournament.innerTournamentWinner();
         topTournament.winInnerTournament(
             middleTournament,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
@@ -164,7 +164,7 @@ contract MiddleTournamentTest is Util, Test {
             address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
         );
 
-        (_finished, _winner,) = middleTournament.innerTournamentWinner();
+        (_finished, _winner,,) = middleTournament.innerTournamentWinner();
         assertTrue(_winner.isZero(), "winner should be zero node");
 
         _t = vm.getBlockNumber();
@@ -213,7 +213,7 @@ contract MiddleTournamentTest is Util, Test {
         vm.roll(_middleTournamentFinish);
         assertNoElimination();
 
-        (_finished, _winner,) = middleTournament.innerTournamentWinner();
+        (_finished, _winner,,) = middleTournament.innerTournamentWinner();
         topTournament.winInnerTournament(
             middleTournament,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
@@ -336,7 +336,7 @@ contract MiddleTournamentTest is Util, Test {
         Util.joinTournament(middleTournament, 0);
 
         assertFalse(middleTournament.isClosed());
-        (bool hasWinner,,) = middleTournament.innerTournamentWinner();
+        (bool hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertFalse(hasWinner);
 
         vm.roll(
@@ -344,7 +344,7 @@ contract MiddleTournamentTest is Util, Test {
                 + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
         );
         assertTrue(middleTournament.isClosed());
-        (hasWinner,,) = middleTournament.innerTournamentWinner();
+        (hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertTrue(hasWinner);
         assertNoElimination();
 
@@ -404,7 +404,7 @@ contract MiddleTournamentTest is Util, Test {
         );
 
         assertFalse(middleTournament.isClosed());
-        (bool hasWinner,,) = middleTournament.innerTournamentWinner();
+        (bool hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertFalse(hasWinner);
 
         vm.roll(
@@ -413,7 +413,7 @@ contract MiddleTournamentTest is Util, Test {
         );
 
         assertTrue(middleTournament.isClosed());
-        (hasWinner,,) = middleTournament.innerTournamentWinner();
+        (hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertFalse(hasWinner);
         assertNoElimination();
 
@@ -423,7 +423,7 @@ contract MiddleTournamentTest is Util, Test {
             playerNodes[0][ArbitrationConstants.height(1) - 1]
         );
 
-        (hasWinner,,) = middleTournament.innerTournamentWinner();
+        (hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertTrue(hasWinner);
         assertNoElimination();
 
