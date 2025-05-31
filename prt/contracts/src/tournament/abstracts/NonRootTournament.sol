@@ -52,6 +52,7 @@ abstract contract NonRootTournament is Tournament {
     /// @notice returns whether this inner tournament can be safely eliminated.
     /// @return (bool)
     /// - if the tournament can be eliminated
+
     function canBeEliminated() external view returns (bool) {
         if (!isFinished()) {
             return false;
@@ -66,7 +67,7 @@ abstract contract NonRootTournament is Tournament {
             return true;
         }
 
-        (Clock.State memory clock,) = this.getCommitment(_danglingCommitment);
+        (Clock.State memory clock,) = getCommitment(_danglingCommitment);
 
         TournamentArgs memory args = _tournamentArgs();
 

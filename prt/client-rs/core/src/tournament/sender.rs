@@ -183,10 +183,10 @@ impl ArenaSender for EthArenaSender {
     ) -> Result<()> {
         let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.provider);
         let tx_result = tournament
-            .winInnerMatch(child_tournament, left_node.into(), right_node.into())
+            .winInnerTournament(child_tournament, left_node.into(), right_node.into())
             .send()
             .await;
-        allow_revert_rethrow_others("winInnerMatch", tx_result).await
+        allow_revert_rethrow_others("winInnerTournament", tx_result).await
     }
 
     async fn win_timeout_match(

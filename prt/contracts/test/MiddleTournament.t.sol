@@ -37,6 +37,14 @@ contract MiddleTournamentTest is Util, Test {
 
     function setUp() public {}
 
+    function assertNoElimination() internal {
+        assertFalse(middleTournament.canBeEliminated(), "can be eliminated");
+        vm.expectRevert(
+            NonLeafTournament.ChildTournamentCannotBeEliminated.selector
+        );
+        topTournament.eliminateInnerTournament(middleTournament);
+    }
+
     function testInnerWinner() public {
         topTournament = Util.initializePlayer0Tournament(factory);
 
@@ -82,6 +90,8 @@ contract MiddleTournamentTest is Util, Test {
             middleTournament.innerTournamentWinner();
         assertFalse(_finished, "winner should be zero node");
 
+        assertNoElimination();
+
         // player 0 should win after fast forward time to inner tournament finishes
         uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
@@ -92,7 +102,7 @@ contract MiddleTournamentTest is Util, Test {
 
         vm.roll(_rootTournamentFinish);
         (_finished, _winner,) = middleTournament.innerTournamentWinner();
-        topTournament.winInnerMatch(
+        topTournament.winInnerTournament(
             middleTournament,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[0][ArbitrationConstants.height(0) - 1]
@@ -188,6 +198,8 @@ contract MiddleTournamentTest is Util, Test {
                 _player0Clock.startInstant.add(_player0Clock.allowance)
             )
         );
+        assertNoElimination();
+
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
@@ -197,9 +209,12 @@ contract MiddleTournamentTest is Util, Test {
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertFalse(_match.exists(), "match should be deleted");
 
+        assertNoElimination();
         vm.roll(_middleTournamentFinish);
+        assertNoElimination();
+
         (_finished, _winner,) = middleTournament.innerTournamentWinner();
-        topTournament.winInnerMatch(
+        topTournament.winInnerTournament(
             middleTournament,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
@@ -223,5 +238,212 @@ contract MiddleTournamentTest is Util, Test {
                 "final state should match"
             );
         }
+    }
+
+    function testInnerNoWinnerNoWinner() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+        Util.joinTournament(topTournament, 1);
+        Match.Id memory _matchId = Util.matchId(1, 0);
+        uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
+
+        // expect new inner created
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+
+        assertNoElimination();
+        uint256 _t = vm.getBlockNumber();
+        uint256 _middleTournamentFinish =
+            _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+        vm.roll(_middleTournamentFinish - 1);
+        assertNoElimination();
+
+        vm.roll(_middleTournamentFinish);
+        assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
+        topTournament.eliminateInnerTournament(middleTournament);
+
+        vm.expectRevert();
+        topTournament.arbitrationResult();
+    }
+
+    function testInnerNoWinner() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+        (,,, uint64 height) = topTournament.tournamentLevelConstants();
+
+        Util.joinTournament(topTournament, 1);
+        Util.joinTournament(topTournament, 2);
+
+        Match.Id memory _matchId = Util.matchId(1, 0);
+        uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
+
+        // expect new inner created
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+
+        assertNoElimination();
+        uint256 _t = vm.getBlockNumber();
+        uint256 _middleTournamentFinish =
+            _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+        vm.roll(_middleTournamentFinish - 1);
+        assertNoElimination();
+
+        vm.roll(_middleTournamentFinish);
+        assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
+        topTournament.eliminateInnerTournament(middleTournament);
+
+        (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
+            topTournament.arbitrationResult();
+        assertTrue(_finishedTop, "game not finished");
+        assertTrue(
+            _commitment.eq(Util.playerNodes[2][height]),
+            "wrong winner commitment"
+        );
+        assertTrue(_finalState.eq(Util.finalStates[2]), "wrong final state");
+    }
+
+    function testInnerWinnerTimeoutClosed() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+        (,,, uint64 height) = topTournament.tournamentLevelConstants();
+
+        Util.joinTournament(topTournament, 1);
+        Util.joinTournament(topTournament, 2);
+
+        Match.Id memory _matchId = Util.matchId(1, 0);
+        uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
+
+        // expect new inner created
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+        assertNoElimination();
+
+        Util.joinTournament(middleTournament, 0);
+
+        assertFalse(middleTournament.isClosed());
+        (bool hasWinner,,) = middleTournament.innerTournamentWinner();
+        assertFalse(hasWinner);
+
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
+        );
+        assertTrue(middleTournament.isClosed());
+        (hasWinner,,) = middleTournament.innerTournamentWinner();
+        assertTrue(hasWinner);
+        assertNoElimination();
+
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
+        );
+        assertNoElimination();
+        vm.roll(vm.getBlockNumber() + 1);
+
+        assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
+        topTournament.eliminateInnerTournament(middleTournament);
+
+        (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
+            topTournament.arbitrationResult();
+        assertTrue(_finishedTop, "game not finished");
+        assertTrue(
+            _commitment.eq(Util.playerNodes[2][height]),
+            "wrong winner commitment"
+        );
+        assertTrue(_finalState.eq(Util.finalStates[2]), "wrong final state");
+    }
+
+    function testInnerWinnerTimeoutAllowance() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+        (,,, uint64 height) = topTournament.tournamentLevelConstants();
+
+        Util.joinTournament(topTournament, 1);
+        Util.joinTournament(topTournament, 2);
+
+        Match.Id memory _matchId = Util.matchId(1, 0);
+        uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
+
+        // expect new inner created
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+        assertNoElimination();
+
+        Util.joinTournament(middleTournament, 0);
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT) + 3
+        );
+        Util.joinTournament(middleTournament, 1);
+        middleTournament.advanceMatch(
+            Util.matchId(1, 1),
+            playerNodes[0][ArbitrationConstants.height(1) - 1],
+            playerNodes[0][ArbitrationConstants.height(1) - 1],
+            playerNodes[0][ArbitrationConstants.height(1) - 2],
+            playerNodes[0][ArbitrationConstants.height(1) - 2]
+        );
+
+        assertFalse(middleTournament.isClosed());
+        (bool hasWinner,,) = middleTournament.innerTournamentWinner();
+        assertFalse(hasWinner);
+
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 3
+        );
+
+        assertTrue(middleTournament.isClosed());
+        (hasWinner,,) = middleTournament.innerTournamentWinner();
+        assertFalse(hasWinner);
+        assertNoElimination();
+
+        middleTournament.winMatchByTimeout(
+            Util.matchId(1, 1),
+            playerNodes[0][ArbitrationConstants.height(1) - 1],
+            playerNodes[0][ArbitrationConstants.height(1) - 1]
+        );
+
+        (hasWinner,,) = middleTournament.innerTournamentWinner();
+        assertTrue(hasWinner);
+        assertNoElimination();
+
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
+        );
+        assertNoElimination();
+        vm.roll(vm.getBlockNumber() + 1);
+        assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
+
+        topTournament.eliminateInnerTournament(middleTournament);
+
+        (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
+            topTournament.arbitrationResult();
+        assertTrue(_finishedTop, "game not finished");
+        assertTrue(
+            _commitment.eq(Util.playerNodes[2][height]),
+            "wrong winner commitment"
+        );
+        assertTrue(_finalState.eq(Util.finalStates[2]), "wrong final state");
     }
 }
