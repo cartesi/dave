@@ -1,9 +1,7 @@
 -- Required Modules
 local blockchain_consts = require "blockchain.constants"
-local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local HonestStrategy = require "player.strategy"
 local Sender = require "player.sender"
-local helper = require "utils.helper"
 local StateFetcher = require "player.state"
 
 local function sybil_player(root_tournament, strategy, blockchain_endpoint)
@@ -12,7 +10,7 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint)
     local function react()
         local state = state_fetcher:fetch()
         local log = strategy:react(state)
-        return { idle = log.idle, finished = log.finished, has_lost = log.has_lost }
+        return { idle = log.idle, finished = log.finished, has_lost = log.has_lost, state = state }
     end
 
     return coroutine.create(function()
@@ -24,9 +22,10 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint)
     end)
 end
 
-local function sybil_runner(patches, player_id, machine_path, root_commitment, root_tournament, inputs, snapshot_dir)
+local function sybil_runner(commitment_builder, machine_path, root_tournament, inputs, player_id)
+    player_id = player_id or 1
     local strategy = HonestStrategy:new(
-        PatchedCommitmentBuilder:new(machine_path, root_commitment, inputs, patches, snapshot_dir),
+        commitment_builder,
         inputs,
         machine_path,
         Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)

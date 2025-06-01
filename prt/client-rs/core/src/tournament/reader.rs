@@ -200,6 +200,12 @@ impl StateReader {
 
         assert!(state.level < state.max_level, "level out of bounds");
 
+        if state.level > 0 {
+            let tournament =
+                nonroottournament::NonRootTournament::new(tournament_address, &self.client);
+            state.can_be_eliminated = tournament.canBeEliminated().call().await?._0;
+        }
+
         let mut captured_matches = self.capture_matches(tournament_address).await?;
         let commitments_joined = self.joined_commitments(tournament_address).await?;
 

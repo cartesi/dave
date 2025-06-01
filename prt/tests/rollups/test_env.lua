@@ -5,6 +5,8 @@ local time = require "utils.time"
 local Reader = require "dave.reader"
 local Sender = require "dave.sender"
 local start_sybil = require "runners.sybil_runner"
+local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
+local CommitmentBuilder = require "computation.commitment"
 
 -- anvil deployment state dump
 local ANVIL_PATH = assert(os.getenv("ANVIL_PATH"))
@@ -153,33 +155,48 @@ function Env.epoch_settlement(sealed_epoch)
     }
 end
 
-function Env.drive_player(player_coroutine)
-    repeat
+function Env.drive_player_until(player_coroutine, condition_f)
+    local ret
+    while true do
         local success, log = coroutine.resume(player_coroutine)
         assert(success, string.format("player fail to resume with error: %s", log))
+        ret = { condition_f(coroutine.status(player_coroutine), log) }
 
-        if log.has_lost then
-            print(string.format("Player has lost, bailing"))
-            return "lost"
+        if ret[1] then
+            return table.unpack(ret)
         end
 
         time.sleep(Env.sleep_time)
-    until coroutine.status == "dead"
-    return "dead"
+    end
 end
 
+function Env.drive_player(player_coroutine)
+    return Env.drive_player_until(player_coroutine, function(status, log)
+        if log.has_lost then
+            return "lost"
+        elseif status == "dead" then
+            return "dead"
+        end
+    end)
+end
 
 function Env.run_epoch(sealed_epoch, patches)
     local settlement = Env.epoch_settlement(sealed_epoch)
 
     -- Setup player till completion
     print("Setting up Sybil")
-    local player = start_sybil(patches, 1, settlement.machine_path, settlement.commitment, sealed_epoch.tournament,
+
+
+    local honest_commitment_builder = CommitmentBuilder:new(settlement.machine_path, settlement.inputs,
+        settlement.commitment)
+    local patched_commitment_builder = PatchedCommitmentBuilder:new(patches, honest_commitment_builder)
+    local player = start_sybil(patched_commitment_builder, settlement.machine_path, sealed_epoch.tournament,
         settlement.inputs)
 
     -- Run player till completion
     print("Run Sybil")
     assert(Env.drive_player(player) == "lost")
+    print "Sybil has lost"
 
     -- add inputs for next epoch (in case it happens!)
     Env.sender:tx_add_inputs { Env.sample_inputs[1], Env.sample_inputs[1], Env.sample_inputs[1] }
