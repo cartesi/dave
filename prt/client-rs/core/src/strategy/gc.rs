@@ -14,9 +14,9 @@ impl GarbageCollector {
         Self { root_tournamet }
     }
 
-    pub async fn react_once<'a>(
+    pub async fn react_once(
         &self,
-        arena_sender: &'a impl ArenaSender,
+        arena_sender: &impl ArenaSender,
         tournament_states: &TournamentStateMap,
     ) -> Result<()> {
         self.react_tournament(arena_sender, self.root_tournamet, tournament_states)
@@ -75,13 +75,23 @@ impl GarbageCollector {
         tournament_states: &TournamentStateMap,
         tournament_address: Address,
     ) -> Result<()> {
-        debug!(
-            "Garbage collect match at HEIGHT: {}, of tournament: {}",
-            match_state.current_height, tournament_address
-        );
-        if let Some(inner_tournament) = match_state.inner_tournament {
-            self.react_tournament(arena_sender, inner_tournament, tournament_states)
-                .await?;
+        if let Some(inner_tournament_address) = match_state.inner_tournament {
+            let inner_tournament_state = tournament_states
+                .get(&inner_tournament_address)
+                .expect("tournament state not found");
+
+            if inner_tournament_state.can_be_eliminated {
+                debug!(
+                    "eliminate inner tournament {inner_tournament_address} of level {}, child of tournament {tournament_address}",
+                    inner_tournament_state.level
+                );
+                arena_sender
+                    .eliminate_inner_tournament(tournament_address, inner_tournament_address)
+                    .await?;
+            } else {
+                self.react_tournament(arena_sender, inner_tournament_address, tournament_states)
+                    .await?;
+            }
         }
         Ok(())
     }

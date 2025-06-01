@@ -134,6 +134,7 @@ pub struct TournamentState {
     pub commitment_states: HashMap<Digest, CommitmentState>,
     pub matches: Vec<MatchState>,
     pub winner: Option<TournamentWinner>,
+    pub can_be_eliminated: bool,
 }
 
 impl TournamentState {

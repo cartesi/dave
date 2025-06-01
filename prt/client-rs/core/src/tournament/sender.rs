@@ -91,6 +91,12 @@ pub trait ArenaSender: Send + Sync {
     ) -> Result<()>;
 
     async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()>;
+
+    async fn eliminate_inner_tournament(
+        &self,
+        tournament: Address,
+        inner_tournament: Address,
+    ) -> Result<()>;
 }
 
 #[async_trait]
@@ -260,7 +266,21 @@ impl ArenaSender for EthArenaSender {
             .await;
         allow_revert_rethrow_others("eliminateMatchByTimeout", tx_result).await
     }
+
+    async fn eliminate_inner_tournament(
+        &self,
+        tournament: Address,
+        inner_tournament: Address,
+    ) -> Result<()> {
+        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.provider);
+        let tx_result = tournament
+            .eliminateInnerTournament(inner_tournament)
+            .send()
+            .await;
+        allow_revert_rethrow_others("eliminateInnerTournament", tx_result).await
+    }
 }
+
 pub async fn allow_revert_rethrow_others(
     tx_call: &str,
     tx_result: std::result::Result<PendingTransactionBuilder<Ethereum>, Error>,

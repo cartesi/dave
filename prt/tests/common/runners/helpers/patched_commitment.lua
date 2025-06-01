@@ -1,4 +1,3 @@
-local CommitmentBuilder = require "computation.commitment"
 local bint256 = require("utils.bint")(256)
 
 local PatchedCommitmentBuilder = {}
@@ -49,16 +48,15 @@ local function filter_map_patches(patches, base_cycle, log2_stride, log2_stride_
     return t
 end
 
-function PatchedCommitmentBuilder:new(machine_path, root_commitment, inputs, patches, snapshot_dir)
+function PatchedCommitmentBuilder:new(patches, commitment_builder)
     validate_patches(assert(patches))
-    local commitment_builder = CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_dir)
 
     local c = {
         commitment_builder = commitment_builder,
         patches = patches,
     }
     setmetatable(c, self)
-    return c
+    return c, commitment_builder
 end
 
 function PatchedCommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_count)
