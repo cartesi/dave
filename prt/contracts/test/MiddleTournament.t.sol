@@ -273,7 +273,6 @@ contract MiddleTournamentTest is Util, Test {
 
     function testInnerNoWinner() public {
         topTournament = Util.initializePlayer0Tournament(factory);
-        (,,, uint64 height) = topTournament.tournamentLevelConstants();
 
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
@@ -306,7 +305,7 @@ contract MiddleTournamentTest is Util, Test {
             topTournament.arbitrationResult();
         assertTrue(_finishedTop, "game not finished");
         assertTrue(
-            _commitment.eq(Util.playerNodes[2][height]),
+            _commitment.eq(Util.playerNodes[2][ArbitrationConstants.height(0)]),
             "wrong winner commitment"
         );
         assertTrue(_finalState.eq(Util.finalStates[2]), "wrong final state");
@@ -314,7 +313,6 @@ contract MiddleTournamentTest is Util, Test {
 
     function testInnerWinnerTimeoutClosed() public {
         topTournament = Util.initializePlayer0Tournament(factory);
-        (,,, uint64 height) = topTournament.tournamentLevelConstants();
 
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
@@ -362,7 +360,7 @@ contract MiddleTournamentTest is Util, Test {
             topTournament.arbitrationResult();
         assertTrue(_finishedTop, "game not finished");
         assertTrue(
-            _commitment.eq(Util.playerNodes[2][height]),
+            _commitment.eq(Util.playerNodes[2][ArbitrationConstants.height(0)]),
             "wrong winner commitment"
         );
         assertTrue(_finalState.eq(Util.finalStates[2]), "wrong final state");
@@ -370,7 +368,6 @@ contract MiddleTournamentTest is Util, Test {
 
     function testInnerWinnerTimeoutAllowance() public {
         topTournament = Util.initializePlayer0Tournament(factory);
-        (,,, uint64 height) = topTournament.tournamentLevelConstants();
 
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
@@ -441,7 +438,119 @@ contract MiddleTournamentTest is Util, Test {
             topTournament.arbitrationResult();
         assertTrue(_finishedTop, "game not finished");
         assertTrue(
-            _commitment.eq(Util.playerNodes[2][height]),
+            _commitment.eq(playerNodes[2][ArbitrationConstants.height(0)]),
+            "wrong winner commitment"
+        );
+        assertTrue(_finalState.eq(Util.finalStates[2]), "wrong final state");
+    }
+
+    function testInnerFairDeduction() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+        Util.joinTournament(topTournament, 1);
+        Util.joinTournament(topTournament, 2);
+
+        Match.Id memory _matchId = Util.matchId(1, 0);
+        uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
+
+        // expect new inner created
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+        assertNoElimination();
+
+        Util.joinTournament(middleTournament, 0);
+        Util.joinTournament(middleTournament, 1);
+
+        assertFalse(middleTournament.isClosed());
+        (bool hasWinner,,,) = middleTournament.innerTournamentWinner();
+        assertFalse(hasWinner);
+
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
+        );
+        vm.expectRevert(Tournament.WinByTimeout.selector);
+        middleTournament.winMatchByTimeout(
+            Util.matchId(1, 1),
+            playerNodes[0][ArbitrationConstants.height(1) - 1],
+            playerNodes[0][ArbitrationConstants.height(1) - 1]
+        );
+
+        vm.roll(vm.getBlockNumber() + 1);
+
+        assertTrue(middleTournament.isClosed());
+        (hasWinner,,,) = middleTournament.innerTournamentWinner();
+        assertFalse(hasWinner);
+        assertNoElimination();
+
+        middleTournament.winMatchByTimeout(
+            Util.matchId(1, 1),
+            playerNodes[1][ArbitrationConstants.height(1) - 1],
+            playerNodes[1][ArbitrationConstants.height(1) - 1]
+        );
+
+        (hasWinner,,,) = middleTournament.innerTournamentWinner();
+        assertTrue(hasWinner);
+        assertNoElimination();
+
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
+        );
+        assertNoElimination();
+
+        // win at the last second
+        topTournament.winInnerTournament(
+            middleTournament,
+            playerNodes[1][ArbitrationConstants.height(0) - 1],
+            playerNodes[1][ArbitrationConstants.height(0) - 1]
+        );
+        (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
+            topTournament.arbitrationResult();
+        assertFalse(_finishedTop, "game finished");
+
+        Match.Id memory topMatch = Match.Id(
+            playerNodes[2][ArbitrationConstants.height(0)],
+            playerNodes[1][ArbitrationConstants.height(0)]
+        );
+
+        topTournament.advanceMatch(
+            topMatch,
+            // player 2 bisection is weird
+            playerNodes[0][ArbitrationConstants.height(0) - 1],
+            playerNodes[2][ArbitrationConstants.height(0) - 1],
+            playerNodes[0][ArbitrationConstants.height(0) - 2],
+            playerNodes[0][ArbitrationConstants.height(0) - 2]
+        );
+
+        vm.roll(
+            vm.getBlockNumber()
+                + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT)
+        );
+        vm.expectRevert(Tournament.WinByTimeout.selector);
+        topTournament.winMatchByTimeout(
+            topMatch,
+            playerNodes[0][ArbitrationConstants.height(0) - 1],
+            playerNodes[2][ArbitrationConstants.height(0) - 1]
+        );
+
+        vm.roll(vm.getBlockNumber() + 1);
+        topTournament.winMatchByTimeout(
+            topMatch,
+            playerNodes[0][ArbitrationConstants.height(0) - 1],
+            playerNodes[2][ArbitrationConstants.height(0) - 1]
+        );
+
+        (_finishedTop, _commitment, _finalState) =
+            topTournament.arbitrationResult();
+        assertTrue(_finishedTop, "game not finished");
+        assertTrue(
+            _commitment.eq(playerNodes[2][ArbitrationConstants.height(0)]),
             "wrong winner commitment"
         );
         assertTrue(_finalState.eq(Util.finalStates[2]), "wrong final state");
