@@ -28,6 +28,7 @@ abstract contract NonRootTournament is Tournament {
     /// - if the tournament is finished
     /// - the contested parent commitment
     /// - the winning inner commitment
+    /// - the paused clock of the winning inner commitment
     function innerTournamentWinner()
         external
         view
@@ -63,7 +64,9 @@ abstract contract NonRootTournament is Tournament {
     /// @return (bool)
     /// - if the tournament can be eliminated
     function canBeEliminated() public view returns (bool) {
-        if (!isFinished()) {
+        (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
+
+        if (!finished) {
             return false;
         }
 
@@ -78,8 +81,6 @@ abstract contract NonRootTournament is Tournament {
 
         // We know that, after `winnerCouldHaveWon` plus  winner's clock.allowance has elapsed,
         // it is safe to elminate the tournament.
-        (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
-        assert(finished);
         (Clock.State memory clock,) = getCommitment(_danglingCommitment);
         return winnerCouldHaveWon.timeoutElapsed(clock.allowance);
     }

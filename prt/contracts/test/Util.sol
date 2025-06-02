@@ -45,8 +45,8 @@ contract Util {
 
     // players' commitment node at different height
     // player 0, player 1, and player 2
-    Tree.Node[][3] public playerNodes;
-    Machine.Hash[3] public finalStates;
+    Tree.Node[][3] playerNodes;
+    Machine.Hash[3] finalStates;
 
     constructor() {
         playerNodes[0] = new Tree.Node[](LOG2_MAX_HEIGHT + 1);
