@@ -7,8 +7,6 @@ via_ir = true
 
 allow_paths = ["../../prt/contracts", "../../machine/step"]
 remappings = [
-    'cartesi-rollups-contracts-2.0.0/=dependencies/cartesi-rollups-contracts-2.0.0-rc.18/src/',
-
     'prt-contracts/=../../prt/contracts/src/',
     'step/=../../machine/step/',
 ]
@@ -18,4 +16,4 @@ solc-version = "0.8.27"
 [dependencies]
 "@openzeppelin-contracts" = "5.2.0"
 forge-std = "1.9.6"
-cartesi-rollups-contracts = "2.0.0-rc.18"
+cartesi-rollups-contracts = "2.0.0"

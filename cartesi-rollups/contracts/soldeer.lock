@@ -7,10 +7,10 @@ integrity = "4cb7f3777f67fdf4b7d0e2f94d2f93f198b2e5dce718b7062ac7c2c83e1183bd"
 
 [[dependencies]]
 name = "cartesi-rollups-contracts"
-version = "2.0.0-rc.18"
-url = "https://soldeer-revisions.s3.amazonaws.com/cartesi-rollups-contracts/2_0_0-rc_18_12-05-2025_11:50:51_rollups-contracts.zip"
-checksum = "d0ce6abc00c4bbd203c42cbd7bc733ed31dd67e3ebac13308cfbd81c9b48fe27"
-integrity = "70bd8100c769d64f04daf18ec3de26ceb07c3d079851142df58ea923ced1d2ee"
+version = "2.0.0"
+url = "https://soldeer-revisions.s3.amazonaws.com/cartesi-rollups-contracts/2_0_0_30-05-2025_16:11:57_rollups-contracts.zip"
+checksum = "2e1305f0f6af0a20904d4cebda69882a32483b0cb8b84a7b713ed67c49d4f43c"
+integrity = "0ed8a2ad00a25321ea17ae6732c3a75361806f94701c363f424e83ad8f72c87a"
 
 [[dependencies]]
 name = "forge-std"
