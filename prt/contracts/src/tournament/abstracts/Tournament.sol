@@ -55,7 +55,7 @@ abstract contract Tournament {
     //
     Tree.Node danglingCommitment;
     uint256 matchCount;
-    Time.Instant lastMatchElimination;
+    Time.Instant lastMatchDeleted;
 
     mapping(Tree.Node => Clock.State) clocks;
     mapping(Tree.Node => Machine.Hash) finalStates;
@@ -87,10 +87,6 @@ abstract contract Tournament {
         require(!isClosed(), TournamentIsClosed());
 
         _;
-    }
-
-    constructor() {
-        lastMatchElimination = Time.currentTime();
     }
 
     //
@@ -381,7 +377,7 @@ abstract contract Tournament {
 
     function deleteMatch(Match.IdHash _matchIdHash) internal {
         matchCount--;
-        lastMatchElimination = Time.currentTime();
+        lastMatchDeleted = Time.currentTime();
         delete matches[_matchIdHash];
         emit matchDeleted(_matchIdHash);
     }
@@ -409,20 +405,23 @@ abstract contract Tournament {
     }
 
     /// @notice returns if and when tournament was finished.
-    /// @return (bool)
+    /// @return (bool, Time.Instant)
     /// - if the tournament can be eliminated
     /// - the time when the tournament was finished
     function timeFinished() public view returns (bool, Time.Instant) {
         if (!isFinished()) {
             return (false, Time.ZERO_INSTANT);
         }
-        /// - the
+
         TournamentArgs memory args = _tournamentArgs();
 
-        // Here, we know that `lastMatchElimination` holds the Instant when `matchCount` became zero.
-        // However, we still must consider when the tournament was closed.
+        // Here, we know that `lastMatchDeleted` holds the Instant when `matchCount` became zero.
+        // However, we still must consider when the tournament was closed, in case it
+        // happens after `lastMatchDeleted`.
+        // Note that `lastMatchDeleted` could be zero if there are no matches eliminated.
+        // In this case, we'd only care about `tournamentClosed`.
         Time.Instant tournamentClosed = args.startInstant.add(args.allowance);
-        Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchElimination);
+        Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchDeleted);
 
         return (true, winnerCouldWin);
     }
