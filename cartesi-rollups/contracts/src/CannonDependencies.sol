@@ -5,4 +5,4 @@ pragma solidity ^0.8.0;
 
 // List of contracts used in Cannonfiles
 
-import "cartesi-rollups-contracts-2.0.0/dapp/ApplicationFactory.sol";
+import "cartesi-rollups-contracts-2.0.0/src/dapp/ApplicationFactory.sol";
