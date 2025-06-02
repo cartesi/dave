@@ -100,7 +100,8 @@ function Env.roll_epoch()
     return assert(epochs[target_epoch])
 end
 
-function Env.wait_until_epoch(target_epoch)
+function Env.wait_until_epoch(target_epoch, ff)
+    ff = ff or Env.fast_forward_time * 4
     local total_epochs = target_epoch + 1
     local epochs
     time.sleep_until(function()
@@ -109,7 +110,7 @@ function Env.wait_until_epoch(target_epoch)
             assert(#epochs == total_epochs)
             return true
         else
-            Env.sender:advance_blocks(Env.fast_forward_time * 4)
+            Env.sender:advance_blocks(ff)
             return false
         end
     end)
@@ -155,12 +156,16 @@ function Env.epoch_settlement(sealed_epoch)
     }
 end
 
+function Env.player_react(player_coroutine)
+    local success, log = coroutine.resume(player_coroutine)
+    assert(success, string.format("player fail to resume with error: %s", log))
+    return coroutine.status(player_coroutine), log
+end
+
 function Env.drive_player_until(player_coroutine, condition_f)
     local ret
     while true do
-        local success, log = coroutine.resume(player_coroutine)
-        assert(success, string.format("player fail to resume with error: %s", log))
-        ret = { condition_f(coroutine.status(player_coroutine), log) }
+        ret = { condition_f(Env.player_react(player_coroutine)) }
 
         if ret[1] then
             return table.unpack(ret)

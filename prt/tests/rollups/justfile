@@ -22,9 +22,14 @@ test-echo:
 test-honeypot-all:
   just test {{HONEYPOT_DIR}} stf_all
   just test {{HONEYPOT_DIR}} big_input
+  just test {{HONEYPOT_DIR}} gc_match
+  just test {{HONEYPOT_DIR}} gc_tournament
 
 test-honeypot-ci:
   just test {{HONEYPOT_DIR}} simple
+
+test-honeypot-case CASE:
+  just test {{HONEYPOT_DIR}} {{CASE}}
 
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:
