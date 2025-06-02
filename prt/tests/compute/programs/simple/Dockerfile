@@ -1,4 +1,4 @@
-FROM cartesi/machine-emulator:0.19.0-alpha3
+FROM cartesi/machine-emulator:0.19.0
 USER root 
 
 COPY ./bins ./bins

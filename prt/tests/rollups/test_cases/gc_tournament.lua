@@ -39,9 +39,7 @@ env.drive_player_until(player1, function(_, _)
     local _, log2 = env.player_react(player2)
     local root_match = log2.state.matches[1]
     if root_match then
-        print "HAS ROOT MATCH"
         if root_match.inner_tournament then
-            print "HAS INNER TOURNAMENT"
             return true
         end
     end
