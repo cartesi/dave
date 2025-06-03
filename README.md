@@ -130,12 +130,6 @@ The repository includes examples for different components of Dave:
 - **PRT Rust Node (Rollups):**
   Follow the instructions in the [PRT Rust node README](prt/tests/rollups/README.md).
 
----
-
-## Status
-
-The project is still in its prototyping stages.
-
 
 ---
 
