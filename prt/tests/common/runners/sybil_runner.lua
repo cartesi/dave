@@ -22,20 +22,24 @@ local function sybil_player(root_tournament, strategy, blockchain_endpoint)
     end)
 end
 
-local function sybil_runner(commitment_builder, machine_path, root_tournament, inputs, player_id)
+local function sybil_runner(commitment_builder, machine_path, root_tournament, inputs, player_id, config)
+    config = config or {}
     player_id = player_id or 1
+    local pk = config.pk or blockchain_consts.pks[player_id]
+    local endpoint = config.endpoint or blockchain_consts.endpoint
+
     local strategy = HonestStrategy:new(
         commitment_builder,
         inputs,
         machine_path,
-        Sender:new(blockchain_consts.pks[player_id], player_id, blockchain_consts.endpoint)
+        Sender:new(pk, player_id, endpoint)
     )
     strategy:disable_gc()
 
     local react = sybil_player(
         root_tournament,
         strategy,
-        blockchain_consts.endpoint
+        endpoint
     )
 
     return react
