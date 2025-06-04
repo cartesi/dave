@@ -2,6 +2,7 @@ local Hash = require "cryptography.hash"
 local MerkleTree = require "cryptography.merkle_tree"
 local blockchain_constants = require "blockchain.constants"
 local blockchain_utils = require "blockchain.utils"
+local time = require "utils.time"
 
 local function quote_args(args, not_quote)
     local quoted_args = {}
@@ -97,13 +98,23 @@ function Sender:tx_add_input(payload)
 end
 
 function Sender:tx_add_inputs(inputs)
-    for _,payload in ipairs(inputs) do
+    for _, payload in ipairs(inputs) do
         self:tx_add_input(payload)
     end
 end
 
+local CHUNK_SIZE = 1000
+local PAUSE_MS   = 200
+
 function Sender:advance_blocks(blocks)
-    blockchain_utils.advance_time(blocks, self.endpoint)
+    local remaining = blocks
+
+    while remaining > 0 do
+        local step = math.min(CHUNK_SIZE, remaining)
+        blockchain_utils.advance_time(step, self.endpoint)
+        remaining = remaining - step
+        time.sleep_ms(PAUSE_MS)
+    end
 end
 
 return Sender

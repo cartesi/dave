@@ -18,7 +18,4 @@ library Machine {
         bytes32 r = Hash.unwrap(right);
         return l == r;
     }
-
-    type Cycle is uint256; // TODO overcomplicated?
-    type Log2Step is uint64; // TODO overcomplicated?
 }

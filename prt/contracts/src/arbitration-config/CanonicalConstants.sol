@@ -9,9 +9,9 @@ library ArbitrationConstants {
     // Maximum number of blocks for computing the commitments offchain
     Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
 
-    // Maximum censorhip in number of blocks
-    // TODO: update for main net
-    Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(5 * 60 * 8);
+    // Maximum censorhip in number of blocks (1 week)
+    Time.Duration constant CENSORSHIP_TOLERANCE =
+        Time.Duration.wrap(5 * 60 * 24 * 7);
 
     // Maximum time for bisections in a match
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5 * 5 * 92);

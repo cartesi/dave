@@ -1,7 +1,6 @@
 local cast_advance_template = [[
 cast rpc -r "%s" anvil_mine %d
 ]]
-
 local function advance_time(blocks, endpoint)
     local cmd = string.format(
         cast_advance_template,

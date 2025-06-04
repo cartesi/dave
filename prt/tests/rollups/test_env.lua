@@ -20,7 +20,7 @@ local CONSENSUS_ADDRESS = assert(os.getenv("CONSENSUS"))
 local INPUT_BOX_ADDRESS = assert(os.getenv("INPUT_BOX"))
 
 local SLEEP_TIME = 1
-local FAST_FORWARD_TIME = 32
+local FAST_FORWARD_TIME = 5 * 60 * 2
 
 
 local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
@@ -85,24 +85,33 @@ function Env.roll_epoch()
         return Env.reader:commitment_exists(epochs[#epochs].tournament, commitment)
     end)
 
-    Env.sender:advance_blocks(3000) -- TODO improve magic number
+    print "Advancing many blocks..."
+    Env.sender:advance_blocks(50000) -- TODO improve magic number
+    print "Blocks advanced"
+
     time.sleep_until(function()
         epochs = Env.reader:read_epochs_sealed()
         if #epochs >= target_epoch then
             assert(#epochs == target_epoch)
             return true
         else
+            Env.sender:advance_blocks(Env.fast_forward_time)
             return false
         end
-    end)
+    end, 2)
 
     Env.sender:advance_blocks(32)
     return assert(epochs[target_epoch])
 end
 
 function Env.wait_until_epoch(target_epoch, ff)
-    ff = ff or Env.fast_forward_time * 4
+    ff = ff or Env.fast_forward_time
     local total_epochs = target_epoch + 1
+
+    print "Advancing many blocks..."
+    Env.sender:advance_blocks(40000) -- TODO improve magic number
+    print "Blocks advanced"
+
     local epochs
     time.sleep_until(function()
         epochs = Env.reader:read_epochs_sealed()

@@ -2,7 +2,6 @@ local eth_abi = require "utils.eth_abi"
 local blockchain_constants = require "blockchain.constants"
 local InnerReader = require "player.reader"
 local uint256 = require "utils.bint" (256)
-local time = require "utils.time"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -117,47 +116,67 @@ function Reader:_read_logs(contract_address, sig, topics, data_sig)
         latest = tonumber(latest)
     end
 
-    local function call(from, to)
-        local cmd = string.format(
-            cast_logs_template,
-            self.endpoint,
-            from,
-            to,
-            contract_address,
-            topic_str
-        )
+    local cmd = string.format(
+        cast_logs_template,
+        self.endpoint,
+        self.genesis,
+        latest,
+        contract_address,
+        topic_str
+    )
 
-        local handle = io.popen(cmd)
-        assert(handle)
-        local logs = handle:read "*a"
-        handle:close()
+    local handle = io.popen(cmd)
+    assert(handle)
+    local logs = handle:read "*a"
+    handle:close()
 
-        if logs:find "Error" then
-            error(string.format("Read logs `%s` failed:\n%s", sig, logs))
-        end
-
-        local ret = parse_logs(logs, data_sig)
-        return ret
+    if logs:find "Error" then
+        error(string.format("Read logs `%s` failed:\n%s", sig, logs))
     end
 
-    local ret = {}
-    local from = self.genesis
-    while true do
-        local to = math.min(from + 1000, latest)
-        local r = call(from, to)
-        for _, value in ipairs(r) do
-            table.insert(ret, value)
-        end
-
-        if to == latest then
-            break
-        end
-
-        from = to + 1
-        time.sleep_ms(500)
-    end
-
+    local ret = parse_logs(logs, data_sig)
     return ret
+
+    -- local function call(from, to)
+    --     local cmd = string.format(
+    --         cast_logs_template,
+    --         self.endpoint,
+    --         from,
+    --         to,
+    --         contract_address,
+    --         topic_str
+    --     )
+    --
+    --     local handle = io.popen(cmd)
+    --     assert(handle)
+    --     local logs = handle:read "*a"
+    --     handle:close()
+    --
+    --     if logs:find "Error" then
+    --         error(string.format("Read logs `%s` failed:\n%s", sig, logs))
+    --     end
+    --
+    --     local ret = parse_logs(logs, data_sig)
+    --     return ret
+    -- end
+
+    -- local ret = {}
+    -- local from = self.genesis
+    -- while true do
+    --     local to = math.min(from + 1000, latest)
+    --     local r = call(from, to)
+    --     for _, value in ipairs(r) do
+    --         table.insert(ret, value)
+    --     end
+    --
+    --     if to == latest then
+    --         break
+    --     end
+    --
+    --     from = to + 1
+    --     time.sleep_ms(500)
+    -- end
+    -- return ret
 end
 
 local cast_call_template = [==[

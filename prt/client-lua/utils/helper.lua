@@ -99,7 +99,7 @@ end
 
 function helper.stop_pid(reader, pid)
     print(string.format("Stopping pid %s...", pid))
-    os.execute(string.format("kill -15 %s", pid))
+    os.execute(string.format("kill -2 %s", pid))
     reader:close()
     print "Process stopped"
 end
