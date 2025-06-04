@@ -78,6 +78,9 @@ function Sender:_send_tx(contract_address, sig, args)
     if ret:find "Error" then
         handle:close()
         error(string.format("Send transaction `%s` reverted:\n%s", cmd, ret))
+    else
+        print("Transaction sent:")
+        print(ret)
     end
 
     self.tx_count = self.tx_count + 1
@@ -95,9 +98,7 @@ end
 
 function Sender:tx_add_inputs(inputs)
     for _,payload in ipairs(inputs) do
-        self:advance_blocks(1)
         self:tx_add_input(payload)
-        self:advance_blocks(1)
     end
 end
 

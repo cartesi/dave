@@ -166,7 +166,10 @@ impl PRTConfig {
         )
         .expect("could not create `state_manager`");
 
-        let mut machine = state_manager.latest_snapshot().unwrap();
+        let mut machine = state_manager
+            .snapshot(0)
+            .unwrap()
+            .expect("epoch zero should always exist");
         assert_eq!(
             machine.state_hash().unwrap(),
             address_book.initial_hash,

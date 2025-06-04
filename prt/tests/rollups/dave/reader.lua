@@ -1,6 +1,8 @@
 local eth_abi = require "utils.eth_abi"
 local blockchain_constants = require "blockchain.constants"
 local InnerReader = require "player.reader"
+local uint256 = require "utils.bint" (256)
+local time = require "utils.time"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -62,13 +64,15 @@ end
 local Reader = {}
 Reader.__index = Reader
 
-function Reader:new(input_box_address, consensus_address, endpoint)
+function Reader:new(input_box_address, consensus_address, endpoint, genesis)
+    genesis = genesis or 0
     endpoint = endpoint or blockchain_constants.endpoint
     local reader = {
         input_box_address = input_box_address,
         consensus_address = consensus_address,
         endpoint = assert(endpoint),
-        inner_reader = InnerReader:new(endpoint)
+        inner_reader = InnerReader:new(endpoint),
+        genesis = genesis,
     }
 
     setmetatable(reader, self)
@@ -77,7 +81,7 @@ end
 
 local cast_logs_template = [==[
 cast rpc -r "%s" eth_getLogs \
-    '[{"fromBlock": "earliest", "toBlock": "latest", "address": "%s", "topics": [%s]}]' -w  2>&1
+    '[{"fromBlock":"0x%x", "toBlock":"0x%x", "address": "%s", "topics": [%s]}]' -w  2>&1
 ]==]
 
 function Reader:_read_logs(contract_address, sig, topics, data_sig)
@@ -98,23 +102,61 @@ function Reader:_read_logs(contract_address, sig, topics, data_sig)
     end
     local topic_str = table.concat(topics_strs, ", ")
 
-    local cmd = string.format(
-        cast_logs_template,
-        self.endpoint,
-        contract_address,
-        topic_str
-    )
-
-    local handle = io.popen(cmd)
-    assert(handle)
-    local logs = handle:read "*a"
-    handle:close()
-
-    if logs:find "Error" then
-        error(string.format("Read logs `%s` failed:\n%s", sig, logs))
+    local latest
+    do
+        local cmd = string.format("cast block-number --rpc-url %s", self.endpoint)
+        local handle = io.popen(cmd)
+        assert(handle)
+        latest = handle:read()
+        local tail = handle:read "*a"
+        if latest:find "Error" or tail:find "error" then
+            handle:close()
+            error(string.format("Call `%s` failed:\n%s%s", cmd, latest, tail))
+        end
+        handle:close()
+        latest = tonumber(latest)
     end
 
-    local ret = parse_logs(logs, data_sig)
+    local function call(from, to)
+        local cmd = string.format(
+            cast_logs_template,
+            self.endpoint,
+            from,
+            to,
+            contract_address,
+            topic_str
+        )
+
+        local handle = io.popen(cmd)
+        assert(handle)
+        local logs = handle:read "*a"
+        handle:close()
+
+        if logs:find "Error" then
+            error(string.format("Read logs `%s` failed:\n%s", sig, logs))
+        end
+
+        local ret = parse_logs(logs, data_sig)
+        return ret
+    end
+
+    local ret = {}
+    local from = self.genesis
+    while true do
+        local to = math.min(from + 1000, latest)
+        local r = call(from, to)
+        for _, value in ipairs(r) do
+            table.insert(ret, value)
+        end
+
+        if to == latest then
+            break
+        end
+
+        from = to + 1
+        time.sleep_ms(500)
+    end
+
     return ret
 end
 
@@ -206,7 +248,7 @@ function Reader:root_tournament_winner(address)
 end
 
 function Reader:commitment_exists(tournament, commitment)
-  local commitments = self.inner_reader:read_commitment_joined(tournament)
+    local commitments = self.inner_reader:read_commitment_joined(tournament)
 
     for _, log in ipairs(commitments) do
         if log.root == commitment then
@@ -215,6 +257,22 @@ function Reader:commitment_exists(tournament, commitment)
     end
 
     return false
+end
+
+function Reader:balance(address)
+    local cmd = string.format("cast balance %s --rpc-url %s", address, self.endpoint)
+    local handle = io.popen(cmd)
+    assert(handle)
+
+    local balance = handle:read()
+    local tail = handle:read "*a"
+    if balance:find "Error" or tail:find "error" then
+        handle:close()
+        error(string.format("Call `%s` failed:\n%s%s", cmd, balance, tail))
+    end
+    handle:close()
+
+    return uint256.new(balance)
 end
 
 return Reader
