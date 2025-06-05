@@ -228,6 +228,24 @@ pub fn insert_settlement_info(
     Ok(())
 }
 
+pub fn insert_template_machine(
+    conn: &Connection,
+    state_hash: &cartesi_machine::types::Hash,
+) -> Result<()> {
+    let mut sttm = conn
+        .prepare_cached(
+            r#"
+            INSERT OR IGNORE INTO template_machine (id, state_hash)
+            VALUES(1, ?1)
+            "#,
+        )
+        .map_err(anyhow::Error::from)?;
+    sttm.execute(rusqlite::params![state_hash])
+        .map_err(anyhow::Error::from)?;
+
+    Ok(())
+}
+
 pub fn insert_snapshot(
     conn: &Connection,
     epoch_number: u64,
@@ -251,16 +269,12 @@ pub fn insert_snapshot(
             r#"
             INSERT INTO epoch_snapshot_info(epoch_number, state_hash)
             VALUES(?1, ?2)
+            ON CONFLICT(epoch_number) DO NOTHING
             "#,
         )
         .map_err(anyhow::Error::from)?;
-    let count = sttm
-        .execute(rusqlite::params![epoch_number, state_hash])
+    sttm.execute(rusqlite::params![epoch_number, state_hash])
         .map_err(anyhow::Error::from)?;
-    assert_eq!(
-        count, 1,
-        "expected exactly one row to be inserted into epoch_snapshot_info"
-    );
 
     Ok(())
 }
@@ -278,7 +292,11 @@ pub fn gc_old_epochs(conn: &Connection, max_epoch: u64) -> Result<()> {
     conn.execute_batch(
         r#"
         DELETE FROM machine_state_snapshots
-        WHERE state_hash NOT IN (SELECT state_hash FROM epoch_snapshot_info);
+        WHERE state_hash NOT IN (
+            SELECT state_hash FROM epoch_snapshot_info
+            UNION
+            SELECT state_hash FROM template_machine
+        );
         "#,
     )
     .map_err(anyhow::Error::from)?;
@@ -572,6 +590,19 @@ mod tests {
         fs::create_dir_all(tmp_dir(2)).unwrap();
         fs::create_dir_all(tmp_dir(3)).unwrap();
 
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM machine_state_snapshots", [], |r| r
+                .get(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM epoch_snapshot_info", [], |r| r
+                .get(0))
+                .unwrap(),
+            1
+        );
+
         let h = &[2u8; 32];
         insert_snapshot(&conn, 1, h, &tmp_dir(2)).unwrap();
         insert_snapshot(&conn, 2, h, &tmp_dir(2)).unwrap();
@@ -580,44 +611,29 @@ mod tests {
             conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM machine_state_snapshots", [], |r| r
                 .get(0))
                 .unwrap(),
-            1
+            2
         );
         assert_eq!(
             conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM epoch_snapshot_info", [], |r| r
                 .get(0))
                 .unwrap(),
-            2
+            3
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "UNIQUE constraint failed")]
-    fn test_insert_snapshot_duplicate_epoch_panics() {
-        let (_handle, conn) = setup_db();
-        fs::create_dir_all(tmp_dir(4)).unwrap();
-
-        let h1 = &[4u8; 32];
-        insert_snapshot(&conn, 3, h1, &tmp_dir(4)).unwrap();
-
-        // same epoch_number → PK violation in epoch_snapshot_info
-        insert_snapshot(&conn, 3, h1, &tmp_dir(4)).unwrap();
     }
 
     #[test]
     fn test_gc_old_epochs_removes_unreachable_snapshots() {
         let (_handle, conn) = setup_db();
-        fs::create_dir_all(tmp_dir(5)).unwrap();
-        fs::create_dir_all(tmp_dir(6)).unwrap();
-        fs::create_dir_all(tmp_dir(7)).unwrap();
 
-        insert_snapshot(&conn, 0, &[5u8; 32], &tmp_dir(5)).unwrap();
-        insert_snapshot(&conn, 1, &[6u8; 32], &tmp_dir(6)).unwrap();
-        insert_snapshot(&conn, 2, &[7u8; 32], &tmp_dir(7)).unwrap();
+        // template hash
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM machine_state_snapshots", [], |r| r
+                .get(0))
+                .unwrap(),
+            1
+        );
 
-        // keep > epoch 2
-        gc_old_epochs(&conn, 1).unwrap();
-
-        // epoch 0 and 1 rows gone
+        // epoch 0
         assert_eq!(
             conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM epoch_snapshot_info", [], |r| r
                 .get(0))
@@ -625,12 +641,38 @@ mod tests {
             1
         );
 
-        // unreachable parent rows gone too
+        fs::create_dir_all(tmp_dir(5)).unwrap();
+        fs::create_dir_all(tmp_dir(6)).unwrap();
+        fs::create_dir_all(tmp_dir(7)).unwrap();
+        insert_snapshot(&conn, 1, &[5u8; 32], &tmp_dir(5)).unwrap();
+        insert_snapshot(&conn, 2, &[6u8; 32], &tmp_dir(6)).unwrap();
+        insert_snapshot(&conn, 3, &[7u8; 32], &tmp_dir(7)).unwrap();
+
+        // epoch 0, 1, 2 and 3
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM epoch_snapshot_info", [], |r| r
+                .get(0))
+                .unwrap(),
+            4
+        );
+
+        // keep > epoch 2 (and epoch 0)
+        gc_old_epochs(&conn, 2).unwrap();
+
+        // epoch 0, 1 and 2 rows gone
+        assert_eq!(
+            conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM epoch_snapshot_info", [], |r| r
+                .get(0))
+                .unwrap(),
+            1
+        );
+
+        // unreachable parent rows gone too: only epoch 3 and template hash.
         assert_eq!(
             conn.query_row::<u32, _, _>("SELECT COUNT(*) FROM machine_state_snapshots", [], |r| r
                 .get(0))
                 .unwrap(),
-            1
+            2
         );
     }
 

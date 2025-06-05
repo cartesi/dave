@@ -37,6 +37,14 @@ CREATE TABLE IF NOT EXISTS machine_state_hashes (
     PRIMARY KEY (epoch_number, state_hash_index_in_epoch)
 );
 
+CREATE TABLE IF NOT EXISTS template_machine (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    state_hash BLOB NOT NULL
+        UNIQUE
+        REFERENCES machine_state_snapshots (state_hash)
+        ON DELETE RESTRICT
+) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS machine_state_snapshots (
     state_hash  BLOB NOT NULL PRIMARY KEY,
     file_path   TEXT NOT NULL

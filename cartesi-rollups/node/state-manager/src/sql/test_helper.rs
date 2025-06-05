@@ -11,7 +11,7 @@ use cartesi_machine::{
 use rusqlite::Connection;
 use tempfile::{TempDir, tempdir};
 
-use super::{migrations, set_scalar_function};
+use super::migrate;
 
 pub fn setup_db() -> (TempDir, Connection) {
     let state_dir_ = tempdir().unwrap();
@@ -28,12 +28,6 @@ pub fn setup_db() -> (TempDir, Connection) {
     .unwrap();
     machine.store(&machine_path).unwrap();
 
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.busy_timeout(std::time::Duration::from_secs(10))
-        .map_err(anyhow::Error::from)
-        .unwrap();
-    set_scalar_function(&conn).unwrap();
-    migrations::migrate_to_latest(&mut conn).unwrap();
-
+    let conn = migrate(state_dir, &machine_path, 0).unwrap();
     (state_dir_, conn)
 }

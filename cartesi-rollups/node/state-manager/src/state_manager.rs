@@ -1,20 +1,13 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::{CommitmentLeaf, Epoch, Input, InputId, Settlement, rollups_machine::RollupsMachine};
 use cartesi_machine::error::MachineError;
 use thiserror::Error;
 
 pub trait StateManager {
-    //
-    // Setup
-    //
-
-    fn set_genesis(&mut self, block_number: u64) -> Result<()>;
-    fn set_initial_machine(&mut self, machine_path: &Path) -> Result<()>;
-
     //
     // Consensus Data
     //

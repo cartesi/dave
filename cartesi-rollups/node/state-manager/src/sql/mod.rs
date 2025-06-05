@@ -24,6 +24,50 @@ pub fn fs_delete_dir(
     Ok(rusqlite::types::Null)
 }
 
+fn set_genesis(connection: &Connection, block_number: u64) -> Result<()> {
+    let last_processed = consensus_data::last_processed_block(connection)?;
+
+    if block_number > last_processed {
+        consensus_data::update_last_processed_block(connection, block_number)?;
+    }
+    Ok(())
+}
+
+fn set_initial_machine(
+    connection: &mut Connection,
+    state_dir: &Path,
+    source_machine_path: &Path,
+) -> Result<()> {
+    assert!(
+        state_dir.is_dir(),
+        "`{}` should be a directory",
+        state_dir.display()
+    );
+    assert!(
+        source_machine_path.is_dir(),
+        "machine path `{}` must be an existing directory",
+        source_machine_path.display()
+    );
+
+    let mut machine = cartesi_machine::Machine::load(
+        source_machine_path,
+        &cartesi_machine::config::runtime::RuntimeConfig::default(),
+    )?;
+    let state_hash = machine.root_hash()?;
+    let dest_machine_path = machine_path(state_dir, &state_hash);
+
+    if !dest_machine_path.exists() {
+        machine.store(&dest_machine_path)?;
+    }
+
+    let tx = connection.transaction().map_err(anyhow::Error::from)?;
+    rollup_data::insert_snapshot(&tx, 0, &state_hash, &dest_machine_path)?;
+    rollup_data::insert_template_machine(&tx, &state_hash)?;
+    tx.commit().map_err(anyhow::Error::from)?;
+
+    Ok(())
+}
+
 pub fn set_scalar_function(connection: &Connection) -> Result<()> {
     connection
         .create_scalar_function(
@@ -44,6 +88,20 @@ pub fn create_connection(state_dir: &Path) -> Result<Connection> {
         .busy_timeout(std::time::Duration::from_secs(10))
         .map_err(anyhow::Error::from)?;
     set_scalar_function(&connection)?;
+
+    Ok(connection)
+}
+
+pub fn migrate(
+    state_dir: &Path,
+    initial_machine_path: &Path,
+    genesis_block_number: u64,
+) -> Result<Connection> {
+    create_directory_structure(state_dir)?;
+    let mut connection = create_connection(state_dir)?;
+    migrations::migrate_to_latest(&mut connection).map_err(anyhow::Error::from)?;
+    set_genesis(&connection, genesis_block_number)?;
+    set_initial_machine(&mut connection, state_dir, initial_machine_path)?;
 
     Ok(connection)
 }
