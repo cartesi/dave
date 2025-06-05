@@ -8,7 +8,6 @@ use crate::{
     rollups_machine::RollupsMachine, sql::*, state_manager::Result,
 };
 
-use cartesi_machine::{Machine, config::runtime::RuntimeConfig};
 use rusqlite::Connection;
 
 #[derive(Debug)]
@@ -23,19 +22,12 @@ impl PersistentStateAccess {
         initial_machine_path: &Path,
         genesis_block_number: u64,
     ) -> Result<Self> {
-        create_directory_structure(state_dir)?;
+        let connection = migrate(state_dir, initial_machine_path, genesis_block_number)?;
 
-        let mut connection = create_connection(state_dir)?;
-        migrations::migrate_to_latest(&mut connection).map_err(anyhow::Error::from)?;
-
-        let mut this = Self {
+        Ok(Self {
             connection,
             state_dir: state_dir.to_owned(),
-        };
-        this.set_genesis(genesis_block_number)?;
-        this.set_initial_machine(initial_machine_path)?;
-
-        Ok(this)
+        })
     }
 
     pub fn new(state_dir: &Path) -> Result<Self> {
@@ -57,43 +49,6 @@ impl PersistentStateAccess {
 }
 
 impl StateManager for PersistentStateAccess {
-    //
-    // Setup
-    //
-
-    fn set_genesis(&mut self, block_number: u64) -> Result<()> {
-        let last_processed = self.latest_processed_block()?;
-
-        if block_number > last_processed {
-            consensus_data::update_last_processed_block(&self.connection, block_number)?;
-        }
-        Ok(())
-    }
-
-    fn set_initial_machine(&mut self, source_machine_path: &Path) -> Result<()> {
-        assert!(
-            self.state_dir.is_dir(),
-            "`{}` should be a directory",
-            self.state_dir.display()
-        );
-        assert!(
-            source_machine_path.is_dir(),
-            "machine path `{}` must be an existing directory",
-            source_machine_path.display()
-        );
-
-        let mut machine = Machine::load(source_machine_path, &RuntimeConfig::default())?;
-        let state_hash = machine.root_hash()?;
-        let dest_machine_path = machine_path(&self.state_dir, &state_hash);
-
-        if !dest_machine_path.exists() {
-            machine.store(&dest_machine_path)?;
-            rollup_data::insert_snapshot(&self.connection, 0, &state_hash, &dest_machine_path)?;
-        }
-
-        Ok(())
-    }
-
     //
     // Consensus Data
     //
