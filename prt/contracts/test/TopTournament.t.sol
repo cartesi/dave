@@ -14,7 +14,7 @@ import "forge-std-1.9.6/src/Test.sol";
 
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/CanonicalConstants.sol";
+import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
@@ -49,8 +49,7 @@ contract TopTournamentTest is Util, Test {
 
         // player 0 should win after fast forward time to tournament finishes
         uint256 _t = vm.getBlockNumber();
-        uint256 _tournamentFinish =
-            _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+        uint256 _tournamentFinish = _t + Time.Duration.unwrap(MAX_ALLOWANCE);
 
         vm.roll(_tournamentFinish);
         (_finished, _winner, _finalState) = topTournament.arbitrationResult();

@@ -15,7 +15,7 @@ import "forge-std-1.9.6/src/Test.sol";
 
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/CanonicalConstants.sol";
+import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
@@ -69,8 +69,8 @@ contract TournamentTest is Util, Test {
         uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
         uint256 _tournamentFinishWithMatch = _t
-            + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
-            + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
+            + Time.Duration.unwrap(MAX_ALLOWANCE)
+            + Time.Duration.unwrap(MATCH_EFFORT);
 
         // player 1 joins tournament
         uint256 _opponent = 1;
@@ -124,9 +124,8 @@ contract TournamentTest is Util, Test {
         _t = vm.getBlockNumber();
 
         // the delay is increased when a match is created
-        _tournamentFinishWithMatch = _t
-            + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
-            + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
+        _tournamentFinishWithMatch = _t + Time.Duration.unwrap(MAX_ALLOWANCE)
+            + Time.Duration.unwrap(MATCH_EFFORT);
 
         // player 1 joins tournament
         Util.joinTournament(topTournament, _opponent);
@@ -194,7 +193,7 @@ contract TournamentTest is Util, Test {
         uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
         uint256 _rootTournamentFinish =
-            _t + 2 * Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+            _t + 2 * Time.Duration.unwrap(MAX_ALLOWANCE);
 
         vm.roll(_rootTournamentFinish - 1);
         // cannot eliminate match when both blocks still have time

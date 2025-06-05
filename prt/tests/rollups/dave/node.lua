@@ -58,7 +58,7 @@ local function db_exists(epoch_index)
 end
 
 local ROOT_LEAFS_QUERY = [[
-sqlite3 ./_state/%d/db \
+sqlite3 -readonly ./_state/%d/db \
 'SELECT repetitions, HEX(compute_leaf) FROM compute_leafs WHERE level=0 ORDER BY compute_leaf_index ASC' 2>&1
 ]]
 function Dave:root_commitment(epoch_index)
@@ -103,7 +103,7 @@ function Dave:root_commitment(epoch_index)
 end
 
 local MACHINE_PATH_QUERY = [[
-sqlite3 ./_state/db.sqlite3 \
+sqlite3 -readonly ./_state/db.sqlite3 \
 'SELECT s.file_path FROM epoch_snapshot_info AS e JOIN machine_state_snapshots AS s ON s.state_hash = e.state_hash WHERE e.epoch_number = %d' 2>&1]]
 function Dave:machine_path(epoch_index)
     local query = function()
@@ -133,7 +133,7 @@ function Dave:machine_path(epoch_index)
 end
 
 local INPUTS_QUERY =
-[[sqlite3 ./_state/%d/db 'select HEX(input)
+[[sqlite3 -readonly ./_state/%d/db 'select HEX(input)
 from inputs ORDER BY input_index ASC' 2>&1]]
 function Dave:inputs(epoch_index)
     local query = function()

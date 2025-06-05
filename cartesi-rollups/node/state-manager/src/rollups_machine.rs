@@ -14,7 +14,7 @@ use cartesi_machine::{
     types::{Hash, cmio::CmioResponseReason},
 };
 
-// gap of each leaf in the commitment tree, should use the same value as CanonicalConstants.sol:log2step(0)
+// gap of each leaf in the commitment tree, should use the same value as ArbitrationConstants.sol:log2step(0)
 pub const LOG2_STRIDE: u64 = 44;
 
 const BIG_STEPS_IN_STRIDE: u64 = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);

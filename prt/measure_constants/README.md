@@ -26,7 +26,7 @@ log2_stride	[uint64(41), uint64(26), uint64(0)]
 height	[uint64(27), uint64(15), uint64(26)]
 ```
 
-Go to `prt/contracts` and modified the content of `src/CanonicalConstants.sol`:
+Go to `prt/contracts` and modified the content of `src/ArbitrationConstants.sol`:
 
 -   replace `uint64 constant LEVELS` with the `level` value from the above result
 -   replace `uint64[LEVELS] memory arr` from `log2step` function with the `log2_stride` values from the above result
