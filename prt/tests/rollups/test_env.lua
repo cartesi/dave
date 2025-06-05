@@ -20,8 +20,7 @@ local CONSENSUS_ADDRESS = assert(os.getenv("CONSENSUS"))
 local INPUT_BOX_ADDRESS = assert(os.getenv("INPUT_BOX"))
 
 local SLEEP_TIME = 1
-local FAST_FORWARD_TIME = 32
-
+local FAST_FORWARD_TIME = 16
 
 local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
 -- Encoded Input blob
@@ -64,7 +63,7 @@ function Env.spawn_blockchain()
     Env.blockchain = blockchain
     Env.reader = Reader:new(INPUT_BOX_ADDRESS, CONSENSUS_ADDRESS, blockchain.endpoint)
     Env.sender = Sender:new(INPUT_BOX_ADDRESS, APP_ADDRESS, blockchain.pks[1], blockchain.endpoint)
-    Env.sender:advance_blocks(32)
+    Env.sender:advance_blocks(1)
     return blockchain
 end
 
@@ -77,7 +76,6 @@ end
 function Env.roll_epoch()
     assert(Env.blockchain, "blockchain not spawned")
     local epochs = Env.reader:read_epochs_sealed()
-    local target_epoch = #epochs + 1
 
     -- wait until node has finished processing epoch
     local _, commitment = Env.dave_node:root_commitment(#epochs - 1)
@@ -85,23 +83,11 @@ function Env.roll_epoch()
         return Env.reader:commitment_exists(epochs[#epochs].tournament, commitment)
     end)
 
-    Env.sender:advance_blocks(3000) -- TODO improve magic number
-    time.sleep_until(function()
-        epochs = Env.reader:read_epochs_sealed()
-        if #epochs >= target_epoch then
-            assert(#epochs == target_epoch)
-            return true
-        else
-            return false
-        end
-    end)
-
-    Env.sender:advance_blocks(32)
-    return assert(epochs[target_epoch])
+    return Env.wait_until_epoch(#epochs)
 end
 
 function Env.wait_until_epoch(target_epoch, ff)
-    ff = ff or Env.fast_forward_time * 4
+    ff = ff or Env.fast_forward_time
     local total_epochs = target_epoch + 1
     local epochs
     time.sleep_until(function()

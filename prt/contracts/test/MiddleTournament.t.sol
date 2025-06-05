@@ -14,7 +14,7 @@ import "forge-std-1.9.6/src/Test.sol";
 
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/CanonicalConstants.sol";
+import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
@@ -95,9 +95,8 @@ contract MiddleTournamentTest is Util, Test {
         // player 0 should win after fast forward time to inner tournament finishes
         uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
-        uint256 _rootTournamentFinish = _t
-            + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
-            + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
+        uint256 _rootTournamentFinish = _t + Time.Duration.unwrap(MAX_ALLOWANCE)
+            + Time.Duration.unwrap(MATCH_EFFORT);
         Util.joinTournament(middleTournament, 0);
 
         vm.roll(_rootTournamentFinish);
@@ -169,10 +168,9 @@ contract MiddleTournamentTest is Util, Test {
 
         _t = vm.getBlockNumber();
         // the delay is increased when a match is created
-        _rootTournamentFinish =
-            _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
-        uint256 _middleTournamentFinish = _rootTournamentFinish
-            + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT);
+        _rootTournamentFinish = _t + Time.Duration.unwrap(MAX_ALLOWANCE);
+        uint256 _middleTournamentFinish =
+            _rootTournamentFinish + Time.Duration.unwrap(MATCH_EFFORT);
 
         Util.joinTournament(middleTournament, 0);
 
@@ -259,7 +257,7 @@ contract MiddleTournamentTest is Util, Test {
         assertNoElimination();
         uint256 _t = vm.getBlockNumber();
         uint256 _middleTournamentFinish =
-            _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+            _t + Time.Duration.unwrap(MAX_ALLOWANCE);
         vm.roll(_middleTournamentFinish - 1);
         assertNoElimination();
 
@@ -293,7 +291,7 @@ contract MiddleTournamentTest is Util, Test {
         assertNoElimination();
         uint256 _t = vm.getBlockNumber();
         uint256 _middleTournamentFinish =
-            _t + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE);
+            _t + Time.Duration.unwrap(MAX_ALLOWANCE);
         vm.roll(_middleTournamentFinish - 1);
         assertNoElimination();
 
@@ -337,19 +335,13 @@ contract MiddleTournamentTest is Util, Test {
         (bool hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertFalse(hasWinner);
 
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE)
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
         assertTrue(middleTournament.isClosed());
         (hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertTrue(hasWinner);
         assertNoElimination();
 
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
         assertNoElimination();
         vm.roll(vm.getBlockNumber() + 1);
 
@@ -387,10 +379,7 @@ contract MiddleTournamentTest is Util, Test {
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT) + 3
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT) + 3);
         Util.joinTournament(middleTournament, 1);
         middleTournament.advanceMatch(
             Util.matchId(1, 1),
@@ -404,10 +393,7 @@ contract MiddleTournamentTest is Util, Test {
         (bool hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertFalse(hasWinner);
 
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 3
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 3);
 
         assertTrue(middleTournament.isClosed());
         (hasWinner,,,) = middleTournament.innerTournamentWinner();
@@ -424,10 +410,7 @@ contract MiddleTournamentTest is Util, Test {
         assertTrue(hasWinner);
         assertNoElimination();
 
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
         assertNoElimination();
         vm.roll(vm.getBlockNumber() + 1);
         assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
@@ -470,10 +453,7 @@ contract MiddleTournamentTest is Util, Test {
         (bool hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertFalse(hasWinner);
 
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
         vm.expectRevert(Tournament.WinByTimeout.selector);
         middleTournament.winMatchByTimeout(
             Util.matchId(1, 1),
@@ -498,10 +478,7 @@ contract MiddleTournamentTest is Util, Test {
         assertTrue(hasWinner);
         assertNoElimination();
 
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MAX_ALLOWANCE) - 1
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
         assertNoElimination();
 
         // win at the last second
@@ -528,10 +505,7 @@ contract MiddleTournamentTest is Util, Test {
             playerNodes[0][ArbitrationConstants.height(0) - 2]
         );
 
-        vm.roll(
-            vm.getBlockNumber()
-                + Time.Duration.unwrap(ArbitrationConstants.MATCH_EFFORT)
-        );
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT));
         vm.expectRevert(Tournament.WinByTimeout.selector);
         topTournament.winMatchByTimeout(
             topMatch,

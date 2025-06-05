@@ -4,7 +4,7 @@
 pragma solidity ^0.8.17;
 
 import "./ITournamentParametersProvider.sol";
-import "./CanonicalConstants.sol";
+import "./ArbitrationConstants.sol";
 
 contract CanonicalTournamentParametersProvider is
     ITournamentParametersProvider

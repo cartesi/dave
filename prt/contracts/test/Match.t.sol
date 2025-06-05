@@ -14,7 +14,7 @@ import "forge-std-1.9.6/src/console.sol";
 import "forge-std-1.9.6/src/Test.sol";
 
 import "prt-contracts/tournament/libs/Match.sol";
-import "prt-contracts/arbitration-config/CanonicalConstants.sol";
+import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
