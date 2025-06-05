@@ -9,10 +9,18 @@ import "./CanonicalConstants.sol";
 contract CanonicalTournamentParametersProvider is
     ITournamentParametersProvider
 {
+    Time.Duration immutable _matchEffort;
+    Time.Duration immutable _maxAllowance;
+
+    constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
+        _matchEffort = matchEffort;
+        _maxAllowance = maxAllowance;
+    }
+
     /// @inheritdoc ITournamentParametersProvider
     function tournamentParameters(uint64 level)
         external
-        pure
+        view
         override
         returns (TournamentParameters memory)
     {
@@ -20,8 +28,8 @@ contract CanonicalTournamentParametersProvider is
             levels: ArbitrationConstants.LEVELS,
             log2step: ArbitrationConstants.log2step(level),
             height: ArbitrationConstants.height(level),
-            matchEffort: ArbitrationConstants.MATCH_EFFORT,
-            maxAllowance: ArbitrationConstants.MAX_ALLOWANCE
+            matchEffort: _matchEffort,
+            maxAllowance: _maxAllowance
         });
     }
 }

@@ -2,6 +2,26 @@ name = 'cartesi-prt-multilevel'
 version = '0.0.1'
 description = 'Cartesi PRT contracts'
 
+[var.MainnetTournamentConstants]
+mainnetMatchEffort = "<%= 60 * 5 * 92 %>"
+mainnetMaxAllowance = "<%= 60 * 60 * 24 * 7 + 60 * 60 %>"
+
+[var.TestnetTournamentConstants]
+testnetMatchEffort = "<%= 60 * 5 * 92 %>"
+testnetMaxAllowance = "<%= 60 * 60 * 8 + 60 * 60 %>"
+
+[var.DevnetTournamentConstants]
+devnetMatchEffort = "<%= 60 * 5 * 92 %>"
+devnetMaxAllowance = "<%= 60 * 60 * 8 + 60 * 60 %>"
+
+[var.Chain]
+chainType = "<%= ({1: 'mainnet', 13370: 'devnet', 31337: 'devnet', 11155111: 'testnet'})[chainId] %>"
+chainAvgBlockTime = "<%= ({1: 12, 13370: 12, 31337: 12, 11155111: 12})[chainId] %>"
+
+[var.TournamentParameters]
+matchEffort = "<%= BigInt({mainnet: settings.mainnetMatchEffort, testnet: settings.testnetMatchEffort, devnet: settings.devnetMatchEffort}[settings.chainType]) / BigInt(settings.chainAvgBlockTime) %>"
+maxAllowance = "<%= BigInt({mainnet: settings.mainnetMaxAllowance, testnet: settings.testnetMaxAllowance, devnet: settings.devnetMaxAllowance}[settings.chainType]) / BigInt(settings.chainAvgBlockTime) %>"
+
 [deploy.RiscVStateTransition]
 artifact = "RiscVStateTransition"
 create2 = true
@@ -65,6 +85,10 @@ ifExists = "continue"
 
 [deploy.CanonicalTournamentParametersProvider]
 artifact = "CanonicalTournamentParametersProvider"
+args = [
+    "<%= settings.matchEffort %>",
+    "<%= settings.maxAllowance %>",
+]
 create2 = true
 salt = "<%= zeroHash %>"
 ifExists = "continue"

@@ -281,7 +281,10 @@ contract Util {
                 new TopTournamentFactory(new TopTournament()),
                 new MiddleTournamentFactory(new MiddleTournament()),
                 new BottomTournamentFactory(new BottomTournament()),
-                new CanonicalTournamentParametersProvider(),
+                new CanonicalTournamentParametersProvider(
+                    ArbitrationConstants.MATCH_EFFORT,
+                    ArbitrationConstants.MAX_ALLOWANCE
+                ),
                 stateTransition
             ),
             stateTransition
