@@ -12,7 +12,7 @@
 
 import "forge-std-1.9.6/src/console.sol";
 
-import "src/arbitration-config/CanonicalConstants.sol";
+import "src/arbitration-config/ArbitrationConstants.sol";
 import "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
 
 import "src/tournament/libs/Match.sol";
@@ -42,6 +42,14 @@ contract Util {
     Machine.Hash constant ONE_STATE = Machine.Hash.wrap(bytes32(uint256(1)));
     Machine.Hash constant TWO_STATE = Machine.Hash.wrap(bytes32(uint256(2)));
     uint64 public constant LOG2_MAX_HEIGHT = 67;
+
+    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
+    Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(5 * 60 * 8);
+    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5 * 5 * 92);
+    Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(
+        Time.Duration.unwrap(CENSORSHIP_TOLERANCE)
+            + Time.Duration.unwrap(COMMITMENT_EFFORT)
+    );
 
     // players' commitment node at different height
     // player 0, player 1, and player 2
@@ -262,8 +270,8 @@ contract Util {
             stateTransition,
             ArbitrationConstants.log2step(0),
             ArbitrationConstants.height(0),
-            ArbitrationConstants.MAX_ALLOWANCE,
-            ArbitrationConstants.MATCH_EFFORT
+            MAX_ALLOWANCE,
+            MATCH_EFFORT
         );
 
         return singleLevelFactory;
@@ -282,8 +290,7 @@ contract Util {
                 new MiddleTournamentFactory(new MiddleTournament()),
                 new BottomTournamentFactory(new BottomTournament()),
                 new CanonicalTournamentParametersProvider(
-                    ArbitrationConstants.MATCH_EFFORT,
-                    ArbitrationConstants.MAX_ALLOWANCE
+                    MATCH_EFFORT, MAX_ALLOWANCE
                 ),
                 stateTransition
             ),
