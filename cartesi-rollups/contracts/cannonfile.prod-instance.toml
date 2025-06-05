@@ -10,10 +10,10 @@ initialHash = "<%= zeroHash %>"
 source = "cartesi-rollups:2.0.0@main"
 
 [pull.prtContracts]
-source = "cartesi-prt-multilevel:0.1.0-rc.4@main"
+source = "cartesi-prt-multilevel:0.0.1@main"
 
 [pull.daveConsensusFactory]
-source = "cartesi-dave-consensus-factory:0.1.0-rc.4@main"
+source = "cartesi-dave-consensus-factory:0.0.1@main"
 
 [invoke.newApplication]
 target = "cartesiRollups.ApplicationFactory"
