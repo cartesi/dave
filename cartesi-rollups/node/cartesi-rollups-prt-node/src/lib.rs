@@ -59,6 +59,7 @@ pub fn create_blockchain_reader_task(
                     state_manager,
                     params.address_book,
                     params.sleep_duration,
+                    params.long_block_range_error_codes.clone(),
                 );
 
                 blockchain_reader

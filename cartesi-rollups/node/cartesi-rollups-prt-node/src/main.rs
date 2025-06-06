@@ -13,7 +13,7 @@ use log::info;
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    info!("Hello from Dave Rollups!");
+    info!("Hello from PRT Rollup Node!");
 
     let (config, _state_manager) = PRTConfig::setup();
     info!("Running with config:\n{}", config);
