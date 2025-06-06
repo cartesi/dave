@@ -136,12 +136,17 @@ pub struct BlockchainReader<SM: StateManager> {
 }
 
 impl<SM: StateManager> BlockchainReader<SM> {
-    pub fn new(state_manager: SM, address_book: AddressBook, sleep_duration: Duration) -> Self {
+    pub fn new(
+        state_manager: SM,
+        address_book: AddressBook,
+        sleep_duration: Duration,
+        long_block_range_error_codes: Vec<String>,
+    ) -> Self {
         Self {
             state_manager,
             address_book,
-            input_reader: EventReader::<InputAdded>::default(),
-            epoch_reader: EventReader::<EpochSealed>::default(),
+            input_reader: EventReader::<InputAdded>::new(long_block_range_error_codes.clone()),
+            epoch_reader: EventReader::<EpochSealed>::new(long_block_range_error_codes),
             sleep_duration,
         }
     }
@@ -357,10 +362,18 @@ impl<SM: StateManager> BlockchainReader<SM> {
 }
 
 pub struct EventReader<E: SolEvent + Send + Sync> {
+    long_block_range_error_codes: Vec<String>,
     __phantom: std::marker::PhantomData<E>,
 }
 
 impl<E: SolEvent + Send + Sync> EventReader<E> {
+    pub fn new(long_block_range_error_codes: Vec<String>) -> Self {
+        Self {
+            long_block_range_error_codes,
+            __phantom: std::marker::PhantomData,
+        }
+    }
+
     async fn next(
         &self,
         provider: &impl Provider,
@@ -378,19 +391,12 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
             // blocks are inclusive on both ends
             prev_finalized + 1,
             current_finalized,
+            &self.long_block_range_error_codes,
         )
         .await
         .map_err(ProviderErrors)?;
 
         Ok(logs)
-    }
-}
-
-impl<E: SolEvent + Send + Sync> Default for EventReader<E> {
-    fn default() -> Self {
-        Self {
-            __phantom: std::marker::PhantomData,
-        }
     }
 }
 
@@ -402,8 +408,17 @@ async fn get_events<E: SolEvent + Send + Sync>(
     read_from: &Address,
     start_block: u64,
     end_block: u64,
+    long_block_range_error_codes: &Vec<String>,
 ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
-    get_events_rec(provider, topic1, read_from, start_block, end_block).await
+    get_events_rec(
+        provider,
+        topic1,
+        read_from,
+        start_block,
+        end_block,
+        long_block_range_error_codes,
+    )
+    .await
 }
 
 #[async_recursion]
@@ -413,6 +428,7 @@ async fn get_events_rec<E: SolEvent + Send + Sync>(
     read_from: &Address,
     start_block: u64,
     end_block: u64,
+    long_block_range_error_codes: &Vec<String>,
 ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
     // TODO: partition log queries if range too large
     let event: Event<(), _, E> = {
@@ -431,17 +447,32 @@ async fn get_events_rec<E: SolEvent + Send + Sync>(
     match event.query().await {
         Ok(l) => Ok(l),
         Err(e) => {
-            if should_retry_with_partition(&e) {
+            if should_retry_with_partition(&e, long_block_range_error_codes) {
                 let middle = {
                     let blocks = 1 + end_block - start_block;
                     let half = blocks / 2;
                     start_block + half - 1
                 };
 
-                let first_res =
-                    get_events_rec(provider, topic1, read_from, start_block, middle).await;
-                let second_res =
-                    get_events_rec(provider, topic1, read_from, middle + 1, end_block).await;
+                let first_res = get_events_rec(
+                    provider,
+                    topic1,
+                    read_from,
+                    start_block,
+                    middle,
+                    long_block_range_error_codes,
+                )
+                .await;
+
+                let second_res = get_events_rec(
+                    provider,
+                    topic1,
+                    read_from,
+                    middle + 1,
+                    end_block,
+                    long_block_range_error_codes,
+                )
+                .await;
 
                 match (first_res, second_res) {
                     (Ok(mut first), Ok(second)) => {
@@ -477,10 +508,8 @@ async fn latest_finalized_block(
     Ok(block_number)
 }
 
-fn should_retry_with_partition(err: &Error) -> bool {
-    // infura limit error code: -32005
-    let query_limit_error_codes = [-32005];
-    for code in query_limit_error_codes {
+fn should_retry_with_partition(err: &Error, long_block_range_error_codes: &Vec<String>) -> bool {
+    for code in long_block_range_error_codes {
         let s = format!("{:?}", err);
         if s.contains(&code.to_string()) {
             return true;
@@ -533,11 +562,11 @@ mod blockchain_reader_tests {
     }
 
     fn create_epoch_reader() -> EventReader<EpochSealed> {
-        EventReader::<EpochSealed>::default()
+        EventReader::<EpochSealed>::new(Vec::new())
     }
 
     fn create_input_reader() -> EventReader<InputAdded> {
-        EventReader::<InputAdded>::default()
+        EventReader::<InputAdded>::new(Vec::new())
     }
 
     fn state_access() -> (tempfile::TempDir, PersistentStateAccess) {
@@ -742,6 +771,7 @@ mod blockchain_reader_tests {
                 PersistentStateAccess::new(handle.path()).unwrap(),
                 address_book,
                 Duration::from_secs(1),
+                Vec::new(),
             );
 
             let rt = tokio::runtime::Builder::new_current_thread()

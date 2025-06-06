@@ -45,6 +45,13 @@ pub struct PRTArgs {
 
     #[arg(long, env, default_value_os_t = std::env::temp_dir())]
     pub state_dir: PathBuf,
+
+    /// error codes to retry `get_logs` with shorter block range
+    #[arg(long, env, default_values = &["-32005", "-32600", "-32602", "-32616"])]
+    // -32005 Infura
+    // -32600, -32602 Alchemy
+    // -32616 QuickNode
+    pub long_block_range_error_codes: Vec<String>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -106,6 +113,7 @@ pub struct PRTConfig {
 
     // Misc
     pub sleep_duration: Duration,
+    pub long_block_range_error_codes: Vec<String>,
 
     // private
     signer: SignerArgs,
@@ -116,7 +124,7 @@ impl fmt::Display for PRTConfig {
         write!(f, "{}", self.address_book)?;
         writeln!(f, "Machine path: {}", self.machine_path.display())?;
         writeln!(f, "Signer address: {}", self.signer_address)?;
-        writeln!(f, "Chain Id: {}", self.chain_id)?;
+        writeln!(f, "Chain Id: {} ({})", self.chain_id, self.chain_id as u64)?;
         writeln!(f, "Ethereum gateway: <redacted>")?;
         writeln!(f, "State directory: {}", self.state_dir.display())?;
         writeln!(
@@ -124,6 +132,14 @@ impl fmt::Display for PRTConfig {
             "Sleep duration: {} seconds",
             self.sleep_duration.as_secs()
         )?;
+        write!(f, "Long block range error codes: [")?;
+        for (i, item) in self.long_block_range_error_codes.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", item)?;
+        }
+        write!(f, "]")?;
         Ok(())
     }
 }
@@ -189,6 +205,7 @@ impl PRTConfig {
                 ethereum_gateway: args.web3_rpc_url,
                 sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
                 signer: args.signer,
+                long_block_range_error_codes: args.long_block_range_error_codes,
             },
             state_manager,
         )
