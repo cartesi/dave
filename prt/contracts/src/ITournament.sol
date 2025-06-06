@@ -7,6 +7,7 @@ import "prt-contracts/types/Machine.sol";
 import "prt-contracts/types/Tree.sol";
 
 interface ITournament {
+    // Add documentation?
     function arbitrationResult()
         external
         view
