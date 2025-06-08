@@ -147,8 +147,11 @@ contract DaveConsensusTest is Test {
         bytes32[3] calldata outputsMerkleRoots,
         uint256[2] memory inputCounts,
         bytes32[3] calldata salts,
-        Tree.Node[2] calldata winnerCommitments
+        Tree.Node[2] calldata winnerCommitments,
+        uint256 deploymentBlockNumber
     ) external {
+        vm.roll(deploymentBlockNumber);
+
         for (uint256 i; i < 2; ++i) {
             inputCounts[i] = bound(inputCounts[i], 0, 5);
         }
@@ -174,6 +177,7 @@ contract DaveConsensusTest is Test {
         assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
         assertEq(daveConsensus.getApplicationContract(), appContract);
         assertEq(address(daveConsensus.getTournamentFactory()), address(_mockTournamentFactory));
+        assertEq(daveConsensus.getDeploymentBlockNumber(), deploymentBlockNumber);
 
         {
             bool isFinished;
