@@ -1555,7 +1555,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-dave-arithmetic"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "cartesi-dave-contracts"
@@ -1566,7 +1566,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-dave-kms"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "anyhow",
@@ -1579,7 +1579,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-dave-merkle"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "hex",
@@ -1590,7 +1590,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-machine"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "cartesi-machine-sys",
@@ -1604,7 +1604,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-machine-sys"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bindgen 0.71.1",
  "bytes",
@@ -1617,7 +1617,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-prt-compute"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "anyhow",
@@ -1638,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-prt-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "anyhow",
@@ -1675,7 +1675,7 @@ dependencies = [
 
 [[package]]
 name = "cartesi-rollups-prt-node"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "alloy-chains",
@@ -4132,7 +4132,7 @@ dependencies = [
 
 [[package]]
 name = "rollups-blockchain-reader"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "anyhow",
@@ -4155,7 +4155,7 @@ dependencies = [
 
 [[package]]
 name = "rollups-epoch-manager"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "anyhow",
@@ -4170,7 +4170,7 @@ dependencies = [
 
 [[package]]
 name = "rollups-machine-runner"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "cartesi-dave-merkle",
@@ -4185,7 +4185,7 @@ dependencies = [
 
 [[package]]
 name = "rollups-state-manager"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "alloy",
  "anyhow",
