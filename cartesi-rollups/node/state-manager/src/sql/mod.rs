@@ -8,7 +8,7 @@ pub mod rollup_data;
 #[cfg(test)]
 pub(crate) mod test_helper;
 
-use crate::state_manager::Result;
+use crate::{rollups_machine::RollupsMachine, state_manager::Result};
 use anyhow::Context;
 use rusqlite::{Connection, functions::FunctionFlags};
 use std::{
@@ -49,16 +49,14 @@ fn set_initial_machine(
         source_machine_path.display()
     );
 
-    let mut machine = cartesi_machine::Machine::load(
-        source_machine_path,
-        &cartesi_machine::config::runtime::RuntimeConfig::default(),
-    )?;
-    let state_hash = machine.root_hash()?;
-    let dest_machine_path = machine_path(state_dir, &state_hash);
+    let mut machine = RollupsMachine::new(source_machine_path, 0, 0)?;
 
-    if !dest_machine_path.exists() {
-        machine.store(&dest_machine_path)?;
-    }
+    let (dest_machine_path, state_hash) = {
+        let snapshots_path = snapshots_path(state_dir);
+        machine
+            .store_if_needed(&snapshots_path)
+            .map_err(anyhow::Error::from)?
+    };
 
     let tx = connection.transaction().map_err(anyhow::Error::from)?;
     rollup_data::insert_snapshot(&tx, 0, &state_hash, &dest_machine_path)?;
@@ -110,6 +108,11 @@ pub fn migrate(
 // Directory structure
 //
 
+pub fn create_empty_state_dir_if_needed(state_dir: &Path) -> Result<()> {
+    fs::create_dir_all(state_dir).with_context(|| format!("creating `{}`", state_dir.display()))?;
+    Ok(())
+}
+
 pub fn db_path(state_dir: &Path) -> PathBuf {
     state_dir.to_owned().join("db.sqlite3")
 }
@@ -118,13 +121,8 @@ pub fn snapshots_path(state_dir: &Path) -> PathBuf {
     state_dir.to_owned().join("snapshots")
 }
 
-pub fn machine_path(state_dir: &Path, state_hash: &cartesi_machine::types::Hash) -> PathBuf {
-    let snapshots = snapshots_path(state_dir);
-    snapshots.join(format!("0x{}", hex::encode(state_hash)))
-}
-
 pub fn create_directory_structure(state_dir: &Path) -> Result<()> {
-    fs::create_dir_all(state_dir).with_context(|| format!("creating `{}`", state_dir.display()))?;
+    create_empty_state_dir_if_needed(state_dir)?;
 
     let snapshots_path = snapshots_path(state_dir);
 

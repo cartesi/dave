@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use cartesi_prt_core::machine::constants::{LOG2_BARCH_SPAN_TO_INPUT, LOG2_UARCH_SPAN_TO_BARCH};
 
@@ -9,10 +9,24 @@ use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
     config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
     constants::{break_reason, pma::TX_START},
-    error::MachineResult,
+    error::{MachineError, MachineResult},
     machine::Machine,
     types::{Hash, cmio::CmioResponseReason},
 };
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum StoreError {
+    #[error(transparent)]
+    MachineError(#[from] MachineError),
+
+    #[error("Failed to cleanup partial store {fs_err}, caused by {machine_err}")]
+    CleanupError {
+        machine_err: MachineError,
+        fs_err: std::io::Error,
+    },
+}
 
 // gap of each leaf in the commitment tree, should use the same value as ArbitrationConstants.sol:log2step(0)
 pub const LOG2_STRIDE: u64 = 44;
@@ -67,8 +81,33 @@ impl RollupsMachine {
         Ok((output_merkle.try_into().unwrap(), siblings))
     }
 
-    pub fn store(&mut self, path: &Path) -> MachineResult<()> {
-        self.machine.store(path)
+    pub fn store_if_needed(
+        &mut self,
+        snapshots_path: &Path,
+    ) -> Result<(PathBuf, Hash), StoreError> {
+        let state_hash = self.state_hash()?;
+        let dest_machine_path = machine_store_path(snapshots_path, &state_hash);
+
+        if !dest_machine_path.exists() {
+            let machine_status = self.machine.store(&dest_machine_path);
+
+            if let Err(machine_err) = machine_status {
+                // cleanup partial store before returning error.
+                let fs_status = std::fs::remove_dir_all(&dest_machine_path);
+
+                // combine errors
+                if let Err(fs_err) = fs_status {
+                    return Err(StoreError::CleanupError {
+                        machine_err,
+                        fs_err,
+                    });
+                } else {
+                    return Err(machine_err.into());
+                }
+            }
+        }
+
+        Ok((dest_machine_path, state_hash))
     }
 
     pub fn state_hash(&mut self) -> MachineResult<Hash> {
@@ -124,4 +163,8 @@ impl RollupsMachine {
             }
         }
     }
+}
+
+fn machine_store_path(snapshots_path: &Path, state_hash: &cartesi_machine::types::Hash) -> PathBuf {
+    snapshots_path.join(format!("0x{}", hex::encode(state_hash)))
 }

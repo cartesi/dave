@@ -22,20 +22,23 @@ impl PersistentStateAccess {
         initial_machine_path: &Path,
         genesis_block_number: u64,
     ) -> Result<Self> {
-        let connection = migrate(state_dir, initial_machine_path, genesis_block_number)?;
+        create_empty_state_dir_if_needed(state_dir)?;
+        let state_dir = state_dir.canonicalize().map_err(anyhow::Error::from)?;
+        let connection = migrate(&state_dir, initial_machine_path, genesis_block_number)?;
 
         Ok(Self {
             connection,
-            state_dir: state_dir.to_owned(),
+            state_dir,
         })
     }
 
     pub fn new(state_dir: &Path) -> Result<Self> {
-        let connection = create_connection(state_dir)?;
+        let state_dir = state_dir.canonicalize().map_err(anyhow::Error::from)?;
+        let connection = create_connection(&state_dir)?;
 
         Ok(Self {
             connection,
-            state_dir: state_dir.to_owned(),
+            state_dir,
         })
     }
 
@@ -177,14 +180,15 @@ impl StateManager for PersistentStateAccess {
         let previous_epoch_number = machine_to_snapshot.epoch();
         machine_to_snapshot.finish_epoch();
 
-        let state_hash = machine_to_snapshot.state_hash()?;
         let new_epoch_number = machine_to_snapshot.epoch();
         create_epoch_dir(&self.state_dir, new_epoch_number)?;
 
-        let dest_dir = machine_path(&self.state_dir, &state_hash);
-        if !dest_dir.exists() {
-            machine_to_snapshot.store(&dest_dir)?;
-        }
+        let (dest_dir, state_hash) = {
+            let snapshots_path = snapshots_path(&self.state_dir);
+            machine_to_snapshot
+                .store_if_needed(&snapshots_path)
+                .map_err(anyhow::Error::from)?
+        };
 
         let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
         rollup_data::insert_snapshot(&tx, new_epoch_number, &state_hash, &dest_dir)?;
