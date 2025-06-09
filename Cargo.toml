@@ -27,7 +27,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 
 authors = [
   "Gabriel Coutinho de Paula <gcdepaula@protonmail.com>",
@@ -54,10 +54,10 @@ cartesi-dave-contracts = { path = "cartesi-rollups/contracts/bindings-rs" }
 cartesi-prt-contracts = { path = "prt/contracts/bindings-rs" }
 
 # rollups-node
-rollups-blockchain-reader = { version = "0.1", path = "cartesi-rollups/node/blockchain-reader" }
-rollups-epoch-manager = { version = "0.1", path = "cartesi-rollups/node/epoch-manager" }
-rollups-machine-runner = { version = "0.1", path = "cartesi-rollups/node/machine-runner" }
-rollups-state-manager = { version = "0.1", path = "cartesi-rollups/node/state-manager" }
+rollups-blockchain-reader = { version = "1.0.0", path = "cartesi-rollups/node/blockchain-reader" }
+rollups-epoch-manager = { version = "1.0.0", path = "cartesi-rollups/node/epoch-manager" }
+rollups-machine-runner = { version = "1.0.0", path = "cartesi-rollups/node/machine-runner" }
+rollups-state-manager = { version = "1.0.0", path = "cartesi-rollups/node/state-manager" }
 
 # common-rs
 cartesi-dave-arithmetic = { path = "common-rs/arithmetic" }
