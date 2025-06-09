@@ -3,7 +3,7 @@ version = '0.0.1'
 description = 'Cartesi PRT contracts (dev)'
 
 [pull.prtContracts]
-source = "cartesi-prt-multilevel:0.0.1@main"
+source = "cartesi-prt-multilevel:1.0.0@main"
 
 [var.Settings]
 initialHash = "<%= zeroHash %>"
