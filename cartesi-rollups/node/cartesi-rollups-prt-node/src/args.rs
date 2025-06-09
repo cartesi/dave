@@ -195,10 +195,7 @@ impl PRTConfig {
         (
             Self {
                 address_book,
-                state_dir: state_manager
-                    .state_dir()
-                    .canonicalize()
-                    .expect("could not canonicalize state directory"),
+                state_dir: state_manager.state_dir().to_owned(),
                 machine_path: args.machine_path,
                 chain_id,
                 signer_address,

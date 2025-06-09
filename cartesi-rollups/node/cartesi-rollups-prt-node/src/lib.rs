@@ -49,76 +49,84 @@ pub fn create_blockchain_reader_task(
     let params = parameters.clone();
     let inner_watch = watch.clone();
 
-    thread::spawn(move || {
-        let res = std::panic::catch_unwind(|| {
-            let rt = create_runtime("BlockchainReader");
+    thread::Builder::new()
+        .name("blockchain-reader".into())
+        .spawn(move || {
+            let res = std::panic::catch_unwind(|| {
+                let rt = create_runtime("BlockchainReader");
 
-            rt.block_on(async move {
-                let state_manager = params.state_access().unwrap();
-                let blockchain_reader = BlockchainReader::new(
-                    state_manager,
-                    params.address_book,
-                    params.sleep_duration,
-                    params.long_block_range_error_codes.clone(),
-                );
+                rt.block_on(async move {
+                    let state_manager = params.state_access().unwrap();
+                    let blockchain_reader = BlockchainReader::new(
+                        state_manager,
+                        params.address_book,
+                        params.sleep_duration,
+                        params.long_block_range_error_codes.clone(),
+                    );
 
-                blockchain_reader
-                    .execution_loop(inner_watch, params.provider().await)
-                    .await
-            })
-            .inspect_err(|e| error!("{e}"))
-        });
+                    blockchain_reader
+                        .execution_loop(inner_watch, params.provider().await)
+                        .await
+                })
+                .inspect_err(|e| error!("{e}"))
+            });
 
-        notify_all!("Blockchain reader", watch, res);
-    })
+            notify_all!("Blockchain reader", watch, res);
+        })
+        .expect("failed to spawn blockchain reader thread")
 }
 
 pub fn create_epoch_manager_task(watch: Watch, parameters: &PRTConfig) -> thread::JoinHandle<()> {
     let params = parameters.clone();
     let inner_watch = watch.clone();
 
-    thread::spawn(move || {
-        let res = std::panic::catch_unwind(|| {
-            let rt = create_runtime("EpochManager");
-            rt.block_on(async move {
-                let state_manager = params.state_access().unwrap();
-                let provider = params.provider().await;
-                let arena_sender =
-                    EthArenaSender::new(provider.clone()).expect("could not create arena sender");
+    thread::Builder::new()
+        .name("epoch-manager".into())
+        .spawn(move || {
+            let res = std::panic::catch_unwind(|| {
+                let rt = create_runtime("EpochManager");
+                rt.block_on(async move {
+                    let state_manager = params.state_access().unwrap();
+                    let provider = params.provider().await;
+                    let arena_sender = EthArenaSender::new(provider.clone())
+                        .expect("could not create arena sender");
 
-                let epoch_manager = EpochManager::new(
-                    arena_sender,
-                    params.address_book.consensus,
-                    state_manager,
-                    params.sleep_duration,
-                );
+                    let epoch_manager = EpochManager::new(
+                        arena_sender,
+                        params.address_book.consensus,
+                        state_manager,
+                        params.sleep_duration,
+                    );
 
-                epoch_manager.execution_loop(inner_watch, provider).await
-            })
-            .inspect_err(|e| error!("{e}"))
-        });
+                    epoch_manager.execution_loop(inner_watch, provider).await
+                })
+                .inspect_err(|e| error!("{e}"))
+            });
 
-        notify_all!("Epoch manager", watch, res);
-    })
+            notify_all!("Epoch manager", watch, res);
+        })
+        .expect("failed to spawn epoch manager thread")
 }
 
 pub fn create_machine_runner_task(watch: Watch, parameters: &PRTConfig) -> thread::JoinHandle<()> {
     let params = parameters.clone();
 
-    thread::spawn(move || {
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let state_manager = params.state_access().unwrap();
+    thread::Builder::new()
+        .name("machine-runner".into())
+        .spawn(move || {
+            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let state_manager = params.state_access().unwrap();
 
-            // `MachineRunner` has to be constructed in side the spawn block since `machine::Machine`` doesn't implement `Send`
-            let mut machine_runner = MachineRunner::new(state_manager, params.sleep_duration)
-                .inspect_err(|e| error!("{e}"))
-                .unwrap();
+                let mut machine_runner = MachineRunner::new(state_manager, params.sleep_duration)
+                    .inspect_err(|e| error!("{e}"))
+                    .unwrap();
 
-            machine_runner
-                .start(watch.clone())
-                .inspect_err(|e| error!("{e}"))
-        }));
+                machine_runner
+                    .start(watch.clone())
+                    .inspect_err(|e| error!("{e}"))
+            }));
 
-        notify_all!("Machine runner", watch, res);
-    })
+            notify_all!("Machine runner", watch, res);
+        })
+        .expect("failed to spawn machine runner thread")
 }
