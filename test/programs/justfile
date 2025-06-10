@@ -43,7 +43,7 @@ clean-honeypot:
 build-honeypot-snapshot: clean-honeypot-snapshot
   mkdir -p honeypot/machine-image
   curl -L \
-    https://github.com/cartesi/honeypot/releases/download/v2.0.0-rc-3/honeypot-snapshot-localhost.tar.gz | \
+    https://github.com/cartesi/honeypot/releases/download/v2.0.0/honeypot-snapshot-localhost.tar.gz | \
     tar -xz -C honeypot/machine-image
 clean-honeypot-snapshot: clean-honeypot
   rm -rf honeypot/machine-image

@@ -39,7 +39,7 @@ read-node-logs:
 download-sepolia-honeypot: clean-sepolia-honeypot-snapshot
   mkdir -p sepolia/machine-image
   curl -L \
-    https://github.com/cartesi/honeypot/releases/download/v2.0.0-rc-3/honeypot-snapshot-sepolia.tar.gz | \
+    https://github.com/cartesi/honeypot/releases/download/v2.0.0/honeypot-snapshot-sepolia.tar.gz | \
     tar -xz -C sepolia/machine-image
 clean-sepolia-honeypot-snapshot:
   rm -rf sepolia/machine-image
