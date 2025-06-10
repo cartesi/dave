@@ -102,8 +102,7 @@ impl ComputeStateAccess {
                             inputs_and_leafs.leafs.iter(),
                         )?;
                     }
-                    Err(e) => {
-                        info!("cannot load from json file: {}", e);
+                    Err(_) => {
                         info!("load inputs and leafs from parameters");
                         handle_rollups = inputs.is_some();
                         compute_data::insert_handle_rollups(&connection, handle_rollups)?;
