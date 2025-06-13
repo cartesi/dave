@@ -3,61 +3,247 @@
 
 use anyhow::Result;
 use async_recursion::async_recursion;
-use std::collections::HashMap;
+use cartesi_machine::types::Hash;
+use std::{collections::HashMap, sync::Arc};
 
 use alloy::{
     eips::BlockNumberOrTag::Latest,
+    primitives::U256,
     providers::{DynProvider, Provider},
     sol_types::private::{Address, B256},
 };
 
 use crate::tournament::{
-    ClockState, CommitmentState, MatchID, MatchState, TournamentState, TournamentStateMap,
-    TournamentWinner,
+    ClockState, CommitmentState, MatchID, MatchState, TournamentArgs, TournamentState,
+    TournamentStateMap,
 };
 use cartesi_dave_merkle::Digest;
-use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament, tournament};
+use cartesi_prt_contracts::{
+    leaftournament::LeafTournament::LeafTournamentInstance,
+    nonleaftournament, nonroottournament, roottournament,
+    tournament::{self, Tournament::TournamentInstance},
+};
+
+use super::{Divergence, MatchStatus, TournamentStatus};
 
 #[derive(Clone)]
 pub struct StateReader {
     client: DynProvider,
-    block_created_number: u64,
+    root_tournament_address: Address,
+    latest: u64,
+    genesis: u64,
 }
 
 impl StateReader {
-    pub fn new(client: DynProvider, block_created_number: u64) -> Result<Self> {
-        Ok(Self {
+    pub fn new(client: DynProvider, root_tournament_address: Address, genesis: u64) -> Self {
+        Self {
             client,
-            block_created_number,
-        })
-    }
-
-    async fn created_tournament(
-        &self,
-        tournament_address: Address,
-        match_id: MatchID,
-    ) -> Result<Option<TournamentCreatedEvent>> {
-        let tournament =
-            nonleaftournament::NonLeafTournament::new(tournament_address, &self.client);
-        let events = tournament
-            .newInnerTournament_filter()
-            .address(tournament_address)
-            .topic1::<B256>(match_id.hash().into())
-            .from_block(self.block_created_number)
-            .to_block(Latest)
-            .query()
-            .await?;
-        if let Some(event) = events.last() {
-            Ok(Some(TournamentCreatedEvent {
-                parent_match_id_hash: match_id.hash(),
-                new_tournament_address: event.0._1,
-            }))
-        } else {
-            Ok(None)
+            root_tournament_address,
+            genesis,
         }
     }
 
-    async fn capture_matches(&self, tournament_address: Address) -> Result<Vec<MatchState>> {
+    pub async fn read_state(&self) -> Result<TournamentState> {
+        self.fetch_tournament(
+            TournamentState::new_root(self.root_tournament_address),
+            &mut states,
+        )
+        .await?;
+
+        Ok(states)
+    }
+}
+
+// async fn divergence(
+//     match_id: B256,
+//     match_state: tournament::Match::State,
+//     tournament: TournamentInstance<(), impl Provider>,
+// ) -> Result<Divergence> {
+//     let leaf_cycle = tournament.getMatchCycle(match_id).call().await?._0;
+//     Ok(Divergence {
+//         agree: match_state.otherParent.into(),
+//         p1_disagree: match_state.leftNode.into(),
+//         p2_disagree: match_state.rightNode.into(),
+//         agree_metacycle: leaf_cycle,
+//     })
+// }
+//     ($match_id:expr, $match_state:expr, $tournament:expr $(,)?) => {{
+//         let leaf_cycle = $tournament.getMatchCycle($match_id).call().await?._0;
+//         Divergence {
+//             agree: $match_state.otherParent.into(),
+//             p1_disagree: $match_state.leftNode.into(),
+//             p2_disagree: $match_state.rightNode.into(),
+//             agree_metacycle: leaf_cycle,
+//         }
+//     }};
+macro_rules! build_divergence {
+    ($match_id:expr, $match_state:expr, $tournament:expr $(,)?) => {{
+        let leaf_cycle = $tournament.getMatchCycle($match_id).call().await?._0;
+        Divergence {
+            agree: $match_state.otherParent.into(),
+            p1_disagree: $match_state.leftNode.into(),
+            p2_disagree: $match_state.rightNode.into(),
+            agree_metacycle: leaf_cycle,
+        }
+    }};
+}
+
+impl StateReader {
+    async fn commitments_joined(
+        &self,
+        tournament_address: Address,
+    ) -> Result<HashMap<Digest, Arc<CommitmentState>>> {
+        let tournament = tournament::Tournament::new(tournament_address, &self.client);
+        let events = tournament
+            .commitmentJoined_filter()
+            .address(tournament_address)
+            .from_block(self.genesis)
+            .to_block(Latest)
+            .query()
+            .await?;
+
+        let mut joined = HashMap::with_capacity(events.len());
+        for (commitment, _) in events {
+            let c = self
+                .read_commitment(tournament_address, commitment.root.into())
+                .await?;
+
+            joined.insert(c.root_hash, Arc::new(c));
+        }
+
+        Ok(joined)
+    }
+
+    async fn read_commitment(
+        &self,
+        tournament_address: Address,
+        commitment_hash: Digest,
+    ) -> Result<CommitmentState> {
+        let tournament = tournament::Tournament::new(tournament_address, &self.client);
+
+        let commitment = tournament
+            .getCommitment(commitment_hash.into())
+            .block(self.latest.into())
+            .call()
+            .await?;
+
+        let clock = ClockState::new(
+            self.latest,
+            commitment._0.startInstant,
+            commitment._0.allowance,
+        );
+
+        Ok(CommitmentState {
+            root_hash: commitment_hash,
+            clock,
+        })
+    }
+
+    // async fn created_tournament(
+    //     &self,
+    //     tournament_address: Address,
+    //     match_id: MatchID,
+    // ) -> Result<Option<TournamentCreatedEvent>> {
+    //     let tournament =
+    //         nonleaftournament::NonLeafTournament::new(tournament_address, &self.client);
+    //     let events = tournament
+    //         .newInnerTournament_filter()
+    //         .address(tournament_address)
+    //         .topic1::<B256>(match_id.hash().into())
+    //         .from_block(self.block_created_number)
+    //         .to_block(Latest)
+    //         .query()
+    //         .await?;
+    //     if let Some(event) = events.last() {
+    //         Ok(Some(TournamentCreatedEvent {
+    //             parent_match_id_hash: match_id.hash(),
+    //             new_tournament_address: event.0._1,
+    //         }))
+    //     } else {
+    //         Ok(None)
+    //     }
+    // }
+
+    async fn matches_created(&self, tournament_address: Address) -> Result<Vec<MatchCreatedEvent>> {
+        let tournament = tournament::Tournament::new(tournament_address, &self.client);
+        let events: Vec<MatchCreatedEvent> = tournament
+            .matchCreated_filter()
+            .address(tournament_address)
+            .from_block(self.genesis)
+            .to_block(self.latest)
+            .query()
+            .await?
+            .iter()
+            .map(|event| MatchCreatedEvent {
+                id: MatchID {
+                    commitment_one: event.0.one.into(),
+                    commitment_two: event.0.two.into(),
+                },
+                left_hash: event.0.leftOfTwo.into(),
+            })
+            .collect();
+        Ok(events)
+    }
+
+    async fn read_non_leaf_match(
+        &self,
+        tournament: LeafTournamentInstance<(), impl Provider>,
+        match_id: MatchID,
+    ) -> Result<Option<MatchState>> {
+        let m = tournament.getMatch(match_id.hash()).call().await?._0;
+        if m.otherParent.is_zero() {
+            return Ok(None);
+        }
+
+        Ok(Some(MatchState {
+            id: match_id,
+            status: if m.height == 0 {
+                let divergence = build_divergence!(match_id.hash().into(), m, tournament);
+                MatchStatus::FinishedNonLeaf {
+                    divergence,
+                    inner_tournament: todo!(),
+                }
+            } else {
+                MatchStatus::Ongoing {
+                    other_parent: m.otherParent.into(),
+                    left_node: m.leftNode.into(),
+                    right_node: m.rightNode.into(),
+                    current_height: m.height,
+                }
+            },
+        }))
+    }
+
+    async fn read_leaf_match(
+        &self,
+        tournament: LeafTournamentInstance<(), impl Provider>,
+        match_id: MatchID,
+    ) -> Result<Option<MatchState>> {
+        let m = tournament.getMatch(match_id.hash()).call().await?._0;
+        if m.otherParent.is_zero() {
+            return Ok(None);
+        }
+
+        Ok(Some(MatchState {
+            id: match_id,
+            status: if m.height == 0 {
+                let divergence = build_divergence!(match_id.hash().into(), m, tournament);
+                MatchStatus::FinishedLeaf { divergence }
+            } else {
+                MatchStatus::Ongoing {
+                    other_parent: m.otherParent.into(),
+                    left_node: m.leftNode.into(),
+                    right_node: m.rightNode.into(),
+                    current_height: m.height,
+                }
+            },
+        }))
+    }
+
+    async fn read_matches(
+        &self,
+        tournament_address: Address,
+    ) -> Result<HashMap<Digest, CommitmentState>> {
         let tournament = tournament::Tournament::new(tournament_address, &self.client);
         let created_matches = self.created_matches(tournament_address).await?;
 
@@ -92,47 +278,6 @@ impl StateReader {
         Ok(matches)
     }
 
-    async fn created_matches(&self, tournament_address: Address) -> Result<Vec<MatchCreatedEvent>> {
-        let tournament = tournament::Tournament::new(tournament_address, &self.client);
-        let events: Vec<MatchCreatedEvent> = tournament
-            .matchCreated_filter()
-            .address(tournament_address)
-            .from_block(self.block_created_number)
-            .to_block(Latest)
-            .query()
-            .await?
-            .iter()
-            .map(|event| MatchCreatedEvent {
-                id: MatchID {
-                    commitment_one: event.0.one.into(),
-                    commitment_two: event.0.two.into(),
-                },
-                left_hash: event.0.leftOfTwo.into(),
-            })
-            .collect();
-        Ok(events)
-    }
-
-    async fn joined_commitments(
-        &self,
-        tournament_address: Address,
-    ) -> Result<Vec<CommitmentJoinedEvent>> {
-        let tournament = tournament::Tournament::new(tournament_address, &self.client);
-        let events = tournament
-            .commitmentJoined_filter()
-            .address(tournament_address)
-            .from_block(self.block_created_number)
-            .to_block(Latest)
-            .query()
-            .await?
-            .iter()
-            .map(|c| CommitmentJoinedEvent {
-                root: c.0.root.into(),
-            })
-            .collect();
-        Ok(events)
-    }
-
     async fn get_commitment(
         &self,
         tournament_address: Address,
@@ -163,51 +308,55 @@ impl StateReader {
         })
     }
 
-    pub async fn fetch_from_root(
-        &self,
-        root_tournament_address: Address,
-    ) -> Result<TournamentStateMap> {
-        let mut states = HashMap::new();
-        self.fetch_tournament(
-            TournamentState::new_root(root_tournament_address),
-            &mut states,
-        )
-        .await?;
+    // #[async_recursion]
+    async fn read_tournament(&self, tournament_address: Address) -> Result<TournamentState> {
+        let tournament_args = {
+            let tournament = tournament::Tournament::new(tournament_address, &self.client);
+            let level_constants_return = tournament.tournamentLevelConstants().call().await?;
+            TournamentArgs {
+                level: level_constants_return._level as u8,
+                start_metacycle: U256::ZERO, // TODO!!
+                log2_stride: level_constants_return._log2step,
+                log2_stride_count: level_constants_return._height,
+            }
+        };
 
-        Ok(states)
-    }
+        let commitments_joined = self.commitments_joined(tournament_address).await?;
 
-    #[async_recursion]
-    async fn fetch_tournament(
-        &self,
-        mut state: TournamentState,
-        states: &mut TournamentStateMap,
-    ) -> Result<()> {
-        let tournament_address = state.address;
-        let tournament = tournament::Tournament::new(tournament_address, &self.client);
-        let level_constants_return = tournament.tournamentLevelConstants().call().await?;
-        (
-            state.max_level,
-            state.level,
-            state.log2_stride,
-            state.log2_stride_count,
-        ) = (
-            level_constants_return._maxLevel,
-            level_constants_return._level,
-            level_constants_return._log2step,
-            level_constants_return._height,
-        );
-
-        assert!(state.level < state.max_level, "level out of bounds");
-
-        if state.level > 0 {
+        if tournament_args.level > 0 {
             let tournament =
                 nonroottournament::NonRootTournament::new(tournament_address, &self.client);
-            state.can_be_eliminated = tournament.canBeEliminated().call().await?._0;
+            let can_be_eliminated = tournament.canBeEliminated().call().await?._0;
+
+            if can_be_eliminated {
+                return Ok(TournamentState {
+                    address: tournament_address,
+                    args: tournament_args,
+                    commitments_joined,
+                    status: TournamentStatus::Dead,
+                });
+            }
+        }
+
+        let winner = if tournament_args.level == 0 {
+            self.root_tournament_winner(tournament_address).await?
+        } else {
+            self.tournament_winner(tournament_address).await?
+        };
+
+        if let Some((winner_commitment, final_state)) = winner {
+            return Ok(TournamentState {
+                address: tournament_address,
+                args: tournament_args,
+                commitments_joined,
+                status: TournamentStatus::Finished {
+                    winner_commitment,
+                    final_state,
+                },
+            });
         }
 
         let mut captured_matches = self.capture_matches(tournament_address).await?;
-        let commitments_joined = self.joined_commitments(tournament_address).await?;
 
         let mut commitment_states = HashMap::new();
         for commitment in commitments_joined {
@@ -230,11 +379,6 @@ impl StateReader {
                 .expect("cannot find commitment two state")
                 .latest_match = Some(i);
         }
-
-        let winner = match state.parent {
-            Some(_) => self.tournament_winner(tournament_address).await?,
-            None => self.root_tournament_winner(tournament_address).await?,
-        };
 
         state.winner = winner;
         state.matches = captured_matches;
@@ -274,7 +418,7 @@ impl StateReader {
     async fn root_tournament_winner(
         &self,
         root_tournament_address: Address,
-    ) -> Result<Option<TournamentWinner>> {
+    ) -> Result<Option<(Digest, Hash)>> {
         let root_tournament =
             roottournament::RootTournament::new(root_tournament_address, &self.client);
         let arbitration_result_return = root_tournament.arbitrationResult().call().await?;
@@ -285,10 +429,7 @@ impl StateReader {
         );
 
         if finished {
-            Ok(Some(TournamentWinner::Root(
-                commitment.into(),
-                state.into(),
-            )))
+            Ok(Some((commitment.into(), state.into())))
         } else {
             Ok(None)
         }
@@ -297,7 +438,7 @@ impl StateReader {
     async fn tournament_winner(
         &self,
         tournament_address: Address,
-    ) -> Result<Option<TournamentWinner>> {
+    ) -> Result<Option<(Digest, Hash)>> {
         let tournament =
             nonroottournament::NonRootTournament::new(tournament_address, &self.client);
         let inner_tournament_winner_return = tournament.innerTournamentWinner().call().await?;
@@ -308,10 +449,7 @@ impl StateReader {
         );
 
         if finished {
-            Ok(Some(TournamentWinner::Inner(
-                parent_commitment.into(),
-                dangling_commitment.into(),
-            )))
+            Ok(Some((parent_commitment.into(), dangling_commitment.into())))
         } else {
             Ok(None)
         }
