@@ -58,6 +58,9 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     /// @notice The contract used to instantiate tournaments
     ITournamentFactory immutable _tournamentFactory;
 
+    /// @notice Deployment block number
+    uint256 immutable _deploymentBlockNumber = block.number;
+
     /// @notice Current sealed epoch number
     uint256 _epochNumber;
 
@@ -242,6 +245,10 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     function supportsInterface(bytes4 interfaceId) public view override(IERC165, ERC165) returns (bool) {
         return interfaceId == type(IDataProvider).interfaceId
             || interfaceId == type(IOutputsMerkleRootValidator).interfaceId || super.supportsInterface(interfaceId);
+    }
+
+    function getDeploymentBlockNumber() external view returns (uint256) {
+        return _deploymentBlockNumber;
     }
 
     function _validateOutputTree(
