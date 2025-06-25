@@ -17,16 +17,13 @@
   },
   "dependencies": {
     "@graphql-typed-document-node/core": "^3.2.0",
-    "@tailwindcss/vite": "^4.1.10",
     "@tanstack/react-query": "^5.75.5",
-    "daisyui": "^5.0.43",
     "date-fns": "^4.1.0",
     "graphql-request": "^7.1.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-icons": "^5.5.0",
-    "react-router": "^7.5.3",
-    "tailwindcss": "^4.1.10"
+    "react-router": "^7.5.3"
   },
   "devDependencies": {
     "@0no-co/graphqlsp": "^1.12.16",
