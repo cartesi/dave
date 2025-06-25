@@ -11,26 +11,33 @@
     "dev": "run-p codegen:watch vite:dev",
     "build": "run-s codegen:graphql vite:build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@graphql-typed-document-node/core": "^3.2.0",
-    "@tailwindcss/vite": "^4.1.5",
+    "@tailwindcss/vite": "^4.1.10",
     "@tanstack/react-query": "^5.75.5",
-    "daisyui": "^5.0.35",
+    "daisyui": "^5.0.43",
     "date-fns": "^4.1.0",
     "graphql-request": "^7.1.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-icons": "^5.5.0",
     "react-router": "^7.5.3",
-    "tailwindcss": "^4.1.5"
+    "tailwindcss": "^4.1.10"
   },
   "devDependencies": {
     "@0no-co/graphqlsp": "^1.12.16",
+    "@chromatic-com/storybook": "^4.0.1",
     "@eslint/js": "^9.25.0",
     "@graphql-codegen/cli": "^5.0.6",
     "@parcel/watcher": "^2.5.1",
+    "@storybook/addon-a11y": "^9.0.13",
+    "@storybook/addon-docs": "^9.0.13",
+    "@storybook/addon-onboarding": "^9.0.13",
+    "@storybook/react-vite": "^9.0.13",
     "@types/node": "^22.15.17",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
@@ -38,8 +45,10 @@
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
+    "eslint-plugin-storybook": "^9.0.13",
     "globals": "^16.0.0",
     "npm-run-all": "^4.1.5",
+    "storybook": "^9.0.13",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^6.3.5"
