@@ -139,7 +139,6 @@ pub enum TournamentStatus {
     Dead,
 
     Ongoing {
-        commitment_states: HashMap<Digest, CommitmentState>,
         matches: Vec<Arc<MatchState>>,
     },
 }

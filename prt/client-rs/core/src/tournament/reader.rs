@@ -245,7 +245,7 @@ impl StateReader {
         tournament_address: Address,
     ) -> Result<HashMap<Digest, CommitmentState>> {
         let tournament = tournament::Tournament::new(tournament_address, &self.client);
-        let created_matches = self.created_matches(tournament_address).await?;
+        let created_matches = self.matches_created(tournament_address).await?;
 
         let mut matches = vec![];
         for match_event in created_matches {
