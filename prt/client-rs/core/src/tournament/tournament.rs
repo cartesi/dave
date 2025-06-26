@@ -124,6 +124,7 @@ impl TournamentState {
 #[derive(Clone, Debug)]
 pub struct TournamentArgs {
     pub level: u8,
+    pub max_level: u8,
     pub start_metacycle: U256,
     pub log2_stride: u64,
     pub log2_stride_count: u64,
@@ -139,19 +140,17 @@ pub enum TournamentStatus {
     Dead,
 
     Ongoing {
-        matches: Vec<Arc<MatchState>>,
+        matches: Vec<MatchState>,
     },
 }
 
-/// Struct used to communicate the state of a match.
 #[derive(Clone, Debug)]
-pub struct MatchState {
+pub struct Matchup {
     pub commitment_one: Arc<CommitmentState>,
     pub commitment_two: Arc<CommitmentState>,
-    pub status: MatchStatus,
 }
 
-impl MatchState {
+impl Matchup {
     pub fn id(&self) -> Digest {
         self.commitment_one
             .root_hash
@@ -159,8 +158,8 @@ impl MatchState {
     }
 }
 
-impl From<MatchState> for cartesi_prt_contracts::tournament::Match::Id {
-    fn from(match_id: MatchState) -> Self {
+impl From<Matchup> for cartesi_prt_contracts::tournament::Match::Id {
+    fn from(match_id: Matchup) -> Self {
         cartesi_prt_contracts::tournament::Match::Id {
             commitmentOne: match_id.commitment_one.root_hash.into(),
             commitmentTwo: match_id.commitment_two.root_hash.into(),
@@ -168,8 +167,8 @@ impl From<MatchState> for cartesi_prt_contracts::tournament::Match::Id {
     }
 }
 
-impl From<MatchState> for cartesi_prt_contracts::nonleaftournament::Match::Id {
-    fn from(match_id: MatchState) -> Self {
+impl From<Matchup> for cartesi_prt_contracts::nonleaftournament::Match::Id {
+    fn from(match_id: Matchup) -> Self {
         cartesi_prt_contracts::nonleaftournament::Match::Id {
             commitmentOne: match_id.commitment_one.root_hash.into(),
             commitmentTwo: match_id.commitment_two.root_hash.into(),
@@ -177,12 +176,25 @@ impl From<MatchState> for cartesi_prt_contracts::nonleaftournament::Match::Id {
     }
 }
 
-impl From<MatchState> for cartesi_prt_contracts::leaftournament::Match::Id {
-    fn from(match_id: MatchState) -> Self {
+impl From<Matchup> for cartesi_prt_contracts::leaftournament::Match::Id {
+    fn from(match_id: Matchup) -> Self {
         cartesi_prt_contracts::leaftournament::Match::Id {
             commitmentOne: match_id.commitment_one.root_hash.into(),
             commitmentTwo: match_id.commitment_two.root_hash.into(),
         }
+    }
+}
+
+/// Struct used to communicate the state of a match.
+#[derive(Clone, Debug)]
+pub struct MatchState {
+    pub matchup: Matchup,
+    pub status: MatchStatus,
+}
+
+impl MatchState {
+    pub fn id(&self) -> Digest {
+        self.matchup.id()
     }
 }
 
