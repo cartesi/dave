@@ -27,3 +27,4 @@ lcov.info.pruned
 
 # Cannon
 /deployments
+/state.json
