@@ -9,6 +9,10 @@ inputs:
     description: 'Rust version to install'
     required: false
     default: '1.86'
+outputs:
+  foundry-version:
+    description: 'The version of Foundry that was installed'
+    value: ${{ steps.set-foundry-version.outputs.foundry-version }}
 runs:
   using: composite
   steps:
@@ -24,10 +28,15 @@ runs:
         cache-on-failure: false
         cache-bin: false
 
+    - name: Set Foundry version
+      id: set-foundry-version
+      shell: bash
+      run: echo "foundry-version=v1.1.0" >> $GITHUB_OUTPUT
+
     - name: Install Foundry
       uses: foundry-rs/foundry-toolchain@v1
       with:
-        version: stable
+        version: ${{ steps.set-foundry-version.outputs.foundry-version }}
 
     - name: Install just
       uses: extractions/setup-just@v3
