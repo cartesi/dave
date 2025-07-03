@@ -302,3 +302,54 @@ jobs:
           executable-name: cartesi-rollups-prt-node
           target: ${{ matrix.target }}
           changes-file: CHANGELOG.md
+
+  release-contracts:
+    needs: [prt-contracts, dave-contracts, prt-honeypot, build]
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Create directory
+        run: |
+          mkdir -p upload
+
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
+        id: setup
+
+      - name: Build PRT Core contracts
+        working-directory: ./prt/contracts
+        run: |
+          just install-deps
+          forge clean
+          forge build src
+
+      - name: Build Cartesi Rollups PRT contracts
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          just install-deps
+          forge clean
+          forge build src
+
+      - name: Compress contract artifacts
+        run: tar -czf "$FILEPATH" prt/contracts/out cartesi-rollups/contracts/out
+        env:
+          FILEPATH: upload/cartesi-rollups-prt-contract-artifacts.tar.gz
+
+      - name: Build devnet
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          just deploy-core --write-deployments deployments --anvil.dump-state state.json
+
+      - name: Compress devnet artifacts
+        run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments state.json
+        env:
+          FILEPATH: upload/cartesi-rollups-prt-anvil-${{ steps.setup.outputs.foundry-version }}.tar.gz
+
+      - name: Upload files to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: upload/*
