@@ -191,7 +191,7 @@ jobs:
         run: |
           just test-rust-workspace
 
-  build-release:
+  build-release-node:
     strategy:
       matrix:
         include:
@@ -274,8 +274,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  release:
-    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release]
+  release-node:
+    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release-node]
     runs-on: ubuntu-24.04
     strategy:
       matrix:
