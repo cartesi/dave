@@ -4,7 +4,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ComputeStateAccessError {
+pub enum DisputeStateAccessError {
     #[error(transparent)]
     Digest {
         #[from]
@@ -33,4 +33,4 @@ pub enum ComputeStateAccessError {
     InsertionFailed { description: String },
 }
 
-pub type Result<T> = std::result::Result<T, ComputeStateAccessError>;
+pub type Result<T> = std::result::Result<T, DisputeStateAccessError>;

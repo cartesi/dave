@@ -2,7 +2,7 @@
 //! [MachineCommitment]. It is used by the [Arena] to build the commitments of the tournaments.
 
 use crate::{
-    db::compute_state_access::ComputeStateAccess,
+    db::dispute_state_access::DisputeStateAccess,
     machine::{
         MachineCommitment, MachineInstance, build_machine_commitment,
         build_machine_commitment_from_leafs, error::Result,
@@ -27,7 +27,7 @@ impl MachineCommitmentBuilder {
         level: u64,
         log2_stride: u64,
         log2_stride_count: u64,
-        db: &ComputeStateAccess,
+        db: &DisputeStateAccess,
     ) -> Result<MachineCommitment> {
         let mut machine;
         let initial_state = {

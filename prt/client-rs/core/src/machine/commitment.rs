@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::{
-    db::compute_state_access::{ComputeStateAccess, Leaf},
+    db::dispute_state_access::{DisputeStateAccess, Leaf},
     machine::error::Result,
     machine::{MachineInstance, MachineState, constants},
 };
@@ -51,7 +51,7 @@ pub fn build_machine_commitment(
     log2_stride: u64,
     log2_stride_count: u64,
     initial_state: Digest,
-    db: &ComputeStateAccess,
+    db: &DisputeStateAccess,
 ) -> Result<MachineCommitment> {
     info!(
         "Begin building commitment for level {level}: start cycle {base_cycle}, log2_stride {log2_stride} and log2_stride_count {log2_stride_count}"
@@ -113,7 +113,7 @@ fn build_big_machine_commitment(
     log2_stride: u64,
     log2_stride_count: u64,
     initial_state: Digest,
-    db: &ComputeStateAccess,
+    db: &DisputeStateAccess,
 ) -> Result<MachineCommitment> {
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
@@ -162,7 +162,7 @@ fn build_small_machine_commitment(
     base_cycle: U256,
     log2_stride_count: u64,
     initial_state: Digest,
-    db: &ComputeStateAccess,
+    db: &DisputeStateAccess,
 ) -> Result<MachineCommitment> {
     let mut builder = MerkleBuilder::default();
     let span_count = max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH);
@@ -204,7 +204,7 @@ fn run_uarch_span(
     machine: &mut MachineInstance,
     base_cycle: U256,
     level: u64,
-    db: &ComputeStateAccess,
+    db: &DisputeStateAccess,
 ) -> Result<(Arc<MerkleTree>, MachineState)> {
     let (_, ucycle) = machine.position()?;
     assert!(ucycle == 0);

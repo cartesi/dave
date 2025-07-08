@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::{
-    db::sql::{compute_data, error::*, migrations},
+    db::sql::{dispute_data, error::*, migrations},
     machine::constants,
 };
 use cartesi_dave_arithmetic::max_uint;
@@ -35,7 +35,7 @@ pub struct Leaf {
 }
 
 #[derive(Debug)]
-pub struct ComputeStateAccess {
+pub struct DisputeStateAccess {
     connection: Mutex<Connection>,
     pub work_path: PathBuf,
 }
@@ -51,7 +51,7 @@ fn read_json_file(file_path: &Path) -> Result<InputsAndLeafs> {
     Ok(data)
 }
 
-impl ComputeStateAccess {
+impl DisputeStateAccess {
     pub fn new(
         inputs: Vec<Input>,
         leafs: Vec<Leaf>,
@@ -94,7 +94,7 @@ impl ComputeStateAccess {
                 match read_json_file(&json_path) {
                     Ok(inputs_and_leafs) => {
                         info!("load inputs and leafs from json file");
-                        compute_data::insert_compute_data(
+                        dispute_data::insert_compute_data(
                             &connection,
                             inputs_and_leafs.inputs.iter(),
                             inputs_and_leafs.leafs.iter(),
@@ -102,7 +102,7 @@ impl ComputeStateAccess {
                     }
                     Err(_) => {
                         info!("load inputs and leafs from parameters");
-                        compute_data::insert_compute_data(
+                        dispute_data::insert_compute_data(
                             &connection,
                             inputs.iter(),
                             leafs.iter(),
@@ -120,12 +120,12 @@ impl ComputeStateAccess {
 
     pub fn input(&self, id: u64) -> Result<Option<Vec<u8>>> {
         let conn = self.connection.lock().unwrap();
-        compute_data::input(&conn, id)
+        dispute_data::input(&conn, id)
     }
 
     pub fn inputs(&self) -> Result<Vec<Vec<u8>>> {
         let conn = self.connection.lock().unwrap();
-        compute_data::inputs(&conn)
+        dispute_data::inputs(&conn)
     }
 
     pub fn insert_leafs<'a>(
@@ -135,7 +135,7 @@ impl ComputeStateAccess {
         leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
-        compute_data::insert_leafs(&conn, level, base_cycle, leafs)
+        dispute_data::insert_leafs(&conn, level, base_cycle, leafs)
     }
 
     pub fn leafs(
@@ -146,7 +146,7 @@ impl ComputeStateAccess {
         base_cycle: U256,
     ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
         let conn = self.connection.lock().unwrap();
-        let leafs = compute_data::leafs(&conn, level, base_cycle)?;
+        let leafs = dispute_data::leafs(&conn, level, base_cycle)?;
 
         let mut tree = Vec::new();
         if log2_stride == 0 && !leafs.is_empty() {
@@ -258,7 +258,7 @@ mod compute_state_access_tests {
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         {
-            let access = ComputeStateAccess::new(
+            let access = DisputeStateAccess::new(
                 None,
                 Vec::new(),
                 String::from("12345678"),
@@ -322,7 +322,7 @@ mod compute_state_access_tests {
         remove_directory(&work_dir).unwrap();
         create_directory(&work_dir).unwrap();
         {
-            let access = ComputeStateAccess::new(
+            let access = DisputeStateAccess::new(
                 None,
                 Vec::new(),
                 String::from("12345678"),
