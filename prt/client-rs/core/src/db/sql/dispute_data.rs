@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use super::error::*;
-use crate::db::compute_state_access::{Input, Leaf};
+use crate::db::dispute_state_access::{Input, Leaf};
 
 use alloy::primitives::U256;
 use rusqlite::{OptionalExtension, params};
@@ -18,7 +18,7 @@ pub fn insert_inputs<'a>(
     let mut stmt = insert_input_statement(conn)?;
     for (i, input) in inputs.enumerate() {
         if stmt.execute(params![i, input.0])? != 1 {
-            return Err(ComputeStateAccessError::InsertionFailed {
+            return Err(DisputeStateAccessError::InsertionFailed {
                 description: "input insertion failed".to_owned(),
             });
         }
@@ -90,7 +90,7 @@ pub fn insert_leafs<'a>(
             leaf.repetitions
         ])? != 1
         {
-            return Err(ComputeStateAccessError::InsertionFailed {
+            return Err(DisputeStateAccessError::InsertionFailed {
                 description: "compute leafs insertion failed".to_owned(),
             });
         }

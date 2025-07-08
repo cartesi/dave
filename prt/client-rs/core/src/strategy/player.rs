@@ -9,7 +9,7 @@ use num_traits::One;
 use ruint::aliases::U256;
 
 use crate::{
-    db::compute_state_access::{ComputeStateAccess, Input, Leaf},
+    db::dispute_state_access::{DisputeStateAccess, Input, Leaf},
     machine::{MachineCommitment, MachineCommitmentBuilder, MachineInstance},
     strategy::gc::GarbageCollector,
     tournament::{
@@ -27,7 +27,7 @@ pub enum PlayerTournamentResult {
 }
 
 pub struct Player {
-    db: ComputeStateAccess,
+    db: DisputeStateAccess,
     machine_path: String,
     commitment_builder: MachineCommitmentBuilder,
     root_tournament: Address,
@@ -45,7 +45,7 @@ impl Player {
         block_created_number: u64,
         state_dir: PathBuf,
     ) -> Result<Self> {
-        let db = ComputeStateAccess::new(inputs, leafs, root_tournament.to_string(), state_dir)?;
+        let db = DisputeStateAccess::new(inputs, leafs, root_tournament.to_string(), state_dir)?;
         let reader = StateReader::new(provider.clone(), block_created_number)?;
         let gc = GarbageCollector::new(root_tournament);
         let commitment_builder = MachineCommitmentBuilder::new(machine_path.clone());

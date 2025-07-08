@@ -1,6 +1,6 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
-use crate::db::sql::error::ComputeStateAccessError;
+use crate::db::sql::error::DisputeStateAccessError;
 use cartesi_machine::error::MachineError;
 use thiserror::Error;
 
@@ -13,9 +13,9 @@ pub enum MachineInstanceError {
     },
 
     #[error(transparent)]
-    ComputeStateAccessError {
+    DisputeStateAccessError {
         #[from]
-        source: ComputeStateAccessError,
+        source: DisputeStateAccessError,
     },
 
     #[error("Invalid hex string")]

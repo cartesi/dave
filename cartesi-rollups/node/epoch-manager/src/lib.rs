@@ -14,7 +14,7 @@ use std::{ops::ControlFlow, time::Duration};
 
 use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
-    db::compute_state_access::{Input, Leaf},
+    db::dispute_state_access::{Input, Leaf},
     strategy::player::Player,
     tournament::{EthArenaSender, allow_revert_rethrow_others},
 };

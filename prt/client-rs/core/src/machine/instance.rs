@@ -1,4 +1,4 @@
-use crate::db::compute_state_access::ComputeStateAccess;
+use crate::db::dispute_state_access::DisputeStateAccess;
 use crate::machine::constants::{
     BARCH_SPAN_TO_INPUT, INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH, LOG2_UARCH_SPAN_TO_INPUT,
     UARCH_SPAN_TO_BARCH,
@@ -88,7 +88,7 @@ impl MachineInstance {
     }
 
     /*
-        pub fn take_snapshot(&mut self, base_cycle: u64, db: &ComputeStateAccess) -> Result<()> {
+        pub fn take_snapshot(&mut self, base_cycle: u64, db: &DisputeStateAccess) -> Result<()> {
             let mask = arithmetic::max_uint(constants::LOG2_BARCH_SPAN_TO_INPUT);
             if db.handle_rollups && ((base_cycle & mask) == 0) && !self.is_yielded()? {
                 // don't snapshot a machine state that's freshly fed with input without advance
@@ -128,7 +128,7 @@ impl MachineInstance {
         }
     */
 
-    pub fn advance_rollups(&mut self, meta_cycle: U256, db: &ComputeStateAccess) -> Result<()> {
+    pub fn advance_rollups(&mut self, meta_cycle: U256, db: &DisputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
 
         let input_count = (meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT)
@@ -184,7 +184,7 @@ impl MachineInstance {
     pub fn new_rollups_advanced_until(
         path: &str,
         meta_cycle: U256,
-        db: &ComputeStateAccess,
+        db: &DisputeStateAccess,
     ) -> Result<MachineInstance> {
         let input_count = (meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT).to_u64().unwrap();
         assert!(input_count <= INPUT_SPAN_TO_EPOCH);
@@ -196,7 +196,7 @@ impl MachineInstance {
         Ok(machine)
     }
 
-    pub fn feed_next_input(&mut self, db: &ComputeStateAccess) -> Result<()> {
+    pub fn feed_next_input(&mut self, db: &DisputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
         let input = db.input(self.input_count)?;
         if let Some(input_bin) = input {
@@ -330,7 +330,7 @@ impl MachineInstance {
         path: &str,
         agree_hash: Digest,
         meta_cycle: U256,
-        db: &ComputeStateAccess,
+        db: &DisputeStateAccess,
     ) -> Result<(Vec<u8>, Digest)> {
         let input_mask = (U256::one() << LOG2_UARCH_SPAN_TO_INPUT) - U256::one();
         let big_step_mask = UARCH_SPAN_TO_BARCH;
@@ -391,7 +391,7 @@ impl MachineInstance {
         path: &str,
         agree_hash: Digest,
         meta_cycle: U256,
-        db: &ComputeStateAccess,
+        db: &DisputeStateAccess,
     ) -> Result<(Vec<u8>, Digest)> {
         let (proofs, next_hash);
 
