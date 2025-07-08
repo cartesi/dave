@@ -59,7 +59,7 @@ end
 
 local ROOT_LEAFS_QUERY = [[
 sqlite3 -readonly ./_state/%d/db \
-'SELECT repetitions, HEX(compute_leaf) FROM compute_leafs WHERE level=0 ORDER BY compute_leaf_index ASC' 2>&1
+'SELECT repetitions, HEX(leaf) FROM leafs WHERE level=0 ORDER BY leaf_index ASC' 2>&1
 ]]
 function Dave:root_commitment(epoch_index)
     local query = function()
@@ -80,12 +80,12 @@ function Dave:root_commitment(epoch_index)
 
         -- Iterate over each line in the input data
         for line in rows:gmatch("[^\n]+") do
-            local repetitions, compute_leaf = line:match(
+            local repetitions, leaf = line:match(
                 "([^|]+)|([^|]+)")
             -- Convert values to appropriate types
             repetitions = tonumber(assert(repetitions))
-            compute_leaf = Hash:from_digest_hex("0x" .. compute_leaf)
-            builder:add(compute_leaf, repetitions)
+            leaf = Hash:from_digest_hex("0x" .. leaf)
+            builder:add(leaf, repetitions)
         end
 
         return initial_state, builder:build(initial_state.root_hash)

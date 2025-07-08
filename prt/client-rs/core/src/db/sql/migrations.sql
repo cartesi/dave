@@ -3,11 +3,11 @@ CREATE TABLE inputs (
     input BLOB NOT NULL
 );
 
-CREATE TABLE compute_leafs (
+CREATE TABLE leafs (
     level INTEGER NOT NULL,
     base_cycle BLOB NOT NULL,
-    compute_leaf_index INTEGER NOT NULL,
+    leaf_index INTEGER NOT NULL,
     repetitions INTEGER NOT NULL,
-    compute_leaf BLOB NOT NULL,
-    PRIMARY KEY (level, base_cycle, compute_leaf_index)
+    leaf BLOB NOT NULL,
+    PRIMARY KEY (level, base_cycle, leaf_index)
 );

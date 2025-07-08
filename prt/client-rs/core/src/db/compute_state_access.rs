@@ -128,17 +128,17 @@ impl ComputeStateAccess {
         compute_data::inputs(&conn)
     }
 
-    pub fn insert_compute_leafs<'a>(
+    pub fn insert_leafs<'a>(
         &self,
         level: u64,
         base_cycle: U256,
         leafs: impl Iterator<Item = &'a Leaf>,
     ) -> Result<()> {
         let conn = self.connection.lock().unwrap();
-        compute_data::insert_compute_leafs(&conn, level, base_cycle, leafs)
+        compute_data::insert_leafs(&conn, level, base_cycle, leafs)
     }
 
-    pub fn compute_leafs(
+    pub fn leafs(
         &self,
         level: u64,
         log2_stride: u64,
@@ -146,11 +146,11 @@ impl ComputeStateAccess {
         base_cycle: U256,
     ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
         let conn = self.connection.lock().unwrap();
-        let leafs = compute_data::compute_leafs(&conn, level, base_cycle)?;
+        let leafs = compute_data::leafs(&conn, level, base_cycle)?;
 
         let mut tree = Vec::new();
         if log2_stride == 0 && !leafs.is_empty() {
-            tree = self.compute_leafs_with_uarch(leafs, log2_stride_count)?;
+            tree = self.leafs_with_uarch(leafs, log2_stride_count)?;
         } else {
             for (leaf, repetitions) in leafs {
                 tree.push((Digest::from_digest(&leaf)?.into(), repetitions));
@@ -160,7 +160,7 @@ impl ComputeStateAccess {
         Ok(tree)
     }
 
-    fn compute_leafs_with_uarch(
+    fn leafs_with_uarch(
         &self,
         leafs: Vec<(Vec<u8>, u64)>,
         log2_stride_count: u64,
