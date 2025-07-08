@@ -72,14 +72,14 @@ pub fn inputs(conn: &rusqlite::Connection) -> Result<Vec<Vec<u8>>> {
 // Compute leafs
 //
 
-pub fn insert_compute_leafs<'a>(
+pub fn insert_leafs<'a>(
     conn: &rusqlite::Connection,
     level: u64,
     base_cycle: U256,
     leafs: impl Iterator<Item = &'a Leaf>,
 ) -> Result<()> {
-    let leafs_count = compute_leafs_count(conn, level, base_cycle)?;
-    let mut stmt = insert_compute_leaf_statement(conn)?;
+    let leafs_count = leafs_count(conn, level, base_cycle)?;
+    let mut stmt = insert_leaf_statement(conn)?;
     for (i, leaf) in leafs.enumerate() {
         assert!(leaf.repetitions > 0);
         if stmt.execute(params![
@@ -99,29 +99,29 @@ pub fn insert_compute_leafs<'a>(
     Ok(())
 }
 
-fn insert_compute_leaf_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
+fn insert_leaf_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
     Ok(conn.prepare(
         "\
-        INSERT INTO compute_leafs (level, base_cycle, compute_leaf_index, compute_leaf, repetitions) VALUES (?1, ?2, ?3, ?4, ?5)
+        INSERT INTO leafs (level, base_cycle, leaf_index, leaf, repetitions) VALUES (?1, ?2, ?3, ?4, ?5)
         ",
     )?)
 }
 
-pub fn compute_leafs(
+pub fn leafs(
     conn: &rusqlite::Connection,
     level: u64,
     base_cycle: U256,
 ) -> Result<Vec<(Vec<u8>, u64)>> {
     let mut stmt = conn.prepare(
         "\
-        SELECT * FROM compute_leafs
+        SELECT * FROM leafs
         WHERE level = ?1 AND base_cycle = ?2
-        ORDER BY compute_leaf_index ASC
+        ORDER BY leaf_index ASC
         ",
     )?;
 
     let query = stmt.query_map(params![level, base_cycle.as_le_slice()], |r| {
-        Ok((r.get("compute_leaf")?, r.get("repetitions")?))
+        Ok((r.get("leaf")?, r.get("repetitions")?))
     })?;
 
     let mut res = vec![];
@@ -132,14 +132,10 @@ pub fn compute_leafs(
     Ok(res)
 }
 
-pub fn compute_leafs_count(
-    conn: &rusqlite::Connection,
-    level: u64,
-    base_cycle: U256,
-) -> Result<usize> {
+pub fn leafs_count(conn: &rusqlite::Connection, level: u64, base_cycle: U256) -> Result<usize> {
     Ok(conn.query_row(
         "\
-        SELECT count(*) FROM compute_leafs
+        SELECT count(*) FROM leafs
         WHERE level = ?1 AND base_cycle = ?2
         ",
         params![level, base_cycle.as_le_slice()],
@@ -154,7 +150,7 @@ pub fn insert_compute_data<'a>(
 ) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     insert_inputs(&tx, inputs)?;
-    insert_compute_leafs(&tx, 0, U256::ZERO, leafs)?;
+    insert_leafs(&tx, 0, U256::ZERO, leafs)?;
     tx.commit()?;
 
     Ok(())
@@ -211,18 +207,9 @@ mod leafs_tests {
     #[test]
     fn test_empty() {
         let conn = test_helper::setup_db();
-        assert!(matches!(
-            compute_leafs(&conn, 0, U256::from(0)).unwrap().len(),
-            0
-        ));
-        assert!(matches!(
-            compute_leafs(&conn, 0, U256::from(1)).unwrap().len(),
-            0
-        ));
-        assert!(matches!(
-            compute_leafs(&conn, 1, U256::from(1)).unwrap().len(),
-            0
-        ));
+        assert!(matches!(leafs(&conn, 0, U256::from(0)).unwrap().len(), 0));
+        assert!(matches!(leafs(&conn, 0, U256::from(1)).unwrap().len(), 0));
+        assert!(matches!(leafs(&conn, 1, U256::from(1)).unwrap().len(), 0));
     }
 
     #[test]
@@ -234,7 +221,7 @@ mod leafs_tests {
         ];
 
         assert!(matches!(
-            insert_compute_leafs(
+            insert_leafs(
                 &conn,
                 0,
                 U256::from(0),
@@ -252,13 +239,10 @@ mod leafs_tests {
             ),
             Ok(())
         ));
-        assert!(matches!(
-            compute_leafs(&conn, 0, U256::from(0)).unwrap().len(),
-            2
-        ));
+        assert!(matches!(leafs(&conn, 0, U256::from(0)).unwrap().len(), 2));
         // compute leafs can be accumulated
         assert!(matches!(
-            insert_compute_leafs(
+            insert_leafs(
                 &conn,
                 0,
                 U256::from(0),
@@ -276,12 +260,9 @@ mod leafs_tests {
             ),
             Ok(())
         ));
+        assert!(matches!(leafs(&conn, 0, U256::from(0)).unwrap().len(), 4));
         assert!(matches!(
-            compute_leafs(&conn, 0, U256::from(0)).unwrap().len(),
-            4
-        ));
-        assert!(matches!(
-            insert_compute_leafs(
+            insert_leafs(
                 &conn,
                 0,
                 U256::from(1),
@@ -299,12 +280,9 @@ mod leafs_tests {
             ),
             Ok(())
         ));
+        assert!(matches!(leafs(&conn, 0, U256::from(1)).unwrap().len(), 2));
         assert!(matches!(
-            compute_leafs(&conn, 0, U256::from(1)).unwrap().len(),
-            2
-        ));
-        assert!(matches!(
-            insert_compute_leafs(
+            insert_leafs(
                 &conn,
                 1,
                 U256::from(0),
@@ -322,9 +300,6 @@ mod leafs_tests {
             ),
             Ok(())
         ));
-        assert!(matches!(
-            compute_leafs(&conn, 1, U256::from(0)).unwrap().len(),
-            2
-        ));
+        assert!(matches!(leafs(&conn, 1, U256::from(0)).unwrap().len(), 2));
     }
 }

@@ -148,7 +148,7 @@ fn build_big_machine_commitment(
     finish_print_flush_same_line();
 
     let merkle = builder.build();
-    db.insert_compute_leafs(level, base_cycle, leafs.iter())?;
+    db.insert_leafs(level, base_cycle, leafs.iter())?;
 
     Ok(MachineCommitment {
         implicit_hash: initial_state,
@@ -245,7 +245,7 @@ fn run_uarch_span(
         repetitions: 1,
     });
     builder.append(machine_state.root_hash);
-    db.insert_compute_leafs(level, base_cycle, leafs.iter())?;
+    db.insert_leafs(level, base_cycle, leafs.iter())?;
 
     let uarch_span = builder.build();
     Ok((uarch_span, machine_state))
