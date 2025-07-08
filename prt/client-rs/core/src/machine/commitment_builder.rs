@@ -11,19 +11,14 @@ use crate::{
 
 use alloy::primitives::U256;
 use log::{info, trace};
-use std::collections::{HashMap, hash_map::Entry};
 
-pub struct CachingMachineCommitmentBuilder {
+pub struct MachineCommitmentBuilder {
     machine_path: String,
-    commitments: HashMap<u64, HashMap<U256, MachineCommitment>>,
 }
 
-impl CachingMachineCommitmentBuilder {
+impl MachineCommitmentBuilder {
     pub fn new(machine_path: String) -> Self {
-        CachingMachineCommitmentBuilder {
-            machine_path,
-            commitments: HashMap::new(),
-        }
+        MachineCommitmentBuilder { machine_path }
     }
 
     pub fn build_commitment(
@@ -34,12 +29,6 @@ impl CachingMachineCommitmentBuilder {
         log2_stride_count: u64,
         db: &ComputeStateAccess,
     ) -> Result<MachineCommitment> {
-        if let Entry::Vacant(e) = self.commitments.entry(level) {
-            e.insert(HashMap::new());
-        } else if let Some(commitment) = self.commitments[&level].get(&base_cycle) {
-            return Ok(commitment.clone());
-        }
-
         let mut machine;
         let initial_state = {
             if db.handle_rollups {
@@ -70,7 +59,7 @@ impl CachingMachineCommitmentBuilder {
         };
         trace!("initial state for commitment: {}", initial_state);
         let commitment = {
-            let leafs = db.compute_leafs(level, base_cycle)?;
+            let leafs = db.compute_leafs(level, log2_stride, log2_stride_count, base_cycle)?;
             // leafs are cached in database, use it to calculate merkle
             if !leafs.is_empty() {
                 build_machine_commitment_from_leafs(leafs, initial_state)?
@@ -87,11 +76,6 @@ impl CachingMachineCommitmentBuilder {
                 )?
             }
         };
-
-        self.commitments
-            .entry(level)
-            .or_default()
-            .insert(base_cycle, commitment.clone());
 
         Ok(commitment)
     }

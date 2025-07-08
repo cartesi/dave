@@ -10,7 +10,7 @@ use ruint::aliases::U256;
 
 use crate::{
     db::compute_state_access::{ComputeStateAccess, Input, Leaf},
-    machine::{CachingMachineCommitmentBuilder, MachineCommitment, MachineInstance},
+    machine::{MachineCommitment, MachineCommitmentBuilder, MachineInstance},
     strategy::gc::GarbageCollector,
     tournament::{
         ArenaSender, CommitmentMap, CommitmentState, MatchState, StateReader, TournamentState,
@@ -29,7 +29,7 @@ pub enum PlayerTournamentResult {
 pub struct Player {
     db: ComputeStateAccess,
     machine_path: String,
-    commitment_builder: CachingMachineCommitmentBuilder,
+    commitment_builder: MachineCommitmentBuilder,
     root_tournament: Address,
     reader: StateReader,
     gc: GarbageCollector,
@@ -48,7 +48,7 @@ impl Player {
         let db = ComputeStateAccess::new(inputs, leafs, root_tournament.to_string(), state_dir)?;
         let reader = StateReader::new(provider.clone(), block_created_number)?;
         let gc = GarbageCollector::new(root_tournament);
-        let commitment_builder = CachingMachineCommitmentBuilder::new(machine_path.clone());
+        let commitment_builder = MachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
             db,
             machine_path,

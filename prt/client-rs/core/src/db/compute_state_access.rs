@@ -1,7 +1,11 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::db::sql::{compute_data, error::*, migrations};
+use crate::{
+    db::sql::{compute_data, error::*, migrations},
+    machine::constants,
+};
+use cartesi_dave_arithmetic::max_uint;
 use cartesi_dave_merkle::{Digest, MerkleBuilder, MerkleTree};
 
 use alloy::{hex as alloy_hex, primitives::U256};
@@ -146,58 +150,61 @@ impl ComputeStateAccess {
     pub fn compute_leafs(
         &self,
         level: u64,
+        log2_stride: u64,
+        log2_stride_count: u64,
         base_cycle: U256,
     ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
         let conn = self.connection.lock().unwrap();
         let leafs = compute_data::compute_leafs(&conn, level, base_cycle)?;
 
         let mut tree = Vec::new();
-        for leaf in leafs {
-            let tree_leafs = compute_data::compute_tree(&conn, &leaf.0)?;
-            if !tree_leafs.is_empty() {
-                // if leaf is also tree, rebuild it from nested leafs
-                let mut builder = MerkleBuilder::default();
-                for tree_leaf in tree_leafs {
-                    builder.append_repeated(Digest::from_digest(&tree_leaf.0)?, tree_leaf.1);
-                }
-                tree.push((builder.build(), leaf.1));
-            } else {
-                tree.push((Digest::from_digest(&leaf.0)?.into(), leaf.1));
+        if log2_stride == 0 && !leafs.is_empty() {
+            tree = self.compute_leafs_with_uarch(leafs, log2_stride_count)?;
+        } else {
+            for (leaf, repetitions) in leafs {
+                tree.push((Digest::from_digest(&leaf)?.into(), repetitions));
             }
         }
 
         Ok(tree)
     }
 
-    pub fn insert_compute_trees<'a>(
+    fn compute_leafs_with_uarch(
         &self,
-        compute_trees: impl Iterator<Item = &'a (Digest, Vec<Leaf>)>,
-    ) -> Result<()> {
-        let conn = self.connection.lock().unwrap();
-        let tx = conn.unchecked_transaction()?;
-        for digest_and_leaf in compute_trees {
-            compute_data::insert_compute_tree(
-                &tx,
-                digest_and_leaf.0.slice(),
-                digest_and_leaf.1.iter(),
-            )?;
+        leafs: Vec<(Vec<u8>, u64)>,
+        log2_stride_count: u64,
+    ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
+        let mut main_tree = Vec::new();
+        let span_count = max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH) + 1;
+        let span_size = constants::UARCH_SPAN_TO_BARCH + 1;
+        let mut accumulated_repetitions = 0;
+        let mut uarch_tree_builder = MerkleBuilder::default();
+
+        for (leaf, repetitions) in leafs {
+            if accumulated_repetitions == 0 {
+                // reset the uarch_tree builder
+                uarch_tree_builder = MerkleBuilder::default();
+            }
+
+            if accumulated_repetitions < span_size {
+                uarch_tree_builder.append_repeated(Digest::from_digest(&leaf)?, repetitions);
+                accumulated_repetitions += repetitions;
+            }
+            if accumulated_repetitions == span_size {
+                // here we build a uarch_tree and add it to the main tree
+                main_tree.push((uarch_tree_builder.build(), 1));
+                // reset the accumulated repetitions
+                accumulated_repetitions = 0;
+            }
         }
-        tx.commit()?;
 
-        Ok(())
-    }
+        assert!(main_tree.len() > 0);
+        let main_tree_len = main_tree.len() as u64;
+        if main_tree_len < span_count {
+            main_tree.push((uarch_tree_builder.build(), span_count - main_tree_len));
+        }
 
-    pub fn insert_compute_tree<'a>(
-        &self,
-        tree_root: &[u8],
-        tree_leafs: impl Iterator<Item = &'a Leaf>,
-    ) -> Result<()> {
-        let conn = self.connection.lock().unwrap();
-        let tx = conn.unchecked_transaction()?;
-        compute_data::insert_compute_tree(&tx, tree_root, tree_leafs)?;
-        tx.commit()?;
-
-        Ok(())
+        Ok(main_tree)
     }
 
     /*
@@ -250,7 +257,6 @@ mod compute_state_access_tests {
 
     #[test]
     fn test_access_sequentially() {
-        test_compute_tree();
         test_compute_or_rollups_true();
         test_compute_or_rollups_false();
         // test_closest_snapshot();
@@ -359,39 +365,6 @@ mod compute_state_access_tests {
         }
     }
     */
-
-    fn test_compute_tree() {
-        let state_dir = tempfile::tempdir().unwrap();
-        let work_dir = state_dir.path();
-        let access = ComputeStateAccess::new(
-            None,
-            Vec::new(),
-            String::from("12345678"),
-            work_dir.to_path_buf(),
-        )
-        .unwrap();
-
-        let root = [
-            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1,
-            2, 3, 4,
-        ];
-        let leafs = [Leaf {
-            hash: root,
-            repetitions: 2,
-        }];
-
-        access
-            .insert_compute_leafs(0, U256::from(0), leafs.iter())
-            .unwrap();
-        let mut compute_leafs = access.compute_leafs(0, U256::from(0)).unwrap();
-        let mut tree = compute_leafs.last().unwrap();
-        assert!(tree.0.subtrees().is_none());
-
-        access.insert_compute_tree(&root, leafs.iter()).unwrap();
-        compute_leafs = access.compute_leafs(0, U256::from(0)).unwrap();
-        tree = compute_leafs.last().unwrap();
-        assert!(tree.0.subtrees().is_some());
-    }
 
     fn test_compute_or_rollups_true() {
         let state_dir = tempfile::tempdir().unwrap();
