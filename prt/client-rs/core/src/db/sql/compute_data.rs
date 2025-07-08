@@ -147,40 +147,6 @@ pub fn compute_leafs_count(
     )?)
 }
 
-//
-// Handle rollups
-//
-
-fn insert_handle_rollups_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
-    Ok(conn.prepare(
-        "\
-        INSERT INTO compute_or_rollups (id, handle_rollups) VALUES (0, ?1)
-        ",
-    )?)
-}
-
-pub fn insert_handle_rollups(conn: &rusqlite::Connection, handle_rollups: bool) -> Result<()> {
-    let mut stmt = insert_handle_rollups_statement(conn)?;
-    if stmt.execute(params![handle_rollups])? != 1 {
-        return Err(ComputeStateAccessError::InsertionFailed {
-            description: "rollups operation mode insertion failed".to_owned(),
-        });
-    }
-
-    Ok(())
-}
-
-pub fn handle_rollups(conn: &rusqlite::Connection) -> Result<bool> {
-    Ok(conn.query_row(
-        "\
-        SELECT handle_rollups FROM compute_or_rollups
-        WHERE id = 0
-        ",
-        [],
-        |row| row.get(0),
-    )?)
-}
-
 pub fn insert_compute_data<'a>(
     conn: &rusqlite::Connection,
     inputs: impl Iterator<Item = &'a Input>,
@@ -360,27 +326,5 @@ mod leafs_tests {
             compute_leafs(&conn, 1, U256::from(0)).unwrap().len(),
             2
         ));
-    }
-}
-
-#[cfg(test)]
-mod compute_or_rollups_tests {
-    use super::*;
-
-    #[test]
-    fn test_empty() {
-        let conn = test_helper::setup_db();
-        assert!(handle_rollups(&conn).is_err());
-    }
-
-    #[test]
-    fn test_insert() {
-        let conn = test_helper::setup_db();
-
-        assert!(insert_handle_rollups(&conn, true).is_ok());
-        assert!(matches!(handle_rollups(&conn), Ok(true)));
-        // compute_or_rollups can only be set once
-        assert!(insert_handle_rollups(&conn, true).is_err());
-        assert!(matches!(handle_rollups(&conn), Ok(true)));
     }
 }

@@ -37,7 +37,7 @@ pub struct Player {
 
 impl Player {
     pub fn new(
-        inputs: Option<Vec<Input>>,
+        inputs: Vec<Input>,
         leafs: Vec<Leaf>,
         provider: DynProvider,
         machine_path: String,

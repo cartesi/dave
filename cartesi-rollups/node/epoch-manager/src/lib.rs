@@ -159,7 +159,7 @@ impl<SM: StateManager> EpochManager<SM> {
             let address = last_sealed_epoch.root_tournament;
 
             Player::new(
-                Some(inputs),
+                inputs,
                 leafs,
                 provider.erased(),
                 snapshot.to_string_lossy().to_string(),

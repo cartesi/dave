@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
     let sender = EthArenaSender::new(provider.clone())?;
 
     let mut player = Player::new(
-        None,
+        Vec::new(),
         Vec::new(),
         provider,
         config.machine_path,

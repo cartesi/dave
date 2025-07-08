@@ -11,8 +11,3 @@ CREATE TABLE compute_leafs (
     compute_leaf BLOB NOT NULL,
     PRIMARY KEY (level, base_cycle, compute_leaf_index)
 );
-
-CREATE TABLE compute_or_rollups (
-    id INTEGER NOT NULL PRIMARY KEY,
-    handle_rollups INTEGER NOT NULL
-);
