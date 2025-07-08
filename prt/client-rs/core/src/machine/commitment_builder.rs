@@ -5,12 +5,12 @@ use crate::{
     db::compute_state_access::ComputeStateAccess,
     machine::{
         MachineCommitment, MachineInstance, build_machine_commitment,
-        build_machine_commitment_from_leafs, constants::LOG2_UARCH_SPAN_TO_BARCH, error::Result,
+        build_machine_commitment_from_leafs, error::Result,
     },
 };
 
 use alloy::primitives::U256;
-use log::{info, trace};
+use log::trace;
 
 pub struct MachineCommitmentBuilder {
     machine_path: String,
@@ -31,31 +31,9 @@ impl MachineCommitmentBuilder {
     ) -> Result<MachineCommitment> {
         let mut machine;
         let initial_state = {
-            if db.handle_rollups {
-                // treat it as rollups
-                machine = MachineInstance::new_rollups_advanced_until(
-                    &self.machine_path,
-                    base_cycle,
-                    db,
-                )?;
-                machine.state()?.root_hash
-            } else {
-                // treat it as compute
-                machine = MachineInstance::new_from_path(&self.machine_path)?;
-                // if let Some(snapshot) = db.closest_snapshot(base_cycle)? {
-                //     machine.load_snapshot(&snapshot.1, snapshot.0)?;
-                // };
-                let root_hash = machine
-                    .run(
-                        (base_cycle >> LOG2_UARCH_SPAN_TO_BARCH)
-                            .try_into()
-                            .expect("could not convert to u64"),
-                    )?
-                    .root_hash;
-                info!("run to base cycle: {}", base_cycle);
-                // machine.take_snapshot(base_cycle, db)?;
-                root_hash
-            }
+            machine =
+                MachineInstance::new_rollups_advanced_until(&self.machine_path, base_cycle, db)?;
+            machine.state()?.root_hash
         };
         trace!("initial state for commitment: {}", initial_state);
         let commitment = {

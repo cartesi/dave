@@ -319,42 +319,6 @@ impl MachineInstance {
         encoded.iter().flatten().cloned().collect()
     }
 
-    fn get_logs_compute(
-        path: &str,
-        agree_hash: Digest,
-        meta_cycle: U256,
-        _db: &ComputeStateAccess,
-    ) -> Result<(Vec<u8>, Digest)> {
-        let meta_cycle_u128 = meta_cycle
-            .to_u128()
-            .expect("meta_cycle is too large to fit in u128");
-        let big_step_mask = UARCH_SPAN_TO_BARCH as u128;
-
-        let base_cycle = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_BARCH) as u64;
-        let ucycle = (meta_cycle_u128 & big_step_mask) as u64;
-
-        let mut machine = MachineInstance::new_from_path(path)?;
-        // if let Some(snapshot_path) = db.closest_snapshot(base_cycle)? {
-        //     machine.load_snapshot(&snapshot_path.1, snapshot_path.0)?;
-        // }
-        machine.run(base_cycle)?;
-        machine.run_uarch(ucycle)?;
-        assert_eq!(machine.state()?.root_hash, agree_hash);
-
-        let mut logs = Vec::new();
-        if (meta_cycle_u128 + 1) & big_step_mask == 0 {
-            let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
-            logs.push(&uarch_step_log);
-            let ureset_log = machine.machine.log_reset_uarch(LogType::default())?;
-            logs.push(&ureset_log);
-            Ok((Self::encode_access_logs(logs), machine.state()?.root_hash))
-        } else {
-            let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
-            logs.push(&uarch_step_log);
-            Ok((Self::encode_access_logs(logs), machine.state()?.root_hash))
-        }
-    }
-
     fn encode_da(input_bin: &[u8]) -> Vec<u8> {
         let input_size_be = (input_bin.len() as u64).to_be_bytes().to_vec();
         let mut da_proof = input_size_be;
@@ -431,15 +395,9 @@ impl MachineInstance {
     ) -> Result<(Vec<u8>, Digest)> {
         let (proofs, next_hash);
 
-        if db.handle_rollups {
-            let result = Self::get_logs_rollups(path, agree_hash, meta_cycle, db)?;
-            proofs = result.0;
-            next_hash = result.1;
-        } else {
-            let result = Self::get_logs_compute(path, agree_hash, meta_cycle, db)?;
-            proofs = result.0;
-            next_hash = result.1;
-        }
+        let result = Self::get_logs_rollups(path, agree_hash, meta_cycle, db)?;
+        proofs = result.0;
+        next_hash = result.1;
 
         Ok((proofs, next_hash))
     }
