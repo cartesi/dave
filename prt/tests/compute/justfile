@@ -2,7 +2,7 @@ DOOM_DIR := "./programs/doom"
 SIMPLE_DIR := "./programs/simple"
 STRESS_DIR := "./programs/stress"
 
-LUA_NODE := "false"
+LUA_NODE := "true"
 
 # build compute test programs 
 build-programs:
