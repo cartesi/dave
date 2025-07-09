@@ -52,7 +52,7 @@ Nevertheless, they all share the same options and environment variables:
 | :-: | :-: | :- |
 | `--rpc-url <URL>` | RPC URL | `CANNON_RPC_URL` |
 | `--private-key <PK>` | Private key | `CANNON_PRIVATE_KEY` |
-| `--write-deployments <DIR>` | Deployments diretory | |
+| `--write-deployments <DIR>` | Deployments directory | |
 | `--dry-run` | Simulate deployment on a local fork | |
 | `--impersonate <ADDR>` | Impersonate address (requires `--dry-run`) | |
 | `--impersonate-all` | Impersonate all addresses (requires `--dry-run`) | |
