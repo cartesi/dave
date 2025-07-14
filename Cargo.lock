@@ -1616,20 +1616,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cartesi-prt-compute"
-version = "1.0.0"
-dependencies = [
- "alloy",
- "anyhow",
- "cartesi-prt-core",
- "clap",
- "env_logger",
- "log",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "cartesi-prt-contracts"
 version = "0.1.0"
 dependencies = [
