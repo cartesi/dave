@@ -12,7 +12,6 @@ members = [
 
   # prt
   "prt/client-rs/core",
-  "prt/client-rs/executable",
 
   # rollups-node
   "cartesi-rollups/node/blockchain-reader",
