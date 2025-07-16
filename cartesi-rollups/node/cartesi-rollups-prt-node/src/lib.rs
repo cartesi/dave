@@ -8,6 +8,7 @@ use args::PRTConfig;
 
 use log::{error, info};
 use std::{sync::Arc, thread};
+use tokio::sync::Mutex;
 
 use cartesi_prt_core::tournament::EthArenaSender;
 use rollups_blockchain_reader::BlockchainReader;
@@ -92,7 +93,7 @@ pub fn create_epoch_manager_task(watch: Watch, parameters: &PRTConfig) -> thread
                         .expect("could not create arena sender");
 
                     let epoch_manager = EpochManager::new(
-                        arena_sender,
+                        Arc::new(Mutex::new(arena_sender)),
                         params.address_book.consensus,
                         state_manager,
                         params.sleep_duration,

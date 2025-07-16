@@ -10,26 +10,28 @@ use alloy::{
 use error::Result;
 use log::{debug, info, trace};
 use num_traits::cast::ToPrimitive;
-use std::{ops::ControlFlow, time::Duration};
+use std::{ops::ControlFlow, sync::Arc, time::Duration};
+use tokio::sync::Mutex;
 
 use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
 use cartesi_prt_core::{
     db::dispute_state_access::{Input, Leaf},
     strategy::player::Player,
-    tournament::{EthArenaSender, allow_revert_rethrow_others},
+    tournament::{ArenaSender, allow_revert_rethrow_others},
 };
 use rollups_state_manager::{Epoch, Proof, StateManager, sync::Watch};
 
-pub struct EpochManager<SM: StateManager> {
-    arena_sender: EthArenaSender,
+pub struct EpochManager<AS: ArenaSender, SM: StateManager> {
+    arena_sender: Arc<Mutex<AS>>,
     consensus: Address,
     sleep_duration: Duration,
     state_manager: SM,
+    last_react_epoch: (Option<Player<AS>>, u64),
 }
 
-impl<SM: StateManager> EpochManager<SM> {
+impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
     pub fn new(
-        arena_sender: EthArenaSender,
+        arena_sender: Arc<Mutex<AS>>,
         consensus_address: Address,
         state_manager: SM,
         sleep_duration: Duration,
@@ -39,6 +41,7 @@ impl<SM: StateManager> EpochManager<SM> {
             consensus: consensus_address,
             sleep_duration,
             state_manager,
+            last_react_epoch: (None, 0),
         }
     }
 
@@ -133,12 +136,32 @@ impl<SM: StateManager> EpochManager<SM> {
         provider: DynProvider,
         last_sealed_epoch: &Epoch,
     ) -> Result<()> {
+        self.get_latest_player(last_sealed_epoch, provider)?;
+        self.last_react_epoch
+            .0
+            .as_mut()
+            .expect("prt player should be instantiated")
+            .react()
+            .await?;
+
+        Ok(())
+    }
+
+    fn get_latest_player(
+        &mut self,
+        last_sealed_epoch: &Epoch,
+        provider: DynProvider,
+    ) -> Result<()> {
         let snapshot = self
             .state_manager
             .snapshot_dir(last_sealed_epoch.epoch_number)?
             .expect("snapshot is inserted atomically with settlement info");
 
-        let mut player = {
+        // either the player has never been instantiated, or the sealed epoch has advanced
+        // we need to instantiate new epoch player with appropriate data
+        if self.last_react_epoch.0.is_none()
+            || self.last_react_epoch.1 != last_sealed_epoch.epoch_number
+        {
             let inputs = self
                 .state_manager
                 .inputs(last_sealed_epoch.epoch_number)?
@@ -156,22 +179,22 @@ impl<SM: StateManager> EpochManager<SM> {
                 })
                 .collect();
 
-            let address = last_sealed_epoch.root_tournament;
-
-            Player::new(
+            let player = Player::new(
+                self.arena_sender.clone(),
                 inputs,
                 leafs,
                 provider.erased(),
                 snapshot.to_string_lossy().to_string(),
-                address,
+                last_sealed_epoch.root_tournament,
                 last_sealed_epoch.block_created_number,
                 self.state_manager
                     .epoch_directory(last_sealed_epoch.epoch_number)?,
             )
-            .expect("fail to initialize prt player")
-        };
+            .expect("fail to initialize prt player");
 
-        player.react_once(&self.arena_sender).await?;
+            self.last_react_epoch = (Some(player), last_sealed_epoch.epoch_number);
+        }
+
         Ok(())
     }
 }
