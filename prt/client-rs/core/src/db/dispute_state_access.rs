@@ -146,14 +146,21 @@ impl DisputeStateAccess {
         base_cycle: U256,
     ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
         let conn = self.connection.lock().unwrap();
-        let leafs = dispute_data::leafs(&conn, level, base_cycle)?;
+        let leafs: Vec<Leaf> = dispute_data::leafs(&conn, level, base_cycle)?
+            .iter()
+            .map(|(leaf, repetitions)| Leaf {
+                hash: <[u8; 32]>::try_from(leaf.as_slice())
+                    .expect("leaf slice with incorrect length"),
+                repetitions: *repetitions,
+            })
+            .collect();
 
         let mut tree = Vec::new();
         if log2_stride == 0 && !leafs.is_empty() {
             tree = self.leafs_with_uarch(leafs, log2_stride_count)?;
         } else {
-            for (leaf, repetitions) in leafs {
-                tree.push((Digest::from_digest(&leaf)?.into(), repetitions));
+            for leaf in leafs {
+                tree.push((Digest::from_digest(&leaf.hash)?.into(), leaf.repetitions));
             }
         }
 
@@ -162,7 +169,7 @@ impl DisputeStateAccess {
 
     fn leafs_with_uarch(
         &self,
-        leafs: Vec<(Vec<u8>, u64)>,
+        leafs: Vec<Leaf>,
         log2_stride_count: u64,
     ) -> Result<Vec<(Arc<MerkleTree>, u64)>> {
         let mut main_tree = Vec::new();
@@ -171,15 +178,16 @@ impl DisputeStateAccess {
         let mut accumulated_repetitions = 0;
         let mut uarch_tree_builder = MerkleBuilder::default();
 
-        for (leaf, repetitions) in leafs {
+        for leaf in leafs {
             if accumulated_repetitions == 0 {
                 // reset the uarch_tree builder
                 uarch_tree_builder = MerkleBuilder::default();
             }
 
             if accumulated_repetitions < span_size {
-                uarch_tree_builder.append_repeated(Digest::from_digest(&leaf)?, repetitions);
-                accumulated_repetitions += repetitions;
+                uarch_tree_builder
+                    .append_repeated(Digest::from_digest(&leaf.hash)?, leaf.repetitions);
+                accumulated_repetitions += leaf.repetitions;
             }
             if accumulated_repetitions == span_size {
                 // here we build a uarch_tree and add it to the main tree
