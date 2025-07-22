@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS inputs (
 );
 
 CREATE TABLE IF NOT EXISTS latest_processed (
-    id INTEGER NOT NULL PRIMARY KEY,
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
     block INTEGER NOT NULL CHECK (block >= 0)
 );
 INSERT OR IGNORE INTO latest_processed (id, block)
@@ -31,10 +31,11 @@ INSERT OR IGNORE INTO latest_processed (id, block)
 
 CREATE TABLE IF NOT EXISTS machine_state_hashes (
     epoch_number INTEGER NOT NULL,
-    state_hash_index_in_epoch INTEGER NOT NULL,
+    input_number INTEGER NOT NULL,
+    hash_index INTEGER NOT NULL,
     repetitions INTEGER NOT NULL CHECK (repetitions > 0),
     machine_state_hash BLOB NOT NULL,
-    PRIMARY KEY (epoch_number, state_hash_index_in_epoch)
+    PRIMARY KEY (epoch_number, input_number, hash_index)
 );
 
 CREATE TABLE IF NOT EXISTS template_machine (
@@ -51,8 +52,11 @@ CREATE TABLE IF NOT EXISTS machine_state_snapshots (
 );
 
 CREATE TABLE IF NOT EXISTS epoch_snapshot_info (
-    epoch_number  INTEGER NOT NULL PRIMARY KEY CHECK (epoch_number >= 0),
+    epoch_number  INTEGER NOT NULL CHECK (epoch_number >= 0),
+    input_number  INTEGER NOT NULL CHECK (input_number >= 0),
     state_hash    BLOB NOT NULL,
+
+    PRIMARY KEY (epoch_number, input_number),
 
     FOREIGN KEY (state_hash)
         REFERENCES machine_state_snapshots (state_hash)
