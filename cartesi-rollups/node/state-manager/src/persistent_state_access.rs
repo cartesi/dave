@@ -5,9 +5,13 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     CommitmentLeaf, Epoch, Input, InputId, Settlement, StateManager,
-    rollups_machine::RollupsMachine, sql::*, state_manager::Result,
+    rollups_machine::{self, RollupsMachine},
+    sql::*,
+    state_manager::Result,
 };
 
+use alloy::primitives::U256;
+use cartesi_dave_merkle::{Digest, MerkleBuilder};
 use rusqlite::Connection;
 
 #[derive(Debug)]
@@ -84,10 +88,6 @@ impl StateManager for PersistentStateAccess {
         consensus_data::last_input(&self.connection)
     }
 
-    fn latest_processed_block(&mut self) -> Result<u64> {
-        consensus_data::last_processed_block(&self.connection)
-    }
-
     fn insert_consensus_data<'a>(
         &mut self,
         last_processed_block: u64,
@@ -103,96 +103,90 @@ impl StateManager for PersistentStateAccess {
         Ok(())
     }
 
+    fn latest_processed_block(&mut self) -> Result<u64> {
+        consensus_data::last_processed_block(&self.connection)
+    }
+
     //
     // Rollup Data
     //
-
-    fn add_machine_state_hashes(
+    fn advance_accepted(
         &mut self,
-        epoch_number: u64,
-        start_state_hash_index: u64,
+        mut machine: RollupsMachine,
         leafs: &[CommitmentLeaf],
-    ) -> Result<()> {
-        let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
+    ) -> Result<RollupsMachine> {
+        assert!(!leafs.is_empty());
+        let epoch = machine.epoch();
+        let input = machine.input_index_in_epoch();
 
-        let (leafs, start_state_hash_index) =
-            match rollup_data::get_last_state_hash_index(&tx, epoch_number)? {
-                Some(last_idx) if start_state_hash_index <= last_idx => {
-                    let overlap_len = std::cmp::min(
-                        leafs.len(),
-                        (last_idx - start_state_hash_index + 1) as usize,
-                    );
+        rollup_data::insert_state_hashes_for_input(&self.connection, epoch, input, leafs)?;
 
-                    let (dup, new) = (&leafs[..overlap_len], &leafs[overlap_len..]);
-                    rollup_data::validate_dup_commitments(
-                        &tx,
-                        dup,
-                        epoch_number,
-                        start_state_hash_index,
-                    )?;
+        let (dest_dir, state_hash) = {
+            let snapshots_path = snapshots_path(&self.state_dir);
+            machine
+                .store_if_needed(&snapshots_path)
+                .map_err(anyhow::Error::from)?
+        };
 
-                    (new, start_state_hash_index + overlap_len as u64)
-                }
+        rollup_data::insert_snapshot(&self.connection, epoch, input, &state_hash, &dest_dir)?;
+        rollup_data::gc_previous_advances(&self.connection, epoch, input)?;
 
-                Some(last_idx) => {
-                    assert_eq!(start_state_hash_index, last_idx + 1);
-                    (leafs, start_state_hash_index)
-                }
-
-                None => {
-                    assert_eq!(start_state_hash_index, 0);
-                    (leafs, start_state_hash_index)
-                }
-            };
-
-        rollup_data::insert_commitments(&tx, epoch_number, start_state_hash_index, leafs)?;
-
-        tx.commit().map_err(anyhow::Error::from)?;
-        Ok(())
+        Ok(machine)
     }
 
-    fn machine_state_hash(
+    fn finish_reverted_advance(
         &mut self,
-        epoch_number: u64,
-        state_hash_index_in_epoch: u64,
-    ) -> Result<Option<CommitmentLeaf>> {
-        rollup_data::get_commitment_if_exists(
-            &self.connection,
-            epoch_number,
-            state_hash_index_in_epoch,
-        )
+        _machine: RollupsMachine,
+        _leafs: &[CommitmentLeaf],
+    ) -> Result<RollupsMachine> {
+        todo!()
     }
 
-    // returns all state hashes and their repetitions in acending order of `state_hash_index_in_epoch`
-    fn machine_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>> {
-        rollup_data::get_all_commitments(&self.connection, epoch_number)
+    fn epoch_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>> {
+        let mut leafs = rollup_data::get_all_commitments(&self.connection, epoch_number)?;
+
+        let total_reps = leafs.iter().fold(0, |acc, leaf| acc + leaf.repetitions);
+        if let Some(last) = leafs.last_mut() {
+            last.repetitions += rollups_machine::STRIDE_COUNT_IN_EPOCH - total_reps
+        }
+
+        Ok(leafs)
     }
 
     fn settlement_info(&mut self, epoch_number: u64) -> Result<Option<Settlement>> {
         rollup_data::settlement_info(&self.connection, epoch_number)
     }
 
-    fn finish_epoch(
-        &mut self,
-        settlement: &Settlement,
-        machine_to_snapshot: &mut crate::rollups_machine::RollupsMachine,
-    ) -> Result<()> {
-        let previous_epoch_number = machine_to_snapshot.epoch();
-        machine_to_snapshot.finish_epoch();
+    fn roll_epoch(&mut self, machine: &mut RollupsMachine) -> Result<()> {
+        let previous_epoch_number = machine.epoch();
 
-        let new_epoch_number = machine_to_snapshot.epoch();
+        let settlement = {
+            let leafs = rollup_data::get_all_commitments(&self.connection, previous_epoch_number)?;
+            let computation_hash = build_commitment_from_hashes(&leafs);
+            let (output_merkle, output_proof) = machine.outputs_proof()?;
+
+            Settlement {
+                computation_hash,
+                output_merkle,
+                output_proof,
+            }
+        };
+
+        machine.finish_epoch();
+
+        let new_epoch_number = machine.epoch();
         create_epoch_dir(&self.state_dir, new_epoch_number)?;
 
         let (dest_dir, state_hash) = {
             let snapshots_path = snapshots_path(&self.state_dir);
-            machine_to_snapshot
+            machine
                 .store_if_needed(&snapshots_path)
                 .map_err(anyhow::Error::from)?
         };
 
         let tx = self.connection.transaction().map_err(anyhow::Error::from)?;
-        rollup_data::insert_snapshot(&tx, new_epoch_number, &state_hash, &dest_dir)?;
-        rollup_data::insert_settlement_info(&tx, settlement, previous_epoch_number)?;
+        rollup_data::insert_snapshot(&tx, new_epoch_number, 0, &state_hash, &dest_dir)?;
+        rollup_data::insert_settlement_info(&tx, &settlement, previous_epoch_number)?;
         tx.commit().map_err(anyhow::Error::from)?;
 
         if previous_epoch_number >= 1 {
@@ -202,14 +196,9 @@ impl StateManager for PersistentStateAccess {
         Ok(())
     }
 
-    fn latest_snapshot(&mut self) -> Result<crate::rollups_machine::RollupsMachine> {
-        let (path, epoch_number) = rollup_data::latest_snapshot_path(&self.connection)?;
-        Ok(RollupsMachine::new(&path, epoch_number, 0)?)
-    }
-
-    fn snapshot(&mut self, epoch_number: u64) -> Result<Option<RollupsMachine>> {
+    fn snapshot(&mut self, epoch_number: u64, input_number: u64) -> Result<Option<RollupsMachine>> {
         let ret = if let Some(path) =
-            rollup_data::snapshot_path_for_epoch(&self.connection, epoch_number)?
+            rollup_data::snapshot_path_for_epoch(&self.connection, epoch_number, input_number)?
         {
             Some(RollupsMachine::new(&path, epoch_number, 0)?)
         } else {
@@ -219,17 +208,45 @@ impl StateManager for PersistentStateAccess {
         Ok(ret)
     }
 
+    fn latest_snapshot(&mut self) -> Result<crate::rollups_machine::RollupsMachine> {
+        let (path, epoch_number, input_number) =
+            rollup_data::latest_snapshot_path(&self.connection)?;
+        Ok(RollupsMachine::new(&path, epoch_number, input_number)?)
+    }
+
+    fn snapshot_dir(&mut self, epoch_number: u64, input_number: u64) -> Result<Option<PathBuf>> {
+        rollup_data::snapshot_path_for_epoch(&self.connection, epoch_number, input_number)
+    }
+
     //
     // Directory
     //
 
-    fn snapshot_dir(&mut self, epoch_number: u64) -> Result<Option<PathBuf>> {
-        rollup_data::snapshot_path_for_epoch(&self.connection, epoch_number)
-    }
-
     fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf> {
         create_epoch_dir(&self.state_dir, epoch_number)
     }
+}
+
+fn build_commitment_from_hashes(state_hashes: &[CommitmentLeaf]) -> Digest {
+    let mut builder = MerkleBuilder::default();
+
+    let (last, hashes) = state_hashes.split_last().unwrap();
+
+    for state_hash in hashes {
+        builder.append_repeated(Digest::new(state_hash.hash), state_hash.repetitions);
+    }
+
+    // If count is zero, this means tree is full, but we still have the last leaf to add.
+    assert_ne!(builder.count(), Some(U256::ZERO));
+
+    // Complete tree
+    builder.append_repeated(
+        Digest::new(last.hash),
+        U256::from(rollups_machine::STRIDE_COUNT_IN_EPOCH) - builder.count().unwrap_or(U256::ZERO),
+    );
+
+    let tree = builder.build();
+    tree.root_hash()
 }
 
 #[cfg(test)]
@@ -242,8 +259,6 @@ mod tests {
             runtime::RuntimeConfig,
         },
     };
-
-    use crate::Proof;
 
     use super::*;
 
@@ -393,21 +408,8 @@ mod tests {
             "latest block should match"
         );
 
-        let settlement_0 = Settlement {
-            computation_hash: [1; 32].into(),
-            output_merkle: [2; 32],
-            output_proof: Proof::new(vec![[0; 32]]),
-        };
-
-        access.finish_epoch(&settlement_0, &mut initial_snapshot)?;
-        assert_eq!(access.latest_snapshot()?.epoch(), 1);
-
         assert!(
-            access.machine_state_hash(0, 0)?.is_none(),
-            "machine state hash shouldn't exist"
-        );
-        assert!(
-            access.machine_state_hashes(0)?.is_empty(),
+            access.epoch_state_hashes(0)?.is_empty(),
             "machine state hashes shouldn't exist"
         );
 
@@ -420,28 +422,29 @@ mod tests {
             repetitions: 5,
         };
 
-        access.add_machine_state_hashes(0, 0, &[commitment_leaf_1.clone()])?;
+        initial_snapshot =
+            access.finish_accepted_advance(initial_snapshot, &[commitment_leaf_1.clone()])?;
 
         assert_eq!(
-            access.machine_state_hash(0, 0)?.unwrap(),
-            commitment_leaf_1,
+            access.epoch_state_hashes(0)?[0],
+            CommitmentLeaf {
+                hash: [1; 32],
+                repetitions: rollups_machine::STRIDE_COUNT_IN_EPOCH,
+            },
             "machine state 1 data should match"
         );
         assert_eq!(
-            access.machine_state_hashes(0)?.len(),
+            access.epoch_state_hashes(0)?.len(),
             1,
             "machine state 1 count shouldn't exist"
         );
 
-        access.add_machine_state_hashes(0, 1, &[commitment_leaf_2.clone()])?;
+        initial_snapshot.increment_input();
+        initial_snapshot =
+            access.finish_accepted_advance(initial_snapshot, &[commitment_leaf_2.clone()])?;
 
         assert_eq!(
-            access.machine_state_hash(0, 1)?.unwrap(),
-            commitment_leaf_2,
-            "machine state 2 data should match"
-        );
-        assert_eq!(
-            access.machine_state_hashes(0)?.len(),
+            access.epoch_state_hashes(0)?.len(),
             2,
             "machine state 2 count shouldn't exist"
         );
@@ -451,18 +454,20 @@ mod tests {
             "computation_hash shouldn't exist"
         );
 
-        let settlement_1 = Settlement {
-            computation_hash: [3; 32].into(),
-            output_merkle: [4; 32],
-            output_proof: Proof::new(vec![[0; 32]]),
-        };
-
-        access.finish_epoch(&settlement_1, &mut initial_snapshot)?;
-        assert_eq!(access.latest_snapshot()?.epoch(), 2);
+        let (output_merkle, output_proof) = initial_snapshot.outputs_proof()?;
+        access.roll_epoch(&mut initial_snapshot)?;
+        assert_eq!(access.latest_snapshot()?.epoch(), 1);
 
         assert_eq!(
-            access.settlement_info(1)?.unwrap(),
-            settlement_1,
+            access.settlement_info(0)?.unwrap(),
+            Settlement {
+                computation_hash: build_commitment_from_hashes(&[
+                    commitment_leaf_1.clone(),
+                    commitment_leaf_2.clone()
+                ]),
+                output_merkle,
+                output_proof
+            },
             "settlement info of epoch 0 should match"
         );
 

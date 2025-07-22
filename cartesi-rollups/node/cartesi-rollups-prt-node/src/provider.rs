@@ -84,7 +84,7 @@ async fn create_signer(
 }
 
 async fn create_client(url: &Url) -> RpcClient {
-    // let throttle = ThrottleLayer::new(20);
+    // let throttle = alloy_transport::layers::ThrottleLayer::new(20);
 
     let retry = RetryBackoffLayer::new(
         5,   // max_rate_limit_retries

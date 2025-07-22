@@ -30,31 +30,25 @@ pub trait StateManager {
     //
     // Rollup Data
     //
-
-    fn add_machine_state_hashes(
+    fn advance_accepted(
         &mut self,
-        epoch_number: u64,
-        start_state_hash_index: u64,
+        machine: RollupsMachine,
         leafs: &[CommitmentLeaf],
-    ) -> Result<()>;
+    ) -> Result<RollupsMachine>;
 
-    fn machine_state_hash(
+    fn finish_reverted_advance(
         &mut self,
-        epoch_number: u64,
-        state_hash_index_in_epoch: u64,
-    ) -> Result<Option<CommitmentLeaf>>;
+        machine: RollupsMachine,
+        leafs: &[CommitmentLeaf],
+    ) -> Result<RollupsMachine>;
 
-    fn machine_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>>;
+    fn epoch_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>>;
 
     fn settlement_info(&mut self, epoch_number: u64) -> Result<Option<Settlement>>;
 
-    fn finish_epoch(
-        &mut self,
-        settlement: &Settlement,
-        machine_to_snapshot: &mut RollupsMachine,
-    ) -> Result<()>;
+    fn roll_epoch(&mut self, machine: &mut RollupsMachine) -> Result<()>;
 
-    fn snapshot(&mut self, epoch_number: u64) -> Result<Option<RollupsMachine>>;
+    fn snapshot(&mut self, epoch_number: u64, input_number: u64) -> Result<Option<RollupsMachine>>;
 
     fn latest_snapshot(&mut self) -> Result<RollupsMachine>;
 
@@ -62,7 +56,7 @@ pub trait StateManager {
     // Directory
     //
 
-    fn snapshot_dir(&mut self, epoch_number: u64) -> Result<Option<PathBuf>>;
+    fn snapshot_dir(&mut self, epoch_number: u64, input_number: u64) -> Result<Option<PathBuf>>;
     fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf>;
 }
 

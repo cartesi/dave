@@ -183,7 +183,7 @@ impl PRTConfig {
         .expect("could not create `state_manager`");
 
         let mut machine = state_manager
-            .snapshot(0)
+            .snapshot(0, 0)
             .unwrap()
             .expect("epoch zero should always exist");
         assert_eq!(
