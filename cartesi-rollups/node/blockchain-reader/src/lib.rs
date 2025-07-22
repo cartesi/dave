@@ -402,27 +402,8 @@ impl<E: SolEvent + Send + Sync> EventReader<E> {
 
 // Below is a simplified version originated from https://github.com/cartesi/state-fold
 // ParitionProvider will attempt to fetch events in smaller partition if the original request is too large
-async fn get_events<E: SolEvent + Send + Sync>(
-    provider: &impl Provider,
-    topic1: Option<&Topic>,
-    read_from: &Address,
-    start_block: u64,
-    end_block: u64,
-    long_block_range_error_codes: &Vec<String>,
-) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
-    get_events_rec(
-        provider,
-        topic1,
-        read_from,
-        start_block,
-        end_block,
-        long_block_range_error_codes,
-    )
-    .await
-}
-
 #[async_recursion]
-async fn get_events_rec<E: SolEvent + Send + Sync>(
+async fn get_events<E: SolEvent + Send + Sync>(
     provider: &impl Provider,
     topic1: Option<&Topic>,
     read_from: &Address,
@@ -454,7 +435,7 @@ async fn get_events_rec<E: SolEvent + Send + Sync>(
                     start_block + half - 1
                 };
 
-                let first_res = get_events_rec(
+                let first_res = get_events(
                     provider,
                     topic1,
                     read_from,
@@ -464,7 +445,7 @@ async fn get_events_rec<E: SolEvent + Send + Sync>(
                 )
                 .await;
 
-                let second_res = get_events_rec(
+                let second_res = get_events(
                     provider,
                     topic1,
                     read_from,

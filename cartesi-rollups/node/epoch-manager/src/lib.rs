@@ -154,7 +154,7 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
     ) -> Result<()> {
         let snapshot = self
             .state_manager
-            .snapshot_dir(last_sealed_epoch.epoch_number)?
+            .snapshot_dir(last_sealed_epoch.epoch_number, 0)?
             .expect("snapshot is inserted atomically with settlement info");
 
         // either the player has never been instantiated, or the sealed epoch has advanced
@@ -171,7 +171,7 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
 
             let leafs = self
                 .state_manager
-                .machine_state_hashes(last_sealed_epoch.epoch_number)?
+                .epoch_state_hashes(last_sealed_epoch.epoch_number)?
                 .into_iter()
                 .map(|l| Leaf {
                     hash: l.hash,

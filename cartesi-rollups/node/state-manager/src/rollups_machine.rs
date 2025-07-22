@@ -3,7 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use cartesi_prt_core::machine::constants::{LOG2_BARCH_SPAN_TO_INPUT, LOG2_UARCH_SPAN_TO_BARCH};
+use cartesi_prt_core::machine::constants::{
+    LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
+};
 
 use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
@@ -31,10 +33,14 @@ pub enum StoreError {
 // gap of each leaf in the commitment tree, should use the same value as ArbitrationConstants.sol:log2step(0)
 pub const LOG2_STRIDE: u64 = 44;
 
-const BIG_STEPS_IN_STRIDE: u64 = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
+pub const BIG_STEPS_IN_STRIDE: u64 = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
 
-const STRIDE_COUNT_IN_INPUT: u64 =
+pub const STRIDE_COUNT_IN_INPUT: u64 =
     1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - LOG2_STRIDE);
+
+pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
+    << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
+        - LOG2_STRIDE);
 
 pub struct RollupsMachine {
     machine: Machine,
@@ -79,35 +85,6 @@ impl RollupsMachine {
 
         assert_eq!(output_merkle.len(), 32);
         Ok((output_merkle.try_into().unwrap(), siblings))
-    }
-
-    pub fn store_if_needed(
-        &mut self,
-        snapshots_path: &Path,
-    ) -> Result<(PathBuf, Hash), StoreError> {
-        let state_hash = self.state_hash()?;
-        let dest_machine_path = machine_store_path(snapshots_path, &state_hash);
-
-        if !dest_machine_path.exists() {
-            let machine_status = self.machine.store(&dest_machine_path);
-
-            if let Err(machine_err) = machine_status {
-                // cleanup partial store before returning error.
-                let fs_status = std::fs::remove_dir_all(&dest_machine_path);
-
-                // combine errors
-                if let Err(fs_err) = fs_status {
-                    return Err(StoreError::CleanupError {
-                        machine_err,
-                        fs_err,
-                    });
-                } else {
-                    return Err(machine_err.into());
-                }
-            }
-        }
-
-        Ok((dest_machine_path, state_hash))
     }
 
     pub fn state_hash(&mut self) -> MachineResult<Hash> {
@@ -162,6 +139,39 @@ impl RollupsMachine {
                 _ => panic!("machine returned invalid `break_reason` {reason}"),
             }
         }
+    }
+
+    pub fn increment_input(&mut self) {
+        self.input_index_in_epoch += 1;
+    }
+
+    pub fn store_if_needed(
+        &mut self,
+        snapshots_path: &Path,
+    ) -> Result<(PathBuf, Hash), StoreError> {
+        let state_hash = self.state_hash()?;
+        let dest_machine_path = machine_store_path(snapshots_path, &state_hash);
+
+        if !dest_machine_path.exists() {
+            let machine_status = self.machine.store(&dest_machine_path);
+
+            if let Err(machine_err) = machine_status {
+                // cleanup partial store before returning error.
+                let fs_status = std::fs::remove_dir_all(&dest_machine_path);
+
+                // combine errors
+                if let Err(fs_err) = fs_status {
+                    return Err(StoreError::CleanupError {
+                        machine_err,
+                        fs_err,
+                    });
+                } else {
+                    return Err(machine_err.into());
+                }
+            }
+        }
+
+        Ok((dest_machine_path, state_hash))
     }
 }
 
