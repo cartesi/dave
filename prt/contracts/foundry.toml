@@ -12,6 +12,10 @@ remappings = [
 ]
 solc-version = "0.8.27"
 
+fs_permissions = [
+  { access = "read-write",  path = "./test/cache" },
+]
+
 [fmt]
 line_length = 80
 tab_width = 4

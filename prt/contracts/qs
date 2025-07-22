@@ -1,0 +1,9 @@
+- deliverables
+    - dave repo, diff branch
+
+- on-chain part in unit test - risc0 router
+    - we have to deploy risc0 contract ourselves
+        - talk to guilherme about cannon & soldeer
+
+- FFI in production. seal api is not being easily accessible
+- the next steps for integration

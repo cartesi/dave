@@ -22,6 +22,9 @@ test:
 test-fuzzy:
     forge test --match-contract ".*FfiTest" --match-test ".*Fuzzy" --ffi
 
+test-zk:
+    forge test -vvvv --match-test ".*StateTransitionZk*." --ffi
+
 clean-smart-contracts:
     forge clean
 
