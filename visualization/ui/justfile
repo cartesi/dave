@@ -1,0 +1,15 @@
+[private]
+default:
+  just --list
+
+[doc("install pnpm dependencies")]
+ui-install-deps:
+    pnpm install --frozen-lockfile
+
+[doc("Build storybook")]
+ui-build-storybook:
+    pnpm run build-storybook
+
+[doc("Facilitate running any npm-scripts in the UI folder. Helpful for CI steps")]
+ui-pnpm-run *COMMAND:
+    pnpm run {{COMMAND}}
