@@ -1,0 +1,43 @@
+name: "Chromatic"
+on: push
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  chromatic-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 #required to retrieve git history
+
+      - name: Install just
+        uses: extractions/setup-just@v3
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: "visualization/ui/package.json"
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+          cache-dependency-path: "visualization/ui/pnpm-lock.yaml"
+
+      - name: Install Dependencies
+        run: |
+          just -f visualization/ui/justfile ui-install-deps
+
+      - name: Build Storybook
+        run: just -f visualization/ui/justfile ui-build-storybook
+
+      - name: Publish to Chromatic
+        uses: chromaui/action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          storybookBuildDir: storybook-static
+          workingDir: ./visualization/ui
+          exitOnceUploaded: true
