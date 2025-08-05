@@ -1,0 +1,7 @@
+.application {
+  transition: all 0.2s ease-out;
+  &:hover {
+    border-color: var(--mantine-color-cyan-5);
+    transform: translate3d(0px, -8px, 13px);
+  }
+}
