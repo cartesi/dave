@@ -6,11 +6,11 @@ import "./index.css";
 import DataProvider from "./providers/DataProvider.tsx";
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <BrowserRouter>
-      <DataProvider>
-        <App />
-      </DataProvider>
-    </BrowserRouter>
-  </StrictMode>
+    <StrictMode>
+        <BrowserRouter>
+            <DataProvider>
+                <App />
+            </DataProvider>
+        </BrowserRouter>
+    </StrictMode>,
 );
