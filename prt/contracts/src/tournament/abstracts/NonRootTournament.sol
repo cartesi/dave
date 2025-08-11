@@ -24,7 +24,7 @@ abstract contract NonRootTournament is Tournament {
     using Clock for Clock.State;
 
     /// @notice get the dangling commitment at current level and then retrieve the winner commitment
-    /// @return (bool, Tree.Node, Tree.Node)
+    /// @return (bool, Tree.Node, Tree.Node, Clock.State)
     /// - if the tournament is finished
     /// - the contested parent commitment
     /// - the winning inner commitment

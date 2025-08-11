@@ -34,7 +34,7 @@ abstract contract NonLeafTournament is Tournament {
         Tree.Node _rightLeaf,
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
-    ) external tournamentNotFinished {
+    ) external refundable tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireCanBeFinalized();
         // Pause clocks
@@ -80,7 +80,7 @@ abstract contract NonLeafTournament is Tournament {
         NonRootTournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external tournamentNotFinished {
+    ) external refundable tournamentNotFinished {
         Match.IdHash _matchIdHash =
             matchIdFromInnerTournaments[_childTournament];
         _matchIdHash.requireExist();
@@ -114,10 +114,21 @@ abstract contract NonLeafTournament is Tournament {
         // delete storage
         deleteMatch(_matchIdHash);
         matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
+
+        // clear the claimer for the losing commitment
+        if (_matchState.otherParent.eq(_winner)) {
+            Tree.Node _loser = _matchState.leftNode.join(_matchState.rightNode);
+            delete claimers[_loser];
+        } else {
+            delete claimers[_matchState.otherParent];
+        }
+
+        _childTournament.recoverBond();
     }
 
     function eliminateInnerTournament(NonRootTournament _childTournament)
         external
+        refundable
         tournamentNotFinished
     {
         Match.IdHash _matchIdHash =
@@ -136,6 +147,9 @@ abstract contract NonLeafTournament is Tournament {
         // delete storage
         deleteMatch(_matchIdHash);
         matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
+        // clear the claimer for both commitments
+        delete claimers[_matchState.otherParent];
+        delete claimers[_matchState.leftNode.join(_matchState.rightNode)];
     }
 
     function instantiateInner(

@@ -24,7 +24,7 @@ abstract contract LeafTournament is Tournament {
         Tree.Node _rightLeaf,
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
-    ) external tournamentNotFinished {
+    ) external refundable tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeFinalized();
@@ -60,7 +60,7 @@ abstract contract LeafTournament is Tournament {
         Tree.Node _leftNode,
         Tree.Node _rightNode,
         bytes calldata proofs
-    ) external tournamentNotFinished {
+    ) external refundable tournamentNotFinished {
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
         _clockOne.requireInitialized();
@@ -102,6 +102,9 @@ abstract contract LeafTournament is Tournament {
             pairCommitment(
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
+
+            // clear the claimer for the losing commitment
+            delete claimers[_matchId.commitmentTwo];
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
             require(
                 _finalState.eq(_finalStateTwo),
@@ -112,6 +115,9 @@ abstract contract LeafTournament is Tournament {
             pairCommitment(
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
+
+            // clear the claimer for the losing commitment
+            delete claimers[_matchId.commitmentOne];
         } else {
             revert WrongNodesForStep();
         }

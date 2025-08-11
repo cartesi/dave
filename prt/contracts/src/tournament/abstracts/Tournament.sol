@@ -13,6 +13,7 @@ import "prt-contracts/tournament/libs/Commitment.sol";
 import "prt-contracts/tournament/libs/Time.sol";
 import "prt-contracts/tournament/libs/Clock.sol";
 import "prt-contracts/tournament/libs/Match.sol";
+import "prt-contracts/tournament/utils/Refundable.sol";
 
 struct TournamentArgs {
     Machine.Hash initialHash;
@@ -36,7 +37,7 @@ struct TournamentArgs {
 /// meaning the one-step disagreement is found and can be resolved by solidity-step.
 /// Non-leaf (inner) matches would normally create inner tournaments with height = height + 1,
 /// to find the divergence with improved precision.
-abstract contract Tournament {
+abstract contract Tournament is Refundable {
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
     using Commitment for Tree.Node;
@@ -59,6 +60,7 @@ abstract contract Tournament {
 
     mapping(Tree.Node => Clock.State) clocks;
     mapping(Tree.Node => Machine.Hash) finalStates;
+    mapping(Tree.Node => address) public claimers;
     // matches existing in current tournament
     mapping(Match.IdHash => Match.State) matches;
 
@@ -71,10 +73,15 @@ abstract contract Tournament {
     event matchDeleted(Match.IdHash);
     event commitmentJoined(Tree.Node root);
 
+    error InsufficientBond();
+    error NoWinner();
+    error RecoverBondFailed();
+
     //
     // Modifiers
     //
     error TournamentIsFinished();
+    error TournamentNotFinished();
     error TournamentIsClosed();
 
     modifier tournamentNotFinished() {
@@ -112,8 +119,12 @@ abstract contract Tournament {
         bytes32[] calldata _proof,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external tournamentOpen {
+    ) external payable tournamentOpen {
+        require(msg.value >= BOND_VALUE, InsufficientBond());
+
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
+
+        claimers[_commitmentRoot] = msg.sender;
 
         TournamentArgs memory args = _tournamentArgs();
 
@@ -140,7 +151,7 @@ abstract contract Tournament {
         Tree.Node _rightNode,
         Tree.Node _newLeftNode,
         Tree.Node _newRightNode
-    ) external tournamentNotFinished {
+    ) external refundable tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
@@ -163,7 +174,7 @@ abstract contract Tournament {
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external tournamentNotFinished {
+    ) external refundable tournamentNotFinished {
         matches[_matchId.hashFromId()].requireExist();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
@@ -181,6 +192,9 @@ abstract contract Tournament {
             pairCommitment(
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
+
+            // clear the claimer for the losing commitment
+            delete claimers[_matchId.commitmentTwo];
         } else if (!_clockOne.hasTimeLeft() && _clockTwo.hasTimeLeft()) {
             require(
                 _matchId.commitmentTwo.verify(_leftNode, _rightNode),
@@ -191,6 +205,9 @@ abstract contract Tournament {
             pairCommitment(
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
+
+            // clear the claimer for the losing commitment
+            delete claimers[_matchId.commitmentOne];
         } else {
             revert WinByTimeout();
         }
@@ -203,6 +220,7 @@ abstract contract Tournament {
 
     function eliminateMatchByTimeout(Match.Id calldata _matchId)
         external
+        refundable
         tournamentNotFinished
     {
         matches[_matchId.hashFromId()].requireExist();
@@ -225,6 +243,10 @@ abstract contract Tournament {
         ) {
             // delete storage
             deleteMatch(_matchId.hashFromId());
+
+            // clear the claimer for both commitments
+            delete claimers[_matchId.commitmentOne];
+            delete claimers[_matchId.commitmentTwo];
         } else {
             revert EliminateByTimeout();
         }
@@ -424,6 +446,27 @@ abstract contract Tournament {
         Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchDeleted);
 
         return (true, winnerCouldWin);
+    }
+
+    function recoverBond() external {
+        require(isFinished(), TournamentNotFinished());
+
+        // Ensure there is a winner
+        (bool hasDangling, Tree.Node winningCommitment) =
+            hasDanglingCommitment();
+        require(hasDangling, NoWinner());
+
+        // Get the address associated with the winning claim
+        address winner = claimers[winningCommitment];
+        assert(winner != address(0));
+
+        // Refund the entire contract balance to the winner
+        uint256 contractBalance = address(this).balance;
+        (bool success,) = winner.call{value: contractBalance}("");
+        require(success, RecoverBondFailed());
+
+        // clear the claimer for the winning commitment
+        delete claimers[winningCommitment];
     }
 
     //
