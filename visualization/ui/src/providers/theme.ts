@@ -11,6 +11,10 @@ const theme = createTheme({
     fontFamily: "serif",
     cursorType: "pointer",
     primaryColor: "cyan",
+    other: {
+        lgIconSize: 40,
+        mdIconSize: 24,
+    },
     components: {
         Modal: Modal.extend({
             defaultProps: {
