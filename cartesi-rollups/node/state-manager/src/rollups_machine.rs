@@ -13,7 +13,10 @@ use cartesi_machine::{
     constants::{break_reason, pma::TX_START},
     error::{MachineError, MachineResult},
     machine::Machine,
-    types::{Hash, cmio::CmioResponseReason},
+    types::{
+        Hash,
+        cmio::{CmioRequest, CmioResponseReason, ManualReason},
+    },
 };
 
 use thiserror::Error;
@@ -91,7 +94,10 @@ impl RollupsMachine {
         self.machine.root_hash()
     }
 
-    pub fn process_input(&mut self, data: &[u8]) -> MachineResult<Vec<CommitmentLeaf>> {
+    pub fn process_input(
+        &mut self,
+        data: &[u8],
+    ) -> MachineResult<(Vec<CommitmentLeaf>, ManualReason)> {
         let mut state_hashes = Vec::with_capacity(1 << 20);
 
         self.feed_input(data)?;
@@ -114,9 +120,14 @@ impl RollupsMachine {
             hash,
             repetitions: STRIDE_COUNT_IN_INPUT - i,
         });
-
         self.input_index_in_epoch += 1;
-        Ok(state_hashes)
+
+        match self.machine.receive_cmio_request()? {
+            CmioRequest::Manual(reason) => Ok((state_hashes, reason)),
+            _ => {
+                panic!("This branch should not be reached");
+            }
+        }
     }
 
     fn feed_input(&mut self, input: &[u8]) -> MachineResult<()> {
