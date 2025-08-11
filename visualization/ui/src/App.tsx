@@ -5,13 +5,13 @@ import Home from "./home/Home";
 import theme from "./providers/theme";
 
 function App() {
-  return (
-    <MantineProvider theme={theme} defaultColorScheme="auto">
-      <Routes>
-        <Route path="/" element={<Home />} />
-      </Routes>
-    </MantineProvider>
-  );
+    return (
+        <MantineProvider theme={theme} defaultColorScheme="auto">
+            <Routes>
+                <Route path="/" element={<Home />} />
+            </Routes>
+        </MantineProvider>
+    );
 }
 
 export default App;

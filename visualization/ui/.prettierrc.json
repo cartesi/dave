@@ -1,0 +1,14 @@
+{
+    "tabWidth": 4,
+    "trailingComma": "all",
+    "bracketSpacing": true,
+    "overrides": [
+        {
+            "files": "*.md",
+            "options": {
+                "tabWidth": 1,
+                "bracketSpacing": false
+            }
+        }
+    ]
+}
