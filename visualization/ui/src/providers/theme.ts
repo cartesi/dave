@@ -8,8 +8,6 @@ import {
 } from "@mantine/core";
 
 const theme = createTheme({
-    fontFamily: "serif",
-    cursorType: "pointer",
     primaryColor: "cyan",
     primaryShade: {
         dark: 8,
