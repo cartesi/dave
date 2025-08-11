@@ -31,7 +31,7 @@ export const applications: Application[] = [
     processedInputs: 15,
   },
   {
-    address: "0x70ac08179605AF2D9e75782b8DEcDD3c22aA4D0C",
+    address: "0x7285F04d1d779B77c63F61746C1dDa204E32aE45",
     name: "BrokenDapp",
     consensusType: "PRT",
     state: "INOPERABLE",

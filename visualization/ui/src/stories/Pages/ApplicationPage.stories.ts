@@ -1,14 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import ListApplications from "../../features/application/ListApplications";
+import Home from "../../home/Home";
 
 const meta = {
-  title: "Pages/ListApplications",
-  component: ListApplications,
+  title: "Pages/Home",
+  component: Home,
   parameters: {
-    // Optional parameter to center the component in the Canvas. More info: https://storybook.js.org/docs/configure/story-layout
-    layout: "centered",
+    // @example Optional parameter to center the component in the Canvas. More info: https://storybook.js.org/docs/configure/story-layout
+    // layout: "centered",
   },
-} satisfies Meta<typeof ListApplications>;
+} satisfies Meta<typeof Home>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

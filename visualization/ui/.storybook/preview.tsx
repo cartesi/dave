@@ -1,8 +1,13 @@
 import { MantineProvider } from "@mantine/core";
+import { BrowserRouter } from "react-router";
 import "@mantine/core/styles.css";
 import type { Preview, StoryContext, StoryFn } from "@storybook/react-vite";
 import theme from "../src/providers/theme";
+import React from "react";
 
+const withRouter = (StoryFn: StoryFn, context: StoryContext) => (
+  <BrowserRouter>{StoryFn(context.args, context)}</BrowserRouter>
+);
 const withMantine = (StoryFn: StoryFn, context: StoryContext) => {
   const currentBg = context.globals.backgrounds?.value ?? "light";
   return (
@@ -32,7 +37,7 @@ const preview: Preview = {
       },
     },
   },
-  decorators: [withMantine],
+  decorators: [withRouter, withMantine],
 };
 
 export default preview;
