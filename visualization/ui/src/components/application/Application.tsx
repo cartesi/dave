@@ -2,6 +2,7 @@ import { Badge, Card, Group, Stack, Text } from "@mantine/core";
 import type { FC } from "react";
 import { TbCpu, TbCpuOff, TbInbox } from "react-icons/tb";
 import type { Hex } from "viem";
+import theme from "../../providers/theme";
 import styles from "./Application.module.css";
 
 type ApplicationState = "ENABLED" | "DISABLED" | "INOPERABLE";
@@ -30,7 +31,7 @@ const getStateColour = (state: ApplicationState) => {
     }
 };
 
-const iconSize = 24;
+const iconSize = theme.other.mdIconSize;
 
 export const ApplicationCard: FC<Props> = ({ application }) => {
     const stateColour = getStateColour(application.state);
