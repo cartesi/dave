@@ -134,12 +134,34 @@ impl StateManager for PersistentStateAccess {
         Ok(machine)
     }
 
-    fn finish_reverted_advance(
+    fn advance_reverted(
         &mut self,
-        _machine: RollupsMachine,
-        _leafs: &[CommitmentLeaf],
+        mut machine: RollupsMachine,
+        leafs: &[CommitmentLeaf],
     ) -> Result<RollupsMachine> {
-        todo!()
+        assert!(!leafs.is_empty());
+        let epoch = machine.epoch();
+        let input = machine.input_index_in_epoch();
+
+        rollup_data::insert_state_hashes_for_input(&self.connection, epoch, input, &leafs)?;
+
+        let (snapshot_path, snapshot_epoch, snapshot_input) =
+            rollup_data::latest_snapshot_path(&self.connection)?;
+        assert_eq!(snapshot_input + 1, input);
+        assert_eq!(snapshot_epoch, epoch);
+
+        // load rollups machine from previous successful (ACCEPT) snapshot
+        machine = RollupsMachine::new(&snapshot_path, epoch, input)?;
+
+        rollup_data::insert_snapshot(
+            &self.connection,
+            epoch,
+            input,
+            &machine.state_hash()?,
+            &snapshot_path,
+        )?;
+
+        Ok(machine)
     }
 
     fn epoch_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>> {
@@ -423,7 +445,7 @@ mod tests {
         };
 
         initial_snapshot =
-            access.finish_accepted_advance(initial_snapshot, &[commitment_leaf_1.clone()])?;
+            access.advance_accepted(initial_snapshot, &[commitment_leaf_1.clone()])?;
 
         assert_eq!(
             access.epoch_state_hashes(0)?[0],
@@ -441,7 +463,7 @@ mod tests {
 
         initial_snapshot.increment_input();
         initial_snapshot =
-            access.finish_accepted_advance(initial_snapshot, &[commitment_leaf_2.clone()])?;
+            access.advance_reverted(initial_snapshot, &[commitment_leaf_2.clone()])?;
 
         assert_eq!(
             access.epoch_state_hashes(0)?.len(),
