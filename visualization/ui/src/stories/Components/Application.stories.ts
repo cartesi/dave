@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ApplicationCard } from "../../features/application/Application";
-import { HoneypotDapp } from "../../features/application/application.mocks";
+import { ApplicationCard } from "../../components/application/Application";
+import { HoneypotDapp } from "../../components/application/application.mocks";
 
 const meta = {
   title: "Components/Application",
