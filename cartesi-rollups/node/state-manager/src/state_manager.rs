@@ -36,7 +36,7 @@ pub trait StateManager {
         leafs: &[CommitmentLeaf],
     ) -> Result<RollupsMachine>;
 
-    fn finish_reverted_advance(
+    fn advance_reverted(
         &mut self,
         machine: RollupsMachine,
         leafs: &[CommitmentLeaf],

@@ -6,8 +6,8 @@ pub mod error;
 use error::Result;
 use std::{ops::ControlFlow, time::Duration};
 
+use cartesi_machine::types::cmio::ManualReason;
 use rollups_state_manager::{InputId, StateManager, rollups_machine::RollupsMachine, sync::Watch};
-
 pub struct MachineRunner<SM: StateManager> {
     state_manager: SM,
     sleep_duration: Duration,
@@ -66,9 +66,18 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
             match next {
                 Some(input) => {
                     log::info!("processing input {}", input.id.input_index_in_epoch);
-                    let state_hashes = rollups_machine.process_input(&input.data)?;
-                    self.state_manager
-                        .advance_accepted(rollups_machine, &state_hashes)?;
+                    let (state_hashes, reason) = rollups_machine.process_input(&input.data)?;
+
+                    match reason {
+                        ManualReason::RxAccepted { .. } => {
+                            self.state_manager
+                                .advance_accepted(rollups_machine, &state_hashes)?;
+                        }
+                        _ => {
+                            self.state_manager
+                                .advance_reverted(rollups_machine, &state_hashes)?;
+                        }
+                    }
                 }
                 None => break Ok(rollups_machine),
             }
