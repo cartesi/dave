@@ -1,47 +1,27 @@
-import { Center, Overlay, Stack, Text, type TextProps } from "@mantine/core";
-import { useClipboard } from "@mantine/hooks";
+import { Avatar, Group, type TextProps } from "@mantine/core";
+import Jazzicon from "@raugfer/jazzicon";
 import type { FC } from "react";
+import { slice, type Hash } from "viem";
+import { LongText } from "../LongText";
 import type { Claim } from "../types";
 
 export interface ClaimCardProps extends TextProps {
     claim: Claim;
 }
 
+// builds an image data url for embedding
+function buildDataUrl(hash: Hash): string {
+    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
+}
+
 export const ClaimCard: FC<ClaimCardProps> = ({ claim, ...props }) => {
-    const clipboard = useClipboard({ timeout: 500 });
-    const l1 = claim.hash.slice(2, 18);
-    const l2 = claim.hash.slice(18, 34);
-    const l3 = claim.hash.slice(34, 50);
-    const l4 = claim.hash.slice(50, 66);
-    const bg = "white"; // TODO: this should be the theme default bg color
+    // generate a jazzicon
+    const avatar = buildDataUrl(claim.hash);
+
     return (
-        <Stack
-            gap={0}
-            onClick={() => clipboard.copy(claim)}
-            style={{ cursor: "pointer" }}
-            pos="relative"
-        >
-            {clipboard.copied && (
-                <Overlay opacity={1} bg={bg}>
-                    <Stack h="100%" justify="center">
-                        <Center>
-                            <Text>copied</Text>
-                        </Center>
-                    </Stack>
-                </Overlay>
-            )}
-            <Text ff="monospace" {...props}>
-                {l1}
-            </Text>
-            <Text ff="monospace" {...props}>
-                {l2}
-            </Text>
-            <Text ff="monospace" {...props}>
-                {l3}
-            </Text>
-            <Text ff="monospace" {...props}>
-                {l4}
-            </Text>
-        </Stack>
+        <Group gap="xs">
+            <Avatar src={avatar} size={24} />
+            <LongText {...props} value={claim.hash} ff="monospace" />
+        </Group>
     );
 };
