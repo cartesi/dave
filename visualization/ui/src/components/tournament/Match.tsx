@@ -25,12 +25,15 @@ export const MatchCard: FC<MatchCardProps> = ({ match, ...cardProps }) => {
             <Overlay
                 bg={gold}
                 opacity={winner === 1 ? 0.1 : 0}
-                style={{ height: claim2 ? "50%" : "100%" }}
+                style={{
+                    height: claim2 ? "50%" : "100%",
+                    pointerEvents: "none",
+                }}
             />
             <Overlay
                 bg={gold}
                 opacity={winner === 2 ? 0.1 : 0}
-                style={{ top: "50%", height: "50%" }}
+                style={{ top: "50%", height: "50%", pointerEvents: "none" }}
             />
             <Stack gap={0}>
                 <Group gap="xs">
