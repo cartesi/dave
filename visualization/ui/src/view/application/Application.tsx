@@ -1,11 +1,11 @@
 import { Stack } from "@mantine/core";
 import { type FC } from "react";
 import { TbClockFilled } from "react-icons/tb";
-import type { Epoch } from "../../components/epoch/Epoch";
 import ListEpoch from "../../components/epoch/ListEpoch";
 import { Hierarchy, type HierarchyConfig } from "../../components/Hierarchy";
 import Layout from "../../components/layout/Layout";
 import PageTitle from "../../components/layout/PageTitle";
+import type { Epoch } from "../../components/types";
 
 type Props = {
     epochs: Epoch[];

@@ -1,4 +1,4 @@
-import type { Epoch } from "./Epoch";
+import type { Epoch } from "../types";
 
 export const openEpoch: Epoch = {
     index: 5,

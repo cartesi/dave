@@ -15,14 +15,7 @@ import {
     TbClockShield,
 } from "react-icons/tb";
 import theme from "../../providers/theme";
-
-type EpochStatus = "OPEN" | "SEALED" | "CLOSED";
-
-export interface Epoch {
-    index: number;
-    status: EpochStatus;
-    inDispute: boolean;
-}
+import type { Epoch, EpochStatus } from "../types";
 
 type Props = { epoch: Epoch };
 

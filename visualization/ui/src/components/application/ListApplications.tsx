@@ -1,6 +1,7 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
-import { ApplicationCard, type Application } from "./Application";
+import type { Application } from "../types";
+import { ApplicationCard } from "./Application";
 
 type Props = { applications: Application[] };
 

@@ -1,20 +1,9 @@
 import { Badge, Card, Group, Stack, Text } from "@mantine/core";
 import type { FC } from "react";
 import { TbCpu, TbCpuOff, TbInbox } from "react-icons/tb";
-import type { Hex } from "viem";
 import theme from "../../providers/theme";
+import type { Application, ApplicationState } from "../types";
 import styles from "./Application.module.css";
-
-type ApplicationState = "ENABLED" | "DISABLED" | "INOPERABLE";
-type ConsensusType = "PRT" | "QUORUM" | "AUTHORITY";
-
-export interface Application {
-    address: Hex;
-    name?: string;
-    consensusType: ConsensusType;
-    state: ApplicationState;
-    processedInputs: number;
-}
 
 type Props = { application: Application };
 

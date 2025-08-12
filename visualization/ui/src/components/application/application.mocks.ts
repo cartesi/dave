@@ -1,4 +1,4 @@
-import type { Application } from "./Application";
+import type { Application } from "../types";
 
 export const HoneypotDapp: Application = {
     address: "0x4c1E74EF88a75C24e49eddD9f70D82A94D19251c",

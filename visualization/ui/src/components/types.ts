@@ -1,4 +1,23 @@
-import type { Address, Hash } from "viem";
+import type { Address, Hash, Hex } from "viem";
+
+export type ApplicationState = "ENABLED" | "DISABLED" | "INOPERABLE";
+export type ConsensusType = "PRT" | "QUORUM" | "AUTHORITY";
+
+export interface Application {
+    address: Hex;
+    name: string;
+    consensusType: ConsensusType;
+    state: ApplicationState;
+    processedInputs: number;
+}
+
+export type EpochStatus = "OPEN" | "SEALED" | "CLOSED";
+
+export interface Epoch {
+    index: number;
+    status: EpochStatus;
+    inDispute: boolean;
+}
 
 export interface Claim {
     hash: Hash;
@@ -17,7 +36,7 @@ export interface Round {
 }
 
 export interface Tournament {
-    level: "top" | "middle" | "bottom";
+    level: "TOP" | "MIDDLE" | "BOTTOM";
     startCycle: bigint;
     endCycle: bigint;
     rounds: Round[];
