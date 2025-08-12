@@ -1,4 +1,4 @@
-import { Center, Stack, Text } from "@mantine/core";
+import { Divider, Stack } from "@mantine/core";
 import type { FC } from "react";
 import type { Match } from "../types";
 import { MatchCard } from "./Match";
@@ -14,9 +14,7 @@ export const TournamentRound: FC<TournamentRoundProps> = ({
 }) => {
     return (
         <Stack>
-            <Center>
-                <Text>Round {index + 1}</Text>
-            </Center>
+            <Divider label={`Round ${index + 1}`} />
             {matches.map((match) => (
                 <MatchCard match={match} />
             ))}
