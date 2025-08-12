@@ -1,6 +1,7 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
-import { EpochCard, type Epoch } from "./Epoch";
+import type { Epoch } from "../types";
+import { EpochCard } from "./Epoch";
 
 type Props = { epochs: Epoch[] };
 

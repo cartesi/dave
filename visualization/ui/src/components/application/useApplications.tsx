@@ -1,5 +1,5 @@
 import type { SortingOrder } from "../ActionBar";
-import type { Application } from "./Application";
+import type { Application } from "../types";
 import { applications } from "./application.mocks";
 
 type Params = { application?: string; order: "ascending" | "descending" };
