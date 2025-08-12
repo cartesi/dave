@@ -1,4 +1,12 @@
-import { Card, Group, Stack, Text, type CardProps } from "@mantine/core";
+import {
+    Card,
+    Group,
+    Overlay,
+    Stack,
+    Text,
+    useMantineTheme,
+    type CardProps,
+} from "@mantine/core";
 import type { FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import type { Match } from "../types";
@@ -10,18 +18,30 @@ export interface MatchCardProps extends CardProps {
 
 export const MatchCard: FC<MatchCardProps> = ({ match, ...cardProps }) => {
     const { claim1, claim2, winner } = match;
+    const theme = useMantineTheme();
+    const gold = theme.colors.yellow[5];
     return (
         <Card withBorder shadow="sm" radius="lg" {...cardProps}>
+            <Overlay
+                bg={gold}
+                opacity={winner === 1 ? 0.1 : 0}
+                style={{ height: claim2 ? "50%" : "100%" }}
+            />
+            <Overlay
+                bg={gold}
+                opacity={winner === 2 ? 0.1 : 0}
+                style={{ top: "50%", height: "50%" }}
+            />
             <Stack gap={0}>
                 <Group gap="xs">
                     <TbTrophyFilled
                         size={20}
-                        color="gold"
+                        color={gold}
                         opacity={winner === 1 ? 1 : 0}
                     />
                     <ClaimCard
                         claim={claim1}
-                        c={winner === 1 ? "gold" : undefined}
+                        c={winner === 1 ? gold : undefined}
                         fw={winner === 1 ? 700 : undefined}
                     />
                 </Group>
@@ -30,14 +50,14 @@ export const MatchCard: FC<MatchCardProps> = ({ match, ...cardProps }) => {
                     {claim2 && (
                         <TbTrophyFilled
                             size={20}
-                            color="gold"
+                            color={gold}
                             opacity={winner === 2 ? 1 : 0}
                         />
                     )}
                     {claim2 && (
                         <ClaimCard
                             claim={claim2}
-                            c={winner === 2 ? "gold" : undefined}
+                            c={winner === 2 ? gold : undefined}
                             fw={winner === 2 ? 700 : undefined}
                         />
                     )}
