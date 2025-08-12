@@ -20,7 +20,7 @@ const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
     timestamp: Date.now(),
 }));
 
-export const OnGoing: Story = {
+export const Ongoing: Story = {
     args: {
         match: {
             claim1: claims[0],
