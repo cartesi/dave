@@ -20,7 +20,7 @@ const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
 export const Ongoing: Story = {
     args: {
         tournament: {
-            level: "top",
+            level: "TOP",
             startCycle: 1837880065n,
             endCycle: 2453987565n,
             rounds: [
@@ -65,7 +65,7 @@ export const Ongoing: Story = {
 export const NoChallengerYet: Story = {
     args: {
         tournament: {
-            level: "top",
+            level: "TOP",
             startCycle: 1837880065n,
             endCycle: 2453987565n,
             winner: undefined,
@@ -81,7 +81,7 @@ export const NoChallengerYet: Story = {
 export const Closed: Story = {
     args: {
         tournament: {
-            level: "top",
+            level: "TOP",
             startCycle: 1837880065n,
             endCycle: 2453987565n,
             winner: claims[0],

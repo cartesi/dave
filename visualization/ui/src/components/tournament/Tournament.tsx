@@ -1,5 +1,6 @@
-import { Group, Stack, Text } from "@mantine/core";
+import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { FC } from "react";
+import { LongText } from "../LongText";
 import type { Tournament } from "../types";
 import { TournamentTable } from "./Table";
 
@@ -12,22 +13,28 @@ const mcycleFormatter = new Intl.NumberFormat("en-US", {});
 export const TournamentView: FC<TournamentViewProps> = (props) => {
     const { tournament } = props;
     const { level, startCycle, endCycle, rounds, winner } = tournament;
+    const range = `${mcycleFormatter.format(startCycle)} to ${mcycleFormatter.format(endCycle)}`;
 
     return (
         <Stack>
-            <Group gap={5}>
+            <Group>
                 <Text>Level</Text>
-                <Text>{level}</Text>
+                <Badge>{level}</Badge>
             </Group>
-            <Group gap={5}>
+            <Group>
                 <Text>Mcycle range</Text>
-                <Text>{mcycleFormatter.format(startCycle)}</Text>
-                <Text>-</Text>
-                <Text>{mcycleFormatter.format(endCycle)}</Text>
+                <Group>
+                    <Text>{range}</Text>
+                </Group>
             </Group>
-            <Group gap={5}>
+            <Group>
                 <Text>Winner</Text>
-                <Text>{winner?.hash ?? "-"}</Text>
+                <LongText
+                    value={winner?.hash ?? "(undefined)"}
+                    shorten={winner?.hash ? 16 : false}
+                    copyButton={!!winner?.hash}
+                    ff="monospace"
+                />
             </Group>
             <TournamentTable rounds={rounds} />
         </Stack>
