@@ -38,7 +38,7 @@ export const MatchCard: FC<MatchCardProps> = ({ match, ...cardProps }) => {
             <Stack gap={0}>
                 <Group gap="xs">
                     <TbTrophyFilled
-                        size={20}
+                        size={24}
                         color={gold}
                         opacity={winner === 1 ? 1 : 0}
                     />
@@ -52,7 +52,7 @@ export const MatchCard: FC<MatchCardProps> = ({ match, ...cardProps }) => {
                 <Group gap="xs">
                     {claim2 && (
                         <TbTrophyFilled
-                            size={20}
+                            size={24}
                             color={gold}
                             opacity={winner === 2 ? 1 : 0}
                         />
