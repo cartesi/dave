@@ -53,7 +53,8 @@ export const WithEpochInDispute: Story = {
             openEpoch,
             { ...sealedEpoch, inDispute: true },
             closedEpoch,
-            { ...closedEpoch, index: closedEpoch.index - 1 },
+            { ...closedEpoch, index: 2 },
+            { ...closedEpoch, index: 1 },
         ],
         hierarchyConfig: [
             {

@@ -2,7 +2,6 @@ import {
     Badge,
     Card,
     Group,
-    Indicator,
     Stack,
     Text,
     type MantinePrimaryShade,
@@ -34,7 +33,6 @@ const getStatusColour = (state: EpochStatus) => {
         case "SEALED":
             return "cyan";
         case "CLOSED":
-            return "teal";
         default:
             return "gray";
     }
@@ -76,37 +74,37 @@ export const EpochCard: FC<Props> = ({ epoch }) => {
         ? disputeColour
         : theme.colors[statusColour][shadeIndex];
 
-    console.log(theme);
-
     return (
-        <Indicator
-            inline
-            processing
-            disabled={!epoch.inDispute}
-            // offset={21}
-            size={isMobile ? 13 : 21}
-            label={isMobile ? "" : "In Dispute"}
-            color={disputeColour}
-        >
-            <Card shadow="md" withBorder>
-                <Stack gap="0">
-                    <Group justify="space-between" gap="xl">
-                        <Group>
-                            <EpochIcon
-                                status={epoch.status}
-                                inDispute={epoch.inDispute}
-                                colour={finalColour}
-                            />
-                            <Text size="xl" c={finalColour}>
-                                {epoch.index}
-                            </Text>
-                        </Group>
-                        <Badge size="md" color={finalColour}>
-                            {epoch.status}
-                        </Badge>
+        <Card shadow="md" withBorder>
+            <Stack gap="3">
+                <Group justify="space-between" gap={isMobile ? "xs" : "xl"}>
+                    <Group gap={isMobile ? "xs" : undefined}>
+                        <EpochIcon
+                            status={epoch.status}
+                            inDispute={epoch.inDispute}
+                            colour={finalColour}
+                        />
+                        <Text size="xl" c={finalColour}>
+                            {epoch.index}
+                        </Text>
                     </Group>
-                </Stack>
-            </Card>
-        </Indicator>
+                    {epoch.inDispute && (
+                        <Badge variant="outline" color={disputeColour}>
+                            <Text
+                                size={isMobile ? "xs" : "md"}
+                                fw="bold"
+                                tt="uppercase"
+                                c={disputeColour}
+                            >
+                                in dispute
+                            </Text>
+                        </Badge>
+                    )}
+                    <Badge size="md" color={finalColour}>
+                        {epoch.status}
+                    </Badge>
+                </Group>
+            </Stack>
+        </Card>
     );
 };
