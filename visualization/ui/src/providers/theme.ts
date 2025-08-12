@@ -11,6 +11,10 @@ const theme = createTheme({
     fontFamily: "serif",
     cursorType: "pointer",
     primaryColor: "cyan",
+    primaryShade: {
+        dark: 8,
+        light: 6,
+    },
     other: {
         lgIconSize: 40,
         mdIconSize: 24,

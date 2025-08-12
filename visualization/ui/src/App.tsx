@@ -1,8 +1,8 @@
 import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { Route, Routes } from "react-router";
-import Home from "./home/Home";
 import theme from "./providers/theme";
+import Home from "./view/home/Home";
 
 function App() {
     return (
