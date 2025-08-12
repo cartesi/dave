@@ -1,11 +1,11 @@
 import { Stack, Title } from "@mantine/core";
 import { useState, type FC } from "react";
 import { TbCpu } from "react-icons/tb";
-import ActionBar, { type ActionBarData } from "../components/ActionBar";
-import ListApplications from "../components/application/ListApplications";
-import useApplications from "../components/application/useApplications";
-import Layout from "../components/layout/Layout";
-import PageTitle from "../components/layout/PageTitle";
+import ListApplications from "../..//components/application/ListApplications";
+import ActionBar, { type ActionBarData } from "../../components/ActionBar";
+import useApplications from "../../components/application/useApplications";
+import Layout from "../../components/layout/Layout";
+import PageTitle from "../../components/layout/PageTitle";
 
 const initialValue: ActionBarData = { query: "", sortingOrder: "ascending" };
 

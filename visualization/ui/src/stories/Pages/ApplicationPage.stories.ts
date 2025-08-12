@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import Home from "../../home/Home";
+import Home from "../../view/home/Home";
 
 const meta = {
     title: "Pages/Home",
