@@ -36,7 +36,7 @@ export const MatchCard: FC<MatchCardProps> = ({ match, ...cardProps }) => {
                 style={{ top: "50%", height: "50%", pointerEvents: "none" }}
             />
             <Stack gap={0}>
-                <Group gap="xs">
+                <Group gap="xs" wrap="nowrap">
                     <TbTrophyFilled
                         size={24}
                         color={gold}
@@ -49,7 +49,7 @@ export const MatchCard: FC<MatchCardProps> = ({ match, ...cardProps }) => {
                     />
                 </Group>
                 {claim2 && <Text style={{ textAlign: "center" }}>vs</Text>}
-                <Group gap="xs">
+                <Group gap="xs" wrap="nowrap">
                     {claim2 && (
                         <TbTrophyFilled
                             size={24}

@@ -19,7 +19,7 @@ export const ClaimCard: FC<ClaimCardProps> = ({ claim, ...props }) => {
     const avatar = buildDataUrl(claim.hash);
 
     return (
-        <Group gap="xs">
+        <Group gap="xs" wrap="nowrap">
             <Avatar src={avatar} size={24} />
             <LongText {...props} value={claim.hash} ff="monospace" />
         </Group>

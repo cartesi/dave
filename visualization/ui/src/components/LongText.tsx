@@ -45,7 +45,7 @@ export const LongText: FC<LongTextProps> = (props) => {
         : value;
     const size = textProps.size;
     return (
-        <Group gap={2}>
+        <Group gap={2} wrap="nowrap">
             <Text {...textProps}>{text}</Text>
             {copyButton && (
                 <CopyButton value={value} timeout={2000}>
