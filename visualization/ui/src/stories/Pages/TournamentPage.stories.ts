@@ -74,12 +74,13 @@ const randomWinner = (claim1: Claim, claim2: Claim): 1 | 2 | undefined => {
 /**
  * Create random claims
  */
+const startTimestamp = Math.floor(Date.now() / 1000) * 1000;
 const amountOfClaims = 128 as const;
 const rootClaims: Claim[] = Array.from({ length: amountOfClaims }).map(
     (_, i) => ({
         hash: keccak256(toBytes(i)),
         claimer: zeroAddress,
-        timestamp: Date.now(),
+        timestamp: startTimestamp + i * 1000, // XXX: improve this time distribution
     }),
 );
 
@@ -89,56 +90,87 @@ const rootClaims: Claim[] = Array.from({ length: amountOfClaims }).map(
  * @param ongoingPreviousRound number of ongoing matches in the previous round
  * @returns
  */
-const pairUp = (claims: Claim[], ongoingPreviousRounds: number): Match[] => {
+const pairUp = (claims: Claim[]): Match[] => {
     const matches: Match[] = [];
     for (let i = 0; i < claims.length; i += 2) {
         const claim1 = claims[i];
         const claim2 = claims[i + 1]; // will be undefined if number of claims is odd
 
-        // if there is no claim2, claim1 can be declared winner only if all previous matches in all previous rounds are resolved
-        const winner = !claim2
-            ? ongoingPreviousRounds > 0
-                ? undefined
-                : 1
-            : randomWinner(claim1, claim2);
-        matches.push({ claim1, claim2, winner });
+        matches.push({
+            claim1,
+            claim2,
+            claim1Timestamp: claim1.timestamp,
+            claim2Timestamp: claim2?.timestamp,
+        });
     }
     return matches;
 };
 
-/**
- * Get the winners from a list of matches
- * @param matches
- * @returns
- */
-const getWinners = (matches: Match[]): Claim[] => {
-    return matches
-        .map((match) =>
-            match.winner === 1
-                ? match.claim1
-                : match.winner === 2
-                  ? match.claim2
-                  : undefined,
-        )
-        .filter((claim) => !!claim);
+const next = (
+    round: Round,
+    ongoingPreviousRounds: number,
+): Round | undefined => {
+    const matches: Match[] = [];
+
+    for (const match of round.matches) {
+        // declare a random winner
+        // orphans are only declared as winner if there are no ongoing matches in previous rounds
+        const winner = match.claim2
+            ? randomWinner(match.claim1, match.claim2)
+            : ongoingPreviousRounds > 0
+              ? undefined
+              : 1;
+
+        if (winner !== undefined) {
+            // if a winner has been declared, set winner and timestamp
+            match.winner = winner;
+            match.winnerTimestamp = match.claim2Timestamp
+                ? match.claim2Timestamp + 1000
+                : match.claim1Timestamp + 1000;
+
+            const winnerClaim =
+                winner === 1 ? match.claim1 : (match.claim2 as Claim);
+
+            // get the last match of the new round
+            const lastMatch = matches[matches.length - 1];
+
+            if (lastMatch && !lastMatch.claim2) {
+                // if there is a match with a free slot, add the winner as claim2
+                lastMatch.claim2 = winnerClaim;
+                lastMatch.claim2Timestamp = match.winnerTimestamp;
+            } else {
+                // create a new match with the winner as claim1
+                matches.push({
+                    claim1: winnerClaim,
+                    claim1Timestamp: match.winnerTimestamp,
+                });
+            }
+        }
+    }
+
+    return matches.length > 0 ? { matches } : undefined;
 };
+
+let ongoing = 0; // accumulator for the amount of ongoing matches
+const rounds: Round[] = [];
 
 /**
  * Create rounds until there are only ongoing matches
  */
-let claims = rootClaims;
-let ongoing = 0; // accumulator for the amount of ongoing matches
-const rounds: Round[] = [];
+let round: Round | undefined = { matches: pairUp(rootClaims) };
+rounds.push(round);
 do {
-    const matches = pairUp(claims, ongoing);
-    rounds.push({ matches });
+    round = next(round, ongoing);
+    if (round) {
+        // increment the number of matches that are still ongoing
+        ongoing += round.matches.filter(
+            (match) => match.winner === undefined,
+        ).length;
 
-    // get the winner claims that will move to next round
-    claims = getWinners(matches);
-
-    // increment the number of matches that are still ongoing
-    ongoing += matches.filter((match) => match.winner === undefined).length;
-} while (claims.length > 1);
+        // add the round to the list of rounds
+        rounds.push(round);
+    }
+} while (round);
 
 let winner: Claim | undefined;
 if (ongoing === 0) {

@@ -11,10 +11,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const startTimestamp = Math.floor(Date.now() / 1000) * 1000;
 const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
     claimer: zeroAddress,
-    timestamp: Date.now(),
+    timestamp: startTimestamp + i * 1000, // XXX: improve this time distribution
 }));
 
 export const Ongoing: Story = {
@@ -30,19 +31,30 @@ export const Ongoing: Story = {
                             claim1: claims[0],
                             claim2: claims[1],
                             winner: 1,
+                            claim1Timestamp: claims[0].timestamp,
+                            claim2Timestamp: claims[1].timestamp,
+                            winnerTimestamp: claims[1].timestamp + 1000,
                         },
                         {
                             claim1: claims[2],
                             claim2: claims[3],
+                            claim1Timestamp: claims[2].timestamp,
+                            claim2Timestamp: claims[3].timestamp,
+                            winnerTimestamp: claims[3].timestamp + 1000,
                         },
                         {
                             claim1: claims[4],
                             claim2: claims[5],
                             winner: 1,
+                            claim1Timestamp: claims[4].timestamp,
+                            claim2Timestamp: claims[5].timestamp,
+                            winnerTimestamp: claims[5].timestamp + 1000,
                         },
                         {
                             claim1: claims[6],
                             winner: 1,
+                            claim1Timestamp: claims[6].timestamp,
+                            winnerTimestamp: claims[6].timestamp + 1000,
                         },
                     ],
                 },
@@ -51,9 +63,12 @@ export const Ongoing: Story = {
                         {
                             claim1: claims[6],
                             claim2: claims[4],
+                            claim1Timestamp: claims[6].timestamp + 1000,
+                            claim2Timestamp: claims[5].timestamp + 1000,
                         },
                         {
                             claim1: claims[0],
+                            claim1Timestamp: claims[1].timestamp + 2000,
                         },
                     ],
                 },
@@ -71,7 +86,12 @@ export const NoChallengerYet: Story = {
             winner: undefined,
             rounds: [
                 {
-                    matches: [{ claim1: claims[0] }],
+                    matches: [
+                        {
+                            claim1: claims[0],
+                            claim1Timestamp: claims[0].timestamp,
+                        },
+                    ],
                 },
             ],
         },
@@ -87,7 +107,14 @@ export const Closed: Story = {
             winner: claims[0],
             rounds: [
                 {
-                    matches: [{ claim1: claims[0], winner: 1 }],
+                    matches: [
+                        {
+                            claim1: claims[0],
+                            winner: 1,
+                            claim1Timestamp: claims[0].timestamp,
+                            winnerTimestamp: claims[0].timestamp + 1000,
+                        },
+                    ],
                 },
             ],
         },

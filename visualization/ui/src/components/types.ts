@@ -29,6 +29,9 @@ export interface Match {
     claim1: Claim;
     claim2?: Claim;
     winner?: 1 | 2;
+    claim1Timestamp: number; // instant in time when claim1 joined the match
+    claim2Timestamp?: number; // instant in time when claim2 joined the match
+    winnerTimestamp?: number; // instant in time when match was resolved
 }
 
 export type CycleRange = [bigint, bigint];
