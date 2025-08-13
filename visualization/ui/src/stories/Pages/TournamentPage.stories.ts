@@ -82,19 +82,23 @@ const rootClaims: Claim[] = Array.from({ length: 512 }).map((_, i) => ({
 
 /**
  * Pair up claims, and assign a random winner to each match
- * @param claims
+ * @param claims list of claims to pair up
+ * @param ongoingPreviousRound number of ongoing matches in the previous round
  * @returns
  */
-const pairUp = (claims: Claim[]): Match[] => {
+const pairUp = (claims: Claim[], ongoingPreviousRounds: number): Match[] => {
     const matches: Match[] = [];
     for (let i = 0; i < claims.length; i += 2) {
         const claim1 = claims[i];
-        const claim2 = claims[i + 1];
-        matches.push({
-            claim1,
-            claim2,
-            winner: !claim2 ? 1 : randomWinner(claim1, claim2),
-        });
+        const claim2 = claims[i + 1]; // will be undefined if number of claims is odd
+
+        // if there is no claim2, claim1 can be declared winner only if all previous matches in all previous rounds are resolved
+        const winner = !claim2
+            ? ongoingPreviousRounds > 0
+                ? undefined
+                : 1
+            : randomWinner(claim1, claim2);
+        matches.push({ claim1, claim2, winner });
     }
     return matches;
 };
@@ -120,11 +124,17 @@ const getWinners = (matches: Match[]): Claim[] => {
  * Create rounds until there are only ongoing matches
  */
 let claims = rootClaims;
+let ongoing = 0; // accumulator for the amount of ongoing matches
 const rounds: Round[] = [];
 do {
-    const matches = pairUp(claims);
+    const matches = pairUp(claims, ongoing);
     rounds.push({ matches });
+
+    // get the winner claims that will move to next round
     claims = getWinners(matches);
+
+    // increment the number of matches that are still ongoing
+    ongoing += matches.filter((match) => match.winner === undefined).length;
 } while (claims.length > 1);
 
 export const TopLevelLargeDispute: Story = {
