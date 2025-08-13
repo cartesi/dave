@@ -137,6 +137,19 @@ do {
     ongoing += matches.filter((match) => match.winner === undefined).length;
 } while (claims.length > 1);
 
+let winner: Claim | undefined;
+if (ongoing === 0) {
+    // all matches are resolved, the winner is the last surviving claim, in last round
+    const lastRound = rounds[rounds.length - 1];
+    const lastMatch = lastRound.matches[0];
+    winner =
+        lastMatch.winner === 1
+            ? lastMatch.claim1
+            : lastMatch.winner === 2
+              ? lastMatch.claim2
+              : undefined;
+}
+
 export const TopLevelLargeDispute: Story = {
     args: {
         application: applications[0],
@@ -146,6 +159,7 @@ export const TopLevelLargeDispute: Story = {
             startCycle: 1837880065n,
             endCycle: 2453987565n,
             rounds,
+            winner,
         },
     },
 };
