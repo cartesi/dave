@@ -74,11 +74,14 @@ const randomWinner = (claim1: Claim, claim2: Claim): 1 | 2 | undefined => {
 /**
  * Create random claims
  */
-const rootClaims: Claim[] = Array.from({ length: 512 }).map((_, i) => ({
-    hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
-    timestamp: Date.now(),
-}));
+const amountOfClaims = 128 as const;
+const rootClaims: Claim[] = Array.from({ length: amountOfClaims }).map(
+    (_, i) => ({
+        hash: keccak256(toBytes(i)),
+        claimer: zeroAddress,
+        timestamp: Date.now(),
+    }),
+);
 
 /**
  * Pair up claims, and assign a random winner to each match
