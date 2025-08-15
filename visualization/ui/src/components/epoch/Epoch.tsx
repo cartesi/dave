@@ -1,12 +1,5 @@
-import {
-    Badge,
-    Card,
-    Group,
-    Stack,
-    Text,
-    type MantinePrimaryShade,
-} from "@mantine/core";
-import { useColorScheme, useMediaQuery } from "@mantine/hooks";
+import { Badge, Card, Group, Stack, Text } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import type { FC } from "react";
 import {
     TbClockCheck,
@@ -16,56 +9,34 @@ import {
 } from "react-icons/tb";
 import theme from "../../providers/theme";
 import type { Epoch, EpochStatus } from "../types";
+import { useEpochStatusColor } from "./useEpochStatusColor";
 
 type Props = { epoch: Epoch };
-
-const getStatusColour = (state: EpochStatus) => {
-    switch (state) {
-        case "OPEN":
-            return "green";
-        case "SEALED":
-            return "cyan";
-        case "CLOSED":
-        default:
-            return "gray";
-    }
-};
 
 type EpochIconProps = {
     status: EpochStatus;
     inDispute: boolean;
-    colour: string;
+    color: string;
 };
 
-const EpochIcon: FC<EpochIconProps> = ({ inDispute, status, colour }) => {
+const EpochIcon: FC<EpochIconProps> = ({ inDispute, status, color }) => {
     if (inDispute === true)
         return (
-            <TbClockExclamation size={theme.other.mdIconSize} color={colour} />
+            <TbClockExclamation size={theme.other.mdIconSize} color={color} />
         );
 
     if (status === "CLOSED")
-        return <TbClockCheck size={theme.other.mdIconSize} color={colour} />;
+        return <TbClockCheck size={theme.other.mdIconSize} color={color} />;
 
     if (status === "SEALED")
-        return <TbClockShield size={theme.other.mdIconSize} color={colour} />;
+        return <TbClockShield size={theme.other.mdIconSize} color={color} />;
 
-    return <TbClockPlay size={theme.other.mdIconSize} color={colour} />;
-};
-
-const getCorrectShade = (scheme: "dark" | "light"): number => {
-    const shade = theme.primaryShade as MantinePrimaryShade;
-    return scheme === "dark" ? shade.dark : shade.light;
+    return <TbClockPlay size={theme.other.mdIconSize} color={color} />;
 };
 
 export const EpochCard: FC<Props> = ({ epoch }) => {
-    const colorScheme = useColorScheme();
     const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
-    const shadeIndex = getCorrectShade(colorScheme);
-    const statusColour = getStatusColour(epoch.status);
-    const disputeColour = theme.colors.orange[shadeIndex];
-    const finalColour = epoch.inDispute
-        ? disputeColour
-        : theme.colors[statusColour][shadeIndex];
+    const statusColor = useEpochStatusColor(epoch);
 
     return (
         <Card shadow="md" withBorder>
@@ -75,25 +46,25 @@ export const EpochCard: FC<Props> = ({ epoch }) => {
                         <EpochIcon
                             status={epoch.status}
                             inDispute={epoch.inDispute}
-                            colour={finalColour}
+                            color={statusColor}
                         />
-                        <Text size="xl" c={finalColour}>
+                        <Text size="xl" c={statusColor}>
                             {epoch.index}
                         </Text>
                     </Group>
                     {epoch.inDispute && (
-                        <Badge variant="outline" color={disputeColour}>
+                        <Badge variant="outline" color={statusColor}>
                             <Text
                                 size={isMobile ? "xs" : "md"}
                                 fw="bold"
                                 tt="uppercase"
-                                c={disputeColour}
+                                c={statusColor}
                             >
                                 in dispute
                             </Text>
                         </Badge>
                     )}
-                    <Badge size="md" color={finalColour}>
+                    <Badge size="md" color={statusColor}>
                         {epoch.status}
                     </Badge>
                 </Group>
