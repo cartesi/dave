@@ -1,22 +1,35 @@
 import { MantineProvider } from "@mantine/core";
-import { BrowserRouter } from "react-router";
 import "@mantine/core/styles.css";
 import type { Preview, StoryContext, StoryFn } from "@storybook/react-vite";
+import { BrowserRouter } from "react-router";
+import Layout from '../src/components/layout/Layout';
 import theme from "../src/providers/theme";
-import React from "react";
 
 const withRouter = (StoryFn: StoryFn, context: StoryContext) => (
   <BrowserRouter>{StoryFn(context.args, context)}</BrowserRouter>
 );
+
+const withLayout = (StoryFn: StoryFn, context:StoryContext) => {
+  const {title} = context;
+  const [sectionType] = title.split('/');
+  
+  if(sectionType.toLowerCase().includes('pages')) 
+    return <Layout>{StoryFn(context.args, context)}</Layout>
+
+
+  return <>{StoryFn(context.args, context)}</>
+
+}
 const withMantine = (StoryFn: StoryFn, context: StoryContext) => {
-  const currentBg = context.globals.backgrounds?.value ?? "light";
+  const currentBg = context.globals.backgrounds?.value ?? "light";      
+  
   return (
     <>
-      <MantineProvider forceColorScheme={currentBg} theme={theme}>
+     <MantineProvider forceColorScheme={currentBg} theme={theme}>         
         {StoryFn(context.args, context)}
       </MantineProvider>
     </>
-  );
+  )
 };
 
 const preview: Preview = {
@@ -37,7 +50,11 @@ const preview: Preview = {
       },
     },
   },
-  decorators: [withRouter, withMantine],
+  decorators: [
+    // Order matters. So layout decorator first. Fn calling is router(mantine(layout))
+    withLayout, 
+    withMantine, 
+    withRouter ],
 };
 
 export default preview;
