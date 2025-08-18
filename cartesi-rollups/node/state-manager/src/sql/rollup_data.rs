@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use crate::{CommitmentLeaf, Proof, Settlement, state_manager::Result};
+use crate::{CommitmentLeaf, InputId, Proof, Settlement, state_manager::Result};
 
 use cartesi_machine::types::Hash;
 
@@ -253,6 +253,30 @@ pub fn gc_previous_advances(conn: &Connection, epoch: u64, input_anchor: u64) ->
     Ok(())
 }
 
+pub fn next_input_to_be_processed(conn: &Connection) -> Result<InputId> {
+    let mut stmt = conn
+        .prepare_cached(
+            r#"
+            SELECT epoch_number, input_number
+            FROM epoch_snapshot_info
+            ORDER BY
+                epoch_number DESC,
+                input_number DESC
+            LIMIT 1
+            "#,
+        )
+        .map_err(anyhow::Error::from)?;
+
+    let (epoch_number, input_index_in_epoch): (u64, u64) = stmt
+        .query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("there should at least be a single latest processed");
+
+    Ok(InputId {
+        epoch_number,
+        input_index_in_epoch,
+    })
+}
+
 pub fn latest_snapshot_path(conn: &Connection) -> Result<(PathBuf, u64, u64)> {
     let mut stmt = conn
         .prepare_cached(
@@ -426,10 +450,14 @@ mod tests {
 
         insert_snapshot(&conn, 42, 2, &[1u8; 32], dir.path()).unwrap();
         let (p, e, i) = latest_snapshot_path(&conn).unwrap();
+        let id = next_input_to_be_processed(&conn).unwrap();
 
         assert_eq!(p, dir.path());
         assert_eq!(e, 42);
         assert_eq!(i, 2);
+
+        assert_eq!(e, id.epoch_number);
+        assert_eq!(i, id.input_index_in_epoch);
     }
 
     #[test]
