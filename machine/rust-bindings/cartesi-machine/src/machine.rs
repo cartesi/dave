@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use std::{
-    ffi::{CStr, CString, c_char},
+    ffi::{c_char, CStr, CString},
     path::Path,
     ptr,
 };
@@ -12,11 +12,11 @@ use crate::{
     constants,
     error::{MachineError, MachineResult as Result},
     types::{
-        BreakReason, Hash, LogType, Register, UArchBreakReason,
         access_proof::AccessLog,
         cmio::{CmioRequest, CmioResponseReason},
         memory_proof::Proof,
         memory_range::MemoryRangeDescriptions,
+        BreakReason, Hash, LogType, Register, UArchBreakReason,
     },
 };
 

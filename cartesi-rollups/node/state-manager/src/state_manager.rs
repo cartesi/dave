@@ -32,13 +32,13 @@ pub trait StateManager {
     //
     fn advance_accepted(
         &mut self,
-        machine: RollupsMachine,
+        machine: &mut RollupsMachine,
         leafs: &[CommitmentLeaf],
-    ) -> Result<RollupsMachine>;
+    ) -> Result<()>;
 
     fn advance_reverted(
         &mut self,
-        machine: RollupsMachine,
+        input_reverted: &InputId,
         leafs: &[CommitmentLeaf],
     ) -> Result<RollupsMachine>;
 
@@ -46,11 +46,12 @@ pub trait StateManager {
 
     fn settlement_info(&mut self, epoch_number: u64) -> Result<Option<Settlement>>;
 
-    fn roll_epoch(&mut self, machine: &mut RollupsMachine) -> Result<()>;
+    fn roll_epoch(&mut self) -> Result<()>;
 
     fn snapshot(&mut self, epoch_number: u64, input_number: u64) -> Result<Option<RollupsMachine>>;
 
     fn latest_snapshot(&mut self) -> Result<RollupsMachine>;
+    fn next_input_id(&mut self) -> Result<InputId>;
 
     //
     // Directory

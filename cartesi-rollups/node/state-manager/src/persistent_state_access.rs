@@ -112,9 +112,9 @@ impl StateManager for PersistentStateAccess {
     //
     fn advance_accepted(
         &mut self,
-        mut machine: RollupsMachine,
+        machine: &mut RollupsMachine,
         leafs: &[CommitmentLeaf],
-    ) -> Result<RollupsMachine> {
+    ) -> Result<()> {
         assert!(!leafs.is_empty());
         let epoch = machine.epoch();
         let input = machine.input_index_in_epoch();
@@ -131,37 +131,54 @@ impl StateManager for PersistentStateAccess {
         rollup_data::insert_snapshot(&self.connection, epoch, input, &state_hash, &dest_dir)?;
         rollup_data::gc_previous_advances(&self.connection, epoch, input)?;
 
-        Ok(machine)
+        Ok(())
     }
 
     fn advance_reverted(
         &mut self,
-        mut machine: RollupsMachine,
+        input_reverted: &InputId,
         leafs: &[CommitmentLeaf],
     ) -> Result<RollupsMachine> {
         assert!(!leafs.is_empty());
-        let epoch = machine.epoch();
-        let input = machine.input_index_in_epoch();
 
-        rollup_data::insert_state_hashes_for_input(&self.connection, epoch, input, &leafs)?;
+        rollup_data::insert_state_hashes_for_input(
+            &self.connection,
+            input_reverted.epoch_number,
+            input_reverted.input_index_in_epoch,
+            leafs,
+        )?;
 
         let (snapshot_path, snapshot_epoch, snapshot_input) =
             rollup_data::latest_snapshot_path(&self.connection)?;
-        assert_eq!(snapshot_input + 1, input);
-        assert_eq!(snapshot_epoch, epoch);
+
+        assert_eq!(snapshot_epoch, input_reverted.epoch_number);
+        assert_eq!(snapshot_input + 1, input_reverted.input_index_in_epoch);
 
         // load rollups machine from previous successful (ACCEPT) snapshot
-        machine = RollupsMachine::new(&snapshot_path, epoch, input)?;
+        let mut machine = RollupsMachine::new(
+            &snapshot_path,
+            input_reverted.epoch_number,
+            input_reverted.input_index_in_epoch, // this is one greater than original snapshot!
+        )?;
 
         rollup_data::insert_snapshot(
             &self.connection,
-            epoch,
-            input,
+            input_reverted.epoch_number,
+            input_reverted.input_index_in_epoch,
             &machine.state_hash()?,
             &snapshot_path,
         )?;
+        rollup_data::gc_previous_advances(
+            &self.connection,
+            input_reverted.epoch_number,
+            input_reverted.input_index_in_epoch,
+        )?;
 
         Ok(machine)
+    }
+
+    fn next_input_id(&mut self) -> Result<InputId> {
+        rollup_data::next_input_to_be_processed(&self.connection)
     }
 
     fn epoch_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>> {
@@ -179,7 +196,8 @@ impl StateManager for PersistentStateAccess {
         rollup_data::settlement_info(&self.connection, epoch_number)
     }
 
-    fn roll_epoch(&mut self, machine: &mut RollupsMachine) -> Result<()> {
+    fn roll_epoch(&mut self) -> Result<()> {
+        let mut machine = self.latest_snapshot()?;
         let previous_epoch_number = machine.epoch();
 
         let settlement = {
@@ -444,8 +462,7 @@ mod tests {
             repetitions: 5,
         };
 
-        initial_snapshot =
-            access.advance_accepted(initial_snapshot, &[commitment_leaf_1.clone()])?;
+        access.advance_accepted(&mut initial_snapshot, &[commitment_leaf_1.clone()])?;
 
         assert_eq!(
             access.epoch_state_hashes(0)?[0],
@@ -462,8 +479,13 @@ mod tests {
         );
 
         initial_snapshot.increment_input();
-        initial_snapshot =
-            access.advance_reverted(initial_snapshot, &[commitment_leaf_2.clone()])?;
+        initial_snapshot = access.advance_reverted(
+            &InputId {
+                epoch_number: 0,
+                input_index_in_epoch: 1,
+            },
+            &[commitment_leaf_2.clone()],
+        )?;
 
         assert_eq!(
             access.epoch_state_hashes(0)?.len(),
@@ -477,7 +499,7 @@ mod tests {
         );
 
         let (output_merkle, output_proof) = initial_snapshot.outputs_proof()?;
-        access.roll_epoch(&mut initial_snapshot)?;
+        access.roll_epoch()?;
         assert_eq!(access.latest_snapshot()?.epoch(), 1);
 
         assert_eq!(

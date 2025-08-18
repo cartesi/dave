@@ -7,7 +7,7 @@ use error::Result;
 use std::{ops::ControlFlow, time::Duration};
 
 use cartesi_machine::types::cmio::ManualReason;
-use rollups_state_manager::{InputId, StateManager, rollups_machine::RollupsMachine, sync::Watch};
+use rollups_state_manager::{InputId, StateManager, sync::Watch};
 pub struct MachineRunner<SM: StateManager> {
     state_manager: SM,
     sleep_duration: Duration,
@@ -36,34 +36,36 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
     fn process_rollup(&mut self) -> Result<()> {
         // process all inputs that are currently availalble
         loop {
-            let mut current_machine = self.catch_up()?;
+            self.catch_up()?;
 
-            let current_machine_epoch = current_machine.epoch();
-            let latest_epoch = self.state_manager.epoch_count()?;
+            let current_machine_epoch = self.state_manager.next_input_id()?.epoch_number;
+            let latest_blockchain_epoch = self.state_manager.epoch_count()?;
 
-            if current_machine_epoch == latest_epoch {
-                // all inputs processed in current epoch
-                // epoch may still be open, come back later
+            if current_machine_epoch == latest_blockchain_epoch {
+                // all current inputs processed in current epoch, which is still open.
+                // sleep and come back later.
                 break Ok(());
             } else {
-                // epoch is finished
-                assert!(current_machine_epoch < latest_epoch);
-                self.state_manager.roll_epoch(&mut current_machine)?;
+                // epoch is finished, all inputs processed
+                assert!(current_machine_epoch < latest_blockchain_epoch);
+                self.state_manager.roll_epoch()?;
                 log::info!("started new epoch {}", current_machine_epoch + 1);
             }
         }
     }
 
-    fn catch_up(&mut self) -> Result<RollupsMachine> {
-        loop {
-            let mut rollups_machine = self.state_manager.latest_snapshot()?;
+    fn catch_up(&mut self) -> Result<()> {
+        let mut rollups_machine = self.state_manager.latest_snapshot()?;
 
-            let next = self.state_manager.input(&InputId {
+        loop {
+            let input_id = InputId {
                 epoch_number: rollups_machine.epoch(),
                 input_index_in_epoch: rollups_machine.input_index_in_epoch(),
-            })?;
+            };
 
-            match next {
+            let input = self.state_manager.input(&input_id)?;
+
+            match input {
                 Some(input) => {
                     log::info!("processing input {}", input.id.input_index_in_epoch);
                     let (state_hashes, reason) = rollups_machine.process_input(&input.data)?;
@@ -71,15 +73,16 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
                     match reason {
                         ManualReason::RxAccepted { .. } => {
                             self.state_manager
-                                .advance_accepted(rollups_machine, &state_hashes)?;
+                                .advance_accepted(&mut rollups_machine, &state_hashes)?;
                         }
                         _ => {
-                            self.state_manager
-                                .advance_reverted(rollups_machine, &state_hashes)?;
+                            rollups_machine = self
+                                .state_manager
+                                .advance_reverted(&input_id, &state_hashes)?;
                         }
                     }
                 }
-                None => break Ok(rollups_machine),
+                None => break Ok(()),
             }
         }
     }

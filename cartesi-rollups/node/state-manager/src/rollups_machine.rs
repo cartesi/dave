@@ -1,7 +1,10 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use std::path::{Path, PathBuf};
+use std::{
+    intrinsics::unreachable,
+    path::{Path, PathBuf},
+};
 
 use cartesi_prt_core::machine::constants::{
     LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
@@ -44,6 +47,8 @@ pub const STRIDE_COUNT_IN_INPUT: u64 =
 pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
     << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
         - LOG2_STRIDE);
+
+pub const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
 
 pub struct RollupsMachine {
     machine: Machine,
@@ -98,34 +103,56 @@ impl RollupsMachine {
         &mut self,
         data: &[u8],
     ) -> MachineResult<(Vec<CommitmentLeaf>, ManualReason)> {
-        let mut state_hashes = Vec::with_capacity(1 << 20);
+        assert!(self.machine.iflags_y()?);
+        assert!(matches!(
+            self.machine.receive_cmio_request()?,
+            CmioRequest::Manual(ManualReason::RxAccepted { .. })
+        ));
+
+        let checkpoint_hash = self.machine.root_hash()?;
+        self.machine
+            .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
 
         self.feed_input(data)?;
+        self.run_machine(BIG_STEPS_IN_STRIDE)?;
 
+        let mut state_hashes = Vec::with_capacity(1 << 20);
         let mut i: u64 = 0;
-        while !self.machine.iflags_y()? {
-            self.run_machine(BIG_STEPS_IN_STRIDE)?;
 
+        while !self.machine.iflags_y()? {
             let hash = self.machine.root_hash()?;
             state_hashes.push(CommitmentLeaf {
                 hash,
                 repetitions: 1,
             });
-
             i += 1;
+
+            self.run_machine(BIG_STEPS_IN_STRIDE)?;
         }
 
-        let hash = self.machine.root_hash()?;
-        state_hashes.push(CommitmentLeaf {
-            hash,
-            repetitions: STRIDE_COUNT_IN_INPUT - i,
-        });
         self.input_index_in_epoch += 1;
 
         match self.machine.receive_cmio_request()? {
-            CmioRequest::Manual(reason) => Ok((state_hashes, reason)),
+            CmioRequest::Manual(reason @ ManualReason::RxAccepted { .. }) => {
+                let fixed_point_hash = self.machine.root_hash()?;
+                state_hashes.push(CommitmentLeaf {
+                    hash: fixed_point_hash,
+                    repetitions: STRIDE_COUNT_IN_INPUT - i,
+                });
+
+                Ok((state_hashes, reason))
+            }
+
+            CmioRequest::Manual(reason) => {
+                state_hashes.push(CommitmentLeaf {
+                    hash: checkpoint_hash,
+                    repetitions: STRIDE_COUNT_IN_INPUT - i,
+                });
+
+                Ok((state_hashes, reason))
+            }
             _ => {
-                panic!("This branch should not be reached");
+                unreachable!("machine should be manually yielded");
             }
         }
     }
