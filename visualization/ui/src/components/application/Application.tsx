@@ -26,7 +26,7 @@ export const ApplicationCard: FC<Props> = ({ application }) => {
     const stateColour = getStateColour(application.state);
 
     return (
-        <Card shadow="md" withBorder className={styles.application}>
+        <Card shadow="md" className={styles.application}>
             <Stack gap="0">
                 <Group justify="space-between">
                     <Text size="xl">{application.name}</Text>

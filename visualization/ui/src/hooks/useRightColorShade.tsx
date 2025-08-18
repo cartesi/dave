@@ -1,5 +1,8 @@
-import { type MantineColor, type MantinePrimaryShade } from "@mantine/core";
-import { useColorScheme } from "@mantine/hooks";
+import {
+    useMantineColorScheme,
+    type MantineColor,
+    type MantinePrimaryShade,
+} from "@mantine/core";
 import theme from "../providers/theme";
 
 const getCorrectShade = (scheme: "dark" | "light"): number => {
@@ -15,8 +18,10 @@ const getCorrectShade = (scheme: "dark" | "light"): number => {
  * @returns
  */
 const useRightColorShade = (color: MantineColor) => {
-    const colorScheme = useColorScheme();
-    const shadeIndex = getCorrectShade(colorScheme);
+    const { colorScheme } = useMantineColorScheme();
+    const scheme =
+        colorScheme === "auto" || colorScheme === "light" ? "light" : "dark";
+    const shadeIndex = getCorrectShade(scheme);
 
     return theme.colors?.[color]?.[shadeIndex] ?? theme.colors.gray[shadeIndex];
 };
