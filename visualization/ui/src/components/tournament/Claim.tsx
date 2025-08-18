@@ -1,11 +1,11 @@
-import { Avatar, Group, type TextProps } from "@mantine/core";
+import { Avatar, Group } from "@mantine/core";
 import Jazzicon from "@raugfer/jazzicon";
 import type { FC } from "react";
 import { slice, type Hash } from "viem";
-import { LongText } from "../LongText";
+import { LongText, type LongTextProps } from "../LongText";
 import type { Claim } from "../types";
 
-export interface ClaimCardProps extends TextProps {
+export interface ClaimCardProps extends Omit<LongTextProps, "value"> {
     claim: Claim;
 }
 

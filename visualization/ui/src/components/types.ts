@@ -31,6 +31,7 @@ export interface Match {
     winner?: 1 | 2;
 }
 
+export type CycleRange = [bigint, bigint];
 export interface Round {
     matches: Match[];
 }
