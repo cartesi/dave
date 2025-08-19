@@ -49,13 +49,32 @@ const MatchActionList = (props: ListProps) => {
     );
 };
 
+const half = (tuple: CycleRange) => (tuple[0] + tuple[1]) / 2n;
+
 const tournamentCycleRange: CycleRange = [1837880065n, 2453987565n];
-const bisectionRangeOne: CycleRange = [2295760130n, 2300000000n];
-const bisectionRangeTwo: CycleRange = [2675760130n, 1300000000n];
-const bisectionRangeThree: CycleRange = [1837880060n, 1300000000n];
+const bisectionRangeOne: CycleRange = [half(tournamentCycleRange), 2453987565n];
+const bisectionRangeTwo: CycleRange = [
+    bisectionRangeOne[0],
+    half(bisectionRangeOne),
+];
+const bisectionRangeThree: CycleRange = [
+    half(bisectionRangeTwo),
+    bisectionRangeTwo[1],
+];
+const bisectionRangeFour: CycleRange = [
+    half(bisectionRangeThree),
+    bisectionRangeThree[1],
+];
+
 const simpleClaim: Claim = {
     claimer: zeroAddress,
     hash: keccak256(toBytes(1)),
+    timestamp: Date.now(),
+};
+
+const simpleClaimTwo: Claim = {
+    claimer: zeroAddress,
+    hash: keccak256(toBytes(10)),
     timestamp: Date.now(),
 };
 
@@ -80,21 +99,9 @@ export const ClaimABisection: Story = {
 export const ClaimBBisection: Story = {
     render: WithContainer,
     args: {
-        claim: {
-            ...simpleClaim,
-            hash: keccak256(toBytes(10)),
-        },
+        claim: simpleClaimTwo,
         tournamentCycleRange,
         bisectionCycleRange: bisectionRangeTwo,
-    },
-};
-
-export const ClaimCWithWrongBisectionRange: Story = {
-    render: WithContainer,
-    args: {
-        claim: simpleClaim,
-        tournamentCycleRange,
-        bisectionCycleRange: bisectionRangeThree,
     },
 };
 
@@ -124,12 +131,19 @@ export const MultipleActions: CustomStory = {
                 bisectionCycleRange: bisectionRangeOne,
             },
             {
-                claim: {
-                    ...simpleClaim,
-                    hash: keccak256(toBytes(10)),
-                },
+                claim: simpleClaimTwo,
                 tournamentCycleRange,
                 bisectionCycleRange: bisectionRangeTwo,
+            },
+            {
+                claim: simpleClaim,
+                bisectionCycleRange: bisectionRangeThree,
+                tournamentCycleRange,
+            },
+            {
+                claim: simpleClaimTwo,
+                tournamentCycleRange,
+                bisectionCycleRange: bisectionRangeFour,
             },
         ],
     },
