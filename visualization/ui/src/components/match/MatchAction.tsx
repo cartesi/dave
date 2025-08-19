@@ -8,9 +8,9 @@ import {
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { type FC } from "react";
+import { ClaimCard } from "../tournament/ClaimCard";
 import type { Claim, CycleRange } from "../types";
 import BisectionGraph from "./BisectionGraph";
-import { ClaimCard } from "./Claim";
 
 interface MatchActionProps {
     isInitial?: boolean;

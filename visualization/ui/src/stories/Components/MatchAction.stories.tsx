@@ -2,7 +2,7 @@ import { Container, Stack } from "@mantine/core";
 import { useViewportSize } from "@mantine/hooks";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
-import MatchAction from "../../components/tournament/MatchAction";
+import MatchAction from "../../components/match/MatchAction";
 import type { Claim, CycleRange } from "../../components/types";
 
 const meta = {
