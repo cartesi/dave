@@ -10,20 +10,20 @@ import { useMediaQuery } from "@mantine/hooks";
 import { type FC } from "react";
 import { ClaimCard } from "../tournament/ClaimCard";
 import type { Claim, CycleRange } from "../types";
-import BisectionGraph from "./BisectionGraph";
+import CycleRangeGraph from "./CycleRangeGraph";
 
-interface MatchActionProps {
-    isInitial?: boolean;
-    claim?: Claim;
+interface Props {
+    claim: Claim;
     tournamentCycleRange: CycleRange;
     bisectionCycleRange: CycleRange;
+    midText?: string;
 }
 
-const MatchAction: FC<MatchActionProps> = ({
+const MatchDetailCard: FC<Props> = ({
     bisectionCycleRange,
-    isInitial = false,
     tournamentCycleRange,
     claim,
+    midText = "Bisection",
 }) => {
     const theme = useMantineTheme();
     const isSmallDevice = useMediaQuery(`(max-width:${theme.breakpoints.sm})`);
@@ -33,20 +33,17 @@ const MatchAction: FC<MatchActionProps> = ({
         <Card>
             <Grid align="center" columns={12}>
                 <GridCol span={{ base: 12, sm: 5 }}>
-                    <Group
-                        justify={isInitial ? "flex-end" : "space-between"}
-                        wrap={wrapClaimGroup}
-                    >
-                        {claim && <ClaimCard claim={claim} />}
+                    <Group justify="space-between" wrap={wrapClaimGroup}>
+                        <ClaimCard claim={claim} />
                         <Text ff="monospace" fw="bold" tt="uppercase">
-                            {isInitial ? "Initial" : "Bisection"}
+                            {midText}
                         </Text>
                     </Group>
                 </GridCol>
                 <GridCol span={{ base: 12, sm: 7 }}>
-                    <BisectionGraph
+                    <CycleRangeGraph
                         cycleLimits={tournamentCycleRange}
-                        bisection={bisectionCycleRange}
+                        cycleRange={bisectionCycleRange}
                     />
                 </GridCol>
             </Grid>
@@ -54,4 +51,4 @@ const MatchAction: FC<MatchActionProps> = ({
     );
 };
 
-export default MatchAction;
+export default MatchDetailCard;

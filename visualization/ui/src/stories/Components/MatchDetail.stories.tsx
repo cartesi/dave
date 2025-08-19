@@ -2,21 +2,23 @@ import { Container, Stack } from "@mantine/core";
 import { useViewportSize } from "@mantine/hooks";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
-import MatchAction from "../../components/match/MatchAction";
+import MatchDetailCard from "../../components/match/MatchDetailCard";
+import type { MatchLimitRangeCardProps } from "../../components/match/MatchLimitRangeCard";
+import MatchLimitRangeCard from "../../components/match/MatchLimitRangeCard";
 import type { Claim, CycleRange } from "../../components/types";
 
 const meta = {
-    title: "Components/MatchAction",
-    component: MatchAction,
+    title: "Components/MatchDetail",
+    component: MatchDetailCard,
     parameters: {
         layout: "fullscreen",
     },
-} satisfies Meta<typeof MatchAction>;
+} satisfies Meta<typeof MatchDetailCard>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-type Props = Parameters<typeof MatchAction>[0];
+type Props = Parameters<typeof MatchDetailCard>[0];
 
 const WithContainer = (props: Props) => {
     const { height } = useViewportSize();
@@ -24,26 +26,7 @@ const WithContainer = (props: Props) => {
     return (
         <Container h={height}>
             <Stack justify="center" h={height}>
-                <MatchAction {...props} />
-            </Stack>
-        </Container>
-    );
-};
-
-type ListProps = {
-    matchActions: Props[];
-};
-
-const MatchActionList = (props: ListProps) => {
-    const { height } = useViewportSize();
-    const { matchActions } = props;
-
-    return (
-        <Container h={height}>
-            <Stack justify="center" h={height}>
-                {matchActions.map((action, i) => (
-                    <MatchAction {...action} key={i} />
-                ))}
+                <MatchDetailCard {...props} />
             </Stack>
         </Container>
     );
@@ -78,15 +61,6 @@ const simpleClaimTwo: Claim = {
     timestamp: Date.now(),
 };
 
-export const Initial: Story = {
-    render: WithContainer,
-    args: {
-        isInitial: true,
-        tournamentCycleRange: tournamentCycleRange,
-        bisectionCycleRange: tournamentCycleRange,
-    },
-};
-
 export const ClaimABisection: Story = {
     render: WithContainer,
     args: {
@@ -105,6 +79,27 @@ export const ClaimBBisection: Story = {
     },
 };
 
+type ListProps = {
+    matchLimitRange: MatchLimitRangeCardProps;
+    matchActions: Props[];
+};
+
+const MatchActionList = (props: ListProps) => {
+    const { height } = useViewportSize();
+    const { matchActions, matchLimitRange } = props;
+
+    return (
+        <Container h={height}>
+            <Stack justify="center" h={height}>
+                <MatchLimitRangeCard cycleRange={matchLimitRange.cycleRange} />
+                {matchActions.map((action, i) => (
+                    <MatchDetailCard {...action} key={i} />
+                ))}
+            </Stack>
+        </Container>
+    );
+};
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const customMeta = {
     title: "Components/MatchAction",
@@ -116,15 +111,11 @@ const customMeta = {
 
 type CustomStory = StoryObj<typeof customMeta>;
 
-export const MultipleActions: CustomStory = {
+export const MultipleClaimEntries: CustomStory = {
     render: MatchActionList,
     args: {
+        matchLimitRange: { cycleRange: tournamentCycleRange },
         matchActions: [
-            {
-                isInitial: true,
-                tournamentCycleRange: tournamentCycleRange,
-                bisectionCycleRange: tournamentCycleRange,
-            },
             {
                 claim: simpleClaim,
                 tournamentCycleRange,

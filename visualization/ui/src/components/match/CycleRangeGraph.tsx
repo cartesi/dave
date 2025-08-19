@@ -185,21 +185,21 @@ type BarGraphInstance = ReturnType<typeof drawBar>;
 
 type Props = {
     cycleLimits: CycleRange;
-    bisection: CycleRange;
+    cycleRange: CycleRange;
     width?: number | string;
     height?: number | string;
 };
 
-const BisectionGraph: FC<Props> = ({
+const CycleRangeGraph: FC<Props> = ({
     cycleLimits,
-    bisection,
+    cycleRange,
     width = "inherit",
     height = 21,
 }) => {
     const divRef = useRef<HTMLDivElement>(null);
     const [instance, setInstance] = useState<BarGraphInstance | null>(null);
     const [lowerBound, upperBound] = cycleLimits;
-    const [cycleStart, cycleEnd] = bisection;
+    const [cycleStart, cycleEnd] = cycleRange;
     const { colorScheme } = useMantineColorScheme();
     const mainColor =
         colorScheme === "auto" || colorScheme === "light" ? "green" : "cyan";
@@ -259,14 +259,14 @@ const BisectionGraph: FC<Props> = ({
             <Stack gap="0" align="flex-end">
                 <Group justify="flex-end">
                     <Text fw="bold" c="red">
-                        Bisection is not within the cycle limits
+                        Cycle range is not within the cycle limits
                     </Text>
                 </Group>
                 <Text size="xs" c="dimmed">
                     Cycle Limits: {cycleLimits.join(" - ")}
                 </Text>
                 <Text size="xs" c="dimmed">
-                    Bisection Interval: {bisection.join(" - ")}
+                    Cycle Interval: {cycleRange.join(" - ")}
                 </Text>
             </Stack>
         );
@@ -274,4 +274,4 @@ const BisectionGraph: FC<Props> = ({
     return <Box ref={divRef} component="div" h={height} w={width}></Box>;
 };
 
-export default BisectionGraph;
+export default CycleRangeGraph;
