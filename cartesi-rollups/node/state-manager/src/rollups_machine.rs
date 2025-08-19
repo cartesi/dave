@@ -1,10 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use std::{
-    intrinsics::unreachable,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use cartesi_prt_core::machine::constants::{
     LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
