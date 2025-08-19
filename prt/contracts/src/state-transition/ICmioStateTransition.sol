@@ -20,6 +20,16 @@ import "step/src/AccessLogs.sol";
 /// @title ICmioStateTransition
 /// @notice Contain CMIO operations
 interface ICmioStateTransition {
+    function checkpoint(AccessLogs.Context memory a, bytes32 checkpointState)
+        external
+        pure
+        returns (AccessLogs.Context memory);
+
+    function revertIfNeeded(AccessLogs.Context memory a)
+        external
+        pure
+        returns (AccessLogs.Context memory);
+
     function sendCmio(
         AccessLogs.Context memory a,
         uint16 reason,

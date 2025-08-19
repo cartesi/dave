@@ -29,6 +29,7 @@ import "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
 import "src/state-transition/CmioStateTransition.sol";
 import "src/state-transition/RiscVStateTransition.sol";
 import "src/state-transition/CartesiStateTransition.sol";
+import "src/state-transition/ComputeStateTransition.sol";
 
 pragma solidity ^0.8.0;
 
@@ -323,5 +324,17 @@ contract Util is Test {
         );
 
         return (stateTransition, riscVStateTransition, cmioStateTransition);
+    }
+
+    // instantiates StateTransition for Compute
+    function instantiateStateTransitionCompute()
+        internal
+        returns (ComputeStateTransition, RiscVStateTransition)
+    {
+        RiscVStateTransition riscVStateTransition = new RiscVStateTransition();
+        ComputeStateTransition stateTransition =
+            new ComputeStateTransition(riscVStateTransition);
+
+        return (stateTransition, riscVStateTransition);
     }
 }
