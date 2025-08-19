@@ -14,9 +14,10 @@ import type { CycleRange } from "../types";
 const ZERO = 0n as const;
 const ONE_HUNDRED = 100n as const;
 
-function getEndpointInPixel(limitBound: bigint, endpoint: bigint) {
-    if (!limitBound || limitBound === ZERO) return ZERO;
-    return (endpoint * BigInt(100)) / limitBound;
+function getLengthInPixel(limitBoundLength: bigint, endpointLength: bigint) {
+    if (!limitBoundLength || limitBoundLength === ZERO) return ZERO;
+
+    return (endpointLength * ONE_HUNDRED) / limitBoundLength;
 }
 
 function convertIntervalToPixels(
@@ -25,12 +26,12 @@ function convertIntervalToPixels(
     start: bigint,
     end: bigint,
 ): [bigint, bigint] {
-    const fromLowerBound = getEndpointInPixel(lowerBound, start);
-    const fromUpperBound = getEndpointInPixel(upperBound, end);
+    const length = upperBound - lowerBound;
+    const startLength = start - lowerBound;
+    const endLength = length - (upperBound - end);
 
-    const leftEndpoint =
-        fromLowerBound > 100 ? fromLowerBound - ONE_HUNDRED : ZERO;
-    const rightEndpoint = fromUpperBound > 100 ? ONE_HUNDRED : fromUpperBound;
+    const leftEndpoint = getLengthInPixel(length, startLength);
+    const rightEndpoint = getLengthInPixel(length, endLength);
 
     return [leftEndpoint, rightEndpoint];
 }
@@ -236,6 +237,7 @@ const BisectionGraph: FC<Props> = ({
                 instance.remove();
             };
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
