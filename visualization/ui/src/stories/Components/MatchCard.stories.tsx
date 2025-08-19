@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
-import { MatchCard } from "../../components/tournament/Match";
+import { MatchCard } from "../../components/tournament/MatchCard";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/Match",
+    title: "Components/MatchCard",
     component: MatchCard,
     parameters: {
         layout: "centered",

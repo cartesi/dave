@@ -1,7 +1,7 @@
 import { Divider, Stack } from "@mantine/core";
 import type { FC } from "react";
 import type { Match } from "../types";
-import { MatchCard } from "./Match";
+import { MatchCard } from "./MatchCard";
 import { MatchLoserCard } from "./MatchLoser";
 
 export interface TournamentRoundProps {
