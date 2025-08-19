@@ -50,58 +50,39 @@ contract CartesiStateTransition is IStateTransition {
         bytes calldata proofs,
         IDataProvider provider
     ) external view returns (bytes32) {
-        if (address(provider) == address(0)) {
-            return transitionCompute(machineState, counter, proofs);
-        } else {
-            return transitionRollups(machineState, counter, proofs, provider);
-        }
-    }
-
-    function transitionCompute(
-        bytes32 machineState,
-        uint256 counter,
-        bytes calldata proofs
-    ) internal view returns (bytes32 newMachineState) {
-        // Inputless version for testing
-        AccessLogs.Context memory accessLogs =
-            AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-        if ((counter + 1) & BIG_STEP_MASK == 0) {
-            accessLogs = riscVStateTransition.step(accessLogs);
-            accessLogs = riscVStateTransition.reset(accessLogs);
-        } else {
-            accessLogs = riscVStateTransition.step(accessLogs);
-        }
-
-        newMachineState = accessLogs.currentRootHash;
-    }
-
-    function transitionRollups(
-        bytes32 machineState,
-        uint256 counter,
-        bytes calldata proofs,
-        IDataProvider provider
-    ) internal view returns (bytes32) {
         // lower bits (uarch + big arch) are zero: add input.
         if (counter & INPUT_MASK == 0) {
-            // cmio + uarch step
+            // chekpoint + cmio + uarch step
 
-            // first eight bytes of the proof are the size of the input, big-endian.
+            // proofs structure:
+            // input_length <- proofs[:8] (big endian)
+            // input <- proofs[8:8+input_length]
+            // access_logs <- proofs[8+input_length:]
+
+            // first 8 bytes of the proof are the size of the input, big-endian.
             // next `inputLength` bytes of the proof are the input itself.
             uint64 inputLength = uint64(bytes8(proofs[:8]));
             bytes calldata input = proofs[8:8 + inputLength];
-
-            // the rest is the access log proofs
-            AccessLogs.Context memory accessLogs = AccessLogs.Context(
-                machineState, Buffer.Context(proofs[8 + inputLength:], 0)
-            );
-
             uint256 inputIndexWithinEpoch =
                 counter >> (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
             bytes32 inputMerkleRoot =
                 provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
 
+            // the rest is the access log proofs, which has the concatenated proofs for:
+            // * checkpoint
+            // * sendCmio
+            // * step
+            AccessLogs.Context memory accessLogs = AccessLogs.Context(
+                machineState, Buffer.Context(proofs[8 + inputLength:], 0)
+            );
+
             // check if input is out-of-bounds of input box for this epoch
             if (inputMerkleRoot != bytes32(0x0)) {
+                // checkpoint
+                accessLogs =
+                    cmioStateTransition.checkpoint(accessLogs, machineState);
+
+                // sendCmio
                 accessLogs = cmioStateTransition.sendCmio(
                     accessLogs,
                     EmulatorConstants.CMIO_YIELD_REASON_ADVANCE_STATE,
@@ -110,22 +91,35 @@ contract CartesiStateTransition is IStateTransition {
                 );
             }
 
+            // step
             accessLogs = riscVStateTransition.step(accessLogs);
 
             return accessLogs.currentRootHash;
-        } else {
+
+            // lower bits (uarch) are all 1s: reset uarch.
+        } else if ((counter + 1) & BIG_STEP_MASK == 0) {
+            // access log proofs has the concatenated proofs for:
+            // * step
+            // * reset
+            // * advanceStatus
+            // * getCheckpointHash (only if needed)
             AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-            // lower bits (uarch) are all 1s: reset uarch.
-            if ((counter + 1) & BIG_STEP_MASK == 0) {
-                // uarch reset
-                accessLogs = riscVStateTransition.step(accessLogs);
-                accessLogs = riscVStateTransition.reset(accessLogs);
-            } else {
-                // uarch step
-                accessLogs = riscVStateTransition.step(accessLogs);
-            }
+            accessLogs = riscVStateTransition.step(accessLogs);
+            accessLogs = riscVStateTransition.reset(accessLogs);
+            accessLogs = cmioStateTransition.revertIfNeeded(accessLogs);
+
+            return accessLogs.currentRootHash;
+
+            // else: step uarch.
+        } else {
+            // access log proofs has proofs for:
+            // * step
+            AccessLogs.Context memory accessLogs =
+                AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
+
+            accessLogs = riscVStateTransition.step(accessLogs);
 
             return accessLogs.currentRootHash;
         }

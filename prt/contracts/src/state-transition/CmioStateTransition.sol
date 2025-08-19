@@ -17,8 +17,35 @@ pragma solidity ^0.8.0;
 
 import "./ICmioStateTransition.sol";
 import "step/src/SendCmioResponse.sol";
+import "step/src/EmulatorCompat.sol";
+import "step/src/AdvanceStatus.sol";
 
 contract CmioStateTransition is ICmioStateTransition {
+    using AdvanceStatus for AccessLogs.Context;
+    using EmulatorCompat for AccessLogs.Context;
+
+    function checkpoint(AccessLogs.Context memory a, bytes32 checkpointState)
+        external
+        pure
+        returns (AccessLogs.Context memory)
+    {
+        a.setCheckpointHash(checkpointState);
+        return a;
+    }
+
+    function revertIfNeeded(AccessLogs.Context memory a)
+        external
+        pure
+        returns (AccessLogs.Context memory)
+    {
+        if (a.advanceStatus() == AdvanceStatus.Status.REJECTED) {
+            bytes32 checkpointState = a.getCheckpointHash();
+            a.currentRootHash = checkpointState;
+        }
+
+        return a;
+    }
+
     function sendCmio(
         AccessLogs.Context memory a,
         uint16 reason,
