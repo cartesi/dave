@@ -4,16 +4,22 @@ import { TbTrophyFilled } from "react-icons/tb";
 import { Hierarchy } from "../../components/Hierarchy";
 import PageTitle from "../../components/layout/PageTitle";
 import { TournamentView } from "../../components/tournament/Tournament";
-import type { Application, Epoch, Tournament } from "../../components/types";
+import type {
+    Application,
+    Epoch,
+    Match,
+    Tournament,
+} from "../../components/types";
 
 export interface TournamentPageProps {
     application: Application;
     epoch: Epoch;
+    onClickMatch?: (match: Match) => void;
     tournament: Tournament;
 }
 
 export const TournamentPage: FC<TournamentPageProps> = (props) => {
-    const { application, epoch, tournament } = props;
+    const { application, epoch, onClickMatch, tournament } = props;
     return (
         <Stack gap="lg">
             <Hierarchy
@@ -31,7 +37,10 @@ export const TournamentPage: FC<TournamentPageProps> = (props) => {
             />
             <Stack>
                 <PageTitle Icon={TbTrophyFilled} title="Tournament" />
-                <TournamentView tournament={tournament} />
+                <TournamentView
+                    tournament={tournament}
+                    onClickMatch={onClickMatch}
+                />
             </Stack>
         </Stack>
     );

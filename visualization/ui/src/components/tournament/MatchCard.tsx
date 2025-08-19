@@ -13,11 +13,30 @@ import type { Match } from "../types";
 import { ClaimCard } from "./ClaimCard";
 
 export interface MatchCardProps extends CardProps {
+    /**
+     * The match to display.
+     */
     match: Match;
+
+    /**
+     * Simulated current time.
+     * When not provided, the match is shown as is.
+     * When provided, the match timestamps are used to filter out events that did not happen yet based on the simulated time.
+     */
     now?: number;
+
+    /**
+     * Handler for the match card click event. When not provided, the match card is not clickable.
+     */
+    onClick?: () => void;
 }
 
-export const MatchCard: FC<MatchCardProps> = ({ match, now, ...cardProps }) => {
+export const MatchCard: FC<MatchCardProps> = ({
+    match,
+    now,
+    onClick,
+    ...cardProps
+}) => {
     const { claim1, claim2, winner } = match;
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
@@ -36,15 +55,23 @@ export const MatchCard: FC<MatchCardProps> = ({ match, now, ...cardProps }) => {
 
     const showClaim1 = !now || match.claim1Timestamp <= now;
     const showClaim2 =
-        match.claim2 &&
-        match.claim2Timestamp &&
+        !!match.claim2 &&
+        !!match.claim2Timestamp &&
         (!now || match.claim2Timestamp <= now);
     const showWinner =
-        winner &&
-        (!now || (match.winnerTimestamp && match.winnerTimestamp <= now));
+        !!winner &&
+        (!now || (!!match.winnerTimestamp && match.winnerTimestamp <= now));
 
     return (
-        <Card withBorder shadow="sm" radius="lg" {...cardProps}>
+        <Card
+            component="button"
+            withBorder
+            shadow="sm"
+            radius="lg"
+            {...cardProps}
+            onClick={onClick}
+            style={{ cursor: onClick ? "pointer" : undefined }}
+        >
             <Overlay
                 bg={gold}
                 opacity={showWinner && winner === 1 ? 0.1 : 0}

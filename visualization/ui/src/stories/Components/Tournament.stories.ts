@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { fn } from "storybook/test";
 import { keccak256, toBytes, zeroAddress } from "viem";
 import { TournamentView } from "../../components/tournament/Tournament";
 import type { Claim } from "../../components/types";
@@ -20,6 +21,7 @@ const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
 
 export const Ongoing: Story = {
     args: {
+        onClickMatch: fn(),
         tournament: {
             level: "TOP",
             startCycle: 1837880065n,
@@ -79,6 +81,7 @@ export const Ongoing: Story = {
 
 export const NoChallengerYet: Story = {
     args: {
+        onClickMatch: fn(),
         tournament: {
             level: "TOP",
             startCycle: 1837880065n,
@@ -100,6 +103,7 @@ export const NoChallengerYet: Story = {
 
 export const Closed: Story = {
     args: {
+        onClickMatch: fn(),
         tournament: {
             level: "TOP",
             startCycle: 1837880065n,

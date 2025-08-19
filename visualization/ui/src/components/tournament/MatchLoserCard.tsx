@@ -13,11 +13,13 @@ import { ClaimCard } from "./ClaimCard";
 export interface MatchLoserCardProps extends CardProps {
     match: Match;
     now?: number;
+    onClick?: () => void;
 }
 
 export const MatchLoserCard: FC<MatchLoserCardProps> = ({
     match,
     now,
+    onClick,
     ...cardProps
 }) => {
     const { claim1, claim2, winner } = match;
@@ -43,7 +45,13 @@ export const MatchLoserCard: FC<MatchLoserCardProps> = ({
     }
 
     return (
-        <Card withBorder shadow="sm" radius="lg" {...cardProps}>
+        <Card
+            withBorder
+            shadow="sm"
+            radius="lg"
+            {...cardProps}
+            onClick={onClick}
+        >
             <Stack gap={0}>
                 <Group gap="xs" wrap="nowrap">
                     <TbTrophyFilled size={24} color={gold} opacity={0} />

@@ -1,11 +1,12 @@
 import { Badge, Group, Slider, Stack, Switch, Text } from "@mantine/core";
 import { useEffect, useState, type FC } from "react";
 import { LongText } from "../LongText";
-import type { Tournament } from "../types";
+import type { Match, Tournament } from "../types";
 import { TournamentTable } from "./Table";
 
 export interface TournamentViewProps {
     tournament: Tournament;
+    onClickMatch?: (match: Match) => void;
 }
 
 const mcycleFormatter = new Intl.NumberFormat("en-US", {});
@@ -15,7 +16,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 export const TournamentView: FC<TournamentViewProps> = (props) => {
-    const { tournament } = props;
+    const { onClickMatch, tournament } = props;
     const { level, startCycle, endCycle, rounds, winner } = tournament;
     const range = `${mcycleFormatter.format(startCycle)} to ${mcycleFormatter.format(endCycle)}`;
     const [hideWinners, setHideWinners] = useState(false);
@@ -99,6 +100,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
                 rounds={rounds}
                 hideWinners={hideWinners}
                 now={now}
+                onClickMatch={onClickMatch}
             />
         </Stack>
     );
