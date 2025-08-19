@@ -10,7 +10,7 @@ import {
 import type { FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import type { Match } from "../types";
-import { ClaimCard } from "./Claim";
+import { ClaimCard } from "./ClaimCard";
 
 export interface MatchCardProps extends CardProps {
     match: Match;
