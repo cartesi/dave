@@ -13,7 +13,9 @@ import "prt-contracts/tournament/libs/Commitment.sol";
 import "prt-contracts/tournament/libs/Time.sol";
 import "prt-contracts/tournament/libs/Clock.sol";
 import "prt-contracts/tournament/libs/Match.sol";
-import "prt-contracts/tournament/utils/Refundable.sol";
+import "prt-contracts/tournament/libs/Weight.sol";
+
+import {Math} from "@openzeppelin-contracts-5.2.0/utils/math/Math.sol";
 
 struct TournamentArgs {
     Machine.Hash initialHash;
@@ -37,7 +39,7 @@ struct TournamentArgs {
 /// meaning the one-step disagreement is found and can be resolved by solidity-step.
 /// Non-leaf (inner) matches would normally create inner tournaments with height = height + 1,
 /// to find the divergence with improved precision.
-abstract contract Tournament is Refundable {
+abstract contract Tournament {
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
     using Commitment for Tree.Node;
@@ -51,6 +53,8 @@ abstract contract Tournament is Refundable {
     using Match for Match.IdHash;
     using Match for Match.State;
 
+    using Math for uint256;
+
     //
     // Storage
     //
@@ -58,9 +62,16 @@ abstract contract Tournament is Refundable {
     uint256 matchCount;
     Time.Instant lastMatchDeleted;
 
+    uint256 constant BOND_VALUE = 1 ether;
+    // A constant in the Ethereum protocol
+    uint256 constant TX_INTRINSIC_GAS = 21000;
+    // MEV tips
+    uint256 constant MEV_PROFIT = 10 gwei;
+    bool transient locked;
+
     mapping(Tree.Node => Clock.State) clocks;
     mapping(Tree.Node => Machine.Hash) finalStates;
-    mapping(Tree.Node => address) public claimers;
+    mapping(Tree.Node => address) claimers;
     // matches existing in current tournament
     mapping(Match.IdHash => Match.State) matches;
 
@@ -73,17 +84,19 @@ abstract contract Tournament is Refundable {
     event matchDeleted(Match.IdHash);
     event commitmentJoined(Tree.Node root);
 
+    //
+    // Errors
+    //
     error InsufficientBond();
     error NoWinner();
-    error RecoverBondFailed();
+    error TournamentIsFinished();
+    error TournamentNotFinished();
+    error TournamentIsClosed();
+    error ReentrancyDetected();
 
     //
     // Modifiers
     //
-    error TournamentIsFinished();
-    error TournamentNotFinished();
-    error TournamentIsClosed();
-
     modifier tournamentNotFinished() {
         require(!isFinished(), TournamentIsFinished());
 
@@ -94,6 +107,34 @@ abstract contract Tournament is Refundable {
         require(!isClosed(), TournamentIsClosed());
 
         _;
+    }
+
+    /// @notice Refunds the message sender with the amount
+    /// of Ether wasted on gas on this function call plus
+    /// a profit, capped by the current contract balance
+    // and the division between the bond value and the
+    // max number of interactions per player.
+    modifier refundable(uint256 weight) {
+        if (locked) revert ReentrancyDetected();
+        locked = true;
+
+        uint256 gasBefore = gasleft();
+        _;
+        uint256 gasAfter = gasleft();
+
+        // if it's a non-leaf tournament, the +3 is for `winInnerTournament`
+        // if it's a leaf tournament, the +3 is for `step`
+        uint256 interactions_weight = (_tournamentArgs().height + 1) / 2 + 3;
+
+        uint256 refundValue = _min(
+            address(this).balance,
+            BOND_VALUE * weight / interactions_weight,
+            (TX_INTRINSIC_GAS + gasBefore - gasAfter)
+                * (tx.gasprice + MEV_PROFIT)
+        );
+        msg.sender.call{value: refundValue}("");
+
+        locked = false;
     }
 
     //
@@ -124,8 +165,6 @@ abstract contract Tournament is Refundable {
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
-        claimers[_commitmentRoot] = msg.sender;
-
         TournamentArgs memory args = _tournamentArgs();
 
         // Prove final state is in commitmentRoot
@@ -141,6 +180,8 @@ abstract contract Tournament is Refundable {
 
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
         emit commitmentJoined(_commitmentRoot);
+
+        claimers[_commitmentRoot] = msg.sender;
     }
 
     /// @notice Advance the match until the smallest divergence is found at current level
@@ -151,7 +192,7 @@ abstract contract Tournament is Refundable {
         Tree.Node _rightNode,
         Tree.Node _newLeftNode,
         Tree.Node _newRightNode
-    ) external refundable tournamentNotFinished {
+    ) external refundable(Weight.ADVANCE_MATCH) tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
@@ -174,7 +215,7 @@ abstract contract Tournament is Refundable {
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external refundable tournamentNotFinished {
+    ) external refundable(Weight.WIN_MATCH_BY_TIMEOUT) tournamentNotFinished {
         matches[_matchId.hashFromId()].requireExist();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
@@ -220,7 +261,7 @@ abstract contract Tournament is Refundable {
 
     function eliminateMatchByTimeout(Match.Id calldata _matchId)
         external
-        refundable
+        refundable(Weight.ELIMINATE_MATCH_BY_TIMEOUT)
         tournamentNotFinished
     {
         matches[_matchId.hashFromId()].requireExist();
@@ -448,7 +489,7 @@ abstract contract Tournament is Refundable {
         return (true, winnerCouldWin);
     }
 
-    function recoverBond() external {
+    function tryRecoverBond() external {
         require(isFinished(), TournamentNotFinished());
 
         // Ensure there is a winner
@@ -462,8 +503,7 @@ abstract contract Tournament is Refundable {
 
         // Refund the entire contract balance to the winner
         uint256 contractBalance = address(this).balance;
-        (bool success,) = winner.call{value: contractBalance}("");
-        require(success, RecoverBondFailed());
+        winner.call{value: contractBalance}("");
 
         // clear the claimer for the winning commitment
         delete claimers[winningCommitment];
@@ -477,4 +517,17 @@ abstract contract Tournament is Refundable {
         view
         virtual
         returns (TournamentArgs memory);
+
+    /// @notice Returns the minimum of three values
+    /// @param a First value
+    /// @param b Second value
+    /// @param c Third value
+    /// @return The minimum value
+    function _min(uint256 a, uint256 b, uint256 c)
+        internal
+        pure
+        returns (uint256)
+    {
+        return a.min(b).min(c);
+    }
 }

@@ -1,11 +1,12 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.28;
 
 import "prt-contracts/tournament/abstracts/Tournament.sol";
 import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
 import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import "prt-contracts/tournament/libs/Weight.sol";
 
 /// @notice Non-leaf tournament can create inner tournaments and matches
 abstract contract NonLeafTournament is Tournament {
@@ -34,7 +35,11 @@ abstract contract NonLeafTournament is Tournament {
         Tree.Node _rightLeaf,
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
-    ) external refundable tournamentNotFinished {
+    )
+        external
+        refundable(Weight.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT)
+        tournamentNotFinished
+    {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireCanBeFinalized();
         // Pause clocks
@@ -80,7 +85,7 @@ abstract contract NonLeafTournament is Tournament {
         NonRootTournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external refundable tournamentNotFinished {
+    ) external refundable(Weight.WIN_INNER_TOURNAMENT) tournamentNotFinished {
         Match.IdHash _matchIdHash =
             matchIdFromInnerTournaments[_childTournament];
         _matchIdHash.requireExist();
@@ -98,6 +103,8 @@ abstract contract NonLeafTournament is Tournament {
             _childTournament.innerTournamentWinner();
         require(finished, ChildTournamentNotFinished());
         _winner.requireExist();
+
+        _childTournament.tryRecoverBond();
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
         require(
@@ -122,13 +129,11 @@ abstract contract NonLeafTournament is Tournament {
         } else {
             delete claimers[_matchState.otherParent];
         }
-
-        _childTournament.recoverBond();
     }
 
     function eliminateInnerTournament(NonRootTournament _childTournament)
         external
-        refundable
+        refundable(Weight.ELIMINATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
         Match.IdHash _matchIdHash =
