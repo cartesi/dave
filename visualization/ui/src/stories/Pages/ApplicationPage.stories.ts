@@ -1,18 +1,31 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import Home from "../../view/home/Home";
+import ApplicationView from "../../view/application/Application";
+import { applications, epochs } from "../data";
 
 const meta = {
-    title: "Pages/Home",
-    component: Home,
-    parameters: {
-        // @example Optional parameter to center the component in the Canvas. More info: https://storybook.js.org/docs/configure/story-layout
-        // layout: "centered",
-    },
-} satisfies Meta<typeof Home>;
+    title: "Pages/Application",
+    component: ApplicationView,
+} satisfies Meta<typeof ApplicationView>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
-    args: {},
+    args: {
+        application: applications[0],
+        epochs: epochs.honeypot,
+    },
+};
+
+export const NoDispute: Story = {
+    args: {
+        application: applications[0],
+        epochs: [
+            epochs.honeypot[0],
+            epochs.honeypot[1],
+            epochs.honeypot[2],
+            { ...epochs.honeypot[3], inDispute: false },
+            epochs.honeypot[4],
+        ],
+    },
 };

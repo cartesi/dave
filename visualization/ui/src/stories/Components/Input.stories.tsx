@@ -1,10 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { InputCard } from "../../components/input/Input";
-import {
-    acceptedInput,
-    noneInput,
-    rejectedInput,
-} from "../../components/input/input.mocks";
+import * as EpochPageStories from "../Pages/EpochPage.stories";
 
 const meta = {
     title: "Components/Input",
@@ -18,13 +14,13 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const AcceptedStatus: Story = {
-    args: { input: acceptedInput },
+    args: { input: EpochPageStories.OpenEpoch.args.inputs[0] },
 };
 
 export const NoneStatus: Story = {
-    args: { input: noneInput },
+    args: { input: EpochPageStories.OpenEpoch.args.inputs[1] },
 };
 
 export const RejectedStatus: Story = {
-    args: { input: rejectedInput },
+    args: { input: EpochPageStories.OpenEpoch.args.inputs[2] },
 };

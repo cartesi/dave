@@ -3,18 +3,18 @@ import { useState, type FC } from "react";
 import { TbCpu } from "react-icons/tb";
 import ListApplications from "../..//components/application/ListApplications";
 import ActionBar, { type ActionBarData } from "../../components/ActionBar";
-import useApplications from "../../components/application/useApplications";
 import PageTitle from "../../components/layout/PageTitle";
+import type { Application } from "../../components/types";
 
 const initialValue: ActionBarData = { query: "", sortingOrder: "ascending" };
 
-const Home: FC = () => {
-    const [search, setSearch] = useState<ActionBarData>(initialValue);
-    const applications = useApplications({
-        order: search.sortingOrder,
-        application: search.query,
-    });
+type Props = {
+    applications: Application[];
+};
 
+const Home: FC<Props> = (props) => {
+    const { applications } = props;
+    const [search, setSearch] = useState<ActionBarData>(initialValue);
     const resultIsEmpty = applications.length === 0;
 
     return (

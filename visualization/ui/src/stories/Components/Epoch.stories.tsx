@@ -1,10 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { EpochCard } from "../../components/epoch/Epoch";
-import {
-    closedEpoch,
-    openEpoch,
-    sealedEpoch,
-} from "../../components/epoch/epoch.mocks";
+import { epochs } from "../data";
 
 const meta = {
     title: "Components/Epoch",
@@ -18,17 +14,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Open: Story = {
-    args: { epoch: openEpoch },
+    args: { epoch: epochs.honeypot[4] },
 };
 
 export const Sealed: Story = {
-    args: { epoch: sealedEpoch },
+    args: { epoch: epochs.honeypot[3] },
 };
 
 export const SealedUnderDispute: Story = {
-    args: { epoch: { ...sealedEpoch, inDispute: true } },
+    args: { epoch: { ...epochs.honeypot[3], inDispute: true } },
 };
 
 export const ClosedEpoch: Story = {
-    args: { epoch: closedEpoch },
+    args: { epoch: epochs.honeypot[2] },
 };
