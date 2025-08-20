@@ -16,6 +16,6 @@ export const TopLevelMatch: Story = {
         application: applications[0],
         epoch: epochs.honeypot[4],
         tournament: Ongoing.args.tournament,
-        match: Ongoing.args.tournament.rounds[0].matches[0],
+        match: Ongoing.args.tournament.rounds[0].matches[1],
     },
 };

@@ -5,6 +5,12 @@ import { TournamentRound } from "./Round";
 
 export interface TournamentTableProps {
     hideWinners?: boolean;
+
+    /**
+     * Simulated current time.
+     * When not provided, all matches are shown.
+     * When provided, the match timestamps are used to filter out events that did not happen yet based on the simulated time.
+     */
     now?: number;
     onClickMatch?: (match: Match) => void;
     rounds: Round[];

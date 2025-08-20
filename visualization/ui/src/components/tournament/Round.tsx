@@ -8,6 +8,12 @@ export interface TournamentRoundProps {
     hideWinners?: boolean;
     index: number;
     matches: Match[];
+
+    /**
+     * Simulated current time.
+     * When not provided, the round shows all matches.
+     * When provided, the matchs are displayed as the simulated time.
+     */
     now?: number;
     onClickMatch?: (match: Match) => void;
 }

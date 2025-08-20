@@ -25,6 +25,21 @@ export interface Claim {
     timestamp: number;
 }
 
+export type CycleRange = [bigint, bigint];
+
+export type MatchAction =
+    | {
+          type: "advance";
+          claimer: 1 | 2;
+          timestamp: number;
+          range: CycleRange;
+      }
+    | {
+          type: "timeout";
+          timestamp: number;
+          winner: 1 | 2;
+      }; // TODO: there are more action types
+
 export interface Match {
     claim1: Claim;
     claim2?: Claim;
@@ -32,9 +47,9 @@ export interface Match {
     claim1Timestamp: number; // instant in time when claim1 joined the match
     claim2Timestamp?: number; // instant in time when claim2 joined the match
     winnerTimestamp?: number; // instant in time when match was resolved
+    actions: MatchAction[];
 }
 
-export type CycleRange = [bigint, bigint];
 export interface Round {
     matches: Match[];
 }

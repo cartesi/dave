@@ -12,6 +12,12 @@ import { ClaimCard } from "./ClaimCard";
 
 export interface MatchLoserCardProps extends CardProps {
     match: Match;
+
+    /**
+     * Simulated current time.
+     * When not provided, the card is shown as is.
+     * When provided, the match timestamps are used to filter out events that did not happen yet based on the simulated time.
+     */
     now?: number;
     onClick?: () => void;
 }

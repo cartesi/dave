@@ -84,7 +84,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
                 }
             />
             <Group>
-                <Text>Time Travel</Text>
+                <Text>Time</Text>
                 <Slider
                     defaultValue={maxTimestamp}
                     min={minTimestamp}
