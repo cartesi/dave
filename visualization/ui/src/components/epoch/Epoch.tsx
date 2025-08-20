@@ -25,7 +25,7 @@ const EpochIcon: FC<EpochIconProps> = ({ inDispute, status, color }) => {
             <TbClockExclamation size={theme.other.mdIconSize} color={color} />
         );
 
-    if (status === "CLOSED")
+    if (status === "FINALIZED")
         return <TbClockCheck size={theme.other.mdIconSize} color={color} />;
 
     if (status === "SEALED")
@@ -54,14 +54,7 @@ export const EpochCard: FC<Props> = ({ epoch }) => {
                     </Group>
                     {epoch.inDispute && (
                         <Badge variant="outline" color={statusColor}>
-                            <Text
-                                size={isMobile ? "xs" : "md"}
-                                fw="bold"
-                                tt="uppercase"
-                                c={statusColor}
-                            >
-                                in dispute
-                            </Text>
+                            disputed
                         </Badge>
                     )}
                     <Badge size="md" color={statusColor}>

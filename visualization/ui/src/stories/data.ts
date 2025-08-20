@@ -39,17 +39,17 @@ export const epochs: Record<string, Epoch[]> = {
         {
             index: 1,
             inDispute: false,
-            status: "CLOSED",
+            status: "FINALIZED",
         },
         {
             index: 2,
             inDispute: false,
-            status: "CLOSED",
+            status: "FINALIZED",
         },
         {
             index: 3,
             inDispute: false,
-            status: "CLOSED",
+            status: "FINALIZED",
         },
         {
             index: 4,

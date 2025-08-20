@@ -11,7 +11,7 @@ export interface Application {
     processedInputs: number;
 }
 
-export type EpochStatus = "OPEN" | "SEALED" | "CLOSED";
+export type EpochStatus = "OPEN" | "SEALED" | "FINALIZED";
 
 export interface Epoch {
     index: number;

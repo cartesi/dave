@@ -25,6 +25,6 @@ export const SealedUnderDispute: Story = {
     args: { epoch: { ...epochs.honeypot[3], inDispute: true } },
 };
 
-export const ClosedEpoch: Story = {
+export const Finalized: Story = {
     args: { epoch: epochs.honeypot[2] },
 };

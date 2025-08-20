@@ -139,7 +139,7 @@ export const NoChallengerYet: Story = {
     },
 };
 
-export const Closed: Story = {
+export const Finalized: Story = {
     args: {
         onClickMatch: fn(),
         tournament: {

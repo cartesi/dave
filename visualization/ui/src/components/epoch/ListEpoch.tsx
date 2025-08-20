@@ -5,7 +5,10 @@ import { EpochCard } from "./Epoch";
 
 type Props = { epochs: Epoch[] };
 
-const ListEpoch: FC<Props> = ({ epochs }) => {
+const ListEpoch: FC<Props> = (props) => {
+    // sort epoch by index in descending order
+    const epochs = props.epochs.sort((a, b) => b.index - a.index);
+
     return (
         <Stack gap={5}>
             {epochs.map((epoch) => (

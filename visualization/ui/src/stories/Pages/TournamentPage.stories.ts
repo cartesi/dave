@@ -3,7 +3,7 @@ import { keccak256, toBytes, zeroAddress } from "viem";
 import type { Claim } from "../../components/types";
 import { TournamentPage } from "../../view/tournament/Tournament";
 import {
-    Closed,
+    Finalized,
     NoChallengerYet,
     Ongoing,
 } from "../Components/Tournament.stories";
@@ -26,11 +26,11 @@ export const TopLevelSealed: Story = {
     },
 };
 
-export const TopLevelClosed: Story = {
+export const TopLevelFinalized: Story = {
     args: {
         application: applications[0],
         epoch: epochs.honeypot[3],
-        tournament: Closed.args.tournament,
+        tournament: Finalized.args.tournament,
     },
 };
 
