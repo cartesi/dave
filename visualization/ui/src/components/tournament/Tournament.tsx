@@ -43,14 +43,16 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
             })
             .flat();
 
-        // find the minimum and maximum timestamps
-        const min = Math.min(...timestamps);
-        const max = Math.max(...timestamps);
+        if (timestamps.length > 0) {
+            // find the minimum and maximum timestamps
+            const min = Math.min(...timestamps);
+            const max = Math.max(...timestamps);
 
-        // set the state
-        setMinTimestamp(min);
-        setMaxTimestamp(max);
-        setNow(max);
+            // set the state
+            setMinTimestamp(min);
+            setMaxTimestamp(max);
+            setNow(max);
+        }
     }, [tournament]);
 
     return (
@@ -87,6 +89,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
                 <Text>Time</Text>
                 <Slider
                     defaultValue={maxTimestamp}
+                    disabled={now === undefined}
                     min={minTimestamp}
                     max={maxTimestamp}
                     step={1000}
