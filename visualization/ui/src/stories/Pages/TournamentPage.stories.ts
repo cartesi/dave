@@ -18,7 +18,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const TopLevelSealed: Story = {
+export const TopLevelClosed: Story = {
     args: {
         application: applications[0],
         epoch: epochs.honeypot[4],

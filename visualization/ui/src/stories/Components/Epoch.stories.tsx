@@ -17,12 +17,12 @@ export const Open: Story = {
     args: { epoch: epochs.honeypot[4] },
 };
 
-export const Sealed: Story = {
-    args: { epoch: epochs.honeypot[3] },
+export const Closed: Story = {
+    args: { epoch: { ...epochs.honeypot[3], inDispute: false } },
 };
 
-export const SealedUnderDispute: Story = {
-    args: { epoch: { ...epochs.honeypot[3], inDispute: true } },
+export const UnderDispute: Story = {
+    args: { epoch: epochs.honeypot[3] },
 };
 
 export const Finalized: Story = {

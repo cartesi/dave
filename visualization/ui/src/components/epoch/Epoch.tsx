@@ -28,7 +28,7 @@ const EpochIcon: FC<EpochIconProps> = ({ inDispute, status, color }) => {
     if (status === "FINALIZED")
         return <TbClockCheck size={theme.other.mdIconSize} color={color} />;
 
-    if (status === "SEALED")
+    if (status === "CLOSED")
         return <TbClockShield size={theme.other.mdIconSize} color={color} />;
 
     return <TbClockPlay size={theme.other.mdIconSize} color={color} />;

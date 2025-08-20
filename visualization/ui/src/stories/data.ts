@@ -54,7 +54,7 @@ export const epochs: Record<string, Epoch[]> = {
         {
             index: 4,
             inDispute: true,
-            status: "SEALED",
+            status: "CLOSED",
         },
         {
             index: 5,

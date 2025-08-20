@@ -5,7 +5,7 @@ export const getEpochStatusColor = (state: EpochStatus) => {
     switch (state) {
         case "OPEN":
             return "green";
-        case "SEALED":
+        case "CLOSED":
             return "cyan";
         case "FINALIZED":
         default:
