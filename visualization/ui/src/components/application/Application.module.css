@@ -1,6 +1,0 @@
-.application {
-    &:hover {
-        cursor: pointer;
-        border-color: var(--mantine-color-cyan-5);
-    }
-}

@@ -13,7 +13,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Enabled: Story = {
+export const Default: Story = {
     args: { application: applications[0] },
 };
 
@@ -23,4 +23,12 @@ export const Disabled: Story = {
 
 export const Inoperable: Story = {
     args: { application: { ...applications[0], state: "INOPERABLE" } },
+};
+
+export const NoInputs: Story = {
+    args: { application: { ...applications[0], processedInputs: 0 } },
+};
+
+export const AuthorityConsensus: Story = {
+    args: { application: { ...applications[0], consensusType: "AUTHORITY" } },
 };
