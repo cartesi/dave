@@ -6,8 +6,10 @@ import {
     Stack,
     Switch,
     Text,
+    useMantineTheme,
 } from "@mantine/core";
 import { useEffect, useState, type FC, type ReactNode } from "react";
+import { TbTrophyFilled } from "react-icons/tb";
 import { LongText } from "../LongText";
 import type { Match, Tournament } from "../types";
 import { MatchMini } from "./MatchMini";
@@ -26,6 +28,9 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 export const TournamentView: FC<TournamentViewProps> = (props) => {
     const { onClickMatch, tournament } = props;
+    const theme = useMantineTheme();
+    const gold = theme.colors.yellow[5];
+
     const { danglingClaim, endCycle, level, matches, startCycle, winner } =
         tournament;
     const range = `${mcycleFormatter.format(startCycle)} → ${mcycleFormatter.format(endCycle)}`;
@@ -88,12 +93,13 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
             </Group>
             <Group>
                 <Text>Winner</Text>
-                <LongText
-                    value={winner?.hash ?? "(undefined)"}
-                    shorten={winner?.hash ? 16 : false}
-                    copyButton={!!winner?.hash}
-                    ff="monospace"
-                />
+                {!winner && <TbTrophyFilled size={24} color="lightgray" />}
+                {winner && (
+                    <Group gap="xs">
+                        <TbTrophyFilled size={24} color={gold} />
+                        <LongText value={winner.hash} ff="monospace" />
+                    </Group>
+                )}
             </Group>
             <Switch
                 label="Show only eliminated and pending matches"
