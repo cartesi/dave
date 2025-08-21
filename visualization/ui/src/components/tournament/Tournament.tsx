@@ -1,12 +1,21 @@
-import { Badge, Group, Slider, Stack, Switch, Text } from "@mantine/core";
-import { useEffect, useState, type FC } from "react";
+import {
+    Badge,
+    Breadcrumbs,
+    Group,
+    Slider,
+    Stack,
+    Switch,
+    Text,
+} from "@mantine/core";
+import { useEffect, useState, type FC, type ReactNode } from "react";
 import { LongText } from "../LongText";
 import type { Match, Tournament } from "../types";
+import { MatchMini } from "./MatchMini";
 import { TournamentTable } from "./Table";
 
 export interface TournamentViewProps {
-    tournament: Tournament;
     onClickMatch?: (match: Match) => void;
+    tournament: Tournament;
 }
 
 const mcycleFormatter = new Intl.NumberFormat("en-US", {});
@@ -18,7 +27,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 export const TournamentView: FC<TournamentViewProps> = (props) => {
     const { onClickMatch, tournament } = props;
     const { level, startCycle, endCycle, rounds, winner } = tournament;
-    const range = `${mcycleFormatter.format(startCycle)} to ${mcycleFormatter.format(endCycle)}`;
+    const range = `${mcycleFormatter.format(startCycle)} → ${mcycleFormatter.format(endCycle)}`;
     const [hideWinners, setHideWinners] = useState(false);
     const [minTimestamp, setMinTimestamp] = useState(0);
     const [maxTimestamp, setMaxTimestamp] = useState(0);
@@ -55,11 +64,27 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
         }
     }, [tournament]);
 
+    // build the breadcrumb of the tournament hierarchy
+    const parents: ReactNode[] = [];
+    let parentMatch = tournament.parentMatch;
+    while (parentMatch) {
+        parents.unshift(<MatchMini match={parentMatch} />);
+        parents.unshift(
+            <Badge key={parentMatch.parentTournament.level} variant="default">
+                {parentMatch.parentTournament.level}
+            </Badge>,
+        );
+        parentMatch = parentMatch.parentTournament.parentMatch;
+    }
+
     return (
         <Stack>
             <Group>
                 <Text>Level</Text>
-                <Badge>{level}</Badge>
+                <Breadcrumbs separator="→">
+                    {parents}
+                    <Badge key={level}>{level}</Badge>
+                </Breadcrumbs>
             </Group>
             <Group>
                 <Text>Mcycle range</Text>

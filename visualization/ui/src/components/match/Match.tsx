@@ -67,7 +67,9 @@ export const MatchView: FC<MatchViewProps> = (props) => {
                     value={now}
                     onChange={(value) => setNow(value)}
                     w={300}
-                    label={(value) => dateFormatter.format(new Date(value))}
+                    label={(value) =>
+                        dateFormatter.format(new Date(value * 1000))
+                    }
                 />
             </Group>
             <Stack>

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import EpochView from "../../view/epoch/Epoch";
-import { applications, epochs } from "../data";
+import { applications } from "../data";
 
 const meta = {
     title: "Pages/Epoch",
@@ -13,7 +13,7 @@ type Story = StoryObj<typeof meta>;
 export const OpenEpoch: Story = {
     args: {
         application: applications[0],
-        epoch: epochs.honeypot[4],
+        epoch: applications[0].epochs[4],
         inputs: [
             {
                 index: 2,

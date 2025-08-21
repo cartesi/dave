@@ -16,7 +16,7 @@ import { TbEyeMinus, TbEyePlus } from "react-icons/tb";
 import useRightColorShade from "../../hooks/useRightColorShade";
 import theme from "../../providers/theme";
 import { LongText } from "../LongText";
-import type { Input, InputStatus } from "./types";
+import type { Input, InputStatus } from "../types";
 
 interface Props {
     input: Input;

@@ -16,7 +16,7 @@ export interface MatchCardProps extends CardProps {
     /**
      * The match to display.
      */
-    match: Match;
+    match: Omit<Match, "tournament">;
 
     /**
      * Simulated current time.

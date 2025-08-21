@@ -6,8 +6,20 @@ import { LongText, type LongTextProps } from "../LongText";
 import type { Claim } from "../types";
 
 export interface ClaimCardProps extends Omit<LongTextProps, "value"> {
+    /**
+     * The claim to display.
+     */
     claim: Claim;
-    parentClaims?: Claim[];
+
+    /**
+     * The size of the avatar icons.
+     */
+    iconSize?: number;
+
+    /**
+     * Whether to show the parent claims.
+     */
+    showParents?: boolean;
 }
 
 // builds an image data url for embedding
@@ -17,31 +29,39 @@ function buildDataUrl(hash: Hash): string {
 
 export const ClaimCard: FC<ClaimCardProps> = ({
     claim,
-    parentClaims,
+    showParents = true,
+    iconSize = 32,
     ...props
 }) => {
+    const parents = [];
+    let parent = claim.parentClaim;
+    while (parent) {
+        parents.unshift(
+            <Tooltip
+                key={parent.hash}
+                label={
+                    <LongText
+                        value={parent.hash}
+                        ff="monospace"
+                        copyButton={false}
+                    />
+                }
+            >
+                <Avatar
+                    key={parent.hash}
+                    src={buildDataUrl(parent.hash)}
+                    size={iconSize}
+                />
+            </Tooltip>,
+        );
+        parent = parent.parentClaim;
+    }
+
     return (
         <Group gap="xs" wrap="nowrap">
             <AvatarGroup>
-                {parentClaims?.map((parentClaim) => (
-                    <Tooltip
-                        key={parentClaim.hash}
-                        label={
-                            <LongText
-                                value={parentClaim.hash}
-                                ff="monospace"
-                                copyButton={false}
-                            />
-                        }
-                    >
-                        <Avatar
-                            key={parentClaim.hash}
-                            src={buildDataUrl(parentClaim.hash)}
-                            size={32}
-                        />
-                    </Tooltip>
-                ))}
-                <Avatar src={buildDataUrl(claim.hash)} size={32} />
+                {showParents && parents}
+                <Avatar src={buildDataUrl(claim.hash)} size={iconSize} />
             </AvatarGroup>
             <LongText {...props} value={claim.hash} ff="monospace" />
         </Group>

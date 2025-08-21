@@ -19,9 +19,31 @@ export interface Epoch {
     inDispute: boolean;
 }
 
+export type InputStatus =
+    | "NONE"
+    | "ACCEPTED"
+    | "REJECTED"
+    | "EXCEPTION"
+    | "MACHINE_HALTED"
+    | "OUTPUTS_LIMIT_EXCEEDED"
+    | "CYCLE_LIMIT_EXCEEDED"
+    | "TIME_LIMIT_EXCEEDED"
+    | "PAYLOAD_LENGTH_LIMIT_EXCEEDED";
+
+export interface Input {
+    status: InputStatus;
+    index: number;
+    epochIndex: number;
+    sender: Hex;
+    machineHash: Hex;
+    outputHash: Hex;
+    payload: Hex;
+}
+
 export interface Claim {
     hash: Hash;
     claimer: Address;
+    parentClaim?: Claim;
     timestamp: number;
 }
 
@@ -41,6 +63,8 @@ export type MatchAction =
       }; // TODO: there are more action types
 
 export interface Match {
+    parentTournament: Tournament;
+    tournament?: Tournament;
     claim1: Claim;
     claim2?: Claim;
     winner?: 1 | 2;
@@ -58,6 +82,7 @@ export interface Tournament {
     level: "TOP" | "MIDDLE" | "BOTTOM";
     startCycle: bigint;
     endCycle: bigint;
+    parentMatch?: Match;
     rounds: Round[];
     winner?: Claim;
 }

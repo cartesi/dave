@@ -36,8 +36,7 @@ export const Default: Story = {
  */
 export const MidLevelClaim: Story = {
     args: {
-        claim: claims[1],
-        parentClaims: [claims[0]],
+        claim: { ...claims[1], parentClaim: claims[0] },
     },
 };
 
@@ -46,7 +45,9 @@ export const MidLevelClaim: Story = {
  */
 export const BottomLevelClaim: Story = {
     args: {
-        claim: claims[2],
-        parentClaims: [claims[0], claims[1]],
+        claim: {
+            ...claims[2],
+            parentClaim: { ...claims[1], parentClaim: claims[0] },
+        },
     },
 };

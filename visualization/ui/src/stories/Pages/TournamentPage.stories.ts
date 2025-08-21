@@ -2,17 +2,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
 import type { Claim } from "../../components/types";
 import { TournamentPage } from "../../view/tournament/Tournament";
-import {
-    Finalized,
-    NoChallengerYet,
-    Ongoing,
-} from "../Components/Tournament.stories";
-import { applications, epochs } from "../data";
+import * as TournamentStories from "../Components/Tournament.stories";
+import { applications } from "../data";
 import { randomTournament } from "../util";
 
 const meta = {
     title: "Pages/Tournament",
     component: TournamentPage,
+    tags: ["autodocs"],
 } satisfies Meta<typeof TournamentPage>;
 
 export default meta;
@@ -21,24 +18,24 @@ type Story = StoryObj<typeof meta>;
 export const TopLevelClosed: Story = {
     args: {
         application: applications[0],
-        epoch: epochs.honeypot[4],
-        tournament: NoChallengerYet.args.tournament,
+        epoch: applications[0].epochs[4],
+        tournament: TournamentStories.NoChallengerYet.args.tournament,
     },
 };
 
 export const TopLevelFinalized: Story = {
     args: {
         application: applications[0],
-        epoch: epochs.honeypot[3],
-        tournament: Finalized.args.tournament,
+        epoch: applications[0].epochs[3],
+        tournament: TournamentStories.Finalized.args.tournament,
     },
 };
 
 export const TopLevelDispute: Story = {
     args: {
         application: applications[0],
-        epoch: epochs.honeypot[4],
-        tournament: Ongoing.args.tournament,
+        epoch: applications[0].epochs[4],
+        tournament: TournamentStories.Ongoing.args.tournament,
     },
 };
 
@@ -55,7 +52,7 @@ const rootClaims: Claim[] = Array.from({ length: 128 }).map((_, i) => ({
 export const TopLevelLargeDispute: Story = {
     args: {
         application: applications[0],
-        epoch: epochs.honeypot[4],
+        epoch: applications[0].epochs[4],
         tournament: randomTournament(
             {
                 level: "TOP",
@@ -64,5 +61,13 @@ export const TopLevelLargeDispute: Story = {
             },
             rootClaims,
         ),
+    },
+};
+
+export const MidLevelDispute: Story = {
+    args: {
+        application: applications[0],
+        epoch: applications[0].epochs[4],
+        tournament: TournamentStories.MidLevelDispute.args.tournament,
     },
 };

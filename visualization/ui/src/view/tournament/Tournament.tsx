@@ -12,9 +12,24 @@ import type {
 } from "../../components/types";
 
 export interface TournamentPageProps {
+    /**
+     * The application to display.
+     */
     application: Application;
+
+    /**
+     * The epoch to display.
+     */
     epoch: Epoch;
+
+    /**
+     * Callback for when a match is clicked. Useful for navigating to the match page.
+     */
     onClickMatch?: (match: Match) => void;
+
+    /**
+     * Tournament to display.
+     */
     tournament: Tournament;
 }
 
