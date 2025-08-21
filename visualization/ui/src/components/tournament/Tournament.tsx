@@ -26,30 +26,23 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 export const TournamentView: FC<TournamentViewProps> = (props) => {
     const { onClickMatch, tournament } = props;
-    const { level, startCycle, endCycle, rounds, winner } = tournament;
+    const { danglingClaim, endCycle, level, matches, startCycle, winner } =
+        tournament;
     const range = `${mcycleFormatter.format(startCycle)} → ${mcycleFormatter.format(endCycle)}`;
     const [hideWinners, setHideWinners] = useState(false);
     const [minTimestamp, setMinTimestamp] = useState(0);
     const [maxTimestamp, setMaxTimestamp] = useState(0);
+    const [timeMarks, setTimeMarks] = useState<{ value: number }[]>([]);
     const [now, setNow] = useState(0);
 
     useEffect(() => {
         // collect all timestamps from all matches
-        const timestamps = tournament.rounds
-            .map((round) => {
-                return round.matches
-                    .map((match) => {
-                        const timestamps = [match.claim1Timestamp];
-                        if (match.claim2Timestamp) {
-                            timestamps.push(match.claim2Timestamp);
-                        }
-                        if (match.winnerTimestamp) {
-                            timestamps.push(match.winnerTimestamp);
-                        }
-                        return timestamps;
-                    })
-                    .flat();
-            })
+        const timestamps = tournament.matches
+            .map((match) =>
+                match.winnerTimestamp
+                    ? [match.timestamp, match.winnerTimestamp]
+                    : match.timestamp,
+            )
             .flat();
 
         if (timestamps.length > 0) {
@@ -61,6 +54,9 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
             setMinTimestamp(min);
             setMaxTimestamp(max);
             setNow(max);
+
+            // set slider marks
+            setTimeMarks(timestamps.map((value) => ({ value })));
         }
     }, [tournament]);
 
@@ -88,9 +84,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
             </Group>
             <Group>
                 <Text>Mcycle range</Text>
-                <Group>
-                    <Text>{range}</Text>
-                </Group>
+                <Text>{range}</Text>
             </Group>
             <Group>
                 <Text>Winner</Text>
@@ -117,15 +111,19 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
                     disabled={now === undefined}
                     min={minTimestamp}
                     max={maxTimestamp}
-                    step={1000}
+                    marks={timeMarks}
+                    restrictToMarks
                     value={now}
                     onChange={(value) => setNow(value)}
                     w={300}
-                    label={(value) => dateFormatter.format(new Date(value))}
+                    label={(value) =>
+                        dateFormatter.format(new Date(value * 1000))
+                    }
                 />
             </Group>
             <TournamentTable
-                rounds={rounds}
+                danglingClaim={danglingClaim}
+                matches={matches}
                 hideWinners={hideWinners}
                 now={now}
                 onClickMatch={onClickMatch}

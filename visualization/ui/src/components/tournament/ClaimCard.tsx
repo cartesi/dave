@@ -1,11 +1,10 @@
-import { Avatar, AvatarGroup, Group, Tooltip } from "@mantine/core";
-import Jazzicon from "@raugfer/jazzicon";
+import { Card, Group, type CardProps } from "@mantine/core";
 import type { FC } from "react";
-import { slice, type Hash } from "viem";
-import { LongText, type LongTextProps } from "../LongText";
+import { TbTrophyFilled } from "react-icons/tb";
 import type { Claim } from "../types";
+import { ClaimText } from "./ClaimText";
 
-export interface ClaimCardProps extends Omit<LongTextProps, "value"> {
+export interface ClaimCardProps extends CardProps {
     /**
      * The claim to display.
      */
@@ -22,48 +21,28 @@ export interface ClaimCardProps extends Omit<LongTextProps, "value"> {
     showParents?: boolean;
 }
 
-// builds an image data url for embedding
-function buildDataUrl(hash: Hash): string {
-    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
-}
-
 export const ClaimCard: FC<ClaimCardProps> = ({
     claim,
     showParents = true,
     iconSize = 32,
-    ...props
+    ...cardProps
 }) => {
-    const parents = [];
-    let parent = claim.parentClaim;
-    while (parent) {
-        parents.unshift(
-            <Tooltip
-                key={parent.hash}
-                label={
-                    <LongText
-                        value={parent.hash}
-                        ff="monospace"
-                        copyButton={false}
-                    />
-                }
-            >
-                <Avatar
-                    key={parent.hash}
-                    src={buildDataUrl(parent.hash)}
-                    size={iconSize}
-                />
-            </Tooltip>,
-        );
-        parent = parent.parentClaim;
-    }
-
     return (
-        <Group gap="xs" wrap="nowrap">
-            <AvatarGroup>
-                {showParents && parents}
-                <Avatar src={buildDataUrl(claim.hash)} size={iconSize} />
-            </AvatarGroup>
-            <LongText {...props} value={claim.hash} ff="monospace" />
-        </Group>
+        <Card
+            component="button"
+            withBorder
+            shadow="sm"
+            radius="lg"
+            {...cardProps}
+        >
+            <Group gap="xs" wrap="nowrap">
+                <TbTrophyFilled size={24} opacity={0} />
+                <ClaimText
+                    claim={claim}
+                    showParents={showParents}
+                    iconSize={iconSize}
+                />
+            </Group>
+        </Card>
     );
 };

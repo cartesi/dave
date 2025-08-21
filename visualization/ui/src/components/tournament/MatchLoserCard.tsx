@@ -8,9 +8,12 @@ import {
 import type { FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import type { Match } from "../types";
-import { ClaimCard } from "./ClaimCard";
+import { ClaimText } from "./ClaimText";
 
 export interface MatchLoserCardProps extends CardProps {
+    /**
+     * The match to display.
+     */
     match: Match;
 
     /**
@@ -19,6 +22,10 @@ export interface MatchLoserCardProps extends CardProps {
      * When provided, the match timestamps are used to filter out events that did not happen yet based on the simulated time.
      */
     now?: number;
+
+    /**
+     * Handler for the match card click event. When not provided, the match card is not clickable.
+     */
     onClick?: () => void;
 }
 
@@ -32,17 +39,8 @@ export const MatchLoserCard: FC<MatchLoserCardProps> = ({
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
 
-    if (now) {
-        if (
-            winner === 1 &&
-            match.claim2Timestamp &&
-            match.claim2Timestamp > now
-        ) {
-            return;
-        }
-        if (winner === 2 && match.claim1Timestamp > now) {
-            return;
-        }
+    if (now && match.timestamp > now) {
+        return;
     }
 
     const loser = winner === 1 ? claim2 : winner === 2 ? claim1 : undefined;
@@ -61,7 +59,7 @@ export const MatchLoserCard: FC<MatchLoserCardProps> = ({
             <Stack gap={0}>
                 <Group gap="xs" wrap="nowrap">
                     <TbTrophyFilled size={24} color={gold} opacity={0} />
-                    <ClaimCard
+                    <ClaimText
                         claim={loser}
                         style={{ textDecoration: "line-through" }}
                     />

@@ -13,7 +13,7 @@ type Story = StoryObj<typeof meta>;
 export const Ongoing: Story = {
     args: {
         tournament: TournamentStories.Ongoing.args.tournament,
-        match: TournamentStories.Ongoing.args.tournament.rounds[0].matches[1],
+        match: TournamentStories.Ongoing.args.tournament.matches[1],
     },
 };
 
@@ -23,6 +23,6 @@ export const Ongoing: Story = {
 export const NoActions: Story = {
     args: {
         tournament: TournamentStories.Ongoing.args.tournament,
-        match: TournamentStories.Ongoing.args.tournament.rounds[1].matches[1],
+        match: TournamentStories.Ongoing.args.tournament.matches[1],
     },
 };

@@ -9,7 +9,7 @@ import {
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { type FC } from "react";
-import { ClaimCard } from "../tournament/ClaimCard";
+import { ClaimText } from "../tournament/ClaimText";
 import type { Match, MatchAction, Tournament } from "../types";
 import CycleRangeGraph from "./CycleRangeGraph";
 
@@ -63,7 +63,7 @@ export const MatchActionCard: FC<Props> = (props) => {
             <Grid align="center" columns={12}>
                 <GridCol span={{ base: 12, sm: 5 }}>
                     <Group justify="space-between" wrap={wrapClaimGroup}>
-                        {claim && <ClaimCard claim={claim} />}
+                        {claim && <ClaimText claim={claim} />}
                         <Text ff="monospace" fw="bold" tt="uppercase">
                             {midText}
                         </Text>

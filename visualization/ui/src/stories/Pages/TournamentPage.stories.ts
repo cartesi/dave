@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
-import type { Claim } from "../../components/types";
+import type { Claim, Tournament } from "../../components/types";
 import { TournamentPage } from "../../view/tournament/Tournament";
 import * as TournamentStories from "../Components/Tournament.stories";
 import { applications } from "../data";
-import { randomTournament } from "../util";
+import { randomMatches } from "../util";
 
 const meta = {
     title: "Pages/Tournament",
@@ -42,25 +42,27 @@ export const TopLevelDispute: Story = {
 /**
  * Create random claims
  */
-const startTimestamp = Math.floor(Date.now() / 1000) * 1000;
-const rootClaims: Claim[] = Array.from({ length: 128 }).map((_, i) => ({
+const startTimestamp = Math.floor(Date.now() / 1000);
+const claims: Claim[] = Array.from({ length: 128 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
     claimer: zeroAddress,
-    timestamp: startTimestamp + i * 1000, // XXX: improve this time distribution
+    timestamp: startTimestamp + i, // XXX: improve this time distribution
 }));
+
+const randomTournament: Tournament = {
+    startCycle: 1837880065n,
+    endCycle: 2453987565n,
+    level: "TOP",
+    matches: [],
+    danglingClaim: undefined,
+};
+randomMatches(randomTournament, claims);
 
 export const TopLevelLargeDispute: Story = {
     args: {
         application: applications[0],
         epoch: applications[0].epochs[4],
-        tournament: randomTournament(
-            {
-                level: "TOP",
-                startCycle: 1837880065n,
-                endCycle: 2453987565n,
-            },
-            rootClaims,
-        ),
+        tournament: randomTournament,
     },
 };
 

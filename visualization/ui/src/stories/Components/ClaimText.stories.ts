@@ -1,16 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
-import { ClaimCard } from "../../components/tournament/ClaimCard";
+import { ClaimText } from "../../components/tournament/ClaimText";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/ClaimCard",
-    component: ClaimCard,
+    title: "Components/ClaimText",
+    component: ClaimText,
     parameters: {
         layout: "centered",
     },
     tags: ["autodocs"],
-} satisfies Meta<typeof ClaimCard>;
+} satisfies Meta<typeof ClaimText>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

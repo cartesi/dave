@@ -14,7 +14,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const tournament = TournamentStories.Ongoing.args.tournament;
-const match = tournament.rounds[0].matches[1];
+const match = tournament.matches[1];
 
 export const ClaimABisection: Story = {
     args: {

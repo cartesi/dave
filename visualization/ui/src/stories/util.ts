@@ -1,11 +1,5 @@
 import { concat, hexToNumber, keccak256, slice, type Hex } from "viem";
-import type {
-    Claim,
-    CycleRange,
-    Match,
-    Round,
-    Tournament,
-} from "../components/types";
+import type { Claim, CycleRange, Tournament } from "../components/types";
 
 /**
  * Create a pseudo-random number generator from a seed
@@ -81,121 +75,69 @@ export const randomBisections = (
 };
 
 /**
- * Pair up claims, and assign a random winner to each match
- * @param claims list of claims to pair up
- * @param ongoingPreviousRound number of ongoing matches in the previous round
- * @returns
+ * Create matches for a tournament
+ * @param tournament Tournament to create matches for
+ * @param claims Claims to create matches for
+ * @returns Tournament with matches
  */
-const pairUp = (claims: Claim[]): Match[] => {
-    const matches: Match[] = [];
-    for (let i = 0; i < claims.length; i += 2) {
-        const claim1 = claims[i];
-        const claim2 = claims[i + 1]; // will be undefined if number of claims is odd
-
-        matches.push({
-            claim1,
-            claim2,
-            claim1Timestamp: claim1.timestamp,
-            claim2Timestamp: claim2?.timestamp,
-            actions: [],
-        });
-    }
-    return matches;
-};
-
-/**
- * Create the next round from the current round
- * @param round current round
- * @param ongoingPreviousRounds number of ongoing matches in previous rounds
- * @returns next round, or undefined if there are no ongoing matches
- */
-const next = (
-    round: Round,
-    ongoingPreviousRounds: number,
-): Round | undefined => {
-    const matches: Match[] = [];
-
-    for (const match of round.matches) {
-        // declare a random winner
-        // orphans are only declared as winner if there are no ongoing matches in previous rounds
-        const winner = match.claim2
-            ? randomWinner(match.claim1, match.claim2)
-            : ongoingPreviousRounds > 0
-              ? undefined
-              : 1;
-
-        if (winner !== undefined) {
-            // if a winner has been declared, set winner and timestamp
-            match.winner = winner;
-            match.winnerTimestamp = match.claim2Timestamp
-                ? match.claim2Timestamp + 1000
-                : match.claim1Timestamp + 1000;
-
-            const winnerClaim =
-                winner === 1 ? match.claim1 : (match.claim2 as Claim);
-
-            // get the last match of the new round
-            const lastMatch = matches[matches.length - 1];
-
-            if (lastMatch && !lastMatch.claim2) {
-                // if there is a match with a free slot, add the winner as claim2
-                lastMatch.claim2 = winnerClaim;
-                lastMatch.claim2Timestamp = match.winnerTimestamp;
-            } else {
-                // create a new match with the winner as claim1
-                matches.push({
-                    claim1: winnerClaim,
-                    claim1Timestamp: match.winnerTimestamp,
-                    actions: [],
-                });
-            }
-        }
-    }
-
-    return matches.length > 0 ? { matches } : undefined;
-};
-
-export const randomTournament = (
-    tournament: Pick<Tournament, "startCycle" | "endCycle" | "level">,
+export const randomMatches = (
+    tournament: Tournament,
     claims: Claim[],
 ): Tournament => {
-    let ongoing = 0; // accumulator for the amount of ongoing matches
-    const rounds: Round[] = [];
+    const rng = mulberry32(0);
 
-    /**
-     * Create rounds until there are only ongoing matches
-     */
-    let round: Round | undefined = { matches: pairUp(claims) };
-    rounds.push(round);
-    do {
-        round = next(round, ongoing);
-        if (round) {
-            // increment the number of matches that are still ongoing
-            ongoing += round.matches.filter(
-                (match) => match.winner === undefined,
-            ).length;
+    // sort claims by timestamp
+    const sortedClaims = claims.sort((a, b) => a.timestamp - b.timestamp);
 
-            // add the round to the list of rounds
-            rounds.push(round);
+    // start from the timestamp of the first claim (in time)
+    let timestamp = sortedClaims[0].timestamp;
+
+    let claim = sortedClaims.shift();
+    while (claim) {
+        timestamp = claim.timestamp;
+        if (tournament.danglingClaim) {
+            // create a match with the dangling claim
+            const claim1 = tournament.danglingClaim;
+            tournament.matches.push({
+                actions: [],
+                claim1,
+                claim2: claim,
+                parentTournament: tournament,
+                timestamp,
+            });
+            tournament.danglingClaim = undefined;
+        } else {
+            // assign the claim to the dangling slot
+            tournament.danglingClaim = claim;
         }
-    } while (round);
 
-    let winner: Claim | undefined;
-    if (ongoing === 0) {
-        // all matches are resolved, the winner is the last surviving claim, in last round
-        const lastRound = rounds[rounds.length - 1];
-        const lastMatch = lastRound.matches[0];
-        winner =
-            lastMatch.winner === 1
-                ? lastMatch.claim1
-                : lastMatch.winner === 2
-                  ? lastMatch.claim2
-                  : undefined;
+        // get pending matches (without a winner) and pick one randomlly
+        const pending = tournament.matches.filter((match) => !match.winner);
+        const match = pending[Math.floor(rng() * pending.length)];
+        if (match) {
+            // resolve a winner randomly
+            const winner = randomWinner(match.claim1, match.claim2);
+            if (winner) {
+                // assign the winner, and put the claim back to the list
+                match.winner = winner;
+                match.winnerTimestamp = timestamp;
+                const winnerClaim = winner === 1 ? match.claim1 : match.claim2;
+                winnerClaim.timestamp = timestamp;
+                sortedClaims.unshift(winnerClaim);
+            }
+        }
+
+        claim = sortedClaims.shift();
     }
 
-    return {
-        ...tournament,
-        rounds,
-        winner,
-    };
+    // define tournament winner
+    const pending = tournament.matches.filter((match) => !match.winner);
+    if (pending.length === 0) {
+        // all matches are resolved, the winner is the last surviving claim
+        const lastMatch = tournament.matches[tournament.matches.length - 1];
+        tournament.winner =
+            lastMatch.winner === 1 ? lastMatch.claim1 : lastMatch.claim2;
+    }
+
+    return tournament;
 };

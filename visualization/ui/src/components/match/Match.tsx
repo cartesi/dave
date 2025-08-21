@@ -1,6 +1,6 @@
 import { Badge, Group, Slider, Stack, Text } from "@mantine/core";
 import { useEffect, useState, type FC } from "react";
-import { ClaimCard } from "../tournament/ClaimCard";
+import { ClaimText } from "../tournament/ClaimText";
 import type { Match, Tournament } from "../types";
 import { MatchActionCard } from "./MatchActionCard";
 
@@ -51,9 +51,9 @@ export const MatchView: FC<MatchViewProps> = (props) => {
             <Group>
                 <Text>Claims</Text>
                 <Group gap="xs">
-                    <ClaimCard claim={match.claim1} />
+                    <ClaimText claim={match.claim1} />
                     <Text>vs</Text>
-                    {match.claim2 && <ClaimCard claim={match.claim2} />}
+                    <ClaimText claim={match.claim2} />
                 </Group>
             </Group>
             <Group>

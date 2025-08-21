@@ -66,16 +66,11 @@ export interface Match {
     parentTournament: Tournament;
     tournament?: Tournament;
     claim1: Claim;
-    claim2?: Claim;
+    claim2: Claim;
     winner?: 1 | 2;
-    claim1Timestamp: number; // instant in time when claim1 joined the match
-    claim2Timestamp?: number; // instant in time when claim2 joined the match
-    winnerTimestamp?: number; // instant in time when match was resolved
+    timestamp: number; // instant in time when match was created
+    winnerTimestamp?: number; // instant in time when match was resolved (winner declared)
     actions: MatchAction[];
-}
-
-export interface Round {
-    matches: Match[];
 }
 
 export interface Tournament {
@@ -83,6 +78,7 @@ export interface Tournament {
     startCycle: bigint;
     endCycle: bigint;
     parentMatch?: Match;
-    rounds: Round[];
+    matches: Match[];
+    danglingClaim?: Claim; // claim that was not matched with another claim yet
     winner?: Claim;
 }

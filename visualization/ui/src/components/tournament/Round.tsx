@@ -1,12 +1,29 @@
 import { Divider, Stack } from "@mantine/core";
 import type { FC } from "react";
-import type { Match } from "../types";
+import type { Claim, Match } from "../types";
+import { ClaimCard } from "./ClaimCard";
 import { MatchCard } from "./MatchCard";
 import { MatchLoserCard } from "./MatchLoserCard";
 
 export interface TournamentRoundProps {
+    /**
+     * The claim that was not matched with another claim yet.
+     */
+    danglingClaim?: Claim;
+
+    /**
+     * Whether to hide the winners.
+     */
     hideWinners?: boolean;
+
+    /**
+     * The index of the round.
+     */
     index: number;
+
+    /**
+     * The matches to display.
+     */
     matches: Match[];
 
     /**
@@ -15,16 +32,17 @@ export interface TournamentRoundProps {
      * When provided, the matchs are displayed as the simulated time.
      */
     now?: number;
+
+    /**
+     * Callback when a match is clicked.
+     */
     onClickMatch?: (match: Match) => void;
 }
 
-export const TournamentRound: FC<TournamentRoundProps> = ({
-    hideWinners,
-    index,
-    matches,
-    now,
-    onClickMatch,
-}) => {
+export const TournamentRound: FC<TournamentRoundProps> = (props) => {
+    const { danglingClaim, hideWinners, index, matches, now, onClickMatch } =
+        props;
+
     return (
         <Stack>
             <Divider label={`Round ${index + 1}`} />
@@ -43,6 +61,7 @@ export const TournamentRound: FC<TournamentRoundProps> = ({
                     />
                 ),
             )}
+            {danglingClaim && <ClaimCard claim={danglingClaim} />}
         </Stack>
     );
 };

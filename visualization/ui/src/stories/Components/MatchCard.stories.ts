@@ -31,8 +31,7 @@ export const Ongoing: Story = {
         match: {
             claim1: claims[0],
             claim2: claims[1],
-            claim1Timestamp: claims[0].timestamp,
-            claim2Timestamp: claims[1].timestamp,
+            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
             actions: [],
         },
         onClick: fn(),
@@ -48,9 +47,9 @@ export const Winner1: Story = {
             claim1: claims[0],
             claim2: claims[1],
             winner: 1,
-            claim1Timestamp: claims[0].timestamp,
-            claim2Timestamp: claims[1].timestamp,
-            winnerTimestamp: claims[1].timestamp + 1000,
+            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
+            winnerTimestamp:
+                Math.max(claims[0].timestamp, claims[1].timestamp) + 1,
             actions: [],
         },
         onClick: fn(),
@@ -66,9 +65,9 @@ export const Winner2: Story = {
             claim1: claims[0],
             claim2: claims[1],
             winner: 2,
-            claim1Timestamp: claims[0].timestamp,
-            claim2Timestamp: claims[1].timestamp,
-            winnerTimestamp: claims[1].timestamp + 1000,
+            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
+            winnerTimestamp:
+                Math.max(claims[0].timestamp, claims[1].timestamp) + 1,
             actions: [],
         },
         onClick: fn(),
@@ -76,65 +75,17 @@ export const Winner2: Story = {
 };
 
 /**
- * A match that is waiting to be paired with another claim from a previous round.
+ * A match that has a simulated time, when the match did not exist, so it must just not be shown.
  */
-export const Waiting: Story = {
-    args: {
-        match: {
-            claim1: claims[0],
-            claim1Timestamp: claims[0].timestamp,
-            actions: [],
-        },
-        onClick: fn(),
-    },
-};
-
-/**
- * A match that is not matched with another claim, and was automatically declared as a winner.
- */
-export const OneClaim: Story = {
-    args: {
-        match: {
-            claim1: claims[0],
-            winner: 1,
-            claim1Timestamp: claims[0].timestamp,
-            winnerTimestamp: claims[0].timestamp + 1000,
-            actions: [],
-        },
-        onClick: fn(),
-    },
-};
-
-/**
- * A match that has a simulated time, when none of the claims were participants yet, so it must just not be shown.
- */
-export const TimeTravelBothClaims: Story = {
+export const TimeTravel: Story = {
     args: {
         match: {
             claim1: claims[0],
             claim2: claims[1],
-            claim1Timestamp: claims[0].timestamp,
-            claim2Timestamp: claims[1].timestamp,
+            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
             actions: [],
         },
-        now: Math.min(claims[0].timestamp, claims[1].timestamp) - 1000,
-        onClick: fn(),
-    },
-};
-
-/**
- * A match that has a simulated time, when only one of the claims were part of the match.
- */
-export const TimeTravelOneClaim: Story = {
-    args: {
-        match: {
-            claim1: claims[0],
-            claim2: claims[1],
-            claim1Timestamp: claims[0].timestamp,
-            claim2Timestamp: claims[1].timestamp,
-            actions: [],
-        },
-        now: Math.max(claims[0].timestamp, claims[1].timestamp) - 1000,
+        now: Math.min(claims[0].timestamp, claims[1].timestamp) - 1,
         onClick: fn(),
     },
 };
@@ -148,9 +99,9 @@ export const TimeTravelWinner: Story = {
             claim1: claims[0],
             claim2: claims[1],
             winner: 1,
-            claim1Timestamp: claims[0].timestamp,
-            claim2Timestamp: claims[1].timestamp,
-            winnerTimestamp: claims[1].timestamp + 1000,
+            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
+            winnerTimestamp:
+                Math.max(claims[0].timestamp, claims[1].timestamp) + 1,
             actions: [],
         },
         now: Math.max(claims[0].timestamp, claims[1].timestamp),
@@ -166,8 +117,7 @@ export const NoClickEventHandler: Story = {
         match: {
             claim1: claims[0],
             claim2: claims[1],
-            claim1Timestamp: claims[0].timestamp,
-            claim2Timestamp: claims[1].timestamp,
+            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
             actions: [],
         },
     },

@@ -25,10 +25,6 @@ const shorten = (value: string, sliceSize = 4, pad = 2) =>
 export const MatchMini: FC<MatchMiniProps> = ({ match, ...groupProps }) => {
     const { claim1, claim2 } = match;
 
-    if (!claim2) {
-        return;
-    }
-
     return (
         <Group gap="xs" {...groupProps}>
             <Tooltip label={shorten(claim1.hash)}>
