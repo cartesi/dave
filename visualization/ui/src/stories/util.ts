@@ -81,20 +81,14 @@ export const randomBisections = (
  * @returns Tournament with matches
  */
 export const randomMatches = (
+    timestamp: number,
     tournament: Tournament,
     claims: Claim[],
 ): Tournament => {
     const rng = mulberry32(0);
 
-    // sort claims by timestamp
-    const sortedClaims = claims.sort((a, b) => a.timestamp - b.timestamp);
-
-    // start from the timestamp of the first claim (in time)
-    let timestamp = sortedClaims[0].timestamp;
-
-    let claim = sortedClaims.shift();
+    let claim = claims.shift();
     while (claim) {
-        timestamp = claim.timestamp;
         if (tournament.danglingClaim) {
             // create a match with the dangling claim
             const claim1 = tournament.danglingClaim;
@@ -106,6 +100,7 @@ export const randomMatches = (
                 timestamp,
             });
             tournament.danglingClaim = undefined;
+            timestamp++; // XXX: improve this timestamp incrementation
         } else {
             // assign the claim to the dangling slot
             tournament.danglingClaim = claim;
@@ -121,13 +116,13 @@ export const randomMatches = (
                 // assign the winner, and put the claim back to the list
                 match.winner = winner;
                 match.winnerTimestamp = timestamp;
+                timestamp++; // XXX: improve this timestamp incrementation
                 const winnerClaim = winner === 1 ? match.claim1 : match.claim2;
-                winnerClaim.timestamp = timestamp;
-                sortedClaims.unshift(winnerClaim);
+                claims.unshift(winnerClaim);
             }
         }
 
-        claim = sortedClaims.shift();
+        claim = claims.shift();
     }
 
     // define tournament winner

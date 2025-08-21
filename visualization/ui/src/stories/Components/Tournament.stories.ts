@@ -16,20 +16,11 @@ type Story = StoryObj<typeof meta>;
 
 const timestamp = getUnixTime(Date.now());
 
-const randomClaim = (
-    i: number,
-    c: Pick<Claim, "timestamp" | "parentClaim">,
-): Claim => ({
+const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
     hash: keccak256(toBytes(i)),
     claimer: zeroAddress,
-    timestamp: c.timestamp,
-    parentClaim: c.parentClaim,
+    parentClaim: c?.parentClaim,
 });
-
-const claims: Claim[] = Array.from({ length: 32 }).map((_, i) =>
-    // XXX: timestamp here is going back to milliseconds.
-    randomClaim(i, { timestamp: timestamp + i * 1000 }),
-);
 
 const startCycle = 1837880065n;
 const endCycle = 2453987565n;
@@ -46,8 +37,8 @@ const tournament: Tournament = {
 
 tournament.matches.push(
     {
-        claim1: randomClaim(0, { timestamp }),
-        claim2: randomClaim(1, { timestamp: timestamp + 1 }),
+        claim1: randomClaim(0),
+        claim2: randomClaim(1),
         timestamp: timestamp + 1,
         winner: 1,
         winnerTimestamp: timestamp + 2,
@@ -55,40 +46,40 @@ tournament.matches.push(
         parentTournament: tournament,
     },
     {
-        claim1: randomClaim(2, { timestamp: timestamp + 2 }),
-        claim2: randomClaim(3, { timestamp: timestamp + 3 }),
+        claim1: randomClaim(2),
+        claim2: randomClaim(3),
         timestamp: timestamp + 3,
         actions: [
             {
                 type: "advance",
                 claimer: 1,
                 range: ranges[0],
-                timestamp: claims[3].timestamp + 1,
+                timestamp: timestamp + 4,
             },
             {
                 type: "advance",
                 claimer: 2,
                 range: ranges[1],
-                timestamp: claims[3].timestamp + 2,
+                timestamp: timestamp + 5,
             },
             {
                 type: "advance",
                 claimer: 1,
                 range: ranges[2],
-                timestamp: claims[3].timestamp + 3,
+                timestamp: timestamp + 6,
             },
             {
                 type: "advance",
                 claimer: 2,
                 range: ranges[3],
-                timestamp: claims[3].timestamp + 4,
+                timestamp: timestamp + 7,
             },
         ],
         parentTournament: tournament,
     },
     {
-        claim1: randomClaim(4, { timestamp: timestamp + 4 }),
-        claim2: randomClaim(5, { timestamp: timestamp + 5 }),
+        claim1: randomClaim(4),
+        claim2: randomClaim(5),
         winner: 1,
         timestamp: timestamp + 5,
         winnerTimestamp: timestamp + 6,
@@ -96,14 +87,14 @@ tournament.matches.push(
         parentTournament: tournament,
     },
     {
-        claim1: randomClaim(6, { timestamp: timestamp + 6 }),
-        claim2: randomClaim(4, { timestamp: timestamp + 6 }),
+        claim1: randomClaim(6),
+        claim2: randomClaim(4),
         timestamp: timestamp + 6,
         actions: [],
         parentTournament: tournament,
     },
 );
-tournament.danglingClaim = randomClaim(0, { timestamp: timestamp + 7 });
+tournament.danglingClaim = randomClaim(0);
 
 const mid: Tournament = {
     level: "MIDDLE",
@@ -115,11 +106,9 @@ const mid: Tournament = {
 mid.matches.push(
     {
         claim1: randomClaim(7, {
-            timestamp: timestamp + 7,
             parentClaim: mid.parentMatch?.claim1,
         }),
         claim2: randomClaim(8, {
-            timestamp: timestamp + 8,
             parentClaim: mid.parentMatch?.claim2,
         }),
         timestamp: timestamp + 8,
@@ -128,11 +117,9 @@ mid.matches.push(
     },
     {
         claim1: randomClaim(9, {
-            timestamp: timestamp + 9,
             parentClaim: mid.parentMatch?.claim2,
         }),
         claim2: randomClaim(10, {
-            timestamp: timestamp + 10,
             parentClaim: mid.parentMatch?.claim1,
         }),
         timestamp: timestamp + 10,
@@ -158,7 +145,7 @@ export const NoChallengerYet: Story = {
             endCycle: 2453987565n,
             winner: undefined,
             matches: [],
-            danglingClaim: randomClaim(0, { timestamp }),
+            danglingClaim: randomClaim(0),
         },
     },
 };
@@ -170,8 +157,8 @@ export const Finalized: Story = {
             level: "TOP",
             startCycle: 1837880065n,
             endCycle: 2453987565n,
-            winner: randomClaim(0, { timestamp }),
-            danglingClaim: randomClaim(0, { timestamp }),
+            winner: randomClaim(0),
+            danglingClaim: randomClaim(0),
             matches: [],
         },
     },

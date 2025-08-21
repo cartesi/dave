@@ -44,7 +44,6 @@ export interface Claim {
     hash: Hash;
     claimer: Address;
     parentClaim?: Claim;
-    timestamp: number;
 }
 
 export type CycleRange = [bigint, bigint];

@@ -16,11 +16,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const startTimestamp = Date.now();
+const timestamp = Math.floor(Date.now() / 1000);
 const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
     claimer: zeroAddress,
-    timestamp: startTimestamp + i * 1000, // XXX: improve this time distribution
 }));
 
 /**
@@ -31,7 +30,7 @@ export const Ongoing: Story = {
         match: {
             claim1: claims[0],
             claim2: claims[1],
-            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
+            timestamp,
             actions: [],
         },
         onClick: fn(),
@@ -47,9 +46,8 @@ export const Winner1: Story = {
             claim1: claims[0],
             claim2: claims[1],
             winner: 1,
-            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
-            winnerTimestamp:
-                Math.max(claims[0].timestamp, claims[1].timestamp) + 1,
+            timestamp,
+            winnerTimestamp: timestamp + 1,
             actions: [],
         },
         onClick: fn(),
@@ -65,9 +63,8 @@ export const Winner2: Story = {
             claim1: claims[0],
             claim2: claims[1],
             winner: 2,
-            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
-            winnerTimestamp:
-                Math.max(claims[0].timestamp, claims[1].timestamp) + 1,
+            timestamp,
+            winnerTimestamp: timestamp + 1,
             actions: [],
         },
         onClick: fn(),
@@ -82,10 +79,10 @@ export const TimeTravel: Story = {
         match: {
             claim1: claims[0],
             claim2: claims[1],
-            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
+            timestamp,
             actions: [],
         },
-        now: Math.min(claims[0].timestamp, claims[1].timestamp) - 1,
+        now: timestamp - 1,
         onClick: fn(),
     },
 };
@@ -99,12 +96,11 @@ export const TimeTravelWinner: Story = {
             claim1: claims[0],
             claim2: claims[1],
             winner: 1,
-            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
-            winnerTimestamp:
-                Math.max(claims[0].timestamp, claims[1].timestamp) + 1,
+            timestamp,
+            winnerTimestamp: timestamp + 1,
             actions: [],
         },
-        now: Math.max(claims[0].timestamp, claims[1].timestamp),
+        now: timestamp,
         onClick: fn(),
     },
 };
@@ -117,7 +113,7 @@ export const NoClickEventHandler: Story = {
         match: {
             claim1: claims[0],
             claim2: claims[1],
-            timestamp: Math.max(claims[0].timestamp, claims[1].timestamp),
+            timestamp,
             actions: [],
         },
     },

@@ -46,7 +46,6 @@ const startTimestamp = Math.floor(Date.now() / 1000);
 const claims: Claim[] = Array.from({ length: 128 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
     claimer: zeroAddress,
-    timestamp: startTimestamp + i, // XXX: improve this time distribution
 }));
 
 const randomTournament: Tournament = {
@@ -56,7 +55,7 @@ const randomTournament: Tournament = {
     matches: [],
     danglingClaim: undefined,
 };
-randomMatches(randomTournament, claims);
+randomMatches(startTimestamp, randomTournament, claims);
 
 export const TopLevelLargeDispute: Story = {
     args: {
