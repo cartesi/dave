@@ -1,6 +1,6 @@
-import { Badge, Group, Slider, Stack, Text } from "@mantine/core";
-import { fromUnixTime } from "date-fns";
-import { useEffect, useState, type FC } from "react";
+import { Badge, Group, Stack, Text } from "@mantine/core";
+import { useMemo, useState, type FC } from "react";
+import { TimeSlider } from "../TimeSlider";
 import { ClaimText } from "../tournament/ClaimText";
 import type { Match, Tournament } from "../types";
 import { MatchActionCard } from "./MatchActionCard";
@@ -11,33 +11,15 @@ export interface MatchViewProps {
 }
 
 const mcycleFormatter = new Intl.NumberFormat("en-US", {});
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "short",
-    timeStyle: "medium",
-});
 
 export const MatchView: FC<MatchViewProps> = (props) => {
     const { match, tournament } = props;
     const { level, startCycle, endCycle } = tournament;
     const range = `${mcycleFormatter.format(startCycle)} to ${mcycleFormatter.format(endCycle)}`;
-    const [minTimestamp, setMinTimestamp] = useState(0);
-    const [maxTimestamp, setMaxTimestamp] = useState(0);
     const [now, setNow] = useState<number | undefined>(undefined);
-
-    useEffect(() => {
-        // collect all timestamps from all actions
-        const timestamps = match.actions.map(({ timestamp }) => timestamp);
-        if (timestamps.length > 0) {
-            // find the minimum and maximum timestamps
-            const min = Math.min(...timestamps);
-            const max = Math.max(...timestamps);
-
-            // set the state
-            setMinTimestamp(min);
-            setMaxTimestamp(max);
-            setNow(max);
-        }
-    }, [tournament]);
+    const timestamps = useMemo(() => {
+        return match.actions.map(({ timestamp }) => timestamp);
+    }, [match]);
 
     return (
         <Stack>
@@ -59,17 +41,7 @@ export const MatchView: FC<MatchViewProps> = (props) => {
             </Group>
             <Group>
                 <Text>Time</Text>
-                <Slider
-                    defaultValue={maxTimestamp}
-                    disabled={now === undefined}
-                    min={minTimestamp}
-                    max={maxTimestamp}
-                    step={1}
-                    value={now}
-                    onChange={(value) => setNow(value)}
-                    w={300}
-                    label={(value) => dateFormatter.format(fromUnixTime(value))}
-                />
+                <TimeSlider timestamps={timestamps} onChange={setNow} />
             </Group>
             <Stack>
                 {match.actions.map((action) => {
