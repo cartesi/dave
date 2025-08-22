@@ -1,5 +1,5 @@
 import { Flex } from "@mantine/core";
-import { useEffect, useState, type FC } from "react";
+import { useMemo, type FC } from "react";
 import type { Hash } from "viem";
 import type { Claim, Match } from "../types";
 import { TournamentRound } from "./Round";
@@ -13,6 +13,10 @@ export interface TournamentTableProps {
      * When provided, the match timestamps are used to filter out events that did not happen yet based on the simulated time.
      */
     now?: number;
+
+    /**
+     * Callback when a match is clicked.
+     */
     onClickMatch?: (match: Match) => void;
 
     /**
@@ -48,9 +52,21 @@ function lazyArray<T>(factory: () => T): T[] {
  * @param matches Matches to distribute
  * @returns Rounds of matches
  */
-const roundify = (matches: Match[]): Match[][] => {
+type Round = {
+    matches: Match[];
+    danglingClaim?: Claim;
+};
+const roundify = (
+    matches: Match[],
+    danglingClaim?: Claim,
+    now?: number,
+): Round[] => {
     const sets = lazyArray(() => new Set<Hash>());
-    const rounds: Match[][] = lazyArray(() => []);
+    const rounds: Round[] = lazyArray(() => ({
+        matches: [],
+        danglingClaim,
+        now,
+    }));
     for (const match of matches) {
         for (let i = 0; i < matches.length; i++) {
             if (
@@ -59,10 +75,17 @@ const roundify = (matches: Match[]): Match[][] => {
             ) {
                 sets[i].add(match.claim1.hash);
                 sets[i].add(match.claim2.hash);
-                rounds[i].push(match);
+                rounds[i].matches.push(match);
                 break;
             }
         }
+    }
+    if (rounds.length === 0 && danglingClaim) {
+        // add a round for the dangling claim
+        rounds.push({ matches: [], danglingClaim });
+    } else {
+        // put dangling claim into last round
+        rounds[rounds.length - 1].danglingClaim = danglingClaim;
     }
     return rounds;
 };
@@ -70,35 +93,25 @@ const roundify = (matches: Match[]): Match[][] => {
 export const TournamentTable: FC<TournamentTableProps> = (props) => {
     const { danglingClaim, hideWinners, now, onClickMatch } = props;
 
-    const [rounds, setRounds] = useState<Match[][]>([]);
-
-    useEffect(() => {
+    const rounds = useMemo(() => {
         // sort matches by timestamp
         // XXX: maybe we should assume that the matches are already sorted by timestamp?
         const matches = [...props.matches].sort(
             (a, b) => a.timestamp - b.timestamp,
         );
-
-        const rounds = roundify(matches);
-        if (rounds.length === 0) {
-            // create a single round with no matches (for the dangling claim if there is one)
-            rounds.push([]);
-        }
-        setRounds(rounds);
-    }, [props.matches]);
+        return roundify(matches, danglingClaim, now);
+    }, [props.matches, danglingClaim, now]);
 
     return (
         <Flex gap="md">
-            {rounds.map((matches, index) => (
+            {rounds.map((round, index) => (
                 <TournamentRound
                     index={index}
-                    matches={matches}
+                    matches={round.matches}
                     now={now}
                     onClickMatch={onClickMatch}
                     hideWinners={hideWinners}
-                    danglingClaim={
-                        index === rounds.length - 1 ? danglingClaim : undefined // dangling claim will go into last round
-                    }
+                    danglingClaim={round.danglingClaim}
                 />
             ))}
         </Flex>
