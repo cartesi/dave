@@ -7,11 +7,10 @@ import {
     Text,
     useMantineTheme,
 } from "@mantine/core";
-import { useMemo, useState, type FC, type ReactNode } from "react";
+import { useState, type FC, type ReactNode } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
-import { TimeSlider } from "../TimeSlider";
 import type { Match, Tournament } from "../types";
 import { MatchMini } from "./MatchMini";
 import { TournamentTable } from "./Table";
@@ -29,16 +28,6 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
     const { danglingClaim, endCycle, level, matches, startCycle, winner } =
         tournament;
     const [hideWinners, setHideWinners] = useState(false);
-    const [now, setNow] = useState(0);
-    const timestamps = useMemo(() => {
-        return tournament.matches
-            .map((match) =>
-                match.winnerTimestamp
-                    ? [match.timestamp, match.winnerTimestamp]
-                    : match.timestamp,
-            )
-            .flat();
-    }, [tournament.matches]);
 
     // build the breadcrumb of the tournament hierarchy
     const parents: ReactNode[] = [];
@@ -85,15 +74,10 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
                     setHideWinners(event.currentTarget.checked)
                 }
             />
-            <Group>
-                <Text>Time</Text>
-                <TimeSlider timestamps={timestamps} onChange={setNow} />
-            </Group>
             <TournamentTable
                 danglingClaim={danglingClaim}
                 matches={matches}
                 hideWinners={hideWinners}
-                now={now}
                 onClickMatch={onClickMatch}
             />
         </Stack>
