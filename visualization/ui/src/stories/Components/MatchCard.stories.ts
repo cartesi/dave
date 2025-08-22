@@ -38,6 +38,42 @@ export const Ongoing: Story = {
 };
 
 /**
+ * A match of a mid-level tournament, where claims have parent claims.
+ */
+export const MidLevel: Story = {
+    args: {
+        match: {
+            claim1: { ...claims[0], parentClaim: claims[2] },
+            claim2: { ...claims[1], parentClaim: claims[3] },
+            timestamp,
+            actions: [],
+        },
+        onClick: fn(),
+    },
+};
+
+/**
+ * A match of a bottom-level tournament, where claims have parent claims.
+ */
+export const BottomLevel: Story = {
+    args: {
+        match: {
+            claim1: {
+                ...claims[0],
+                parentClaim: { ...claims[2], parentClaim: claims[4] },
+            },
+            claim2: {
+                ...claims[1],
+                parentClaim: { ...claims[3], parentClaim: claims[5] },
+            },
+            timestamp,
+            actions: [],
+        },
+        onClick: fn(),
+    },
+};
+
+/**
  * A match that the first claim is the winner.
  */
 export const Winner1: Story = {
