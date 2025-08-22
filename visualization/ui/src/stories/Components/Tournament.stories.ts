@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { getUnixTime } from "date-fns";
 import { fn } from "storybook/test";
 import { keccak256, toBytes, zeroAddress } from "viem";
 import { TournamentView } from "../../components/tournament/Tournament";
@@ -13,7 +14,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const timestamp = Math.floor(Date.now() / 1000);
+const timestamp = getUnixTime(Date.now());
 
 const randomClaim = (
     i: number,
@@ -26,6 +27,7 @@ const randomClaim = (
 });
 
 const claims: Claim[] = Array.from({ length: 32 }).map((_, i) =>
+    // XXX: timestamp here is going back to milliseconds.
     randomClaim(i, { timestamp: timestamp + i * 1000 }),
 );
 

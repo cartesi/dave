@@ -1,4 +1,5 @@
 import { Badge, Group, Slider, Stack, Text } from "@mantine/core";
+import { fromUnixTime } from "date-fns";
 import { useEffect, useState, type FC } from "react";
 import { ClaimText } from "../tournament/ClaimText";
 import type { Match, Tournament } from "../types";
@@ -63,13 +64,11 @@ export const MatchView: FC<MatchViewProps> = (props) => {
                     disabled={now === undefined}
                     min={minTimestamp}
                     max={maxTimestamp}
-                    step={1000}
+                    step={1}
                     value={now}
                     onChange={(value) => setNow(value)}
                     w={300}
-                    label={(value) =>
-                        dateFormatter.format(new Date(value * 1000))
-                    }
+                    label={(value) => dateFormatter.format(fromUnixTime(value))}
                 />
             </Group>
             <Stack>
