@@ -127,6 +127,11 @@ abstract contract LeafTournament is Tournament {
         deleteMatch(_matchId.hashFromId());
     }
 
+    function _interactionsWeight() internal view override returns (uint256) {
+        return Weight.ADVANCE_MATCH * _tournamentArgs().height
+            + Weight.SEAL_LEAF_MATCH + Weight.WIN_LEAF_MATCH;
+    }
+
     function _stateTransition()
         internal
         view

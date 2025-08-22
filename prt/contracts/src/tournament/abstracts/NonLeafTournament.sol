@@ -201,6 +201,12 @@ abstract contract NonLeafTournament is Tournament {
         return NonRootTournament(address(_tournament));
     }
 
+    function _interactionsWeight() internal view override returns (uint256) {
+        return Weight.ADVANCE_MATCH * _tournamentArgs().height
+            + Weight.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+            + Weight.WIN_INNER_TOURNAMENT;
+    }
+
     function _tournamentFactory()
         internal
         view

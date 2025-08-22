@@ -62,9 +62,7 @@ abstract contract Tournament {
     uint256 matchCount;
     Time.Instant lastMatchDeleted;
 
-    uint256 constant BOND_VALUE = 1 ether;
-    // A constant in the Ethereum protocol
-    uint256 constant TX_INTRINSIC_GAS = 21000;
+    uint256 constant MAX_GAS_PRICE = 50 gwei;
     // MEV tips
     uint256 constant MEV_PROFIT = 10 gwei;
     bool transient locked;
@@ -112,24 +110,19 @@ abstract contract Tournament {
     /// @notice Refunds the message sender with the amount
     /// of Ether wasted on gas on this function call plus
     /// a profit, capped by the current contract balance
-    // and the division between the bond value and the
-    // max number of interactions per player.
+    /// and a fraction of the bond value.
     modifier refundable(uint256 weight) {
-        if (locked) revert ReentrancyDetected();
+        require(!locked, ReentrancyDetected());
         locked = true;
 
         uint256 gasBefore = gasleft();
         _;
         uint256 gasAfter = gasleft();
 
-        // if it's a non-leaf tournament, the +3 is for `winInnerTournament`
-        // if it's a leaf tournament, the +3 is for `step`
-        uint256 interactions_weight = (_tournamentArgs().height + 1) / 2 + 3;
-
         uint256 refundValue = _min(
             address(this).balance,
-            BOND_VALUE * weight / interactions_weight,
-            (TX_INTRINSIC_GAS + gasBefore - gasAfter)
+            bondValue() * weight / _interactionsWeight(),
+            (Weight.TX_INTRINSIC_GAS + gasBefore - gasAfter)
                 * (tx.gasprice + MEV_PROFIT)
         );
         msg.sender.call{value: refundValue}("");
@@ -151,6 +144,9 @@ abstract contract Tournament {
     //
     // Methods
     //
+    function bondValue() public view returns (uint256) {
+        return _interactionsWeight() * MAX_GAS_PRICE;
+    }
 
     /// @dev root tournaments are open to everyone,
     /// while non-root tournaments are open to anyone
@@ -161,7 +157,7 @@ abstract contract Tournament {
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) external payable tournamentOpen {
-        require(msg.value >= BOND_VALUE, InsufficientBond());
+        require(msg.value >= bondValue(), InsufficientBond());
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
@@ -517,6 +513,8 @@ abstract contract Tournament {
         view
         virtual
         returns (TournamentArgs memory);
+
+    function _interactionsWeight() internal view virtual returns (uint256);
 
     /// @notice Returns the minimum of three values
     /// @param a First value
