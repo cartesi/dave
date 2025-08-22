@@ -1,5 +1,6 @@
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import { useMemo, useState, type FC } from "react";
+import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { TimeSlider } from "../TimeSlider";
 import { ClaimText } from "../tournament/ClaimText";
 import type { Match, Tournament } from "../types";
@@ -10,12 +11,9 @@ export interface MatchViewProps {
     match: Match;
 }
 
-const mcycleFormatter = new Intl.NumberFormat("en-US", {});
-
 export const MatchView: FC<MatchViewProps> = (props) => {
     const { match, tournament } = props;
     const { level, startCycle, endCycle } = tournament;
-    const range = `${mcycleFormatter.format(startCycle)} to ${mcycleFormatter.format(endCycle)}`;
     const [now, setNow] = useState<number | undefined>(undefined);
     const timestamps = useMemo(() => {
         return match.actions.map(({ timestamp }) => timestamp);
@@ -29,7 +27,7 @@ export const MatchView: FC<MatchViewProps> = (props) => {
             </Group>
             <Group>
                 <Text>Mcycle range</Text>
-                <Text>{range}</Text>
+                <CycleRangeFormatted cycleRange={[startCycle, endCycle]} />
             </Group>
             <Group>
                 <Text>Claims</Text>

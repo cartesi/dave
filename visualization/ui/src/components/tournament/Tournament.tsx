@@ -9,6 +9,7 @@ import {
 } from "@mantine/core";
 import { useMemo, useState, type FC, type ReactNode } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
+import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
 import { TimeSlider } from "../TimeSlider";
 import type { Match, Tournament } from "../types";
@@ -20,8 +21,6 @@ export interface TournamentViewProps {
     tournament: Tournament;
 }
 
-const mcycleFormatter = new Intl.NumberFormat("en-US", {});
-
 export const TournamentView: FC<TournamentViewProps> = (props) => {
     const { onClickMatch, tournament } = props;
     const theme = useMantineTheme();
@@ -29,7 +28,6 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
 
     const { danglingClaim, endCycle, level, matches, startCycle, winner } =
         tournament;
-    const range = `${mcycleFormatter.format(startCycle)} → ${mcycleFormatter.format(endCycle)}`;
     const [hideWinners, setHideWinners] = useState(false);
     const [now, setNow] = useState(0);
     const timestamps = useMemo(() => {
@@ -66,7 +64,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
             </Group>
             <Group>
                 <Text>Mcycle range</Text>
-                <Text>{range}</Text>
+                <CycleRangeFormatted cycleRange={[startCycle, endCycle]} />
             </Group>
             <Group>
                 <Text>Winner</Text>
