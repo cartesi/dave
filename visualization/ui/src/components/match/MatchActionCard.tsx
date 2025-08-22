@@ -18,13 +18,6 @@ interface Props extends CardProps {
     match: Match;
     action: MatchAction;
     midText?: string;
-
-    /**
-     * Simulated current time.
-     * When not provided, all actions are shown as is.
-     * When provided, the actions are shown as they were at the given time.
-     */
-    now?: number;
 }
 
 export const MatchActionCard: FC<Props> = (props) => {
@@ -32,17 +25,12 @@ export const MatchActionCard: FC<Props> = (props) => {
         action,
         match,
         midText = "Bisection",
-        now,
         tournament,
         ...cardProps
     } = props;
 
-    if (now !== undefined) {
-        // simulated time is defined, return empty if action is in the future
-        if (action.timestamp > now) {
-            return;
-        }
-    }
+    const theme = useMantineTheme();
+    const isSmallDevice = useMediaQuery(`(max-width:${theme.breakpoints.sm})`);
 
     // if action is an advance, assign the claim as claim1 or claim2
     const claim =
@@ -53,9 +41,6 @@ export const MatchActionCard: FC<Props> = (props) => {
             : undefined;
 
     const range = action.type === "advance" ? action.range : undefined;
-
-    const theme = useMantineTheme();
-    const isSmallDevice = useMediaQuery(`(max-width:${theme.breakpoints.sm})`);
     const wrapClaimGroup = isSmallDevice ? "wrap" : "nowrap";
 
     return (

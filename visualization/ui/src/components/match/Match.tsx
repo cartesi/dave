@@ -73,14 +73,15 @@ export const MatchView: FC<MatchViewProps> = (props) => {
                 />
             </Group>
             <Stack>
-                {match.actions.map((action) => (
-                    <MatchActionCard
-                        action={action}
-                        match={match}
-                        now={now}
-                        tournament={tournament}
-                    />
-                ))}
+                {match.actions.map((action) => {
+                    return !now || action.timestamp > now ? null : (
+                        <MatchActionCard
+                            action={action}
+                            match={match}
+                            tournament={tournament}
+                        />
+                    );
+                })}
             </Stack>
         </Stack>
     );
