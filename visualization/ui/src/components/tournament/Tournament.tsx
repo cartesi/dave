@@ -12,7 +12,7 @@ import { TbTrophyFilled } from "react-icons/tb";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
 import type { Match, Tournament } from "../types";
-import { MatchMini } from "./MatchMini";
+import { MatchBadge } from "./MatchBadge";
 import { TournamentTable } from "./Table";
 
 export interface TournamentViewProps {
@@ -33,7 +33,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
     const parents: ReactNode[] = [];
     let parentMatch = tournament.parentMatch;
     while (parentMatch) {
-        parents.unshift(<MatchMini match={parentMatch} />);
+        parents.unshift(<MatchBadge match={parentMatch} />);
         parents.unshift(
             <Badge key={parentMatch.parentTournament.level} variant="default">
                 {parentMatch.parentTournament.level}
