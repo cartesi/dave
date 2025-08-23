@@ -1,12 +1,12 @@
 import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import type { Preview, StoryContext, StoryFn } from "@storybook/react-vite";
-import { BrowserRouter } from "react-router";
+import { MemoryRouter } from "react-router";
 import Layout from "../src/components/layout/Layout";
 import theme from "../src/providers/theme";
 
 const withRouter = (StoryFn: StoryFn, context: StoryContext) => (
-    <BrowserRouter>{StoryFn(context.args, context)}</BrowserRouter>
+    <MemoryRouter>{StoryFn(context.args, context)}</MemoryRouter>
 );
 
 const withLayout = (StoryFn: StoryFn, context: StoryContext) => {

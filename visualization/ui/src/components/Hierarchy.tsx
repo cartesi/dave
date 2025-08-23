@@ -5,6 +5,7 @@ import {
     type BreadcrumbsProps,
 } from "@mantine/core";
 import type { FC } from "react";
+import { Link } from "react-router";
 
 export type HierarchyConfig = {
     title: string;
@@ -31,7 +32,7 @@ export const Hierarchy: FC<HierarchyProps> = ({
                     return <Text c="dimmed"> {c.title}</Text>;
 
                 return (
-                    <Anchor key={index} href={c.href}>
+                    <Anchor key={index} to={c.href} component={Link}>
                         {c.title}
                     </Anchor>
                 );
