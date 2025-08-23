@@ -46,7 +46,7 @@ export interface Claim {
     parentClaim?: Claim;
 }
 
-export type Cycle = bigint;
+export type Cycle = number;
 export type CycleRange = [Cycle, Cycle];
 
 type Claimer = 1 | 2;

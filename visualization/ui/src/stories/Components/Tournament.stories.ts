@@ -9,6 +9,7 @@ import { randomBisections } from "../util";
 const meta = {
     title: "Components/Tournament",
     component: TournamentView,
+    tags: ["autodocs"],
 } satisfies Meta<typeof TournamentView>;
 
 export default meta;
@@ -22,8 +23,8 @@ const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
     parentClaim: c?.parentClaim,
 });
 
-const startCycle = 1837880065n;
-const endCycle = 2453987565n;
+const startCycle = 1837880065;
+const endCycle = 2453987565;
 
 // create 4 bisections of the cycle range
 const ranges = randomBisections([startCycle, endCycle], 4, 42);
@@ -98,8 +99,8 @@ tournament.danglingClaim = randomClaim(0);
 
 const mid: Tournament = {
     level: "MIDDLE",
-    startCycle: startCycle / 1024n,
-    endCycle: endCycle / 1024n,
+    startCycle: startCycle / 1024,
+    endCycle: endCycle / 1024,
     parentMatch: tournament.matches[1],
     matches: [],
 };
@@ -141,8 +142,8 @@ export const NoChallengerYet: Story = {
         onClickMatch: fn(),
         tournament: {
             level: "TOP",
-            startCycle: 1837880065n,
-            endCycle: 2453987565n,
+            startCycle,
+            endCycle,
             winner: undefined,
             matches: [],
             danglingClaim: randomClaim(0),
@@ -155,8 +156,8 @@ export const Finalized: Story = {
         onClickMatch: fn(),
         tournament: {
             level: "TOP",
-            startCycle: 1837880065n,
-            endCycle: 2453987565n,
+            startCycle,
+            endCycle,
             winner: randomClaim(0),
             danglingClaim: randomClaim(0),
             matches: [],

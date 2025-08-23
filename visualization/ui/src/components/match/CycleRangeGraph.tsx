@@ -11,8 +11,8 @@ import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import useRightColorShade from "../../hooks/useRightColorShade";
 import type { Cycle, CycleRange } from "../types";
 
-const ZERO = 0n as const;
-const ONE_HUNDRED = 100n as const;
+const ZERO = 0 as const;
+const ONE_HUNDRED = 100 as const;
 
 function getLengthInPixel(limitBoundLength: Cycle, endpointLength: Cycle) {
     if (!limitBoundLength || limitBoundLength === ZERO) return ZERO;

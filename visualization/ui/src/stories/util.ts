@@ -61,11 +61,11 @@ export const randomBisections = (
         if (rand() < 0.5) {
             ranges.push([
                 ranges[i - 1][0],
-                (ranges[i - 1][0] + ranges[i - 1][1]) / 2n,
+                (ranges[i - 1][0] + ranges[i - 1][1]) / 2,
             ]);
         } else {
             ranges.push([
-                (ranges[i - 1][0] + ranges[i - 1][1]) / 2n,
+                (ranges[i - 1][0] + ranges[i - 1][1]) / 2,
                 ranges[i - 1][1],
             ]);
         }

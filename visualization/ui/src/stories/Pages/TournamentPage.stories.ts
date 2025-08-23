@@ -49,8 +49,8 @@ const claims: Claim[] = Array.from({ length: 128 }).map((_, i) => ({
 }));
 
 const randomTournament: Tournament = {
-    startCycle: 1837880065n,
-    endCycle: 2453987565n,
+    startCycle: 1837880065,
+    endCycle: 2453987565,
     level: "TOP",
     matches: [],
     danglingClaim: undefined,

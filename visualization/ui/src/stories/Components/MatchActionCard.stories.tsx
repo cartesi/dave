@@ -9,6 +9,7 @@ const meta = {
     parameters: {
         layout: "centered",
     },
+    tags: ["autodocs"],
 } satisfies Meta<typeof MatchActionCard>;
 
 export default meta;
@@ -25,7 +26,7 @@ export const ClaimABisection: Story = {
             claimer: 1,
             range: [
                 tournament.startCycle,
-                (tournament.startCycle + tournament.endCycle) / 2n,
+                (tournament.startCycle + tournament.endCycle) / 2,
             ],
             timestamp: timestamp,
         },
@@ -41,7 +42,7 @@ export const ClaimBBisection: Story = {
             claimer: 2,
             range: [
                 tournament.startCycle,
-                (tournament.startCycle + tournament.endCycle) / 2n,
+                (tournament.startCycle + tournament.endCycle) / 2,
             ],
             timestamp: timestamp,
         },
@@ -87,10 +88,10 @@ export const LeafSealed: Story = {
             level: "BOTTOM",
             endCycle:
                 TournamentStories.MidLevelDispute.args.tournament.endCycle /
-                1024n,
+                1024,
             startCycle:
                 TournamentStories.MidLevelDispute.args.tournament.startCycle /
-                1024n,
+                1024,
             matches: [],
             parentMatch: match,
         },
