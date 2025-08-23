@@ -49,18 +49,37 @@ export interface Claim {
 export type Cycle = bigint;
 export type CycleRange = [Cycle, Cycle];
 
+type Claimer = 1 | 2;
+
+interface ActionCommons {
+    timestamp: number;
+}
+interface MatchAdvance extends ActionCommons {
+    type: "advance";
+    claimer: Claimer;
+    range: CycleRange;
+}
+
+interface MatchTimeout extends ActionCommons {
+    type: "timeout";
+    claimer: Claimer;
+}
+
+interface MatchSealedInnerTournamentCreated extends ActionCommons {
+    type: "match_sealed_inner_tournament_created";
+    claimer: Claimer;
+    tournament: Tournament;
+}
+interface MatchLeafSealed extends ActionCommons {
+    type: "leaf_match_sealed";
+    claimer: Claimer;
+}
+
 export type MatchAction =
-    | {
-          type: "advance";
-          claimer: 1 | 2;
-          timestamp: number;
-          range: CycleRange;
-      }
-    | {
-          type: "timeout";
-          timestamp: number;
-          winner: 1 | 2;
-      }; // TODO: there are more action types
+    | MatchAdvance
+    | MatchTimeout
+    | MatchSealedInnerTournamentCreated
+    | MatchLeafSealed;
 
 export interface Match {
     parentTournament: Tournament;
