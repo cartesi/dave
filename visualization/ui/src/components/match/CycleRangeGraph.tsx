@@ -9,23 +9,23 @@ import {
 import * as d3 from "d3";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import useRightColorShade from "../../hooks/useRightColorShade";
-import type { CycleRange } from "../types";
+import type { Cycle, CycleRange } from "../types";
 
 const ZERO = 0n as const;
 const ONE_HUNDRED = 100n as const;
 
-function getLengthInPixel(limitBoundLength: bigint, endpointLength: bigint) {
+function getLengthInPixel(limitBoundLength: Cycle, endpointLength: Cycle) {
     if (!limitBoundLength || limitBoundLength === ZERO) return ZERO;
 
     return (endpointLength * ONE_HUNDRED) / limitBoundLength;
 }
 
 function convertIntervalToPixels(
-    lowerBound: bigint,
-    upperBound: bigint,
-    start: bigint,
-    end: bigint,
-): [bigint, bigint] {
+    lowerBound: Cycle,
+    upperBound: Cycle,
+    start: Cycle,
+    end: Cycle,
+): CycleRange {
     const length = upperBound - lowerBound;
     const startLength = start - lowerBound;
     const endLength = length - (upperBound - end);

@@ -46,7 +46,8 @@ export interface Claim {
     parentClaim?: Claim;
 }
 
-export type CycleRange = [bigint, bigint];
+export type Cycle = bigint;
+export type CycleRange = [Cycle, Cycle];
 
 export type MatchAction =
     | {
@@ -74,8 +75,8 @@ export interface Match {
 
 export interface Tournament {
     level: "TOP" | "MIDDLE" | "BOTTOM";
-    startCycle: bigint;
-    endCycle: bigint;
+    startCycle: Cycle;
+    endCycle: Cycle;
     parentMatch?: Match;
     matches: Match[];
     danglingClaim?: Claim; // claim that was not matched with another claim yet
