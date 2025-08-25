@@ -49,13 +49,20 @@ export const SecondQuarter: Story = {
 };
 
 /**
- * Indicator for large domain value
+ * Indicator for large domain value with a small range
  */
 const start = 1837880065;
 const end = 2453987565;
 const step = (end - start) / 16;
 export const LargeDomain: Story = {
-    args: { domain: [start, end], value: [step * 8, step * 9] },
+    args: { domain: [start, end], value: [start + step * 8, start + step * 9] },
+};
+
+/**
+ * RealValue
+ */
+export const RealValue: Story = {
+    args: { domain: [start, end], value: [start, (start + end) / 2] },
 };
 
 /**

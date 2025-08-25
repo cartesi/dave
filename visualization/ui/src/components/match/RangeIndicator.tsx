@@ -1,8 +1,8 @@
-import { Card, Overlay, useMantineTheme, type CardProps } from "@mantine/core";
+import { Paper, useMantineTheme, type PaperProps } from "@mantine/core";
 import type { FC } from "react";
 import type { CycleRange } from "../types";
 
-interface RangeIndicatorProps extends CardProps {
+interface RangeIndicatorProps extends PaperProps {
     /**
      * The domain of the range
      */
@@ -18,22 +18,24 @@ export const RangeIndicator: FC<RangeIndicatorProps> = (props) => {
     const theme = useMantineTheme();
     const color = props.c ?? theme.primaryColor;
 
-    const { domain, value, ...cardProps } = props;
+    const { domain, value, ...paperProps } = props;
     const [start, end] = value;
     const [domainStart, domainEnd] = domain;
 
     // box percentage calculation
     const width = (end - start) / (domainEnd - domainStart);
-    const left = start / (domainEnd - domainStart);
+    const left = (start - domainStart) / (domainEnd - domainStart);
 
     return (
-        <Card withBorder radius="md" miw={100} {...cardProps}>
-            <Overlay
-                bg={color}
-                opacity={1.0}
+        <Paper miw={32} withBorder {...paperProps}>
+            <Paper
+                mih={8}
                 left={`${left * 100}%`}
                 w={`${width * 100}%`}
-            />
-        </Card>
+                pos="relative"
+                {...paperProps}
+                bg={color}
+            ></Paper>
+        </Paper>
     );
 };
