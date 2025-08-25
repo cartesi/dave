@@ -1,18 +1,10 @@
-import {
-    Badge,
-    Breadcrumbs,
-    Group,
-    Stack,
-    Switch,
-    Text,
-    useMantineTheme,
-} from "@mantine/core";
-import { useState, type FC, type ReactNode } from "react";
+import { Group, Stack, Switch, Text, useMantineTheme } from "@mantine/core";
+import { useState, type FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
+import { TournamentBreadcrumbs } from "../TournamentBreadcrumbs";
 import type { Match, Tournament } from "../types";
-import { MatchBadge } from "./MatchBadge";
 import { TournamentTable } from "./Table";
 
 export interface TournamentViewProps {
@@ -25,31 +17,14 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
 
-    const { danglingClaim, endCycle, level, matches, startCycle, winner } =
-        tournament;
+    const { danglingClaim, endCycle, matches, startCycle, winner } = tournament;
     const [hideWinners, setHideWinners] = useState(false);
-
-    // build the breadcrumb of the tournament hierarchy
-    const parents: ReactNode[] = [];
-    let parentMatch = tournament.parentMatch;
-    while (parentMatch) {
-        parents.unshift(<MatchBadge match={parentMatch} />);
-        parents.unshift(
-            <Badge key={parentMatch.parentTournament.level} variant="default">
-                {parentMatch.parentTournament.level}
-            </Badge>,
-        );
-        parentMatch = parentMatch.parentTournament.parentMatch;
-    }
 
     return (
         <Stack>
             <Group>
                 <Text>Level</Text>
-                <Breadcrumbs separator="→">
-                    {parents}
-                    <Badge key={level}>{level}</Badge>
-                </Breadcrumbs>
+                <TournamentBreadcrumbs tournament={tournament} />
             </Group>
             <Group>
                 <Text>Mcycle range</Text>
