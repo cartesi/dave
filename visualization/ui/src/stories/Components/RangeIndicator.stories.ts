@@ -78,3 +78,16 @@ export const ForegroundColor: Story = {
 export const BackgroundColor: Story = {
     args: { domain: [0, 100], value: [0, 50], bg: "lightgray" },
 };
+
+/**
+ * Different background. Use the `bg` prop to change the background color.
+ */
+export const LargeWithLabels: Story = {
+    args: {
+        h: 16,
+        w: 240,
+        domain: [start, end],
+        value: [start, (start + end) / 2],
+        withLabels: true,
+    },
+};
