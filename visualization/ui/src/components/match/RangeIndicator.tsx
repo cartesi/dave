@@ -42,8 +42,8 @@ export const RangeIndicator: FC<RangeIndicatorProps> = (props) => {
         <Stack gap={0}>
             {withLabels && (
                 <Group gap="xs" justify="space-between">
-                    <Text size="xs">{domainStart}</Text>
-                    <Text size="xs">{domainEnd}</Text>
+                    <Text size="xs">{start}</Text>
+                    <Text size="xs">{end}</Text>
                 </Group>
             )}
             <Paper miw={32} withBorder {...paperProps}>
