@@ -2,14 +2,10 @@ import { Group, Stack, Text, useMantineTheme } from "@mantine/core";
 import { fromUnixTime } from "date-fns";
 import { type FC } from "react";
 import { TbLeafOff } from "react-icons/tb";
-import useRightColorShade from "../../hooks/useRightColorShade";
-import { ClaimText } from "../tournament/ClaimText";
-import type { Claim } from "../types";
-
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "short",
-    timeStyle: "medium",
-});
+import useRightColorShade from "../../../hooks/useRightColorShade";
+import { ClaimText } from "../../tournament/ClaimText";
+import type { Claim } from "../../types";
+import { dateFormatter } from "./utils";
 
 type LeafMatchSealedActionCardProps = {
     timestamp: number;

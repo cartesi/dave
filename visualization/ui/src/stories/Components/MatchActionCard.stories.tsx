@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { getUnixTime } from "date-fns";
+import { addHours, getUnixTime } from "date-fns";
 import { MatchActionCard } from "../../components/match/MatchActionCard";
 import * as TournamentStories from "./Tournament.stories";
 
@@ -93,6 +93,34 @@ export const LeafSealed: Story = {
                 TournamentStories.MidLevelDispute.args.tournament.startCycle /
                 1024,
             matches: [],
+            parentMatch: match,
+        },
+    },
+};
+
+export const MatchEliminatedByTimeout: Story = {
+    args: {
+        action: {
+            type: "match_eliminated_by_timeout",
+            timestamp: timestamp,
+        },
+        match,
+        tournament,
+    },
+};
+
+const midTournament = TournamentStories.MidLevelDispute.args.tournament;
+const midMatch = midTournament.matches[0];
+
+export const MidMatchEliminatedByTimeout: Story = {
+    args: {
+        action: {
+            type: "match_eliminated_by_timeout",
+            timestamp: getUnixTime(addHours(new Date(), 7)),
+        },
+        match: midMatch,
+        tournament: {
+            ...midTournament,
             parentMatch: match,
         },
     },

@@ -75,11 +75,16 @@ interface MatchLeafSealed extends ActionCommons {
     claimer: Claimer;
 }
 
+interface MatchEliminatedByTimeout extends ActionCommons {
+    type: "match_eliminated_by_timeout";
+}
+
 export type MatchAction =
     | MatchAdvance
     | MatchTimeout
     | MatchSealedInnerTournamentCreated
-    | MatchLeafSealed;
+    | MatchLeafSealed
+    | MatchEliminatedByTimeout;
 
 export interface Match {
     parentTournament: Tournament;

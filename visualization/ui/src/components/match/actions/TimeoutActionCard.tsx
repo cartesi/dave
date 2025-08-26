@@ -2,19 +2,15 @@ import { Group, Stack, Text, useMantineTheme } from "@mantine/core";
 import { fromUnixTime } from "date-fns";
 import { type FC } from "react";
 import { TbClockExclamation } from "react-icons/tb";
-import useRightColorShade from "../../hooks/useRightColorShade";
-import { ClaimText } from "../tournament/ClaimText";
-import type { Claim } from "../types";
+import useRightColorShade from "../../../hooks/useRightColorShade";
+import { ClaimText } from "../../tournament/ClaimText";
+import type { Claim } from "../../types";
+import { dateFormatter } from "./utils";
 
 type TimeoutActionCardProps = {
     claim: Claim;
     timestamp: number;
 };
-
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "short",
-    timeStyle: "medium",
-});
 
 export const TimeoutActionCard: FC<TimeoutActionCardProps> = ({
     claim,

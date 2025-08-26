@@ -9,9 +9,9 @@ import {
 import { type FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import { href, Link } from "react-router";
-import { CycleRangeFormatted } from "../CycleRangeFormatted";
-import { ClaimText } from "../tournament/ClaimText";
-import type { Claim, CycleRange, Tournament } from "../types";
+import { CycleRangeFormatted } from "../../CycleRangeFormatted";
+import { ClaimText } from "../../tournament/ClaimText";
+import type { Claim, CycleRange, Tournament } from "../../types";
 
 type SealedActionCardProps = {
     claim: Claim;

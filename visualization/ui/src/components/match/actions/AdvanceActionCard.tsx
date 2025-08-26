@@ -1,9 +1,9 @@
 import { Grid, GridCol, Group, Text, useMantineTheme } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { type FC } from "react";
-import { ClaimText } from "../tournament/ClaimText";
-import type { Claim, CycleRange } from "../types";
-import CycleRangeGraph from "./CycleRangeGraph";
+import { ClaimText } from "../../tournament/ClaimText";
+import type { Claim, CycleRange } from "../../types";
+import CycleRangeGraph from "../CycleRangeGraph";
 
 type AdvanceActionCardProps = {
     claim: Claim;

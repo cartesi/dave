@@ -1,10 +1,11 @@
 import { Card, type CardProps } from "@mantine/core";
 import { type FC } from "react";
 import type { Match, MatchAction, Tournament } from "../types";
-import { AdvanceActionCard } from "./AdvanceActionCard";
-import { LeaftMatchSealedActionCard } from "./LeafMatchSealedCard";
-import { SealedActionCard } from "./SealedActionCard";
-import { TimeoutActionCard } from "./TimeoutActionCard";
+import { AdvanceActionCard } from "./actions/AdvanceActionCard";
+import { EliminatedByTimeoutActionCard } from "./actions/EliminatedByTimeoutCard";
+import { LeaftMatchSealedActionCard } from "./actions/LeafMatchSealedCard";
+import { SealedActionCard } from "./actions/SealedActionCard";
+import { TimeoutActionCard } from "./actions/TimeoutActionCard";
 
 interface Props extends CardProps {
     tournament: Tournament;
@@ -14,7 +15,6 @@ interface Props extends CardProps {
 
 export const MatchActionCard: FC<Props> = (props) => {
     const { action, match, tournament, ...cardProps } = props;
-
     return (
         <Card withBorder radius="md" {...cardProps}>
             {action.type === "advance" ? (
@@ -36,6 +36,12 @@ export const MatchActionCard: FC<Props> = (props) => {
             ) : action.type === "leaf_match_sealed" ? (
                 <LeaftMatchSealedActionCard
                     claim={action.claimer === 1 ? match.claim1 : match.claim2}
+                    timestamp={action.timestamp}
+                />
+            ) : action.type === "match_eliminated_by_timeout" ? (
+                <EliminatedByTimeoutActionCard
+                    claimOne={match.claim1}
+                    claimTwo={match.claim2}
                     timestamp={action.timestamp}
                 />
             ) : (
