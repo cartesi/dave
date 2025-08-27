@@ -1,6 +1,8 @@
+import { Carousel } from "@mantine/carousel";
 import { Avatar, Group, Progress, Stack } from "@mantine/core";
 import Jazzicon from "@raugfer/jazzicon";
-import type { FC } from "react";
+import type { EmblaCarouselType } from "embla-carousel";
+import { useEffect, useMemo, useState, type FC } from "react";
 import { slice, zeroHash, type Hash } from "viem";
 import type { Claim, CycleRange } from "../types";
 import { RangeIndicator } from "./RangeIndicator";
@@ -38,23 +40,37 @@ function buildDataUrl(hash: Hash): string {
 }
 
 export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
+    const [embla, setEmbla] = useState<EmblaCarouselType | null>(null);
     const { claim1, claim2, range, bisections, max } = props;
+    const [domain, setDomain] = useState<CycleRange>(range);
 
     // create ranges for each bisection
-    const ranges = bisections.reduce(
-        (r, bisection, i) => {
-            const l = r[i];
-            const mid = Math.floor((l[0] + l[1]) / 2);
-            if (bisection === 0) {
-                r.push([l[0], mid]);
-                return r;
-            } else {
-                r.push([mid, l[1]]);
-                return r;
-            }
-        },
-        [range],
+    const ranges = useMemo(
+        () =>
+            bisections.reduce(
+                (r, bisection, i) => {
+                    const l = r[i];
+                    const [s, e] = l;
+                    const mid = Math.floor((s + e) / 2);
+                    r.push(bisection === 0 ? [s, mid] : [mid, e]);
+                    return r;
+                },
+                [range],
+            ),
+        [bisections],
     );
+
+    useEffect(() => {
+        if (embla) {
+            embla.on("slidesInView", (embla) => {
+                const visible = embla.slidesInView();
+                if (visible.length > 0) {
+                    const top = visible[0];
+                    setDomain(ranges[top]);
+                }
+            });
+        }
+    }, [embla]);
 
     return (
         <Stack>
@@ -71,23 +87,37 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                     <Progress value={(bisections.length / max) * 100} />
                 </Stack>
             </Group>
-            {ranges.slice(1).map((r, i) => (
-                <Group key={i}>
-                    <Avatar
-                        src={buildDataUrl(
-                            i % 2 === 0 ? claim1.hash : claim2.hash,
-                        )}
-                        size={24}
-                    />
-                    <RangeIndicator
-                        domain={range}
-                        value={r}
-                        withLabels
-                        w={300}
-                        h={16}
-                    />
-                </Group>
-            ))}
+            <Carousel
+                orientation="vertical"
+                slideGap="md"
+                height={300}
+                slideSize="20%"
+                getEmblaApi={setEmbla}
+                emblaOptions={{
+                    align: "start",
+                    inViewThreshold: 1,
+                }}
+            >
+                {ranges.slice(1).map((r, i) => (
+                    <Carousel.Slide key={i}>
+                        <Group key={i} align="end">
+                            <Avatar
+                                src={buildDataUrl(
+                                    i % 2 === 0 ? claim1.hash : claim2.hash,
+                                )}
+                                size={24}
+                            />
+                            <RangeIndicator
+                                domain={domain}
+                                value={r}
+                                withLabels
+                                w={300}
+                                h={16}
+                            />
+                        </Group>
+                    </Carousel.Slide>
+                ))}
+            </Carousel>
         </Stack>
     );
 };

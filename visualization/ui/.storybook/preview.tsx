@@ -1,5 +1,8 @@
-import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
+
+import "@mantine/carousel/styles.css";
+
+import { MantineProvider } from "@mantine/core";
 import type { Preview, StoryContext, StoryFn } from "@storybook/react-vite";
 import React from "react";
 import { MemoryRouter } from "react-router";

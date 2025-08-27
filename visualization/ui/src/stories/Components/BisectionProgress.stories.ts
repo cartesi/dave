@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
 import { BisectionProgress } from "../../components/match/BisectionProgress";
 import type { Claim } from "../../components/types";
+import { mulberry32 } from "../util";
 
 const meta = {
     title: "Components/BisectionProgress",
@@ -16,6 +17,8 @@ type Story = StoryObj<typeof meta>;
 
 const start = 14_837_880_065;
 const end = 21_453_987_565;
+
+const rng = mulberry32(0);
 
 const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
     hash: keccak256(toBytes(i)),
@@ -54,7 +57,7 @@ export const ManyBisections: Story = {
         claim1: randomClaim(0),
         claim2: randomClaim(1),
         range: [start, end],
-        bisections: Array.from({ length: 20 }, () => 0),
+        bisections: Array.from({ length: 20 }, () => (rng() < 0.5 ? 0 : 1)),
         max: 48,
     },
 };
@@ -67,7 +70,7 @@ export const Complete: Story = {
         claim1: randomClaim(0),
         claim2: randomClaim(1),
         range: [start, end],
-        bisections: Array.from({ length: 48 }, () => 0),
+        bisections: Array.from({ length: 48 }, () => (rng() < 0.5 ? 0 : 1)),
         max: 48,
     },
 };

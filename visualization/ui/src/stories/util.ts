@@ -6,7 +6,7 @@ import type { Claim, CycleRange, Tournament } from "../components/types";
  * @param seed seed for the generator
  * @returns pseudo-random number generator
  */
-function mulberry32(seed: number) {
+export function mulberry32(seed: number) {
     return function () {
         seed |= 0;
         seed = (seed + 0x6d2b79f5) | 0;
