@@ -6,7 +6,7 @@ pragma solidity ^0.8.28;
 import "prt-contracts/tournament/abstracts/Tournament.sol";
 import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
 import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
-import "prt-contracts/tournament/libs/Weight.sol";
+import "prt-contracts/tournament/libs/Gas.sol";
 
 /// @notice Non-leaf tournament can create inner tournaments and matches
 abstract contract NonLeafTournament is Tournament {
@@ -37,7 +37,7 @@ abstract contract NonLeafTournament is Tournament {
         bytes32[] calldata _agreeHashProof
     )
         external
-        refundable(Weight.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT)
+        refundable(Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
@@ -85,7 +85,7 @@ abstract contract NonLeafTournament is Tournament {
         NonRootTournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external refundable(Weight.WIN_INNER_TOURNAMENT) tournamentNotFinished {
+    ) external refundable(Gas.WIN_INNER_TOURNAMENT) tournamentNotFinished {
         Match.IdHash _matchIdHash =
             matchIdFromInnerTournaments[_childTournament];
         _matchIdHash.requireExist();
@@ -104,7 +104,7 @@ abstract contract NonLeafTournament is Tournament {
         require(finished, ChildTournamentNotFinished());
         _winner.requireExist();
 
-        _childTournament.tryRecoverBond();
+        _childTournament.tryRecoveringBond();
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
         require(
@@ -133,7 +133,7 @@ abstract contract NonLeafTournament is Tournament {
 
     function eliminateInnerTournament(NonRootTournament _childTournament)
         external
-        refundable(Weight.ELIMINATE_INNER_TOURNAMENT)
+        refundable(Gas.ELIMINATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
         Match.IdHash _matchIdHash =
@@ -201,10 +201,10 @@ abstract contract NonLeafTournament is Tournament {
         return NonRootTournament(address(_tournament));
     }
 
-    function _interactionsWeight() internal view override returns (uint256) {
-        return Weight.ADVANCE_MATCH * _tournamentArgs().height
-            + Weight.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
-            + Weight.WIN_INNER_TOURNAMENT;
+    function _totalGasEstimate() internal view override returns (uint256) {
+        return Gas.ADVANCE_MATCH * _tournamentArgs().height
+            + Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+            + Gas.WIN_INNER_TOURNAMENT;
     }
 
     function _tournamentFactory()

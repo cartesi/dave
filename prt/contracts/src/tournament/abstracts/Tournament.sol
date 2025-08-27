@@ -13,7 +13,7 @@ import "prt-contracts/tournament/libs/Commitment.sol";
 import "prt-contracts/tournament/libs/Time.sol";
 import "prt-contracts/tournament/libs/Clock.sol";
 import "prt-contracts/tournament/libs/Match.sol";
-import "prt-contracts/tournament/libs/Weight.sol";
+import "prt-contracts/tournament/libs/Gas.sol";
 
 import {Math} from "@openzeppelin-contracts-5.2.0/utils/math/Math.sol";
 
@@ -111,7 +111,8 @@ abstract contract Tournament {
     /// of Ether wasted on gas on this function call plus
     /// a profit, capped by the current contract balance
     /// and a fraction of the bond value.
-    modifier refundable(uint256 weight) {
+    /// @param gasEstimate A worst-case gas estimate for the modified function
+    modifier refundable(uint256 gasEstimate) {
         require(!locked, ReentrancyDetected());
         locked = true;
 
@@ -121,9 +122,8 @@ abstract contract Tournament {
 
         uint256 refundValue = _min(
             address(this).balance,
-            bondValue() * weight / _interactionsWeight(),
-            (Weight.TX_INTRINSIC_GAS + gasBefore - gasAfter)
-                * (tx.gasprice + MEV_PROFIT)
+            bondValue() * gasEstimate / _totalGasEstimate(),
+            (Gas.TX + gasBefore - gasAfter) * (tx.gasprice + MEV_PROFIT)
         );
         msg.sender.call{value: refundValue}("");
 
@@ -145,7 +145,7 @@ abstract contract Tournament {
     // Methods
     //
     function bondValue() public view returns (uint256) {
-        return _interactionsWeight() * MAX_GAS_PRICE;
+        return _totalGasEstimate() * MAX_GAS_PRICE;
     }
 
     /// @dev root tournaments are open to everyone,
@@ -188,7 +188,7 @@ abstract contract Tournament {
         Tree.Node _rightNode,
         Tree.Node _newLeftNode,
         Tree.Node _newRightNode
-    ) external refundable(Weight.ADVANCE_MATCH) tournamentNotFinished {
+    ) external refundable(Gas.ADVANCE_MATCH) tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
@@ -211,7 +211,7 @@ abstract contract Tournament {
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external refundable(Weight.WIN_MATCH_BY_TIMEOUT) tournamentNotFinished {
+    ) external refundable(Gas.WIN_MATCH_BY_TIMEOUT) tournamentNotFinished {
         matches[_matchId.hashFromId()].requireExist();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
@@ -257,7 +257,7 @@ abstract contract Tournament {
 
     function eliminateMatchByTimeout(Match.Id calldata _matchId)
         external
-        refundable(Weight.ELIMINATE_MATCH_BY_TIMEOUT)
+        refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT)
         tournamentNotFinished
     {
         matches[_matchId.hashFromId()].requireExist();
@@ -485,7 +485,7 @@ abstract contract Tournament {
         return (true, winnerCouldWin);
     }
 
-    function tryRecoverBond() external {
+    function tryRecoveringBond() external {
         require(isFinished(), TournamentNotFinished());
 
         // Ensure there is a winner
@@ -514,7 +514,7 @@ abstract contract Tournament {
         virtual
         returns (TournamentArgs memory);
 
-    function _interactionsWeight() internal view virtual returns (uint256);
+    function _totalGasEstimate() internal view virtual returns (uint256);
 
     /// @notice Returns the minimum of three values
     /// @param a First value

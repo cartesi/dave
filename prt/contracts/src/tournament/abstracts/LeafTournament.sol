@@ -5,7 +5,7 @@ pragma solidity ^0.8.17;
 
 import "prt-contracts/tournament/abstracts/Tournament.sol";
 import "prt-contracts/tournament/libs/Commitment.sol";
-import "prt-contracts/tournament/libs/Weight.sol";
+import "prt-contracts/tournament/libs/Gas.sol";
 import "prt-contracts/IStateTransition.sol";
 
 import "step/src/EmulatorConstants.sol";
@@ -25,7 +25,7 @@ abstract contract LeafTournament is Tournament {
         Tree.Node _rightLeaf,
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
-    ) external refundable(Weight.SEAL_LEAF_MATCH) tournamentNotFinished {
+    ) external refundable(Gas.SEAL_LEAF_MATCH) tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeFinalized();
@@ -61,7 +61,7 @@ abstract contract LeafTournament is Tournament {
         Tree.Node _leftNode,
         Tree.Node _rightNode,
         bytes calldata proofs
-    ) external refundable(Weight.WIN_LEAF_MATCH) tournamentNotFinished {
+    ) external refundable(Gas.WIN_LEAF_MATCH) tournamentNotFinished {
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
         _clockOne.requireInitialized();
@@ -127,9 +127,9 @@ abstract contract LeafTournament is Tournament {
         deleteMatch(_matchId.hashFromId());
     }
 
-    function _interactionsWeight() internal view override returns (uint256) {
-        return Weight.ADVANCE_MATCH * _tournamentArgs().height
-            + Weight.SEAL_LEAF_MATCH + Weight.WIN_LEAF_MATCH;
+    function _totalGasEstimate() internal view override returns (uint256) {
+        return Gas.ADVANCE_MATCH * _tournamentArgs().height
+            + Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH;
     }
 
     function _stateTransition()
