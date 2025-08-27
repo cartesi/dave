@@ -156,7 +156,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         // Check tournament finished
         (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournament.arbitrationResult();
         require(isFinished, TournamentNotFinishedYet());
-        _tournament.tryRecoverBond();
+        _tournament.tryRecoveringBond();
         _tournament = ITournament(address(0));
 
         // Check outputs Merkle root
