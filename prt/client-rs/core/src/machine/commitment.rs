@@ -4,6 +4,7 @@
 use alloy::primitives::U256;
 use log::{info, trace};
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -52,6 +53,7 @@ pub fn build_machine_commitment(
     log2_stride_count: u64,
     initial_state: Digest,
     db: &DisputeStateAccess,
+    snapshot_path: PathBuf,
 ) -> Result<MachineCommitment> {
     info!(
         "Begin building commitment for level {level}: start cycle {base_cycle}, log2_stride {log2_stride} and log2_stride_count {log2_stride_count}"
@@ -82,6 +84,7 @@ pub fn build_machine_commitment(
             log2_stride_count,
             initial_state,
             db,
+            snapshot_path,
         )
     } else {
         assert!(log2_stride == 0);
@@ -92,6 +95,7 @@ pub fn build_machine_commitment(
             log2_stride_count,
             initial_state,
             db,
+            snapshot_path,
         )
     }?;
 
@@ -114,6 +118,7 @@ fn build_big_machine_commitment(
     log2_stride_count: u64,
     initial_state: Digest,
     db: &DisputeStateAccess,
+    mut snapshot_path: PathBuf,
 ) -> Result<MachineCommitment> {
     let mut builder = MerkleBuilder::default();
     let mut leafs = Vec::new();
@@ -127,7 +132,7 @@ fn build_big_machine_commitment(
         ));
 
         let cycle = machine.cycle + stride;
-        let state = machine.run(cycle)?;
+        let state = machine.run(cycle, db, &mut snapshot_path)?;
 
         if !(state.halted | state.yielded) {
             leafs.push(Leaf {
@@ -163,6 +168,7 @@ fn build_small_machine_commitment(
     log2_stride_count: u64,
     initial_state: Digest,
     db: &DisputeStateAccess,
+    snapshot_path: PathBuf,
 ) -> Result<MachineCommitment> {
     let mut builder = MerkleBuilder::default();
     let span_count = max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH);
@@ -174,13 +180,14 @@ fn build_small_machine_commitment(
             span, span_count
         ));
 
-        let (mut uarch_tree, machine_state) = run_uarch_span(machine, base_cycle, level, db)?;
+        let (uarch_tree, machine_state) =
+            run_uarch_span(machine, base_cycle, level, db, &snapshot_path)?;
 
         builder.append(uarch_tree.clone());
         span += 1;
 
-        if machine_state.halted | machine_state.yielded {
-            (uarch_tree, _) = run_uarch_span(machine, base_cycle, level, db)?;
+        // if the machine is freshly reverted, we need to run another uarch span
+        if !machine_state.reverted && (machine_state.halted || machine_state.yielded) {
             trace!(
                 "uarch span machine halted/yielded {} {}",
                 uarch_tree.root_hash(),
@@ -205,6 +212,7 @@ fn run_uarch_span(
     base_cycle: U256,
     level: u64,
     db: &DisputeStateAccess,
+    snapshot_path: &PathBuf,
 ) -> Result<(Arc<MerkleTree>, MachineState)> {
     let (_, ucycle) = machine.position()?;
     assert!(ucycle == 0);
@@ -240,11 +248,31 @@ fn run_uarch_span(
     machine_state = machine.ureset()?;
     trace!("state after reset {}", machine_state.root_hash);
 
-    leafs.push(Leaf {
-        hash: machine_state.root_hash.into(),
-        repetitions: 1,
-    });
-    builder.append(machine_state.root_hash);
+    if machine.is_yielded()? {
+        match machine.revert_if_needed(&snapshot_path)? {
+            Some(checkpoint_hash) => {
+                machine_state = machine.state()?;
+                machine_state.reverted = true;
+
+                leafs.push(Leaf {
+                    hash: checkpoint_hash.into(),
+                    repetitions: 1,
+                });
+            }
+            None => {
+                leafs.push(Leaf {
+                    hash: machine_state.root_hash.into(),
+                    repetitions: 1,
+                });
+            }
+        }
+    } else {
+        leafs.push(Leaf {
+            hash: machine_state.root_hash.into(),
+            repetitions: 1,
+        });
+    }
+
     db.insert_leafs(level, base_cycle, leafs.iter())?;
 
     let uarch_span = builder.build();
