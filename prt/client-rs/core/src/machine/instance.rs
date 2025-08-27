@@ -6,11 +6,17 @@ use crate::machine::constants::{
 use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
-use cartesi_machine::config::runtime::HTIFRuntimeConfig;
-use cartesi_machine::types::LogType;
-use cartesi_machine::types::cmio::CmioResponseReason;
+use cartesi_machine::types::access_proof::AccessType;
 use cartesi_machine::{
-    config::runtime::RuntimeConfig, machine::Machine, types::access_proof::AccessLog,
+    cartesi_machine_sys,
+    config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
+    machine::Machine,
+    types::access_proof::AccessLog,
+    types::{
+        LogType,
+        access_proof::Access,
+        cmio::{CmioRequest, CmioResponseReason, ManualReason},
+    },
 };
 use log::trace;
 use num_traits::{One, ToPrimitive};
@@ -24,17 +30,19 @@ pub struct MachineState {
     pub halted: bool,
     pub yielded: bool,
     pub uhalted: bool,
+    pub reverted: bool,
 }
 
 impl std::fmt::Display for MachineState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{{root_hash = {}, halted = {}, yielded = {}, uhalted = {}}}",
+            "{{root_hash = {}, halted = {}, yielded = {}, uhalted = {}, reverted = {}}}",
             self.root_hash.to_hex(),
             self.halted,
             self.yielded,
-            self.uhalted
+            self.uhalted,
+            self.reverted
         )
     }
 }
@@ -47,6 +55,7 @@ impl MachineState {
             halted: machine.is_halted()?,
             yielded: machine.is_yielded()?,
             uhalted: machine.is_uarch_halted()?,
+            reverted: false,
         })
     }
 }
@@ -61,6 +70,7 @@ pub struct MachineInstance {
     pub ucycle: u64,
 }
 
+const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
 impl MachineInstance {
     pub fn new_from_path(path: &str) -> Result<Self> {
         let runtime_config = RuntimeConfig {
@@ -128,7 +138,11 @@ impl MachineInstance {
         }
     */
 
-    pub fn advance_rollups(&mut self, meta_cycle: U256, db: &DisputeStateAccess) -> Result<()> {
+    pub fn advance_rollups(
+        &mut self,
+        meta_cycle: U256,
+        db: &DisputeStateAccess,
+    ) -> Result<PathBuf> {
         assert!(self.is_yielded()?);
 
         let input_count = (meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT)
@@ -142,19 +156,18 @@ impl MachineInstance {
             .to_u64()
             .expect("ucycle too big to fit in u64");
 
-        while self.input_count < input_count {
-            let input = db.input(self.input_count)?;
-            if input.is_none() {
-                self.input_count = input_count;
-                break;
-            }
+        let mut snapshot_path = db.work_path.join(format!("{}", self.root_hash()?.to_hex()));
+        if !snapshot_path.exists() {
+            self.machine.store(&snapshot_path)?;
+        }
 
-            let input_bin = input.unwrap();
-            self.machine
-                .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
+        while self.input_count < input_count {
+            // snapshot the machine state before feeding the input
+
+            self.feed_next_input(db)?;
 
             loop {
-                self.machine.run(u64::MAX)?;
+                self.run(u64::MAX, db, &mut snapshot_path)?;
                 if self.is_halted()? | self.is_yielded()? {
                     break;
                 }
@@ -166,38 +179,37 @@ impl MachineInstance {
         assert!(self.input_count == input_count);
 
         if cycle == 0 && ucycle == 0 {
-            return Ok(());
+            return Ok(snapshot_path);
         }
 
-        let input = db.input(self.input_count)?;
-        if let Some(input_bin) = input {
-            self.machine
-                .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
-        }
+        self.feed_next_input(db)?;
 
-        self.run(cycle)?;
+        self.run(cycle, db, &mut snapshot_path)?;
         self.run_uarch(ucycle)?;
 
-        Ok(())
+        Ok(snapshot_path)
     }
 
     pub fn new_rollups_advanced_until(
         path: &str,
         meta_cycle: U256,
         db: &DisputeStateAccess,
-    ) -> Result<MachineInstance> {
+    ) -> Result<(MachineInstance, PathBuf)> {
         let input_count = (meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT).to_u64().unwrap();
         assert!(input_count <= INPUT_SPAN_TO_EPOCH);
 
         let mut machine = MachineInstance::new_from_path(path)?;
         assert!(machine.is_yielded()?);
 
-        machine.advance_rollups(meta_cycle, db)?;
-        Ok(machine)
+        let snapshot_path = machine.advance_rollups(meta_cycle, db)?;
+        Ok((machine, snapshot_path))
     }
 
     pub fn feed_next_input(&mut self, db: &DisputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
+        let checkpoint_hash = self.machine.root_hash()?;
+        self.machine
+            .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
         let input = db.input(self.input_count)?;
         if let Some(input_bin) = input {
             self.machine
@@ -235,6 +247,28 @@ impl MachineInstance {
         Ok(self.machine.ucycle()?)
     }
 
+    pub fn revert_if_needed(&mut self, snapshot_path: &PathBuf) -> Result<Option<Digest>> {
+        // revert if needed only when machine yields
+        assert!(self.is_yielded()?);
+
+        // we check if the request is accepted
+        // if it is not, we revert the machine state to previous snapshot
+        match self.machine.receive_cmio_request()? {
+            CmioRequest::Manual(ManualReason::RxAccepted { .. }) => Ok(None),
+            _ => {
+                let runtime_config = RuntimeConfig {
+                    htif: Some(HTIFRuntimeConfig {
+                        no_console_putchar: Some(true),
+                    }),
+                    ..Default::default()
+                };
+                self.machine = Machine::load(snapshot_path, &runtime_config)?;
+                let checkpoint_hash = self.machine.root_hash()?;
+                Ok(Some(checkpoint_hash.into()))
+            }
+        }
+    }
+
     pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
         assert!(
             self.ucycle <= ucycle,
@@ -249,7 +283,12 @@ impl MachineInstance {
     }
 
     // Runs to the `cycle` directly and returns the machine state after the run
-    pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
+    pub fn run(
+        &mut self,
+        cycle: u64,
+        db: &DisputeStateAccess,
+        snapshot_path: &mut PathBuf,
+    ) -> Result<MachineState> {
         assert!(self.cycle <= cycle);
 
         let target_physical_cycle =
@@ -267,6 +306,19 @@ impl MachineInstance {
             let yielded = self.is_yielded()?;
             if yielded {
                 trace!("run break with yield");
+                // if it is not reverted, we store the new snapshot and remove the old one
+                if self.revert_if_needed(snapshot_path)?.is_none() {
+                    let new_snapshot_path =
+                        db.work_path.join(format!("{}", self.root_hash()?.to_hex()));
+                    if !new_snapshot_path.exists() {
+                        self.machine.store(&new_snapshot_path)?;
+                    }
+                    if snapshot_path.exists() {
+                        std::fs::remove_dir_all(&snapshot_path)?;
+                    }
+                    *snapshot_path = new_snapshot_path;
+                }
+
                 break;
             }
 
@@ -294,6 +346,48 @@ impl MachineInstance {
         self.state()
     }
 
+    fn log_read_leaf(&mut self, address: u64, log2_size: u64) -> Result<Access> {
+        // always read aligned 32 bytes (one leaf)
+        let aligned_address = address & !0x1Fu64;
+        let read = self.machine.read_memory(aligned_address, 32)?;
+        let read_hash = Digest::from_data(&read);
+        let proof = self.machine.proof(aligned_address, 5)?;
+        Ok(Access {
+            r#type: AccessType::Read,
+            log2_size,
+            read: Some(read),
+            read_hash: read_hash.into(),
+            address,
+            sibling_hashes: Some(proof.sibling_hashes),
+            written: None,
+            written_hash: None,
+        })
+    }
+
+    fn log_revert_if_needed(&mut self) -> Result<AccessLog> {
+        let mut log = AccessLog::default();
+
+        let iflags_y_address =
+            cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_IFLAGS_Y)?;
+        log.accesses.push(self.log_read_leaf(iflags_y_address, 3)?);
+
+        let iflags_y = self.is_yielded()?;
+        if iflags_y {
+            let to_host_address = cartesi_machine::Machine::reg_address(
+                cartesi_machine_sys::CM_REG_HTIF_TOHOST_REASON,
+            )?;
+            log.accesses.push(self.log_read_leaf(to_host_address, 3)?);
+
+            if self.machine.receive_cmio_request()?.reason()
+                != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
+            {
+                log.accesses
+                    .push(self.log_read_leaf(CHECKPOINT_ADDRESS, 5)?);
+            }
+        }
+        Ok(log)
+    }
+
     fn encode_access_logs(logs: Vec<&AccessLog>) -> Vec<u8> {
         let mut encoded: Vec<Vec<u8>> = Vec::new();
 
@@ -301,6 +395,9 @@ impl MachineInstance {
             for a in log.accesses.iter() {
                 if a.log2_size == 3 {
                     encoded.push(a.read.clone().unwrap());
+                } else if a.log2_size == 5 {
+                    encoded.push(a.read.clone().unwrap());
+                    encoded.push(a.read_hash.to_vec());
                 } else {
                     encoded.push(a.read_hash.to_vec());
                 }
@@ -344,7 +441,7 @@ impl MachineInstance {
 
         let mut logs = Vec::new();
 
-        let mut machine = MachineInstance::new_rollups_advanced_until(path, meta_cycle, db)?;
+        let (mut machine, _) = MachineInstance::new_rollups_advanced_until(path, meta_cycle, db)?;
         assert_eq!(machine.state()?.root_hash, agree_hash);
 
         if (meta_cycle & input_mask).is_zero() {
@@ -378,6 +475,8 @@ impl MachineInstance {
             logs.push(&uarch_step_log);
             let ureset_log = machine.machine.log_reset_uarch(LogType::default())?;
             logs.push(&ureset_log);
+            let revert_log = machine.log_revert_if_needed()?;
+            logs.push(&revert_log);
 
             Ok((Self::encode_access_logs(logs), machine.state()?.root_hash))
         } else {
