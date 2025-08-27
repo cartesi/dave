@@ -29,11 +29,11 @@ impl MachineCommitmentBuilder {
         log2_stride_count: u64,
         db: &DisputeStateAccess,
     ) -> Result<MachineCommitment> {
-        let mut machine;
-        let initial_state = {
-            machine =
+        let (mut machine, snapshot_path);
+        let (initial_state, snapshot_path) = {
+            (machine, snapshot_path) =
                 MachineInstance::new_rollups_advanced_until(&self.machine_path, base_cycle, db)?;
-            machine.state()?.root_hash
+            (machine.root_hash()?, snapshot_path)
         };
         trace!("initial state for commitment: {}", initial_state);
         let commitment = {
@@ -51,6 +51,7 @@ impl MachineCommitmentBuilder {
                     log2_stride_count,
                     initial_state,
                     db,
+                    snapshot_path,
                 )?
             }
         };
