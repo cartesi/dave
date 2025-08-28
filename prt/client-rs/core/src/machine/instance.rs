@@ -30,19 +30,17 @@ pub struct MachineState {
     pub halted: bool,
     pub yielded: bool,
     pub uhalted: bool,
-    pub reverted: bool,
 }
 
 impl std::fmt::Display for MachineState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{{root_hash = {}, halted = {}, yielded = {}, uhalted = {}, reverted = {}}}",
+            "{{root_hash = {}, halted = {}, yielded = {}, uhalted = {}}}",
             self.root_hash.to_hex(),
             self.halted,
             self.yielded,
             self.uhalted,
-            self.reverted
         )
     }
 }
@@ -55,7 +53,6 @@ impl MachineState {
             halted: machine.is_halted()?,
             yielded: machine.is_yielded()?,
             uhalted: machine.is_uarch_halted()?,
-            reverted: false,
         })
     }
 }
