@@ -78,15 +78,20 @@ export const EliminationTimeoutItem: FC<EliminationTimeoutItemProps> = (
                 </Group>
             </Timeline.Item>
             <Timeline.Item>
-                <Paper withBorder p={16} radius="lg" bg={theme.colors.gray[0]}>
-                    <Stack gap={3}>
+                <Stack gap={3}>
+                    <Paper
+                        withBorder
+                        p={16}
+                        radius="lg"
+                        bg={theme.colors.gray[0]}
+                    >
                         <Group gap="xs">
                             <TbSwordOff size={24} />
                             <Text>both claims eliminated by timeout</Text>
                         </Group>
-                        <Text c="dimmed">{formatTime(timestamp)}</Text>
-                    </Stack>
-                </Paper>
+                    </Paper>
+                    <Text c="dimmed">{formatTime(timestamp)}</Text>
+                </Stack>
             </Timeline.Item>
         </>
     );

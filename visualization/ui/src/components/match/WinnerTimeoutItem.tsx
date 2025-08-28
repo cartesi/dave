@@ -73,21 +73,21 @@ export const WinnerTimeoutItem: FC<WinnerTimeoutItemProps> = (props) => {
             <Timeline.Item
                 bullet={<Avatar src={buildDataUrl(winner.hash)} size={24} />}
             >
-                <Paper
-                    withBorder
-                    p={16}
-                    radius="lg"
-                    bg={theme.colors.yellow[0]}
-                >
-                    <Stack gap={3}>
+                <Stack gap={3}>
+                    <Paper
+                        withBorder
+                        p={16}
+                        radius="lg"
+                        bg={theme.colors.yellow[0]}
+                    >
                         <Group gap="xs">
                             <ClaimText claim={winner} withIcon={false} />
                             <TbTrophyFilled size={24} color={gold} />
                             <Text>by timeout</Text>
                         </Group>
-                        <Text c="dimmed">{formatTime(timestamp)}</Text>
-                    </Stack>
-                </Paper>
+                    </Paper>
+                    <Text c="dimmed">{formatTime(timestamp)}</Text>
+                </Stack>
             </Timeline.Item>
         </>
     );
