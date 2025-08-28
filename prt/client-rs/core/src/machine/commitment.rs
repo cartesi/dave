@@ -165,13 +165,14 @@ fn build_small_machine_commitment(
             span, span_count
         ));
 
-        let machine_state = run_uarch_span(machine, base_cycle, level, db, &snapshot_path)?;
-
+        run_uarch_span(machine, base_cycle, level, db, &snapshot_path)?;
+        let machine_state = machine.state()?;
         span += 1;
 
-        // if the machine is freshly reverted, we need to run another uarch span
-        if !machine_state.reverted && (machine_state.halted || machine_state.yielded) {
+        // if the machine is yielded, we need to run another uarch span
+        if machine_state.halted || machine_state.yielded {
             trace!("uarch span machine halted/yielded");
+            run_uarch_span(machine, base_cycle, level, db, &snapshot_path)?;
             break;
         }
     }
@@ -186,7 +187,7 @@ fn run_uarch_span(
     level: u64,
     db: &DisputeStateAccess,
     snapshot_path: &PathBuf,
-) -> Result<MachineState> {
+) -> Result<()> {
     let (_, ucycle) = machine.position()?;
     assert!(ucycle == 0);
 
@@ -221,9 +222,6 @@ fn run_uarch_span(
     if machine.is_yielded()? {
         match machine.revert_if_needed(&snapshot_path)? {
             Some(checkpoint_hash) => {
-                machine_state = machine.state()?;
-                machine_state.reverted = true;
-
                 leafs.push(Leaf {
                     hash: checkpoint_hash.into(),
                     repetitions: 1,
@@ -245,7 +243,7 @@ fn run_uarch_span(
 
     db.insert_leafs(level, base_cycle, leafs.iter())?;
 
-    Ok(machine_state)
+    Ok(())
 }
 
 fn print_flush_same_line(args: &str) {
