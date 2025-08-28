@@ -1,5 +1,5 @@
 import { Carousel } from "@mantine/carousel";
-import { Avatar, Group, Progress, Stack } from "@mantine/core";
+import { Avatar, Group, Progress, Stack, useMantineTheme } from "@mantine/core";
 import Jazzicon from "@raugfer/jazzicon";
 import type { EmblaCarouselType } from "embla-carousel";
 import { useEffect, useMemo, useState, type FC } from "react";
@@ -44,6 +44,9 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
     const { claim1, claim2, range, bisections, max } = props;
     const [domain, setDomain] = useState<CycleRange>(range);
 
+    const progress = (bisections.length / max) * 100;
+    const [visibleProgress, setVisibleProgress] = useState(progress);
+
     // create ranges for each bisection
     const ranges = useMemo(
         () =>
@@ -65,12 +68,21 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
             embla.on("slidesInView", (embla) => {
                 const visible = embla.slidesInView();
                 if (visible.length > 0) {
+                    // adjust domain according to first visible range
                     const top = visible[0];
                     setDomain(ranges[top]);
+
+                    // adjust progress according to last visible range
+                    const bottom = visible[visible.length - 1];
+                    setVisibleProgress(((bottom + 1) / max) * 100);
                 }
             });
         }
     }, [embla]);
+
+    const theme = useMantineTheme();
+    const color = theme.primaryColor;
+    const colorLight = theme.colors[theme.primaryColor][4];
 
     return (
         <Stack>
@@ -84,7 +96,16 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                         w={300}
                         h={16}
                     />
-                    <Progress value={(bisections.length / max) * 100} />
+                    <Progress.Root>
+                        <Progress.Section
+                            value={visibleProgress}
+                            color={color}
+                        />
+                        <Progress.Section
+                            value={progress - visibleProgress}
+                            color={colorLight}
+                        />
+                    </Progress.Root>
                 </Stack>
             </Group>
             <Carousel
