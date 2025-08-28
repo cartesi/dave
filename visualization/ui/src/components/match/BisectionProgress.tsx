@@ -62,7 +62,8 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
     );
 
     // dynamic domain, based on first visible item
-    const [domain, setDomain] = useState<CycleRange>(range);
+    const maxRange: CycleRange = [0, 2 ** max - 1];
+    const [domain, setDomain] = useState<CycleRange>(maxRange);
 
     // progress bar, based on last visible item
     const progress = (bisections.length / max) * 100;
@@ -80,7 +81,7 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                     r.push(direction === 0 ? [s, mid] : [mid, e]);
                     return r;
                 },
-                [range],
+                [maxRange],
             ),
         [bisections],
     );
