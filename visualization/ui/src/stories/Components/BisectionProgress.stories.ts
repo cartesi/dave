@@ -7,9 +7,6 @@ import { mulberry32 } from "../util";
 const meta = {
     title: "Components/BisectionProgress",
     component: BisectionProgress,
-    parameters: {
-        layout: "centered",
-    },
 } satisfies Meta<typeof BisectionProgress>;
 
 export default meta;

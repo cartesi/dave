@@ -11,7 +11,7 @@ import {
 import Jazzicon from "@raugfer/jazzicon";
 import humanizeDuration from "humanize-duration";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
-import { slice, zeroHash, type Hash } from "viem";
+import { slice, type Hash } from "viem";
 import type { Claim, CycleRange } from "../types";
 import { RangeIndicator } from "./RangeIndicator";
 
@@ -93,8 +93,8 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
     // refs for the scroll area and timeline items visibility
     const viewportRef = useRef<HTMLDivElement>(null);
     const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
-    const [firstVisible, setFirstVisible] = useState(0);
-    const [lastVisible, setLastVisible] = useState(0);
+    const [firstVisible, setFirstVisible] = useState(-1);
+    const [lastVisible, setLastVisible] = useState(-1);
 
     const updateVisibleIndices = () => {
         if (!viewportRef.current) return;
@@ -131,14 +131,14 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
 
     // update range based on first visible item
     useEffect(() => {
-        if (firstVisible !== 0) {
+        if (firstVisible >= 0) {
             setDomain(ranges[firstVisible]);
         }
     }, [firstVisible]);
 
     // update progress bar based on last visible item
     useEffect(() => {
-        if (lastVisible !== 0) {
+        if (lastVisible >= 0) {
             setVisibleProgress(((lastVisible + 1) / max) * 100);
         }
     }, [lastVisible]);
@@ -157,29 +157,29 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
     };
 
     return (
-        <Stack>
-            <Group>
-                <Avatar src={buildDataUrl(zeroHash)} size={24} opacity={0} />
-                <Stack gap={3}>
-                    <RangeIndicator
-                        domain={range}
-                        value={range}
-                        withLabels
-                        w={300}
-                        h={16}
-                    />
-                    <Progress.Root>
-                        <Progress.Section
-                            value={visibleProgress}
-                            color={color}
+        <Stack gap="lg">
+            <Timeline bulletSize={24} lineWidth={2}>
+                <Timeline.Item styles={{ itemBullet: { display: "none" } }}>
+                    <Stack gap={3}>
+                        <RangeIndicator
+                            domain={range}
+                            value={range}
+                            withLabels
+                            h={16}
                         />
-                        <Progress.Section
-                            value={progress - visibleProgress}
-                            color={colorLight}
-                        />
-                    </Progress.Root>
-                </Stack>
-            </Group>
+                        <Progress.Root>
+                            <Progress.Section
+                                value={visibleProgress}
+                                color={color}
+                            />
+                            <Progress.Section
+                                value={progress - visibleProgress}
+                                color={colorLight}
+                            />
+                        </Progress.Root>
+                    </Stack>
+                </Timeline.Item>
+            </Timeline>
             <ScrollArea
                 h={300}
                 viewportRef={viewportRef}
@@ -207,13 +207,16 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                                 <RangeIndicator
                                     domain={domain}
                                     value={r}
-                                    withLabels
-                                    w={300}
                                     h={16}
                                 />
-                                <Text size="xs" c="dimmed">
-                                    {formatTime(bisections[i].timestamp)}
-                                </Text>
+                                <Group justify="space-between">
+                                    <Text size="xs" c="dimmed">
+                                        {formatTime(bisections[i].timestamp)}
+                                    </Text>
+                                    <Text size="xs" c="dimmed">
+                                        {i + 1} / {max}
+                                    </Text>
+                                </Group>
                             </Stack>
                         </Timeline.Item>
                     ))}
