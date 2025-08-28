@@ -4,9 +4,6 @@ import { RangeIndicator } from "../../components/match/RangeIndicator";
 const meta = {
     title: "Components/RangeIndicator",
     component: RangeIndicator,
-    parameters: {
-        layout: "centered",
-    },
     tags: ["autodocs"],
 } satisfies Meta<typeof RangeIndicator>;
 
@@ -68,15 +65,8 @@ export const RealValue: Story = {
 /**
  * Different color. Use the `c` prop to change the color.
  */
-export const ForegroundColor: Story = {
-    args: { domain: [0, 100], value: [0, 50], c: "green" },
-};
-
-/**
- * Different background. Use the `bg` prop to change the background color.
- */
-export const BackgroundColor: Story = {
-    args: { domain: [0, 100], value: [0, 50], bg: "lightgray" },
+export const Color: Story = {
+    args: { domain: [0, 100], value: [25, 50], color: "green" },
 };
 
 /**
@@ -85,7 +75,6 @@ export const BackgroundColor: Story = {
 export const LargeWithLabels: Story = {
     args: {
         h: 16,
-        w: 240,
         domain: [start, end],
         value: [start, (start + end) / 2],
         withLabels: true,
