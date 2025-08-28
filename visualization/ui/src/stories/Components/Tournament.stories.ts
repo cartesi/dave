@@ -6,7 +6,7 @@ import { TournamentView } from "../../components/tournament/Tournament";
 import type { Claim, Tournament } from "../../components/types";
 
 const meta = {
-    title: "Components/Tournament",
+    title: "Components/Tournament/Tournament",
     component: TournamentView,
     tags: ["autodocs"],
 } satisfies Meta<typeof TournamentView>;

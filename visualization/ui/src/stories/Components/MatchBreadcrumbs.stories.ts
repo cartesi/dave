@@ -4,7 +4,7 @@ import { MatchBreadcrumbs } from "../../components/MatchBreadcrumbs";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/MatchBreadcrumbs",
+    title: "Components/Navigation/MatchBreadcrumbs",
     component: MatchBreadcrumbs,
     parameters: {
         layout: "centered",

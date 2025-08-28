@@ -3,7 +3,7 @@ import { InputCard } from "../../components/input/Input";
 import * as EpochPageStories from "../Pages/EpochPage.stories";
 
 const meta = {
-    title: "Components/Input",
+    title: "Components/Input/Input",
     component: InputCard,
     parameters: {
         layout: "centered",

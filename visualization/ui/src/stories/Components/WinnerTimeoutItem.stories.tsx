@@ -5,7 +5,7 @@ import { WinnerTimeoutItem } from "../../components/match/WinnerTimeoutItem";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/WinnerTimeoutItem",
+    title: "Components/Match/WinnerTimeoutItem",
     component: WinnerTimeoutItem,
     tags: ["autodocs"],
     decorators: [

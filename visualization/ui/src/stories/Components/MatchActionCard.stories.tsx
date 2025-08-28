@@ -4,7 +4,7 @@ import { MatchActionCard } from "../../components/match/MatchActionCard";
 import * as TournamentStories from "./Tournament.stories";
 
 const meta = {
-    title: "Components/MatchActionCard",
+    title: "Components/Match/MatchActionCard",
     component: MatchActionCard,
     parameters: {
         layout: "centered",

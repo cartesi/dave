@@ -4,7 +4,7 @@ import { MatchBadge } from "../../components/tournament/MatchBadge";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/MatchBadge",
+    title: "Components/Navigation/MatchBadge",
     component: MatchBadge,
     parameters: {
         layout: "centered",

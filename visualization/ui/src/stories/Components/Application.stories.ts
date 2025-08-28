@@ -3,7 +3,7 @@ import { ApplicationCard } from "../../components/application/Application";
 import { applications } from "../data";
 
 const meta = {
-    title: "Components/Application",
+    title: "Components/Application/Application",
     component: ApplicationCard,
     parameters: {
         layout: "centered",

@@ -5,7 +5,7 @@ import { EliminationTimeoutItem } from "../../components/match/EliminationTimeou
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/EliminationTimeoutItem",
+    title: "Components/Match/EliminationTimeoutItem",
     component: EliminationTimeoutItem,
     tags: ["autodocs"],
     decorators: [

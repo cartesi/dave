@@ -5,7 +5,7 @@ import { MatchCard } from "../../components/tournament/MatchCard";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/MatchCard",
+    title: "Components/Tournament/MatchCard",
     component: MatchCard,
     parameters: {
         layout: "centered",

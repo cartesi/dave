@@ -3,11 +3,8 @@ import { EpochCard } from "../../components/epoch/Epoch";
 import { applications } from "../data";
 
 const meta = {
-    title: "Components/Epoch",
+    title: "Components/Epoch/Epoch",
     component: EpochCard,
-    parameters: {
-        layout: "centered",
-    },
     tags: ["autodocs"],
 } satisfies Meta<typeof EpochCard>;
 

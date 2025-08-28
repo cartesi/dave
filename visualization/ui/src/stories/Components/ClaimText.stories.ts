@@ -4,7 +4,7 @@ import { ClaimText } from "../../components/tournament/ClaimText";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/ClaimText",
+    title: "Components/General/ClaimText",
     component: ClaimText,
     parameters: {
         layout: "centered",

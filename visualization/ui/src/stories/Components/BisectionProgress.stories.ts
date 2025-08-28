@@ -5,7 +5,7 @@ import type { Claim } from "../../components/types";
 import { mulberry32 } from "../util";
 
 const meta = {
-    title: "Components/BisectionProgress",
+    title: "Components/Match/BisectionProgress",
     component: BisectionProgress,
 } satisfies Meta<typeof BisectionProgress>;
 

@@ -3,7 +3,7 @@ import { MatchView } from "../../components/match/Match";
 import * as TournamentStories from "./Tournament.stories";
 
 const meta = {
-    title: "Components/Match",
+    title: "Components/Match/Match",
     component: MatchView,
 } satisfies Meta<typeof MatchView>;
 

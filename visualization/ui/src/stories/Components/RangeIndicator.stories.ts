@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { RangeIndicator } from "../../components/match/RangeIndicator";
 
 const meta = {
-    title: "Components/RangeIndicator",
+    title: "Components/Match/RangeIndicator",
     component: RangeIndicator,
     tags: ["autodocs"],
 } satisfies Meta<typeof RangeIndicator>;

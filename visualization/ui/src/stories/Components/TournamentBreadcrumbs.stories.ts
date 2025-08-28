@@ -4,7 +4,7 @@ import { TournamentBreadcrumbs } from "../../components/TournamentBreadcrumbs";
 import type { Claim } from "../../components/types";
 
 const meta = {
-    title: "Components/TournamentBreadcrumbs",
+    title: "Components/Navigation/TournamentBreadcrumbs",
     component: TournamentBreadcrumbs,
     parameters: {
         layout: "centered",
