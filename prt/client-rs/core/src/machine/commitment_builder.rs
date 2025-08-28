@@ -37,23 +37,22 @@ impl MachineCommitmentBuilder {
         };
         trace!("initial state for commitment: {}", initial_state);
         let commitment = {
-            let leafs = db.leafs(level, log2_stride, log2_stride_count, base_cycle)?;
+            let mut leafs = db.leafs(level, log2_stride, log2_stride_count, base_cycle)?;
             // leafs are cached in database, use it to calculate merkle
-            if !leafs.is_empty() {
-                build_machine_commitment_from_leafs(leafs, initial_state)?
-            } else {
+            if leafs.is_empty() {
                 // leafs are not cached, build merkle by running the machine
-                build_machine_commitment(
+                leafs = build_machine_commitment(
                     &mut machine,
                     base_cycle,
                     level,
                     log2_stride,
                     log2_stride_count,
-                    initial_state,
                     db,
                     snapshot_path,
-                )?
+                )?;
+                assert!(!leafs.is_empty());
             }
+            build_machine_commitment_from_leafs(leafs, initial_state)?
         };
 
         Ok(commitment)
