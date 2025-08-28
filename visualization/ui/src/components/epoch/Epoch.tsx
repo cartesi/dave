@@ -1,4 +1,4 @@
-import { Badge, Card, Group, Stack, Text } from "@mantine/core";
+import { Badge, Card, Group, Text, useMantineTheme } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import type { FC } from "react";
 import {
@@ -7,61 +7,52 @@ import {
     TbClockPlay,
     TbClockShield,
 } from "react-icons/tb";
-import theme from "../../providers/theme";
-import type { Epoch, EpochStatus } from "../types";
-import { useEpochStatusColor } from "./useEpochStatusColor";
+import type { Epoch } from "../types";
 
 type Props = { epoch: Epoch };
 
-type EpochIconProps = {
-    status: EpochStatus;
-    inDispute: boolean;
-    color: string;
-};
-
-const EpochIcon: FC<EpochIconProps> = ({ inDispute, status, color }) => {
-    if (inDispute === true)
-        return (
-            <TbClockExclamation size={theme.other.mdIconSize} color={color} />
-        );
-
-    if (status === "FINALIZED")
-        return <TbClockCheck size={theme.other.mdIconSize} color={color} />;
-
-    if (status === "CLOSED")
-        return <TbClockShield size={theme.other.mdIconSize} color={color} />;
-
-    return <TbClockPlay size={theme.other.mdIconSize} color={color} />;
+const getIcon = (epoch: Epoch) => {
+    if (epoch.inDispute) {
+        return TbClockExclamation;
+    }
+    switch (epoch.status) {
+        case "OPEN":
+            return TbClockPlay;
+        case "CLOSED":
+            return TbClockShield;
+        case "FINALIZED":
+            return TbClockCheck;
+    }
 };
 
 export const EpochCard: FC<Props> = ({ epoch }) => {
+    const theme = useMantineTheme();
     const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
-    const statusColor = useEpochStatusColor(epoch);
+    const color = epoch.inDispute
+        ? theme.colors.disputed
+        : theme.colors[epoch.status.toLowerCase()];
+
+    // choose icon based on status and dispute status
+    const EpochIcon = getIcon(epoch);
 
     return (
         <Card shadow="md" withBorder>
-            <Stack gap="3">
-                <Group justify="space-between" gap={isMobile ? "xs" : "xl"}>
-                    <Group gap={isMobile ? "xs" : undefined}>
-                        <EpochIcon
-                            status={epoch.status}
-                            inDispute={epoch.inDispute}
-                            color={statusColor}
-                        />
-                        <Text size="xl" c={statusColor}>
-                            {epoch.index}
-                        </Text>
-                    </Group>
-                    {epoch.inDispute && (
-                        <Badge variant="outline" color={statusColor}>
-                            disputed
-                        </Badge>
-                    )}
-                    <Badge size="md" color={statusColor}>
-                        {epoch.status}
-                    </Badge>
+            <Group justify="space-between" gap={isMobile ? "xs" : "xl"}>
+                <Group gap="xs">
+                    <EpochIcon size={theme.other.mdIconSize} color={color[5]} />
+                    <Text size="xl" c={color[5]}>
+                        # {epoch.index}
+                    </Text>
                 </Group>
-            </Stack>
+                {epoch.inDispute && (
+                    <Badge variant="outline" color={color[5]}>
+                        disputed
+                    </Badge>
+                )}
+                <Badge size="md" color={color[5]}>
+                    {epoch.status}
+                </Badge>
+            </Group>
         </Card>
     );
 };

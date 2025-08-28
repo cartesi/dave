@@ -5,9 +5,24 @@ import {
     DEFAULT_THEME,
     mergeMantineTheme,
     Modal,
+    virtualColor,
 } from "@mantine/core";
 
 const theme = createTheme({
+    colors: {
+        open: virtualColor({ name: "open", light: "green", dark: "green" }),
+        disputed: virtualColor({
+            name: "disputed",
+            light: "orange",
+            dark: "orange",
+        }),
+        closed: virtualColor({ name: "closed", light: "cyan", dark: "gray" }),
+        finalized: virtualColor({
+            name: "finalized",
+            light: "gray",
+            dark: "gray",
+        }),
+    },
     primaryColor: "cyan",
     primaryShade: {
         dark: 8,
