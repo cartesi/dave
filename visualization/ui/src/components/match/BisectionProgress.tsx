@@ -1,8 +1,15 @@
-import { Carousel } from "@mantine/carousel";
-import { Avatar, Group, Progress, Stack, useMantineTheme } from "@mantine/core";
+import {
+    Avatar,
+    Group,
+    Progress,
+    ScrollArea,
+    Stack,
+    Text,
+    Timeline,
+    useMantineTheme,
+} from "@mantine/core";
 import Jazzicon from "@raugfer/jazzicon";
-import type { EmblaCarouselType } from "embla-carousel";
-import { useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import { slice, zeroHash, type Hash } from "viem";
 import type { Claim, CycleRange } from "../types";
 import { RangeIndicator } from "./RangeIndicator";
@@ -40,7 +47,6 @@ function buildDataUrl(hash: Hash): string {
 }
 
 export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
-    const [embla, setEmbla] = useState<EmblaCarouselType | null>(null);
     const { claim1, claim2, range, bisections, max } = props;
     const [domain, setDomain] = useState<CycleRange>(range);
 
@@ -63,26 +69,72 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
         [bisections],
     );
 
-    useEffect(() => {
-        if (embla) {
-            embla.on("slidesInView", (embla) => {
-                const visible = embla.slidesInView();
-                if (visible.length > 0) {
-                    // adjust domain according to first visible range
-                    const top = visible[0];
-                    setDomain(ranges[top]);
-
-                    // adjust progress according to last visible range
-                    const bottom = visible[visible.length - 1];
-                    setVisibleProgress(((bottom + 1) / max) * 100);
-                }
-            });
-        }
-    }, [embla]);
-
+    // colors for the progress bar
     const theme = useMantineTheme();
     const color = theme.primaryColor;
     const colorLight = theme.colors[theme.primaryColor][4];
+
+    // refs for the scroll area and timeline items visibility
+    const viewportRef = useRef<HTMLDivElement>(null);
+    const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const [firstVisible, setFirstVisible] = useState(0);
+    const [lastVisible, setLastVisible] = useState(0);
+
+    const updateVisibleIndices = () => {
+        if (!viewportRef.current) return;
+        const scrollTop = viewportRef.current.scrollTop;
+        const viewportHeight = viewportRef.current.clientHeight;
+
+        const visibleIndices = itemRefs.current
+            .map((el, idx) => {
+                if (!el) return null;
+                const itemTop = el.offsetTop;
+                const itemBottom = el.offsetTop + el.offsetHeight;
+
+                // partially visible counts
+                if (
+                    itemBottom > scrollTop &&
+                    itemTop < scrollTop + viewportHeight
+                ) {
+                    return idx;
+                }
+                return null;
+            })
+            .filter((idx): idx is number => idx !== null);
+
+        if (visibleIndices.length > 0) {
+            setFirstVisible(visibleIndices[0]);
+            setLastVisible(visibleIndices[visibleIndices.length - 1]);
+        }
+    };
+
+    // update visible indices on mount
+    useEffect(() => {
+        updateVisibleIndices();
+    }, []);
+
+    // update range based on first visible item
+    useEffect(() => {
+        if (firstVisible !== 0) {
+            setDomain(ranges[firstVisible]);
+        }
+    }, [firstVisible]);
+
+    // update progress bar based on last visible item
+    useEffect(() => {
+        if (lastVisible !== 0) {
+            setVisibleProgress(((lastVisible + 1) / max) * 100);
+        }
+    }, [lastVisible]);
+
+    // scroll to bottom on mount
+    useEffect(() => {
+        if (viewportRef.current) {
+            viewportRef.current.scrollTo({
+                top: viewportRef.current.scrollHeight,
+            });
+        }
+    }, []);
 
     return (
         <Stack>
@@ -108,37 +160,45 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                     </Progress.Root>
                 </Stack>
             </Group>
-            <Carousel
-                orientation="vertical"
-                slideGap="md"
-                height={300}
-                slideSize="20%"
-                getEmblaApi={setEmbla}
-                emblaOptions={{
-                    align: "start",
-                    inViewThreshold: 1,
-                }}
+            <ScrollArea
+                h={300}
+                viewportRef={viewportRef}
+                type="auto"
+                scrollbars="y"
+                onScrollPositionChange={updateVisibleIndices}
             >
-                {ranges.slice(1).map((r, i) => (
-                    <Carousel.Slide key={i}>
-                        <Group key={i} align="end">
-                            <Avatar
-                                src={buildDataUrl(
-                                    i % 2 === 0 ? claim1.hash : claim2.hash,
-                                )}
-                                size={24}
-                            />
-                            <RangeIndicator
-                                domain={domain}
-                                value={r}
-                                withLabels
-                                w={300}
-                                h={16}
-                            />
-                        </Group>
-                    </Carousel.Slide>
-                ))}
-            </Carousel>
+                <Timeline bulletSize={24} lineWidth={2}>
+                    {ranges.slice(1).map((r, i) => (
+                        <Timeline.Item
+                            key={i}
+                            ref={(el) => {
+                                itemRefs.current[i] = el;
+                            }}
+                            bullet={
+                                <Avatar
+                                    src={buildDataUrl(
+                                        i % 2 === 0 ? claim1.hash : claim2.hash,
+                                    )}
+                                    size={24}
+                                />
+                            }
+                        >
+                            <Stack gap={3}>
+                                <RangeIndicator
+                                    domain={domain}
+                                    value={r}
+                                    withLabels
+                                    w={300}
+                                    h={16}
+                                />
+                                <Text size="xs" c="dimmed">
+                                    1 hour and 4 minutes ago
+                                </Text>
+                            </Stack>
+                        </Timeline.Item>
+                    ))}
+                </Timeline>
+            </ScrollArea>
         </Stack>
     );
 };

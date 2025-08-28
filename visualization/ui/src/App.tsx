@@ -1,8 +1,5 @@
-import "@mantine/core/styles.css";
-
-import "@mantine/carousel/styles.css";
-
 import { MantineProvider, Stack, Text, Title } from "@mantine/core";
+import "@mantine/core/styles.css";
 import {
     Link,
     Outlet,
