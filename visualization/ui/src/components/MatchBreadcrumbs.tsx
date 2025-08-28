@@ -30,7 +30,7 @@ export const MatchBreadcrumbs: FC<MatchBreadcrumbsProps> = ({
     }
 
     return (
-        <Breadcrumbs {...breadcrumbsProps}>
+        <Breadcrumbs separator="→" {...breadcrumbsProps}>
             {parents}
             <MatchBadge match={match} variant="filled" />
         </Breadcrumbs>
