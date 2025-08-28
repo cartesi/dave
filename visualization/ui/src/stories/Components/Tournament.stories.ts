@@ -26,7 +26,7 @@ const startCycle = 1837880065;
 const endCycle = 2453987565;
 
 const tournament: Tournament = {
-    level: "TOP",
+    level: "top",
     startCycle,
     endCycle,
     matches: [],
@@ -90,7 +90,7 @@ tournament.matches.push(
 tournament.danglingClaim = randomClaim(0);
 
 const mid: Tournament = {
-    level: "MIDDLE",
+    level: "middle",
     startCycle: startCycle / 1024,
     endCycle: endCycle / 1024,
     parentMatch: tournament.matches[1],
@@ -133,7 +133,7 @@ export const NoChallengerYet: Story = {
     args: {
         onClickMatch: fn(),
         tournament: {
-            level: "TOP",
+            level: "top",
             startCycle,
             endCycle,
             winner: undefined,
@@ -147,7 +147,7 @@ export const Finalized: Story = {
     args: {
         onClickMatch: fn(),
         tournament: {
-            level: "TOP",
+            level: "top",
             startCycle,
             endCycle,
             winner: randomClaim(0),

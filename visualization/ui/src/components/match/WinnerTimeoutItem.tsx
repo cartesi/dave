@@ -86,7 +86,9 @@ export const WinnerTimeoutItem: FC<WinnerTimeoutItemProps> = (props) => {
                             <Text>by timeout</Text>
                         </Group>
                     </Paper>
-                    <Text c="dimmed">{formatTime(timestamp)}</Text>
+                    <Text size="xs" c="dimmed">
+                        {formatTime(timestamp)}
+                    </Text>
                 </Stack>
             </Timeline.Item>
         </>

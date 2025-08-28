@@ -90,7 +90,9 @@ export const EliminationTimeoutItem: FC<EliminationTimeoutItemProps> = (
                             <Text>both claims eliminated by timeout</Text>
                         </Group>
                     </Paper>
-                    <Text c="dimmed">{formatTime(timestamp)}</Text>
+                    <Text size="xs" c="dimmed">
+                        {formatTime(timestamp)}
+                    </Text>
                 </Stack>
             </Timeline.Item>
         </>

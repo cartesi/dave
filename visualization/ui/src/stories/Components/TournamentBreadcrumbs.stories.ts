@@ -26,12 +26,12 @@ const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
 export const BottomTournament: Story = {
     args: {
         tournament: {
-            level: "BOTTOM",
+            level: "bottom",
             parentMatch: {
                 claim1: claims[0],
                 claim2: claims[1],
                 parentTournament: {
-                    level: "MIDDLE",
+                    level: "middle",
                     startCycle: 10,
                     endCycle: 20,
                     matches: [],
@@ -39,7 +39,7 @@ export const BottomTournament: Story = {
                         claim1: claims[2],
                         claim2: claims[3],
                         parentTournament: {
-                            level: "TOP",
+                            level: "top",
                             startCycle: 1,
                             endCycle: 100,
                             matches: [],
@@ -61,12 +61,12 @@ export const BottomTournament: Story = {
 export const MidTournament: Story = {
     args: {
         tournament: {
-            level: "MIDDLE",
+            level: "middle",
             parentMatch: {
                 claim1: claims[0],
                 claim2: claims[1],
                 parentTournament: {
-                    level: "TOP",
+                    level: "top",
                     startCycle: 1,
                     endCycle: 100,
                     matches: [],
@@ -84,7 +84,7 @@ export const MidTournament: Story = {
 export const TopTournament: Story = {
     args: {
         tournament: {
-            level: "TOP",
+            level: "top",
         },
     },
 };

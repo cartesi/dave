@@ -30,7 +30,7 @@ export const BottomMatch: Story = {
             claim1: claims[0],
             claim2: claims[1],
             parentTournament: {
-                level: "BOTTOM",
+                level: "bottom",
                 startCycle: 5,
                 endCycle: 6,
                 matches: [],
@@ -38,7 +38,7 @@ export const BottomMatch: Story = {
                     claim1: claims[2],
                     claim2: claims[3],
                     parentTournament: {
-                        level: "MIDDLE",
+                        level: "middle",
                         startCycle: 10,
                         endCycle: 20,
                         matches: [],
@@ -46,7 +46,7 @@ export const BottomMatch: Story = {
                             claim1: claims[4],
                             claim2: claims[5],
                             parentTournament: {
-                                level: "TOP",
+                                level: "top",
                                 startCycle: 1,
                                 endCycle: 100,
                                 matches: [],
@@ -75,7 +75,7 @@ export const MidMatch: Story = {
             claim2: claims[3],
             timestamp: 1,
             parentTournament: {
-                level: "MIDDLE",
+                level: "middle",
                 startCycle: 10,
                 endCycle: 20,
                 matches: [],
@@ -83,7 +83,7 @@ export const MidMatch: Story = {
                     claim1: claims[4],
                     claim2: claims[5],
                     parentTournament: {
-                        level: "TOP",
+                        level: "top",
                         startCycle: 1,
                         endCycle: 100,
                         matches: [],
@@ -106,7 +106,7 @@ export const TopMatch: Story = {
             claim1: claims[4],
             claim2: claims[5],
             parentTournament: {
-                level: "TOP",
+                level: "top",
                 startCycle: 1,
                 endCycle: 100,
                 matches: [],

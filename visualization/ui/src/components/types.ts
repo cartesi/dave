@@ -97,7 +97,7 @@ export interface Match {
 }
 
 export interface Tournament {
-    level: "TOP" | "MIDDLE" | "BOTTOM";
+    level: "top" | "middle" | "bottom";
     startCycle: Cycle;
     endCycle: Cycle;
     parentMatch?: Match;
