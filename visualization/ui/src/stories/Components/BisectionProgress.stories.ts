@@ -15,6 +15,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const now = Math.floor(Date.now() / 1000);
 const start = 14_837_880_065;
 const end = 21_453_987_565;
 
@@ -31,7 +32,12 @@ export const Ongoing: Story = {
         claim1: randomClaim(0),
         claim2: randomClaim(1),
         range: [start, end],
-        bisections: [0, 1, 1, 0],
+        bisections: [
+            { direction: 0, timestamp: now - 3402 },
+            { direction: 1, timestamp: now - 1548 },
+            { direction: 1, timestamp: now - 763 },
+            { direction: 0, timestamp: now - 354 },
+        ],
         max: 48,
     },
 };
@@ -57,7 +63,10 @@ export const ManyBisections: Story = {
         claim1: randomClaim(0),
         claim2: randomClaim(1),
         range: [start, end],
-        bisections: Array.from({ length: 20 }, () => (rng() < 0.5 ? 0 : 1)),
+        bisections: Array.from({ length: 20 }, (_, i) => ({
+            direction: rng() < 0.5 ? 0 : 1,
+            timestamp: now - 3600 + i * 60,
+        })),
         max: 48,
     },
 };
@@ -70,7 +79,10 @@ export const Complete: Story = {
         claim1: randomClaim(0),
         claim2: randomClaim(1),
         range: [start, end],
-        bisections: Array.from({ length: 48 }, () => (rng() < 0.5 ? 0 : 1)),
+        bisections: Array.from({ length: 48 }, (_, i) => ({
+            direction: rng() < 0.5 ? 0 : 1,
+            timestamp: now - 3600 + i * 60,
+        })),
         max: 48,
     },
 };

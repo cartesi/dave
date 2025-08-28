@@ -9,6 +9,7 @@ import {
     useMantineTheme,
 } from "@mantine/core";
 import Jazzicon from "@raugfer/jazzicon";
+import humanizeDuration from "humanize-duration";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import { slice, zeroHash, type Hash } from "viem";
 import type { Claim, CycleRange } from "../types";
@@ -28,7 +29,7 @@ interface BisectionProgressProps {
     /**
      * List of bisections. 0 is left, 1 is right
      */
-    bisections: (0 | 1)[];
+    bisections: { direction: 0 | 1; timestamp: number }[];
 
     /**
      * First claim
@@ -39,6 +40,11 @@ interface BisectionProgressProps {
      * Second claim
      */
     claim2: Claim;
+
+    /**
+     * Current timestamp
+     */
+    now?: number;
 }
 
 // builds an image data url for embedding
@@ -48,8 +54,17 @@ function buildDataUrl(hash: Hash): string {
 
 export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
     const { claim1, claim2, range, bisections, max } = props;
+
+    // allow now to be defined outside, default to Date.now
+    const now = useMemo(
+        () => props.now ?? Math.floor(Date.now() / 1000),
+        [props.now],
+    );
+
+    // dynamic domain, based on first visible item
     const [domain, setDomain] = useState<CycleRange>(range);
 
+    // progress bar, based on last visible item
     const progress = (bisections.length / max) * 100;
     const [visibleProgress, setVisibleProgress] = useState(progress);
 
@@ -58,10 +73,11 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
         () =>
             bisections.reduce(
                 (r, bisection, i) => {
+                    const { direction } = bisection;
                     const l = r[i];
                     const [s, e] = l;
                     const mid = Math.floor((s + e) / 2);
-                    r.push(bisection === 0 ? [s, mid] : [mid, e]);
+                    r.push(direction === 0 ? [s, mid] : [mid, e]);
                     return r;
                 },
                 [range],
@@ -136,6 +152,10 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
         }
     }, []);
 
+    const formatTime = (timestamp: number) => {
+        return `${humanizeDuration((now - timestamp) * 1000, { units: ["h", "m", "s"] })} ago`;
+    };
+
     return (
         <Stack>
             <Group>
@@ -192,7 +212,7 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                                     h={16}
                                 />
                                 <Text size="xs" c="dimmed">
-                                    1 hour and 4 minutes ago
+                                    {formatTime(bisections[i].timestamp)}
                                 </Text>
                             </Stack>
                         </Timeline.Item>
