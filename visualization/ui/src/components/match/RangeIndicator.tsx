@@ -39,17 +39,19 @@ export const RangeIndicator: FC<RangeIndicatorProps> = (props) => {
     const left = (start - domainStart) / (domainEnd - domainStart);
 
     return (
-        <Stack gap={0}>
+        <Stack gap={0} w={paperProps.w}>
             {withLabels && (
                 <Group gap="xs" justify="space-between">
                     <Text size="xs">{start}</Text>
                     <Text size="xs">{end}</Text>
                 </Group>
             )}
-            <Paper miw={32} withBorder {...paperProps}>
+            <Paper miw={32} withBorder {...paperProps} w="100%">
                 <Paper
                     {...paperProps}
                     mih={8}
+                    h="100%"
+                    radius="xs"
                     left={`${left * 100}%`}
                     w={`${width * 100}%`}
                     pos="relative"
