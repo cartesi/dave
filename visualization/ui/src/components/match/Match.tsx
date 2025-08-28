@@ -1,11 +1,10 @@
-import { Group, Stack, Text } from "@mantine/core";
-import { useMemo, useState, type FC } from "react";
+import { Divider, Group, Stack, Text } from "@mantine/core";
+import { type FC } from "react";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { MatchBreadcrumbs } from "../MatchBreadcrumbs";
-import { TimeSlider } from "../TimeSlider";
 import { ClaimText } from "../tournament/ClaimText";
-import type { Match, Tournament } from "../types";
-import { MatchActionCard } from "./MatchActionCard";
+import type { CycleRange, Match, Tournament } from "../types";
+import { BisectionProgress } from "./BisectionProgress";
 
 export interface MatchViewProps {
     tournament: Tournament;
@@ -14,11 +13,12 @@ export interface MatchViewProps {
 
 export const MatchView: FC<MatchViewProps> = (props) => {
     const { match, tournament } = props;
+    const { claim1, claim2 } = match;
     const { startCycle, endCycle } = tournament;
-    const [now, setNow] = useState<number | undefined>(undefined);
-    const timestamps = useMemo(() => {
-        return match.actions.map(({ timestamp }) => timestamp);
-    }, [match]);
+    const range: CycleRange = [startCycle, endCycle];
+    const bisections = match.actions.filter(
+        (action) => action.type === "advance",
+    );
 
     return (
         <Stack>
@@ -38,21 +38,14 @@ export const MatchView: FC<MatchViewProps> = (props) => {
                     <ClaimText claim={match.claim2} />
                 </Group>
             </Group>
-            <Group>
-                <Text>Time</Text>
-                <TimeSlider timestamps={timestamps} onChange={setNow} />
-            </Group>
-            <Stack>
-                {match.actions.map((action) => {
-                    return !now || action.timestamp > now ? null : (
-                        <MatchActionCard
-                            action={action}
-                            match={match}
-                            tournament={tournament}
-                        />
-                    );
-                })}
-            </Stack>
+            <Divider label="Actions" />
+            <BisectionProgress
+                claim1={claim1}
+                claim2={claim2}
+                max={48}
+                range={range}
+                bisections={bisections}
+            />
         </Stack>
     );
 };

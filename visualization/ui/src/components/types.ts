@@ -56,8 +56,7 @@ interface ActionCommons {
 }
 interface MatchAdvance extends ActionCommons {
     type: "advance";
-    claimer: Claimer;
-    range: CycleRange;
+    direction: 0 | 1;
 }
 
 interface MatchTimeout extends ActionCommons {

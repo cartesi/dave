@@ -1,5 +1,5 @@
 import { concat, hexToNumber, keccak256, slice, type Hex } from "viem";
-import type { Claim, CycleRange, Tournament } from "../components/types";
+import type { Claim, Tournament } from "../components/types";
 
 /**
  * Create a pseudo-random number generator from a seed
@@ -44,34 +44,24 @@ const randomWinner = (claim1: Claim, claim2: Claim): 1 | 2 | undefined => {
  * @param n number of ranges to create
  * @returns list of ranges
  */
-export const randomBisections = (
-    range: CycleRange,
-    n: number,
-    seed: number = 0,
-): CycleRange[] => {
+export const randomBisections = (n: number, seed: number = 0): (0 | 1)[] => {
     // initialize the random number generator
     const rand = mulberry32(seed);
 
     // initialize the list of ranges
-    const ranges = [range];
+    const ranges: (0 | 1)[] = [];
 
     // create the ranges
-    for (let i = 1; i <= n; i++) {
+    for (let i = 0; i < n; i++) {
         // choose a random direction to bisect the range
         if (rand() < 0.5) {
-            ranges.push([
-                ranges[i - 1][0],
-                (ranges[i - 1][0] + ranges[i - 1][1]) / 2,
-            ]);
+            ranges.push(0);
         } else {
-            ranges.push([
-                (ranges[i - 1][0] + ranges[i - 1][1]) / 2,
-                ranges[i - 1][1],
-            ]);
+            ranges.push(1);
         }
     }
     // remove the first range, which is the original range
-    return ranges.slice(1);
+    return ranges;
 };
 
 /**

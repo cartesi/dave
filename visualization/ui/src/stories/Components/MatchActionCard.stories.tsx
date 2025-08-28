@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { addHours, getUnixTime } from "date-fns";
+import { getUnixTime } from "date-fns";
 import { MatchActionCard } from "../../components/match/MatchActionCard";
 import * as TournamentStories from "./Tournament.stories";
 
@@ -18,50 +18,6 @@ type Story = StoryObj<typeof meta>;
 const tournament = TournamentStories.Ongoing.args.tournament;
 const match = tournament.matches[1];
 const timestamp = getUnixTime(Date.now());
-
-export const ClaimABisection: Story = {
-    args: {
-        action: {
-            type: "advance",
-            claimer: 1,
-            range: [
-                tournament.startCycle,
-                (tournament.startCycle + tournament.endCycle) / 2,
-            ],
-            timestamp: timestamp,
-        },
-        match,
-        tournament,
-    },
-};
-
-export const ClaimBBisection: Story = {
-    args: {
-        action: {
-            type: "advance",
-            claimer: 2,
-            range: [
-                tournament.startCycle,
-                (tournament.startCycle + tournament.endCycle) / 2,
-            ],
-            timestamp: timestamp,
-        },
-        match,
-        tournament,
-    },
-};
-
-export const Timeout: Story = {
-    args: {
-        action: {
-            type: "timeout",
-            claimer: 2,
-            timestamp: timestamp,
-        },
-        match,
-        tournament,
-    },
-};
 
 export const Sealed: Story = {
     args: {
@@ -93,34 +49,6 @@ export const LeafSealed: Story = {
                 TournamentStories.MidLevelDispute.args.tournament.startCycle /
                 1024,
             matches: [],
-            parentMatch: match,
-        },
-    },
-};
-
-export const MatchEliminatedByTimeout: Story = {
-    args: {
-        action: {
-            type: "match_eliminated_by_timeout",
-            timestamp: timestamp,
-        },
-        match,
-        tournament,
-    },
-};
-
-const midTournament = TournamentStories.MidLevelDispute.args.tournament;
-const midMatch = midTournament.matches[0];
-
-export const MidMatchEliminatedByTimeout: Story = {
-    args: {
-        action: {
-            type: "match_eliminated_by_timeout",
-            timestamp: getUnixTime(addHours(new Date(), 7)),
-        },
-        match: midMatch,
-        tournament: {
-            ...midTournament,
             parentMatch: match,
         },
     },

@@ -4,7 +4,6 @@ import { fn } from "storybook/test";
 import { keccak256, toBytes, zeroAddress } from "viem";
 import { TournamentView } from "../../components/tournament/Tournament";
 import type { Claim, Tournament } from "../../components/types";
-import { randomBisections } from "../util";
 
 const meta = {
     title: "Components/Tournament",
@@ -25,9 +24,6 @@ const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
 
 const startCycle = 1837880065;
 const endCycle = 2453987565;
-
-// create 4 bisections of the cycle range
-const ranges = randomBisections([startCycle, endCycle], 4, 42);
 
 const tournament: Tournament = {
     level: "TOP",
@@ -53,26 +49,22 @@ tournament.matches.push(
         actions: [
             {
                 type: "advance",
-                claimer: 1,
-                range: ranges[0],
+                direction: 0,
                 timestamp: timestamp + 4,
             },
             {
                 type: "advance",
-                claimer: 2,
-                range: ranges[1],
+                direction: 1,
                 timestamp: timestamp + 5,
             },
             {
                 type: "advance",
-                claimer: 1,
-                range: ranges[2],
+                direction: 1,
                 timestamp: timestamp + 6,
             },
             {
                 type: "advance",
-                claimer: 2,
-                range: ranges[3],
+                direction: 0,
                 timestamp: timestamp + 7,
             },
         ],

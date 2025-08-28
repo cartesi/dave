@@ -1,0 +1,93 @@
+import {
+    Avatar,
+    Group,
+    Paper,
+    Stack,
+    Text,
+    Timeline,
+    useMantineTheme,
+} from "@mantine/core";
+import Jazzicon from "@raugfer/jazzicon";
+import humanizeDuration from "humanize-duration";
+import { useMemo, type FC } from "react";
+import { TbClockCancel, TbSwordOff } from "react-icons/tb";
+import { slice, type Hash } from "viem";
+import type { Claim } from "../types";
+
+interface EliminationTimeoutItemProps {
+    /**
+     * First claim
+     */
+    claim1: Claim;
+
+    /**
+     * Second claim
+     */
+    claim2: Claim;
+
+    /**
+     * Current timestamp
+     */
+    now?: number;
+
+    /**
+     * Timestamp
+     */
+    timestamp: number;
+}
+
+// builds an image data url for embedding
+function buildDataUrl(hash: Hash): string {
+    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
+}
+
+export const EliminationTimeoutItem: FC<EliminationTimeoutItemProps> = (
+    props,
+) => {
+    const { claim1, claim2, timestamp } = props;
+
+    // allow now to be defined outside, default to Date.now
+    const now = useMemo(
+        () => props.now ?? Math.floor(Date.now() / 1000),
+        [props.now],
+    );
+
+    const theme = useMantineTheme();
+    const dimmed = theme.colors.gray[5];
+
+    const formatTime = (timestamp: number) => {
+        return `${humanizeDuration((now - timestamp) * 1000, { units: ["h", "m", "s"] })} ago`;
+    };
+
+    return (
+        <>
+            <Timeline.Item
+                bullet={<Avatar src={buildDataUrl(claim1.hash)} size={24} />}
+            >
+                <Group>
+                    <TbClockCancel size={24} color={dimmed} />
+                    <Text c="dimmed">no action taken</Text>
+                </Group>
+            </Timeline.Item>
+            <Timeline.Item
+                bullet={<Avatar src={buildDataUrl(claim2.hash)} size={24} />}
+            >
+                <Group>
+                    <TbClockCancel size={24} color={dimmed} />
+                    <Text c="dimmed">no action taken</Text>
+                </Group>
+            </Timeline.Item>
+            <Timeline.Item>
+                <Paper withBorder p={16} radius="lg" bg={theme.colors.gray[0]}>
+                    <Stack gap={3}>
+                        <Group gap="xs">
+                            <TbSwordOff size={24} />
+                            <Text>both claims eliminated by timeout</Text>
+                        </Group>
+                        <Text c="dimmed">{formatTime(timestamp)}</Text>
+                    </Stack>
+                </Paper>
+            </Timeline.Item>
+        </>
+    );
+};

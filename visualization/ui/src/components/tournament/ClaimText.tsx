@@ -20,6 +20,11 @@ export interface ClaimTextProps extends Omit<LongTextProps, "value"> {
      * Whether to show the parent claims.
      */
     showParents?: boolean;
+
+    /**
+     * Whether to show the avatar icons.
+     */
+    withIcon?: boolean;
 }
 
 // builds an image data url for embedding
@@ -31,11 +36,12 @@ export const ClaimText: FC<ClaimTextProps> = ({
     claim,
     showParents = true,
     iconSize = 32,
+    withIcon = true,
     ...props
 }) => {
     const parents = [];
     let parent = claim.parentClaim;
-    while (parent) {
+    while (parent && withIcon) {
         parents.unshift(
             <Tooltip
                 key={parent.hash}
@@ -59,10 +65,12 @@ export const ClaimText: FC<ClaimTextProps> = ({
 
     return (
         <Group gap="xs" wrap="nowrap">
-            <AvatarGroup>
-                {showParents && parents}
-                <Avatar src={buildDataUrl(claim.hash)} size={iconSize} />
-            </AvatarGroup>
+            {withIcon && (
+                <AvatarGroup>
+                    {showParents && parents}
+                    <Avatar src={buildDataUrl(claim.hash)} size={iconSize} />
+                </AvatarGroup>
+            )}
             <LongText {...props} value={claim.hash} ff="monospace" />
         </Group>
     );

@@ -51,3 +51,13 @@ export const BottomLevelClaim: Story = {
         },
     },
 };
+
+/**
+ * Claim without icon.
+ */
+export const NoIcon: Story = {
+    args: {
+        claim: claims[0],
+        withIcon: false,
+    },
+};
