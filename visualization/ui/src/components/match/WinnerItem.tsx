@@ -1,15 +1,7 @@
-import {
-    Group,
-    Paper,
-    Stack,
-    Text,
-    Timeline,
-    useMantineTheme,
-} from "@mantine/core";
+import { Stack, Text, Timeline, useMantineTheme } from "@mantine/core";
 import humanizeDuration from "humanize-duration";
 import { useMemo, type FC } from "react";
-import { TbTrophyFilled } from "react-icons/tb";
-import { ClaimText } from "../tournament/ClaimText";
+import { MatchCard } from "../tournament/MatchCard";
 import type { Claim } from "../types";
 
 export interface WinnerItemProps {
@@ -54,32 +46,15 @@ export const WinnerItem: FC<WinnerItemProps> = (props) => {
     return (
         <Timeline.Item>
             <Stack gap={3}>
-                <Paper
-                    withBorder
-                    p={16}
-                    radius="lg"
-                    bg={theme.colors.yellow[0]}
-                >
-                    <Stack>
-                        <Group gap="xs">
-                            <TbTrophyFilled size={24} color={gold} />
-                            <ClaimText claim={winner} iconSize={24} />
-                        </Group>
-                        <Group gap="xs">
-                            <TbTrophyFilled
-                                size={24}
-                                color={gold}
-                                opacity={0}
-                            />
-                            <ClaimText
-                                c="dimmed"
-                                style={{ textDecoration: "line-through" }}
-                                claim={loser}
-                                iconSize={24}
-                            />
-                        </Group>
-                    </Stack>
-                </Paper>
+                <MatchCard
+                    match={{
+                        actions: [],
+                        claim1: winner,
+                        claim2: loser,
+                        timestamp,
+                        winner: 1,
+                    }}
+                />
                 <Text size="xs" c="dimmed">
                     {formatTime(timestamp)}
                 </Text>
