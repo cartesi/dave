@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import { ScrollTimeline } from "../ScrollTimeline";
 import type { Claim, CycleRange } from "../types";
 import { BisectionItem } from "./BisectionItem";
-import { RangeIndicator } from "./RangeIndicator";
 
 interface BisectionProgressProps {
     /**
@@ -100,24 +99,16 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
         <Stack gap="lg">
             <Timeline bulletSize={24} lineWidth={2}>
                 <Timeline.Item styles={{ itemBullet: { display: "none" } }}>
-                    <Stack gap={3}>
-                        <RangeIndicator
-                            domain={range}
-                            value={range}
-                            withLabels
-                            h={16}
+                    <Progress.Root>
+                        <Progress.Section
+                            value={visibleProgress}
+                            color={color}
                         />
-                        <Progress.Root>
-                            <Progress.Section
-                                value={visibleProgress}
-                                color={color}
-                            />
-                            <Progress.Section
-                                value={progress - visibleProgress}
-                                color={colorLight}
-                            />
-                        </Progress.Root>
-                    </Stack>
+                        <Progress.Section
+                            value={progress - visibleProgress}
+                            color={colorLight}
+                        />
+                    </Progress.Root>
                 </Timeline.Item>
             </Timeline>
             <ScrollTimeline
@@ -130,6 +121,7 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                     <BisectionItem
                         key={i}
                         claim={i % 2 === 0 ? claim1 : claim2}
+                        color={theme.colors.gray[6]}
                         index={i + 1}
                         total={max}
                         domain={domain}

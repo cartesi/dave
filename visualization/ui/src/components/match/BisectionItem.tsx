@@ -77,7 +77,12 @@ export const BisectionItem: FC<BisectionItemProps> = forwardRef<
             ref={ref}
         >
             <Stack gap={3}>
-                <RangeIndicator domain={domain} value={range} h={16} />
+                <RangeIndicator
+                    domain={domain}
+                    value={range}
+                    h={16}
+                    color={props.color}
+                />
                 <Group justify="space-between">
                     <Text size="xs" c="dimmed">
                         {formatTime(timestamp)}
