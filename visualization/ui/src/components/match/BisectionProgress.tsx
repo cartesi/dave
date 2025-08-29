@@ -1,18 +1,8 @@
-import {
-    Avatar,
-    Group,
-    Progress,
-    Stack,
-    Text,
-    Timeline,
-    useMantineTheme,
-} from "@mantine/core";
-import Jazzicon from "@raugfer/jazzicon";
-import humanizeDuration from "humanize-duration";
+import { Progress, Stack, Timeline, useMantineTheme } from "@mantine/core";
 import { useEffect, useMemo, useState, type FC } from "react";
-import { slice, type Hash } from "viem";
 import { ScrollTimeline } from "../ScrollTimeline";
 import type { Claim, CycleRange } from "../types";
+import { BisectionItem } from "./BisectionItem";
 import { RangeIndicator } from "./RangeIndicator";
 
 interface BisectionProgressProps {
@@ -47,19 +37,8 @@ interface BisectionProgressProps {
     now?: number;
 }
 
-// builds an image data url for embedding
-function buildDataUrl(hash: Hash): string {
-    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
-}
-
 export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
     const { claim1, claim2, range, bisections, max } = props;
-
-    // allow now to be defined outside, default to Date.now
-    const now = useMemo(
-        () => props.now ?? Math.floor(Date.now() / 1000),
-        [props.now],
-    );
 
     // dynamic domain, based on first visible item
     const maxRange: CycleRange = [0, 2 ** max - 1];
@@ -117,10 +96,6 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
         }
     }, [lastVisible]);
 
-    const formatTime = (timestamp: number) => {
-        return `${humanizeDuration((now - timestamp) * 1000, { units: ["h", "m", "s"] })} ago`;
-    };
-
     return (
         <Stack gap="lg">
             <Timeline bulletSize={24} lineWidth={2}>
@@ -152,29 +127,15 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                 onVisibleRangeChange={updateVisibleIndices}
             >
                 {ranges.slice(1).map((r, i) => (
-                    <Timeline.Item
+                    <BisectionItem
                         key={i}
-                        bullet={
-                            <Avatar
-                                src={buildDataUrl(
-                                    i % 2 === 0 ? claim1.hash : claim2.hash,
-                                )}
-                                size={24}
-                            />
-                        }
-                    >
-                        <Stack gap={3}>
-                            <RangeIndicator domain={domain} value={r} h={16} />
-                            <Group justify="space-between">
-                                <Text size="xs" c="dimmed">
-                                    {formatTime(bisections[i].timestamp)}
-                                </Text>
-                                <Text size="xs" c="dimmed">
-                                    {i + 1} / {max}
-                                </Text>
-                            </Group>
-                        </Stack>
-                    </Timeline.Item>
+                        claim={i % 2 === 0 ? claim1 : claim2}
+                        index={i + 1}
+                        total={max}
+                        domain={domain}
+                        range={r}
+                        timestamp={bisections[i].timestamp}
+                    />
                 ))}
             </ScrollTimeline>
         </Stack>

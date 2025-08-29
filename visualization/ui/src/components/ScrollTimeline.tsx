@@ -6,7 +6,6 @@ import {
     useEffect,
     useRef,
     type FC,
-    type ReactElement,
 } from "react";
 
 export interface ScrollTimelineProps extends TimelineProps {
@@ -67,16 +66,12 @@ export const ScrollTimeline: FC<ScrollTimelineProps> = (props) => {
 
     // Clone Timeline.Item children and attach refs to them
     const childrenWithRefs = Children.map(children, (child, index) => {
-        // Only clone Timeline.Item components
-        if (isValidElement(child) && child.type === Timeline.Item) {
-            return cloneElement(
-                child as ReactElement,
-                {
-                    ref: (el: HTMLDivElement | null) => {
-                        itemRefs.current[index] = el;
-                    },
-                } as Partial<React.ComponentProps<typeof Timeline.Item>>,
-            );
+        if (isValidElement(child)) {
+            return cloneElement(child, {
+                ref: (el: HTMLDivElement | null) => {
+                    itemRefs.current[index] = el;
+                },
+            } as Partial<React.ComponentProps<typeof Timeline.Item>>);
         }
         return child;
     });
