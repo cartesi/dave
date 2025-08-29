@@ -22,6 +22,35 @@ const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
 const now = Math.floor(Date.now() / 1000);
 
 /**
+ * Complete scenario for a top match with a winner.
+ */
+const rng = mulberry32(0);
+export const CompleteTop: Story = {
+    args: {
+        actions: [
+            ...Array.from<number, MatchAction>({ length: 48 }, (_, i) => ({
+                type: "advance",
+                direction: rng() < 0.5 ? 0 : 1,
+                timestamp: now - 7966 + i * 60,
+            })),
+            {
+                type: "match_sealed_inner_tournament_created",
+                range: [1837880065, 2453987565],
+                timestamp: now - 3614,
+            },
+            {
+                type: "leaf_match_sealed",
+                timestamp: now - 1487,
+                winner: 1,
+            },
+        ],
+        claim1: randomClaim(0),
+        claim2: randomClaim(1),
+        height: 48,
+    },
+};
+
+/**
  * A match where both claimers are advancing.
  */
 export const Bisections: Story = {
@@ -264,35 +293,6 @@ export const WinnerTop: Story = {
         height: 5,
         claim1: randomClaim(0),
         claim2: randomClaim(1),
-    },
-};
-
-/**
- * Complete scenario for a top match with a winner.
- */
-const rng = mulberry32(0);
-export const CompleteTop: Story = {
-    args: {
-        actions: [
-            ...Array.from<number, MatchAction>({ length: 48 }, (_, i) => ({
-                type: "advance",
-                direction: rng() < 0.5 ? 0 : 1,
-                timestamp: now - 7966 + i * 60,
-            })),
-            {
-                type: "match_sealed_inner_tournament_created",
-                range: [1837880065, 2453987565],
-                timestamp: now - 3614,
-            },
-            {
-                type: "leaf_match_sealed",
-                timestamp: now - 1487,
-                winner: 1,
-            },
-        ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
-        height: 48,
     },
 };
 
