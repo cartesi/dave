@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { keccak256, toBytes, zeroAddress } from "viem";
 import { MatchActions } from "../../components/match/MatchActions";
-import type { Claim } from "../../components/types";
+import type { Claim, MatchAction } from "../../components/types";
+import { mulberry32 } from "../util";
 
 const meta = {
     title: "Components/Match/MatchActions",
@@ -160,12 +161,12 @@ export const SubTournament: Story = {
             },
             {
                 type: "advance",
-                direction: 0,
+                direction: 1,
                 timestamp: now - 3021,
             },
             {
                 type: "advance",
-                direction: 0,
+                direction: 1,
                 timestamp: now - 2101,
             },
             {
@@ -181,7 +182,7 @@ export const SubTournament: Story = {
         ],
         claim1: randomClaim(0),
         claim2: randomClaim(1),
-        height: 5,
+        height: 4,
     },
 };
 
@@ -263,6 +264,35 @@ export const WinnerTop: Story = {
         height: 5,
         claim1: randomClaim(0),
         claim2: randomClaim(1),
+    },
+};
+
+/**
+ * Complete scenario for a top match with a winner.
+ */
+const rng = mulberry32(0);
+export const CompleteTop: Story = {
+    args: {
+        actions: [
+            ...Array.from<number, MatchAction>({ length: 48 }, (_, i) => ({
+                type: "advance",
+                direction: rng() < 0.5 ? 0 : 1,
+                timestamp: now - 7966 + i * 60,
+            })),
+            {
+                type: "match_sealed_inner_tournament_created",
+                range: [1837880065, 2453987565],
+                timestamp: now - 3614,
+            },
+            {
+                type: "leaf_match_sealed",
+                timestamp: now - 1487,
+                winner: 1,
+            },
+        ],
+        claim1: randomClaim(0),
+        claim2: randomClaim(1),
+        height: 48,
     },
 };
 

@@ -37,7 +37,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
     const bisections = actions.filter((a) => a.type === "advance");
 
     // dynamic domain, based on first visible item
-    const maxRange: CycleRange = [0, 2 ** height - 1];
+    const maxRange: CycleRange = [0, 2 ** height];
     const [domain, setDomain] = useState<CycleRange>(maxRange);
 
     // progress bar, based on last visible item
@@ -66,6 +66,15 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
     const color = theme.primaryColor;
     const colorLight = theme.colors[theme.primaryColor][4];
 
+    const onVisibleRangeChange = (
+        firstVisible: number,
+        lastVisible: number,
+    ) => {
+        if (lastVisible >= 0) {
+            setVisibleProgress(((lastVisible + 1) / height) * 100);
+        }
+    };
+
     return (
         <Stack>
             <Timeline bulletSize={24} lineWidth={2}>
@@ -82,7 +91,12 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                     </Progress.Root>
                 </Timeline.Item>
             </Timeline>
-            <ScrollTimeline bulletSize={24} lineWidth={2} h={400}>
+            <ScrollTimeline
+                bulletSize={24}
+                lineWidth={2}
+                h={400}
+                onVisibleRangeChange={onVisibleRangeChange}
+            >
                 {actions.map((action, i) => {
                     const { timestamp } = action;
                     switch (action.type) {
