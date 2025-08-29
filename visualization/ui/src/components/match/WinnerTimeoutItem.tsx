@@ -65,10 +65,15 @@ export const WinnerTimeoutItem: FC<WinnerTimeoutItemProps> = (props) => {
             <Timeline.Item
                 bullet={<Avatar src={buildDataUrl(loser.hash)} size={24} />}
             >
-                <Group>
-                    <TbClockCancel size={24} color={dimmed} />
-                    <Text c="dimmed">no action taken</Text>
-                </Group>
+                <Stack gap={3}>
+                    <Group>
+                        <TbClockCancel size={24} color={dimmed} />
+                        <Text c="dimmed">no action taken</Text>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                        &nbsp;
+                    </Text>
+                </Stack>
             </Timeline.Item>
             <Timeline.Item
                 bullet={<Avatar src={buildDataUrl(winner.hash)} size={24} />}

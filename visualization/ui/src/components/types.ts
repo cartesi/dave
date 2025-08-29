@@ -51,39 +51,36 @@ export type CycleRange = [Cycle, Cycle];
 
 type Claimer = 1 | 2;
 
-interface ActionCommons {
-    timestamp: number;
-}
-interface MatchAdvance extends ActionCommons {
+type MatchAdvance = {
     type: "advance";
     direction: 0 | 1;
-}
+};
 
-interface MatchTimeout extends ActionCommons {
+type MatchTimeout = {
     type: "timeout";
-    claimer: Claimer;
-}
+};
 
-interface MatchSealedInnerTournamentCreated extends ActionCommons {
+type MatchSubTournament = {
     type: "match_sealed_inner_tournament_created";
-    claimer: Claimer;
-    tournament: Tournament;
-}
-interface MatchLeafSealed extends ActionCommons {
+    range: CycleRange;
+};
+
+type MatchLeafSealed = {
     type: "leaf_match_sealed";
     claimer: Claimer;
-}
+};
 
-interface MatchEliminatedByTimeout extends ActionCommons {
+type MatchEliminationTimeout = {
     type: "match_eliminated_by_timeout";
-}
+};
 
-export type MatchAction =
+export type MatchAction = (
     | MatchAdvance
     | MatchTimeout
-    | MatchSealedInnerTournamentCreated
+    | MatchSubTournament
     | MatchLeafSealed
-    | MatchEliminatedByTimeout;
+    | MatchEliminationTimeout
+) & { timestamp: number };
 
 export interface Match {
     parentTournament: Tournament;
@@ -97,6 +94,7 @@ export interface Match {
 }
 
 export interface Tournament {
+    height: number;
     level: "top" | "middle" | "bottom";
     startCycle: Cycle;
     endCycle: Cycle;

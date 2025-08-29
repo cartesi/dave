@@ -64,18 +64,28 @@ export const EliminationTimeoutItem: FC<EliminationTimeoutItemProps> = (
             <Timeline.Item
                 bullet={<Avatar src={buildDataUrl(claim1.hash)} size={24} />}
             >
-                <Group>
-                    <TbClockCancel size={24} color={dimmed} />
-                    <Text c="dimmed">no action taken</Text>
-                </Group>
+                <Stack gap={3}>
+                    <Group>
+                        <TbClockCancel size={24} color={dimmed} />
+                        <Text c="dimmed">no action taken</Text>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                        &nbsp;
+                    </Text>
+                </Stack>
             </Timeline.Item>
             <Timeline.Item
                 bullet={<Avatar src={buildDataUrl(claim2.hash)} size={24} />}
             >
-                <Group>
-                    <TbClockCancel size={24} color={dimmed} />
-                    <Text c="dimmed">no action taken</Text>
-                </Group>
+                <Stack gap={3}>
+                    <Group>
+                        <TbClockCancel size={24} color={dimmed} />
+                        <Text c="dimmed">no action taken</Text>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                        &nbsp;
+                    </Text>
+                </Stack>
             </Timeline.Item>
             <Timeline.Item>
                 <Stack gap={3}>

@@ -31,6 +31,7 @@ export const BottomTournament: Story = {
                 claim1: claims[0],
                 claim2: claims[1],
                 parentTournament: {
+                    height: 27,
                     level: "middle",
                     startCycle: 10,
                     endCycle: 20,
@@ -39,6 +40,7 @@ export const BottomTournament: Story = {
                         claim1: claims[2],
                         claim2: claims[3],
                         parentTournament: {
+                            height: 48,
                             level: "top",
                             startCycle: 1,
                             endCycle: 100,
@@ -66,6 +68,7 @@ export const MidTournament: Story = {
                 claim1: claims[0],
                 claim2: claims[1],
                 parentTournament: {
+                    height: 48,
                     level: "top",
                     startCycle: 1,
                     endCycle: 100,
