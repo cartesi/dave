@@ -1,6 +1,15 @@
-import { Alert, Badge, Breadcrumbs, Group, Stack, Text } from "@mantine/core";
+import {
+    Alert,
+    Badge,
+    Breadcrumbs,
+    Group,
+    Stack,
+    Text,
+    useMantineTheme,
+} from "@mantine/core";
 import { IconAlertCircleFilled } from "@tabler/icons-react";
 import type { FC } from "react";
+import { TbTrophyFilled } from "react-icons/tb";
 import type { Hash } from "viem";
 
 export interface DisputeProps {
@@ -13,10 +22,39 @@ export interface DisputeProps {
      * Claims that have been eliminated so far
      */
     eliminatedClaims: Hash[];
+
+    /**
+     * The winner of the dispute
+     */
+    winner?: Hash;
 }
 
+type Claim = {
+    hash: Hash;
+    eliminated: boolean;
+    winner: boolean;
+};
+
 export const Dispute: FC<DisputeProps> = (props) => {
-    const { claims, eliminatedClaims } = props;
+    const { claims, eliminatedClaims, winner } = props;
+    const all: Claim[] = [];
+    if (winner) {
+        all.push({ hash: winner, eliminated: false, winner: true });
+    }
+    all.push(
+        ...claims.map((hash) => ({ hash, winner: false, eliminated: false })),
+    );
+    all.push(
+        ...eliminatedClaims.map((hash) => ({
+            hash,
+            winner: false,
+            eliminated: true,
+        })),
+    );
+
+    const theme = useMantineTheme();
+    const gold = theme.colors.yellow[5];
+
     return (
         <Alert
             variant="light"
@@ -31,36 +69,34 @@ export const Dispute: FC<DisputeProps> = (props) => {
                     Someone is trying to break the honeypot! Rest assured PRT
                     will protect it!
                 </Text>
-                {claims.length > 0 && (
+                {all.length > 0 && (
                     <Group gap="xs">
                         <Breadcrumbs separator="vs" separatorMargin={5}>
-                            {claims.map((claim) => (
+                            {all.map((claim) => (
                                 <Badge
                                     variant="default"
                                     ff="monospace"
-                                    style={{ textTransform: "none" }}
+                                    c={claim.eliminated ? "dimmed" : undefined}
+                                    style={{
+                                        textTransform: "none",
+                                        textDecoration: claim.eliminated
+                                            ? "line-through"
+                                            : undefined,
+                                    }}
+                                    leftSection={
+                                        claim.winner && (
+                                            <TbTrophyFilled
+                                                size={16}
+                                                color={gold}
+                                            />
+                                        )
+                                    }
                                 >
-                                    {claim.slice(0, 6)}...{claim.slice(-4)}
+                                    {claim.hash.slice(0, 6)}...
+                                    {claim.hash.slice(-4)}
                                 </Badge>
                             ))}
                         </Breadcrumbs>
-                    </Group>
-                )}
-                {eliminatedClaims.length > 0 && (
-                    <Group gap="xs">
-                        {eliminatedClaims.map((claim) => (
-                            <Badge
-                                variant="default"
-                                ff="monospace"
-                                c="dimmed"
-                                style={{
-                                    textTransform: "none",
-                                    textDecoration: "line-through",
-                                }}
-                            >
-                                {claim.slice(0, 6)}...{claim.slice(-4)}
-                            </Badge>
-                        ))}
                     </Group>
                 )}
             </Stack>

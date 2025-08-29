@@ -42,6 +42,17 @@ export const FiveClaims: Story = {
 /**
  * A dispute with 5 claims, where 2 are eliminated
  */
+export const Winner: Story = {
+    args: {
+        claims: [],
+        eliminatedClaims: claims.slice(1, 5).map((claim) => claim.hash),
+        winner: claims[0].hash,
+    },
+};
+
+/**
+ * A dispute with 5 claims, where 2 are eliminated
+ */
 export const SybilAttack: Story = {
     args: {
         claims: Array.from({ length: 200 }).map((_, i) =>
