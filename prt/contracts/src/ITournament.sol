@@ -15,4 +15,6 @@ interface ITournament {
             Tree.Node winnerCommitment,
             Machine.Hash finalState
         );
+
+    function tryRecoveringBond() external returns (bool);
 }

@@ -71,6 +71,10 @@ contract MockTournament is ITournament {
         winnerCommitment = _winnerCommitment;
         finalState = _finalState;
     }
+
+    function tryRecoveringBond() public override returns (bool) {
+        return true;
+    }
 }
 
 contract MockTournamentFactory is ITournamentFactory {

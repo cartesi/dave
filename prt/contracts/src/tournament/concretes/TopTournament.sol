@@ -19,6 +19,14 @@ contract TopTournament is NonLeafTournament, RootTournament {
         IMultiLevelTournamentFactory tournamentFactory;
     }
 
+    function tryRecoveringBond()
+        public
+        override(RootTournament, Tournament)
+        returns (bool)
+    {
+        return super.tryRecoveringBond();
+    }
+
     function _args() internal view returns (Args memory) {
         return abi.decode(address(this).fetchCloneArgs(), (Args));
     }

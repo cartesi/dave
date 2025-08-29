@@ -7,6 +7,7 @@ import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
 import "prt-contracts/tournament/abstracts/LeafTournament.sol";
 import "prt-contracts/tournament/abstracts/RootTournament.sol";
+import "prt-contracts/tournament/abstracts/Tournament.sol";
 
 contract SingleLevelTournament is LeafTournament, RootTournament {
     using Clones for address;
@@ -14,6 +15,14 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
     struct Args {
         TournamentArgs tournamentArgs;
         IStateTransition stateTransition;
+    }
+
+    function tryRecoveringBond()
+        public
+        override(RootTournament, Tournament)
+        returns (bool)
+    {
+        return super.tryRecoveringBond();
     }
 
     function _args() internal view returns (Args memory) {

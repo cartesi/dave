@@ -485,7 +485,7 @@ abstract contract Tournament {
         return (true, winnerCouldWin);
     }
 
-    function tryRecoveringBond() external {
+    function tryRecoveringBond() public virtual returns (bool) {
         require(isFinished(), TournamentNotFinished());
 
         // Ensure there is a winner
@@ -499,10 +499,12 @@ abstract contract Tournament {
 
         // Refund the entire contract balance to the winner
         uint256 contractBalance = address(this).balance;
-        winner.call{value: contractBalance}("");
+        (bool success,) = winner.call{value: contractBalance}("");
 
         // clear the claimer for the winning commitment
         delete claimers[winningCommitment];
+
+        return success;
     }
 
     //

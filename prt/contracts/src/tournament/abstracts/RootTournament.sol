@@ -36,4 +36,13 @@ abstract contract RootTournament is Tournament, ITournament {
         Machine.Hash _finalState = finalStates[_danglingCommitment];
         return (true, _danglingCommitment, _finalState);
     }
+
+    function tryRecoveringBond()
+        public
+        virtual
+        override(ITournament, Tournament)
+        returns (bool)
+    {
+        return super.tryRecoveringBond();
+    }
 }
