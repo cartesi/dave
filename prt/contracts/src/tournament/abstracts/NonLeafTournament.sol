@@ -104,8 +104,6 @@ abstract contract NonLeafTournament is Tournament {
         require(finished, ChildTournamentNotFinished());
         _winner.requireExist();
 
-        _childTournament.tryRecoveringBond();
-
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
         require(
             _commitmentRoot.eq(_winner),
@@ -129,6 +127,8 @@ abstract contract NonLeafTournament is Tournament {
         } else {
             delete claimers[_matchState.otherParent];
         }
+
+        _childTournament.tryRecoveringBond();
     }
 
     function eliminateInnerTournament(NonRootTournament _childTournament)
