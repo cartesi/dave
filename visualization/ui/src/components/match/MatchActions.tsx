@@ -113,8 +113,8 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                             <WinnerItem
                                 key={i}
                                 timestamp={timestamp}
-                                loser={action.claimer === 1 ? claim2 : claim1}
-                                winner={action.claimer === 1 ? claim1 : claim2}
+                                loser={action.winner === 1 ? claim2 : claim1}
+                                winner={action.winner === 1 ? claim1 : claim2}
                             />
                         );
                 }

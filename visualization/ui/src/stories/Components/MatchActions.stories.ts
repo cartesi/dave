@@ -185,6 +185,87 @@ export const SubTournament: Story = {
 };
 
 /**
+ * A bottom match that has reached the leaf level and has a winner.
+ */
+export const WinnerBottom: Story = {
+    args: {
+        actions: [
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 4032,
+            },
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 3021,
+            },
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 2101,
+            },
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 1023,
+            },
+            {
+                type: "leaf_match_sealed",
+                timestamp: now - 224,
+                winner: 1,
+            },
+        ],
+        height: 5,
+        claim1: randomClaim(0),
+        claim2: randomClaim(1),
+    },
+};
+
+/**
+ * A top match that has reached the leaf level and the middle level has a winner.
+ */
+export const WinnerTop: Story = {
+    args: {
+        actions: [
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 4032,
+            },
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 3021,
+            },
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 2101,
+            },
+            {
+                type: "advance",
+                direction: 0,
+                timestamp: now - 1023,
+            },
+            {
+                type: "match_sealed_inner_tournament_created",
+                range: [1837880065, 2453987565],
+                timestamp: now - 224,
+            },
+            {
+                type: "leaf_match_sealed",
+                timestamp: now - 224,
+                winner: 1,
+            },
+        ],
+        height: 5,
+        claim1: randomClaim(0),
+        claim2: randomClaim(1),
+    },
+};
+
+/**
  * A match that no claimer has taken action yet.
  */
 export const NoActions: Story = {

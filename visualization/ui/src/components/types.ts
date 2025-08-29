@@ -49,8 +49,6 @@ export interface Claim {
 export type Cycle = number;
 export type CycleRange = [Cycle, Cycle];
 
-type Claimer = 1 | 2;
-
 type MatchAdvance = {
     type: "advance";
     direction: 0 | 1;
@@ -67,7 +65,7 @@ type MatchSubTournament = {
 
 type MatchLeafSealed = {
     type: "leaf_match_sealed";
-    claimer: Claimer;
+    winner: 1 | 2;
 };
 
 type MatchEliminationTimeout = {
