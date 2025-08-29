@@ -6,6 +6,7 @@ import type { Claim } from "../../components/types";
 const meta = {
     title: "Components/Match/MatchActions",
     component: MatchActions,
+    tags: ["autodocs"],
 } satisfies Meta<typeof MatchActions>;
 
 export default meta;
