@@ -97,7 +97,7 @@ export const EliminationTimeoutItem: FC<EliminationTimeoutItemProps> = (
                     >
                         <Group gap="xs">
                             <TbSwordOff size={24} />
-                            <Text>both claims eliminated by timeout</Text>
+                            <Text>both claims eliminated</Text>
                         </Group>
                     </Paper>
                     <Text size="xs" c="dimmed">

@@ -86,9 +86,9 @@ export const WinnerTimeoutItem: FC<WinnerTimeoutItemProps> = (props) => {
                         bg={theme.colors.yellow[0]}
                     >
                         <Group gap="xs">
-                            <ClaimText claim={winner} withIcon={false} />
                             <TbTrophyFilled size={24} color={gold} />
-                            <Text>by timeout</Text>
+                            <ClaimText claim={winner} withIcon={false} />
+                            <Text>(by timeout)</Text>
                         </Group>
                     </Paper>
                     <Text size="xs" c="dimmed">
