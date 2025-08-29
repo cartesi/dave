@@ -1,11 +1,26 @@
-import { Button, Group, Paper, Stack, Text, Timeline } from "@mantine/core";
+import {
+    Avatar,
+    Button,
+    Group,
+    Paper,
+    Stack,
+    Text,
+    Timeline,
+} from "@mantine/core";
+import Jazzicon from "@raugfer/jazzicon";
 import humanizeDuration from "humanize-duration";
 import { useMemo, type FC } from "react";
 import { TbTrendingDown } from "react-icons/tb";
+import { slice, type Hash } from "viem";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
-import type { CycleRange } from "../types";
+import type { Claim, CycleRange } from "../types";
 
 export interface SubTournamentItemProps {
+    /**
+     * Claim that took action.
+     */
+    claim: Claim;
+
     /**
      * Level of the sub tournament
      */
@@ -27,8 +42,13 @@ export interface SubTournamentItemProps {
     timestamp: number;
 }
 
+// builds an image data url for embedding
+function buildDataUrl(hash: Hash): string {
+    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
+}
+
 export const SubTournamentItem: FC<SubTournamentItemProps> = (props) => {
-    const { level, range, timestamp } = props;
+    const { claim, level, range, timestamp } = props;
 
     // allow now to be defined outside, default to Date.now
     const now = useMemo(
@@ -41,7 +61,9 @@ export const SubTournamentItem: FC<SubTournamentItemProps> = (props) => {
     };
 
     return (
-        <Timeline.Item>
+        <Timeline.Item
+            bullet={<Avatar src={buildDataUrl(claim.hash)} size={24} />}
+        >
             <Stack gap={3}>
                 <Paper withBorder radius="lg" p={16} bg="gray.0">
                     <Group justify="space-between">

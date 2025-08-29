@@ -1,7 +1,8 @@
 import { Timeline } from "@mantine/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { keccak256, toBytes, zeroAddress } from "viem";
 import { SubTournamentItem } from "../../components/match/SubTournamentItem";
-import type { CycleRange } from "../../components/types";
+import type { Claim, CycleRange } from "../../components/types";
 
 const meta = {
     title: "Components/Match/SubTournamentItem",
@@ -19,6 +20,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
+    hash: keccak256(toBytes(i)),
+    claimer: zeroAddress,
+    parentClaim: c?.parentClaim,
+});
+
 const now = Math.floor(Date.now() / 1000);
 const range = [1837880065, 2453987565] as CycleRange;
 
@@ -27,6 +34,7 @@ const range = [1837880065, 2453987565] as CycleRange;
  */
 export const Middle: Story = {
     args: {
+        claim: randomClaim(0),
         level: "middle",
         range,
         timestamp: now,
@@ -38,6 +46,7 @@ export const Middle: Story = {
  */
 export const Bottom: Story = {
     args: {
+        claim: randomClaim(0),
         level: "bottom",
         range,
         timestamp: now,

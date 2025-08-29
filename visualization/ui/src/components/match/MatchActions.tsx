@@ -101,10 +101,11 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                     case "match_sealed_inner_tournament_created":
                         return (
                             <SubTournamentItem
+                                claim={i % 2 === 0 ? claim1 : claim2}
                                 key={i}
-                                timestamp={timestamp}
                                 level="middle"
                                 range={action.range}
+                                timestamp={timestamp}
                             />
                         );
 
