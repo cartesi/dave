@@ -2,7 +2,6 @@ import {
     Avatar,
     Group,
     Progress,
-    ScrollArea,
     Stack,
     Text,
     Timeline,
@@ -10,8 +9,9 @@ import {
 } from "@mantine/core";
 import Jazzicon from "@raugfer/jazzicon";
 import humanizeDuration from "humanize-duration";
-import { useEffect, useMemo, useRef, useState, type FC } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import { slice, type Hash } from "viem";
+import { ScrollTimeline } from "../ScrollTimeline";
 import type { Claim, CycleRange } from "../types";
 import { RangeIndicator } from "./RangeIndicator";
 
@@ -92,43 +92,16 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
     const colorLight = theme.colors[theme.primaryColor][4];
 
     // refs for the scroll area and timeline items visibility
-    const viewportRef = useRef<HTMLDivElement>(null);
-    const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
     const [firstVisible, setFirstVisible] = useState(-1);
     const [lastVisible, setLastVisible] = useState(-1);
 
-    const updateVisibleIndices = () => {
-        if (!viewportRef.current) return;
-        const scrollTop = viewportRef.current.scrollTop;
-        const viewportHeight = viewportRef.current.clientHeight;
-
-        const visibleIndices = itemRefs.current
-            .map((el, idx) => {
-                if (!el) return null;
-                const itemTop = el.offsetTop;
-                const itemBottom = el.offsetTop + el.offsetHeight;
-
-                // partially visible counts
-                if (
-                    itemBottom > scrollTop &&
-                    itemTop < scrollTop + viewportHeight
-                ) {
-                    return idx;
-                }
-                return null;
-            })
-            .filter((idx): idx is number => idx !== null);
-
-        if (visibleIndices.length > 0) {
-            setFirstVisible(visibleIndices[0]);
-            setLastVisible(visibleIndices[visibleIndices.length - 1]);
-        }
+    const updateVisibleIndices = (
+        firstVisible: number,
+        lastVisible: number,
+    ) => {
+        setFirstVisible(firstVisible);
+        setLastVisible(lastVisible);
     };
-
-    // update visible indices on mount
-    useEffect(() => {
-        updateVisibleIndices();
-    }, []);
 
     // update range based on first visible item
     useEffect(() => {
@@ -143,15 +116,6 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
             setVisibleProgress(((lastVisible + 1) / max) * 100);
         }
     }, [lastVisible]);
-
-    // scroll to bottom on mount
-    useEffect(() => {
-        if (viewportRef.current) {
-            viewportRef.current.scrollTo({
-                top: viewportRef.current.scrollHeight,
-            });
-        }
-    }, []);
 
     const formatTime = (timestamp: number) => {
         return `${humanizeDuration((now - timestamp) * 1000, { units: ["h", "m", "s"] })} ago`;
@@ -181,48 +145,38 @@ export const BisectionProgress: FC<BisectionProgressProps> = (props) => {
                     </Stack>
                 </Timeline.Item>
             </Timeline>
-            <ScrollArea
+            <ScrollTimeline
+                bulletSize={24}
+                lineWidth={2}
                 h={300}
-                viewportRef={viewportRef}
-                type="auto"
-                scrollbars="y"
-                onScrollPositionChange={updateVisibleIndices}
+                onVisibleRangeChange={updateVisibleIndices}
             >
-                <Timeline bulletSize={24} lineWidth={2}>
-                    {ranges.slice(1).map((r, i) => (
-                        <Timeline.Item
-                            key={i}
-                            ref={(el) => {
-                                itemRefs.current[i] = el;
-                            }}
-                            bullet={
-                                <Avatar
-                                    src={buildDataUrl(
-                                        i % 2 === 0 ? claim1.hash : claim2.hash,
-                                    )}
-                                    size={24}
-                                />
-                            }
-                        >
-                            <Stack gap={3}>
-                                <RangeIndicator
-                                    domain={domain}
-                                    value={r}
-                                    h={16}
-                                />
-                                <Group justify="space-between">
-                                    <Text size="xs" c="dimmed">
-                                        {formatTime(bisections[i].timestamp)}
-                                    </Text>
-                                    <Text size="xs" c="dimmed">
-                                        {i + 1} / {max}
-                                    </Text>
-                                </Group>
-                            </Stack>
-                        </Timeline.Item>
-                    ))}
-                </Timeline>
-            </ScrollArea>
+                {ranges.slice(1).map((r, i) => (
+                    <Timeline.Item
+                        key={i}
+                        bullet={
+                            <Avatar
+                                src={buildDataUrl(
+                                    i % 2 === 0 ? claim1.hash : claim2.hash,
+                                )}
+                                size={24}
+                            />
+                        }
+                    >
+                        <Stack gap={3}>
+                            <RangeIndicator domain={domain} value={r} h={16} />
+                            <Group justify="space-between">
+                                <Text size="xs" c="dimmed">
+                                    {formatTime(bisections[i].timestamp)}
+                                </Text>
+                                <Text size="xs" c="dimmed">
+                                    {i + 1} / {max}
+                                </Text>
+                            </Group>
+                        </Stack>
+                    </Timeline.Item>
+                ))}
+            </ScrollTimeline>
         </Stack>
     );
 };
