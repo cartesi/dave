@@ -71,7 +71,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                                 key={i}
                                 claim={i % 2 === 0 ? claim1 : claim2}
                                 domain={domain}
-                                index={i}
+                                index={i + 1}
                                 range={ranges[i + 1]}
                                 timestamp={timestamp}
                                 total={height}
