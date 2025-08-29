@@ -70,6 +70,12 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
         firstVisible: number,
         lastVisible: number,
     ) => {
+        // adjust domain based on the first visible item in the scroll area
+        if (firstVisible >= 0) {
+            setDomain(ranges[firstVisible]);
+        }
+
+        // adjust secondary progress color according to the last visible item in the scroll area
         if (lastVisible >= 0) {
             setVisibleProgress(((lastVisible + 1) / height) * 100);
         }
