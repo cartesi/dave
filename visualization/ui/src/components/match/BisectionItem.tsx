@@ -1,22 +1,15 @@
 import {
-    Avatar,
     Group,
     Stack,
     Text,
     Timeline,
     type TimelineItemProps,
 } from "@mantine/core";
-import Jazzicon from "@raugfer/jazzicon";
 import humanizeDuration from "humanize-duration";
 import { forwardRef, useMemo, type FC } from "react";
-import { slice, type Hash } from "viem";
+import { HashAvatar } from "../HashAvatar";
 import type { Claim, CycleRange } from "../types";
 import { RangeIndicator } from "./RangeIndicator";
-
-// builds an image data url for embedding
-function buildDataUrl(hash: Hash): string {
-    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
-}
 
 export interface BisectionItemProps extends TimelineItemProps {
     /**
@@ -73,7 +66,7 @@ export const BisectionItem: FC<BisectionItemProps> = forwardRef<
 
     return (
         <Timeline.Item
-            bullet={<Avatar src={buildDataUrl(claim.hash)} size={24} />}
+            bullet={<HashAvatar hash={claim.hash} size={24} />}
             ref={ref}
         >
             <Stack gap={3}>

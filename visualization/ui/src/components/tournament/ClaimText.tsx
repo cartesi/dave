@@ -1,7 +1,6 @@
-import { Avatar, AvatarGroup, Group, Tooltip } from "@mantine/core";
-import Jazzicon from "@raugfer/jazzicon";
+import { AvatarGroup, Group, Tooltip } from "@mantine/core";
 import type { FC } from "react";
-import { slice, type Hash } from "viem";
+import { HashAvatar } from "../HashAvatar";
 import { LongText, type LongTextProps } from "../LongText";
 import type { Claim } from "../types";
 
@@ -27,11 +26,6 @@ export interface ClaimTextProps extends Omit<LongTextProps, "value"> {
     withIcon?: boolean;
 }
 
-// builds an image data url for embedding
-function buildDataUrl(hash: Hash): string {
-    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
-}
-
 export const ClaimText: FC<ClaimTextProps> = ({
     claim,
     showParents = true,
@@ -53,9 +47,9 @@ export const ClaimText: FC<ClaimTextProps> = ({
                     />
                 }
             >
-                <Avatar
+                <HashAvatar
                     key={parent.hash}
-                    src={buildDataUrl(parent.hash)}
+                    hash={parent.hash}
                     size={iconSize}
                 />
             </Tooltip>,
@@ -68,7 +62,7 @@ export const ClaimText: FC<ClaimTextProps> = ({
             {withIcon && (
                 <AvatarGroup>
                     {showParents && parents}
-                    <Avatar src={buildDataUrl(claim.hash)} size={iconSize} />
+                    <HashAvatar hash={claim.hash} size={iconSize} />
                 </AvatarGroup>
             )}
             <LongText {...props} value={claim.hash} ff="monospace" />

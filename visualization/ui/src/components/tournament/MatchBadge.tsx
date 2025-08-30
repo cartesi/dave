@@ -1,7 +1,6 @@
-import { Avatar, Badge, type BadgeProps } from "@mantine/core";
-import Jazzicon from "@raugfer/jazzicon";
+import { Badge, type BadgeProps } from "@mantine/core";
 import type { FC } from "react";
-import { slice, type Hash } from "viem";
+import { HashAvatar } from "../HashAvatar";
 import type { Match } from "../types";
 
 export interface MatchBadgeProps extends BadgeProps {
@@ -9,11 +8,6 @@ export interface MatchBadgeProps extends BadgeProps {
      * The match to display.
      */
     match: Pick<Match, "claim1" | "claim2">;
-}
-
-// builds an image data url for embedding
-function buildDataUrl(hash: Hash): string {
-    return `data:image/svg+xml;base64,${btoa(Jazzicon(slice(hash, 0, 20)))}`;
 }
 
 const getAvatarOffset = (size: BadgeProps["size"]) => {
@@ -59,18 +53,10 @@ export const MatchBadge: FC<MatchBadgeProps> = ({ match, ...badgeProps }) => {
     return (
         <Badge
             leftSection={
-                <Avatar
-                    src={buildDataUrl(claim1.hash)}
-                    size={iconSize}
-                    left={offset}
-                />
+                <HashAvatar hash={claim1.hash} size={iconSize} left={offset} />
             }
             rightSection={
-                <Avatar
-                    src={buildDataUrl(claim2.hash)}
-                    size={iconSize}
-                    right={offset}
-                />
+                <HashAvatar hash={claim2.hash} size={iconSize} right={offset} />
             }
             variant="default"
             {...badgeProps}
