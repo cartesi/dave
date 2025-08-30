@@ -1,4 +1,4 @@
-import { Stack, Text, Timeline, useMantineTheme } from "@mantine/core";
+import { Stack, Text, Timeline } from "@mantine/core";
 import humanizeDuration from "humanize-duration";
 import { useMemo, type FC } from "react";
 import { MatchCard } from "../tournament/MatchCard";
@@ -28,10 +28,6 @@ export interface WinnerItemProps {
 
 export const WinnerItem: FC<WinnerItemProps> = (props) => {
     const { loser, timestamp, winner } = props;
-
-    const theme = useMantineTheme();
-    const gold = theme.colors.yellow[5];
-    const dimmed = theme.colors.gray[5];
 
     // allow now to be defined outside, default to Date.now
     const now = useMemo(

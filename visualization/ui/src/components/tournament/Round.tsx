@@ -27,21 +27,13 @@ export interface TournamentRoundProps {
     matches: Match[];
 
     /**
-     * Simulated current time.
-     * When not provided, the round shows all matches.
-     * When provided, the matchs are displayed as the simulated time.
-     */
-    now?: number;
-
-    /**
      * Callback when a match is clicked.
      */
     onClickMatch?: (match: Match) => void;
 }
 
 export const TournamentRound: FC<TournamentRoundProps> = (props) => {
-    const { danglingClaim, hideWinners, index, matches, now, onClickMatch } =
-        props;
+    const { danglingClaim, hideWinners, index, matches, onClickMatch } = props;
 
     return (
         <Stack>
@@ -50,13 +42,11 @@ export const TournamentRound: FC<TournamentRoundProps> = (props) => {
                 hideWinners && match.winner !== undefined && match.claim2 ? (
                     <MatchLoserCard
                         match={match}
-                        now={now}
                         onClick={() => onClickMatch?.(match)}
                     />
                 ) : hideWinners && match.winner !== undefined ? undefined : (
                     <MatchCard
                         match={match}
-                        now={now}
                         onClick={() => onClickMatch?.(match)}
                     />
                 ),

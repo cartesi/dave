@@ -97,40 +97,6 @@ export const Winner2: Story = {
 };
 
 /**
- * A match that has a simulated time, when the match did not exist, so it must just not be shown.
- */
-export const TimeTravel: Story = {
-    args: {
-        match: {
-            claim1: claim(0),
-            claim2: claim(1),
-            timestamp,
-            actions: [],
-        },
-        now: timestamp - 1,
-        onClick: fn(),
-    },
-};
-
-/**
- * A match that has a simulated time, when the winner was not declared yet.
- */
-export const TimeTravelWinner: Story = {
-    args: {
-        match: {
-            claim1: claim(0),
-            claim2: claim(1),
-            winner: 1,
-            timestamp,
-            winnerTimestamp: timestamp + 1,
-            actions: [],
-        },
-        now: timestamp,
-        onClick: fn(),
-    },
-};
-
-/**
  * A match without a onClick event handler, which should change the cursor feedback.
  */
 export const NoClickEventHandler: Story = {

@@ -108,7 +108,6 @@ export const TournamentTable: FC<TournamentTableProps> = (props) => {
                 <TournamentRound
                     index={index}
                     matches={round.matches}
-                    now={now}
                     onClickMatch={onClickMatch}
                     hideWinners={hideWinners}
                     danglingClaim={round.danglingClaim}

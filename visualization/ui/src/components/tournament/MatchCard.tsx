@@ -19,13 +19,6 @@ export interface MatchCardProps extends CardProps {
     match: Omit<Match, "tournament">;
 
     /**
-     * Simulated current time.
-     * When not provided, the match is shown as is.
-     * When provided, the match timestamps are used to filter out events that did not happen yet based on the simulated time.
-     */
-    now?: number;
-
-    /**
      * Handler for the match card click event. When not provided, the match card is not clickable.
      */
     onClick?: () => void;
@@ -33,22 +26,13 @@ export interface MatchCardProps extends CardProps {
 
 export const MatchCard: FC<MatchCardProps> = ({
     match,
-    now,
     onClick,
     ...cardProps
 }) => {
     const { claim1, claim2, winner } = match;
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
-
-    if (now && match.timestamp > now) {
-        // match is in the future compared to simulated now, don't show anything
-        return;
-    }
-
-    const showWinner =
-        !!winner &&
-        (!now || (!!match.winnerTimestamp && match.winnerTimestamp <= now));
+    const showWinner = !!winner;
 
     return (
         <Card
