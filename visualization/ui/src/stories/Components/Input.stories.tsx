@@ -18,19 +18,19 @@ type Story = StoryObj<typeof meta>;
  * Card for an accepted input
  */
 export const AcceptedStatus: Story = {
-    args: { input: EpochPageStories.OpenEpoch.args.inputs[0] },
+    args: { input: EpochPageStories.Open.args.inputs[0] },
 };
 
 /**
  * Card for a non-processed input
  */
 export const NoneStatus: Story = {
-    args: { input: EpochPageStories.OpenEpoch.args.inputs[1] },
+    args: { input: EpochPageStories.Open.args.inputs[1] },
 };
 
 /**
  * Card for a rejected input
  */
 export const RejectedStatus: Story = {
-    args: { input: EpochPageStories.OpenEpoch.args.inputs[2] },
+    args: { input: EpochPageStories.Open.args.inputs[2] },
 };
