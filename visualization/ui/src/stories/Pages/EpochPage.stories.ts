@@ -5,12 +5,13 @@ import { applications } from "../data";
 const meta = {
     title: "Pages/Epoch",
     component: EpochView,
+    tags: ["autodocs"],
 } satisfies Meta<typeof EpochView>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const OpenEpoch: Story = {
+export const Open: Story = {
     args: {
         application: applications[0],
         epoch: applications[0].epochs[4],

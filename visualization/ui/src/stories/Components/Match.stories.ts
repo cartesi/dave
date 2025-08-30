@@ -18,6 +18,7 @@ export const Ongoing: Story = {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: MatchActionsStories.Bisections.args.actions,
         },
+        parentMatches: [],
         range: [1837880065, 2453987565],
     },
 };
@@ -32,6 +33,7 @@ export const NoActions: Story = {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: [],
         },
+        parentMatches: [],
         range: [1837880065, 2453987565],
     },
 };

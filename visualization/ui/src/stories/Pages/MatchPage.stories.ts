@@ -6,6 +6,7 @@ import { applications } from "../data";
 const meta = {
     title: "Pages/Match",
     component: MatchPage,
+    tags: ["autodocs"],
 } satisfies Meta<typeof MatchPage>;
 
 export default meta;
@@ -17,5 +18,6 @@ export const TopLevelMatch: Story = {
         epoch: applications[0].epochs[4],
         tournament: Ongoing.args.tournament,
         match: Ongoing.args.tournament.matches[1],
+        parentMatches: [],
     },
 };

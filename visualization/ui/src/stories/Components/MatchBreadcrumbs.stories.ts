@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes } from "viem";
 import { MatchBreadcrumbs } from "../../components/MatchBreadcrumbs";
-import type { Claim } from "../../components/types";
+import { claim } from "../util";
 
 const meta = {
     title: "Components/Navigation/MatchBreadcrumbs",
@@ -15,54 +14,26 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
-    hash: keccak256(toBytes(i)),
-}));
-
 /**
  * Breadcrumbs for a bottom match.
  */
 export const BottomMatch: Story = {
     args: {
-        match: {
-            actions: [],
-            claim1: claims[0],
-            claim2: claims[1],
-            parentTournament: {
-                height: 17,
-                level: "bottom",
-                startCycle: 5,
-                endCycle: 6,
-                matches: [],
-                parentMatch: {
-                    claim1: claims[2],
-                    claim2: claims[3],
-                    parentTournament: {
-                        height: 27,
-                        level: "middle",
-                        startCycle: 10,
-                        endCycle: 20,
-                        matches: [],
-                        parentMatch: {
-                            claim1: claims[4],
-                            claim2: claims[5],
-                            parentTournament: {
-                                height: 48,
-                                level: "top",
-                                startCycle: 1,
-                                endCycle: 100,
-                                matches: [],
-                            },
-                            actions: [],
-                            timestamp: 1,
-                        },
-                    },
-                    actions: [],
-                    timestamp: 1,
-                },
+        matches: [
+            {
+                claim1: claim(0),
+                claim2: claim(1),
             },
-            timestamp: 1,
-        },
+            {
+                claim1: claim(2),
+                claim2: claim(3),
+            },
+            {
+                claim1: claim(4),
+                claim2: claim(5),
+            },
+        ],
+        separatorMargin: 5,
     },
 };
 
@@ -71,32 +42,16 @@ export const BottomMatch: Story = {
  */
 export const MidMatch: Story = {
     args: {
-        match: {
-            actions: [],
-            claim1: claims[2],
-            claim2: claims[3],
-            timestamp: 1,
-            parentTournament: {
-                height: 27,
-                level: "middle",
-                startCycle: 10,
-                endCycle: 20,
-                matches: [],
-                parentMatch: {
-                    claim1: claims[4],
-                    claim2: claims[5],
-                    parentTournament: {
-                        height: 48,
-                        level: "top",
-                        startCycle: 1,
-                        endCycle: 100,
-                        matches: [],
-                    },
-                    actions: [],
-                    timestamp: 1,
-                },
+        matches: [
+            {
+                claim1: claim(0),
+                claim2: claim(1),
             },
-        },
+            {
+                claim1: claim(2),
+                claim2: claim(3),
+            },
+        ],
     },
 };
 
@@ -105,18 +60,11 @@ export const MidMatch: Story = {
  */
 export const TopMatch: Story = {
     args: {
-        match: {
-            actions: [],
-            claim1: claims[4],
-            claim2: claims[5],
-            parentTournament: {
-                height: 48,
-                level: "top",
-                startCycle: 1,
-                endCycle: 100,
-                matches: [],
+        matches: [
+            {
+                claim1: claim(0),
+                claim2: claim(1),
             },
-            timestamp: 1,
-        },
+        ],
     },
 };

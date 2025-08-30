@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes } from "viem";
 import { MatchBadge } from "../../components/tournament/MatchBadge";
-import type { Claim } from "../../components/types";
+import { claim } from "../util";
 
 const meta = {
     title: "Components/Navigation/MatchBadge",
@@ -15,19 +14,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
-    hash: keccak256(toBytes(i)),
-}));
-
 /**
  * A badge with avatars for two claims.
  */
 export const Default: Story = {
     args: {
-        match: {
-            claim1: claims[0],
-            claim2: claims[1],
-        },
+        claim1: claim(0),
+        claim2: claim(1),
     },
 };
 
@@ -36,10 +29,8 @@ export const Default: Story = {
  */
 export const ExtraSmall: Story = {
     args: {
-        match: {
-            claim1: claims[0],
-            claim2: claims[1],
-        },
+        claim1: claim(0),
+        claim2: claim(1),
         size: "xs",
     },
 };
@@ -49,10 +40,8 @@ export const ExtraSmall: Story = {
  */
 export const Small: Story = {
     args: {
-        match: {
-            claim1: claims[0],
-            claim2: claims[1],
-        },
+        claim1: claim(0),
+        claim2: claim(1),
         size: "sm",
     },
 };
@@ -62,10 +51,8 @@ export const Small: Story = {
  */
 export const Medium: Story = {
     args: {
-        match: {
-            claim1: claims[0],
-            claim2: claims[1],
-        },
+        claim1: claim(0),
+        claim2: claim(1),
         size: "md",
     },
 };
@@ -75,10 +62,8 @@ export const Medium: Story = {
  */
 export const Large: Story = {
     args: {
-        match: {
-            claim1: claims[0],
-            claim2: claims[1],
-        },
+        claim1: claim(0),
+        claim2: claim(1),
         size: "lg",
     },
 };
@@ -88,10 +73,8 @@ export const Large: Story = {
  */
 export const ExtraLarge: Story = {
     args: {
-        match: {
-            claim1: claims[0],
-            claim2: claims[1],
-        },
+        claim1: claim(0),
+        claim2: claim(1),
         size: "xl",
     },
 };

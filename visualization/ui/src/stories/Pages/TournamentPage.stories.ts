@@ -1,10 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes } from "viem";
 import type { Claim, Tournament } from "../../components/types";
 import { TournamentPage } from "../../view/tournament/Tournament";
 import * as TournamentStories from "../Components/Tournament.stories";
 import { applications } from "../data";
-import { randomMatches } from "../util";
+import { claim, randomMatches } from "../util";
 
 const meta = {
     title: "Pages/Tournament",
@@ -20,6 +19,7 @@ export const TopLevelClosed: Story = {
         application: applications[0],
         epoch: applications[0].epochs[4],
         tournament: TournamentStories.NoChallengerYet.args.tournament,
+        parentMatches: [],
     },
 };
 
@@ -28,6 +28,7 @@ export const TopLevelFinalized: Story = {
         application: applications[0],
         epoch: applications[0].epochs[3],
         tournament: TournamentStories.Finalized.args.tournament,
+        parentMatches: [],
     },
 };
 
@@ -36,16 +37,15 @@ export const TopLevelDispute: Story = {
         application: applications[0],
         epoch: applications[0].epochs[4],
         tournament: TournamentStories.Ongoing.args.tournament,
+        parentMatches: [],
     },
 };
 
 /**
  * Create random claims
  */
-const startTimestamp = Math.floor(Date.now() / 1000);
-const claims: Claim[] = Array.from({ length: 128 }).map((_, i) => ({
-    hash: keccak256(toBytes(i)),
-}));
+const now = Math.floor(Date.now() / 1000);
+const claims: Claim[] = Array.from({ length: 128 }).map((_, i) => claim(i));
 
 const randomTournament: Tournament = {
     startCycle: 1837880065,
@@ -55,13 +55,14 @@ const randomTournament: Tournament = {
     matches: [],
     danglingClaim: undefined,
 };
-randomMatches(startTimestamp, randomTournament, claims);
+randomMatches(now, randomTournament, claims);
 
 export const TopLevelLargeDispute: Story = {
     args: {
         application: applications[0],
         epoch: applications[0].epochs[4],
         tournament: randomTournament,
+        parentMatches: [],
     },
 };
 
@@ -70,5 +71,6 @@ export const MidLevelDispute: Story = {
         application: applications[0],
         epoch: applications[0].epochs[4],
         tournament: TournamentStories.MidLevelDispute.args.tournament,
+        parentMatches: [{ claim1: claim(4), claim2: claim(5) }],
     },
 };

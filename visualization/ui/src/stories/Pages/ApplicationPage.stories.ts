@@ -5,6 +5,7 @@ import { applications } from "../data";
 const meta = {
     title: "Pages/Application",
     component: ApplicationView,
+    tags: ["autodocs"],
 } satisfies Meta<typeof ApplicationView>;
 
 export default meta;

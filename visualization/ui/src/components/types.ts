@@ -42,7 +42,7 @@ export interface Input {
 
 export interface Claim {
     hash: Hash;
-    parentClaim?: Claim;
+    parentClaims?: Hash[];
 }
 
 export type Cycle = number; // XXX: should be bigint, but leaving it as number for now for compatibility with storybook
@@ -80,7 +80,6 @@ export type MatchAction = (
 ) & { timestamp: number };
 
 export interface Match {
-    parentTournament: Tournament;
     tournament?: Tournament;
     claim1: Claim;
     claim2: Claim;
@@ -95,7 +94,6 @@ export interface Tournament {
     level: "top" | "middle" | "bottom";
     startCycle: Cycle;
     endCycle: Cycle;
-    parentMatch?: Match;
     matches: Match[];
     danglingClaim?: Claim; // claim that was not matched with another claim yet
     winner?: Claim;

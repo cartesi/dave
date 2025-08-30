@@ -1,4 +1,4 @@
-import { concat, hexToNumber, keccak256, slice, type Hex } from "viem";
+import { concat, hexToNumber, keccak256, slice, toBytes, type Hex } from "viem";
 import type { Claim, Tournament } from "../components/types";
 
 /**
@@ -15,6 +15,17 @@ export function mulberry32(seed: number) {
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
 }
+
+/**
+ * Create a claim with a hash and parent claims
+ * @param i number to generate hash from
+ * @param args numbers to generate parent claims from
+ * @returns claim with a hash and parent claims
+ */
+export const claim = (i: number, ...args: number[]): Claim => ({
+    hash: keccak256(toBytes(i)),
+    parentClaims: args.map((i) => keccak256(toBytes(i))),
+});
 
 /**
  * Return a number between 0 and 1 from a hex value.
@@ -86,7 +97,6 @@ export const randomMatches = (
                 actions: [],
                 claim1,
                 claim2: claim,
-                parentTournament: tournament,
                 timestamp,
             });
             tournament.danglingClaim = undefined;

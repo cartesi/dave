@@ -31,10 +31,16 @@ export interface TournamentPageProps {
      * Tournament to display.
      */
     tournament: Tournament;
+
+    /**
+     * The parent matches of the tournament.
+     */
+    parentMatches: Pick<Match, "claim1" | "claim2">[];
 }
 
 export const TournamentPage: FC<TournamentPageProps> = (props) => {
-    const { application, epoch, onClickMatch, tournament } = props;
+    const { application, epoch, onClickMatch, tournament, parentMatches } =
+        props;
     return (
         <Stack gap="lg">
             <Hierarchy
@@ -55,6 +61,7 @@ export const TournamentPage: FC<TournamentPageProps> = (props) => {
                 <TournamentView
                     tournament={tournament}
                     onClickMatch={onClickMatch}
+                    parentMatches={parentMatches}
                 />
             </Stack>
         </Stack>

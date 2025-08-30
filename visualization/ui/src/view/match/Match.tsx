@@ -6,6 +6,7 @@ import PageTitle from "../../components/layout/PageTitle";
 import { MatchView } from "../../components/match/Match";
 import type {
     Application,
+    CycleRange,
     Epoch,
     Match,
     Tournament,
@@ -16,10 +17,13 @@ export interface MatchPageProps {
     epoch: Epoch;
     tournament: Tournament;
     match: Match;
+    parentMatches: Pick<Match, "claim1" | "claim2">[];
 }
 
 export const MatchPage: FC<MatchPageProps> = (props) => {
-    const { application, epoch, tournament, match } = props;
+    const { application, epoch, tournament, match, parentMatches } = props;
+    const range = [tournament.startCycle, tournament.endCycle] as CycleRange;
+
     return (
         <Stack gap="lg">
             <Hierarchy
@@ -41,7 +45,12 @@ export const MatchPage: FC<MatchPageProps> = (props) => {
             />
             <Stack>
                 <PageTitle Icon={TbSwords} title="Match" />
-                <MatchView tournament={tournament} match={match} />
+                <MatchView
+                    height={tournament.height}
+                    parentMatches={parentMatches}
+                    range={range}
+                    match={match}
+                />
             </Stack>
         </Stack>
     );

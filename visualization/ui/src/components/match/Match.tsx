@@ -7,28 +7,36 @@ import type { CycleRange, Match } from "../types";
 import { MatchActions } from "./MatchActions";
 
 export interface MatchViewProps {
+    /**
+     * The match to display.
+     */
     match: Match;
 
     /**
-     * The height of the tournament bisection tree
+     * The height of the tournament bisection tree.
      */
     height: number;
 
     /**
-     * The cycle range of the match
+     * The parent matches of the match.
+     */
+    parentMatches: Pick<Match, "claim1" | "claim2">[];
+
+    /**
+     * The cycle range of the match tournament.
      */
     range: CycleRange;
 }
 
 export const MatchView: FC<MatchViewProps> = (props) => {
-    const { height, match, range } = props;
+    const { height, match, parentMatches, range } = props;
     const { claim1, claim2 } = match;
 
     return (
         <Stack>
             <Group>
                 <Text>Level</Text>
-                <MatchBreadcrumbs match={match} />
+                <MatchBreadcrumbs matches={[...parentMatches, match]} />
             </Group>
             <Group>
                 <Text>Mcycle range</Text>

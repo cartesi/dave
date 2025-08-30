@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import { keccak256, toBytes } from "viem";
 import { MatchCard } from "../../components/tournament/MatchCard";
-import type { Claim } from "../../components/types";
+import { claim } from "../util";
 
 const meta = {
     title: "Components/Tournament/MatchCard",
@@ -17,9 +16,6 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const timestamp = Math.floor(Date.now() / 1000);
-const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
-    hash: keccak256(toBytes(i)),
-}));
 
 /**
  * A match that is ongoing, which means that both claims are still in dispute, with no winner yet.
@@ -27,8 +23,8 @@ const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
 export const Ongoing: Story = {
     args: {
         match: {
-            claim1: claims[0],
-            claim2: claims[1],
+            claim1: claim(0),
+            claim2: claim(1),
             timestamp,
             actions: [],
         },
@@ -42,8 +38,8 @@ export const Ongoing: Story = {
 export const MidLevel: Story = {
     args: {
         match: {
-            claim1: { ...claims[0], parentClaim: claims[2] },
-            claim2: { ...claims[1], parentClaim: claims[3] },
+            claim1: claim(0, 2),
+            claim2: claim(1, 3),
             timestamp,
             actions: [],
         },
@@ -57,14 +53,8 @@ export const MidLevel: Story = {
 export const BottomLevel: Story = {
     args: {
         match: {
-            claim1: {
-                ...claims[0],
-                parentClaim: { ...claims[2], parentClaim: claims[4] },
-            },
-            claim2: {
-                ...claims[1],
-                parentClaim: { ...claims[3], parentClaim: claims[5] },
-            },
+            claim1: claim(0, 2, 4),
+            claim2: claim(1, 3, 5),
             timestamp,
             actions: [],
         },
@@ -78,8 +68,8 @@ export const BottomLevel: Story = {
 export const Winner1: Story = {
     args: {
         match: {
-            claim1: claims[0],
-            claim2: claims[1],
+            claim1: claim(0),
+            claim2: claim(1),
             winner: 1,
             timestamp,
             winnerTimestamp: timestamp + 1,
@@ -95,8 +85,8 @@ export const Winner1: Story = {
 export const Winner2: Story = {
     args: {
         match: {
-            claim1: claims[0],
-            claim2: claims[1],
+            claim1: claim(0),
+            claim2: claim(1),
             winner: 2,
             timestamp,
             winnerTimestamp: timestamp + 1,
@@ -112,8 +102,8 @@ export const Winner2: Story = {
 export const TimeTravel: Story = {
     args: {
         match: {
-            claim1: claims[0],
-            claim2: claims[1],
+            claim1: claim(0),
+            claim2: claim(1),
             timestamp,
             actions: [],
         },
@@ -128,8 +118,8 @@ export const TimeTravel: Story = {
 export const TimeTravelWinner: Story = {
     args: {
         match: {
-            claim1: claims[0],
-            claim2: claims[1],
+            claim1: claim(0),
+            claim2: claim(1),
             winner: 1,
             timestamp,
             winnerTimestamp: timestamp + 1,
@@ -146,8 +136,8 @@ export const TimeTravelWinner: Story = {
 export const NoClickEventHandler: Story = {
     args: {
         match: {
-            claim1: claims[0],
-            claim2: claims[1],
+            claim1: claim(0),
+            claim2: claim(1),
             timestamp,
             actions: [],
         },

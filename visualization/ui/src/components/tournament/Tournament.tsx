@@ -8,12 +8,25 @@ import type { Match, Tournament } from "../types";
 import { TournamentTable } from "./Table";
 
 export interface TournamentViewProps {
+    /**
+     * Callback when a match is clicked. Useful for navigating to the match page.
+     */
     onClickMatch?: (match: Match) => void;
+
+    /**
+     * The tournament to display.
+     */
     tournament: Tournament;
+
+    /**
+     * The parent matches of the tournament.
+     */
+    parentMatches: Pick<Match, "claim1" | "claim2">[];
 }
 
 export const TournamentView: FC<TournamentViewProps> = (props) => {
-    const { onClickMatch, tournament } = props;
+    const { onClickMatch, tournament, parentMatches } = props;
+
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
 
@@ -24,7 +37,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
         <Stack>
             <Group>
                 <Text>Level</Text>
-                <TournamentBreadcrumbs tournament={tournament} />
+                <TournamentBreadcrumbs parentMatches={parentMatches} />
             </Group>
             <Group>
                 <Text>Mcycle range</Text>

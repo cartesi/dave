@@ -33,30 +33,14 @@ export const ClaimText: FC<ClaimTextProps> = ({
     withIcon = true,
     ...props
 }) => {
-    const parents = [];
-    let parent = claim.parentClaim;
-    while (parent && withIcon) {
-        parents.unshift(
-            <Tooltip
-                key={parent.hash}
-                label={
-                    <LongText
-                        value={parent.hash}
-                        ff="monospace"
-                        copyButton={false}
-                    />
-                }
-            >
-                <HashAvatar
-                    key={parent.hash}
-                    hash={parent.hash}
-                    size={iconSize}
-                />
-            </Tooltip>,
-        );
-        parent = parent.parentClaim;
-    }
-
+    const parents = claim.parentClaims?.map((hash) => (
+        <Tooltip
+            key={hash}
+            label={<LongText value={hash} ff="monospace" copyButton={false} />}
+        >
+            <HashAvatar key={hash} hash={hash} size={iconSize} />
+        </Tooltip>
+    ));
     return (
         <Group gap="xs" wrap="nowrap">
             {withIcon && (

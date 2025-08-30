@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes } from "viem";
 import { MatchActions } from "../../components/match/MatchActions";
-import type { Claim, MatchAction } from "../../components/types";
-import { mulberry32 } from "../util";
+import type { MatchAction } from "../../components/types";
+import { claim, mulberry32 } from "../util";
 
 const meta = {
     title: "Components/Match/MatchActions",
@@ -12,11 +11,6 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
-
-const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
-    hash: keccak256(toBytes(i)),
-    parentClaim: c?.parentClaim,
-});
 
 const now = Math.floor(Date.now() / 1000);
 
@@ -43,8 +37,8 @@ export const CompleteTop: Story = {
                 winner: 1,
             },
         ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 48,
     },
 };
@@ -81,8 +75,8 @@ export const Bisections: Story = {
                 timestamp: now - 28,
             },
         ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 48,
     },
 };
@@ -98,8 +92,8 @@ export const Timeout: Story = {
                 timestamp: now - 1000,
             },
         ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 48,
     },
 };
@@ -120,8 +114,8 @@ export const TimeoutSecond: Story = {
                 timestamp: now - 1000,
             },
         ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 48,
     },
 };
@@ -137,8 +131,8 @@ export const Elimination: Story = {
                 timestamp: now - 1000,
             },
         ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 48,
     },
 };
@@ -169,8 +163,8 @@ export const EliminationAfterBisections: Story = {
                 timestamp: now - 1000,
             },
         ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 48,
     },
 };
@@ -208,8 +202,8 @@ export const SubTournament: Story = {
                 timestamp: now - 224,
             },
         ],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 4,
     },
 };
@@ -247,8 +241,8 @@ export const WinnerBottom: Story = {
             },
         ],
         height: 5,
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
     },
 };
 
@@ -290,8 +284,8 @@ export const WinnerTop: Story = {
             },
         ],
         height: 5,
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
     },
 };
 
@@ -301,8 +295,8 @@ export const WinnerTop: Story = {
 export const NoActions: Story = {
     args: {
         actions: [],
-        claim1: randomClaim(0),
-        claim2: randomClaim(1),
+        claim1: claim(0),
+        claim2: claim(1),
         height: 48,
     },
 };

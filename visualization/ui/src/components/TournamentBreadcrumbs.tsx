@@ -1,35 +1,44 @@
 import { Badge, Breadcrumbs, type BreadcrumbsProps } from "@mantine/core";
-import type { FC, ReactNode } from "react";
+import type { FC } from "react";
 import { MatchBadge } from "./tournament/MatchBadge";
-import type { Tournament } from "./types";
+import type { Match } from "./types";
 
 export interface TournamentBreadcrumbsProps
     extends Omit<BreadcrumbsProps, "children"> {
-    tournament: Pick<Tournament, "level" | "parentMatch">;
+    parentMatches: Pick<Match, "claim1" | "claim2">[];
 }
 
-export const TournamentBreadcrumbs: FC<TournamentBreadcrumbsProps> = ({
-    tournament,
-    ...breadcrumbsProps
-}) => {
-    let { level, parentMatch } = tournament;
+export const TournamentBreadcrumbs: FC<TournamentBreadcrumbsProps> = (
+    props,
+) => {
+    const { parentMatches, ...breadcrumbsProps } = props;
+    const levels = ["top", "middle", "bottom"];
 
     // build the breadcrumb of the tournament hierarchy
-    const parents: ReactNode[] = [];
-    while (parentMatch) {
-        parents.unshift(<MatchBadge match={parentMatch} />);
-        parents.unshift(
-            <Badge key={parentMatch.parentTournament.level} variant="default">
-                {parentMatch.parentTournament.level}
+    const items = parentMatches
+        .map((match, index) => [
+            <Badge key={levels[index]} variant="default">
+                {levels[index]}
             </Badge>,
-        );
-        parentMatch = parentMatch.parentTournament.parentMatch;
-    }
+            <MatchBadge
+                claim1={match.claim1}
+                claim2={match.claim2}
+                variant={
+                    index === parentMatches.length - 1 ? "filled" : "default"
+                }
+            />,
+        ])
+        .flat();
+
+    items.push(
+        <Badge key={levels[parentMatches.length]} variant="default">
+            {levels[parentMatches.length]}
+        </Badge>,
+    );
 
     return (
         <Breadcrumbs separator="→" {...breadcrumbsProps}>
-            {parents}
-            <Badge key={level}>{level}</Badge>
+            {items}
         </Breadcrumbs>
     );
 };

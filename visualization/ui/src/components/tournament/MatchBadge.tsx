@@ -1,13 +1,18 @@
 import { Badge, type BadgeProps } from "@mantine/core";
 import type { FC } from "react";
 import { HashAvatar } from "../HashAvatar";
-import type { Match } from "../types";
+import type { Claim } from "../types";
 
 export interface MatchBadgeProps extends BadgeProps {
     /**
-     * The match to display.
+     * The first claim in the match.
      */
-    match: Pick<Match, "claim1" | "claim2">;
+    claim1: Claim;
+
+    /**
+     * The second claim in the match.
+     */
+    claim2: Claim;
 }
 
 const getAvatarOffset = (size: BadgeProps["size"]) => {
@@ -44,8 +49,8 @@ const getAvatarSize = (size: BadgeProps["size"]) => {
     }
 };
 
-export const MatchBadge: FC<MatchBadgeProps> = ({ match, ...badgeProps }) => {
-    const { claim1, claim2 } = match;
+export const MatchBadge: FC<MatchBadgeProps> = (props) => {
+    const { claim1, claim2, ...badgeProps } = props;
     const iconSize = getAvatarSize(badgeProps.size);
     const offset = getAvatarOffset(badgeProps.size);
     const text = "vs";

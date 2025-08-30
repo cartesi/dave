@@ -1,8 +1,7 @@
 import { Timeline } from "@mantine/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes } from "viem";
 import { WinnerTimeoutItem } from "../../components/match/WinnerTimeoutItem";
-import type { Claim } from "../../components/types";
+import { claim } from "../util";
 
 const meta = {
     title: "Components/Match/WinnerTimeoutItem",
@@ -22,18 +21,13 @@ type Story = StoryObj<typeof meta>;
 
 const now = Math.floor(Date.now() / 1000);
 
-const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
-    hash: keccak256(toBytes(i)),
-    parentClaim: c?.parentClaim,
-});
-
 /**
  * Winner is first claim
  */
 export const Default: Story = {
     args: {
-        winner: randomClaim(0),
-        loser: randomClaim(1),
+        winner: claim(0),
+        loser: claim(1),
         timestamp: now,
     },
 };
