@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import { MatchCard } from "../../components/tournament/MatchCard";
 import type { Claim } from "../../components/types";
 
@@ -19,7 +19,6 @@ type Story = StoryObj<typeof meta>;
 const timestamp = Math.floor(Date.now() / 1000);
 const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
 }));
 
 /**

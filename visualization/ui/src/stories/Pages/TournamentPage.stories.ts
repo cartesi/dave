@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import type { Claim, Tournament } from "../../components/types";
 import { TournamentPage } from "../../view/tournament/Tournament";
 import * as TournamentStories from "../Components/Tournament.stories";
@@ -45,13 +45,13 @@ export const TopLevelDispute: Story = {
 const startTimestamp = Math.floor(Date.now() / 1000);
 const claims: Claim[] = Array.from({ length: 128 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
 }));
 
 const randomTournament: Tournament = {
     startCycle: 1837880065,
     endCycle: 2453987565,
-    level: "TOP",
+    height: 48,
+    level: "top",
     matches: [],
     danglingClaim: undefined,
 };

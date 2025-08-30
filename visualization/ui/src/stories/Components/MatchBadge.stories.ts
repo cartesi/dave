@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import { MatchBadge } from "../../components/tournament/MatchBadge";
 import type { Claim } from "../../components/types";
 
@@ -17,7 +17,6 @@ type Story = StoryObj<typeof meta>;
 
 const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
 }));
 
 /**

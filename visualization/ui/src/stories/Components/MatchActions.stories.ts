@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import { MatchActions } from "../../components/match/MatchActions";
 import type { Claim, MatchAction } from "../../components/types";
 import { mulberry32 } from "../util";
@@ -15,7 +15,6 @@ type Story = StoryObj<typeof meta>;
 
 const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
     parentClaim: c?.parentClaim,
 });
 

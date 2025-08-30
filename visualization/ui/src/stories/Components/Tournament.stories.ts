@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { getUnixTime } from "date-fns";
 import { fn } from "storybook/test";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import { TournamentView } from "../../components/tournament/Tournament";
 import type { Claim, Tournament } from "../../components/types";
 
@@ -18,7 +18,6 @@ const timestamp = getUnixTime(Date.now());
 
 const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
     parentClaim: c?.parentClaim,
 });
 

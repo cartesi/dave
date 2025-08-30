@@ -1,6 +1,6 @@
 import { Timeline } from "@mantine/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import { SubTournamentItem } from "../../components/match/SubTournamentItem";
 import type { Claim, CycleRange } from "../../components/types";
 
@@ -22,7 +22,6 @@ type Story = StoryObj<typeof meta>;
 
 const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
     parentClaim: c?.parentClaim,
 });
 

@@ -1,6 +1,6 @@
 import { Timeline } from "@mantine/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import { WinnerItem } from "../../components/match/WinnerItem";
 import type { Claim } from "../../components/types";
 
@@ -24,7 +24,6 @@ const now = Math.floor(Date.now() / 1000);
 
 const randomClaim = (i: number, c?: Pick<Claim, "parentClaim">): Claim => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
     parentClaim: c?.parentClaim,
 });
 

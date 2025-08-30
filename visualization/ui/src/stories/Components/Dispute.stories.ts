@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { keccak256, toBytes, zeroAddress } from "viem";
+import { keccak256, toBytes } from "viem";
 import { Dispute } from "../../components/honeypot/Dispute";
 import type { Claim } from "../../components/types";
 
@@ -15,7 +15,6 @@ type Story = StoryObj<typeof meta>;
 const startTimestamp = Date.now();
 const claims: Claim[] = Array.from({ length: 32 }).map((_, i) => ({
     hash: keccak256(toBytes(i)),
-    claimer: zeroAddress,
     timestamp: startTimestamp + i * 1000, // XXX: improve this time distribution
 }));
 

@@ -1,4 +1,4 @@
-import type { Address, Hash, Hex } from "viem";
+import type { Hash, Hex } from "viem";
 
 export type ApplicationState = "ENABLED" | "DISABLED" | "INOPERABLE";
 export type ConsensusType = "PRT" | "QUORUM" | "AUTHORITY";
@@ -42,11 +42,10 @@ export interface Input {
 
 export interface Claim {
     hash: Hash;
-    claimer: Address;
     parentClaim?: Claim;
 }
 
-export type Cycle = number;
+export type Cycle = number; // XXX: should be bigint, but leaving it as number for now for compatibility with storybook
 export type CycleRange = [Cycle, Cycle];
 
 type MatchAdvance = {
