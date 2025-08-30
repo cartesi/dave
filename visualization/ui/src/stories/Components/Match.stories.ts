@@ -13,11 +13,12 @@ type Story = StoryObj<typeof meta>;
 
 export const Ongoing: Story = {
     args: {
-        tournament: TournamentStories.Ongoing.args.tournament,
+        height: 48,
         match: {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: MatchActionsStories.Bisections.args.actions,
         },
+        range: [1837880065, 2453987565],
     },
 };
 
@@ -26,10 +27,11 @@ export const Ongoing: Story = {
  */
 export const NoActions: Story = {
     args: {
-        tournament: TournamentStories.Ongoing.args.tournament,
+        height: 48,
         match: {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: [],
         },
+        range: [1837880065, 2453987565],
     },
 };

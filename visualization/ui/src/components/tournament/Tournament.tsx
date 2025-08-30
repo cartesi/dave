@@ -28,7 +28,7 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
             </Group>
             <Group>
                 <Text>Mcycle range</Text>
-                <CycleRangeFormatted cycleRange={[startCycle, endCycle]} />
+                <CycleRangeFormatted range={[startCycle, endCycle]} />
             </Group>
             <Group>
                 <Text>Winner</Text>

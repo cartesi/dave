@@ -3,18 +3,26 @@ import { type FC } from "react";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { MatchBreadcrumbs } from "../MatchBreadcrumbs";
 import { ClaimText } from "../tournament/ClaimText";
-import type { Match, Tournament } from "../types";
+import type { CycleRange, Match } from "../types";
 import { MatchActions } from "./MatchActions";
 
 export interface MatchViewProps {
-    tournament: Tournament;
     match: Match;
+
+    /**
+     * The height of the tournament bisection tree
+     */
+    height: number;
+
+    /**
+     * The cycle range of the match
+     */
+    range: CycleRange;
 }
 
 export const MatchView: FC<MatchViewProps> = (props) => {
-    const { match, tournament } = props;
+    const { height, match, range } = props;
     const { claim1, claim2 } = match;
-    const { startCycle, endCycle } = tournament;
 
     return (
         <Stack>
@@ -24,7 +32,7 @@ export const MatchView: FC<MatchViewProps> = (props) => {
             </Group>
             <Group>
                 <Text>Mcycle range</Text>
-                <CycleRangeFormatted cycleRange={[startCycle, endCycle]} />
+                <CycleRangeFormatted range={range} />
             </Group>
             <Group>
                 <Text>Claims</Text>
@@ -39,7 +47,7 @@ export const MatchView: FC<MatchViewProps> = (props) => {
                 actions={match.actions}
                 claim1={claim1}
                 claim2={claim2}
-                height={tournament.height}
+                height={height}
             />
         </Stack>
     );

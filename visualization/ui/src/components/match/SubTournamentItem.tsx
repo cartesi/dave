@@ -71,7 +71,7 @@ export const SubTournamentItem: FC<SubTournamentItemProps> = (props) => {
                             <CycleRangeFormatted
                                 size="xs"
                                 c="dimmed"
-                                cycleRange={range}
+                                range={range}
                             />
                         </Stack>
                         <Button rightSection={<TbTrendingDown />}>

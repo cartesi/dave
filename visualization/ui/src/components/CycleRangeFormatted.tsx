@@ -2,18 +2,17 @@ import { Text, type TextProps } from "@mantine/core";
 import type { FC } from "react";
 import type { CycleRange } from "./types";
 
-const mcycleFormatter = new Intl.NumberFormat("en-US", {});
+const formatter = new Intl.NumberFormat("en-US", {});
 
 interface CycleRangeFormattedProps extends TextProps {
-    cycleRange: CycleRange;
+    range: CycleRange;
 }
 
 export const CycleRangeFormatted: FC<CycleRangeFormattedProps> = ({
-    cycleRange,
+    range,
     ...textProps
 }) => {
-    const [startCycle, endCycle] = cycleRange;
-    const formattedText = `${mcycleFormatter.format(startCycle)} → ${mcycleFormatter.format(endCycle)}`;
-
+    const [start, end] = range;
+    const formattedText = `${formatter.format(start)} → ${formatter.format(end)}`;
     return <Text {...textProps}>{formattedText}</Text>;
 };
