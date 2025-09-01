@@ -32,7 +32,7 @@ interface MatchActionsProps {
     /**
      * Whether to auto-adjust the ranges of the bisection items as user scrolls
      */
-    autoAdjustRanges: boolean;
+    autoAdjustRanges?: boolean;
 }
 
 export const MatchActions: FC<MatchActionsProps> = (props) => {
