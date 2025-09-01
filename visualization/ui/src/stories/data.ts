@@ -11,6 +11,11 @@ export const applications: ApplicationEpochs[] = [
         processedInputs: 8,
         epochs: [
             {
+                index: 0,
+                inDispute: false,
+                status: "FINALIZED",
+            },
+            {
                 index: 1,
                 inDispute: false,
                 status: "FINALIZED",
@@ -22,16 +27,11 @@ export const applications: ApplicationEpochs[] = [
             },
             {
                 index: 3,
-                inDispute: false,
-                status: "FINALIZED",
-            },
-            {
-                index: 4,
                 inDispute: true,
                 status: "CLOSED",
             },
             {
-                index: 5,
+                index: 4,
                 inDispute: false,
                 status: "OPEN",
             },
