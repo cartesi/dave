@@ -1,7 +1,7 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
+import type { Input } from "../types";
 import { InputCard } from "./Input";
-import type { Input } from "./types";
 
 interface Props {
     inputs: Input[];

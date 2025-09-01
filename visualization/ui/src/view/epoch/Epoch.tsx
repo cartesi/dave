@@ -4,9 +4,8 @@ import { TbClockFilled, TbInbox } from "react-icons/tb";
 import { useEpochStatusColor } from "../../components/epoch/useEpochStatusColor";
 import { Hierarchy } from "../../components/Hierarchy";
 import { InputList } from "../../components/input/InputList";
-import type { Input } from "../../components/input/types";
 import PageTitle from "../../components/layout/PageTitle";
-import type { Application, Epoch } from "../../components/types";
+import type { Application, Epoch, Input } from "../../components/types";
 import theme from "../../providers/theme";
 
 type Props = {
