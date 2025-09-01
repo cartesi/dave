@@ -1,5 +1,5 @@
 import { Progress, Stack, Timeline, useMantineTheme } from "@mantine/core";
-import { useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import { ScrollTimeline } from "../ScrollTimeline";
 import type { Claim, CycleRange, MatchAction } from "../types";
 import { BisectionItem } from "./BisectionItem";
@@ -28,10 +28,15 @@ interface MatchActionsProps {
      * Maximum number of bisections to reach the target subdivision
      */
     height: number;
+
+    /**
+     * Whether to auto-adjust the ranges of the bisection items as user scrolls
+     */
+    autoAdjustRanges: boolean;
 }
 
 export const MatchActions: FC<MatchActionsProps> = (props) => {
-    const { actions, claim1, claim2, height } = props;
+    const { autoAdjustRanges = true, actions, claim1, claim2, height } = props;
 
     // filter the bisection items
     const bisections = actions.filter((a) => a.type === "advance");
@@ -43,6 +48,8 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
     // progress bar, based on last visible item
     const progress = (bisections.length / height) * 100;
     const [visibleProgress, setVisibleProgress] = useState(progress);
+
+    const [firstVisible, setFirstVisible] = useState(-1);
 
     // create ranges for each bisection
     const ranges = useMemo(
@@ -70,16 +77,22 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
         firstVisible: number,
         lastVisible: number,
     ) => {
-        // adjust domain based on the first visible item in the scroll area
-        if (firstVisible >= 0) {
-            setDomain(ranges[firstVisible]);
-        }
+        setFirstVisible(firstVisible);
 
         // adjust secondary progress color according to the last visible item in the scroll area
         if (lastVisible >= 0) {
             setVisibleProgress(((lastVisible + 1) / height) * 100);
         }
     };
+
+    useEffect(() => {
+        if (!autoAdjustRanges) {
+            setDomain(maxRange);
+        } else if (firstVisible >= 0) {
+            // adjust domain based on the first visible item in the scroll area
+            setDomain(ranges[firstVisible]);
+        }
+    }, [autoAdjustRanges, firstVisible]);
 
     return (
         <Stack>

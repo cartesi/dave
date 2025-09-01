@@ -9,11 +9,28 @@ import {
 } from "react";
 
 export interface ScrollTimelineProps extends TimelineProps {
+    /**
+     * Whether to auto-adjust the ranges of the timeline items as user scrolls
+     */
+    autoAdjustRanges?: boolean;
+
+    /**
+     * Callback function to notify parent component about visible range changes
+     * @param firstVisible The index of the first visible item
+     * @param lastVisible The index of the last visible item
+     * @returns
+     */
     onVisibleRangeChange?: (firstVisible: number, lastVisible: number) => void;
 }
 
 export const ScrollTimeline: FC<ScrollTimelineProps> = (props) => {
-    const { children, h, onVisibleRangeChange, ...timelineProps } = props;
+    const {
+        autoAdjustRanges = true,
+        children,
+        h,
+        onVisibleRangeChange,
+        ...timelineProps
+    } = props;
 
     // refs for the scroll area and timeline items visibility
     const viewportRef = useRef<HTMLDivElement>(null);
