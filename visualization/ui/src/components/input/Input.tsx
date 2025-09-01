@@ -1,13 +1,12 @@
 import {
     Badge,
-    Box,
     Button,
     Card,
     Collapse,
     Group,
-    SegmentedControl,
     Stack,
     Text,
+    Textarea,
     type MantineColor,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -42,78 +41,37 @@ export const InputCard: FC<Props> = ({ input }) => {
         <Card shadow="md" withBorder>
             <Stack gap={3}>
                 <Group justify="space-between">
-                    <Text fw="bold">Sender</Text>
-                    <Badge color={statusColor}>{input.status}</Badge>
+                    <Text fw="bold"># {input.index}</Text>
+                    {input.status !== "ACCEPTED" && (
+                        <Badge color={statusColor}>{input.status}</Badge>
+                    )}
                 </Group>
                 <LongText
                     value={input.sender}
                     shorten={false}
-                    style={{ lineBreak: "anywhere" }}
                     size="sm"
                     c="dimmed"
                 />
+                <Group>
+                    <Button
+                        variant="transparent"
+                        size="compact-xs"
+                        onClick={toggleDisplayMeta}
+                        leftSection={
+                            displayMeta ? (
+                                <TbEyeMinus size={theme.other.mdIconSize} />
+                            ) : (
+                                <TbEyePlus size={theme.other.mdIconSize} />
+                            )
+                        }
+                    >
+                        Payload
+                    </Button>
+                </Group>
+                <Collapse in={displayMeta}>
+                    <Textarea readOnly value={input.payload} />
+                </Collapse>
             </Stack>
-            <Group py="sm" justify="flex-start" gap="5">
-                <Badge variant="outline">Index: {input.index}</Badge>
-                <Badge variant="outline">
-                    <Group gap={2}>
-                        Output Hash:
-                        <LongText
-                            value={input.outputHash}
-                            shorten={true}
-                            size="xs"
-                        />
-                    </Group>
-                </Badge>
-            </Group>
-
-            <Box my="sm">
-                <Button
-                    variant="light"
-                    size="compact-xs"
-                    onClick={toggleDisplayMeta}
-                    leftSection={
-                        displayMeta ? (
-                            <TbEyeMinus size={theme.other.mdIconSize} />
-                        ) : (
-                            <TbEyePlus size={theme.other.mdIconSize} />
-                        )
-                    }
-                >
-                    {displayMeta ? "Show less" : "Show more"}
-                </Button>
-            </Box>
-
-            <Collapse
-                in={displayMeta}
-                p="xs"
-                style={{
-                    boxShadow: "0px 0px 3px inset",
-                    borderRadius: "0.5rem",
-                }}
-            >
-                <Stack gap="xs">
-                    <Group>
-                        <Text fw="bold">Payload</Text>
-                        <SegmentedControl
-                            data={[
-                                { label: "Raw", value: "raw" },
-                                {
-                                    label: "ABI Decoded",
-                                    value: "abi",
-                                    disabled: true,
-                                },
-                            ]}
-                        />
-                    </Group>
-                    <LongText
-                        value={input.payload}
-                        shorten={false}
-                        size="xs"
-                        style={{ lineBreak: "anywhere" }}
-                    />
-                </Stack>
-            </Collapse>
         </Card>
     );
 };

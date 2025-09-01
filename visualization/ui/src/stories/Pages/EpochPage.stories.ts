@@ -30,7 +30,7 @@ export const Open: Story = {
             },
 
             {
-                index: 0,
+                index: 1,
                 status: "NONE",
                 epochIndex: 0,
                 machineHash:
@@ -43,7 +43,7 @@ export const Open: Story = {
             },
 
             {
-                index: 1,
+                index: 0,
                 status: "REJECTED",
                 epochIndex: 0,
                 machineHash:
