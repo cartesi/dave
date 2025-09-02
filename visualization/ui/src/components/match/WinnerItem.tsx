@@ -1,6 +1,15 @@
-import { Group, Paper, useMantineTheme } from "@mantine/core";
+import {
+    Button,
+    Collapse,
+    Group,
+    Paper,
+    Stack,
+    Textarea,
+    useMantineTheme,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { type FC } from "react";
-import { TbTrophyFilled } from "react-icons/tb";
+import { TbFile, TbFileText, TbTrophyFilled } from "react-icons/tb";
 import type { Hex } from "viem";
 import { ClaimText } from "../tournament/ClaimText";
 import type { Claim } from "../types";
@@ -31,16 +40,39 @@ export interface WinnerItemProps {
 export const WinnerItem: FC<WinnerItemProps> = (props) => {
     const { claim, now, proof, timestamp } = props;
 
+    const [opened, { toggle }] = useDisclosure(false);
+
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
 
     return (
         <ClaimTimelineItem claim={claim} now={now} timestamp={timestamp}>
             <Paper withBorder p={16} radius="lg" bg={theme.colors.yellow[0]}>
-                <Group gap="xs">
-                    <TbTrophyFilled size={24} color={gold} />
-                    <ClaimText claim={claim} withIcon={false} />
-                </Group>
+                <Stack gap="xs">
+                    <Group gap="xs">
+                        <TbTrophyFilled size={24} color={gold} />
+                        <ClaimText claim={claim} withIcon={false} />
+                        <Button
+                            variant="transparent"
+                            rightSection={
+                                opened ? (
+                                    <TbFile size={16} />
+                                ) : (
+                                    <TbFileText size={16} />
+                                )
+                            }
+                            size="compact-xs"
+                            onClick={toggle}
+                        >
+                            View proof
+                        </Button>
+                    </Group>
+                    <Collapse in={opened}>
+                        <Textarea readOnly rows={10} autosize maxRows={10}>
+                            {proof}
+                        </Textarea>
+                    </Collapse>
+                </Stack>
             </Paper>
         </ClaimTimelineItem>
     );

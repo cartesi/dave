@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Hex } from "viem";
 import { MatchActions } from "../../components/match/MatchActions";
 import type { MatchAction } from "../../components/types";
 import { claim, mulberry32 } from "../util";
@@ -13,6 +14,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const now = Math.floor(Date.now() / 1000);
+
+// large 40kb proof
+const proof = `0x${"00".repeat(1024 * 40)}` as Hex;
 
 /**
  * Complete scenario for a top match with a winner.
@@ -33,7 +37,7 @@ export const CompleteTop: Story = {
             },
             {
                 type: "leaf_match_sealed",
-                proof: "0x",
+                proof,
                 timestamp: now - 1487,
                 winner: 1,
             },
@@ -244,7 +248,7 @@ export const WinnerBottom: Story = {
             },
             {
                 type: "leaf_match_sealed",
-                proof: "0x",
+                proof,
                 timestamp: now - 224,
                 winner: 1,
             },
@@ -289,7 +293,7 @@ export const WinnerTop: Story = {
             },
             {
                 type: "leaf_match_sealed",
-                proof: "0x",
+                proof,
                 timestamp: now - 224,
                 winner: 1,
             },
