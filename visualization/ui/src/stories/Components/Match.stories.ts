@@ -11,6 +11,8 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const now = Math.floor(Date.now() / 1000);
+
 export const Ongoing: Story = {
     args: {
         height: 48,
@@ -18,6 +20,7 @@ export const Ongoing: Story = {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: MatchActionsStories.Bisections.args.actions,
         },
+        now,
         parentMatches: [],
         range: [1837880065, 2453987565],
     },
@@ -33,6 +36,7 @@ export const NoActions: Story = {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: [],
         },
+        now,
         parentMatches: [],
         range: [1837880065, 2453987565],
     },

@@ -31,8 +31,9 @@ export const Middle: Story = {
     args: {
         claim: claim(0),
         domain: range,
-        range: [(start + end) / 2, end],
         index: 5,
+        now,
+        range: [(start + end) / 2, end],
         timestamp: now - 64,
         total: 48,
     },
@@ -45,8 +46,9 @@ export const Quarter: Story = {
     args: {
         claim: claim(1),
         domain: [0, 100],
-        range: [25, 50],
         index: 15,
+        now,
+        range: [25, 50],
         timestamp: now - 5398,
         total: 20,
     },

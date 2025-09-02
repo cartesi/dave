@@ -28,6 +28,7 @@ export const Default: Story = {
     args: {
         claim1: claim(0),
         claim2: claim(1),
-        timestamp: now,
+        now,
+        timestamp: now - 3452,
     },
 };

@@ -30,6 +30,7 @@ export const Middle: Story = {
     args: {
         claim: claim(0),
         level: "middle",
+        now,
         range,
         timestamp: now,
     },
@@ -42,6 +43,7 @@ export const Bottom: Story = {
     args: {
         claim: claim(0),
         level: "bottom",
+        now,
         range,
         timestamp: now,
     },

@@ -40,6 +40,7 @@ export const CompleteTop: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 48,
+        now,
     },
 };
 
@@ -78,6 +79,7 @@ export const Bisections: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 48,
+        now,
     },
 };
 
@@ -95,6 +97,7 @@ export const Timeout: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 48,
+        now,
     },
 };
 
@@ -117,6 +120,7 @@ export const TimeoutSecond: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 48,
+        now,
     },
 };
 
@@ -134,6 +138,7 @@ export const Elimination: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 48,
+        now,
     },
 };
 
@@ -166,6 +171,7 @@ export const EliminationAfterBisections: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 48,
+        now,
     },
 };
 
@@ -205,6 +211,7 @@ export const SubTournament: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 4,
+        now,
     },
 };
 
@@ -243,6 +250,7 @@ export const WinnerBottom: Story = {
         height: 5,
         claim1: claim(0),
         claim2: claim(1),
+        now,
     },
 };
 
@@ -286,6 +294,7 @@ export const WinnerTop: Story = {
         height: 5,
         claim1: claim(0),
         claim2: claim(1),
+        now,
     },
 };
 
@@ -298,5 +307,6 @@ export const NoActions: Story = {
         claim1: claim(0),
         claim2: claim(1),
         height: 48,
+        now,
     },
 };

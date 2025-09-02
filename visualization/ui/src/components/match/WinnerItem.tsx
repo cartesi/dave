@@ -1,6 +1,6 @@
 import { Stack, Text, Timeline } from "@mantine/core";
 import humanizeDuration from "humanize-duration";
-import { useMemo, type FC } from "react";
+import { type FC } from "react";
 import { MatchCard } from "../tournament/MatchCard";
 import type { Claim } from "../types";
 
@@ -13,7 +13,7 @@ export interface WinnerItemProps {
     /**
      * Current timestamp
      */
-    now?: number;
+    now: number;
 
     /**
      * Timestamp
@@ -27,13 +27,7 @@ export interface WinnerItemProps {
 }
 
 export const WinnerItem: FC<WinnerItemProps> = (props) => {
-    const { loser, timestamp, winner } = props;
-
-    // allow now to be defined outside, default to Date.now
-    const now = useMemo(
-        () => props.now ?? Math.floor(Date.now() / 1000),
-        [props.now],
-    );
+    const { loser, now, timestamp, winner } = props;
 
     const formatTime = (timestamp: number) => {
         return `${humanizeDuration((now - timestamp) * 1000, { units: ["h", "m", "s"] })} ago`;

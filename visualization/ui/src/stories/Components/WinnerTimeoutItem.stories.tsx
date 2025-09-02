@@ -28,6 +28,7 @@ export const Default: Story = {
     args: {
         winner: claim(0),
         loser: claim(1),
-        timestamp: now,
+        now,
+        timestamp: now - 3452,
     },
 };

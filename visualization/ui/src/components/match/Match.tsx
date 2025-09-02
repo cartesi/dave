@@ -18,6 +18,11 @@ export interface MatchViewProps {
     height: number;
 
     /**
+     * The current timestamp.
+     */
+    now: number;
+
+    /**
      * The parent matches of the match.
      */
     parentMatches: Pick<Match, "claim1" | "claim2">[];
@@ -29,7 +34,7 @@ export interface MatchViewProps {
 }
 
 export const MatchView: FC<MatchViewProps> = (props) => {
-    const { height, match, parentMatches, range } = props;
+    const { height, match, now, parentMatches, range } = props;
     const { claim1, claim2 } = match;
 
     return (
@@ -56,6 +61,7 @@ export const MatchView: FC<MatchViewProps> = (props) => {
                 claim1={claim1}
                 claim2={claim2}
                 height={height}
+                now={now}
             />
         </Stack>
     );

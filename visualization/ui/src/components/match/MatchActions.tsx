@@ -10,6 +10,16 @@ import { WinnerTimeoutItem } from "./WinnerTimeoutItem";
 
 interface MatchActionsProps {
     /**
+     * List of actions to display
+     */
+    actions: MatchAction[];
+
+    /**
+     * Whether to auto-adjust the ranges of the bisection items as user scrolls
+     */
+    autoAdjustRanges?: boolean;
+
+    /**
      * First claim
      */
     claim1: Claim;
@@ -20,23 +30,25 @@ interface MatchActionsProps {
     claim2: Claim;
 
     /**
-     * List of actions to display
-     */
-    actions: MatchAction[];
-
-    /**
      * Maximum number of bisections to reach the target subdivision
      */
     height: number;
 
     /**
-     * Whether to auto-adjust the ranges of the bisection items as user scrolls
+     * Current timestamp
      */
-    autoAdjustRanges?: boolean;
+    now: number;
 }
 
 export const MatchActions: FC<MatchActionsProps> = (props) => {
-    const { autoAdjustRanges = true, actions, claim1, claim2, height } = props;
+    const {
+        actions,
+        autoAdjustRanges = true,
+        claim1,
+        claim2,
+        height,
+        now,
+    } = props;
 
     // filter the bisection items
     const bisections = actions.filter((a) => a.type === "advance");
@@ -127,6 +139,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                                     color={theme.colors.gray[6]}
                                     domain={domain}
                                     index={i + 1}
+                                    now={now}
                                     range={ranges[i + 1]}
                                     timestamp={timestamp}
                                     total={height}
@@ -137,9 +150,10 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                             return (
                                 <WinnerTimeoutItem
                                     key={i}
+                                    loser={i % 2 === 0 ? claim1 : claim2}
+                                    now={now}
                                     timestamp={timestamp}
                                     winner={i % 2 === 0 ? claim2 : claim1}
-                                    loser={i % 2 === 0 ? claim1 : claim2}
                                 />
                             );
 
@@ -147,9 +161,10 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                             return (
                                 <EliminationTimeoutItem
                                     key={i}
-                                    timestamp={timestamp}
                                     claim1={i % 2 === 0 ? claim1 : claim2}
                                     claim2={i % 2 === 0 ? claim2 : claim1}
+                                    now={now}
+                                    timestamp={timestamp}
                                 />
                             );
 
@@ -159,6 +174,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                                     claim={i % 2 === 0 ? claim1 : claim2}
                                     key={i}
                                     level="middle"
+                                    now={now}
                                     range={action.range}
                                     timestamp={timestamp}
                                 />
@@ -168,6 +184,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                             return (
                                 <WinnerItem
                                     key={i}
+                                    now={now}
                                     timestamp={timestamp}
                                     loser={
                                         action.winner === 1 ? claim2 : claim1

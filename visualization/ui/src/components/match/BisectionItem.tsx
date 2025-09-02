@@ -1,14 +1,7 @@
-import {
-    Group,
-    Stack,
-    Text,
-    Timeline,
-    type TimelineItemProps,
-} from "@mantine/core";
-import humanizeDuration from "humanize-duration";
-import { forwardRef, useMemo, type FC } from "react";
-import { HashAvatar } from "../HashAvatar";
+import { Text, type TimelineItemProps } from "@mantine/core";
+import { forwardRef, type FC } from "react";
 import type { Claim, CycleRange } from "../types";
+import { ClaimTimelineItem } from "./ClaimTimelineItem";
 import { RangeIndicator } from "./RangeIndicator";
 
 export interface BisectionItemProps extends TimelineItemProps {
@@ -30,7 +23,7 @@ export interface BisectionItemProps extends TimelineItemProps {
     /**
      * Current timestamp
      */
-    now?: number;
+    now: number;
 
     /**
      * Range of the bisection
@@ -52,39 +45,26 @@ export const BisectionItem: FC<BisectionItemProps> = forwardRef<
     HTMLDivElement,
     BisectionItemProps
 >((props, ref) => {
-    const { claim, domain, index, range, timestamp, total } = props;
-
-    // allow now to be defined outside, default to Date.now
-    const now = useMemo(
-        () => props.now ?? Math.floor(Date.now() / 1000),
-        [props.now],
-    );
-
-    const formatTime = (timestamp: number) => {
-        return `${humanizeDuration((now - timestamp) * 1000, { units: ["h", "m", "s"] })} ago`;
-    };
+    const { claim, domain, index, now, range, timestamp, total } = props;
 
     return (
-        <Timeline.Item
-            bullet={<HashAvatar hash={claim.hash} size={24} />}
+        <ClaimTimelineItem
+            claim={claim}
+            now={now}
             ref={ref}
+            rightSection={
+                <Text size="xs" c="dimmed">
+                    {index} / {total}
+                </Text>
+            }
+            timestamp={timestamp}
         >
-            <Stack gap={3}>
-                <RangeIndicator
-                    domain={domain}
-                    value={range}
-                    h={16}
-                    color={props.color}
-                />
-                <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                        {formatTime(timestamp)}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                        {index} / {total}
-                    </Text>
-                </Group>
-            </Stack>
-        </Timeline.Item>
+            <RangeIndicator
+                domain={domain}
+                value={range}
+                h={16}
+                color={props.color}
+            />
+        </ClaimTimelineItem>
     );
 });
