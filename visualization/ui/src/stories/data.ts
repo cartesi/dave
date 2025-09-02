@@ -1,6 +1,13 @@
-import type { Application, Epoch } from "../components/types";
+import { keccak256 } from "viem";
+import type {
+    Application,
+    Epoch,
+    MatchAction,
+    Tournament,
+} from "../components/types";
 
-type ApplicationEpochs = Application & { epochs: Epoch[] };
+type EpochWithTournament = Epoch & { tournament?: Tournament };
+type ApplicationEpochs = Application & { epochs: EpochWithTournament[] };
 
 export const applications: ApplicationEpochs[] = [
     {
@@ -14,21 +21,119 @@ export const applications: ApplicationEpochs[] = [
                 index: 0,
                 inDispute: false,
                 status: "FINALIZED",
+                tournament: {
+                    startCycle: 0,
+                    endCycle: 1_345_972_719,
+                    height: 48,
+                    level: "top",
+                    matches: [],
+                    danglingClaim: { hash: keccak256("0x1") },
+                    winner: { hash: keccak256("0x1") },
+                },
             },
             {
                 index: 1,
                 inDispute: false,
                 status: "FINALIZED",
+                tournament: {
+                    startCycle: 1_345_972_719,
+                    endCycle: 3_220_829_192,
+                    height: 48,
+                    level: "top",
+                    matches: [],
+                    danglingClaim: { hash: keccak256("0x2") },
+                    winner: { hash: keccak256("0x2") },
+                },
             },
             {
                 index: 2,
                 inDispute: false,
                 status: "FINALIZED",
+                tournament: {
+                    startCycle: 3_220_829_192,
+                    endCycle: 5_911_918_810,
+                    height: 48,
+                    level: "top",
+                    matches: [],
+                    danglingClaim: { hash: keccak256("0x3") },
+                    winner: { hash: keccak256("0x3") },
+                },
             },
             {
                 index: 3,
                 inDispute: true,
                 status: "CLOSED",
+                tournament: {
+                    startCycle: 5_911_918_810,
+                    endCycle: 9_918_817_817,
+                    height: 48,
+                    level: "top",
+                    matches: [
+                        {
+                            actions: [
+                                ...Array.from<number, MatchAction>(
+                                    { length: 48 },
+                                    (_, i) => ({
+                                        type: "advance",
+                                        timestamp: i,
+                                        direction: i % 2 === 0 ? 0 : 1,
+                                    }),
+                                ),
+                                {
+                                    type: "match_sealed_inner_tournament_created",
+                                    range: [7_102_817_919, 7_402_918_071],
+                                    timestamp: 0,
+                                },
+                            ],
+                            claim1: { hash: keccak256("0x4") },
+                            claim2: { hash: keccak256("0x5") },
+                            timestamp: 0,
+                            tournament: {
+                                startCycle: 7_102_817_919,
+                                endCycle: 7_402_918_071,
+                                height: 27,
+                                level: "middle",
+                                matches: [
+                                    {
+                                        actions: [
+                                            ...Array.from<number, MatchAction>(
+                                                { length: 27 },
+                                                (_, i) => ({
+                                                    type: "advance",
+                                                    timestamp: i,
+                                                    direction:
+                                                        i % 2 === 0 ? 0 : 1,
+                                                }),
+                                            ),
+                                            {
+                                                type: "match_sealed_inner_tournament_created",
+                                                range: [
+                                                    7_204_918_919,
+                                                    7_205_024_571,
+                                                ],
+                                                timestamp: 0,
+                                            },
+                                        ],
+                                        claim1: { hash: keccak256("0x6") },
+                                        claim2: { hash: keccak256("0x7") },
+                                        timestamp: 0,
+                                        tournament: {
+                                            startCycle: 7_204_918_919,
+                                            endCycle: 7_205_024_571,
+                                            height: 17,
+                                            level: "bottom",
+                                            matches: [],
+                                            danglingClaim: {
+                                                hash: keccak256("0x8"),
+                                            },
+                                            winner: { hash: keccak256("0x8") },
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                },
             },
             {
                 index: 4,
