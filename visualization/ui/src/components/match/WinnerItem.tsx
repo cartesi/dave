@@ -1,14 +1,16 @@
-import { Stack, Text, Timeline } from "@mantine/core";
-import humanizeDuration from "humanize-duration";
+import { Group, Paper, useMantineTheme } from "@mantine/core";
 import { type FC } from "react";
-import { MatchCard } from "../tournament/MatchCard";
+import { TbTrophyFilled } from "react-icons/tb";
+import type { Hex } from "viem";
+import { ClaimText } from "../tournament/ClaimText";
 import type { Claim } from "../types";
+import { ClaimTimelineItem } from "./ClaimTimelineItem";
 
 export interface WinnerItemProps {
     /**
-     * Loser claim
+     * Winner claim
      */
-    loser: Claim;
+    claim: Claim;
 
     /**
      * Current timestamp
@@ -16,39 +18,30 @@ export interface WinnerItemProps {
     now: number;
 
     /**
+     * Proof of the winner
+     */
+    proof: Hex;
+
+    /**
      * Timestamp
      */
     timestamp: number;
-
-    /**
-     * Winner claim
-     */
-    winner: Claim;
 }
 
 export const WinnerItem: FC<WinnerItemProps> = (props) => {
-    const { loser, now, timestamp, winner } = props;
+    const { claim, now, proof, timestamp } = props;
 
-    const formatTime = (timestamp: number) => {
-        return `${humanizeDuration((now - timestamp) * 1000, { units: ["h", "m", "s"] })} ago`;
-    };
+    const theme = useMantineTheme();
+    const gold = theme.colors.yellow[5];
 
     return (
-        <Timeline.Item>
-            <Stack gap={3}>
-                <MatchCard
-                    match={{
-                        actions: [],
-                        claim1: winner,
-                        claim2: loser,
-                        timestamp,
-                        winner: 1,
-                    }}
-                />
-                <Text size="xs" c="dimmed">
-                    {formatTime(timestamp)}
-                </Text>
-            </Stack>
-        </Timeline.Item>
+        <ClaimTimelineItem claim={claim} now={now} timestamp={timestamp}>
+            <Paper withBorder p={16} radius="lg" bg={theme.colors.yellow[0]}>
+                <Group gap="xs">
+                    <TbTrophyFilled size={24} color={gold} />
+                    <ClaimText claim={claim} withIcon={false} />
+                </Group>
+            </Paper>
+        </ClaimTimelineItem>
     );
 };

@@ -4,6 +4,7 @@ import { ScrollTimeline } from "../ScrollTimeline";
 import type { Claim, CycleRange, MatchAction } from "../types";
 import { BisectionItem } from "./BisectionItem";
 import { EliminationTimeoutItem } from "./EliminationTimeoutItem";
+import { LoserItem } from "./LoserItem";
 import { SubTournamentItem } from "./SubTournamentItem";
 import { WinnerItem } from "./WinnerItem";
 import { WinnerTimeoutItem } from "./WinnerTimeoutItem";
@@ -180,20 +181,38 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                                 />
                             );
 
-                        case "leaf_match_sealed":
-                            return (
+                        case "leaf_match_sealed": {
+                            const winner = (
                                 <WinnerItem
                                     key={i}
-                                    now={now}
-                                    timestamp={timestamp}
-                                    loser={
-                                        action.winner === 1 ? claim2 : claim1
-                                    }
-                                    winner={
+                                    claim={
                                         action.winner === 1 ? claim1 : claim2
                                     }
+                                    now={now}
+                                    timestamp={timestamp}
+                                    proof={action.proof}
                                 />
                             );
+                            const loser = (
+                                <LoserItem
+                                    claim={
+                                        action.winner === 1 ? claim2 : claim1
+                                    }
+                                    now={now}
+                                />
+                            );
+                            return i % 2 === 0 ? (
+                                <>
+                                    {winner}
+                                    {loser}
+                                </>
+                            ) : (
+                                <>
+                                    {loser}
+                                    {winner}
+                                </>
+                            );
+                        }
                     }
                 })}
             </ScrollTimeline>

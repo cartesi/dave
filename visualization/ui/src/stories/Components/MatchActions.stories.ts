@@ -33,6 +33,7 @@ export const CompleteTop: Story = {
             },
             {
                 type: "leaf_match_sealed",
+                proof: "0x",
                 timestamp: now - 1487,
                 winner: 1,
             },
@@ -243,6 +244,7 @@ export const WinnerBottom: Story = {
             },
             {
                 type: "leaf_match_sealed",
+                proof: "0x",
                 timestamp: now - 224,
                 winner: 1,
             },
@@ -287,6 +289,7 @@ export const WinnerTop: Story = {
             },
             {
                 type: "leaf_match_sealed",
+                proof: "0x",
                 timestamp: now - 224,
                 winner: 1,
             },

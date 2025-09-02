@@ -65,6 +65,7 @@ type MatchSubTournament = {
 type MatchLeafSealed = {
     type: "leaf_match_sealed";
     winner: 1 | 2;
+    proof: Hex;
 };
 
 type MatchEliminationTimeout = {

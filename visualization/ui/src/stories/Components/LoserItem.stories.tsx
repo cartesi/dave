@@ -1,11 +1,11 @@
 import { Timeline } from "@mantine/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { WinnerItem } from "../../components/match/WinnerItem";
+import { LoserItem } from "../../components/match/LoserItem";
 import { claim } from "../util";
 
 const meta = {
-    title: "Components/Match/WinnerItem",
-    component: WinnerItem,
+    title: "Components/Match/LoserItem",
+    component: LoserItem,
     tags: ["autodocs"],
     decorators: [
         (Story) => (
@@ -14,7 +14,7 @@ const meta = {
             </Timeline>
         ),
     ],
-} satisfies Meta<typeof WinnerItem>;
+} satisfies Meta<typeof LoserItem>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -28,7 +28,5 @@ export const Default: Story = {
     args: {
         claim: claim(0),
         now,
-        proof: "0x",
-        timestamp: now - 3452,
     },
 };
