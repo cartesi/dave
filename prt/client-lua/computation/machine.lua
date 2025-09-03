@@ -59,14 +59,18 @@ function Machine:new_from_path(path)
     -- Validators must verify this first
     assert(machine:read_reg("uarch_cycle") == 0)
 
+    -- Derive snapshot_dir from path's parent directory
+    local snapshot_dir = path:match("(.*)/[^/]*$") or "/dispute/snapshots"
+
     local b = {
-        -- path = path,
         machine = machine,
         input_count = 0,
         cycle = 0,
         ucycle = 0,
         start_cycle = start_cycle,
-        initial_hash = Hash:from_digest(machine:get_root_hash())
+        initial_hash = Hash:from_digest(machine:get_root_hash()),
+        snapshot_path = path,
+        snapshot_dir = snapshot_dir
     }
 
     setmetatable(b, self)
@@ -178,10 +182,11 @@ local function advance_rollup(self, meta_cycle, inputs)
         end
 
         local input_bin = conversion.bin_from_hex_n(input)
+        self:write_checkpoint()
         self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
 
         repeat
-            self.machine:run(arithmetic.max_uint64)
+            self:run(arithmetic.max_uint64)
         until self:is_halted() or self:is_yielded()
         assert(not self:is_halted())
 
@@ -196,6 +201,7 @@ local function advance_rollup(self, meta_cycle, inputs)
     local input = inputs[self.input_count + 1]
     if input then
         local input_bin = conversion.bin_from_hex_n(input)
+        self:write_checkpoint()
         self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
     end
 
@@ -245,6 +251,7 @@ function Machine.root_rollup_commitment(pristine_path, log2_stride, inputs)
     while input_i < max_input_count do
         if inputs[input_i + 1] then
             local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
+            machine:write_checkpoint()
             machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
             local tree = process_input(machine, log2_stride)
             builder:add(tree)
@@ -300,9 +307,125 @@ function Machine:run(cycle)
     until self:is_halted() or self:is_yielded() or
         self:physical_cycle() == target_physical_cycle
 
+    if self:is_yielded() then
+        -- if it is not reverted, we store the new snapshot and remove the old one
+        self:revert_if_needed()
+    end
+
     self.cycle = cycle
 
     return self:state()
+end
+
+function Machine:revert_if_needed()
+    -- revert if needed only when machine yields
+    assert(self:is_yielded())
+
+    -- we check if the request is accepted
+    -- if it is not, we revert the machine state to previous snapshot
+    local _, reason, _ = self.machine:receive_cmio_request()
+    if reason == cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
+        -- Request accepted, store new snapshot in snapshot_dir
+
+        local new_snapshot_path = self.snapshot_dir .. "/" .. self:root_hash():hex_string()
+        if not helper.exists(new_snapshot_path) then
+            self.machine:store(new_snapshot_path)
+        end
+        if self.snapshot_path and helper.exists(self.snapshot_path) then
+            helper.remove_file(self.snapshot_path)
+        end
+        self.snapshot_path = new_snapshot_path
+    else
+        -- Revert to previous snapshot
+        local machine = cartesi.machine(self.snapshot_path, machine_settings)
+        self.machine = machine
+    end
+end
+
+function Machine:prove_revert_if_needed()
+    local iflags_y_address = self.machine:get_reg_address("iflags_Y")
+    local iflags_y_proof = self:prove_read_leaf(iflags_y_address, 3)
+
+    local proof = iflags_y_proof
+
+    local iflags_y = self:is_yielded()
+    if iflags_y then
+        local to_host_address = self.machine:get_reg_address("htif_tohost")
+        local to_host_proof = self:prove_read_leaf(to_host_address, 3)
+        proof = proof .. to_host_proof
+
+        local _, reason, _ = self.machine:receive_cmio_request()
+        if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
+            local checkpoint_proof = self:prove_read_leaf(consts.CHECKPOINT_ADDRESS, 5)
+            proof = proof .. checkpoint_proof
+        end
+    end
+
+    return proof
+end
+
+function Machine:prove_read_leaf(address, log2_size)
+    -- always read aligned 32 bytes (one leaf)
+    local aligned_address = address & ~0x1F
+    local read = self.machine:read_memory(aligned_address, 32)
+    local read_hash = Hash:from_digest(read)
+    local merkle_proof = self.machine:proof(aligned_address, 5)
+
+    local proof = {}
+
+    if log2_size == 3 then
+        -- Append the read data
+        for _, byte in ipairs(read) do
+            table.insert(proof, byte)
+        end
+    elseif log2_size == 5 then
+        -- Append both read data and read hash
+        for _, byte in ipairs(read) do
+            table.insert(proof, byte)
+        end
+        for _, byte in ipairs(read_hash:digest()) do
+            table.insert(proof, byte)
+        end
+    else
+        error("log2_size is not 3 or 5")
+    end
+
+    -- Append sibling hashes from the merkle proof
+    for _, hash in ipairs(merkle_proof.sibling_hashes) do
+        if hash then
+            for _, byte in ipairs(hash) do
+                table.insert(proof, byte)
+            end
+        end
+    end
+
+    local data = table.concat(proof)
+    return data
+end
+
+function Machine:prove_write_leaf(address)
+    -- always write aligned 32 bytes (one leaf)
+    local aligned_address = address & ~0x1F
+    -- Get proof of write address
+    local merkle_proof = self.machine:proof(aligned_address, 5)
+
+    local proof = {}
+    for _, hash in ipairs(merkle_proof.sibling_hashes) do
+        if hash then
+            for _, byte in ipairs(hash) do
+                table.insert(proof, byte)
+            end
+        end
+    end
+
+    local data = table.concat(proof)
+    return data
+end
+
+function Machine:write_checkpoint()
+    -- Write the current machine state hash to the checkpoint address
+    local current_hash = self.machine:get_root_hash()
+    self.machine:write_memory(consts.CHECKPOINT_ADDRESS, current_hash)
 end
 
 function Machine:increment_uarch()
@@ -406,14 +529,16 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
         local da_proof
         if input then
             local input_bin = conversion.bin_from_hex_n(input)
+            machine:write_checkpoint()
+            local write_checkpoint_proof = machine:prove_write_leaf(consts.CHECKPOINT_ADDRESS)
             local cmio_log = machine.machine:log_send_cmio_response(
                 cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
                 input_bin
             )
 
             table.insert(logs, cmio_log)
-
             da_proof = encode_da(input_bin)
+            da_proof = da_proof .. write_checkpoint_proof
         else
             da_proof = encode_da("")
         end
@@ -433,7 +558,11 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
             local ureset_log = machine.machine:log_reset_uarch()
             table.insert(logs, ureset_log)
 
-            return encode_access_logs(logs), machine:state().root_hash
+            local step_reset_proof = encode_access_logs(logs)
+            local revert_proof = machine:prove_revert_if_needed()
+
+            local combined_proof = step_reset_proof .. revert_proof
+            return combined_proof, machine:state().root_hash
         else
             local uarch_step_log = machine.machine:log_step_uarch()
             table.insert(logs, uarch_step_log)
