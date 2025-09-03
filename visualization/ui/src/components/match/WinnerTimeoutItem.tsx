@@ -1,4 +1,10 @@
-import { Group, Paper, Text, useMantineTheme } from "@mantine/core";
+import {
+    Group,
+    Paper,
+    Text,
+    useComputedColorScheme,
+    useMantineTheme,
+} from "@mantine/core";
 import { type FC } from "react";
 import { TbClockCancel, TbTrophyFilled } from "react-icons/tb";
 import { ClaimText } from "../tournament/ClaimText";
@@ -32,23 +38,20 @@ export const WinnerTimeoutItem: FC<WinnerTimeoutItemProps> = (props) => {
 
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
-    const dimmed = theme.colors.gray[5];
+
+    const scheme = useComputedColorScheme();
+    const bg = scheme === "light" ? theme.colors.yellow[0] : undefined;
 
     return (
         <>
             <ClaimTimelineItem claim={loser} now={now}>
-                <Group>
-                    <TbClockCancel size={24} color={dimmed} />
-                    <Text c="dimmed">no action taken</Text>
+                <Group c="dimmed">
+                    <TbClockCancel size={24} />
+                    <Text>no action taken</Text>
                 </Group>
             </ClaimTimelineItem>
             <ClaimTimelineItem claim={winner} now={now} timestamp={timestamp}>
-                <Paper
-                    withBorder
-                    p={16}
-                    radius="lg"
-                    bg={theme.colors.yellow[0]}
-                >
+                <Paper withBorder p={16} radius="lg" bg={bg}>
                     <Group gap="xs">
                         <TbTrophyFilled size={24} color={gold} />
                         <ClaimText claim={winner} withIcon={false} />

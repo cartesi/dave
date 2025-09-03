@@ -5,6 +5,7 @@ import {
     Paper,
     Stack,
     Textarea,
+    useComputedColorScheme,
     useMantineTheme,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -45,9 +46,12 @@ export const WinnerItem: FC<WinnerItemProps> = (props) => {
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
 
+    const scheme = useComputedColorScheme();
+    const bg = scheme === "light" ? theme.colors.yellow[0] : undefined;
+
     return (
         <ClaimTimelineItem claim={claim} now={now} timestamp={timestamp}>
-            <Paper withBorder p={16} radius="lg" bg={theme.colors.yellow[0]}>
+            <Paper withBorder p={16} radius="lg" bg={bg}>
                 <Stack gap="xs">
                     <Group gap="xs">
                         <TbTrophyFilled size={24} color={gold} />

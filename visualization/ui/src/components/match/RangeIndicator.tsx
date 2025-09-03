@@ -3,7 +3,6 @@ import {
     Progress,
     Stack,
     Text,
-    useMantineTheme,
     type ProgressRootProps,
 } from "@mantine/core";
 import { useEffect, useState, type FC } from "react";
@@ -27,12 +26,7 @@ interface RangeIndicatorProps extends Omit<ProgressRootProps, "value"> {
 }
 
 export const RangeIndicator: FC<RangeIndicatorProps> = (props) => {
-    // color
-    const theme = useMantineTheme();
-    const color = props.color ?? theme.colors[theme.primaryColor][5];
-    const bg = theme.colors.gray[2];
-
-    const { domain, value, withLabels, ...progressProps } = props;
+    const { color, domain, value, withLabels, ...progressProps } = props;
     const [start, end] = value;
     const [domainStart, domainEnd] = domain;
 
@@ -54,7 +48,10 @@ export const RangeIndicator: FC<RangeIndicatorProps> = (props) => {
                 </Group>
             )}
             <Progress.Root {...progressProps}>
-                <Progress.Section value={left * 100} color={bg} />
+                <Progress.Section
+                    value={left * 100}
+                    styles={{ section: { opacity: 0 } }}
+                />
                 <Progress.Section value={width * 100} color={color} />
             </Progress.Root>
         </Stack>

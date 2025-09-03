@@ -1,4 +1,4 @@
-import { Group, useMantineTheme } from "@mantine/core";
+import { Group } from "@mantine/core";
 import { type FC } from "react";
 import { TbCircleXFilled } from "react-icons/tb";
 import { ClaimText } from "../tournament/ClaimText";
@@ -20,14 +20,15 @@ export interface LoserItemProps {
 export const LoserItem: FC<LoserItemProps> = (props) => {
     const { claim, now } = props;
 
-    const theme = useMantineTheme();
-    const dimmed = theme.colors.gray[5];
-
     return (
         <ClaimTimelineItem claim={claim} now={now}>
-            <Group gap="xs">
-                <TbCircleXFilled size={24} color={dimmed} />
-                <ClaimText claim={claim} withIcon={false} />
+            <Group gap="xs" c="dimmed">
+                <TbCircleXFilled size={24} />
+                <ClaimText
+                    claim={claim}
+                    withIcon={false}
+                    style={{ textDecoration: "line-through" }}
+                />
             </Group>
         </ClaimTimelineItem>
     );

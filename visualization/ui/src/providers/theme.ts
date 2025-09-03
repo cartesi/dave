@@ -6,7 +6,22 @@ import {
     mergeMantineTheme,
     Modal,
     virtualColor,
+    type DefaultMantineColor,
+    type MantineColorsTuple,
 } from "@mantine/core";
+
+type ExtendedCustomColors =
+    | "open"
+    | "disputed"
+    | "closed"
+    | "finalized"
+    | DefaultMantineColor;
+
+declare module "@mantine/core" {
+    export interface MantineThemeColorsOverride {
+        colors: Record<ExtendedCustomColors, MantineColorsTuple>;
+    }
+}
 
 const theme = createTheme({
     colors: {
@@ -19,8 +34,8 @@ const theme = createTheme({
         closed: virtualColor({ name: "closed", light: "cyan", dark: "gray" }),
         finalized: virtualColor({
             name: "finalized",
-            light: "gray",
-            dark: "gray",
+            light: "dark",
+            dark: "dark",
         }),
     },
     primaryColor: "cyan",
@@ -52,7 +67,6 @@ const theme = createTheme({
                 },
             },
         }),
-
         Card: Card.extend({
             defaultProps: {
                 shadow: "sm",

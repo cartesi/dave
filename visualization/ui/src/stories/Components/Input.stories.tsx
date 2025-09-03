@@ -5,9 +5,6 @@ import * as EpochPageStories from "../Pages/EpochPage.stories";
 const meta = {
     title: "Components/Input/Input",
     component: InputCard,
-    parameters: {
-        layout: "centered",
-    },
     tags: ["autodocs"],
 } satisfies Meta<typeof InputCard>;
 
@@ -17,20 +14,20 @@ type Story = StoryObj<typeof meta>;
 /**
  * Card for an accepted input
  */
-export const AcceptedStatus: Story = {
+export const Default: Story = {
     args: { input: EpochPageStories.Open.args.inputs[0] },
 };
 
 /**
  * Card for a non-processed input
  */
-export const NoneStatus: Story = {
+export const Unprocessed: Story = {
     args: { input: EpochPageStories.Open.args.inputs[1] },
 };
 
 /**
  * Card for a rejected input
  */
-export const RejectedStatus: Story = {
+export const Rejected: Story = {
     args: { input: EpochPageStories.Open.args.inputs[2] },
 };

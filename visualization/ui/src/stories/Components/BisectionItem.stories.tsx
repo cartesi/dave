@@ -30,7 +30,7 @@ const [start, end] = range;
 export const Middle: Story = {
     args: {
         claim: claim(0),
-        color: "gray",
+        color: "gray.6",
         domain: range,
         index: 5,
         now,
@@ -46,7 +46,7 @@ export const Middle: Story = {
 export const Quarter: Story = {
     args: {
         claim: claim(1),
-        color: "gray",
+        color: "gray.6",
         domain: [0, 100],
         index: 15,
         now,
@@ -62,7 +62,7 @@ export const Quarter: Story = {
 export const Expand: Story = {
     args: {
         claim: claim(1),
-        color: "gray",
+        color: "gray.6",
         domain: [0, 100],
         expand: true,
         index: 15,
