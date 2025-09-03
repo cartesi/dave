@@ -64,7 +64,6 @@ const roundify = (
     const sets = lazyArray(() => new Set<Hash>());
     const rounds: Round[] = lazyArray(() => ({
         matches: [],
-        danglingClaim,
         now,
     }));
     for (const match of matches) {

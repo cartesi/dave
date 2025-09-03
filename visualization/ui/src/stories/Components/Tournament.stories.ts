@@ -99,9 +99,8 @@ const tournament: Tournament = {
             actions: [],
         },
     ],
+    danglingClaim: claim(0),
 };
-
-tournament.danglingClaim = claim(0);
 
 export const Ongoing: Story = {
     args: {
