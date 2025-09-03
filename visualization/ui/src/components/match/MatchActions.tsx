@@ -1,7 +1,19 @@
-import { Progress, Stack, Timeline, useMantineTheme } from "@mantine/core";
-import { useElementSize } from "@mantine/hooks";
+import {
+    Button,
+    Group,
+    Progress,
+    Stack,
+    Timeline,
+    useMantineTheme,
+} from "@mantine/core";
+import {
+    useElementSize,
+    useInViewport,
+    useMergedRef,
+    useScrollIntoView,
+} from "@mantine/hooks";
 import { useEffect, useMemo, useState, type FC } from "react";
-import { ScrollTimeline } from "../ScrollTimeline";
+import { TbArrowUp } from "react-icons/tb";
 import type { Claim, CycleRange, MatchAction } from "../types";
 import { BisectionItem } from "./BisectionItem";
 import { EliminationTimeoutItem } from "./EliminationTimeoutItem";
@@ -49,7 +61,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
     const bisections = actions.filter((a) => a.type === "advance");
 
     // track the width of the timeline, so we can adjust the number of bars before size reset
-    const { width: bisectionWidth, ref } = useElementSize();
+    const { width: bisectionWidth, ref: bisectionWidthRef } = useElementSize();
 
     // calculate the number of bars until the size resets
     const [bars, setBars] = useState(bisections.length);
@@ -67,7 +79,6 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
 
     // progress bar, based on last visible item
     const progress = (bisections.length / height) * 100;
-    const [visibleProgress, setVisibleProgress] = useState(progress);
 
     // create ranges for each bisection
     const ranges = useMemo(
@@ -86,46 +97,37 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
         [bisections],
     );
 
+    // scroll hook points
+    const { ref: topRefView, inViewport: topInViewport } = useInViewport();
+    const { scrollIntoView: scrollToBottom, targetRef: bottomRef } =
+        useScrollIntoView<HTMLDivElement>({
+            offset: 60,
+        });
+    const { scrollIntoView: scrollToTop, targetRef: topRefScroll } =
+        useScrollIntoView<HTMLDivElement>({
+            offset: 60,
+        });
+    const ref = useMergedRef(bisectionWidthRef, topRefView, topRefScroll);
+
+    // scroll to bottom on mount
+    useEffect(() => {
+        scrollToBottom();
+    }, []);
+
     // colors for the progress bar
     const theme = useMantineTheme();
     const color = theme.primaryColor;
-    const colorLight = theme.colors[theme.primaryColor][4];
-
-    const onVisibleRangeChange = (
-        _firstVisible: number,
-        lastVisible: number,
-    ) => {
-        // adjust secondary progress color according to the last visible item in the scroll area
-        if (lastVisible >= 0) {
-            setVisibleProgress(((lastVisible + 1) / height) * 100);
-        }
-    };
 
     return (
         <Stack>
-            <Timeline bulletSize={24} lineWidth={2}>
-                <Timeline.Item
-                    ref={ref}
-                    styles={{ itemBullet: { display: "none" } }}
-                >
+            <Timeline ref={ref} bulletSize={24} lineWidth={2}>
+                <Timeline.Item styles={{ itemBullet: { display: "none" } }}>
                     <Progress.Root>
-                        <Progress.Section
-                            value={visibleProgress}
-                            color={color}
-                        />
-                        <Progress.Section
-                            value={progress - visibleProgress}
-                            color={colorLight}
-                        />
+                        <Progress.Section value={progress} color={color} />
                     </Progress.Root>
                 </Timeline.Item>
             </Timeline>
-            <ScrollTimeline
-                bulletSize={24}
-                lineWidth={2}
-                h={400}
-                onVisibleRangeChange={onVisibleRangeChange}
-            >
+            <Timeline bulletSize={24} lineWidth={2}>
                 {actions.map((action, i) => {
                     const { timestamp } = action;
                     switch (action.type) {
@@ -216,7 +218,18 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                         }
                     }
                 })}
-            </ScrollTimeline>
+            </Timeline>
+            <Group justify="flex-end" ref={bottomRef}>
+                {!topInViewport && (
+                    <Button
+                        variant="transparent"
+                        leftSection={<TbArrowUp />}
+                        onClick={() => scrollToTop()}
+                    >
+                        top
+                    </Button>
+                )}
+            </Group>
         </Stack>
     );
 };
