@@ -30,6 +30,7 @@ const [start, end] = range;
 export const Middle: Story = {
     args: {
         claim: claim(0),
+        color: "gray",
         domain: range,
         index: 5,
         now,
@@ -45,10 +46,28 @@ export const Middle: Story = {
 export const Quarter: Story = {
     args: {
         claim: claim(1),
+        color: "gray",
         domain: [0, 100],
         index: 15,
         now,
         range: [25, 50],
+        timestamp: now - 5398,
+        total: 20,
+    },
+};
+
+/**
+ * Bisection in the middle of the range.
+ */
+export const Expand: Story = {
+    args: {
+        claim: claim(1),
+        color: "gray",
+        domain: [0, 100],
+        expand: true,
+        index: 15,
+        now,
+        range: [(100 / 16) * 3, (100 / 16) * 4],
         timestamp: now - 5398,
         total: 20,
     },
