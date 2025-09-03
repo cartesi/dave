@@ -27,10 +27,10 @@ local function run_uarch_span(machine)
     local machine_state = machine:increment_uarch()
     local builder = MerkleBuilder:new()
 
-    local i = 0
+    local i = 1
     repeat
-        builder:add(machine_state.root_hash)
         machine_state = machine:increment_uarch()
+        builder:add(machine_state.root_hash)
         i = i + 1
     until machine_state.uhalted
 
@@ -43,6 +43,12 @@ local function run_uarch_span(machine)
     -- Now we do the last state transition (ureset), and add the last state,
     -- closing in a power-of-two number of leaves (`2^a` leaves).
     machine_state = machine:ureset()
+
+    -- Check if machine is yielded and handle revert if needed
+    if machine:is_yielded() then
+        machine:revert_if_needed()
+    end
+    machine_state = machine:state()
     builder:add(machine_state.root_hash)
 
     return builder:build(), machine_state
@@ -118,10 +124,10 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
             local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
             if inputs[input_i + 1] then
                 local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
+                machine:write_checkpoint()
                 machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
             end
         end
-
     else
         -- treat it as compute
         local big_cycle = base_cycle >> consts.log2_uarch_span_to_barch

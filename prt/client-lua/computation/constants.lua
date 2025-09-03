@@ -11,6 +11,9 @@ local log2_uarch_span_to_input = log2_uarch_span_to_barch + log2_barch_span_to_i
 -- log2 value of the maximal number of meta instructions
 local log2_uarch_span_to_epoch = log2_input_span_to_epoch + log2_barch_span_to_input + log2_uarch_span_to_barch
 
+-- Checkpoint address for machine state snapshots
+local CHECKPOINT_ADDRESS = 0x7ffff000
+
 local constants = {
     log2_uarch_span_to_barch = log2_uarch_span_to_barch,
     uarch_span_to_barch = arithmetic.max_uint(log2_uarch_span_to_barch),
@@ -22,7 +25,10 @@ local constants = {
     input_span_to_epoch = arithmetic.max_uint(log2_input_span_to_epoch),
 
     log2_uarch_span_to_input = log2_uarch_span_to_input,
-    log2_uarch_span_to_epoch = log2_uarch_span_to_epoch
+    log2_uarch_span_to_epoch = log2_uarch_span_to_epoch,
+
+    -- Revert functionality constants
+    CHECKPOINT_ADDRESS = CHECKPOINT_ADDRESS
 }
 
 return constants
