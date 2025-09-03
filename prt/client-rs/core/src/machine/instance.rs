@@ -201,14 +201,13 @@ impl MachineInstance {
 
     pub fn feed_next_input(&mut self, db: &DisputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
-        let checkpoint_hash = self.machine.root_hash()?;
-        self.machine
-            .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
         let input = db.input(self.input_count)?;
         if let Some(input_bin) = input {
+            let checkpoint_hash = self.machine.root_hash()?;
+            self.machine
+                .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
             self.machine
                 .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
-        } else {
         }
         Ok(())
     }
