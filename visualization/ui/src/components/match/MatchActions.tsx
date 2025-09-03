@@ -1,4 +1,5 @@
 import { Progress, Stack, Timeline, useMantineTheme } from "@mantine/core";
+import { useElementSize } from "@mantine/hooks";
 import { useEffect, useMemo, useState, type FC } from "react";
 import { ScrollTimeline } from "../ScrollTimeline";
 import type { Claim, CycleRange, MatchAction } from "../types";
@@ -42,27 +43,31 @@ interface MatchActionsProps {
 }
 
 export const MatchActions: FC<MatchActionsProps> = (props) => {
-    const {
-        actions,
-        autoAdjustRanges = true,
-        claim1,
-        claim2,
-        height,
-        now,
-    } = props;
+    const { actions, claim1, claim2, height, now } = props;
 
     // filter the bisection items
     const bisections = actions.filter((a) => a.type === "advance");
 
+    // track the width of the timeline, so we can adjust the number of bars before size reset
+    const { width: bisectionWidth, ref } = useElementSize();
+
+    // calculate the number of bars until the size resets
+    const [bars, setBars] = useState(bisections.length);
+    useEffect(() => {
+        const minWidth = 48;
+        if (bisectionWidth === 0) {
+            setBars(bisections.length);
+        } else {
+            setBars(Math.floor(Math.log2(bisectionWidth / minWidth)));
+        }
+    }, [bisectionWidth]);
+
     // dynamic domain, based on first visible item
     const maxRange: CycleRange = [0, 2 ** height];
-    const [domain, setDomain] = useState<CycleRange>(maxRange);
 
     // progress bar, based on last visible item
     const progress = (bisections.length / height) * 100;
     const [visibleProgress, setVisibleProgress] = useState(progress);
-
-    const [firstVisible, setFirstVisible] = useState(-1);
 
     // create ranges for each bisection
     const ranges = useMemo(
@@ -87,30 +92,22 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
     const colorLight = theme.colors[theme.primaryColor][4];
 
     const onVisibleRangeChange = (
-        firstVisible: number,
+        _firstVisible: number,
         lastVisible: number,
     ) => {
-        setFirstVisible(firstVisible);
-
         // adjust secondary progress color according to the last visible item in the scroll area
         if (lastVisible >= 0) {
             setVisibleProgress(((lastVisible + 1) / height) * 100);
         }
     };
 
-    useEffect(() => {
-        if (!autoAdjustRanges) {
-            setDomain(maxRange);
-        } else if (firstVisible >= 0) {
-            // adjust domain based on the first visible item in the scroll area
-            setDomain(ranges[firstVisible]);
-        }
-    }, [autoAdjustRanges, firstVisible]);
-
     return (
         <Stack>
             <Timeline bulletSize={24} lineWidth={2}>
-                <Timeline.Item styles={{ itemBullet: { display: "none" } }}>
+                <Timeline.Item
+                    ref={ref}
+                    styles={{ itemBullet: { display: "none" } }}
+                >
                     <Progress.Root>
                         <Progress.Section
                             value={visibleProgress}
@@ -138,7 +135,11 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                                     key={i}
                                     claim={i % 2 === 0 ? claim1 : claim2}
                                     color={theme.colors.gray[6]}
-                                    domain={domain}
+                                    domain={ranges[Math.floor(i / bars) * bars]}
+                                    expand={
+                                        i % bars === bars - 1 &&
+                                        i < bisections.length - 1
+                                    }
                                     index={i + 1}
                                     now={now}
                                     range={ranges[i + 1]}
