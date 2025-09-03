@@ -23,15 +23,13 @@ export const TournamentBreadcrumbs: FC<TournamentBreadcrumbsProps> = (
             <MatchBadge
                 claim1={match.claim1}
                 claim2={match.claim2}
-                variant={
-                    index === parentMatches.length - 1 ? "filled" : "default"
-                }
+                variant="default"
             />,
         ])
         .flat();
 
     items.push(
-        <Badge key={levels[parentMatches.length]} variant="default">
+        <Badge key={levels[parentMatches.length]} variant="filled">
             {levels[parentMatches.length]}
         </Badge>,
     );
