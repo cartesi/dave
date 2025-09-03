@@ -1,8 +1,8 @@
 import { Divider, Group, Stack, Text } from "@mantine/core";
 import { type FC } from "react";
+import { ClaimText } from "../ClaimText";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
-import { MatchBreadcrumbs } from "../MatchBreadcrumbs";
-import { ClaimText } from "../tournament/ClaimText";
+import { MatchBreadcrumbs } from "../navigation/MatchBreadcrumbs";
 import type { CycleRange, Match } from "../types";
 import { MatchActions } from "./MatchActions";
 

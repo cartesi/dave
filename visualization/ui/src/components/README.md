@@ -1,3 +1,0 @@
-### Component
-
-General purpose components.

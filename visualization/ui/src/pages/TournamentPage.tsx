@@ -1,8 +1,8 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
-import { Hierarchy } from "../components/Hierarchy";
 import PageTitle from "../components/layout/PageTitle";
+import { Hierarchy } from "../components/navigation/Hierarchy";
 import { TournamentView } from "../components/tournament/TournamentView";
 import type {
     Application,

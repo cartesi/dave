@@ -9,8 +9,8 @@ import {
 } from "@mantine/core";
 import type { FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
+import { ClaimText } from "../ClaimText";
 import type { Match } from "../types";
-import { ClaimText } from "./ClaimText";
 
 export interface MatchCardProps extends CardProps {
     /**

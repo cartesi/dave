@@ -1,9 +1,9 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
 import { TbSwords } from "react-icons/tb";
-import { Hierarchy } from "../components/Hierarchy";
 import PageTitle from "../components/layout/PageTitle";
 import { MatchView } from "../components/match/MatchView";
+import { Hierarchy } from "../components/navigation/Hierarchy";
 import type {
     Application,
     CycleRange,

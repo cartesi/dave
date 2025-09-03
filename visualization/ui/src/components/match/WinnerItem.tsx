@@ -12,7 +12,7 @@ import { useDisclosure } from "@mantine/hooks";
 import { type FC } from "react";
 import { TbFile, TbFileText, TbTrophyFilled } from "react-icons/tb";
 import type { Hex } from "viem";
-import { ClaimText } from "../tournament/ClaimText";
+import { ClaimText } from "../ClaimText";
 import type { Claim } from "../types";
 import { ClaimTimelineItem } from "./ClaimTimelineItem";
 

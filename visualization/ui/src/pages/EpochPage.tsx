@@ -2,9 +2,9 @@ import { Badge, Group, Stack, Text, Title } from "@mantine/core";
 import type { FC } from "react";
 import { TbClockFilled, TbInbox } from "react-icons/tb";
 import { useEpochStatusColor } from "../components/epoch/useEpochStatusColor";
-import { Hierarchy } from "../components/Hierarchy";
 import { InputList } from "../components/input/InputList";
 import PageTitle from "../components/layout/PageTitle";
+import { Hierarchy } from "../components/navigation/Hierarchy";
 import type { Application, Epoch, Input } from "../components/types";
 import theme from "../providers/theme";
 

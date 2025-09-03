@@ -7,7 +7,7 @@ import {
 } from "@mantine/core";
 import { type FC } from "react";
 import { TbClockCancel, TbTrophyFilled } from "react-icons/tb";
-import { ClaimText } from "../tournament/ClaimText";
+import { ClaimText } from "../ClaimText";
 import type { Claim } from "../types";
 import { ClaimTimelineItem } from "./ClaimTimelineItem";
 

@@ -3,7 +3,7 @@ import { useState, type FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
-import { TournamentBreadcrumbs } from "../TournamentBreadcrumbs";
+import { TournamentBreadcrumbs } from "../navigation/TournamentBreadcrumbs";
 import type { Match, Tournament } from "../types";
 import { TournamentTable } from "./TournamentTable";
 

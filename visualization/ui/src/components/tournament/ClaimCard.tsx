@@ -1,8 +1,8 @@
 import { Card, Group, type CardProps } from "@mantine/core";
 import type { FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
+import { ClaimText } from "../ClaimText";
 import type { Claim } from "../types";
-import { ClaimText } from "./ClaimText";
 
 export interface ClaimCardProps extends CardProps {
     /**
