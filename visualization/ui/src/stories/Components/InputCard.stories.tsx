@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { InputCard } from "../../components/input/Input";
+import { InputCard } from "../../components/input/InputCard";
 import * as EpochPageStories from "../Pages/EpochPage.stories";
 
 const meta = {
-    title: "Components/Input/Input",
+    title: "Components/Input/InputCard",
     component: InputCard,
     tags: ["autodocs"],
 } satisfies Meta<typeof InputCard>;

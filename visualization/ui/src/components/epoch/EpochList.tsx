@@ -1,11 +1,11 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
 import type { Epoch } from "../types";
-import { EpochCard } from "./Epoch";
+import { EpochCard } from "./EpochCard";
 
 type Props = { epochs: Epoch[] };
 
-const ListEpoch: FC<Props> = (props) => {
+export const EpochList: FC<Props> = (props) => {
     // sort epoch by index in descending order
     const epochs = props.epochs.sort((a, b) => b.index - a.index);
 
@@ -17,5 +17,3 @@ const ListEpoch: FC<Props> = (props) => {
         </Stack>
     );
 };
-
-export default ListEpoch;

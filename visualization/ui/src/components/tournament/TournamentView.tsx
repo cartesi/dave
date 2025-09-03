@@ -5,7 +5,7 @@ import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
 import { TournamentBreadcrumbs } from "../TournamentBreadcrumbs";
 import type { Match, Tournament } from "../types";
-import { TournamentTable } from "./Table";
+import { TournamentTable } from "./TournamentTable";
 
 export interface TournamentViewProps {
     /**

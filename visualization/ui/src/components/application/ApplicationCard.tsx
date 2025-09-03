@@ -1,11 +1,4 @@
-import {
-    Badge,
-    Card,
-    Group,
-    Stack,
-    Text,
-    useMantineTheme,
-} from "@mantine/core";
+import { Badge, Card, Group, Stack, Text } from "@mantine/core";
 import type { FC } from "react";
 import type { Application, ApplicationState } from "../types";
 
@@ -25,7 +18,6 @@ const getStateColour = (state: ApplicationState) => {
 };
 
 export const ApplicationCard: FC<Props> = ({ application }) => {
-    const theme = useMantineTheme();
     const { address, consensusType, name, processedInputs, state } =
         application;
     const stateColour = getStateColour(state);

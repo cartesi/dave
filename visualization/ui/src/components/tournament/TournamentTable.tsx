@@ -2,7 +2,7 @@ import { Flex } from "@mantine/core";
 import { useMemo, type FC } from "react";
 import type { Hash } from "viem";
 import type { Claim, Match } from "../types";
-import { TournamentRound } from "./Round";
+import { TournamentRound } from "./TournamentRound";
 
 export interface TournamentTableProps {
     hideWinners?: boolean;

@@ -1,10 +1,10 @@
 import { Stack, Title } from "@mantine/core";
 import { useState, type FC } from "react";
 import { TbCpu } from "react-icons/tb";
-import ListApplications from "../..//components/application/ListApplications";
-import ActionBar, { type ActionBarData } from "../../components/ActionBar";
-import PageTitle from "../../components/layout/PageTitle";
-import type { Application } from "../../components/types";
+import ActionBar, { type ActionBarData } from "../components/ActionBar";
+import { ApplicationList } from "../components/application/ApplicationList";
+import PageTitle from "../components/layout/PageTitle";
+import type { Application } from "../components/types";
 
 const initialValue: ActionBarData = { query: "", sortingOrder: "ascending" };
 
@@ -12,7 +12,7 @@ type Props = {
     applications: Application[];
 };
 
-const Home: FC<Props> = (props) => {
+export const HomePage: FC<Props> = (props) => {
     const { applications } = props;
     const [search, setSearch] = useState<ActionBarData>(initialValue);
     const resultIsEmpty = applications.length === 0;
@@ -39,9 +39,7 @@ const Home: FC<Props> = (props) => {
             ) : (
                 ""
             )}
-            <ListApplications applications={applications} />
+            <ApplicationList applications={applications} />
         </Stack>
     );
 };
-
-export default Home;

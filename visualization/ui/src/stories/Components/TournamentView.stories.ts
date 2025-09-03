@@ -1,12 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { getUnixTime } from "date-fns";
 import { fn } from "storybook/test";
-import { TournamentView } from "../../components/tournament/Tournament";
+import { TournamentView } from "../../components/tournament/TournamentView";
 import type { Tournament } from "../../components/types";
 import { claim } from "../util";
 
 const meta = {
-    title: "Components/Tournament/Tournament",
+    title: "Components/Tournament/TournamentView",
     component: TournamentView,
     tags: ["autodocs"],
 } satisfies Meta<typeof TournamentView>;

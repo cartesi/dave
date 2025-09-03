@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { MatchView } from "../../components/match/Match";
+import { MatchView } from "../../components/match/MatchView";
 import * as MatchActionsStories from "./MatchActions.stories";
-import * as TournamentStories from "./Tournament.stories";
+import * as TournamentStories from "./TournamentView.stories";
 
 const meta = {
-    title: "Components/Match/Match",
+    title: "Components/Match/MatchView",
     component: MatchView,
 } satisfies Meta<typeof MatchView>;
 

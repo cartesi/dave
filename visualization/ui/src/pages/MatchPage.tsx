@@ -1,16 +1,16 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
 import { TbSwords } from "react-icons/tb";
-import { Hierarchy } from "../../components/Hierarchy";
-import PageTitle from "../../components/layout/PageTitle";
-import { MatchView } from "../../components/match/Match";
+import { Hierarchy } from "../components/Hierarchy";
+import PageTitle from "../components/layout/PageTitle";
+import { MatchView } from "../components/match/MatchView";
 import type {
     Application,
     CycleRange,
     Epoch,
     Match,
     Tournament,
-} from "../../components/types";
+} from "../components/types";
 
 export interface MatchPageProps {
     /**

@@ -1,15 +1,15 @@
 import { Stack } from "@mantine/core";
 import type { FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
-import { Hierarchy } from "../../components/Hierarchy";
-import PageTitle from "../../components/layout/PageTitle";
-import { TournamentView } from "../../components/tournament/Tournament";
+import { Hierarchy } from "../components/Hierarchy";
+import PageTitle from "../components/layout/PageTitle";
+import { TournamentView } from "../components/tournament/TournamentView";
 import type {
     Application,
     Epoch,
     Match,
     Tournament,
-} from "../../components/types";
+} from "../components/types";
 
 export interface TournamentPageProps {
     /**

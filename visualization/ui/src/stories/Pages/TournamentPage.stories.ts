@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { Claim, Tournament } from "../../components/types";
-import { TournamentPage } from "../../view/tournament/Tournament";
-import * as TournamentStories from "../Components/Tournament.stories";
+import { TournamentPage } from "../../pages/TournamentPage";
+import * as TournamentViewStories from "../Components/TournamentView.stories";
 import { applications } from "../data";
 import { claim, randomMatches } from "../util";
 
@@ -18,7 +18,7 @@ export const TopLevelClosed: Story = {
     args: {
         application: applications[0],
         epoch: applications[0].epochs[4],
-        tournament: TournamentStories.NoChallengerYet.args.tournament,
+        tournament: TournamentViewStories.NoChallengerYet.args.tournament,
         parentMatches: [],
     },
 };
@@ -27,7 +27,7 @@ export const TopLevelFinalized: Story = {
     args: {
         application: applications[0],
         epoch: applications[0].epochs[3],
-        tournament: TournamentStories.Finalized.args.tournament,
+        tournament: TournamentViewStories.Finalized.args.tournament,
         parentMatches: [],
     },
 };
@@ -36,7 +36,7 @@ export const TopLevelDispute: Story = {
     args: {
         application: applications[0],
         epoch: applications[0].epochs[4],
-        tournament: TournamentStories.Ongoing.args.tournament,
+        tournament: TournamentViewStories.Ongoing.args.tournament,
         parentMatches: [],
     },
 };
@@ -70,7 +70,7 @@ export const MidLevelDispute: Story = {
     args: {
         application: applications[0],
         epoch: applications[0].epochs[4],
-        tournament: TournamentStories.MidLevelDispute.args.tournament,
+        tournament: TournamentViewStories.MidLevelDispute.args.tournament,
         parentMatches: [{ claim1: claim(4), claim2: claim(5) }],
     },
 };

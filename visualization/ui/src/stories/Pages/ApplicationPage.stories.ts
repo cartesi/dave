@@ -1,12 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import ApplicationView from "../../view/application/Application";
+import { ApplicationPage } from "../../pages/ApplicationPage";
 import { applications } from "../data";
 
 const meta = {
     title: "Pages/Application",
-    component: ApplicationView,
+    component: ApplicationPage,
     tags: ["autodocs"],
-} satisfies Meta<typeof ApplicationView>;
+} satisfies Meta<typeof ApplicationPage>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

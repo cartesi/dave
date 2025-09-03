@@ -1,13 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ApplicationCard } from "../../components/application/Application";
+import { ApplicationCard } from "../../components/application/ApplicationCard";
 import { applications } from "../data";
 
 const meta = {
-    title: "Components/Application/Application",
+    title: "Components/Application/ApplicationCard",
     component: ApplicationCard,
-    parameters: {
-        layout: "centered",
-    },
     tags: ["autodocs"],
 } satisfies Meta<typeof ApplicationCard>;
 
