@@ -1,4 +1,4 @@
-import { Badge, Breadcrumbs, type BreadcrumbsProps } from "@mantine/core";
+import { Breadcrumbs, Button, type BreadcrumbsProps } from "@mantine/core";
 import type { FC } from "react";
 import type { Match } from "../types";
 import { MatchBadge } from "./MatchBadge";
@@ -17,21 +17,33 @@ export const TournamentBreadcrumbs: FC<TournamentBreadcrumbsProps> = (
     // build the breadcrumb of the tournament hierarchy
     const items = parentMatches
         .map((match, index) => [
-            <Badge key={levels[index]} variant="default">
+            <Button
+                key={levels[index]}
+                component="a"
+                variant="default"
+                size="compact-xs"
+                radius="xl"
+            >
                 {levels[index]}
-            </Badge>,
+            </Button>,
             <MatchBadge
                 claim1={match.claim1}
                 claim2={match.claim2}
                 variant="default"
+                size="compact-xs"
             />,
         ])
         .flat();
 
     items.push(
-        <Badge key={levels[parentMatches.length]} variant="filled">
+        <Button
+            key={levels[parentMatches.length]}
+            component="a"
+            size="compact-xs"
+            radius="xl"
+        >
             {levels[parentMatches.length]}
-        </Badge>,
+        </Button>,
     );
 
     return (

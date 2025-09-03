@@ -31,7 +31,7 @@ export const ExtraSmall: Story = {
     args: {
         claim1: claim(0),
         claim2: claim(1),
-        size: "xs",
+        size: "compact-xs",
     },
 };
 
@@ -42,7 +42,7 @@ export const Small: Story = {
     args: {
         claim1: claim(0),
         claim2: claim(1),
-        size: "sm",
+        size: "compact-sm",
     },
 };
 
@@ -53,7 +53,7 @@ export const Medium: Story = {
     args: {
         claim1: claim(0),
         claim2: claim(1),
-        size: "md",
+        size: "compact-md",
     },
 };
 
@@ -64,7 +64,7 @@ export const Large: Story = {
     args: {
         claim1: claim(0),
         claim2: claim(1),
-        size: "lg",
+        size: "compact-lg",
     },
 };
 
@@ -75,6 +75,6 @@ export const ExtraLarge: Story = {
     args: {
         claim1: claim(0),
         claim2: claim(1),
-        size: "xl",
+        size: "compact-xl",
     },
 };
