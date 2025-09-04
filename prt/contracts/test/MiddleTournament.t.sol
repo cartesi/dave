@@ -29,13 +29,22 @@ contract MiddleTournamentTest is Util, Test {
     TopTournament topTournament;
     MiddleTournament middleTournament;
 
+    // Player accounts for testing
+    address player0 = vm.addr(1);
+    address player1 = vm.addr(2);
+
     event newInnerTournament(Match.IdHash indexed, NonRootTournament);
 
     constructor() {
         (factory,) = Util.instantiateTournamentFactory();
     }
 
-    function setUp() public {}
+    function setUp() public {
+        vm.deal(address(this), 1000 ether);
+
+        vm.deal(player0, 1000 ether);
+        vm.deal(player1, 1000 ether);
+    }
 
     function assertNoElimination() internal {
         assertFalse(middleTournament.canBeEliminated(), "can be eliminated");
@@ -97,7 +106,29 @@ contract MiddleTournamentTest is Util, Test {
         // the delay is increased when a match is created
         uint256 _rootTournamentFinish = _t + Time.Duration.unwrap(MAX_ALLOWANCE)
             + Time.Duration.unwrap(MATCH_EFFORT);
+        uint256 player0BalanceBefore = player0.balance;
+        uint256 tournamentBalanceBefore = address(middleTournament).balance;
+        vm.startPrank(player0);
         Util.joinTournament(middleTournament, 0);
+        vm.stopPrank();
+        uint256 player0BalanceAfter = player0.balance;
+        uint256 tournamentBalanceAfter = address(middleTournament).balance;
+        uint256 bondAmount = middleTournament.bondValue();
+        assertEq(
+            player0BalanceBefore - bondAmount,
+            player0BalanceAfter,
+            "Player 0 should have paid bond"
+        );
+        assertEq(
+            tournamentBalanceBefore, 0, "Tournament should have no balance"
+        );
+        assertEq(
+            tournamentBalanceAfter, bondAmount, "Tournament should have bond"
+        );
+
+        // Try to recover bond before tournament is finished - should fail
+        vm.expectRevert(Tournament.TournamentNotFinished.selector);
+        middleTournament.tryRecoveringBond();
 
         vm.roll(_rootTournamentFinish);
         (_finished, _winner,,) = middleTournament.innerTournamentWinner();
@@ -105,6 +136,12 @@ contract MiddleTournamentTest is Util, Test {
             middleTournament,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[0][ArbitrationConstants.height(0) - 1]
+        );
+        assertEq(player0.balance, player0BalanceBefore);
+        assertEq(
+            address(middleTournament).balance,
+            0,
+            "Tournament should have no balance"
         );
 
         {
@@ -172,10 +209,16 @@ contract MiddleTournamentTest is Util, Test {
         uint256 _middleTournamentFinish =
             _rootTournamentFinish + Time.Duration.unwrap(MATCH_EFFORT);
 
+        player0BalanceBefore = player0.balance;
+        vm.startPrank(player0);
         Util.joinTournament(middleTournament, 0);
+        vm.stopPrank();
 
         //let player 1 join, then timeout player 0
+        uint256 player1BalanceBefore = player1.balance;
+        vm.startPrank(player1);
         Util.joinTournament(middleTournament, _opponent);
+        vm.stopPrank();
 
         (Clock.State memory _player0Clock,) = middleTournament.getCommitment(
             playerNodes[0][ArbitrationConstants.height(_height)]
@@ -216,6 +259,22 @@ contract MiddleTournamentTest is Util, Test {
             middleTournament,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
+        );
+
+        assertEq(
+            player0.balance,
+            player0BalanceBefore - bondAmount,
+            "Player 0 should have cost one bond"
+        );
+        assertEq(
+            player1.balance,
+            player1BalanceBefore + bondAmount,
+            "Player 1 should have received one extra bond"
+        );
+        assertEq(
+            address(middleTournament).balance,
+            0,
+            "Tournament should have no balance"
         );
 
         {
