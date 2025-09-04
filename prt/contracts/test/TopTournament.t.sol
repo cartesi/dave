@@ -32,7 +32,9 @@ contract TopTournamentTest is Util, Test {
         (factory,) = Util.instantiateTournamentFactory();
     }
 
-    function setUp() public {}
+    function setUp() public {
+        vm.deal(address(this), 1000 ether);
+    }
 
     function testRootWinner() public {
         topTournament = Util.initializePlayer0Tournament(factory);

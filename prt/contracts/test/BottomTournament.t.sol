@@ -39,7 +39,9 @@ contract BottomTournamentTest is Util, Test {
         (factory, stateTransition) = Util.instantiateTournamentFactory();
     }
 
-    function setUp() public {}
+    function setUp() public {
+        vm.deal(address(this), 1000 ether);
+    }
 
     function testCommitmentOneWon() public {
         topTournament = Util.initializePlayer0Tournament(factory);
@@ -153,6 +155,22 @@ contract BottomTournamentTest is Util, Test {
         );
 
         Util.winLeafMatch(bottomTournament, _matchId, _playerToSeal);
+    }
+
+    function testBondValue() public {
+        testCommitmentOneWon();
+
+        uint256 bondValue = topTournament.bondValue();
+        assertGt(bondValue, 0, "Top bond value should be positive");
+        assertLt(bondValue, 2 ether, "Top bond value should be reasonable");
+
+        bondValue = middleTournament.bondValue();
+        assertGt(bondValue, 0, "Middle bond value should be positive");
+        assertLt(bondValue, 2 ether, "Middle bond value should be reasonable");
+
+        bondValue = bottomTournament.bondValue();
+        assertGt(bondValue, 0, "Bottom bond value should be positive");
+        assertLt(bondValue, 2 ether, "Bottom bond value should be reasonable");
     }
 
     function testCommitmentTwoWon() public {

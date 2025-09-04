@@ -188,7 +188,8 @@ contract Util {
             : playerNodes[0][height - 1];
         Tree.Node _right = playerNodes[_player][height - 1];
         Machine.Hash _final_state = _player == 0 ? ONE_STATE : TWO_STATE;
-        _tournament.joinTournament(
+        uint256 bondAmount = _tournament.bondValue();
+        _tournament.joinTournament{value: bondAmount}(
             _final_state,
             generateFinalStateProof(_player, height),
             _left,
