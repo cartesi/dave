@@ -86,8 +86,8 @@ export const BisectionItem: FC<BisectionItemProps> = forwardRef<
                     <>
                         <CurlyBracket
                             color={props.color}
-                            h={24}
-                            strokeWidth={3}
+                            h={14}
+                            strokeWidth={2}
                             tip={p}
                         />
                         <RangeIndicator

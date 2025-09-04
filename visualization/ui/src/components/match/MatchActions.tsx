@@ -66,7 +66,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
     // calculate the number of bars until the size resets
     const [bars, setBars] = useState(bisections.length);
     useEffect(() => {
-        const minWidth = 48;
+        const minWidth = 28;
         if (bisectionWidth === 0) {
             setBars(bisections.length);
         } else {
