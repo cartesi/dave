@@ -9,6 +9,10 @@ inputs:
     description: 'Rust version to install'
     required: false
     default: '1.86'
+  foundry_version:
+    description: 'Foundry version to install'
+    required: false
+    default: 'v1.3.3'
 outputs:
   foundry-version:
     description: 'The version of Foundry that was installed'
@@ -31,7 +35,8 @@ runs:
     - name: Set Foundry version
       id: set-foundry-version
       shell: bash
-      run: echo "foundry-version=v1.3.3" >> $GITHUB_OUTPUT
+      run: |
+        echo "foundry-version=${{ inputs.foundry_version }}" >> $GITHUB_OUTPUT
 
     - name: Install Foundry
       uses: foundry-rs/foundry-toolchain@v1
