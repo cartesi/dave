@@ -11,7 +11,6 @@
 // specific language governing permissions and limitations under the License.
 
 import "forge-std-1.9.6/src/console.sol";
-import "forge-std-1.9.6/src/Test.sol";
 
 import "prt-contracts/tournament/abstracts/RootTournament.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
@@ -21,7 +20,7 @@ import "./Util.sol";
 
 pragma solidity ^0.8.0;
 
-contract TournamentFactoryTest is Util, Test {
+contract TournamentFactoryTest is Util {
     SingleLevelTournamentFactory singleLevelfactory;
     MultiLevelTournamentFactory multiLevelfactory;
 

@@ -10,16 +10,13 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/console.sol";
-import "forge-std-1.9.6/src/Test.sol";
-
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
-contract TournamentTest is Util, Test {
+contract TournamentTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
@@ -42,16 +39,11 @@ contract TournamentTest is Util, Test {
         (factory,) = Util.instantiateTournamentFactory();
     }
 
-    function setUp() public {
-        vm.deal(player0, 1000 ether);
-        vm.deal(player1, 1000 ether);
-    }
+    receive() external payable {}
 
     function testJoinTournament() public {
         uint256 player0BalanceBefore = player0.balance;
-        vm.startPrank(player0);
         topTournament = Util.initializePlayer0Tournament(factory);
-        vm.stopPrank();
         uint256 player0BalanceAfter = player0.balance;
         uint256 bondAmount = topTournament.bondValue();
         assertEq(
@@ -71,9 +63,7 @@ contract TournamentTest is Util, Test {
         uint256 _opponent = 1;
 
         uint256 player1BalanceBefore = player1.balance;
-        vm.startPrank(player1);
         Util.joinTournament(topTournament, _opponent);
-        vm.stopPrank();
         uint256 player1BalanceAfter = player1.balance;
         assertEq(
             player1BalanceBefore - bondAmount,
@@ -82,15 +72,19 @@ contract TournamentTest is Util, Test {
         );
     }
 
-    function testJoinTournamentInsufficientBond() public {
+    function testJoinTournamentInsufficientBond(uint256 insufficientBond)
+        public
+    {
         topTournament = Util.initializePlayer0Tournament(factory);
+
+        insufficientBond =
+            bound(insufficientBond, 0, topTournament.bondValue() - 1);
 
         // Try to join with insufficient bond - should fail
         (,,, uint64 height) = topTournament.tournamentLevelConstants();
         Tree.Node _left = playerNodes[1][height - 1];
         Tree.Node _right = playerNodes[1][height - 1];
         Machine.Hash _final_state = TWO_STATE;
-        uint256 insufficientBond = topTournament.bondValue() - 1;
 
         vm.expectRevert(Tournament.InsufficientBond.selector);
         topTournament.joinTournament{value: insufficientBond}(
@@ -142,15 +136,34 @@ contract TournamentTest is Util, Test {
         );
 
         uint256 tournamentBalanceBefore = address(topTournament).balance;
+        uint256 callerBalanceBefore = player0.balance;
+        vm.txGasPrice(2);
+        vm.prank(player0);
         topTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
         uint256 tournamentBalanceAfter = address(topTournament).balance;
-        assertEq(tournamentBalanceBefore, tournamentBalanceAfter);
+        uint256 callerBalanceAfter = player0.balance;
+
         uint256 bondAmount = topTournament.bondValue();
-        assertEq(tournamentBalanceBefore, 2 * bondAmount);
+        assertEq(
+            tournamentBalanceBefore,
+            2 * bondAmount,
+            "tournament balance should be 2 * bond amount initially"
+        );
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tournament balance should be less than before"
+        );
+        // the caller should have received refund from the gas spent and profit
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller balance should be greater than before"
+        );
 
         vm.roll(_tournamentFinishWithMatch);
         (bool _finished, Tree.Node _winner, Machine.Hash _finalState) =
@@ -183,6 +196,8 @@ contract TournamentTest is Util, Test {
         // player 1 timeout first because he's supposed to advance match after player 0 advanced
         _matchId = Util.matchId(_opponent, _height);
 
+        callerBalanceBefore = address(this).balance;
+        tournamentBalanceBefore = address(topTournament).balance;
         topTournament.advanceMatch(
             _matchId,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
@@ -190,6 +205,19 @@ contract TournamentTest is Util, Test {
             playerNodes[0][ArbitrationConstants.height(0) - 2],
             playerNodes[0][ArbitrationConstants.height(0) - 2]
         );
+        callerBalanceAfter = address(this).balance;
+        tournamentBalanceAfter = address(topTournament).balance;
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller should have earned profit"
+        );
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tounament should have paid gas"
+        );
+
         (Clock.State memory _player1Clock,) = topTournament.getCommitment(
             playerNodes[1][ArbitrationConstants.height(0)]
         );
@@ -203,16 +231,11 @@ contract TournamentTest is Util, Test {
             "should be able to win match by timeout"
         );
 
-        tournamentBalanceBefore = address(topTournament).balance;
         topTournament.winMatchByTimeout(
             _matchId,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[0][ArbitrationConstants.height(0) - 1]
         );
-        tournamentBalanceAfter = address(topTournament).balance;
-        assertEq(tournamentBalanceBefore, tournamentBalanceAfter);
-        bondAmount = topTournament.bondValue();
-        assertEq(tournamentBalanceBefore, 2 * bondAmount);
 
         vm.roll(_tournamentFinishWithMatch);
         (_finished, _winner, _finalState) = topTournament.arbitrationResult();
@@ -258,10 +281,22 @@ contract TournamentTest is Util, Test {
         vm.roll(_rootTournamentFinish);
 
         uint256 tournamentBalanceBefore = address(topTournament).balance;
+        uint256 callerBalanceBefore = address(this).balance;
         topTournament.eliminateMatchByTimeout(_matchId);
         uint256 tournamentBalanceAfter = address(topTournament).balance;
-        assertEq(tournamentBalanceBefore, tournamentBalanceAfter);
+        uint256 callerBalanceAfter = address(this).balance;
+
         uint256 bondAmount = topTournament.bondValue();
         assertEq(tournamentBalanceBefore, 2 * bondAmount);
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tournament should have paid gas"
+        );
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller should have earned profit"
+        );
     }
 }

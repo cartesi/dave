@@ -64,7 +64,7 @@ abstract contract Tournament {
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
     // MEV tips
-    uint256 constant MEV_PROFIT = 10 gwei;
+    uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
     bool transient locked;
 
     mapping(Tree.Node => Clock.State) clocks;
@@ -123,7 +123,8 @@ abstract contract Tournament {
         uint256 refundValue = _min(
             address(this).balance,
             bondValue() * gasEstimate / _totalGasEstimate(),
-            (Gas.TX + gasBefore - gasAfter) * (tx.gasprice + MEV_PROFIT)
+            (Gas.TX + gasBefore - gasAfter)
+                * (tx.gasprice + MESSAGE_SENDER_PROFIT)
         );
         msg.sender.call{value: refundValue}("");
 

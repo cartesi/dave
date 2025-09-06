@@ -10,15 +10,13 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/Test.sol";
-
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
-contract MiddleTournamentTest is Util, Test {
+contract MiddleTournamentTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
@@ -39,12 +37,7 @@ contract MiddleTournamentTest is Util, Test {
         (factory,) = Util.instantiateTournamentFactory();
     }
 
-    function setUp() public {
-        vm.deal(address(this), 1000 ether);
-
-        vm.deal(player0, 1000 ether);
-        vm.deal(player1, 1000 ether);
-    }
+    receive() external payable {}
 
     function assertNoElimination() internal {
         assertFalse(middleTournament.canBeEliminated(), "can be eliminated");
@@ -108,9 +101,9 @@ contract MiddleTournamentTest is Util, Test {
             + Time.Duration.unwrap(MATCH_EFFORT);
         uint256 player0BalanceBefore = player0.balance;
         uint256 tournamentBalanceBefore = address(middleTournament).balance;
-        vm.startPrank(player0);
+
         Util.joinTournament(middleTournament, 0);
-        vm.stopPrank();
+
         uint256 player0BalanceAfter = player0.balance;
         uint256 tournamentBalanceAfter = address(middleTournament).balance;
         uint256 bondAmount = middleTournament.bondValue();
@@ -137,7 +130,7 @@ contract MiddleTournamentTest is Util, Test {
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[0][ArbitrationConstants.height(0) - 1]
         );
-        assertEq(player0.balance, player0BalanceBefore);
+        assertEq(player0.balance, player0BalanceAfter + tournamentBalanceAfter);
         assertEq(
             address(middleTournament).balance,
             0,
@@ -210,15 +203,11 @@ contract MiddleTournamentTest is Util, Test {
             _rootTournamentFinish + Time.Duration.unwrap(MATCH_EFFORT);
 
         player0BalanceBefore = player0.balance;
-        vm.startPrank(player0);
         Util.joinTournament(middleTournament, 0);
-        vm.stopPrank();
 
         //let player 1 join, then timeout player 0
         uint256 player1BalanceBefore = player1.balance;
-        vm.startPrank(player1);
         Util.joinTournament(middleTournament, _opponent);
-        vm.stopPrank();
 
         (Clock.State memory _player0Clock,) = middleTournament.getCommitment(
             playerNodes[0][ArbitrationConstants.height(_height)]
@@ -241,6 +230,7 @@ contract MiddleTournamentTest is Util, Test {
         );
         assertNoElimination();
 
+        vm.prank(player1);
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
@@ -474,7 +464,24 @@ contract MiddleTournamentTest is Util, Test {
         vm.roll(vm.getBlockNumber() + 1);
         assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
 
+        vm.txGasPrice(2);
+        uint256 callerBalanceBefore = address(this).balance;
+        uint256 tournamentBalanceBefore = address(topTournament).balance;
+
         topTournament.eliminateInnerTournament(middleTournament);
+
+        uint256 callerBalanceAfter = address(this).balance;
+        uint256 tournamentBalanceAfter = address(topTournament).balance;
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller should have earned profit"
+        );
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tounament should have paid gas"
+        );
 
         (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
             topTournament.arbitrationResult();
@@ -540,12 +547,30 @@ contract MiddleTournamentTest is Util, Test {
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
         assertNoElimination();
 
+        vm.txGasPrice(2);
+        uint256 callerBalanceBefore = address(this).balance;
+        uint256 tournamentBalanceBefore = address(topTournament).balance;
+
         // win at the last second
         topTournament.winInnerTournament(
             middleTournament,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
+
+        uint256 callerBalanceAfter = address(this).balance;
+        uint256 tournamentBalanceAfter = address(topTournament).balance;
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller should have earned profit"
+        );
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tounament should have paid gas"
+        );
+
         (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
             topTournament.arbitrationResult();
         assertFalse(_finishedTop, "game finished");

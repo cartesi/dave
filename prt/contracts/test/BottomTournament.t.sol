@@ -10,15 +10,13 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/Test.sol";
-
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
-contract BottomTournamentTest is Util, Test {
+contract BottomTournamentTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
@@ -39,9 +37,7 @@ contract BottomTournamentTest is Util, Test {
         (factory, stateTransition) = Util.instantiateTournamentFactory();
     }
 
-    function setUp() public {
-        vm.deal(address(this), 1000 ether);
-    }
+    receive() external payable {}
 
     function testCommitmentOneWon() public {
         topTournament = Util.initializePlayer0Tournament(factory);
@@ -103,11 +99,29 @@ contract BottomTournamentTest is Util, Test {
         // expect new inner created (middle 2)
         vm.recordLogs();
 
+        vm.txGasPrice(2);
+
+        uint256 callerBalanceBefore = address(this).balance;
+        uint256 tournamentBalanceBefore = address(middleTournament).balance;
+
         // seal match
         Util.sealInnerMatchAndCreateInnerTournament(
             middleTournament, _matchId, _playerToSeal
         );
         _height += 1;
+
+        uint256 callerBalanceAfter = address(this).balance;
+        uint256 tournamentBalanceAfter = address(middleTournament).balance;
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller should have earned profit"
+        );
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tounament should have paid gas"
+        );
 
         assertEq(
             middleTournament.getMatchCycle(_matchId.hashFromId()),
@@ -139,8 +153,24 @@ contract BottomTournamentTest is Util, Test {
         // advance match to end, this match will always advance to left tree
         _playerToSeal = Util.advanceMatch(bottomTournament, _matchId, _opponent);
 
+        callerBalanceBefore = address(this).balance;
+        tournamentBalanceBefore = address(bottomTournament).balance;
+
         // seal match
         Util.sealLeafMatch(bottomTournament, _matchId, _playerToSeal);
+
+        callerBalanceAfter = address(this).balance;
+        tournamentBalanceAfter = address(bottomTournament).balance;
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller should have earned profit to sealLeafMatch"
+        );
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tounament should have paid gas to sealLeafMatch"
+        );
 
         assertEq(
             bottomTournament.getMatchCycle(_matchId.hashFromId()),
@@ -154,7 +184,23 @@ contract BottomTournamentTest is Util, Test {
             abi.encode(Machine.Hash.unwrap(Util.ONE_STATE))
         );
 
+        callerBalanceBefore = address(this).balance;
+        tournamentBalanceBefore = address(bottomTournament).balance;
+
         Util.winLeafMatch(bottomTournament, _matchId, _playerToSeal);
+
+        callerBalanceAfter = address(this).balance;
+        tournamentBalanceAfter = address(bottomTournament).balance;
+        assertGt(
+            callerBalanceAfter,
+            callerBalanceBefore,
+            "caller should have earned profit to winLeafMatch"
+        );
+        assertLt(
+            tournamentBalanceAfter,
+            tournamentBalanceBefore,
+            "tounament should have paid gas to winLeafMatch"
+        );
     }
 
     function testBondValue() public {

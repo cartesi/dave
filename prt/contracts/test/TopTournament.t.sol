@@ -10,15 +10,13 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/Test.sol";
-
 import "./Util.sol";
 import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 
 pragma solidity ^0.8.0;
 
-contract TopTournamentTest is Util, Test {
+contract TopTournamentTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
@@ -30,10 +28,6 @@ contract TopTournamentTest is Util, Test {
 
     constructor() {
         (factory,) = Util.instantiateTournamentFactory();
-    }
-
-    function setUp() public {
-        vm.deal(address(this), 1000 ether);
     }
 
     function testRootWinner() public {
