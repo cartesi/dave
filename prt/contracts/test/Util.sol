@@ -11,6 +11,7 @@
 // specific language governing permissions and limitations under the License.
 
 import "forge-std-1.9.6/src/console.sol";
+import "forge-std-1.9.6/src/Test.sol";
 
 import "src/arbitration-config/ArbitrationConstants.sol";
 import "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
@@ -31,7 +32,7 @@ import "src/state-transition/CartesiStateTransition.sol";
 
 pragma solidity ^0.8.0;
 
-contract Util {
+contract Util is Test {
     using Tree for Tree.Node;
     using Machine for Machine.Hash;
     using Match for Match.Id;
@@ -55,6 +56,7 @@ contract Util {
     // player 0, player 1, and player 2
     Tree.Node[][3] playerNodes;
     Machine.Hash[3] finalStates;
+    address[] addrs = [vm.addr(1), vm.addr(2), vm.addr(3)];
 
     constructor() {
         playerNodes[0] = new Tree.Node[](LOG2_MAX_HEIGHT + 1);
@@ -80,6 +82,11 @@ contract Util {
             playerNodes[2][_i] =
                 playerNodes[0][_i - 1].join(playerNodes[2][_i - 1]);
         }
+
+        vm.deal(address(this), 1000 ether);
+        vm.deal(addrs[0], 1000 ether);
+        vm.deal(addrs[1], 1000 ether);
+        vm.deal(addrs[2], 1000 ether);
     }
 
     function generateDivergenceProof(uint256 _player, uint64 _height)
@@ -189,6 +196,7 @@ contract Util {
         Tree.Node _right = playerNodes[_player][height - 1];
         Machine.Hash _final_state = _player == 0 ? ONE_STATE : TWO_STATE;
         uint256 bondAmount = _tournament.bondValue();
+        vm.prank(addrs[_player]);
         _tournament.joinTournament{value: bondAmount}(
             _final_state,
             generateFinalStateProof(_player, height),

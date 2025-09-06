@@ -10,14 +10,12 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/Test.sol";
-
 import "./Util.sol";
 import "src/state-transition/CartesiStateTransition.sol";
 
 pragma solidity ^0.8.0;
 
-contract StateTransitionTest is Util, Test {
+contract StateTransitionTest is Util {
     CartesiStateTransition immutable stateTransition;
     RiscVStateTransition immutable riscVStateTransition;
     CmioStateTransition immutable cmioStateTransition;

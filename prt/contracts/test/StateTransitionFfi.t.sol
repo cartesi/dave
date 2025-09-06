@@ -10,8 +10,6 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/Test.sol";
-
 import "./Util.sol";
 import "src/state-transition/CartesiStateTransition.sol";
 
@@ -73,7 +71,7 @@ contract Provider is IDataProvider {
     }
 }
 
-contract StateTransitionFfiTest is Util, Test {
+contract StateTransitionFfiTest is Util {
     CartesiStateTransition immutable stateTransition;
     RiscVStateTransition immutable riscVStateTransition;
     CmioStateTransition immutable cmioStateTransition;
