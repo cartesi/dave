@@ -4,11 +4,11 @@ import {
     Text,
     type BreadcrumbsProps,
 } from "@mantine/core";
-import type { FC } from "react";
+import type { FC, ReactNode } from "react";
 import { Link } from "react-router";
 
 export type HierarchyConfig = {
-    title: string;
+    title: ReactNode;
     href: string;
 };
 
