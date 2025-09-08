@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Hex } from "viem";
-import { applications } from "../../stories/data";
-import type { Application, Epoch } from "../types";
+import type { Application, Epoch } from "../components/types";
+import { findApplication } from "./application.data";
+import { NETWORK_DELAY } from "./constants";
 
-const SYNTH_DELAY = 300 as const;
-
-const applicationKeys = {
+export const applicationKeys = {
     all: ["apps"] as const,
     lists: () => [...applicationKeys.all, "list"] as const,
     details: () => [...applicationKeys.all, "details"] as const,
@@ -16,22 +15,14 @@ const applicationKeys = {
         [...applicationKeys.epochs(appId), epochIndex] as const,
 };
 
-const findApp = (id: string | Hex) => {
-    return applications.find((app) => {
-        return (
-            app.address.toLowerCase() === id.toLowerCase() ||
-            app.name.toLowerCase() === id.toLowerCase()
-        );
-    });
-};
-
 // FETCHERS
 
-const listApplication = () => {
+const listApplications = () => {
     const promise = new Promise<{ applications: Application[] }>((resolve) => {
         setTimeout(() => {
-            resolve({ applications: [applications[0]] });
-        }, SYNTH_DELAY);
+            const app = findApplication("honeypot") as Application;
+            resolve({ applications: [app] });
+        }, NETWORK_DELAY);
     });
 
     return promise;
@@ -41,9 +32,9 @@ const getApplication = (id: string | Hex) => {
     const promise = new Promise<{ application: Application | undefined }>(
         (resolve) => {
             setTimeout(() => {
-                const app = findApp(id);
+                const app = findApplication(id);
                 resolve({ application: app });
-            }, SYNTH_DELAY);
+            }, NETWORK_DELAY);
         },
     );
 
@@ -53,9 +44,9 @@ const getApplication = (id: string | Hex) => {
 const listApplicationEpochs = (id: string | Hex) => {
     const promise = new Promise<{ epochs: Epoch[] }>((resolve) => {
         setTimeout(() => {
-            const app = findApp(id);
+            const app = findApplication(id);
             resolve({ epochs: app?.epochs ?? [] });
-        }, SYNTH_DELAY);
+        }, NETWORK_DELAY);
     });
 
     return promise;
@@ -66,7 +57,7 @@ const listApplicationEpochs = (id: string | Hex) => {
 export const useListApplications = () => {
     return useQuery({
         queryKey: applicationKeys.lists(),
-        queryFn: listApplication,
+        queryFn: listApplications,
     });
 };
 
