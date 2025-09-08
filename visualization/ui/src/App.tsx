@@ -3,6 +3,7 @@ import "@mantine/core/styles.css";
 import { Link, Outlet, Route, Routes, useLocation } from "react-router";
 import Layout from "./components/layout/Layout";
 import { Redirect } from "./components/navigation/Redirect";
+import { EpochDetailsContainer } from "./containers/EpochDetailsContainer";
 import { EpochsContainer } from "./containers/EpochsContainer";
 import { HomeContainer } from "./containers/Home";
 import DataProvider from "./providers/DataProvider";
@@ -54,6 +55,11 @@ function App() {
                         <Route
                             path={routePathBuilder.appEpochs()}
                             element={<EpochsContainer />}
+                        />
+
+                        <Route
+                            path={routePathBuilder.appEpochDetails()}
+                            element={<EpochDetailsContainer />}
                         />
 
                         <Route path="*" element={<NotFound />} />
