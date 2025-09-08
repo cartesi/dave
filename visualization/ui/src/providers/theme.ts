@@ -6,22 +6,7 @@ import {
     mergeMantineTheme,
     Modal,
     virtualColor,
-    type DefaultMantineColor,
-    type MantineColorsTuple,
 } from "@mantine/core";
-
-type ExtendedCustomColors =
-    | "open"
-    | "disputed"
-    | "closed"
-    | "finalized"
-    | DefaultMantineColor;
-
-declare module "@mantine/core" {
-    export interface MantineThemeColorsOverride {
-        colors: Record<ExtendedCustomColors, MantineColorsTuple>;
-    }
-}
 
 const theme = createTheme({
     colors: {
