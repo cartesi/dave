@@ -1,44 +1,75 @@
-import { Badge, Group, Stack, Text, Title } from "@mantine/core";
+import {
+    Anchor,
+    Badge,
+    Group,
+    Stack,
+    Text,
+    Title,
+    useMantineTheme,
+} from "@mantine/core";
 import type { FC } from "react";
-import { TbClockFilled, TbInbox } from "react-icons/tb";
+import { TbClockFilled, TbInbox, TbTrophy } from "react-icons/tb";
+import { Link, useParams } from "react-router";
+import { CycleRangeFormatted } from "../components/CycleRangeFormatted";
 import { useEpochStatusColor } from "../components/epoch/useEpochStatusColor";
 import { InputList } from "../components/input/InputList";
 import PageTitle from "../components/layout/PageTitle";
-import { Hierarchy } from "../components/navigation/Hierarchy";
-import type { Application, Epoch, Input } from "../components/types";
-import theme from "../providers/theme";
+import type { Epoch, Input, Tournament } from "../components/types";
+import { routePathBuilder } from "../routes/routePathBuilder";
 
 type Props = {
-    application: Application;
+    tournament?: Tournament | null;
     epoch: Epoch;
     inputs: Input[];
 };
 
-export const EpochDetailsPage: FC<Props> = ({ application, epoch, inputs }) => {
+export const EpochDetailsPage: FC<Props> = ({ tournament, epoch, inputs }) => {
+    const theme = useMantineTheme();
     const epochStatusColor = useEpochStatusColor(epoch);
+    const params = useParams();
+    const tournamentUrl = routePathBuilder.topTournament(params);
 
     return (
-        <Stack gap="lg">
-            <Hierarchy
-                hierarchyConfig={[
-                    { title: "Home", href: "/" },
-                    { title: application.name, href: `/${application.name}` },
-                    { title: `Epoch ${epoch.index}`, href: "#" },
-                ]}
-            />
-            <Stack>
-                <PageTitle Icon={TbClockFilled} title="Epoch" />
-                <Group>
-                    <Text>Status</Text>
-                    <Badge color={epochStatusColor}>{epoch.status}</Badge>
-                </Group>
+        <Stack>
+            <PageTitle Icon={TbClockFilled} title="Epoch" />
+            <Group>
+                <Text>Status</Text>
+                <Badge color={epochStatusColor}>{epoch.status}</Badge>
+                {epoch.inDispute && (
+                    <Badge variant="outline" color={epochStatusColor}>
+                        disputed
+                    </Badge>
+                )}
+            </Group>
 
-                <Group gap="xs">
-                    <TbInbox size={theme.other.mdIconSize} />
-                    <Title order={3}>Inputs</Title>
-                </Group>
-                <InputList inputs={inputs} />
-            </Stack>
+            {tournament && (
+                <Anchor
+                    component={Link}
+                    to={tournamentUrl}
+                    variant="text"
+                    c={epochStatusColor}
+                >
+                    <Group gap="xs">
+                        <Group gap="sm">
+                            <TbTrophy
+                                size={theme.other.mdIconSize}
+                                color={epochStatusColor}
+                            />
+                            <Text c={epochStatusColor}>Tournament</Text>
+                        </Group>
+                        <CycleRangeFormatted
+                            size="md"
+                            range={[tournament.startCycle, tournament.endCycle]}
+                        />
+                    </Group>
+                </Anchor>
+            )}
+
+            <Group gap="xs">
+                <TbInbox size={theme.other.mdIconSize} />
+                <Title order={3}>Inputs</Title>
+            </Group>
+            <InputList inputs={inputs} />
         </Stack>
     );
 };

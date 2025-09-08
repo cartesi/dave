@@ -6,8 +6,8 @@ import type {
     Tournament,
 } from "../components/types";
 
-type EpochWithTournament = Epoch & { tournament?: Tournament };
-type ApplicationEpochs = Application & { epochs: EpochWithTournament[] };
+export type EpochWithTournament = Epoch & { tournament?: Tournament };
+export type ApplicationEpochs = Application & { epochs: EpochWithTournament[] };
 
 export const applications: ApplicationEpochs[] = [
     {
