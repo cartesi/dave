@@ -1,45 +1,34 @@
-import { Stack, Title } from "@mantine/core";
-import { useState, type FC } from "react";
+import { Stack, Text } from "@mantine/core";
+import { type FC } from "react";
 import { TbCpu } from "react-icons/tb";
-import ActionBar, { type ActionBarData } from "../components/ActionBar";
 import { ApplicationList } from "../components/application/ApplicationList";
 import PageTitle from "../components/layout/PageTitle";
+import { NotFound } from "../components/navigation/NotFound";
 import type { Application } from "../components/types";
-
-const initialValue: ActionBarData = { query: "", sortingOrder: "ascending" };
 
 type Props = {
     applications: Application[];
 };
 
+const NoApplications = () => (
+    <NotFound>
+        <Text c="dimmed" size="xl">
+            No Applications deployed yet!
+        </Text>
+    </NotFound>
+);
+
 export const HomePage: FC<Props> = (props) => {
     const { applications } = props;
-    const [search, setSearch] = useState<ActionBarData>(initialValue);
-    const resultIsEmpty = applications.length === 0;
 
     return (
         <Stack>
             <PageTitle Icon={TbCpu} title="Applications" />
-            <ActionBar
-                initialValue={search}
-                onChange={(data) => {
-                    setSearch(data);
-                }}
-            />
-            {resultIsEmpty ? (
-                <Stack my="lg" align="center">
-                    <Title order={2} textWrap="wrap">
-                        No results
-                    </Title>
-                    <Title order={3} textWrap="wrap">
-                        It is a case-insensitive search with an exact match on
-                        name or address
-                    </Title>
-                </Stack>
+            {applications?.length > 0 ? (
+                <ApplicationList applications={applications} />
             ) : (
-                ""
+                <NoApplications />
             )}
-            <ApplicationList applications={applications} />
         </Stack>
     );
 };

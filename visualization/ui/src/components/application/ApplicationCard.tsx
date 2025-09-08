@@ -1,5 +1,7 @@
 import { Badge, Card, Group, Stack, Text } from "@mantine/core";
 import type { FC } from "react";
+import { Link } from "react-router";
+import { routePathBuilder } from "../../routes/routePathBuilder";
 import type { Application, ApplicationState } from "../types";
 
 type Props = { application: Application };
@@ -21,6 +23,8 @@ export const ApplicationCard: FC<Props> = ({ application }) => {
     const { address, consensusType, name, processedInputs, state } =
         application;
     const stateColour = getStateColour(state);
+    const appId = application.name ?? application.address;
+    const url = routePathBuilder.appEpochs({ appId });
     const inputsLabel =
         processedInputs === 0
             ? "no inputs"
@@ -29,7 +33,7 @@ export const ApplicationCard: FC<Props> = ({ application }) => {
               : `${processedInputs} inputs`;
 
     return (
-        <Card shadow="md">
+        <Card shadow="md" component={Link} to={url}>
             <Stack>
                 <Stack gap="0">
                     <Group justify="space-between">
