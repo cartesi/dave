@@ -14,7 +14,7 @@ type Props = {
     inputs: Input[];
 };
 
-export const EpochPage: FC<Props> = ({ application, epoch, inputs }) => {
+export const EpochDetailsPage: FC<Props> = ({ application, epoch, inputs }) => {
     const epochStatusColor = useEpochStatusColor(epoch);
 
     return (

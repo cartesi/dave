@@ -1,12 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { applications } from "../stories/data";
-import { EpochPage } from "./EpochPage";
+import { EpochDetailsPage } from "./EpochDetailsPage";
 
 const meta = {
-    title: "Pages/Epoch",
-    component: EpochPage,
+    title: "Pages/Epoch Details",
+    component: EpochDetailsPage,
     tags: ["autodocs"],
-} satisfies Meta<typeof EpochPage>;
+} satisfies Meta<typeof EpochDetailsPage>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
