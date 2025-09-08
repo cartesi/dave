@@ -1,11 +1,15 @@
 import {
     useMantineColorScheme,
+    useMantineTheme,
     type MantineColor,
     type MantinePrimaryShade,
+    type MantineTheme,
 } from "@mantine/core";
-import theme from "../providers/theme";
 
-const getCorrectShade = (scheme: "dark" | "light"): number => {
+const getCorrectShade = (
+    scheme: "dark" | "light",
+    theme: MantineTheme,
+): number => {
     const shade = theme.primaryShade as MantinePrimaryShade;
     return scheme === "dark" ? shade.dark : shade.light;
 };
@@ -18,10 +22,11 @@ const getCorrectShade = (scheme: "dark" | "light"): number => {
  * @returns
  */
 const useRightColorShade = (color: MantineColor) => {
+    const theme = useMantineTheme();
     const { colorScheme } = useMantineColorScheme();
     const scheme =
         colorScheme === "auto" || colorScheme === "light" ? "light" : "dark";
-    const shadeIndex = getCorrectShade(scheme);
+    const shadeIndex = getCorrectShade(scheme, theme);
 
     return theme.colors?.[color]?.[shadeIndex] ?? theme.colors.gray[shadeIndex];
 };
