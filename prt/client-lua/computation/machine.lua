@@ -119,43 +119,6 @@ local function find_closest_snapshot(path, current_cycle, cycle)
     return closest_cycle, closest_dir
 end
 
-function Machine:take_snapshot(snapshot_dir, cycle, handle_rollups)
-    local input_mask = consts.barch_span_to_input
-    if handle_rollups and ((cycle & input_mask) == 0) then
-        if (not self.yielded) then
-            -- don't snapshot a machine state that's freshly fed with input without advance
-            return
-        end
-    end
-
-    if not helper.exists(snapshot_dir) then
-        helper.mkdir_p(snapshot_dir)
-    end
-
-    local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
-
-    if not helper.exists(snapshot_path) then
-        -- print("saving snapshot", snapshot_path)
-        self.machine:store(snapshot_path)
-    end
-end
-
-function Machine:load_snapshot(snapshot_dir, cycle)
-    local snapshot_cycle = cycle
-    local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
-
-    if not helper.exists(snapshot_path) then
-        -- find closest snapshot if direct snapshot doesn't exists
-        snapshot_cycle, snapshot_path = find_closest_snapshot(snapshot_dir, self.cycle, cycle)
-    end
-    if snapshot_path then
-        print(string.format("load snapshot from %s", snapshot_path))
-        local machine = cartesi.machine(snapshot_path, machine_settings)
-        self.cycle = snapshot_cycle
-        self.machine = machine
-    end
-end
-
 local function add_and_clamp(x, y)
     if math.ult(x, arithmetic.max_uint64 - y) then
         return x + y
@@ -483,31 +446,6 @@ local function encode_access_logs(logs)
     return data
 end
 
-
-local function get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
-    local big_step_mask = consts.uarch_span_to_barch
-
-    local base_cycle = (meta_cycle >> consts.log2_uarch_span_to_barch):tointeger()
-    local ucycle = (meta_cycle & big_step_mask):tointeger()
-
-    local machine = Machine:new_from_path(path)
-    machine:load_snapshot(snapshot_dir, base_cycle)
-    machine:run(base_cycle)
-    machine:run_uarch(ucycle)
-    assert(machine:state().root_hash == agree_hash)
-
-    local logs = {}
-    if ((meta_cycle + 1) & big_step_mask):iszero() then
-        table.insert(logs, machine.machine:log_step_uarch())
-        table.insert(logs, machine.machine:log_reset_uarch())
-    else
-        table.insert(logs, machine.machine:log_step_uarch())
-    end
-
-
-    return encode_access_logs(logs), machine:state().root_hash
-end
-
 local function encode_da(input_bin)
     local input_size_be = string.pack(">I8", input_bin:len())
     local da_proof = input_size_be .. input_bin
@@ -574,13 +512,9 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
     end
 end
 
-function Machine.get_logs(path, agree_hash, meta_cycle, inputs, snapshot_dir)
+function Machine.get_logs(path, agree_hash, meta_cycle, inputs)
     local proofs, next_hash
-    if inputs then
-        proofs, next_hash = get_logs_rollups(path, agree_hash, meta_cycle, inputs)
-    else
-        proofs, next_hash = get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
-    end
+    proofs, next_hash = get_logs_rollups(path, agree_hash, meta_cycle, inputs)
 
     print("access logs size: ", proofs:len())
     return string.format('"%s"', conversion.hex_from_bin_n(proofs)), next_hash
