@@ -24,7 +24,7 @@ end
 
 local function run_uarch_span(machine)
     assert(machine.ucycle == 0)
-    local machine_state = machine:increment_uarch()
+    local machine_state
     local builder = MerkleBuilder:new()
 
     local i = 1
