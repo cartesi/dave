@@ -125,7 +125,7 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
             if inputs[input_i + 1] then
                 local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
                 machine:write_checkpoint()
-                machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+                machine.send_cmio_response(input_bin);
             end
         end
     else
