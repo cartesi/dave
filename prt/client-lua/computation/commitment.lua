@@ -109,7 +109,7 @@ local function build_big_machine_commitment(log2_stride, log2_stride_count, mach
     return initial_state, builder:build(initial_state)
 end
 
-local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, inputs, snapshot_dir)
+local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, inputs)
     local machine
 
     local initial_state
@@ -128,14 +128,6 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
                 machine.send_cmio_response(input_bin);
             end
         end
-    else
-        -- treat it as compute
-        local big_cycle = base_cycle >> consts.log2_uarch_span_to_barch
-        machine = Machine:new_from_path(machine_path)
-        machine:load_snapshot(snapshot_dir, big_cycle)
-        initial_state = machine:run(big_cycle).root_hash
-        helper.log_timestamp("run to base cycle: " .. big_cycle)
-        machine:take_snapshot(snapshot_dir, big_cycle, false)
     end
 
     if log2_stride >= consts.log2_uarch_span_to_barch then
@@ -150,7 +142,7 @@ end
 local CommitmentBuilder = {}
 CommitmentBuilder.__index = CommitmentBuilder
 
-function CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_dir)
+function CommitmentBuilder:new(machine_path, inputs, root_commitment)
     -- receive honest root commitment from main process
     local commitments = {
         [0] = {
@@ -162,7 +154,6 @@ function CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_d
         commitments = commitments,
         machine_path = machine_path,
         inputs = inputs,
-        snapshot_dir = snapshot_dir
     }
     setmetatable(c, self)
     return c
@@ -176,8 +167,7 @@ function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_cou
         return self.commitments[level][base_cycle_str]
     end
 
-    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path, self.inputs,
-        self.snapshot_dir)
+    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path, self.inputs)
     self.commitments[level][base_cycle_str] = commitment
     return commitment
 end
