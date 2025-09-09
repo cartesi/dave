@@ -202,10 +202,19 @@ impl MachineInstance {
     pub fn feed_next_input(&mut self, db: &DisputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
         let input = db.input(self.input_count)?;
+        let root_hash = self.root_hash()?;
+        let new_snapshot_path = db.work_path.join(format!("{}", root_hash.to_hex()));
         if let Some(input_bin) = input {
-            let checkpoint_hash = self.machine.root_hash()?;
+            if !new_snapshot_path.exists() {
+                self.machine.store(&new_snapshot_path)?;
+                if self.snapshot_path.exists() {
+                    std::fs::remove_dir_all(&self.snapshot_path)?;
+                }
+            }
+
+            self.snapshot_path = new_snapshot_path;
             self.machine
-                .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
+                .write_memory(CHECKPOINT_ADDRESS, root_hash.slice())?;
             self.machine
                 .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
         }
@@ -246,30 +255,19 @@ impl MachineInstance {
 
         // we check if the request is accepted
         // if it is not, we revert the machine state to previous snapshot
-        match self.machine.receive_cmio_request()? {
-            CmioRequest::Manual(ManualReason::RxAccepted { .. }) => {
-                let new_snapshot_path =
-                    db.work_path.join(format!("{}", self.root_hash()?.to_hex()));
-                if !new_snapshot_path.exists() {
-                    self.machine.store(&new_snapshot_path)?;
-                }
-                if self.snapshot_path.exists() {
-                    std::fs::remove_dir_all(&self.snapshot_path)?;
-                }
-                self.snapshot_path = new_snapshot_path;
-                Ok(())
-            }
-            _ => {
-                let runtime_config = RuntimeConfig {
-                    htif: Some(HTIFRuntimeConfig {
-                        no_console_putchar: Some(true),
-                    }),
-                    ..Default::default()
-                };
-                self.machine = Machine::load(&self.snapshot_path, &runtime_config)?;
-                Ok(())
-            }
+        if self.machine.receive_cmio_request()?.reason()
+            != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
+        {
+            let runtime_config = RuntimeConfig {
+                htif: Some(HTIFRuntimeConfig {
+                    no_console_putchar: Some(true),
+                }),
+                ..Default::default()
+            };
+
+            self.machine = Machine::load(&self.snapshot_path, &runtime_config)?;
         }
+        Ok(())
     }
 
     pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
