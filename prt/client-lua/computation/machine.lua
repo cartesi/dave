@@ -182,8 +182,7 @@ local function advance_rollup(self, meta_cycle, inputs)
         end
 
         local input_bin = conversion.bin_from_hex_n(input)
-        self:write_checkpoint()
-        self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+        self:feed_input(input_bin)
 
         repeat
             self:run(arithmetic.max_uint64)
@@ -201,8 +200,7 @@ local function advance_rollup(self, meta_cycle, inputs)
     local input = inputs[self.input_count + 1]
     if input then
         local input_bin = conversion.bin_from_hex_n(input)
-        self:write_checkpoint()
-        self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+        self:feed_input(input_bin)
     end
 
     self:run(cycle)
@@ -251,8 +249,7 @@ function Machine.root_rollup_commitment(pristine_path, log2_stride, inputs)
     while input_i < max_input_count do
         if inputs[input_i + 1] then
             local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
-            machine:write_checkpoint()
-            machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+            machine:feed_input(input_bin);
             local tree = process_input(machine, log2_stride)
             builder:add(tree)
             input_i = input_i + 1
@@ -296,6 +293,23 @@ function Machine:run_uarch(ucycle)
     self.ucycle = ucycle
 end
 
+function Machine:feed_input(input_bin)
+    -- before feeding input, the machine state is always valid and yielded, so we can store the snapshot
+    -- however if could have been reverted, so we need to check if the snapshot exists
+    local root_hash = self.machine:get_root_hash()
+    local new_snapshot_path = self.snapshot_dir .. "/" .. root_hash:hex_string()
+    if not helper.exists(new_snapshot_path) then
+        self.machine:store(new_snapshot_path)
+        if self.snapshot_path and helper.exists(self.snapshot_path) then
+            helper.remove_file(self.snapshot_path)
+        end
+    end
+
+    self.snapshot_path = new_snapshot_path
+    self:write_checkpoint(root_hash)
+    self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+end
+
 function Machine:run(cycle)
     assert(arithmetic.ulte(self.cycle, cycle))
 
@@ -324,18 +338,7 @@ function Machine:revert_if_needed()
     -- we check if the request is accepted
     -- if it is not, we revert the machine state to previous snapshot
     local _, reason, _ = self.machine:receive_cmio_request()
-    if reason == cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
-        -- Request accepted, store new snapshot in snapshot_dir
-
-        local new_snapshot_path = self.snapshot_dir .. "/" .. self:root_hash():hex_string()
-        if not helper.exists(new_snapshot_path) then
-            self.machine:store(new_snapshot_path)
-        end
-        if self.snapshot_path and helper.exists(self.snapshot_path) then
-            helper.remove_file(self.snapshot_path)
-        end
-        self.snapshot_path = new_snapshot_path
-    else
+    if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
         -- Revert to previous snapshot
         local machine = cartesi.machine(self.snapshot_path, machine_settings)
         self.machine = machine
@@ -422,10 +425,9 @@ function Machine:prove_write_leaf(address)
     return data
 end
 
-function Machine:write_checkpoint()
+function Machine:write_checkpoint(root_hash)
     -- Write the current machine state hash to the checkpoint address
-    local current_hash = self.machine:get_root_hash()
-    self.machine:write_memory(consts.CHECKPOINT_ADDRESS, current_hash)
+    self.machine:write_memory(consts.CHECKPOINT_ADDRESS, root_hash)
 end
 
 function Machine:increment_uarch()
@@ -522,14 +524,15 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
     local logs = {}
 
     local machine = Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
-    assert(machine:state().root_hash == agree_hash)
+    local root_hash = machine:state().root_hash
+    assert(root_hash == agree_hash)
 
     if (meta_cycle & input_mask):iszero() then
         local input = inputs[input_count + 1]
         local da_proof
         if input then
             local input_bin = conversion.bin_from_hex_n(input)
-            machine:write_checkpoint()
+            machine:write_checkpoint(root_hash)
             local write_checkpoint_proof = machine:prove_write_leaf(consts.CHECKPOINT_ADDRESS)
             local cmio_log = machine.machine:log_send_cmio_response(
                 cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
