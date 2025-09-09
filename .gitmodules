@@ -4,3 +4,6 @@
 [submodule "machine/emulator"]
 	path = machine/emulator
 	url = https://github.com/cartesi/machine-emulator
+[submodule "prt/contracts/dependencies/risc0-ethereum"]
+	path = prt/contracts/dependencies/risc0-ethereum
+	url = https://github.com/risc0/risc0-ethereum

@@ -22,6 +22,35 @@ chainAvgBlockTime = "<%= ({1: 12, 13370: 12, 31337: 12, 11155111: 12})[chainId] 
 matchEffort = "<%= BigInt({mainnet: settings.mainnetMatchEffort, testnet: settings.testnetMatchEffort, devnet: settings.devnetMatchEffort}[settings.chainType]) / BigInt(settings.chainAvgBlockTime) %>"
 maxAllowance = "<%= BigInt({mainnet: settings.mainnetMaxAllowance, testnet: settings.testnetMaxAllowance, devnet: settings.devnetMaxAllowance}[settings.chainType]) / BigInt(settings.chainAvgBlockTime) %>"
 
+[deploy.RiscZeroGroth16Verifier]
+artifact = "RiscZeroGroth16Verifier"
+args = [
+    "0xa54dc85ac99f851c92d7c96d7318af41dbe7c0194edfcc37eb4d422a998c1f56",
+    "0x04446e66d300eb7fb45c9726bb53c793dda407a62e9601618bb43c5c14657ac0",
+]
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[deploy.RiscZeroVerifierRouter]
+artifact = "RiscZeroVerifierRouter"
+args = [
+    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", # default anvil admin address
+]
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[deploy.CartesiStateTransitionWithRiscZero]
+artifact = "CartesiStateTransitionWithRiscZero"
+args = [
+    "<%= contracts.RiscZeroVerifierRouter.address %>",
+    "<%= zeroHash %>",  # TODO: replace with actual zkVM program image ID
+]
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
 [deploy.RiscVStateTransition]
 artifact = "RiscVStateTransition"
 create2 = true

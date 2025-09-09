@@ -271,6 +271,16 @@ impl Machine {
         Ok(())
     }
 
+    /// Sets the hash tree target for this machine
+    pub fn set_hash_tree_target(&mut self, target: crate::config::runtime::HashTreeTarget) -> Result<()> {
+        use crate::constants::hash_tree_target;
+        let value = match target {
+            crate::config::runtime::HashTreeTarget::UArch => hash_tree_target::UARCH,
+            crate::config::runtime::HashTreeTarget::Risc0 => hash_tree_target::RISC0,
+        };
+        self.write_reg(crate::constants::register::HASH_TREE_TARGET, value)
+    }
+
     /// Reads a chunk of data from a machine memory range, by its physical address.
     pub fn read_memory(&mut self, address: u64, size: u64) -> Result<Vec<u8>> {
         let mut buffer = vec![0u8; size as usize];

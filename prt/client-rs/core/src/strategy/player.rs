@@ -20,6 +20,10 @@ use crate::{
 };
 use cartesi_dave_merkle::{Digest, MerkleProof};
 
+// RISC Zero integration
+use cartesi_risc0;
+use ethabi;
+
 #[derive(Debug, PartialEq)]
 pub enum PlayerTournamentResult {
     TournamentLost,
@@ -318,12 +322,38 @@ impl<AS: ArenaSender> Player<AS> {
             }
 
             let proof = {
-                MachineInstance::get_logs(
-                    &self.machine_path,
-                    match_state.other_parent,
-                    match_state.leaf_cycle,
-                    &self.db,
-                )?
+                // Generate step log file for RISC Zero
+                let mcycle_count = 10000u64;
+                
+                let (log_file_path, before_hash, after_hash) = 
+                    MachineInstance::generate_step_log_for_risc0(
+                        &self.machine_path,
+                        match_state.other_parent,    // agree_hash
+                        match_state.leaf_cycle,      // meta_cycle  
+                        mcycle_count,                // mcycle_count
+                        &self.db,
+                    )?;
+                
+                // Generate RISC Zero proof
+                let (seal, journal) = cartesi_risc0::prove_for_contract(
+                    &before_hash.data(),              // root_hash_before
+                    &log_file_path,                   // log_file_path  
+                    mcycle_count,                     // mcycle_count
+                    &after_hash.data(),              // root_hash_after
+                );
+                
+                // Clean up temporary log file
+                if let Err(e) = std::fs::remove_file(&log_file_path) {
+                    log::warn!("Failed to cleanup log file {}: {}", log_file_path, e);
+                }
+                
+                // ABI encode for contract: abi.encode(seal, journal)
+                let encoded_proof = ethabi::encode(&[
+                    ethabi::Token::Bytes(seal),
+                    ethabi::Token::Bytes(journal),
+                ]);
+                
+                (encoded_proof, after_hash) // Return format: (Vec<u8>, Digest)
             };
 
             info!(

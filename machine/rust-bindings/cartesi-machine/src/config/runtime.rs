@@ -3,6 +3,14 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum HashTreeTarget {
+    #[serde(rename = "uarch")]
+    UArch,
+    #[serde(rename = "risc0")]
+    Risc0,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ConcurrencyRuntimeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -29,4 +37,6 @@ pub struct RuntimeConfig {
     pub skip_version_check: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub soft_yield: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash_tree_target: Option<HashTreeTarget>,
 }

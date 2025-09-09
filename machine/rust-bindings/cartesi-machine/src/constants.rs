@@ -76,6 +76,17 @@ pub mod cmio {
     }
 }
 
+pub mod hash_tree_target {
+    use cartesi_machine_sys::*;
+    pub const UARCH: u64 = CM_HASH_TREE_TARGET_UARCH as u64;
+    pub const RISC0: u64 = CM_HASH_TREE_TARGET_RISC0 as u64;
+}
+
+pub mod register {
+    use cartesi_machine_sys::*;
+    pub const HASH_TREE_TARGET: u32 = CM_REG_HASH_TREE_TARGET;
+}
+
 pub mod error_code {
     use cartesi_machine_sys::*;
 

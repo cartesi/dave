@@ -63,14 +63,27 @@ pub struct MachineInstance {
 
 impl MachineInstance {
     pub fn new_from_path(path: &str) -> Result<Self> {
+        use cartesi_machine::config::runtime::HashTreeTarget;
+        
         let runtime_config = RuntimeConfig {
             htif: Some(HTIFRuntimeConfig {
                 no_console_putchar: Some(true),
             }),
+            hash_tree_target: Some(HashTreeTarget::Risc0),
             ..Default::default()
         };
         let path = PathBuf::from(path);
         let mut machine = Machine::load(&path, &runtime_config)?;
+
+        // Debug: Verify hash tree target is set correctly
+        let actual_target = machine.read_reg(cartesi_machine::constants::register::HASH_TREE_TARGET)?;
+        eprintln!("=== HASH TREE TARGET DEBUG ===");
+        eprintln!("Expected RISC0 target: {}", cartesi_machine::constants::hash_tree_target::RISC0);
+        eprintln!("Actual target from machine: {}", actual_target);
+        if actual_target != cartesi_machine::constants::hash_tree_target::RISC0 {
+            eprintln!("WARNING: Hash tree target mismatch! Machine still using UARCH target.");
+        }
+        eprintln!("=== END HASH TREE TARGET DEBUG ===");
 
         let _start_cycle = machine.mcycle()?;
 
@@ -86,6 +99,7 @@ impl MachineInstance {
             ucycle: 0,
         })
     }
+
 
     /*
         pub fn take_snapshot(&mut self, base_cycle: u64, db: &DisputeStateAccess) -> Result<()> {
@@ -195,6 +209,7 @@ impl MachineInstance {
         machine.advance_rollups(meta_cycle, db)?;
         Ok(machine)
     }
+
 
     pub fn feed_next_input(&mut self, db: &DisputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
@@ -400,6 +415,83 @@ impl MachineInstance {
         next_hash = result.1;
 
         Ok((proofs, next_hash))
+    }
+
+    /// Generate step log file for RISC Zero proof generation
+    /// Returns (log_file_path, before_hash, after_hash)
+    /// 
+    /// # Parameters
+    /// - mcycle_count: Number of macro-cycles to execute (should be <= 200k for RISC Zero)
+    pub fn generate_step_log_for_risc0(
+        path: &str,
+        agree_hash: Digest,
+        meta_cycle: U256,
+        mcycle_count: u64,
+        db: &DisputeStateAccess,
+    ) -> Result<(String, Digest, Digest)> {
+        use std::path::Path;
+        
+        // RISC Zero step limit - configurable but typically ~200k
+        const MAX_RISC0_STEPS: u64 = 200_000;
+        
+        if mcycle_count > MAX_RISC0_STEPS {
+            return Err(cartesi_machine::error::MachineError {
+                code: -1,
+                message: format!("mcycle_count {} exceeds RISC Zero limit of {}", 
+                    mcycle_count, MAX_RISC0_STEPS)
+            }.into());
+        }
+        
+        // 1. Create machine instance at target state with RISC Zero hash target
+        let mut machine = Self::new_rollups_advanced_until(path, meta_cycle, db)?;
+        let current_state = machine.state()?;
+        
+        // 2. Verify hash tree target is set correctly for RISC Zero
+        let current_target = machine.machine.read_reg(cartesi_machine::constants::register::HASH_TREE_TARGET)?;
+        if current_target != cartesi_machine::constants::hash_tree_target::RISC0 {
+            log::warn!("Hash tree target is not set to RISC Zero, got: {}", current_target);
+        }
+        
+        // 3. Verify we're at the expected state
+        if current_state.root_hash != agree_hash {
+            return Err(cartesi_machine::error::MachineError {
+                code: -1,
+                message: format!("Expected hash {} but got {}", 
+                    hex::encode(agree_hash.data()), 
+                    hex::encode(current_state.root_hash.data())
+                )
+            }.into());
+        }
+        
+        // 3. Get before state
+        let before_hash = current_state.root_hash;
+        
+        // 4. Generate unique log file path in temp directory
+        let log_file_path = format!("/tmp/cartesi_step_log_{}_{}_{}.bin", 
+            hex::encode(before_hash.data()), 
+            meta_cycle,
+            mcycle_count);
+        
+        // 5. Execute mcycle_count cycles with logging
+        let log_path = Path::new(&log_file_path);
+        let _break_reason = machine.machine.log_step(mcycle_count, log_path)?;
+        
+        // 6. Get after state
+        let after_state = machine.state()?;
+        let after_hash = after_state.root_hash;
+        
+        // Debug: Log the computed hashes
+        eprintln!("=== STEP LOG GENERATION DEBUG ===");
+        eprintln!("before_hash: {:02x?}", before_hash.data());
+        eprintln!("after_hash: {:02x?}", after_hash.data()); 
+        eprintln!("mcycle_count: {}", mcycle_count);
+        eprintln!("log_file_path: {}", log_file_path);
+        if let Ok(metadata) = std::fs::metadata(&log_file_path) {
+            eprintln!("step_log_size: {} bytes", metadata.len());
+        }
+        eprintln!("=== END STEP LOG DEBUG ===");
+        
+        Ok((log_file_path, before_hash, after_hash))
     }
 
     pub fn position(&mut self) -> Result<(u64, u64)> {
