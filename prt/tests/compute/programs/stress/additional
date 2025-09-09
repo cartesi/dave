@@ -1,8 +1,0 @@
-#!/bin/sh
-mount -t proc proc /proc
-mount /dev/mtdblock1 /mnt
-. /mnt/install
-sync
-umount -f /mnt
-mount -f -o remount,ro /
-halt -f
