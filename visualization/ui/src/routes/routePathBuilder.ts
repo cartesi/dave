@@ -1,4 +1,4 @@
-type PathParams = {
+export type RoutePathParams = {
     appId?: string;
     epochIndex?: string;
     matchId?: string;
@@ -10,22 +10,24 @@ export const routePathBuilder = {
     base: "/" as const,
     home: () => routePathBuilder.base,
     apps: () => `${routePathBuilder.home()}apps` as const,
-    appDetail: (params?: PathParams) =>
+    appDetail: (params?: RoutePathParams) =>
         `${routePathBuilder.apps()}/${params?.appId ?? ":appId"}` as const,
-    appEpochs: (params?: PathParams) =>
+    appEpochs: (params?: RoutePathParams) =>
         `${routePathBuilder.appDetail(params)}/epochs` as const,
-    appEpochDetails: (params?: PathParams) =>
+    appEpochDetails: (params?: RoutePathParams) =>
         `${routePathBuilder.appEpochs(params)}/${params?.epochIndex ?? ":epochIndex"}` as const,
-    topTournament: (params?: PathParams) =>
+    topTournament: (params?: RoutePathParams) =>
         `${routePathBuilder.appEpochDetails(params)}/tt` as const,
-    matchDetail: (params?: PathParams) =>
-        `${routePathBuilder.topTournament(params)}/matches/${params?.matchId ?? ":matchId"}` as const,
-    middleTournament: (params?: PathParams) =>
+    topTournamentMatches: (params?: RoutePathParams) =>
+        `${routePathBuilder.topTournament(params)}/matches` as const,
+    matchDetail: (params?: RoutePathParams) =>
+        `${routePathBuilder.topTournamentMatches(params)}/${params?.matchId ?? ":matchId"}` as const,
+    middleTournament: (params?: RoutePathParams) =>
         `${routePathBuilder.matchDetail(params)}/mt` as const,
-    midMatchDetail: (params?: PathParams) =>
+    midMatchDetail: (params?: RoutePathParams) =>
         `${routePathBuilder.middleTournament(params)}/matches/${params?.midMatchId ?? ":midMatchId"}` as const,
-    bottomTournament: (params?: PathParams) =>
+    bottomTournament: (params?: RoutePathParams) =>
         `${routePathBuilder.midMatchDetail(params)}/bt` as const,
-    btMatchDetail: (params?: PathParams) =>
+    btMatchDetail: (params?: RoutePathParams) =>
         `${routePathBuilder.bottomTournament(params)}/matches/${params?.btMatchId ?? ":btMatchId"}` as const,
 };

@@ -23,7 +23,7 @@ type Props = Parameters<typeof TournamentPage>[0];
 const WithBreadcrumb = (props: Props) => {
     const app = applications[0];
     const params = { appId: app.name, epochIndex: "4" };
-    console.log(props.tournament);
+
     return (
         <Stack gap="lg">
             <Hierarchy

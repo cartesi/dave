@@ -21,7 +21,6 @@ export const Ongoing: Story = {
             actions: MatchActionsStories.Bisections.args.actions,
         },
         now,
-        parentMatches: [],
         range: [1837880065, 2453987565],
     },
 };
@@ -37,7 +36,6 @@ export const NoActions: Story = {
             actions: [],
         },
         now,
-        parentMatches: [],
         range: [1837880065, 2453987565],
     },
 };
