@@ -1,12 +1,20 @@
 import { MantineProvider, Stack, Text, Title } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { useColorScheme } from "@mantine/hooks";
-import { Link, Outlet, Route, Routes, useLocation } from "react-router";
+import {
+    Link,
+    Outlet,
+    Route,
+    Routes,
+    useLocation,
+    useParams,
+} from "react-router";
 import Layout from "./components/layout/Layout";
 import { Redirect } from "./components/navigation/Redirect";
 import { EpochDetailsContainer } from "./containers/EpochDetailsContainer";
 import { EpochsContainer } from "./containers/EpochsContainer";
 import { HomeContainer } from "./containers/Home";
+import { MatchDetailContainer } from "./containers/MatchDetailContainer";
 import { TournamentContainer } from "./containers/TournamentContainer";
 import DataProvider from "./providers/DataProvider";
 import theme from "./providers/theme";
@@ -31,6 +39,12 @@ const RouteNotFound = () => {
             </Link>
         </Stack>
     );
+};
+
+const RedirectToTournament = () => {
+    const params = useParams();
+    const tournamentUrl = routePathBuilder.topTournament(params);
+    return <Redirect to={tournamentUrl} />;
 };
 
 function App() {
@@ -71,6 +85,16 @@ function App() {
                         <Route
                             path={routePathBuilder.topTournament()}
                             element={<TournamentContainer />}
+                        />
+
+                        <Route
+                            path={routePathBuilder.topTournamentMatches()}
+                            element={<RedirectToTournament />}
+                        />
+
+                        <Route
+                            path={routePathBuilder.matchDetail()}
+                            element={<MatchDetailContainer />}
                         />
 
                         <Route path="*" element={<RouteNotFound />} />
