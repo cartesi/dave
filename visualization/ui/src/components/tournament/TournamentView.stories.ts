@@ -106,7 +106,6 @@ export const Ongoing: Story = {
     args: {
         onClickMatch: fn(),
         tournament,
-        parentMatches: [],
     },
 };
 
@@ -122,7 +121,6 @@ export const NoChallengerYet: Story = {
             matches: [],
             danglingClaim: claim(0),
         },
-        parentMatches: [],
     },
 };
 
@@ -138,13 +136,11 @@ export const Finalized: Story = {
             danglingClaim: claim(0),
             matches: [],
         },
-        parentMatches: [],
     },
 };
 
 export const MidLevelDispute: Story = {
     args: {
         tournament: tournament.matches[1].tournament!,
-        parentMatches: [{ claim1: claim(4), claim2: claim(5) }],
     },
 };

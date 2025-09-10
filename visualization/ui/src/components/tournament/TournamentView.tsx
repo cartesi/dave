@@ -3,7 +3,7 @@ import { useState, type FC } from "react";
 import { TbTrophyFilled } from "react-icons/tb";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
-import { TournamentBreadcrumbs } from "../navigation/TournamentBreadcrumbs";
+import { TournamentBreadcrumbSegment } from "../navigation/TournamentBreadcrumbSegment";
 import type { Match, Tournament } from "../types";
 import { TournamentTable } from "./TournamentTable";
 
@@ -17,15 +17,10 @@ export interface TournamentViewProps {
      * The tournament to display.
      */
     tournament: Tournament;
-
-    /**
-     * The parent matches of the tournament.
-     */
-    parentMatches: Pick<Match, "claim1" | "claim2">[];
 }
 
 export const TournamentView: FC<TournamentViewProps> = (props) => {
-    const { onClickMatch, tournament, parentMatches } = props;
+    const { onClickMatch, tournament } = props;
 
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
@@ -37,7 +32,10 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
         <Stack>
             <Group>
                 <Text>Level</Text>
-                <TournamentBreadcrumbs parentMatches={parentMatches} />
+                <TournamentBreadcrumbSegment
+                    level={tournament.level}
+                    variant="filled"
+                />
             </Group>
             <Group>
                 <Text>Mcycle range</Text>
