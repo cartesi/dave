@@ -1,18 +1,18 @@
-import { Badge, type BadgeVariant } from "@mantine/core";
+import { Button, type ButtonVariant } from "@mantine/core";
 import type { FC } from "react";
 import type { Tournament } from "../types";
 
 type TournamentBreadcrumbSegmentProps = {
     level: Tournament["level"];
-    variant?: BadgeVariant;
+    variant?: ButtonVariant;
 };
 
 export const TournamentBreadcrumbSegment: FC<
     TournamentBreadcrumbSegmentProps
 > = ({ level, variant }) => {
     return (
-        <Badge radius="xl" variant={variant}>
+        <Button variant={variant} size="compact-xs" radius="xl">
             {level}
-        </Badge>
+        </Button>
     );
 };
