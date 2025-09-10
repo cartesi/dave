@@ -28,6 +28,7 @@ export const EpochDetailsPage: FC<Props> = ({ tournament, epoch, inputs }) => {
     const epochStatusColor = useEpochStatusColor(epoch);
     const params = useParams();
     const tournamentUrl = routePathBuilder.topTournament(params);
+    const tournamentColor = epoch.inDispute ? epochStatusColor : "";
 
     return (
         <Stack>
@@ -47,15 +48,15 @@ export const EpochDetailsPage: FC<Props> = ({ tournament, epoch, inputs }) => {
                     component={Link}
                     to={tournamentUrl}
                     variant="text"
-                    c={epochStatusColor}
+                    c={tournamentColor}
                 >
                     <Group gap="xs">
                         <Group gap="sm">
                             <TbTrophy
                                 size={theme.other.mdIconSize}
-                                color={epochStatusColor}
+                                color={tournamentColor}
                             />
-                            <Text c={epochStatusColor}>Tournament</Text>
+                            <Text c={tournamentColor}>Tournament</Text>
                         </Group>
                         <CycleRangeFormatted
                             size="md"
