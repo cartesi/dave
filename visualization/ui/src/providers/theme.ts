@@ -20,7 +20,7 @@ const theme = createTheme({
         finalized: virtualColor({
             name: "finalized",
             light: "dark",
-            dark: "dark",
+            dark: "gray",
         }),
     },
     primaryColor: "cyan",
