@@ -18,7 +18,7 @@ const LayoutWithOutlet = () => (
     </Layout>
 );
 
-const NotFound = () => {
+const RouteNotFound = () => {
     const location = useLocation();
 
     return (
@@ -73,7 +73,7 @@ function App() {
                             element={<TournamentContainer />}
                         />
 
-                        <Route path="*" element={<NotFound />} />
+                        <Route path="*" element={<RouteNotFound />} />
                     </Route>
                 </Routes>
             </MantineProvider>

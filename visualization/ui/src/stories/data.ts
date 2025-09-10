@@ -5,6 +5,7 @@ import type {
     MatchAction,
     Tournament,
 } from "../components/types";
+import { generateMatchID } from "./util";
 
 export type EpochWithTournament = Epoch & { tournament?: Tournament };
 export type ApplicationEpochs = Application & { epochs: EpochWithTournament[] };
@@ -85,6 +86,10 @@ export const applications: ApplicationEpochs[] = [
                                     timestamp: 0,
                                 },
                             ],
+                            id: generateMatchID(
+                                keccak256("0x4"),
+                                keccak256("0x5"),
+                            ),
                             claim1: { hash: keccak256("0x4") },
                             claim2: { hash: keccak256("0x5") },
                             timestamp: 0,
@@ -114,6 +119,10 @@ export const applications: ApplicationEpochs[] = [
                                                 timestamp: 0,
                                             },
                                         ],
+                                        id: generateMatchID(
+                                            keccak256("0x6"),
+                                            keccak256("0x7"),
+                                        ),
                                         claim1: { hash: keccak256("0x6") },
                                         claim2: { hash: keccak256("0x7") },
                                         timestamp: 0,

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { getUnixTime } from "date-fns";
 import { fn } from "storybook/test";
-import { claim } from "../../stories/util";
+import { claim, generateMatchID } from "../../stories/util";
 import type { Tournament } from "../types";
 import { TournamentView } from "./TournamentView";
 
@@ -26,6 +26,7 @@ const tournament: Tournament = {
     endCycle,
     matches: [
         {
+            id: generateMatchID(claim(0).hash, claim(1).hash),
             claim1: claim(0),
             claim2: claim(1),
             timestamp: timestamp + 1,
@@ -34,6 +35,7 @@ const tournament: Tournament = {
             actions: [],
         },
         {
+            id: generateMatchID(claim(2).hash, claim(3).hash),
             claim1: claim(2),
             claim2: claim(3),
             timestamp: timestamp + 3,
@@ -70,12 +72,17 @@ const tournament: Tournament = {
                 endCycle: endCycle / 1024,
                 matches: [
                     {
+                        id: generateMatchID(claim(7, 5).hash, claim(8, 4).hash),
                         claim1: claim(7, 5),
                         claim2: claim(8, 4),
                         timestamp: timestamp + 8,
                         actions: [],
                     },
                     {
+                        id: generateMatchID(
+                            claim(9, 5).hash,
+                            claim(10, 4).hash,
+                        ),
                         claim1: claim(9, 5),
                         claim2: claim(10, 4),
                         timestamp: timestamp + 10,
@@ -85,6 +92,7 @@ const tournament: Tournament = {
             },
         },
         {
+            id: generateMatchID(claim(4).hash, claim(5).hash),
             claim1: claim(4),
             claim2: claim(5),
             winner: 1,
@@ -93,6 +101,7 @@ const tournament: Tournament = {
             actions: [],
         },
         {
+            id: generateMatchID(claim(6).hash, claim(4).hash),
             claim1: claim(6),
             claim2: claim(4),
             timestamp: timestamp + 6,

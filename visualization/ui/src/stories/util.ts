@@ -1,4 +1,12 @@
-import { concat, hexToNumber, keccak256, slice, toBytes, type Hex } from "viem";
+import {
+    concat,
+    encodeAbiParameters,
+    hexToNumber,
+    keccak256,
+    slice,
+    toBytes,
+    type Hex,
+} from "viem";
 import type { Claim, Tournament } from "../components/types";
 
 /**
@@ -76,6 +84,23 @@ export const randomBisections = (n: number, seed: number = 0): (0 | 1)[] => {
 };
 
 /**
+ * A match has an id, check [solidity code reference]{@link https://github.com/cartesi/dave/blob/feat/experiment-dave-ui/prt/contracts/src/tournament/abstracts/Tournament.sol#L350}
+ * This function is a reference implementation from this [solidity struct ID]{@link https://github.com/cartesi/dave/blob/feat/experiment-dave-ui/prt/contracts/src/tournament/libs/Match.sol#L40}
+ * used on dave PRT's solidity contracts.
+ * @param claimOne  claim1 hash
+ * @param claimTwo  claim2 hash
+ * @returns {Hex}
+ */
+export const generateMatchID = (claimOne: Hex, claimTwo: Hex) => {
+    const abiEncodedClaims = encodeAbiParameters(
+        [{ type: "bytes32" }, { type: "bytes32" }],
+        [claimOne, claimTwo],
+    );
+
+    return keccak256(abiEncodedClaims);
+};
+
+/**
  * Create matches for a tournament
  * @param tournament Tournament to create matches for
  * @param claims Claims to create matches for
@@ -94,6 +119,7 @@ export const randomMatches = (
             // create a match with the dangling claim
             const claim1 = tournament.danglingClaim;
             tournament.matches.push({
+                id: generateMatchID(claim1.hash, claim.hash),
                 actions: [],
                 claim1,
                 claim2: claim,

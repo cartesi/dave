@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import { claim } from "../../stories/util";
+import { claim, generateMatchID } from "../../stories/util";
 import { MatchCard } from "./MatchCard";
 
 const meta = {
@@ -23,6 +23,7 @@ const timestamp = Math.floor(Date.now() / 1000);
 export const Ongoing: Story = {
     args: {
         match: {
+            id: generateMatchID(claim(0).hash, claim(1).hash),
             claim1: claim(0),
             claim2: claim(1),
             timestamp,
@@ -38,6 +39,7 @@ export const Ongoing: Story = {
 export const MidLevel: Story = {
     args: {
         match: {
+            id: generateMatchID(claim(0, 2).hash, claim(1, 3).hash),
             claim1: claim(0, 2),
             claim2: claim(1, 3),
             timestamp,
@@ -53,6 +55,7 @@ export const MidLevel: Story = {
 export const BottomLevel: Story = {
     args: {
         match: {
+            id: generateMatchID(claim(0, 2, 4).hash, claim(1, 3, 5).hash),
             claim1: claim(0, 2, 4),
             claim2: claim(1, 3, 5),
             timestamp,
@@ -68,6 +71,7 @@ export const BottomLevel: Story = {
 export const Winner1: Story = {
     args: {
         match: {
+            id: generateMatchID(claim(0).hash, claim(1).hash),
             claim1: claim(0),
             claim2: claim(1),
             winner: 1,
@@ -85,6 +89,7 @@ export const Winner1: Story = {
 export const Winner2: Story = {
     args: {
         match: {
+            id: generateMatchID(claim(0).hash, claim(1).hash),
             claim1: claim(0),
             claim2: claim(1),
             winner: 2,
@@ -102,6 +107,7 @@ export const Winner2: Story = {
 export const NoClickEventHandler: Story = {
     args: {
         match: {
+            id: generateMatchID(claim(0).hash, claim(1).hash),
             claim1: claim(0),
             claim2: claim(1),
             timestamp,

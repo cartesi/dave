@@ -82,6 +82,7 @@ export type MatchAction = (
 
 export interface Match {
     tournament?: Tournament;
+    id: Hex;
     claim1: Claim;
     claim2: Claim;
     winner?: 1 | 2;
