@@ -1,3 +1,4 @@
+import { getUnixTime, subMinutes, subSeconds } from "date-fns";
 import { keccak256 } from "viem";
 import type {
     Application,
@@ -9,6 +10,8 @@ import { generateMatchID } from "./util";
 
 export type EpochWithTournament = Epoch & { tournament?: Tournament };
 export type ApplicationEpochs = Application & { epochs: EpochWithTournament[] };
+
+const currentDate = new Date();
 
 export const applications: ApplicationEpochs[] = [
     {
@@ -76,14 +79,18 @@ export const applications: ApplicationEpochs[] = [
                                     { length: 48 },
                                     (_, i) => ({
                                         type: "advance",
-                                        timestamp: i,
+                                        timestamp: getUnixTime(
+                                            subMinutes(currentDate, 48 - i),
+                                        ),
                                         direction: i % 2 === 0 ? 0 : 1,
                                     }),
                                 ),
                                 {
                                     type: "match_sealed_inner_tournament_created",
                                     range: [7_102_817_919, 7_402_918_071],
-                                    timestamp: 0,
+                                    timestamp: getUnixTime(
+                                        subSeconds(currentDate, 1),
+                                    ),
                                 },
                             ],
                             id: generateMatchID(
