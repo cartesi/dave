@@ -6,6 +6,7 @@ import { Redirect } from "./components/navigation/Redirect";
 import { EpochDetailsContainer } from "./containers/EpochDetailsContainer";
 import { EpochsContainer } from "./containers/EpochsContainer";
 import { HomeContainer } from "./containers/Home";
+import { TournamentContainer } from "./containers/TournamentContainer";
 import DataProvider from "./providers/DataProvider";
 import theme from "./providers/theme";
 import { routePathBuilder } from "./routes/routePathBuilder";
@@ -60,6 +61,11 @@ function App() {
                         <Route
                             path={routePathBuilder.appEpochDetails()}
                             element={<EpochDetailsContainer />}
+                        />
+
+                        <Route
+                            path={routePathBuilder.topTournament()}
+                            element={<TournamentContainer />}
                         />
 
                         <Route path="*" element={<NotFound />} />
