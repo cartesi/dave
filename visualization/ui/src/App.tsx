@@ -1,5 +1,6 @@
 import { MantineProvider, Stack, Text, Title } from "@mantine/core";
 import "@mantine/core/styles.css";
+import { useColorScheme } from "@mantine/hooks";
 import { Link, Outlet, Route, Routes, useLocation } from "react-router";
 import Layout from "./components/layout/Layout";
 import { Redirect } from "./components/navigation/Redirect";
@@ -33,9 +34,13 @@ const NotFound = () => {
 };
 
 function App() {
+    const colorScheme = useColorScheme();
     return (
         <DataProvider>
-            <MantineProvider theme={theme} defaultColorScheme="auto">
+            <MantineProvider
+                theme={theme}
+                forceColorScheme={colorScheme ?? "light"}
+            >
                 <Routes>
                     <Route element={<LayoutWithOutlet />}>
                         <Route
