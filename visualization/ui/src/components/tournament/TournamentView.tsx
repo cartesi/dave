@@ -4,15 +4,10 @@ import { TbTrophyFilled } from "react-icons/tb";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
 import { LongText } from "../LongText";
 import { TournamentBreadcrumbSegment } from "../navigation/TournamentBreadcrumbSegment";
-import type { Match, Tournament } from "../types";
+import type { Tournament } from "../types";
 import { TournamentTable } from "./TournamentTable";
 
 export interface TournamentViewProps {
-    /**
-     * Callback when a match is clicked. Useful for navigating to the match page.
-     */
-    onClickMatch?: (match: Match) => void;
-
     /**
      * The tournament to display.
      */
@@ -20,7 +15,7 @@ export interface TournamentViewProps {
 }
 
 export const TournamentView: FC<TournamentViewProps> = (props) => {
-    const { onClickMatch, tournament } = props;
+    const { tournament } = props;
 
     const theme = useMantineTheme();
     const gold = theme.colors.yellow[5];
@@ -64,7 +59,6 @@ export const TournamentView: FC<TournamentViewProps> = (props) => {
                 danglingClaim={danglingClaim}
                 matches={matches}
                 hideWinners={hideWinners}
-                onClickMatch={onClickMatch}
             />
         </Stack>
     );

@@ -1,5 +1,10 @@
 import { Divider, Stack } from "@mantine/core";
 import type { FC } from "react";
+import { useNavigate, useParams } from "react-router";
+import {
+    routePathBuilder,
+    type RoutePathParams,
+} from "../../routes/routePathBuilder";
 import type { Claim, Match } from "../types";
 import { ClaimCard } from "./ClaimCard";
 import { MatchCard } from "./MatchCard";
@@ -25,15 +30,20 @@ export interface TournamentRoundProps {
      * The matches to display.
      */
     matches: Match[];
-
-    /**
-     * Callback when a match is clicked.
-     */
-    onClickMatch?: (match: Match) => void;
 }
 
 export const TournamentRound: FC<TournamentRoundProps> = (props) => {
-    const { danglingClaim, hideWinners, index, matches, onClickMatch } = props;
+    const params = useParams<RoutePathParams>();
+    const navigate = useNavigate();
+    const { danglingClaim, hideWinners, index, matches } = props;
+    const onMatchClick = (match: Match) => {
+        const url = routePathBuilder.matchDetail({
+            ...params,
+            matchId: match.id,
+        });
+
+        navigate(url);
+    };
 
     return (
         <Stack>
@@ -42,12 +52,12 @@ export const TournamentRound: FC<TournamentRoundProps> = (props) => {
                 hideWinners && match.winner !== undefined && match.claim2 ? (
                     <MatchLoserCard
                         match={match}
-                        onClick={() => onClickMatch?.(match)}
+                        onClick={() => onMatchClick(match)}
                     />
                 ) : hideWinners && match.winner !== undefined ? undefined : (
                     <MatchCard
                         match={match}
-                        onClick={() => onClickMatch?.(match)}
+                        onClick={() => onMatchClick(match)}
                     />
                 ),
             )}

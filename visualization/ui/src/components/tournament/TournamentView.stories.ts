@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { getUnixTime } from "date-fns";
-import { fn } from "storybook/test";
 import { claim, generateMatchID } from "../../stories/util";
 import type { Tournament } from "../types";
 import { TournamentView } from "./TournamentView";
@@ -113,14 +112,12 @@ const tournament: Tournament = {
 
 export const Ongoing: Story = {
     args: {
-        onClickMatch: fn(),
         tournament,
     },
 };
 
 export const NoChallengerYet: Story = {
     args: {
-        onClickMatch: fn(),
         tournament: {
             height: 48,
             level: "top",
@@ -135,7 +132,6 @@ export const NoChallengerYet: Story = {
 
 export const Finalized: Story = {
     args: {
-        onClickMatch: fn(),
         tournament: {
             height: 48,
             level: "top",

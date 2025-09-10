@@ -15,11 +15,6 @@ export interface TournamentTableProps {
     now?: number;
 
     /**
-     * Callback when a match is clicked.
-     */
-    onClickMatch?: (match: Match) => void;
-
-    /**
      * The matches to display.
      */
     matches: Match[];
@@ -90,7 +85,7 @@ const roundify = (
 };
 
 export const TournamentTable: FC<TournamentTableProps> = (props) => {
-    const { danglingClaim, hideWinners, now, onClickMatch } = props;
+    const { danglingClaim, hideWinners, now } = props;
 
     const rounds = useMemo(() => {
         // sort matches by timestamp
@@ -107,7 +102,6 @@ export const TournamentTable: FC<TournamentTableProps> = (props) => {
                 <TournamentRound
                     index={index}
                     matches={round.matches}
-                    onClickMatch={onClickMatch}
                     hideWinners={hideWinners}
                     danglingClaim={round.danglingClaim}
                 />

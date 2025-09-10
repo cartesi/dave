@@ -54,7 +54,7 @@ export const TournamentContainer: FC = () => {
                         <Group gap={3}>
                             <Text c="dimmed">for application</Text>
                             <Text c="orange">{applicationId}</Text>
-                            <Text c="dimmed">on epoch</Text>
+                            <Text c="dimmed">at epoch</Text>
                             <Text c="orange">{params.epochIndex}</Text>
                         </Group>
                     </Stack>
