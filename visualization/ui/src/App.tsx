@@ -15,6 +15,7 @@ import { EpochDetailsContainer } from "./containers/EpochDetailsContainer";
 import { EpochsContainer } from "./containers/EpochsContainer";
 import { HomeContainer } from "./containers/Home";
 import { MatchDetailContainer } from "./containers/MatchDetailContainer";
+import { SubTournamentContainer } from "./containers/SubTournamentContainer";
 import { TournamentContainer } from "./containers/TournamentContainer";
 import DataProvider from "./providers/DataProvider";
 import theme from "./providers/theme";
@@ -95,6 +96,16 @@ function App() {
                         <Route
                             path={routePathBuilder.matchDetail()}
                             element={<MatchDetailContainer />}
+                        />
+
+                        <Route
+                            path={routePathBuilder.middleTournament()}
+                            element={<SubTournamentContainer level="middle" />}
+                        />
+
+                        <Route
+                            path={routePathBuilder.bottomTournament()}
+                            element={<SubTournamentContainer level="bottom" />}
                         />
 
                         <Route path="*" element={<RouteNotFound />} />
