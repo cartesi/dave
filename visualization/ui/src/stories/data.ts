@@ -6,7 +6,7 @@ import type {
     MatchAction,
     Tournament,
 } from "../components/types";
-import { generateMatchID } from "./util";
+import { generateMatchID, generateTournamentId } from "./util";
 
 export type EpochWithTournament = Epoch & { tournament?: Tournament };
 export type ApplicationEpochs = Application & { epochs: EpochWithTournament[] };
@@ -26,6 +26,7 @@ export const applications: ApplicationEpochs[] = [
                 inDispute: false,
                 status: "FINALIZED",
                 tournament: {
+                    id: generateTournamentId(0, 1_345_972_719),
                     startCycle: 0,
                     endCycle: 1_345_972_719,
                     height: 48,
@@ -40,6 +41,7 @@ export const applications: ApplicationEpochs[] = [
                 inDispute: false,
                 status: "FINALIZED",
                 tournament: {
+                    id: generateTournamentId(1_345_972_719, 3_220_829_192),
                     startCycle: 1_345_972_719,
                     endCycle: 3_220_829_192,
                     height: 48,
@@ -54,6 +56,7 @@ export const applications: ApplicationEpochs[] = [
                 inDispute: false,
                 status: "FINALIZED",
                 tournament: {
+                    id: generateTournamentId(3_220_829_192, 5_911_918_810),
                     startCycle: 3_220_829_192,
                     endCycle: 5_911_918_810,
                     height: 48,
@@ -68,6 +71,7 @@ export const applications: ApplicationEpochs[] = [
                 inDispute: true,
                 status: "CLOSED",
                 tournament: {
+                    id: generateTournamentId(5_911_918_810, 9_918_817_817),
                     startCycle: 5_911_918_810,
                     endCycle: 9_918_817_817,
                     height: 48,
@@ -101,6 +105,10 @@ export const applications: ApplicationEpochs[] = [
                             claim2: { hash: keccak256("0x5") },
                             timestamp: 0,
                             tournament: {
+                                id: generateTournamentId(
+                                    7_102_817_919,
+                                    7_402_918_071,
+                                ),
                                 startCycle: 7_102_817_919,
                                 endCycle: 7_402_918_071,
                                 height: 27,
@@ -134,6 +142,10 @@ export const applications: ApplicationEpochs[] = [
                                         claim2: { hash: keccak256("0x7") },
                                         timestamp: 0,
                                         tournament: {
+                                            id: generateTournamentId(
+                                                7_204_918_919,
+                                                7_205_024_571,
+                                            ),
                                             startCycle: 7_204_918_919,
                                             endCycle: 7_205_024_571,
                                             height: 17,

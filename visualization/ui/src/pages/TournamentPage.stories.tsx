@@ -6,7 +6,7 @@ import * as TournamentViewStories from "../components/tournament/TournamentView.
 import type { Claim, Tournament } from "../components/types";
 import { routePathBuilder } from "../routes/routePathBuilder";
 import { applications } from "../stories/data";
-import { claim, randomMatches } from "../stories/util";
+import { claim, generateTournamentId, randomMatches } from "../stories/util";
 import { TournamentPage } from "./TournamentPage";
 
 const meta = {
@@ -74,10 +74,13 @@ export const TopLevelDispute: Story = {
  */
 const now = Math.floor(Date.now() / 1000);
 const claims: Claim[] = Array.from({ length: 128 }).map((_, i) => claim(i));
+const startCycle = 1837880065;
+const endCycle = 2453987565;
 
 const randomTournament: Tournament = {
-    startCycle: 1837880065,
-    endCycle: 2453987565,
+    id: generateTournamentId(startCycle, endCycle),
+    startCycle,
+    endCycle,
     height: 48,
     level: "top",
     matches: [],

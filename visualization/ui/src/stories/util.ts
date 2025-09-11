@@ -3,6 +3,7 @@ import {
     encodeAbiParameters,
     hexToNumber,
     keccak256,
+    numberToHex,
     slice,
     toBytes,
     type Hex,
@@ -98,6 +99,11 @@ export const generateMatchID = (claimOne: Hex, claimTwo: Hex) => {
     );
 
     return keccak256(abiEncodedClaims);
+};
+
+export const generateTournamentId = (n1: number, n2: number) => {
+    //xxx handy cheat here...
+    return generateMatchID(numberToHex(n1), numberToHex(n2));
 };
 
 /**

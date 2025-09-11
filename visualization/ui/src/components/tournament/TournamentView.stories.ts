@@ -1,6 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { getUnixTime } from "date-fns";
-import { claim, generateMatchID } from "../../stories/util";
+import {
+    claim,
+    generateMatchID,
+    generateTournamentId,
+} from "../../stories/util";
 import type { Tournament } from "../types";
 import { TournamentView } from "./TournamentView";
 
@@ -17,8 +21,10 @@ const timestamp = getUnixTime(Date.now());
 
 const startCycle = 1837880065;
 const endCycle = 2453987565;
+const baseId = generateTournamentId(startCycle, endCycle);
 
 const tournament: Tournament = {
+    id: baseId,
     height: 48,
     level: "top",
     startCycle,
@@ -65,6 +71,7 @@ const tournament: Tournament = {
                 },
             ],
             tournament: {
+                id: generateTournamentId(startCycle / 1024, endCycle / 1024),
                 height: 27,
                 level: "middle",
                 startCycle: startCycle / 1024,
@@ -119,6 +126,7 @@ export const Ongoing: Story = {
 export const NoChallengerYet: Story = {
     args: {
         tournament: {
+            id: baseId,
             height: 48,
             level: "top",
             startCycle,
@@ -133,6 +141,7 @@ export const NoChallengerYet: Story = {
 export const Finalized: Story = {
     args: {
         tournament: {
+            id: baseId,
             height: 48,
             level: "top",
             startCycle,

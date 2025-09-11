@@ -92,6 +92,7 @@ export interface Match {
 }
 
 export interface Tournament {
+    id: Hex;
     height: number;
     level: "top" | "middle" | "bottom";
     startCycle: Cycle;
