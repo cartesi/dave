@@ -74,6 +74,7 @@ export const MatchCard: FC<MatchCardProps> = ({
                                     ? "line-through"
                                     : undefined,
                         }}
+                        copyButton={false}
                     />
                 </Group>
                 <Text style={{ textAlign: "center" }}>vs</Text>
@@ -93,6 +94,7 @@ export const MatchCard: FC<MatchCardProps> = ({
                                     ? "line-through"
                                     : undefined,
                         }}
+                        copyButton={false}
                     />
                 </Group>
             </Stack>

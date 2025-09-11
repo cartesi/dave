@@ -50,6 +50,7 @@ export const MatchLoserCard: FC<MatchLoserCardProps> = ({
                     <ClaimText
                         claim={loser}
                         style={{ textDecoration: "line-through" }}
+                        copyButton={false}
                     />
                 </Group>
             </Stack>
