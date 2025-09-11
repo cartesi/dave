@@ -71,7 +71,10 @@ const tournament: Tournament = {
                 },
             ],
             tournament: {
-                id: generateTournamentId(startCycle / 1024, endCycle / 1024),
+                id: generateTournamentId(
+                    Math.floor(startCycle / 1024),
+                    Math.floor(endCycle / 1024),
+                ),
                 height: 27,
                 level: "middle",
                 startCycle: startCycle / 1024,

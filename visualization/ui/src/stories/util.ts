@@ -103,7 +103,10 @@ export const generateMatchID = (claimOne: Hex, claimTwo: Hex) => {
 
 export const generateTournamentId = (n1: number, n2: number) => {
     //xxx handy cheat here...
-    return generateMatchID(numberToHex(n1), numberToHex(n2));
+    return generateMatchID(
+        numberToHex(n1, { size: 32 }),
+        numberToHex(n2, { size: 32 }),
+    );
 };
 
 /**
