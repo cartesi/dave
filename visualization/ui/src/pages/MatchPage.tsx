@@ -30,7 +30,7 @@ export const MatchPage: FC<MatchPageProps> = (props) => {
         <Stack>
             <PageTitle Icon={TbSwords} title="Match" />
             <MatchView
-                height={tournament.height}
+                tournament={tournament}
                 range={range}
                 match={match}
                 now={now}

@@ -1,7 +1,8 @@
 import { Group, Stack, Text, Title } from "@mantine/core";
+import { getUnixTime } from "date-fns";
 import type { FC } from "react";
 import { useParams } from "react-router";
-import type { Hex } from "viem";
+import { type Hex } from "viem";
 import {
     useFindMatch,
     useGetMatch,
@@ -15,7 +16,7 @@ import { MatchBreadcrumbSegment } from "../components/navigation/MatchBreadcrumb
 import { NotFound } from "../components/navigation/NotFound";
 import { TournamentBreadcrumbSegment } from "../components/navigation/TournamentBreadcrumbSegment";
 import type { Match } from "../components/types";
-import { TournamentPage } from "../pages/TournamentPage";
+import { MatchPage } from "../pages/MatchPage";
 import {
     routePathBuilder,
     type RoutePathParams,
@@ -23,15 +24,12 @@ import {
 import { dummyMatch } from "../stories/data";
 import { ContainerSkeleton } from "./ContainerSkeleton";
 
-interface Props {
-    level?: "middle" | "bottom";
-}
-
 interface BuildHierarchyProps {
     params: RoutePathParams;
     level: "middle" | "bottom";
     match: Match | null;
     midMatch: Match | null;
+    btMatch: Match | null;
 }
 
 const buildHierarchy = ({
@@ -39,6 +37,7 @@ const buildHierarchy = ({
     params,
     match,
     midMatch,
+    btMatch,
 }: BuildHierarchyProps): HierarchyConfig[] => {
     const base = [
         { title: "Home", href: "/" },
@@ -64,12 +63,18 @@ const buildHierarchy = ({
         },
         {
             title: (
-                <TournamentBreadcrumbSegment
-                    level="middle"
+                <TournamentBreadcrumbSegment level="middle" variant="default" />
+            ),
+            href: routePathBuilder.middleTournament(params),
+        },
+        {
+            title: (
+                <MatchBreadcrumbSegment
+                    match={midMatch ?? dummyMatch}
                     variant={level === "middle" ? "filled" : "default"}
                 />
             ),
-            href: routePathBuilder.middleTournament(params),
+            href: routePathBuilder.midMatchDetail(params),
         },
     ];
 
@@ -78,21 +83,21 @@ const buildHierarchy = ({
             ...base,
             {
                 title: (
-                    <MatchBreadcrumbSegment
-                        match={midMatch ?? dummyMatch}
+                    <TournamentBreadcrumbSegment
+                        level="bottom"
                         variant="default"
                     />
                 ),
-                href: routePathBuilder.midMatchDetail(params),
+                href: routePathBuilder.bottomTournament(params),
             },
             {
                 title: (
-                    <TournamentBreadcrumbSegment
-                        level="bottom"
+                    <MatchBreadcrumbSegment
+                        match={btMatch ?? dummyMatch}
                         variant="filled"
                     />
                 ),
-                href: routePathBuilder.bottomTournament(params),
+                href: routePathBuilder.btMatchDetail(params),
             },
         ];
     }
@@ -100,36 +105,41 @@ const buildHierarchy = ({
     return base;
 };
 
-export const SubTournamentContainer: FC<Props> = ({ level = "middle" }) => {
+interface Props {
+    level?: "middle" | "bottom";
+}
+
+export const SubMatchDetailContainer: FC<Props> = ({ level = "middle" }) => {
     const params = useParams<RoutePathParams>();
     const applicationId = params.appId ?? "";
     const parsedIndex = parseInt(params.epochIndex ?? "");
     const epochIndex = isNaN(parsedIndex) ? -1 : parsedIndex;
     const matchId = (params.matchId ?? "0x") as Hex;
     const midMatchId = (params.midMatchId ?? "0x") as Hex;
+    const btMatchId = (params.btMatchId ?? "0x") as Hex;
+
+    const nowUnixtime = getUnixTime(new Date());
 
     const midTournamentQuery = useGetMatchTournament({
         applicationId,
         epochIndex,
-        matchId,
+        matchId: matchId,
     });
 
-    const bottomTournamentQuery = useGetMatchTournament({
+    const btTournamentQuery = useGetMatchTournament({
         applicationId,
         epochIndex,
         matchId: midMatchId,
     });
+
+    const midTournament = midTournamentQuery.data?.tournament ?? null;
+    const btTournament = btTournamentQuery.data?.tournament ?? null;
 
     const matchQuery = useGetMatch({
         applicationId,
         epochIndex,
         matchId,
     });
-
-    const midTournament = midTournamentQuery.data?.tournament ?? null;
-    const bottomTournament = bottomTournamentQuery.data?.tournament ?? null;
-
-    const tournament = level === "middle" ? midTournament : bottomTournament;
 
     const midMatchQuery = useFindMatch({
         applicationId,
@@ -139,18 +149,37 @@ export const SubTournamentContainer: FC<Props> = ({ level = "middle" }) => {
         enabled: midTournament !== null,
     });
 
-    const isLoading =
-        bottomTournamentQuery.isLoading ||
-        midTournamentQuery.isLoading ||
+    const btMatchQuery = useFindMatch({
+        applicationId,
+        epochIndex,
+        matchId: btMatchId,
+        tournamentId: btTournament?.id ?? "0x",
+        enabled: btTournament !== null,
+    });
+
+    const areMatchesLoading =
         matchQuery.isLoading ||
-        midMatchQuery.isLoading;
+        midMatchQuery.isLoading ||
+        btMatchQuery.isLoading;
+    const areTournamentsLoading =
+        midTournamentQuery.isLoading || btTournamentQuery.isLoading;
+
+    const isLoading = areMatchesLoading || areTournamentsLoading;
     const match = matchQuery.data?.match ?? null;
     const midMatch = midMatchQuery.data?.match ?? null;
+    const btMatch = btMatchQuery.data?.match ?? null;
+    const targetMatch = level === "middle" ? midMatch : btMatch;
+    const targetTournament = level === "middle" ? midTournament : btTournament;
+
+    console.log(level);
+    console.log(targetTournament);
+    console.log(targetMatch);
 
     const hierarchyConfig: HierarchyConfig[] = buildHierarchy({
         level,
         match,
         midMatch,
+        btMatch,
         params,
     });
 
@@ -160,20 +189,26 @@ export const SubTournamentContainer: FC<Props> = ({ level = "middle" }) => {
 
             {isLoading ? (
                 <ContainerSkeleton />
-            ) : tournament !== null ? (
-                <TournamentPage tournament={tournament} />
+            ) : targetTournament !== null && targetMatch !== null ? (
+                <MatchPage
+                    tournament={targetTournament}
+                    match={targetMatch}
+                    now={nowUnixtime}
+                />
             ) : (
                 <NotFound>
                     <Stack gap={2} align="center">
                         <Title c="dimmed" fw="bold" order={3} ta="center">
-                            We're not able to find the sub tournament from match{" "}
+                            We're not able to find details about match{" "}
                             <Text c="orange" inherit component="span">
-                                {params.matchId}
+                                {level === "middle"
+                                    ? params.midMatchId
+                                    : params.btMatchId}
                             </Text>
                         </Title>
                         <Group gap={3}>
-                            <Text c="dimmed">for application</Text>
-                            <Text c="orange">{applicationId}</Text>
+                            <Text c="dimmed">in application</Text>
+                            <Text c="orange">{params.appId}</Text>
                             <Text c="dimmed">at epoch</Text>
                             <Text c="orange">{params.epochIndex}</Text>
                         </Group>
