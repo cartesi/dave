@@ -1,4 +1,4 @@
-import { getUnixTime, subMinutes, subSeconds } from "date-fns";
+import { getUnixTime, subMinutes } from "date-fns";
 import { keccak256 } from "viem";
 import type {
     Application,
@@ -93,7 +93,7 @@ export const applications: ApplicationEpochs[] = [
                                     (_, i) => ({
                                         type: "advance",
                                         timestamp: getUnixTime(
-                                            subMinutes(currentDate, 48 - i),
+                                            subMinutes(currentDate, 120 - i),
                                         ),
                                         direction: i % 2 === 0 ? 0 : 1,
                                     }),
@@ -102,7 +102,7 @@ export const applications: ApplicationEpochs[] = [
                                     type: "match_sealed_inner_tournament_created",
                                     range: [7_102_817_919, 7_402_918_071],
                                     timestamp: getUnixTime(
-                                        subSeconds(currentDate, 1),
+                                        subMinutes(currentDate, 50),
                                     ),
                                 },
                             ],
@@ -129,7 +129,12 @@ export const applications: ApplicationEpochs[] = [
                                                 { length: 27 },
                                                 (_, i) => ({
                                                     type: "advance",
-                                                    timestamp: i,
+                                                    timestamp: getUnixTime(
+                                                        subMinutes(
+                                                            currentDate,
+                                                            30 - i,
+                                                        ),
+                                                    ),
                                                     direction:
                                                         i % 2 === 0 ? 0 : 1,
                                                 }),
@@ -140,7 +145,9 @@ export const applications: ApplicationEpochs[] = [
                                                     7_204_918_919,
                                                     7_205_024_571,
                                                 ],
-                                                timestamp: 0,
+                                                timestamp: getUnixTime(
+                                                    subMinutes(currentDate, 2),
+                                                ),
                                             },
                                         ],
                                         id: generateMatchID(
