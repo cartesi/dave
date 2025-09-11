@@ -1,6 +1,6 @@
 import { Divider, Stack } from "@mantine/core";
 import type { FC } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useMatch, useNavigate, useParams } from "react-router";
 import {
     routePathBuilder,
     type RoutePathParams,
@@ -34,13 +34,33 @@ export interface TournamentRoundProps {
 
 export const TournamentRound: FC<TournamentRoundProps> = (props) => {
     const params = useParams<RoutePathParams>();
+    const isTop = useMatch(routePathBuilder.topTournament()) !== null;
+    const isMiddle = useMatch(routePathBuilder.middleTournament()) !== null;
+    const isBottom = useMatch(routePathBuilder.bottomTournament()) !== null;
     const navigate = useNavigate();
     const { danglingClaim, hideWinners, index, matches } = props;
     const onMatchClick = (match: Match) => {
-        const url = routePathBuilder.matchDetail({
-            ...params,
-            matchId: match.id,
-        });
+        const url = isTop
+            ? routePathBuilder.matchDetail({
+                  ...params,
+                  matchId: match.id,
+              })
+            : isMiddle
+              ? routePathBuilder.midMatchDetail({
+                    ...params,
+                    midMatchId: match.id,
+                })
+              : isBottom
+                ? routePathBuilder.btMatchDetail({
+                      ...params,
+                      btMatchId: match.id,
+                  })
+                : null;
+
+        if (!url)
+            throw new Error(
+                `A match needs to be in a tournament or sub-tournament...`,
+            );
 
         navigate(url);
     };
