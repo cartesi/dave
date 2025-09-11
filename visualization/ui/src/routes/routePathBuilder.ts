@@ -24,10 +24,14 @@ export const routePathBuilder = {
         `${routePathBuilder.topTournamentMatches(params)}/${params?.matchId ?? ":matchId"}` as const,
     middleTournament: (params?: RoutePathParams) =>
         `${routePathBuilder.matchDetail(params)}/mt` as const,
+    middleTournamentMatches: (params?: RoutePathParams) =>
+        `${routePathBuilder.middleTournament(params)}/matches` as const,
     midMatchDetail: (params?: RoutePathParams) =>
-        `${routePathBuilder.middleTournament(params)}/matches/${params?.midMatchId ?? ":midMatchId"}` as const,
+        `${routePathBuilder.middleTournamentMatches(params)}/${params?.midMatchId ?? ":midMatchId"}` as const,
     bottomTournament: (params?: RoutePathParams) =>
         `${routePathBuilder.midMatchDetail(params)}/bt` as const,
+    bottomTournamentMatches: (params?: RoutePathParams) =>
+        `${routePathBuilder.bottomTournament(params)}/matches` as const,
     btMatchDetail: (params?: RoutePathParams) =>
-        `${routePathBuilder.bottomTournament(params)}/matches/${params?.btMatchId ?? ":btMatchId"}` as const,
+        `${routePathBuilder.bottomTournamentMatches(params)}/${params?.btMatchId ?? ":btMatchId"}` as const,
 };
