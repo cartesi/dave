@@ -52,10 +52,15 @@ interface MatchActionsProps {
      * Current timestamp
      */
     now: number;
+
+    /**
+     * Next inner-tournament level.
+     */
+    nextLevel: "middle" | "bottom" | "none";
 }
 
 export const MatchActions: FC<MatchActionsProps> = (props) => {
-    const { actions, claim1, claim2, height, now } = props;
+    const { actions, claim1, claim2, height, now, nextLevel } = props;
 
     // filter the bisection items
     const bisections = actions.filter((a) => a.type === "advance");
@@ -177,7 +182,7 @@ export const MatchActions: FC<MatchActionsProps> = (props) => {
                                 <SubTournamentItem
                                     claim={i % 2 === 0 ? claim1 : claim2}
                                     key={i}
-                                    level="middle"
+                                    level={nextLevel}
                                     now={now}
                                     range={action.range}
                                     timestamp={timestamp}

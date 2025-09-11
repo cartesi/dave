@@ -2,7 +2,7 @@ import { Divider, Group, Stack, Text } from "@mantine/core";
 import { type FC } from "react";
 import { ClaimText } from "../ClaimText";
 import { CycleRangeFormatted } from "../CycleRangeFormatted";
-import type { CycleRange, Match } from "../types";
+import type { CycleRange, Match, Tournament } from "../types";
 import { MatchActions } from "./MatchActions";
 
 export interface MatchViewProps {
@@ -12,9 +12,9 @@ export interface MatchViewProps {
     match: Match;
 
     /**
-     * The height of the tournament bisection tree.
+     * The parent Tournament
      */
-    height: number;
+    tournament: Tournament;
 
     /**
      * The current timestamp.
@@ -28,8 +28,11 @@ export interface MatchViewProps {
 }
 
 export const MatchView: FC<MatchViewProps> = (props) => {
-    const { height, match, now, range } = props;
+    const { tournament, match, now, range } = props;
     const { claim1, claim2 } = match;
+    const { height } = tournament;
+
+    const nextInnerLevel = tournament.level === "top" ? "middle" : "bottom";
 
     return (
         <Stack>
@@ -51,6 +54,7 @@ export const MatchView: FC<MatchViewProps> = (props) => {
                 claim1={claim1}
                 claim2={claim2}
                 height={height}
+                nextLevel={nextInnerLevel}
                 now={now}
             />
         </Stack>

@@ -26,7 +26,7 @@ export interface SubTournamentItemProps {
     /**
      * Level of the sub tournament
      */
-    level: "middle" | "bottom";
+    level: "middle" | "bottom" | "none";
 
     /**
      * Current timestamp

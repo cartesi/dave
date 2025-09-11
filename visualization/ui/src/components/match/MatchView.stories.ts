@@ -15,7 +15,7 @@ const now = Math.floor(Date.now() / 1000);
 
 export const Ongoing: Story = {
     args: {
-        height: 48,
+        tournament: TournamentStories.Ongoing.args.tournament,
         match: {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: MatchActionsStories.Bisections.args.actions,
@@ -30,7 +30,7 @@ export const Ongoing: Story = {
  */
 export const NoActions: Story = {
     args: {
-        height: 48,
+        tournament: TournamentStories.Ongoing.args.tournament,
         match: {
             ...TournamentStories.Ongoing.args.tournament.matches[1],
             actions: [],
