@@ -1,22 +1,26 @@
 import type { Hex } from "viem";
-import { findApplication } from "./application.data";
+import { syntheticDbInstance } from "./db";
 
 export const getEpoch = (applicationId: string | Hex, epochIndex: number) => {
-    const application = findApplication(applicationId);
-
-    if (isNaN(epochIndex)) return null;
-
-    return (
-        application?.epochs.find((epoch) => epoch.index === epochIndex) ?? null
-    );
+    return syntheticDbInstance.getEpoch(applicationId, epochIndex);
 };
 
 export const findEpochTournament = (
     applicationId: string | Hex,
     epochIndex: number,
 ) => {
-    const epoch = getEpoch(applicationId, epochIndex);
-    if (!epoch || !epoch.tournament) return null;
+    const tournament = syntheticDbInstance.getTournament({
+        applicationId,
+        epochIndex,
+    });
+    if (tournament) {
+        tournament.matches =
+            syntheticDbInstance.listTournamentMatches({
+                applicationId,
+                epochIndex,
+                tournamentId: tournament.id,
+            }) ?? [];
+    }
 
-    return epoch.tournament;
+    return tournament;
 };

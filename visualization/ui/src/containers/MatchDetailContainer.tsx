@@ -2,7 +2,7 @@ import { Group, Stack, Text, Title } from "@mantine/core";
 import { getUnixTime } from "date-fns";
 import type { FC } from "react";
 import { useParams } from "react-router";
-import { keccak256, type Hex } from "viem";
+import { type Hex } from "viem";
 import { useGetEpochTournament } from "../api/epoch.queries";
 import { useGetMatch } from "../api/match.queries";
 import {
@@ -12,21 +12,13 @@ import {
 import { MatchBreadcrumbSegment } from "../components/navigation/MatchBreadcrumbSegment";
 import { NotFound } from "../components/navigation/NotFound";
 import { TournamentBreadcrumbSegment } from "../components/navigation/TournamentBreadcrumbSegment";
-import type { Match } from "../components/types";
 import { MatchPage } from "../pages/MatchPage";
 import {
     routePathBuilder,
     type RoutePathParams,
 } from "../routes/routePathBuilder";
+import { dummyMatch } from "../stories/data";
 import { ContainerSkeleton } from "./ContainerSkeleton";
-
-const dummyMatch: Match = {
-    actions: [],
-    id: keccak256("0x1"),
-    claim1: { hash: keccak256("0x2") },
-    claim2: { hash: keccak256("0x3") },
-    timestamp: 0,
-};
 
 export const MatchDetailContainer: FC = () => {
     const params = useParams<RoutePathParams>();

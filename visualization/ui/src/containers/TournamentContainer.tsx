@@ -24,7 +24,7 @@ export const TournamentContainer: FC = () => {
 
     const hierarchyConfig: HierarchyConfig[] = [
         { title: "Home", href: "/" },
-        { title: applicationId, href: routePathBuilder.appEpochs(params) },
+        { title: params.appId, href: routePathBuilder.appEpochs(params) },
         {
             title: `Epoch #${params.epochIndex}`,
             href: routePathBuilder.appEpochDetails(params),
