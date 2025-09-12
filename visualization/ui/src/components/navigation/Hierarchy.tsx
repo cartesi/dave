@@ -118,6 +118,7 @@ export const Hierarchy: FC<HierarchyProps> = ({
 
     return (
         <Card
+            bg="var(--mantine-color-body)"
             px={0}
             py="sm"
             m={0}
