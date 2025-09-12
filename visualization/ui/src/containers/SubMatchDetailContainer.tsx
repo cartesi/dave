@@ -171,10 +171,6 @@ export const SubMatchDetailContainer: FC<Props> = ({ level = "middle" }) => {
     const targetMatch = level === "middle" ? midMatch : btMatch;
     const targetTournament = level === "middle" ? midTournament : btTournament;
 
-    console.log(level);
-    console.log(targetTournament);
-    console.log(targetMatch);
-
     const hierarchyConfig: HierarchyConfig[] = buildHierarchy({
         level,
         match,

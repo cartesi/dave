@@ -4,17 +4,15 @@ import {
     AppShellMain,
     Container,
     Group,
-    useMantineTheme,
 } from "@mantine/core";
-import { useMediaQuery, useViewportSize } from "@mantine/hooks";
 import type { FC, PropsWithChildren } from "react";
 import { Link } from "react-router";
+import { useIsSmallDevice } from "../../hooks/useIsSmallDevice";
 import CartesiLogo from "../icons/CartesiLogo";
 
 const Layout: FC<PropsWithChildren> = ({ children }) => {
-    const theme = useMantineTheme();
-    const isSmallDevice = useMediaQuery(`(max-width:${theme.breakpoints.sm})`);
-    const { height } = useViewportSize();
+    const { isSmallDevice, viewport } = useIsSmallDevice();
+    const { height } = viewport;
 
     return (
         <AppShell>
@@ -32,7 +30,7 @@ const Layout: FC<PropsWithChildren> = ({ children }) => {
             </AppShellHeader>
             <AppShellMain>
                 <Container
-                    px={isSmallDevice ? "sm" : ""}
+                    px={isSmallDevice ? "lg" : "sm"}
                     mih={`calc(${height}px - var(--app-shell-header-height))`}
                     strategy="grid"
                 >
