@@ -1,5 +1,6 @@
 local Hash = require "cryptography.hash"
 local MerkleTree = require "cryptography.merkle_tree"
+local bint = require 'utils.bint' (256) -- use 256 bits integers
 
 local function quote_args(args, not_quote)
     local quoted_args = {}
@@ -49,10 +50,12 @@ function Sender:new(pk, id, endpoint)
 end
 
 local cast_send_template = [[
-cast send --private-key "%s" --rpc-url "%s" "%s" "%s" %s 2>&1
+cast send --private-key "%s" --rpc-url "%s" --value "%s" "%s" "%s" %s 2>&1
 ]]
 
-function Sender:_send_tx(tournament_address, sig, args)
+function Sender:_send_tx(tournament_address, sig, args, value)
+    value = value or bint.zero()
+
     local quoted_args = quote_args(args)
     local args_str = table.concat(quoted_args, " ")
 
@@ -60,6 +63,7 @@ function Sender:_send_tx(tournament_address, sig, args)
         cast_send_template,
         self.pk,
         self.endpoint,
+        value,
         tournament_address,
         sig,
         args_str
@@ -80,12 +84,36 @@ end
 
 function Sender:tx_join_tournament(tournament_address, final_state, proof, left_child, right_child)
     local sig = [[joinTournament(bytes32,bytes32[],bytes32,bytes32)]]
+    
+    -- Get bond value by calling the view function
+    local bondValueCmd = string.format(
+        [[cast call --rpc-url "%s" "%s" "bondValue()(uint256)" 2>&1]],
+        self.endpoint,
+        tournament_address
+    )
+    
+    local handle = io.popen(bondValueCmd)
+    assert(handle)
+    local bondValueResult = handle:read("*a")
+    handle:close()
+    
+    if bondValueResult:find("Error") then
+        error(string.format("Failed to get bond value: %s", bondValueResult))
+    end
+    
+    -- Extract the decimal bond value directly from the result
+    local bondValueDecimalStr = bondValueResult:match("(%d+)")
+    if not bondValueDecimalStr then
+        error("Failed to parse decimal bond value from result: " .. bondValueResult)
+    end
+    
     return pcall(
         self._send_tx,
         self,
         tournament_address,
         sig,
-        { final_state, proof, left_child, right_child }
+        { final_state, proof, left_child, right_child },
+        bondValueDecimalStr
     )
 end
 

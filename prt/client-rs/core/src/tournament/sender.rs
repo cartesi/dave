@@ -10,6 +10,7 @@ use alloy::{
 };
 use async_trait::async_trait;
 use log::{trace, warn};
+use ruint::aliases::U256;
 
 use crate::{machine::MachineProof, tournament::MatchID};
 use cartesi_dave_merkle::{Digest, MerkleProof};
@@ -35,6 +36,7 @@ pub trait ArenaSender: Send + Sync {
         proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
+        bond_value: U256,
     ) -> Result<()>;
 
     async fn advance_match(
@@ -97,6 +99,8 @@ pub trait ArenaSender: Send + Sync {
         tournament: Address,
         inner_tournament: Address,
     ) -> Result<()>;
+
+    async fn bond_value(&self, tournament: Address) -> Result<U256>;
 }
 
 #[async_trait]
@@ -107,6 +111,7 @@ impl ArenaSender for EthArenaSender {
         proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
+        bond_value: U256,
     ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
         let siblings = proof
@@ -125,6 +130,7 @@ impl ArenaSender for EthArenaSender {
                 left_child.into(),
                 right_child.into(),
             )
+            .value(bond_value)
             .send()
             .await;
         allow_revert_rethrow_others("joinTournament", tx_result).await
@@ -278,6 +284,12 @@ impl ArenaSender for EthArenaSender {
             .send()
             .await;
         allow_revert_rethrow_others("eliminateInnerTournament", tx_result).await
+    }
+
+    async fn bond_value(&self, tournament: Address) -> Result<U256> {
+        let tournament = tournament::Tournament::new(tournament, &self.provider);
+        let bond_value_result = tournament.bondValue().call().await?;
+        Ok(bond_value_result._0)
     }
 }
 
