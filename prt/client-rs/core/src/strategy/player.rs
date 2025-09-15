@@ -193,6 +193,15 @@ impl<AS: ArenaSender> Player<AS> {
             tournament_state.level,
             commitment.merkle.root_hash(),
         );
+
+        // Get the bond value required for joining the tournament
+        let bond_value = self
+            .arena_sender
+            .lock()
+            .await
+            .bond_value(tournament_state.address)
+            .await?;
+
         self.arena_sender
             .lock()
             .await
@@ -201,6 +210,7 @@ impl<AS: ArenaSender> Player<AS> {
                 &proof_last,
                 left.root_hash(),
                 right.root_hash(),
+                bond_value,
             )
             .await?;
 
