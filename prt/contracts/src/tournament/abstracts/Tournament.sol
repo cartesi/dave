@@ -63,7 +63,6 @@ abstract contract Tournament {
     Time.Instant lastMatchDeleted;
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
-    // MEV tips
     uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
     bool transient locked;
 
@@ -152,6 +151,9 @@ abstract contract Tournament {
     /// @dev root tournaments are open to everyone,
     /// while non-root tournaments are open to anyone
     /// who's final state hash matches the one of the two in the tournament
+    /// This function must be called while passing a
+    /// minimum amount of Wei, given by the `bondValue` view function.
+    /// The contract will retain any extra amount.
     function joinTournament(
         Machine.Hash _finalState,
         bytes32[] calldata _proof,
@@ -502,8 +504,10 @@ abstract contract Tournament {
         uint256 contractBalance = address(this).balance;
         (bool success,) = winner.call{value: contractBalance}("");
 
-        // clear the claimer for the winning commitment
-        delete claimers[winningCommitment];
+        // clear the claimer for the winning commitment if successfully recovered bond
+        if (success) {
+            delete claimers[winningCommitment];
+        }
 
         return success;
     }

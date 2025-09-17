@@ -1,6 +1,6 @@
 local Hash = require "cryptography.hash"
 local MerkleTree = require "cryptography.merkle_tree"
-local bint = require 'utils.bint' (256) -- use 256 bits integers
+local bint = require 'utils.bint' (256) -- use 256-bit unsigned integers
 
 local function quote_args(args, not_quote)
     local quoted_args = {}
