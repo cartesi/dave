@@ -1,6 +1,28 @@
 package.path = "../client-lua/?.lua;" .. package.path
 
-print = function() end
+print = function(...)
+    local args = table.pack(...) -- preserves nils; args.n is the count
+    if args.n == 0 then return true end
+
+    local parts = {}
+    for i = 1, args.n do
+        parts[i] = tostring(args[i])
+    end
+    local text = table.concat(parts, "\n")
+
+    local f, err = io.open("logs", "a") -- creates file if needed
+    if not f then
+        return nil, "failed to open logs: " .. tostring(err)
+    end
+
+    local ok, werr = f:write(text, "\n") -- on success returns the file handle
+    if not ok then
+        f:close()
+        return nil, "failed to write: " .. tostring(werr)
+    end
+    f:close()
+    return true
+end
 
 local Machine = require "computation.machine"
 local uint256 = require "utils.bint" (256)

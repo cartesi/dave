@@ -178,16 +178,16 @@ fn run_uarch_span(
     let (_, ucycle) = machine.position()?;
     assert!(ucycle == 0);
 
-    let mut machine_state;
+    let mut machine_state = machine.increment_uarch()?;
     let mut leafs = Vec::new();
-    let mut i = 1;
+    let mut i = 0;
 
     loop {
-        machine_state = machine.increment_uarch()?;
         leafs.push(Leaf {
             hash: machine_state.root_hash.into(),
             repetitions: 1,
         });
+        machine_state = machine.increment_uarch()?;
 
         i += 1;
         if machine_state.uhalted {

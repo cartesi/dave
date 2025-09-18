@@ -13,7 +13,7 @@ use cartesi_machine::{
     types::access_proof::AccessLog,
     types::{LogType, cmio::CmioResponseReason},
 };
-use log::trace;
+use log::{info, trace};
 use num_traits::{One, ToPrimitive};
 
 use alloy::primitives::U256;
@@ -327,7 +327,24 @@ impl MachineInstance {
         self.state()
     }
 
-    fn prove_read_leaf(&mut self, address: u64, log2_size: u64) -> Result<Vec<u8>> {
+    fn prove_read_word(&mut self, address: u64) -> Result<Vec<u8>> {
+        // always read aligned 32 bytes (one leaf)
+        let aligned_address = address & !0x1Fu64;
+        let mut read = self.machine.read_memory(aligned_address, 32)?;
+        let proof = self.machine.proof(aligned_address, 5)?;
+
+        let mut encoded: Vec<u8> = Vec::new();
+
+        encoded.append(&mut read);
+
+        let mut decoded_siblings: Vec<u8> =
+            proof.sibling_hashes.iter().flatten().cloned().collect();
+        encoded.append(&mut decoded_siblings);
+
+        Ok(encoded)
+    }
+
+    fn prove_read_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
         // always read aligned 32 bytes (one leaf)
         let aligned_address = address & !0x1Fu64;
         let mut read = self.machine.read_memory(aligned_address, 32)?;
@@ -336,14 +353,8 @@ impl MachineInstance {
 
         let mut encoded: Vec<u8> = Vec::new();
 
-        if log2_size == 3 {
-            encoded.append(&mut read);
-        } else if log2_size == 5 {
-            encoded.append(&mut read);
-            encoded.append(&mut read_hash.slice().to_vec());
-        } else {
-            panic!("log2_size is not 3 or 5");
-        }
+        encoded.append(&mut read);
+        encoded.append(&mut read_hash.slice().to_vec());
 
         let mut decoded_siblings: Vec<u8> =
             proof.sibling_hashes.iter().flatten().cloned().collect();
@@ -355,8 +366,18 @@ impl MachineInstance {
     fn prove_write_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
         // always write aligned 32 bytes (one leaf)
         let aligned_address = address & !0x1Fu64;
+        let read = self.machine.read_memory(aligned_address, 32)?;
+        let read_hash = Digest::from_data(&read);
         // Get proof of write address
         let proof = self.machine.proof(aligned_address, 5)?;
+
+        let mut encoded: Vec<u8> = Vec::new();
+
+        encoded.append(&mut read_hash.slice().to_vec());
+
+        let checkpoint = self.root_hash()?;
+        self.machine
+            .write_memory(aligned_address, checkpoint.slice())?;
 
         Ok(proof.sibling_hashes.iter().flatten().cloned().collect())
     }
@@ -366,19 +387,20 @@ impl MachineInstance {
 
         let iflags_y_address =
             cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_IFLAGS_Y)?;
-        proof.append(&mut self.prove_read_leaf(iflags_y_address, 3)?);
+        proof.append(&mut self.prove_read_word(iflags_y_address)?);
 
         let iflags_y = self.is_yielded()?;
         if iflags_y {
-            let to_host_address = cartesi_machine::Machine::reg_address(
-                cartesi_machine_sys::CM_REG_HTIF_TOHOST_REASON,
-            )?;
-            proof.append(&mut self.prove_read_leaf(to_host_address, 3)?);
+            info!("read CM_REG_HTIF_TOHOST");
+            let to_host_address =
+                cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_HTIF_TOHOST)?;
+            info!("read CM_REG_HTIF_TOHOST END");
+            proof.append(&mut self.prove_read_word(to_host_address)?);
 
             if self.machine.receive_cmio_request()?.reason()
                 != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
             {
-                proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS, 5)?);
+                proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS)?);
             }
         }
         Ok(proof)
@@ -460,8 +482,8 @@ impl MachineInstance {
             let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
             logs.push(&uarch_step_log);
 
-            let step_proof = Self::encode_access_logs(logs);
-            let proof = [da_proof, step_proof].concat();
+            let cmio_step_proof = Self::encode_access_logs(logs);
+            let proof = [da_proof, cmio_step_proof].concat();
             Ok((proof, machine.state()?.root_hash))
         } else if ((meta_cycle_u128 + 1) & (big_step_mask as u128)) == 0 {
             assert!(machine.is_uarch_halted()?);
