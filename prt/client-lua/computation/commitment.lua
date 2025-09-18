@@ -124,8 +124,7 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
             local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
             if inputs[input_i + 1] then
                 local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
-                machine:write_checkpoint()
-                machine.send_cmio_response(input_bin);
+                machine:feed_input(input_bin)
             end
         end
     end

@@ -20,7 +20,7 @@ build-yield: clean-yield
   cartesi-machine --ram-image=./linux.bin \
     --flash-drive=label:root,filename:./rootfs.ext2 \
     --no-rollback --store=./yield/machine-image \
-    -- "while true; do yield manual rx-accepted; done"
+    -- "while true; do yield manual rx-accepted; yield manual rx-rejected; done"
   ./build_anvil_state.sh "yield"
 clean-yield: (clean-program "yield")
 
