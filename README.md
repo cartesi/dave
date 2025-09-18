@@ -122,10 +122,7 @@ If you prefer running Dave natively on your machine, you'll need additional depe
 
 ### Running Examples
 
-The repository includes examples for different components of Dave:
-
-- **PRT Lua Client (Compute):**
-  Follow the instructions in the [PRT Lua client README](prt/tests/compute/README.md).
+The repository includes an example for different components of Dave:
 
 - **PRT Rust Node (Rollups):**
   Follow the instructions in the [PRT Rust node README](prt/tests/rollups/README.md).

@@ -227,7 +227,7 @@ function Machine:feed_input(input_bin)
     end
 
     self.snapshot_path = new_snapshot_path
-    self:write_checkpoint(root_hash_string)
+    self:write_checkpoint(self.machine:get_root_hash())
     self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
 end
 
@@ -243,7 +243,6 @@ function Machine:run(cycle)
         self:physical_cycle() == target_physical_cycle
 
     if self:is_yielded() then
-        -- if it is not reverted, we store the new snapshot and remove the old one
         self:revert_if_needed()
     end
     self.cycle = cycle
@@ -267,19 +266,19 @@ end
 
 function Machine:prove_revert_if_needed()
     local iflags_y_address = self.machine:get_reg_address("iflags_Y")
-    local iflags_y_proof = self:prove_read_leaf(iflags_y_address, 3)
+    local iflags_y_proof = self:prove_read_word(iflags_y_address)
 
     local proof = iflags_y_proof
 
     local iflags_y = self:is_yielded()
     if iflags_y then
         local to_host_address = self.machine:get_reg_address("htif_tohost")
-        local to_host_proof = self:prove_read_leaf(to_host_address, 3)
+        local to_host_proof = self:prove_read_word(to_host_address)
         proof = proof .. to_host_proof
 
         local _, reason, _ = self.machine:receive_cmio_request()
         if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
-            local checkpoint_proof = self:prove_read_leaf(consts.CHECKPOINT_ADDRESS, 5)
+            local checkpoint_proof = self:prove_read_leaf(consts.CHECKPOINT_ADDRESS)
             proof = proof .. checkpoint_proof
         end
     end
@@ -287,8 +286,29 @@ function Machine:prove_revert_if_needed()
     return proof
 end
 
-function Machine:prove_read_leaf(address, log2_size)
+function Machine:prove_read_word(address)
     -- always read aligned 32 bytes (one leaf)
+    local aligned_address = address & ~0x1F
+    local merkle_proof = self.machine:get_proof(aligned_address, 5)
+
+    local proof = {}
+
+    local read = self.machine:read_memory(aligned_address, 32)
+    table.insert(proof, read)
+
+    -- Append sibling hashes from the merkle proof
+    for _, hash in ipairs(merkle_proof.sibling_hashes) do
+        table.insert(proof, hash)
+    end
+
+    local data = table.concat(proof)
+    return data
+end
+
+function Machine:prove_read_leaf(address)
+    -- always write aligned 32 bytes (one leaf)
+    assert(address & 0x1F == 0)
+
     local aligned_address = address & ~0x1F
     local read = self.machine:read_memory(aligned_address, 32)
     local read_hash = Hash:from_digest(read)
@@ -296,66 +316,47 @@ function Machine:prove_read_leaf(address, log2_size)
 
     local proof = {}
 
-    if log2_size == 3 then
-        -- Append the read data
-        for _, byte in ipairs(read) do
-            table.insert(proof, byte)
-        end
-    elseif log2_size == 5 then
-        -- Append both read data and read hash
-        for _, byte in ipairs(read) do
-            table.insert(proof, byte)
-        end
-        for _, byte in ipairs(read_hash:digest()) do
-            table.insert(proof, byte)
-        end
-    else
-        error("log2_size is not 3 nor 5")
-    end
+    -- Append both read data and read hash
+    table.insert(proof, read)
+    table.insert(proof, read_hash:digest())
 
     -- Append sibling hashes from the merkle proof
     for _, hash in ipairs(merkle_proof.sibling_hashes) do
-        if hash then
-            for _, byte in ipairs(hash) do
-                table.insert(proof, byte)
-            end
-        end
+        table.insert(proof, hash)
     end
 
     local data = table.concat(proof)
     return data
 end
 
-function Machine:prove_write_leaf(root_hash, address)
+local keccak = require "cartesi".keccak
+
+function Machine:prove_write_leaf(address)
     -- always write aligned 32 bytes (one leaf)
-    local aligned_address = address & ~0x1F
+    assert(address & 0x1F == 0)
 
     -- Read the old leaf data BEFORE writing the checkpoint
-    local old_leaf = self.machine:read_memory(aligned_address, 32)
+    local old_leaf_hash = keccak(self.machine:read_memory(address, 32))
 
     -- Get proof of write address BEFORE writing the checkpoint
-    local merkle_proof = self.machine:get_proof(aligned_address, 5)
-
-    -- Now write the checkpoint
-    self:write_checkpoint(root_hash:hex_string())
+    local merkle_proof = self.machine:get_proof(address, 5)
 
     local proof = {}
 
     -- Append the old leaf data (32 bytes) - this is what the Solidity contract expects
-    for _, byte in ipairs(old_leaf) do
-        table.insert(proof, byte)
-    end
+    table.insert(proof, old_leaf_hash)
 
     -- Append sibling hashes from the merkle proof
     for _, hash in ipairs(merkle_proof.sibling_hashes) do
-        if hash then
-            for _, byte in ipairs(hash) do
-                table.insert(proof, byte)
-            end
-        end
+        table.insert(proof, hash)
     end
 
     local data = table.concat(proof)
+
+
+    -- Now write the checkpoint
+    self:write_checkpoint(self.machine:get_root_hash())
+
     return data
 end
 
@@ -441,7 +442,7 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
         local da_proof
         if input then
             local input_bin = conversion.bin_from_hex_n(input)
-            local write_checkpoint_proof = machine:prove_write_leaf(root_hash, consts.CHECKPOINT_ADDRESS)
+            local write_checkpoint_proof = machine:prove_write_leaf(consts.CHECKPOINT_ADDRESS)
             local cmio_log = machine.machine:log_send_cmio_response(
                 cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
                 input_bin
@@ -457,8 +458,8 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
         local uarch_step_log = machine.machine:log_step_uarch()
         table.insert(logs, uarch_step_log)
 
-        local step_proof = encode_access_logs(logs)
-        local proof = da_proof .. step_proof
+        local cmio_step_proof = encode_access_logs(logs)
+        local proof = da_proof .. cmio_step_proof
         return proof, machine:state().root_hash
     else
         if ((meta_cycle + 1) & big_step_mask):iszero() then
