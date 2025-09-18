@@ -107,10 +107,7 @@ impl RollupsMachine {
         ));
 
         let checkpoint_hash = self.machine.root_hash()?;
-        self.machine
-            .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
-
-        self.feed_input(data)?;
+        self.feed_input(data, &checkpoint_hash)?;
         self.run_machine(BIG_STEPS_IN_STRIDE)?;
 
         let mut state_hashes = Vec::with_capacity(1 << 20);
@@ -154,7 +151,9 @@ impl RollupsMachine {
         }
     }
 
-    fn feed_input(&mut self, input: &[u8]) -> MachineResult<()> {
+    fn feed_input(&mut self, input: &[u8], checkpoint_hash: &Hash) -> MachineResult<()> {
+        self.machine
+            .write_memory(CHECKPOINT_ADDRESS, checkpoint_hash)?;
         self.machine
             .send_cmio_response(CmioResponseReason::Advance, input)
     }

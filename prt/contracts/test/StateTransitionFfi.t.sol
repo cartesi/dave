@@ -58,6 +58,8 @@ contract Provider is IDataProvider {
         return (input, hash);
     }
 
+    error InputMismatch(uint256 index, bytes input1, bytes input2);
+
     function provideMerkleRootOfInput(
         uint256 inputIndexWithinEpoch,
         bytes calldata input
@@ -67,7 +69,9 @@ contract Provider is IDataProvider {
         }
 
         (bytes memory i, bytes32 hash) = getInput(inputIndexWithinEpoch);
-        require(bytesEq(input, i), "inputs don't match");
+        require(
+            bytesEq(input, i), InputMismatch(inputIndexWithinEpoch, i, input)
+        );
 
         return hash;
     }
@@ -130,6 +134,7 @@ contract StateTransitionFfiTest is Util, Test {
         uint256 counter;
 
         counter = 0;
+
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);

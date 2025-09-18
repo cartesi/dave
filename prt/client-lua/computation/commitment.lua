@@ -24,13 +24,13 @@ end
 
 local function run_uarch_span(machine)
     assert(machine.ucycle == 0)
-    local machine_state
+    local machine_state = machine:increment_uarch()
     local builder = MerkleBuilder:new()
 
-    local i = 1
+    local i = 0
     repeat
-        machine_state = machine:increment_uarch()
         builder:add(machine_state.root_hash)
+        machine_state = machine:increment_uarch()
         i = i + 1
     until machine_state.uhalted
 
@@ -112,20 +112,17 @@ end
 local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, inputs)
     local machine
 
-    local initial_state
-    if inputs then
-        -- treat it as rollups
-        machine = Machine:new_rollup_advanced_until(machine_path, base_cycle, inputs)
-        local mask = (uint256.one() << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch)) - 1
-        initial_state = machine:state().root_hash
+    assert(inputs)
+    machine = Machine:new_rollup_advanced_until(machine_path, base_cycle, inputs)
+    local mask = (uint256.one() << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch)) - 1
+    local initial_state = machine:state().root_hash
 
-        if (base_cycle & mask):iszero() then
-            assert(machine:state().yielded)
-            local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
-            if inputs[input_i + 1] then
-                local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
-                machine:feed_input(input_bin)
-            end
+    if (base_cycle & mask):iszero() then
+        assert(machine:state().yielded)
+        local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
+        if inputs[input_i + 1] then
+            local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
+            machine:feed_input(input_bin)
         end
     end
 
