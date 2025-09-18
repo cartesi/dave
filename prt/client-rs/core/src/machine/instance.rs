@@ -11,10 +11,7 @@ use cartesi_machine::{
     config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
     machine::Machine,
     types::access_proof::AccessLog,
-    types::{
-        LogType,
-        cmio::{CmioRequest, CmioResponseReason, ManualReason},
-    },
+    types::{LogType, cmio::CmioResponseReason},
 };
 use log::trace;
 use num_traits::{One, ToPrimitive};
@@ -161,7 +158,7 @@ impl MachineInstance {
             self.feed_next_input(db)?;
 
             loop {
-                self.run(u64::MAX, db)?;
+                self.run(u64::MAX)?;
                 if self.is_halted()? | self.is_yielded()? {
                     break;
                 }
@@ -178,7 +175,7 @@ impl MachineInstance {
 
         self.feed_next_input(db)?;
 
-        self.run(cycle, db)?;
+        self.run(cycle)?;
         self.run_uarch(ucycle)?;
 
         Ok(())
@@ -249,7 +246,7 @@ impl MachineInstance {
         Ok(self.machine.ucycle()?)
     }
 
-    pub fn revert_if_needed(&mut self, db: &DisputeStateAccess) -> Result<()> {
+    pub fn revert_if_needed(&mut self) -> Result<()> {
         // revert if needed only when machine yields
         assert!(self.is_yielded()?);
 
@@ -284,7 +281,7 @@ impl MachineInstance {
     }
 
     // Runs to the `cycle` directly and returns the machine state after the run
-    pub fn run(&mut self, cycle: u64, db: &DisputeStateAccess) -> Result<MachineState> {
+    pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
         assert!(self.cycle <= cycle);
 
         let target_physical_cycle =
@@ -301,7 +298,7 @@ impl MachineInstance {
             if self.is_yielded()? {
                 trace!("run break with yield");
                 // if it is not reverted, we store the new snapshot and remove the old one
-                self.revert_if_needed(db)?;
+                self.revert_if_needed()?;
 
                 break;
             }
