@@ -13,7 +13,7 @@ use cartesi_machine::{
     types::access_proof::AccessLog,
     types::{LogType, cmio::CmioResponseReason},
 };
-use log::{info, trace};
+use log::trace;
 use num_traits::{One, ToPrimitive};
 
 use alloy::primitives::U256;
@@ -255,6 +255,7 @@ impl MachineInstance {
         if self.machine.receive_cmio_request()?.reason()
             != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
         {
+            trace!("Reject input,revert to previous snapshot");
             let runtime_config = RuntimeConfig {
                 htif: Some(HTIFRuntimeConfig {
                     no_console_putchar: Some(true),
@@ -391,10 +392,8 @@ impl MachineInstance {
 
         let iflags_y = self.is_yielded()?;
         if iflags_y {
-            info!("read CM_REG_HTIF_TOHOST");
             let to_host_address =
                 cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_HTIF_TOHOST)?;
-            info!("read CM_REG_HTIF_TOHOST END");
             proof.append(&mut self.prove_read_word(to_host_address)?);
 
             if self.machine.receive_cmio_request()?.reason()

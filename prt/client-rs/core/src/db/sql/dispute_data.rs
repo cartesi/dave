@@ -27,7 +27,7 @@ pub fn insert_inputs<'a>(
     Ok(())
 }
 
-fn insert_input_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
+fn insert_input_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement<'_>> {
     Ok(conn.prepare(
         "\
         INSERT INTO inputs (input_index, input) VALUES (?1, ?2)
@@ -99,7 +99,7 @@ pub fn insert_leafs<'a>(
     Ok(())
 }
 
-fn insert_leaf_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
+fn insert_leaf_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement<'_>> {
     Ok(conn.prepare(
         "\
         INSERT INTO leafs (level, base_cycle, leaf_index, leaf, repetitions) VALUES (?1, ?2, ?3, ?4, ?5)
