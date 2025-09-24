@@ -59,7 +59,7 @@ local Env = {
 
 
 function Env.spawn_blockchain()
-    local blockchain = Blockchain:new(ANVIL_PATH, INPUT_BOX_ADDRESS, APP_ADDRESS, CONSENSUS_ADDRESS)
+    local blockchain = Blockchain:new(ANVIL_PATH)
     Env.blockchain = blockchain
     Env.reader = Reader:new(INPUT_BOX_ADDRESS, CONSENSUS_ADDRESS, blockchain.endpoint)
     Env.sender = Sender:new(INPUT_BOX_ADDRESS, APP_ADDRESS, blockchain.pks[1], blockchain.endpoint)
