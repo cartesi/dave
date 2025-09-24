@@ -85,6 +85,12 @@ pub fn create_connection(state_dir: &Path) -> Result<Connection> {
     connection
         .busy_timeout(std::time::Duration::from_secs(10))
         .map_err(anyhow::Error::from)?;
+
+    // Enable WAL mode for concurrent access (ex: lua node)
+    connection
+        .query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))
+        .map_err(anyhow::Error::from)?;
+
     set_scalar_function(&connection)?;
 
     Ok(connection)
