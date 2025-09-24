@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::{constants, types::Hash};
+use crate::constants;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CmioRequest {
@@ -18,7 +18,7 @@ pub enum AutomaticReason {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ManualReason {
-    RxAccepted { output_hashes_root_hash: Hash },
+    RxAccepted { output_hashes_root_hash: Vec<u8> },
     RxRejected,
     TxException { message: String },
     GIO { domain: u16, data: Vec<u8> },
@@ -41,9 +41,7 @@ impl CmioRequest {
 
             commands::YIELD_MANUAL => Self::Manual(match reason {
                 manual::RX_ACCEPTED => ManualReason::RxAccepted {
-                    output_hashes_root_hash: data
-                        .try_into()
-                        .expect("malformed `output_hashes_root_hash`"),
+                    output_hashes_root_hash: data,
                 },
                 manual::RX_REJECTED => ManualReason::RxRejected,
                 manual::TX_EXCEPTION => ManualReason::TxException {
@@ -132,9 +130,9 @@ mod tests {
         test_req!(
             cmio::commands::YIELD_MANUAL,
             cmio::tohost::manual::RX_ACCEPTED,
-            vec![0; 32],
+            vec![],
             CmioRequest::Manual(ManualReason::RxAccepted {
-                output_hashes_root_hash: Hash::default()
+                output_hashes_root_hash: vec![]
             })
         );
         test_req!(
