@@ -259,6 +259,7 @@ function Machine:revert_if_needed()
     local _, reason, _ = self.machine:receive_cmio_request()
     if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
         -- Revert to previous snapshot
+        print("revert to previous snapshot")
         local machine = cartesi.machine(self.snapshot_path, machine_settings)
         self.machine = machine
     end

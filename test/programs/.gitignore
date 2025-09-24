@@ -7,4 +7,3 @@ rootfs.ext2
 **/_anvil.log
 
 **/*tar.gz
-yield/*

@@ -140,11 +140,12 @@ impl StateManager for PersistentStateAccess {
         leafs: &[CommitmentLeaf],
     ) -> Result<RollupsMachine> {
         assert!(!leafs.is_empty());
+        let current_input_index_in_epoch = input_reverted.input_index_in_epoch + 1;
 
         rollup_data::insert_state_hashes_for_input(
             &self.connection,
             input_reverted.epoch_number,
-            input_reverted.input_index_in_epoch,
+            current_input_index_in_epoch,
             leafs,
         )?;
 
@@ -152,26 +153,26 @@ impl StateManager for PersistentStateAccess {
             rollup_data::latest_snapshot_path(&self.connection)?;
 
         assert_eq!(snapshot_epoch, input_reverted.epoch_number);
-        assert_eq!(snapshot_input + 1, input_reverted.input_index_in_epoch);
+        assert_eq!(snapshot_input + 1, current_input_index_in_epoch);
 
         // load rollups machine from previous successful (ACCEPT) snapshot
         let mut machine = RollupsMachine::new(
             &snapshot_path,
             input_reverted.epoch_number,
-            input_reverted.input_index_in_epoch, // this is one greater than original snapshot!
+            current_input_index_in_epoch, // this is one greater than original snapshot!
         )?;
 
         rollup_data::insert_snapshot(
             &self.connection,
             input_reverted.epoch_number,
-            input_reverted.input_index_in_epoch,
+            current_input_index_in_epoch,
             &machine.state_hash()?,
             &snapshot_path,
         )?;
         rollup_data::gc_previous_advances(
             &self.connection,
             input_reverted.epoch_number,
-            input_reverted.input_index_in_epoch,
+            current_input_index_in_epoch,
         )?;
 
         Ok(machine)
