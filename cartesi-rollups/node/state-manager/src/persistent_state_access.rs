@@ -117,9 +117,15 @@ impl StateManager for PersistentStateAccess {
     ) -> Result<()> {
         assert!(!leafs.is_empty());
         let epoch = machine.epoch();
-        let input = machine.input_index_in_epoch();
+        let next_input_index = machine.next_input_index_in_epoch();
+        let processed_input_index = next_input_index - 1;
 
-        rollup_data::insert_state_hashes_for_input(&self.connection, epoch, input, leafs)?;
+        rollup_data::insert_state_hashes_for_input(
+            &self.connection,
+            epoch,
+            processed_input_index,
+            leafs,
+        )?;
 
         let (dest_dir, state_hash) = {
             let snapshots_path = snapshots_path(&self.state_dir);
@@ -128,54 +134,56 @@ impl StateManager for PersistentStateAccess {
                 .map_err(anyhow::Error::from)?
         };
 
-        rollup_data::insert_snapshot(&self.connection, epoch, input, &state_hash, &dest_dir)?;
-        rollup_data::gc_previous_advances(&self.connection, epoch, input)?;
+        rollup_data::insert_snapshot(
+            &self.connection,
+            epoch,
+            next_input_index,
+            &state_hash,
+            &dest_dir,
+        )?;
+        rollup_data::gc_previous_advances(&self.connection, epoch, next_input_index)?;
 
         Ok(())
     }
 
     fn advance_reverted(
         &mut self,
-        input_reverted: &InputId,
+        machine: &mut RollupsMachine,
         leafs: &[CommitmentLeaf],
-    ) -> Result<RollupsMachine> {
+    ) -> Result<()> {
         assert!(!leafs.is_empty());
-        let current_input_index_in_epoch = input_reverted.input_index_in_epoch + 1;
+        let epoch = machine.epoch();
+        let next_input_index = machine.next_input_index_in_epoch();
+        let processed_input_index = next_input_index - 1;
 
         rollup_data::insert_state_hashes_for_input(
             &self.connection,
-            input_reverted.epoch_number,
-            current_input_index_in_epoch,
+            epoch,
+            processed_input_index,
             leafs,
         )?;
 
         let (snapshot_path, snapshot_epoch, snapshot_input) =
             rollup_data::latest_snapshot_path(&self.connection)?;
 
-        assert_eq!(snapshot_epoch, input_reverted.epoch_number);
-        assert_eq!(snapshot_input + 1, current_input_index_in_epoch);
+        assert_eq!(snapshot_epoch, epoch);
+        assert_eq!(snapshot_input, processed_input_index);
 
         // load rollups machine from previous successful (ACCEPT) snapshot
-        let mut machine = RollupsMachine::new(
-            &snapshot_path,
-            input_reverted.epoch_number,
-            current_input_index_in_epoch, // this is one greater than original snapshot!
-        )?;
+        let mut reverted_machine = RollupsMachine::new(&snapshot_path, epoch, next_input_index)?;
 
         rollup_data::insert_snapshot(
             &self.connection,
-            input_reverted.epoch_number,
-            current_input_index_in_epoch,
-            &machine.state_hash()?,
+            epoch,
+            next_input_index,
+            &reverted_machine.state_hash()?,
             &snapshot_path,
         )?;
-        rollup_data::gc_previous_advances(
-            &self.connection,
-            input_reverted.epoch_number,
-            current_input_index_in_epoch,
-        )?;
+        rollup_data::gc_previous_advances(&self.connection, epoch, next_input_index)?;
 
-        Ok(machine)
+        // Update the passed machine to match the reverted state
+        *machine = reverted_machine;
+        Ok(())
     }
 
     fn next_input_id(&mut self) -> Result<InputId> {
@@ -463,6 +471,7 @@ mod tests {
             repetitions: 5,
         };
 
+        initial_snapshot.increment_input();
         access.advance_accepted(&mut initial_snapshot, &[commitment_leaf_1.clone()])?;
 
         assert_eq!(
@@ -480,13 +489,7 @@ mod tests {
         );
 
         initial_snapshot.increment_input();
-        initial_snapshot = access.advance_reverted(
-            &InputId {
-                epoch_number: 0,
-                input_index_in_epoch: 1,
-            },
-            &[commitment_leaf_2.clone()],
-        )?;
+        access.advance_reverted(&mut initial_snapshot, &[commitment_leaf_2.clone()])?;
 
         assert_eq!(
             access.epoch_state_hashes(0)?.len(),
