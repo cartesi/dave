@@ -1,5 +1,6 @@
 ECHO_DIR := "../../../test/programs/echo"
 HONEYPOT_DIR := "../../../test/programs/honeypot"
+YIELD_DIR := "../../../test/programs/yield"
 
 WEB3_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
@@ -14,6 +15,10 @@ test MACH_PATH SCRIPT:
   INPUT_BOX=`sed '1q;d' {{MACH_PATH}}/addresses` \
   lua test_cases/{{SCRIPT}}.lua
 
+# run PRT rollups echo test
+test-echo:
+  just test {{ECHO_DIR}} simple
+
 # run PRT rollups honeypot test
 test-honeypot-all:
   just test {{HONEYPOT_DIR}} stf_all
@@ -21,24 +26,24 @@ test-honeypot-all:
   just test {{HONEYPOT_DIR}} gc_match
   just test {{HONEYPOT_DIR}} gc_tournament
 
-# run PRT rollups echo test
-test-echo-all:
-  just test {{ECHO_DIR}} stf_all
-  just test {{ECHO_DIR}} big_input
-  just test {{ECHO_DIR}} gc_match
-  just test {{ECHO_DIR}} gc_tournament
+# run PRT rollups yield test
+test-yield-all:
+  just test {{YIELD_DIR}} stf_all
+  just test {{YIELD_DIR}} big_input
+  just test {{YIELD_DIR}} gc_match
+  just test {{YIELD_DIR}} gc_tournament
 
 test-honeypot-ci:
   just test {{HONEYPOT_DIR}} simple
 
-test-echo-ci:
-  just test {{ECHO_DIR}} simple
+test-yield-ci:
+  just test {{YIELD_DIR}} simple
 
 test-honeypot-case CASE:
   just test {{HONEYPOT_DIR}} {{CASE}}
 
-test-echo-case CASE:
-  just test {{ECHO_DIR}} {{CASE}}
+test-yield-case CASE:
+  just test {{YIELD_DIR}} {{CASE}}
 
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:
