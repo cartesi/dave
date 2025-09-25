@@ -34,7 +34,7 @@ jobs:
         run: just -f visualization/ui/justfile ui-build-storybook
 
       - name: Publish to Chromatic
-        uses: chromaui/action@v1
+        uses: chromaui/action@v13.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
