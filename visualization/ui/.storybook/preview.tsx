@@ -1,7 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import type { Preview, StoryContext, StoryFn } from "@storybook/react-vite";
-import React from "react";
 import { MemoryRouter } from "react-router";
 import Layout from "../src/components/layout/Layout";
 import theme from "../src/providers/theme";
@@ -37,7 +36,7 @@ const preview: Preview = {
         backgrounds: {
             options: {
                 light: { name: "light", value: "#ffffffff" },
-                dark: { name: "dark", value: "#333" },
+                dark: { name: "dark", value: "#242424" },
             },
         },
         controls: {
