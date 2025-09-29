@@ -3,6 +3,7 @@ import { useMemo, type FC } from "react";
 import type { Hash } from "viem";
 import type { Claim, Match } from "../types";
 import { TournamentRound } from "./TournamentRound";
+import style from "./TournamentTable.module.css";
 
 export interface TournamentTableProps {
     hideWinners?: boolean;
@@ -97,7 +98,7 @@ export const TournamentTable: FC<TournamentTableProps> = (props) => {
     }, [props.matches, danglingClaim, now]);
 
     return (
-        <Flex gap="md">
+        <Flex gap="md" className={style.container} px="xs" py="sm">
             {rounds.map((round, index) => (
                 <TournamentRound
                     index={index}

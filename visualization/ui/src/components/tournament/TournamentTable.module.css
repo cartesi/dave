@@ -1,0 +1,11 @@
+.container {
+    overflow-x: auto;
+    white-space: nowrap;
+    mask-image: linear-gradient(
+        to right,
+        transparent,
+        black 13px,
+        black calc(100% - 34px),
+        transparent
+    );
+}
