@@ -92,7 +92,7 @@ jobs:
           just build-honeypot-snapshot
           just build-honeypot
       - name: Test prt-rollups
-        timeout-minutes: 40
+        timeout-minutes: 20
         run: |
           just test-rollups-honeypot-ci
       - name: Show failing log
