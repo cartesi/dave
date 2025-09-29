@@ -2,13 +2,14 @@ import {
     Anchor,
     Breadcrumbs,
     Button,
-    Card,
+    Container,
     Group,
     Menu,
     MenuDropdown,
     MenuItem,
     MenuTarget,
     Text,
+    useMantineTheme,
     type BreadcrumbsProps,
 } from "@mantine/core";
 import { slice } from "ramda";
@@ -112,23 +113,20 @@ export const Hierarchy: FC<HierarchyProps> = ({
     separator = "/",
     breadcrumbOpts,
 }) => {
+    const theme = useMantineTheme();
     const { isSmallDevice } = useIsSmallDevice();
 
     const showShortForm = isSmallDevice && hierarchyConfig.length > 4;
 
     return (
-        <Card
+        <Container
             bg="var(--mantine-color-body)"
-            px={0}
             py="sm"
-            m={0}
-            shadow="0"
-            withBorder={false}
+            px={0}
+            w={"100%"}
             pos="sticky"
             top="calc(var(--app-shell-header-height) - 3px)"
-            style={{
-                zIndex: 10,
-            }}
+            style={{ zIndex: theme.other.zIndexMD }}
         >
             {showShortForm ? (
                 <ShortFormat
@@ -143,6 +141,6 @@ export const Hierarchy: FC<HierarchyProps> = ({
                     breadcrumbOpts={breadcrumbOpts}
                 />
             )}
-        </Card>
+        </Container>
     );
 };

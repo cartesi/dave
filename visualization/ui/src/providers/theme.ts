@@ -31,6 +31,11 @@ const theme = createTheme({
     other: {
         lgIconSize: 40,
         mdIconSize: 24,
+        zIndexXS: 100,
+        zIndexSM: 200,
+        zIndexMD: 300,
+        zIndexLG: 400,
+        zIndexXL: 500,
     },
     components: {
         Modal: Modal.extend({

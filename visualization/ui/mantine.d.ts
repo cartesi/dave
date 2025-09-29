@@ -11,6 +11,11 @@ declare module "@mantine/core" {
     export interface MantineThemeOther {
         lgIconSize: number;
         mdIconSize: number;
+        zIndexXS: number;
+        zIndexSM: number;
+        zIndexMD: number;
+        zIndexLG: number;
+        zIndexXL: number;
     }
 
     export interface MantineThemeColorsOverride {
