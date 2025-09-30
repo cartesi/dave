@@ -366,21 +366,23 @@ impl MachineInstance {
 
     fn prove_write_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
         // always write aligned 32 bytes (one leaf)
-        let aligned_address = address & !0x1Fu64;
-        let read = self.machine.read_memory(aligned_address, 32)?;
+        assert!(address & 0x1F == 0);
+        let read = self.machine.read_memory(address, 32)?;
         let read_hash = Digest::from_data(&read);
         // Get proof of write address
-        let proof = self.machine.proof(aligned_address, 5)?;
+        let proof = self.machine.proof(address, 5)?;
 
         let mut encoded: Vec<u8> = Vec::new();
 
         encoded.append(&mut read_hash.slice().to_vec());
+        let mut decoded_siblings: Vec<u8> =
+            proof.sibling_hashes.iter().flatten().cloned().collect();
+        encoded.append(&mut decoded_siblings);
 
         let checkpoint = self.root_hash()?;
-        self.machine
-            .write_memory(aligned_address, checkpoint.slice())?;
+        self.machine.write_memory(address, checkpoint.slice())?;
 
-        Ok(proof.sibling_hashes.iter().flatten().cloned().collect())
+        Ok(encoded)
     }
 
     fn prove_revert_if_needed(&mut self) -> Result<Vec<u8>> {
