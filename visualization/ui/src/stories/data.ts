@@ -1,10 +1,4 @@
-import {
-    addMinutes,
-    addSeconds,
-    fromUnixTime,
-    getUnixTime,
-    subMinutes,
-} from "date-fns";
+import { addSeconds, fromUnixTime, getUnixTime, subMinutes } from "date-fns";
 import { keccak256, type Hex } from "viem";
 import type {
     Application,
@@ -376,16 +370,17 @@ const generateMatches = ({ parentMatches = [], now, level }: Config) => {
             matches.push(match);
             danglingClaim = undefined;
 
-            nextDatetime = addMinutes(nextDatetime, 2);
+            nextDatetime = addSeconds(nextDatetime, 4);
 
             matchCounter++;
 
             if (match.winner) {
                 match.winnerTimestamp = getUnixTime(nextDatetime);
-                nextDatetime = addSeconds(nextDatetime, 27);
+                nextDatetime = addSeconds(nextDatetime, 7);
                 const winnerClaim =
                     match.winner === 1 ? match.claim1 : match.claim2;
-                claims.unshift(winnerClaim);
+                // Go back to the end of the queue to battle again in the future.
+                claims.push(winnerClaim);
             }
         } else {
             // assign the claim to the dangling slot
