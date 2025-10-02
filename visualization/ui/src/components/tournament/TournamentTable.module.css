@@ -5,7 +5,7 @@
         to right,
         transparent,
         black 13px,
-        black calc(100% - 34px),
+        black calc(100% - 21px),
         transparent
     );
 }
