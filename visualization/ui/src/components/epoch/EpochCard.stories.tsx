@@ -11,6 +11,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const epoch = {
+    ...applications[0].epochs[3],
+    tournament: undefined,
+};
+
 /**
  * Card for an open epoch
  */
@@ -22,14 +27,14 @@ export const Open: Story = {
  * Card for a closed epoch
  */
 export const Closed: Story = {
-    args: { epoch: { ...applications[0].epochs[3], inDispute: false } },
+    args: { epoch: { ...epoch, inDispute: false } },
 };
 
 /**
  * Card for an epoch that is under dispute
  */
 export const UnderDispute: Story = {
-    args: { epoch: applications[0].epochs[3] },
+    args: { epoch: epoch },
 };
 
 /**

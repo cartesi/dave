@@ -11,37 +11,42 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const honeypot = {
+    ...applications[0],
+    epochs: [],
+};
+
 /**
  * Default application card
  */
 export const Default: Story = {
-    args: { application: applications[0] },
+    args: { application: honeypot },
 };
 
 /**
  * Card for a disabled application
  */
 export const Disabled: Story = {
-    args: { application: { ...applications[0], state: "DISABLED" } },
+    args: { application: { ...honeypot, state: "DISABLED" } },
 };
 
 /**
  * Card for application that is inoperable
  */
 export const Inoperable: Story = {
-    args: { application: { ...applications[0], state: "INOPERABLE" } },
+    args: { application: { ...honeypot, state: "INOPERABLE" } },
 };
 
 /**
  * Card for applications with no inputs
  */
 export const NoInputs: Story = {
-    args: { application: { ...applications[0], processedInputs: 0 } },
+    args: { application: { ...honeypot, processedInputs: 0 } },
 };
 
 /**
  * Card for applications that use an Authority consensus
  */
 export const AuthorityConsensus: Story = {
-    args: { application: { ...applications[0], consensusType: "AUTHORITY" } },
+    args: { application: { ...honeypot, consensusType: "AUTHORITY" } },
 };
