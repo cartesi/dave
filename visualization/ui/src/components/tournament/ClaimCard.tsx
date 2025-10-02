@@ -28,13 +28,7 @@ export const ClaimCard: FC<ClaimCardProps> = ({
     ...cardProps
 }) => {
     return (
-        <Card
-            component="button"
-            withBorder
-            shadow="sm"
-            radius="lg"
-            {...cardProps}
-        >
+        <Card withBorder shadow="sm" radius="lg" {...cardProps}>
             <Group gap="xs" wrap="nowrap">
                 <TbTrophyFilled size={24} opacity={0} />
                 <ClaimText
