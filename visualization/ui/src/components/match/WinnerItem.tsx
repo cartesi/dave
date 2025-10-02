@@ -72,9 +72,13 @@ export const WinnerItem: FC<WinnerItemProps> = (props) => {
                         </Button>
                     </Group>
                     <Collapse in={opened}>
-                        <Textarea readOnly rows={10} autosize maxRows={10}>
-                            {proof}
-                        </Textarea>
+                        <Textarea
+                            readOnly
+                            rows={10}
+                            autosize
+                            maxRows={10}
+                            value={proof}
+                        />
                     </Collapse>
                 </Stack>
             </Paper>
