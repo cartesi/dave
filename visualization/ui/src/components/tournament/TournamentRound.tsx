@@ -68,14 +68,16 @@ export const TournamentRound: FC<TournamentRoundProps> = (props) => {
     return (
         <Stack>
             <Divider label={`Round ${index + 1}`} />
-            {matches.map((match) =>
+            {matches.map((match, index) =>
                 hideWinners && match.winner !== undefined && match.claim2 ? (
                     <MatchLoserCard
+                        key={`match-loser-card-${index}`}
                         match={match}
                         onClick={() => onMatchClick(match)}
                     />
                 ) : hideWinners && match.winner !== undefined ? undefined : (
                     <MatchCard
+                        key={`match-card-${index}`}
                         match={match}
                         onClick={() => onMatchClick(match)}
                     />

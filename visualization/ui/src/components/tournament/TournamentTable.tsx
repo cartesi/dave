@@ -101,6 +101,7 @@ export const TournamentTable: FC<TournamentTableProps> = (props) => {
         <Flex gap="md" className={style.container} px="xs" py="sm">
             {rounds.map((round, index) => (
                 <TournamentRound
+                    key={`round-${index}`}
                     index={index}
                     matches={round.matches}
                     hideWinners={hideWinners}
