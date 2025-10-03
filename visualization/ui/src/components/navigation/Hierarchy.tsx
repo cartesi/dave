@@ -73,7 +73,12 @@ const ShortFormat: FC<ShortFormatProps> = ({
             </Menu>
             {fullDisplayConfigs.map((c, index) => {
                 if (lastFullDisplayConfigItem === index)
-                    return <Text c="dimmed"> {c.title}</Text>;
+                    return (
+                        <Text c="dimmed" component="span">
+                            {" "}
+                            {c.title}
+                        </Text>
+                    );
 
                 return (
                     <Anchor key={index} to={c.href} component={Link}>
@@ -96,7 +101,11 @@ const FullForm: FC<HierarchyProps> = ({
         <Breadcrumbs separator={separator} {...breadcrumbOpts}>
             {hierarchyConfig.map((c, index) => {
                 if (lastConfigIndex === index)
-                    return <Text c="dimmed"> {c.title}</Text>;
+                    return (
+                        <Text c="dimmed" component="span">
+                            {c.title}
+                        </Text>
+                    );
 
                 return (
                     <Anchor key={index} to={c.href} component={Link}>

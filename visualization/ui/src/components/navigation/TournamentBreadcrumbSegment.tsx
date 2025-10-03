@@ -11,7 +11,13 @@ export const TournamentBreadcrumbSegment: FC<
     TournamentBreadcrumbSegmentProps
 > = ({ level, variant }) => {
     return (
-        <Button variant={variant} size="compact-xs" radius="xl">
+        <Button
+            component="span"
+            variant={variant}
+            size="compact-xs"
+            radius="xl"
+            data-id={`tournament-${level}`}
+        >
             {level}
         </Button>
     );

@@ -9,7 +9,7 @@ import type { Claim } from "../types";
 
 export type MatchBadgeProps = ButtonProps &
     PolymorphicComponentProps<
-        "a",
+        "span",
         {
             /**
              * The first claim in the match.
@@ -58,7 +58,7 @@ export const MatchBadge: FC<MatchBadgeProps> = (props) => {
 
     return (
         <Button
-            component="a"
+            component="span"
             radius="xl"
             leftSection={<HashAvatar hash={claim1.hash} size={iconSize} />}
             rightSection={<HashAvatar hash={claim2.hash} size={iconSize} />}
