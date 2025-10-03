@@ -7,7 +7,7 @@ import type {
     Tournament,
 } from "../components/types";
 import {
-    applications,
+    getSimulatedApplications,
     type ApplicationEpochs,
     type EpochWithTournament,
 } from "../stories/data";
@@ -46,6 +46,7 @@ class SyntheticDatabase {
     constructor() {
         // limit to only mocked honeypot
         console.info(`DB initiating...`);
+        const applications = getSimulatedApplications();
         const application = applications.find((a) => a.name === "honeypot")!;
         this.applications.push(omit(["epochs"], application));
         this.init(application);

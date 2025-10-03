@@ -247,6 +247,7 @@ const numberOfClaims = {
 
 let tournamentCounter = 1;
 let claimCounter = 0;
+let gMatchCounter = 1;
 
 const getMinutesPerLevel = (level: Tournament["level"]) => {
     switch (level) {
@@ -290,7 +291,7 @@ const simulateActions = (config: SimulateActionsParams) => {
 
     if (config.level === "bottom") {
         // XXX: Needs to bubble up.
-        const winner = actions.length % 2 === 0 ? 1 : 2;
+        const winner = gMatchCounter % 5 === 0 ? 1 : 2;
         const lastAction: MatchAction = {
             type: "leaf_match_sealed",
             proof,
@@ -342,13 +343,8 @@ const generateMatches = ({ parentMatches = [], now, level }: Config) => {
     let danglingClaim = undefined;
     let newClaim = claims.shift();
     let nextDatetime = now;
-    let matchCounter = 1;
 
     while (newClaim) {
-        if (level === "top") {
-            // console.clear();
-            console.log(`claims: ${claims.length}`);
-        }
         if (danglingClaim) {
             // create a match with the dangling claim
             const claim1 = danglingClaim;
@@ -372,7 +368,7 @@ const generateMatches = ({ parentMatches = [], now, level }: Config) => {
 
             nextDatetime = addSeconds(nextDatetime, 4);
 
-            matchCounter++;
+            gMatchCounter++;
 
             if (match.winner) {
                 match.winnerTimestamp = getUnixTime(nextDatetime);
@@ -419,12 +415,17 @@ const generateTournament = (params: TournamentGeneratorParams): Tournament => {
     return tournament;
 };
 
-// XXX: Generate only for the disputed epoch.
-applications[0].epochs[3].tournament = generateTournament({
-    now: currentDate,
-    startCycle: 5_911_918_810,
-    endCycle: 9_918_817_817,
-    level: "top",
-});
+// XXX: Lazy loaded to stop clash with storybooks.
+const getSimulatedApplications = () => {
+    // XXX: Generate only for honeypot epoch 3. The disputed epoch.
+    applications[0].epochs[3].tournament = generateTournament({
+        now: currentDate,
+        startCycle: 5_911_918_810,
+        endCycle: 9_918_817_817,
+        level: "top",
+    });
 
-export { applications };
+    return applications;
+};
+
+export { applications, getSimulatedApplications };
