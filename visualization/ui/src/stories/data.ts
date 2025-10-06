@@ -1,4 +1,5 @@
 import { addSeconds, fromUnixTime, getUnixTime, subMinutes } from "date-fns";
+import { includes } from "ramda";
 import { keccak256, type Hex } from "viem";
 import type {
     Application,
@@ -239,6 +240,9 @@ const getNextRange = (level: Tournament["level"]): CycleRange => {
     }
 };
 
+/**
+ * Number of claims to generate per level.
+ */
 const numberOfClaims = {
     top: 32,
     middle: 24,
@@ -247,7 +251,7 @@ const numberOfClaims = {
 
 let tournamentCounter = 1;
 let claimCounter = 0;
-let gMatchCounter = 1;
+let matchCounter = 1;
 
 const getMinutesPerLevel = (level: Tournament["level"]) => {
     switch (level) {
@@ -261,7 +265,7 @@ const getMinutesPerLevel = (level: Tournament["level"]) => {
 };
 
 interface Config {
-    parentMatches?: Match[];
+    parentMatch?: Match;
     now: Date;
     level: Tournament["level"];
 }
@@ -270,7 +274,6 @@ type TournamentGeneratorParams = {
     startCycle: number;
     endCycle: number;
     level: Tournament["level"];
-    parentMatches?: Match[];
     match?: Match;
     now: Date;
 };
@@ -278,6 +281,88 @@ type TournamentGeneratorParams = {
 interface SimulateActionsParams extends Config {
     match: Match;
 }
+
+// set the first claim as the dave-claim.
+const originalDaveClaim = claim(matchCounter);
+
+const getDaveClaimOrUndefined = (claims: Claim[]) => {
+    return claims.find((claim) => {
+        if (claim.hash === originalDaveClaim.hash) return true;
+        return claim.parentClaims?.find(
+            (parentHash) => parentHash === originalDaveClaim.hash,
+        );
+    });
+};
+
+interface ControlEntry {
+    match: Match;
+    parent?: Match;
+    //The claim to beat all others. Even derived i.e. middle / bottom.
+    daveClaim?: Claim;
+}
+
+const matchControl = new Map<Hex, ControlEntry>();
+
+/**
+ * recursively updates the parents.
+ * Updates are done based on global dave-claim, parent-child-claim relation or random choice.
+ * @param match
+ * @param timestamp Winner timestamp (usually coming from a bottom match)
+ */
+const updateParents = (match: Match, timestamp: number) => {
+    const matchEntry = matchControl.get(match.id);
+    if (match.winner !== undefined && matchEntry) {
+        const winnerClaim = match.winner === 1 ? match.claim1 : match.claim2;
+        const parentMatch = matchEntry.parent;
+        if (parentMatch && !parentMatch.winner) {
+            const parentEntry = matchControl.get(parentMatch.id);
+            let winner: 1 | 2;
+
+            if (parentEntry?.daveClaim) {
+                winner =
+                    parentEntry.daveClaim.hash === parentMatch.claim1.hash
+                        ? 1
+                        : 2;
+            } else {
+                if (
+                    includes(
+                        parentMatch.claim1.hash,
+                        winnerClaim.parentClaims ?? [],
+                    )
+                ) {
+                    winner = 1;
+                } else if (
+                    includes(
+                        parentMatch.claim2.hash,
+                        winnerClaim.parentClaims ?? [],
+                    )
+                ) {
+                    winner = 2;
+                } else {
+                    // That means the winner was at random choice in the previous step (simulateActions()).
+                    winner = match.winner;
+                }
+            }
+
+            parentMatch.winner = winner;
+            parentMatch.winnerTimestamp = timestamp;
+            parentMatch.actions.push(createLeafSealedAction(timestamp, winner));
+            updateParents(parentMatch, timestamp);
+        }
+    }
+};
+
+const createLeafSealedAction = (
+    timestamp: number,
+    winner: 1 | 2,
+): MatchAction => {
+    return {
+        type: "leaf_match_sealed",
+        proof,
+        timestamp,
+        winner,
+    };
+};
 
 const simulateActions = (config: SimulateActionsParams) => {
     const height = getTournamentHeight(config.level);
@@ -290,26 +375,29 @@ const simulateActions = (config: SimulateActionsParams) => {
     }));
 
     if (config.level === "bottom") {
-        // XXX: Needs to bubble up.
-        const winner = gMatchCounter % 5 === 0 ? 1 : 2;
-        const lastAction: MatchAction = {
-            type: "leaf_match_sealed",
-            proof,
-            timestamp: getUnixTime(
-                subMinutes(matchTime, elapseTime - actions.length),
-            ),
-            winner,
-        };
+        const entry = matchControl.get(config.match.id);
+        let winner: 1 | 2;
+
+        if (!entry?.daveClaim) {
+            // random winner choice
+            winner = matchCounter % 5 === 0 ? 1 : 2;
+        } else {
+            // based on match-control.
+            winner = entry.daveClaim.hash === config.match.claim1.hash ? 1 : 2;
+        }
+
+        const timestamp = getUnixTime(
+            subMinutes(matchTime, elapseTime - actions.length),
+        );
+        const lastAction = createLeafSealedAction(timestamp, winner);
 
         actions.push(lastAction);
         config.match.actions = actions;
         config.match.winner = winner;
-        config.parentMatches?.forEach((match) => {
-            if (!match.winner) {
-                match.winner = winner;
-                match.actions.push(lastAction);
-            }
-        });
+        config.match.winnerTimestamp = timestamp;
+
+        // update parents
+        updateParents(config.match, timestamp);
     } else {
         const nextLevel = config.level === "top" ? "middle" : "bottom";
         const range = getNextRange(config.level);
@@ -321,25 +409,40 @@ const simulateActions = (config: SimulateActionsParams) => {
             ),
         });
         config.match.actions = actions;
-        const parentMatches = config.parentMatches ? config.parentMatches : [];
-        parentMatches.push(config.match);
         config.match.tournament = generateTournament({
             now: fromUnixTime(config.match.timestamp),
             level: nextLevel,
             startCycle: range[0],
             endCycle: range[1],
             match: config.match,
-            parentMatches,
         });
     }
 };
 
-const generateMatches = ({ parentMatches = [], now, level }: Config) => {
+const generateMatches = ({ now, level, parentMatch }: Config) => {
     const totalClaims = numberOfClaims[level];
     const matches: Match[] = [];
     const claims: Claim[] = Array.from({ length: totalClaims }).map(() =>
         claim(claimCounter++),
     );
+
+    // generate claim with parentClaims. Just first two claims.
+    if (parentMatch) {
+        const entry = matchControl.get(parentMatch.id);
+        if (entry) {
+            const firstClaim = claims[0];
+            const secondClaim = claims[1];
+            firstClaim.parentClaims = [
+                ...(parentMatch.claim1.parentClaims ?? []),
+                parentMatch.claim1.hash,
+            ];
+            secondClaim.parentClaims = [
+                ...(parentMatch.claim2.parentClaims ?? []),
+                parentMatch.claim2.hash,
+            ];
+        }
+    }
+
     let danglingClaim = undefined;
     let newClaim = claims.shift();
     let nextDatetime = now;
@@ -356,11 +459,16 @@ const generateMatches = ({ parentMatches = [], now, level }: Config) => {
                 timestamp: getUnixTime(nextDatetime),
             };
 
+            matchControl.set(match.id, {
+                match: match,
+                parent: parentMatch,
+                daveClaim: getDaveClaimOrUndefined([claim1, newClaim]),
+            });
+
             simulateActions({
                 level,
                 match,
                 now: nextDatetime,
-                parentMatches,
             });
 
             matches.push(match);
@@ -368,10 +476,9 @@ const generateMatches = ({ parentMatches = [], now, level }: Config) => {
 
             nextDatetime = addSeconds(nextDatetime, 4);
 
-            gMatchCounter++;
+            matchCounter++;
 
             if (match.winner) {
-                match.winnerTimestamp = getUnixTime(nextDatetime);
                 nextDatetime = addSeconds(nextDatetime, 7);
                 const winnerClaim =
                     match.winner === 1 ? match.claim1 : match.claim2;
@@ -405,8 +512,8 @@ const generateTournament = (params: TournamentGeneratorParams): Tournament => {
 
     const { danglingClaim, matches } = generateMatches({
         level: params.level,
-        now: currentDate,
-        parentMatches: params.parentMatches,
+        now: params.now,
+        parentMatch: params.match,
     });
 
     tournament.matches = matches;
@@ -424,6 +531,8 @@ const getSimulatedApplications = () => {
         endCycle: 9_918_817_817,
         level: "top",
     });
+
+    console.log(matchControl);
 
     return applications;
 };
