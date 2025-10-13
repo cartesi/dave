@@ -39,6 +39,68 @@ contract MiddleTournamentTest is Util {
 
     receive() external payable {}
 
+    function testInnerEliminationEventuallyAllowedAfterFinish() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+
+        // Create middle tournament via top seal
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
+
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.State memory _match =
+            topTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        uint256 _playerToSeal =
+            Util.advanceMatch(topTournament, _matchId, _opponent);
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+
+        // Only player 0 joins middle; let it finish by timeout (no matches occur)
+        Util.joinTournament(middleTournament, 0);
+
+        // Roll far enough so the middle tournament is almost closed
+        assertFalse(middleTournament.isClosed(), "should not be closed yet");
+        assertFalse(middleTournament.isFinished(), "should not be finished yet");
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
+        assertFalse(middleTournament.isClosed(), "should not be closed yet");
+        assertFalse(middleTournament.isFinished(), "should not be finished yet");
+
+        // One more block: close
+        vm.roll(vm.getBlockNumber() + 1);
+        assertTrue(middleTournament.isClosed(), "should be closed");
+        assertTrue(middleTournament.isFinished(), "should be finished");
+
+        // Tournament finished but not yet eliminable since a winner exists
+        assertFalse(
+            middleTournament.canBeEliminated(), "should not be eliminable yet"
+        );
+
+        // Identify winner commitment and its paused allowance
+        (bool _finished,, Tree.Node _winner,) =
+            middleTournament.innerTournamentWinner();
+        assertTrue(_finished, "inner should report finished");
+        (Clock.State memory wc,) = middleTournament.getCommitment(_winner);
+
+        // Move close to allowance window: still not eliminable
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(wc.allowance) - 1);
+        assertFalse(middleTournament.canBeEliminated(), "still not eliminable");
+
+        // One more block: eliminable
+        vm.roll(vm.getBlockNumber() + 1);
+        assertTrue(middleTournament.canBeEliminated(), "now eliminable");
+    }
+
+    function setUp() public {}
+
     function assertNoElimination() internal {
         assertFalse(middleTournament.canBeEliminated(), "can be eliminated");
         vm.expectRevert(
@@ -216,7 +278,7 @@ contract MiddleTournamentTest is Util {
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
-        vm.expectRevert(Tournament.WinByTimeout.selector);
+        vm.expectRevert(Tournament.ClockNotTimedOut.selector);
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
@@ -520,7 +582,7 @@ contract MiddleTournamentTest is Util {
         assertFalse(hasWinner);
 
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
-        vm.expectRevert(Tournament.WinByTimeout.selector);
+        vm.expectRevert(Tournament.ClockNotTimedOut.selector);
         middleTournament.winMatchByTimeout(
             Util.matchId(1, 1),
             playerNodes[0][ArbitrationConstants.height(1) - 1],
@@ -590,7 +652,7 @@ contract MiddleTournamentTest is Util {
         );
 
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT));
-        vm.expectRevert(Tournament.WinByTimeout.selector);
+        vm.expectRevert(Tournament.ClockNotTimedOut.selector);
         topTournament.winMatchByTimeout(
             topMatch,
             playerNodes[0][ArbitrationConstants.height(0) - 1],

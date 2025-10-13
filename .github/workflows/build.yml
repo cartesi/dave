@@ -30,7 +30,8 @@ jobs:
         run: |
           just check-fmt
           just build-smart-contracts
-          just test
+          just test-disputes
+          just test-stf
 
   dave-contracts:
     runs-on: ubuntu-24.04

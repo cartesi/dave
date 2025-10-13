@@ -14,32 +14,32 @@ import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 contract MiddleTournament is NonLeafTournament, NonRootTournament {
     using Clones for address;
 
-    struct Args {
-        TournamentArgs tournamentArgs;
-        NonRootTournamentArgs nonRootTournamentArgs;
+    struct MiddleArguments {
+        TournamentArguments tournamentArgs;
+        NonRootArguments nonRootTournamentArgs;
         IMultiLevelTournamentFactory tournamentFactory;
     }
 
-    function _args() internal view returns (Args memory) {
-        return abi.decode(address(this).fetchCloneArgs(), (Args));
+    function _middleArgs() internal view returns (MiddleArguments memory) {
+        return abi.decode(address(this).fetchCloneArgs(), (MiddleArguments));
     }
 
-    function _tournamentArgs()
-        internal
+    function tournamentArguments()
+        public
         view
         override
-        returns (TournamentArgs memory)
+        returns (TournamentArguments memory)
     {
-        return _args().tournamentArgs;
+        return _middleArgs().tournamentArgs;
     }
 
     function _nonRootTournamentArgs()
         internal
         view
         override
-        returns (NonRootTournamentArgs memory)
+        returns (NonRootArguments memory)
     {
-        return _args().nonRootTournamentArgs;
+        return _middleArgs().nonRootTournamentArgs;
     }
 
     function _tournamentFactory()
@@ -48,6 +48,6 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
         override
         returns (IMultiLevelTournamentFactory)
     {
-        return _args().tournamentFactory;
+        return _middleArgs().tournamentFactory;
     }
 }
