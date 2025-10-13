@@ -9,6 +9,8 @@ import "prt-contracts/types/TournamentParameters.sol";
 
 /// @notice Root tournament has no parent
 abstract contract RootTournament is Tournament, ITournament {
+    error TournamentFailedNoWinner();
+
     function validContestedFinalState(Machine.Hash)
         internal
         pure
@@ -31,7 +33,7 @@ abstract contract RootTournament is Tournament, ITournament {
 
         (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
             hasDanglingCommitment();
-        assert(_hasDanglingCommitment);
+        require(_hasDanglingCommitment, TournamentFailedNoWinner());
 
         Machine.Hash _finalState = finalStates[_danglingCommitment];
         return (true, _danglingCommitment, _finalState);

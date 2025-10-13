@@ -26,14 +26,16 @@ contract TopTournamentFactory {
         IDataProvider provider,
         IMultiLevelTournamentFactory tournamentFactory
     ) external returns (TopTournament) {
-        TopTournament.Args memory args = TopTournament.Args({
-            tournamentArgs: TournamentArgs({
-                initialHash: initialHash,
-                startCycle: START_CYCLE,
+        TopTournament.TopArguments memory args = TopTournament.TopArguments({
+            tournamentArgs: Tournament.TournamentArguments({
+                commitmentArgs: Commitment.Arguments({
+                    initialHash: initialHash,
+                    startCycle: START_CYCLE,
+                    log2step: tournamentParameters.log2step,
+                    height: tournamentParameters.height
+                }),
                 level: LEVEL,
                 levels: tournamentParameters.levels,
-                log2step: tournamentParameters.log2step,
-                height: tournamentParameters.height,
                 startInstant: Time.currentTime(),
                 allowance: tournamentParameters.maxAllowance,
                 maxAllowance: tournamentParameters.maxAllowance,

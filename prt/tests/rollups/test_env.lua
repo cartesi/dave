@@ -163,7 +163,6 @@ function Env.run_epoch(sealed_epoch, patches)
     -- Setup player till completion
     print("Setting up Sybil")
 
-
     local honest_commitment_builder = CommitmentBuilder:new(settlement.machine_path, settlement.inputs,
         settlement.commitment)
     local patched_commitment_builder = PatchedCommitmentBuilder:new(patches, honest_commitment_builder)

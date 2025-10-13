@@ -14,8 +14,8 @@ import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 contract TopTournament is NonLeafTournament, RootTournament {
     using Clones for address;
 
-    struct Args {
-        TournamentArgs tournamentArgs;
+    struct TopArguments {
+        TournamentArguments tournamentArgs;
         IMultiLevelTournamentFactory tournamentFactory;
     }
 
@@ -27,17 +27,17 @@ contract TopTournament is NonLeafTournament, RootTournament {
         return super.tryRecoveringBond();
     }
 
-    function _args() internal view returns (Args memory) {
-        return abi.decode(address(this).fetchCloneArgs(), (Args));
+    function _topArgs() internal view returns (TopArguments memory) {
+        return abi.decode(address(this).fetchCloneArgs(), (TopArguments));
     }
 
-    function _tournamentArgs()
-        internal
+    function tournamentArguments()
+        public
         view
         override
-        returns (TournamentArgs memory)
+        returns (TournamentArguments memory)
     {
-        return _args().tournamentArgs;
+        return _topArgs().tournamentArgs;
     }
 
     function _tournamentFactory()
@@ -46,6 +46,6 @@ contract TopTournament is NonLeafTournament, RootTournament {
         override
         returns (IMultiLevelTournamentFactory)
     {
-        return _args().tournamentFactory;
+        return _topArgs().tournamentFactory;
     }
 }
