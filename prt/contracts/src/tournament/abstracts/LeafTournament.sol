@@ -19,6 +19,14 @@ abstract contract LeafTournament is Tournament {
     using Match for Match.Id;
     using Match for Match.State;
 
+    /// @notice Seal a match at height 1 (leaf) by pinpointing the divergent
+    /// states and setting the agree state.
+    ///
+    /// Clock policy:
+    /// - During bisection (advanceMatch), only one clock runs at a time.
+    /// - After leaf sealing, both clocks are intentionally set to RUNNING to
+    ///   incentivize either party to finalize via state-transition proof.
+    ///   This accelerates liveness without increasing anyone’s allowance.
     function sealLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftLeaf,
@@ -30,7 +38,10 @@ abstract contract LeafTournament is Tournament {
         _matchState.requireExist();
         _matchState.requireCanBeFinalized();
 
-        // Unpause clocks
+        // At the final step (leaf sealing), both sides may know how to prove
+        // the state transition. We intentionally run BOTH clocks to incentivize
+        // rapid completion by either party. This departs from the single-active
+        // clock used during bisection steps.
         {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
             Clock.State storage _clock2 = clocks[_matchId.commitmentTwo];
@@ -40,10 +51,9 @@ abstract contract LeafTournament is Tournament {
             _clock2.advanceClock();
         }
 
-        Machine.Hash initialHash = _tournamentArgs().initialHash;
         _matchState.sealMatch(
+            tournamentArguments().commitmentArgs,
             _matchId,
-            initialHash,
             _leftLeaf,
             _rightLeaf,
             _agreeHash,
@@ -71,25 +81,22 @@ abstract contract LeafTournament is Tournament {
         _matchState.requireExist();
         _matchState.requireIsFinished();
 
-        uint256 startCycle;
-        IDataProvider provider;
-        {
-            TournamentArgs memory args;
-            args = _tournamentArgs();
-            startCycle = args.startCycle;
-            provider = args.provider;
-        }
+        TournamentArguments memory args = tournamentArguments();
+
         (
             Machine.Hash _agreeHash,
             uint256 _agreeCycle,
             Machine.Hash _finalStateOne,
             Machine.Hash _finalStateTwo
-        ) = _matchState.getDivergence(startCycle);
+        ) = _matchState.getDivergence(args.commitmentArgs);
 
         IStateTransition stateTransition = _stateTransition();
         Machine.Hash _finalState = Machine.Hash.wrap(
             stateTransition.transitionState(
-                Machine.Hash.unwrap(_agreeHash), _agreeCycle, proofs, provider
+                Machine.Hash.unwrap(_agreeHash),
+                _agreeCycle,
+                proofs,
+                args.provider
             )
         );
 
@@ -128,7 +135,7 @@ abstract contract LeafTournament is Tournament {
     }
 
     function _totalGasEstimate() internal view override returns (uint256) {
-        return Gas.ADVANCE_MATCH * _tournamentArgs().height
+        return Gas.ADVANCE_MATCH * tournamentArguments().commitmentArgs.height
             + Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH;
     }
 

@@ -12,32 +12,32 @@ import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
 contract BottomTournament is LeafTournament, NonRootTournament {
     using Clones for address;
 
-    struct Args {
-        TournamentArgs tournamentArgs;
-        NonRootTournamentArgs nonRootTournamentArgs;
+    struct BottomArguments {
+        TournamentArguments tournamentArgs;
+        NonRootArguments nonRootTournamentArgs;
         IStateTransition stateTransition;
     }
 
-    function _args() internal view returns (Args memory) {
-        return abi.decode(address(this).fetchCloneArgs(), (Args));
+    function _bottomArgs() internal view returns (BottomArguments memory) {
+        return abi.decode(address(this).fetchCloneArgs(), (BottomArguments));
     }
 
-    function _tournamentArgs()
-        internal
+    function tournamentArguments()
+        public
         view
         override
-        returns (TournamentArgs memory)
+        returns (TournamentArguments memory)
     {
-        return _args().tournamentArgs;
+        return _bottomArgs().tournamentArgs;
     }
 
     function _nonRootTournamentArgs()
         internal
         view
         override
-        returns (NonRootTournamentArgs memory)
+        returns (NonRootArguments memory)
     {
-        return _args().nonRootTournamentArgs;
+        return _bottomArgs().nonRootTournamentArgs;
     }
 
     function _stateTransition()
@@ -46,6 +46,6 @@ contract BottomTournament is LeafTournament, NonRootTournament {
         override
         returns (IStateTransition)
     {
-        return _args().stateTransition;
+        return _bottomArgs().stateTransition;
     }
 }

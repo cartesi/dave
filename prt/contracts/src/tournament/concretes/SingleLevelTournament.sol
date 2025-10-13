@@ -12,8 +12,8 @@ import "prt-contracts/tournament/abstracts/Tournament.sol";
 contract SingleLevelTournament is LeafTournament, RootTournament {
     using Clones for address;
 
-    struct Args {
-        TournamentArgs tournamentArgs;
+    struct SingleLevelArguments {
+        TournamentArguments tournamentArgs;
         IStateTransition stateTransition;
     }
 
@@ -25,17 +25,26 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
         return super.tryRecoveringBond();
     }
 
-    function _args() internal view returns (Args memory) {
-        return abi.decode(address(this).fetchCloneArgs(), (Args));
+    function _args() internal view returns (TournamentArguments memory) {
+        return abi.decode(address(this).fetchCloneArgs(), (TournamentArguments));
     }
 
-    function _tournamentArgs()
+    function _singleLevelArgs()
         internal
         view
-        override
-        returns (TournamentArgs memory)
+        returns (SingleLevelArguments memory)
     {
-        return _args().tournamentArgs;
+        return
+            abi.decode(address(this).fetchCloneArgs(), (SingleLevelArguments));
+    }
+
+    function tournamentArguments()
+        public
+        view
+        override
+        returns (TournamentArguments memory)
+    {
+        return _singleLevelArgs().tournamentArgs;
     }
 
     function _stateTransition()
@@ -44,6 +53,6 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
         override
         returns (IStateTransition)
     {
-        return _args().stateTransition;
+        return _singleLevelArgs().stateTransition;
     }
 }

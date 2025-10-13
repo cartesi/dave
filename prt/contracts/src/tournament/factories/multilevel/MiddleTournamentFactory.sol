@@ -35,21 +35,24 @@ contract MiddleTournamentFactory {
         IDataProvider provider,
         IMultiLevelTournamentFactory tournamentFactory
     ) external returns (MiddleTournament) {
-        MiddleTournament.Args memory args = MiddleTournament.Args({
-            tournamentArgs: TournamentArgs({
-                initialHash: initialHash,
-                startCycle: startCycle,
+        MiddleTournament.MiddleArguments memory args = MiddleTournament
+            .MiddleArguments({
+            tournamentArgs: Tournament.TournamentArguments({
+                commitmentArgs: Commitment.Arguments({
+                    initialHash: initialHash,
+                    startCycle: startCycle,
+                    log2step: tournamentParameters.log2step,
+                    height: tournamentParameters.height
+                }),
                 level: level,
                 levels: tournamentParameters.levels,
-                log2step: tournamentParameters.log2step,
-                height: tournamentParameters.height,
                 startInstant: Time.currentTime(),
                 allowance: allowance,
                 maxAllowance: tournamentParameters.maxAllowance,
                 matchEffort: tournamentParameters.matchEffort,
                 provider: provider
             }),
-            nonRootTournamentArgs: NonRootTournamentArgs({
+            nonRootTournamentArgs: NonRootTournament.NonRootArguments({
                 contestedCommitmentOne: contestedCommitmentOne,
                 contestedFinalStateOne: contestedFinalStateOne,
                 contestedCommitmentTwo: contestedCommitmentTwo,

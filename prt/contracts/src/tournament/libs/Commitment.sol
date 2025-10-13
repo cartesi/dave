@@ -11,7 +11,25 @@ library Commitment {
     using Tree for Tree.Node;
     using Commitment for Tree.Node;
 
-    error CommitmentMismatch(Tree.Node received, Tree.Node expected);
+    struct Arguments {
+        Machine.Hash initialHash;
+        uint256 startCycle;
+        uint64 log2step;
+        uint64 height;
+    }
+
+    function toCycle(Arguments memory args, uint256 leafPosition)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 step = 1 << args.log2step;
+        return args.startCycle + (leafPosition * step);
+    }
+
+    error CommitmentStateMismatch(Tree.Node received, Tree.Node expected);
+    error CommitmentFinalStateMismatch(Tree.Node received, Tree.Node expected);
+    error CommitmentProofWrongSize(uint256 received, uint256 expected);
 
     function requireState(
         Tree.Node commitment,
@@ -25,7 +43,7 @@ library Commitment {
 
         require(
             commitment.eq(expectedCommitment),
-            CommitmentMismatch(commitment, expectedCommitment)
+            CommitmentStateMismatch(commitment, expectedCommitment)
         );
     }
 
@@ -70,7 +88,7 @@ library Commitment {
 
         require(
             commitment.eq(expectedCommitment),
-            "commitment last state doesn't match"
+            CommitmentFinalStateMismatch(commitment, expectedCommitment)
         );
     }
 
@@ -79,7 +97,10 @@ library Commitment {
         bytes32 leaf,
         bytes32[] calldata siblings
     ) internal pure returns (Tree.Node) {
-        assert(treeHeight == siblings.length);
+        require(
+            treeHeight == siblings.length,
+            CommitmentProofWrongSize(treeHeight, siblings.length)
+        );
 
         for (uint256 i = 0; i < treeHeight; i++) {
             leaf = keccak256(abi.encodePacked(siblings[i], leaf));

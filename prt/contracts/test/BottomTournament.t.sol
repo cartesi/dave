@@ -468,4 +468,87 @@ contract BottomTournamentTest is Util {
             _matchId, Util.ONE_NODE, Util.ONE_NODE, new bytes(0)
         );
     }
+
+    function testPostSealBothClocksRunAndEliminateAfterDoubleTimeout() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+
+        // Build down to a BottomTournament instance via two inner seals
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
+
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.State memory _match =
+            topTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "match should exist");
+
+        uint256 _playerToSeal =
+            Util.advanceMatch(topTournament, _matchId, _opponent);
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            topTournament, _matchId, _playerToSeal
+        );
+        _height += 1;
+
+        Vm.Log[] memory _entries = vm.getRecordedLogs();
+        middleTournament = MiddleTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+
+        Util.joinTournament(middleTournament, 0);
+        Util.joinTournament(middleTournament, _opponent);
+
+        _matchId = Util.matchId(_opponent, _height);
+        _match = middleTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "mid match should exist");
+
+        _playerToSeal = Util.advanceMatch(middleTournament, _matchId, _opponent);
+        vm.recordLogs();
+        Util.sealInnerMatchAndCreateInnerTournament(
+            middleTournament, _matchId, _playerToSeal
+        );
+        _height += 1;
+
+        _entries = vm.getRecordedLogs();
+        bottomTournament = BottomTournament(
+            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
+        );
+
+        // Both players join bottom-level tournament and reach leaf
+        Util.joinTournament(bottomTournament, 0);
+        Util.joinTournament(bottomTournament, _opponent);
+
+        _matchId = Util.matchId(_opponent, _height);
+        _match = bottomTournament.getMatch(_matchId.hashFromId());
+        assertTrue(_match.exists(), "bottom match should exist");
+
+        _playerToSeal = Util.advanceMatch(bottomTournament, _matchId, _opponent);
+
+        // Seal leaf: both clocks should be running afterwards
+        Util.sealLeafMatch(bottomTournament, _matchId, _playerToSeal);
+
+        (Clock.State memory c1,) =
+            bottomTournament.getCommitment(_matchId.commitmentOne);
+        (Clock.State memory c2,) =
+            bottomTournament.getCommitment(_matchId.commitmentTwo);
+
+        assertFalse(c1.startInstant.isZero(), "c1 should be running");
+        assertFalse(c2.startInstant.isZero(), "c2 should be running");
+
+        // Elimination should fail immediately after seal (both have time left)
+        vm.expectRevert(Tournament.BothClocksHaveNotTimedOut.selector);
+        bottomTournament.eliminateMatchByTimeout(_matchId);
+
+        // Fast-forward to when both clocks are exhausted and eliminate
+        uint256 end1 = Time.Instant.unwrap(c1.startInstant.add(c1.allowance));
+        uint256 end2 = Time.Instant.unwrap(c2.startInstant.add(c2.allowance));
+        uint256 endMax = end1 > end2 ? end1 : end2;
+        vm.roll(endMax);
+        bottomTournament.eliminateMatchByTimeout(_matchId);
+
+        _match = bottomTournament.getMatch(_matchId.hashFromId());
+        assertFalse(
+            _match.exists(), "match should be deleted after elimination"
+        );
+    }
 }

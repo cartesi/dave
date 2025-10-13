@@ -51,16 +51,18 @@ abstract contract NonLeafTournament is Tournament {
             _clock2.setPaused();
             _maxDuration = Clock.max(_clock1, _clock2);
         }
-        TournamentArgs memory args = _tournamentArgs();
+        TournamentArguments memory args = tournamentArguments();
+
         (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
             .sealMatch(
+            args.commitmentArgs,
             _matchId,
-            args.initialHash,
             _leftLeaf,
             _rightLeaf,
             _agreeHash,
             _agreeHashProof
         );
+
         NonRootTournament _inner = instantiateInner(
             _agreeHash,
             _matchId.commitmentOne,
@@ -68,7 +70,7 @@ abstract contract NonLeafTournament is Tournament {
             _matchId.commitmentTwo,
             _finalStateTwo,
             _maxDuration,
-            _matchState.toCycle(args.startCycle),
+            _matchState.toCycle(args.commitmentArgs),
             args.level + 1
         );
         matchIdFromInnerTournaments[_inner] = _matchId.hashFromId();
@@ -169,7 +171,7 @@ abstract contract NonLeafTournament is Tournament {
     ) private returns (NonRootTournament) {
         // the inner tournament is bottom tournament at last level
         // else instantiate middle tournament
-        TournamentArgs memory args = _tournamentArgs();
+        TournamentArguments memory args = tournamentArguments();
         Tournament _tournament;
         IMultiLevelTournamentFactory tournamentFactory = _tournamentFactory();
         if (_level == args.levels - 1) {
@@ -202,7 +204,7 @@ abstract contract NonLeafTournament is Tournament {
     }
 
     function _totalGasEstimate() internal view override returns (uint256) {
-        return Gas.ADVANCE_MATCH * _tournamentArgs().height
+        return Gas.ADVANCE_MATCH * tournamentArguments().commitmentArgs.height
             + Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
             + Gas.WIN_INNER_TOURNAMENT;
     }

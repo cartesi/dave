@@ -6,13 +6,6 @@ pragma solidity ^0.8.17;
 import "prt-contracts/tournament/abstracts/Tournament.sol";
 import "prt-contracts/types/TournamentParameters.sol";
 
-struct NonRootTournamentArgs {
-    Tree.Node contestedCommitmentOne;
-    Machine.Hash contestedFinalStateOne;
-    Tree.Node contestedCommitmentTwo;
-    Machine.Hash contestedFinalStateTwo;
-}
-
 /// @notice Non-root tournament needs to propagate side-effects to its parent
 abstract contract NonRootTournament is Tournament {
     using Machine for Machine.Hash;
@@ -22,6 +15,13 @@ abstract contract NonRootTournament is Tournament {
     using Time for Time.Duration;
 
     using Clock for Clock.State;
+
+    struct NonRootArguments {
+        Tree.Node contestedCommitmentOne;
+        Machine.Hash contestedFinalStateOne;
+        Tree.Node contestedCommitmentTwo;
+        Machine.Hash contestedFinalStateTwo;
+    }
 
     /// @notice get the dangling commitment at current level and then retrieve the winner commitment
     /// @return (bool, Tree.Node, Tree.Node, Clock.State)
@@ -49,7 +49,7 @@ abstract contract NonRootTournament is Tournament {
         Clock.State memory _clock = clocks[_winner];
         _clock = _clock.deduct(Time.currentTime().timeSpan(timeFinished));
 
-        NonRootTournamentArgs memory args = _nonRootTournamentArgs();
+        NonRootArguments memory args = _nonRootTournamentArgs();
         Machine.Hash _finalState = finalStates[_winner];
 
         if (_finalState.eq(args.contestedFinalStateOne)) {
@@ -92,7 +92,7 @@ abstract contract NonRootTournament is Tournament {
         override
         returns (bool, Machine.Hash, Machine.Hash)
     {
-        NonRootTournamentArgs memory args = _nonRootTournamentArgs();
+        NonRootArguments memory args = _nonRootTournamentArgs();
         return (
             args.contestedFinalStateOne.eq(_finalState)
                 || args.contestedFinalStateTwo.eq(_finalState),
@@ -105,5 +105,5 @@ abstract contract NonRootTournament is Tournament {
         internal
         view
         virtual
-        returns (NonRootTournamentArgs memory);
+        returns (NonRootArguments memory);
 }
