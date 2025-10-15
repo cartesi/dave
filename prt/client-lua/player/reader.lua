@@ -20,6 +20,10 @@ local function parse_data(json, sig)
         [==["data":"(0x%x+)"]==]
     )
 
+    if not data or data == "0x" then
+        return {}
+    end
+
     local decoded_data = eth_abi.decode_event_data(sig, data)
     return decoded_data
 end
@@ -231,7 +235,7 @@ function Reader:_call(address, sig, args)
 end
 
 function Reader:read_match_created(tournament_address)
-    local sig = "matchCreated(bytes32,bytes32,bytes32)"
+    local sig = "MatchCreated(bytes32,bytes32,bytes32,bytes32)"
     local data_sig = "(bytes32)"
 
     local logs = self:_read_logs(tournament_address, sig, { false, false, false }, data_sig)
@@ -242,10 +246,10 @@ function Reader:read_match_created(tournament_address)
         log.tournament_address = tournament_address
         log.meta = v.meta
 
-        log.commitment_one = Hash:from_digest_hex(v.emited_topics[2])
-        log.commitment_two = Hash:from_digest_hex(v.emited_topics[3])
+        log.match_id_hash = Hash:from_digest_hex(v.emited_topics[2])
+        log.commitment_one = Hash:from_digest_hex(v.emited_topics[3])
+        log.commitment_two = Hash:from_digest_hex(v.emited_topics[4])
         log.left_hash = Hash:from_digest_hex(v.decoded_data[1])
-        log.match_id_hash = log.commitment_one:join(log.commitment_two)
 
         ret[k] = log
     end
@@ -254,8 +258,8 @@ function Reader:read_match_created(tournament_address)
 end
 
 function Reader:read_commitment_joined(tournament_address)
-    local sig = "commitmentJoined(bytes32)"
-    local data_sig = "(bytes32)"
+    local sig = "CommitmentJoined(bytes32,bytes32,address)"
+    local data_sig = "(bytes32,bytes32)"
 
     local logs = self:_read_logs(tournament_address, sig, { false, false, false }, data_sig)
 
@@ -273,8 +277,8 @@ function Reader:read_commitment_joined(tournament_address)
 end
 
 function Reader:read_tournament_created(tournament_address, match_id_hash)
-    local sig = "newInnerTournament(bytes32,address)"
-    local data_sig = "(address)"
+    local sig = "NewInnerTournament(bytes32,address)"
+    local data_sig = "()"
 
     local logs = self:_read_logs(tournament_address, sig, { match_id_hash:hex_string(), false, false }, data_sig)
     assert(#logs <= 1)
@@ -282,9 +286,11 @@ function Reader:read_tournament_created(tournament_address, match_id_hash)
     if #logs == 0 then return false end
     local log = logs[1]
 
+    local child_addr = "0x" .. string.sub(log.emited_topics[3], 27)
+
     local ret = {
         parent_match = match_id_hash,
-        new_tournament = log.decoded_data[1],
+        new_tournament = child_addr,
     }
 
     return ret

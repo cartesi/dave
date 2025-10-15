@@ -27,7 +27,10 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Events
     //
-    event newInnerTournament(Match.IdHash indexed, NonRootTournament);
+    event NewInnerTournament(
+        Match.IdHash indexed matchIdHash,
+        NonRootTournament indexed childTournament
+    );
 
     function sealInnerMatchAndCreateInnerTournament(
         Match.Id calldata _matchId,
@@ -74,7 +77,7 @@ abstract contract NonLeafTournament is Tournament {
         );
         matchIdFromInnerTournaments[_inner] = _matchId.hashFromId();
 
-        emit newInnerTournament(_matchId.hashFromId(), _inner);
+        emit NewInnerTournament(_matchId.hashFromId(), _inner);
     }
 
     error ChildTournamentNotFinished();
@@ -118,7 +121,7 @@ abstract contract NonLeafTournament is Tournament {
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
 
         // delete storage
-        deleteMatch(_matchIdHash);
+        deleteMatch(_matchIdHash, MatchDeletedReason.SUBGAME_WINNER, _winner);
         matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
 
         // clear the claimer for the losing commitment
@@ -152,7 +155,9 @@ abstract contract NonLeafTournament is Tournament {
         );
 
         // delete storage
-        deleteMatch(_matchIdHash);
+        deleteMatch(
+            _matchIdHash, MatchDeletedReason.BOTH_ELIMINATED, Tree.ZERO_NODE
+        );
         matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
         // clear the claimer for both commitments
         delete claimers[_matchState.otherParent];
