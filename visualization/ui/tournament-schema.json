@@ -1,0 +1,211 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Tournament Schema",
+    "description": "JSON schema for the Tournament structure used in the visualization UI",
+    "definitions": {
+        "Hex": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]*$",
+            "description": "Hexadecimal string prefixed with 0x"
+        },
+        "Hash": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "description": "32-byte hash as hexadecimal string"
+        },
+        "Claim": {
+            "type": "object",
+            "required": ["hash"],
+            "properties": {
+                "hash": {
+                    "$ref": "#/definitions/Hash"
+                },
+                "parentClaims": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Hash"
+                    }
+                }
+            }
+        },
+        "MatchAdvance": {
+            "type": "object",
+            "required": ["type", "direction", "timestamp"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "advance"
+                },
+                "direction": {
+                    "type": "integer",
+                    "enum": [0, 1]
+                },
+                "timestamp": {
+                    "type": "number"
+                }
+            }
+        },
+        "MatchTimeout": {
+            "type": "object",
+            "required": ["type", "timestamp"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "timeout"
+                },
+                "timestamp": {
+                    "type": "number"
+                }
+            }
+        },
+        "MatchSubTournament": {
+            "type": "object",
+            "required": ["type", "range", "timestamp"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "match_sealed_inner_tournament_created"
+                },
+                "range": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "Cycle range [start, end]"
+                },
+                "timestamp": {
+                    "type": "number"
+                }
+            }
+        },
+        "MatchLeafSealed": {
+            "type": "object",
+            "required": ["type", "winner", "proof", "timestamp"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "leaf_match_sealed"
+                },
+                "winner": {
+                    "type": "integer",
+                    "enum": [1, 2]
+                },
+                "proof": {
+                    "$ref": "#/definitions/Hex"
+                },
+                "timestamp": {
+                    "type": "number"
+                }
+            }
+        },
+        "MatchEliminationTimeout": {
+            "type": "object",
+            "required": ["type", "timestamp"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "match_eliminated_by_timeout"
+                },
+                "timestamp": {
+                    "type": "number"
+                }
+            }
+        },
+        "MatchAction": {
+            "oneOf": [
+                { "$ref": "#/definitions/MatchAdvance" },
+                { "$ref": "#/definitions/MatchTimeout" },
+                { "$ref": "#/definitions/MatchSubTournament" },
+                { "$ref": "#/definitions/MatchLeafSealed" },
+                { "$ref": "#/definitions/MatchEliminationTimeout" }
+            ]
+        },
+        "Match": {
+            "type": "object",
+            "required": ["id", "claim1", "claim2", "timestamp", "actions"],
+            "properties": {
+                "id": {
+                    "$ref": "#/definitions/Hex"
+                },
+                "claim1": {
+                    "$ref": "#/definitions/Claim"
+                },
+                "claim2": {
+                    "$ref": "#/definitions/Claim"
+                },
+                "winner": {
+                    "type": "integer",
+                    "enum": [1, 2]
+                },
+                "timestamp": {
+                    "type": "number",
+                    "description": "Unix timestamp when match was created"
+                },
+                "winnerTimestamp": {
+                    "type": "number",
+                    "description": "Unix timestamp when match was resolved"
+                },
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MatchAction"
+                    }
+                },
+                "tournament": {
+                    "$ref": "#/definitions/Tournament",
+                    "description": "Optional nested tournament for this match"
+                }
+            }
+        },
+        "Tournament": {
+            "type": "object",
+            "required": [
+                "id",
+                "height",
+                "level",
+                "startCycle",
+                "endCycle",
+                "matches"
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/definitions/Hex"
+                },
+                "height": {
+                    "type": "number",
+                    "description": "Height of the tournament tree"
+                },
+                "level": {
+                    "type": "string",
+                    "enum": ["top", "middle", "bottom"],
+                    "description": "Level of the tournament in the hierarchy"
+                },
+                "startCycle": {
+                    "type": "number",
+                    "description": "Starting cycle of the tournament range"
+                },
+                "endCycle": {
+                    "type": "number",
+                    "description": "Ending cycle of the tournament range"
+                },
+                "matches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Match"
+                    }
+                },
+                "danglingClaim": {
+                    "$ref": "#/definitions/Claim",
+                    "description": "Claim that was not matched with another claim yet"
+                },
+                "winner": {
+                    "$ref": "#/definitions/Claim",
+                    "description": "The winning claim of the tournament"
+                }
+            }
+        }
+    },
+    "$ref": "#/definitions/Tournament"
+}
