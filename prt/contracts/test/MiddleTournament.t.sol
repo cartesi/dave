@@ -31,7 +31,10 @@ contract MiddleTournamentTest is Util {
     address player0 = vm.addr(1);
     address player1 = vm.addr(2);
 
-    event newInnerTournament(Match.IdHash indexed, NonRootTournament);
+    event NewInnerTournament(
+        Match.IdHash indexed matchIdHash,
+        NonRootTournament indexed childTournament
+    );
 
     constructor() {
         (factory,) = Util.instantiateTournamentFactory();
@@ -60,9 +63,8 @@ contract MiddleTournamentTest is Util {
         );
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         // Only player 0 joins middle; let it finish by timeout (no matches occur)
         Util.joinTournament(middleTournament, 0);
@@ -137,18 +139,17 @@ contract MiddleTournamentTest is Util {
         _height += 1;
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         (bool _finished, Tree.Node _winner,,) =
             middleTournament.innerTournamentWinner();
@@ -245,18 +246,17 @@ contract MiddleTournamentTest is Util {
         _height += 1;
 
         _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         (_finished, _winner,,) = middleTournament.innerTournamentWinner();
         assertTrue(_winner.isZero(), "winner should be zero node");
@@ -366,9 +366,8 @@ contract MiddleTournamentTest is Util {
             topTournament, _matchId, _playerToSeal
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         assertNoElimination();
         uint256 _t = vm.getBlockNumber();
@@ -400,9 +399,8 @@ contract MiddleTournamentTest is Util {
             topTournament, _matchId, _playerToSeal
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         assertNoElimination();
         uint256 _t = vm.getBlockNumber();
@@ -440,9 +438,8 @@ contract MiddleTournamentTest is Util {
             topTournament, _matchId, _playerToSeal
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);
@@ -489,9 +486,8 @@ contract MiddleTournamentTest is Util {
             topTournament, _matchId, _playerToSeal
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);
@@ -574,9 +570,8 @@ contract MiddleTournamentTest is Util {
             topTournament, _matchId, _playerToSeal
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);

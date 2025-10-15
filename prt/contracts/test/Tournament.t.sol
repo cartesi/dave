@@ -31,8 +31,11 @@ contract TournamentTest is Util {
     address player0 = vm.addr(1);
     address player1 = vm.addr(2);
 
-    event matchCreated(
-        Tree.Node indexed one, Tree.Node indexed two, Tree.Node leftOfTwo
+    event MatchCreated(
+        Match.IdHash indexed matchIdHash,
+        Tree.Node indexed one,
+        Tree.Node indexed two,
+        Tree.Node leftOfTwo
     );
 
     constructor() {
@@ -52,15 +55,16 @@ contract TournamentTest is Util {
             "Player 0 should have paid bond"
         );
 
+        // player 1 joins tournament
+        uint256 _opponent = 1;
         // pair commitment, expect a match
         vm.expectEmit(true, true, false, true, address(topTournament));
-        emit matchCreated(
+        emit MatchCreated(
+            Util.matchId(_opponent, 0).hashFromId(),
             playerNodes[0][ArbitrationConstants.height(0)],
             playerNodes[1][ArbitrationConstants.height(0)],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
-        // player 1 joins tournament
-        uint256 _opponent = 1;
 
         uint256 player1BalanceBefore = player1.balance;
         Util.joinTournament(topTournament, _opponent);

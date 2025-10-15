@@ -31,7 +31,10 @@ contract BottomTournamentTest is Util {
 
     error WrongNodesForStep();
 
-    event newInnerTournament(Match.IdHash indexed, NonRootTournament);
+    event NewInnerTournament(
+        Match.IdHash indexed matchIdHash,
+        NonRootTournament indexed childTournament
+    );
 
     constructor() {
         (factory, stateTransition) = Util.instantiateTournamentFactory();
@@ -73,18 +76,17 @@ contract BottomTournamentTest is Util {
         );
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -130,18 +132,17 @@ contract BottomTournamentTest is Util {
         );
 
         _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        bottomTournament = BottomTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        bottomTournament =
+            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
@@ -258,18 +259,17 @@ contract BottomTournamentTest is Util {
         );
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -302,18 +302,17 @@ contract BottomTournamentTest is Util {
         );
 
         _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        bottomTournament = BottomTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        bottomTournament =
+            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
@@ -381,18 +380,17 @@ contract BottomTournamentTest is Util {
         );
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -420,18 +418,17 @@ contract BottomTournamentTest is Util {
         );
 
         _entries = vm.getRecordedLogs();
-        assertEq(_entries[0].topics.length, 2);
+        assertEq(_entries[0].topics.length, 3);
         assertEq(
             _entries[0].topics[0],
-            keccak256("newInnerTournament(bytes32,address)")
+            keccak256("NewInnerTournament(bytes32,address)")
         );
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
 
-        bottomTournament = BottomTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        bottomTournament =
+            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
@@ -485,9 +482,8 @@ contract BottomTournamentTest is Util {
         _height += 1;
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
-        middleTournament = MiddleTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        middleTournament =
+            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -504,9 +500,8 @@ contract BottomTournamentTest is Util {
         _height += 1;
 
         _entries = vm.getRecordedLogs();
-        bottomTournament = BottomTournament(
-            address(bytes20(bytes32(_entries[0].data) << (12 * 8)))
-        );
+        bottomTournament =
+            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         // Both players join bottom-level tournament and reach leaf
         Util.joinTournament(bottomTournament, 0);

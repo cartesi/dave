@@ -37,7 +37,7 @@ bind-consensus:
 build-prt:
     just -f ./prt/contracts/justfile build
 test-prt:
-    just -f ./prt/contracts/justfile test
+    just -f ./prt/contracts/justfile test-disputes
 clean-prt-contracts:
     just -f ./prt/contracts/justfile clean-smart-contracts
 clean-prt-bindings:

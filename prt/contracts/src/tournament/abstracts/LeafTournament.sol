@@ -114,6 +114,12 @@ abstract contract LeafTournament is Tournament {
 
             // clear the claimer for the losing commitment
             delete claimers[_matchId.commitmentTwo];
+            // delete storage
+            deleteMatch(
+                _matchId.hashFromId(),
+                MatchDeletedReason.SUBGAME_WINNER,
+                _matchId.commitmentOne
+            );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
             require(
                 _finalState.eq(_finalStateTwo),
@@ -127,12 +133,15 @@ abstract contract LeafTournament is Tournament {
 
             // clear the claimer for the losing commitment
             delete claimers[_matchId.commitmentOne];
+            // delete storage
+            deleteMatch(
+                _matchId.hashFromId(),
+                MatchDeletedReason.SUBGAME_WINNER,
+                _matchId.commitmentTwo
+            );
         } else {
             revert WrongNodesForStep();
         }
-
-        // delete storage
-        deleteMatch(_matchId.hashFromId());
     }
 
     function _totalGasEstimate() internal view override returns (uint256) {

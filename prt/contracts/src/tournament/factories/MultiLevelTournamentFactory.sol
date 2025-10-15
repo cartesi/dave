@@ -38,7 +38,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         returns (ITournament)
     {
         ITournament _tournament = instantiateTop_(_initialHash, _provider);
-        emit tournamentCreated(_tournament);
+        emit TournamentCreated(_tournament);
         return _tournament;
     }
 

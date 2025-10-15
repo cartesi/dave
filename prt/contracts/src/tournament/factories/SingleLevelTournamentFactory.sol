@@ -67,7 +67,7 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
             });
         address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
         SingleLevelTournament tournament = SingleLevelTournament(clone);
-        emit tournamentCreated(tournament);
+        emit TournamentCreated(tournament);
         return tournament;
     }
 
