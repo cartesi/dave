@@ -40,7 +40,7 @@ impl StateReader {
         let tournament =
             nonleaftournament::NonLeafTournament::new(tournament_address, &self.client);
         let events = tournament
-            .newInnerTournament_filter()
+            .NewInnerTournament_filter()
             .address(tournament_address)
             .topic1::<B256>(match_id.hash().into())
             .from_block(self.block_created_number)
@@ -50,7 +50,7 @@ impl StateReader {
         if let Some(event) = events.last() {
             Ok(Some(TournamentCreatedEvent {
                 parent_match_id_hash: match_id.hash(),
-                new_tournament_address: event.0._1,
+                new_tournament_address: event.0.childTournament,
             }))
         } else {
             Ok(None)
@@ -95,7 +95,7 @@ impl StateReader {
     async fn created_matches(&self, tournament_address: Address) -> Result<Vec<MatchCreatedEvent>> {
         let tournament = tournament::Tournament::new(tournament_address, &self.client);
         let events: Vec<MatchCreatedEvent> = tournament
-            .matchCreated_filter()
+            .MatchCreated_filter()
             .address(tournament_address)
             .from_block(self.block_created_number)
             .to_block(Latest)
@@ -119,7 +119,7 @@ impl StateReader {
     ) -> Result<Vec<CommitmentJoinedEvent>> {
         let tournament = tournament::Tournament::new(tournament_address, &self.client);
         let events = tournament
-            .commitmentJoined_filter()
+            .CommitmentJoined_filter()
             .address(tournament_address)
             .from_block(self.block_created_number)
             .to_block(Latest)
@@ -127,7 +127,7 @@ impl StateReader {
             .await?
             .iter()
             .map(|c| CommitmentJoinedEvent {
-                root: c.0.root.into(),
+                root: c.0.commitment.into(),
             })
             .collect();
         Ok(events)

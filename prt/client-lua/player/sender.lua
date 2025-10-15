@@ -84,29 +84,29 @@ end
 
 function Sender:tx_join_tournament(tournament_address, final_state, proof, left_child, right_child)
     local sig = [[joinTournament(bytes32,bytes32[],bytes32,bytes32)]]
-    
+
     -- Get bond value by calling the view function
     local bondValueCmd = string.format(
         [[cast call --rpc-url "%s" "%s" "bondValue()(uint256)" 2>&1]],
         self.endpoint,
         tournament_address
     )
-    
+
     local handle = io.popen(bondValueCmd)
     assert(handle)
     local bondValueResult = handle:read("*a")
     handle:close()
-    
+
     if bondValueResult:find("Error") then
         error(string.format("Failed to get bond value: %s", bondValueResult))
     end
-    
+
     -- Extract the decimal bond value directly from the result
     local bondValueDecimalStr = bondValueResult:match("(%d+)")
     if not bondValueDecimalStr then
         error("Failed to parse decimal bond value from result: " .. bondValueResult)
     end
-    
+
     return pcall(
         self._send_tx,
         self,
