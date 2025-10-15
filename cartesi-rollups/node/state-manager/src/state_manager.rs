@@ -38,9 +38,9 @@ pub trait StateManager {
 
     fn advance_reverted(
         &mut self,
-        input_reverted: &InputId,
+        machine: &mut RollupsMachine,
         leafs: &[CommitmentLeaf],
-    ) -> Result<RollupsMachine>;
+    ) -> Result<()>;
 
     fn epoch_state_hashes(&mut self, epoch_number: u64) -> Result<Vec<CommitmentLeaf>>;
 

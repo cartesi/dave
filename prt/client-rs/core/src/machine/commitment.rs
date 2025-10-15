@@ -114,7 +114,7 @@ fn build_big_machine_commitment(
         ));
 
         let cycle = machine.cycle + stride;
-        let state = machine.run(cycle, db)?;
+        let state = machine.run(cycle)?;
 
         if !(state.halted | state.yielded) {
             leafs.push(Leaf {
@@ -180,7 +180,7 @@ fn run_uarch_span(
 
     let mut machine_state;
     let mut leafs = Vec::new();
-    let mut i = 1;
+    let mut i = 0;
 
     loop {
         machine_state = machine.increment_uarch()?;
@@ -209,7 +209,7 @@ fn run_uarch_span(
     trace!("state after reset {}", machine_state.root_hash);
 
     if machine.is_yielded()? {
-        machine.revert_if_needed(db)?;
+        machine.revert_if_needed()?;
     }
     leafs.push(Leaf {
         hash: machine.root_hash()?.into(),

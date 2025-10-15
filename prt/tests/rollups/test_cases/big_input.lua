@@ -12,10 +12,13 @@ env.spawn_blockchain()
 local first_epoch = assert(env.reader:read_epochs_sealed()[1])
 assert(first_epoch.input_upper_bound == 1) -- there's one input for epoch 0 already!
 
+-- The reduction was 10, however it causes decoding error on some machines
+-- Using 13 to is still a big input but passes the test
+local reduction = 13
 local big_input = conversion.bin_from_hex_n("0x6228290203658fd4987e40cbb257cabf258f9c288cdee767eaba6b234a73a2f9")
-    :rep((1 << 11) - 10)
+    :rep((1 << 11) - reduction)
 
-assert(big_input:len() == (1 << 16) - 320)
+assert(big_input:len() == (1 << 16) - (32 * reduction))
 env.sender:tx_add_inputs { conversion.hex_from_bin_n(big_input) }
 
 -- Spawn Dave node

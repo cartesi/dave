@@ -58,16 +58,21 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
         let mut rollups_machine = self.state_manager.latest_snapshot()?;
 
         loop {
+            let next_input_index = rollups_machine.next_input_index_in_epoch();
+
             let input_id = InputId {
                 epoch_number: rollups_machine.epoch(),
-                input_index_in_epoch: rollups_machine.input_index_in_epoch(),
+                input_index_in_epoch: next_input_index,
             };
-
             let input = self.state_manager.input(&input_id)?;
 
             match input {
                 Some(input) => {
-                    log::info!("processing input {}", input.id.input_index_in_epoch);
+                    log::info!(
+                        "processing input {}:{}",
+                        input.id.epoch_number,
+                        input.id.input_index_in_epoch
+                    );
                     let (state_hashes, reason) = rollups_machine.process_input(&input.data)?;
 
                     match reason {
@@ -76,9 +81,8 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
                                 .advance_accepted(&mut rollups_machine, &state_hashes)?;
                         }
                         _ => {
-                            rollups_machine = self
-                                .state_manager
-                                .advance_reverted(&input_id, &state_hashes)?;
+                            self.state_manager
+                                .advance_reverted(&mut rollups_machine, &state_hashes)?;
                         }
                     }
                 }

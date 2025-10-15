@@ -50,11 +50,15 @@ pub const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
 pub struct RollupsMachine {
     machine: Machine,
     epoch_number: u64,
-    input_index_in_epoch: u64,
+    next_input_index_in_epoch: u64,
 }
 
 impl RollupsMachine {
-    pub fn new(path: &Path, epoch_number: u64, input_index_in_epoch: u64) -> MachineResult<Self> {
+    pub fn new(
+        path: &Path,
+        epoch_number: u64,
+        next_input_index_in_epoch: u64,
+    ) -> MachineResult<Self> {
         let runtime_config = RuntimeConfig {
             htif: Some(HTIFRuntimeConfig {
                 no_console_putchar: Some(true),
@@ -66,7 +70,7 @@ impl RollupsMachine {
         Ok(Self {
             machine,
             epoch_number,
-            input_index_in_epoch,
+            next_input_index_in_epoch,
         })
     }
 
@@ -74,13 +78,13 @@ impl RollupsMachine {
         self.epoch_number
     }
 
-    pub fn input_index_in_epoch(&self) -> u64 {
-        self.input_index_in_epoch
+    pub fn next_input_index_in_epoch(&self) -> u64 {
+        self.next_input_index_in_epoch
     }
 
     pub fn finish_epoch(&mut self) {
         self.epoch_number += 1;
-        self.input_index_in_epoch = 0;
+        self.next_input_index_in_epoch = 0;
     }
 
     pub fn outputs_proof(&mut self) -> MachineResult<(Hash, Proof)> {
@@ -107,10 +111,7 @@ impl RollupsMachine {
         ));
 
         let checkpoint_hash = self.machine.root_hash()?;
-        self.machine
-            .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
-
-        self.feed_input(data)?;
+        self.feed_input(data, &checkpoint_hash)?;
         self.run_machine(BIG_STEPS_IN_STRIDE)?;
 
         let mut state_hashes = Vec::with_capacity(1 << 20);
@@ -127,7 +128,7 @@ impl RollupsMachine {
             self.run_machine(BIG_STEPS_IN_STRIDE)?;
         }
 
-        self.input_index_in_epoch += 1;
+        self.next_input_index_in_epoch += 1;
 
         match self.machine.receive_cmio_request()? {
             CmioRequest::Manual(reason @ ManualReason::RxAccepted { .. }) => {
@@ -154,7 +155,9 @@ impl RollupsMachine {
         }
     }
 
-    fn feed_input(&mut self, input: &[u8]) -> MachineResult<()> {
+    fn feed_input(&mut self, input: &[u8], checkpoint_hash: &Hash) -> MachineResult<()> {
+        self.machine
+            .write_memory(CHECKPOINT_ADDRESS, checkpoint_hash)?;
         self.machine
             .send_cmio_response(CmioResponseReason::Advance, input)
     }
@@ -177,7 +180,7 @@ impl RollupsMachine {
     }
 
     pub fn increment_input(&mut self) {
-        self.input_index_in_epoch += 1;
+        self.next_input_index_in_epoch += 1;
     }
 
     pub fn store_if_needed(

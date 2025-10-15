@@ -125,8 +125,7 @@ function HonestStrategy:_react_match(match, commitment, log)
             ))
 
             local meta_cycle = match.leaf_cycle
-            local logs = Machine.get_logs(self.machine_path, match.current_other_parent, meta_cycle, self.inputs,
-                self.commitment_builder.snapshot_dir)
+            local logs = Machine.get_logs(self.machine_path, match.current_other_parent, meta_cycle, self.inputs)
 
             helper.log_full(self.sender.index, string.format(
                 "win leaf match in tournament %s of level %d for commitment %s",
@@ -341,7 +340,8 @@ function HonestStrategy:_react_tournament(tournament, log)
         if latest_match then
             return self:_react_match(latest_match, commitment, log)
         elseif commitment_clock.last_resume ~= 0 then
-            helper.log_full(self.sender.index, string.format("commitment %s has met its match and is no more", commitment))
+            helper.log_full(self.sender.index,
+                string.format("commitment %s has met its match and is no more", commitment))
             log.has_lost = true
         else
             helper.log_full(self.sender.index, string.format("no match found for commitment: %s", commitment))

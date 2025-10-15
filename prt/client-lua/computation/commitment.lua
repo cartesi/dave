@@ -24,13 +24,13 @@ end
 
 local function run_uarch_span(machine)
     assert(machine.ucycle == 0)
-    local machine_state = machine:increment_uarch()
+    local machine_state
     local builder = MerkleBuilder:new()
 
     local i = 0
     repeat
-        builder:add(machine_state.root_hash)
         machine_state = machine:increment_uarch()
+        builder:add(machine_state.root_hash)
         i = i + 1
     until machine_state.uhalted
 
@@ -43,6 +43,12 @@ local function run_uarch_span(machine)
     -- Now we do the last state transition (ureset), and add the last state,
     -- closing in a power-of-two number of leaves (`2^a` leaves).
     machine_state = machine:ureset()
+
+    -- Check if machine is yielded and handle revert if needed
+    if machine:is_yielded() then
+        machine:revert_if_needed()
+    end
+    machine_state = machine:state()
     builder:add(machine_state.root_hash)
 
     return builder:build(), machine_state
@@ -103,33 +109,21 @@ local function build_big_machine_commitment(log2_stride, log2_stride_count, mach
     return initial_state, builder:build(initial_state)
 end
 
-local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, inputs, snapshot_dir)
+local function build_commitment(base_cycle, log2_stride, log2_stride_count, machine_path, inputs)
     local machine
 
-    local initial_state
-    if inputs then
-        -- treat it as rollups
-        machine = Machine:new_rollup_advanced_until(machine_path, base_cycle, inputs)
-        local mask = (uint256.one() << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch)) - 1
-        initial_state = machine:state().root_hash
+    assert(inputs)
+    machine = Machine:new_rollup_advanced_until(machine_path, base_cycle, inputs)
+    local mask = (uint256.one() << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch)) - 1
+    local initial_state = machine:state().root_hash
 
-        if (base_cycle & mask):iszero() then
-            assert(machine:state().yielded)
-            local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
-            if inputs[input_i + 1] then
-                local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
-                machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
-            end
+    if (base_cycle & mask):iszero() then
+        assert(machine:state().yielded)
+        local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
+        if inputs[input_i + 1] then
+            local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
+            machine:feed_input(input_bin)
         end
-
-    else
-        -- treat it as compute
-        local big_cycle = base_cycle >> consts.log2_uarch_span_to_barch
-        machine = Machine:new_from_path(machine_path)
-        machine:load_snapshot(snapshot_dir, big_cycle)
-        initial_state = machine:run(big_cycle).root_hash
-        helper.log_timestamp("run to base cycle: " .. big_cycle)
-        machine:take_snapshot(snapshot_dir, big_cycle, false)
     end
 
     if log2_stride >= consts.log2_uarch_span_to_barch then
@@ -144,7 +138,7 @@ end
 local CommitmentBuilder = {}
 CommitmentBuilder.__index = CommitmentBuilder
 
-function CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_dir)
+function CommitmentBuilder:new(machine_path, inputs, root_commitment)
     -- receive honest root commitment from main process
     local commitments = {
         [0] = {
@@ -156,7 +150,6 @@ function CommitmentBuilder:new(machine_path, inputs, root_commitment, snapshot_d
         commitments = commitments,
         machine_path = machine_path,
         inputs = inputs,
-        snapshot_dir = snapshot_dir
     }
     setmetatable(c, self)
     return c
@@ -170,8 +163,7 @@ function CommitmentBuilder:build(base_cycle, level, log2_stride, log2_stride_cou
         return self.commitments[level][base_cycle_str]
     end
 
-    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path, self.inputs,
-        self.snapshot_dir)
+    local _, commitment = build_commitment(base_cycle, log2_stride, log2_stride_count, self.machine_path, self.inputs)
     self.commitments[level][base_cycle_str] = commitment
     return commitment
 end

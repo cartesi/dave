@@ -20,7 +20,7 @@ build-yield: clean-yield
   cartesi-machine --ram-image=./linux.bin \
     --flash-drive=label:root,filename:./rootfs.ext2 \
     --no-rollback --store=./yield/machine-image \
-    -- "while true; do yield manual rx-accepted; done"
+    -- "while true; do yield manual rx-accepted; yield manual rx-rejected; done"
   ./build_anvil_state.sh "yield"
 clean-yield: (clean-program "yield")
 
@@ -29,7 +29,7 @@ build-echo: clean-echo
   cartesi-machine --ram-image=./linux.bin \
     --flash-drive=label:root,filename:./rootfs.ext2 \
     --no-rollback --store=./echo/machine-image \
-    -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1"
+    -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1 --reject=2"
   ./build_anvil_state.sh "echo"
 clean-echo: (clean-program "echo")
 

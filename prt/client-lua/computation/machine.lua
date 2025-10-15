@@ -59,97 +59,22 @@ function Machine:new_from_path(path)
     -- Validators must verify this first
     assert(machine:read_reg("uarch_cycle") == 0)
 
+    -- Derive snapshot_dir from path's parent directory
+    local snapshot_dir = path:match("(.*)/[^/]*$") or "/dispute/snapshots"
+
     local b = {
-        -- path = path,
         machine = machine,
         input_count = 0,
         cycle = 0,
         ucycle = 0,
         start_cycle = start_cycle,
-        initial_hash = Hash:from_digest(machine:get_root_hash())
+        initial_hash = Hash:from_digest(machine:get_root_hash()),
+        snapshot_path = path,
+        snapshot_dir = snapshot_dir
     }
 
     setmetatable(b, self)
     return b
-end
-
-local function find_closest_snapshot(path, current_cycle, cycle)
-    local directories = {}
-
-    -- Collect all directories and their corresponding numbers
-    -- Check if the directory exists and is not empty
-    local handle = io.popen('ls -d ' .. path .. '/*/ 2>/dev/null')
-    if handle then
-        for dir in handle:lines() do
-            local dir_name = dir:gsub("/$", "")            -- Get the directory name
-            local number = tonumber(dir_name:match("%d+")) -- Extract the number from the name
-
-            if number then
-                table.insert(directories, { path = dir_name, number = number })
-            end
-        end
-        handle:close() -- Close the handle
-    end
-
-    -- Sort directories by the extracted number
-    table.sort(directories, function(a, b) return a.number < b.number end)
-
-    -- Binary search for the closest number smaller than target cycle
-    local closest_dir = nil
-    local closest_cycle = nil
-    local low, high = 1, #directories
-
-    while low <= high do
-        local mid = math.floor((low + high) / 2)
-        local mid_number = directories[mid].number
-
-        if mid_number < cycle and mid_number > current_cycle then
-            closest_dir = directories[mid].path
-            closest_cycle = directories[mid].number
-            low = mid + 1  -- Search in the larger half
-        else
-            high = mid - 1 -- Search in the smaller half
-        end
-    end
-
-    return closest_cycle, closest_dir
-end
-
-function Machine:take_snapshot(snapshot_dir, cycle, handle_rollups)
-    local input_mask = consts.barch_span_to_input
-    if handle_rollups and ((cycle & input_mask) == 0) then
-        if (not self.yielded) then
-            -- don't snapshot a machine state that's freshly fed with input without advance
-            return
-        end
-    end
-
-    if not helper.exists(snapshot_dir) then
-        helper.mkdir_p(snapshot_dir)
-    end
-
-    local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
-
-    if not helper.exists(snapshot_path) then
-        -- print("saving snapshot", snapshot_path)
-        self.machine:store(snapshot_path)
-    end
-end
-
-function Machine:load_snapshot(snapshot_dir, cycle)
-    local snapshot_cycle = cycle
-    local snapshot_path = snapshot_dir .. "/" .. tostring(cycle)
-
-    if not helper.exists(snapshot_path) then
-        -- find closest snapshot if direct snapshot doesn't exists
-        snapshot_cycle, snapshot_path = find_closest_snapshot(snapshot_dir, self.cycle, cycle)
-    end
-    if snapshot_path then
-        print(string.format("load snapshot from %s", snapshot_path))
-        local machine = cartesi.machine(snapshot_path, machine_settings)
-        self.cycle = snapshot_cycle
-        self.machine = machine
-    end
 end
 
 local function add_and_clamp(x, y)
@@ -178,7 +103,7 @@ local function advance_rollup(self, meta_cycle, inputs)
         end
 
         local input_bin = conversion.bin_from_hex_n(input)
-        self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+        self:feed_input(input_bin)
 
         repeat
             self.machine:run(arithmetic.max_uint64)
@@ -196,7 +121,7 @@ local function advance_rollup(self, meta_cycle, inputs)
     local input = inputs[self.input_count + 1]
     if input then
         local input_bin = conversion.bin_from_hex_n(input)
-        self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+        self:feed_input(input_bin)
     end
 
     self:run(cycle)
@@ -245,7 +170,7 @@ function Machine.root_rollup_commitment(pristine_path, log2_stride, inputs)
     while input_i < max_input_count do
         if inputs[input_i + 1] then
             local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
-            machine.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+            machine:feed_input(input_bin);
             local tree = process_input(machine, log2_stride)
             builder:add(tree)
             input_i = input_i + 1
@@ -289,6 +214,23 @@ function Machine:run_uarch(ucycle)
     self.ucycle = ucycle
 end
 
+function Machine:feed_input(input_bin)
+    -- before feeding input, the machine state is always valid and yielded, so we can store the snapshot
+    -- however if could have been reverted, so we need to check if the snapshot exists
+    local root_hash_string = Hash:from_digest(self.machine:get_root_hash()):hex_string()
+    local new_snapshot_path = self.snapshot_dir .. "/" .. root_hash_string
+    if not helper.exists(new_snapshot_path) then
+        self.machine:store(new_snapshot_path)
+        if self.snapshot_path and helper.exists(self.snapshot_path) then
+            helper.remove_file(self.snapshot_path)
+        end
+    end
+
+    self.snapshot_path = new_snapshot_path
+    self:write_checkpoint(self.machine:get_root_hash())
+    self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+end
+
 function Machine:run(cycle)
     assert(arithmetic.ulte(self.cycle, cycle))
 
@@ -300,9 +242,128 @@ function Machine:run(cycle)
     until self:is_halted() or self:is_yielded() or
         self:physical_cycle() == target_physical_cycle
 
+    if self:is_yielded() then
+        self:revert_if_needed()
+    end
     self.cycle = cycle
 
     return self:state()
+end
+
+function Machine:revert_if_needed()
+    -- revert if needed only when machine yields
+    assert(self:is_yielded())
+
+    -- we check if the request is accepted
+    -- if it is not, we revert the machine state to previous snapshot
+    local _, reason, _ = self.machine:receive_cmio_request()
+    if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
+        -- Revert to previous snapshot
+        print("revert to previous snapshot")
+        local machine = cartesi.machine(self.snapshot_path, machine_settings)
+        self.machine = machine
+    end
+end
+
+function Machine:prove_revert_if_needed()
+    local iflags_y_address = self.machine:get_reg_address("iflags_Y")
+    local iflags_y_proof = self:prove_read_word(iflags_y_address)
+
+    local proof = iflags_y_proof
+
+    local iflags_y = self:is_yielded()
+    if iflags_y then
+        local to_host_address = self.machine:get_reg_address("htif_tohost")
+        local to_host_proof = self:prove_read_word(to_host_address)
+        proof = proof .. to_host_proof
+
+        local _, reason, _ = self.machine:receive_cmio_request()
+        if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
+            local checkpoint_proof = self:prove_read_leaf(consts.CHECKPOINT_ADDRESS)
+            proof = proof .. checkpoint_proof
+        end
+    end
+
+    return proof
+end
+
+function Machine:prove_read_word(address)
+    -- always read aligned 32 bytes (one leaf)
+    local aligned_address = address & ~0x1F
+    local merkle_proof = self.machine:get_proof(aligned_address, 5)
+
+    local proof = {}
+
+    local read = self.machine:read_memory(aligned_address, 32)
+    table.insert(proof, read)
+
+    -- Append sibling hashes from the merkle proof
+    for _, hash in ipairs(merkle_proof.sibling_hashes) do
+        table.insert(proof, hash)
+    end
+
+    local data = table.concat(proof)
+    return data
+end
+
+function Machine:prove_read_leaf(address)
+    -- always write aligned 32 bytes (one leaf)
+    assert(address & 0x1F == 0)
+
+    local aligned_address = address & ~0x1F
+    local read = self.machine:read_memory(aligned_address, 32)
+    local read_hash = Hash:from_digest(read)
+    local merkle_proof = self.machine:get_proof(aligned_address, 5)
+
+    local proof = {}
+
+    -- Append both read data and read hash
+    table.insert(proof, read)
+    table.insert(proof, read_hash:digest())
+
+    -- Append sibling hashes from the merkle proof
+    for _, hash in ipairs(merkle_proof.sibling_hashes) do
+        table.insert(proof, hash)
+    end
+
+    local data = table.concat(proof)
+    return data
+end
+
+local keccak = require "cartesi".keccak
+
+function Machine:prove_write_leaf(address)
+    -- always write aligned 32 bytes (one leaf)
+    assert(address & 0x1F == 0)
+
+    -- Read the old leaf data BEFORE writing the checkpoint
+    local old_leaf_hash = keccak(self.machine:read_memory(address, 32))
+
+    -- Get proof of write address BEFORE writing the checkpoint
+    local merkle_proof = self.machine:get_proof(address, 5)
+
+    local proof = {}
+
+    -- Append the old leaf data (32 bytes) - this is what the Solidity contract expects
+    table.insert(proof, old_leaf_hash)
+
+    -- Append sibling hashes from the merkle proof
+    for _, hash in ipairs(merkle_proof.sibling_hashes) do
+        table.insert(proof, hash)
+    end
+
+    local data = table.concat(proof)
+
+
+    -- Now write the checkpoint
+    self:write_checkpoint(self.machine:get_root_hash())
+
+    return data
+end
+
+function Machine:write_checkpoint(root_hash)
+    -- Write the current machine state hash to the checkpoint address
+    self.machine:write_memory(consts.CHECKPOINT_ADDRESS, root_hash)
 end
 
 function Machine:increment_uarch()
@@ -358,31 +419,6 @@ local function encode_access_logs(logs)
     return data
 end
 
-
-local function get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
-    local big_step_mask = consts.uarch_span_to_barch
-
-    local base_cycle = (meta_cycle >> consts.log2_uarch_span_to_barch):tointeger()
-    local ucycle = (meta_cycle & big_step_mask):tointeger()
-
-    local machine = Machine:new_from_path(path)
-    machine:load_snapshot(snapshot_dir, base_cycle)
-    machine:run(base_cycle)
-    machine:run_uarch(ucycle)
-    assert(machine:state().root_hash == agree_hash)
-
-    local logs = {}
-    if ((meta_cycle + 1) & big_step_mask):iszero() then
-        table.insert(logs, machine.machine:log_step_uarch())
-        table.insert(logs, machine.machine:log_reset_uarch())
-    else
-        table.insert(logs, machine.machine:log_step_uarch())
-    end
-
-
-    return encode_access_logs(logs), machine:state().root_hash
-end
-
 local function encode_da(input_bin)
     local input_size_be = string.pack(">I8", input_bin:len())
     local da_proof = input_size_be .. input_bin
@@ -399,21 +435,23 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
     local logs = {}
 
     local machine = Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
-    assert(machine:state().root_hash == agree_hash)
+    local root_hash = machine:state().root_hash
+    assert(root_hash == agree_hash)
 
     if (meta_cycle & input_mask):iszero() then
         local input = inputs[input_count + 1]
         local da_proof
         if input then
             local input_bin = conversion.bin_from_hex_n(input)
+            local write_checkpoint_proof = machine:prove_write_leaf(consts.CHECKPOINT_ADDRESS)
             local cmio_log = machine.machine:log_send_cmio_response(
                 cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
                 input_bin
             )
 
             table.insert(logs, cmio_log)
-
             da_proof = encode_da(input_bin)
+            da_proof = da_proof .. write_checkpoint_proof
         else
             da_proof = encode_da("")
         end
@@ -421,8 +459,8 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
         local uarch_step_log = machine.machine:log_step_uarch()
         table.insert(logs, uarch_step_log)
 
-        local step_proof = encode_access_logs(logs)
-        local proof = da_proof .. step_proof
+        local cmio_step_proof = encode_access_logs(logs)
+        local proof = da_proof .. cmio_step_proof
         return proof, machine:state().root_hash
     else
         if ((meta_cycle + 1) & big_step_mask):iszero() then
@@ -433,7 +471,11 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
             local ureset_log = machine.machine:log_reset_uarch()
             table.insert(logs, ureset_log)
 
-            return encode_access_logs(logs), machine:state().root_hash
+            local step_reset_proof = encode_access_logs(logs)
+            local revert_proof = machine:prove_revert_if_needed()
+
+            local combined_proof = step_reset_proof .. revert_proof
+            return combined_proof, machine:state().root_hash
         else
             local uarch_step_log = machine.machine:log_step_uarch()
             table.insert(logs, uarch_step_log)
@@ -442,13 +484,9 @@ local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
     end
 end
 
-function Machine.get_logs(path, agree_hash, meta_cycle, inputs, snapshot_dir)
+function Machine.get_logs(path, agree_hash, meta_cycle, inputs)
     local proofs, next_hash
-    if inputs then
-        proofs, next_hash = get_logs_rollups(path, agree_hash, meta_cycle, inputs)
-    else
-        proofs, next_hash = get_logs_compute(path, agree_hash, meta_cycle, snapshot_dir)
-    end
+    proofs, next_hash = get_logs_rollups(path, agree_hash, meta_cycle, inputs)
 
     print("access logs size: ", proofs:len())
     return string.format('"%s"', conversion.hex_from_bin_n(proofs)), next_hash

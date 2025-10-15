@@ -14,12 +14,15 @@ clean: clean-smart-contracts clean-bindings clean-deployments
 build-smart-contracts:
     forge build
 
-test-all: test test-fuzzy
+test-all: test test-step-ffi test-step-ffi-fuzzy
 
 test:
     forge test --no-match-contract ".*FfiTest"
 
-test-fuzzy:
+test-step-ffi:
+  forge test --match-contract ".*FfiTest" --no-match-test ".*Fuzzy" --ffi
+
+test-step-ffi-fuzzy:
     forge test --match-contract ".*FfiTest" --match-test ".*Fuzzy" --ffi
 
 clean-smart-contracts:

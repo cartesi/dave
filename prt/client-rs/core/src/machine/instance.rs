@@ -11,10 +11,7 @@ use cartesi_machine::{
     config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
     machine::Machine,
     types::access_proof::AccessLog,
-    types::{
-        LogType,
-        cmio::{CmioRequest, CmioResponseReason, ManualReason},
-    },
+    types::{LogType, cmio::CmioResponseReason},
 };
 use log::trace;
 use num_traits::{One, ToPrimitive};
@@ -161,7 +158,7 @@ impl MachineInstance {
             self.feed_next_input(db)?;
 
             loop {
-                self.run(u64::MAX, db)?;
+                self.run(u64::MAX)?;
                 if self.is_halted()? | self.is_yielded()? {
                     break;
                 }
@@ -178,7 +175,7 @@ impl MachineInstance {
 
         self.feed_next_input(db)?;
 
-        self.run(cycle, db)?;
+        self.run(cycle)?;
         self.run_uarch(ucycle)?;
 
         Ok(())
@@ -201,14 +198,22 @@ impl MachineInstance {
 
     pub fn feed_next_input(&mut self, db: &DisputeStateAccess) -> Result<()> {
         assert!(self.is_yielded()?);
-        let checkpoint_hash = self.machine.root_hash()?;
-        self.machine
-            .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
         let input = db.input(self.input_count)?;
+        let root_hash = self.root_hash()?;
+        let new_snapshot_path = db.work_path.join(format!("{}", root_hash.to_hex()));
         if let Some(input_bin) = input {
+            if !new_snapshot_path.exists() {
+                self.machine.store(&new_snapshot_path)?;
+                if self.snapshot_path.exists() {
+                    std::fs::remove_dir_all(&self.snapshot_path)?;
+                }
+            }
+
+            self.snapshot_path = new_snapshot_path;
+            self.machine
+                .write_memory(CHECKPOINT_ADDRESS, root_hash.slice())?;
             self.machine
                 .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
-        } else {
         }
         Ok(())
     }
@@ -241,36 +246,26 @@ impl MachineInstance {
         Ok(self.machine.ucycle()?)
     }
 
-    pub fn revert_if_needed(&mut self, db: &DisputeStateAccess) -> Result<()> {
+    pub fn revert_if_needed(&mut self) -> Result<()> {
         // revert if needed only when machine yields
         assert!(self.is_yielded()?);
 
         // we check if the request is accepted
         // if it is not, we revert the machine state to previous snapshot
-        match self.machine.receive_cmio_request()? {
-            CmioRequest::Manual(ManualReason::RxAccepted { .. }) => {
-                let new_snapshot_path =
-                    db.work_path.join(format!("{}", self.root_hash()?.to_hex()));
-                if !new_snapshot_path.exists() {
-                    self.machine.store(&new_snapshot_path)?;
-                }
-                if self.snapshot_path.exists() {
-                    std::fs::remove_dir_all(&self.snapshot_path)?;
-                }
-                self.snapshot_path = new_snapshot_path;
-                Ok(())
-            }
-            _ => {
-                let runtime_config = RuntimeConfig {
-                    htif: Some(HTIFRuntimeConfig {
-                        no_console_putchar: Some(true),
-                    }),
-                    ..Default::default()
-                };
-                self.machine = Machine::load(&self.snapshot_path, &runtime_config)?;
-                Ok(())
-            }
+        if self.machine.receive_cmio_request()?.reason()
+            != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
+        {
+            trace!("Reject input,revert to previous snapshot");
+            let runtime_config = RuntimeConfig {
+                htif: Some(HTIFRuntimeConfig {
+                    no_console_putchar: Some(true),
+                }),
+                ..Default::default()
+            };
+
+            self.machine = Machine::load(&self.snapshot_path, &runtime_config)?;
         }
+        Ok(())
     }
 
     pub fn run_uarch(&mut self, ucycle: u64) -> Result<()> {
@@ -287,7 +282,7 @@ impl MachineInstance {
     }
 
     // Runs to the `cycle` directly and returns the machine state after the run
-    pub fn run(&mut self, cycle: u64, db: &DisputeStateAccess) -> Result<MachineState> {
+    pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
         assert!(self.cycle <= cycle);
 
         let target_physical_cycle =
@@ -304,7 +299,7 @@ impl MachineInstance {
             if self.is_yielded()? {
                 trace!("run break with yield");
                 // if it is not reverted, we store the new snapshot and remove the old one
-                self.revert_if_needed(db)?;
+                self.revert_if_needed()?;
 
                 break;
             }
@@ -333,7 +328,24 @@ impl MachineInstance {
         self.state()
     }
 
-    fn prove_read_leaf(&mut self, address: u64, log2_size: u64) -> Result<Vec<u8>> {
+    fn prove_read_word(&mut self, address: u64) -> Result<Vec<u8>> {
+        // always read aligned 32 bytes (one leaf)
+        let aligned_address = address & !0x1Fu64;
+        let mut read = self.machine.read_memory(aligned_address, 32)?;
+        let proof = self.machine.proof(aligned_address, 5)?;
+
+        let mut encoded: Vec<u8> = Vec::new();
+
+        encoded.append(&mut read);
+
+        let mut decoded_siblings: Vec<u8> =
+            proof.sibling_hashes.iter().flatten().cloned().collect();
+        encoded.append(&mut decoded_siblings);
+
+        Ok(encoded)
+    }
+
+    fn prove_read_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
         // always read aligned 32 bytes (one leaf)
         let aligned_address = address & !0x1Fu64;
         let mut read = self.machine.read_memory(aligned_address, 32)?;
@@ -342,14 +354,8 @@ impl MachineInstance {
 
         let mut encoded: Vec<u8> = Vec::new();
 
-        if log2_size == 3 {
-            encoded.append(&mut read);
-        } else if log2_size == 5 {
-            encoded.append(&mut read);
-            encoded.append(&mut read_hash.slice().to_vec());
-        } else {
-            panic!("log2_size is not 3 or 5");
-        }
+        encoded.append(&mut read);
+        encoded.append(&mut read_hash.slice().to_vec());
 
         let mut decoded_siblings: Vec<u8> =
             proof.sibling_hashes.iter().flatten().cloned().collect();
@@ -360,11 +366,23 @@ impl MachineInstance {
 
     fn prove_write_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
         // always write aligned 32 bytes (one leaf)
-        let aligned_address = address & !0x1Fu64;
+        assert!(address & 0x1F == 0);
+        let read = self.machine.read_memory(address, 32)?;
+        let read_hash = Digest::from_data(&read);
         // Get proof of write address
-        let proof = self.machine.proof(aligned_address, 5)?;
+        let proof = self.machine.proof(address, 5)?;
 
-        Ok(proof.sibling_hashes.iter().flatten().cloned().collect())
+        let mut encoded: Vec<u8> = Vec::new();
+
+        encoded.append(&mut read_hash.slice().to_vec());
+        let mut decoded_siblings: Vec<u8> =
+            proof.sibling_hashes.iter().flatten().cloned().collect();
+        encoded.append(&mut decoded_siblings);
+
+        let checkpoint = self.root_hash()?;
+        self.machine.write_memory(address, checkpoint.slice())?;
+
+        Ok(encoded)
     }
 
     fn prove_revert_if_needed(&mut self) -> Result<Vec<u8>> {
@@ -372,19 +390,18 @@ impl MachineInstance {
 
         let iflags_y_address =
             cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_IFLAGS_Y)?;
-        proof.append(&mut self.prove_read_leaf(iflags_y_address, 3)?);
+        proof.append(&mut self.prove_read_word(iflags_y_address)?);
 
         let iflags_y = self.is_yielded()?;
         if iflags_y {
-            let to_host_address = cartesi_machine::Machine::reg_address(
-                cartesi_machine_sys::CM_REG_HTIF_TOHOST_REASON,
-            )?;
-            proof.append(&mut self.prove_read_leaf(to_host_address, 3)?);
+            let to_host_address =
+                cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_HTIF_TOHOST)?;
+            proof.append(&mut self.prove_read_word(to_host_address)?);
 
             if self.machine.receive_cmio_request()?.reason()
                 != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
             {
-                proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS, 5)?);
+                proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS)?);
             }
         }
         Ok(proof)
@@ -466,8 +483,8 @@ impl MachineInstance {
             let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
             logs.push(&uarch_step_log);
 
-            let step_proof = Self::encode_access_logs(logs);
-            let proof = [da_proof, step_proof].concat();
+            let cmio_step_proof = Self::encode_access_logs(logs);
+            let proof = [da_proof, cmio_step_proof].concat();
             Ok((proof, machine.state()?.root_hash))
         } else if ((meta_cycle_u128 + 1) & (big_step_mask as u128)) == 0 {
             assert!(machine.is_uarch_halted()?);

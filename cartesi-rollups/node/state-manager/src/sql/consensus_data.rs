@@ -102,7 +102,7 @@ pub fn insert_inputs<'a>(
     Ok(())
 }
 
-fn insert_input_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
+fn insert_input_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement<'_>> {
     Ok(conn
         .prepare(
             "\
@@ -232,7 +232,7 @@ pub fn insert_epochs<'a>(
     Ok(())
 }
 
-fn insert_epoch_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement> {
+fn insert_epoch_statement(conn: &rusqlite::Connection) -> Result<rusqlite::Statement<'_>> {
     Ok(conn.prepare(
         "\
         INSERT INTO epochs (epoch_number, input_index_boundary, root_tournament, block_created_number) VALUES (?1, ?2, ?3, ?4)
