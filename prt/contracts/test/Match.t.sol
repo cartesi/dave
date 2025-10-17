@@ -15,6 +15,7 @@ import "forge-std-1.9.6/src/Test.sol";
 
 import "prt-contracts/tournament/libs/Match.sol";
 import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
+import "prt-contracts/tournament/libs/Commitment.sol";
 
 pragma solidity ^0.8.0;
 
@@ -38,8 +39,8 @@ library ExternalMatch {
 
     function sealMatch(
         Match.State storage state,
+        Commitment.Arguments memory args,
         Match.Id calldata id,
-        Machine.Hash initialState,
         Tree.Node leftLeaf,
         Tree.Node rightLeaf,
         Machine.Hash agreeState,
@@ -49,13 +50,7 @@ library ExternalMatch {
         returns (Machine.Hash divergentStateOne, Machine.Hash divergentStateTwo)
     {
         return Match.sealMatch(
-            state,
-            id,
-            initialState,
-            leftLeaf,
-            rightLeaf,
-            agreeState,
-            agreeStateProof
+            state, args, id, leftLeaf, rightLeaf, agreeState, agreeStateProof
         );
     }
 }
@@ -85,22 +80,26 @@ contract MatchTest is Test {
     Tree.Node rightDivergenceCommitment2 = Tree.ZERO_NODE.join(ONE_NODE);
 
     function setUp() public {
+        Commitment.Arguments memory args = Commitment.Arguments({
+            initialHash: Machine.ZERO_STATE,
+            startCycle: 0,
+            log2step: 0,
+            height: 1
+        });
         (leftDivergenceMatchIdHash, leftDivergenceMatch) = Match.createMatch(
+            args,
             leftDivergenceCommitment1,
             leftDivergenceCommitment2,
             ONE_NODE,
-            Tree.ZERO_NODE,
-            0,
-            1
+            Tree.ZERO_NODE
         );
 
         (rightDivergenceMatchIdHash, rightDivergenceMatch) = Match.createMatch(
+            args,
             rightDivergenceCommitment1,
             rightDivergenceCommitment2,
             Tree.ZERO_NODE,
-            ONE_NODE,
-            0,
-            1
+            ONE_NODE
         );
     }
 
@@ -110,13 +109,19 @@ contract MatchTest is Test {
         Tree.Node leftDivergenceCommitment4 =
             leftDivergenceCommitment2.join(Tree.ZERO_NODE);
 
+        Commitment.Arguments memory args = Commitment.Arguments({
+            initialHash: Machine.ZERO_STATE,
+            startCycle: 0,
+            log2step: 0,
+            height: 2
+        });
+
         (, advanceMatchStateLeft) = Match.createMatch(
+            args,
             leftDivergenceCommitment3,
             leftDivergenceCommitment4,
             leftDivergenceCommitment2,
-            Tree.ZERO_NODE,
-            0,
-            2
+            Tree.ZERO_NODE
         );
         advanceMatchStateLeft.requireExist();
 
@@ -140,8 +145,8 @@ contract MatchTest is Test {
         advanceMatchStateLeft.requireCanBeFinalized();
         ExternalMatch.sealMatch(
             advanceMatchStateLeft,
+            args,
             id,
-            Machine.ZERO_STATE,
             ONE_NODE,
             Tree.ZERO_NODE,
             Machine.ZERO_STATE,
@@ -150,7 +155,7 @@ contract MatchTest is Test {
 
         advanceMatchStateLeft.requireIsFinished();
         (Machine.Hash agreeHash, uint256 agreeCycle,,) =
-            advanceMatchStateLeft.getDivergence(0);
+            advanceMatchStateLeft.getDivergence(args);
 
         assertEq(agreeCycle, 0);
         assertTrue(agreeHash.eq(Machine.ZERO_STATE));
@@ -163,13 +168,19 @@ contract MatchTest is Test {
             Tree.ZERO_NODE.join(rightDivergenceCommitment2);
 
         uint64 matchHeight = 2;
+        Commitment.Arguments memory args = Commitment.Arguments({
+            initialHash: Machine.ZERO_STATE,
+            startCycle: 0,
+            log2step: 0,
+            height: matchHeight
+        });
+
         (, advanceMatchStateRight) = Match.createMatch(
+            args,
             rightDivergenceCommitment3,
             rightDivergenceCommitment4,
             Tree.ZERO_NODE,
-            rightDivergenceCommitment2,
-            0,
-            matchHeight
+            rightDivergenceCommitment2
         );
         advanceMatchStateRight.requireExist();
 
@@ -197,8 +208,8 @@ contract MatchTest is Test {
         advanceMatchStateRight.requireCanBeFinalized();
         ExternalMatch.sealMatch(
             advanceMatchStateRight,
+            args,
             id,
-            Machine.ZERO_STATE,
             Tree.ZERO_NODE,
             ONE_NODE,
             Machine.ZERO_STATE,
@@ -207,7 +218,7 @@ contract MatchTest is Test {
 
         advanceMatchStateRight.requireIsFinished();
         (Machine.Hash agreeHash, uint256 agreeCycle,,) =
-            advanceMatchStateRight.getDivergence(0);
+            advanceMatchStateRight.getDivergence(args);
 
         assertEq(agreeCycle, (1 << matchHeight) - 1);
         assertTrue(agreeHash.eq(Machine.ZERO_STATE));
@@ -224,13 +235,19 @@ contract MatchTest is Test {
             Tree.ZERO_NODE.join(rightDivergenceCommitment4);
 
         uint64 matchHeight = 3;
+        Commitment.Arguments memory args = Commitment.Arguments({
+            initialHash: Machine.ZERO_STATE,
+            startCycle: 0,
+            log2step: 0,
+            height: matchHeight
+        });
+
         (, advanceMatchStateRight) = Match.createMatch(
+            args,
             rightDivergenceCommitment5,
             rightDivergenceCommitment6,
             Tree.ZERO_NODE,
-            rightDivergenceCommitment4,
-            0,
-            matchHeight
+            rightDivergenceCommitment4
         );
         advanceMatchStateRight.requireExist();
 
@@ -275,8 +292,8 @@ contract MatchTest is Test {
         advanceMatchStateRight.requireCanBeFinalized();
         ExternalMatch.sealMatch(
             advanceMatchStateRight,
+            args,
             id,
-            Machine.ZERO_STATE,
             Tree.ZERO_NODE,
             Tree.ZERO_NODE,
             Machine.ZERO_STATE,
@@ -285,7 +302,7 @@ contract MatchTest is Test {
 
         advanceMatchStateRight.requireIsFinished();
         (Machine.Hash agreeHash, uint256 agreeCycle,,) =
-            advanceMatchStateRight.getDivergence(0);
+            advanceMatchStateRight.getDivergence(args);
 
         assertEq(agreeCycle, (1 << matchHeight) - 1);
         assertTrue(agreeHash.eq(Machine.ZERO_STATE));
@@ -297,9 +314,8 @@ contract MatchTest is Test {
             "left node should diverge"
         );
 
-        leftDivergenceMatch.height = 2;
         (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
-            leftDivergenceMatch._setDivergenceOnLeftLeaf(Tree.ZERO_NODE);
+            leftDivergenceMatch._setDivergenceOnLeftLeaf(2, Tree.ZERO_NODE);
 
         assertTrue(
             _finalHashOne.eq(ONE_NODE.toMachineHash()), "hash one should be 1"
@@ -316,9 +332,8 @@ contract MatchTest is Test {
             "left node should match"
         );
 
-        rightDivergenceMatch.height = 2;
         (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
-            rightDivergenceMatch._setDivergenceOnRightLeaf(Tree.ZERO_NODE);
+            rightDivergenceMatch._setDivergenceOnRightLeaf(2, Tree.ZERO_NODE);
 
         assertTrue(
             _finalHashOne.eq(ONE_NODE.toMachineHash()), "hash one should be 1"
@@ -335,9 +350,8 @@ contract MatchTest is Test {
             "left node should diverge"
         );
 
-        leftDivergenceMatch.height = 3;
         (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
-            leftDivergenceMatch._setDivergenceOnLeftLeaf(Tree.ZERO_NODE);
+            leftDivergenceMatch._setDivergenceOnLeftLeaf(3, Tree.ZERO_NODE);
 
         assertTrue(
             _finalHashOne.eq(Tree.ZERO_NODE.toMachineHash()),
@@ -354,9 +368,8 @@ contract MatchTest is Test {
             "left node should match"
         );
 
-        rightDivergenceMatch.height = 3;
         (Machine.Hash _finalHashOne, Machine.Hash _finalHashTwo) =
-            rightDivergenceMatch._setDivergenceOnRightLeaf(Tree.ZERO_NODE);
+            rightDivergenceMatch._setDivergenceOnRightLeaf(3, Tree.ZERO_NODE);
 
         assertTrue(
             _finalHashOne.eq(Tree.ZERO_NODE.toMachineHash()),

@@ -45,14 +45,17 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
         Machine.Hash initialHash,
         IDataProvider provider
     ) public returns (SingleLevelTournament) {
-        SingleLevelTournament.Args memory args = SingleLevelTournament.Args({
-            tournamentArgs: TournamentArgs({
-                initialHash: initialHash,
-                startCycle: START_CYCLE,
+        SingleLevelTournament.SingleLevelArguments memory args =
+        SingleLevelTournament.SingleLevelArguments({
+            tournamentArgs: Tournament.TournamentArguments({
+                commitmentArgs: Commitment.Arguments({
+                    initialHash: initialHash,
+                    startCycle: START_CYCLE,
+                    log2step: _log2step,
+                    height: _height
+                }),
                 level: LEVEL,
                 levels: LEVELS,
-                log2step: _log2step,
-                height: _height,
                 startInstant: Time.currentTime(),
                 allowance: _maxAllowance,
                 maxAllowance: _maxAllowance,

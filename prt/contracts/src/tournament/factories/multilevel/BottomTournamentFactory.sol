@@ -34,21 +34,24 @@ contract BottomTournamentFactory {
         IDataProvider provider,
         IStateTransition stateTransition
     ) external returns (BottomTournament) {
-        BottomTournament.Args memory args = BottomTournament.Args({
-            tournamentArgs: TournamentArgs({
-                initialHash: initialHash,
-                startCycle: startCycle,
+        BottomTournament.BottomArguments memory args = BottomTournament
+            .BottomArguments({
+            tournamentArgs: Tournament.TournamentArguments({
+                commitmentArgs: Commitment.Arguments({
+                    initialHash: initialHash,
+                    startCycle: startCycle,
+                    log2step: tournamentParameters.log2step,
+                    height: tournamentParameters.height
+                }),
                 level: level,
                 levels: tournamentParameters.levels,
-                log2step: tournamentParameters.log2step,
-                height: tournamentParameters.height,
                 startInstant: Time.currentTime(),
                 allowance: allowance,
                 maxAllowance: tournamentParameters.maxAllowance,
                 matchEffort: tournamentParameters.matchEffort,
                 provider: provider
             }),
-            nonRootTournamentArgs: NonRootTournamentArgs({
+            nonRootTournamentArgs: NonRootTournament.NonRootArguments({
                 contestedCommitmentOne: contestedCommitmentOne,
                 contestedFinalStateOne: contestedFinalStateOne,
                 contestedCommitmentTwo: contestedCommitmentTwo,

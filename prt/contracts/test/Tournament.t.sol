@@ -275,7 +275,7 @@ contract TournamentTest is Util {
 
         vm.roll(_rootTournamentFinish - 1);
         // cannot eliminate match when both blocks still have time
-        vm.expectRevert(Tournament.EliminateByTimeout.selector);
+        vm.expectRevert(Tournament.BothClocksHaveNotTimedOut.selector);
         topTournament.eliminateMatchByTimeout(_matchId);
 
         vm.roll(_rootTournamentFinish);
@@ -297,6 +297,41 @@ contract TournamentTest is Util {
             callerBalanceAfter,
             callerBalanceBefore,
             "caller should have earned profit"
+        );
+    }
+
+    function testWinByTimeoutWrongChildrenReverts() public {
+        topTournament = Util.initializePlayer0Tournament(factory);
+
+        uint256 _opponent = 1;
+        uint64 _height = 0;
+        Util.joinTournament(topTournament, _opponent);
+
+        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+
+        // Let commitmentOne time out (player 0), then attempt with wrong children
+        (Clock.State memory _player0Clock,) = topTournament.getCommitment(
+            playerNodes[0][ArbitrationConstants.height(0)]
+        );
+        vm.roll(
+            Time.Instant.unwrap(
+                _player0Clock.startInstant.add(_player0Clock.allowance)
+            )
+        );
+
+        vm.expectRevert();
+        topTournament.winMatchByTimeout(
+            _matchId,
+            // wrong child nodes for commitmentTwo
+            playerNodes[0][ArbitrationConstants.height(0) - 1],
+            playerNodes[0][ArbitrationConstants.height(0) - 1]
+        );
+
+        // Correct children should succeed
+        topTournament.winMatchByTimeout(
+            _matchId,
+            playerNodes[1][ArbitrationConstants.height(0) - 1],
+            playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
     }
 }
