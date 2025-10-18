@@ -59,7 +59,7 @@ fn set_initial_machine(
     };
 
     let tx = connection.transaction().map_err(anyhow::Error::from)?;
-    rollup_data::insert_snapshot(&tx, 0, &state_hash, &dest_machine_path)?;
+    rollup_data::insert_snapshot(&tx, 0, 0, &state_hash, &dest_machine_path)?;
     rollup_data::insert_template_machine(&tx, &state_hash)?;
     tx.commit().map_err(anyhow::Error::from)?;
 

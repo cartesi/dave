@@ -20,6 +20,9 @@ pub enum MachineInstanceError {
 
     #[error("Invalid hex string")]
     InvalidHexString(#[from] hex::FromHexError),
+
+    #[error("Invalid io string")]
+    IOError(#[from] std::io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, MachineInstanceError>;

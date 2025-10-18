@@ -3,7 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use cartesi_prt_core::machine::constants::{LOG2_BARCH_SPAN_TO_INPUT, LOG2_UARCH_SPAN_TO_BARCH};
+use cartesi_prt_core::machine::constants::{
+    LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
+};
 
 use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
@@ -11,7 +13,10 @@ use cartesi_machine::{
     constants::{break_reason, pma::TX_START},
     error::{MachineError, MachineResult},
     machine::Machine,
-    types::{Hash, cmio::CmioResponseReason},
+    types::{
+        Hash,
+        cmio::{CmioRequest, CmioResponseReason, ManualReason},
+    },
 };
 
 use thiserror::Error;
@@ -31,10 +36,16 @@ pub enum StoreError {
 // gap of each leaf in the commitment tree, should use the same value as ArbitrationConstants.sol:log2step(0)
 pub const LOG2_STRIDE: u64 = 44;
 
-const BIG_STEPS_IN_STRIDE: u64 = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
+pub const BIG_STEPS_IN_STRIDE: u64 = 1 << (LOG2_STRIDE - LOG2_UARCH_SPAN_TO_BARCH);
 
-const STRIDE_COUNT_IN_INPUT: u64 =
+pub const STRIDE_COUNT_IN_INPUT: u64 =
     1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - LOG2_STRIDE);
+
+pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
+    << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
+        - LOG2_STRIDE);
+
+pub const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
 
 pub struct RollupsMachine {
     machine: Machine,
@@ -81,6 +92,94 @@ impl RollupsMachine {
         Ok((output_merkle.try_into().unwrap(), siblings))
     }
 
+    pub fn state_hash(&mut self) -> MachineResult<Hash> {
+        self.machine.root_hash()
+    }
+
+    pub fn process_input(
+        &mut self,
+        data: &[u8],
+    ) -> MachineResult<(Vec<CommitmentLeaf>, ManualReason)> {
+        assert!(self.machine.iflags_y()?);
+        assert!(matches!(
+            self.machine.receive_cmio_request()?,
+            CmioRequest::Manual(ManualReason::RxAccepted { .. })
+        ));
+
+        let checkpoint_hash = self.machine.root_hash()?;
+        self.machine
+            .write_memory(CHECKPOINT_ADDRESS, &checkpoint_hash)?;
+
+        self.feed_input(data)?;
+        self.run_machine(BIG_STEPS_IN_STRIDE)?;
+
+        let mut state_hashes = Vec::with_capacity(1 << 20);
+        let mut i: u64 = 0;
+
+        while !self.machine.iflags_y()? {
+            let hash = self.machine.root_hash()?;
+            state_hashes.push(CommitmentLeaf {
+                hash,
+                repetitions: 1,
+            });
+            i += 1;
+
+            self.run_machine(BIG_STEPS_IN_STRIDE)?;
+        }
+
+        self.input_index_in_epoch += 1;
+
+        match self.machine.receive_cmio_request()? {
+            CmioRequest::Manual(reason @ ManualReason::RxAccepted { .. }) => {
+                let fixed_point_hash = self.machine.root_hash()?;
+                state_hashes.push(CommitmentLeaf {
+                    hash: fixed_point_hash,
+                    repetitions: STRIDE_COUNT_IN_INPUT - i,
+                });
+
+                Ok((state_hashes, reason))
+            }
+
+            CmioRequest::Manual(reason) => {
+                state_hashes.push(CommitmentLeaf {
+                    hash: checkpoint_hash,
+                    repetitions: STRIDE_COUNT_IN_INPUT - i,
+                });
+
+                Ok((state_hashes, reason))
+            }
+            _ => {
+                unreachable!("machine should be manually yielded");
+            }
+        }
+    }
+
+    fn feed_input(&mut self, input: &[u8]) -> MachineResult<()> {
+        self.machine
+            .send_cmio_response(CmioResponseReason::Advance, input)
+    }
+
+    fn run_machine(&mut self, cycles: u64) -> MachineResult<()> {
+        let mcycle = self.machine.mcycle()?;
+
+        loop {
+            let reason = self.machine.run(mcycle + cycles)?;
+            match reason {
+                break_reason::YIELDED_AUTOMATICALLY | break_reason::YIELDED_SOFTLY => continue,
+
+                break_reason::YIELDED_MANUALLY | break_reason::REACHED_TARGET_MCYCLE => {
+                    break Ok(());
+                }
+
+                _ => panic!("machine returned invalid `break_reason` {reason}"),
+            }
+        }
+    }
+
+    pub fn increment_input(&mut self) {
+        self.input_index_in_epoch += 1;
+    }
+
     pub fn store_if_needed(
         &mut self,
         snapshots_path: &Path,
@@ -108,60 +207,6 @@ impl RollupsMachine {
         }
 
         Ok((dest_machine_path, state_hash))
-    }
-
-    pub fn state_hash(&mut self) -> MachineResult<Hash> {
-        self.machine.root_hash()
-    }
-
-    pub fn process_input(&mut self, data: &[u8]) -> MachineResult<Vec<CommitmentLeaf>> {
-        let mut state_hashes = Vec::with_capacity(1 << 20);
-
-        self.feed_input(data)?;
-
-        let mut i: u64 = 0;
-        while !self.machine.iflags_y()? {
-            self.run_machine(BIG_STEPS_IN_STRIDE)?;
-
-            let hash = self.machine.root_hash()?;
-            state_hashes.push(CommitmentLeaf {
-                hash,
-                repetitions: 1,
-            });
-
-            i += 1;
-        }
-
-        let hash = self.machine.root_hash()?;
-        state_hashes.push(CommitmentLeaf {
-            hash,
-            repetitions: STRIDE_COUNT_IN_INPUT - i,
-        });
-
-        self.input_index_in_epoch += 1;
-        Ok(state_hashes)
-    }
-
-    fn feed_input(&mut self, input: &[u8]) -> MachineResult<()> {
-        self.machine
-            .send_cmio_response(CmioResponseReason::Advance, input)
-    }
-
-    fn run_machine(&mut self, cycles: u64) -> MachineResult<()> {
-        let mcycle = self.machine.mcycle()?;
-
-        loop {
-            let reason = self.machine.run(mcycle + cycles)?;
-            match reason {
-                break_reason::YIELDED_AUTOMATICALLY | break_reason::YIELDED_SOFTLY => continue,
-
-                break_reason::YIELDED_MANUALLY | break_reason::REACHED_TARGET_MCYCLE => {
-                    break Ok(());
-                }
-
-                _ => panic!("machine returned invalid `break_reason` {reason}"),
-            }
-        }
     }
 }
 
