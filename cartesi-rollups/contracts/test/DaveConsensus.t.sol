@@ -22,6 +22,7 @@ import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {DaveConsensus} from "src/DaveConsensus.sol";
+import {IDaveConsensus} from "src/IDaveConsensus.sol";
 import {Merkle} from "src/Merkle.sol";
 
 contract MerkleProxy {
@@ -170,10 +171,10 @@ contract DaveConsensusTest is Test {
             _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
 
         vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
+        emit IDaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
 
         vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress));
+        emit IDaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress));
 
         DaveConsensus daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
 
@@ -256,7 +257,7 @@ contract DaveConsensusTest is Test {
             _mockTournamentFactory.calculateTournamentAddress(state1, IDataProvider(daveConsensusAddress));
 
         vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.EpochSealed(
+        emit IDaveConsensus.EpochSealed(
             1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITournament(mockTournamentAddress)
         );
 
@@ -339,10 +340,10 @@ contract DaveConsensusTest is Test {
 
         _addInputs(appContract, inputCounts[1]);
 
-        vm.expectRevert(abi.encodeWithSelector(DaveConsensus.IncorrectEpochNumber.selector, wrongEpochNumber, 0));
+        vm.expectRevert(abi.encodeWithSelector(IDaveConsensus.IncorrectEpochNumber.selector, wrongEpochNumber, 0));
         daveConsensus.settle(wrongEpochNumber, bytes32(0), new bytes32[](0));
 
-        vm.expectRevert(DaveConsensus.TournamentNotFinishedYet.selector);
+        vm.expectRevert(IDaveConsensus.TournamentNotFinishedYet.selector);
         daveConsensus.settle(0, bytes32(0), new bytes32[](0));
     }
 
