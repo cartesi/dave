@@ -1,0 +1,6 @@
+[target.aarch64-apple-darwin]
+# Pass the correct C++ library paths to the linker
+rustflags = [
+  "-C", "link-arg=-L/opt/homebrew/opt/llvm/lib/c++",
+  "-C", "link-arg=-Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++"
+]

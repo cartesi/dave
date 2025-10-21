@@ -11,9 +11,9 @@ remappings = [
     'step/=../../machine/step/',
 ]
 
-solc-version = "0.8.27"
+solc_version = "0.8.27"
 
 [dependencies]
 "@openzeppelin-contracts" = "5.2.0"
 forge-std = "1.9.6"
-cartesi-rollups-contracts = "2.0.0"
+cartesi-rollups-contracts = "2.1.0-alpha.1"

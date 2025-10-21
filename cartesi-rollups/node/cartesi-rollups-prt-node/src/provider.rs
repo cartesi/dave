@@ -123,7 +123,7 @@ pub async fn create_provider(
     let provider = ProviderBuilder::new()
         .wallet(wallet)
         .with_chain(arg_chain_id)
-        .on_client(client);
+        .connect_client(client);
 
     let chain_id = provider
         .get_chain_id()

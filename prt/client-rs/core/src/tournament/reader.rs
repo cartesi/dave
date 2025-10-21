@@ -16,7 +16,9 @@ use crate::tournament::{
     TournamentWinner,
 };
 use cartesi_dave_merkle::Digest;
-use cartesi_prt_contracts::{nonleaftournament, nonroottournament, roottournament, tournament};
+use cartesi_prt_contracts::{
+    non_leaf_tournament, non_root_tournament, root_tournament, tournament,
+};
 
 #[derive(Clone)]
 pub struct StateReader {
@@ -38,7 +40,7 @@ impl StateReader {
         match_id: MatchID,
     ) -> Result<Option<TournamentCreatedEvent>> {
         let tournament =
-            nonleaftournament::NonLeafTournament::new(tournament_address, &self.client);
+            non_leaf_tournament::NonLeafTournament::new(tournament_address, &self.client);
         let events = tournament
             .newInnerTournament_filter()
             .address(tournament_address)
@@ -64,14 +66,13 @@ impl StateReader {
         let mut matches = vec![];
         for match_event in created_matches {
             let match_id = match_event.id;
-            let m = tournament.getMatch(match_id.hash().into()).call().await?._0;
+            let m = tournament.getMatch(match_id.hash().into()).call().await?;
 
             if !m.otherParent.is_zero() {
                 let leaf_cycle = tournament
                     .getMatchCycle(match_id.hash().into())
                     .call()
-                    .await?
-                    ._0;
+                    .await?;
                 let running_leaf_position = m.runningLeafPosition;
 
                 let match_state = MatchState {
@@ -202,8 +203,8 @@ impl StateReader {
 
         if state.level > 0 {
             let tournament =
-                nonroottournament::NonRootTournament::new(tournament_address, &self.client);
-            state.can_be_eliminated = tournament.canBeEliminated().call().await?._0;
+                non_root_tournament::NonRootTournament::new(tournament_address, &self.client);
+            state.can_be_eliminated = tournament.canBeEliminated().call().await?;
         }
 
         let mut captured_matches = self.capture_matches(tournament_address).await?;
@@ -276,7 +277,7 @@ impl StateReader {
         root_tournament_address: Address,
     ) -> Result<Option<TournamentWinner>> {
         let root_tournament =
-            roottournament::RootTournament::new(root_tournament_address, &self.client);
+            root_tournament::RootTournament::new(root_tournament_address, &self.client);
         let arbitration_result_return = root_tournament.arbitrationResult().call().await?;
         let (finished, commitment, state) = (
             arbitration_result_return._0,
@@ -299,7 +300,7 @@ impl StateReader {
         tournament_address: Address,
     ) -> Result<Option<TournamentWinner>> {
         let tournament =
-            nonroottournament::NonRootTournament::new(tournament_address, &self.client);
+            non_root_tournament::NonRootTournament::new(tournament_address, &self.client);
         let inner_tournament_winner_return = tournament.innerTournamentWinner().call().await?;
         let (finished, parent_commitment, dangling_commitment) = (
             inner_tournament_winner_return._0,

@@ -28,8 +28,8 @@ use std::{
     time::Duration,
 };
 
-use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
-use cartesi_rollups_contracts::{application::Application, inputbox::InputBox::InputAdded};
+use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
+use cartesi_rollups_contracts::{application::Application, input_box::InputBox::InputAdded};
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
 #[derive(Debug, Clone, Copy)]
@@ -74,8 +74,7 @@ impl AddressBook {
             .getOutputsMerkleRootValidator()
             .call()
             .await
-            .expect("fail to query consensus address")
-            ._0;
+            .expect("fail to query consensus address");
 
         let input_box = {
             let consensus_contract = DaveConsensus::new(consensus, provider);
@@ -84,7 +83,6 @@ impl AddressBook {
                 .call()
                 .await
                 .expect("fail to query input box address")
-                ._0
         };
 
         let initial_hash = Self::initial_hash(consensus, provider).await;
@@ -412,7 +410,7 @@ async fn get_events<E: SolEvent + Send + Sync>(
     long_block_range_error_codes: &Vec<String>,
 ) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
     // TODO: partition log queries if range too large
-    let event: Event<(), _, E> = {
+    let event: Event<_, _, _> = {
         let mut e = Event::new_sol(provider, read_from)
             .from_block(start_block)
             .to_block(end_block)
@@ -510,11 +508,9 @@ mod blockchain_reader_tests {
     use crate::*;
 
     use alloy::{
-        primitives::Address,
-        providers::{DynProvider, ProviderBuilder},
-        sol_types::{SolCall, SolValue},
+        network::Ethereum, primitives::Address, providers::{DynProvider, ProviderBuilder}, sol_types::{SolCall, SolValue}
     };
-    use cartesi_dave_contracts::daveconsensus::DaveConsensus::{self, EpochSealed};
+    use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
     use cartesi_dave_merkle::Digest;
     use cartesi_machine::{
         Machine,
@@ -524,7 +520,7 @@ mod blockchain_reader_tests {
         },
     };
     use cartesi_rollups_contracts::{
-        inputbox::InputBox::{self, InputAdded},
+        input_box::InputBox::{self, InputAdded},
         inputs::Inputs::EvmAdvanceCall,
     };
     use rollups_state_manager::persistent_state_access::PersistentStateAccess;
@@ -539,7 +535,7 @@ mod blockchain_reader_tests {
 
     fn create_provider(url: &str) -> DynProvider {
         let url = url.parse().unwrap();
-        ProviderBuilder::new().on_http(url).erased()
+        ProviderBuilder::new().connect_http(url).erased()
     }
 
     fn create_epoch_reader() -> EventReader<EpochSealed> {
@@ -571,7 +567,7 @@ mod blockchain_reader_tests {
     }
 
     async fn add_input(
-        inputbox: &InputBox::InputBoxInstance<(), DynProvider>,
+        inputbox: &InputBox::InputBoxInstance<impl Provider, Ethereum>,
         application_address: Address,
         input_payload: &'static str,
         count: usize,
@@ -669,7 +665,7 @@ mod blockchain_reader_tests {
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider();
-        let inputbox = InputBox::new(address_book.input_box, provider.clone());
+        let inputbox = InputBox::new(address_book.input_box, &provider);
 
         let input_count_1 = 2;
         // Inputbox is deployed with 1 input already
@@ -687,7 +683,7 @@ mod blockchain_reader_tests {
         assert_eq!(read_inputs.len(), 1 + input_count_1);
 
         let received_payload =
-            EvmAdvanceCall::abi_decode(read_inputs.last().unwrap().input.as_ref(), true)?;
+            EvmAdvanceCall::abi_decode(read_inputs.last().unwrap().input.as_ref())?;
         assert_eq!(received_payload.payload.as_ref(), INPUT_PAYLOAD.as_bytes());
 
         let input_count_2 = 3;
@@ -703,7 +699,7 @@ mod blockchain_reader_tests {
         assert_eq!(read_inputs.len(), 1 + input_count_1 + input_count_2);
 
         let received_payload =
-            EvmAdvanceCall::abi_decode(read_inputs.last().unwrap().input.as_ref(), true)?;
+            EvmAdvanceCall::abi_decode(read_inputs.last().unwrap().input.as_ref())?;
         assert_eq!(received_payload.payload.as_ref(), INPUT_PAYLOAD2.as_bytes());
 
         drop(anvil);
