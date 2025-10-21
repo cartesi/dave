@@ -37,7 +37,7 @@ just test
 
 ## Deploying an application
 
-Besides the `DaveConsensusFactory` contract,
+Besides the `DaveAppFactory` contract,
 you may also want to deploy an application contract
 that is validated by a `DaveConsensus` contract.
 In order to do so, you need to first build your application machine

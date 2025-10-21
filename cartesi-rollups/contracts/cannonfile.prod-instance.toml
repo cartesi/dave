@@ -3,53 +3,22 @@ version = '2.0.0'
 description = 'Cartesi Dave Consensus (prod)'
 
 [var.Settings]
-appOwner = "<%= zeroAddress %>"
 initialHash = "<%= zeroHash %>"
+salt = "<%= zeroHash %>"
 
-[pull.cartesiRollups]
-source = "cartesi-rollups:2.0.0@main"
+[pull.daveAppFactory]
+source = "cartesi-dave-app-factory:2.0.0@main"
 
-[pull.prtContracts]
-source = "cartesi-prt-multilevel:2.0.0@main"
-
-[pull.daveConsensusFactory]
-source = "cartesi-dave-consensus-factory:2.0.0@main"
-
-[invoke.newApplication]
-target = "cartesiRollups.ApplicationFactory"
-func = "newApplication(address,address,bytes32,bytes)"
+[invoke.newDaveApp]
+target = "daveAppFactory.DaveAppFactory"
+func = "newDaveApp(bytes32,bytes32)"
 args = [
-    "<%= zeroAddress %>",
-    "<%= settings.appOwner %>",
     "<%= settings.initialHash %>",
-    "<%= concat([slice(keccak256('InputBox(address)'), 0, 4), pad(cartesiRollups.InputBox.address)]) %>"
+    "<%= settings.salt %>",
 ]
 factory.ApplicationInstance.artifact = "Application"
-factory.ApplicationInstance.event = "ApplicationCreated"
-factory.ApplicationInstance.arg = 4
-
-[invoke.newDaveConsensus]
-target = "daveConsensusFactory.DaveConsensusFactory"
-func = "newDaveConsensus(address,bytes32)"
-args = [
-    "<%= contracts.ApplicationInstance.address %>",
-    "<%= settings.initialHash %>",
-]
+factory.ApplicationInstance.event = "DaveAppCreated"
+factory.ApplicationInstance.arg = 0
 factory.DaveConsensusInstance.artifact = "DaveConsensus"
-factory.DaveConsensusInstance.event = "DaveConsensusCreated"
-factory.DaveConsensusInstance.arg = 0
-depends = ["invoke.newApplication"]
-
-[invoke.migrateToOutputsMerkleRootValidator]
-target = "ApplicationInstance"
-func = "migrateToOutputsMerkleRootValidator"
-args = ["<%= contracts.DaveConsensusInstance.address %>"]
-from = "<%= settings.appOwner %>"
-depends = ["invoke.newApplication", "invoke.newDaveConsensus"]
-
-[invoke.renounceOwnership]
-target = "ApplicationInstance"
-func = "renounceOwnership"
-args = []
-from = "<%= settings.appOwner %>"
-depends = ["invoke.migrateToOutputsMerkleRootValidator"]
+factory.DaveConsensusInstance.event = "DaveAppCreated"
+factory.DaveConsensusInstance.arg = 1
