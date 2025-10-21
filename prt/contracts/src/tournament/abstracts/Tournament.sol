@@ -72,14 +72,32 @@ abstract contract Tournament {
     // matches existing in current tournament
     mapping(Match.IdHash => Match.State) matches;
 
+    enum MatchDeletedReason {
+        TIMEOUT_ONE,
+        TIMEOUT_TWO,
+        BOTH_ELIMINATED,
+        SUBGAME_WINNER
+    }
     //
     // Events
     //
-    event matchCreated(
-        Tree.Node indexed one, Tree.Node indexed two, Tree.Node leftOfTwo
+
+    event MatchCreated(
+        Match.IdHash indexed matchIdHash,
+        Tree.Node indexed one,
+        Tree.Node indexed two,
+        Tree.Node leftOfTwo
     );
-    event matchDeleted(Match.IdHash);
-    event commitmentJoined(Tree.Node root);
+    event MatchDeleted(
+        Match.IdHash indexed matchIdHash,
+        MatchDeletedReason reason,
+        Tree.Node indexed winnerCommitment
+    );
+    event CommitmentJoined(
+        Tree.Node commitment,
+        Machine.Hash finalStateHash,
+        address indexed caller
+    );
 
     //
     // Errors
@@ -178,9 +196,8 @@ abstract contract Tournament {
         _clock.setNewPaused(args.startInstant, args.allowance);
 
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
-        emit commitmentJoined(_commitmentRoot);
-
         claimers[_commitmentRoot] = msg.sender;
+        emit CommitmentJoined(_commitmentRoot, _finalState, msg.sender);
     }
 
     /// @notice Advance the match until the smallest divergence is found at current level
@@ -235,6 +252,12 @@ abstract contract Tournament {
 
             // clear the claimer for the losing commitment
             delete claimers[_matchId.commitmentTwo];
+            // delete storage
+            deleteMatch(
+                _matchId.hashFromId(),
+                MatchDeletedReason.TIMEOUT_TWO,
+                _matchId.commitmentOne
+            );
         } else if (!_clockOne.hasTimeLeft() && _clockTwo.hasTimeLeft()) {
             require(
                 _matchId.commitmentTwo.verify(_leftNode, _rightNode),
@@ -248,12 +271,15 @@ abstract contract Tournament {
 
             // clear the claimer for the losing commitment
             delete claimers[_matchId.commitmentOne];
+            // delete storage
+            deleteMatch(
+                _matchId.hashFromId(),
+                MatchDeletedReason.TIMEOUT_ONE,
+                _matchId.commitmentTwo
+            );
         } else {
             revert WinByTimeout();
         }
-
-        // delete storage
-        deleteMatch(_matchId.hashFromId());
     }
 
     error EliminateByTimeout();
@@ -282,11 +308,15 @@ abstract contract Tournament {
                 )
         ) {
             // delete storage
-            deleteMatch(_matchId.hashFromId());
 
             // clear the claimer for both commitments
             delete claimers[_matchId.commitmentOne];
             delete claimers[_matchId.commitmentTwo];
+            deleteMatch(
+                _matchId.hashFromId(),
+                MatchDeletedReason.BOTH_ELIMINATED,
+                Tree.ZERO_NODE
+            );
         } else {
             revert EliminateByTimeout();
         }
@@ -431,17 +461,23 @@ abstract contract Tournament {
             clearDanglingCommitment();
             matchCount++;
 
-            emit matchCreated(_danglingCommitment, _rootHash, _leftNode);
+            emit MatchCreated(
+                _matchId, _danglingCommitment, _rootHash, _leftNode
+            );
         } else {
             setDanglingCommitment(_rootHash);
         }
     }
 
-    function deleteMatch(Match.IdHash _matchIdHash) internal {
+    function deleteMatch(
+        Match.IdHash _matchIdHash,
+        MatchDeletedReason _reason,
+        Tree.Node _winnerCommitment
+    ) internal {
         matchCount--;
         lastMatchDeleted = Time.currentTime();
         delete matches[_matchIdHash];
-        emit matchDeleted(_matchIdHash);
+        emit MatchDeleted(_matchIdHash, _reason, _winnerCommitment);
     }
 
     //

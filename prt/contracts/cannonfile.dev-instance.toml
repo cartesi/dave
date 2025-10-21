@@ -17,5 +17,5 @@ args = [
     "<%= settings.dataProvider %>",
 ]
 factory.TopTournamentInstance.abiOf = ["prtContracts.TopTournament"]
-factory.TopTournamentInstance.event = "tournamentCreated"
+factory.TopTournamentInstance.event = "TournamentCreated"
 factory.TopTournamentInstance.arg = 0

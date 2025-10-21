@@ -20,7 +20,9 @@ library Match {
     //
     // Events
     //
-    event matchAdvanced(Match.IdHash indexed, Tree.Node parent, Tree.Node left);
+    event MatchAdvanced(
+        Match.IdHash indexed matchIdHash, Tree.Node parent, Tree.Node left
+    );
 
     //
     // Id
@@ -119,7 +121,7 @@ library Match {
             state._goDownRightTree(newLeftNode, newRightNode);
         }
 
-        emit matchAdvanced(id.hashFromId(), state.otherParent, state.leftNode);
+        emit MatchAdvanced(id.hashFromId(), state.otherParent, state.leftNode);
     }
 
     error IncorrectAgreeState(
