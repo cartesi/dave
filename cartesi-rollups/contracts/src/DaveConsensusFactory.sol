@@ -5,7 +5,7 @@ pragma solidity ^0.8.8;
 
 import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 
-import {IInputBox} from "cartesi-rollups-contracts-2.0.0/src/inputs/IInputBox.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInputBox.sol";
 
 import {DaveConsensus} from "./DaveConsensus.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";

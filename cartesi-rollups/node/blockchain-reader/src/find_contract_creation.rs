@@ -51,7 +51,7 @@ mod tests {
     async fn test_genesis() {
         let addr = Address::default();
         let asserter = Asserter::new();
-        let provider = ProviderBuilder::new().on_mocked_client(asserter.clone());
+        let provider = ProviderBuilder::new().connect_mocked_client(asserter.clone());
 
         // get_block_number → 0
         asserter.push_success(&U256::from(0));
@@ -65,7 +65,7 @@ mod tests {
     async fn test_binary_search() {
         let addr = Address::default();
         let asserter = Asserter::new();
-        let provider = ProviderBuilder::new().on_mocked_client(asserter.clone());
+        let provider = ProviderBuilder::new().connect_mocked_client(asserter.clone());
 
         // 1) get_block_number → 4
         asserter.push_success(&U256::from(4));

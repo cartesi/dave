@@ -26,7 +26,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.0"
+version = "2.0.0"
 
 authors = [
   "Gabriel Coutinho de Paula <gcdepaula@protonmail.com>",
@@ -53,10 +53,10 @@ cartesi-dave-contracts = { path = "cartesi-rollups/contracts/bindings-rs" }
 cartesi-prt-contracts = { path = "prt/contracts/bindings-rs" }
 
 # rollups-node
-rollups-blockchain-reader = { version = "1.0.0", path = "cartesi-rollups/node/blockchain-reader" }
-rollups-epoch-manager = { version = "1.0.0", path = "cartesi-rollups/node/epoch-manager" }
-rollups-machine-runner = { version = "1.0.0", path = "cartesi-rollups/node/machine-runner" }
-rollups-state-manager = { version = "1.0.0", path = "cartesi-rollups/node/state-manager" }
+rollups-blockchain-reader = { version = "2.0.0", path = "cartesi-rollups/node/blockchain-reader" }
+rollups-epoch-manager = { version = "2.0.0", path = "cartesi-rollups/node/epoch-manager" }
+rollups-machine-runner = { version = "2.0.0", path = "cartesi-rollups/node/machine-runner" }
+rollups-state-manager = { version = "2.0.0", path = "cartesi-rollups/node/state-manager" }
 
 # common-rs
 cartesi-dave-arithmetic = { path = "common-rs/arithmetic" }
@@ -70,10 +70,10 @@ cartesi-prt-core = { path = "prt/client-rs/core" }
 ## Dependencies
 
 # cartesi
-cartesi-rollups-contracts = "=2.0.0"
+cartesi-rollups-contracts = "=2.1.0-alpha.1"
 
 # eth
-alloy = { version = "0.12.4", features = [
+alloy = { version = "1.0", features = [
   "contract",
   "network",
   "reqwest",
@@ -81,8 +81,8 @@ alloy = { version = "0.12.4", features = [
   "signers",
   "sol-types",
 ] }
-alloy-transport = { version = "0.12", features = ["throttle"] }
-alloy-chains = { version = "0.1" }
+alloy-transport = { version = "1.0", features = ["throttle"] }
+alloy-chains = { version = "0.2" }
 reqwest = { version = "0.12", features = ["http2"] }
 ruint = "1.12"
 tiny-keccak = { version = "2.0", features = ["keccak"] }

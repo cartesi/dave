@@ -1,5 +1,5 @@
 name = 'cartesi-dave-consensus-prod'
-version = '0.0.1'
+version = '2.0.0'
 description = 'Cartesi Dave Consensus (prod)'
 
 [var.Settings]
@@ -10,10 +10,10 @@ initialHash = "<%= zeroHash %>"
 source = "cartesi-rollups:2.0.0@main"
 
 [pull.prtContracts]
-source = "cartesi-prt-multilevel:1.0.0@main"
+source = "cartesi-prt-multilevel:2.0.0@main"
 
 [pull.daveConsensusFactory]
-source = "cartesi-dave-consensus-factory:1.0.0@main"
+source = "cartesi-dave-consensus-factory:2.0.0@main"
 
 [invoke.newApplication]
 target = "cartesiRollups.ApplicationFactory"

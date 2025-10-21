@@ -472,7 +472,10 @@ mod tests {
         };
 
         initial_snapshot.increment_input();
-        access.advance_accepted(&mut initial_snapshot, &[commitment_leaf_1.clone()])?;
+        access.advance_accepted(
+            &mut initial_snapshot,
+            std::slice::from_ref(&commitment_leaf_1),
+        )?;
 
         assert_eq!(
             access.epoch_state_hashes(0)?[0],
@@ -489,7 +492,10 @@ mod tests {
         );
 
         initial_snapshot.increment_input();
-        access.advance_reverted(&mut initial_snapshot, &[commitment_leaf_2.clone()])?;
+        access.advance_reverted(
+            &mut initial_snapshot,
+            std::slice::from_ref(&commitment_leaf_2),
+        )?;
 
         assert_eq!(
             access.epoch_state_hashes(0)?.len(),

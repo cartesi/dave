@@ -42,7 +42,7 @@ pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, AddressBook) {
 
     let provider = ProviderBuilder::new()
         .wallet(wallet)
-        .on_http(anvil.endpoint_url())
+        .connect_http(anvil.endpoint_url())
         .erased();
 
     let (input_box, consensus, app) = {

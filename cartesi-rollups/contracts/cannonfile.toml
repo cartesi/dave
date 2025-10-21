@@ -1,9 +1,9 @@
 name = 'cartesi-dave-consensus-factory'
-version = '1.0.0'
+version = '2.0.0'
 description = 'Cartesi Dave Consensus Factory'
 
 [pull.prtContracts]
-source = "cartesi-prt-multilevel:1.0.0@main"
+source = "cartesi-prt-multilevel:2.0.0@main"
 
 [pull.cartesiRollups]
 source = "cartesi-rollups:2.0.0@main"

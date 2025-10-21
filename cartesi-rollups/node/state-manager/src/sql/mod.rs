@@ -86,11 +86,6 @@ pub fn create_connection(state_dir: &Path) -> Result<Connection> {
         .busy_timeout(std::time::Duration::from_secs(10))
         .map_err(anyhow::Error::from)?;
 
-    // Enable WAL mode for concurrent access (ex: lua node)
-    connection
-        .query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))
-        .map_err(anyhow::Error::from)?;
-
     set_scalar_function(&connection)?;
 
     Ok(connection)
@@ -103,6 +98,12 @@ pub fn migrate(
 ) -> Result<Connection> {
     create_directory_structure(state_dir)?;
     let mut connection = create_connection(state_dir)?;
+
+    // Enable WAL mode for concurrent access
+    connection
+        .query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))
+        .map_err(anyhow::Error::from)?;
+
     migrations::migrate_to_latest(&mut connection).map_err(anyhow::Error::from)?;
     set_genesis(&connection, genesis_block_number)?;
     set_initial_machine(&mut connection, state_dir, initial_machine_path)?;

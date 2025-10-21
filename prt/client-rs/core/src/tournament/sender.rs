@@ -14,7 +14,7 @@ use ruint::aliases::U256;
 
 use crate::{machine::MachineProof, tournament::MatchID};
 use cartesi_dave_merkle::{Digest, MerkleProof};
-use cartesi_prt_contracts::{leaftournament, nonleaftournament, tournament};
+use cartesi_prt_contracts::{leaf_tournament, non_leaf_tournament, tournament};
 
 #[derive(Clone, Debug)]
 pub struct EthArenaSender {
@@ -167,7 +167,7 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
-        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.provider);
+        let tournament = non_leaf_tournament::NonLeafTournament::new(tournament, &self.provider);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
@@ -193,7 +193,7 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
     ) -> Result<()> {
-        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.provider);
+        let tournament = non_leaf_tournament::NonLeafTournament::new(tournament, &self.provider);
         let tx_result = tournament
             .winInnerTournament(child_tournament, left_node.into(), right_node.into())
             .send()
@@ -208,7 +208,7 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
     ) -> Result<()> {
-        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.provider);
+        let tournament = non_leaf_tournament::NonLeafTournament::new(tournament, &self.provider);
         let tx_result = tournament
             .winMatchByTimeout(match_id.into(), left_node.into(), right_node.into())
             .send()
@@ -224,7 +224,7 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
-        let tournament = leaftournament::LeafTournament::new(tournament, &self.provider);
+        let tournament = leaf_tournament::LeafTournament::new(tournament, &self.provider);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
@@ -251,7 +251,7 @@ impl ArenaSender for EthArenaSender {
         right_node: Digest,
         proofs: MachineProof,
     ) -> Result<()> {
-        let tournament = leaftournament::LeafTournament::new(tournament, &self.provider);
+        let tournament = leaf_tournament::LeafTournament::new(tournament, &self.provider);
         let tx_result = tournament
             .winLeafMatch(
                 match_id.into(),
@@ -278,7 +278,7 @@ impl ArenaSender for EthArenaSender {
         tournament: Address,
         inner_tournament: Address,
     ) -> Result<()> {
-        let tournament = nonleaftournament::NonLeafTournament::new(tournament, &self.provider);
+        let tournament = non_leaf_tournament::NonLeafTournament::new(tournament, &self.provider);
         let tx_result = tournament
             .eliminateInnerTournament(inner_tournament)
             .send()
@@ -289,7 +289,7 @@ impl ArenaSender for EthArenaSender {
     async fn bond_value(&self, tournament: Address) -> Result<U256> {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
         let bond_value_result = tournament.bondValue().call().await?;
-        Ok(bond_value_result._0)
+        Ok(bond_value_result)
     }
 }
 

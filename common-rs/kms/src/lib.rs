@@ -1,5 +1,5 @@
 use alloy::{
-    primitives::{ChainId, PrimitiveSignature},
+    primitives::{ChainId, Signature},
     signers::aws::AwsSigner,
 };
 use anyhow::{self, Context};
@@ -9,7 +9,7 @@ use aws_sdk_kms::{
     types::{KeySpec, KeyUsageType},
 };
 
-pub type CommonSignature = dyn alloy::network::TxSigner<PrimitiveSignature> + Send + Sync;
+pub type CommonSignature = dyn alloy::network::TxSigner<Signature> + Send + Sync;
 
 pub struct KmsSignerBuilder {
     chain_id: ChainId,

@@ -13,7 +13,7 @@ use num_traits::cast::ToPrimitive;
 use std::{ops::ControlFlow, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
-use cartesi_dave_contracts::daveconsensus::{self, DaveConsensus};
+use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 use cartesi_prt_core::{
     db::dispute_state_access::{Input, Leaf},
     strategy::player::Player,
@@ -46,7 +46,7 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
     }
 
     pub async fn execution_loop(mut self, watch: Watch, provider: DynProvider) -> Result<()> {
-        let dave_consensus = daveconsensus::DaveConsensus::new(self.consensus, provider.clone());
+        let dave_consensus = DaveConsensus::new(self.consensus, provider.clone());
 
         loop {
             self.try_settle_epoch(&dave_consensus).await?;
@@ -60,7 +60,10 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
 
     pub async fn try_settle_epoch(
         &mut self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<(), impl Provider>,
+        dave_consensus: &DaveConsensus::DaveConsensusInstance<
+            DynProvider,
+            alloy::network::Ethereum,
+        >,
     ) -> Result<()> {
         let can_settle = dave_consensus
             .canSettle()
