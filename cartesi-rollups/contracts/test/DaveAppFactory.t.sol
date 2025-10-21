@@ -14,6 +14,7 @@ import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/Input
 
 import {DaveAppFactory} from "src/DaveAppFactory.sol";
 import {DaveConsensus} from "src/DaveConsensus.sol";
+import {IDaveConsensus} from "src/IDaveConsensus.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournamentFactory.sol";
@@ -78,7 +79,8 @@ contract DaveConsensusFactoryTest is Test {
                 (emittedAddresses[0], emittedAddresses[1]) = abi.decode(entry.data, (address, address));
                 assertEq(emittedAddresses[0], appContractAddress);
                 assertEq(emittedAddresses[1], daveConsensusAddress);
-            } else if (entry.emitter == daveConsensusAddress && entry.topics[0] == DaveConsensus.EpochSealed.selector) {
+            } else if (entry.emitter == daveConsensusAddress && entry.topics[0] == IDaveConsensus.EpochSealed.selector)
+            {
                 (
                     uint256 epochNumber,
                     uint256 inputIndexLowerBound,
