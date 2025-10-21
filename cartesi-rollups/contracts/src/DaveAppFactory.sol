@@ -13,21 +13,19 @@ import {
 import {DataAvailability} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/common/DataAvailability.sol";
 import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInputBox.sol";
 
-import {DaveConsensus} from "./DaveConsensus.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
-/// @title Dave-App Pair Factory
-/// @notice Allows anyone to reliably deploy an application
-/// validated a newly-deployed `DaveConsensus` contract.
-contract DaveAppFactory {
+import {DaveConsensus} from "./DaveConsensus.sol";
+import {IDaveConsensus} from "./IDaveConsensus.sol";
+import {IDaveAppFactory} from "./IDaveAppFactory.sol";
+
+contract DaveAppFactory is IDaveAppFactory {
     IInputBox immutable INPUT_BOX;
     IApplicationFactory immutable APP_FACTORY;
     ITournamentFactory immutable TOURNAMENT_FACTORY;
 
     IOutputsMerkleRootValidator constant NO_VALIDATOR = IOutputsMerkleRootValidator(address(0));
-
-    event DaveAppCreated(IApplication appContract, DaveConsensus daveConsensus);
 
     constructor(IInputBox inputBox, IApplicationFactory appFactory, ITournamentFactory tournamentFactory) {
         INPUT_BOX = inputBox;
@@ -37,7 +35,8 @@ contract DaveAppFactory {
 
     function newDaveApp(bytes32 templateHash, bytes32 salt)
         external
-        returns (IApplication appContract, DaveConsensus daveConsensus)
+        override
+        returns (IApplication appContract, IDaveConsensus daveConsensus)
     {
         appContract = _newApplication(templateHash, salt);
         daveConsensus = _newDaveConsensus(address(appContract), templateHash, salt);
@@ -49,6 +48,7 @@ contract DaveAppFactory {
     function calculateDaveAppAddress(bytes32 templateHash, bytes32 salt)
         external
         view
+        override
         returns (address appContractAddress, address daveConsensusAddress)
     {
         appContractAddress = _calculateApplicationAddress(templateHash, salt);

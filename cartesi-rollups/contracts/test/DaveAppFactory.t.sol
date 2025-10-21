@@ -13,7 +13,7 @@ import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInp
 import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/InputBox.sol";
 
 import {DaveAppFactory} from "src/DaveAppFactory.sol";
-import {DaveConsensus} from "src/DaveConsensus.sol";
+import {IDaveAppFactory} from "src/IDaveAppFactory.sol";
 import {IDaveConsensus} from "src/IDaveConsensus.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
@@ -35,7 +35,7 @@ contract MockTournamentFactory is ITournamentFactory {
 
 contract DaveConsensusFactoryTest is Test {
     IApplicationFactory _appFactory;
-    DaveAppFactory _daveAppFactory;
+    IDaveAppFactory _daveAppFactory;
     IInputBox _inputBox;
     MockTournamentFactory _tournamentFactory;
     Machine.Hash _initialMachineStateHash;
@@ -52,13 +52,13 @@ contract DaveConsensusFactoryTest is Test {
         address appContractAddress;
         address daveConsensusAddress;
 
-        // Pre-calculate app and `DaveConsensus` contract addresses
+        // Pre-calculate app and Dave consensus contract addresses
         (appContractAddress, daveConsensusAddress) = _daveAppFactory.calculateDaveAppAddress(templateHash, salt);
 
-        // Deploy app and `DaveConsensus` addresses
+        // Deploy app and Dave consensus addresses
         vm.recordLogs();
         _tournamentFactory.setAddress(randomTournamentAddress);
-        (IApplication appContract, DaveConsensus daveConsensus) = _daveAppFactory.newDaveApp(templateHash, salt);
+        (IApplication appContract, IDaveConsensus daveConsensus) = _daveAppFactory.newDaveApp(templateHash, salt);
         Vm.Log[] memory entries = vm.getRecordedLogs();
 
         // Check if addresses match those pre-calculated ones
@@ -72,7 +72,7 @@ contract DaveConsensusFactoryTest is Test {
         for (uint256 i; i < entries.length; ++i) {
             Vm.Log memory entry = entries[i];
 
-            if (entry.emitter == address(_daveAppFactory) && entry.topics[0] == DaveAppFactory.DaveAppCreated.selector)
+            if (entry.emitter == address(_daveAppFactory) && entry.topics[0] == IDaveAppFactory.DaveAppCreated.selector)
             {
                 ++numOfDaveAppsCreated;
                 address[] memory emittedAddresses = new address[](2);
