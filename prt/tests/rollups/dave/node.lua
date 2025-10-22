@@ -47,15 +47,6 @@ function Dave:new(machine_path, app_address, sender, sleep_duration, verbosity, 
     local handle = start_dave_node(machine_path, app_address, "_state/", sleep_duration, verbosity, trace_level)
     n._handle = handle
 
-    local query = io.popen [[sqlite3 ./_state/db.sqlite3 "PRAGMA journal_mode = WAL;"]]
-    assert(query)
-    local rows = query:read "*a"
-    query:close()
-    if rows:find "Error" then
-        error(string.format("Read leafs failed:\n%s", rows))
-    end
-
-
     setmetatable(n, Dave)
     return n
 end
