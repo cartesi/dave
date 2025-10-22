@@ -16,9 +16,9 @@ args = [
     "<%= settings.initialHash %>",
     "<%= settings.salt %>",
 ]
-factory.ApplicationInstance.artifact = "Application"
+factory.ApplicationInstance.artifact = "IApplication"
 factory.ApplicationInstance.event = "DaveAppCreated"
 factory.ApplicationInstance.arg = 0
-factory.DaveConsensusInstance.artifact = "DaveConsensus"
+factory.DaveConsensusInstance.artifact = "IDaveConsensus"
 factory.DaveConsensusInstance.event = "DaveAppCreated"
 factory.DaveConsensusInstance.arg = 1
