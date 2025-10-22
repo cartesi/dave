@@ -45,25 +45,26 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
         Machine.Hash initialHash,
         IDataProvider provider
     ) public returns (SingleLevelTournament) {
-        SingleLevelTournament.SingleLevelArguments memory args =
-        SingleLevelTournament.SingleLevelArguments({
-            tournamentArgs: Tournament.TournamentArguments({
-                commitmentArgs: Commitment.Arguments({
-                    initialHash: initialHash,
-                    startCycle: START_CYCLE,
-                    log2step: _log2step,
-                    height: _height
+        SingleLevelTournament.SingleLevelArguments memory
+            args =
+            SingleLevelTournament.SingleLevelArguments({
+                tournamentArgs: Tournament.TournamentArguments({
+                    commitmentArgs: Commitment.Arguments({
+                        initialHash: initialHash,
+                        startCycle: START_CYCLE,
+                        log2step: _log2step,
+                        height: _height
+                    }),
+                    level: LEVEL,
+                    levels: LEVELS,
+                    startInstant: Time.currentTime(),
+                    allowance: _maxAllowance,
+                    maxAllowance: _maxAllowance,
+                    matchEffort: _matchEffort,
+                    provider: provider
                 }),
-                level: LEVEL,
-                levels: LEVELS,
-                startInstant: Time.currentTime(),
-                allowance: _maxAllowance,
-                maxAllowance: _maxAllowance,
-                matchEffort: _matchEffort,
-                provider: provider
-            }),
-            stateTransition: _stateTransition
-        });
+                stateTransition: _stateTransition
+            });
         address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
         SingleLevelTournament tournament = SingleLevelTournament(clone);
         emit tournamentCreated(tournament);

@@ -53,8 +53,7 @@ abstract contract NonLeafTournament is Tournament {
         }
         TournamentArguments memory args = tournamentArguments();
 
-        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
-            .sealMatch(
+        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState.sealMatch(
             args.commitmentArgs,
             _matchId,
             _leftLeaf,
@@ -138,8 +137,9 @@ abstract contract NonLeafTournament is Tournament {
         refundable(Gas.ELIMINATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
-        Match.IdHash _matchIdHash =
-            matchIdFromInnerTournaments[_childTournament];
+        Match.IdHash _matchIdHash = matchIdFromInnerTournaments[
+            _childTournament
+        ];
         _matchIdHash.requireExist();
 
         Match.State storage _matchState = matches[_matchIdHash];

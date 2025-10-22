@@ -442,9 +442,10 @@ contract DaveConsensusTest is Test {
             current = keccak256(abi.encodePacked(current, current));
         }
 
-        bytes32 root = new LibMerkle32Wrapper().merkleRootAfterReplacement(
-            siblings, EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE, leaf
-        );
+        bytes32 root = new LibMerkle32Wrapper()
+            .merkleRootAfterReplacement(
+                siblings, EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE, leaf
+            );
         assertEq(current, root);
 
         return (Machine.Hash.wrap(current), siblings, outputsMerkleRoot);

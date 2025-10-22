@@ -68,8 +68,6 @@ jobs:
           submodules: recursive
       - name: Setup tools
         uses: ./.github/actions/setup-tools
-        with:
-          foundry_version: 'v1.4.2'
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
@@ -115,8 +113,6 @@ jobs:
 
       - name: Setup tools
         uses: ./.github/actions/setup-tools
-        with:
-          foundry_version: 'v1.4.2'
 
       - name: Install dependencies
         env:

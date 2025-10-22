@@ -8,10 +8,8 @@ import "prt-contracts/types/TournamentParameters.sol";
 import "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
 
 import "prt-contracts/tournament/factories/multilevel/TopTournamentFactory.sol";
-import
-    "prt-contracts/tournament/factories/multilevel/MiddleTournamentFactory.sol";
-import
-    "prt-contracts/tournament/factories/multilevel/BottomTournamentFactory.sol";
+import "prt-contracts/tournament/factories/multilevel/MiddleTournamentFactory.sol";
+import "prt-contracts/tournament/factories/multilevel/BottomTournamentFactory.sol";
 
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     TopTournamentFactory immutable topFactory;
@@ -44,10 +42,10 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         return _tournament;
     }
 
-    function instantiateTop_(Machine.Hash _initialHash, IDataProvider _provider)
-        private
-        returns (TopTournament)
-    {
+    function instantiateTop_(
+        Machine.Hash _initialHash,
+        IDataProvider _provider
+    ) private returns (TopTournament) {
         TopTournament _tournament = topFactory.instantiate(
             _initialHash, _getTopTournamentParameters(), _provider, this
         );
@@ -73,19 +71,20 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint64 _level,
         IDataProvider _provider
     ) external override returns (Tournament) {
-        MiddleTournament _tournament = middleFactory.instantiate(
-            _initialHash,
-            _contestedCommitmentOne,
-            _contestedFinalStateOne,
-            _contestedCommitmentTwo,
-            _contestedFinalStateTwo,
-            _allowance,
-            _startCycle,
-            _level,
-            _getTournamentParameters(_level),
-            _provider,
-            this
-        );
+        MiddleTournament _tournament =
+            middleFactory.instantiate(
+                _initialHash,
+                _contestedCommitmentOne,
+                _contestedFinalStateOne,
+                _contestedCommitmentTwo,
+                _contestedFinalStateTwo,
+                _allowance,
+                _startCycle,
+                _level,
+                _getTournamentParameters(_level),
+                _provider,
+                this
+            );
 
         return _tournament;
     }
@@ -101,19 +100,20 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint64 _level,
         IDataProvider _provider
     ) external override returns (Tournament) {
-        BottomTournament _tournament = bottomFactory.instantiate(
-            _initialHash,
-            _contestedCommitmentOne,
-            _contestedFinalStateOne,
-            _contestedCommitmentTwo,
-            _contestedFinalStateTwo,
-            _allowance,
-            _startCycle,
-            _level,
-            _getTournamentParameters(_level),
-            _provider,
-            stateTransition
-        );
+        BottomTournament _tournament =
+            bottomFactory.instantiate(
+                _initialHash,
+                _contestedCommitmentOne,
+                _contestedFinalStateOne,
+                _contestedCommitmentTwo,
+                _contestedFinalStateTwo,
+                _allowance,
+                _startCycle,
+                _level,
+                _getTournamentParameters(_level),
+                _provider,
+                stateTransition
+            );
 
         return _tournament;
     }

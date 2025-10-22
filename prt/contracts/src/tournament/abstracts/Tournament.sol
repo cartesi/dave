@@ -366,14 +366,10 @@ abstract contract Tournament {
 
         // check if both clocks are out of time
         if (
-            (
-                !_clockOne.hasTimeLeft()
-                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout())
-            )
-                || (
-                    !_clockTwo.hasTimeLeft()
-                        && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout())
-                )
+            (!_clockOne.hasTimeLeft()
+                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout()))
+                || (!_clockTwo.hasTimeLeft()
+                    && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout()))
         ) {
             // delete storage
             deleteMatch(_matchId.hashFromId());
@@ -569,8 +565,7 @@ abstract contract Tournament {
 
         if (_hasDanglingCommitment) {
             TournamentArguments memory args = tournamentArguments();
-            (Match.IdHash _matchId, Match.State memory _matchState) = Match
-                .createMatch(
+            (Match.IdHash _matchId, Match.State memory _matchState) = Match.createMatch(
                 args.commitmentArgs,
                 _danglingCommitment,
                 _rootHash,

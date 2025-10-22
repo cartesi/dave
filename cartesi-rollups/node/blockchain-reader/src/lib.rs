@@ -508,7 +508,10 @@ mod blockchain_reader_tests {
     use crate::*;
 
     use alloy::{
-        network::Ethereum, primitives::Address, providers::{DynProvider, ProviderBuilder}, sol_types::{SolCall, SolValue}
+        network::Ethereum,
+        primitives::Address,
+        providers::{DynProvider, ProviderBuilder},
+        sol_types::{SolCall, SolValue},
     };
     use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
     use cartesi_dave_merkle::Digest;
