@@ -25,10 +25,6 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
         return super.tryRecoveringBond();
     }
 
-    function _args() internal view returns (TournamentArguments memory) {
-        return abi.decode(address(this).fetchCloneArgs(), (TournamentArguments));
-    }
-
     function _singleLevelArgs()
         internal
         view
