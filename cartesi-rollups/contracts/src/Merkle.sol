@@ -143,6 +143,7 @@ library Merkle {
     function getHashOfLeafAtIndex(bytes calldata data, uint256 leafIndex) internal pure returns (bytes32) {
         uint256 start = leafIndex << MerkleConstants.LOG2_LEAF_SIZE;
         if (start < data.length) {
+            /// forge-lint: disable-next-line(asm-keccak256)
             return keccak256(abi.encode(bytes32(data[start:])));
         } else {
             return PristineMerkleTree.getNodeAtHeight(0);

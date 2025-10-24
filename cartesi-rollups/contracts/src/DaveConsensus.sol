@@ -184,6 +184,7 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
             return bytes32(0);
         }
 
+        /// forge-lint: disable-next-line(asm-keccak256)
         bytes32 calculatedInputHash = keccak256(input);
         bytes32 realInputHash = _INPUT_BOX.getInputHash(_APP_CONTRACT, inputIndex);
         require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
