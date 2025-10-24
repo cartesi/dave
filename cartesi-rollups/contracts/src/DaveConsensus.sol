@@ -23,6 +23,7 @@ import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {Merkle} from "./Merkle.sol";
+import {IDaveConsensus} from "./IDaveConsensus.sol";
 
 /// @notice Consensus contract with Dave tournaments.
 ///
@@ -46,21 +47,21 @@ import {Merkle} from "./Merkle.sol";
 /// the accumlating epoch will be sealed, and a new
 /// accumulating epoch will be created.
 ///
-contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
+contract DaveConsensus is IDaveConsensus, ERC165 {
     using Merkle for bytes;
     using LibMerkle32 for bytes32[];
 
     /// @notice The input box contract
-    IInputBox immutable _inputBox;
+    IInputBox immutable _INPUT_BOX;
 
     /// @notice The application contract
-    address immutable _appContract;
+    address immutable _APP_CONTRACT;
 
     /// @notice The contract used to instantiate tournaments
-    ITournamentFactory immutable _tournamentFactory;
+    ITournamentFactory immutable _TOURNAMENT_FACTORY;
 
     /// @notice Deployment block number
-    uint256 immutable _deploymentBlockNumber = block.number;
+    uint256 immutable _DEPLOYMENT_BLOCK_NUMBER = block.number;
 
     /// @notice Current sealed epoch number
     uint256 _epochNumber;
@@ -77,54 +78,6 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     /// @notice Settled output trees' merkle root hash
     mapping(bytes32 => bool) _outputsMerkleRoots;
 
-    /// @notice Consensus contract was created
-    /// @param inputBox the input box contract
-    /// @param appContract the application contract
-    /// @param tournamentFactory the tournament factory contract
-    event ConsensusCreation(IInputBox inputBox, address appContract, ITournamentFactory tournamentFactory);
-
-    /// @notice An epoch was sealed
-    /// @param epochNumber the sealed epoch number
-    /// @param inputIndexLowerBound the input index (inclusive) lower bound in the sealed epoch
-    /// @param inputIndexUpperBound the input index (exclusive) upper bound in the sealed epoch
-    /// @param initialMachineStateHash the initial machine state hash
-    /// @param outputsMerkleRoot the Merkle root hash of the outputs tree
-    /// @param tournament the sealed epoch tournament contract
-    event EpochSealed(
-        uint256 epochNumber,
-        uint256 inputIndexLowerBound,
-        uint256 inputIndexUpperBound,
-        Machine.Hash initialMachineStateHash,
-        bytes32 outputsMerkleRoot,
-        ITournament tournament
-    );
-
-    /// @notice Received epoch number is different from actual
-    /// @param received The epoch number received as argument
-    /// @param actual The actual epoch number in storage
-    error IncorrectEpochNumber(uint256 received, uint256 actual);
-
-    /// @notice Tournament is not finished yet
-    error TournamentNotFinishedYet();
-
-    /// @notice Hash of received input blob is different from stored on-chain
-    /// @param fromReceivedInput Hash of received input blob
-    /// @param fromInputBox Hash of input stored on the input box contract
-    error InputHashMismatch(bytes32 fromReceivedInput, bytes32 fromInputBox);
-
-    /// @notice Supplied output tree proof not consistent with settled machine hash
-    /// @param settledState Settled machine state hash
-    error InvalidOutputsMerkleRootProof(Machine.Hash settledState);
-
-    /// @notice Supplied output tree proof size is incorrect
-    /// @param suppliedProofSize Supplied proof size
-    error InvalidOutputsMerkleRootProofSize(uint256 suppliedProofSize);
-
-    /// @notice Application address does not match
-    /// @param expected Expected application address
-    /// @param received Received application address
-    error ApplicationMismatch(address expected, address received);
-
     constructor(
         IInputBox inputBox,
         address appContract,
@@ -132,9 +85,9 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         Machine.Hash initialMachineStateHash
     ) {
         // Initialize immutable variables
-        _inputBox = inputBox;
-        _appContract = appContract;
-        _tournamentFactory = tournamentFactory;
+        _INPUT_BOX = inputBox;
+        _APP_CONTRACT = appContract;
+        _TOURNAMENT_FACTORY = tournamentFactory;
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
         // Initialize first sealed epoch
@@ -145,12 +98,17 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, bytes32(0), tournament);
     }
 
-    function canSettle() external view returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment) {
+    function canSettle()
+        external
+        view
+        override
+        returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment)
+    {
         (isFinished, winnerCommitment,) = _tournament.arbitrationResult();
         epochNumber = _epochNumber;
     }
 
-    function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external {
+    function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external override {
         // Check tournament settlement
         require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
 
@@ -166,11 +124,11 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         // Seal current accumulating epoch, save settled output tree
         _epochNumber++;
         _inputIndexLowerBound = _inputIndexUpperBound;
-        _inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
+        _inputIndexUpperBound = _INPUT_BOX.getNumberOfInputs(_APP_CONTRACT);
         _outputsMerkleRoots[outputsMerkleRoot] = true;
 
         // Start new tournament
-        _tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
+        _tournament = _TOURNAMENT_FACTORY.instantiate(finalMachineStateHash, this);
 
         emit EpochSealed(
             _epochNumber,
@@ -187,6 +145,7 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
     function getCurrentSealedEpoch()
         external
         view
+        override
         returns (
             uint256 epochNumber,
             uint256 inputIndexLowerBound,
@@ -200,19 +159,18 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
         tournament = _tournament;
     }
 
-    function getInputBox() external view returns (IInputBox) {
-        return _inputBox;
+    function getInputBox() external view override returns (IInputBox) {
+        return _INPUT_BOX;
     }
 
-    function getApplicationContract() external view returns (address) {
-        return _appContract;
+    function getApplicationContract() external view override returns (address) {
+        return _APP_CONTRACT;
     }
 
-    function getTournamentFactory() external view returns (ITournamentFactory) {
-        return _tournamentFactory;
+    function getTournamentFactory() external view override returns (ITournamentFactory) {
+        return _TOURNAMENT_FACTORY;
     }
 
-    /// @inheritdoc IDataProvider
     function provideMerkleRootOfInput(uint256 inputIndexWithinEpoch, bytes calldata input)
         external
         view
@@ -226,33 +184,32 @@ contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
             return bytes32(0);
         }
 
+        /// forge-lint: disable-next-line(asm-keccak256)
         bytes32 calculatedInputHash = keccak256(input);
-        bytes32 realInputHash = _inputBox.getInputHash(_appContract, inputIndex);
+        bytes32 realInputHash = _INPUT_BOX.getInputHash(_APP_CONTRACT, inputIndex);
         require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
 
         uint256 log2SizeOfDrive = input.getMinLog2SizeOfDrive();
         return input.getMerkleRootFromBytes(log2SizeOfDrive);
     }
 
-    /// @inheritdoc IOutputsMerkleRootValidator
     function isOutputsMerkleRootValid(address appContract, bytes32 outputsMerkleRoot)
         public
         view
         override
         returns (bool)
     {
-        require(_appContract == appContract, ApplicationMismatch(_appContract, appContract));
+        require(_APP_CONTRACT == appContract, ApplicationMismatch(_APP_CONTRACT, appContract));
         return _outputsMerkleRoots[outputsMerkleRoot];
     }
 
-    /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId) public view override(IERC165, ERC165) returns (bool) {
         return interfaceId == type(IDataProvider).interfaceId
             || interfaceId == type(IOutputsMerkleRootValidator).interfaceId || super.supportsInterface(interfaceId);
     }
 
-    function getDeploymentBlockNumber() external view returns (uint256) {
-        return _deploymentBlockNumber;
+    function getDeploymentBlockNumber() external view override returns (uint256) {
+        return _DEPLOYMENT_BLOCK_NUMBER;
     }
 
     function _validateOutputTree(

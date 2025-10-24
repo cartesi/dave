@@ -3,8 +3,8 @@ version = '2.0.0'
 description = 'Cartesi Dave Consensus (dev)'
 
 [var.Settings]
-appOwner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 initialHash = "<%= zeroHash %>"
+salt = "<%= zeroHash %>"
 
 [pull.prtContracts]
 source = "cartesi-prt-multilevel:2.0.0@main"
@@ -15,34 +15,52 @@ create2 = true
 salt = "<%= zeroHash %>"
 ifExists = "continue"
 
-[deploy.DaveConsensusFactory]
-artifact = "DaveConsensusFactory"
-args = [
-  "<%= InputBox.address %>",
-  "<%= prtContracts.MultiLevelTournamentFactory.address %>",
-]
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-
 [deploy.ApplicationFactory]
 artifact = "ApplicationFactory"
 create2 = true
 salt = "<%= zeroHash %>"
 ifExists = "continue"
 
-[invoke.newApplication]
-target = "ApplicationFactory"
-func = "newApplication(address,address,bytes32,bytes)"
+[deploy.DaveAppFactory]
+artifact = "DaveAppFactory"
 args = [
-    "<%= zeroAddress %>",
-    "<%= settings.appOwner %>",
-    "<%= settings.initialHash %>",
-    "<%= concat([slice(keccak256('InputBox(address)'), 0, 4), pad(contracts.InputBox.address)]) %>"
+  "<%= InputBox.address %>",
+  "<%= ApplicationFactory.address %>",
+  "<%= prtContracts.MultiLevelTournamentFactory.address %>",
 ]
-factory.ApplicationInstance.artifact = "Application"
-factory.ApplicationInstance.event = "ApplicationCreated"
-factory.ApplicationInstance.arg = 4
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[deploy.DaveAppAddressCalculator]
+artifact = "DaveAppAddressCalculator"
+args = ["<%= DaveAppFactory.address %>"]
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[invoke.calculateDaveAppAddress]
+target = "DaveAppAddressCalculator"
+func = "calculateDaveAppAddress(bytes32,bytes32)"
+args = [
+    "<%= settings.initialHash %>",
+    "<%= settings.salt %>",
+]
+factory.ApplicationInstance.artifact = "IApplication"
+factory.ApplicationInstance.event = "AddressCalculation"
+factory.ApplicationInstance.arg = 2
+
+[invoke.newDaveApp]
+target = "DaveAppFactory"
+func = "newDaveApp(bytes32,bytes32)"
+args = [
+    "<%= settings.initialHash %>",
+    "<%= settings.salt %>",
+]
+factory.DaveConsensusInstance.artifact = "IDaveConsensus"
+factory.DaveConsensusInstance.event = "DaveAppCreated"
+factory.DaveConsensusInstance.arg = 1
+depends = ["invoke.addInput"]
 
 [invoke.addInput]
 target = "InputBox"
@@ -53,20 +71,3 @@ args = [
 ]
 var.firstInput.event = "InputAdded"
 var.firstInput.arg = 2
-
-[invoke.newDaveConsensus]
-target = "DaveConsensusFactory"
-func = "newDaveConsensus(address,bytes32)"
-args = [
-    "<%= contracts.ApplicationInstance.address %>",
-    "<%= settings.initialHash %>",
-]
-factory.DaveConsensusInstance.artifact = "DaveConsensus"
-factory.DaveConsensusInstance.event = "DaveConsensusCreated"
-factory.DaveConsensusInstance.arg = 0
-
-[invoke.migrateToOutputsMerkleRootValidator]
-target = "ApplicationInstance"
-func = "migrateToOutputsMerkleRootValidator"
-args = ["<%= contracts.DaveConsensusInstance.address %>"]
-from = "<%= settings.appOwner %>"

@@ -7,8 +7,12 @@ import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
+import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 
 import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInputBox.sol";
+import {
+    IOutputsMerkleRootValidator
+} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/consensus/IOutputsMerkleRootValidator.sol";
 import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/InputBox.sol";
 import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/library/LibMerkle32.sol";
 
@@ -22,6 +26,7 @@ import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {DaveConsensus} from "src/DaveConsensus.sol";
+import {IDaveConsensus} from "src/IDaveConsensus.sol";
 import {Merkle} from "src/Merkle.sol";
 
 contract MerkleProxy {
@@ -37,15 +42,15 @@ contract MerkleProxy {
 }
 
 contract MockTournament is ITournament {
-    Machine.Hash immutable _initialState;
-    IDataProvider immutable _provider;
+    Machine.Hash immutable _INITIAL_STATE;
+    IDataProvider immutable _PROVIDER;
     bool _finished;
     Tree.Node _winnerCommitment;
     Machine.Hash _finalState;
 
     constructor(Machine.Hash initialState, IDataProvider provider) {
-        _initialState = initialState;
-        _provider = provider;
+        _INITIAL_STATE = initialState;
+        _PROVIDER = provider;
     }
 
     function finish(Tree.Node winnerCommitment, Machine.Hash finalState) external {
@@ -55,11 +60,11 @@ contract MockTournament is ITournament {
     }
 
     function getInitialState() external view returns (Machine.Hash) {
-        return _initialState;
+        return _INITIAL_STATE;
     }
 
     function getProvider() external view returns (IDataProvider) {
-        return _provider;
+        return _PROVIDER;
     }
 
     function arbitrationResult()
@@ -72,7 +77,7 @@ contract MockTournament is ITournament {
         finalState = _finalState;
     }
 
-    function tryRecoveringBond() public override returns (bool) {
+    function tryRecoveringBond() public pure override returns (bool) {
         return true;
     }
 }
@@ -163,25 +168,35 @@ contract DaveConsensusTest is Test {
         _addInputs(appContract, inputCounts[0]);
 
         (Machine.Hash state0,,) = _statesAndProofs(outputsMerkleRoots[0]);
-        address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
-        _mockTournamentFactory.setSalt(salts[1]);
-        address mockTournamentAddress =
-            _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
+        DaveConsensus daveConsensus;
+        MockTournament mockTournament;
 
-        vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
+        {
+            address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
-        vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress));
+            _mockTournamentFactory.setSalt(salts[1]);
+            address mockTournamentAddress =
+                _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
 
-        DaveConsensus daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
+            vm.expectEmit(daveConsensusAddress);
+            emit IDaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
 
-        assertEq(address(daveConsensus), daveConsensusAddress);
-        assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
-        assertEq(daveConsensus.getApplicationContract(), appContract);
-        assertEq(address(daveConsensus.getTournamentFactory()), address(_mockTournamentFactory));
-        assertEq(daveConsensus.getDeploymentBlockNumber(), deploymentBlockNumber);
+            vm.expectEmit(daveConsensusAddress);
+            emit IDaveConsensus.EpochSealed(
+                0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress)
+            );
+
+            daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
+
+            assertEq(address(daveConsensus), daveConsensusAddress);
+            assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
+            assertEq(daveConsensus.getApplicationContract(), appContract);
+            assertEq(address(daveConsensus.getTournamentFactory()), address(_mockTournamentFactory));
+            assertEq(daveConsensus.getDeploymentBlockNumber(), deploymentBlockNumber);
+
+            mockTournament = MockTournament(mockTournamentAddress);
+        }
 
         {
             bool isFinished;
@@ -205,13 +220,11 @@ contract DaveConsensusTest is Test {
             assertEq(epochNumber, 0);
             assertEq(inputIndexLowerBound, 0);
             assertEq(inputIndexUpperBound, inputCounts[0]);
-            assertEq(address(tournament), mockTournamentAddress);
+            assertEq(address(tournament), address(mockTournament));
         }
 
         assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 1);
-        assertEq(address(_mockTournamentFactory.getMockTournament(0)), mockTournamentAddress);
-
-        MockTournament mockTournament = MockTournament(mockTournamentAddress);
+        assertEq(address(_mockTournamentFactory.getMockTournament(0)), address(mockTournament));
 
         assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state0));
         assertEq(address(mockTournament.getProvider()), address(daveConsensus));
@@ -222,7 +235,7 @@ contract DaveConsensusTest is Test {
             assertFalse(isFinished);
         }
 
-        (Machine.Hash state1, bytes32[] memory proof1, bytes32 leaf1) = _statesAndProofs(outputsMerkleRoots[1]);
+        (Machine.Hash state1,,) = _statesAndProofs(outputsMerkleRoots[1]);
         mockTournament.finish(winnerCommitments[0], state1);
 
         {
@@ -247,20 +260,29 @@ contract DaveConsensusTest is Test {
             assertEq(epochNumber, 0);
         }
 
+        assertFalse(daveConsensus.isOutputsMerkleRootValid(appContract, outputsMerkleRoots[1]));
+
         _addInputs(appContract, inputCounts[1]);
 
-        address previousMockTournamentAddress = mockTournamentAddress;
+        {
+            _mockTournamentFactory.setSalt(salts[2]);
+            address mockTournamentAddress = _mockTournamentFactory.calculateTournamentAddress(state1, daveConsensus);
 
-        _mockTournamentFactory.setSalt(salts[2]);
-        mockTournamentAddress =
-            _mockTournamentFactory.calculateTournamentAddress(state1, IDataProvider(daveConsensusAddress));
+            (, bytes32[] memory proof1, bytes32 leaf1) = _statesAndProofs(outputsMerkleRoots[1]);
 
-        vm.expectEmit(daveConsensusAddress);
-        emit DaveConsensus.EpochSealed(
-            1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITournament(mockTournamentAddress)
-        );
+            vm.expectEmit(address(daveConsensus));
+            emit IDaveConsensus.EpochSealed(
+                1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITournament(mockTournamentAddress)
+            );
 
-        daveConsensus.settle(0, leaf1, proof1);
+            daveConsensus.settle(0, leaf1, proof1);
+
+            assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 2);
+
+            mockTournament = _mockTournamentFactory.getMockTournament(1);
+
+            assertEq(address(mockTournament), mockTournamentAddress);
+        }
 
         {
             bool isFinished;
@@ -284,14 +306,8 @@ contract DaveConsensusTest is Test {
             assertEq(epochNumber, 1);
             assertEq(inputIndexLowerBound, inputCounts[0]);
             assertEq(inputIndexUpperBound, inputCounts[0] + inputCounts[1]);
-            assertEq(address(tournament), mockTournamentAddress);
+            assertEq(address(tournament), address(mockTournament));
         }
-
-        assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 2);
-        assertEq(address(_mockTournamentFactory.getMockTournament(0)), previousMockTournamentAddress);
-        assertEq(address(_mockTournamentFactory.getMockTournament(1)), mockTournamentAddress);
-
-        mockTournament = MockTournament(mockTournamentAddress);
 
         assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state1));
         assertEq(address(mockTournament.getProvider()), address(daveConsensus));
@@ -301,6 +317,8 @@ contract DaveConsensusTest is Test {
 
             assertFalse(isFinished);
         }
+
+        assertTrue(daveConsensus.isOutputsMerkleRootValid(appContract, outputsMerkleRoots[1]));
 
         (Machine.Hash state2,,) = _statesAndProofs(outputsMerkleRoots[2]);
         mockTournament.finish(winnerCommitments[1], state2);
@@ -339,10 +357,10 @@ contract DaveConsensusTest is Test {
 
         _addInputs(appContract, inputCounts[1]);
 
-        vm.expectRevert(abi.encodeWithSelector(DaveConsensus.IncorrectEpochNumber.selector, wrongEpochNumber, 0));
+        vm.expectRevert(abi.encodeWithSelector(IDaveConsensus.IncorrectEpochNumber.selector, wrongEpochNumber, 0));
         daveConsensus.settle(wrongEpochNumber, bytes32(0), new bytes32[](0));
 
-        vm.expectRevert(DaveConsensus.TournamentNotFinishedYet.selector);
+        vm.expectRevert(IDaveConsensus.TournamentNotFinishedYet.selector);
         daveConsensus.settle(0, bytes32(0), new bytes32[](0));
     }
 
@@ -373,6 +391,46 @@ contract DaveConsensusTest is Test {
             bytes32 root = daveConsensus.provideMerkleRootOfInput(inputIndexOutsideBounds, new bytes(0));
             assertEq(root, bytes32(0));
         }
+    }
+
+    function testErc165(address appContract, Machine.Hash initialState, bytes32 salt, bytes4 unsupportedInterfaceId)
+        external
+    {
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salt);
+
+        // List the ID of all interfaces supported by `DaveConsensus`
+        bytes4[] memory supportedInterfaces = new bytes4[](3);
+        supportedInterfaces[0] = type(IERC165).interfaceId;
+        supportedInterfaces[1] = type(IDataProvider).interfaceId;
+        supportedInterfaces[2] = type(IOutputsMerkleRootValidator).interfaceId;
+
+        // For each supported interface ID, ensure `supportsInterface` returns true
+        // Also, make sure the fuzzy parameter `unsupportedInterfaceId` is distinct from them
+        for (uint256 i; i < supportedInterfaces.length; ++i) {
+            bytes4 interfaceId = supportedInterfaces[i];
+            assertTrue(daveConsensus.supportsInterface(interfaceId));
+            vm.assume(unsupportedInterfaceId != interfaceId);
+        }
+
+        // Finally, ensure that any other interface ID is explicitly unsupported
+        assertFalse(daveConsensus.supportsInterface(unsupportedInterfaceId));
+    }
+
+    function testIsOutputsMerkleRootValid(
+        address appContract,
+        Machine.Hash initialState,
+        bytes32 salt,
+        address otherAppContract,
+        bytes32 outputsMerkleRoot
+    ) external {
+        vm.assume(appContract != otherAppContract);
+
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salt);
+
+        vm.expectRevert(_encodeApplicationMismatch(appContract, otherAppContract));
+        daveConsensus.isOutputsMerkleRootValid(otherAppContract, outputsMerkleRoot);
+
+        assertFalse(daveConsensus.isOutputsMerkleRootValid(appContract, outputsMerkleRoot));
     }
 
     function _addInputs(address appContract, uint256 n) internal {
@@ -449,5 +507,17 @@ contract DaveConsensusTest is Test {
         assertEq(current, root);
 
         return (Machine.Hash.wrap(current), siblings, outputsMerkleRoot);
+    }
+
+    /// @notice Encode an `ApplicationMismatch` error.
+    /// @param expected The expected application contract address (the one provided through the constructor)
+    /// @param obtained The application contract address received by the function
+    /// @return encodedError The ABI-encoded Solidity error
+    function _encodeApplicationMismatch(address expected, address obtained)
+        internal
+        pure
+        returns (bytes memory encodedError)
+    {
+        return abi.encodeWithSelector(IDaveConsensus.ApplicationMismatch.selector, expected, obtained);
     }
 }

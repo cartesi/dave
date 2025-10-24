@@ -318,6 +318,17 @@ contract MerkleTest is Test {
         MerkleWrapper.getMerkleRootFromBytes(data, log2SizeOfDrive);
     }
 
+    function testGetMerkleRootFromEmptyBytes(uint256 log2SizeOfDrive) external pure {
+        bytes memory data;
+        uint256 minLog2SizeOfDrive = MerkleWrapper.getMinLog2SizeOfDrive(data);
+        uint256 maxLog2SizeOfDrive = MerkleConstants.LOG2_MEMORY_SIZE;
+        log2SizeOfDrive = bound(log2SizeOfDrive, minLog2SizeOfDrive, maxLog2SizeOfDrive);
+        assertEq(
+            MerkleWrapper.getMerkleRootFromBytes(data, log2SizeOfDrive),
+            PristineMerkleTree.getNodeAtHeight(log2SizeOfDrive - MerkleConstants.LOG2_LEAF_SIZE)
+        );
+    }
+
     function testGetMerkleRootFromBytes() external pure {
         bytes memory data = _getTestData();
         bytes32 root = ROOT;

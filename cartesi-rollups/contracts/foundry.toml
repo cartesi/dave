@@ -13,6 +13,9 @@ remappings = [
 
 solc_version = "0.8.27"
 
+[lint]
+exclude_lints = ["incorrect-shift"]
+
 [dependencies]
 "@openzeppelin-contracts" = "5.2.0"
 forge-std = "1.9.6"

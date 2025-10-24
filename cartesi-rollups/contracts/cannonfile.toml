@@ -1,4 +1,4 @@
-name = 'cartesi-dave-consensus-factory'
+name = 'cartesi-dave-app-factory'
 version = '2.0.0'
 description = 'Cartesi Dave Consensus Factory'
 
@@ -8,10 +8,11 @@ source = "cartesi-prt-multilevel:2.0.0@main"
 [pull.cartesiRollups]
 source = "cartesi-rollups:2.0.0@main"
 
-[deploy.DaveConsensusFactory]
-artifact = "DaveConsensusFactory"
+[deploy.DaveAppFactory]
+artifact = "DaveAppFactory"
 args = [
   "<%= cartesiRollups.InputBox.address %>",
+  "<%= cartesiRollups.ApplicationFactory.address %>",
   "<%= prtContracts.MultiLevelTournamentFactory.address %>",
 ]
 create2 = true

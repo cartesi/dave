@@ -23,3 +23,7 @@ docs/
 # Cannon
 /deployments
 /state.json
+
+# Forge coverage
+/coverage
+lcov.info
