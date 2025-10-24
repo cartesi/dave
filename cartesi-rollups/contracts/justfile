@@ -29,6 +29,11 @@ build-smart-contracts:
 test:
     forge test
 
+# generate LCOV coverage report
+coverage:
+    forge coverage --report lcov --lcov-version 2
+    genhtml -o coverage lcov.info --rc derive_function_end_line=0
+
 # clean smart contracts artifacts
 clean-smart-contracts:
     forge clean

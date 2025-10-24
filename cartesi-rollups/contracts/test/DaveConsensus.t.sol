@@ -77,7 +77,7 @@ contract MockTournament is ITournament {
         finalState = _finalState;
     }
 
-    function tryRecoveringBond() public override returns (bool) {
+    function tryRecoveringBond() public pure override returns (bool) {
         return true;
     }
 }
@@ -168,25 +168,35 @@ contract DaveConsensusTest is Test {
         _addInputs(appContract, inputCounts[0]);
 
         (Machine.Hash state0,,) = _statesAndProofs(outputsMerkleRoots[0]);
-        address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
-        _mockTournamentFactory.setSalt(salts[1]);
-        address mockTournamentAddress =
-            _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
+        DaveConsensus daveConsensus;
+        MockTournament mockTournament;
 
-        vm.expectEmit(daveConsensusAddress);
-        emit IDaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
+        {
+            address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
-        vm.expectEmit(daveConsensusAddress);
-        emit IDaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress));
+            _mockTournamentFactory.setSalt(salts[1]);
+            address mockTournamentAddress =
+                _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
 
-        DaveConsensus daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
+            vm.expectEmit(daveConsensusAddress);
+            emit IDaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
 
-        assertEq(address(daveConsensus), daveConsensusAddress);
-        assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
-        assertEq(daveConsensus.getApplicationContract(), appContract);
-        assertEq(address(daveConsensus.getTournamentFactory()), address(_mockTournamentFactory));
-        assertEq(daveConsensus.getDeploymentBlockNumber(), deploymentBlockNumber);
+            vm.expectEmit(daveConsensusAddress);
+            emit IDaveConsensus.EpochSealed(
+                0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress)
+            );
+
+            daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
+
+            assertEq(address(daveConsensus), daveConsensusAddress);
+            assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
+            assertEq(daveConsensus.getApplicationContract(), appContract);
+            assertEq(address(daveConsensus.getTournamentFactory()), address(_mockTournamentFactory));
+            assertEq(daveConsensus.getDeploymentBlockNumber(), deploymentBlockNumber);
+
+            mockTournament = MockTournament(mockTournamentAddress);
+        }
 
         {
             bool isFinished;
@@ -210,13 +220,11 @@ contract DaveConsensusTest is Test {
             assertEq(epochNumber, 0);
             assertEq(inputIndexLowerBound, 0);
             assertEq(inputIndexUpperBound, inputCounts[0]);
-            assertEq(address(tournament), mockTournamentAddress);
+            assertEq(address(tournament), address(mockTournament));
         }
 
         assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 1);
-        assertEq(address(_mockTournamentFactory.getMockTournament(0)), mockTournamentAddress);
-
-        MockTournament mockTournament = MockTournament(mockTournamentAddress);
+        assertEq(address(_mockTournamentFactory.getMockTournament(0)), address(mockTournament));
 
         assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state0));
         assertEq(address(mockTournament.getProvider()), address(daveConsensus));
@@ -227,7 +235,7 @@ contract DaveConsensusTest is Test {
             assertFalse(isFinished);
         }
 
-        (Machine.Hash state1, bytes32[] memory proof1, bytes32 leaf1) = _statesAndProofs(outputsMerkleRoots[1]);
+        (Machine.Hash state1,,) = _statesAndProofs(outputsMerkleRoots[1]);
         mockTournament.finish(winnerCommitments[0], state1);
 
         {
@@ -256,18 +264,25 @@ contract DaveConsensusTest is Test {
 
         _addInputs(appContract, inputCounts[1]);
 
-        address previousMockTournamentAddress = mockTournamentAddress;
+        {
+            _mockTournamentFactory.setSalt(salts[2]);
+            address mockTournamentAddress = _mockTournamentFactory.calculateTournamentAddress(state1, daveConsensus);
 
-        _mockTournamentFactory.setSalt(salts[2]);
-        mockTournamentAddress =
-            _mockTournamentFactory.calculateTournamentAddress(state1, IDataProvider(daveConsensusAddress));
+            (, bytes32[] memory proof1, bytes32 leaf1) = _statesAndProofs(outputsMerkleRoots[1]);
 
-        vm.expectEmit(daveConsensusAddress);
-        emit IDaveConsensus.EpochSealed(
-            1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITournament(mockTournamentAddress)
-        );
+            vm.expectEmit(address(daveConsensus));
+            emit IDaveConsensus.EpochSealed(
+                1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITournament(mockTournamentAddress)
+            );
 
-        daveConsensus.settle(0, leaf1, proof1);
+            daveConsensus.settle(0, leaf1, proof1);
+
+            assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 2);
+
+            mockTournament = _mockTournamentFactory.getMockTournament(1);
+
+            assertEq(address(mockTournament), mockTournamentAddress);
+        }
 
         {
             bool isFinished;
@@ -291,14 +306,8 @@ contract DaveConsensusTest is Test {
             assertEq(epochNumber, 1);
             assertEq(inputIndexLowerBound, inputCounts[0]);
             assertEq(inputIndexUpperBound, inputCounts[0] + inputCounts[1]);
-            assertEq(address(tournament), mockTournamentAddress);
+            assertEq(address(tournament), address(mockTournament));
         }
-
-        assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 2);
-        assertEq(address(_mockTournamentFactory.getMockTournament(0)), previousMockTournamentAddress);
-        assertEq(address(_mockTournamentFactory.getMockTournament(1)), mockTournamentAddress);
-
-        mockTournament = MockTournament(mockTournamentAddress);
 
         assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state1));
         assertEq(address(mockTournament.getProvider()), address(daveConsensus));
