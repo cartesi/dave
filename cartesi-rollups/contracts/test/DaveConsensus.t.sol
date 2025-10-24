@@ -42,15 +42,15 @@ contract MerkleProxy {
 }
 
 contract MockTournament is ITournament {
-    Machine.Hash immutable _initialState;
-    IDataProvider immutable _provider;
+    Machine.Hash immutable _INITIAL_STATE;
+    IDataProvider immutable _PROVIDER;
     bool _finished;
     Tree.Node _winnerCommitment;
     Machine.Hash _finalState;
 
     constructor(Machine.Hash initialState, IDataProvider provider) {
-        _initialState = initialState;
-        _provider = provider;
+        _INITIAL_STATE = initialState;
+        _PROVIDER = provider;
     }
 
     function finish(Tree.Node winnerCommitment, Machine.Hash finalState) external {
@@ -60,11 +60,11 @@ contract MockTournament is ITournament {
     }
 
     function getInitialState() external view returns (Machine.Hash) {
-        return _initialState;
+        return _INITIAL_STATE;
     }
 
     function getProvider() external view returns (IDataProvider) {
-        return _provider;
+        return _PROVIDER;
     }
 
     function arbitrationResult()
