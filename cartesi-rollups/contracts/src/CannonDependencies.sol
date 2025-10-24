@@ -5,4 +5,5 @@ pragma solidity ^0.8.0;
 
 // List of contracts used in Cannonfiles
 
-import "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/ApplicationFactory.sol";
+/// forge-lint: disable-next-line(unused-import)
+import {ApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/ApplicationFactory.sol";
