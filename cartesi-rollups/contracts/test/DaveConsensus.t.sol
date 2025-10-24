@@ -7,8 +7,12 @@ import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
+import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 
 import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInputBox.sol";
+import {
+    IOutputsMerkleRootValidator
+} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/consensus/IOutputsMerkleRootValidator.sol";
 import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/InputBox.sol";
 import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/library/LibMerkle32.sol";
 
@@ -248,6 +252,8 @@ contract DaveConsensusTest is Test {
             assertEq(epochNumber, 0);
         }
 
+        assertFalse(daveConsensus.isOutputsMerkleRootValid(appContract, outputsMerkleRoots[1]));
+
         _addInputs(appContract, inputCounts[1]);
 
         address previousMockTournamentAddress = mockTournamentAddress;
@@ -302,6 +308,8 @@ contract DaveConsensusTest is Test {
 
             assertFalse(isFinished);
         }
+
+        assertTrue(daveConsensus.isOutputsMerkleRootValid(appContract, outputsMerkleRoots[1]));
 
         (Machine.Hash state2,,) = _statesAndProofs(outputsMerkleRoots[2]);
         mockTournament.finish(winnerCommitments[1], state2);
@@ -374,6 +382,46 @@ contract DaveConsensusTest is Test {
             bytes32 root = daveConsensus.provideMerkleRootOfInput(inputIndexOutsideBounds, new bytes(0));
             assertEq(root, bytes32(0));
         }
+    }
+
+    function testErc165(address appContract, Machine.Hash initialState, bytes32 salt, bytes4 unsupportedInterfaceId)
+        external
+    {
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salt);
+
+        // List the ID of all interfaces supported by `DaveConsensus`
+        bytes4[] memory supportedInterfaces = new bytes4[](3);
+        supportedInterfaces[0] = type(IERC165).interfaceId;
+        supportedInterfaces[1] = type(IDataProvider).interfaceId;
+        supportedInterfaces[2] = type(IOutputsMerkleRootValidator).interfaceId;
+
+        // For each supported interface ID, ensure `supportsInterface` returns true
+        // Also, make sure the fuzzy parameter `unsupportedInterfaceId` is distinct from them
+        for (uint256 i; i < supportedInterfaces.length; ++i) {
+            bytes4 interfaceId = supportedInterfaces[i];
+            assertTrue(daveConsensus.supportsInterface(interfaceId));
+            vm.assume(unsupportedInterfaceId != interfaceId);
+        }
+
+        // Finally, ensure that any other interface ID is explicitly unsupported
+        assertFalse(daveConsensus.supportsInterface(unsupportedInterfaceId));
+    }
+
+    function testIsOutputsMerkleRootValid(
+        address appContract,
+        Machine.Hash initialState,
+        bytes32 salt,
+        address otherAppContract,
+        bytes32 outputsMerkleRoot
+    ) external {
+        vm.assume(appContract != otherAppContract);
+
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salt);
+
+        vm.expectRevert(_encodeApplicationMismatch(appContract, otherAppContract));
+        daveConsensus.isOutputsMerkleRootValid(otherAppContract, outputsMerkleRoot);
+
+        assertFalse(daveConsensus.isOutputsMerkleRootValid(appContract, outputsMerkleRoot));
     }
 
     function _addInputs(address appContract, uint256 n) internal {
@@ -450,5 +498,17 @@ contract DaveConsensusTest is Test {
         assertEq(current, root);
 
         return (Machine.Hash.wrap(current), siblings, outputsMerkleRoot);
+    }
+
+    /// @notice Encode an `ApplicationMismatch` error.
+    /// @param expected The expected application contract address (the one provided through the constructor)
+    /// @param obtained The application contract address received by the function
+    /// @return encodedError The ABI-encoded Solidity error
+    function _encodeApplicationMismatch(address expected, address obtained)
+        internal
+        pure
+        returns (bytes memory encodedError)
+    {
+        return abi.encodeWithSelector(IDaveConsensus.ApplicationMismatch.selector, expected, obtained);
     }
 }
