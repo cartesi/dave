@@ -52,16 +52,16 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
     using LibMerkle32 for bytes32[];
 
     /// @notice The input box contract
-    IInputBox immutable _inputBox;
+    IInputBox immutable _INPUT_BOX;
 
     /// @notice The application contract
-    address immutable _appContract;
+    address immutable _APP_CONTRACT;
 
     /// @notice The contract used to instantiate tournaments
-    ITournamentFactory immutable _tournamentFactory;
+    ITournamentFactory immutable _TOURNAMENT_FACTORY;
 
     /// @notice Deployment block number
-    uint256 immutable _deploymentBlockNumber = block.number;
+    uint256 immutable _DEPLOYMENT_BLOCK_NUMBER = block.number;
 
     /// @notice Current sealed epoch number
     uint256 _epochNumber;
@@ -85,9 +85,9 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         Machine.Hash initialMachineStateHash
     ) {
         // Initialize immutable variables
-        _inputBox = inputBox;
-        _appContract = appContract;
-        _tournamentFactory = tournamentFactory;
+        _INPUT_BOX = inputBox;
+        _APP_CONTRACT = appContract;
+        _TOURNAMENT_FACTORY = tournamentFactory;
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
         // Initialize first sealed epoch
@@ -124,11 +124,11 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         // Seal current accumulating epoch, save settled output tree
         _epochNumber++;
         _inputIndexLowerBound = _inputIndexUpperBound;
-        _inputIndexUpperBound = _inputBox.getNumberOfInputs(_appContract);
+        _inputIndexUpperBound = _INPUT_BOX.getNumberOfInputs(_APP_CONTRACT);
         _outputsMerkleRoots[outputsMerkleRoot] = true;
 
         // Start new tournament
-        _tournament = _tournamentFactory.instantiate(finalMachineStateHash, this);
+        _tournament = _TOURNAMENT_FACTORY.instantiate(finalMachineStateHash, this);
 
         emit EpochSealed(
             _epochNumber,
@@ -160,15 +160,15 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
     }
 
     function getInputBox() external view override returns (IInputBox) {
-        return _inputBox;
+        return _INPUT_BOX;
     }
 
     function getApplicationContract() external view override returns (address) {
-        return _appContract;
+        return _APP_CONTRACT;
     }
 
     function getTournamentFactory() external view override returns (ITournamentFactory) {
-        return _tournamentFactory;
+        return _TOURNAMENT_FACTORY;
     }
 
     function provideMerkleRootOfInput(uint256 inputIndexWithinEpoch, bytes calldata input)
@@ -185,7 +185,7 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         }
 
         bytes32 calculatedInputHash = keccak256(input);
-        bytes32 realInputHash = _inputBox.getInputHash(_appContract, inputIndex);
+        bytes32 realInputHash = _INPUT_BOX.getInputHash(_APP_CONTRACT, inputIndex);
         require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
 
         uint256 log2SizeOfDrive = input.getMinLog2SizeOfDrive();
@@ -198,7 +198,7 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         override
         returns (bool)
     {
-        require(_appContract == appContract, ApplicationMismatch(_appContract, appContract));
+        require(_APP_CONTRACT == appContract, ApplicationMismatch(_APP_CONTRACT, appContract));
         return _outputsMerkleRoots[outputsMerkleRoot];
     }
 
@@ -208,7 +208,7 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
     }
 
     function getDeploymentBlockNumber() external view override returns (uint256) {
-        return _deploymentBlockNumber;
+        return _DEPLOYMENT_BLOCK_NUMBER;
     }
 
     function _validateOutputTree(
