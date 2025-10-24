@@ -3,8 +3,6 @@ pragma solidity ^0.8.22;
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
-import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
-
 import {ApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/ApplicationFactory.sol";
 import {DataAvailability} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/common/DataAvailability.sol";
 import {IApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/IApplicationFactory.sol";
@@ -19,7 +17,6 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournamentFactory.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
-import {Tree} from "prt-contracts/types/Tree.sol";
 
 contract MockTournamentFactory is ITournamentFactory {
     address tournamentAddress;
