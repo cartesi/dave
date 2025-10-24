@@ -32,6 +32,24 @@ create2 = true
 salt = "<%= zeroHash %>"
 ifExists = "continue"
 
+[deploy.DaveAppAddressCalculator]
+artifact = "DaveAppAddressCalculator"
+args = ["<%= DaveAppFactory.address %>"]
+create2 = true
+salt = "<%= zeroHash %>"
+ifExists = "continue"
+
+[invoke.calculateDaveAppAddress]
+target = "DaveAppAddressCalculator"
+func = "calculateDaveAppAddress(bytes32,bytes32)"
+args = [
+    "<%= settings.initialHash %>",
+    "<%= settings.salt %>",
+]
+factory.ApplicationInstance.artifact = "IApplication"
+factory.ApplicationInstance.event = "AddressCalculation"
+factory.ApplicationInstance.arg = 2
+
 [invoke.newDaveApp]
 target = "DaveAppFactory"
 func = "newDaveApp(bytes32,bytes32)"
@@ -39,12 +57,10 @@ args = [
     "<%= settings.initialHash %>",
     "<%= settings.salt %>",
 ]
-factory.ApplicationInstance.artifact = "IApplication"
-factory.ApplicationInstance.event = "DaveAppCreated"
-factory.ApplicationInstance.arg = 0
 factory.DaveConsensusInstance.artifact = "IDaveConsensus"
 factory.DaveConsensusInstance.event = "DaveAppCreated"
 factory.DaveConsensusInstance.arg = 1
+depends = ["invoke.addInput"]
 
 [invoke.addInput]
 target = "InputBox"
