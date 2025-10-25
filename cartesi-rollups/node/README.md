@@ -29,7 +29,7 @@ Commands:
 
 Options:
       --app-address <APP_ADDRESS>
-          addresss of application [env: APP_ADDRESS=]
+          address of application [env: APP_ADDRESS=]
       --machine-path <MACHINE_PATH>
           path to machine template image [env: MACHINE_PATH=]
       --web3-rpc-url <WEB3_RPC_URL>
