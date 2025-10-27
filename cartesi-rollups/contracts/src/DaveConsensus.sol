@@ -36,14 +36,14 @@ import {Merkle} from "./Merkle.sol";
 ///
 /// @notice Off-chain nodes can listen to `EpochSealed` events
 /// to know where epochs start and end, and which epochs have been
-/// settled already and which one is open for challenges still.
+/// settled already and which one is still open for challenges.
 /// Anyone can settle an epoch by calling `settle`.
 /// One can also check if it can be settled by calling `canSettle`.
 ///
 /// @notice At any given time, there is always one sealed epoch.
 /// Prior to it, every epoch has been settled.
 /// After it, the next epoch is accumulating inputs. Once this epoch is settled,
-/// the accumlating epoch will be sealed, and a new
+/// the accumulating epoch will be sealed, and a new
 /// accumulating epoch will be created.
 ///
 contract DaveConsensus is IDataProvider, IOutputsMerkleRootValidator, ERC165 {
