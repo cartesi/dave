@@ -7,7 +7,7 @@ use alloy::{
 };
 use clap::{ArgGroup, Args, Parser};
 
-const ANVIL_CHAIN_ID: u64 = 31337;
+const CANNON_CHAIN_ID: u64 = 13370;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
 pub const ANVIL_KEY_1: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
@@ -22,7 +22,7 @@ pub struct BlockchainConfig {
     #[arg(long, env, default_value = ANVIL_URL)]
     pub web3_rpc_url: String,
     /// chain id of the blockchain
-    #[arg(long, env, default_value_t = ANVIL_CHAIN_ID)]
+    #[arg(long, env, default_value_t = CANNON_CHAIN_ID)]
     pub web3_chain_id: u64,
     /// private key of player's wallet
     #[arg(long, env, group = "auth")]
