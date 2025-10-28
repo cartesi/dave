@@ -1,7 +1,6 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 mod error;
-mod find_contract_creation;
 
 use crate::error::{ProviderErrors, Result};
 
@@ -16,7 +15,6 @@ use alloy::{
 };
 use async_recursion::async_recursion;
 use cartesi_machine::types::Hash;
-use find_contract_creation::find_contract_creation_block;
 use log::{debug, info, trace};
 use num_traits::cast::ToPrimitive;
 use rollups_state_manager::sync::Watch;
@@ -29,7 +27,10 @@ use std::{
 };
 
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
-use cartesi_rollups_contracts::{application::Application, input_box::InputBox::InputAdded};
+use cartesi_rollups_contracts::{
+    application::Application,
+    input_box::InputBox::{self, InputAdded},
+};
 use rollups_state_manager::{Epoch, Input, InputId, StateManager};
 
 #[derive(Debug, Clone, Copy)]
@@ -86,9 +87,16 @@ impl AddressBook {
         };
 
         let initial_hash = Self::initial_hash(consensus, provider).await;
-        let input_box_created_block = find_contract_creation_block(provider, input_box)
+
+        let input_box_contract = InputBox::new(input_box, provider);
+
+        let input_box_created_block: u64 = input_box_contract
+            .getDeploymentBlockNumber()
+            .call()
             .await
-            .expect("fail to get input_box creation block");
+            .expect("fail to query input box deployment block number")
+            .try_into()
+            .expect("fail to cast input box deployment block number into u64");
 
         Self {
             app,
@@ -102,9 +110,13 @@ impl AddressBook {
     pub async fn initial_hash(consensus: Address, provider: &impl Provider) -> Hash {
         let consensus_contract = DaveConsensus::new(consensus, provider);
 
-        let consensus_created_block = find_contract_creation_block(provider, consensus)
+        let consensus_created_block: u64 = consensus_contract
+            .getDeploymentBlockNumber()
+            .call()
             .await
-            .expect("fail to get consensus creation block");
+            .expect("fail to query consensus deployment block number")
+            .try_into()
+            .expect("fail to cast consensus deployment block number into u64");
 
         debug!(
             "consensus created {} at {}",
