@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-chains"
-version = "0.2.14"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf01dd83a1ca5e4807d0ca0223c9615e211ce5db0a9fd1443c2778cacf89b546"
+checksum = "32f50c47cfcd3e788d87c6fc1166309794da0ebcbd2082cee50d9d072adc630f"
 dependencies = [
  "alloy-primitives",
  "num_enum",
@@ -2371,7 +2371,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4547,7 +4547,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5208,7 +5208,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
