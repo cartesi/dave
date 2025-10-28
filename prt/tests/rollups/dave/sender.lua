@@ -89,7 +89,7 @@ function Sender:_send_tx(contract_address, sig, args)
 end
 
 function Sender:tx_add_input(payload)
-    local sig = [[addInput(address,bytes)(bytes32)]]
+    local sig = "addInput(address,bytes)"
     return self:_send_tx(
         self.input_box_address,
         sig,
