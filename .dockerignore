@@ -17,9 +17,6 @@
 test/programs/linux.bin
 test/programs/rootfs.ext2
 test/programs/**/machine-image/
-test/programs/**/addresses
-test/programs/**/anvil_state.json
-test/programs/**/_anvil.log
 
 cartesi-rollups/contracts/bindings-rs/src/contract/
 prt/contracts/bindings-rs/src/contract/

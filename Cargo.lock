@@ -4395,6 +4395,8 @@ dependencies = [
  "rollups-state-manager",
  "rusqlite",
  "rusqlite_migration",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",

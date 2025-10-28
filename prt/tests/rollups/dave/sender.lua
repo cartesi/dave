@@ -38,7 +38,7 @@ end
 local Sender = {}
 Sender.__index = Sender
 
-function Sender:new(input_box_address, app_contract_address, pk, endpoint)
+function Sender:new(input_box_address, dave_app_factory_address, app_contract_address, pk, endpoint)
     pk = pk or blockchain_constants.pks[1]
     endpoint = endpoint or blockchain_constants.endpoint
     local sender = {
@@ -46,6 +46,7 @@ function Sender:new(input_box_address, app_contract_address, pk, endpoint)
         endpoint = endpoint,
 
         input_box_address = input_box_address,
+        dave_app_factory_address = dave_app_factory_address,
         app_contract_address = app_contract_address,
         tx_count = 0,
     }
@@ -100,6 +101,15 @@ function Sender:tx_add_inputs(inputs)
     for _,payload in ipairs(inputs) do
         self:tx_add_input(payload)
     end
+end
+
+function Sender:tx_new_dave_app(template_hash, salt)
+    local sig = "newDaveApp(bytes32,bytes32)"
+    return self:_send_tx(
+        self.dave_app_factory_address,
+        sig,
+        { template_hash, salt }
+    )
 end
 
 function Sender:advance_blocks(blocks)

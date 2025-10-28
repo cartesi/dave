@@ -679,7 +679,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
-        let (anvil, provider, address_book) = spawn_anvil_and_provider();
+        let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let inputbox = InputBox::new(address_book.input_box, &provider);
 
         let input_count_1 = 2;
@@ -723,7 +723,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_epoch_reader() -> Result<()> {
-        let (anvil, provider, address_book) = spawn_anvil_and_provider();
+        let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let daveconsensus = DaveConsensus::new(address_book.consensus, &provider);
 
         let epoch_reader = create_epoch_reader();
@@ -744,7 +744,7 @@ mod blockchain_reader_tests {
 
     #[tokio::test]
     async fn test_blockchain_reader() -> Result<()> {
-        let (anvil, provider, address_book) = spawn_anvil_and_provider();
+        let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
 
         let inputbox = InputBox::new(address_book.input_box, provider.clone());
 

@@ -13,11 +13,14 @@ local ANVIL_PATH = assert(os.getenv("ANVIL_PATH"))
 
 -- machine template hash
 local TEMPLATE_MACHINE = assert(os.getenv("TEMPLATE_MACHINE"))
+local TEMPLATE_MACHINE_HASH = assert(os.getenv("TEMPLATE_MACHINE_HASH"))
 
 -- addresses
-local APP_ADDRESS = assert(os.getenv("APP"))
-local CONSENSUS_ADDRESS = assert(os.getenv("CONSENSUS"))
+local DAVE_APP_FACTORY_ADDRESS = assert(os.getenv("DAVE_APP_FACTORY"))
 local INPUT_BOX_ADDRESS = assert(os.getenv("INPUT_BOX"))
+
+-- create2 salt value
+local SALT = "0x" .. string.rep("00", 32)
 
 local SLEEP_TIME = 1
 local FAST_FORWARD_TIME = 16
@@ -27,10 +30,10 @@ local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
 local Env = {
     anvil_path = ANVIL_PATH,
 
-    app_address = APP_ADDRESS,
-    consensus_address = CONSENSUS_ADDRESS,
     input_box_address = INPUT_BOX_ADDRESS,
+    dave_app_factory_address = DAVE_APP_FACTORY_ADDRESS,
     template_machine = TEMPLATE_MACHINE,
+    template_machine_hash = TEMPLATE_MACHINE_HASH,
 
     sleep_time = SLEEP_TIME,
     fast_forward_time = FAST_FORWARD_TIME,
@@ -42,19 +45,25 @@ local Env = {
     -- sender = false,
 
     -- dave_node = false,
+    -- app_address = false,
+    -- consensus_address = false,
 }
 
 function Env.spawn_blockchain()
     local blockchain = Blockchain:new(ANVIL_PATH)
     Env.blockchain = blockchain
-    Env.reader = Reader:new(INPUT_BOX_ADDRESS, CONSENSUS_ADDRESS, blockchain.endpoint)
-    Env.sender = Sender:new(INPUT_BOX_ADDRESS, APP_ADDRESS, blockchain.pks[1], blockchain.endpoint)
-    Env.sender:advance_blocks(1)
+    Env.reader = Reader:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, TEMPLATE_MACHINE_HASH, SALT, blockchain.endpoint)
+    Env.app_address = Env.reader.app_address
+    Env.consensus_address = Env.reader.consensus_address
+    Env.sender = Sender:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, Env.app_address, blockchain.pks[1], blockchain.endpoint)
+    Env.sender:tx_add_input(Env.sample_inputs[1])
+    Env.sender:tx_new_dave_app(TEMPLATE_MACHINE_HASH, SALT)
+    Env.sender:advance_blocks(2)
     return blockchain
 end
 
 function Env.spawn_node()
-    local dave_node = Dave:new(TEMPLATE_MACHINE, APP_ADDRESS, Env.sender, SLEEP_TIME)
+    local dave_node = Dave:new(TEMPLATE_MACHINE, Env.app_address, Env.sender, SLEEP_TIME)
     Env.dave_node = dave_node
     return dave_node
 end

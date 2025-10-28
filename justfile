@@ -18,6 +18,7 @@ setup-docker: setup build-docker-image
 setup-local: setup
   just -f ./prt/contracts/justfile install-deps
   just -f ./cartesi-rollups/contracts/justfile install-deps
+  just -f ./cartesi-rollups/contracts/justfile build-devnet
   just -f ./test/programs/justfile download-deps
   just -f ./test/programs/justfile build-programs
 

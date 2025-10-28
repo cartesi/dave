@@ -64,18 +64,22 @@ end
 local Reader = {}
 Reader.__index = Reader
 
-function Reader:new(input_box_address, consensus_address, endpoint, genesis)
+function Reader:new(input_box_address, dave_app_factory_address, template_hash, salt, endpoint, genesis)
     genesis = genesis or 0
     endpoint = endpoint or blockchain_constants.endpoint
     local reader = {
         input_box_address = input_box_address,
-        consensus_address = consensus_address,
+        dave_app_factory_address = dave_app_factory_address,
         endpoint = assert(endpoint),
         inner_reader = InnerReader:new(endpoint),
         genesis = genesis,
     }
 
     setmetatable(reader, self)
+
+    -- pre-calculate app and consensus addresses based on provided template hash and salt values
+    reader.app_address, reader.consensus_address = reader:calculate_dave_app_address(template_hash, salt)
+
     return reader
 end
 
@@ -273,6 +277,13 @@ function Reader:balance(address)
     handle:close()
 
     return uint256.new(balance)
+end
+
+function Reader:calculate_dave_app_address(template_hash, salt)
+    local sig = "calculateDaveAppAddress(bytes32,bytes32)(address,address)"
+    local ret = self:_call(self.dave_app_factory_address, sig, { template_hash, salt })
+    assert(#ret == 2)
+    return table.unpack(ret)
 end
 
 return Reader
