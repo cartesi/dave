@@ -1,11 +1,9 @@
 # Variables
 BINDINGS_DIR := "./bindings-rs/src/contract"
 DEPLOYMENTS_DIR := "./deployments"
+DEVNET_STATE := "state.json"
 SRC_DIR := "."
-BINDINGS_FILTER := "DaveConsensus"
-
-DEVNET_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-DEVNET_RPC_URL := "http://127.0.0.1:8545"
+BINDINGS_FILTER := "DaveConsensus|DaveAppFactory"
 
 default: build
 
@@ -48,35 +46,23 @@ clean-deployments:
 
 # generate Rust bindings from Solidity code
 bind: clean-bindings
-    forge bind --alloy --select {{BINDINGS_FILTER}} \
+    forge bind --alloy --select "{{BINDINGS_FILTER}}" \
         --module --bindings-path {{BINDINGS_DIR}} \
         --skip-extra-derives \
         --root {{SRC_DIR}}
+
+build-devnet: \
+        (deploy-core \
+            "--anvil.preserve-historical-states"
+            "--anvil.dump-state" DEVNET_STATE \
+            "--write-deployments" DEPLOYMENTS_DIR)
 
 deploy-core *OPTS: \
         (deploy-prt-core OPTS) \
         (deploy "cannonfile.toml" OPTS)
 
-deploy-instance INITIAL_HASH *OPTS: \
-        (deploy-prt-core OPTS) \
-        (deploy-core OPTS) \
-        (deploy "cannonfile.prod-instance.toml" ("initialHash=" + INITIAL_HASH) OPTS)
-
-deploy-instance-dev INITIAL_HASH *OPTS: \
-        (deploy-prt-core-dev OPTS) \
-        (deploy-dev "cannonfile.dev-instance.toml" ("initialHash=" + INITIAL_HASH) OPTS)
-
 deploy-prt-core *OPTS:
     just -f ../../prt/contracts/justfile deploy-core {{OPTS}}
-
-deploy-prt-core-dev *OPTS:
-    just -f ../../prt/contracts/justfile deploy-core-dev {{OPTS}}
-
-deploy-dev CANNONFILE *OPTS: \
-        (deploy CANNONFILE OPTS \
-            "--wipe" \
-            "--rpc-url" DEVNET_RPC_URL \
-            "--private-key" DEVNET_PRIVATE_KEY)
 
 deploy CANNONFILE *OPTS:
     pnpm cannon build {{CANNONFILE}} {{OPTS}}

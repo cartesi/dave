@@ -35,52 +35,13 @@ You can run the unit tests with the following command.
 just test
 ```
 
-## Deploying an application
+## Deploying the core contracts
 
-Besides the `DaveAppFactory` contract,
-you may also want to deploy an application contract
-that is validated by a `DaveConsensus` contract.
-In order to do so, you need to first build your application machine
-and compute its initial hash (also known as its _template hash_).
-Depending on whether you wish to deploy this application
-to a local, development network (like `anvil` or `reth`)
-or to a live production network (like a mainnet or a testnet),
-there are different sets of commands you may want to run.
-Nevertheless, they all share the same options and environment variables:
-
-| Option | Description | Environment variable |
-| :-: | :-: | :- |
-| `--rpc-url <URL>` | RPC URL | `CANNON_RPC_URL` |
-| `--private-key <PK>` | Private key | `CANNON_PRIVATE_KEY` |
-| `--write-deployments <DIR>` | Deployments diretory | |
-| `--dry-run` | Simulate deployment on a local fork | |
-| `--impersonate <ADDR>` | Impersonate address (requires `--dry-run`) | |
-| `--impersonate-all` | Impersonate all addresses (requires `--dry-run`) | |
-
-### Local deployment (dev)
-
-In order to deploy the contracts to a local development network (e.g. Anvil), you may run the following command.
-This command receives a positional argument, the initial machine state hash of the application.
+In order to deploy the core contracts, you may run the following command.
+You may want to consult the [Cannon CLI documentation] for deployment options.
 
 ```sh
-just deploy-instance-dev $INITIAL_HASH
+just deploy-core  # [options...]
 ```
 
-Additional arguments are forwarded to the [`cannon build`](https://usecannon.com/learn/cli#build) command.
-
-### Live deployment (prod)
-
-Deploying the contracts to a production network is also simple to do through the following command.
-This command takes the same positional argument as the development-mode variant.
-
-```sh
-just deploy-instance $INITIAL_HASH
-```
-
-If, instead, you wish to deploy just the core contracts, you can run the following command.
-
-```sh
-just deploy-core
-```
-
-Both commands require an RPC URL and private key to be specified, or may be simulated through a dry run.
+[Cannon CLI documentation]: https://usecannon.com/learn/cli

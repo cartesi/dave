@@ -4,22 +4,50 @@ use alloy::{
     network::EthereumWallet,
     node_bindings::{Anvil, AnvilInstance},
     primitives::Address,
+    primitives::FixedBytes,
     providers::{DynProvider, Provider, ProviderBuilder},
     signers::{Signer, local::PrivateKeySigner},
 };
+use cartesi_dave_contracts::i_dave_app_factory::IDaveAppFactory;
+use cartesi_rollups_contracts::i_input_box::IInputBox;
+use serde::Deserialize;
 use std::{
     fs::{self, File},
     io::Read,
     path::PathBuf,
 };
 
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
 const PROGRAM: &str = "../../../test/programs/echo/";
+const ANVIL_STATE: &str = "../../../cartesi-rollups/contracts/state.json";
+const DEPLOYMENTS: &str = "../../../cartesi-rollups/contracts/deployments/";
+
+#[derive(Deserialize)]
+struct Deployment {
+    address: String,
+}
 
 pub fn program_path() -> PathBuf {
     PathBuf::from(PROGRAM).canonicalize().unwrap()
 }
 
-pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, AddressBook) {
+pub fn anvil_state_path() -> PathBuf {
+    PathBuf::from(ANVIL_STATE).canonicalize().unwrap()
+}
+
+pub fn deployments_path() -> PathBuf {
+    PathBuf::from(DEPLOYMENTS).canonicalize().unwrap()
+}
+
+pub fn deployment_address(contract_id: &str) -> Address {
+    let deployment_path = deployments_path().join(format!("{}.json", contract_id));
+    let deployment_json = fs::read_to_string(deployment_path).unwrap();
+    let deployment: Deployment = serde_json::from_str(&deployment_json).unwrap();
+    Address::from_hex(deployment.address).unwrap()
+}
+
+pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, AddressBook)> {
     let program_path = program_path();
 
     let anvil = Anvil::default()
@@ -29,7 +57,7 @@ pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, AddressBook) {
             "--slots-in-an-epoch",
             "1",
             "--load-state",
-            program_path.join("anvil_state.json").to_str().unwrap(),
+            anvil_state_path().to_str().unwrap(),
             "--block-base-fee-per-gas",
             "0",
         ])
@@ -45,15 +73,8 @@ pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, AddressBook) {
         .connect_http(anvil.endpoint_url())
         .erased();
 
-    let (input_box, consensus, app) = {
-        let addresses = fs::read_to_string(program_path.join("addresses")).unwrap();
-        let mut lines = addresses.lines().map(str::trim);
-        (
-            Address::from_hex(lines.next().unwrap()).unwrap(),
-            Address::from_hex(lines.next().unwrap()).unwrap(),
-            Address::from_hex(lines.next().unwrap()).unwrap(),
-        )
-    };
+    let input_box = deployment_address("cartesiRollups.InputBox");
+    let dave_app_factory = deployment_address("DaveAppFactory");
 
     let initial_hash = {
         // $ xxd -p -c32 test/programs/echo/machine-image/hash
@@ -63,7 +84,32 @@ pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, AddressBook) {
         buffer
     };
 
-    (
+    let salt = FixedBytes::default();
+
+    let dave_app_factory_contract = IDaveAppFactory::new(dave_app_factory, &provider);
+    let (app, consensus) = dave_app_factory_contract
+        .calculateDaveAppAddress(initial_hash.into(), salt)
+        .call()
+        .await
+        .expect("failed to calculate Dave app addresses")
+        .try_into()
+        .unwrap();
+
+    IInputBox::new(input_box, &provider)
+        .addInput(app, "Hello, world!".into())
+        .send()
+        .await?
+        .watch()
+        .await?;
+
+    dave_app_factory_contract
+        .newDaveApp(initial_hash.into(), salt)
+        .send()
+        .await?
+        .watch()
+        .await?;
+
+    Ok((
         anvil,
         provider,
         AddressBook {
@@ -73,5 +119,5 @@ pub fn spawn_anvil_and_provider() -> (AnvilInstance, DynProvider, AddressBook) {
             genesis_block_number: 0,
             initial_hash,
         },
-    )
+    ))
 }

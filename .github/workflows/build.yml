@@ -80,6 +80,10 @@ jobs:
         working-directory: ./cartesi-rollups/contracts
         run: |
           just install-deps
+      - name: Build devnet
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          just build-devnet
       - name: Download deps
         working-directory: ./test/programs/
         run: |
@@ -91,7 +95,6 @@ jobs:
         working-directory: ./test/programs/
         run: |
           just build-honeypot-snapshot
-          just build-honeypot
       - name: Test prt-rollups
         timeout-minutes: 20
         run: |

@@ -53,18 +53,5 @@ bind: clean-bindings
 deploy-core *OPTS: \
         (deploy "cannonfile.toml" OPTS)
 
-deploy-core-dev *OPTS: \
-        (deploy-dev "cannonfile.toml" OPTS)
-
-deploy-instance-dev INITIAL_HASH *OPTS: \
-        (deploy-core-dev OPTS) \
-        (deploy-dev "cannonfile.dev-instance.toml" ("initialHash=" + INITIAL_HASH) OPTS)
-
-deploy-dev CANNONFILE *OPTS: \
-        (deploy CANNONFILE OPTS \
-            "--wipe" \
-            "--rpc-url" DEVNET_RPC_URL \
-            "--private-key" DEVNET_PRIVATE_KEY)
-
 deploy CANNONFILE *OPTS:
     pnpm cannon build {{CANNONFILE}} {{OPTS}}
