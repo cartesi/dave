@@ -8,9 +8,9 @@ import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.s
 
 import {
     IOutputsMerkleRootValidator
-} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/consensus/IOutputsMerkleRootValidator.sol";
-import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInputBox.sol";
-import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/library/LibMerkle32.sol";
+} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/consensus/IOutputsMerkleRootValidator.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
+import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";

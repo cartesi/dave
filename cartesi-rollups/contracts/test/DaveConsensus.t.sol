@@ -9,12 +9,12 @@ import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 
-import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInputBox.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
 import {
     IOutputsMerkleRootValidator
-} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/consensus/IOutputsMerkleRootValidator.sol";
-import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/InputBox.sol";
-import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/library/LibMerkle32.sol";
+} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/consensus/IOutputsMerkleRootValidator.sol";
+import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/InputBox.sol";
+import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
