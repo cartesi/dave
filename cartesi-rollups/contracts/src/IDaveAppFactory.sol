@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.8;
 
-import {IApplication} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/IApplication.sol";
+import {IApplication} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/IApplication.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
 

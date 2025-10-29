@@ -3,12 +3,12 @@ pragma solidity ^0.8.22;
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
-import {ApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/ApplicationFactory.sol";
-import {DataAvailability} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/common/DataAvailability.sol";
-import {IApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/IApplicationFactory.sol";
-import {IApplication} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/dapp/IApplication.sol";
-import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/IInputBox.sol";
-import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.1/src/inputs/InputBox.sol";
+import {ApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/ApplicationFactory.sol";
+import {DataAvailability} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/common/DataAvailability.sol";
+import {IApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/IApplicationFactory.sol";
+import {IApplication} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/IApplication.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
+import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/InputBox.sol";
 
 import {DaveAppFactory} from "src/DaveAppFactory.sol";
 import {IDaveAppFactory} from "src/IDaveAppFactory.sol";
