@@ -22,7 +22,7 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Storage
     //
-    mapping(NonRootTournament => Match.IdHash) matchIdFromInnerTournaments;
+    mapping(NonRootTournament => Match.Id) matchIdFromInnerTournaments;
 
     //
     // Events
@@ -75,7 +75,7 @@ abstract contract NonLeafTournament is Tournament {
             _matchState.toCycle(args.commitmentArgs),
             args.level + 1
         );
-        matchIdFromInnerTournaments[_inner] = _matchId.hashFromId();
+        matchIdFromInnerTournaments[_inner] = _matchId;
 
         emit NewInnerTournament(_matchId.hashFromId(), _inner);
     }
@@ -84,14 +84,15 @@ abstract contract NonLeafTournament is Tournament {
     error ChildTournamentCannotBeEliminated();
     error ChildTournamentMustBeEliminated();
     error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
+    error InvalidTournamentWinner(Tree.Node winner);
 
     function winInnerTournament(
         NonRootTournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) external refundable(Gas.WIN_INNER_TOURNAMENT) tournamentNotFinished {
-        Match.IdHash _matchIdHash =
-            matchIdFromInnerTournaments[_childTournament];
+        Match.Id memory _matchId = matchIdFromInnerTournaments[_childTournament];
+        Match.IdHash _matchIdHash = _matchId.hashFromId();
         _matchIdHash.requireExist();
 
         Match.State storage _matchState = matches[_matchIdHash];
@@ -120,17 +121,20 @@ abstract contract NonLeafTournament is Tournament {
 
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
 
-        // delete storage
-        deleteMatch(_matchIdHash, MatchDeletedReason.SUBGAME_WINNER, _winner);
-        matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
+        WinnerCommitment _winnerCommitment;
 
-        // clear the claimer for the losing commitment
-        if (_matchState.otherParent.eq(_winner)) {
-            Tree.Node _loser = _matchState.leftNode.join(_matchState.rightNode);
-            delete claimers[_loser];
+        if (_winner.eq(_matchId.commitmentOne)) {
+            _winnerCommitment = WinnerCommitment.ONE;
+        } else if (_winner.eq(_matchId.commitmentTwo)) {
+            _winnerCommitment = WinnerCommitment.TWO;
         } else {
-            delete claimers[_matchState.otherParent];
+            revert InvalidTournamentWinner(_winner);
         }
+
+        deleteMatch(
+            _matchId, MatchDeletionReason.CHILD_TOURNAMENT, _winnerCommitment
+        );
+        delete matchIdFromInnerTournaments[_childTournament];
 
         _childTournament.tryRecoveringBond();
     }
@@ -140,9 +144,8 @@ abstract contract NonLeafTournament is Tournament {
         refundable(Gas.ELIMINATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
-        Match.IdHash _matchIdHash = matchIdFromInnerTournaments[
-            _childTournament
-        ];
+        Match.Id memory _matchId = matchIdFromInnerTournaments[_childTournament];
+        Match.IdHash _matchIdHash = _matchId.hashFromId();
         _matchIdHash.requireExist();
 
         Match.State storage _matchState = matches[_matchIdHash];
@@ -154,14 +157,12 @@ abstract contract NonLeafTournament is Tournament {
             ChildTournamentCannotBeEliminated()
         );
 
-        // delete storage
         deleteMatch(
-            _matchIdHash, MatchDeletedReason.BOTH_ELIMINATED, Tree.ZERO_NODE
+            _matchId,
+            MatchDeletionReason.CHILD_TOURNAMENT,
+            WinnerCommitment.NONE
         );
-        matchIdFromInnerTournaments[_childTournament] = Match.ZERO_ID;
-        // clear the claimer for both commitments
-        delete claimers[_matchState.otherParent];
-        delete claimers[_matchState.leftNode.join(_matchState.rightNode)];
+        delete matchIdFromInnerTournaments[_childTournament];
     }
 
     function instantiateInner(

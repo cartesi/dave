@@ -92,12 +92,18 @@ abstract contract Tournament {
     // matches existing in current tournament
     mapping(Match.IdHash => Match.State) matches;
 
-    enum MatchDeletedReason {
-        TIMEOUT_ONE,
-        TIMEOUT_TWO,
-        BOTH_ELIMINATED,
-        SUBGAME_WINNER
+    enum MatchDeletionReason {
+        STEP,
+        TIMEOUT,
+        CHILD_TOURNAMENT
     }
+
+    enum WinnerCommitment {
+        NONE,
+        ONE,
+        TWO
+    }
+
     //
     // Events
     //
@@ -110,8 +116,10 @@ abstract contract Tournament {
     );
     event MatchDeleted(
         Match.IdHash indexed matchIdHash,
-        MatchDeletedReason reason,
-        Tree.Node indexed winnerCommitment
+        Tree.Node indexed one,
+        Tree.Node indexed two,
+        MatchDeletionReason reason,
+        WinnerCommitment winnerCommitment
     );
     event CommitmentJoined(
         Tree.Node commitment,
@@ -142,6 +150,7 @@ abstract contract Tournament {
         Machine.Hash contestedFinalStateTwo,
         Machine.Hash finalState
     );
+    error InvalidWinnerCommitment(WinnerCommitment winnerCommitment);
 
     //
     // Modifiers
@@ -315,13 +324,8 @@ abstract contract Tournament {
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
 
-            // clear the claimer for the losing commitment
-            delete claimers[_matchId.commitmentTwo];
-            // delete storage
             deleteMatch(
-                _matchId.hashFromId(),
-                MatchDeletedReason.TIMEOUT_TWO,
-                _matchId.commitmentOne
+                _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.ONE
             );
         } else if (!_clockOne.hasTimeLeft() && _clockTwo.hasTimeLeft()) {
             require(
@@ -334,13 +338,8 @@ abstract contract Tournament {
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
 
-            // clear the claimer for the losing commitment
-            delete claimers[_matchId.commitmentOne];
-            // delete storage
             deleteMatch(
-                _matchId.hashFromId(),
-                MatchDeletedReason.TIMEOUT_ONE,
-                _matchId.commitmentTwo
+                _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.TWO
             );
         } else {
             revert ClockNotTimedOut();
@@ -398,15 +397,8 @@ abstract contract Tournament {
                 || (!_clockTwo.hasTimeLeft()
                     && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout()))
         ) {
-            // delete storage
-
-            // clear the claimer for both commitments
-            delete claimers[_matchId.commitmentOne];
-            delete claimers[_matchId.commitmentTwo];
             deleteMatch(
-                _matchId.hashFromId(),
-                MatchDeletedReason.BOTH_ELIMINATED,
-                Tree.ZERO_NODE
+                _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.NONE
             );
         } else {
             revert BothClocksHaveNotTimedOut();
@@ -431,7 +423,7 @@ abstract contract Tournament {
 
         // clear the claimer for the winning commitment if successfully recovered bond
         if (success) {
-            delete claimers[winningCommitment];
+            deleteClaimer(winningCommitment);
         }
 
         return success;
@@ -627,14 +619,35 @@ abstract contract Tournament {
     }
 
     function deleteMatch(
-        Match.IdHash _matchIdHash,
-        MatchDeletedReason _reason,
-        Tree.Node _winnerCommitment
+        Match.Id memory _matchId,
+        MatchDeletionReason _reason,
+        WinnerCommitment _winnerCommitment
     ) internal {
         matchCount--;
         lastMatchDeleted = Time.currentTime();
+        if (_winnerCommitment == WinnerCommitment.NONE) {
+            deleteClaimer(_matchId.commitmentOne);
+            deleteClaimer(_matchId.commitmentTwo);
+        } else if (_winnerCommitment == WinnerCommitment.ONE) {
+            deleteClaimer(_matchId.commitmentTwo);
+        } else if (_winnerCommitment == WinnerCommitment.TWO) {
+            deleteClaimer(_matchId.commitmentOne);
+        } else {
+            revert InvalidWinnerCommitment(_winnerCommitment);
+        }
+        Match.IdHash _matchIdHash = _matchId.hashFromId();
         delete matches[_matchIdHash];
-        emit MatchDeleted(_matchIdHash, _reason, _winnerCommitment);
+        emit MatchDeleted(
+            _matchIdHash,
+            _matchId.commitmentOne,
+            _matchId.commitmentTwo,
+            _reason,
+            _winnerCommitment
+        );
+    }
+
+    function deleteClaimer(Tree.Node commitment) internal {
+        delete claimers[commitment];
     }
 
     function requireValidContestedFinalState(Machine.Hash _finalState)
