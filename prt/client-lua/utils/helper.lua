@@ -124,10 +124,11 @@ function helper.exists(file)
 end
 
 function helper.remove_file(file)
-    local success, err = pcall(os.remove, file)
+    print("Removing file: ", file)
+    local success, err = os.remove(file)
     if not success then
         -- Ignore the error or handle it if needed
-        print("Error removing file:", err) -- Optional: print the error message
+        print("Error removing file: ", file, err) -- Optional: print the error message
     end
 end
 
