@@ -101,7 +101,7 @@ pub fn migrate(
 
     // Enable WAL mode for concurrent access
     connection
-        .query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))
+        .query_row("PRAGMA journal_mode=WAL;", [], |_| Ok(()))
         .map_err(anyhow::Error::from)?;
 
     migrations::migrate_to_latest(&mut connection).map_err(anyhow::Error::from)?;
