@@ -112,13 +112,8 @@ abstract contract LeafTournament is Tournament {
                 _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
             );
 
-            // clear the claimer for the losing commitment
-            delete claimers[_matchId.commitmentTwo];
-            // delete storage
             deleteMatch(
-                _matchId.hashFromId(),
-                MatchDeletedReason.SUBGAME_WINNER,
-                _matchId.commitmentOne
+                _matchId, MatchDeletionReason.STEP, WinnerCommitment.ONE
             );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
             require(
@@ -131,13 +126,8 @@ abstract contract LeafTournament is Tournament {
                 _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
             );
 
-            // clear the claimer for the losing commitment
-            delete claimers[_matchId.commitmentOne];
-            // delete storage
             deleteMatch(
-                _matchId.hashFromId(),
-                MatchDeletedReason.SUBGAME_WINNER,
-                _matchId.commitmentTwo
+                _matchId, MatchDeletionReason.STEP, WinnerCommitment.TWO
             );
         } else {
             revert WrongNodesForStep();
