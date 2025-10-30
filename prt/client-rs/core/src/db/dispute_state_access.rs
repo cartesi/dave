@@ -89,6 +89,11 @@ impl DisputeStateAccess {
                     .map_err(anyhow::Error::from)
                     .unwrap();
 
+                connection
+                    .query_row("PRAGMA journal_mode=WAL;", [], |_| Ok(()))
+                    .map_err(anyhow::Error::from)
+                    .unwrap();
+
                 let json_path = work_path.join("inputs_and_leafs.json");
                 // prioritize json file over parameters
                 match read_json_file(&json_path) {
