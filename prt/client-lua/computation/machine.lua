@@ -70,6 +70,7 @@ function Machine:new_from_path(path)
         start_cycle = start_cycle,
         initial_hash = Hash:from_digest(machine:get_root_hash()),
         snapshot_path = path,
+        initial_snapshot = path,
         snapshot_dir = snapshot_dir
     }
 
@@ -222,7 +223,10 @@ function Machine:feed_input(input_bin)
     if not helper.exists(new_snapshot_path) then
         self.machine:store(new_snapshot_path)
         if self.snapshot_path and helper.exists(self.snapshot_path) then
-            helper.remove_file(self.snapshot_path)
+            -- never delete a snapshot we didn't ourselves create
+            if self.initial_snapshot ~= self.snapshot_path then
+                helper.remove_file(self.snapshot_path)
+            end
         end
     end
 
