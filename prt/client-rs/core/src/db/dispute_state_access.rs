@@ -75,6 +75,12 @@ impl DisputeStateAccess {
                     .busy_timeout(std::time::Duration::from_secs(10))
                     .map_err(anyhow::Error::from)
                     .unwrap();
+
+                connection
+                    .query_row("PRAGMA journal_mode=WAL;", [], |_| Ok(()))
+                    .map_err(anyhow::Error::from)
+                    .unwrap();
+
                 Ok(Self {
                     connection: Mutex::new(connection),
                     work_path,
@@ -86,6 +92,11 @@ impl DisputeStateAccess {
                 migrations::migrate_to_latest(&mut connection).unwrap();
                 connection
                     .busy_timeout(std::time::Duration::from_secs(10))
+                    .map_err(anyhow::Error::from)
+                    .unwrap();
+
+                connection
+                    .query_row("PRAGMA journal_mode=WAL;", [], |_| Ok(()))
                     .map_err(anyhow::Error::from)
                     .unwrap();
 
