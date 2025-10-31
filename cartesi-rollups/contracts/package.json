@@ -4,6 +4,6 @@
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.7.0",
   "dependencies": {
-    "@usecannon/cli": "^2.25.0"
+    "@usecannon/cli": "^2.25.1"
   }
 }
