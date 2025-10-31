@@ -249,14 +249,10 @@ abstract contract Tournament is ITournament {
 
         // check if both clocks are out of time
         if (
-            (
-                !_clockOne.hasTimeLeft()
-                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout())
-            )
-                || (
-                    !_clockTwo.hasTimeLeft()
-                        && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout())
-                )
+            (!_clockOne.hasTimeLeft()
+                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout()))
+                || (!_clockTwo.hasTimeLeft()
+                    && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout()))
         ) {
             deleteMatch(
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.NONE
@@ -358,7 +354,6 @@ abstract contract Tournament is ITournament {
     //
     // Time view methods
     //
-
     function isClosed() public view returns (bool) {
         TournamentArguments memory args = tournamentArguments();
         return args.startInstant.timeoutElapsed(args.allowance);
@@ -461,8 +456,7 @@ abstract contract Tournament is ITournament {
 
         if (_hasDanglingCommitment) {
             TournamentArguments memory args = tournamentArguments();
-            (Match.IdHash _matchId, Match.State memory _matchState) = Match
-                .createMatch(
+            (Match.IdHash _matchId, Match.State memory _matchState) = Match.createMatch(
                 args.commitmentArgs,
                 _danglingCommitment,
                 _rootHash,

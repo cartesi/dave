@@ -48,8 +48,7 @@ abstract contract NonLeafTournament is Tournament {
         }
         TournamentArguments memory args = tournamentArguments();
 
-        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState
-            .sealMatch(
+        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState.sealMatch(
             args.commitmentArgs,
             _matchId,
             _leftLeaf,

@@ -35,31 +35,31 @@ contract MiddleTournamentFactory {
         IDataProvider provider,
         IMultiLevelTournamentFactory tournamentFactory
     ) external returns (MiddleTournament) {
-        MiddleTournament.MiddleArguments memory args = MiddleTournament
-            .MiddleArguments({
-            tournamentArgs: ITournament.TournamentArguments({
-                commitmentArgs: Commitment.Arguments({
-                    initialHash: initialHash,
-                    startCycle: startCycle,
-                    log2step: tournamentParameters.log2step,
-                    height: tournamentParameters.height
+        MiddleTournament.MiddleArguments memory args =
+            MiddleTournament.MiddleArguments({
+                tournamentArgs: ITournament.TournamentArguments({
+                    commitmentArgs: Commitment.Arguments({
+                        initialHash: initialHash,
+                        startCycle: startCycle,
+                        log2step: tournamentParameters.log2step,
+                        height: tournamentParameters.height
+                    }),
+                    level: level,
+                    levels: tournamentParameters.levels,
+                    startInstant: Time.currentTime(),
+                    allowance: allowance,
+                    maxAllowance: tournamentParameters.maxAllowance,
+                    matchEffort: tournamentParameters.matchEffort,
+                    provider: provider
                 }),
-                level: level,
-                levels: tournamentParameters.levels,
-                startInstant: Time.currentTime(),
-                allowance: allowance,
-                maxAllowance: tournamentParameters.maxAllowance,
-                matchEffort: tournamentParameters.matchEffort,
-                provider: provider
-            }),
-            nonRootTournamentArgs: NonRootTournament.NonRootArguments({
-                contestedCommitmentOne: contestedCommitmentOne,
-                contestedFinalStateOne: contestedFinalStateOne,
-                contestedCommitmentTwo: contestedCommitmentTwo,
-                contestedFinalStateTwo: contestedFinalStateTwo
-            }),
-            tournamentFactory: tournamentFactory
-        });
+                nonRootTournamentArgs: NonRootTournament.NonRootArguments({
+                    contestedCommitmentOne: contestedCommitmentOne,
+                    contestedFinalStateOne: contestedFinalStateOne,
+                    contestedCommitmentTwo: contestedCommitmentTwo,
+                    contestedFinalStateTwo: contestedFinalStateTwo
+                }),
+                tournamentFactory: tournamentFactory
+            });
         address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
         return MiddleTournament(clone);
     }

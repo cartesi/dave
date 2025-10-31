@@ -63,8 +63,8 @@ contract CartesiStateTransition is IStateTransition {
             // next `inputLength` bytes of the proof are the input itself.
             uint64 inputLength = uint64(bytes8(proofs[:8]));
             bytes calldata input = proofs[8:8 + inputLength];
-            uint256 inputIndexWithinEpoch =
-                counter >> (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
+            uint256 inputIndexWithinEpoch = counter
+                >> (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
             bytes32 inputMerkleRoot =
                 provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
 

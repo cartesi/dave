@@ -78,14 +78,15 @@ abstract contract LeafTournament is Tournament {
         ) = _matchState.getDivergence(args.commitmentArgs);
 
         IStateTransition stateTransition = _stateTransition();
-        Machine.Hash _finalState = Machine.Hash.wrap(
-            stateTransition.transitionState(
-                Machine.Hash.unwrap(_agreeHash),
-                _agreeCycle,
-                proofs,
-                args.provider
-            )
-        );
+        Machine.Hash _finalState = Machine.Hash
+            .wrap(
+                stateTransition.transitionState(
+                    Machine.Hash.unwrap(_agreeHash),
+                    _agreeCycle,
+                    proofs,
+                    args.provider
+                )
+            );
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
             require(
@@ -125,9 +126,5 @@ abstract contract LeafTournament is Tournament {
             + Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH;
     }
 
-    function _stateTransition()
-        internal
-        view
-        virtual
-        returns (IStateTransition);
+    function _stateTransition() internal view virtual returns (IStateTransition);
 }

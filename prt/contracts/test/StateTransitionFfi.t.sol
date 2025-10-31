@@ -179,8 +179,8 @@ contract StateTransitionFfiTest is Util {
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter =
-            ((1 << LOG2_BARCH_SPAN_TO_INPUT) << LOG2_UARCH_SPAN_TO_BARCH) + mask;
+        counter = ((1 << LOG2_BARCH_SPAN_TO_INPUT) << LOG2_UARCH_SPAN_TO_BARCH)
+            + mask;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);

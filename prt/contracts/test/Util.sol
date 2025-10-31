@@ -45,12 +45,14 @@ contract Util is Test {
     uint64 public constant LOG2_MAX_HEIGHT = 67;
 
     Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
-    Time.Duration constant CENSORSHIP_TOLERANCE = Time.Duration.wrap(5 * 60 * 8);
+    Time.Duration constant CENSORSHIP_TOLERANCE =
+        Time.Duration.wrap(5 * 60 * 8);
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5 * 5 * 92);
-    Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(
-        Time.Duration.unwrap(CENSORSHIP_TOLERANCE)
-            + Time.Duration.unwrap(COMMITMENT_EFFORT)
-    );
+    Time.Duration constant MAX_ALLOWANCE = Time.Duration
+        .wrap(
+            Time.Duration.unwrap(CENSORSHIP_TOLERANCE)
+                + Time.Duration.unwrap(COMMITMENT_EFFORT)
+        );
 
     // players' commitment node at different height
     // player 0, player 1, and player 2
@@ -173,9 +175,10 @@ contract Util is Test {
     }
 
     // create new _topTournament and player 0 joins it
-    function initializePlayer0RollupsTournament(
-        MultiLevelTournamentFactory _factory
-    ) internal returns (TopTournament _topTournament) {
+    function initializePlayer0RollupsTournament(MultiLevelTournamentFactory _factory)
+        internal
+        returns (TopTournament _topTournament)
+    {
         _topTournament = TopTournament(
             address(
                 _factory.instantiate(

@@ -38,8 +38,9 @@ library Commitment {
         Machine.Hash state,
         bytes32[] calldata hashProof
     ) internal pure {
-        Tree.Node expectedCommitment =
-            getRoot(Machine.Hash.unwrap(state), treeHeight, position, hashProof);
+        Tree.Node expectedCommitment = getRoot(
+            Machine.Hash.unwrap(state), treeHeight, position, hashProof
+        );
 
         require(
             commitment.eq(expectedCommitment),
@@ -82,9 +83,10 @@ library Commitment {
         Machine.Hash finalState,
         bytes32[] calldata hashProof
     ) internal pure {
-        Tree.Node expectedCommitment = getRootForLastLeaf(
-            treeHeight, Machine.Hash.unwrap(finalState), hashProof
-        );
+        Tree.Node expectedCommitment =
+            getRootForLastLeaf(
+                treeHeight, Machine.Hash.unwrap(finalState), hashProof
+            );
 
         require(
             commitment.eq(expectedCommitment),

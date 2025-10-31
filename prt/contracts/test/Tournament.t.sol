@@ -130,9 +130,8 @@ contract TournamentTest is Util {
             playerNodes[0][ArbitrationConstants.height(0)]
         );
         vm.roll(
-            Time.Instant.unwrap(
-                _player0Clock.startInstant.add(_player0Clock.allowance)
-            )
+            Time.Instant
+                .unwrap(_player0Clock.startInstant.add(_player0Clock.allowance))
         );
         assertTrue(
             topTournament.canWinMatchByTimeout(_matchId),
@@ -226,9 +225,8 @@ contract TournamentTest is Util {
             playerNodes[1][ArbitrationConstants.height(0)]
         );
         vm.roll(
-            Time.Instant.unwrap(
-                _player1Clock.startInstant.add(_player1Clock.allowance)
-            )
+            Time.Instant
+                .unwrap(_player1Clock.startInstant.add(_player1Clock.allowance))
         );
         assertTrue(
             topTournament.canWinMatchByTimeout(_matchId),
@@ -318,9 +316,8 @@ contract TournamentTest is Util {
             playerNodes[0][ArbitrationConstants.height(0)]
         );
         vm.roll(
-            Time.Instant.unwrap(
-                _player0Clock.startInstant.add(_player0Clock.allowance)
-            )
+            Time.Instant
+                .unwrap(_player0Clock.startInstant.add(_player0Clock.allowance))
         );
 
         vm.expectRevert();

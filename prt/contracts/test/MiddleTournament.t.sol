@@ -199,8 +199,11 @@ contract MiddleTournamentTest is Util {
         );
 
         {
-            (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState)
-            = topTournament.arbitrationResult();
+            (
+                bool _finishedTop,
+                Tree.Node _commitment,
+                Machine.Hash _finalState
+            ) = topTournament.arbitrationResult();
 
             uint256 _winnerPlayer = 0;
             assertTrue(
@@ -284,9 +287,8 @@ contract MiddleTournamentTest is Util {
         );
 
         vm.roll(
-            Time.Instant.unwrap(
-                _player0Clock.startInstant.add(_player0Clock.allowance)
-            )
+            Time.Instant
+                .unwrap(_player0Clock.startInstant.add(_player0Clock.allowance))
         );
         assertNoElimination();
 
@@ -329,8 +331,11 @@ contract MiddleTournamentTest is Util {
 
         {
             vm.roll(_rootTournamentFinish);
-            (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState)
-            = topTournament.arbitrationResult();
+            (
+                bool _finishedTop,
+                Tree.Node _commitment,
+                Machine.Hash _finalState
+            ) = topTournament.arbitrationResult();
 
             uint256 _winnerPlayer = 1;
             assertTrue(
