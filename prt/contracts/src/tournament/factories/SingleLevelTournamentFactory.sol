@@ -48,7 +48,7 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
         SingleLevelTournament.SingleLevelArguments memory
             args =
             SingleLevelTournament.SingleLevelArguments({
-                tournamentArgs: Tournament.TournamentArguments({
+                tournamentArgs: ITournament.TournamentArguments({
                     commitmentArgs: Commitment.Arguments({
                         initialHash: initialHash,
                         startCycle: START_CYCLE,

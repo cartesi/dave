@@ -525,7 +525,7 @@ contract BottomTournamentTest is Util {
         assertFalse(c2.startInstant.isZero(), "c2 should be running");
 
         // Elimination should fail immediately after seal (both have time left)
-        vm.expectRevert(Tournament.BothClocksHaveNotTimedOut.selector);
+        vm.expectRevert(ITournament.BothClocksHaveNotTimedOut.selector);
         bottomTournament.eliminateMatchByTimeout(_matchId);
 
         // Fast-forward to when both clocks are exhausted and eliminate

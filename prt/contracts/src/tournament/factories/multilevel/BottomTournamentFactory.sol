@@ -37,7 +37,7 @@ contract BottomTournamentFactory {
         BottomTournament.BottomArguments memory
             args =
             BottomTournament.BottomArguments({
-                tournamentArgs: Tournament.TournamentArguments({
+                tournamentArgs: ITournament.TournamentArguments({
                     commitmentArgs: Commitment.Arguments({
                         initialHash: initialHash,
                         startCycle: startCycle,

@@ -19,14 +19,6 @@ abstract contract LeafTournament is Tournament {
     using Match for Match.Id;
     using Match for Match.State;
 
-    /// @notice Seal a match at height 1 (leaf) by pinpointing the divergent
-    /// states and setting the agree state.
-    ///
-    /// Clock policy:
-    /// - During bisection (advanceMatch), only one clock runs at a time.
-    /// - After leaf sealing, both clocks are intentionally set to RUNNING to
-    ///   incentivize either party to finalize via state-transition proof.
-    ///   This accelerates liveness without increasing anyone’s allowance.
     function sealLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftLeaf,
@@ -60,11 +52,6 @@ abstract contract LeafTournament is Tournament {
             _agreeHashProof
         );
     }
-
-    error WrongFinalState(
-        uint256 commitment, Machine.Hash computed, Machine.Hash claimed
-    );
-    error WrongNodesForStep();
 
     function winLeafMatch(
         Match.Id calldata _matchId,
