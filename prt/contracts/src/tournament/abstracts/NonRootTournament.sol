@@ -23,12 +23,6 @@ abstract contract NonRootTournament is Tournament {
         Machine.Hash contestedFinalStateTwo;
     }
 
-    /// @notice get the dangling commitment at current level and then retrieve the winner commitment
-    /// @return (bool, Tree.Node, Tree.Node, Clock.State)
-    /// - if the tournament is finished
-    /// - the contested parent commitment
-    /// - the winning inner commitment
-    /// - the paused clock of the winning inner commitment
     function innerTournamentWinner()
         external
         view
@@ -60,9 +54,6 @@ abstract contract NonRootTournament is Tournament {
         }
     }
 
-    /// @notice returns whether this inner tournament can be safely eliminated.
-    /// @return (bool)
-    /// - if the tournament can be eliminated
     function canBeEliminated() public view returns (bool) {
         (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
 

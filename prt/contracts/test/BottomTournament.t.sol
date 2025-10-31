@@ -247,11 +247,13 @@ contract BottomTournamentTest is Util {
         );
         _height += 1;
 
-        uint256 cycle =
-            (1
-                        << (ArbitrationConstants.height(0)
-                                + ArbitrationConstants.log2step(0)))
-                - (1 << ArbitrationConstants.log2step(0));
+        uint256 cycle = (
+            1
+                << (
+                    ArbitrationConstants.height(0)
+                        + ArbitrationConstants.log2step(0)
+                )
+        ) - (1 << ArbitrationConstants.log2step(0));
         assertEq(
             topTournament.getMatchCycle(_matchId.hashFromId()),
             cycle,
@@ -290,11 +292,13 @@ contract BottomTournamentTest is Util {
         );
         _height += 1;
 
-        cycle =
-            (1
-                        << (ArbitrationConstants.height(0)
-                                + ArbitrationConstants.log2step(0)))
-                - (1 << ArbitrationConstants.log2step(1));
+        cycle = (
+            1
+                << (
+                    ArbitrationConstants.height(0)
+                        + ArbitrationConstants.log2step(0)
+                )
+        ) - (1 << ArbitrationConstants.log2step(1));
         assertEq(
             middleTournament.getMatchCycle(_matchId.hashFromId()),
             cycle,
@@ -327,11 +331,13 @@ contract BottomTournamentTest is Util {
         // seal match
         Util.sealLeafMatch(bottomTournament, _matchId, _playerToSeal);
 
-        cycle =
-            (1
-                        << (ArbitrationConstants.height(0)
-                                + ArbitrationConstants.log2step(0)))
-                - (1 << ArbitrationConstants.log2step(2));
+        cycle = (
+            1
+                << (
+                    ArbitrationConstants.height(0)
+                        + ArbitrationConstants.log2step(0)
+                )
+        ) - (1 << ArbitrationConstants.log2step(2));
         assertEq(
             bottomTournament.getMatchCycle(_matchId.hashFromId()),
             cycle,
@@ -525,7 +531,7 @@ contract BottomTournamentTest is Util {
         assertFalse(c2.startInstant.isZero(), "c2 should be running");
 
         // Elimination should fail immediately after seal (both have time left)
-        vm.expectRevert(Tournament.BothClocksHaveNotTimedOut.selector);
+        vm.expectRevert(ITournament.BothClocksHaveNotTimedOut.selector);
         bottomTournament.eliminateMatchByTimeout(_matchId);
 
         // Fast-forward to when both clocks are exhausted and eliminate

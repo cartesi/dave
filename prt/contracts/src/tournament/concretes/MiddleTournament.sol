@@ -50,4 +50,23 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
     {
         return _middleArgs().tournamentFactory;
     }
+
+    function sealLeafMatch(
+        Match.Id calldata _matchId,
+        Tree.Node _leftLeaf,
+        Tree.Node _rightLeaf,
+        Machine.Hash _agreeHash,
+        bytes32[] calldata _agreeHashProof
+    ) external {
+        revert ITournament.NotImplemented();
+    }
+
+    function winLeafMatch(
+        Match.Id calldata _matchId,
+        Tree.Node _leftNode,
+        Tree.Node _rightNode,
+        bytes calldata proofs
+    ) external {
+        revert ITournament.NotImplemented();
+    }
 }

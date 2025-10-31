@@ -90,7 +90,7 @@ contract TournamentTest is Util {
         Tree.Node _right = playerNodes[1][height - 1];
         Machine.Hash _final_state = TWO_STATE;
 
-        vm.expectRevert(Tournament.InsufficientBond.selector);
+        vm.expectRevert(ITournament.InsufficientBond.selector);
         topTournament.joinTournament{value: insufficientBond}(
             _final_state, generateFinalStateProof(1, height), _left, _right
         );
@@ -130,8 +130,9 @@ contract TournamentTest is Util {
             playerNodes[0][ArbitrationConstants.height(0)]
         );
         vm.roll(
-            Time.Instant
-                .unwrap(_player0Clock.startInstant.add(_player0Clock.allowance))
+            Time.Instant.unwrap(
+                _player0Clock.startInstant.add(_player0Clock.allowance)
+            )
         );
         assertTrue(
             topTournament.canWinMatchByTimeout(_matchId),
@@ -225,8 +226,9 @@ contract TournamentTest is Util {
             playerNodes[1][ArbitrationConstants.height(0)]
         );
         vm.roll(
-            Time.Instant
-                .unwrap(_player1Clock.startInstant.add(_player1Clock.allowance))
+            Time.Instant.unwrap(
+                _player1Clock.startInstant.add(_player1Clock.allowance)
+            )
         );
         assertTrue(
             topTournament.canWinMatchByTimeout(_matchId),
@@ -277,7 +279,7 @@ contract TournamentTest is Util {
 
         vm.roll(_rootTournamentFinish - 1);
         // cannot eliminate match when both blocks still have time
-        vm.expectRevert(Tournament.BothClocksHaveNotTimedOut.selector);
+        vm.expectRevert(ITournament.BothClocksHaveNotTimedOut.selector);
         topTournament.eliminateMatchByTimeout(_matchId);
 
         vm.roll(_rootTournamentFinish);
@@ -316,8 +318,9 @@ contract TournamentTest is Util {
             playerNodes[0][ArbitrationConstants.height(0)]
         );
         vm.roll(
-            Time.Instant
-                .unwrap(_player0Clock.startInstant.add(_player0Clock.allowance))
+            Time.Instant.unwrap(
+                _player0Clock.startInstant.add(_player0Clock.allowance)
+            )
         );
 
         vm.expectRevert();

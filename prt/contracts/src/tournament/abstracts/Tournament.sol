@@ -3,15 +3,15 @@
 
 pragma solidity ^0.8.17;
 
+import "prt-contracts/ITournament.sol";
+
 import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-import "prt-contracts/IDataProvider.sol";
 import "prt-contracts/types/TournamentParameters.sol";
 import "prt-contracts/types/Machine.sol";
 import "prt-contracts/types/Tree.sol";
 
 import "prt-contracts/tournament/libs/Commitment.sol";
 import "prt-contracts/tournament/libs/Time.sol";
-import "prt-contracts/tournament/libs/Clock.sol";
 import "prt-contracts/tournament/libs/Match.sol";
 import "prt-contracts/tournament/libs/Gas.sol";
 
@@ -43,7 +43,7 @@ import {Math} from "@openzeppelin-contracts-5.2.0/utils/math/Math.sol";
 /// - At least half the clocks tick at any time, ensuring progress even if arrival
 ///   order is adversarial. Winners re-enter pairing immediately, preserving
 ///   logarithmic tournament depth without requiring a balanced bracket.
-abstract contract Tournament {
+abstract contract Tournament is ITournament {
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
     using Commitment for Tree.Node;
@@ -59,20 +59,6 @@ abstract contract Tournament {
     using Match for Match.State;
 
     using Math for uint256;
-
-    //
-    // Types
-    //
-    struct TournamentArguments {
-        Commitment.Arguments commitmentArgs;
-        uint64 level;
-        uint64 levels;
-        Time.Instant startInstant;
-        Time.Duration allowance;
-        Time.Duration maxAllowance;
-        Time.Duration matchEffort;
-        IDataProvider provider;
-    }
 
     //
     // Storage
@@ -91,66 +77,6 @@ abstract contract Tournament {
 
     // matches existing in current tournament
     mapping(Match.IdHash => Match.State) matches;
-
-    enum MatchDeletionReason {
-        STEP,
-        TIMEOUT,
-        CHILD_TOURNAMENT
-    }
-
-    enum WinnerCommitment {
-        NONE,
-        ONE,
-        TWO
-    }
-
-    //
-    // Events
-    //
-
-    event MatchCreated(
-        Match.IdHash indexed matchIdHash,
-        Tree.Node indexed one,
-        Tree.Node indexed two,
-        Tree.Node leftOfTwo
-    );
-    event MatchDeleted(
-        Match.IdHash indexed matchIdHash,
-        Tree.Node indexed one,
-        Tree.Node indexed two,
-        MatchDeletionReason reason,
-        WinnerCommitment winnerCommitment
-    );
-    event CommitmentJoined(
-        Tree.Node commitment,
-        Machine.Hash finalStateHash,
-        address indexed caller
-    );
-
-    event BondRefunded(
-        address indexed recipient, uint256 value, bool indexed status, bytes ret
-    );
-
-    //
-    // Errors
-    //
-    error InsufficientBond();
-    error NoWinner();
-    error TournamentIsFinished();
-    error TournamentNotFinished();
-    error TournamentIsClosed();
-    error ReentrancyDetected();
-    error WrongChildren(
-        uint256 commitment, Tree.Node parent, Tree.Node left, Tree.Node right
-    );
-    error ClockNotTimedOut();
-    error BothClocksHaveNotTimedOut();
-    error InvalidContestedFinalState(
-        Machine.Hash contestedFinalStateOne,
-        Machine.Hash contestedFinalStateTwo,
-        Machine.Hash finalState
-    );
-    error InvalidWinnerCommitment(WinnerCommitment winnerCommitment);
 
     //
     // Modifiers
@@ -214,12 +140,6 @@ abstract contract Tournament {
         return _totalGasEstimate() * MAX_GAS_PRICE;
     }
 
-    /// @dev root tournaments are open to everyone,
-    /// while non-root tournaments are open to anyone
-    /// who's final state hash matches the one of the two in the tournament
-    /// This function must be called while passing a
-    /// minimum amount of Wei, given by the `bondValue` view function.
-    /// The contract will retain any extra amount.
     function joinTournament(
         Machine.Hash _finalState,
         bytes32[] calldata _proof,
@@ -250,37 +170,6 @@ abstract contract Tournament {
         emit CommitmentJoined(_commitmentRoot, _finalState, msg.sender);
     }
 
-    /// @notice Advance a running match by one alternating double-bisection step
-    /// toward the first conflicting leaf.
-    ///
-    /// @dev
-    /// ROLE & INPUTS FOR THIS STEP
-    /// - At this call, the tree stored in `Match.State.otherParent` is the one being
-    ///   bisected at height `h`.
-    /// - `_leftNode` and `_rightNode` MUST be the two children of that parent at
-    ///   height `h-1`.
-    /// - The match logic compares the provided left child with the opposite tree’s
-    ///   baseline (kept in state) to decide whether disagreement lies on the left
-    ///   or on the right half at height `h`.
-    /// - The caller MUST also provide `_newLeftNode`/`_newRightNode`, which are the
-    ///   children of the **chosen half** (left or right) that we descend into. These
-    ///   seed the next step after roles flip (alternation).
-    ///
-    ///
-    /// INVARIANTS (enforced by the library)
-    /// - Height decreases monotonically toward leaves.
-    /// - Exactly one tree is double-bisected per call; roles alternate automatically.
-    /// - Node relationships are checked at every step (parent→children, child→children).
-    ///
-    /// @param _matchId        The logical pair of commitments for this match.
-    /// @param _leftNode       Left child of the parent being bisected at this step (height h-1).
-    /// @param _rightNode      Right child of the parent being bisected at this step (height h-1).
-    /// @param _newLeftNode    Left child of the chosen half we descend into (height h-2).
-    /// @param _newRightNode   Right child of the chosen half we descend into (height h-2).
-    ///
-    /// @custom:effects Emits `matchAdvanced` inside `Match.advanceMatch`.
-    /// @custom:reverts If the match does not exist, cannot be advanced, or any of the
-    /// supplied nodes are inconsistent with the parent/child relations for this step.
     function advanceMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
@@ -346,38 +235,6 @@ abstract contract Tournament {
         }
     }
 
-    /// @notice Permissionless cleanup: eliminate a stalled match after both sides
-    /// have timed out, i.e., neither party acted within its clock allowance.
-    /// @dev
-    /// CLOCK MODEL
-    /// - During alternating double-bisection steps, exactly one clock runs.
-    /// - After leaf sealing (in leaf tournaments), both clocks intentionally run
-    ///   to incentivize either party to complete the state-transition proof.
-    ///
-    /// WHEN IS ELIMINATION ALLOWED?
-    /// - Chess-clock model: exactly one side is “on turn” at a time. If a side lets
-    ///   its clock reach zero (times out), the *other* side’s clock immediately
-    ///   starts running. After leaf sealing, both may be running simultaneously.
-    ///   This function allows deletion **only after both** clocks
-    ///   have exhausted:
-    ///     • Case 1: commitmentOne timed out first AND
-    ///               timeSinceTimeout(commitmentOne) >= timeLeft(commitmentTwo)
-    ///     • Case 2: commitmentTwo timed out first AND
-    ///               timeSinceTimeout(commitmentTwo) >= timeLeft(commitmentOne)
-    ///
-    /// - Intuition (covers both models): once the first clock hits zero, keep
-    ///   counting until the other clock’s remaining budget is fully drained;
-    ///   at that point both are out of time and the match can be eliminated.
-    ///   If both clocks run and reach zero simultaneously after leaf sealing,
-    ///   this condition holds immediately at that block.
-    ///
-    /// - Occurrence: **Sybil vs. Sybil**. Under the honest-participant assumption,
-    ///   the honest side will act before timing out,
-    ///   so double-timeout should not occur when an honest commitment participates.
-    ///
-    /// - Anyone may call this function; it is a public garbage-collection hook.
-    ///
-    /// @param _matchId The pair of commitments that define the match to eliminate.
     function eliminateMatchByTimeout(Match.Id calldata _matchId)
         external
         refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT)
@@ -392,10 +249,14 @@ abstract contract Tournament {
 
         // check if both clocks are out of time
         if (
-            (!_clockOne.hasTimeLeft()
-                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout()))
-                || (!_clockTwo.hasTimeLeft()
-                    && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout()))
+            (
+                !_clockOne.hasTimeLeft()
+                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout())
+            )
+                || (
+                    !_clockTwo.hasTimeLeft()
+                        && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout())
+                )
         ) {
             deleteMatch(
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.NONE
@@ -498,21 +359,15 @@ abstract contract Tournament {
     // Time view methods
     //
 
-    /// @return bool if the tournament is still open to join
     function isClosed() public view returns (bool) {
         TournamentArguments memory args = tournamentArguments();
         return args.startInstant.timeoutElapsed(args.allowance);
     }
 
-    /// @return bool if the tournament is over
     function isFinished() public view returns (bool) {
         return isClosed() && matchCount == 0;
     }
 
-    /// @notice returns if and when tournament was finished.
-    /// @return (bool, Time.Instant)
-    /// - if the tournament can be eliminated
-    /// - the time when the tournament was finished
     function timeFinished() public view returns (bool, Time.Instant) {
         if (!isFinished()) {
             return (false, Time.ZERO_INSTANT);
@@ -529,6 +384,24 @@ abstract contract Tournament {
         Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchDeleted);
 
         return (true, winnerCouldWin);
+    }
+
+    function arbitrationResult()
+        external
+        view
+        override
+        returns (bool, Tree.Node, Machine.Hash)
+    {
+        if (!isFinished()) {
+            return (false, Tree.ZERO_NODE, Machine.ZERO_STATE);
+        }
+
+        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
+            hasDanglingCommitment();
+        require(_hasDanglingCommitment, TournamentFailedNoWinner());
+
+        Machine.Hash _finalState = finalStates[_danglingCommitment];
+        return (true, _danglingCommitment, _finalState);
     }
 
     //
@@ -588,7 +461,8 @@ abstract contract Tournament {
 
         if (_hasDanglingCommitment) {
             TournamentArguments memory args = tournamentArguments();
-            (Match.IdHash _matchId, Match.State memory _matchState) = Match.createMatch(
+            (Match.IdHash _matchId, Match.State memory _matchState) = Match
+                .createMatch(
                 args.commitmentArgs,
                 _danglingCommitment,
                 _rootHash,

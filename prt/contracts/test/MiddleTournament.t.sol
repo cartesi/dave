@@ -105,9 +105,7 @@ contract MiddleTournamentTest is Util {
 
     function assertNoElimination() internal {
         assertFalse(middleTournament.canBeEliminated(), "can be eliminated");
-        vm.expectRevert(
-            NonLeafTournament.ChildTournamentCannotBeEliminated.selector
-        );
+        vm.expectRevert(ITournament.ChildTournamentCannotBeEliminated.selector);
         topTournament.eliminateInnerTournament(middleTournament);
     }
 
@@ -183,7 +181,7 @@ contract MiddleTournamentTest is Util {
         );
 
         // Try to recover bond before tournament is finished - should fail
-        vm.expectRevert(Tournament.TournamentNotFinished.selector);
+        vm.expectRevert(ITournament.TournamentNotFinished.selector);
         middleTournament.tryRecoveringBond();
 
         vm.roll(_rootTournamentFinish);
@@ -201,11 +199,8 @@ contract MiddleTournamentTest is Util {
         );
 
         {
-            (
-                bool _finishedTop,
-                Tree.Node _commitment,
-                Machine.Hash _finalState
-            ) = topTournament.arbitrationResult();
+            (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState)
+            = topTournament.arbitrationResult();
 
             uint256 _winnerPlayer = 0;
             assertTrue(
@@ -281,7 +276,7 @@ contract MiddleTournamentTest is Util {
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
-        vm.expectRevert(Tournament.ClockNotTimedOut.selector);
+        vm.expectRevert(ITournament.ClockNotTimedOut.selector);
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
@@ -289,8 +284,9 @@ contract MiddleTournamentTest is Util {
         );
 
         vm.roll(
-            Time.Instant
-                .unwrap(_player0Clock.startInstant.add(_player0Clock.allowance))
+            Time.Instant.unwrap(
+                _player0Clock.startInstant.add(_player0Clock.allowance)
+            )
         );
         assertNoElimination();
 
@@ -333,11 +329,8 @@ contract MiddleTournamentTest is Util {
 
         {
             vm.roll(_rootTournamentFinish);
-            (
-                bool _finishedTop,
-                Tree.Node _commitment,
-                Machine.Hash _finalState
-            ) = topTournament.arbitrationResult();
+            (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState)
+            = topTournament.arbitrationResult();
 
             uint256 _winnerPlayer = 1;
             assertTrue(
@@ -582,7 +575,7 @@ contract MiddleTournamentTest is Util {
         assertFalse(hasWinner);
 
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
-        vm.expectRevert(Tournament.ClockNotTimedOut.selector);
+        vm.expectRevert(ITournament.ClockNotTimedOut.selector);
         middleTournament.winMatchByTimeout(
             Util.matchId(1, 1),
             playerNodes[0][ArbitrationConstants.height(1) - 1],
@@ -652,7 +645,7 @@ contract MiddleTournamentTest is Util {
         );
 
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT));
-        vm.expectRevert(Tournament.ClockNotTimedOut.selector);
+        vm.expectRevert(ITournament.ClockNotTimedOut.selector);
         topTournament.winMatchByTimeout(
             topMatch,
             playerNodes[0][ArbitrationConstants.height(0) - 1],

@@ -19,14 +19,6 @@ abstract contract LeafTournament is Tournament {
     using Match for Match.Id;
     using Match for Match.State;
 
-    /// @notice Seal a match at height 1 (leaf) by pinpointing the divergent
-    /// states and setting the agree state.
-    ///
-    /// Clock policy:
-    /// - During bisection (advanceMatch), only one clock runs at a time.
-    /// - After leaf sealing, both clocks are intentionally set to RUNNING to
-    ///   incentivize either party to finalize via state-transition proof.
-    ///   This accelerates liveness without increasing anyone’s allowance.
     function sealLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftLeaf,
@@ -61,11 +53,6 @@ abstract contract LeafTournament is Tournament {
         );
     }
 
-    error WrongFinalState(
-        uint256 commitment, Machine.Hash computed, Machine.Hash claimed
-    );
-    error WrongNodesForStep();
-
     function winLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
@@ -91,15 +78,14 @@ abstract contract LeafTournament is Tournament {
         ) = _matchState.getDivergence(args.commitmentArgs);
 
         IStateTransition stateTransition = _stateTransition();
-        Machine.Hash _finalState = Machine.Hash
-            .wrap(
-                stateTransition.transitionState(
-                    Machine.Hash.unwrap(_agreeHash),
-                    _agreeCycle,
-                    proofs,
-                    args.provider
-                )
-            );
+        Machine.Hash _finalState = Machine.Hash.wrap(
+            stateTransition.transitionState(
+                Machine.Hash.unwrap(_agreeHash),
+                _agreeCycle,
+                proofs,
+                args.provider
+            )
+        );
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
             require(
@@ -139,5 +125,9 @@ abstract contract LeafTournament is Tournament {
             + Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH;
     }
 
-    function _stateTransition() internal view virtual returns (IStateTransition);
+    function _stateTransition()
+        internal
+        view
+        virtual
+        returns (IStateTransition);
 }

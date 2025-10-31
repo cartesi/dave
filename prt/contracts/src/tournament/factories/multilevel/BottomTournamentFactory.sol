@@ -34,32 +34,31 @@ contract BottomTournamentFactory {
         IDataProvider provider,
         IStateTransition stateTransition
     ) external returns (BottomTournament) {
-        BottomTournament.BottomArguments memory
-            args =
-            BottomTournament.BottomArguments({
-                tournamentArgs: Tournament.TournamentArguments({
-                    commitmentArgs: Commitment.Arguments({
-                        initialHash: initialHash,
-                        startCycle: startCycle,
-                        log2step: tournamentParameters.log2step,
-                        height: tournamentParameters.height
-                    }),
-                    level: level,
-                    levels: tournamentParameters.levels,
-                    startInstant: Time.currentTime(),
-                    allowance: allowance,
-                    maxAllowance: tournamentParameters.maxAllowance,
-                    matchEffort: tournamentParameters.matchEffort,
-                    provider: provider
+        BottomTournament.BottomArguments memory args = BottomTournament
+            .BottomArguments({
+            tournamentArgs: ITournament.TournamentArguments({
+                commitmentArgs: Commitment.Arguments({
+                    initialHash: initialHash,
+                    startCycle: startCycle,
+                    log2step: tournamentParameters.log2step,
+                    height: tournamentParameters.height
                 }),
-                nonRootTournamentArgs: NonRootTournament.NonRootArguments({
-                    contestedCommitmentOne: contestedCommitmentOne,
-                    contestedFinalStateOne: contestedFinalStateOne,
-                    contestedCommitmentTwo: contestedCommitmentTwo,
-                    contestedFinalStateTwo: contestedFinalStateTwo
-                }),
-                stateTransition: stateTransition
-            });
+                level: level,
+                levels: tournamentParameters.levels,
+                startInstant: Time.currentTime(),
+                allowance: allowance,
+                maxAllowance: tournamentParameters.maxAllowance,
+                matchEffort: tournamentParameters.matchEffort,
+                provider: provider
+            }),
+            nonRootTournamentArgs: NonRootTournament.NonRootArguments({
+                contestedCommitmentOne: contestedCommitmentOne,
+                contestedFinalStateOne: contestedFinalStateOne,
+                contestedCommitmentTwo: contestedCommitmentTwo,
+                contestedFinalStateTwo: contestedFinalStateTwo
+            }),
+            stateTransition: stateTransition
+        });
         address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
         return BottomTournament(clone);
     }

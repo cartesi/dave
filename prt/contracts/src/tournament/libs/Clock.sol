@@ -38,8 +38,9 @@ library Clock {
             return true;
         } else {
             // otherwise the allowance must be greater than the timespan from current time to start instant
-            return state.allowance
-                .gt(Time.timeSpan(Time.currentTime(), state.startInstant));
+            return state.allowance.gt(
+                Time.timeSpan(Time.currentTime(), state.startInstant)
+            );
         }
     }
 
@@ -66,8 +67,9 @@ library Clock {
             revert("a paused clock can't timeout");
         }
 
-        return Time.timeSpan(Time.currentTime(), state.startInstant)
-            .monus(state.allowance);
+        return Time.timeSpan(Time.currentTime(), state.startInstant).monus(
+            state.allowance
+        );
     }
 
     function timeLeft(State memory state)
@@ -78,8 +80,9 @@ library Clock {
         if (state.startInstant.isZero()) {
             return state.allowance;
         } else {
-            return state.allowance
-                .monus(Time.timeSpan(Time.currentTime(), state.startInstant));
+            return state.allowance.monus(
+                Time.timeSpan(Time.currentTime(), state.startInstant)
+            );
         }
     }
 
