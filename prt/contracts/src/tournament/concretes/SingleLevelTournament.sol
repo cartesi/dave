@@ -17,14 +17,6 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
         IStateTransition stateTransition;
     }
 
-    function tryRecoveringBond()
-        public
-        override(RootTournament, Tournament)
-        returns (bool)
-    {
-        return super.tryRecoveringBond();
-    }
-
     function _singleLevelArgs()
         internal
         view
