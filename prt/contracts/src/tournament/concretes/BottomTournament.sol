@@ -48,4 +48,26 @@ contract BottomTournament is LeafTournament, NonRootTournament {
     {
         return _bottomArgs().stateTransition;
     }
+
+    function eliminateInnerTournament(ITournament _childTournament) external {
+        revert ITournament.NotImplemented();
+    }
+
+    function sealInnerMatchAndCreateInnerTournament(
+        Match.Id calldata _matchId,
+        Tree.Node _leftLeaf,
+        Tree.Node _rightLeaf,
+        Machine.Hash _agreeHash,
+        bytes32[] calldata _agreeHashProof
+    ) external {
+        revert ITournament.NotImplemented();
+    }
+
+    function winInnerTournament(
+        ITournament _childTournament,
+        Tree.Node _leftNode,
+        Tree.Node _rightNode
+    ) external {
+        revert ITournament.NotImplemented();
+    }
 }

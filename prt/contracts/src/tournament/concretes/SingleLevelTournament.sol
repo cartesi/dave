@@ -51,4 +51,38 @@ contract SingleLevelTournament is LeafTournament, RootTournament {
     {
         return _singleLevelArgs().stateTransition;
     }
+
+    function canBeEliminated() external view returns (bool) {
+        revert ITournament.NotImplemented();
+    }
+
+    function eliminateInnerTournament(ITournament _childTournament) external {
+        revert ITournament.NotImplemented();
+    }
+
+    function innerTournamentWinner()
+        external
+        view
+        returns (bool, Tree.Node, Tree.Node, Clock.State memory)
+    {
+        revert ITournament.NotImplemented();
+    }
+
+    function sealInnerMatchAndCreateInnerTournament(
+        Match.Id calldata _matchId,
+        Tree.Node _leftLeaf,
+        Tree.Node _rightLeaf,
+        Machine.Hash _agreeHash,
+        bytes32[] calldata _agreeHashProof
+    ) external {
+        revert ITournament.NotImplemented();
+    }
+
+    function winInnerTournament(
+        ITournament _childTournament,
+        Tree.Node _leftNode,
+        Tree.Node _rightNode
+    ) external {
+        revert ITournament.NotImplemented();
+    }
 }
