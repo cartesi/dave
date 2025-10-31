@@ -49,14 +49,16 @@ local Env = {
     -- consensus_address = false,
 }
 
-function Env.spawn_blockchain()
+function Env.spawn_blockchain(inputs)
+    inputs = inputs or {}
+
     local blockchain = Blockchain:new(ANVIL_PATH)
     Env.blockchain = blockchain
     Env.reader = Reader:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, TEMPLATE_MACHINE_HASH, SALT, blockchain.endpoint)
     Env.app_address = Env.reader.app_address
     Env.consensus_address = Env.reader.consensus_address
     Env.sender = Sender:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, Env.app_address, blockchain.pks[1], blockchain.endpoint)
-    Env.sender:tx_add_input(Env.sample_inputs[1])
+    Env.sender:tx_add_inputs(inputs)
     Env.sender:tx_new_dave_app(TEMPLATE_MACHINE_HASH, SALT)
     Env.sender:advance_blocks(2)
     return blockchain
@@ -166,7 +168,8 @@ function Env.drive_player(player_coroutine)
     end)
 end
 
-function Env.run_epoch(sealed_epoch, patches)
+function Env.run_epoch(sealed_epoch, patches, next_inputs)
+    next_inputs = next_inputs or {}
     local settlement = Env.epoch_settlement(sealed_epoch)
 
     -- Setup player till completion
@@ -184,7 +187,7 @@ function Env.run_epoch(sealed_epoch, patches)
     print "Sybil has lost"
 
     -- add inputs for next epoch (in case it happens!)
-    Env.sender:tx_add_inputs { Env.sample_inputs[1], Env.sample_inputs[1], Env.sample_inputs[1] }
+    Env.sender:tx_add_inputs(next_inputs)
 
     -- Wait for node's claim to finally settle
     local next_epoch = Env.wait_until_epoch(sealed_epoch.epoch_number + 1)
