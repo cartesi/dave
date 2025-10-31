@@ -14,6 +14,7 @@ interface ITournament {
     //
     // Types
     //
+
     struct TournamentArguments {
         Commitment.Arguments commitmentArgs;
         uint64 level;
@@ -30,6 +31,7 @@ interface ITournament {
         TIMEOUT,
         CHILD_TOURNAMENT
     }
+
     enum WinnerCommitment {
         NONE,
         ONE,
@@ -39,12 +41,14 @@ interface ITournament {
     //
     // Events
     //
+
     event MatchCreated(
         Match.IdHash indexed matchIdHash,
         Tree.Node indexed one,
         Tree.Node indexed two,
         Tree.Node leftOfTwo
     );
+
     event MatchDeleted(
         Match.IdHash indexed matchIdHash,
         Tree.Node indexed one,
@@ -52,14 +56,17 @@ interface ITournament {
         MatchDeletionReason reason,
         WinnerCommitment winnerCommitment
     );
+
     event CommitmentJoined(
         Tree.Node commitment,
         Machine.Hash finalStateHash,
         address indexed caller
     );
+
     event BondRefunded(
         address indexed recipient, uint256 value, bool indexed status, bytes ret
     );
+
     event NewInnerTournament(
         Match.IdHash indexed matchIdHash, ITournament indexed childTournament
     );
@@ -67,6 +74,7 @@ interface ITournament {
     //
     // Errors
     //
+
     error InsufficientBond();
     error NoWinner();
     error TournamentIsFinished();
@@ -99,6 +107,7 @@ interface ITournament {
     //
     // Functions
     //
+
     function bondValue() external view returns (uint256);
 
     function tryRecoveringBond() external returns (bool);
