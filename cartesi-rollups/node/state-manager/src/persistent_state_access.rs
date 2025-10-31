@@ -211,7 +211,17 @@ impl StateManager for PersistentStateAccess {
 
         let settlement = {
             let leafs = rollup_data::get_all_commitments(&self.connection, previous_epoch_number)?;
-            let computation_hash = build_commitment_from_hashes(&leafs);
+
+            let computation_hash = if !leafs.is_empty() {
+                build_commitment_from_hashes(&leafs)
+            } else {
+                assert_eq!(machine.next_input_index_in_epoch(), 0);
+                build_commitment_from_hashes(&[CommitmentLeaf {
+                    hash: machine.state_hash()?,
+                    repetitions: 1,
+                }])
+            };
+
             let (output_merkle, output_proof) = machine.outputs_proof()?;
 
             Settlement {
@@ -279,6 +289,7 @@ impl StateManager for PersistentStateAccess {
 fn build_commitment_from_hashes(state_hashes: &[CommitmentLeaf]) -> Digest {
     let mut builder = MerkleBuilder::default();
 
+    assert!(!state_hashes.is_empty());
     let (last, hashes) = state_hashes.split_last().unwrap();
 
     for state_hash in hashes {
