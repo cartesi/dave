@@ -48,4 +48,35 @@ contract TopTournament is NonLeafTournament, RootTournament {
     {
         return _topArgs().tournamentFactory;
     }
+
+    function canBeEliminated() external view returns (bool) {
+        revert ITournament.NotImplemented();
+    }
+
+    function innerTournamentWinner()
+        external
+        view
+        returns (bool, Tree.Node, Tree.Node, Clock.State memory)
+    {
+        revert ITournament.NotImplemented();
+    }
+
+    function sealLeafMatch(
+        Match.Id calldata _matchId,
+        Tree.Node _leftLeaf,
+        Tree.Node _rightLeaf,
+        Machine.Hash _agreeHash,
+        bytes32[] calldata _agreeHashProof
+    ) external {
+        revert ITournament.NotImplemented();
+    }
+
+    function winLeafMatch(
+        Match.Id calldata _matchId,
+        Tree.Node _leftNode,
+        Tree.Node _rightNode,
+        bytes calldata proofs
+    ) external {
+        revert ITournament.NotImplemented();
+    }
 }

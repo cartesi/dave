@@ -22,15 +22,7 @@ abstract contract NonLeafTournament is Tournament {
     //
     // Storage
     //
-    mapping(NonRootTournament => Match.Id) matchIdFromInnerTournaments;
-
-    //
-    // Events
-    //
-    event NewInnerTournament(
-        Match.IdHash indexed matchIdHash,
-        NonRootTournament indexed childTournament
-    );
+    mapping(ITournament => Match.Id) matchIdFromInnerTournaments;
 
     function sealInnerMatchAndCreateInnerTournament(
         Match.Id calldata _matchId,
@@ -80,14 +72,8 @@ abstract contract NonLeafTournament is Tournament {
         emit NewInnerTournament(_matchId.hashFromId(), _inner);
     }
 
-    error ChildTournamentNotFinished();
-    error ChildTournamentCannotBeEliminated();
-    error ChildTournamentMustBeEliminated();
-    error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
-    error InvalidTournamentWinner(Tree.Node winner);
-
     function winInnerTournament(
-        NonRootTournament _childTournament,
+        ITournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) external refundable(Gas.WIN_INNER_TOURNAMENT) tournamentNotFinished {
@@ -139,7 +125,7 @@ abstract contract NonLeafTournament is Tournament {
         _childTournament.tryRecoveringBond();
     }
 
-    function eliminateInnerTournament(NonRootTournament _childTournament)
+    function eliminateInnerTournament(ITournament _childTournament)
         external
         refundable(Gas.ELIMINATE_INNER_TOURNAMENT)
         tournamentNotFinished

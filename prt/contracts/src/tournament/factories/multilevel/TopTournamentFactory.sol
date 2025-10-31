@@ -27,7 +27,7 @@ contract TopTournamentFactory {
         IMultiLevelTournamentFactory tournamentFactory
     ) external returns (TopTournament) {
         TopTournament.TopArguments memory args = TopTournament.TopArguments({
-            tournamentArgs: Tournament.TournamentArguments({
+            tournamentArgs: ITournament.TournamentArguments({
                 commitmentArgs: Commitment.Arguments({
                     initialHash: initialHash,
                     startCycle: START_CYCLE,

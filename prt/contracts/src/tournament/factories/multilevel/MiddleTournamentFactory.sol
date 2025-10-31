@@ -37,7 +37,7 @@ contract MiddleTournamentFactory {
     ) external returns (MiddleTournament) {
         MiddleTournament.MiddleArguments memory args =
             MiddleTournament.MiddleArguments({
-                tournamentArgs: Tournament.TournamentArguments({
+                tournamentArgs: ITournament.TournamentArguments({
                     commitmentArgs: Commitment.Arguments({
                         initialHash: initialHash,
                         startCycle: startCycle,
