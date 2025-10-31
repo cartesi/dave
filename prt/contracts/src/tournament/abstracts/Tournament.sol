@@ -262,7 +262,7 @@ abstract contract Tournament is ITournament {
         }
     }
 
-    function tryRecoveringBond() public virtual returns (bool) {
+    function tryRecoveringBond() public returns (bool) {
         require(isFinished(), TournamentNotFinished());
 
         // Ensure there is a winner

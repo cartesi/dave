@@ -17,8 +17,4 @@ abstract contract RootTournament is Tournament {
         // always returns true in root tournament
         return (true, Machine.ZERO_STATE, Machine.ZERO_STATE);
     }
-
-    function tryRecoveringBond() public virtual override returns (bool) {
-        return super.tryRecoveringBond();
-    }
 }
