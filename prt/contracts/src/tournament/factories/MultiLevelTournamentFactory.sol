@@ -42,10 +42,10 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         return _tournament;
     }
 
-    function instantiateTop_(Machine.Hash _initialHash, IDataProvider _provider)
-        private
-        returns (TopTournament)
-    {
+    function instantiateTop_(
+        Machine.Hash _initialHash,
+        IDataProvider _provider
+    ) private returns (TopTournament) {
         TopTournament _tournament = topFactory.instantiate(
             _initialHash, _getTopTournamentParameters(), _provider, this
         );

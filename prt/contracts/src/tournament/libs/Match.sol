@@ -214,7 +214,10 @@ library Match {
         return args.toCycle(state.runningLeafPosition);
     }
 
-    function getDivergence(State memory state, Commitment.Arguments memory args)
+    function getDivergence(
+        State memory state,
+        Commitment.Arguments memory args
+    )
         internal
         pure
         returns (
