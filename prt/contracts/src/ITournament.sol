@@ -266,7 +266,6 @@ interface ITournament {
     function tournamentArguments()
         external
         view
-        virtual
         returns (TournamentArguments memory);
 
     function canWinMatchByTimeout(Match.Id calldata _matchId)
