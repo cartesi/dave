@@ -78,15 +78,14 @@ abstract contract Tournament is ITournament {
     //
     // Modifiers
     //
-    modifier tournamentNotFinished() {
-        require(!isFinished(), TournamentIsFinished());
 
+    modifier tournamentNotFinished() {
+        _ensureTournamentIsNotFinished();
         _;
     }
 
     modifier tournamentOpen() {
-        require(!isClosed(), TournamentIsClosed());
-
+        _ensureTournamentIsOpen();
         _;
     }
 
@@ -95,26 +94,11 @@ abstract contract Tournament is ITournament {
     /// a profit, capped by the current contract balance
     /// and a fraction of the bond value.
     /// @param gasEstimate A worst-case gas estimate for the modified function
+    /// forge-lint: disable-next-line(unwrapped-modifier-logic)
     modifier refundable(uint256 gasEstimate) {
-        require(!locked, ReentrancyDetected());
-        locked = true;
-
-        uint256 gasBefore = gasleft();
+        uint256 gasBefore = _refundableBefore();
         _;
-        uint256 gasAfter = gasleft();
-
-        uint256 refundValue = _min(
-            address(this).balance,
-            bondValue() * gasEstimate / _totalGasEstimate(),
-            (Gas.TX + gasBefore - gasAfter)
-                * (tx.gasprice + MESSAGE_SENDER_PROFIT)
-        );
-
-        (bool status, bytes memory ret) =
-            msg.sender.call{value: refundValue}("");
-        emit BondRefunded(msg.sender, refundValue, status, ret);
-
-        locked = false;
+        _refundableAfter(gasBefore, gasEstimate);
     }
 
     //
@@ -543,5 +527,50 @@ abstract contract Tournament is ITournament {
         returns (uint256)
     {
         return a.min(b).min(c);
+    }
+
+    /// @notice This function is run at the start of every refundable function.
+    /// @return gasBefore The available gas amount before running the function
+    /// @dev Ensures the lock is not taken, and takes the lock.
+    function _refundableBefore() private returns (uint256 gasBefore) {
+        require(!locked, ReentrancyDetected());
+        locked = true;
+        gasBefore = gasleft();
+    }
+
+    /// @notice This function is run at the end of every refundable function.
+    /// @param gasBefore The available gas amount before running the function
+    /// @param gasEstimate A worst-case gas estimate for the modified function
+    /// @dev Releases the lock and tries to refund the sender for the wasted gas.
+    /// @dev Emits a BondRefunded event even if the refund fails.
+    /// @dev The refund is capped by the contract balance and weighted fraction
+    /// of the bond value (where the weight is the expected gas of the function call).
+    function _refundableAfter(uint256 gasBefore, uint256 gasEstimate) private {
+        uint256 gasAfter = gasleft();
+
+        uint256 refundValue = _min(
+            address(this).balance,
+            bondValue() * gasEstimate / _totalGasEstimate(),
+            (Gas.TX + gasBefore - gasAfter)
+                * (tx.gasprice + MESSAGE_SENDER_PROFIT)
+        );
+
+        (bool status, bytes memory ret) =
+            msg.sender.call{value: refundValue}("");
+        emit BondRefunded(msg.sender, refundValue, status, ret);
+
+        locked = false;
+    }
+
+    /// @notice Ensure the tournament is not finished.
+    /// @dev Raises a `TournamentNotFinished` error otherwise.
+    function _ensureTournamentIsNotFinished() private {
+        require(!isFinished(), TournamentIsFinished());
+    }
+
+    /// @notice Ensure the tournament is open (not closed).
+    /// @dev Raises a `TournamentIsClosed` error otherwise.
+    function _ensureTournamentIsOpen() private {
+        require(!isClosed(), TournamentIsClosed());
     }
 }
