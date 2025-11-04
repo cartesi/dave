@@ -87,7 +87,7 @@ library Match {
     ) internal pure returns (IdHash, State memory) {
         assert(two.verify(leftNodeOfTwo, rightNodeOfTwo));
 
-        Id memory matchId = Id(one, two);
+        Id memory matchId = Id({commitmentOne: one, commitmentTwo: two});
 
         State memory state = State({
             otherParent: one,
