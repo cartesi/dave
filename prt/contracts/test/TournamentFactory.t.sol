@@ -38,7 +38,7 @@ contract TournamentFactoryTest is Util {
             )
         );
 
-        (uint64 _max_level, uint64 _level, uint64 _log2step, uint64 _height) =
+        (uint64 _maxLevel, uint64 _level, uint64 _log2step, uint64 _height) =
             rootTournament.tournamentLevelConstants();
 
         assertEq(_level, 0, "level should be 0");
@@ -59,7 +59,7 @@ contract TournamentFactoryTest is Util {
             )
         );
 
-        (_max_level, _level, _log2step, _height) =
+        (_maxLevel, _level, _log2step, _height) =
             rootTournament.tournamentLevelConstants();
 
         assertEq(_level, 0, "level should be 0");
