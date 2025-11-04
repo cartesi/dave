@@ -29,6 +29,7 @@ abstract contract NonRootTournament is Tournament {
     function innerTournamentWinner()
         external
         view
+        override
         returns (bool, Tree.Node, Tree.Node, Clock.State memory)
     {
         if (!isFinished() || canBeEliminated()) {
@@ -57,7 +58,7 @@ abstract contract NonRootTournament is Tournament {
         }
     }
 
-    function canBeEliminated() public view returns (bool) {
+    function canBeEliminated() public view override returns (bool) {
         (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
 
         if (!finished) {

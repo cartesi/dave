@@ -28,7 +28,7 @@ abstract contract LeafTournament is Tournament {
         Tree.Node _rightLeaf,
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
-    ) external refundable(Gas.SEAL_LEAF_MATCH) tournamentNotFinished {
+    ) external override refundable(Gas.SEAL_LEAF_MATCH) tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeFinalized();
@@ -61,7 +61,7 @@ abstract contract LeafTournament is Tournament {
         Tree.Node _leftNode,
         Tree.Node _rightNode,
         bytes calldata proofs
-    ) external refundable(Gas.WIN_LEAF_MATCH) tournamentNotFinished {
+    ) external override refundable(Gas.WIN_LEAF_MATCH) tournamentNotFinished {
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
         _clockOne.requireInitialized();

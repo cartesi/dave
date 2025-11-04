@@ -40,6 +40,7 @@ abstract contract NonLeafTournament is Tournament {
         bytes32[] calldata _agreeHashProof
     )
         external
+        override
         refundable(Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
@@ -84,7 +85,12 @@ abstract contract NonLeafTournament is Tournament {
         ITournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external refundable(Gas.WIN_INNER_TOURNAMENT) tournamentNotFinished {
+    )
+        external
+        override
+        refundable(Gas.WIN_INNER_TOURNAMENT)
+        tournamentNotFinished
+    {
         Match.Id memory _matchId = matchIdFromInnerTournaments[_childTournament];
         Match.IdHash _matchIdHash = _matchId.hashFromId();
         _matchIdHash.requireExist();
@@ -135,6 +141,7 @@ abstract contract NonLeafTournament is Tournament {
 
     function eliminateInnerTournament(ITournament _childTournament)
         external
+        override
         refundable(Gas.ELIMINATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
