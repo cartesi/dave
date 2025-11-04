@@ -64,7 +64,7 @@ interface ITournament {
         address indexed caller
     );
 
-    event BondRefunded(
+    event PartialBondRefund(
         address indexed recipient, uint256 value, bool indexed status, bytes ret
     );
 
