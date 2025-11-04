@@ -26,10 +26,10 @@ contract TopTournamentFactory {
     uint64 constant START_CYCLE = 0;
     uint64 constant LEVEL = 0;
 
-    TopTournament immutable _impl;
+    TopTournament immutable IMPL;
 
     constructor(TopTournament impl) {
-        _impl = impl;
+        IMPL = impl;
     }
 
     function instantiate(
@@ -56,7 +56,7 @@ contract TopTournamentFactory {
             }),
             tournamentFactory: tournamentFactory
         });
-        address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
+        address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
         return TopTournament(clone);
     }
 }

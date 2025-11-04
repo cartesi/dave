@@ -33,15 +33,15 @@ contract TopTournamentTest is Util {
     using Match for Match.State;
     using Machine for Machine.Hash;
 
-    MultiLevelTournamentFactory immutable factory;
+    MultiLevelTournamentFactory immutable FACTORY;
     ITournament topTournament;
 
     constructor() {
-        (factory,) = Util.instantiateTournamentFactory();
+        (FACTORY,) = Util.instantiateTournamentFactory();
     }
 
     function testRootWinner() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // no winner before tournament finished
         (bool _finished, Tree.Node _winner, Machine.Hash _finalState) =
@@ -92,7 +92,7 @@ contract TopTournamentTest is Util {
     }
 
     function testInner() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 1 joins tournament
@@ -121,7 +121,7 @@ contract TopTournamentTest is Util {
             "agree cycle should be zero"
         );
 
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 2 joins tournament

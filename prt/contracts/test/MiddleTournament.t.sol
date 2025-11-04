@@ -36,7 +36,7 @@ contract MiddleTournamentTest is Util {
     using Match for Match.State;
     using Machine for Machine.Hash;
 
-    MultiLevelTournamentFactory immutable factory;
+    MultiLevelTournamentFactory immutable FACTORY;
     ITournament topTournament;
     ITournament middleTournament;
 
@@ -45,13 +45,13 @@ contract MiddleTournamentTest is Util {
     address player1 = vm.addr(2);
 
     constructor() {
-        (factory,) = Util.instantiateTournamentFactory();
+        (FACTORY,) = Util.instantiateTournamentFactory();
     }
 
     receive() external payable {}
 
     function testInnerEliminationEventuallyAllowedAfterFinish() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // Create middle tournament via top seal
         uint256 _opponent = 1;
@@ -118,7 +118,7 @@ contract MiddleTournamentTest is Util {
     }
 
     function testInnerWinner() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 1 joins tournament
@@ -228,7 +228,7 @@ contract MiddleTournamentTest is Util {
         }
 
         //create another tournament for other test
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 1 joins tournament
@@ -361,7 +361,7 @@ contract MiddleTournamentTest is Util {
     }
 
     function testInnerNoWinnerNoWinner() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
         Util.joinTournament(topTournament, 1);
         Match.Id memory _matchId = Util.matchId(1, 0);
         uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
@@ -391,7 +391,7 @@ contract MiddleTournamentTest is Util {
     }
 
     function testInnerNoWinner() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
@@ -430,7 +430,7 @@ contract MiddleTournamentTest is Util {
     }
 
     function testInnerWinnerTimeoutClosed() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
@@ -478,7 +478,7 @@ contract MiddleTournamentTest is Util {
     }
 
     function testInnerWinnerTimeoutAllowance() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
@@ -563,7 +563,7 @@ contract MiddleTournamentTest is Util {
     }
 
     function testInnerFairDeduction() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
 

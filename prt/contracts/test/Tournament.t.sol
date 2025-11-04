@@ -34,7 +34,7 @@ contract TournamentTest is Util {
     using Match for Match.State;
     using Machine for Machine.Hash;
 
-    MultiLevelTournamentFactory immutable factory;
+    MultiLevelTournamentFactory immutable FACTORY;
     ITournament topTournament;
     ITournament middleTournament;
 
@@ -50,14 +50,14 @@ contract TournamentTest is Util {
     );
 
     constructor() {
-        (factory,) = Util.instantiateTournamentFactory();
+        (FACTORY,) = Util.instantiateTournamentFactory();
     }
 
     receive() external payable {}
 
     function testJoinTournament() public {
         uint256 player0BalanceBefore = player0.balance;
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
         uint256 player0BalanceAfter = player0.balance;
         uint256 bondAmount = topTournament.bondValue();
         assertEq(
@@ -90,7 +90,7 @@ contract TournamentTest is Util {
     function testJoinTournamentInsufficientBond(uint256 insufficientBond)
         public
     {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         insufficientBond =
             bound(insufficientBond, 0, topTournament.bondValue() - 1);
@@ -108,7 +108,7 @@ contract TournamentTest is Util {
     }
 
     // function testDuplicateJoinTournament() public {
-    //     topTournament = Util.initializePlayer0Tournament(factory);
+    //     topTournament = Util.initializePlayer0Tournament(FACTORY);
 
     //     // duplicate commitment should be reverted
     //     vm.expectRevert("clock is initialized");
@@ -116,7 +116,7 @@ contract TournamentTest is Util {
     // }
 
     function testTimeout() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         uint256 _t = vm.getBlockNumber();
         // the delay is increased when a match is created
@@ -196,7 +196,7 @@ contract TournamentTest is Util {
             "final state should match"
         );
 
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
         _t = vm.getBlockNumber();
 
         // the delay is increased when a match is created
@@ -268,7 +268,7 @@ contract TournamentTest is Util {
     }
 
     function testEliminateByTimeout() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 1 joins tournament
@@ -314,7 +314,7 @@ contract TournamentTest is Util {
     }
 
     function testWinByTimeoutWrongChildrenReverts() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         uint256 _opponent = 1;
         uint64 _height = 0;
