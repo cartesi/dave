@@ -3,6 +3,10 @@
 
 pragma solidity ^0.8.17;
 
+import {
+    Hashes
+} from "@openzeppelin-contracts-5.5.0/utils/cryptography/Hashes.sol";
+
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
@@ -67,9 +71,9 @@ library Commitment {
 
         for (uint256 i = 0; i < treeHeight; i++) {
             if (isEven(position >> i)) {
-                leaf = keccak256(abi.encodePacked(leaf, siblings[i]));
+                leaf = Hashes.efficientKeccak256(leaf, siblings[i]);
             } else {
-                leaf = keccak256(abi.encodePacked(siblings[i], leaf));
+                leaf = Hashes.efficientKeccak256(siblings[i], leaf);
             }
         }
 
@@ -104,7 +108,7 @@ library Commitment {
         );
 
         for (uint256 i = 0; i < treeHeight; i++) {
-            leaf = keccak256(abi.encodePacked(siblings[i], leaf));
+            leaf = Hashes.efficientKeccak256(siblings[i], leaf);
         }
 
         return Tree.Node.wrap(leaf);

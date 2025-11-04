@@ -3,6 +3,10 @@
 
 pragma solidity ^0.8.17;
 
+import {
+    Hashes
+} from "@openzeppelin-contracts-5.5.0/utils/cryptography/Hashes.sol";
+
 import {Machine} from "prt-contracts/types/Machine.sol";
 
 library Tree {
@@ -21,7 +25,7 @@ library Tree {
     function join(Node left, Node right) internal pure returns (Node) {
         bytes32 l = Node.unwrap(left);
         bytes32 r = Node.unwrap(right);
-        bytes32 p = keccak256(abi.encode(l, r));
+        bytes32 p = Hashes.efficientKeccak256(l, r);
         return Node.wrap(p);
     }
 
