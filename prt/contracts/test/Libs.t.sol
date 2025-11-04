@@ -10,12 +10,12 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/Test.sol";
-
-import "prt-contracts/types/Machine.sol";
-import "prt-contracts/tournament/libs/Time.sol";
-
 pragma solidity ^0.8.0;
+
+import {Test} from "forge-std-1.9.6/src/Test.sol";
+
+import {Time} from "src/tournament/libs/Time.sol";
+import {Machine} from "src/types/Machine.sol";
 
 library ExternalTime {
     function sub(Time.Duration left, Time.Duration right)

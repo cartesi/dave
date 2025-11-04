@@ -10,15 +10,21 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/console.sol";
-
-import "prt-contracts/tournament/abstracts/RootTournament.sol";
-import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-
-import "./Util.sol";
-
 pragma solidity ^0.8.0;
+
+import {IDataProvider} from "src/IDataProvider.sol";
+import {ITournament} from "src/ITournament.sol";
+import {
+    ArbitrationConstants
+} from "src/arbitration-config/ArbitrationConstants.sol";
+import {
+    MultiLevelTournamentFactory
+} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {
+    SingleLevelTournamentFactory
+} from "src/tournament/factories/SingleLevelTournamentFactory.sol";
+
+import {Util} from "./Util.sol";
 
 contract TournamentFactoryTest is Util {
     SingleLevelTournamentFactory singleLevelfactory;
@@ -30,12 +36,8 @@ contract TournamentFactoryTest is Util {
     }
 
     function testRootTournament() public {
-        RootTournament rootTournament = RootTournament(
-            address(
-                singleLevelfactory.instantiate(
-                    Util.ONE_STATE, IDataProvider(address(0))
-                )
-            )
+        ITournament rootTournament = singleLevelfactory.instantiate(
+            Util.ONE_STATE, IDataProvider(address(0))
         );
 
         (uint64 _maxLevel, uint64 _level, uint64 _log2step, uint64 _height) =
@@ -51,12 +53,8 @@ contract TournamentFactoryTest is Util {
             _height, ArbitrationConstants.height(_level), "height should match"
         );
 
-        rootTournament = RootTournament(
-            address(
-                multiLevelfactory.instantiateTop(
-                    Util.ONE_STATE, IDataProvider(address(0))
-                )
-            )
+        rootTournament = multiLevelfactory.instantiateTop(
+            Util.ONE_STATE, IDataProvider(address(0))
         );
 
         (_maxLevel, _level, _log2step, _height) =

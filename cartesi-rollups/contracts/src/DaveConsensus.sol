@@ -3,8 +3,8 @@
 
 pragma solidity ^0.8.8;
 
-import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.sol";
+import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 
 import {
     IOutputsMerkleRootValidator
@@ -13,8 +13,8 @@ import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInp
 import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
@@ -22,8 +22,8 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
-import {Merkle} from "./Merkle.sol";
 import {IDaveConsensus} from "./IDaveConsensus.sol";
+import {Merkle} from "./Merkle.sol";
 
 /// @notice Consensus contract with Dave tournaments.
 ///

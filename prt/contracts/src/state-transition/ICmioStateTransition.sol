@@ -15,7 +15,7 @@
 //
 pragma solidity ^0.8.0;
 
-import "step/src/AccessLogs.sol";
+import {AccessLogs} from "step/src/AccessLogs.sol";
 
 /// @title ICmioStateTransition
 /// @notice Contain CMIO operations

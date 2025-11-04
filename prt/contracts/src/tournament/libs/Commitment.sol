@@ -3,9 +3,8 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-import "prt-contracts/types/Tree.sol";
-import "prt-contracts/types/Machine.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 library Commitment {
     using Tree for Tree.Node;

@@ -5,8 +5,17 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
-import "prt-contracts/tournament/abstracts/LeafTournament.sol";
-import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
+import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {
+    LeafTournament
+} from "prt-contracts/tournament/abstracts/LeafTournament.sol";
+import {
+    NonRootTournament
+} from "prt-contracts/tournament/abstracts/NonRootTournament.sol";
+import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Bottom tournament of a multi-level instance
 contract BottomTournament is LeafTournament, NonRootTournament {

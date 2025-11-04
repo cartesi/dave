@@ -10,11 +10,24 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "./Util.sol";
-import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-
 pragma solidity ^0.8.0;
+
+import {Vm} from "forge-std-1.9.6/src/Vm.sol";
+
+import {ITournament} from "src/ITournament.sol";
+import {
+    ArbitrationConstants
+} from "src/arbitration-config/ArbitrationConstants.sol";
+import {
+    MultiLevelTournamentFactory
+} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {Clock} from "src/tournament/libs/Clock.sol";
+import {Match} from "src/tournament/libs/Match.sol";
+import {Time} from "src/tournament/libs/Time.sol";
+import {Machine} from "src/types/Machine.sol";
+import {Tree} from "src/types/Tree.sol";
+
+import {Util} from "./Util.sol";
 
 contract MiddleTournamentTest is Util {
     using Tree for Tree.Node;
@@ -24,17 +37,12 @@ contract MiddleTournamentTest is Util {
     using Machine for Machine.Hash;
 
     MultiLevelTournamentFactory immutable factory;
-    TopTournament topTournament;
-    MiddleTournament middleTournament;
+    ITournament topTournament;
+    ITournament middleTournament;
 
     // Player accounts for testing
     address player0 = vm.addr(1);
     address player1 = vm.addr(2);
-
-    event NewInnerTournament(
-        Match.IdHash indexed matchIdHash,
-        NonRootTournament indexed childTournament
-    );
 
     constructor() {
         (factory,) = Util.instantiateTournamentFactory();
@@ -64,7 +72,7 @@ contract MiddleTournamentTest is Util {
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         // Only player 0 joins middle; let it finish by timeout (no matches occur)
         Util.joinTournament(middleTournament, 0);
@@ -147,7 +155,7 @@ contract MiddleTournamentTest is Util {
         );
 
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         (bool _finished, Tree.Node _winner,,) =
             middleTournament.innerTournamentWinner();
@@ -254,7 +262,7 @@ contract MiddleTournamentTest is Util {
         );
 
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         (_finished, _winner,,) = middleTournament.innerTournamentWinner();
         assertTrue(_winner.isZero(), "winner should be zero node");
@@ -365,7 +373,7 @@ contract MiddleTournamentTest is Util {
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         assertNoElimination();
         uint256 _t = vm.getBlockNumber();
@@ -398,7 +406,7 @@ contract MiddleTournamentTest is Util {
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         assertNoElimination();
         uint256 _t = vm.getBlockNumber();
@@ -437,7 +445,7 @@ contract MiddleTournamentTest is Util {
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);
@@ -485,7 +493,7 @@ contract MiddleTournamentTest is Util {
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);
@@ -569,7 +577,7 @@ contract MiddleTournamentTest is Util {
         );
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);

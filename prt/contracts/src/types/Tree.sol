@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/types/Machine.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
 
 library Tree {
     using Tree for Node;

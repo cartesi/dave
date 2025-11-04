@@ -5,8 +5,20 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
-import "prt-contracts/tournament/concretes/TopTournament.sol";
-import "prt-contracts/types/TournamentParameters.sol";
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {
+    TopTournament
+} from "prt-contracts/tournament/concretes/TopTournament.sol";
+import {
+    IMultiLevelTournamentFactory
+} from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {
+    TournamentParameters
+} from "prt-contracts/types/TournamentParameters.sol";
 
 contract TopTournamentFactory {
     using Clones for address;

@@ -15,7 +15,7 @@
 //
 pragma solidity ^0.8.0;
 
-import "step/src/AccessLogs.sol";
+import {AccessLogs} from "step/src/AccessLogs.sol";
 
 /// @title IRiscVStateTransition
 /// @notice Contain two primitives that transitions machine state from s to s+1

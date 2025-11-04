@@ -5,9 +5,18 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
-import "prt-contracts/tournament/abstracts/LeafTournament.sol";
-import "prt-contracts/tournament/abstracts/RootTournament.sol";
-import "prt-contracts/tournament/abstracts/Tournament.sol";
+import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {
+    LeafTournament
+} from "prt-contracts/tournament/abstracts/LeafTournament.sol";
+import {
+    RootTournament
+} from "prt-contracts/tournament/abstracts/RootTournament.sol";
+import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
+import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 contract SingleLevelTournament is LeafTournament, RootTournament {
     using Clones for address;

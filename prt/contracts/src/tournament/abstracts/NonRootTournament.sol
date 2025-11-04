@@ -3,8 +3,11 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/tournament/abstracts/Tournament.sol";
-import "prt-contracts/types/TournamentParameters.sol";
+import {Tournament} from "./Tournament.sol";
+import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
+import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Non-root tournament needs to propagate side-effects to its parent
 abstract contract NonRootTournament is Tournament {

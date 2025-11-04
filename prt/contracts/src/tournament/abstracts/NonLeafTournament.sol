@@ -3,10 +3,18 @@
 
 pragma solidity ^0.8.28;
 
-import "prt-contracts/tournament/abstracts/Tournament.sol";
-import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
-import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
-import "prt-contracts/tournament/libs/Gas.sol";
+import {Tournament} from "./Tournament.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {
+    IMultiLevelTournamentFactory
+} from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
+import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
+import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Non-leaf tournament can create inner tournaments and matches
 abstract contract NonLeafTournament is Tournament {
@@ -57,7 +65,7 @@ abstract contract NonLeafTournament is Tournament {
             _agreeHashProof
         );
 
-        NonRootTournament _inner = instantiateInner(
+        ITournament _inner = instantiateInner(
             _agreeHash,
             _matchId.commitmentOne,
             _finalStateOne,
@@ -160,11 +168,11 @@ abstract contract NonLeafTournament is Tournament {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level
-    ) private returns (NonRootTournament) {
+    ) private returns (ITournament) {
         // the inner tournament is bottom tournament at last level
         // else instantiate middle tournament
         TournamentArguments memory args = tournamentArguments();
-        Tournament _tournament;
+        ITournament _tournament;
         IMultiLevelTournamentFactory tournamentFactory = _tournamentFactory();
         if (_level == args.levels - 1) {
             _tournament = tournamentFactory.instantiateBottom(
@@ -192,7 +200,7 @@ abstract contract NonLeafTournament is Tournament {
             );
         }
 
-        return NonRootTournament(address(_tournament));
+        return _tournament;
     }
 
     function _totalGasEstimate() internal view override returns (uint256) {

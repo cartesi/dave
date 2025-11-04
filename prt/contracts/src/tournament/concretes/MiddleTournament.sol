@@ -5,10 +5,19 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
-import "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
-import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
-
-import "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {
+    NonLeafTournament
+} from "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
+import {
+    NonRootTournament
+} from "prt-contracts/tournament/abstracts/NonRootTournament.sol";
+import {
+    IMultiLevelTournamentFactory
+} from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Middle tournament is non-top, non-bottom of a multi-level instance
 contract MiddleTournament is NonLeafTournament, NonRootTournament {
