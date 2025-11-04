@@ -3,12 +3,17 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/ITournamentFactory.sol";
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 interface IMultiLevelTournamentFactory is ITournamentFactory {
     function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
         external
-        returns (Tournament);
+        returns (ITournament);
 
     function instantiateMiddle(
         Machine.Hash _initialHash,
@@ -20,7 +25,7 @@ interface IMultiLevelTournamentFactory is ITournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external returns (Tournament);
+    ) external returns (ITournament);
 
     function instantiateBottom(
         Machine.Hash _initialHash,
@@ -32,5 +37,5 @@ interface IMultiLevelTournamentFactory is ITournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external returns (Tournament);
+    ) external returns (ITournament);
 }

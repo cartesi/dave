@@ -10,11 +10,22 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "./Util.sol";
-import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-
 pragma solidity ^0.8.0;
+
+import {ITournament} from "src/ITournament.sol";
+import {
+    ArbitrationConstants
+} from "src/arbitration-config/ArbitrationConstants.sol";
+import {
+    MultiLevelTournamentFactory
+} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {Clock} from "src/tournament/libs/Clock.sol";
+import {Match} from "src/tournament/libs/Match.sol";
+import {Time} from "src/tournament/libs/Time.sol";
+import {Machine} from "src/types/Machine.sol";
+import {Tree} from "src/types/Tree.sol";
+
+import {Util} from "./Util.sol";
 
 contract TournamentTest is Util {
     using Tree for Tree.Node;
@@ -24,8 +35,8 @@ contract TournamentTest is Util {
     using Machine for Machine.Hash;
 
     MultiLevelTournamentFactory immutable factory;
-    TopTournament topTournament;
-    MiddleTournament middleTournament;
+    ITournament topTournament;
+    ITournament middleTournament;
 
     // Player accounts for testing
     address player0 = vm.addr(1);

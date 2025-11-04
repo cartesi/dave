@@ -3,19 +3,16 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/ITournament.sol";
-
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-import "prt-contracts/types/TournamentParameters.sol";
-import "prt-contracts/types/Machine.sol";
-import "prt-contracts/types/Tree.sol";
-
-import "prt-contracts/tournament/libs/Commitment.sol";
-import "prt-contracts/tournament/libs/Time.sol";
-import "prt-contracts/tournament/libs/Match.sol";
-import "prt-contracts/tournament/libs/Gas.sol";
-
 import {Math} from "@openzeppelin-contracts-5.2.0/utils/math/Math.sol";
+
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
+import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
+import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @title Tournament (Abstract) — Asynchronous PRT-style dispute resolution
 /// @notice Core, permissionless tournament skeleton that resolves disputes among

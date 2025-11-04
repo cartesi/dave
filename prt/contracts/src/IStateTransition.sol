@@ -15,7 +15,7 @@
 //
 pragma solidity ^0.8.0;
 
-import "prt-contracts/IDataProvider.sol";
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 
 /// @title IStateTransition
 /// @notice Transitions machine state from s to s+1

@@ -19,9 +19,14 @@
 
 pragma solidity ^0.8.0;
 
-import "prt-contracts/state-transition/IRiscVStateTransition.sol";
-import "prt-contracts/state-transition/ICmioStateTransition.sol";
-import "prt-contracts/IStateTransition.sol";
+import {AccessLogs} from "step/src/AccessLogs.sol";
+import {Buffer} from "step/src/Buffer.sol";
+import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
+
+import {ICmioStateTransition} from "./ICmioStateTransition.sol";
+import {IRiscVStateTransition} from "./IRiscVStateTransition.sol";
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 
 contract CartesiStateTransition is IStateTransition {
     // TODO add CM_MARCHID

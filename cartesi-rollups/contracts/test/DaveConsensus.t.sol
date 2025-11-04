@@ -3,24 +3,24 @@
 
 pragma solidity ^0.8.0;
 
-import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
+import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
 import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 
-import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
 import {
     IOutputsMerkleRootValidator
 } from "cartesi-rollups-contracts-2.1.0-alpha.3/src/consensus/IOutputsMerkleRootValidator.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
 import {InputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/InputBox.sol";
 import {LibMerkle32} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
-import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
+import {Match} from "prt-contracts/tournament/libs/Match.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";

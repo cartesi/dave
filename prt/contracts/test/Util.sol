@@ -10,27 +10,52 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/console.sol";
-import "forge-std-1.9.6/src/Test.sol";
-
-import "src/arbitration-config/ArbitrationConstants.sol";
-import "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
-
-import "src/tournament/libs/Match.sol";
-import "src/tournament/concretes/TopTournament.sol";
-import "src/tournament/concretes/MiddleTournament.sol";
-
-import "src/tournament/factories/SingleLevelTournamentFactory.sol";
-import "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import "src/tournament/factories/multilevel/TopTournamentFactory.sol";
-import "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
-import "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
-
-import "src/state-transition/CmioStateTransition.sol";
-import "src/state-transition/RiscVStateTransition.sol";
-import "src/state-transition/CartesiStateTransition.sol";
-
 pragma solidity ^0.8.0;
+
+import {Test} from "forge-std-1.9.6/src/Test.sol";
+
+import {IDataProvider} from "src/IDataProvider.sol";
+import {ITournament} from "src/ITournament.sol";
+import {
+    ArbitrationConstants
+} from "src/arbitration-config/ArbitrationConstants.sol";
+import {
+    CanonicalTournamentParametersProvider
+} from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import {
+    CartesiStateTransition
+} from "src/state-transition/CartesiStateTransition.sol";
+import {
+    CmioStateTransition
+} from "src/state-transition/CmioStateTransition.sol";
+import {
+    RiscVStateTransition
+} from "src/state-transition/RiscVStateTransition.sol";
+import {BottomTournament} from "src/tournament/concretes/BottomTournament.sol";
+import {MiddleTournament} from "src/tournament/concretes/MiddleTournament.sol";
+import {
+    SingleLevelTournament
+} from "src/tournament/concretes/SingleLevelTournament.sol";
+import {TopTournament} from "src/tournament/concretes/TopTournament.sol";
+import {
+    MultiLevelTournamentFactory
+} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {
+    SingleLevelTournamentFactory
+} from "src/tournament/factories/SingleLevelTournamentFactory.sol";
+import {
+    BottomTournamentFactory
+} from "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
+import {
+    MiddleTournamentFactory
+} from "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
+import {
+    TopTournamentFactory
+} from "src/tournament/factories/multilevel/TopTournamentFactory.sol";
+import {Match} from "src/tournament/libs/Match.sol";
+import {Time} from "src/tournament/libs/Time.sol";
+import {Machine} from "src/types/Machine.sol";
+import {Tree} from "src/types/Tree.sol";
 
 contract Util is Test {
     using Tree for Tree.Node;
@@ -122,7 +147,7 @@ contract Util is Test {
 
     // advance match between player 0 and opponent
     function advanceMatch(
-        Tournament _tournament,
+        ITournament _tournament,
         Match.Id memory _matchId,
         uint256 _opponent
     ) internal returns (uint256 _playerToSeal) {
@@ -191,7 +216,7 @@ contract Util is Test {
     }
 
     // _player joins _tournament at _level
-    function joinTournament(Tournament _tournament, uint256 _player) internal {
+    function joinTournament(ITournament _tournament, uint256 _player) internal {
         (,,, uint64 height) = _tournament.tournamentLevelConstants();
         Tree.Node _left = _player == 1
             ? playerNodes[1][height - 1]
@@ -201,15 +226,12 @@ contract Util is Test {
         uint256 bondAmount = _tournament.bondValue();
         vm.prank(addrs[_player]);
         _tournament.joinTournament{value: bondAmount}(
-            _finalState,
-            generateFinalStateProof(_player, height),
-            _left,
-            _right
+            _finalState, generateFinalStateProof(_player, height), _left, _right
         );
     }
 
     function sealLeafMatch(
-        LeafTournament _tournament,
+        ITournament _tournament,
         Match.Id memory _matchId,
         uint256 _player
     ) internal {
@@ -227,7 +249,7 @@ contract Util is Test {
     }
 
     function winLeafMatch(
-        LeafTournament _tournament,
+        ITournament _tournament,
         Match.Id memory _matchId,
         uint256 _player
     ) internal {
@@ -241,7 +263,7 @@ contract Util is Test {
     }
 
     function sealInnerMatchAndCreateInnerTournament(
-        NonLeafTournament _tournament,
+        ITournament _tournament,
         Match.Id memory _matchId,
         uint256 _player
     ) internal {

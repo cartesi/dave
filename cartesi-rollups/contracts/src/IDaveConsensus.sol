@@ -3,14 +3,14 @@
 
 pragma solidity ^0.8.8;
 
-import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
 import {
     IOutputsMerkleRootValidator
 } from "cartesi-rollups-contracts-2.1.0-alpha.3/src/consensus/IOutputsMerkleRootValidator.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";

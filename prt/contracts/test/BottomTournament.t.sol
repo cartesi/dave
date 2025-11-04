@@ -10,11 +10,28 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "./Util.sol";
-import "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-
 pragma solidity ^0.8.0;
+
+import {Vm} from "forge-std-1.9.6/src/Vm.sol";
+
+import {IStateTransition} from "src/IStateTransition.sol";
+import {ITournament} from "src/ITournament.sol";
+import {
+    ArbitrationConstants
+} from "src/arbitration-config/ArbitrationConstants.sol";
+import {
+    CartesiStateTransition
+} from "src/state-transition/CartesiStateTransition.sol";
+import {
+    MultiLevelTournamentFactory
+} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {Clock} from "src/tournament/libs/Clock.sol";
+import {Match} from "src/tournament/libs/Match.sol";
+import {Time} from "src/tournament/libs/Time.sol";
+import {Machine} from "src/types/Machine.sol";
+import {Tree} from "src/types/Tree.sol";
+
+import {Util} from "./Util.sol";
 
 contract BottomTournamentTest is Util {
     using Tree for Tree.Node;
@@ -25,16 +42,11 @@ contract BottomTournamentTest is Util {
 
     MultiLevelTournamentFactory immutable factory;
     CartesiStateTransition immutable stateTransition;
-    TopTournament topTournament;
-    MiddleTournament middleTournament;
-    BottomTournament bottomTournament;
+    ITournament topTournament;
+    ITournament middleTournament;
+    ITournament bottomTournament;
 
     error WrongNodesForStep();
-
-    event NewInnerTournament(
-        Match.IdHash indexed matchIdHash,
-        NonRootTournament indexed childTournament
-    );
 
     constructor() {
         (factory, stateTransition) = Util.instantiateTournamentFactory();
@@ -86,7 +98,7 @@ contract BottomTournamentTest is Util {
         );
 
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -142,7 +154,7 @@ contract BottomTournamentTest is Util {
         );
 
         bottomTournament =
-            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
@@ -269,7 +281,7 @@ contract BottomTournamentTest is Util {
         );
 
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -312,7 +324,7 @@ contract BottomTournamentTest is Util {
         );
 
         bottomTournament =
-            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
@@ -390,7 +402,7 @@ contract BottomTournamentTest is Util {
         );
 
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -428,7 +440,7 @@ contract BottomTournamentTest is Util {
         );
 
         bottomTournament =
-            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
@@ -463,7 +475,7 @@ contract BottomTournamentTest is Util {
     function testPostSealBothClocksRunAndEliminateAfterDoubleTimeout() public {
         topTournament = Util.initializePlayer0Tournament(factory);
 
-        // Build down to a BottomTournament instance via two inner seals
+        // Build down to a ITournament instance via two inner seals
         uint256 _opponent = 1;
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
@@ -483,7 +495,7 @@ contract BottomTournamentTest is Util {
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
-            MiddleTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
@@ -501,7 +513,7 @@ contract BottomTournamentTest is Util {
 
         _entries = vm.getRecordedLogs();
         bottomTournament =
-            BottomTournament(address(uint160(uint256(_entries[0].topics[2]))));
+            ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
         // Both players join bottom-level tournament and reach leaf
         Util.joinTournament(bottomTournament, 0);

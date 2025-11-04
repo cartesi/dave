@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/ITournament.sol";
-import "prt-contracts/tournament/abstracts/Tournament.sol";
-import "prt-contracts/IDataProvider.sol";
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
 
 interface ITournamentFactory {
     event TournamentCreated(ITournament tournament);

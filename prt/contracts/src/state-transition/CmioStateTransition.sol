@@ -15,10 +15,12 @@
 //
 pragma solidity ^0.8.0;
 
-import "./ICmioStateTransition.sol";
-import "step/src/SendCmioResponse.sol";
-import "step/src/EmulatorCompat.sol";
-import "step/src/AdvanceStatus.sol";
+import {AccessLogs} from "step/src/AccessLogs.sol";
+import {AdvanceStatus} from "step/src/AdvanceStatus.sol";
+import {EmulatorCompat} from "step/src/EmulatorCompat.sol";
+import {SendCmioResponse} from "step/src/SendCmioResponse.sol";
+
+import {ICmioStateTransition} from "./ICmioStateTransition.sol";
 
 contract CmioStateTransition is ICmioStateTransition {
     using AdvanceStatus for AccessLogs.Context;

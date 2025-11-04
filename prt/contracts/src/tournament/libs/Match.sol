@@ -3,11 +3,9 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-import "prt-contracts/types/Tree.sol";
-import "prt-contracts/types/Machine.sol";
-
-import "prt-contracts/tournament/libs/Commitment.sol";
+import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Implements functionalities to advance a match, until the point where divergence is found.
 library Match {

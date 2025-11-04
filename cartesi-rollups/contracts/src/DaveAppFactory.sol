@@ -5,20 +5,20 @@ pragma solidity ^0.8.8;
 
 import {Create2} from "@openzeppelin-contracts-5.2.0/utils/Create2.sol";
 
-import {IApplication} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/IApplication.sol";
-import {IApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/IApplicationFactory.sol";
+import {DataAvailability} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/common/DataAvailability.sol";
 import {
     IOutputsMerkleRootValidator
 } from "cartesi-rollups-contracts-2.1.0-alpha.3/src/consensus/IOutputsMerkleRootValidator.sol";
-import {DataAvailability} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/common/DataAvailability.sol";
+import {IApplication} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/IApplication.sol";
+import {IApplicationFactory} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/dapp/IApplicationFactory.sol";
 import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
 
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
 import {DaveConsensus} from "./DaveConsensus.sol";
-import {IDaveConsensus} from "./IDaveConsensus.sol";
 import {IDaveAppFactory} from "./IDaveAppFactory.sol";
+import {IDaveConsensus} from "./IDaveConsensus.sol";
 
 contract DaveAppFactory is IDaveAppFactory {
     IInputBox immutable INPUT_BOX;

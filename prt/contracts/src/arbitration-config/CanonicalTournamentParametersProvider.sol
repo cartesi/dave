@@ -3,8 +3,14 @@
 
 pragma solidity ^0.8.17;
 
-import "./ITournamentParametersProvider.sol";
-import "./ArbitrationConstants.sol";
+import {ArbitrationConstants} from "./ArbitrationConstants.sol";
+import {
+    ITournamentParametersProvider
+} from "./ITournamentParametersProvider.sol";
+import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {
+    TournamentParameters
+} from "prt-contracts/types/TournamentParameters.sol";
 
 contract CanonicalTournamentParametersProvider is
     ITournamentParametersProvider

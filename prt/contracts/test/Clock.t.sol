@@ -10,11 +10,12 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/Test.sol";
-
-import "prt-contracts/tournament/libs/Clock.sol";
-
 pragma solidity ^0.8.0;
+
+import {Test} from "forge-std-1.9.6/src/Test.sol";
+
+import {Clock} from "src/tournament/libs/Clock.sol";
+import {Time} from "src/tournament/libs/Time.sol";
 
 library ExternalClock {
     function advanceClock(Clock.State storage state) external {

@@ -10,10 +10,20 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "./Util.sol";
-import "src/state-transition/CartesiStateTransition.sol";
-
 pragma solidity ^0.8.0;
+
+import {IDataProvider} from "src/IDataProvider.sol";
+import {
+    CartesiStateTransition
+} from "src/state-transition/CartesiStateTransition.sol";
+import {
+    CmioStateTransition
+} from "src/state-transition/CmioStateTransition.sol";
+import {
+    RiscVStateTransition
+} from "src/state-transition/RiscVStateTransition.sol";
+
+import {Util} from "./Util.sol";
 
 contract Provider is IDataProvider {
     uint256 immutable LENGTH = 0;

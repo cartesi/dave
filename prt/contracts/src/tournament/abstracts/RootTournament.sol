@@ -3,8 +3,8 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/tournament/abstracts/Tournament.sol";
-import "prt-contracts/types/TournamentParameters.sol";
+import {Tournament} from "./Tournament.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
 
 /// @notice Root tournament has no parent
 abstract contract RootTournament is Tournament {

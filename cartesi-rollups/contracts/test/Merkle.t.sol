@@ -5,9 +5,9 @@ pragma solidity ^0.8.0;
 
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
+import {Merkle} from "src/Merkle.sol";
 import {MerkleConstants} from "src/MerkleConstants.sol";
 import {PristineMerkleTree} from "src/PristineMerkleTree.sol";
-import {Merkle} from "src/Merkle.sol";
 
 library PristineMerkleTreeWrapper {
     function getNodeAtHeight(uint256 height) external pure returns (bytes32) {

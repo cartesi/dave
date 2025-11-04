@@ -3,12 +3,14 @@
 
 pragma solidity ^0.8.17;
 
-import "prt-contracts/tournament/abstracts/Tournament.sol";
-import "prt-contracts/tournament/libs/Commitment.sol";
-import "prt-contracts/tournament/libs/Gas.sol";
-import "prt-contracts/IStateTransition.sol";
-
-import "step/src/EmulatorConstants.sol";
+import {Tournament} from "./Tournament.sol";
+import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
+import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
+import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Leaf tournament is the one that seals leaf match
 abstract contract LeafTournament is Tournament {

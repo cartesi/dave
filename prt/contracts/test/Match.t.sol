@@ -10,14 +10,17 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-import "forge-std-1.9.6/src/console.sol";
-import "forge-std-1.9.6/src/Test.sol";
-
-import "prt-contracts/tournament/libs/Match.sol";
-import "prt-contracts/arbitration-config/ArbitrationConstants.sol";
-import "prt-contracts/tournament/libs/Commitment.sol";
-
 pragma solidity ^0.8.0;
+
+import {Test} from "forge-std-1.9.6/src/Test.sol";
+
+import {
+    ArbitrationConstants
+} from "src/arbitration-config/ArbitrationConstants.sol";
+import {Commitment} from "src/tournament/libs/Commitment.sol";
+import {Match} from "src/tournament/libs/Match.sol";
+import {Machine} from "src/types/Machine.sol";
+import {Tree} from "src/types/Tree.sol";
 
 library ExternalMatch {
     function requireEq(Match.IdHash left, Match.IdHash right) external pure {

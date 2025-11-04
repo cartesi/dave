@@ -15,9 +15,11 @@
 //
 pragma solidity ^0.8.0;
 
-import "./IRiscVStateTransition.sol";
-import "step/src/UArchReset.sol";
-import "step/src/UArchStep.sol";
+import {AccessLogs} from "step/src/AccessLogs.sol";
+import {UArchReset} from "step/src/UArchReset.sol";
+import {UArchStep} from "step/src/UArchStep.sol";
+
+import {IRiscVStateTransition} from "./IRiscVStateTransition.sol";
 
 contract RiscVStateTransition is IRiscVStateTransition {
     function step(AccessLogs.Context memory a)

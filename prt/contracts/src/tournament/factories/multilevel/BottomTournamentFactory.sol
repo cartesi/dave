@@ -5,12 +5,22 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
 
-import "prt-contracts/IStateTransition.sol";
-import "prt-contracts/tournament/abstracts/NonRootTournament.sol";
-import "prt-contracts/tournament/abstracts/Tournament.sol";
-import "prt-contracts/tournament/concretes/BottomTournament.sol";
-import "prt-contracts/tournament/libs/Time.sol";
-import "prt-contracts/types/TournamentParameters.sol";
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
+import {
+    NonRootTournament
+} from "prt-contracts/tournament/abstracts/NonRootTournament.sol";
+import {
+    BottomTournament
+} from "prt-contracts/tournament/concretes/BottomTournament.sol";
+import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {Machine} from "prt-contracts/types/Machine.sol";
+import {
+    TournamentParameters
+} from "prt-contracts/types/TournamentParameters.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 contract BottomTournamentFactory {
     using Clones for address;
