@@ -133,11 +133,11 @@ contract TopTournamentTest is Util {
         _height += 1;
 
         uint256 step = 1 << ArbitrationConstants.log2step(0);
-        uint256 leaf_position = (1 << ArbitrationConstants.height(0)) - 1;
+        uint256 _leafPosition = (1 << ArbitrationConstants.height(0)) - 1;
 
         assertEq(
             topTournament.getMatchCycle(_matchId.hashFromId()),
-            step * leaf_position,
+            step * _leafPosition,
             "agree cycle should be the second right most leaf"
         );
     }

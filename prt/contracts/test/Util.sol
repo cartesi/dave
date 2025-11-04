@@ -197,11 +197,11 @@ contract Util is Test {
             ? playerNodes[1][height - 1]
             : playerNodes[0][height - 1];
         Tree.Node _right = playerNodes[_player][height - 1];
-        Machine.Hash _final_state = _player == 0 ? ONE_STATE : TWO_STATE;
+        Machine.Hash _finalState = _player == 0 ? ONE_STATE : TWO_STATE;
         uint256 bondAmount = _tournament.bondValue();
         vm.prank(addrs[_player]);
         _tournament.joinTournament{value: bondAmount}(
-            _final_state,
+            _finalState,
             generateFinalStateProof(_player, height),
             _left,
             _right
