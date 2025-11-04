@@ -557,7 +557,7 @@ abstract contract Tournament is ITournament {
     /// @param gasBefore The available gas amount before running the function
     /// @param gasEstimate A worst-case gas estimate for the modified function
     /// @dev Releases the lock and tries to refund the sender for the wasted gas.
-    /// @dev Emits a BondRefunded event even if the refund fails.
+    /// @dev Emits a PartialBondRefund event even if the refund fails.
     /// @dev The refund is capped by the contract balance and weighted fraction
     /// of the bond value (where the weight is the expected gas of the function call).
     function _refundableAfter(uint256 gasBefore, uint256 gasEstimate) private {
@@ -572,7 +572,7 @@ abstract contract Tournament is ITournament {
 
         (bool status, bytes memory ret) =
             msg.sender.call{value: refundValue}("");
-        emit BondRefunded(msg.sender, refundValue, status, ret);
+        emit PartialBondRefund(msg.sender, refundValue, status, ret);
 
         locked = false;
     }
