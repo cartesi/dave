@@ -19,6 +19,8 @@
 
 pragma solidity ^0.8.0;
 
+import {SafeCast} from "@openzeppelin-contracts-5.2.0/utils/math/SafeCast.sol";
+
 import {AccessLogs} from "step/src/AccessLogs.sol";
 import {Buffer} from "step/src/Buffer.sol";
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
@@ -30,6 +32,8 @@ import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 
 contract CartesiStateTransition is IStateTransition {
     // TODO add CM_MARCHID
+
+    using SafeCast for uint256;
 
     uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
     uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
@@ -92,7 +96,7 @@ contract CartesiStateTransition is IStateTransition {
                     accessLogs,
                     EmulatorConstants.CMIO_YIELD_REASON_ADVANCE_STATE,
                     inputMerkleRoot,
-                    uint32(inputLength)
+                    uint256(inputLength).toUint32()
                 );
             }
 
