@@ -117,7 +117,8 @@ abstract contract Tournament is ITournament {
     //
     // Methods
     //
-    function bondValue() public view returns (uint256) {
+
+    function bondValue() public view override returns (uint256) {
         return _totalGasEstimate() * MAX_GAS_PRICE;
     }
 
@@ -126,7 +127,7 @@ abstract contract Tournament is ITournament {
         bytes32[] calldata _proof,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external payable tournamentOpen {
+    ) external payable override tournamentOpen {
         require(msg.value >= bondValue(), InsufficientBond());
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
@@ -157,7 +158,7 @@ abstract contract Tournament is ITournament {
         Tree.Node _rightNode,
         Tree.Node _newLeftNode,
         Tree.Node _newRightNode
-    ) external refundable(Gas.ADVANCE_MATCH) tournamentNotFinished {
+    ) external override refundable(Gas.ADVANCE_MATCH) tournamentNotFinished {
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
@@ -175,7 +176,12 @@ abstract contract Tournament is ITournament {
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external refundable(Gas.WIN_MATCH_BY_TIMEOUT) tournamentNotFinished {
+    )
+        external
+        override
+        refundable(Gas.WIN_MATCH_BY_TIMEOUT)
+        tournamentNotFinished
+    {
         matches[_matchId.hashFromId()].requireExist();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
@@ -218,6 +224,7 @@ abstract contract Tournament is ITournament {
 
     function eliminateMatchByTimeout(Match.Id calldata _matchId)
         external
+        override
         refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT)
         tournamentNotFinished
     {
@@ -243,7 +250,7 @@ abstract contract Tournament is ITournament {
         }
     }
 
-    function tryRecoveringBond() public returns (bool) {
+    function tryRecoveringBond() public override returns (bool) {
         require(isFinished(), TournamentNotFinished());
 
         // Ensure there is a winner
@@ -270,6 +277,7 @@ abstract contract Tournament is ITournament {
     //
     // View methods
     //
+
     function tournamentArguments()
         public
         view
@@ -279,6 +287,7 @@ abstract contract Tournament is ITournament {
     function canWinMatchByTimeout(Match.Id calldata _matchId)
         external
         view
+        override
         returns (bool)
     {
         Clock.State memory _clockOne = clocks[_matchId.commitmentOne];
@@ -290,6 +299,7 @@ abstract contract Tournament is ITournament {
     function getCommitment(Tree.Node _commitmentRoot)
         public
         view
+        override
         returns (Clock.State memory, Machine.Hash)
     {
         return (clocks[_commitmentRoot], finalStates[_commitmentRoot]);
@@ -298,6 +308,7 @@ abstract contract Tournament is ITournament {
     function getMatch(Match.IdHash _matchIdHash)
         public
         view
+        override
         returns (Match.State memory)
     {
         return matches[_matchIdHash];
@@ -306,6 +317,7 @@ abstract contract Tournament is ITournament {
     function getMatchCycle(Match.IdHash _matchIdHash)
         external
         view
+        override
         returns (uint256)
     {
         Match.State memory _m = getMatch(_matchIdHash);
@@ -317,6 +329,7 @@ abstract contract Tournament is ITournament {
     function tournamentLevelConstants()
         external
         view
+        override
         returns (
             uint64 _maxLevel,
             uint64 _level,
@@ -335,16 +348,17 @@ abstract contract Tournament is ITournament {
     //
     // Time view methods
     //
-    function isClosed() public view returns (bool) {
+
+    function isClosed() public view override returns (bool) {
         TournamentArguments memory args = tournamentArguments();
         return args.startInstant.timeoutElapsed(args.allowance);
     }
 
-    function isFinished() public view returns (bool) {
+    function isFinished() public view override returns (bool) {
         return isClosed() && matchCount == 0;
     }
 
-    function timeFinished() public view returns (bool, Time.Instant) {
+    function timeFinished() public view override returns (bool, Time.Instant) {
         if (!isFinished()) {
             return (false, Time.ZERO_INSTANT);
         }
@@ -383,6 +397,7 @@ abstract contract Tournament is ITournament {
     //
     // Internal functions
     //
+
     function setDanglingCommitment(Tree.Node _node) internal {
         danglingCommitment = _node;
     }
