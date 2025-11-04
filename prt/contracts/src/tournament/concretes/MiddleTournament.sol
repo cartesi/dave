@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
+import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {

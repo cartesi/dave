@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {Clones} from "@openzeppelin-contracts-5.2.0/proxy/Clones.sol";
+import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";

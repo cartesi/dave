@@ -24,4 +24,4 @@ sort_imports = true
 
 [dependencies]
 forge-std = "1.9.6"
-"@openzeppelin-contracts" = "5.2.0"
+"@openzeppelin-contracts" = "5.5.0"
