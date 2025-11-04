@@ -10,7 +10,8 @@ remappings = [
     'prt-contracts/=./src',
     'step/=../../machine/step/',
 ]
-solc_version = "0.8.28"
+
+solc_version = "0.8.30"
 
 [fmt]
 line_length = 80
