@@ -203,6 +203,25 @@ abstract contract NonLeafTournament is Tournament {
         return _tournament;
     }
 
+    function sealLeafMatch(
+        Match.Id calldata,
+        Tree.Node,
+        Tree.Node,
+        Machine.Hash,
+        bytes32[] calldata
+    ) external pure override {
+        revert NotImplemented();
+    }
+
+    function winLeafMatch(
+        Match.Id calldata,
+        Tree.Node,
+        Tree.Node,
+        bytes calldata
+    ) external pure override {
+        revert NotImplemented();
+    }
+
     function _totalGasEstimate() internal view override returns (uint256) {
         return Gas.ADVANCE_MATCH * tournamentArguments().commitmentArgs.height
             + Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT

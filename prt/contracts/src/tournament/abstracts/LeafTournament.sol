@@ -5,6 +5,7 @@ pragma solidity ^0.8.17;
 
 import {Tournament} from "./Tournament.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ITournament} from "prt-contracts/ITournament.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
@@ -121,6 +122,28 @@ abstract contract LeafTournament is Tournament {
         } else {
             revert WrongNodesForStep();
         }
+    }
+
+    function eliminateInnerTournament(ITournament) external pure override {
+        revert NotImplemented();
+    }
+
+    function sealInnerMatchAndCreateInnerTournament(
+        Match.Id calldata,
+        Tree.Node,
+        Tree.Node,
+        Machine.Hash,
+        bytes32[] calldata
+    ) external pure override {
+        revert NotImplemented();
+    }
+
+    function winInnerTournament(ITournament, Tree.Node, Tree.Node)
+        external
+        pure
+        override
+    {
+        revert NotImplemented();
     }
 
     function _totalGasEstimate() internal view override returns (uint256) {
