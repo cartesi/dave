@@ -19,7 +19,7 @@
 
 pragma solidity ^0.8.0;
 
-import {SafeCast} from "@openzeppelin-contracts-5.2.0/utils/math/SafeCast.sol";
+import {SafeCast} from "@openzeppelin-contracts-5.5.0/utils/math/SafeCast.sol";
 
 import {AccessLogs} from "step/src/AccessLogs.sol";
 import {Buffer} from "step/src/Buffer.sol";
