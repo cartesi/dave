@@ -25,11 +25,11 @@ import {
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
-    TopTournamentFactory immutable topFactory;
-    MiddleTournamentFactory immutable middleFactory;
-    BottomTournamentFactory immutable bottomFactory;
-    ITournamentParametersProvider immutable tournamentParametersProvider;
-    IStateTransition immutable stateTransition;
+    TopTournamentFactory immutable TOP_FACTORY;
+    MiddleTournamentFactory immutable MIDDLE_FACTORY;
+    BottomTournamentFactory immutable BOTTOM_FACTORY;
+    ITournamentParametersProvider immutable TOURNAMENT_PARAMETERS_PROVIDER;
+    IStateTransition immutable STATE_TRANSITION;
 
     constructor(
         TopTournamentFactory _topFactory,
@@ -38,11 +38,11 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         ITournamentParametersProvider _tournamentParametersProvider,
         IStateTransition _stateTransition
     ) {
-        topFactory = _topFactory;
-        middleFactory = _middleFactory;
-        bottomFactory = _bottomFactory;
-        tournamentParametersProvider = _tournamentParametersProvider;
-        stateTransition = _stateTransition;
+        TOP_FACTORY = _topFactory;
+        MIDDLE_FACTORY = _middleFactory;
+        BOTTOM_FACTORY = _bottomFactory;
+        TOURNAMENT_PARAMETERS_PROVIDER = _tournamentParametersProvider;
+        STATE_TRANSITION = _stateTransition;
     }
 
     function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
@@ -60,7 +60,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         override
         returns (ITournament)
     {
-        return topFactory.instantiate(
+        return TOP_FACTORY.instantiate(
             _initialHash, _getTopTournamentParameters(), _provider, this
         );
     }
@@ -76,7 +76,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint64 _level,
         IDataProvider _provider
     ) external override returns (ITournament) {
-        return middleFactory.instantiate(
+        return MIDDLE_FACTORY.instantiate(
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,
@@ -102,7 +102,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint64 _level,
         IDataProvider _provider
     ) external override returns (ITournament) {
-        return bottomFactory.instantiate(
+        return BOTTOM_FACTORY.instantiate(
             _initialHash,
             _contestedCommitmentOne,
             _contestedFinalStateOne,
@@ -113,7 +113,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
             _level,
             _getTournamentParameters(_level),
             _provider,
-            stateTransition
+            STATE_TRANSITION
         );
     }
 
@@ -130,6 +130,6 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         view
         returns (TournamentParameters memory)
     {
-        return tournamentParametersProvider.tournamentParameters(_level);
+        return TOURNAMENT_PARAMETERS_PROVIDER.tournamentParameters(_level);
     }
 }

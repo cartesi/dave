@@ -40,8 +40,8 @@ contract BottomTournamentTest is Util {
     using Match for Match.State;
     using Machine for Machine.Hash;
 
-    MultiLevelTournamentFactory immutable factory;
-    CartesiStateTransition immutable stateTransition;
+    MultiLevelTournamentFactory immutable FACTORY;
+    CartesiStateTransition immutable STATE_TRANSITION;
     ITournament topTournament;
     ITournament middleTournament;
     ITournament bottomTournament;
@@ -49,13 +49,13 @@ contract BottomTournamentTest is Util {
     error WrongNodesForStep();
 
     constructor() {
-        (factory, stateTransition) = Util.instantiateTournamentFactory();
+        (FACTORY, STATE_TRANSITION) = Util.instantiateTournamentFactory();
     }
 
     receive() external payable {}
 
     function testCommitmentOneWon() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 1 joins tournament
@@ -192,7 +192,7 @@ contract BottomTournamentTest is Util {
         );
 
         vm.mockCall(
-            address(stateTransition),
+            address(STATE_TRANSITION),
             abi.encode(IStateTransition.transitionState.selector),
             abi.encode(Machine.Hash.unwrap(Util.ONE_STATE))
         );
@@ -233,7 +233,7 @@ contract BottomTournamentTest is Util {
     }
 
     function testCommitmentTwoWon() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 2 joins tournament
@@ -351,7 +351,7 @@ contract BottomTournamentTest is Util {
         );
 
         vm.mockCall(
-            address(stateTransition),
+            address(STATE_TRANSITION),
             abi.encode(IStateTransition.transitionState.selector),
             abi.encode(Machine.Hash.unwrap(Util.TWO_STATE))
         );
@@ -359,7 +359,7 @@ contract BottomTournamentTest is Util {
     }
 
     function testWrongNode() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // pair commitment, expect a match
         // player 1 joins tournament
@@ -462,7 +462,7 @@ contract BottomTournamentTest is Util {
         );
 
         vm.mockCall(
-            address(stateTransition),
+            address(STATE_TRANSITION),
             abi.encode(IStateTransition.transitionState.selector),
             abi.encode(Machine.Hash.unwrap(Util.ONE_STATE))
         );
@@ -473,7 +473,7 @@ contract BottomTournamentTest is Util {
     }
 
     function testPostSealBothClocksRunAndEliminateAfterDoubleTimeout() public {
-        topTournament = Util.initializePlayer0Tournament(factory);
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         // Build down to a ITournament instance via two inner seals
         uint256 _opponent = 1;

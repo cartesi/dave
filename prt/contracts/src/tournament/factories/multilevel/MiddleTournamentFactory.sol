@@ -27,10 +27,10 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 contract MiddleTournamentFactory {
     using Clones for address;
 
-    MiddleTournament immutable _impl;
+    MiddleTournament immutable IMPL;
 
     constructor(MiddleTournament impl) {
-        _impl = impl;
+        IMPL = impl;
     }
 
     function instantiate(
@@ -71,7 +71,7 @@ contract MiddleTournamentFactory {
                 }),
                 tournamentFactory: tournamentFactory
             });
-        address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
+        address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
         return MiddleTournament(clone);
     }
 }

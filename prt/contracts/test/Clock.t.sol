@@ -48,18 +48,18 @@ contract ClockTest is Test {
     Clock.State clock2;
     Clock.State clock3;
 
-    uint64 constant clock1Allowance = 20;
-    uint64 constant clock2Allowance = 30;
+    uint64 constant CLOCK_1_ALLOWANCE = 20;
+    uint64 constant CLOCK_2_ALLOWANCE = 30;
 
     function setUp() public {
         Clock.setNewPaused(
-            clock1, Time.currentTime(), Time.Duration.wrap(clock1Allowance)
+            clock1, Time.currentTime(), Time.Duration.wrap(CLOCK_1_ALLOWANCE)
         );
         Clock.setNewPaused(
-            clock2, Time.currentTime(), Time.Duration.wrap(clock2Allowance)
+            clock2, Time.currentTime(), Time.Duration.wrap(CLOCK_2_ALLOWANCE)
         );
         Clock.setNewPaused(
-            clock3, Time.currentTime(), Time.Duration.wrap(clock2Allowance)
+            clock3, Time.currentTime(), Time.Duration.wrap(CLOCK_2_ALLOWANCE)
         );
     }
 
@@ -104,10 +104,10 @@ contract ClockTest is Test {
         clock1.advanceClock();
         assertTrue(clock1.hasTimeLeft(), "clock1 should have time left");
 
-        vm.roll(vm.getBlockNumber() + clock1Allowance - 1);
+        vm.roll(vm.getBlockNumber() + CLOCK_1_ALLOWANCE - 1);
         assertTrue(clock1.hasTimeLeft(), "clock1 should have time left");
 
-        vm.roll(vm.getBlockNumber() + clock1Allowance);
+        vm.roll(vm.getBlockNumber() + CLOCK_1_ALLOWANCE);
         assertTrue(!clock1.hasTimeLeft(), "clock1 should run out of time");
 
         vm.expectRevert("can't advance clock with no time left");
@@ -118,33 +118,39 @@ contract ClockTest is Test {
         clock1.advanceClock();
         clock2.advanceClock();
 
-        vm.roll(Time.Instant.unwrap(clock1.startInstant) + clock1Allowance - 1);
+        vm.roll(
+            Time.Instant.unwrap(clock1.startInstant) + CLOCK_1_ALLOWANCE - 1
+        );
         assertTrue(
             clock1.timeSinceTimeout().isZero(),
             "clock1 shouldn't be timeout yet"
         );
 
-        vm.roll(Time.Instant.unwrap(clock2.startInstant) + clock2Allowance - 1);
+        vm.roll(
+            Time.Instant.unwrap(clock2.startInstant) + CLOCK_2_ALLOWANCE - 1
+        );
         assertTrue(
             clock2.timeSinceTimeout().isZero(),
             "clock2 shouldn't be timeout yet"
         );
 
-        vm.roll(Time.Instant.unwrap(clock1.startInstant) + clock1Allowance);
+        vm.roll(Time.Instant.unwrap(clock1.startInstant) + CLOCK_1_ALLOWANCE);
         assertTrue(clock1.timeSinceTimeout().isZero(), "clock1 just timeout");
 
-        vm.roll(Time.Instant.unwrap(clock2.startInstant) + clock2Allowance);
+        vm.roll(Time.Instant.unwrap(clock2.startInstant) + CLOCK_2_ALLOWANCE);
         assertTrue(clock2.timeSinceTimeout().isZero(), "clock2 just timeout");
 
         vm.roll(
-            Time.Instant.unwrap(clock1.startInstant) + clock1Allowance + 100
+            Time.Instant.unwrap(clock1.startInstant) + CLOCK_1_ALLOWANCE + 100
         );
         assertTrue(
             clock1.timeSinceTimeout().gt(Time.ZERO_DURATION),
             "clock1 should be timeout"
         );
 
-        vm.roll(Time.Instant.unwrap(clock2.startInstant) + clock2Allowance + 1);
+        vm.roll(
+            Time.Instant.unwrap(clock2.startInstant) + CLOCK_2_ALLOWANCE + 1
+        );
         assertTrue(
             clock2.timeSinceTimeout().gt(Time.ZERO_DURATION),
             "clock2 shouldn be timeout"

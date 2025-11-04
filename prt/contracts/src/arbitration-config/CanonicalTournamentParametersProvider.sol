@@ -15,12 +15,12 @@ import {
 contract CanonicalTournamentParametersProvider is
     ITournamentParametersProvider
 {
-    Time.Duration immutable _matchEffort;
-    Time.Duration immutable _maxAllowance;
+    Time.Duration immutable MATCH_EFFORT;
+    Time.Duration immutable MAX_ALLOWANCE;
 
     constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
-        _matchEffort = matchEffort;
-        _maxAllowance = maxAllowance;
+        MATCH_EFFORT = matchEffort;
+        MAX_ALLOWANCE = maxAllowance;
     }
 
     /// @inheritdoc ITournamentParametersProvider
@@ -34,8 +34,8 @@ contract CanonicalTournamentParametersProvider is
             levels: ArbitrationConstants.LEVELS,
             log2step: ArbitrationConstants.log2step(level),
             height: ArbitrationConstants.height(level),
-            matchEffort: _matchEffort,
-            maxAllowance: _maxAllowance
+            matchEffort: MATCH_EFFORT,
+            maxAllowance: MAX_ALLOWANCE
         });
     }
 }

@@ -86,9 +86,9 @@ contract Provider is IDataProvider {
 }
 
 contract StateTransitionFfiTest is Util {
-    CartesiStateTransition immutable stateTransition;
-    RiscVStateTransition immutable riscVStateTransition;
-    CmioStateTransition immutable cmioStateTransition;
+    CartesiStateTransition immutable STATE_TRANSITION;
+    RiscVStateTransition immutable RISC_V_STATE_TRANSITION;
+    CmioStateTransition immutable CMIO_STATE_TRANSITION;
 
     uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
     uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
@@ -99,7 +99,7 @@ contract StateTransitionFfiTest is Util {
     uint256 constant UARCH_SPAN_TO_BARCH = 1 << LOG2_UARCH_SPAN_TO_BARCH;
 
     constructor() {
-        (stateTransition, riscVStateTransition, cmioStateTransition) =
+        (STATE_TRANSITION, RISC_V_STATE_TRANSITION, CMIO_STATE_TRANSITION) =
             Util.instantiateStateTransition();
     }
 
@@ -126,7 +126,7 @@ contract StateTransitionFfiTest is Util {
             runCmd(counter, numInputs);
 
         bytes32 result =
-            stateTransition.transitionState(before, counter, proof, provider);
+            STATE_TRANSITION.transitionState(before, counter, proof, provider);
 
         assertEq(result, next);
     }

@@ -38,15 +38,15 @@ contract CartesiStateTransition is IStateTransition {
     uint256 constant INPUT_MASK =
         (1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH)) - 1;
 
-    IRiscVStateTransition immutable riscVStateTransition;
-    ICmioStateTransition immutable cmioStateTransition;
+    IRiscVStateTransition immutable RISC_V_STATE_TRANSITION;
+    ICmioStateTransition immutable CMIO_STATE_TRANSITION;
 
     constructor(
         IRiscVStateTransition _riscVStateTransition,
         ICmioStateTransition _cmioStateTransition
     ) {
-        riscVStateTransition = _riscVStateTransition;
-        cmioStateTransition = _cmioStateTransition;
+        RISC_V_STATE_TRANSITION = _riscVStateTransition;
+        CMIO_STATE_TRANSITION = _cmioStateTransition;
     }
 
     function transitionState(
@@ -85,10 +85,10 @@ contract CartesiStateTransition is IStateTransition {
             if (inputMerkleRoot != bytes32(0x0)) {
                 // checkpoint
                 accessLogs =
-                    cmioStateTransition.checkpoint(accessLogs, machineState);
+                    CMIO_STATE_TRANSITION.checkpoint(accessLogs, machineState);
 
                 // sendCmio
-                accessLogs = cmioStateTransition.sendCmio(
+                accessLogs = CMIO_STATE_TRANSITION.sendCmio(
                     accessLogs,
                     EmulatorConstants.CMIO_YIELD_REASON_ADVANCE_STATE,
                     inputMerkleRoot,
@@ -97,7 +97,7 @@ contract CartesiStateTransition is IStateTransition {
             }
 
             // step
-            accessLogs = riscVStateTransition.step(accessLogs);
+            accessLogs = RISC_V_STATE_TRANSITION.step(accessLogs);
 
             return accessLogs.currentRootHash;
 
@@ -111,9 +111,9 @@ contract CartesiStateTransition is IStateTransition {
             AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-            accessLogs = riscVStateTransition.step(accessLogs);
-            accessLogs = riscVStateTransition.reset(accessLogs);
-            accessLogs = cmioStateTransition.revertIfNeeded(accessLogs);
+            accessLogs = RISC_V_STATE_TRANSITION.step(accessLogs);
+            accessLogs = RISC_V_STATE_TRANSITION.reset(accessLogs);
+            accessLogs = CMIO_STATE_TRANSITION.revertIfNeeded(accessLogs);
 
             return accessLogs.currentRootHash;
 
@@ -124,7 +124,7 @@ contract CartesiStateTransition is IStateTransition {
             AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
-            accessLogs = riscVStateTransition.step(accessLogs);
+            accessLogs = RISC_V_STATE_TRANSITION.step(accessLogs);
 
             return accessLogs.currentRootHash;
         }

@@ -29,9 +29,9 @@ import {
 import {Util} from "./Util.sol";
 
 contract StateTransitionTest is Util {
-    CartesiStateTransition immutable stateTransition;
-    RiscVStateTransition immutable riscVStateTransition;
-    CmioStateTransition immutable cmioStateTransition;
+    CartesiStateTransition immutable STATE_TRANSITION;
+    RiscVStateTransition immutable RISC_V_STATE_TRANSITION;
+    CmioStateTransition immutable CMIO_STATE_TRANSITION;
 
     uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
     uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
@@ -40,7 +40,7 @@ contract StateTransitionTest is Util {
         1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
 
     constructor() {
-        (stateTransition, riscVStateTransition, cmioStateTransition) =
+        (STATE_TRANSITION, RISC_V_STATE_TRANSITION, CMIO_STATE_TRANSITION) =
             Util.instantiateStateTransition();
     }
 
@@ -55,24 +55,24 @@ contract StateTransitionTest is Util {
             abi.encode(bytes32(uint256(0x123)))
         );
         vm.mockCall(
-            address(cmioStateTransition),
-            abi.encode(cmioStateTransition.checkpoint.selector),
+            address(CMIO_STATE_TRANSITION),
+            abi.encode(CMIO_STATE_TRANSITION.checkpoint.selector),
             abi.encode(accessLogs)
         );
         vm.mockCall(
-            address(cmioStateTransition),
-            abi.encode(cmioStateTransition.sendCmio.selector),
+            address(CMIO_STATE_TRANSITION),
+            abi.encode(CMIO_STATE_TRANSITION.sendCmio.selector),
             abi.encode(accessLogs)
         );
         vm.mockCall(
-            address(riscVStateTransition),
-            abi.encode(riscVStateTransition.step.selector),
+            address(RISC_V_STATE_TRANSITION),
+            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
             abi.encode(accessLogs)
         );
 
         uint256 counter = counterBase * FULL_SPAN;
         uint64 length = 20;
-        bytes32 mockState = stateTransition.transitionState(
+        bytes32 mockState = STATE_TRANSITION.transitionState(
             bytes32(0),
             counter,
             abi.encodePacked(abi.encodePacked(length), new bytes(length)),
@@ -94,20 +94,20 @@ contract StateTransitionTest is Util {
             abi.encode(bytes32(uint256(0)))
         );
         vm.mockCall(
-            address(cmioStateTransition),
-            abi.encode(cmioStateTransition.checkpoint.selector),
+            address(CMIO_STATE_TRANSITION),
+            abi.encode(CMIO_STATE_TRANSITION.checkpoint.selector),
             abi.encode(accessLogs)
         );
         vm.mockCall(
-            address(riscVStateTransition),
-            abi.encode(riscVStateTransition.step.selector),
+            address(RISC_V_STATE_TRANSITION),
+            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
             abi.encode(accessLogs)
         );
 
         // input length = 0 (no input)
         uint64 length = 0;
         uint256 counter = counterBase * FULL_SPAN;
-        bytes32 mockState = stateTransition.transitionState(
+        bytes32 mockState = STATE_TRANSITION.transitionState(
             bytes32(0),
             counter,
             abi.encodePacked(abi.encodePacked(length), new bytes(length)),
@@ -127,13 +127,13 @@ contract StateTransitionTest is Util {
         );
 
         vm.mockCall(
-            address(riscVStateTransition),
-            abi.encode(riscVStateTransition.step.selector),
+            address(RISC_V_STATE_TRANSITION),
+            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
             abi.encode(accessLogs)
         );
 
         uint256 counter = (counterBase * UARCH_SPAN_TO_BARCH) - offset;
-        bytes32 mockState = stateTransition.transitionState(
+        bytes32 mockState = STATE_TRANSITION.transitionState(
             bytes32(0), counter, new bytes(0), IDataProvider(address(0x123))
         );
 
@@ -147,23 +147,23 @@ contract StateTransitionTest is Util {
         );
 
         vm.mockCall(
-            address(riscVStateTransition),
-            abi.encode(riscVStateTransition.step.selector),
+            address(RISC_V_STATE_TRANSITION),
+            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
             abi.encode(accessLogs)
         );
         vm.mockCall(
-            address(riscVStateTransition),
-            abi.encode(riscVStateTransition.reset.selector),
+            address(RISC_V_STATE_TRANSITION),
+            abi.encode(RISC_V_STATE_TRANSITION.reset.selector),
             abi.encode(accessLogs)
         );
         vm.mockCall(
-            address(cmioStateTransition),
-            abi.encode(cmioStateTransition.revertIfNeeded.selector),
+            address(CMIO_STATE_TRANSITION),
+            abi.encode(CMIO_STATE_TRANSITION.revertIfNeeded.selector),
             abi.encode(accessLogs)
         );
 
         uint256 counter = (counterBase * UARCH_SPAN_TO_BARCH) - 1;
-        bytes32 mockState = stateTransition.transitionState(
+        bytes32 mockState = STATE_TRANSITION.transitionState(
             bytes32(0), counter, new bytes(0), IDataProvider(address(0x123))
         );
 

@@ -23,12 +23,12 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
     uint64 constant LEVEL = 0;
     uint64 constant LEVELS = 1;
 
-    SingleLevelTournament immutable _impl;
-    IStateTransition immutable _stateTransition;
-    uint64 immutable _log2step;
-    uint64 immutable _height;
-    Time.Duration immutable _maxAllowance;
-    Time.Duration immutable _matchEffort;
+    SingleLevelTournament immutable IMPL;
+    IStateTransition immutable STATE_TRANSITION;
+    uint64 immutable LOG2_STEP;
+    uint64 immutable HEIGHT;
+    Time.Duration immutable MAX_ALLOWANCE;
+    Time.Duration immutable MATCH_EFFORT;
 
     constructor(
         SingleLevelTournament impl,
@@ -38,12 +38,12 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
         Time.Duration maxAllowance,
         Time.Duration matchEffort
     ) {
-        _impl = impl;
-        _stateTransition = stateTransition;
-        _log2step = log2step;
-        _height = height;
-        _maxAllowance = maxAllowance;
-        _matchEffort = matchEffort;
+        IMPL = impl;
+        STATE_TRANSITION = stateTransition;
+        LOG2_STEP = log2step;
+        HEIGHT = height;
+        MAX_ALLOWANCE = maxAllowance;
+        MATCH_EFFORT = matchEffort;
     }
 
     function instantiateSingleLevel(
@@ -57,20 +57,20 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
                     commitmentArgs: Commitment.Arguments({
                         initialHash: initialHash,
                         startCycle: START_CYCLE,
-                        log2step: _log2step,
-                        height: _height
+                        log2step: LOG2_STEP,
+                        height: HEIGHT
                     }),
                     level: LEVEL,
                     levels: LEVELS,
                     startInstant: Time.currentTime(),
-                    allowance: _maxAllowance,
-                    maxAllowance: _maxAllowance,
-                    matchEffort: _matchEffort,
+                    allowance: MAX_ALLOWANCE,
+                    maxAllowance: MAX_ALLOWANCE,
+                    matchEffort: MATCH_EFFORT,
                     provider: provider
                 }),
-                stateTransition: _stateTransition
+                stateTransition: STATE_TRANSITION
             });
-        address clone = address(_impl).cloneWithImmutableArgs(abi.encode(args));
+        address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
         SingleLevelTournament tournament = SingleLevelTournament(clone);
         emit TournamentCreated(tournament);
         return tournament;
