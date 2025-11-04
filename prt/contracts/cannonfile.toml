@@ -15,12 +15,12 @@ devnetMatchEffort = "<%= 60 * 5 * 92 %>"
 devnetMaxAllowance = "<%= 60 * 60 %>"
 
 [var.Chain]
-chainType = "<%= ({1: 'mainnet', 13370: 'devnet', 31337: 'devnet', 11155111: 'testnet'})[chainId] %>"
-chainAvgBlockTime = "<%= ({1: 12, 13370: 12, 31337: 12, 11155111: 12})[chainId] %>"
+chainType = "<%= ({1: 'main', 10: 'main', 8453: 'main', 13370: 'dev', 31337: 'dev', 42161: 'main', 84532: 'test', 421614: 'test', 11155111: 'test', 11155420: 'test'})[chainId] %>"
+chainAvgBlockTime = "<%= ({1: 12, 10: 2, 8453: 2, 13370: 12, 31337: 12, 42161: 2.5, 84532: 2, 421614: 2.5, 11155111: 12, 11155420: 2})[chainId] %>"
 
 [var.TournamentParameters]
-matchEffort = "<%= BigInt({mainnet: settings.mainnetMatchEffort, testnet: settings.testnetMatchEffort, devnet: settings.devnetMatchEffort}[settings.chainType]) / BigInt(settings.chainAvgBlockTime) %>"
-maxAllowance = "<%= BigInt({mainnet: settings.mainnetMaxAllowance, testnet: settings.testnetMaxAllowance, devnet: settings.devnetMaxAllowance}[settings.chainType]) / BigInt(settings.chainAvgBlockTime) %>"
+matchEffort = "<%= BigInt({main: settings.mainnetMatchEffort, test: settings.testnetMatchEffort, dev: settings.devnetMatchEffort}[settings.chainType] / settings.chainAvgBlockTime) %>"
+maxAllowance = "<%= BigInt({main: settings.mainnetMaxAllowance, test: settings.testnetMaxAllowance, dev: settings.devnetMaxAllowance}[settings.chainType] / settings.chainAvgBlockTime) %>"
 
 [deploy.RiscVStateTransition]
 artifact = "RiscVStateTransition"
