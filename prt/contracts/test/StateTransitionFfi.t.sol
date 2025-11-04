@@ -113,6 +113,7 @@ contract StateTransitionFfiTest is Util {
         cmd[2] = vm.toString(counter);
         cmd[3] = vm.toString(inputs);
 
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         bytes memory res = vm.ffi(cmd);
         return abi.decode(res, (bytes32, bytes32, bytes));
     }
