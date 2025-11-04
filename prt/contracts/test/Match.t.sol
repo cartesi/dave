@@ -14,9 +14,6 @@ pragma solidity ^0.8.0;
 
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
-import {
-    ArbitrationConstants
-} from "src/arbitration-config/ArbitrationConstants.sol";
 import {Commitment} from "src/tournament/libs/Commitment.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Machine} from "src/types/Machine.sol";
