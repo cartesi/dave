@@ -11,7 +11,7 @@ remappings = [
     'step/=../../machine/step/',
 ]
 
-solc_version = "0.8.27"
+solc_version = "0.8.30"
 
 [lint]
 exclude_lints = ["incorrect-shift"]
