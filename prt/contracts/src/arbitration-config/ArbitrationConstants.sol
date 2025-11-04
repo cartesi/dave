@@ -3,8 +3,6 @@
 
 pragma solidity ^0.8.17;
 
-import {Time} from "prt-contracts/tournament/libs/Time.sol";
-
 library ArbitrationConstants {
     // 3-level tournament
     uint64 constant LEVELS = 3;
