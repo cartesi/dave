@@ -5,8 +5,8 @@ pragma solidity ^0.8.8;
 
 import {
     IOutputsMerkleRootValidator
-} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/consensus/IOutputsMerkleRootValidator.sol";
-import {IInputBox} from "cartesi-rollups-contracts-2.1.0-alpha.3/src/inputs/IInputBox.sol";
+} from "cartesi-rollups-contracts-2.1.0/src/consensus/IOutputsMerkleRootValidator.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.1.0/src/inputs/IInputBox.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 
 import {ITournament} from "prt-contracts/ITournament.sol";

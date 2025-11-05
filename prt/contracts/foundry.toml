@@ -7,12 +7,17 @@ optimizer = true
 
 allow_paths = ['../../machine/step/']
 remappings = [
-    'prt-contracts/=./src',
-    'step/=../../machine/step/',
+    "@openzeppelin-contracts-5.5.0/=dependencies/@openzeppelin-contracts-5.5.0/",
+    "forge-std-1.9.6/=dependencies/forge-std-1.9.6/",
+    "prt-contracts/=./src",
+    "step/=../../machine/step/",
 ]
 
 solc_version = "0.8.30"
 evm_version = "prague"
+
+[soldeer]
+remappings_location = "config"
 
 [lint]
 exclude_lints = ["incorrect-shift"]
