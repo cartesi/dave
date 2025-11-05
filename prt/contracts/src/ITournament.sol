@@ -11,11 +11,25 @@ import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
+/// @notice Tournament interface
 interface ITournament {
     //
     // Types
     //
 
+    /// @notice Tournament arguments
+    /// @param commitmentArgs The commitment arguments
+    /// @param level The tournament level
+    /// @param levels The number of tournament levels
+    /// @param startInstant The start instant of the tournament
+    /// @param allowance The time during which the tournament is open
+    /// @param maxAllowance The maximum time of a player clock
+    /// @param matchEffort The worst-case time to compute a commitment
+    /// @param provider The contract that provides input Merkle roots
+    /// @dev A root tournament is at level 0.
+    /// A single-level tournament has 1 level.
+    /// A multi-level tournament has 2 or more levels.
+    /// Time is measured in base-layer blocks.
     struct TournamentArguments {
         Commitment.Arguments commitmentArgs;
         uint64 level;
@@ -27,12 +41,33 @@ interface ITournament {
         IDataProvider provider;
     }
 
+    /// @notice Match deletion reason
+    /// @param STEP The match was deleted because one of the
+    /// commitments was proven wrong through an on-chain
+    /// state-transition or "step" function. This only
+    /// happens when the match reaches a leaf commitment node
+    /// of a leaf tournament (when `level` is `levels - 1`).
+    /// @param TIMEOUT The match was deleted because the clock
+    /// of at least one of the commitments has timed out.
+    /// Note that it is possible that both clocks time out,
+    /// in which a third party can delete the match in a way
+    /// similar to a garbage-collection routine.
+    /// @param CHILD_TOURNAMENT The match was deleted because
+    /// of a result of a child tournament. It may be the case
+    /// that the child tournament finished without a winner,
+    /// in which case both commitments are eliminated, or
+    /// with a winner, in which case only one of the commitments
+    /// (the loser one in the child tournament) is eliminated.
     enum MatchDeletionReason {
         STEP,
         TIMEOUT,
         CHILD_TOURNAMENT
     }
 
+    /// @notice Winner commitment of a match.
+    /// @param NONE Neither commitment won (both #1 and #2 were eliminated)
+    /// @param ONE Commitment #1 won (and #2 was eliminated)
+    /// @param TWO Commitment #2 won (and #1 was eliminated)
     enum WinnerCommitment {
         NONE,
         ONE,
@@ -43,6 +78,11 @@ interface ITournament {
     // Events
     //
 
+    /// @notice A match was created.
+    /// @param matchIdHash The match ID hash
+    /// @param one The match commitment #1
+    /// @param two The match commitment #2
+    /// @param leftOfTwo The left child of #2
     event MatchCreated(
         Match.IdHash indexed matchIdHash,
         Tree.Node indexed one,
@@ -54,6 +94,12 @@ interface ITournament {
         Match.IdHash indexed matchIdHash, Tree.Node otherParent, Tree.Node left
     );
 
+    /// @notice A match was deleted.
+    /// @param matchIdHash The match ID hash
+    /// @param one The match commitment #1
+    /// @param two The match commitment #2
+    /// @param reason The match deletion reason
+    /// @param winnerCommitment The winner commitment
     event MatchDeleted(
         Match.IdHash indexed matchIdHash,
         Tree.Node indexed one,
@@ -62,16 +108,35 @@ interface ITournament {
         WinnerCommitment winnerCommitment
     );
 
+    /// @notice A commitment has joined.
+    /// @param commitment The commitment
+    /// @param finalStateHash The final machine state hash
+    /// @param submitter The commitment submitter
     event CommitmentJoined(
         Tree.Node commitment,
         Machine.Hash finalStateHash,
-        address indexed caller
+        address indexed submitter
     );
 
+    /// @notice Partial bond refund.
+    /// @param recipient The recipient
+    /// @param value The amount that was refunded
+    /// @param success Whether the refund was successful
+    /// @param ret The return data of the refund call
+    /// @dev In the case of a failed refund (success = false),
+    /// the argument `ret` may encode an smart contract error.
+    /// A refund should only fail if the recipient account
+    /// has any code (which can be an EOA, see EIP-7702).
     event PartialBondRefund(
-        address indexed recipient, uint256 value, bool indexed status, bytes ret
+        address indexed recipient,
+        uint256 value,
+        bool indexed success,
+        bytes ret
     );
 
+    /// @notice An inner tournament was created.
+    /// @param matchIdHash The match ID hash
+    /// @param childTournament The inner/child tournament
     event NewInnerTournament(
         Match.IdHash indexed matchIdHash, ITournament indexed childTournament
     );
@@ -120,10 +185,19 @@ interface ITournament {
     // Functions
     //
 
+    /// @notice Get the amount of Wei necessary to call `joinTournament`.
+    /// @return The tournament bond value
+    /// @dev The bond value may depend on the tournament level.
     function bondValue() external view returns (uint256);
 
+    /// @notice Try recovering the bond of the winner commitment submitter.
+    /// @return Whether the recovery was successful
     function tryRecoveringBond() external returns (bool);
 
+    /// @notice Get the result of the tournament.
+    /// @return finished Whether the tournament has finished already
+    /// @return winnerCommitment The winner commitment (if finished)
+    /// @return finalState The winning final state (if finished)
     function arbitrationResult()
         external
         view
@@ -133,17 +207,22 @@ interface ITournament {
             Machine.Hash finalState
         );
 
-    /// @dev root tournaments are open to everyone,
+    /// @notice Join the tournament with a commitment.
+    /// @param finalState The final machine state hash
+    /// @param proof The proof of the final machine state hash
+    /// @param leftNode The commitment left node
+    /// @param rightNode The commitment right node
+    /// @dev Root tournaments are open to everyone,
     /// while non-root tournaments are open to anyone
-    /// who's final state hash matches the one of the two in the tournament
+    /// whose final state hash matches the one of the two in the parent tournament.
     /// This function must be called while passing a
     /// minimum amount of Wei, given by the `bondValue` view function.
     /// The contract will retain any extra amount.
     function joinTournament(
-        Machine.Hash _finalState,
-        bytes32[] calldata _proof,
-        Tree.Node _leftNode,
-        Tree.Node _rightNode
+        Machine.Hash finalState,
+        bytes32[] calldata proof,
+        Tree.Node leftNode,
+        Tree.Node rightNode
     ) external payable;
 
     /// @notice Advance a running match by one alternating double-bisection step
@@ -153,12 +232,12 @@ interface ITournament {
     /// ROLE & INPUTS FOR THIS STEP
     /// - At this call, the tree stored in `Match.State.otherParent` is the one being
     ///   bisected at height `h`.
-    /// - `_leftNode` and `_rightNode` MUST be the two children of that parent at
+    /// - `leftNode` and `rightNode` MUST be the two children of that parent at
     ///   height `h-1`.
     /// - The match logic compares the provided left child with the opposite tree’s
     ///   baseline (kept in state) to decide whether disagreement lies on the left
     ///   or on the right half at height `h`.
-    /// - The caller MUST also provide `_newLeftNode`/`_newRightNode`, which are the
+    /// - The caller MUST also provide `newLeftNode`/`newRightNode`, which are the
     ///   children of the **chosen half** (left or right) that we descend into. These
     ///   seed the next step after roles flip (alternation).
     ///
@@ -166,29 +245,33 @@ interface ITournament {
     /// INVARIANTS (enforced by the library)
     /// - Height decreases monotonically toward leaves.
     /// - Exactly one tree is double-bisected per call; roles alternate automatically.
-    /// - Node relationships are checked at every step (parent→children, child→children).
+    /// - Node relationships are checked at every step (parent->children, child->children).
     ///
-    /// @param _matchId        The logical pair of commitments for this match.
-    /// @param _leftNode       Left child of the parent being bisected at this step (height h-1).
-    /// @param _rightNode      Right child of the parent being bisected at this step (height h-1).
-    /// @param _newLeftNode    Left child of the chosen half we descend into (height h-2).
-    /// @param _newRightNode   Right child of the chosen half we descend into (height h-2).
+    /// @param matchId        The logical pair of commitments for this match.
+    /// @param leftNode       Left child of the parent being bisected at this step (height h-1).
+    /// @param rightNode      Right child of the parent being bisected at this step (height h-1).
+    /// @param newLeftNode    Left child of the chosen half we descend into (height h-2).
+    /// @param newRightNode   Right child of the chosen half we descend into (height h-2).
     ///
-    /// @custom:effects Emits `matchAdvanced` inside `Match.advanceMatch`.
+    /// @custom:effects Emits `MatchAdvanced`.
     /// @custom:reverts If the match does not exist, cannot be advanced, or any of the
     /// supplied nodes are inconsistent with the parent/child relations for this step.
     function advanceMatch(
-        Match.Id calldata _matchId,
-        Tree.Node _leftNode,
-        Tree.Node _rightNode,
-        Tree.Node _newLeftNode,
-        Tree.Node _newRightNode
+        Match.Id calldata matchId,
+        Tree.Node leftNode,
+        Tree.Node rightNode,
+        Tree.Node newLeftNode,
+        Tree.Node newRightNode
     ) external;
 
+    /// @notice Win a match by timeout.
+    /// @param matchId        The logical pair of commitments for this match.
+    /// @param leftNode       Left child of the commitment.
+    /// @param rightNode      Right child of the commitment.
     function winMatchByTimeout(
-        Match.Id calldata _matchId,
-        Tree.Node _leftNode,
-        Tree.Node _rightNode
+        Match.Id calldata matchId,
+        Tree.Node leftNode,
+        Tree.Node rightNode
     ) external;
 
     /// @notice Permissionless cleanup: eliminate a stalled match after both sides
@@ -222,24 +305,36 @@ interface ITournament {
     ///
     /// - Anyone may call this function; it is a public garbage-collection hook.
     ///
-    /// @param _matchId The pair of commitments that define the match to eliminate.
-    function eliminateMatchByTimeout(Match.Id calldata _matchId) external;
+    /// @param matchId The pair of commitments that define the match to eliminate.
+    function eliminateMatchByTimeout(Match.Id calldata matchId) external;
 
+    /// @notice Seal a match and create an inner tournament.
+    /// @param matchId        The logical pair of commitments for this match.
+    /// @param leftLeaf       Left child of the parent being bisected at this step (height 1).
+    /// @param rightLeaf      Right child of the parent being bisected at this step (height 1).
+    /// @param agreeHash      The machine state hash that both commitments agree upon
+    /// @param agreeHashProof The proof of the agreed-upon machine state hash
     function sealInnerMatchAndCreateInnerTournament(
-        Match.Id calldata _matchId,
-        Tree.Node _leftLeaf,
-        Tree.Node _rightLeaf,
-        Machine.Hash _agreeHash,
-        bytes32[] calldata _agreeHashProof
+        Match.Id calldata matchId,
+        Tree.Node leftLeaf,
+        Tree.Node rightLeaf,
+        Machine.Hash agreeHash,
+        bytes32[] calldata agreeHashProof
     ) external;
 
+    /// @notice Win an inner tournament.
+    /// @param childTournament The inner/child tournament
+    /// @param leftNode        Left child of the winning commitment.
+    /// @param rightNode       Right child of the winning commitment.
     function winInnerTournament(
-        ITournament _childTournament,
-        Tree.Node _leftNode,
-        Tree.Node _rightNode
+        ITournament childTournament,
+        Tree.Node leftNode,
+        Tree.Node rightNode
     ) external;
 
-    function eliminateInnerTournament(ITournament _childTournament) external;
+    /// @notice Eliminate an inner tournament.
+    /// @param childTournament The inner/child tournament
+    function eliminateInnerTournament(ITournament childTournament) external;
 
     /// @notice Seal a match at height 1 (leaf) by pinpointing the divergent
     /// states and setting the agree state.
@@ -249,18 +344,29 @@ interface ITournament {
     /// - After leaf sealing, both clocks are intentionally set to RUNNING to
     ///   incentivize either party to finalize via state-transition proof.
     ///   This accelerates liveness without increasing anyone’s allowance.
+    ///
+    /// @param matchId        The logical pair of commitments for this match.
+    /// @param leftLeaf       Left child of the parent being bisected at this step (height 1).
+    /// @param rightLeaf      Right child of the parent being bisected at this step (height 1).
+    /// @param agreeHash      The machine state hash that both commitments agree upon
+    /// @param agreeHashProof The proof of the agreed-upon machine state hash
     function sealLeafMatch(
-        Match.Id calldata _matchId,
-        Tree.Node _leftLeaf,
-        Tree.Node _rightLeaf,
-        Machine.Hash _agreeHash,
-        bytes32[] calldata _agreeHashProof
+        Match.Id calldata matchId,
+        Tree.Node leftLeaf,
+        Tree.Node rightLeaf,
+        Machine.Hash agreeHash,
+        bytes32[] calldata agreeHashProof
     ) external;
 
+    /// @notice Win a leaf match.
+    /// @param matchId         The logical pair of commitments for this match.
+    /// @param leftNode        Left child of the winning commitment.
+    /// @param rightNode       Right child of the winning commitment.
+    /// @param proofs          The state-transition function proofs.
     function winLeafMatch(
-        Match.Id calldata _matchId,
-        Tree.Node _leftNode,
-        Tree.Node _rightNode,
+        Match.Id calldata matchId,
+        Tree.Node leftNode,
+        Tree.Node rightNode,
         bytes calldata proofs
     ) external;
 
@@ -284,40 +390,51 @@ interface ITournament {
         view
         returns (bool, Tree.Node, Tree.Node, Clock.State memory);
 
+    /// @notice Get the tournament arguments.
     function tournamentArguments()
         external
         view
         returns (TournamentArguments memory);
 
-    function canWinMatchByTimeout(Match.Id calldata _matchId)
+    /// @notice Check whether a match can be won by timeout.
+    /// @param matchId The match ID
+    function canWinMatchByTimeout(Match.Id calldata matchId)
         external
         view
         returns (bool);
 
-    function getCommitment(Tree.Node _commitmentRoot)
+    /// @notice Get the clock and final state of a commitment.
+    /// @param commitmentRoot The commitment
+    /// @return clock The commitment clock
+    /// @return finalState The commited final state
+    function getCommitment(Tree.Node commitmentRoot)
         external
         view
-        returns (Clock.State memory, Machine.Hash);
+        returns (Clock.State memory clock, Machine.Hash finalState);
 
-    function getMatch(Match.IdHash _matchIdHash)
+    /// @notice Get a match state by its ID hash.
+    /// @param matchIdHash The match ID hash
+    function getMatch(Match.IdHash matchIdHash)
         external
         view
         returns (Match.State memory);
 
-    function getMatchCycle(Match.IdHash _matchIdHash)
+    /// @notice Get the running machine cycle of a match by its ID hash.
+    /// @param matchIdHash The match ID hash
+    function getMatchCycle(Match.IdHash matchIdHash)
         external
         view
         returns (uint256);
 
+    /// @notice Get tournament-level constants.
+    /// @return maxLevel The maximum number of tournament levels
+    /// @return level The current tournament level
+    /// @return log2step The log2 number of steps between commitment leaves
+    /// @return height The height of the commitment tree
     function tournamentLevelConstants()
         external
         view
-        returns (
-            uint64 _maxLevel,
-            uint64 _level,
-            uint64 _log2step,
-            uint64 _height
-        );
+        returns (uint64 maxLevel, uint64 level, uint64 log2step, uint64 height);
 
     //
     // Time view functions
