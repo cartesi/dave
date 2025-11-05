@@ -578,7 +578,7 @@ abstract contract Tournament is ITournament {
     }
 
     /// @notice Ensure the tournament is not finished.
-    /// @dev Raises a `TournamentNotFinished` error otherwise.
+    /// @dev Raises a `TournamentIsFinished` error otherwise.
     function _ensureTournamentIsNotFinished() private view {
         require(!isFinished(), TournamentIsFinished());
     }
