@@ -78,6 +78,10 @@ interface ITournament {
 
     error InsufficientBond();
     error NoWinner();
+    error LengthMismatch(uint64 treeHeight, uint64 siblingsLength);
+    error CommitmentStateMismatch(Tree.Node received, Tree.Node expected);
+    error CommitmentFinalStateMismatch(Tree.Node received, Tree.Node expected);
+    error CommitmentProofWrongSize(uint256 received, uint256 expected);
     error TournamentIsFinished();
     error TournamentNotFinished();
     error TournamentIsClosed();

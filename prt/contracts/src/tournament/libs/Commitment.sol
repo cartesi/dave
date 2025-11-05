@@ -7,6 +7,7 @@ import {
     Hashes
 } from "@openzeppelin-contracts-5.5.0/utils/cryptography/Hashes.sol";
 
+import {ITournament} from "prt-contracts/ITournament.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
@@ -30,10 +31,6 @@ library Commitment {
         return args.startCycle + (leafPosition * step);
     }
 
-    error CommitmentStateMismatch(Tree.Node received, Tree.Node expected);
-    error CommitmentFinalStateMismatch(Tree.Node received, Tree.Node expected);
-    error CommitmentProofWrongSize(uint256 received, uint256 expected);
-
     function requireState(
         Tree.Node commitment,
         uint64 treeHeight,
@@ -47,15 +44,13 @@ library Commitment {
 
         require(
             commitment.eq(expectedCommitment),
-            CommitmentStateMismatch(commitment, expectedCommitment)
+            ITournament.CommitmentStateMismatch(commitment, expectedCommitment)
         );
     }
 
     function isEven(uint256 x) private pure returns (bool) {
         return x % 2 == 0;
     }
-
-    error LengthMismatch(uint64 treeHeight, uint64 siblingsLength);
 
     function getRoot(
         bytes32 leaf,
@@ -66,7 +61,7 @@ library Commitment {
         uint64 siblingsLength = uint64(siblings.length);
         require(
             treeHeight == siblingsLength,
-            LengthMismatch(treeHeight, siblingsLength)
+            ITournament.LengthMismatch(treeHeight, siblingsLength)
         );
 
         for (uint256 i = 0; i < treeHeight; i++) {
@@ -93,7 +88,9 @@ library Commitment {
 
         require(
             commitment.eq(expectedCommitment),
-            CommitmentFinalStateMismatch(commitment, expectedCommitment)
+            ITournament.CommitmentFinalStateMismatch(
+                commitment, expectedCommitment
+            )
         );
     }
 
@@ -104,7 +101,7 @@ library Commitment {
     ) internal pure returns (Tree.Node) {
         require(
             treeHeight == siblings.length,
-            CommitmentProofWrongSize(treeHeight, siblings.length)
+            ITournament.CommitmentProofWrongSize(treeHeight, siblings.length)
         );
 
         for (uint256 i = 0; i < treeHeight; i++) {
