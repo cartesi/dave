@@ -78,6 +78,9 @@ interface ITournament {
 
     error InsufficientBond();
     error NoWinner();
+    error IncorrectAgreeState(
+        Machine.Hash initialState, Machine.Hash agreeState
+    );
     error LengthMismatch(uint64 treeHeight, uint64 siblingsLength);
     error CommitmentStateMismatch(Tree.Node received, Tree.Node expected);
     error CommitmentFinalStateMismatch(Tree.Node received, Tree.Node expected);
