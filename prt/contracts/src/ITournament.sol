@@ -90,8 +90,32 @@ interface ITournament {
         Tree.Node leftOfTwo
     );
 
+    /// @notice A match has advanced.
+    /// @param matchIdHash The match ID hash
+    /// @param otherParent The new `otherParent` value
+    /// @param leftNode The new `leftNode` value
+    /// @dev Players take turns to advance the match by
+    /// going down their commitment trees in order to find
+    /// the first diverging leaf node.
+    /// At any given moment, for a given match,
+    /// the tournament contract only stored three nodes:
+    /// - `leftNode`: the left node of the last-opened commitment
+    /// - `rightNode`: the right node of the last-opened commitment
+    /// - `otherParent`: the parent node of the other commitment
+    /// When a match is advanced, the `otherParent` commitment is opened,
+    /// exposing its left and right children nodes. If the left nodes
+    /// of both commitment nodes are equal, then the match advances to
+    /// the right node. Otherwise, it advances to the left node.
+    /// The value of `otherParent` is then updated to be the diverging
+    /// parent node of the other commitment, and `leftNode` and `rightNode`
+    /// are updated to be the left and right nodes of the lats-opened commitment.
+    /// The right node does not need to be exposed, because it is not necessary
+    /// for the opposite player to know which node to which the match should advance.
+    /// Players only need to know whether their left nodes are equal.
     event MatchAdvanced(
-        Match.IdHash indexed matchIdHash, Tree.Node otherParent, Tree.Node left
+        Match.IdHash indexed matchIdHash,
+        Tree.Node otherParent,
+        Tree.Node leftNode
     );
 
     /// @notice A match was deleted.
