@@ -19,13 +19,6 @@ library Match {
     using Commitment for Commitment.Arguments;
 
     //
-    // Events
-    //
-    event MatchAdvanced(
-        Match.IdHash indexed matchIdHash, Tree.Node otherParent, Tree.Node left
-    );
-
-    //
     // Id
     //
     struct Id {
@@ -122,7 +115,9 @@ library Match {
             state._goDownRightTree(newLeftNode, newRightNode);
         }
 
-        emit MatchAdvanced(id.hashFromId(), state.otherParent, state.leftNode);
+        emit ITournament.MatchAdvanced(
+            id.hashFromId(), state.otherParent, state.leftNode
+        );
     }
 
     function sealMatch(

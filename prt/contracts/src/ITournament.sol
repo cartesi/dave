@@ -50,6 +50,10 @@ interface ITournament {
         Tree.Node leftOfTwo
     );
 
+    event MatchAdvanced(
+        Match.IdHash indexed matchIdHash, Tree.Node otherParent, Tree.Node left
+    );
+
     event MatchDeleted(
         Match.IdHash indexed matchIdHash,
         Tree.Node indexed one,
