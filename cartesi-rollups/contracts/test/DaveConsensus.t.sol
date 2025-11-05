@@ -85,23 +85,23 @@ contract MockTournament is ITournament {
     }
 
     function bondValue() external pure override returns (uint256) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function joinTournament(Machine.Hash, bytes32[] calldata, Tree.Node, Tree.Node) external payable override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function advanceMatch(Match.Id calldata, Tree.Node, Tree.Node, Tree.Node, Tree.Node) external pure override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function winMatchByTimeout(Match.Id calldata, Tree.Node, Tree.Node) external pure override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function eliminateMatchByTimeout(Match.Id calldata) external pure override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function sealInnerMatchAndCreateInnerTournament(
@@ -111,15 +111,15 @@ contract MockTournament is ITournament {
         Machine.Hash,
         bytes32[] calldata
     ) external pure override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function winInnerTournament(ITournament, Tree.Node, Tree.Node) external pure override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function eliminateInnerTournament(ITournament) external pure override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function sealLeafMatch(Match.Id calldata, Tree.Node, Tree.Node, Machine.Hash, bytes32[] calldata)
@@ -127,47 +127,47 @@ contract MockTournament is ITournament {
         pure
         override
     {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function winLeafMatch(Match.Id calldata, Tree.Node, Tree.Node, bytes calldata) external pure override {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function canBeEliminated() external pure override returns (bool) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function innerTournamentWinner() external pure override returns (bool, Tree.Node, Tree.Node, Clock.State memory) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function tournamentArguments() external pure override returns (ITournament.TournamentArguments memory) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function canWinMatchByTimeout(Match.Id calldata) external pure override returns (bool) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function getCommitment(Tree.Node) external pure override returns (Clock.State memory, Machine.Hash) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function getMatch(Match.IdHash) external pure override returns (Match.State memory) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function getMatchCycle(Match.IdHash) external pure override returns (uint256) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function tournamentLevelConstants() external pure override returns (uint64, uint64, uint64, uint64) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function isClosed() external pure override returns (bool) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 
     function isFinished() external view override returns (bool) {
@@ -175,7 +175,7 @@ contract MockTournament is ITournament {
     }
 
     function timeFinished() external pure override returns (bool, Time.Instant) {
-        revert ITournament.NotImplemented();
+        revert NotImplemented();
     }
 }
 
