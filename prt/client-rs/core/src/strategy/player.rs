@@ -322,11 +322,6 @@ impl<AS: ArenaSender> Player<AS> {
                 .subtrees()
                 .expect("merkle tree should have subtrees");
 
-            let finished = match_state.other_parent.is_zeroed();
-            if finished {
-                return Ok(());
-            }
-
             let proof = {
                 MachineInstance::get_logs(
                     &self.machine_path,
