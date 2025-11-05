@@ -68,7 +68,7 @@ impl StateReader {
             let match_id = match_event.id;
             let m = tournament.getMatch(match_id.hash().into()).call().await?;
 
-            if !m.otherParent.is_zero() {
+            if m.isInit {
                 let leaf_cycle = tournament
                     .getMatchCycle(match_id.hash().into())
                     .call()
