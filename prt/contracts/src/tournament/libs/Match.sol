@@ -3,6 +3,7 @@
 
 pragma solidity ^0.8.17;
 
+import {ITournament} from "prt-contracts/ITournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
@@ -124,10 +125,6 @@ library Match {
         emit MatchAdvanced(id.hashFromId(), state.otherParent, state.leftNode);
     }
 
-    error IncorrectAgreeState(
-        Machine.Hash initialState, Machine.Hash agreeState
-    );
-
     function sealMatch(
         State storage state,
         Commitment.Arguments memory args,
@@ -156,7 +153,7 @@ library Match {
         if (state.runningLeafPosition == 0) {
             require(
                 agreeState.eq(args.initialHash),
-                IncorrectAgreeState(args.initialHash, agreeState)
+                ITournament.IncorrectAgreeState(args.initialHash, agreeState)
             );
         } else {
             Tree.Node commitment;
