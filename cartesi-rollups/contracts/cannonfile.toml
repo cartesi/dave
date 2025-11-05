@@ -1,9 +1,9 @@
 name = 'cartesi-dave-app-factory'
-version = '2.0.0-alpha.1'
+version = '2.0.0'
 description = 'Cartesi Dave App Factory'
 
 [pull.prtContracts]
-source = "cartesi-prt-multilevel:2.0.0-alpha.1@main"
+source = "cartesi-prt-multilevel:2.0.0@main"
 
 [pull.cartesiRollups]
 source = "cartesi-rollups:2.1.0@main"
