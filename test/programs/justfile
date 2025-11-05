@@ -34,7 +34,7 @@ clean-echo: (clean-program "echo")
 build-honeypot-snapshot: clean-honeypot-snapshot
   mkdir -p honeypot/machine-image
   curl -L \
-    https://github.com/cartesi/honeypot/releases/download/v3.0.0-rc2/honeypot-snapshot-localhost.tar.gz | \
+    https://github.com/cartesi/honeypot/releases/download/v3.0.0-rc3/honeypot-snapshot-localhost.tar.gz | \
     tar -xz -C honeypot/machine-image
 clean-honeypot-snapshot:
   rm -rf honeypot/machine-image
