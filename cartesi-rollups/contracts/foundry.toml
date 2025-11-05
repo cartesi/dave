@@ -1,18 +1,25 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["dependencies"]
+libs = ["dependencies", "../../prt/contracts/dependencies"]
 optimizer = true
 via_ir = true
 
 allow_paths = ["../../prt/contracts", "../../machine/step"]
 remappings = [
-    'prt-contracts/=../../prt/contracts/src/',
-    'step/=../../machine/step/',
+    "@openzeppelin-contracts-5.5.0/=dependencies/@openzeppelin-contracts-5.5.0/",
+    "cartesi-rollups-contracts-2.1.0/=dependencies/cartesi-rollups-contracts-2.1.0/",
+    "forge-std-1.9.6/=dependencies/forge-std-1.9.6/",
+    "prt-contracts/=../../prt/contracts/src/",
+    "step/=../../machine/step/",
 ]
 
 solc_version = "0.8.30"
 evm_version = "prague"
+
+[soldeer]
+remappings_location = "config"
+recursive_deps = true
 
 [fmt]
 sort_imports = true
@@ -21,6 +28,6 @@ sort_imports = true
 exclude_lints = ["incorrect-shift"]
 
 [dependencies]
-"@openzeppelin-contracts" = "5.2.0"
+"@openzeppelin-contracts" = "5.5.0"
 forge-std = "1.9.6"
-cartesi-rollups-contracts = "2.1.0-alpha.3"
+cartesi-rollups-contracts = "2.1.0"

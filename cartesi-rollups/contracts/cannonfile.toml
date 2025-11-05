@@ -6,7 +6,7 @@ description = 'Cartesi Dave App Factory'
 source = "cartesi-prt-multilevel:2.0.0-alpha.1@main"
 
 [pull.cartesiRollups]
-source = "cartesi-rollups:2.1.0-alpha.3@main"
+source = "cartesi-rollups:2.1.0@main"
 
 [deploy.DaveAppFactory]
 artifact = "DaveAppFactory"
