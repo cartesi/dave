@@ -198,6 +198,7 @@ jobs:
       - name: Setup tools
         uses: ./.github/actions/setup-tools
         with:
+          setup-qemu: false
           target: ${{ matrix.target }}
 
       - name: Contracts
