@@ -199,7 +199,7 @@ jobs:
         uses: ./.github/actions/setup-tools
         with:
           setup-qemu: false
-          target: ${{ matrix.target }}
+          setup-rust: false
 
       - name: Contracts
         run: |
