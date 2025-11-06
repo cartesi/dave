@@ -13,6 +13,10 @@ inputs:
     description: 'Foundry version to install'
     required: false
     default: 'v1.4.3'
+  setup-qemu:
+    description: 'Whether to setup QEMU for riscv support'
+    required: false
+    default: 'true'
 outputs:
   foundry-version:
     description: 'The version of Foundry that was installed'
@@ -22,6 +26,7 @@ runs:
   steps:
     - name: Set up QEMU for riscv support
       uses: docker/setup-qemu-action@v3
+      if: ${{ inputs.setup-qemu == 'true' }}
 
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
