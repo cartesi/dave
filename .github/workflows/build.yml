@@ -195,24 +195,10 @@ jobs:
           apt-get install -y --no-install-recommends \
             g++-aarch64-linux-gnu
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
         with:
-          version: stable
-
-      - name: Install just
-        uses: extractions/setup-just@v3
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          package_json_file: 'prt/contracts/package.json'
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'pnpm'
-          cache-dependency-path: 'prt/contracts/pnpm-lock.yaml'
+          target: ${{ matrix.target }}
 
       - name: Contracts
         run: |
