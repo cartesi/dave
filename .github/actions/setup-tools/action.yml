@@ -5,11 +5,11 @@ inputs:
     description: 'Architecture to build for (if Rust is setup)'
     required: false
     default: 'x86_64-unknown-linux-gnu'
-  rust_version:
+  rust-version:
     description: 'Rust version to install (if Rust is setup)'
     required: false
     default: '1.86'
-  foundry_version:
+  foundry-version:
     description: 'Foundry version to install'
     required: false
     default: 'v1.4.3'
@@ -22,9 +22,9 @@ inputs:
     required: false
     default: 'true'
 outputs:
-  foundry-version:
+  installed-foundry-version:
     description: 'The version of Foundry that was installed'
-    value: ${{ steps.set-foundry-version.outputs.foundry-version }}
+    value: ${{ steps.set-foundry-version.outputs.version }}
 runs:
   using: composite
   steps:
@@ -38,7 +38,7 @@ runs:
       with:
         components: rustfmt
         target: ${{ inputs.target }}
-        toolchain: ${{ inputs.rust_version }}
+        toolchain: ${{ inputs.rust-version }}
         cache-on-failure: false
         cache-bin: false
 
@@ -46,12 +46,12 @@ runs:
       id: set-foundry-version
       shell: bash
       run: |
-        echo "foundry-version=${{ inputs.foundry_version }}" >> $GITHUB_OUTPUT
+        echo "version=${{ inputs.foundry-version }}" >> $GITHUB_OUTPUT
 
     - name: Install Foundry
       uses: foundry-rs/foundry-toolchain@v1
       with:
-        version: ${{ steps.set-foundry-version.outputs.foundry-version }}
+        version: ${{ steps.set-foundry-version.outputs.version }}
 
     - name: Install just
       uses: extractions/setup-just@v3

@@ -301,7 +301,7 @@ jobs:
       - name: Compress devnet artifacts
         run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments state.json
         env:
-          FILEPATH: upload/cartesi-rollups-prt-anvil-${{ steps.setup.outputs.foundry-version }}.tar.gz
+          FILEPATH: upload/cartesi-rollups-prt-anvil-${{ steps.setup.outputs.installed-foundry-version }}.tar.gz
 
       - name: Upload files to GitHub Releases
         uses: softprops/action-gh-release@v2
