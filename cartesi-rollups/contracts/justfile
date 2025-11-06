@@ -1,7 +1,7 @@
 # Variables
 BINDINGS_DIR := "./bindings-rs/src/contract"
-DEPLOYMENTS_DIR := "./deployments"
-DEVNET_STATE := "state.json"
+DEPLOYMENTS_DIR := "deployments"
+STATE_FILE := "state.json"
 SRC_DIR := "."
 BINDINGS_FILTER := "DaveConsensus|DaveAppFactory"
 
@@ -40,9 +40,9 @@ clean-smart-contracts:
 clean-bindings:
     rm -rf {{BINDINGS_DIR}}
 
-# clean cannon deployments
+# clean devnet deployment artifacts
 clean-deployments:
-    rm -rf {{DEPLOYMENTS_DIR}}
+    rm -rf {{DEPLOYMENTS_DIR}} {{STATE_FILE}}
 
 # generate Rust bindings from Solidity code
 bind: clean-bindings
@@ -51,11 +51,8 @@ bind: clean-bindings
         --skip-extra-derives \
         --root {{SRC_DIR}}
 
-build-devnet: \
-        (deploy-core \
-            "--anvil.preserve-historical-states"
-            "--anvil.dump-state" DEVNET_STATE \
-            "--write-deployments" DEPLOYMENTS_DIR)
+build-devnet:
+    ./script/build-devnet.sh
 
 deploy-core *OPTS: \
         (deploy-prt-core OPTS) \

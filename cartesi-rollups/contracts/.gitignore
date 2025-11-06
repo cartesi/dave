@@ -4,7 +4,6 @@ out/
 
 # soldeer
 /dependencies
-remappings.txt
 
 # Ignores development broadcast logs
 !/broadcast
@@ -21,8 +20,10 @@ docs/
 .gas-snapshot
 
 # Cannon
-/deployments
 /state.json
+
+# Deployment files
+/deployments
 
 # Forge coverage
 /coverage

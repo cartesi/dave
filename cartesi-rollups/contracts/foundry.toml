@@ -2,13 +2,15 @@
 src = "src"
 out = "out"
 libs = ["dependencies", "../../prt/contracts/dependencies"]
+auto_detect_remappings = false
 optimizer = true
 via_ir = true
 
 allow_paths = ["../../prt/contracts", "../../machine/step"]
 remappings = [
+    "@openzeppelin-contracts-5.2.0/=dependencies/cartesi-rollups-contracts-8ca7442d/dependencies/@openzeppelin-contracts-5.2.0/",
     "@openzeppelin-contracts-5.5.0/=dependencies/@openzeppelin-contracts-5.5.0/",
-    "cartesi-rollups-contracts-2.1.0/=dependencies/cartesi-rollups-contracts-2.1.0/",
+    "cartesi-rollups-contracts-2.1.0/=dependencies/cartesi-rollups-contracts-8ca7442d/",
     "forge-std-1.9.6/=dependencies/forge-std-1.9.6/",
     "prt-contracts/=../../prt/contracts/src/",
     "step/=../../machine/step/",
@@ -16,6 +18,11 @@ remappings = [
 
 solc_version = "0.8.30"
 evm_version = "prague"
+fs_permissions = [
+    { access = "read-write", path = "deployments" },
+    { access = "read", path = "dependencies/cartesi-rollups-contracts-8ca7442d/deployments" },
+    { access = "read", path = "../../prt/contracts/deployments" },
+]
 
 [soldeer]
 remappings_location = "config"
@@ -30,4 +37,4 @@ exclude_lints = ["incorrect-shift"]
 [dependencies]
 "@openzeppelin-contracts" = "5.5.0"
 forge-std = "1.9.6"
-cartesi-rollups-contracts = "2.1.0"
+cartesi-rollups-contracts = { version = "8ca7442d", git = "https://github.com/cartesi/rollups-contracts.git", rev = "8ca7442d02a7a47de15fef02019d0d9a67002014" }
