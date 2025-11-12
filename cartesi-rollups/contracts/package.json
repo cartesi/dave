@@ -1,6 +1,9 @@
 {
   "name": "@cartesi/dave-consensus",
   "version": "0.0.1",
+  "scripts": {
+    "build:devnet": "node scripts/build-devnet.mjs"
+  },
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.7.0",
   "dependencies": {
