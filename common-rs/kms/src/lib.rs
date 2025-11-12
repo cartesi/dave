@@ -199,7 +199,7 @@ mod kms {
     #[tokio::test]
     async fn wallet_eth() {
         run_test(|| async {
-            let chain_id: ChainId = 13370;
+            let chain_id: ChainId = 31337;
             let mut kms_signer = new_builder().with_chain_id(chain_id);
 
             let key_id = kms_signer.create_key_sign_verify().await.unwrap();

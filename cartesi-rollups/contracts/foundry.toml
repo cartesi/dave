@@ -2,13 +2,15 @@
 src = "src"
 out = "out"
 libs = ["dependencies", "../../prt/contracts/dependencies"]
+auto_detect_remappings = false
 optimizer = true
 via_ir = true
 
 allow_paths = ["../../prt/contracts", "../../machine/step"]
 remappings = [
+    "@openzeppelin-contracts-5.2.0/=dependencies/cartesi-rollups-contracts-fc7b10af/dependencies/@openzeppelin-contracts-5.2.0/",
     "@openzeppelin-contracts-5.5.0/=dependencies/@openzeppelin-contracts-5.5.0/",
-    "cartesi-rollups-contracts-2.1.0/=dependencies/cartesi-rollups-contracts-2.1.0/",
+    "cartesi-rollups-contracts-2.1.0/=dependencies/cartesi-rollups-contracts-fc7b10af/",
     "forge-std-1.9.6/=dependencies/forge-std-1.9.6/",
     "prt-contracts/=../../prt/contracts/src/",
     "step/=../../machine/step/",
@@ -30,4 +32,4 @@ exclude_lints = ["incorrect-shift"]
 [dependencies]
 "@openzeppelin-contracts" = "5.5.0"
 forge-std = "1.9.6"
-cartesi-rollups-contracts = "2.1.0"
+cartesi-rollups-contracts = { version = "fc7b10af", git = "https://github.com/cartesi/rollups-contracts", rev = "fc7b10af479f3e61cf15a52982100f3d16dc3bc0" }
