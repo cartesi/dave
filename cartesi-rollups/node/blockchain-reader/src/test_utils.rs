@@ -53,7 +53,6 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
     let anvil = Anvil::default()
         .block_time(1)
         .args([
-            "--preserve-historical-states",
             "--slots-in-an-epoch",
             "1",
             "--load-state",
