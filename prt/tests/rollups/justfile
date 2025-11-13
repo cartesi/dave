@@ -15,7 +15,7 @@ test MACH_PATH SCRIPT:
   TEMPLATE_MACHINE_HASH=0x`xxd -p -c32 {{MACH_PATH}}/machine-image/hash` \
   DAVE_APP_FACTORY=`jq -r .address {{DEPLOYMENTS_DIR}}/DaveAppFactory.json` \
   INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/cartesiRollups.InputBox.json` \
-  lua test_cases/{{SCRIPT}}.lua
+  lua5.4 test_cases/{{SCRIPT}}.lua
 
 # run PRT rollups echo test
 test-echo:
