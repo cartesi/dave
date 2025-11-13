@@ -34,6 +34,8 @@ clean-consensus-deployments:
     just -f ./cartesi-rollups/contracts/justfile clean-deployments
 bind-consensus:
     just -f ./cartesi-rollups/contracts/justfile bind
+build-devnet:
+    just -f ./cartesi-rollups/contracts/justfile build-devnet
 
 build-prt:
     just -f ./prt/contracts/justfile build
@@ -84,6 +86,8 @@ test-rollups-honeypot: build-rust-workspace
     just -f ./prt/tests/rollups/justfile test-honeypot-all
 test-rollups-honeypot-ci: build-rust-workspace
     just -f ./prt/tests/rollups/justfile test-honeypot-ci
+test-rollups-honeypot-case CASE: build-rust-workspace
+    just -f ./prt/tests/rollups/justfile test-honeypot-case {{CASE}}
 view-rollups-logs:
     just -f ./prt/tests/rollups/justfile read-node-logs
 
