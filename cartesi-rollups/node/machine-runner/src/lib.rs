@@ -77,10 +77,20 @@ impl<SM: StateManager + std::fmt::Debug> MachineRunner<SM> {
 
                     match reason {
                         ManualReason::RxAccepted { .. } => {
+                            log::info!(
+                                "input {}:{} accepted",
+                                input.id.epoch_number,
+                                input.id.input_index_in_epoch
+                            );
                             self.state_manager
                                 .advance_accepted(&mut rollups_machine, &state_hashes)?;
                         }
                         _ => {
+                            log::info!(
+                                "input {}:{} reverted",
+                                input.id.epoch_number,
+                                input.id.input_index_in_epoch
+                            );
                             self.state_manager
                                 .advance_reverted(&mut rollups_machine, &state_hashes)?;
                         }

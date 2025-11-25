@@ -23,6 +23,7 @@ test-echo:
 
 # run PRT rollups honeypot test
 test-honeypot-all:
+  just test {{HONEYPOT_DIR}} simple_honeypot
   just test {{HONEYPOT_DIR}} simple_no_input
   just test {{HONEYPOT_DIR}} stf_all
   just test {{HONEYPOT_DIR}} big_input
@@ -40,7 +41,7 @@ test-yield-all:
   just test {{YIELD_DIR}} bad_commitment
 
 test-honeypot-ci:
-  just test {{HONEYPOT_DIR}} simple
+  just test {{HONEYPOT_DIR}} simple_honeypot
 
 test-yield-ci:
   just test {{YIELD_DIR}} simple

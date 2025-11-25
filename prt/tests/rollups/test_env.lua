@@ -25,7 +25,7 @@ local SALT = "0x" .. string.rep("00", 32)
 local SLEEP_TIME = 1
 local FAST_FORWARD_TIME = 16
 
-local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
+local ECHO_MSG = { payload = "0x48656c6c6f2076726f6d204461766521" }
 
 local Env = {
     anvil_path = ANVIL_PATH,
