@@ -19,7 +19,7 @@ local big_input = conversion.bin_from_hex_n("0x6228290203658fd4987e40cbb257cabf2
     :rep((1 << 11) - reduction)
 
 assert(big_input:len() == (1 << 16) - (32 * reduction))
-env.sender:tx_add_inputs { conversion.hex_from_bin_n(big_input) }
+env.sender:tx_add_inputs { { payload = conversion.hex_from_bin_n(big_input) } }
 
 -- Spawn Dave node
 env.spawn_node()

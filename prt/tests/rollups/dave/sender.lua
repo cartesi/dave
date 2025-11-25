@@ -35,15 +35,39 @@ local function quote_args(args, not_quote)
     return quoted_args
 end
 
+local cast_get_address_template = [[
+cast wallet address %s
+]]
+local function get_address(pk)
+    local cmd = string.format(
+        cast_get_address_template,
+        pk
+    )
+
+    local handle = io.popen(cmd)
+    assert(handle)
+
+    local ret = handle:read "*a"
+    handle:close()
+    if ret:find "Error" then
+        error(string.format("get_address %s reverted:\n%s", pk, ret))
+    end
+
+    return ret:gsub("\n$", "")
+end
+
 
 local Sender = {}
 Sender.__index = Sender
 
-function Sender:new(input_box_address, dave_app_factory_address, app_contract_address, pk, endpoint)
-    pk = pk or blockchain_constants.pks[1]
+function Sender:new(input_box_address, dave_app_factory_address, app_contract_address, default_pk, endpoint)
+    default_pk = default_pk or blockchain_constants.pks[1]
+    local default_address = get_address(default_pk)
     endpoint = endpoint or blockchain_constants.endpoint
+
     local sender = {
-        pk = pk,
+        default_pk = default_pk,
+        default_address = default_address,
         endpoint = endpoint,
 
         input_box_address = input_box_address,
@@ -56,12 +80,31 @@ function Sender:new(input_box_address, dave_app_factory_address, app_contract_ad
     return sender
 end
 
-
-local cast_send_template = [[
-cast send --private-key "%s" --rpc-url "%s" --value "%s" "%s" "%s" %s 2>&1
+local cast_impersonate_template = [[
+cast rpc anvil_impersonateAccount %s --rpc-url "%s" 2>&1
 ]]
+local cast_send_template = [[
+cast send --from "%s" --rpc-url "%s" --value "%s" "%s" "%s" %s --unlocked 2>&1
+]]
+function Sender:_send_tx(tournament_address, sender, sig, args, value)
+    -- impersonate
+    do
+        local cmd = string.format(
+            cast_impersonate_template,
+            sender,
+            self.endpoint
+        )
 
-function Sender:_send_tx(tournament_address, sig, args, value)
+        local handle = io.popen(cmd)
+        assert(handle)
+
+        local ret = handle:read "*a"
+        handle:close()
+        if ret:find "Error" then
+            error(string.format("impersonate %s reverted:\n%s", sender, ret))
+        end
+    end
+
     value = value or bint.zero()
 
     local quoted_args = quote_args(args)
@@ -69,7 +112,7 @@ function Sender:_send_tx(tournament_address, sig, args, value)
 
     local cmd = string.format(
         cast_send_template,
-        self.pk,
+        sender,
         self.endpoint,
         value,
         tournament_address,
@@ -90,26 +133,29 @@ function Sender:_send_tx(tournament_address, sig, args, value)
     handle:close()
 end
 
-
-function Sender:tx_add_input(payload)
+function Sender:tx_add_input(input)
     local sig = "addInput(address,bytes)"
+    local sender = input.sender or self.default_address
     return self:_send_tx(
         self.input_box_address,
+        sender,
         sig,
-        { self.app_contract_address, payload }
+        { self.app_contract_address, assert(input.payload) }
     )
 end
 
 function Sender:tx_add_inputs(inputs)
-    for _,payload in ipairs(inputs) do
-        self:tx_add_input(payload)
+    for _,input in ipairs(inputs) do
+        self:tx_add_input(input)
     end
 end
 
 function Sender:tx_new_dave_app(template_hash, salt)
     local sig = "newDaveApp(bytes32,bytes32)"
+    local sender = self.default_address
     return self:_send_tx(
         self.dave_app_factory_address,
+        sender,
         sig,
         { template_hash, salt }
     )
@@ -140,10 +186,12 @@ function Sender:tx_join_tournament(tournament_address, final_state, proof, left_
         error("Failed to parse decimal bond value from result: " .. bondValueResult)
     end
 
+    local sender = self.default_address
     return pcall(
         self._send_tx,
         self,
         tournament_address,
+        sender,
         sig,
         { final_state, proof, left_child, right_child },
         bondValueDecimalStr
