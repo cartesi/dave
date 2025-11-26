@@ -80,31 +80,10 @@ function Sender:new(input_box_address, dave_app_factory_address, app_contract_ad
     return sender
 end
 
-local cast_impersonate_template = [[
-cast rpc anvil_impersonateAccount %s --rpc-url "%s" 2>&1
-]]
 local cast_send_template = [[
 cast send --from "%s" --rpc-url "%s" --value "%s" "%s" "%s" %s --unlocked 2>&1
 ]]
 function Sender:_send_tx(tournament_address, sender, sig, args, value)
-    -- impersonate
-    do
-        local cmd = string.format(
-            cast_impersonate_template,
-            sender,
-            self.endpoint
-        )
-
-        local handle = io.popen(cmd)
-        assert(handle)
-
-        local ret = handle:read "*a"
-        handle:close()
-        if ret:find "Error" then
-            error(string.format("impersonate %s reverted:\n%s", sender, ret))
-        end
-    end
-
     value = value or bint.zero()
 
     local quoted_args = quote_args(args)
@@ -199,7 +178,7 @@ function Sender:tx_join_tournament(tournament_address, final_state, proof, left_
 end
 
 function Sender:advance_blocks(blocks)
-    blockchain_utils.advance_time(blocks, self.endpoint)
+    blockchain_utils.advance_time(self.endpoint, blocks)
 end
 
 return Sender

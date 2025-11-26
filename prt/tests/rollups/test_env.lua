@@ -7,6 +7,7 @@ local Sender = require "dave.sender"
 local start_sybil = require "runners.sybil_runner"
 local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local CommitmentBuilder = require "computation.commitment"
+local blockchain_utils = require "blockchain.utils"
 
 -- anvil deployment state dump
 local ANVIL_PATH = assert(os.getenv("ANVIL_PATH"))
@@ -49,6 +50,10 @@ local Env = {
     -- consensus_address = false,
 }
 
+local CONFIG_ERC20_PORTAL_ADDRESS = "0xACA6586A0Cf05bD831f2501E7B4aea550dA6562D"
+local CONFIG_ERC20_WITHDRAWAL_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+local ETH10K = "0x21e19e0c9bab2400000"
+
 function Env.spawn_blockchain(inputs)
     inputs = inputs or {}
 
@@ -58,6 +63,9 @@ function Env.spawn_blockchain(inputs)
     Env.app_address = Env.reader.app_address
     Env.consensus_address = Env.reader.consensus_address
     Env.sender = Sender:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, Env.app_address, blockchain.pks[1], blockchain.endpoint)
+    blockchain_utils.auto_impersonate(blockchain.endpoint, "true")
+    blockchain_utils.set_balance(blockchain.endpoint, CONFIG_ERC20_PORTAL_ADDRESS, ETH10K)
+    blockchain_utils.set_balance(blockchain.endpoint, CONFIG_ERC20_WITHDRAWAL_ADDRESS, ETH10K)
     Env.sender:tx_add_inputs(inputs)
     Env.sender:tx_new_dave_app(TEMPLATE_MACHINE_HASH, SALT)
     Env.sender:advance_blocks(2)
