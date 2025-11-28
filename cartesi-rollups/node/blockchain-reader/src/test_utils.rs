@@ -20,8 +20,10 @@ use std::{
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const PROGRAM: &str = "../../../test/programs/echo/";
-const ANVIL_STATE: &str = "../../../cartesi-rollups/contracts/state.json";
-const DEPLOYMENTS: &str = "../../../cartesi-rollups/contracts/deployments/";
+const ROLLUPS_PRT: &str = "../../../cartesi-rollups/contracts";
+const ANVIL_STATE: &str = "state.json";
+const DEVNET_DEPLOYMENTS_DIR: &str = "deployments/31337";
+const ROLLUPS_DIR: &str = "dependencies/cartesi-rollups-contracts-8ca7442d";
 
 #[derive(Deserialize)]
 struct Deployment {
@@ -32,18 +34,30 @@ pub fn program_path() -> PathBuf {
     PathBuf::from(PROGRAM).canonicalize().unwrap()
 }
 
+pub fn rollups_prt_path() -> PathBuf {
+    PathBuf::from(ROLLUPS_PRT).canonicalize().unwrap()
+}
+
 pub fn anvil_state_path() -> PathBuf {
-    PathBuf::from(ANVIL_STATE).canonicalize().unwrap()
+    rollups_prt_path().join(ANVIL_STATE)
 }
 
-pub fn deployments_path() -> PathBuf {
-    PathBuf::from(DEPLOYMENTS).canonicalize().unwrap()
+pub fn rollups_prt_devnet_deployments_dir() -> PathBuf {
+    rollups_prt_path().join(DEVNET_DEPLOYMENTS_DIR)
 }
 
-pub fn deployment_address(contract_id: &str) -> Address {
-    let deployment_path = deployments_path().join(format!("{}.json", contract_id));
-    let deployment_json = fs::read_to_string(deployment_path).unwrap();
-    let deployment: Deployment = serde_json::from_str(&deployment_json).unwrap();
+pub fn rollups_path() -> PathBuf {
+    rollups_prt_path().join(ROLLUPS_DIR)
+}
+
+pub fn rollups_devnet_deployments_dir() -> PathBuf {
+    rollups_path().join(DEVNET_DEPLOYMENTS_DIR)
+}
+
+pub fn load_deployment(deployments_dir: PathBuf, contract_id: &str) -> Address {
+    let deployment_path = deployments_dir.join(format!("{}.json", contract_id));
+    let deployments_json = fs::read_to_string(deployment_path).unwrap();
+    let deployment: Deployment = serde_json::from_str(&deployments_json).unwrap();
     Address::from_hex(deployment.address).unwrap()
 }
 
@@ -52,9 +66,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
 
     let anvil = Anvil::default()
         .block_time(1)
-        .chain_id(13370)
         .args([
-            "--preserve-historical-states",
             "--slots-in-an-epoch",
             "1",
             "--load-state",
@@ -74,8 +86,8 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .connect_http(anvil.endpoint_url())
         .erased();
 
-    let input_box = deployment_address("cartesiRollups.InputBox");
-    let dave_app_factory = deployment_address("DaveAppFactory");
+    let input_box = load_deployment(rollups_devnet_deployments_dir(), "InputBox");
+    let dave_app_factory = load_deployment(rollups_prt_devnet_deployments_dir(), "DaveAppFactory");
 
     let initial_hash = {
         // $ xxd -p -c32 test/programs/echo/machine-image/hash

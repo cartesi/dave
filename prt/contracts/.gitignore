@@ -4,7 +4,6 @@ out/
 
 # soldeer
 /dependencies
-remappings.txt
 
 # Ignores development broadcast logs
 !/broadcast
@@ -26,5 +25,7 @@ lcov.info.pruned
 .gas-snapshot
 
 # Cannon
-/deployments
 /state.json
+
+# Deployment files
+/deployments
