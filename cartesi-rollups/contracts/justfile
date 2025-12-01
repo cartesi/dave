@@ -40,9 +40,9 @@ clean-smart-contracts:
 clean-bindings:
     rm -rf {{BINDINGS_DIR}}
 
-# clean cannon deployments
+# clean deployment artifacts
 clean-deployments:
-    rm -rf {{DEPLOYMENTS_DIR}}
+    rm -rf {{DEPLOYMENTS_DIR}} {{DEVNET_STATE}}
 
 # generate Rust bindings from Solidity code
 bind: clean-bindings
