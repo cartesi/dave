@@ -2,7 +2,7 @@ ECHO_DIR := "../../../test/programs/echo"
 HONEYPOT_DIR := "../../../test/programs/honeypot"
 YIELD_DIR := "../../../test/programs/yield"
 ANVIL_PATH := "../../../cartesi-rollups/contracts/state.json"
-DEPLOYMENTS_DIR := "../../../cartesi-rollups/contracts/deployments"
+DEPLOYMENTS_DIR := "../../../cartesi-rollups/contracts/deployments/31337"
 
 WEB3_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
@@ -14,7 +14,7 @@ test MACH_PATH SCRIPT:
   TEMPLATE_MACHINE=`realpath {{MACH_PATH}}/machine-image` \
   TEMPLATE_MACHINE_HASH=0x`xxd -p -c32 {{MACH_PATH}}/machine-image/hash` \
   DAVE_APP_FACTORY=`jq -r .address {{DEPLOYMENTS_DIR}}/DaveAppFactory.json` \
-  INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/cartesiRollups.InputBox.json` \
+  INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/InputBox.json` \
   lua test_cases/{{SCRIPT}}.lua
 
 # run PRT rollups echo test

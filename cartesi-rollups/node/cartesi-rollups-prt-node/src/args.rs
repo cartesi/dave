@@ -12,7 +12,7 @@ use std::{fmt, path::PathBuf, time::Duration};
 
 use crate::provider::create_provider;
 
-const CANNON_CHAIN_ID: u64 = 13370;
+const CANNON_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const SLEEP_DURATION: u64 = 30;
 

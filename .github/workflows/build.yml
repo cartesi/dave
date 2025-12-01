@@ -296,7 +296,7 @@ jobs:
       - name: Build devnet
         working-directory: ./cartesi-rollups/contracts
         run: |
-          just deploy-core --write-deployments deployments --anvil.dump-state state.json
+          just build-devnet
 
       - name: Compress devnet artifacts
         run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments state.json
