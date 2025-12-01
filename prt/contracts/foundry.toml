@@ -16,6 +16,7 @@ remappings = [
 
 solc_version = "0.8.30"
 evm_version = "prague"
+fs_permissions = [{ access = "read-write", path = "deployments" }]
 
 [soldeer]
 remappings_location = "config"
