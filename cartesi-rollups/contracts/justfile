@@ -51,11 +51,8 @@ bind: clean-bindings
         --skip-extra-derives \
         --root {{SRC_DIR}}
 
-build-devnet: \
-        (deploy-core \
-            "--anvil.preserve-historical-states"
-            "--anvil.dump-state" DEVNET_STATE \
-            "--write-deployments" DEPLOYMENTS_DIR)
+build-devnet:
+    ./script/build-devnet.sh
 
 deploy-core *OPTS: \
         (deploy-prt-core OPTS) \

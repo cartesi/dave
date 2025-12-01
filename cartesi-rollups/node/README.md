@@ -35,7 +35,7 @@ Options:
       --web3-rpc-url <WEB3_RPC_URL>
           blockchain gateway endpoint url [env: WEB3_RPC_URL=] [default: http://127.0.0.1:8545]
       --web3-chain-id <WEB3_CHAIN_ID>
-          blockchain chain id [env: WEB3_CHAIN_ID=] [default: 13370]
+          blockchain chain id [env: WEB3_CHAIN_ID=] [default: 31337]
       --sleep-duration-seconds <SLEEP_DURATION_SECONDS>
           polling sleep interval [env: SLEEP_DURATION_SECONDS=] [default: 30]
       --state-dir <STATE_DIR>

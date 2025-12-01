@@ -21,7 +21,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const PROGRAM: &str = "../../../test/programs/echo/";
 const ANVIL_STATE: &str = "../../../cartesi-rollups/contracts/state.json";
-const DEPLOYMENTS: &str = "../../../cartesi-rollups/contracts/deployments/";
+const DEPLOYMENTS: &str = "../../../cartesi-rollups/contracts/deployments/31337";
 
 #[derive(Deserialize)]
 struct Deployment {
@@ -52,7 +52,6 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
 
     let anvil = Anvil::default()
         .block_time(1)
-        .chain_id(13370)
         .args([
             "--preserve-historical-states",
             "--slots-in-an-epoch",
@@ -74,7 +73,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .connect_http(anvil.endpoint_url())
         .erased();
 
-    let input_box = deployment_address("cartesiRollups.InputBox");
+    let input_box = deployment_address("InputBox");
     let dave_app_factory = deployment_address("DaveAppFactory");
 
     let initial_hash = {
