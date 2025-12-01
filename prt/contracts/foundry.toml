@@ -2,6 +2,7 @@
 src = "src"
 out = "out"
 libs = ["dependencies"]
+auto_detect_remappings = false
 via_ir = true
 optimizer = true
 
