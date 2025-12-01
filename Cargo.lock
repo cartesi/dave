@@ -1761,9 +1761,9 @@ dependencies = [
 
 [[package]]
 name = "cartesi-rollups-contracts"
-version = "2.1.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0be1bc33199dd59121e0fdc18c1ba27c3127b68fc36b0de55de5ca564fe0d848"
+checksum = "43f5e916fa85a522e1caa0f4923184c31e6ea4ec851fbfe50b5a3846ea83a0c9"
 dependencies = [
  "alloy",
  "serde",
