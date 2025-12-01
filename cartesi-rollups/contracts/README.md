@@ -8,7 +8,7 @@ This contract instantiates a PRT tournament every epoch to settle on the new sta
 
 - Integrates Dave PRT with Cartesi Rollups
 - Contains a factory contract for `DaveConsensus` contracts
-- Unit tests in Solidity using Forge
+- Unit tests and deployment scripts in Solidity using Forge
 - Cannonfile for modular deployments
 
 ## Installing dependencies

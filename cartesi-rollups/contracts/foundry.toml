@@ -18,6 +18,11 @@ remappings = [
 
 solc_version = "0.8.30"
 evm_version = "prague"
+fs_permissions = [
+    { access = "read-write", path = "deployments" },
+    { access = "read", path = "dependencies/cartesi-rollups-contracts-2.1.1/deployments" },
+    { access = "read", path = "../../prt/contracts/deployments" },
+]
 
 [soldeer]
 remappings_location = "config"
