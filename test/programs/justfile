@@ -36,8 +36,7 @@ build-honeypot-snapshot: clean-honeypot-snapshot
   curl -L \
     https://github.com/cartesi/honeypot/releases/download/v3.0.0/honeypot-snapshot-localhost.tar.gz | \
     tar -xz -C honeypot/machine-image
-clean-honeypot-snapshot:
-  rm -rf honeypot/machine-image
+clean-honeypot-snapshot: (clean-program "honeypot")
 
 # compute
 build-compute: clean-compute
@@ -46,5 +45,4 @@ build-compute: clean-compute
     --no-rollback --store=./compute/machine-image \
     --max-mcycle=0 \
     -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"
-clean-compute:
-  rm -rf compute/machine-image
+clean-compute: (clean-program "compute")
