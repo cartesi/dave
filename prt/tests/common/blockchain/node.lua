@@ -10,13 +10,13 @@ local function start_blockchain(load_state)
     local cmd
     if load_state then
         cmd = string.format(
-            [[echo $$ ; exec anvil --load-state %s --preserve-historical-states --slots-in-an-epoch 1 -a %d > anvil.log 2>&1]],
+            [[echo $$ ; exec anvil --dump-state /tmp/anvil/state.json --load-state %s --preserve-historical-states --slots-in-an-epoch 1 -a %d > anvil.log 2>&1]],
             load_state,
             default_account_number
         )
     else
         cmd = string.format(
-            [[echo $$ ; exec anvil --preserve-historical-states --block-time 1 --slots-in-an-epoch 1 -a %d > anvil.log 2>&1]],
+            [[echo $$ ; exec anvil --dump-state /tmp/anvil/state.json --preserve-historical-states --block-time 1 --slots-in-an-epoch 1 -a %d > anvil.log 2>&1]],
             default_account_number
         )
     end
