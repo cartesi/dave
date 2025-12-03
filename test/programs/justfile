@@ -31,12 +31,15 @@ build-echo: clean-echo
 clean-echo: (clean-program "echo")
 
 # honeypot/honeypot (requires docker)
-build-honeypot-snapshot: clean-honeypot-snapshot
-  mkdir -p honeypot/machine-image
-  curl -L \
-    https://github.com/cartesi/honeypot/releases/download/v3.0.0/honeypot-snapshot-localhost.tar.gz | \
-    tar -xz -C honeypot/machine-image
+build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
+  git clone -b v3.0.0 https://github.com/cartesi/honeypot.git honeypot/project
+  mkdir -p honeypot/project/config/devnet
+  ./honeypot/generate-devnet-honeypot-config.sh > honeypot/project/config/devnet/honeypot-config.hpp
+  make -C honeypot/project snapshot HONEYPOT_CONFIG=devnet
+  cp -r honeypot/project/snapshot honeypot/machine-image
 clean-honeypot-snapshot: (clean-program "honeypot")
+clean-honeypot-project:
+    rm -rf honeypot/project
 
 # compute
 build-compute: clean-compute
