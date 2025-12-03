@@ -32,7 +32,8 @@ clean-echo: (clean-program "echo")
 
 # honeypot/honeypot (requires docker)
 build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
-  git clone -b v3.0.0 https://github.com/cartesi/honeypot.git honeypot/project
+  git clone https://github.com/cartesi/honeypot.git honeypot/project
+  git -C honeypot/project reset --hard 34d00721a527eeb7ed8cce2a13a142e3d8de9aad # v3.0.0
   mkdir -p honeypot/project/config/devnet
   ./honeypot/generate-devnet-honeypot-config.sh > honeypot/project/config/devnet/honeypot-config.hpp
   make -C honeypot/project snapshot HONEYPOT_CONFIG=devnet
