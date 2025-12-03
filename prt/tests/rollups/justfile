@@ -41,7 +41,7 @@ test-yield-all:
   just test {{YIELD_DIR}} bad_commitment
 
 test-honeypot-ci:
-  just test {{HONEYPOT_DIR}} simple_honeypot
+  just test {{HONEYPOT_DIR}} honeypot
 
 test-yield-ci:
   just test {{YIELD_DIR}} simple
