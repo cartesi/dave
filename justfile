@@ -9,7 +9,6 @@ clean-contracts: clean-consensus-contracts clean-prt-contracts clean-bindings cl
 
 setup: update-submodules clean-emulator clean-contracts
   make -C machine/emulator uarch-with-toolchain # Requires docker, necessary for machine bindings
-  just -f ./test/programs/justfile build-honeypot-snapshot # Requires docker, necessary for tests
 
 # Run this once after cloning, if using a docker environment
 setup-docker: setup build-docker-image
@@ -21,6 +20,7 @@ setup-local: setup
   just -f ./cartesi-rollups/contracts/justfile build-devnet
   just -f ./test/programs/justfile download-deps
   just -f ./test/programs/justfile build-programs
+  just -f ./test/programs/justfile build-honeypot-snapshot # Requires docker, necessary for tests
 
 build-consensus:
     just -f ./cartesi-rollups/contracts/justfile build
