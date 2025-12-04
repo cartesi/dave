@@ -31,13 +31,16 @@ build-echo: clean-echo
 clean-echo: (clean-program "echo")
 
 # honeypot/honeypot (requires docker)
-build-honeypot-snapshot: clean-honeypot-snapshot
-  mkdir -p honeypot/machine-image
-  curl -L \
-    https://github.com/cartesi/honeypot/releases/download/v3.0.0/honeypot-snapshot-localhost.tar.gz | \
-    tar -xz -C honeypot/machine-image
-clean-honeypot-snapshot:
-  rm -rf honeypot/machine-image
+build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
+  git clone https://github.com/cartesi/honeypot.git honeypot/project
+  git -C honeypot/project reset --hard 34d00721a527eeb7ed8cce2a13a142e3d8de9aad # v3.0.0
+  mkdir -p honeypot/project/config/devnet
+  ./honeypot/generate-devnet-honeypot-config.sh > honeypot/project/config/devnet/honeypot-config.hpp
+  make -C honeypot/project snapshot HONEYPOT_CONFIG=devnet
+  cp -r honeypot/project/snapshot honeypot/machine-image
+clean-honeypot-snapshot: (clean-program "honeypot")
+clean-honeypot-project:
+    rm -rf honeypot/project
 
 # compute
 build-compute: clean-compute
@@ -46,5 +49,4 @@ build-compute: clean-compute
     --no-rollback --store=./compute/machine-image \
     --max-mcycle=0 \
     -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"
-clean-compute:
-  rm -rf compute/machine-image
+clean-compute: (clean-program "compute")
