@@ -9,14 +9,11 @@ import {
     NonLeafTournament
 } from "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
 import {
-    NonRootTournament
-} from "prt-contracts/tournament/abstracts/NonRootTournament.sol";
-import {
     IMultiLevelTournamentFactory
 } from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 
 /// @notice Middle tournament is non-top, non-bottom of a multi-level instance
-contract MiddleTournament is NonLeafTournament, NonRootTournament {
+contract MiddleTournament is NonLeafTournament {
     using Clones for address;
 
     struct MiddleArguments {
@@ -38,8 +35,8 @@ contract MiddleTournament is NonLeafTournament, NonRootTournament {
         return _middleArgs().tournamentArgs;
     }
 
-    function _nonRootTournamentArgs()
-        internal
+    function nonRootTournamentArgs()
+        public
         view
         override
         returns (NonRootArguments memory)

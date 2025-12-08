@@ -41,6 +41,17 @@ interface ITournament {
         IDataProvider provider;
     }
 
+    /// @notice Arguments for non-root tournaments (level > 0)
+    /// @dev Non-root tournaments are inner tournaments created by parent tournaments.
+    ///      They need to track which two final states are being contested.
+    ///      Root tournaments (level == 0) don't need these arguments.
+    struct NonRootArguments {
+        Tree.Node contestedCommitmentOne;
+        Machine.Hash contestedFinalStateOne;
+        Tree.Node contestedCommitmentTwo;
+        Machine.Hash contestedFinalStateTwo;
+    }
+
     /// @notice Match deletion reason
     /// @param STEP The match was deleted because one of the
     /// commitments was proven wrong through an on-chain
@@ -419,6 +430,12 @@ interface ITournament {
         external
         view
         returns (TournamentArguments memory);
+
+    /// @notice Returns non-root tournament arguments
+    function nonRootTournamentArgs()
+        external
+        view
+        returns (NonRootArguments memory);
 
     /// @notice Check whether a match can be won by timeout.
     /// @param matchId The match ID
