@@ -8,9 +8,6 @@ import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {
-    NonRootTournament
-} from "prt-contracts/tournament/abstracts/NonRootTournament.sol";
-import {
     MiddleTournament
 } from "prt-contracts/tournament/concretes/MiddleTournament.sol";
 import {
@@ -63,7 +60,7 @@ contract MiddleTournamentFactory {
                     matchEffort: tournamentParameters.matchEffort,
                     provider: provider
                 }),
-                nonRootTournamentArgs: NonRootTournament.NonRootArguments({
+                nonRootTournamentArgs: ITournament.NonRootArguments({
                     contestedCommitmentOne: contestedCommitmentOne,
                     contestedFinalStateOne: contestedFinalStateOne,
                     contestedCommitmentTwo: contestedCommitmentTwo,

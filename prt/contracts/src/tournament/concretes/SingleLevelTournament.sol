@@ -9,11 +9,8 @@ import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {
     LeafTournament
 } from "prt-contracts/tournament/abstracts/LeafTournament.sol";
-import {
-    RootTournament
-} from "prt-contracts/tournament/abstracts/RootTournament.sol";
 
-contract SingleLevelTournament is LeafTournament, RootTournament {
+contract SingleLevelTournament is LeafTournament {
     using Clones for address;
 
     struct SingleLevelArguments {

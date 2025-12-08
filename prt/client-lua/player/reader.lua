@@ -360,13 +360,17 @@ function Reader:read_match(address, match_id_hash)
 end
 
 function Reader:inner_tournament_winner(address)
-    local sig = "innerTournamentWinner()(bool,bytes32,bytes32)"
+    -- innerTournamentWinner() returns (bool, Tree.Node, Tree.Node, Clock.State)
+    -- Clock.State is (uint64, uint64) for (allowance, startInstant)
+    local sig = "innerTournamentWinner()(bool,bytes32,bytes32,(uint64,uint64))"
     local ret = self:_call(address, sig, {})
+    assert(#ret >= 3, "innerTournamentWinner returned insufficient values")
 
     local winner = {
         has_winner = helper.str_to_bool(ret[1]),
-        commitment = Hash:from_digest_hex(ret[2]),
-        dangling = Hash:from_digest_hex(ret[3]),
+        parent_commitment = Hash:from_digest_hex(ret[2]),
+        commitment = Hash:from_digest_hex(ret[3]),
+        -- ret[4] contains Clock.State struct (allowance, startInstant) if needed
     }
 
     return winner

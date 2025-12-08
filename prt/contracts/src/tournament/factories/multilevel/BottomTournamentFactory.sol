@@ -9,9 +9,6 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {
-    NonRootTournament
-} from "prt-contracts/tournament/abstracts/NonRootTournament.sol";
-import {
     BottomTournament
 } from "prt-contracts/tournament/concretes/BottomTournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
@@ -62,7 +59,7 @@ contract BottomTournamentFactory {
                     matchEffort: tournamentParameters.matchEffort,
                     provider: provider
                 }),
-                nonRootTournamentArgs: NonRootTournament.NonRootArguments({
+                nonRootTournamentArgs: ITournament.NonRootArguments({
                     contestedCommitmentOne: contestedCommitmentOne,
                     contestedFinalStateOne: contestedFinalStateOne,
                     contestedCommitmentTwo: contestedCommitmentTwo,

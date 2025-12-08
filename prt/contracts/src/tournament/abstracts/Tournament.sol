@@ -105,12 +105,68 @@ abstract contract Tournament is ITournament {
     // Virtual Methods
     //
 
-    /// @return bool if commitment with _finalState is allowed to join the tournament
+    /// @notice Returns non-root tournament arguments
+    /// @dev
+    /// ROOT TOURNAMENT (level == 0):
+    ///   - Uses default implementation that returns zero values
+    ///   - This function is never actually called for root tournaments since
+    ///     validContestedFinalState() returns early when level == 0
+    /// NON-ROOT TOURNAMENT (level > 0):
+    ///   - Must override this function to return the actual contested final states
+    ///   - These are stored in the tournament's argument struct
+    function nonRootTournamentArgs()
+        public
+        view
+        virtual
+        returns (NonRootArguments memory)
+    {
+        // Default implementation for root tournaments (level == 0)
+        // Non-root tournaments (level > 0) must override this
+        return NonRootArguments({
+            contestedCommitmentOne: Tree.ZERO_NODE,
+            contestedFinalStateOne: Machine.ZERO_STATE,
+            contestedCommitmentTwo: Tree.ZERO_NODE,
+            contestedFinalStateTwo: Machine.ZERO_STATE
+        });
+    }
+
+    /// @notice Check if a final state is allowed to join the tournament
+    /// @param _finalState The final state hash to validate
+    /// @return bool Whether the final state is valid
+    /// @return Machine.Hash The first contested final state (for error reporting)
+    /// @return Machine.Hash The second contested final state (for error reporting)
+    /// @dev
+    /// ROOT TOURNAMENT (level == 0):
+    ///   - Always accepts any final state (open to all participants)
+    ///   - Returns (true, ZERO_STATE, ZERO_STATE)
+    /// NON-ROOT TOURNAMENT (level > 0):
+    ///   - Only accepts final states that match one of the two contested final states
+    ///   - These are the two final states from the parent match that created this tournament
+    ///   - Returns (true/false, contestedFinalStateOne, contestedFinalStateTwo)
     function validContestedFinalState(Machine.Hash _finalState)
         internal
         view
-        virtual
-        returns (bool, Machine.Hash, Machine.Hash);
+        returns (bool, Machine.Hash, Machine.Hash)
+    {
+        TournamentArguments memory args = tournamentArguments();
+
+        // ROOT CASE: level == 0
+        // Root tournaments are open to all participants, so any final state is valid
+        if (args.level == 0) {
+            return (true, Machine.ZERO_STATE, Machine.ZERO_STATE);
+        }
+
+        // NON-ROOT CASE: level > 0
+        // Non-root tournaments only accept commitments that match one of the two
+        // contested final states from the parent match
+        NonRootArguments memory nonRootArgs = nonRootTournamentArgs();
+        return (
+            nonRootArgs.contestedFinalStateOne.eq(_finalState)
+                || nonRootArgs.contestedFinalStateTwo.eq(_finalState),
+            nonRootArgs.contestedFinalStateOne,
+            nonRootArgs.contestedFinalStateTwo
+        );
+    }
 
     function _totalGasEstimate() internal view virtual returns (uint256);
 
@@ -575,6 +631,113 @@ abstract contract Tournament is ITournament {
         emit PartialBondRefund(msg.sender, refundValue, status, ret);
 
         locked = false;
+    }
+
+    /// @notice Check if this inner tournament can be safely eliminated
+    /// @return bool Whether the tournament can be eliminated
+    /// @dev
+    /// ROOT TOURNAMENT (level == 0):
+    ///   - Root tournaments cannot be eliminated
+    ///   - Reverts with NotImplemented() error
+    /// NON-ROOT TOURNAMENT (level > 0):
+    ///   - Can be eliminated if:
+    ///     1. Tournament is finished AND has no winners, OR
+    ///     2. Tournament is finished AND the winner's clock allowance has elapsed
+    ///        since the tournament finished
+    ///   - This allows parent tournaments to clean up stalled inner tournaments
+    function canBeEliminated() external view override returns (bool) {
+        TournamentArguments memory args = tournamentArguments();
+
+        // ROOT CASE: level == 0
+        // Root tournaments cannot be eliminated - they are the top-level tournament
+        if (args.level == 0) {
+            revert NotImplemented();
+        }
+
+        // NON-ROOT CASE: level > 0
+        // Inner tournaments can be eliminated under certain conditions
+        (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
+
+        if (!finished) {
+            return false;
+        }
+
+        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
+            hasDanglingCommitment();
+
+        // If the tournament is finished but has no winners,
+        // inner tournament can be eliminated
+        if (!_hasDanglingCommitment) {
+            return true;
+        }
+
+        // We know that, after `winnerCouldHaveWon` plus winner's clock.allowance has elapsed,
+        // it is safe to eliminate the tournament.
+        (Clock.State memory clock,) = getCommitment(_danglingCommitment);
+        return winnerCouldHaveWon.timeoutElapsed(clock.allowance);
+    }
+
+    /// @notice Get the winner of this inner tournament
+    /// @return bool Whether the tournament has finished and has a winner
+    /// @return Tree.Node The contested parent commitment (from the parent match)
+    /// @return Tree.Node The winning inner commitment (the dangling commitment)
+    /// @return Clock.State The paused clock state of the winning commitment
+    /// @dev
+    /// ROOT TOURNAMENT (level == 0):
+    ///   - Root tournaments don't have "inner tournament winners"
+    ///   - Use arbitrationResult() instead to get the root tournament winner
+    ///   - Reverts with NotImplemented() error
+    /// NON-ROOT TOURNAMENT (level > 0):
+    ///   - Returns the winner of this inner tournament
+    ///   - Maps the winning final state to one of the two contested final states
+    ///   - Returns the corresponding contested commitment from the parent match
+    ///   - The clock is adjusted to account for time elapsed since tournament finished
+    function innerTournamentWinner()
+        external
+        view
+        override
+        returns (bool, Tree.Node, Tree.Node, Clock.State memory)
+    {
+        TournamentArguments memory args = tournamentArguments();
+
+        // ROOT CASE: level == 0
+        // Root tournaments don't have inner tournament winners - they are the root
+        // Use arbitrationResult() to get the root tournament winner instead
+        if (args.level == 0) {
+            revert NotImplemented();
+        }
+
+        // NON-ROOT CASE: level > 0
+        // Return the winner of this inner tournament, mapping it back to the parent match
+        if (!isFinished() || this.canBeEliminated()) {
+            Clock.State memory zeroClock;
+            return (false, Tree.ZERO_NODE, Tree.ZERO_NODE, zeroClock);
+        }
+
+        (bool _hasDanglingCommitment, Tree.Node _winner) =
+            hasDanglingCommitment();
+        assert(_hasDanglingCommitment);
+
+        (bool finished, Time.Instant finishedTime) = timeFinished();
+        assert(finished);
+
+        // Adjust the clock to account for time elapsed since tournament finished
+        Clock.State memory _clock = clocks[_winner];
+        _clock = _clock.deduct(Time.currentTime().timeSpan(finishedTime));
+
+        // Map the winning final state to one of the two contested final states
+        // from the parent match
+        NonRootArguments memory nonRootArgs = nonRootTournamentArgs();
+        Machine.Hash _finalState = finalStates[_winner];
+
+        if (_finalState.eq(nonRootArgs.contestedFinalStateOne)) {
+            // Winner matches the first contested final state
+            return (true, nonRootArgs.contestedCommitmentOne, _winner, _clock);
+        } else {
+            // Winner matches the second contested final state
+            assert(_finalState.eq(nonRootArgs.contestedFinalStateTwo));
+            return (true, nonRootArgs.contestedCommitmentTwo, _winner, _clock);
+        }
     }
 
     /// @notice Ensure the tournament is not finished.
