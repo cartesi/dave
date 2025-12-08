@@ -16,9 +16,7 @@ use crate::tournament::{
     TournamentWinner,
 };
 use cartesi_dave_merkle::Digest;
-use cartesi_prt_contracts::{
-    non_leaf_tournament, non_root_tournament, root_tournament, tournament,
-};
+use cartesi_prt_contracts::{non_leaf_tournament, tournament};
 
 #[derive(Clone)]
 pub struct StateReader {
@@ -202,8 +200,7 @@ impl StateReader {
         assert!(state.level < state.max_level, "level out of bounds");
 
         if state.level > 0 {
-            let tournament =
-                non_root_tournament::NonRootTournament::new(tournament_address, &self.client);
+            let tournament = tournament::Tournament::new(tournament_address, &self.client);
             state.can_be_eliminated = tournament.canBeEliminated().call().await?;
         }
 
@@ -276,8 +273,7 @@ impl StateReader {
         &self,
         root_tournament_address: Address,
     ) -> Result<Option<TournamentWinner>> {
-        let root_tournament =
-            root_tournament::RootTournament::new(root_tournament_address, &self.client);
+        let root_tournament = tournament::Tournament::new(root_tournament_address, &self.client);
         let arbitration_result_return = root_tournament.arbitrationResult().call().await?;
         let (finished, commitment, state) = (
             arbitration_result_return._0,
@@ -299,8 +295,7 @@ impl StateReader {
         &self,
         tournament_address: Address,
     ) -> Result<Option<TournamentWinner>> {
-        let tournament =
-            non_root_tournament::NonRootTournament::new(tournament_address, &self.client);
+        let tournament = tournament::Tournament::new(tournament_address, &self.client);
         let inner_tournament_winner_return = tournament.innerTournamentWinner().call().await?;
         let (finished, parent_commitment, dangling_commitment) = (
             inner_tournament_winner_return._0,

@@ -9,14 +9,11 @@ import {
     NonLeafTournament
 } from "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
 import {
-    RootTournament
-} from "prt-contracts/tournament/abstracts/RootTournament.sol";
-import {
     IMultiLevelTournamentFactory
 } from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 
 /// @notice Top tournament of a multi-level instance
-contract TopTournament is NonLeafTournament, RootTournament {
+contract TopTournament is NonLeafTournament {
     using Clones for address;
 
     struct TopArguments {

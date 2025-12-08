@@ -9,17 +9,15 @@ import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {
     LeafTournament
 } from "prt-contracts/tournament/abstracts/LeafTournament.sol";
-import {
-    NonRootTournament
-} from "prt-contracts/tournament/abstracts/NonRootTournament.sol";
+import {Tournament} from "prt-contracts/tournament/abstracts/Tournament.sol";
 
 /// @notice Bottom tournament of a multi-level instance
-contract BottomTournament is LeafTournament, NonRootTournament {
+contract BottomTournament is LeafTournament {
     using Clones for address;
 
     struct BottomArguments {
         TournamentArguments tournamentArgs;
-        NonRootArguments nonRootTournamentArgs;
+        Tournament.NonRootArguments nonRootTournamentArgs;
         IStateTransition stateTransition;
     }
 
@@ -40,7 +38,7 @@ contract BottomTournament is LeafTournament, NonRootTournament {
         internal
         view
         override
-        returns (NonRootArguments memory)
+        returns (Tournament.NonRootArguments memory)
     {
         return _bottomArgs().nonRootTournamentArgs;
     }
