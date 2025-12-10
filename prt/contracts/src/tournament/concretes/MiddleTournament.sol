@@ -8,7 +8,6 @@ import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 import {
     NonLeafTournament
 } from "prt-contracts/tournament/abstracts/NonLeafTournament.sol";
-import {Tournament} from "prt-contracts/tournament/abstracts/Tournament.sol";
 import {
     IMultiLevelTournamentFactory
 } from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
@@ -19,7 +18,7 @@ contract MiddleTournament is NonLeafTournament {
 
     struct MiddleArguments {
         TournamentArguments tournamentArgs;
-        Tournament.NonRootArguments nonRootTournamentArgs;
+        NonRootArguments nonRootTournamentArgs;
         IMultiLevelTournamentFactory tournamentFactory;
     }
 
@@ -36,11 +35,11 @@ contract MiddleTournament is NonLeafTournament {
         return _middleArgs().tournamentArgs;
     }
 
-    function _nonRootTournamentArgs()
-        internal
+    function nonRootTournamentArgs()
+        public
         view
         override
-        returns (Tournament.NonRootArguments memory)
+        returns (NonRootArguments memory)
     {
         return _middleArgs().nonRootTournamentArgs;
     }

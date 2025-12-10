@@ -142,7 +142,11 @@ contract MockTournament is ITournament {
         revert NotImplemented();
     }
 
-    function tournamentArguments() external pure override returns (ITournament.TournamentArguments memory) {
+    function tournamentArguments() external pure override returns (TournamentArguments memory) {
+        revert NotImplemented();
+    }
+
+    function nonRootTournamentArgs() external pure override returns (NonRootArguments memory) {
         revert NotImplemented();
     }
 

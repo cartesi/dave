@@ -114,15 +114,15 @@ abstract contract Tournament is ITournament {
     /// NON-ROOT TOURNAMENT (level > 0):
     ///   - Must override this function to return the actual contested final states
     ///   - These are stored in the tournament's argument struct
-    function _nonRootTournamentArgs()
-        internal
+    function nonRootTournamentArgs()
+        public
         view
         virtual
-        returns (ITournament.NonRootArguments memory)
+        returns (NonRootArguments memory)
     {
         // Default implementation for root tournaments (level == 0)
         // Non-root tournaments (level > 0) must override this
-        return ITournament.NonRootArguments({
+        return NonRootArguments({
             contestedCommitmentOne: Tree.ZERO_NODE,
             contestedFinalStateOne: Machine.ZERO_STATE,
             contestedCommitmentTwo: Tree.ZERO_NODE,
@@ -159,7 +159,7 @@ abstract contract Tournament is ITournament {
         // NON-ROOT CASE: level > 0
         // Non-root tournaments only accept commitments that match one of the two
         // contested final states from the parent match
-        NonRootArguments memory nonRootArgs = _nonRootTournamentArgs();
+        NonRootArguments memory nonRootArgs = nonRootTournamentArgs();
         return (
             nonRootArgs.contestedFinalStateOne.eq(_finalState)
                 || nonRootArgs.contestedFinalStateTwo.eq(_finalState),
@@ -169,16 +169,6 @@ abstract contract Tournament is ITournament {
     }
 
     function _totalGasEstimate() internal view virtual returns (uint256);
-
-    //
-    // Helper Functions
-    //
-
-    /// @notice Check if this is a root tournament (level == 0)
-    function _isRootTournament() internal view returns (bool) {
-        TournamentArguments memory args = tournamentArguments();
-        return args.level == 0;
-    }
 
     //
     // Methods
@@ -737,7 +727,7 @@ abstract contract Tournament is ITournament {
 
         // Map the winning final state to one of the two contested final states
         // from the parent match
-        NonRootArguments memory nonRootArgs = _nonRootTournamentArgs();
+        NonRootArguments memory nonRootArgs = nonRootTournamentArgs();
         Machine.Hash _finalState = finalStates[_winner];
 
         if (_finalState.eq(nonRootArgs.contestedFinalStateOne)) {

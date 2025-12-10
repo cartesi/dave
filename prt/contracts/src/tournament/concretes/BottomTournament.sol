@@ -9,7 +9,6 @@ import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {
     LeafTournament
 } from "prt-contracts/tournament/abstracts/LeafTournament.sol";
-import {Tournament} from "prt-contracts/tournament/abstracts/Tournament.sol";
 
 /// @notice Bottom tournament of a multi-level instance
 contract BottomTournament is LeafTournament {
@@ -17,7 +16,7 @@ contract BottomTournament is LeafTournament {
 
     struct BottomArguments {
         TournamentArguments tournamentArgs;
-        Tournament.NonRootArguments nonRootTournamentArgs;
+        NonRootArguments nonRootTournamentArgs;
         IStateTransition stateTransition;
     }
 
@@ -34,11 +33,11 @@ contract BottomTournament is LeafTournament {
         return _bottomArgs().tournamentArgs;
     }
 
-    function _nonRootTournamentArgs()
-        internal
+    function nonRootTournamentArgs()
+        public
         view
         override
-        returns (Tournament.NonRootArguments memory)
+        returns (NonRootArguments memory)
     {
         return _bottomArgs().nonRootTournamentArgs;
     }

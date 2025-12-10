@@ -369,7 +369,7 @@ function Reader:inner_tournament_winner(address)
     local winner = {
         has_winner = helper.str_to_bool(ret[1]),
         parent_commitment = Hash:from_digest_hex(ret[2]),
-        dangling_commitment = Hash:from_digest_hex(ret[3]),
+        commitment = Hash:from_digest_hex(ret[3]),
         -- ret[4] contains Clock.State struct (allowance, startInstant) if needed
     }
 
