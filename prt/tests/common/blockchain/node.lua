@@ -5,7 +5,7 @@ local slots_in_an_epoch = 1
 local default_account_number = 40
 
 -- spawn an anvil node with 40 accounts, auto-mine, and finalize block at height N-2
-local function start_blockchain(load_state)
+local function start_blockchain(load_state, dump_state)
     print(string.format("Starting blockchain with %d accounts...", default_account_number))
 
     local anvil_args = {
@@ -18,6 +18,11 @@ local function start_blockchain(load_state)
     if load_state then
         table.insert(anvil_args, "--load-state")
         table.insert(anvil_args, load_state)
+    end
+
+    if dump_state then
+        table.insert(anvil_args, "--dump-state")
+        table.insert(anvil_args, dump_state)
     end
 
     local cmd = string.format(
@@ -49,10 +54,10 @@ end
 local Blockchain = {}
 Blockchain.__index = Blockchain
 
-function Blockchain:new(load_state)
+function Blockchain:new(load_state, dump_state)
     local blockchain = {}
 
-    local handle = start_blockchain(load_state)
+    local handle = start_blockchain(load_state, dump_state)
     blockchain.pks, blockchain.endpoint = capture_blockchain_data()
 
     blockchain._handle = handle
