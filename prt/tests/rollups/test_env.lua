@@ -9,7 +9,8 @@ local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local CommitmentBuilder = require "computation.commitment"
 
 -- anvil deployment state dump
-local ANVIL_PATH = assert(os.getenv("ANVIL_PATH"))
+local ANVIL_LOAD_PATH = assert(os.getenv("ANVIL_LOAD_PATH"))
+local ANVIL_DUMP_PATH = assert(os.getenv("ANVIL_DUMP_PATH"))
 
 -- machine template hash
 local TEMPLATE_MACHINE = assert(os.getenv("TEMPLATE_MACHINE"))
@@ -28,7 +29,8 @@ local FAST_FORWARD_TIME = 16
 local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
 
 local Env = {
-    anvil_path = ANVIL_PATH,
+    anvil_load_path = ANVIL_LOAD_PATH,
+    anvil_dump_path = ANVIL_DUMP_PATH,
 
     input_box_address = INPUT_BOX_ADDRESS,
     dave_app_factory_address = DAVE_APP_FACTORY_ADDRESS,
@@ -52,7 +54,7 @@ local Env = {
 function Env.spawn_blockchain(inputs)
     inputs = inputs or {}
 
-    local blockchain = Blockchain:new(ANVIL_PATH)
+    local blockchain = Blockchain:new(ANVIL_LOAD_PATH, ANVIL_DUMP_PATH)
     Env.blockchain = blockchain
     Env.reader = Reader:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, TEMPLATE_MACHINE_HASH, SALT, blockchain.endpoint)
     Env.app_address = Env.reader.app_address
