@@ -25,6 +25,7 @@ test-echo:
 
 # run PRT rollups honeypot test
 test-honeypot-all: \
+        (test-honeypot-case "honeypot_deposit_withdrawal") \
         (test-honeypot-case "simple_no_input") \
         (test-honeypot-case "stf_all") \
         (test-honeypot-case "big_input") \
