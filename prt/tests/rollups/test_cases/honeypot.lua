@@ -42,19 +42,26 @@ local withdrawal_input = { sender = CONFIG_ERC20_WITHDRAWAL_ADDRESS, payload = "
 -- Main Execution
 env.spawn_blockchain()
 
+-- Spawn Dave node
+env.spawn_node()
+
+-- add inputs to epoch 1
 auto_impersonate(env.blockchain.endpoint, "true")
 set_balance(env.blockchain.endpoint, CONFIG_ERC20_PORTAL_ADDRESS, ETH10K)
 env.sender:tx_add_inputs{valid_deposit_inpuit, invalid_deposit_input, withdrawal_input}
 auto_impersonate(env.blockchain.endpoint, "false")
 
--- Spawn Dave node
-env.spawn_node()
-
 -- advance such that epoch 0 is finished
 local sealed_epoch = env.roll_epoch()
 
 -- run epoch 1
-env.run_epoch(sealed_epoch, {
+sealed_epoch = env.run_epoch(sealed_epoch, {
     -- ustep + reset
     { hash = Hash.zero, meta_cycle = 1 << 44 }
 })
+-- 
+-- -- run epoch 2
+-- sealed_epoch = env.run_epoch(sealed_epoch, {
+--     -- ustep + reset
+--     { hash = Hash.zero, meta_cycle = 1 << 44 }
+-- })

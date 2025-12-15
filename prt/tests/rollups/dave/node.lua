@@ -4,7 +4,38 @@ local Machine = require "computation.machine"
 local helper = require "utils.helper"
 local time = require "utils.time"
 
+local function printf(fmt, ...) io.stderr:write(string.format(fmt, ...)) end
 local ANVIL_KEY_7 = "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
+
+function start_ref_node(machine_path, app_address, sender, sleep_duration, verbosity, trace_level)
+    local prep = {
+        [[make -srC ../../../..]],
+        [[make -srC ../../../.. restart-postgres]],
+        string.format([[../../../../cartesi-rollups-cli app register -n honeypot -a '%s' -t '%s' --prt]], app_address, machine_path),
+    }
+
+    for _,cmd in ipairs(prep) do
+        local handle = io.popen(cmd)
+        assert(handle)
+        local result = handle:read'*a'
+        assert(handle:close(), result)
+    end
+
+    local cmd = string.format([[echo $$; ../../../../cartesi-rollups-node --advancer-poll-interval '%s' --claimer-poll-interval '%s' --validator-poll-interval '%s' --log-level debug]], sleep_duration, sleep_duration, sleep_duration)
+    local reader = io.popen(cmd)
+    assert(reader, "`popen` returned nil reader")
+
+    local pid = tonumber(reader:read())
+    local handle = { reader = reader, pid = pid }
+    setmetatable(handle, {
+        __gc = function(t)
+            helper.stop_pid(t.reader, t.pid)
+        end
+    })
+
+    print(string.format("Dave node running with pid %d", pid))
+    return handle
+end
 
 local function start_dave_node(machine_path, app_address, db_path, sleep_duration, verbosity, trace_level)
     local cmd = string.format(
@@ -78,6 +109,7 @@ function Dave:root_commitment(epoch_index)
         end
 
         -- Iterate over each line in the input data
+        printf('>> Dave:root_commitment %q\n', rows)
         for line in rows:gmatch("[^\n]+") do
             local repetitions, leaf = line:match(
                 "([^|]+)|([^|]+)")
@@ -146,6 +178,8 @@ function Dave:inputs(epoch_index)
         if rows:find "Error" then
             error(string.format("Read inputs failed:\n%s", rows))
         end
+
+        printf('>> Dave:inputs %q\n', rows)
 
         local inputs = {}
         -- Iterate over each line in the input data

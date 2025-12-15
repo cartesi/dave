@@ -90,6 +90,14 @@ function MerkleBuilder:add(hash, rep)
     end
 end
 
+function MerkleBuilder:accumulated_count()
+    if #self.leafs ~= 0 then
+        return self.leafs[#self.leafs].accumulated_count
+    else
+        return 0
+    end
+end
+
 local function merkle(leafs, log2size, stride)
     local first_time = stride * (1 << log2size) + 1
     local last_time = (stride + 1) * (1 << log2size)
