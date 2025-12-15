@@ -23,6 +23,7 @@ local function start_blockchain(load_state, dump_state)
     if dump_state then
         table.insert(anvil_args, "--dump-state")
         table.insert(anvil_args, dump_state)
+        table.insert(anvil_args, "--preserve-historical-states")
     end
 
     local cmd = string.format(
