@@ -15,6 +15,8 @@ test MACH_PATH SCRIPT:
   TEMPLATE_MACHINE_HASH=0x`xxd -p -c32 {{MACH_PATH}}/machine-image/hash` \
   DAVE_APP_FACTORY=`jq -r .address {{DEPLOYMENTS_DIR}}/DaveAppFactory.json` \
   INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/InputBox.json` \
+  ERC20_PORTAL=`jq -r .address {{DEPLOYMENTS_DIR}}/ERC20Portal.json` \
+  ERC20_TOKEN=`jq -r .address {{DEPLOYMENTS_DIR}}/TestFungibleToken.json` \
   lua5.4 test_cases/{{SCRIPT}}.lua
 
 # run PRT rollups echo test
