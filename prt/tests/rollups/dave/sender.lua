@@ -61,7 +61,7 @@ local cast_send_template = [[
 cast send --private-key "%s" --rpc-url "%s" --value "%s" "%s" "%s" %s 2>&1
 ]]
 
-function Sender:_send_tx(tournament_address, sig, args, value)
+function Sender:_send_tx(destination, sig, args, value)
     value = value or bint.zero()
 
     local quoted_args = quote_args(args)
@@ -72,7 +72,7 @@ function Sender:_send_tx(tournament_address, sig, args, value)
         self.pk,
         self.endpoint,
         value,
-        tournament_address,
+        destination,
         sig,
         args_str
     )
