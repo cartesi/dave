@@ -22,28 +22,28 @@ test-echo:
   just test {{ECHO_DIR}} simple
 
 # run PRT rollups honeypot test
-test-honeypot-all:
-  just test {{HONEYPOT_DIR}} simple_no_input
-  just test {{HONEYPOT_DIR}} stf_all
-  just test {{HONEYPOT_DIR}} big_input
-  just test {{HONEYPOT_DIR}} gc_match
-  just test {{HONEYPOT_DIR}} gc_tournament
-  just test {{HONEYPOT_DIR}} bad_commitment
+test-honeypot-all: \
+        (test-honeypot-case "simple_no_input") \
+        (test-honeypot-case "stf_all") \
+        (test-honeypot-case "big_input") \
+        (test-honeypot-case "gc_match") \
+        (test-honeypot-case "gc_tournament") \
+        (test-honeypot-case "bad_commitment")
 
 # run PRT rollups yield test
-test-yield-all:
-  just test {{YIELD_DIR}} simple_no_input
-  just test {{YIELD_DIR}} stf_all
-  just test {{YIELD_DIR}} big_input
-  just test {{YIELD_DIR}} gc_match
-  just test {{YIELD_DIR}} gc_tournament
-  just test {{YIELD_DIR}} bad_commitment
+test-yield-all: \
+        (test-yield-case "simple_no_input") \
+        (test-yield-case "stf_all") \
+        (test-yield-case "big_input") \
+        (test-yield-case "gc_match") \
+        (test-yield-case "gc_tournament") \
+        (test-yield-case "bad_commitment")
 
-test-honeypot-ci:
-  just test {{HONEYPOT_DIR}} simple
+test-honeypot-ci: \
+        (test-honeypot-case "simple")
 
-test-yield-ci:
-  just test {{YIELD_DIR}} simple
+test-yield-ci: \
+        (test-yield-case "simple")
 
 test-honeypot-case CASE:
   just test {{HONEYPOT_DIR}} {{CASE}}
