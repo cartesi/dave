@@ -13,6 +13,12 @@ local function quote_args(args, not_quote)
             else
                 table.insert(quoted_args, '"' .. v:hex_string() .. '"')
             end
+        elseif type(v) == "table" and getmetatable(v) == bint then
+            if not_quote then
+                table.insert(quoted_args, tostring(v))
+            else
+                table.insert(quoted_args, '"' .. tostring(v) .. '"')
+            end
         elseif type(v) == "table" then
             if v._tag == "tuple" then
                 local qa = quote_args(v, true)
