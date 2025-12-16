@@ -160,4 +160,29 @@ function Sender:advance_blocks(blocks)
     blockchain_utils.advance_time(blocks, self.endpoint)
 end
 
+function Sender:wallet_address()
+    local cmd = string.format([[cast wallet address -- "%s"]], self.pk)
+
+    local handle = io.popen(cmd)
+    assert(handle)
+
+    local ret = handle:read()
+
+    if ret:find "Error" then
+        local err_str = ret .. handle:read "*a"
+        handle:close()
+        error(
+            string.format(
+                "Could not derive wallet address from private key %s:\n%s",
+                self.pk,
+                err_str
+            )
+        )
+    end
+
+    handle:close()
+
+    return ret
+end
+
 return Sender
