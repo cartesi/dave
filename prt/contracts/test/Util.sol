@@ -23,6 +23,9 @@ import {
     CanonicalTournamentParametersProvider
 } from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {
+    ITournamentParametersProvider
+} from "src/arbitration-config/ITournamentParametersProvider.sol";
+import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
 import {
@@ -31,31 +34,52 @@ import {
 import {
     RiscVStateTransition
 } from "src/state-transition/RiscVStateTransition.sol";
-import {BottomTournament} from "src/tournament/concretes/BottomTournament.sol";
-import {MiddleTournament} from "src/tournament/concretes/MiddleTournament.sol";
-import {
-    SingleLevelTournament
-} from "src/tournament/concretes/SingleLevelTournament.sol";
-import {TopTournament} from "src/tournament/concretes/TopTournament.sol";
+import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import {
-    SingleLevelTournamentFactory
-} from "src/tournament/factories/SingleLevelTournamentFactory.sol";
-import {
-    BottomTournamentFactory
-} from "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
-import {
-    MiddleTournamentFactory
-} from "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
-import {
-    TopTournamentFactory
-} from "src/tournament/factories/multilevel/TopTournamentFactory.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
+import {TournamentParameters} from "src/types/TournamentParameters.sol";
 import {Tree} from "src/types/Tree.sol";
+
+// Simple parameters provider for single-level tournaments (levels = 1)
+contract SingleLevelTournamentParametersProvider is
+    ITournamentParametersProvider
+{
+    Time.Duration immutable MATCH_EFFORT;
+    Time.Duration immutable MAX_ALLOWANCE;
+    uint64 immutable LOG2_STEP;
+    uint64 immutable HEIGHT;
+
+    constructor(
+        uint64 log2step,
+        uint64 height,
+        Time.Duration matchEffort,
+        Time.Duration maxAllowance
+    ) {
+        LOG2_STEP = log2step;
+        HEIGHT = height;
+        MATCH_EFFORT = matchEffort;
+        MAX_ALLOWANCE = maxAllowance;
+    }
+
+    function tournamentParameters(uint64)
+        external
+        view
+        override
+        returns (TournamentParameters memory)
+    {
+        return TournamentParameters({
+            levels: 1, // Single-level tournament
+            log2step: LOG2_STEP,
+            height: HEIGHT,
+            matchEffort: MATCH_EFFORT,
+            maxAllowance: MAX_ALLOWANCE
+        });
+    }
+}
 
 contract Util is Test {
     using Tree for Tree.Node;
@@ -190,11 +214,10 @@ contract Util is Test {
     // create new _topTournament and player 0 joins it
     function initializePlayer0Tournament(MultiLevelTournamentFactory _factory)
         internal
-        returns (TopTournament _topTournament)
+        returns (ITournament _topTournament)
     {
-        _topTournament = TopTournament(
-            address(_factory.instantiate(ONE_STATE, IDataProvider(address(0))))
-        );
+        _topTournament =
+            _factory.instantiate(ONE_STATE, IDataProvider(address(0)));
         // player 0 joins tournament
         joinTournament(_topTournament, 0);
     }
@@ -202,14 +225,10 @@ contract Util is Test {
     // create new _topTournament and player 0 joins it
     function initializePlayer0RollupsTournament(MultiLevelTournamentFactory _factory)
         internal
-        returns (TopTournament _topTournament)
+        returns (ITournament _topTournament)
     {
-        _topTournament = TopTournament(
-            address(
-                _factory.instantiate(
-                    ONE_STATE, IDataProvider(address(0x12345678901234567890))
-                )
-            )
+        _topTournament = _factory.instantiate(
+            ONE_STATE, IDataProvider(address(0x12345678901234567890))
         );
         // player 0 joins tournament
         joinTournament(_topTournament, 0);
@@ -295,17 +314,19 @@ contract Util is Test {
     // instantiates all sub-factories and TournamentFactory
     function instantiateSingleLevelTournamentFactory()
         internal
-        returns (SingleLevelTournamentFactory)
+        returns (MultiLevelTournamentFactory)
     {
         (CartesiStateTransition stateTransition,,) =
             instantiateStateTransition();
-        SingleLevelTournamentFactory singleLevelFactory = new SingleLevelTournamentFactory(
-            new SingleLevelTournament(),
-            stateTransition,
-            ArbitrationConstants.log2step(0),
-            ArbitrationConstants.height(0),
-            MAX_ALLOWANCE,
-            MATCH_EFFORT
+        MultiLevelTournamentFactory singleLevelFactory = new MultiLevelTournamentFactory(
+            new Tournament(),
+            new SingleLevelTournamentParametersProvider(
+                ArbitrationConstants.log2step(0),
+                ArbitrationConstants.height(0),
+                MATCH_EFFORT,
+                MAX_ALLOWANCE
+            ),
+            stateTransition
         );
 
         return singleLevelFactory;
@@ -320,9 +341,7 @@ contract Util is Test {
             instantiateStateTransition();
         return (
             new MultiLevelTournamentFactory(
-                new TopTournamentFactory(new TopTournament()),
-                new MiddleTournamentFactory(new MiddleTournament()),
-                new BottomTournamentFactory(new BottomTournament()),
+                new Tournament(),
                 new CanonicalTournamentParametersProvider(
                     MATCH_EFFORT, MAX_ALLOWANCE
                 ),

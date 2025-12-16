@@ -34,24 +34,6 @@ impl From<MatchID> for cartesi_prt_contracts::tournament::Match::Id {
     }
 }
 
-impl From<MatchID> for cartesi_prt_contracts::non_leaf_tournament::Match::Id {
-    fn from(match_id: MatchID) -> Self {
-        cartesi_prt_contracts::non_leaf_tournament::Match::Id {
-            commitmentOne: match_id.commitment_one.into(),
-            commitmentTwo: match_id.commitment_two.into(),
-        }
-    }
-}
-
-impl From<MatchID> for cartesi_prt_contracts::leaf_tournament::Match::Id {
-    fn from(match_id: MatchID) -> Self {
-        cartesi_prt_contracts::leaf_tournament::Match::Id {
-            commitmentOne: match_id.commitment_one.into(),
-            commitmentTwo: match_id.commitment_two.into(),
-        }
-    }
-}
-
 /// Struct used to communicate the state of a commitment.
 #[derive(Clone, Copy, Debug)]
 pub struct CommitmentState {
