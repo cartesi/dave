@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Match} from "prt-contracts/tournament/libs/Match.sol";
@@ -17,6 +18,17 @@ interface ITournament {
     // Types
     //
 
+    /// @notice Dispute information from a parent match.
+    /// @dev For non-root tournaments (level > 0), contains the two contested commitments
+    ///      and final states from the parent match that created this tournament.
+    ///      For root tournaments (level == 0), all fields are zero.
+    struct NestedDispute {
+        Tree.Node contestedCommitmentOne;
+        Machine.Hash contestedFinalStateOne;
+        Tree.Node contestedCommitmentTwo;
+        Machine.Hash contestedFinalStateTwo;
+    }
+
     /// @notice Tournament arguments
     /// @param commitmentArgs The commitment arguments
     /// @param level The tournament level
@@ -26,10 +38,14 @@ interface ITournament {
     /// @param maxAllowance The maximum time of a player clock
     /// @param matchEffort The worst-case time to compute a commitment
     /// @param provider The contract that provides input Merkle roots
+    /// @param nestedDispute Dispute information from parent match (zero for root tournaments)
+    /// @param stateTransition State transition contract, used by leaf-level operations
+    /// @param tournamentFactory Multi-level factory address (cast to IMultiLevelTournamentFactory when needed), used by non-leaf operations when instantiating inner tournaments
     /// @dev A root tournament is at level 0.
     /// A single-level tournament has 1 level.
     /// A multi-level tournament has 2 or more levels.
     /// Time is measured in base-layer blocks.
+    /// For root tournaments (level == 0), nestedDispute fields are zero.
     struct TournamentArguments {
         Commitment.Arguments commitmentArgs;
         uint64 level;
@@ -39,17 +55,9 @@ interface ITournament {
         Time.Duration maxAllowance;
         Time.Duration matchEffort;
         IDataProvider provider;
-    }
-
-    /// @notice Arguments for non-root tournaments (level > 0)
-    /// @dev Non-root tournaments are inner tournaments created by parent tournaments.
-    ///      They need to track which two final states are being contested.
-    ///      Root tournaments (level == 0) don't need these arguments.
-    struct NonRootArguments {
-        Tree.Node contestedCommitmentOne;
-        Machine.Hash contestedFinalStateOne;
-        Tree.Node contestedCommitmentTwo;
-        Machine.Hash contestedFinalStateTwo;
+        NestedDispute nestedDispute;
+        IStateTransition stateTransition;
+        address tournamentFactory; // Cast to IMultiLevelTournamentFactory when needed to avoid circular dependency
     }
 
     /// @notice Match deletion reason
@@ -214,7 +222,9 @@ interface ITournament {
         uint256 commitment, Machine.Hash computed, Machine.Hash claimed
     );
     error WrongNodesForStep();
-    error NotImplemented();
+    error RequireLeafTournament();
+    error RequireNonLeafTournament();
+    error RequireNonRootTournament();
 
     //
     // Functions
@@ -432,10 +442,6 @@ interface ITournament {
         returns (TournamentArguments memory);
 
     /// @notice Returns non-root tournament arguments
-    function nonRootTournamentArgs()
-        external
-        view
-        returns (NonRootArguments memory);
 
     /// @notice Check whether a match can be won by timeout.
     /// @param matchId The match ID

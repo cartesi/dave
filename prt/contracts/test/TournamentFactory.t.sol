@@ -20,14 +20,11 @@ import {
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import {
-    SingleLevelTournamentFactory
-} from "src/tournament/factories/SingleLevelTournamentFactory.sol";
 
 import {Util} from "./Util.sol";
 
 contract TournamentFactoryTest is Util {
-    SingleLevelTournamentFactory singleLevelfactory;
+    MultiLevelTournamentFactory singleLevelfactory;
     MultiLevelTournamentFactory multiLevelfactory;
 
     function setUp() public {
@@ -53,7 +50,7 @@ contract TournamentFactoryTest is Util {
             _height, ArbitrationConstants.height(_level), "height should match"
         );
 
-        rootTournament = multiLevelfactory.instantiateTop(
+        rootTournament = multiLevelfactory.instantiate(
             Util.ONE_STATE, IDataProvider(address(0))
         );
 
