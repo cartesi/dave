@@ -31,27 +31,13 @@ import {
 import {
     RiscVStateTransition
 } from "src/state-transition/RiscVStateTransition.sol";
-import {BottomTournament} from "src/tournament/concretes/BottomTournament.sol";
-import {MiddleTournament} from "src/tournament/concretes/MiddleTournament.sol";
-import {
-    SingleLevelTournament
-} from "src/tournament/concretes/SingleLevelTournament.sol";
-import {TopTournament} from "src/tournament/concretes/TopTournament.sol";
+import {Tournament} from "src/tournament/concretes/Tournament.sol";
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {
     SingleLevelTournamentFactory
 } from "src/tournament/factories/SingleLevelTournamentFactory.sol";
-import {
-    BottomTournamentFactory
-} from "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
-import {
-    MiddleTournamentFactory
-} from "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
-import {
-    TopTournamentFactory
-} from "src/tournament/factories/multilevel/TopTournamentFactory.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
@@ -190,11 +176,10 @@ contract Util is Test {
     // create new _topTournament and player 0 joins it
     function initializePlayer0Tournament(MultiLevelTournamentFactory _factory)
         internal
-        returns (TopTournament _topTournament)
+        returns (ITournament _topTournament)
     {
-        _topTournament = TopTournament(
-            address(_factory.instantiate(ONE_STATE, IDataProvider(address(0))))
-        );
+        _topTournament =
+            _factory.instantiate(ONE_STATE, IDataProvider(address(0)));
         // player 0 joins tournament
         joinTournament(_topTournament, 0);
     }
@@ -202,14 +187,10 @@ contract Util is Test {
     // create new _topTournament and player 0 joins it
     function initializePlayer0RollupsTournament(MultiLevelTournamentFactory _factory)
         internal
-        returns (TopTournament _topTournament)
+        returns (ITournament _topTournament)
     {
-        _topTournament = TopTournament(
-            address(
-                _factory.instantiate(
-                    ONE_STATE, IDataProvider(address(0x12345678901234567890))
-                )
-            )
+        _topTournament = _factory.instantiate(
+            ONE_STATE, IDataProvider(address(0x12345678901234567890))
         );
         // player 0 joins tournament
         joinTournament(_topTournament, 0);
@@ -300,7 +281,7 @@ contract Util is Test {
         (CartesiStateTransition stateTransition,,) =
             instantiateStateTransition();
         SingleLevelTournamentFactory singleLevelFactory = new SingleLevelTournamentFactory(
-            new SingleLevelTournament(),
+            new Tournament(),
             stateTransition,
             ArbitrationConstants.log2step(0),
             ArbitrationConstants.height(0),
@@ -320,9 +301,7 @@ contract Util is Test {
             instantiateStateTransition();
         return (
             new MultiLevelTournamentFactory(
-                new TopTournamentFactory(new TopTournament()),
-                new MiddleTournamentFactory(new MiddleTournament()),
-                new BottomTournamentFactory(new BottomTournament()),
+                new Tournament(),
                 new CanonicalTournamentParametersProvider(
                     MATCH_EFFORT, MAX_ALLOWANCE
                 ),

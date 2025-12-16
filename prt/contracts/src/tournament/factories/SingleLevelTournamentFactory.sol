@@ -5,16 +5,16 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 
+import {IMultiLevelTournamentFactory} from "./IMultiLevelTournamentFactory.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
-import {
-    SingleLevelTournament
-} from "prt-contracts/tournament/concretes/SingleLevelTournament.sol";
+import {Tournament} from "prt-contracts/tournament/concretes/Tournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
+import {Tree} from "prt-contracts/types/Tree.sol";
 
 contract SingleLevelTournamentFactory is ITournamentFactory {
     using Clones for address;
@@ -23,7 +23,7 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
     uint64 constant LEVEL = 0;
     uint64 constant LEVELS = 1;
 
-    SingleLevelTournament immutable IMPL;
+    Tournament immutable IMPL;
     IStateTransition immutable STATE_TRANSITION;
     uint64 immutable LOG2_STEP;
     uint64 immutable HEIGHT;
@@ -31,7 +31,7 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
     Time.Duration immutable MATCH_EFFORT;
 
     constructor(
-        SingleLevelTournament impl,
+        Tournament impl,
         IStateTransition stateTransition,
         uint64 log2step,
         uint64 height,
@@ -49,10 +49,9 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
     function instantiateSingleLevel(
         Machine.Hash initialHash,
         IDataProvider provider
-    ) public returns (SingleLevelTournament) {
-        SingleLevelTournament.SingleLevelArguments memory
-            args =
-            SingleLevelTournament.SingleLevelArguments({
+    ) public returns (ITournament) {
+        Tournament.CloneArguments memory args =
+            Tournament.CloneArguments({
                 tournamentArgs: ITournament.TournamentArguments({
                     commitmentArgs: Commitment.Arguments({
                         initialHash: initialHash,
@@ -68,10 +67,18 @@ contract SingleLevelTournamentFactory is ITournamentFactory {
                     matchEffort: MATCH_EFFORT,
                     provider: provider
                 }),
-                stateTransition: STATE_TRANSITION
+                nonRootTournamentArgs: ITournament.NonRootArguments({
+                    contestedCommitmentOne: Tree.ZERO_NODE,
+                    contestedFinalStateOne: Machine.ZERO_STATE,
+                    contestedCommitmentTwo: Tree.ZERO_NODE,
+                    contestedFinalStateTwo: Machine.ZERO_STATE
+                }),
+                stateTransition: STATE_TRANSITION,
+                tournamentFactory: IMultiLevelTournamentFactory(address(0))
             });
+
         address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
-        SingleLevelTournament tournament = SingleLevelTournament(clone);
+        ITournament tournament = ITournament(clone);
         emit TournamentCreated(tournament);
         return tournament;
     }
