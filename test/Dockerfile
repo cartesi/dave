@@ -8,7 +8,7 @@ RUN <<EOF
 set -eu
 apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git
 curl -L https://foundry.paradigm.xyz | bash
-~/.foundry/bin/foundryup --install stable
+~/.foundry/bin/foundryup --install v1.4.0
 install -Dm755 ~/.foundry/bin/* /usr/local/bin/
 EOF
 # cargo binstall (to install just)
@@ -33,6 +33,11 @@ RUN \
   libclang-dev \
   xxd jq sqlite3; \
   rm -rf /var/cache/apt;
+
+# install pnpm
+RUN wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.bashrc" SHELL="$(which bash)" bash -
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
 # install foundry
 COPY --from=tools /usr/local/bin/forge   /usr/local/bin/
@@ -81,7 +86,9 @@ RUN \
   --mount=type=cache,target=cartesi-rollups/contracts/cache,sharing=locked \
   --mount=type=cache,target=prt/contracts/out,sharing=locked \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
-  just -f test/programs/justfile build-programs
+  just -f test/programs/justfile build-programs && \
+  just -f test/programs/justfile build-honeypot-snapshot && \
+  just -f cartesi-rollups/contracts/justfile build-devnet
 
 # copy everything else
 COPY \
@@ -105,5 +112,4 @@ RUN \
   just build-rust-workspace; \
   cp target/debug/cartesi-rollups-prt-node .
 
-# because of `--mount`, we need to do this.
 RUN mkdir -p target/debug && mv cartesi-rollups-prt-node target/debug/
