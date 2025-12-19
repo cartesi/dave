@@ -23,21 +23,10 @@ import {
 import {
     RiscVStateTransition
 } from "src/state-transition/RiscVStateTransition.sol";
-import {BottomTournament} from "src/tournament/concretes/BottomTournament.sol";
-import {MiddleTournament} from "src/tournament/concretes/MiddleTournament.sol";
-import {TopTournament} from "src/tournament/concretes/TopTournament.sol";
+import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import {
-    BottomTournamentFactory
-} from "src/tournament/factories/multilevel/BottomTournamentFactory.sol";
-import {
-    MiddleTournamentFactory
-} from "src/tournament/factories/multilevel/MiddleTournamentFactory.sol";
-import {
-    TopTournamentFactory
-} from "src/tournament/factories/multilevel/TopTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 
 type Milliseconds is uint64;
@@ -188,43 +177,9 @@ contract DeploymentScript is BaseDeploymentScript {
             )
         );
 
-        address topTournament = _storeDeployment(
-            type(TopTournament).name,
-            _create2(type(TopTournament).creationCode, abi.encode())
-        );
-
-        address middleTournament = _storeDeployment(
-            type(MiddleTournament).name,
-            _create2(type(MiddleTournament).creationCode, abi.encode())
-        );
-
-        address bottomTournament = _storeDeployment(
-            type(BottomTournament).name,
-            _create2(type(BottomTournament).creationCode, abi.encode())
-        );
-
-        address topTournamentFactory = _storeDeployment(
-            type(TopTournamentFactory).name,
-            _create2(
-                type(TopTournamentFactory).creationCode,
-                abi.encode(topTournament)
-            )
-        );
-
-        address middleTournamentFactory = _storeDeployment(
-            type(MiddleTournamentFactory).name,
-            _create2(
-                type(MiddleTournamentFactory).creationCode,
-                abi.encode(middleTournament)
-            )
-        );
-
-        address bottomTournamentFactory = _storeDeployment(
-            type(BottomTournamentFactory).name,
-            _create2(
-                type(BottomTournamentFactory).creationCode,
-                abi.encode(bottomTournament)
-            )
+        address tournamentImpl = _storeDeployment(
+            type(Tournament).name,
+            _create2(type(Tournament).creationCode, abi.encode())
         );
 
         address canonicalTournamentParametersProvider = _storeDeployment(
@@ -240,9 +195,7 @@ contract DeploymentScript is BaseDeploymentScript {
             _create2(
                 type(MultiLevelTournamentFactory).creationCode,
                 abi.encode(
-                    topTournamentFactory,
-                    middleTournamentFactory,
-                    bottomTournamentFactory,
+                    tournamentImpl,
                     canonicalTournamentParametersProvider,
                     cartesiStateTransition
                 )

@@ -16,7 +16,7 @@ use crate::tournament::{
     TournamentWinner,
 };
 use cartesi_dave_merkle::Digest;
-use cartesi_prt_contracts::{non_leaf_tournament, tournament};
+use cartesi_prt_contracts::tournament;
 
 #[derive(Clone)]
 pub struct StateReader {
@@ -37,8 +37,7 @@ impl StateReader {
         tournament_address: Address,
         match_id: MatchID,
     ) -> Result<Option<TournamentCreatedEvent>> {
-        let tournament =
-            non_leaf_tournament::NonLeafTournament::new(tournament_address, &self.client);
+        let tournament = tournament::Tournament::new(tournament_address, &self.client);
         let events = tournament
             .NewInnerTournament_filter()
             .address(tournament_address)
