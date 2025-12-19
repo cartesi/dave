@@ -12,7 +12,7 @@ import {ITournament} from "prt-contracts/ITournament.sol";
 import {
     ITournamentParametersProvider
 } from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
-import {Tournament} from "prt-contracts/tournament/concretes/Tournament.sol";
+import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
@@ -48,15 +48,22 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         return _tournament;
     }
 
+    /// @notice Instantiate a top-level tournament (root tournament at level 0).
+    /// @dev
+    /// - Always passes STATE_TRANSITION and tournamentFactory (address(this)).
+    /// - Uses `address(this)` instead of `this` to avoid circular dependency:
+    ///   ITournament imports IMultiLevelTournamentFactory, and IMultiLevelTournamentFactory imports ITournament.
+    ///   Storing as `address` breaks the cycle; it's cast back to IMultiLevelTournamentFactory when needed.
+    /// - For single-level tournaments (levels == 1): factory is set but unused (leaf tournaments don't create inner tournaments).
+    /// - For multi-level tournaments (levels > 1): factory is used to create inner tournaments.
     function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
-        public
-        override
+        private
         returns (ITournament)
     {
         TournamentParameters memory params = _getTournamentParameters(0);
 
-        Tournament.CloneArguments memory args = Tournament.CloneArguments({
-            tournamentArgs: ITournament.TournamentArguments({
+        ITournament.TournamentArguments memory args =
+            ITournament.TournamentArguments({
                 commitmentArgs: Commitment.Arguments({
                     initialHash: _initialHash,
                     startCycle: 0,
@@ -69,17 +76,16 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
                 allowance: params.maxAllowance,
                 maxAllowance: params.maxAllowance,
                 matchEffort: params.matchEffort,
-                provider: _provider
-            }),
-            nonRootTournamentArgs: ITournament.NonRootArguments({
-                contestedCommitmentOne: Tree.ZERO_NODE,
-                contestedFinalStateOne: Machine.ZERO_STATE,
-                contestedCommitmentTwo: Tree.ZERO_NODE,
-                contestedFinalStateTwo: Machine.ZERO_STATE
-            }),
-            stateTransition: IStateTransition(address(0)),
-            tournamentFactory: this
-        });
+                provider: _provider,
+                nestedDispute: ITournament.NestedDispute({
+                    contestedCommitmentOne: Tree.ZERO_NODE,
+                    contestedFinalStateOne: Machine.ZERO_STATE,
+                    contestedCommitmentTwo: Tree.ZERO_NODE,
+                    contestedFinalStateTwo: Machine.ZERO_STATE
+                }),
+                stateTransition: STATE_TRANSITION,
+                tournamentFactory: address(this)
+            });
 
         address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
         return ITournament(clone);
@@ -87,11 +93,12 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
 
     /// @notice Instantiate an inner tournament (middle or bottom level).
     /// @dev
-    /// - Determines leaf vs non-leaf configuration based on `_level`:
-    ///   * If `_level == params.levels - 1`: leaf tournament
-    ///     → uses `STATE_TRANSITION`, no factory (can't create deeper tournaments)
-    ///   * Otherwise: non-leaf tournament
-    ///     → no state transition, uses `this` factory (can create deeper tournaments)
+    /// - Always passes STATE_TRANSITION and tournamentFactory (address(this)).
+    /// - Uses `address(this)` instead of `this` to avoid circular dependency:
+    ///   ITournament imports IMultiLevelTournamentFactory, and IMultiLevelTournamentFactory imports ITournament.
+    ///   Storing as `address` breaks the cycle; it's cast back to IMultiLevelTournamentFactory when needed.
+    /// - For leaf tournaments (`_level == params.levels - 1`): factory is set but unused (can't create deeper tournaments).
+    /// - For non-leaf tournaments (`_level < params.levels - 1`): factory is used to create deeper tournaments.
     function instantiateInner(
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
@@ -105,11 +112,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     ) external override returns (ITournament) {
         TournamentParameters memory params = _getTournamentParameters(_level);
 
-        // Determine if this is a leaf tournament (bottom level)
-        bool isLeaf = _level == params.levels - 1;
-
-        Tournament.CloneArguments memory args = Tournament.CloneArguments({
-            tournamentArgs: ITournament.TournamentArguments({
+        ITournament.TournamentArguments memory args =
+            ITournament.TournamentArguments({
                 commitmentArgs: Commitment.Arguments({
                     initialHash: _initialHash,
                     startCycle: _startCycle,
@@ -122,21 +126,16 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
                 allowance: _allowance,
                 maxAllowance: params.maxAllowance,
                 matchEffort: params.matchEffort,
-                provider: _provider
-            }),
-            nonRootTournamentArgs: ITournament.NonRootArguments({
-                contestedCommitmentOne: _contestedCommitmentOne,
-                contestedFinalStateOne: _contestedFinalStateOne,
-                contestedCommitmentTwo: _contestedCommitmentTwo,
-                contestedFinalStateTwo: _contestedFinalStateTwo
-            }),
-            stateTransition: isLeaf
-                ? STATE_TRANSITION
-                : IStateTransition(address(0)),
-            tournamentFactory: isLeaf
-                ? IMultiLevelTournamentFactory(address(0))
-                : this
-        });
+                provider: _provider,
+                nestedDispute: ITournament.NestedDispute({
+                    contestedCommitmentOne: _contestedCommitmentOne,
+                    contestedFinalStateOne: _contestedFinalStateOne,
+                    contestedCommitmentTwo: _contestedCommitmentTwo,
+                    contestedFinalStateTwo: _contestedFinalStateTwo
+                }),
+                stateTransition: STATE_TRANSITION,
+                tournamentFactory: address(this)
+            });
 
         address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
         return ITournament(clone);

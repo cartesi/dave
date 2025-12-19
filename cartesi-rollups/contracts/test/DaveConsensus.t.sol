@@ -84,6 +84,8 @@ contract MockTournament is ITournament {
         return true;
     }
 
+    error NotImplemented();
+
     function bondValue() external pure override returns (uint256) {
         revert NotImplemented();
     }
@@ -143,10 +145,6 @@ contract MockTournament is ITournament {
     }
 
     function tournamentArguments() external pure override returns (TournamentArguments memory) {
-        revert NotImplemented();
-    }
-
-    function nonRootTournamentArgs() external pure override returns (NonRootArguments memory) {
         revert NotImplemented();
     }
 

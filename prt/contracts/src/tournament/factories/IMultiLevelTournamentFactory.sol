@@ -11,10 +11,6 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 interface IMultiLevelTournamentFactory is ITournamentFactory {
-    function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
-        external
-        returns (ITournament);
-
     function instantiateInner(
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,

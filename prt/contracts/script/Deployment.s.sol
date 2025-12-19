@@ -23,7 +23,7 @@ import {
 import {
     RiscVStateTransition
 } from "src/state-transition/RiscVStateTransition.sol";
-import {Tournament} from "src/tournament/concretes/Tournament.sol";
+import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";

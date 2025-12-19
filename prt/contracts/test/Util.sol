@@ -23,6 +23,9 @@ import {
     CanonicalTournamentParametersProvider
 } from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {
+    ITournamentParametersProvider
+} from "src/arbitration-config/ITournamentParametersProvider.sol";
+import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
 import {
@@ -31,17 +34,52 @@ import {
 import {
     RiscVStateTransition
 } from "src/state-transition/RiscVStateTransition.sol";
-import {Tournament} from "src/tournament/concretes/Tournament.sol";
+import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
-import {
-    SingleLevelTournamentFactory
-} from "src/tournament/factories/SingleLevelTournamentFactory.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
+import {TournamentParameters} from "src/types/TournamentParameters.sol";
 import {Tree} from "src/types/Tree.sol";
+
+// Simple parameters provider for single-level tournaments (levels = 1)
+contract SingleLevelTournamentParametersProvider is
+    ITournamentParametersProvider
+{
+    Time.Duration immutable MATCH_EFFORT;
+    Time.Duration immutable MAX_ALLOWANCE;
+    uint64 immutable LOG2_STEP;
+    uint64 immutable HEIGHT;
+
+    constructor(
+        uint64 log2step,
+        uint64 height,
+        Time.Duration matchEffort,
+        Time.Duration maxAllowance
+    ) {
+        LOG2_STEP = log2step;
+        HEIGHT = height;
+        MATCH_EFFORT = matchEffort;
+        MAX_ALLOWANCE = maxAllowance;
+    }
+
+    function tournamentParameters(uint64)
+        external
+        view
+        override
+        returns (TournamentParameters memory)
+    {
+        return TournamentParameters({
+            levels: 1, // Single-level tournament
+            log2step: LOG2_STEP,
+            height: HEIGHT,
+            matchEffort: MATCH_EFFORT,
+            maxAllowance: MAX_ALLOWANCE
+        });
+    }
+}
 
 contract Util is Test {
     using Tree for Tree.Node;
@@ -276,17 +314,19 @@ contract Util is Test {
     // instantiates all sub-factories and TournamentFactory
     function instantiateSingleLevelTournamentFactory()
         internal
-        returns (SingleLevelTournamentFactory)
+        returns (MultiLevelTournamentFactory)
     {
         (CartesiStateTransition stateTransition,,) =
             instantiateStateTransition();
-        SingleLevelTournamentFactory singleLevelFactory = new SingleLevelTournamentFactory(
+        MultiLevelTournamentFactory singleLevelFactory = new MultiLevelTournamentFactory(
             new Tournament(),
-            stateTransition,
-            ArbitrationConstants.log2step(0),
-            ArbitrationConstants.height(0),
-            MAX_ALLOWANCE,
-            MATCH_EFFORT
+            new SingleLevelTournamentParametersProvider(
+                ArbitrationConstants.log2step(0),
+                ArbitrationConstants.height(0),
+                MATCH_EFFORT,
+                MAX_ALLOWANCE
+            ),
+            stateTransition
         );
 
         return singleLevelFactory;

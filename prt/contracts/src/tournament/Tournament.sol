@@ -30,13 +30,13 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// - Root tournaments (level == 0, arbitrary levels >= 1):
 ///   * Entry point via `joinTournament`.
 ///   * Never have a parent match or contested final states.
-///   * Cannot be eliminated (`canBeEliminated` reverts with `NotImplemented`).
+///   * Cannot be eliminated (`canBeEliminated` reverts with `NotANonRootTournament`).
 ///   * Winner is obtained via `arbitrationResult`.
 ///
 /// - Inner, non-root tournaments (level > 0, arbitrary levels >= 2):
 ///   * Always created by a parent tournament via
 ///     `sealInnerMatchAndCreateInnerTournament`.
-///   * Have exactly two contested final states, stored in `NonRootArguments`.
+///   * Have exactly two contested final states, stored in `NestedDispute`.
 ///   * Can be eliminated by the parent once the inner winner's allowance
 ///     window expires.
 ///   * Winner is obtained via `innerTournamentWinner`.
@@ -88,16 +88,6 @@ contract Tournament is ITournament {
     /// @dev Used by nested (non-leaf) tournaments
     mapping(ITournament => Match.Id) matchIdFromInnerTournaments;
 
-    /// @notice Immutable configuration passed via clone args
-    /// @dev Encoded as:
-    ///      (TournamentArguments, NonRootArguments, IStateTransition, IMultiLevelTournamentFactory)
-    struct CloneArguments {
-        TournamentArguments tournamentArgs;
-        NonRootArguments nonRootTournamentArgs;
-        IStateTransition stateTransition;
-        IMultiLevelTournamentFactory tournamentFactory;
-    }
-
     //
     // Modifiers
     //
@@ -128,9 +118,14 @@ contract Tournament is ITournament {
     // Internal helpers and virtual-like methods
     //
 
-    /// @notice Decode immutable clone arguments for this tournament instance
-    function _cloneArgs() internal view returns (CloneArguments memory) {
-        return abi.decode(address(this).fetchCloneArgs(), (CloneArguments));
+    /// @notice Get tournament arguments for this tournament instance
+    /// @dev Decodes immutable arguments passed during clone creation
+    function _tournamentArgs()
+        internal
+        view
+        returns (TournamentArguments memory)
+    {
+        return abi.decode(address(this).fetchCloneArgs(), (TournamentArguments));
     }
 
     /// @inheritdoc ITournament
@@ -140,17 +135,25 @@ contract Tournament is ITournament {
         override
         returns (TournamentArguments memory)
     {
-        return _cloneArgs().tournamentArgs;
+        return _tournamentArgs();
     }
 
-    /// @inheritdoc ITournament
-    function nonRootTournamentArgs()
-        public
-        view
-        override
-        returns (NonRootArguments memory)
+    /// @notice Check if this tournament is a leaf tournament (level == levels - 1)
+    function _isLeafTournament(TournamentArguments memory _args)
+        internal
+        pure
+        returns (bool)
     {
-        return _cloneArgs().nonRootTournamentArgs;
+        return _args.level == _args.levels - 1;
+    }
+
+    /// @notice Check if this tournament is a root tournament (level == 0)
+    function _isRootTournament(TournamentArguments memory _args)
+        internal
+        pure
+        returns (bool)
+    {
+        return _args.level == 0;
     }
 
     /// @notice Check if a final state is allowed to join the tournament.
@@ -171,12 +174,12 @@ contract Tournament is ITournament {
         // NON-ROOT CASE: level > 0
         // - Inner tournaments only accept commitments that match one of the two
         //   contested final states from the parent match that created them.
-        NonRootArguments memory nonRootArgs = nonRootTournamentArgs();
+        NestedDispute memory nestedDispute = args.nestedDispute;
         return (
-            nonRootArgs.contestedFinalStateOne.eq(_finalState)
-                || nonRootArgs.contestedFinalStateTwo.eq(_finalState),
-            nonRootArgs.contestedFinalStateOne,
-            nonRootArgs.contestedFinalStateTwo
+            nestedDispute.contestedFinalStateOne.eq(_finalState)
+                || nestedDispute.contestedFinalStateTwo.eq(_finalState),
+            nestedDispute.contestedFinalStateOne,
+            nestedDispute.contestedFinalStateTwo
         );
     }
 
@@ -197,26 +200,6 @@ contract Tournament is ITournament {
         return base + extra;
     }
 
-    /// @notice State transition contract, used by leaf-level operations.
-    /// @dev Only relevant when this tournament is acting as a leaf
-    ///      (i.e., `level == levels - 1`). For non-leaf levels the
-    ///      state transition is unused and may be zero.
-    function _stateTransition() internal view returns (IStateTransition) {
-        return _cloneArgs().stateTransition;
-    }
-
-    /// @notice Multi-level factory, used by non-leaf operations when instantiating inner tournaments.
-    /// @dev Only relevant when this tournament is acting as a non-leaf
-    ///      (i.e., `level < levels - 1`). For leaf levels the factory
-    ///      is unused and may be zero.
-    function _tournamentFactory()
-        internal
-        view
-        returns (IMultiLevelTournamentFactory)
-    {
-        return _cloneArgs().tournamentFactory;
-    }
-
     //
     // Methods
     //
@@ -228,7 +211,7 @@ contract Tournament is ITournament {
     /// @notice Join a tournament (root or inner) with a commitment.
     /// @dev
     /// - ROOT (level == 0):
-    ///     * Open to all final states, no `NonRootArguments` used.
+    ///     * Open to all final states, contested fields in TournamentArguments are zero.
     /// - NON-ROOT (level > 0):
     ///     * Final state must match one of the two contested final states.
     function joinTournament(
@@ -259,6 +242,7 @@ contract Tournament is ITournament {
         emit CommitmentJoined(_commitmentRoot, _finalState, msg.sender);
     }
 
+    /// @inheritdoc ITournament
     function advanceMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
@@ -394,7 +378,7 @@ contract Tournament is ITournament {
     /// - LEAF ONLY (level == levels - 1):
     ///     * Seals a leaf-level match using the on-chain state commitment tree.
     /// - NON-LEAF (level < levels - 1):
-    ///     * Not implemented; will revert with `NotImplemented`.
+    ///     * Not implemented; will revert with `NotALeafTournament`.
     function sealLeafMatch(
         Match.Id calldata _matchId,
         Tree.Node _leftLeaf,
@@ -403,8 +387,8 @@ contract Tournament is ITournament {
         bytes32[] calldata _agreeHashProof
     ) external override refundable(Gas.SEAL_LEAF_MATCH) tournamentNotFinished {
         TournamentArguments memory args = tournamentArguments();
-        if (args.level != args.levels - 1) {
-            revert NotImplemented();
+        if (!_isLeafTournament(args)) {
+            revert NotALeafTournament();
         }
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
@@ -438,8 +422,8 @@ contract Tournament is ITournament {
         bytes calldata proofs
     ) external override refundable(Gas.WIN_LEAF_MATCH) tournamentNotFinished {
         TournamentArguments memory args = tournamentArguments();
-        if (args.level != args.levels - 1) {
-            revert NotImplemented();
+        if (!_isLeafTournament(args)) {
+            revert NotALeafTournament();
         }
 
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
@@ -458,7 +442,7 @@ contract Tournament is ITournament {
             Machine.Hash _finalStateTwo
         ) = _matchState.getDivergence(args.commitmentArgs);
 
-        IStateTransition stateTransition = _stateTransition();
+        IStateTransition stateTransition = _tournamentArgs().stateTransition;
         Machine.Hash _finalState = Machine.Hash
             .wrap(
                 stateTransition.transitionState(
@@ -511,7 +495,7 @@ contract Tournament is ITournament {
     /// - NON-LEAF ONLY (level < levels - 1):
     ///     * Seals an inner match and spawns an inner tournament at `level + 1`.
     /// - LEAF (level == levels - 1):
-    ///     * Not implemented; will revert with `NotImplemented`.
+    ///     * Not implemented; will revert with `NotANonLeafTournament`.
     function sealInnerMatchAndCreateInnerTournament(
         Match.Id calldata _matchId,
         Tree.Node _leftLeaf,
@@ -525,8 +509,8 @@ contract Tournament is ITournament {
         tournamentNotFinished
     {
         TournamentArguments memory args = tournamentArguments();
-        if (args.level >= args.levels - 1) {
-            revert NotImplemented();
+        if (_isLeafTournament(args)) {
+            revert NotANonLeafTournament();
         }
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
@@ -577,8 +561,8 @@ contract Tournament is ITournament {
         tournamentNotFinished
     {
         TournamentArguments memory args = tournamentArguments();
-        if (args.level >= args.levels - 1) {
-            revert NotImplemented();
+        if (_isLeafTournament(args)) {
+            revert NotANonLeafTournament();
         }
 
         Match.Id memory _matchId = matchIdFromInnerTournaments[_childTournament];
@@ -637,8 +621,8 @@ contract Tournament is ITournament {
         tournamentNotFinished
     {
         TournamentArguments memory args = tournamentArguments();
-        if (args.level >= args.levels - 1) {
-            revert NotImplemented();
+        if (_isLeafTournament(args)) {
+            revert NotANonLeafTournament();
         }
 
         Match.Id memory _matchId = matchIdFromInnerTournaments[_childTournament];
@@ -678,7 +662,8 @@ contract Tournament is ITournament {
     ) private returns (ITournament) {
         TournamentArguments memory args = tournamentArguments();
 
-        IMultiLevelTournamentFactory tournamentFactory = _tournamentFactory();
+        IMultiLevelTournamentFactory tournamentFactory =
+            IMultiLevelTournamentFactory(_tournamentArgs().tournamentFactory);
         return tournamentFactory.instantiateInner(
             _initialHash,
             _contestedCommitmentOne,
@@ -853,6 +838,10 @@ contract Tournament is ITournament {
         }
     }
 
+    /// @notice Pair a new commitment into the tournament, creating a match if an
+    /// existing dangling commitment is available.
+    /// @dev If there's a dangling commitment, creates a match between it and the
+    /// new commitment. Otherwise, stores the new commitment as dangling.
     function pairCommitment(
         Tree.Node _rootHash,
         Clock.State storage _newClock,
@@ -976,7 +965,7 @@ contract Tournament is ITournament {
     /// @inheritdoc ITournament
     /// @dev
     /// - ROOT:
-    ///     * Reverts with `NotImplemented` — root tournaments are never eliminated.
+    ///     * Reverts with `NotANonRootTournament` — root tournaments are never eliminated.
     /// - NON-ROOT:
     ///     * Returns true iff:
     ///         1. Tournament finished and has no winner, OR
@@ -985,8 +974,8 @@ contract Tournament is ITournament {
     function canBeEliminated() external view override returns (bool) {
         TournamentArguments memory args = tournamentArguments();
 
-        if (args.level == 0) {
-            revert NotImplemented();
+        if (_isRootTournament(args)) {
+            revert NotANonRootTournament();
         }
 
         (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
@@ -1009,7 +998,7 @@ contract Tournament is ITournament {
     /// @inheritdoc ITournament
     /// @dev
     /// - ROOT:
-    ///     * Reverts with `NotImplemented` — use `arbitrationResult` instead.
+    ///     * Reverts with `NotANonRootTournament` — use `arbitrationResult` instead.
     /// - NON-ROOT:
     ///     * Returns:
     ///         - contested parent commitment (from the parent match),
@@ -1023,8 +1012,8 @@ contract Tournament is ITournament {
     {
         TournamentArguments memory args = tournamentArguments();
 
-        if (args.level == 0) {
-            revert NotImplemented();
+        if (_isRootTournament(args)) {
+            revert NotANonRootTournament();
         }
 
         if (!isFinished() || this.canBeEliminated()) {
@@ -1042,14 +1031,14 @@ contract Tournament is ITournament {
         Clock.State memory _clock = clocks[_winner];
         _clock = _clock.deduct(Time.currentTime().timeSpan(finishedTime));
 
-        NonRootArguments memory nonRootArgs = nonRootTournamentArgs();
+        NestedDispute memory nestedDispute = args.nestedDispute;
         Machine.Hash _finalState = finalStates[_winner];
 
-        if (_finalState.eq(nonRootArgs.contestedFinalStateOne)) {
-            return (true, nonRootArgs.contestedCommitmentOne, _winner, _clock);
+        if (_finalState.eq(nestedDispute.contestedFinalStateOne)) {
+            return (true, nestedDispute.contestedCommitmentOne, _winner, _clock);
         } else {
-            assert(_finalState.eq(nonRootArgs.contestedFinalStateTwo));
-            return (true, nonRootArgs.contestedCommitmentTwo, _winner, _clock);
+            assert(_finalState.eq(nestedDispute.contestedFinalStateTwo));
+            return (true, nestedDispute.contestedCommitmentTwo, _winner, _clock);
         }
     }
 
