@@ -243,16 +243,32 @@ interface ITournament {
         );
 
     /// @notice Join the tournament with a commitment.
-    /// @param finalState The final machine state hash
-    /// @param proof The proof of the final machine state hash
-    /// @param leftNode The commitment left node
-    /// @param rightNode The commitment right node
+    /// @param finalState The last leaf of the commitment tree (final machine state hash)
+    /// @param proof The bottom-up Merkle proof of the last leaf (final machine state hash) of the commitment tree
+    /// @param leftNode The commitment root left node
+    /// @param rightNode The commitment root right node
     /// @dev Root tournaments are open to everyone,
     /// while non-root tournaments are open to anyone
     /// whose final state hash matches the one of the two in the parent tournament.
     /// This function must be called while passing a
     /// minimum amount of Wei, given by the `bondValue` view function.
     /// The contract will retain any extra amount.
+    /// To better illustrate the parameters of this function,
+    /// the diagram below displays an example commitment tree
+    /// with a purposefully low depth for didatic reasons.
+    /// ```
+    ///                ROOT
+    ///              /      \
+    ///           H0123     H4567
+    ///          /   \       /   \
+    ///       H01   H23   H45    H67
+    ///      / \    / \   / \    / \
+    ///     0   1  2   3 4   5  6   7
+    /// ```
+    /// In this diagram, `finalState` is the leaf `7`,
+    /// `proof` is the array `[6, H45, H0123]`,
+    /// `leftNode` is the node `H0123`,
+    /// and `rightNode` is the node `H4567`.
     function joinTournament(
         Machine.Hash finalState,
         bytes32[] calldata proof,
