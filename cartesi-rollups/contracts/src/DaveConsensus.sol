@@ -221,7 +221,7 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
 
         require(proof.length == Memory.LOG2_MAX_SIZE, InvalidOutputsMerkleRootProofSize(proof.length));
         bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
-            EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE,
+            EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.HASH_TREE_LOG2_WORD_SIZE,
             keccak256(abi.encode(outputsMerkleRoot))
         );
 
