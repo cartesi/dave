@@ -167,7 +167,7 @@ contract DaveAppFactoryTest is Test {
 
         bytes32[] memory outputsMerkleRootProof = _randomProof(Memory.LOG2_MAX_SIZE);
         bytes32 machineMerkleRoot = outputsMerkleRootProof.merkleRootAfterReplacement(
-            EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE,
+            EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.HASH_TREE_LOG2_WORD_SIZE,
             keccak256(abi.encode(outputsMerkleRoot))
         );
 

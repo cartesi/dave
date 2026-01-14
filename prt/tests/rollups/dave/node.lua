@@ -61,6 +61,7 @@ sqlite3 -readonly ./_state/%d/db \
 'SELECT repetitions, HEX(leaf) FROM leafs WHERE level=0 ORDER BY leaf_index ASC' 2>&1
 ]]
 function Dave:root_commitment(epoch_index)
+    print(string.format("[Dave] root_commitment(epoch_index=%d) called", epoch_index))
     local query = function()
         assert(db_exists(epoch_index), string.format("db %d doesn't exist ", epoch_index))
 
@@ -87,14 +88,21 @@ function Dave:root_commitment(epoch_index)
             builder:add(leaf, repetitions)
         end
 
-        return initial_state, builder:build(initial_state.root_hash)
+        local commitment = builder:build(initial_state.root_hash)
+        print(string.format("[Dave] root_commitment(epoch_index=%d) -> root=%s", epoch_index, commitment.root_hash:hex_string()))
+        return initial_state, commitment
     end
 
     local initial_state, commitment
+    local attempt = 0
     time.sleep_until(function()
+        attempt = attempt + 1
         self.sender:advance_blocks(1)
         local ok
         ok, initial_state, commitment = pcall(query)
+        if not ok and (attempt == 1 or attempt % 10 == 0) then
+            print(string.format("[Dave] root_commitment(epoch_index=%d) attempt %d failed: %s", epoch_index, attempt, tostring(initial_state)))
+        end
         return ok
     end, 5)
 

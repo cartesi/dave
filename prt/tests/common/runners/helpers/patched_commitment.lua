@@ -32,7 +32,7 @@ local function filter_map_patches(patches, base_cycle, log2_stride, log2_stride_
         local span = bint256.one() << (log2_stride_count + log2_stride)
         local mask = (bint256.one() << log2_stride) - 1
         if (patch.meta_cycle & mask):iszero() and -- alignment; first bits are zero
-            patch.meta_cycle > base_cycle and -- meta_cycle is within lower bound
+            patch.meta_cycle > base_cycle and     -- meta_cycle is within lower bound
             patch.meta_cycle <= base_cycle + span -- meta_cycle is within upper bounds
         then
             local position = ((patch.meta_cycle - base_cycle) >> log2_stride) - 1

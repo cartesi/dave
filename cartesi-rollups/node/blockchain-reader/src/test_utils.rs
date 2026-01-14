@@ -13,7 +13,7 @@ use cartesi_rollups_contracts::i_input_box::IInputBox;
 use serde::Deserialize;
 use std::{
     fs::{self, File},
-    io::Read,
+    io::{Read, Seek},
     path::PathBuf,
 };
 
@@ -77,8 +77,11 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
     let dave_app_factory = deployment_address("DaveAppFactory");
 
     let initial_hash = {
-        // $ xxd -p -c32 test/programs/echo/machine-image/hash
-        let mut file = File::open(program_path.join("machine-image").join("hash")).unwrap();
+        // Root hash is stored in hash_tree.sht at offset 0x60 (node 1's hash in sparse tree).
+        // Equivalent to: xxd -seek 0x60 -l 0x20 -c 0x20 -p .../machine-image/hash_tree.sht
+        let mut file =
+            File::open(program_path.join("machine-image").join("hash_tree.sht")).unwrap();
+        file.seek(std::io::SeekFrom::Start(0x60)).unwrap();
         let mut buffer = [0u8; 32];
         file.read_exact(&mut buffer).unwrap();
         buffer

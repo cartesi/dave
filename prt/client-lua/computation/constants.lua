@@ -12,7 +12,7 @@ local log2_uarch_span_to_input = log2_uarch_span_to_barch + log2_barch_span_to_i
 local log2_uarch_span_to_epoch = log2_input_span_to_epoch + log2_barch_span_to_input + log2_uarch_span_to_barch
 
 -- Checkpoint address for machine state snapshots
-local CHECKPOINT_ADDRESS = 0x7ffff000
+local CHECKPOINT_ADDRESS = 0xfe0
 
 local constants = {
     log2_uarch_span_to_barch = log2_uarch_span_to_barch,

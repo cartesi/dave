@@ -9,6 +9,7 @@ use cartesi_dave_merkle::Digest;
 use cartesi_machine::{
     cartesi_machine_sys,
     config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
+    constants::machine::TREE_LOG2_ROOT_SIZE,
     machine::Machine,
     types::access_proof::AccessLog,
     types::{LogType, cmio::CmioResponseReason},
@@ -63,7 +64,7 @@ pub struct MachineInstance {
     pub snapshot_path: PathBuf,
 }
 
-const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
+const CHECKPOINT_ADDRESS: u64 = 0xfe0;
 impl MachineInstance {
     pub fn new_from_path(path: &str) -> Result<Self> {
         let runtime_config = RuntimeConfig {
@@ -332,7 +333,9 @@ impl MachineInstance {
         // always read aligned 32 bytes (one leaf)
         let aligned_address = address & !0x1Fu64;
         let mut read = self.machine.read_memory(aligned_address, 32)?;
-        let proof = self.machine.proof(aligned_address, 5)?;
+        let proof = self
+            .machine
+            .proof(aligned_address, 5, TREE_LOG2_ROOT_SIZE)?;
 
         let mut encoded: Vec<u8> = Vec::new();
 
@@ -350,7 +353,9 @@ impl MachineInstance {
         let aligned_address = address & !0x1Fu64;
         let mut read = self.machine.read_memory(aligned_address, 32)?;
         let read_hash = Digest::from_data(&read);
-        let proof = self.machine.proof(aligned_address, 5)?;
+        let proof = self
+            .machine
+            .proof(aligned_address, 5, TREE_LOG2_ROOT_SIZE)?;
 
         let mut encoded: Vec<u8> = Vec::new();
 
@@ -370,7 +375,7 @@ impl MachineInstance {
         let read = self.machine.read_memory(address, 32)?;
         let read_hash = Digest::from_data(&read);
         // Get proof of write address
-        let proof = self.machine.proof(address, 5)?;
+        let proof = self.machine.proof(address, 5, TREE_LOG2_ROOT_SIZE)?;
 
         let mut encoded: Vec<u8> = Vec::new();
 

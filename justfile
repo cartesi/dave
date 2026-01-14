@@ -1,7 +1,7 @@
 update-submodules:
   git submodule update --recursive --init
 
-apply-generated-files-diff VERSION="v0.19.0" FILEHASH="a892e2d9f5c331f5e80bcb5db4133e7db625aa4d14ffdf9467b75c4c34d1744f":
+apply-generated-files-diff VERSION="v0.20.0" FILEHASH="d9c2afcefc2759e7cd37bbedc83d54c81515f0fddb671103b489b8789aee33bb":
   cd machine/emulator && \
     (wget -O add-generated-files.diff https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff && \
     (echo "{{FILEHASH}} add-generated-files.diff" | sha256sum -c) && \
@@ -18,7 +18,7 @@ clean-contracts: clean-consensus-contracts clean-prt-contracts clean-bindings cl
   make -C machine/emulator clean depclean distclean
 
 setup: update-submodules clean-emulator clean-contracts bundle-boost apply-generated-files-diff
-  make -C machine/emulator # Requires docker, necessary for machine bindings
+  make -C machine/emulator -j8 # Requires docker, necessary for machine bindings
 
 # Run this once after cloning, if using a docker environment
 setup-docker: setup build-docker-image

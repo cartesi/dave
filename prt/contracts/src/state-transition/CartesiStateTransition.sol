@@ -111,7 +111,7 @@ contract CartesiStateTransition is IStateTransition {
             // * step
             // * reset
             // * advanceStatus
-            // * getCheckpointHash (only if needed)
+            // * getRevertRootHash (only if needed)
             AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 

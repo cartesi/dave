@@ -31,7 +31,7 @@ contract CmioStateTransition is ICmioStateTransition {
         pure
         returns (AccessLogs.Context memory)
     {
-        a.setCheckpointHash(checkpointState);
+        a.setRevertRootHash(checkpointState);
         return a;
     }
 
@@ -41,7 +41,7 @@ contract CmioStateTransition is ICmioStateTransition {
         returns (AccessLogs.Context memory)
     {
         if (a.advanceStatus() == AdvanceStatus.Status.REJECTED) {
-            bytes32 checkpointState = a.getCheckpointHash();
+            bytes32 checkpointState = a.getRevertRootHash();
             a.currentRootHash = checkpointState;
         }
 

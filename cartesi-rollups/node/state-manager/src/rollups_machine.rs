@@ -10,7 +10,7 @@ use cartesi_prt_core::machine::constants::{
 use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
     config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
-    constants::{break_reason, pma::TX_START},
+    constants::{break_reason, machine::TREE_LOG2_ROOT_SIZE, pma::TX_START},
     error::{MachineError, MachineResult},
     machine::Machine,
     types::{
@@ -45,7 +45,7 @@ pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
     << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
         - LOG2_STRIDE);
 
-pub const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
+pub const CHECKPOINT_ADDRESS: u64 = 0xfe0;
 
 pub struct RollupsMachine {
     machine: Machine,
@@ -88,7 +88,7 @@ impl RollupsMachine {
     }
 
     pub fn outputs_proof(&mut self) -> MachineResult<(Hash, Proof)> {
-        let proof = self.machine.proof(TX_START, 5)?;
+        let proof = self.machine.proof(TX_START, 5, TREE_LOG2_ROOT_SIZE)?;
         let siblings = Proof::new(proof.sibling_hashes);
         let output_merkle = self.machine.read_memory(TX_START, 32)?;
 
