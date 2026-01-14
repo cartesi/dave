@@ -10,7 +10,7 @@ test PROGRAM SCRIPT:
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
   ANVIL_DUMP_PATH="anvil_{{PROGRAM}}_{{SCRIPT}}.json" \
   TEMPLATE_MACHINE=`realpath ../../../test/programs/{{PROGRAM}}/machine-image` \
-  TEMPLATE_MACHINE_HASH=0x`xxd -p -c32 ../../../test/programs/{{PROGRAM}}/machine-image/hash` \
+  TEMPLATE_MACHINE_HASH=0x`xxd -seek 0x60 -l 0x20 -c 0x20 -p ../../../test/programs/{{PROGRAM}}/machine-image/hash_tree.sht` \
   DAVE_APP_FACTORY=`jq -r .address {{DEPLOYMENTS_DIR}}/DaveAppFactory.json` \
   INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/InputBox.json` \
   ERC20_PORTAL=`jq -r .address {{DEPLOYMENTS_DIR}}/ERC20Portal.json` \

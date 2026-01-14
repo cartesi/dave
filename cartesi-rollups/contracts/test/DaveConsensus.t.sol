@@ -601,7 +601,7 @@ contract DaveConsensusTest is Test {
 
         bytes32 root = new LibMerkle32Wrapper()
             .merkleRootAfterReplacement(
-                siblings, EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE, leaf
+                siblings, EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE, leaf
             );
         assertEq(current, root);
 

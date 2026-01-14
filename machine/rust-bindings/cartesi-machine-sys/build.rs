@@ -39,6 +39,28 @@ fn main() {
         }
     }
 
+    // OpenMP linker configuration (cross-platform)
+    if cfg!(target_os = "macos") {
+        // macOS: Try Homebrew first, then MacPorts
+        let homebrew_libomp = PathBuf::from("/opt/homebrew/opt/libomp");
+        if homebrew_libomp.exists() {
+            println!("cargo:rustc-link-search={}/lib", homebrew_libomp.display());
+            println!("cargo:rustc-link-lib=omp");
+        } else {
+            let macports_libomp = PathBuf::from("/opt/local/lib/libomp");
+            if macports_libomp.exists() {
+                println!("cargo:rustc-link-search=/opt/local/lib/libomp");
+                println!("cargo:rustc-link-lib=gomp");
+            } else {
+                // Fallback: let system linker find it
+                println!("cargo:rustc-link-lib=omp");
+            }
+        }
+    } else {
+        // Linux and other Unix-like systems: libgomp comes with GCC
+        println!("cargo:rustc-link-lib=gomp");
+    }
+
     //
     //  Generate bindings
     //
@@ -197,7 +219,7 @@ mod build_cm {
             process::{Command, Stdio},
         };
 
-        const VERSION_STRING: &str = "v0.19.0";
+        const VERSION_STRING: &str = "v0.20.0-test";
 
         pub fn download(machine_dir_path: &Path) {
             let patch_file = machine_dir_path.join("add-generated-files.diff");

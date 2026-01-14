@@ -334,7 +334,7 @@ function Machine:prove_read_leaf(address)
     return data
 end
 
-local keccak = require "cartesi".keccak
+local keccak = cartesi.keccak256
 
 function Machine:prove_write_leaf(address)
     -- always write aligned 32 bytes (one leaf)

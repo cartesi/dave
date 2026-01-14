@@ -18,7 +18,7 @@ jobs:
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
-          version: 0.19.0
+          version: 0.20.0-test
           suffix-version: ""
 
       - name: Setup env
@@ -71,7 +71,7 @@ jobs:
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
-          version: 0.19.0
+          version: 0.20.0-test
       - name: Download PRT contracts
         working-directory: ./prt/contracts
         run: |
@@ -138,7 +138,7 @@ jobs:
         working-directory: ./machine/emulator
         run: |
           make bundle-boost
-          wget https://github.com/cartesi/machine-emulator/releases/download/v0.19.0/add-generated-files.diff
+          wget https://github.com/cartesi/machine-emulator/releases/download/v0.20.0-test/add-generated-files.diff
           git apply add-generated-files.diff
           make
           sudo make install
