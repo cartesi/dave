@@ -92,12 +92,14 @@ impl Machine {
     pub fn create(config: &MachineConfig, runtime_config: &RuntimeConfig) -> Result<Self> {
         let config_json = serialize_to_json!(&config);
         let runtime_config_json = serialize_to_json!(&runtime_config);
+        let dir_cstr = CString::new("").unwrap(); // in-memory machine
 
         let mut machine: *mut cartesi_machine_sys::cm_machine = ptr::null_mut();
         let err_code = unsafe {
             cartesi_machine_sys::cm_create_new(
                 config_json.as_ptr(),
                 runtime_config_json.as_ptr(),
+                dir_cstr.as_ptr(),
                 &mut machine,
             )
         };
@@ -116,6 +118,7 @@ impl Machine {
             cartesi_machine_sys::cm_load_new(
                 dir_cstr.as_ptr(),
                 runtime_config_json.as_ptr(),
+                cartesi_machine_sys::CM_SHARING_CONFIG,
                 &mut machine,
             )
         };
@@ -127,7 +130,13 @@ impl Machine {
     /// Stores a machine instance to a directory, serializing its entire state.
     pub fn store(&mut self, dir: &Path) -> Result<()> {
         let dir_cstr = path_to_cstring(dir);
-        let err_code = unsafe { cartesi_machine_sys::cm_store(self.machine, dir_cstr.as_ptr()) };
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_store(
+                self.machine,
+                dir_cstr.as_ptr(),
+                cartesi_machine_sys::CM_SHARING_CONFIG,
+            )
+        };
         check_err!(err_code)?;
 
         Ok(())
@@ -164,25 +173,20 @@ impl Machine {
         shared: bool,
         image_path: Option<&Path>,
     ) -> Result<()> {
-        let image_cstr = match image_path {
-            Some(path) => path_to_cstring(path),
-            None => CString::new("").unwrap(),
-        };
+        let range_config = serde_json::json!({
+            "start": start,
+            "length": length,
+            "read_only": false,
+            "backing_store": {
+                "data_filename": image_path.map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                "shared": shared
+            }
+        });
 
-        let image_ptr = if image_path.is_some() {
-            image_cstr.as_ptr()
-        } else {
-            ptr::null()
-        };
+        let range_json = serialize_to_json!(&range_config);
 
         let err_code = unsafe {
-            cartesi_machine_sys::cm_replace_memory_range(
-                self.machine,
-                start,
-                length,
-                shared,
-                image_ptr,
-            )
+            cartesi_machine_sys::cm_replace_memory_range(self.machine, range_json.as_ptr())
         };
         check_err!(err_code)?;
 
@@ -205,7 +209,7 @@ impl Machine {
     pub fn memory_ranges(&mut self) -> Result<MemoryRangeDescriptions> {
         let mut ranges_ptr: *const c_char = ptr::null();
         let err_code =
-            unsafe { cartesi_machine_sys::cm_get_memory_ranges(self.machine, &mut ranges_ptr) };
+            unsafe { cartesi_machine_sys::cm_get_address_ranges(self.machine, &mut ranges_ptr) };
         check_err!(err_code)?;
 
         let ranges = parse_json_from_cstring!(ranges_ptr);
