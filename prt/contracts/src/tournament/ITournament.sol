@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {ITask} from "prt-contracts/ITask.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
@@ -13,7 +14,7 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Tournament interface
-interface ITournament {
+interface ITournament is ITask {
     //
     // Types
     //

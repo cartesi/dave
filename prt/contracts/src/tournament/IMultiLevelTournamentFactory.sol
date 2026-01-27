@@ -4,13 +4,13 @@
 pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITournament} from "prt-contracts/ITournament.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {ITaskSpawner} from "prt-contracts/ITaskSpawner.sol";
+import {ITournament} from "prt-contracts/tournament/ITournament.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
-interface IMultiLevelTournamentFactory is ITournamentFactory {
+interface IMultiLevelTournamentFactory is ITaskSpawner {
     function instantiateInner(
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,

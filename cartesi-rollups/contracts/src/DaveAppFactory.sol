@@ -13,7 +13,7 @@ import {IApplication} from "cartesi-rollups-contracts-2.1.1/src/dapp/IApplicatio
 import {IApplicationFactory} from "cartesi-rollups-contracts-2.1.1/src/dapp/IApplicationFactory.sol";
 import {IInputBox} from "cartesi-rollups-contracts-2.1.1/src/inputs/IInputBox.sol";
 
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {ITaskSpawner} from "prt-contracts/ITaskSpawner.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
 import {DaveConsensus} from "./DaveConsensus.sol";
@@ -23,14 +23,14 @@ import {IDaveConsensus} from "./IDaveConsensus.sol";
 contract DaveAppFactory is IDaveAppFactory {
     IInputBox immutable INPUT_BOX;
     IApplicationFactory immutable APP_FACTORY;
-    ITournamentFactory immutable TOURNAMENT_FACTORY;
+    ITaskSpawner immutable TASK_SPAWNER;
 
     IOutputsMerkleRootValidator constant NO_VALIDATOR = IOutputsMerkleRootValidator(address(0));
 
-    constructor(IInputBox inputBox, IApplicationFactory appFactory, ITournamentFactory tournamentFactory) {
+    constructor(IInputBox inputBox, IApplicationFactory appFactory, ITaskSpawner taskSpawner) {
         INPUT_BOX = inputBox;
         APP_FACTORY = appFactory;
-        TOURNAMENT_FACTORY = tournamentFactory;
+        TASK_SPAWNER = taskSpawner;
     }
 
     function newDaveApp(bytes32 templateHash, bytes32 salt)
@@ -74,7 +74,7 @@ contract DaveAppFactory is IDaveAppFactory {
         returns (DaveConsensus)
     {
         Machine.Hash initialMachineStateHash = Machine.Hash.wrap(templateHash);
-        return new DaveConsensus{salt: salt}(INPUT_BOX, appContract, TOURNAMENT_FACTORY, initialMachineStateHash);
+        return new DaveConsensus{salt: salt}(INPUT_BOX, appContract, TASK_SPAWNER, initialMachineStateHash);
     }
 
     /// @notice Calculates the address of an application contract.
@@ -95,7 +95,7 @@ contract DaveAppFactory is IDaveAppFactory {
             keccak256(
                 abi.encodePacked(
                     type(DaveConsensus).creationCode,
-                    abi.encode(INPUT_BOX, appContract, TOURNAMENT_FACTORY, templateHash)
+                    abi.encode(INPUT_BOX, appContract, TASK_SPAWNER, templateHash)
                 )
             )
         );

@@ -17,13 +17,9 @@ import {InputBox} from "cartesi-rollups-contracts-2.1.1/src/inputs/InputBox.sol"
 import {LibMerkle32} from "cartesi-rollups-contracts-2.1.1/src/library/LibMerkle32.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITournament} from "prt-contracts/ITournament.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
-import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
-import {Match} from "prt-contracts/tournament/libs/Match.sol";
-import {Time} from "prt-contracts/tournament/libs/Time.sol";
+import {ITask} from "prt-contracts/ITask.sol";
+import {ITaskSpawner} from "prt-contracts/ITaskSpawner.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
-import {Tree} from "prt-contracts/types/Tree.sol";
 
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
@@ -44,11 +40,10 @@ contract MerkleProxy {
     }
 }
 
-contract MockTournament is ITournament {
+contract MockTask is ITask {
     Machine.Hash immutable _INITIAL_STATE;
     IDataProvider immutable _PROVIDER;
     bool _finished;
-    Tree.Node _winnerCommitment;
     Machine.Hash _finalState;
 
     constructor(Machine.Hash initialState, IDataProvider provider) {
@@ -56,9 +51,8 @@ contract MockTournament is ITournament {
         _PROVIDER = provider;
     }
 
-    function finish(Tree.Node winnerCommitment, Machine.Hash finalState) external {
+    function finish(Machine.Hash finalState) external {
         _finished = true;
-        _winnerCommitment = winnerCommitment;
         _finalState = finalState;
     }
 
@@ -70,136 +64,35 @@ contract MockTournament is ITournament {
         return _PROVIDER;
     }
 
-    function arbitrationResult()
-        external
-        view
-        returns (bool finished, Tree.Node winnerCommitment, Machine.Hash finalState)
-    {
+    function result() external view returns (bool finished, Machine.Hash finalState) {
         finished = _finished;
-        winnerCommitment = _winnerCommitment;
         finalState = _finalState;
     }
 
-    function tryRecoveringBond() external pure override returns (bool) {
-        return true;
-    }
-
-    error NotImplemented();
-
-    function bondValue() external pure override returns (uint256) {
-        revert NotImplemented();
-    }
-
-    function joinTournament(Machine.Hash, bytes32[] calldata, Tree.Node, Tree.Node) external payable override {
-        revert NotImplemented();
-    }
-
-    function advanceMatch(Match.Id calldata, Tree.Node, Tree.Node, Tree.Node, Tree.Node) external pure override {
-        revert NotImplemented();
-    }
-
-    function winMatchByTimeout(Match.Id calldata, Tree.Node, Tree.Node) external pure override {
-        revert NotImplemented();
-    }
-
-    function eliminateMatchByTimeout(Match.Id calldata) external pure override {
-        revert NotImplemented();
-    }
-
-    function sealInnerMatchAndCreateInnerTournament(
-        Match.Id calldata,
-        Tree.Node,
-        Tree.Node,
-        Machine.Hash,
-        bytes32[] calldata
-    ) external pure override {
-        revert NotImplemented();
-    }
-
-    function winInnerTournament(ITournament, Tree.Node, Tree.Node) external pure override {
-        revert NotImplemented();
-    }
-
-    function eliminateInnerTournament(ITournament) external pure override {
-        revert NotImplemented();
-    }
-
-    function sealLeafMatch(Match.Id calldata, Tree.Node, Tree.Node, Machine.Hash, bytes32[] calldata)
-        external
-        pure
-        override
-    {
-        revert NotImplemented();
-    }
-
-    function winLeafMatch(Match.Id calldata, Tree.Node, Tree.Node, bytes calldata) external pure override {
-        revert NotImplemented();
-    }
-
-    function canBeEliminated() external pure override returns (bool) {
-        revert NotImplemented();
-    }
-
-    function innerTournamentWinner() external pure override returns (bool, Tree.Node, Tree.Node, Clock.State memory) {
-        revert NotImplemented();
-    }
-
-    function tournamentArguments() external pure override returns (TournamentArguments memory) {
-        revert NotImplemented();
-    }
-
-    function canWinMatchByTimeout(Match.Id calldata) external pure override returns (bool) {
-        revert NotImplemented();
-    }
-
-    function getCommitment(Tree.Node) external pure override returns (Clock.State memory, Machine.Hash) {
-        revert NotImplemented();
-    }
-
-    function getMatch(Match.IdHash) external pure override returns (Match.State memory) {
-        revert NotImplemented();
-    }
-
-    function getMatchCycle(Match.IdHash) external pure override returns (uint256) {
-        revert NotImplemented();
-    }
-
-    function tournamentLevelConstants() external pure override returns (uint64, uint64, uint64, uint64) {
-        revert NotImplemented();
-    }
-
-    function isClosed() external pure override returns (bool) {
-        revert NotImplemented();
-    }
-
-    function isFinished() external view override returns (bool) {
+    function cleanup() external returns (bool) {
         return _finished;
-    }
-
-    function timeFinished() external pure override returns (bool, Time.Instant) {
-        revert NotImplemented();
     }
 }
 
-contract MockTournamentFactory is ITournamentFactory {
-    MockTournament[] _mockTournaments;
+contract MockTaskSpawner is ITaskSpawner {
+    MockTask[] _mockTasks;
     bytes32 _salt;
 
     error IndexOutOfBounds();
 
-    function instantiate(Machine.Hash initialState, IDataProvider provider) external returns (ITournament) {
-        MockTournament mockTournament = new MockTournament{salt: _salt}(initialState, provider);
-        _mockTournaments.push(mockTournament);
-        return mockTournament;
+    function spawn(Machine.Hash initialState, IDataProvider provider) external returns (ITask) {
+        MockTask mockTask = new MockTask{salt: _salt}(initialState, provider);
+        _mockTasks.push(mockTask);
+        return mockTask;
     }
 
-    function calculateTournamentAddress(Machine.Hash initialState, IDataProvider provider)
+    function calculateTaskAddress(Machine.Hash initialState, IDataProvider provider)
         external
         view
         returns (address)
     {
         return Create2.computeAddress(
-            _salt, keccak256(abi.encodePacked(type(MockTournament).creationCode, abi.encode(initialState, provider)))
+            _salt, keccak256(abi.encodePacked(type(MockTask).creationCode, abi.encode(initialState, provider)))
         );
     }
 
@@ -207,13 +100,13 @@ contract MockTournamentFactory is ITournamentFactory {
         _salt = salt;
     }
 
-    function getNumberOfMockTournaments() external view returns (uint256) {
-        return _mockTournaments.length;
+    function getNumberOfMockTasks() external view returns (uint256) {
+        return _mockTasks.length;
     }
 
-    function getMockTournament(uint256 index) external view returns (MockTournament) {
-        if (index < _mockTournaments.length) {
-            return _mockTournaments[index];
+    function getMockTask(uint256 index) external view returns (MockTask) {
+        if (index < _mockTasks.length) {
+            return _mockTasks[index];
         } else {
             revert IndexOutOfBounds();
         }
@@ -232,22 +125,22 @@ contract LibMerkle32Wrapper {
 
 contract DaveConsensusTest is Test {
     IInputBox _inputBox;
-    MockTournamentFactory _mockTournamentFactory;
+    MockTaskSpawner _mockTaskSpawner;
     MerkleProxy _merkleProxy;
 
     function setUp() external {
         _inputBox = new InputBox();
-        _mockTournamentFactory = new MockTournamentFactory();
+        _mockTaskSpawner = new MockTaskSpawner();
         _merkleProxy = new MerkleProxy();
     }
 
-    function testMockTournamentFactory() external view {
-        assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 0);
+    function testMockTaskSpawner() external view {
+        assertEq(_mockTaskSpawner.getNumberOfMockTasks(), 0);
     }
 
-    function testMockTournamentFactory(uint256 index) external {
-        vm.expectRevert(MockTournamentFactory.IndexOutOfBounds.selector);
-        _mockTournamentFactory.getMockTournament(index);
+    function testMockTaskSpawner(uint256 index) external {
+        vm.expectRevert(MockTaskSpawner.IndexOutOfBounds.selector);
+        _mockTaskSpawner.getMockTask(index);
     }
 
     function testConstructorAndSettle(
@@ -255,7 +148,6 @@ contract DaveConsensusTest is Test {
         bytes32[3] calldata outputsMerkleRoots,
         uint256[2] memory inputCounts,
         bytes32[3] calldata salts,
-        Tree.Node[2] calldata winnerCommitments,
         uint256 deploymentBlockNumber
     ) external {
         vm.roll(deploymentBlockNumber);
@@ -269,32 +161,30 @@ contract DaveConsensusTest is Test {
         (Machine.Hash state0,,) = _statesAndProofs(outputsMerkleRoots[0]);
 
         DaveConsensus daveConsensus;
-        MockTournament mockTournament;
+        MockTask mockTask;
 
         {
             address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
-            _mockTournamentFactory.setSalt(salts[1]);
-            address mockTournamentAddress =
-                _mockTournamentFactory.calculateTournamentAddress(state0, IDataProvider(daveConsensusAddress));
+            _mockTaskSpawner.setSalt(salts[1]);
+            address mockTaskAddress =
+                _mockTaskSpawner.calculateTaskAddress(state0, IDataProvider(daveConsensusAddress));
 
             vm.expectEmit(daveConsensusAddress);
-            emit IDaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTournamentFactory);
+            emit IDaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTaskSpawner);
 
             vm.expectEmit(daveConsensusAddress);
-            emit IDaveConsensus.EpochSealed(
-                0, 0, inputCounts[0], state0, bytes32(0), ITournament(mockTournamentAddress)
-            );
+            emit IDaveConsensus.EpochSealed(0, 0, inputCounts[0], state0, bytes32(0), ITask(mockTaskAddress));
 
             daveConsensus = _newDaveConsensus(appContract, state0, salts[0]);
 
             assertEq(address(daveConsensus), daveConsensusAddress);
             assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
             assertEq(daveConsensus.getApplicationContract(), appContract);
-            assertEq(address(daveConsensus.getTournamentFactory()), address(_mockTournamentFactory));
+            assertEq(address(daveConsensus.getTaskSpawner()), address(_mockTaskSpawner));
             assertEq(daveConsensus.getDeploymentBlockNumber(), deploymentBlockNumber);
 
-            mockTournament = MockTournament(mockTournamentAddress);
+            mockTask = MockTask(mockTaskAddress);
         }
 
         {
@@ -311,41 +201,39 @@ contract DaveConsensusTest is Test {
             uint256 epochNumber;
             uint256 inputIndexLowerBound;
             uint256 inputIndexUpperBound;
-            ITournament tournament;
+            ITask task;
 
-            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, tournament) =
+            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, task) =
                 daveConsensus.getCurrentSealedEpoch();
 
             assertEq(epochNumber, 0);
             assertEq(inputIndexLowerBound, 0);
             assertEq(inputIndexUpperBound, inputCounts[0]);
-            assertEq(address(tournament), address(mockTournament));
+            assertEq(address(task), address(mockTask));
         }
 
-        assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 1);
-        assertEq(address(_mockTournamentFactory.getMockTournament(0)), address(mockTournament));
+        assertEq(_mockTaskSpawner.getNumberOfMockTasks(), 1);
+        assertEq(address(_mockTaskSpawner.getMockTask(0)), address(mockTask));
 
-        assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state0));
-        assertEq(address(mockTournament.getProvider()), address(daveConsensus));
+        assertEq(Machine.Hash.unwrap(mockTask.getInitialState()), Machine.Hash.unwrap(state0));
+        assertEq(address(mockTask.getProvider()), address(daveConsensus));
 
         {
-            (bool isFinished,,) = mockTournament.arbitrationResult();
+            (bool isFinished,) = mockTask.result();
 
             assertFalse(isFinished);
         }
 
         (Machine.Hash state1,,) = _statesAndProofs(outputsMerkleRoots[1]);
-        mockTournament.finish(winnerCommitments[0], state1);
+        mockTask.finish(state1);
 
         {
             bool isFinished;
-            Tree.Node winnerCommitmentTmp;
             Machine.Hash finalStateTmp;
 
-            (isFinished, winnerCommitmentTmp, finalStateTmp) = mockTournament.arbitrationResult();
+            (isFinished, finalStateTmp) = mockTask.result();
 
             assertTrue(isFinished);
-            assertEq(Tree.Node.unwrap(winnerCommitmentTmp), Tree.Node.unwrap(winnerCommitments[0]));
             assertEq(Machine.Hash.unwrap(finalStateTmp), Machine.Hash.unwrap(state1));
         }
 
@@ -364,23 +252,23 @@ contract DaveConsensusTest is Test {
         _addInputs(appContract, inputCounts[1]);
 
         {
-            _mockTournamentFactory.setSalt(salts[2]);
-            address mockTournamentAddress = _mockTournamentFactory.calculateTournamentAddress(state1, daveConsensus);
+            _mockTaskSpawner.setSalt(salts[2]);
+            address mockTaskAddress = _mockTaskSpawner.calculateTaskAddress(state1, daveConsensus);
 
             (, bytes32[] memory proof1, bytes32 leaf1) = _statesAndProofs(outputsMerkleRoots[1]);
 
             vm.expectEmit(address(daveConsensus));
             emit IDaveConsensus.EpochSealed(
-                1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITournament(mockTournamentAddress)
+                1, inputCounts[0], inputCounts[0] + inputCounts[1], state1, leaf1, ITask(mockTaskAddress)
             );
 
             daveConsensus.settle(0, leaf1, proof1);
 
-            assertEq(_mockTournamentFactory.getNumberOfMockTournaments(), 2);
+            assertEq(_mockTaskSpawner.getNumberOfMockTasks(), 2);
 
-            mockTournament = _mockTournamentFactory.getMockTournament(1);
+            mockTask = _mockTaskSpawner.getMockTask(1);
 
-            assertEq(address(mockTournament), mockTournamentAddress);
+            assertEq(address(mockTask), mockTaskAddress);
         }
 
         {
@@ -397,22 +285,22 @@ contract DaveConsensusTest is Test {
             uint256 epochNumber;
             uint256 inputIndexLowerBound;
             uint256 inputIndexUpperBound;
-            ITournament tournament;
+            ITask task;
 
-            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, tournament) =
+            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, task) =
                 daveConsensus.getCurrentSealedEpoch();
 
             assertEq(epochNumber, 1);
             assertEq(inputIndexLowerBound, inputCounts[0]);
             assertEq(inputIndexUpperBound, inputCounts[0] + inputCounts[1]);
-            assertEq(address(tournament), address(mockTournament));
+            assertEq(address(task), address(mockTask));
         }
 
-        assertEq(Machine.Hash.unwrap(mockTournament.getInitialState()), Machine.Hash.unwrap(state1));
-        assertEq(address(mockTournament.getProvider()), address(daveConsensus));
+        assertEq(Machine.Hash.unwrap(mockTask.getInitialState()), Machine.Hash.unwrap(state1));
+        assertEq(address(mockTask.getProvider()), address(daveConsensus));
 
         {
-            (bool isFinished,,) = mockTournament.arbitrationResult();
+            (bool isFinished,) = mockTask.result();
 
             assertFalse(isFinished);
         }
@@ -420,17 +308,15 @@ contract DaveConsensusTest is Test {
         assertTrue(daveConsensus.isOutputsMerkleRootValid(appContract, outputsMerkleRoots[1]));
 
         (Machine.Hash state2,,) = _statesAndProofs(outputsMerkleRoots[2]);
-        mockTournament.finish(winnerCommitments[1], state2);
+        mockTask.finish(state2);
 
         {
             bool isFinished;
-            Tree.Node winnerCommitmentTmp;
             Machine.Hash finalStateTmp;
 
-            (isFinished, winnerCommitmentTmp, finalStateTmp) = mockTournament.arbitrationResult();
+            (isFinished, finalStateTmp) = mockTask.result();
 
             assertTrue(isFinished);
-            assertEq(Tree.Node.unwrap(winnerCommitmentTmp), Tree.Node.unwrap(winnerCommitments[1]));
             assertEq(Machine.Hash.unwrap(finalStateTmp), Machine.Hash.unwrap(state2));
         }
     }
@@ -450,7 +336,7 @@ contract DaveConsensusTest is Test {
 
         _addInputs(appContract, inputCounts[0]);
 
-        _mockTournamentFactory.setSalt(salts[0]);
+        _mockTaskSpawner.setSalt(salts[0]);
 
         DaveConsensus daveConsensus = _newDaveConsensus(appContract, states[0], salts[1]);
 
@@ -473,7 +359,7 @@ contract DaveConsensusTest is Test {
     ) external {
         bytes[] memory inputs = _addInputs(appContract, payloads);
 
-        _mockTournamentFactory.setSalt(salts[0]);
+        _mockTaskSpawner.setSalt(salts[0]);
 
         DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salts[1]);
 
@@ -575,7 +461,7 @@ contract DaveConsensusTest is Test {
             keccak256(
                 abi.encodePacked(
                     type(DaveConsensus).creationCode,
-                    abi.encode(_inputBox, appContract, _mockTournamentFactory, initialState)
+                    abi.encode(_inputBox, appContract, _mockTaskSpawner, initialState)
                 )
             )
         );
@@ -585,7 +471,7 @@ contract DaveConsensusTest is Test {
         internal
         returns (DaveConsensus)
     {
-        return new DaveConsensus{salt: salt}(_inputBox, appContract, _mockTournamentFactory, initialState);
+        return new DaveConsensus{salt: salt}(_inputBox, appContract, _mockTaskSpawner, initialState);
     }
 
     function _statesAndProofs(bytes32 outputsMerkleRoot) private returns (Machine.Hash, bytes32[] memory, bytes32) {

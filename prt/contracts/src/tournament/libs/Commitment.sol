@@ -7,7 +7,7 @@ import {
     Hashes
 } from "@openzeppelin-contracts-5.5.0/utils/cryptography/Hashes.sol";
 
-import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITournament} from "prt-contracts/tournament/ITournament.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 

@@ -26,7 +26,7 @@ import {
 import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+} from "src/tournament/MultiLevelTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 
 type Milliseconds is uint64;

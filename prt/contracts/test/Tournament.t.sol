@@ -12,13 +12,13 @@
 
 pragma solidity ^0.8.0;
 
-import {ITournament} from "src/ITournament.sol";
+import {ITournament} from "src/tournament/ITournament.sol";
 import {
     ArbitrationConstants
 } from "src/arbitration-config/ArbitrationConstants.sol";
 import {
     MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+} from "src/tournament/MultiLevelTournamentFactory.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";

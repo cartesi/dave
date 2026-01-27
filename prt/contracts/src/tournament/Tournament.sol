@@ -7,10 +7,11 @@ import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
 
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
-import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITask} from "prt-contracts/ITask.sol";
+import {ITournament} from "prt-contracts/tournament/ITournament.sol";
 import {
     IMultiLevelTournamentFactory
-} from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+} from "prt-contracts/tournament/IMultiLevelTournamentFactory.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
@@ -812,6 +813,30 @@ contract Tournament is ITournament {
 
         Machine.Hash _finalState = finalStates[_danglingCommitment];
         return (true, _danglingCommitment, _finalState);
+    }
+
+    /// @inheritdoc ITask
+    function result()
+        external
+        view
+        override
+        returns (bool finished, Machine.Hash finalState)
+    {
+        (finished,, finalState) = this.arbitrationResult();
+    }
+
+    /// @inheritdoc ITask
+    /// @dev Best-effort bond recovery for finished tournaments.
+    function cleanup() external override returns (bool cleaned) {
+        if (!isFinished()) {
+            return false;
+        }
+
+        try this.tryRecoveringBond() returns (bool ok) {
+            return ok;
+        } catch {
+            return false;
+        }
     }
 
     //

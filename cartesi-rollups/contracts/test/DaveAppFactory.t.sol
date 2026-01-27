@@ -11,22 +11,22 @@ import {IInputBox} from "cartesi-rollups-contracts-2.1.1/src/inputs/IInputBox.so
 import {InputBox} from "cartesi-rollups-contracts-2.1.1/src/inputs/InputBox.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
-import {ITournament} from "prt-contracts/ITournamentFactory.sol";
+import {ITask} from "prt-contracts/ITask.sol";
+import {ITaskSpawner} from "prt-contracts/ITaskSpawner.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {DaveAppFactory} from "src/DaveAppFactory.sol";
 import {IDaveAppFactory} from "src/IDaveAppFactory.sol";
 import {IDaveConsensus} from "src/IDaveConsensus.sol";
 
-contract MockTournamentFactory is ITournamentFactory {
-    address tournamentAddress;
+contract MockTaskSpawner is ITaskSpawner {
+    address taskAddress;
 
     function setAddress(address _addr) external {
-        tournamentAddress = _addr;
+        taskAddress = _addr;
     }
 
-    function instantiate(Machine.Hash, IDataProvider) external view returns (ITournament) {
-        return ITournament(tournamentAddress);
+    function spawn(Machine.Hash, IDataProvider) external view returns (ITask) {
+        return ITask(taskAddress);
     }
 }
 
@@ -34,18 +34,18 @@ contract DaveConsensusFactoryTest is Test {
     IApplicationFactory _appFactory;
     IDaveAppFactory _daveAppFactory;
     IInputBox _inputBox;
-    MockTournamentFactory _tournamentFactory;
+    MockTaskSpawner _taskSpawner;
     Machine.Hash _initialMachineStateHash;
 
     function setUp() external {
         _inputBox = new InputBox();
         _appFactory = new ApplicationFactory();
-        _tournamentFactory = new MockTournamentFactory();
-        _daveAppFactory = new DaveAppFactory(_inputBox, _appFactory, _tournamentFactory);
+        _taskSpawner = new MockTaskSpawner();
+        _daveAppFactory = new DaveAppFactory(_inputBox, _appFactory, _taskSpawner);
         _initialMachineStateHash = Machine.Hash.wrap(keccak256("foo"));
     }
 
-    function testNewDaveApp(address randomTournamentAddress, bytes32 templateHash, bytes32 salt) external {
+    function testNewDaveApp(address randomTaskAddress, bytes32 templateHash, bytes32 salt) external {
         IApplication appContract;
         IDaveConsensus daveConsensus;
 
@@ -58,7 +58,7 @@ contract DaveConsensusFactoryTest is Test {
 
             // Deploy app and Dave consensus addresses
             vm.recordLogs();
-            _tournamentFactory.setAddress(randomTournamentAddress);
+            _taskSpawner.setAddress(randomTaskAddress);
             (appContract, daveConsensus) = _daveAppFactory.newDaveApp(templateHash, salt);
 
             // Check if addresses match those pre-calculated ones
@@ -88,7 +88,7 @@ contract DaveConsensusFactoryTest is Test {
                 } else if (
                     entry.emitter == address(daveConsensus) && entry.topics[0] == IDaveConsensus.EpochSealed.selector
                 ) {
-                    _checkEpochSealedData(entry.data, templateHash, randomTournamentAddress);
+                    _checkEpochSealedData(entry.data, templateHash, randomTaskAddress);
                 } else if (
                     entry.emitter == address(_appFactory)
                         && entry.topics[0] == IApplicationFactory.ApplicationCreated.selector
@@ -114,17 +114,17 @@ contract DaveConsensusFactoryTest is Test {
         }
 
         // Check current sealed epoch
-        (uint256 epochNumber, uint256 inputIndexLowerBound, uint256 inputIndexUpperBound, ITournament tournament) =
+        (uint256 epochNumber, uint256 inputIndexLowerBound, uint256 inputIndexUpperBound, ITask task) =
             daveConsensus.getCurrentSealedEpoch();
         assertEq(epochNumber, 0);
         assertEq(inputIndexLowerBound, 0);
         assertEq(inputIndexUpperBound, 0);
-        assertEq(address(tournament), randomTournamentAddress);
+        assertEq(address(task), randomTaskAddress);
 
         // Check getters
         assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
         assertEq(address(daveConsensus.getApplicationContract()), address(appContract));
-        assertEq(address(daveConsensus.getTournamentFactory()), address(_tournamentFactory));
+        assertEq(address(daveConsensus.getTaskSpawner()), address(_taskSpawner));
 
         {
             address appContractAddress;
@@ -142,7 +142,7 @@ contract DaveConsensusFactoryTest is Test {
         _daveAppFactory.newDaveApp(templateHash, salt);
     }
 
-    function _checkEpochSealedData(bytes memory data, bytes32 templateHash, address randomTournamentAddress)
+    function _checkEpochSealedData(bytes memory data, bytes32 templateHash, address randomTaskAddress)
         internal
         pure
     {
@@ -152,7 +152,7 @@ contract DaveConsensusFactoryTest is Test {
             uint256 inputIndexUpperBound,
             bytes32 initialMachineStateHash,
             bytes32 outputTreeHash,
-            address tournamentAddress
+            address taskAddress
         ) = abi.decode(data, (uint256, uint256, uint256, bytes32, bytes32, address));
 
         assertEq(epochNumber, 0);
@@ -160,6 +160,6 @@ contract DaveConsensusFactoryTest is Test {
         assertEq(inputIndexUpperBound, 0);
         assertEq(initialMachineStateHash, templateHash);
         assertEq(outputTreeHash, bytes32(0));
-        assertEq(tournamentAddress, randomTournamentAddress);
+        assertEq(taskAddress, randomTaskAddress);
     }
 }

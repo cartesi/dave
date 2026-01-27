@@ -4,13 +4,12 @@
 pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITask} from "prt-contracts/ITask.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
-interface ITournamentFactory {
-    event TournamentCreated(ITournament tournament);
-
-    function instantiate(Machine.Hash initialState, IDataProvider provider)
+/// @notice Spawner interface for tasks/proof systems.
+interface ITaskSpawner {
+    function spawn(Machine.Hash initial, IDataProvider provider)
         external
-        returns (ITournament);
+        returns (ITask);
 }
