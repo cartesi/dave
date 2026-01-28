@@ -59,6 +59,23 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
         ITask task
     );
 
+    /// @notice Task was upgraded for the current epoch.
+    /// @param epochNumber The current sealed epoch number
+    /// @param newInitialState The new initial state used to respawn the task
+    /// @param newTaskSpawner The new task spawner used for future tasks
+    /// @param task The new task instance
+    event TaskUpgraded(
+        uint256 indexed epochNumber, Machine.Hash newInitialState, ITaskSpawner newTaskSpawner, ITask task
+    );
+
+    /// @notice Emitted when the contract is paused.
+    /// @param account The caller that triggered the pause
+    event Paused(address indexed account);
+
+    /// @notice Emitted when the contract is unpaused.
+    /// @param account The caller that triggered the unpause
+    event Unpaused(address indexed account);
+
     /// @notice Received epoch number is different from actual
     /// @param received The epoch number received as argument
     /// @param actual The actual epoch number in storage
@@ -66,6 +83,10 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
 
     /// @notice Task is not finished yet
     error TournamentNotFinishedYet();
+    /// @notice Caller is not the security council
+    error NotSecurityCouncil();
+    /// @notice Contract is paused
+    error PausedError();
 
     /// @notice Hash of received input blob is different from stored on-chain
     /// @param fromReceivedInput Hash of received input blob
@@ -97,6 +118,12 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
     /// @notice Get the task spawner contract used to instantiate root tasks.
     function getTaskSpawner() external view returns (ITaskSpawner);
 
+    /// @notice Get the security council address.
+    function getSecurityCouncil() external view returns (address);
+
+    /// @notice Returns whether the contract is paused.
+    function isPaused() external view returns (bool);
+
     /// @notice Get the current sealed epoch number, boundaries, and task.
     /// @param epochNumber The epoch number
     /// @param inputIndexLowerBound The epoch input index (inclusive) lower bound
@@ -105,12 +132,7 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
     function getCurrentSealedEpoch()
         external
         view
-        returns (
-            uint256 epochNumber,
-            uint256 inputIndexLowerBound,
-            uint256 inputIndexUpperBound,
-            ITask task
-        );
+        returns (uint256 epochNumber, uint256 inputIndexLowerBound, uint256 inputIndexUpperBound, ITask task);
 
     /// @notice Check whether the current sealed epoch can be settled.
     /// @return isFinished Whether the current sealed epoch task has finished yet
@@ -124,4 +146,16 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
     /// @param proof The bottom-up Merkle proof of the outputs Merkle root in the final machine state
     /// @dev On success, emits an `EpochSealed` event.
     function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external;
+
+    /// @notice Pause settlement. Only callable by the security council.
+    function pause() external;
+
+    /// @notice Unpause settlement. Only callable by the security council.
+    function unpause() external;
+
+    /// @notice Upgrade the current task and task spawner.
+    /// @param newInitialState The new initial machine state hash
+    /// @param newTaskSpawner The new task spawner
+    /// @dev Emits `TaskUpgraded` on success.
+    function upgrade(Machine.Hash newInitialState, ITaskSpawner newTaskSpawner) external;
 }

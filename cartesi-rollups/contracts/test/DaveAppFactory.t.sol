@@ -36,12 +36,14 @@ contract DaveConsensusFactoryTest is Test {
     IInputBox _inputBox;
     MockTaskSpawner _taskSpawner;
     Machine.Hash _initialMachineStateHash;
+    address _securityCouncil;
 
     function setUp() external {
         _inputBox = new InputBox();
         _appFactory = new ApplicationFactory();
         _taskSpawner = new MockTaskSpawner();
-        _daveAppFactory = new DaveAppFactory(_inputBox, _appFactory, _taskSpawner);
+        _securityCouncil = address(0xBEEF);
+        _daveAppFactory = new DaveAppFactory(_inputBox, _appFactory, _taskSpawner, _securityCouncil);
         _initialMachineStateHash = Machine.Hash.wrap(keccak256("foo"));
     }
 
@@ -125,6 +127,7 @@ contract DaveConsensusFactoryTest is Test {
         assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
         assertEq(address(daveConsensus.getApplicationContract()), address(appContract));
         assertEq(address(daveConsensus.getTaskSpawner()), address(_taskSpawner));
+        assertEq(daveConsensus.getSecurityCouncil(), _securityCouncil);
 
         {
             address appContractAddress;
@@ -142,10 +145,7 @@ contract DaveConsensusFactoryTest is Test {
         _daveAppFactory.newDaveApp(templateHash, salt);
     }
 
-    function _checkEpochSealedData(bytes memory data, bytes32 templateHash, address randomTaskAddress)
-        internal
-        pure
-    {
+    function _checkEpochSealedData(bytes memory data, bytes32 templateHash, address randomTaskAddress) internal pure {
         (
             uint256 epochNumber,
             uint256 inputIndexLowerBound,

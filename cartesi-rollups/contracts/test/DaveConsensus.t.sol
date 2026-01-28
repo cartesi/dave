@@ -86,11 +86,7 @@ contract MockTaskSpawner is ITaskSpawner {
         return mockTask;
     }
 
-    function calculateTaskAddress(Machine.Hash initialState, IDataProvider provider)
-        external
-        view
-        returns (address)
-    {
+    function calculateTaskAddress(Machine.Hash initialState, IDataProvider provider) external view returns (address) {
         return Create2.computeAddress(
             _salt, keccak256(abi.encodePacked(type(MockTask).creationCode, abi.encode(initialState, provider)))
         );
@@ -127,11 +123,13 @@ contract DaveConsensusTest is Test {
     IInputBox _inputBox;
     MockTaskSpawner _mockTaskSpawner;
     MerkleProxy _merkleProxy;
+    address _securityCouncil;
 
     function setUp() external {
         _inputBox = new InputBox();
         _mockTaskSpawner = new MockTaskSpawner();
         _merkleProxy = new MerkleProxy();
+        _securityCouncil = address(0xBEEF);
     }
 
     function testMockTaskSpawner() external view {
@@ -167,8 +165,7 @@ contract DaveConsensusTest is Test {
             address daveConsensusAddress = _calculateNewDaveConsensus(appContract, state0, salts[0]);
 
             _mockTaskSpawner.setSalt(salts[1]);
-            address mockTaskAddress =
-                _mockTaskSpawner.calculateTaskAddress(state0, IDataProvider(daveConsensusAddress));
+            address mockTaskAddress = _mockTaskSpawner.calculateTaskAddress(state0, IDataProvider(daveConsensusAddress));
 
             vm.expectEmit(daveConsensusAddress);
             emit IDaveConsensus.ConsensusCreation(_inputBox, appContract, _mockTaskSpawner);
@@ -182,6 +179,7 @@ contract DaveConsensusTest is Test {
             assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
             assertEq(daveConsensus.getApplicationContract(), appContract);
             assertEq(address(daveConsensus.getTaskSpawner()), address(_mockTaskSpawner));
+            assertEq(daveConsensus.getSecurityCouncil(), _securityCouncil);
             assertEq(daveConsensus.getDeploymentBlockNumber(), deploymentBlockNumber);
 
             mockTask = MockTask(mockTaskAddress);
@@ -203,8 +201,7 @@ contract DaveConsensusTest is Test {
             uint256 inputIndexUpperBound;
             ITask task;
 
-            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, task) =
-                daveConsensus.getCurrentSealedEpoch();
+            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, task) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(epochNumber, 0);
             assertEq(inputIndexLowerBound, 0);
@@ -287,8 +284,7 @@ contract DaveConsensusTest is Test {
             uint256 inputIndexUpperBound;
             ITask task;
 
-            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, task) =
-                daveConsensus.getCurrentSealedEpoch();
+            (epochNumber, inputIndexLowerBound, inputIndexUpperBound, task) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(epochNumber, 1);
             assertEq(inputIndexLowerBound, inputCounts[0]);
@@ -347,6 +343,67 @@ contract DaveConsensusTest is Test {
 
         vm.expectRevert(IDaveConsensus.TournamentNotFinishedYet.selector);
         daveConsensus.settle(0, bytes32(0), new bytes32[](0));
+    }
+
+    function testPauseBlocksSettle(
+        address appContract,
+        Machine.Hash initialState,
+        bytes32 outputsMerkleRoot,
+        bytes32 salt
+    ) external {
+        _mockTaskSpawner.setSalt(salt);
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salt);
+
+        MockTask task = _mockTaskSpawner.getMockTask(0);
+        (Machine.Hash finalState, bytes32[] memory proof, bytes32 outputRoot) = _statesAndProofs(outputsMerkleRoot);
+        task.finish(finalState);
+
+        vm.prank(_securityCouncil);
+        daveConsensus.pause();
+
+        vm.expectRevert(IDaveConsensus.PausedError.selector);
+        daveConsensus.settle(0, outputRoot, proof);
+
+        vm.prank(_securityCouncil);
+        daveConsensus.unpause();
+
+        daveConsensus.settle(0, outputRoot, proof);
+    }
+
+    function testUpgradeOnlySecurityCouncil(address appContract, Machine.Hash initialState, bytes32 salt) external {
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salt);
+
+        MockTaskSpawner newSpawner = new MockTaskSpawner();
+        vm.expectRevert(IDaveConsensus.NotSecurityCouncil.selector);
+        daveConsensus.upgrade(initialState, newSpawner);
+    }
+
+    function testUpgradeSpawnsNewTask(address appContract, Machine.Hash initialState, bytes32 salt, bytes32 newSalt)
+        external
+    {
+        DaveConsensus daveConsensus = _newDaveConsensus(appContract, initialState, salt);
+
+        MockTaskSpawner newSpawner = new MockTaskSpawner();
+        newSpawner.setSalt(newSalt);
+
+        Machine.Hash newState = Machine.Hash.wrap(keccak256("upgrade-state"));
+        address expectedTask = newSpawner.calculateTaskAddress(newState, IDataProvider(address(daveConsensus)));
+
+        vm.expectEmit(address(daveConsensus));
+        emit IDaveConsensus.TaskUpgraded(0, newState, newSpawner, ITask(expectedTask));
+
+        vm.prank(_securityCouncil);
+        daveConsensus.upgrade(newState, newSpawner);
+
+        assertEq(address(daveConsensus.getTaskSpawner()), address(newSpawner));
+
+        (uint256 epochNumber,,, ITask task) = daveConsensus.getCurrentSealedEpoch();
+        assertEq(epochNumber, 0);
+        assertEq(address(task), expectedTask);
+
+        MockTask spawned = MockTask(expectedTask);
+        assertEq(Machine.Hash.unwrap(spawned.getInitialState()), Machine.Hash.unwrap(newState));
+        assertEq(address(spawned.getProvider()), address(daveConsensus));
     }
 
     function testProvideMerkleRootOfInput(
@@ -461,7 +518,7 @@ contract DaveConsensusTest is Test {
             keccak256(
                 abi.encodePacked(
                     type(DaveConsensus).creationCode,
-                    abi.encode(_inputBox, appContract, _mockTaskSpawner, initialState)
+                    abi.encode(_inputBox, appContract, _mockTaskSpawner, _securityCouncil, initialState)
                 )
             )
         );
@@ -471,7 +528,7 @@ contract DaveConsensusTest is Test {
         internal
         returns (DaveConsensus)
     {
-        return new DaveConsensus{salt: salt}(_inputBox, appContract, _mockTaskSpawner, initialState);
+        return new DaveConsensus{salt: salt}(_inputBox, appContract, _mockTaskSpawner, _securityCouncil, initialState);
     }
 
     function _statesAndProofs(bytes32 outputsMerkleRoot) private returns (Machine.Hash, bytes32[] memory, bytes32) {

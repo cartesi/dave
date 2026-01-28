@@ -56,8 +56,11 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
     /// @notice The application contract
     address immutable _APP_CONTRACT;
 
+    /// @notice Security council address
+    address immutable _SECURITY_COUNCIL;
+
     /// @notice The contract used to instantiate tasks
-    ITaskSpawner immutable _TASK_SPAWNER;
+    ITaskSpawner _taskSpawner;
 
     /// @notice Deployment block number
     uint256 immutable _DEPLOYMENT_BLOCK_NUMBER = block.number;
@@ -77,16 +80,21 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
     /// @notice Settled output trees' merkle root hash
     mapping(bytes32 => bool) _outputsMerkleRoots;
 
+    /// @notice Whether settlement is paused
+    bool _paused;
+
     constructor(
         IInputBox inputBox,
         address appContract,
         ITaskSpawner taskSpawner,
+        address securityCouncil,
         Machine.Hash initialMachineStateHash
     ) {
         // Initialize immutable variables
         _INPUT_BOX = inputBox;
         _APP_CONTRACT = appContract;
-        _TASK_SPAWNER = taskSpawner;
+        _SECURITY_COUNCIL = securityCouncil;
+        _taskSpawner = taskSpawner;
         emit ConsensusCreation(inputBox, appContract, taskSpawner);
 
         // Initialize first sealed epoch
@@ -95,6 +103,15 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         ITask task = taskSpawner.spawn(initialMachineStateHash, this);
         _task = task;
         emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, bytes32(0), task);
+    }
+
+    function _onlySecurityCouncil() internal view {
+        require(msg.sender == _SECURITY_COUNCIL, NotSecurityCouncil());
+    }
+
+    modifier onlySecurityCouncil() {
+        _onlySecurityCouncil();
+        _;
     }
 
     function canSettle()
@@ -108,6 +125,8 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
     }
 
     function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external override {
+        require(!_paused, PausedError());
+
         // Check task settlement
         require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
 
@@ -127,31 +146,20 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         _outputsMerkleRoots[outputsMerkleRoot] = true;
 
         // Start new task
-        _task = _TASK_SPAWNER.spawn(finalMachineStateHash, this);
+        _task = _taskSpawner.spawn(finalMachineStateHash, this);
 
         emit EpochSealed(
-            _epochNumber,
-            _inputIndexLowerBound,
-            _inputIndexUpperBound,
-            finalMachineStateHash,
-            outputsMerkleRoot,
-            _task
+            _epochNumber, _inputIndexLowerBound, _inputIndexUpperBound, finalMachineStateHash, outputsMerkleRoot, _task
         );
 
         _tryCleanup(oldTask);
-
     }
 
     function getCurrentSealedEpoch()
         external
         view
         override
-        returns (
-            uint256 epochNumber,
-            uint256 inputIndexLowerBound,
-            uint256 inputIndexUpperBound,
-            ITask task
-        )
+        returns (uint256 epochNumber, uint256 inputIndexLowerBound, uint256 inputIndexUpperBound, ITask task)
     {
         epochNumber = _epochNumber;
         inputIndexLowerBound = _inputIndexLowerBound;
@@ -168,7 +176,36 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
     }
 
     function getTaskSpawner() external view override returns (ITaskSpawner) {
-        return _TASK_SPAWNER;
+        return _taskSpawner;
+    }
+
+    function getSecurityCouncil() external view override returns (address) {
+        return _SECURITY_COUNCIL;
+    }
+
+    function isPaused() external view override returns (bool) {
+        return _paused;
+    }
+
+    function upgrade(Machine.Hash newInitialState, ITaskSpawner newTaskSpawner) external override onlySecurityCouncil {
+        _taskSpawner = newTaskSpawner;
+        _task = newTaskSpawner.spawn(newInitialState, this);
+
+        emit TaskUpgraded(_epochNumber, newInitialState, newTaskSpawner, _task);
+    }
+
+    function pause() external override onlySecurityCouncil {
+        if (!_paused) {
+            _paused = true;
+            emit Paused(msg.sender);
+        }
+    }
+
+    function unpause() external override onlySecurityCouncil {
+        if (_paused) {
+            _paused = false;
+            emit Unpaused(msg.sender);
+        }
     }
 
     function provideMerkleRootOfInput(uint256 inputIndexWithinEpoch, bytes calldata input)
