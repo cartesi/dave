@@ -4,8 +4,8 @@
 pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITask} from "prt-contracts/ITask.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ITask} from "prt-contracts/ITask.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Match} from "prt-contracts/tournament/libs/Match.sol";

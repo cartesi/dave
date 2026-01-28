@@ -23,10 +23,10 @@ import {
 import {
     RiscVStateTransition
 } from "src/state-transition/RiscVStateTransition.sol";
-import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/MultiLevelTournamentFactory.sol";
+import {Tournament} from "src/tournament/Tournament.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 
 type Milliseconds is uint64;

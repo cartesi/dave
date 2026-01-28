@@ -5,16 +5,16 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 
-import {
-    IMultiLevelTournamentFactory
-} from "prt-contracts/tournament/IMultiLevelTournamentFactory.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITask} from "prt-contracts/ITask.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
-import {ITournament} from "prt-contracts/tournament/ITournament.sol";
+import {ITask} from "prt-contracts/ITask.sol";
 import {
     ITournamentParametersProvider
 } from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
+import {
+    IMultiLevelTournamentFactory
+} from "prt-contracts/tournament/IMultiLevelTournamentFactory.sol";
+import {ITournament} from "prt-contracts/tournament/ITournament.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";

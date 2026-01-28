@@ -13,10 +13,10 @@
 pragma solidity ^0.8.0;
 
 import {IDataProvider} from "src/IDataProvider.sol";
-import {ITournament} from "src/tournament/ITournament.sol";
 import {
     ArbitrationConstants
 } from "src/arbitration-config/ArbitrationConstants.sol";
+import {ITournament} from "src/tournament/ITournament.sol";
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/MultiLevelTournamentFactory.sol";
