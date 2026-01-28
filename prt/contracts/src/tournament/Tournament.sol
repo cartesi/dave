@@ -79,7 +79,7 @@ contract Tournament is ITournament {
     uint256 newInnerTournamentCount;
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
-    uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
+    uint256 constant PRIORITY_FEE_CAP = 10 gwei;
     bool transient locked;
 
     mapping(Tree.Node => Clock.State) clocks;
@@ -956,7 +956,7 @@ contract Tournament is ITournament {
             address(this).balance,
             bondValue() * gasEstimate / _totalGasEstimate(),
             (Gas.TX + gasBefore - gasAfter)
-                * (tx.gasprice + MESSAGE_SENDER_PROFIT)
+                * tx.gasprice.min(block.basefee + PRIORITY_FEE_CAP)
         );
 
         (bool status, bytes memory ret) =
