@@ -8,7 +8,7 @@ RUN <<EOF
 set -eu
 apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git
 curl -L https://foundry.paradigm.xyz | bash
-~/.foundry/bin/foundryup --install v1.4.3
+~/.foundry/bin/foundryup --install v1.5.0
 install -Dm755 ~/.foundry/bin/* /usr/local/bin/
 EOF
 # cargo binstall (to install just)
