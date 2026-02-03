@@ -146,16 +146,17 @@ impl ArenaSender for EthArenaSender {
         new_right_node: Digest,
     ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let tx_result = tournament
-            .advanceMatch(
-                match_id.into(),
-                left_node.into(),
-                right_node.into(),
-                new_left_node.into(),
-                new_right_node.into(),
-            )
-            .send()
-            .await;
+        let mut call = tournament.advanceMatch(
+            match_id.into(),
+            left_node.into(),
+            right_node.into(),
+            new_left_node.into(),
+            new_right_node.into(),
+        );
+        if let Some(limit) = std::env::var("GAS_LIMIT").ok().and_then(|v| v.parse().ok()) {
+            call = call.gas(limit);
+        }
+        let tx_result = call.send().await;
         allow_revert_rethrow_others("advanceMatch", tx_result).await
     }
 

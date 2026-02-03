@@ -93,7 +93,7 @@ test-rollups-echo: build-rust-workspace
 test-rollups-honeypot: build-rust-workspace
     just -f ./prt/tests/rollups/justfile test-honeypot-all
 test-rollups-honeypot-ci: build-rust-workspace
-    just -f ./prt/tests/rollups/justfile test-honeypot-ci
+    GAS_LIMIT=15000000 just -f ./prt/tests/rollups/justfile test-honeypot-ci
 test-rollups-honeypot-case CASE: build-rust-workspace
     just -f ./prt/tests/rollups/justfile test-honeypot-case {{CASE}}
 view-rollups-logs:
