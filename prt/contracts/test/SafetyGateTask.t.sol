@@ -40,6 +40,10 @@ contract MockTask is ITask {
     function cleanup() external returns (bool) {
         return _finished;
     }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(ITask).interfaceId;
+    }
 }
 
 contract MockSpawner is ITaskSpawner {

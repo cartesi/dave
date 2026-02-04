@@ -3,10 +3,11 @@
 
 pragma solidity ^0.8.17;
 
+import {IERC165} from "@openzeppelin-contracts-5.5.0/utils/introspection/IERC165.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
 /// @notice Task interface for asynchronous proof systems.
-interface ITask {
+interface ITask is IERC165 {
     /// @notice Get the task result.
     /// @return finished Whether the task has finished
     /// @return finalState The finalized machine state (if finished)

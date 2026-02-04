@@ -5,6 +5,7 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
+import {IERC165} from "@openzeppelin-contracts-5.5.0/utils/introspection/IERC165.sol";
 
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITask} from "prt-contracts/ITask.sol";
@@ -837,6 +838,16 @@ contract Tournament is ITournament {
         } catch {
             return false;
         }
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        external
+        view
+        returns (bool)
+    {
+        return interfaceId == type(IERC165).interfaceId
+            || interfaceId == type(ITask).interfaceId
+            || interfaceId == type(ITournament).interfaceId;
     }
 
     //

@@ -4,6 +4,8 @@
 pragma solidity ^0.8.17;
 
 import {ITask} from "prt-contracts/ITask.sol";
+import {ISafetyGateTask} from "prt-contracts/safety-gate-task/ISafetyGateTask.sol";
+import {IERC165} from "@openzeppelin-contracts-5.5.0/utils/introspection/IERC165.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
@@ -15,7 +17,7 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 ///   after it elapses, the inner task result is accepted.
 /// - This contract does not auto-start the fallback timer; an offchain actor
 ///   must call `startFallbackTimer`. This is a deliberate liveness assumption.
-contract SafetyGateTask is ITask {
+contract SafetyGateTask is ISafetyGateTask {
     using Machine for Machine.Hash;
     using Time for Time.Instant;
     using Time for Time.Duration;
@@ -79,12 +81,7 @@ contract SafetyGateTask is ITask {
         }
     }
 
-    /// @notice Submit a sentry vote for the expected final state.
-    /// @dev
-    /// - Each sentry can vote once.
-    /// - A zero vote is invalid.
-    /// - If any vote differs from the first, the claim becomes ZERO_STATE,
-    ///   signaling disagreement.
+    /// @inheritdoc ISafetyGateTask
     function sentryVote(Machine.Hash vote) external onlySentry {
         require(!hasVoted[msg.sender], AlreadyVoted());
         require(!vote.eq(Machine.ZERO_STATE), InvalidSentryVote());
@@ -100,9 +97,7 @@ contract SafetyGateTask is ITask {
         emit SentryVoted(msg.sender, vote);
     }
 
-    /// @notice Returns whether all sentries voted and agreed on a claim.
-    /// @return ok True if all sentries voted and agree on a non-zero claim.
-    /// @return claim The agreed claim if ok, otherwise ZERO_STATE.
+    /// @inheritdoc ISafetyGateTask
     function sentryVotingConsensus() public view returns (bool, Machine.Hash) {
         bool sentriesAgree = !currentSentryClaim.eq(Machine.ZERO_STATE);
 
@@ -113,11 +108,7 @@ contract SafetyGateTask is ITask {
         }
     }
 
-    /// @notice Start the fallback timer if sentries disagree or are missing.
-    /// @dev Anyone can call this; required for liveness in disagreement cases.
-    ///      This does not resolve immediately; `result()` returns the inner
-    ///      outcome only after the timer elapses.
-    /// @return started True if the timer was started in this call.
+    /// @inheritdoc ISafetyGateTask
     function startFallbackTimer() external returns (bool) {
         if (!canStartFallbackTimer()) {
             return false;
@@ -128,8 +119,7 @@ contract SafetyGateTask is ITask {
         return true;
     }
 
-    /// @notice Returns whether the fallback timer can be started now.
-    /// @dev True only if inner task finished AND sentry consensus is missing/mismatched.
+    /// @inheritdoc ISafetyGateTask
     function canStartFallbackTimer() public view returns (bool) {
         if (!disagreementStart.isZero()) {
             return false;
@@ -145,10 +135,6 @@ contract SafetyGateTask is ITask {
     }
 
     /// @inheritdoc ITask
-    /// @dev Resolution policy:
-    /// - If inner task is unfinished: return (false, 0).
-    /// - If all sentries agree and match inner result: return (true, inner result).
-    /// - Else: return (false, 0) until the fallback timer elapses, then return inner result.
     function result()
         external
         view
@@ -174,7 +160,6 @@ contract SafetyGateTask is ITask {
     }
 
     /// @inheritdoc ITask
-    /// @dev Best-effort passthrough to the inner task cleanup.
     function cleanup() external override returns (bool cleaned) {
         (bool innerFinished,) = INNER_TASK.result();
         if (!innerFinished) {
@@ -186,5 +171,15 @@ contract SafetyGateTask is ITask {
         } catch {
             return false;
         }
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        external
+        view
+        returns (bool)
+    {
+        return interfaceId == type(IERC165).interfaceId
+            || interfaceId == type(ITask).interfaceId
+            || interfaceId == type(ISafetyGateTask).interfaceId;
     }
 }

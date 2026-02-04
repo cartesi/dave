@@ -120,7 +120,12 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         override
         returns (bool isFinished, uint256 epochNumber, Machine.Hash finalState)
     {
-        (isFinished, finalState) = _task.result();
+        if (_paused) {
+            (isFinished, finalState) = (false, Machine.ZERO_STATE);
+        } else {
+            (isFinished, finalState) = _task.result();
+        }
+
         epochNumber = _epochNumber;
     }
 
