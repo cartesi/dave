@@ -30,7 +30,7 @@ fn main() {
     }
 
     // static link
-    println!("cargo:rustc-link-lib=slirp");
+    // println!("cargo:rustc-link-lib=slirp");
     cfg_if::cfg_if! {
         if #[cfg(feature = "remote_machine")] {
             println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");

@@ -29,16 +29,21 @@ fn convert_row_to_settlement(row: &rusqlite::Row) -> rusqlite::Result<Settlement
         .expect("computation_hash must be 32 bytes");
     let computation_hash = ch_arr.into();
 
+    // final_state blob -> [u8;32]
+    let fs_blob: Vec<u8> = row.get(1)?;
+    let final_state: Hash = fs_blob.try_into().expect("final_state must be 32 bytes");
+
     // output_merkle blob -> [u8;32]
-    let om_blob: Vec<u8> = row.get(1)?;
+    let om_blob: Vec<u8> = row.get(2)?;
     let output_merkle: Hash = om_blob.try_into().expect("output_merkle must be 32 bytes");
 
     // output_proof blob -> Proof
-    let proof_blob: Vec<u8> = row.get(2)?;
+    let proof_blob: Vec<u8> = row.get(3)?;
     let output_proof = Proof::from_flattened(proof_blob);
 
     Ok(Settlement {
         computation_hash,
+        final_state,
         output_merkle,
         output_proof,
     })
@@ -108,7 +113,7 @@ pub fn settlement_info(conn: &Connection, epoch_number: u64) -> Result<Option<Se
     let mut stmt = conn
         .prepare_cached(
             r#"
-            SELECT computation_hash, output_merkle, output_proof
+            SELECT computation_hash, final_state, output_merkle, output_proof
             FROM settlement_info
             WHERE epoch_number = ?1
             "#,
@@ -132,8 +137,8 @@ pub fn insert_settlement_info(
         .prepare_cached(
             r#"
             INSERT INTO settlement_info
-            (epoch_number, computation_hash, output_merkle, output_proof)
-            VALUES (?1, ?2, ?3, ?4)
+            (epoch_number, computation_hash, final_state, output_merkle, output_proof)
+            VALUES (?1, ?2, ?3, ?4, ?5)
             "#,
         )
         .map_err(anyhow::Error::from)?;
@@ -142,6 +147,7 @@ pub fn insert_settlement_info(
         .execute(params![
             epoch_number,
             settlement.computation_hash.data(),
+            settlement.final_state,
             &settlement.output_merkle,
             &settlement.output_proof.flatten(),
         ])
@@ -417,7 +423,8 @@ mod tests {
         let (_handle, conn) = setup_db();
         let settlement = Settlement {
             computation_hash: [0xAA; 32].into(),
-            output_merkle: [0xBB; 32],
+            final_state: [0xBB; 32],
+            output_merkle: [0xCC; 32],
             output_proof: Proof::new(vec![[0; 32]]),
         };
         insert_settlement_info(&conn, &settlement, 42).unwrap();
@@ -430,7 +437,8 @@ mod tests {
         let (_handle, conn) = setup_db();
         let settlement = Settlement {
             computation_hash: [0x11; 32].into(),
-            output_merkle: [0x22; 32],
+            final_state: [0x22; 32],
+            output_merkle: [0x33; 32],
             output_proof: Proof::new(vec![[0; 32]]),
         };
         insert_settlement_info(&conn, &settlement, 55).unwrap();

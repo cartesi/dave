@@ -95,6 +95,7 @@ pub fn create_epoch_manager_task(watch: Watch, parameters: &PRTConfig) -> thread
                     let epoch_manager = EpochManager::new(
                         Arc::new(Mutex::new(arena_sender)),
                         params.address_book.consensus,
+                        params.signer_address,
                         state_manager,
                         params.sleep_duration,
                     );

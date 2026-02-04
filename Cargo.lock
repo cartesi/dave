@@ -4409,6 +4409,7 @@ dependencies = [
  "alloy",
  "anyhow",
  "cartesi-dave-contracts",
+ "cartesi-prt-contracts",
  "cartesi-prt-core",
  "log",
  "num-traits",

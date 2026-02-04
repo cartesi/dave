@@ -26,6 +26,9 @@ import {
 import {
     MultiLevelTournamentFactory
 } from "src/tournament/MultiLevelTournamentFactory.sol";
+import {
+    SafetyGateTaskSpawner
+} from "src/safety-gate-task/SafetyGateTaskSpawner.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 
@@ -190,7 +193,7 @@ contract DeploymentScript is BaseDeploymentScript {
             )
         );
 
-        _storeDeployment(
+        address multiLevelTournamentFactory = _storeDeployment(
             type(MultiLevelTournamentFactory).name,
             _create2(
                 type(MultiLevelTournamentFactory).creationCode,
@@ -199,6 +202,17 @@ contract DeploymentScript is BaseDeploymentScript {
                     canonicalTournamentParametersProvider,
                     cartesiStateTransition
                 )
+            )
+        );
+
+        address[] memory sentries = new address[](1);
+        sentries[0] = tx.origin;
+
+        _storeDeployment(
+            type(SafetyGateTaskSpawner).name,
+            _create2(
+                type(SafetyGateTaskSpawner).creationCode,
+                abi.encode(tx.origin, multiLevelTournamentFactory, maxAllowance, sentries)
             )
         );
 
