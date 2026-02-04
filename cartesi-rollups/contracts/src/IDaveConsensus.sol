@@ -9,13 +9,12 @@ import {
 import {IInputBox} from "cartesi-rollups-contracts-2.1.1/src/inputs/IInputBox.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 
-import {ITournament} from "prt-contracts/ITournament.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {ITask} from "prt-contracts/ITask.sol";
+import {ITaskSpawner} from "prt-contracts/ITaskSpawner.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
-import {Tree} from "prt-contracts/types/Tree.sol";
 
-/// @notice Consensus contract with Dave tournaments.
+/// @notice Consensus contract with Dave tasks.
 ///
 /// @notice This contract validates only one application,
 /// which read inputs from the InputBox contract.
@@ -41,8 +40,8 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
     /// @notice Consensus contract was created
     /// @param inputBox the input box contract
     /// @param appContract the application contract
-    /// @param tournamentFactory the tournament factory contract
-    event ConsensusCreation(IInputBox inputBox, address appContract, ITournamentFactory tournamentFactory);
+    /// @param taskSpawner the task spawner contract
+    event ConsensusCreation(IInputBox inputBox, address appContract, ITaskSpawner taskSpawner);
 
     /// @notice An epoch was sealed
     /// @param epochNumber the sealed epoch number
@@ -50,23 +49,44 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
     /// @param inputIndexUpperBound the input index (exclusive) upper bound in the sealed epoch
     /// @param initialMachineStateHash the initial machine state hash
     /// @param outputsMerkleRoot the Merkle root hash of the outputs tree
-    /// @param tournament the sealed epoch tournament contract
+    /// @param task the sealed epoch task contract
     event EpochSealed(
         uint256 epochNumber,
         uint256 inputIndexLowerBound,
         uint256 inputIndexUpperBound,
         Machine.Hash initialMachineStateHash,
         bytes32 outputsMerkleRoot,
-        ITournament tournament
+        ITask task
     );
+
+    /// @notice Task was upgraded for the current epoch.
+    /// @param epochNumber The current sealed epoch number
+    /// @param newInitialState The new initial state used to respawn the task
+    /// @param newTaskSpawner The new task spawner used for future tasks
+    /// @param task The new task instance
+    event TaskUpgraded(
+        uint256 indexed epochNumber, Machine.Hash newInitialState, ITaskSpawner newTaskSpawner, ITask task
+    );
+
+    /// @notice Emitted when the contract is paused.
+    /// @param account The caller that triggered the pause
+    event Paused(address indexed account);
+
+    /// @notice Emitted when the contract is unpaused.
+    /// @param account The caller that triggered the unpause
+    event Unpaused(address indexed account);
 
     /// @notice Received epoch number is different from actual
     /// @param received The epoch number received as argument
     /// @param actual The actual epoch number in storage
     error IncorrectEpochNumber(uint256 received, uint256 actual);
 
-    /// @notice Tournament is not finished yet
+    /// @notice Task is not finished yet
     error TournamentNotFinishedYet();
+    /// @notice Caller is not the security council
+    error NotSecurityCouncil();
+    /// @notice Contract is paused
+    error PausedError();
 
     /// @notice Hash of received input blob is different from stored on-chain
     /// @param fromReceivedInput Hash of received input blob
@@ -95,29 +115,30 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
     /// @notice Get the address of the application contract.
     function getApplicationContract() external view returns (address);
 
-    /// @notice Get the tournament factory contract used to instantiate root tournaments.
-    function getTournamentFactory() external view returns (ITournamentFactory);
+    /// @notice Get the task spawner contract used to instantiate root tasks.
+    function getTaskSpawner() external view returns (ITaskSpawner);
 
-    /// @notice Get the current sealed epoch number, boundaries, and tournament.
+    /// @notice Get the security council address.
+    function getSecurityCouncil() external view returns (address);
+
+    /// @notice Returns whether the contract is paused.
+    function isPaused() external view returns (bool);
+
+    /// @notice Get the current sealed epoch number, boundaries, and task.
     /// @param epochNumber The epoch number
     /// @param inputIndexLowerBound The epoch input index (inclusive) lower bound
     /// @param inputIndexUpperBound The epoch input index (exclusive) upper bound
-    /// @param tournament The tournament that will decide the post-epoch state
+    /// @param task The task that will decide the post-epoch state
     function getCurrentSealedEpoch()
         external
         view
-        returns (
-            uint256 epochNumber,
-            uint256 inputIndexLowerBound,
-            uint256 inputIndexUpperBound,
-            ITournament tournament
-        );
+        returns (uint256 epochNumber, uint256 inputIndexLowerBound, uint256 inputIndexUpperBound, ITask task);
 
     /// @notice Check whether the current sealed epoch can be settled.
-    /// @return isFinished Whether the current sealed epoch tournament has finished yet
+    /// @return isFinished Whether the current sealed epoch task has finished yet
     /// @return epochNumber The current sealed epoch number
-    /// @return winnerCommitment If the tournament has finished, the winning commitment
-    function canSettle() external view returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment);
+    /// @return finalState If the task has finished, the final machine state
+    function canSettle() external view returns (bool isFinished, uint256 epochNumber, Machine.Hash finalState);
 
     /// @notice Settle the current sealed epoch.
     /// @param epochNumber The current sealed epoch number (used to avoid race conditions)
@@ -125,4 +146,16 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
     /// @param proof The bottom-up Merkle proof of the outputs Merkle root in the final machine state
     /// @dev On success, emits an `EpochSealed` event.
     function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external;
+
+    /// @notice Pause settlement. Only callable by the security council.
+    function pause() external;
+
+    /// @notice Unpause settlement. Only callable by the security council.
+    function unpause() external;
+
+    /// @notice Upgrade the current task and task spawner.
+    /// @param newInitialState The new initial machine state hash
+    /// @param newTaskSpawner The new task spawner
+    /// @dev Emits `TaskUpgraded` on success.
+    function upgrade(Machine.Hash newInitialState, ITaskSpawner newTaskSpawner) external;
 }

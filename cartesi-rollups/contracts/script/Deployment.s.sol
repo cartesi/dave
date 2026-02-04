@@ -18,12 +18,25 @@ contract DeploymentScript is BaseDeploymentScript {
         address inputBox = _loadDeployment(".", "InputBox");
         address appFactory = _loadDeployment(".", "ApplicationFactory");
         address tournamentFactory = _loadDeployment(".", "MultiLevelTournamentFactory");
+        address safetyGateTaskSpawner = _loadDeployment("../../prt/contracts", "SafetyGateTaskSpawner");
+        address securityCouncil = tx.origin;
 
         vmSafe.startBroadcast();
 
         _storeDeployment(
             type(DaveAppFactory).name,
-            _create2(type(DaveAppFactory).creationCode, abi.encode(inputBox, appFactory, tournamentFactory))
+            _create2(
+                type(DaveAppFactory).creationCode,
+                abi.encode(inputBox, appFactory, tournamentFactory, securityCouncil)
+            )
+        );
+
+        _storeDeployment(
+            "DaveAppFactorySafetyGate",
+            _create2(
+                type(DaveAppFactory).creationCode,
+                abi.encode(inputBox, appFactory, safetyGateTaskSpawner, securityCouncil)
+            )
         );
 
         if (block.chainid == 31337) {

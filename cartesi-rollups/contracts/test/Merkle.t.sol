@@ -364,7 +364,7 @@ contract MerkleTest is Test {
     }
 
     function testGetHashOfLeafAtIndex(bytes calldata data, uint256 index) external pure {
-        index = bound(index, _getNumOfLeaves(data.length), type(uint256).max);
+        index = bound(index, _getNumOfLeaves(data.length), type(uint256).max >> MerkleConstants.LOG2_LEAF_SIZE);
         bytes32 leafHash = PristineMerkleTree.getNodeAtHeight(0);
         assertEq(MerkleWrapper.getHashOfLeafAtIndex(data, index), leafHash);
     }

@@ -12,6 +12,7 @@ use crate::{
 
 use alloy::primitives::U256;
 use cartesi_dave_merkle::{Digest, MerkleBuilder};
+use cartesi_machine::types::Hash;
 use rusqlite::Connection;
 
 #[derive(Debug)]
@@ -212,7 +213,7 @@ impl StateManager for PersistentStateAccess {
         let settlement = {
             let leafs = rollup_data::get_all_commitments(&self.connection, previous_epoch_number)?;
 
-            let computation_hash = if !leafs.is_empty() {
+            let (computation_hash, final_state) = if !leafs.is_empty() {
                 build_commitment_from_hashes(&leafs)
             } else {
                 assert_eq!(machine.next_input_index_in_epoch(), 0);
@@ -226,6 +227,7 @@ impl StateManager for PersistentStateAccess {
 
             Settlement {
                 computation_hash,
+                final_state,
                 output_merkle,
                 output_proof,
             }
@@ -286,7 +288,7 @@ impl StateManager for PersistentStateAccess {
     }
 }
 
-fn build_commitment_from_hashes(state_hashes: &[CommitmentLeaf]) -> Digest {
+fn build_commitment_from_hashes(state_hashes: &[CommitmentLeaf]) -> (Digest, Hash) {
     let mut builder = MerkleBuilder::default();
 
     assert!(!state_hashes.is_empty());
@@ -306,7 +308,7 @@ fn build_commitment_from_hashes(state_hashes: &[CommitmentLeaf]) -> Digest {
     );
 
     let tree = builder.build();
-    tree.root_hash()
+    (tree.root_hash(), last.hash)
 }
 
 #[cfg(test)]
@@ -523,13 +525,14 @@ mod tests {
         access.roll_epoch()?;
         assert_eq!(access.latest_snapshot()?.epoch(), 1);
 
+        let (computation_hash, final_state) =
+            build_commitment_from_hashes(&[commitment_leaf_1.clone(), commitment_leaf_2.clone()]);
+
         assert_eq!(
             access.settlement_info(0)?.unwrap(),
             Settlement {
-                computation_hash: build_commitment_from_hashes(&[
-                    commitment_leaf_1.clone(),
-                    commitment_leaf_2.clone()
-                ]),
+                computation_hash,
+                final_state,
                 output_merkle,
                 output_proof
             },

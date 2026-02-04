@@ -5,13 +5,16 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 
-import {IMultiLevelTournamentFactory} from "./IMultiLevelTournamentFactory.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
-import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITask} from "prt-contracts/ITask.sol";
 import {
     ITournamentParametersProvider
 } from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
+import {
+    IMultiLevelTournamentFactory
+} from "prt-contracts/tournament/IMultiLevelTournamentFactory.sol";
+import {ITournament} from "prt-contracts/tournament/ITournament.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
@@ -24,9 +27,19 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     using Clones for address;
 
+    event TournamentCreated(ITournament tournament);
+
     Tournament immutable IMPL;
     ITournamentParametersProvider immutable TOURNAMENT_PARAMETERS_PROVIDER;
     IStateTransition immutable STATE_TRANSITION;
+
+    function spawn(Machine.Hash _initialHash, IDataProvider _provider)
+        external
+        override
+        returns (ITask)
+    {
+        return this.instantiate(_initialHash, _provider);
+    }
 
     constructor(
         Tournament _impl,
@@ -40,7 +53,6 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
 
     function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
         external
-        override
         returns (ITournament)
     {
         ITournament _tournament = instantiateTop(_initialHash, _provider);

@@ -15,7 +15,6 @@ pragma solidity ^0.8.0;
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
-import {ITournament} from "src/ITournament.sol";
 import {
     ArbitrationConstants
 } from "src/arbitration-config/ArbitrationConstants.sol";
@@ -34,10 +33,11 @@ import {
 import {
     RiscVStateTransition
 } from "src/state-transition/RiscVStateTransition.sol";
-import {Tournament} from "src/tournament/Tournament.sol";
+import {ITournament} from "src/tournament/ITournament.sol";
 import {
     MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+} from "src/tournament/MultiLevelTournamentFactory.sol";
+import {Tournament} from "src/tournament/Tournament.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";

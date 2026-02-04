@@ -120,8 +120,13 @@ impl ArenaSender for EthArenaSender {
             .map(|h| -> B256 { (*h).into() })
             .collect();
         trace!(
-            "final state for tournament {} at position {}",
-            proof.node, proof.position
+            "join tournament {:?} with final_state {} at position {}, left {}, right {}, proof_len {}",
+            tournament,
+            proof.node,
+            proof.position,
+            left_child,
+            right_child,
+            proof.siblings.len()
         );
         let tx_result = tournament
             .joinTournament(
