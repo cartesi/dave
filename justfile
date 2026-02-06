@@ -1,22 +1,21 @@
 update-submodules:
   git submodule update --recursive --init
 
-apply-generated-files-diff VERSION="v0.19.0":
-  cd machine/emulator && \
-    wget https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff && \
-    git apply add-generated-files.diff
-
-bundle-boost:
-  make -C machine/emulator bundle-boost
-
 clean-emulator:
-  make -C machine/emulator clean depclean distclean
+  make -C machine/emulator clean # don't clean the patch file
 
 clean-contracts: clean-consensus-contracts clean-prt-contracts clean-bindings clean-deployments
-  make -C machine/emulator clean depclean distclean
+  make -C machine/emulator clean # wtf? this is cleaning the emulator, not contracts
 
-setup: update-submodules clean-emulator clean-contracts bundle-boost apply-generated-files-diff
-  make -C machine/emulator # Requires docker, necessary for machine bindings
+# setup the emulator locally.
+# ```sh
+# export PATH=$PATH:$PWD/usr/bin
+# ```
+setup: update-submodules clean-emulator clean-contracts
+  make -C machine/emulator bundle-boost
+  make -C machine/emulator uarch-with-toolchain # Requires docker, necessary for machine bindings
+  make -C machine/emulator -j$(nproc) all
+  make -C machine/emulator install DESTDIR=$PWD/ PREFIX=usr/
 
 # Run this once after cloning, if using a docker environment
 setup-docker: setup build-docker-image
