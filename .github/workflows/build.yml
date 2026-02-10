@@ -138,10 +138,10 @@ jobs:
         working-directory: ./machine/emulator
         run: |
           make bundle-boost
-          wget https://github.com/cartesi/machine-emulator/releases/download/v0.19.0/add-generated-files.diff
+          wget https://github.com/cartesi/machine-emulator/releases/download/v0.20.0-test/add-generated-files.diff
           git apply add-generated-files.diff
           make
-          sudo make install
+          sudo make install DESTDIR=$GITHUB_WORKSPACE/ PREFIX=usr/
 
       - name: Setup env
         run: |
