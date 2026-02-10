@@ -7,13 +7,18 @@ clean-emulator:
 clean-contracts: clean-consensus-contracts clean-prt-contracts clean-bindings clean-deployments
   make -C machine/emulator clean # wtf? this is cleaning the emulator, not contracts
 
+apply-generated-files-diff VERSION="v0.20.0-test":
+  cd machine/emulator && \
+    wget https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff && \
+    git apply add-generated-files.diff
+
 # setup the emulator locally.
 # ```sh
 # export PATH=$PATH:$PWD/usr/bin
 # ```
-setup: update-submodules clean-emulator clean-contracts
+setup: update-submodules clean-emulator clean-contracts apply-generated-files-diff
   make -C machine/emulator bundle-boost
-  make -C machine/emulator uarch-with-toolchain # Requires docker, necessary for machine bindings
+  make -C machine/emulator # Requires docker, necessary for machine bindings
   make -C machine/emulator -j$(nproc) all
   make -C machine/emulator install DESTDIR=$PWD/ PREFIX=usr/
 
