@@ -138,8 +138,10 @@ jobs:
         working-directory: ./machine/emulator
         run: |
           make bundle-boost
-          wget https://github.com/cartesi/machine-emulator/releases/download/v0.19.0/add-generated-files.diff
+          wget -O add-generated-files.diff https://github.com/cartesi/machine-emulator/releases/download/v0.19.0/add-generated-files.diff
+          echo "a892e2d9f5c331f5e80bcb5db4133e7db625aa4d14ffdf9467b75c4c34d1744f add-generated-files.diff" | sha256sum -c
           git apply add-generated-files.diff
+          rm add-generated-files.diff
           make
           sudo make install
 
