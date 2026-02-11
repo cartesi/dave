@@ -1,10 +1,12 @@
 update-submodules:
   git submodule update --recursive --init
 
-apply-generated-files-diff VERSION="v0.19.0":
+apply-generated-files-diff VERSION="v0.19.0" FILEHASH="a892e2d9f5c331f5e80bcb5db4133e7db625aa4d14ffdf9467b75c4c34d1744f":
   cd machine/emulator && \
-    wget https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff && \
-    git apply add-generated-files.diff
+    (wget -O add-generated-files.diff https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff && \
+    (echo "{{FILEHASH}} add-generated-files.diff" | sha256sum -c) && \
+    git apply add-generated-files.diff) ; \
+    rm -f add-generated-files.diff
 
 bundle-boost:
   make -C machine/emulator bundle-boost
