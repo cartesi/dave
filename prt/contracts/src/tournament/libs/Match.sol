@@ -97,7 +97,6 @@ library Match {
 
     function advanceMatch(
         State storage state,
-        Id calldata id,
         Tree.Node leftNode,
         Tree.Node rightNode,
         Tree.Node newLeftNode,
@@ -114,10 +113,6 @@ library Match {
             rightNode.requireChildren(newLeftNode, newRightNode);
             state._goDownRightTree(newLeftNode, newRightNode);
         }
-
-        emit ITournament.MatchAdvanced(
-            id.hashFromId(), state.otherParent, state.leftNode
-        );
     }
 
     function sealMatch(

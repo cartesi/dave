@@ -252,16 +252,21 @@ contract Tournament is ITournament {
         Tree.Node _newLeftNode,
         Tree.Node _newRightNode
     ) external override refundable(Gas.ADVANCE_MATCH) tournamentNotFinished {
-        Match.State storage _matchState = matches[_matchId.hashFromId()];
+        Match.IdHash matchIdHash = _matchId.hashFromId();
+        Match.State storage _matchState = matches[matchIdHash];
         _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
 
         _matchState.advanceMatch(
-            _matchId, _leftNode, _rightNode, _newLeftNode, _newRightNode
+            _leftNode, _rightNode, _newLeftNode, _newRightNode
         );
 
         clocks[_matchId.commitmentOne].advanceClock();
         clocks[_matchId.commitmentTwo].advanceClock();
+
+        _emitMatchAdvanced(
+            matchIdHash, _matchState.otherParent, _matchState.leftNode
+        );
     }
 
     /// @notice Win a match by timeout at any level (root or inner).
@@ -1082,5 +1087,13 @@ contract Tournament is ITournament {
     ) private {
         emit MatchCreated(matchIdHash, one, two, leftOfTwo);
         ++matchCreatedCount;
+    }
+
+    function _emitMatchAdvanced(
+        Match.IdHash matchIdHash,
+        Tree.Node otherParent,
+        Tree.Node leftNode
+    ) private {
+        emit MatchAdvanced(matchIdHash, otherParent, leftNode);
     }
 }
