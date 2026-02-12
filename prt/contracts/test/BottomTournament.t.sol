@@ -89,10 +89,7 @@ contract BottomTournamentTest is Util {
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 3);
-        assertEq(
-            _entries[0].topics[0],
-            keccak256("NewInnerTournament(bytes32,address)")
-        );
+        assertEq(_entries[0].topics[0], ITournament.NewInnerTournament.selector);
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
@@ -145,10 +142,7 @@ contract BottomTournamentTest is Util {
 
         _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 3);
-        assertEq(
-            _entries[0].topics[0],
-            keccak256("NewInnerTournament(bytes32,address)")
-        );
+        assertEq(_entries[0].topics[0], ITournament.NewInnerTournament.selector);
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
@@ -272,10 +266,7 @@ contract BottomTournamentTest is Util {
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 3);
-        assertEq(
-            _entries[0].topics[0],
-            keccak256("NewInnerTournament(bytes32,address)")
-        );
+        assertEq(_entries[0].topics[0], ITournament.NewInnerTournament.selector);
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
@@ -315,10 +306,7 @@ contract BottomTournamentTest is Util {
 
         _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 3);
-        assertEq(
-            _entries[0].topics[0],
-            keccak256("NewInnerTournament(bytes32,address)")
-        );
+        assertEq(_entries[0].topics[0], ITournament.NewInnerTournament.selector);
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
@@ -393,10 +381,7 @@ contract BottomTournamentTest is Util {
 
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 3);
-        assertEq(
-            _entries[0].topics[0],
-            keccak256("NewInnerTournament(bytes32,address)")
-        );
+        assertEq(_entries[0].topics[0], ITournament.NewInnerTournament.selector);
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
@@ -431,10 +416,7 @@ contract BottomTournamentTest is Util {
 
         _entries = vm.getRecordedLogs();
         assertEq(_entries[0].topics.length, 3);
-        assertEq(
-            _entries[0].topics[0],
-            keccak256("NewInnerTournament(bytes32,address)")
-        );
+        assertEq(_entries[0].topics[0], ITournament.NewInnerTournament.selector);
         assertEq(
             _entries[0].topics[1], Match.IdHash.unwrap(_matchId.hashFromId())
         );
