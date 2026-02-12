@@ -297,7 +297,13 @@ contract Util is Test {
             : playerNodes[0][height - 1];
         Tree.Node _right = playerNodes[_player][height - 1];
 
+        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
         _tournament.winLeafMatch(_matchId, _left, _right, new bytes(0));
+        assertEq(
+            _tournament.getMatchDeletedCount(),
+            matchDeletedCountBefore + 1,
+            "MatchDeleted count should be increased by 1"
+        );
     }
 
     function sealInnerMatchAndCreateInnerTournament(
@@ -315,6 +321,62 @@ contract Util is Test {
             _right,
             ONE_STATE,
             generateDivergenceProof(_player, height)
+        );
+    }
+
+    function winMatchByTimeout(
+        ITournament _tournament,
+        Match.Id memory _matchId,
+        Tree.Node _leftNode,
+        Tree.Node _rightNode
+    ) internal {
+        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
+        _tournament.winMatchByTimeout(_matchId, _leftNode, _rightNode);
+        assertEq(
+            _tournament.getMatchDeletedCount(),
+            matchDeletedCountBefore + 1,
+            "MatchDeleted count should be increased by 1"
+        );
+    }
+
+    function eliminateMatchByTimeout(
+        ITournament _tournament,
+        Match.Id memory _matchId
+    ) internal {
+        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
+        _tournament.eliminateMatchByTimeout(_matchId);
+        assertEq(
+            _tournament.getMatchDeletedCount(),
+            matchDeletedCountBefore + 1,
+            "MatchDeleted count should be increased by 1"
+        );
+    }
+
+    function winInnerTournament(
+        ITournament _tournament,
+        ITournament _childTournament,
+        Tree.Node _leftNode,
+        Tree.Node _rightNode
+    ) internal {
+        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
+        _tournament.winInnerTournament(_childTournament, _leftNode, _rightNode);
+        assertEq(
+            _tournament.getMatchDeletedCount(),
+            matchDeletedCountBefore + 1,
+            "MatchDeleted count should be increased by 1"
+        );
+    }
+
+    function eliminateInnerTournament(
+        ITournament _tournament,
+        ITournament _childTournament
+    ) internal {
+        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
+        _tournament.eliminateInnerTournament(_childTournament);
+        assertEq(
+            _tournament.getMatchDeletedCount(),
+            matchDeletedCountBefore + 1,
+            "MatchDeleted count should be increased by 1"
         );
     }
 

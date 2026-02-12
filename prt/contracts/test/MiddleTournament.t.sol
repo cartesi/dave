@@ -194,7 +194,8 @@ contract MiddleTournamentTest is Util {
 
         vm.roll(_rootTournamentFinish);
         (_finished, _winner,,) = middleTournament.innerTournamentWinner();
-        topTournament.winInnerTournament(
+        Util.winInnerTournament(
+            topTournament,
             middleTournament,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[0][ArbitrationConstants.height(0) - 1]
@@ -300,12 +301,14 @@ contract MiddleTournamentTest is Util {
         );
         assertNoElimination();
 
-        vm.prank(player1);
-        middleTournament.winMatchByTimeout(
+        vm.startPrank(player1);
+        Util.winMatchByTimeout(
+            middleTournament,
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
             playerNodes[1][ArbitrationConstants.height(1) - 1]
         );
+        vm.stopPrank();
 
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertFalse(_match.exists(), "match should be deleted");
@@ -315,7 +318,8 @@ contract MiddleTournamentTest is Util {
         assertNoElimination();
 
         (_finished, _winner,,) = middleTournament.innerTournamentWinner();
-        topTournament.winInnerTournament(
+        Util.winInnerTournament(
+            topTournament,
             middleTournament,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
@@ -384,7 +388,7 @@ contract MiddleTournamentTest is Util {
 
         vm.roll(_middleTournamentFinish);
         assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
-        topTournament.eliminateInnerTournament(middleTournament);
+        Util.eliminateInnerTournament(topTournament, middleTournament);
 
         vm.expectRevert();
         topTournament.arbitrationResult();
@@ -417,7 +421,7 @@ contract MiddleTournamentTest is Util {
 
         vm.roll(_middleTournamentFinish);
         assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
-        topTournament.eliminateInnerTournament(middleTournament);
+        Util.eliminateInnerTournament(topTournament, middleTournament);
 
         (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
             topTournament.arbitrationResult();
@@ -465,7 +469,7 @@ contract MiddleTournamentTest is Util {
         vm.roll(vm.getBlockNumber() + 1);
 
         assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
-        topTournament.eliminateInnerTournament(middleTournament);
+        Util.eliminateInnerTournament(topTournament, middleTournament);
 
         (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
             topTournament.arbitrationResult();
@@ -518,7 +522,8 @@ contract MiddleTournamentTest is Util {
         assertFalse(hasWinner);
         assertNoElimination();
 
-        middleTournament.winMatchByTimeout(
+        Util.winMatchByTimeout(
+            middleTournament,
             Util.matchId(1, 1),
             playerNodes[0][ArbitrationConstants.height(1) - 1],
             playerNodes[0][ArbitrationConstants.height(1) - 1]
@@ -537,7 +542,7 @@ contract MiddleTournamentTest is Util {
         uint256 callerBalanceBefore = address(this).balance;
         uint256 tournamentBalanceBefore = address(topTournament).balance;
 
-        topTournament.eliminateInnerTournament(middleTournament);
+        Util.eliminateInnerTournament(topTournament, middleTournament);
 
         uint256 callerBalanceAfter = address(this).balance;
         uint256 tournamentBalanceAfter = address(topTournament).balance;
@@ -602,7 +607,8 @@ contract MiddleTournamentTest is Util {
         assertFalse(hasWinner);
         assertNoElimination();
 
-        middleTournament.winMatchByTimeout(
+        Util.winMatchByTimeout(
+            middleTournament,
             Util.matchId(1, 1),
             playerNodes[1][ArbitrationConstants.height(1) - 1],
             playerNodes[1][ArbitrationConstants.height(1) - 1]
@@ -620,7 +626,8 @@ contract MiddleTournamentTest is Util {
         uint256 tournamentBalanceBefore = address(topTournament).balance;
 
         // win at the last second
-        topTournament.winInnerTournament(
+        Util.winInnerTournament(
+            topTournament,
             middleTournament,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
@@ -666,7 +673,8 @@ contract MiddleTournamentTest is Util {
         );
 
         vm.roll(vm.getBlockNumber() + 1);
-        topTournament.winMatchByTimeout(
+        Util.winMatchByTimeout(
+            topTournament,
             topMatch,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[2][ArbitrationConstants.height(0) - 1]
