@@ -569,7 +569,10 @@ mod blockchain_reader_tests {
         let mut machine = Machine::create(
             &MachineConfig::new_with_ram(RAMConfig {
                 length: 134217728,
-                image_filename: "../../../test/programs/linux.bin".into(),
+                backing_store: cartesi_machine::config::machine::BackingStoreConfig {
+                    data_filename: "../../../test/programs/linux.bin".into(),
+                    ..Default::default()
+                },
             }),
             &RuntimeConfig::default(),
         )
