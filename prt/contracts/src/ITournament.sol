@@ -507,6 +507,10 @@ interface ITournament {
     /// that have been emitted since the contract was deployed.
     function getMatchCreatedCount() external view returns (uint256);
 
+    /// @notice Get the number of `MatchAdvanced` events
+    /// that have been emitted since the contract was deployed.
+    function getMatchAdvancedCount() external view returns (uint256);
+
     //
     // Time view functions
     //
