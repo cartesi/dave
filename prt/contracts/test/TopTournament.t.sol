@@ -12,6 +12,7 @@
 
 pragma solidity ^0.8.0;
 
+import {IDataProvider} from "src/IDataProvider.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
     ArbitrationConstants
@@ -38,6 +39,14 @@ contract TopTournamentTest is Util {
 
     constructor() {
         (FACTORY,) = Util.instantiateTournamentFactory();
+    }
+
+    function testEventCounters(
+        Machine.Hash initialState,
+        IDataProvider dataProvider
+    ) external {
+        topTournament = FACTORY.instantiate(initialState, dataProvider);
+        Util.assertEventCountersEqualZero(topTournament);
     }
 
     function testRootWinner() public {
