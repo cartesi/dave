@@ -3,12 +3,12 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
-import {DataAvailability} from "cartesi-rollups-contracts-2.1.1/src/common/DataAvailability.sol";
-import {ApplicationFactory} from "cartesi-rollups-contracts-2.1.1/src/dapp/ApplicationFactory.sol";
-import {IApplication} from "cartesi-rollups-contracts-2.1.1/src/dapp/IApplication.sol";
-import {IApplicationFactory} from "cartesi-rollups-contracts-2.1.1/src/dapp/IApplicationFactory.sol";
-import {IInputBox} from "cartesi-rollups-contracts-2.1.1/src/inputs/IInputBox.sol";
-import {InputBox} from "cartesi-rollups-contracts-2.1.1/src/inputs/InputBox.sol";
+import {DataAvailability} from "cartesi-rollups-contracts-2.2.0/src/common/DataAvailability.sol";
+import {ApplicationFactory} from "cartesi-rollups-contracts-2.2.0/src/dapp/ApplicationFactory.sol";
+import {IApplication} from "cartesi-rollups-contracts-2.2.0/src/dapp/IApplication.sol";
+import {IApplicationFactory} from "cartesi-rollups-contracts-2.2.0/src/dapp/IApplicationFactory.sol";
+import {IInputBox} from "cartesi-rollups-contracts-2.2.0/src/inputs/IInputBox.sol";
+import {InputBox} from "cartesi-rollups-contracts-2.2.0/src/inputs/InputBox.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";

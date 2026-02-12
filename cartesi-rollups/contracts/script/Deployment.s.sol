@@ -13,7 +13,7 @@ import {TestNonFungibleToken} from "src/TestNonFungibleToken.sol";
 contract DeploymentScript is BaseDeploymentScript {
     function run() external {
         _importDeployments("../../prt/contracts");
-        _importDeployments("dependencies/cartesi-rollups-contracts-2.1.1");
+        _importDeployments("dependencies/cartesi-rollups-contracts-2.2.0");
 
         address inputBox = _loadDeployment(".", "InputBox");
         address appFactory = _loadDeployment(".", "ApplicationFactory");
