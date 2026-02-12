@@ -179,6 +179,26 @@ contract MockTournament is ITournament {
     function timeFinished() external pure override returns (bool, Time.Instant) {
         revert NotImplemented();
     }
+
+    function getCommitmentJoinedCount() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function getMatchCreatedCount() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function getMatchAdvancedCount() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function getMatchDeletedCount() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function getNewInnerTournamentCount() external pure override returns (uint256) {
+        return 0;
+    }
 }
 
 contract MockTournamentFactory is ITournamentFactory {
