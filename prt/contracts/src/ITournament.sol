@@ -503,6 +503,10 @@ interface ITournament {
     /// that have been emitted since the contract was deployed.
     function getCommitmentJoinedCount() external view returns (uint256);
 
+    /// @notice Get the number of `MatchCreated` events
+    /// that have been emitted since the contract was deployed.
+    function getMatchCreatedCount() external view returns (uint256);
+
     //
     // Time view functions
     //

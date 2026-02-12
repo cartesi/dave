@@ -42,13 +42,6 @@ contract TournamentTest is Util {
     address player0 = vm.addr(1);
     address player1 = vm.addr(2);
 
-    event MatchCreated(
-        Match.IdHash indexed matchIdHash,
-        Tree.Node indexed one,
-        Tree.Node indexed two,
-        Tree.Node leftOfTwo
-    );
-
     constructor() {
         (FACTORY,) = Util.instantiateTournamentFactory();
     }
@@ -69,8 +62,8 @@ contract TournamentTest is Util {
         // player 1 joins tournament
         uint256 _opponent = 1;
         // pair commitment, expect a match
-        vm.expectEmit(true, true, false, true, address(topTournament));
-        emit MatchCreated(
+        vm.expectEmit(true, true, true, true, address(topTournament));
+        emit ITournament.MatchCreated(
             Util.matchId(_opponent, 0).hashFromId(),
             playerNodes[0][ArbitrationConstants.height(0)],
             playerNodes[1][ArbitrationConstants.height(0)],
@@ -78,12 +71,19 @@ contract TournamentTest is Util {
         );
 
         uint256 player1BalanceBefore = player1.balance;
+        uint256 matchCreatedCountBefore = topTournament.getMatchCreatedCount();
         Util.joinTournament(topTournament, _opponent);
         uint256 player1BalanceAfter = player1.balance;
+        uint256 matchCreatedCountAfter = topTournament.getMatchCreatedCount();
         assertEq(
             player1BalanceBefore - bondAmount,
             player1BalanceAfter,
             "Player 1 should have paid bond"
+        );
+        assertEq(
+            matchCreatedCountAfter,
+            matchCreatedCountBefore + 1,
+            "MatchCreated count should increase by 1"
         );
     }
 
