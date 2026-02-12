@@ -239,9 +239,9 @@ contract Tournament is ITournament {
         _clock.requireNotInitialized();
         _clock.setNewPaused(args.startInstant, args.allowance);
 
+        _emitCommitmentJoined(_commitmentRoot, _finalState, msg.sender);
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
         claimers[_commitmentRoot] = msg.sender;
-        _emitCommitmentJoined(_commitmentRoot, _finalState, msg.sender);
     }
 
     /// @inheritdoc ITournament
