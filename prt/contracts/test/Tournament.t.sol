@@ -152,12 +152,14 @@ contract TournamentTest is Util {
         uint256 tournamentBalanceBefore = address(topTournament).balance;
         uint256 callerBalanceBefore = player0.balance;
         vm.txGasPrice(2);
-        vm.prank(player0);
-        topTournament.winMatchByTimeout(
+        vm.startPrank(player0);
+        Util.winMatchByTimeout(
+            topTournament,
             _matchId,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
+        vm.stopPrank();
         uint256 tournamentBalanceAfter = address(topTournament).balance;
         uint256 callerBalanceAfter = player0.balance;
 
@@ -244,7 +246,8 @@ contract TournamentTest is Util {
             "should be able to win match by timeout"
         );
 
-        topTournament.winMatchByTimeout(
+        Util.winMatchByTimeout(
+            topTournament,
             _matchId,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[0][ArbitrationConstants.height(0) - 1]
@@ -295,7 +298,7 @@ contract TournamentTest is Util {
 
         uint256 tournamentBalanceBefore = address(topTournament).balance;
         uint256 callerBalanceBefore = address(this).balance;
-        topTournament.eliminateMatchByTimeout(_matchId);
+        Util.eliminateMatchByTimeout(topTournament, _matchId);
         uint256 tournamentBalanceAfter = address(topTournament).balance;
         uint256 callerBalanceAfter = address(this).balance;
 
@@ -340,7 +343,8 @@ contract TournamentTest is Util {
         );
 
         // Correct children should succeed
-        topTournament.winMatchByTimeout(
+        Util.winMatchByTimeout(
+            topTournament,
             _matchId,
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]

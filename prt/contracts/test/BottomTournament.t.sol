@@ -545,7 +545,7 @@ contract BottomTournamentTest is Util {
         uint256 end2 = Time.Instant.unwrap(c2.startInstant.add(c2.allowance));
         uint256 endMax = end1 > end2 ? end1 : end2;
         vm.roll(endMax);
-        bottomTournament.eliminateMatchByTimeout(_matchId);
+        Util.eliminateMatchByTimeout(bottomTournament, _matchId);
 
         _match = bottomTournament.getMatch(_matchId.hashFromId());
         assertFalse(

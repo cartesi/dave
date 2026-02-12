@@ -75,6 +75,7 @@ contract Tournament is ITournament {
     uint256 commitmentJoinedCount;
     uint256 matchCreatedCount;
     uint256 matchAdvancedCount;
+    uint256 matchDeletedCount;
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
     uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
@@ -909,13 +910,7 @@ contract Tournament is ITournament {
         }
         Match.IdHash _matchIdHash = _matchId.hashFromId();
         delete matches[_matchIdHash];
-        emit MatchDeleted(
-            _matchIdHash,
-            _matchId.commitmentOne,
-            _matchId.commitmentTwo,
-            _reason,
-            _winnerCommitment
-        );
+        _emitMatchDeleted(_matchIdHash, _matchId, _reason, _winnerCommitment);
     }
 
     function deleteClaimer(Tree.Node commitment) internal {
@@ -1067,6 +1062,10 @@ contract Tournament is ITournament {
         return matchAdvancedCount;
     }
 
+    function getMatchDeletedCount() external view override returns (uint256) {
+        return matchDeletedCount;
+    }
+
     function _ensureTournamentIsNotFinished() private view {
         require(!isFinished(), TournamentIsFinished());
     }
@@ -1101,5 +1100,21 @@ contract Tournament is ITournament {
     ) private {
         emit MatchAdvanced(matchIdHash, otherParent, leftNode);
         ++matchAdvancedCount;
+    }
+
+    function _emitMatchDeleted(
+        Match.IdHash matchIdHash,
+        Match.Id memory matchId,
+        MatchDeletionReason reason,
+        WinnerCommitment winnerCommitment
+    ) private {
+        emit MatchDeleted(
+            matchIdHash,
+            matchId.commitmentOne,
+            matchId.commitmentTwo,
+            reason,
+            winnerCommitment
+        );
+        ++matchDeletedCount;
     }
 }
