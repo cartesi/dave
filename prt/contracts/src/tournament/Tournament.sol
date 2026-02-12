@@ -74,6 +74,7 @@ contract Tournament is ITournament {
     Time.Instant lastMatchDeleted;
     uint256 commitmentJoinedCount;
     uint256 matchCreatedCount;
+    uint256 matchAdvancedCount;
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
     uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
@@ -1062,6 +1063,10 @@ contract Tournament is ITournament {
         return matchCreatedCount;
     }
 
+    function getMatchAdvancedCount() external view override returns (uint256) {
+        return matchAdvancedCount;
+    }
+
     function _ensureTournamentIsNotFinished() private view {
         require(!isFinished(), TournamentIsFinished());
     }
@@ -1095,5 +1100,6 @@ contract Tournament is ITournament {
         Tree.Node leftNode
     ) private {
         emit MatchAdvanced(matchIdHash, otherParent, leftNode);
+        ++matchAdvancedCount;
     }
 }

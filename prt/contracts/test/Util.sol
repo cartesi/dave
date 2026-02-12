@@ -177,6 +177,8 @@ contract Util is Test {
     ) internal returns (uint256 _playerToSeal) {
         (,,, uint64 _current) = _tournament.tournamentLevelConstants();
         for (_current; _current > 1; _current -= 1) {
+            uint256 matchAdvancedCountBefore =
+                _tournament.getMatchAdvancedCount();
             if (_playerToSeal == 0) {
                 // advance match alternately until it can be sealed
                 // starts with player 0
@@ -208,6 +210,11 @@ contract Util is Test {
                 }
                 _playerToSeal = 0;
             }
+            assertEq(
+                _tournament.getMatchAdvancedCount(),
+                matchAdvancedCountBefore + 1,
+                "MatchAdvanced count should be increased by 1"
+            );
         }
     }
 
