@@ -74,6 +74,8 @@ contract MiddleTournamentTest is Util {
         middleTournament =
             ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
+        Util.assertEventCountersEqualZero(middleTournament);
+
         // Only player 0 joins middle; let it finish by timeout (no matches occur)
         Util.joinTournament(middleTournament, 0);
 
