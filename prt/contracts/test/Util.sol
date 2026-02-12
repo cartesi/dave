@@ -243,9 +243,15 @@ contract Util is Test {
         Tree.Node _right = playerNodes[_player][height - 1];
         Machine.Hash _finalState = _player == 0 ? ONE_STATE : TWO_STATE;
         uint256 bondAmount = _tournament.bondValue();
+        uint256 commitmentJoinedCountBefore =
+            _tournament.getCommitmentJoinedCount();
         vm.prank(addrs[_player]);
         _tournament.joinTournament{value: bondAmount}(
             _finalState, generateFinalStateProof(_player, height), _left, _right
+        );
+        assertEq(
+            _tournament.getCommitmentJoinedCount(),
+            commitmentJoinedCountBefore + 1
         );
     }
 
@@ -367,5 +373,12 @@ contract Util is Test {
         );
 
         return (stateTransition, riscVStateTransition, cmioStateTransition);
+    }
+
+    function assertEventCountersEqualZero(ITournament tournament)
+        internal
+        view
+    {
+        assertEq(tournament.getCommitmentJoinedCount(), 0);
     }
 }

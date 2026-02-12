@@ -499,6 +499,10 @@ interface ITournament {
         view
         returns (uint64 maxLevel, uint64 level, uint64 log2step, uint64 height);
 
+    /// @notice Get the number of `CommitmentJoined` events
+    /// that have been emitted since the contract was deployed.
+    function getCommitmentJoinedCount() external view returns (uint256);
+
     //
     // Time view functions
     //

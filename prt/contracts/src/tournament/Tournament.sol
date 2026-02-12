@@ -72,6 +72,7 @@ contract Tournament is ITournament {
     Tree.Node danglingCommitment;
     uint256 matchCount;
     Time.Instant lastMatchDeleted;
+    uint256 commitmentJoinedCount;
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
     uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
@@ -239,7 +240,7 @@ contract Tournament is ITournament {
 
         pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
         claimers[_commitmentRoot] = msg.sender;
-        emit CommitmentJoined(_commitmentRoot, _finalState, msg.sender);
+        _emitCommitmentJoined(_commitmentRoot, _finalState, msg.sender);
     }
 
     /// @inheritdoc ITournament
@@ -1042,11 +1043,29 @@ contract Tournament is ITournament {
         }
     }
 
+    function getCommitmentJoinedCount()
+        external
+        view
+        override
+        returns (uint256)
+    {
+        return commitmentJoinedCount;
+    }
+
     function _ensureTournamentIsNotFinished() private view {
         require(!isFinished(), TournamentIsFinished());
     }
 
     function _ensureTournamentIsOpen() private view {
         require(!isClosed(), TournamentIsClosed());
+    }
+
+    function _emitCommitmentJoined(
+        Tree.Node commitment,
+        Machine.Hash finalStateHash,
+        address submitter
+    ) private {
+        emit CommitmentJoined(commitment, finalStateHash, submitter);
+        ++commitmentJoinedCount;
     }
 }
