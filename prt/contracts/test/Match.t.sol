@@ -26,14 +26,13 @@ library ExternalMatch {
 
     function advanceMatch(
         Match.State storage state,
-        Match.Id calldata id,
         Tree.Node leftNode,
         Tree.Node rightNode,
         Tree.Node newLeftNode,
         Tree.Node newRightNode
     ) external {
         Match.advanceMatch(
-            state, id, leftNode, rightNode, newLeftNode, newRightNode
+            state, leftNode, rightNode, newLeftNode, newRightNode
         );
     }
 
@@ -131,7 +130,6 @@ contract MatchTest is Test {
         advanceMatchStateLeft.requireCanBeAdvanced();
         ExternalMatch.advanceMatch(
             advanceMatchStateLeft,
-            id,
             leftDivergenceCommitment1,
             Tree.ZERO_NODE,
             Tree.ZERO_NODE,
@@ -190,7 +188,6 @@ contract MatchTest is Test {
         advanceMatchStateRight.requireCanBeAdvanced();
         ExternalMatch.advanceMatch(
             advanceMatchStateRight,
-            id,
             Tree.ZERO_NODE,
             rightDivergenceCommitment1,
             Tree.ZERO_NODE,
@@ -257,7 +254,6 @@ contract MatchTest is Test {
         advanceMatchStateRight.requireCanBeAdvanced();
         ExternalMatch.advanceMatch(
             advanceMatchStateRight,
-            id,
             Tree.ZERO_NODE,
             rightDivergenceCommitment3,
             Tree.ZERO_NODE,
@@ -273,7 +269,6 @@ contract MatchTest is Test {
         advanceMatchStateRight.requireCanBeAdvanced();
         ExternalMatch.advanceMatch(
             advanceMatchStateRight,
-            id,
             Tree.ZERO_NODE,
             rightDivergenceCommitment2,
             Tree.ZERO_NODE,
