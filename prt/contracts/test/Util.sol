@@ -315,12 +315,19 @@ contract Util is Test {
         Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
         Tree.Node _right = playerNodes[_player][0];
 
+        uint256 newInnerTournamentCountBefore =
+            _tournament.getNewInnerTournamentCount();
         _tournament.sealInnerMatchAndCreateInnerTournament(
             _matchId,
             _left,
             _right,
             ONE_STATE,
             generateDivergenceProof(_player, height)
+        );
+        assertEq(
+            _tournament.getNewInnerTournamentCount(),
+            newInnerTournamentCountBefore + 1,
+            "NewInnerTournament count should be increased by 1"
         );
     }
 

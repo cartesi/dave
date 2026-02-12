@@ -76,6 +76,7 @@ contract Tournament is ITournament {
     uint256 matchCreatedCount;
     uint256 matchAdvancedCount;
     uint256 matchDeletedCount;
+    uint256 newInnerTournamentCount;
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
     uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
@@ -555,7 +556,7 @@ contract Tournament is ITournament {
         );
         matchIdFromInnerTournaments[_inner] = _matchId;
 
-        emit NewInnerTournament(_matchId.hashFromId(), _inner);
+        _emitNewInnerTournament(_matchId.hashFromId(), _inner);
     }
 
     /// @inheritdoc ITournament
@@ -1066,6 +1067,15 @@ contract Tournament is ITournament {
         return matchDeletedCount;
     }
 
+    function getNewInnerTournamentCount()
+        external
+        view
+        override
+        returns (uint256)
+    {
+        return newInnerTournamentCount;
+    }
+
     function _ensureTournamentIsNotFinished() private view {
         require(!isFinished(), TournamentIsFinished());
     }
@@ -1116,5 +1126,13 @@ contract Tournament is ITournament {
             winnerCommitment
         );
         ++matchDeletedCount;
+    }
+
+    function _emitNewInnerTournament(
+        Match.IdHash matchIdHash,
+        ITournament childTournament
+    ) private {
+        emit NewInnerTournament(matchIdHash, childTournament);
+        ++newInnerTournamentCount;
     }
 }
