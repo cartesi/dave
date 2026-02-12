@@ -462,5 +462,9 @@ contract Util is Test {
         view
     {
         assertEq(tournament.getCommitmentJoinedCount(), 0);
+        assertEq(tournament.getMatchCreatedCount(), 0);
+        assertEq(tournament.getMatchAdvancedCount(), 0);
+        assertEq(tournament.getMatchDeletedCount(), 0);
+        assertEq(tournament.getNewInnerTournamentCount(), 0);
     }
 }

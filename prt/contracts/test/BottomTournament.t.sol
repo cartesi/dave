@@ -150,6 +150,8 @@ contract BottomTournamentTest is Util {
         bottomTournament =
             ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
+        Util.assertEventCountersEqualZero(bottomTournament);
+
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
 
