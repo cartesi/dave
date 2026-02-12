@@ -245,6 +245,7 @@ contract Util is Test {
         uint256 bondAmount = _tournament.bondValue();
         uint256 commitmentJoinedCountBefore =
             _tournament.getCommitmentJoinedCount();
+        uint256 matchCreatedCountBefore = _tournament.getMatchCreatedCount();
         vm.prank(addrs[_player]);
         _tournament.joinTournament{value: bondAmount}(
             _finalState, generateFinalStateProof(_player, height), _left, _right
@@ -252,6 +253,11 @@ contract Util is Test {
         assertEq(
             _tournament.getCommitmentJoinedCount(),
             commitmentJoinedCountBefore + 1
+        );
+        assertGe(
+            _tournament.getMatchCreatedCount(),
+            matchCreatedCountBefore,
+            "MatchCreated count must be non-decreasing"
         );
     }
 

@@ -73,6 +73,7 @@ contract Tournament is ITournament {
     uint256 matchCount;
     Time.Instant lastMatchDeleted;
     uint256 commitmentJoinedCount;
+    uint256 matchCreatedCount;
 
     uint256 constant MAX_GAS_PRICE = 50 gwei;
     uint256 constant MESSAGE_SENDER_PROFIT = 10 gwei;
@@ -875,7 +876,7 @@ contract Tournament is ITournament {
             clearDanglingCommitment();
             matchCount++;
 
-            emit MatchCreated(
+            _emitMatchCreated(
                 _matchId, _danglingCommitment, _rootHash, _leftNode
             );
         } else {
@@ -1052,6 +1053,10 @@ contract Tournament is ITournament {
         return commitmentJoinedCount;
     }
 
+    function getMatchCreatedCount() external view override returns (uint256) {
+        return matchCreatedCount;
+    }
+
     function _ensureTournamentIsNotFinished() private view {
         require(!isFinished(), TournamentIsFinished());
     }
@@ -1067,5 +1072,15 @@ contract Tournament is ITournament {
     ) private {
         emit CommitmentJoined(commitment, finalStateHash, submitter);
         ++commitmentJoinedCount;
+    }
+
+    function _emitMatchCreated(
+        Match.IdHash matchIdHash,
+        Tree.Node one,
+        Tree.Node two,
+        Tree.Node leftOfTwo
+    ) private {
+        emit MatchCreated(matchIdHash, one, two, leftOfTwo);
+        ++matchCreatedCount;
     }
 }
