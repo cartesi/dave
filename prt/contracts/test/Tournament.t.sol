@@ -295,6 +295,7 @@ contract TournamentTest is Util {
 
         uint256 tournamentBalanceBefore = address(topTournament).balance;
         uint256 callerBalanceBefore = address(this).balance;
+        vm.txGasPrice(2);
         topTournament.eliminateMatchByTimeout(_matchId);
         uint256 tournamentBalanceAfter = address(topTournament).balance;
         uint256 callerBalanceAfter = address(this).balance;

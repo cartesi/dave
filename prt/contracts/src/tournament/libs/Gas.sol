@@ -4,7 +4,7 @@
 pragma solidity ^0.8.17;
 
 library Gas {
-    uint256 constant TX = 21000;
+    uint256 constant TX = 25000;
 
     uint256 constant ADVANCE_MATCH = 65175 + TX;
     uint256 constant WIN_MATCH_BY_TIMEOUT = 86203 + TX;
