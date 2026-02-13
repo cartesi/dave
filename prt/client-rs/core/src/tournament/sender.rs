@@ -16,6 +16,18 @@ use crate::{machine::MachineProof, tournament::MatchID};
 use cartesi_dave_merkle::{Digest, MerkleProof};
 use cartesi_prt_contracts::tournament;
 
+/// Default gas limit for refundable tournament calls (body + refund modifier overhead;
+/// sealInnerMatchAndCreateInnerTournament also creates a contract and needs more).
+/// Override with `GAS_LIMIT` env var if needed.
+const DEFAULT_GAS_LIMIT: u64 = 15_000_000;
+
+fn gas_limit() -> u64 {
+    std::env::var("GAS_LIMIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_GAS_LIMIT)
+}
+
 #[derive(Clone, Debug)]
 pub struct EthArenaSender {
     provider: DynProvider,
@@ -146,17 +158,17 @@ impl ArenaSender for EthArenaSender {
         new_right_node: Digest,
     ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let mut call = tournament.advanceMatch(
-            match_id.into(),
-            left_node.into(),
-            right_node.into(),
-            new_left_node.into(),
-            new_right_node.into(),
-        );
-        if let Some(limit) = std::env::var("GAS_LIMIT").ok().and_then(|v| v.parse().ok()) {
-            call = call.gas(limit);
-        }
-        let tx_result = call.send().await;
+        let tx_result = tournament
+            .advanceMatch(
+                match_id.into(),
+                left_node.into(),
+                right_node.into(),
+                new_left_node.into(),
+                new_right_node.into(),
+            )
+            .gas(gas_limit())
+            .send()
+            .await;
         allow_revert_rethrow_others("advanceMatch", tx_result).await
     }
 
@@ -182,6 +194,7 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_proof.node.into(),
                 initial_hash_siblings,
             )
+            .gas(gas_limit())
             .send()
             .await;
         allow_revert_rethrow_others("sealInnerMatchAndCreateInnerTournament", tx_result).await
@@ -197,6 +210,7 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
         let tx_result = tournament
             .winInnerTournament(child_tournament, left_node.into(), right_node.into())
+            .gas(gas_limit())
             .send()
             .await;
         allow_revert_rethrow_others("winInnerTournament", tx_result).await
@@ -212,6 +226,7 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
         let tx_result = tournament
             .winMatchByTimeout(match_id.into(), left_node.into(), right_node.into())
+            .gas(gas_limit())
             .send()
             .await;
         allow_revert_rethrow_others("winMatchByTimeout", tx_result).await
@@ -239,6 +254,7 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_proof.node.into(),
                 initial_hash_siblings,
             )
+            .gas(gas_limit())
             .send()
             .await;
         allow_revert_rethrow_others("sealLeafMatch", tx_result).await
@@ -260,6 +276,7 @@ impl ArenaSender for EthArenaSender {
                 right_node.into(),
                 Bytes::from(proofs),
             )
+            .gas(gas_limit())
             .send()
             .await;
         allow_revert_rethrow_others("winLeafMatch", tx_result).await
@@ -269,6 +286,7 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
         let tx_result = tournament
             .eliminateMatchByTimeout(match_id.into())
+            .gas(gas_limit())
             .send()
             .await;
         allow_revert_rethrow_others("eliminateMatchByTimeout", tx_result).await
@@ -282,6 +300,7 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
         let tx_result = tournament
             .eliminateInnerTournament(inner_tournament)
+            .gas(gas_limit())
             .send()
             .await;
         allow_revert_rethrow_others("eliminateInnerTournament", tx_result).await
