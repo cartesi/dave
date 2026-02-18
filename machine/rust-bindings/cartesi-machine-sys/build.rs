@@ -30,7 +30,7 @@ fn main() {
     }
 
     // static link
-    // println!("cargo:rustc-link-lib=slirp");
+    println!("cargo:rustc-link-lib=slirp");
     cfg_if::cfg_if! {
         if #[cfg(feature = "remote_machine")] {
             println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
@@ -167,7 +167,7 @@ mod build_cm {
     mod copy_uarch {
         use std::{env, fs, path::Path};
 
-        fn copy(uarch_path: &Path) {
+        pub(crate) fn copy(uarch_path: &Path) {
             let uarch_pristine_hash_path =
                 env::var("UARCH_PRISTINE_HASH_PATH").expect("`UARCH_PRISTINE_HASH_PATH` not set");
             let uarch_pristine_ram_path =

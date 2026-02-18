@@ -1,14 +1,22 @@
 update-submodules:
   git submodule update --recursive --init
 
+apply-generated-files-diff VERSION="v0.19.0":
+  cd machine/emulator && \
+    wget https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff && \
+    git apply add-generated-files.diff
+
+bundle-boost:
+  make -C machine/emulator bundle-boost
+
 clean-emulator:
   make -C machine/emulator clean depclean distclean
 
 clean-contracts: clean-consensus-contracts clean-prt-contracts clean-bindings clean-deployments
   make -C machine/emulator clean depclean distclean
 
-setup: update-submodules clean-emulator clean-contracts
-  make -C machine/emulator uarch-with-toolchain # Requries docker, necessary for machine bindings
+setup: update-submodules clean-emulator clean-contracts bundle-boost apply-generated-files-diff
+  make -C machine/emulator # Requries docker, necessary for machine bindings
   just -f ./test/programs/justfile build-honeypot-snapshot # Requries docker, necessary for tests
 
 # Run this once after cloning, if using a docker environment
@@ -59,13 +67,13 @@ fmt-rust-workspace: bind
 check-fmt-rust-workspace: bind
   cargo fmt --check
 check-rust-workspace: bind
-  cargo check --features build_uarch
+  cargo check --features download_uarch
 test-rust-workspace: bind
-  cargo test --features build_uarch
+  cargo test --features download_uarch
 build-rust-workspace *ARGS: bind
-  cargo build {{ARGS}} --features build_uarch
+  cargo build {{ARGS}} --features download_uarch
 build-release-rust-workspace *ARGS: bind
-  cargo build --release {{ARGS}} --features build_uarch
+  cargo build --release {{ARGS}} --features download_uarch
 clean-rust-workspace: bind
   cargo clean
 

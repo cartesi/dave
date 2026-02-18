@@ -45,7 +45,7 @@ repository = "https://github.com/cartesi/dave"
 
 # machine bindings
 cartesi-machine = { path = "machine/rust-bindings/cartesi-machine", features = [
-  "build_uarch",
+  "download_uarch",
 ] }
 
 # solidity bindings
