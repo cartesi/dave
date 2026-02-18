@@ -97,6 +97,7 @@ pub fn create_epoch_manager_task(watch: Watch, parameters: &PRTConfig) -> thread
                         params.address_book.consensus,
                         state_manager,
                         params.sleep_duration,
+                        params.long_block_range_error_codes.clone(),
                     );
 
                     epoch_manager.execution_loop(inner_watch, provider).await
