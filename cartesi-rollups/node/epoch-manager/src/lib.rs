@@ -25,6 +25,7 @@ pub struct EpochManager<AS: ArenaSender, SM: StateManager> {
     arena_sender: Arc<Mutex<AS>>,
     consensus: Address,
     sleep_duration: Duration,
+    long_block_range_error_codes: Vec<String>,
     state_manager: SM,
     last_react_epoch: (Option<Player<AS>>, u64),
 }
@@ -35,11 +36,13 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
         consensus_address: Address,
         state_manager: SM,
         sleep_duration: Duration,
+        long_block_range_error_codes: Vec<String>,
     ) -> Self {
         Self {
             arena_sender,
             consensus: consensus_address,
             sleep_duration,
+            long_block_range_error_codes,
             state_manager,
             last_react_epoch: (None, 0),
         }
@@ -190,6 +193,7 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
                 snapshot.to_string_lossy().to_string(),
                 last_sealed_epoch.root_tournament,
                 last_sealed_epoch.block_created_number,
+                self.long_block_range_error_codes.clone(),
                 self.state_manager
                     .epoch_directory(last_sealed_epoch.epoch_number)?,
             )

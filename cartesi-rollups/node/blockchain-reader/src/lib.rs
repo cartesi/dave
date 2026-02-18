@@ -499,7 +499,10 @@ async fn latest_finalized_block(
     Ok(block_number)
 }
 
-fn should_retry_with_partition(err: &Error, long_block_range_error_codes: &Vec<String>) -> bool {
+fn should_retry_with_partition(
+    err: &impl std::error::Error,
+    long_block_range_error_codes: &Vec<String>,
+) -> bool {
     for code in long_block_range_error_codes {
         let s = format!("{:?}", err);
         if s.contains(&code.to_string()) {
@@ -801,6 +804,23 @@ mod blockchain_reader_tests {
         watch.notify(Arc::new(anyhow::anyhow!("".to_owned())));
         r.join().unwrap();
         drop(anvil);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_should_retry() -> Result<()> {
+        let s = r###"Error: HTTP error 400 with body: {"jsonrpc":"2.0","id":3,"error":{"code":-32600,"message":"You can make eth_getLogs requests with up to a 10000 block range. Based on your parameters, this block range should work: [0x1754746, 0x1756e55]"}}"###;
+
+        assert!(should_retry_with_partition(
+            &std::io::Error::other(s),
+            &vec![
+                "-32005".to_string(),
+                "-32600".to_string(),
+                "-32602".to_string(),
+                "-32616".to_string()
+            ]
+        ));
 
         Ok(())
     }
