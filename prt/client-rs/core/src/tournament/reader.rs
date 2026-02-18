@@ -1,13 +1,16 @@
 //! This module defines the struct [StateReader] that is responsible for the reading the states
 //! of tournaments
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
 use std::collections::HashMap;
 
 use alloy::{
+    contract::{Error, Event},
     eips::BlockNumberOrTag::Latest,
     providers::{DynProvider, Provider},
+    rpc::types::{Log, Topic},
+    sol_types::SolEvent,
     sol_types::private::{Address, B256},
 };
 
@@ -24,14 +27,55 @@ use cartesi_prt_contracts::{
 pub struct StateReader {
     client: DynProvider,
     block_created_number: u64,
+    long_block_range_error_codes: Vec<String>,
 }
 
 impl StateReader {
-    pub fn new(client: DynProvider, block_created_number: u64) -> Result<Self> {
+    pub fn new(
+        client: DynProvider,
+        block_created_number: u64,
+        long_block_range_error_codes: Vec<String>,
+    ) -> Result<Self> {
         Ok(Self {
             client,
             block_created_number,
+            long_block_range_error_codes,
         })
+    }
+
+    async fn latest_block_number(&self) -> Result<u64> {
+        let block_number = self
+            .client
+            .get_block(Latest.into())
+            .await?
+            .expect("cannot get last block")
+            .header
+            .number;
+
+        Ok(block_number)
+    }
+
+    async fn query_events<E: SolEvent + Send + Sync>(
+        &self,
+        topic1: Option<&Topic>,
+        read_from: &Address,
+    ) -> Result<Vec<(E, Log)>> {
+        let latest_block = self.latest_block_number().await?;
+
+        if latest_block < self.block_created_number {
+            return Ok(vec![]);
+        }
+
+        get_events(
+            &self.client,
+            topic1,
+            read_from,
+            self.block_created_number,
+            latest_block,
+            &self.long_block_range_error_codes,
+        )
+        .await
+        .map_err(|errors| anyhow!("{errors:?}"))
     }
 
     async fn created_tournament(
@@ -39,20 +83,18 @@ impl StateReader {
         tournament_address: Address,
         match_id: MatchID,
     ) -> Result<Option<TournamentCreatedEvent>> {
-        let tournament =
-            non_leaf_tournament::NonLeafTournament::new(tournament_address, &self.client);
-        let events = tournament
-            .NewInnerTournament_filter()
-            .address(tournament_address)
-            .topic1::<B256>(match_id.hash().into())
-            .from_block(self.block_created_number)
-            .to_block(Latest)
-            .query()
+        let topic1: Topic = B256::from(match_id.hash()).into();
+        let events = self
+            .query_events::<non_leaf_tournament::NonLeafTournament::NewInnerTournament>(
+                Some(&topic1),
+                &tournament_address,
+            )
             .await?;
-        if let Some(event) = events.last() {
+
+        if let Some((event, _)) = events.last() {
             Ok(Some(TournamentCreatedEvent {
                 parent_match_id_hash: match_id.hash(),
-                new_tournament_address: event.0.childTournament,
+                new_tournament_address: event.childTournament,
             }))
         } else {
             Ok(None)
@@ -94,21 +136,16 @@ impl StateReader {
     }
 
     async fn created_matches(&self, tournament_address: Address) -> Result<Vec<MatchCreatedEvent>> {
-        let tournament = tournament::Tournament::new(tournament_address, &self.client);
-        let events: Vec<MatchCreatedEvent> = tournament
-            .MatchCreated_filter()
-            .address(tournament_address)
-            .from_block(self.block_created_number)
-            .to_block(Latest)
-            .query()
+        let events: Vec<MatchCreatedEvent> = self
+            .query_events::<tournament::Tournament::MatchCreated>(None, &tournament_address)
             .await?
             .iter()
-            .map(|event| MatchCreatedEvent {
+            .map(|(event, _)| MatchCreatedEvent {
                 id: MatchID {
-                    commitment_one: event.0.one.into(),
-                    commitment_two: event.0.two.into(),
+                    commitment_one: event.one.into(),
+                    commitment_two: event.two.into(),
                 },
-                left_hash: event.0.leftOfTwo.into(),
+                left_hash: event.leftOfTwo.into(),
             })
             .collect();
         Ok(events)
@@ -118,17 +155,12 @@ impl StateReader {
         &self,
         tournament_address: Address,
     ) -> Result<Vec<CommitmentJoinedEvent>> {
-        let tournament = tournament::Tournament::new(tournament_address, &self.client);
-        let events = tournament
-            .CommitmentJoined_filter()
-            .address(tournament_address)
-            .from_block(self.block_created_number)
-            .to_block(Latest)
-            .query()
+        let events = self
+            .query_events::<tournament::Tournament::CommitmentJoined>(None, &tournament_address)
             .await?
             .iter()
-            .map(|c| CommitmentJoinedEvent {
-                root: c.0.commitment.into(),
+            .map(|(event, _)| CommitmentJoinedEvent {
+                root: event.commitment.into(),
             })
             .collect();
         Ok(events)
@@ -337,4 +369,92 @@ pub struct CommitmentJoinedEvent {
 pub struct MatchCreatedEvent {
     pub id: MatchID,
     pub left_hash: Digest,
+}
+
+// Below is a simplified version originated from https://github.com/cartesi/state-fold
+// ParitionProvider will attempt to fetch events in smaller partition if the original request is too large
+#[async_recursion]
+async fn get_events<E: SolEvent + Send + Sync>(
+    provider: &impl Provider,
+    topic1: Option<&Topic>,
+    read_from: &Address,
+    start_block: u64,
+    end_block: u64,
+    long_block_range_error_codes: &Vec<String>,
+) -> std::result::Result<Vec<(E, Log)>, Vec<Error>> {
+    let event: Event<_, _, _> = {
+        let mut e = Event::new_sol(provider, read_from)
+            .from_block(start_block)
+            .to_block(end_block)
+            .event(E::SIGNATURE);
+
+        if let Some(t) = topic1 {
+            e = e.topic1(t.clone());
+        }
+
+        e
+    };
+
+    match event.query().await {
+        Ok(l) => Ok(l),
+        Err(e) => {
+            if should_retry_with_partition(&e, long_block_range_error_codes) {
+                let middle = {
+                    let blocks = 1 + end_block - start_block;
+                    let half = blocks / 2;
+                    start_block + half - 1
+                };
+
+                let first_res = get_events(
+                    provider,
+                    topic1,
+                    read_from,
+                    start_block,
+                    middle,
+                    long_block_range_error_codes,
+                )
+                .await;
+
+                let second_res = get_events(
+                    provider,
+                    topic1,
+                    read_from,
+                    middle + 1,
+                    end_block,
+                    long_block_range_error_codes,
+                )
+                .await;
+
+                match (first_res, second_res) {
+                    (Ok(mut first), Ok(second)) => {
+                        first.extend(second);
+                        Ok(first)
+                    }
+
+                    (Err(mut first), Err(second)) => {
+                        first.extend(second);
+                        Err(first)
+                    }
+
+                    (Err(err), _) | (_, Err(err)) => Err(err),
+                }
+            } else {
+                Err(vec![e])
+            }
+        }
+    }
+}
+
+fn should_retry_with_partition(
+    err: &impl std::error::Error,
+    long_block_range_error_codes: &Vec<String>,
+) -> bool {
+    for code in long_block_range_error_codes {
+        let s = format!("{:?}", err);
+        if s.contains(&code.to_string()) {
+            return true;
+        }
+    }
+
+    false
 }

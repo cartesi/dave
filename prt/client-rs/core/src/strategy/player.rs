@@ -46,10 +46,15 @@ impl<AS: ArenaSender> Player<AS> {
         machine_path: String,
         root_tournament: Address,
         block_created_number: u64,
+        long_block_range_error_codes: Vec<String>,
         state_dir: PathBuf,
     ) -> Result<Self> {
         let db = DisputeStateAccess::new(inputs, leafs, root_tournament.to_string(), state_dir)?;
-        let reader = StateReader::new(provider.clone(), block_created_number)?;
+        let reader = StateReader::new(
+            provider.clone(),
+            block_created_number,
+            long_block_range_error_codes,
+        )?;
         let gc = GarbageCollector::new(arena_sender.clone(), root_tournament);
         let commitment_builder = MachineCommitmentBuilder::new(machine_path.clone());
         Ok(Self {
