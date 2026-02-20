@@ -239,27 +239,32 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            target: x86_64-unknown-linux-gnu
           - arch: arm64
-            target: aarch64-unknown-linux-gnu
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
+
       - name: Create directory
-        run: |
-          mkdir -pv target/${{ matrix.target }}/release
+        run: mkdir -p upload
+
+      - name: Extract version from tag
+        id: extract_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - uses: actions/download-artifact@v4
         with:
           name: cartesi-rollups-prt-node-linux-${{ matrix.arch }}
-          path: target/${{ matrix.target }}/release
 
-      - name: Publish artifacts and release
-        uses: houseabsolute/actions-rust-release@v0
-        with:
-          executable-name: cartesi-rollups-prt-node
-          target: ${{ matrix.target }}
-          changes-file: CHANGELOG.md
+      - name: Compress node binary
+        run: tar -czf "$FILEPATH" cartesi-rollups-prt-node
+        env:
+          FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-node-${{ matrix.arch }}.tar.gz
+
+      - name: Upload assets to release on GitHub
+        run: gh release upload "$TAG" upload/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
 
   release-contracts:
     needs: [prt-contracts, dave-contracts, prt-honeypot, build]
@@ -273,6 +278,10 @@ jobs:
       - name: Create directory
         run: |
           mkdir -p upload
+
+      - name: Extract version from tag
+        id: extract_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Setup tools
         uses: ./.github/actions/setup-tools
@@ -295,7 +304,7 @@ jobs:
       - name: Compress contract artifacts
         run: tar -czf "$FILEPATH" prt/contracts/out cartesi-rollups/contracts/out
         env:
-          FILEPATH: upload/cartesi-rollups-prt-contract-artifacts.tar.gz
+          FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-contract-artifacts.tar.gz
 
       - name: Build devnet
         working-directory: ./cartesi-rollups/contracts
@@ -305,9 +314,10 @@ jobs:
       - name: Compress devnet artifacts
         run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments state.json
         env:
-          FILEPATH: upload/cartesi-rollups-prt-anvil-${{ steps.setup.outputs.installed-foundry-version }}.tar.gz
+          FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-anvil-${{ steps.setup.outputs.installed-foundry-version }}.tar.gz
 
-      - name: Upload files to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          files: upload/*
+      - name: Upload assets to release on GitHub
+        run: gh release upload "$TAG" upload/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
