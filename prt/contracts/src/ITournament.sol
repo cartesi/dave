@@ -457,8 +457,6 @@ interface ITournament {
         view
         returns (TournamentArguments memory);
 
-    /// @notice Returns non-root tournament arguments
-
     /// @notice Check whether a match can be won by timeout.
     /// @param matchId The match ID
     function canWinMatchByTimeout(Match.Id calldata matchId)
