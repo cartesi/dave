@@ -8,7 +8,7 @@ RUN <<EOF
 set -eu
 apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git
 curl -L https://foundry.paradigm.xyz | bash
-~/.foundry/bin/foundryup --install stable
+~/.foundry/bin/foundryup --install v1.4.3
 install -Dm755 ~/.foundry/bin/* /usr/local/bin/
 EOF
 # cargo binstall (to install just)
@@ -33,6 +33,14 @@ RUN \
   libclang-dev \
   xxd jq sqlite3; \
   rm -rf /var/cache/apt;
+
+# install pnpm
+ARG PNPM_VERSION=10.7.0
+ARG TARGETARCH
+RUN PNPM_ARCH=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "arm64") && \
+    wget -qO /usr/local/bin/pnpm \
+        "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linux-${PNPM_ARCH}" && \
+    chmod +x /usr/local/bin/pnpm
 
 # install foundry
 COPY --from=tools /usr/local/bin/forge   /usr/local/bin/
@@ -81,7 +89,9 @@ RUN \
   --mount=type=cache,target=cartesi-rollups/contracts/cache,sharing=locked \
   --mount=type=cache,target=prt/contracts/out,sharing=locked \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
-  just -f test/programs/justfile build-programs
+  just -f test/programs/justfile build-programs && \
+  just -f test/programs/justfile build-honeypot-snapshot && \
+  just -f cartesi-rollups/contracts/justfile build-devnet
 
 # copy everything else
 COPY \
@@ -105,5 +115,4 @@ RUN \
   just build-rust-workspace; \
   cp target/debug/cartesi-rollups-prt-node .
 
-# because of `--mount`, we need to do this.
 RUN mkdir -p target/debug && mv cartesi-rollups-prt-node target/debug/
