@@ -16,8 +16,8 @@ fmt:
 check-fmt:
     forge fmt --check
 
-install-deps:
-    pnpm install
+install-deps PNPM_INSTALL_ARGS='' PNPM_CI='true':
+    CI={{PNPM_CI}} pnpm install {{PNPM_INSTALL_ARGS}}
     forge soldeer install
 
 # compile smart contracts
