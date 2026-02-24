@@ -255,6 +255,9 @@ jobs:
         with:
           name: cartesi-rollups-prt-node-linux-${{ matrix.arch }}
 
+      - name: Change node binary file permissions
+        run: chmod 755 cartesi-rollups-prt-node
+
       - name: Compress node binary
         run: tar -czf "$FILEPATH" cartesi-rollups-prt-node
         env:
