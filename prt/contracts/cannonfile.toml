@@ -1,5 +1,5 @@
 name = 'cartesi-prt-multilevel'
-version = '2.0.0'
+version = '2.1.1'
 description = 'Cartesi PRT contracts'
 
 [var.MainnetTournamentConstants]
@@ -44,41 +44,8 @@ create2 = true
 salt = "<%= zeroHash %>"
 ifExists = "continue"
 
-[deploy.TopTournament]
-artifact = "TopTournament"
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-
-[deploy.TopTournamentFactory]
-artifact = "TopTournamentFactory"
-args = ["<%= contracts.TopTournament.address %>"]
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-
-[deploy.MiddleTournament]
-artifact = "MiddleTournament"
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-
-[deploy.MiddleTournamentFactory]
-artifact = "MiddleTournamentFactory"
-args = ["<%= contracts.MiddleTournament.address %>"]
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-
-[deploy.BottomTournament]
-artifact = "BottomTournament"
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-
-[deploy.BottomTournamentFactory]
-artifact = "BottomTournamentFactory"
-args = ["<%= contracts.BottomTournament.address %>"]
+[deploy.Tournament]
+artifact = "Tournament"
 create2 = true
 salt = "<%= zeroHash %>"
 ifExists = "continue"
@@ -96,9 +63,7 @@ ifExists = "continue"
 [deploy.MultiLevelTournamentFactory]
 artifact = "MultiLevelTournamentFactory"
 args = [
-    "<%= contracts.TopTournamentFactory.address %>",
-    "<%= contracts.MiddleTournamentFactory.address %>",
-    "<%= contracts.BottomTournamentFactory.address %>",
+    "<%= contracts.Tournament.address %>",
     "<%= contracts.CanonicalTournamentParametersProvider.address %>",
     "<%= contracts.CartesiStateTransition.address %>",
 ]
