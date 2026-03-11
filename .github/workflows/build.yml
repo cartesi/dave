@@ -18,7 +18,7 @@ jobs:
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
-          version: 0.19.0
+          version: 0.20.0-test
           suffix-version: ""
 
       - name: Setup env
@@ -71,7 +71,7 @@ jobs:
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
-          version: 0.19.0
+          version: 0.20.0-test
       - name: Download PRT contracts
         working-directory: ./prt/contracts
         run: |

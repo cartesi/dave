@@ -17,7 +17,7 @@ clean-program prog:
 # yield
 build-yield: clean-yield
   cartesi-machine --ram-image=./linux.bin \
-    --flash-drive=label:root,filename:./rootfs.ext2 \
+    --flash-drive=label:root,data_filename:./rootfs.ext2 \
     --no-rollback --store=./yield/machine-image \
     -- "while true; do yield manual rx-accepted; yield manual rx-rejected; done"
 clean-yield: (clean-program "yield")
@@ -25,7 +25,7 @@ clean-yield: (clean-program "yield")
 # echo
 build-echo: clean-echo
   cartesi-machine --ram-image=./linux.bin \
-    --flash-drive=label:root,filename:./rootfs.ext2 \
+    --flash-drive=label:root,data_filename:./rootfs.ext2 \
     --no-rollback --store=./echo/machine-image \
     -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1 --reject=2"
 clean-echo: (clean-program "echo")
@@ -34,6 +34,9 @@ clean-echo: (clean-program "echo")
 build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
   git clone https://github.com/cartesi/honeypot.git honeypot/project
   git -C honeypot/project reset --hard 34d00721a527eeb7ed8cce2a13a142e3d8de9aad # v3.0.0
+  sed -i 's/,filename:/,data_filename:/g' honeypot/project/Makefile
+  sed -i 's/--append-bootargs=ro/--append-bootargs=rw/g' honeypot/project/Makefile
+  sed -i 's/label:state,length:4096,user:dapp/label:state,length:4096,user:dapp,mke2fs:false,mount:false/g' honeypot/project/Makefile
   mkdir -p honeypot/project/config/devnet
   ./honeypot/generate-devnet-honeypot-config.sh > honeypot/project/config/devnet/honeypot-config.hpp
   make -C honeypot/project snapshot HONEYPOT_CONFIG=devnet
@@ -45,7 +48,7 @@ clean-honeypot-project:
 # compute
 build-compute: clean-compute
   cartesi-machine --ram-image=./linux.bin \
-    --flash-drive=label:root,filename:./rootfs.ext2 \
+    --flash-drive=label:root,data_filename:./rootfs.ext2 \
     --no-rollback --store=./compute/machine-image \
     --max-mcycle=0 \
     -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"

@@ -1,4 +1,4 @@
-FROM cartesi/machine-emulator:0.19.0
+FROM cartesi/machine-emulator:0.20.0-test
 USER root
 
 RUN apt-get update && \

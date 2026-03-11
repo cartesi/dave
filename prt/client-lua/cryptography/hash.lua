@@ -1,4 +1,5 @@
-local keccak = require "cartesi".keccak
+local cartesi = require "cartesi"
+local keccak = cartesi.keccak256
 local conversion = require "utils.conversion"
 
 local interned_hashes = {}

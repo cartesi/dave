@@ -4,7 +4,7 @@ inputs:
   version:
     description: 'Version of Cartesi Machine to install'
     required: false
-    default: 0.19.0
+    default: 0.20.0-test
   suffix-version:
     description: 'Suffix of Cartesi Machine to install'
     required: false

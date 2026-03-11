@@ -6,19 +6,19 @@
 pub mod machine {
     use cartesi_machine_sys::*;
     // pub const CYCLE_MAX: u64 = CM_MCYCLE_MAX as u64;
-    pub const HASH_SIZE: u32 = CM_HASH_SIZE;
-    pub const TREE_LOG2_WORD_SIZE: u32 = CM_TREE_LOG2_WORD_SIZE;
-    pub const TREE_LOG2_PAGE_SIZE: u32 = CM_TREE_LOG2_PAGE_SIZE;
-    pub const TREE_LOG2_ROOT_SIZE: u32 = CM_TREE_LOG2_ROOT_SIZE;
+    pub const HASH_SIZE: u32 = CM_HASH_SIZE as u32;
+    pub const TREE_LOG2_WORD_SIZE: u32 = CM_HASH_TREE_LOG2_WORD_SIZE as u32;
+    pub const TREE_LOG2_PAGE_SIZE: u32 = CM_HASH_TREE_LOG2_PAGE_SIZE as u32;
+    pub const TREE_LOG2_ROOT_SIZE: u32 = CM_HASH_TREE_LOG2_ROOT_SIZE as u32;
 }
 
 pub mod pma {
     use cartesi_machine_sys::*;
-    pub const RX_START: u64 = CM_PMA_CMIO_RX_BUFFER_START as u64;
-    pub const RX_LOG2_SIZE: u64 = CM_PMA_CMIO_RX_BUFFER_LOG2_SIZE as u64;
-    pub const TX_START: u64 = CM_PMA_CMIO_TX_BUFFER_START as u64;
-    pub const TX_LOG2_SIZE: u64 = CM_PMA_CMIO_TX_BUFFER_LOG2_SIZE as u64;
-    pub const RAM_START: u64 = CM_PMA_RAM_START as u64;
+    pub const RX_START: u64 = CM_AR_CMIO_RX_BUFFER_START as u64;
+    pub const RX_LOG2_SIZE: u64 = CM_AR_CMIO_RX_BUFFER_LOG2_SIZE as u64;
+    pub const TX_START: u64 = CM_AR_CMIO_TX_BUFFER_START as u64;
+    pub const TX_LOG2_SIZE: u64 = CM_AR_CMIO_TX_BUFFER_LOG2_SIZE as u64;
+    pub const RAM_START: u64 = CM_AR_RAM_START as u64;
 }
 
 pub mod break_reason {
