@@ -47,12 +47,8 @@ library Match {
         return l == r;
     }
 
-    function requireEq(IdHash left, IdHash right) internal pure {
-        require(left.eq(right), "matches are not equal");
-    }
-
     function requireExist(IdHash idHash) internal pure {
-        require(!idHash.isZero(), "match doesn't exist");
+        require(!idHash.isZero(), ITournament.MatchDoesNotExist());
     }
 
     //
@@ -171,11 +167,11 @@ library Match {
         return state.isInit;
     }
 
-    function isFinished(State memory state) internal pure returns (bool) {
+    function isSealed(State memory state) internal pure returns (bool) {
         return state.currentHeight == 0;
     }
 
-    function canBeFinalized(State memory state) internal pure returns (bool) {
+    function canBeSealed(State memory state) internal pure returns (bool) {
         return state.currentHeight == 1;
     }
 
@@ -231,19 +227,19 @@ library Match {
     // Requires
     //
     function requireExist(State memory state) internal pure {
-        require(state.exists(), "match does not exist");
+        require(state.exists(), ITournament.MatchDoesNotExist());
     }
 
-    function requireIsFinished(State memory state) internal pure {
-        require(state.isFinished(), "match is not finished");
+    function requireIsSealed(State memory state) internal pure {
+        require(state.isSealed(), ITournament.MatchIsNotSealed());
     }
 
-    function requireCanBeFinalized(State memory state) internal pure {
-        require(state.canBeFinalized(), "match is not ready to be finalized");
+    function requireCanBeSealed(State memory state) internal pure {
+        require(state.canBeSealed(), ITournament.MatchCannotBeSealed());
     }
 
     function requireCanBeAdvanced(State memory state) internal pure {
-        require(state.canBeAdvanced(), "match can't be advanced");
+        require(state.canBeAdvanced(), ITournament.MatchCannotBeAdvanced());
     }
 
     function requireParentHasChildren(

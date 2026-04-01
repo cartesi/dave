@@ -20,10 +20,6 @@ import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
 
 library ExternalMatch {
-    function requireEq(Match.IdHash left, Match.IdHash right) external pure {
-        Match.requireEq(left, right);
-    }
-
     function advanceMatch(
         Match.State storage state,
         Tree.Node leftNode,
@@ -140,7 +136,7 @@ contract MatchTest is Test {
         assertTrue(advanceMatchStateLeft.leftNode.eq(Tree.ZERO_NODE));
         assertTrue(advanceMatchStateLeft.rightNode.eq(Tree.ZERO_NODE));
 
-        advanceMatchStateLeft.requireCanBeFinalized();
+        advanceMatchStateLeft.requireCanBeSealed();
         ExternalMatch.sealMatch(
             advanceMatchStateLeft,
             args,
@@ -151,7 +147,7 @@ contract MatchTest is Test {
             new bytes32[](0)
         );
 
-        advanceMatchStateLeft.requireIsFinished();
+        advanceMatchStateLeft.requireIsSealed();
         (Machine.Hash agreeHash, uint256 agreeCycle,,) =
             advanceMatchStateLeft.getDivergence(args);
 
@@ -202,7 +198,7 @@ contract MatchTest is Test {
         proof[0] = Tree.Node.unwrap(ONE_NODE);
         proof[1] = Tree.Node.unwrap(Tree.ZERO_NODE);
 
-        advanceMatchStateRight.requireCanBeFinalized();
+        advanceMatchStateRight.requireCanBeSealed();
         ExternalMatch.sealMatch(
             advanceMatchStateRight,
             args,
@@ -213,7 +209,7 @@ contract MatchTest is Test {
             proof
         );
 
-        advanceMatchStateRight.requireIsFinished();
+        advanceMatchStateRight.requireIsSealed();
         (Machine.Hash agreeHash, uint256 agreeCycle,,) =
             advanceMatchStateRight.getDivergence(args);
 
@@ -284,7 +280,7 @@ contract MatchTest is Test {
         proof[1] = Tree.Node.unwrap(Tree.ZERO_NODE);
         proof[2] = Tree.Node.unwrap(Tree.ZERO_NODE);
 
-        advanceMatchStateRight.requireCanBeFinalized();
+        advanceMatchStateRight.requireCanBeSealed();
         ExternalMatch.sealMatch(
             advanceMatchStateRight,
             args,
@@ -295,7 +291,7 @@ contract MatchTest is Test {
             proof
         );
 
-        advanceMatchStateRight.requireIsFinished();
+        advanceMatchStateRight.requireIsSealed();
         (Machine.Hash agreeHash, uint256 agreeCycle,,) =
             advanceMatchStateRight.getDivergence(args);
 
@@ -375,16 +371,11 @@ contract MatchTest is Test {
         );
     }
 
-    function testEqual() public {
+    function testEqual() public view {
         assertTrue(leftDivergenceMatchIdHash.eq(leftDivergenceMatchIdHash));
         assertTrue(rightDivergenceMatchIdHash.eq(rightDivergenceMatchIdHash));
         assertTrue(!leftDivergenceMatchIdHash.eq(rightDivergenceMatchIdHash));
         assertTrue(!rightDivergenceMatchIdHash.eq(leftDivergenceMatchIdHash));
-
-        vm.expectRevert("matches are not equal");
-        ExternalMatch.requireEq(
-            leftDivergenceMatchIdHash, rightDivergenceMatchIdHash
-        );
     }
 
     function testIdHash() public pure {
