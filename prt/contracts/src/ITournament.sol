@@ -210,17 +210,17 @@ interface ITournament {
 
     /// @notice A player provided a commitment leaf-node proof that produced
     /// a commitment root different from the one provided to `joinTournament`.
-    /// @param received The expected commitment root
-    /// @param expected The commitment root computed from the leaf-node proof
-    error CommitmentStateMismatch(Tree.Node received, Tree.Node expected);
+    /// @param expected The expected commitment root
+    /// @param computed The commitment root computed from the leaf-node proof
+    error CommitmentStateMismatch(Tree.Node expected, Tree.Node computed);
 
     error CommitmentFinalStateMismatch(Tree.Node received, Tree.Node expected);
 
     /// @notice A player provided a commitment leaf-node proof whose length
     /// is different from the commitment tree height.
-    /// @param received The agreed-upon commitment tree height
-    /// @param expected The length of the siblings array provided by the player
-    error CommitmentProofWrongSize(uint256 received, uint256 expected);
+    /// @param treeHeight The agreed-upon commitment tree height
+    /// @param siblingsLength The length of the siblings array provided by the player
+    error CommitmentProofWrongSize(uint256 treeHeight, uint256 siblingsLength);
 
     /// @notice The tournament is finished, which restricts most actions.
     error TournamentIsFinished();
@@ -244,12 +244,15 @@ interface ITournament {
     /// commitments has timed out, and the other hasn't, allowing it to be
     /// paired against any dangling commitment (instantly) or challenging
     /// commitment (that might join the tournament later, if still open).
-    /// @param commitment Which of the two commitments did not timeout (1 or 2)
-    /// @param parent The root of the commitment that did not timeout
+    /// @param whichCommitment Which of the two commitments did not timeout (1 or 2)
+    /// @param commitmentRoot The root of the commitment that did not timeout
     /// @param left The commitment root left child provided by the player
     /// @param right The commitment root right child provided by the player
     error WrongChildren(
-        uint256 commitment, Tree.Node parent, Tree.Node left, Tree.Node right
+        uint256 whichCommitment,
+        Tree.Node commitmentRoot,
+        Tree.Node left,
+        Tree.Node right
     );
 
     /// @notice A player tried to win a match by timeout but neither of the
@@ -311,11 +314,13 @@ interface ITournament {
     /// @notice The on-chain implementation of the state-transition
     /// function applied over an agreed-upon state has produced a
     /// post-state that differs from that of the match commitment.
-    /// @param commitment Which of the two commitments is wrong
-    /// @param computed The post-state computed by the state-transition function
-    /// @param claimed The post-state contained within the commitment
+    /// @param whichCommitment Which of the two commitments is wrong
+    /// @param computedPostState The post-state computed by the state-transition function
+    /// @param committedPostState The post-state contained within the commitment
     error WrongFinalState(
-        uint256 commitment, Machine.Hash computed, Machine.Hash claimed
+        uint256 whichCommitment,
+        Machine.Hash computedPostState,
+        Machine.Hash committedPostState
     );
 
     /// @notice While trying to win a match through the on-chain implementation
@@ -577,7 +582,7 @@ interface ITournament {
     /// @notice Get the clock and final state of a commitment.
     /// @param commitmentRoot The commitment
     /// @return clock The commitment clock
-    /// @return finalState The commited final state
+    /// @return finalState The committed final state
     function getCommitment(Tree.Node commitmentRoot)
         external
         view
