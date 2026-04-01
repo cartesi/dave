@@ -257,11 +257,11 @@ interface ITournament {
 
     /// @notice A player tried to win a match by timeout but neither of the
     /// two match commitment clocks have timed out yet.
-    error ClockNotTimedOut();
+    error NeitherClockHasTimedOut();
 
     /// @notice A player tried to eliminate a match by timeout but at
     /// least one of the two match commitment clocks has not timed out yet.
-    error BothClocksHaveNotTimedOut();
+    error AtLeastOneClockHasNotTimedOut();
 
     /// @notice A player tried to join the inner tournament with a commitment
     /// whose final state is not equal to neither of the two contested final states

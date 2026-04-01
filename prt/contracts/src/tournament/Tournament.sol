@@ -332,7 +332,7 @@ contract Tournament is ITournament {
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.TWO
             );
         } else {
-            revert ClockNotTimedOut();
+            revert NeitherClockHasTimedOut();
         }
     }
 
@@ -359,7 +359,7 @@ contract Tournament is ITournament {
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.NONE
             );
         } else {
-            revert BothClocksHaveNotTimedOut();
+            revert AtLeastOneClockHasNotTimedOut();
         }
     }
 
