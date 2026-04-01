@@ -417,7 +417,7 @@ contract Tournament is ITournament {
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
-        _matchState.requireCanBeFinalized();
+        _matchState.requireCanBeSealed();
 
         {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
@@ -457,7 +457,7 @@ contract Tournament is ITournament {
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
         _matchState.requireExist();
-        _matchState.requireIsFinished();
+        _matchState.requireIsSealed();
 
         (
             Machine.Hash _agreeHash,
@@ -538,7 +538,7 @@ contract Tournament is ITournament {
         }
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
-        _matchState.requireCanBeFinalized();
+        _matchState.requireCanBeSealed();
 
         Time.Duration _maxDuration;
         {
@@ -595,7 +595,7 @@ contract Tournament is ITournament {
 
         Match.State storage _matchState = matches[_matchIdHash];
         _matchState.requireExist();
-        _matchState.requireIsFinished();
+        _matchState.requireIsSealed();
 
         require(
             !_childTournament.canBeEliminated(),
@@ -655,7 +655,7 @@ contract Tournament is ITournament {
 
         Match.State storage _matchState = matches[_matchIdHash];
         _matchState.requireExist();
-        _matchState.requireIsFinished();
+        _matchState.requireIsSealed();
 
         require(
             _childTournament.canBeEliminated(),

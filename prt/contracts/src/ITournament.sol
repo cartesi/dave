@@ -358,6 +358,26 @@ interface ITournament {
     /// zero allowance is used to indicate that such a clock is not initialized.
     error InitializedClockCannotHaveZeroAllowance();
 
+    /// @notice The match does not exist.
+    /// @dev This happens when the match ID hash is zero
+    /// or when the match state is not initialized.
+    error MatchDoesNotExist();
+
+    /// @notice The match is not sealed.
+    /// @dev This happens when the current match height is
+    /// either 1 (ready to be sealed) or greater (ready to be advanced).
+    error MatchIsNotSealed();
+
+    /// @notice The match cannot be sealed.
+    /// @dev This happens when the current match height is
+    /// either 0 (sealed) or greater than 1 (ready to be advanced).
+    error MatchCannotBeSealed();
+
+    /// @notice The match cannot be advanced.
+    /// @dev This happens when the current match height is
+    /// either 0 (sealed) or 1 (ready to be sealed).
+    error MatchCannotBeAdvanced();
+
     //
     // Functions
     //
