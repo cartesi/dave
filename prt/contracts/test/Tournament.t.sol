@@ -291,7 +291,7 @@ contract TournamentTest is Util {
 
         vm.roll(_rootTournamentFinish - 1);
         // cannot eliminate match when both blocks still have time
-        vm.expectRevert(ITournament.BothClocksHaveNotTimedOut.selector);
+        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
         topTournament.eliminateMatchByTimeout(_matchId);
 
         vm.roll(_rootTournamentFinish);

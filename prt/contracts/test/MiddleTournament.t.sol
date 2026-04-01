@@ -284,7 +284,7 @@ contract MiddleTournamentTest is Util {
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
-        vm.expectRevert(ITournament.ClockNotTimedOut.selector);
+        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][ArbitrationConstants.height(1) - 1],
@@ -589,7 +589,7 @@ contract MiddleTournamentTest is Util {
         assertFalse(hasWinner);
 
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
-        vm.expectRevert(ITournament.ClockNotTimedOut.selector);
+        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
         middleTournament.winMatchByTimeout(
             Util.matchId(1, 1),
             playerNodes[0][ArbitrationConstants.height(1) - 1],
@@ -661,7 +661,7 @@ contract MiddleTournamentTest is Util {
         );
 
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT));
-        vm.expectRevert(ITournament.ClockNotTimedOut.selector);
+        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
         topTournament.winMatchByTimeout(
             topMatch,
             playerNodes[0][ArbitrationConstants.height(0) - 1],
