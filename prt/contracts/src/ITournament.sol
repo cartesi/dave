@@ -206,15 +206,11 @@ interface ITournament {
         Machine.Hash initialState, Machine.Hash agreeState
     );
 
-    error LengthMismatch(uint64 treeHeight, uint64 siblingsLength);
-
     /// @notice A player provided a commitment leaf-node proof that produced
     /// a commitment root different from the one provided to `joinTournament`.
     /// @param expected The expected commitment root
     /// @param computed The commitment root computed from the leaf-node proof
     error CommitmentStateMismatch(Tree.Node expected, Tree.Node computed);
-
-    error CommitmentFinalStateMismatch(Tree.Node received, Tree.Node expected);
 
     /// @notice A player provided a commitment leaf-node proof whose length
     /// is different from the commitment tree height.
