@@ -997,7 +997,7 @@ contract Tournament is ITournament {
     ///         1. Tournament finished and has no winner, OR
     ///         2. Tournament finished and enough time elapsed after the winning
     ///            commitment could have won (winner's allowance window).
-    function canBeEliminated() external view override returns (bool) {
+    function canBeEliminated() public view override returns (bool) {
         TournamentArguments memory args = tournamentArguments();
 
         if (_isRootTournament(args)) {
@@ -1042,7 +1042,7 @@ contract Tournament is ITournament {
             revert RequireNonRootTournament();
         }
 
-        if (!isFinished() || this.canBeEliminated()) {
+        if (!isFinished() || canBeEliminated()) {
             Clock.State memory zeroClock;
             return (false, Tree.ZERO_NODE, Tree.ZERO_NODE, zeroClock);
         }
