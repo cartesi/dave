@@ -337,6 +337,27 @@ interface ITournament {
     /// called for non-root tournaments (in which `0 < level <= levels - 1`).
     error RequireNonRootTournament();
 
+    /// @notice A clock was expected to be initialized, but isn't.
+    error ClockNotInitialized();
+
+    /// @notice A clock wasn't expected to be initialized, but is.
+    error ClockAlreadyInitialized();
+
+    /// @notice The time until timeout of a paused clock is consulted,
+    /// but cannot be determined, since we cannot know if or when
+    /// the clock will be unpaused.
+    error PausedClockCannotTimeout();
+
+    /// @notice There is an attempt to advance a clock with no time left,
+    /// but doing so would result in a clock with zero allowance,
+    /// which is used to indicate that such a clock is not initialized.
+    error CannotAdvanceTimedOutClock();
+
+    /// @notice There is an attempt to initialize a clock with zero allowance,
+    /// but doing so would contradict the semantics of the action, because
+    /// zero allowance is used to indicate that such a clock is not initialized.
+    error InitializedClockCannotHaveZeroAllowance();
+
     //
     // Functions
     //
