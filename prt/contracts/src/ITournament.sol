@@ -188,42 +188,152 @@ interface ITournament {
     // Errors
     //
 
+    /// @notice The amount of Wei passed to `joinTournament` is less than
+    /// the bond value (which can be consulted through `bondValue`).
     error InsufficientBond();
+
+    /// @notice A bond refund cannot be issued to the tournament winner
+    /// because there is no tournament winner.
     error NoWinner();
+
+    /// @notice The divergence falls in the first leaf node of the commitment tree
+    /// (in the granularity of the given tournament level), and the state prior
+    /// to the divergence (provided by the player) is not equal to the agreed-upon
+    /// initial machine state (set forth by the tournament instantiator).
+    /// @param initialState The agreed-upon initial machine state
+    /// @param agreeState The state prior to the divergence provided by the player
     error IncorrectAgreeState(
         Machine.Hash initialState, Machine.Hash agreeState
     );
+
     error LengthMismatch(uint64 treeHeight, uint64 siblingsLength);
+
+    /// @notice A player provided a commitment leaf-node proof that produced
+    /// a commitment root different from the one provided to `joinTournament`.
+    /// @param received The expected commitment root
+    /// @param expected The commitment root computed from the leaf-node proof
     error CommitmentStateMismatch(Tree.Node received, Tree.Node expected);
+
     error CommitmentFinalStateMismatch(Tree.Node received, Tree.Node expected);
+
+    /// @notice A player provided a commitment leaf-node proof whose length
+    /// is different from the commitment tree height.
+    /// @param received The agreed-upon commitment tree height
+    /// @param expected The length of the siblings array provided by the player
     error CommitmentProofWrongSize(uint256 received, uint256 expected);
+
+    /// @notice The tournament is finished, which restricts most actions.
     error TournamentIsFinished();
+
+    /// @notice The tournament is not finished, which restricts bonds from
+    /// being recovered at this point, since a winner has not been declared yet.
     error TournamentNotFinished();
+
+    /// @notice The tournament is closed, which restricts new commitments
+    /// from joining the tournament, since the tournament's global allowance
+    /// has already elapsed.
     error TournamentIsClosed();
+
+    /// @notice A reentrancy-attack attempt has been detected and neutralized
+    /// by reverting the nested call to the tournament contract.
     error ReentrancyDetected();
+
+    /// @notice A player provided commitment root children nodes that produced
+    /// a commitment root different from the one provided to `joinTournament`.
+    /// This error is raised in the context of a match in which one of the
+    /// commitments has timed out, and the other hasn't, allowing it to be
+    /// paired against any dangling commitment (instantly) or challenging
+    /// commitment (that might join the tournament later, if still open).
+    /// @param commitment Which of the two commitments did not timeout (1 or 2)
+    /// @param parent The root of the commitment that did not timeout
+    /// @param left The commitment root left child provided by the player
+    /// @param right The commitment root right child provided by the player
     error WrongChildren(
         uint256 commitment, Tree.Node parent, Tree.Node left, Tree.Node right
     );
+
+    /// @notice A player tried to win a match by timeout but neither of the
+    /// two match commitment clocks have timed out yet.
     error ClockNotTimedOut();
+
+    /// @notice A player tried to eliminate a match by timeout but at
+    /// least one of the two match commitment clocks has not timed out yet.
     error BothClocksHaveNotTimedOut();
+
+    /// @notice A player tried to join the inner tournament with a commitment
+    /// whose final state is not equal to neither of the two contested final states
+    /// of the match in the parent tournament that created such inner tournament.
+    /// @param contestedFinalStateOne The contested final state #1
+    /// @param contestedFinalStateTwo The contested final state #2
+    /// @param finalState The final state of the commitment provided by the player
     error InvalidContestedFinalState(
         Machine.Hash contestedFinalStateOne,
         Machine.Hash contestedFinalStateTwo,
         Machine.Hash finalState
     );
+
+    /// @notice Internal error in which an invalid winner commitment value
+    /// is passed to an internal function that deletes a match.
+    /// @param winnerCommitment The invalid winner commitment value
     error InvalidWinnerCommitment(WinnerCommitment winnerCommitment);
+
+    /// @notice The tournament has finished but with no winners.
+    /// This is unexpected to happen because we assume that at least
+    /// one player is actively defending the correct commitment.
     error TournamentFailedNoWinner();
+
+    /// @notice The child tournament has not yet finished,
+    /// and therefore not yet declared a winner.
     error ChildTournamentNotFinished();
+
+    /// @notice The child tournament cannot be eliminated,
+    /// either because it has not yet finished or
+    /// because the winner still has time to claim its victory.
     error ChildTournamentCannotBeEliminated();
+
+    /// @notice The child tournament cannot be won,
+    /// because it can be eliminated.
     error ChildTournamentMustBeEliminated();
+
+    /// @notice The player has provided commitment root children
+    /// whose parent is different from the commitment root that won
+    /// a child tournament.
+    /// @param commitmentRoot The commitment root provided by the player
+    /// @param winner The child-tournament winning commitment root
     error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
+
+    /// @notice The child tournament winning commitment root is
+    /// different from the two commitment roots that were paired
+    /// against each other in this tournament.
+    /// @param winner The child-tournament winning commitment root
     error InvalidTournamentWinner(Tree.Node winner);
+
+    /// @notice The on-chain implementation of the state-transition
+    /// function applied over an agreed-upon state has produced a
+    /// post-state that differs from that of the match commitment.
+    /// @param commitment Which of the two commitments is wrong
+    /// @param computed The post-state computed by the state-transition function
+    /// @param claimed The post-state contained within the commitment
     error WrongFinalState(
         uint256 commitment, Machine.Hash computed, Machine.Hash claimed
     );
+
+    /// @notice While trying to win a match through the on-chain implementation
+    /// of the state-transition (step) function, a player has supplied the left
+    /// and right children of a commitment root that is different from
+    /// both commitment roots of a match.
     error WrongNodesForStep();
+
+    /// @notice A player has attempted to call a function that can only be
+    /// called for leaf tournaments (in which `level == levels - 1`).
     error RequireLeafTournament();
+
+    /// @notice A player has attempted to call a function that can only be
+    /// called for non-leaf tournaments (in which `0 <= level < levels - 1`).
     error RequireNonLeafTournament();
+
+    /// @notice A player has attempted to call a function that can only be
+    /// called for non-root tournaments (in which `0 < level <= levels - 1`).
     error RequireNonRootTournament();
 
     //
