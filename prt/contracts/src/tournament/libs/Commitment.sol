@@ -38,13 +38,13 @@ library Commitment {
         Machine.Hash state,
         bytes32[] calldata hashProof
     ) internal pure {
-        Tree.Node expectedCommitment = getRoot(
+        Tree.Node computedCommitment = getRoot(
             Machine.Hash.unwrap(state), treeHeight, position, hashProof
         );
 
         require(
-            commitment.eq(expectedCommitment),
-            ITournament.CommitmentStateMismatch(commitment, expectedCommitment)
+            commitment.eq(computedCommitment),
+            ITournament.CommitmentStateMismatch(commitment, computedCommitment)
         );
     }
 
@@ -61,7 +61,7 @@ library Commitment {
         uint64 siblingsLength = uint64(siblings.length);
         require(
             treeHeight == siblingsLength,
-            ITournament.LengthMismatch(treeHeight, siblingsLength)
+            ITournament.CommitmentProofWrongSize(treeHeight, siblingsLength)
         );
 
         for (uint256 i = 0; i < treeHeight; i++) {
@@ -81,16 +81,14 @@ library Commitment {
         Machine.Hash finalState,
         bytes32[] calldata hashProof
     ) internal pure {
-        Tree.Node expectedCommitment =
+        Tree.Node computedCommitment =
             getRootForLastLeaf(
                 treeHeight, Machine.Hash.unwrap(finalState), hashProof
             );
 
         require(
-            commitment.eq(expectedCommitment),
-            ITournament.CommitmentFinalStateMismatch(
-                commitment, expectedCommitment
-            )
+            commitment.eq(computedCommitment),
+            ITournament.CommitmentStateMismatch(commitment, computedCommitment)
         );
     }
 
