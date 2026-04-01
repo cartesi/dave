@@ -3,6 +3,8 @@
 
 pragma solidity ^0.8.17;
 
+import {ITournament} from "prt-contracts/ITournament.sol";
+
 import {Time} from "./Time.sol";
 
 library Clock {
@@ -24,11 +26,11 @@ library Clock {
     }
 
     function requireInitialized(State memory state) internal pure {
-        require(!state.notInitialized(), "clock is not initialized");
+        require(!state.notInitialized(), ITournament.ClockNotInitialized());
     }
 
     function requireNotInitialized(State memory state) internal pure {
-        require(state.notInitialized(), "clock is initialized");
+        require(state.notInitialized(), ITournament.ClockAlreadyInitialized());
     }
 
     function hasTimeLeft(State memory state) internal view returns (bool) {
@@ -62,7 +64,7 @@ library Clock {
         returns (Time.Duration)
     {
         if (state.startInstant.isZero()) {
-            revert("a paused clock can't timeout");
+            revert ITournament.PausedClockCannotTimeout();
         }
 
         return Time.timeSpan(Time.currentTime(), state.startInstant)
@@ -109,7 +111,7 @@ library Clock {
         Time.Duration _timeLeft = timeLeft(state);
 
         if (_timeLeft.isZero()) {
-            revert("can't advance clock with no time left");
+            revert ITournament.CannotAdvanceTimedOutClock();
         }
 
         toggleClock(state);
@@ -170,7 +172,7 @@ library Clock {
         private
     {
         if (allowance.isZero()) {
-            revert("can't create clock with zero time");
+            revert ITournament.InitializedClockCannotHaveZeroAllowance();
         }
 
         state.allowance = allowance;

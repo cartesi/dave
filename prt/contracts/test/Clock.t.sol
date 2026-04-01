@@ -14,6 +14,7 @@ pragma solidity ^0.8.0;
 
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
+import {ITournament} from "src/ITournament.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 
@@ -92,7 +93,9 @@ contract ClockTest is Test {
     }
 
     function testNewClock() public {
-        vm.expectRevert("can't create clock with zero time");
+        vm.expectRevert(
+            ITournament.InitializedClockCannotHaveZeroAllowance.selector
+        );
         ExternalClock.setNewPaused(
             clock2, Time.currentTime(), Time.Duration.wrap(0)
         );
@@ -110,7 +113,7 @@ contract ClockTest is Test {
         vm.roll(vm.getBlockNumber() + CLOCK_1_ALLOWANCE);
         assertTrue(!clock1.hasTimeLeft(), "clock1 should run out of time");
 
-        vm.expectRevert("can't advance clock with no time left");
+        vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
         ExternalClock.advanceClock(clock1);
     }
 
@@ -156,7 +159,7 @@ contract ClockTest is Test {
             "clock2 shouldn be timeout"
         );
 
-        vm.expectRevert("a paused clock can't timeout");
+        vm.expectRevert(ITournament.PausedClockCannotTimeout.selector);
         ExternalClock.timeSinceTimeout(clock3);
     }
 }
