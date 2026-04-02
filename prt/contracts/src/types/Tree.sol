@@ -7,6 +7,7 @@ import {
     Hashes
 } from "@openzeppelin-contracts-5.5.0/utils/cryptography/Hashes.sol";
 
+import {ITournament} from "prt-contracts/ITournament.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
 library Tree {
@@ -38,7 +39,10 @@ library Tree {
     }
 
     function requireChildren(Node parent, Node left, Node right) internal pure {
-        require(parent.verify(left, right), "child nodes don't match parent");
+        require(
+            parent.verify(left, right),
+            ITournament.InvalidChildrenNodes(parent, left, right)
+        );
     }
 
     function isZero(Node node) internal pure returns (bool) {
@@ -47,7 +51,7 @@ library Tree {
     }
 
     function requireExist(Node node) internal pure {
-        require(!node.isZero(), "tree node doesn't exist");
+        require(!node.isZero(), ITournament.NodeDoesNotExist());
     }
 
     function toMachineHash(Node node) internal pure returns (Machine.Hash) {

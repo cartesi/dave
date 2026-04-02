@@ -378,6 +378,19 @@ interface ITournament {
     /// either 0 (sealed) or 1 (ready to be sealed).
     error MatchCannotBeAdvanced();
 
+    /// @notice The parent of the provided children nodes
+    /// is different from the expected parent node.
+    /// @param expectedParent The expected parent node
+    /// @param leftChild The left child node
+    /// @param rightChild The right child node
+    error InvalidChildrenNodes(
+        Tree.Node expectedParent, Tree.Node leftChild, Tree.Node rightChild
+    );
+
+    /// @notice The node does not exist.
+    /// @dev This happens when the node is zero.
+    error NodeDoesNotExist();
+
     //
     // Functions
     //
