@@ -60,8 +60,8 @@ function Env.spawn_blockchain(inputs)
     Env.app_address = Env.reader.app_address
     Env.consensus_address = Env.reader.consensus_address
     Env.sender = Sender:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, Env.app_address, blockchain.pks[1], blockchain.endpoint)
-    Env.sender:tx_add_inputs(inputs)
     Env.sender:tx_new_dave_app(TEMPLATE_MACHINE_HASH, SALT)
+    Env.sender:tx_add_inputs(inputs)
     Env.sender:advance_blocks(2)
     return blockchain
 end

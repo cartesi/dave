@@ -8,7 +8,7 @@ use alloy::{
     providers::{DynProvider, Provider, ProviderBuilder},
     signers::{Signer, local::PrivateKeySigner},
 };
-use cartesi_dave_contracts::i_dave_app_factory::IDaveAppFactory;
+use cartesi_dave_contracts::i_dave_app_factory::IDaveAppFactory::{self, WithdrawalConfig};
 use cartesi_rollups_contracts::i_input_box::IInputBox;
 use serde::Deserialize;
 use std::{
@@ -84,26 +84,34 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         buffer
     };
 
+    let withdrawal_config = WithdrawalConfig {
+        guardian: Default::default(),
+        log2LeavesPerAccount: Default::default(),
+        log2MaxNumOfAccounts: Default::default(),
+        accountsDriveStartIndex: Default::default(),
+        withdrawalOutputBuilder: Default::default(),
+    };
+
     let salt = FixedBytes::default();
 
     let dave_app_factory_contract = IDaveAppFactory::new(dave_app_factory, &provider);
     let (app, consensus) = dave_app_factory_contract
-        .calculateDaveAppAddress(initial_hash.into(), salt)
+        .calculateDaveAppAddress(initial_hash.into(), withdrawal_config.clone(), salt)
         .call()
         .await
         .expect("failed to calculate Dave app addresses")
         .try_into()
         .unwrap();
 
-    IInputBox::new(input_box, &provider)
-        .addInput(app, "Hello, world!".into())
+    dave_app_factory_contract
+        .newDaveApp(initial_hash.into(), withdrawal_config.clone(), salt)
         .send()
         .await?
         .watch()
         .await?;
 
-    dave_app_factory_contract
-        .newDaveApp(initial_hash.into(), salt)
+    IInputBox::new(input_box, &provider)
+        .addInput(app, "Hello, world!".into())
         .send()
         .await?
         .watch()

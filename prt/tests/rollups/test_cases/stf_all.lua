@@ -7,7 +7,7 @@ local env = require "test_env"
 -- Main Execution
 env.spawn_blockchain {env.sample_inputs[1]}
 local first_epoch = assert(env.reader:read_epochs_sealed()[1])
-assert(first_epoch.input_upper_bound == 1) -- there's one input for epoch 0 already!
+assert(first_epoch.input_upper_bound == 0) -- epoch 0 is empty!
 
 -- Add 3 inputs to epoch 1
 env.sender:tx_add_inputs { env.sample_inputs[1], env.sample_inputs[1], env.sample_inputs[1] }

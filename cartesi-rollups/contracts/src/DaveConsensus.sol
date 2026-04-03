@@ -8,9 +8,12 @@ import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165
 
 import {
     IOutputsMerkleRootValidator
-} from "cartesi-rollups-contracts-2.2.0/src/consensus/IOutputsMerkleRootValidator.sol";
-import {IInputBox} from "cartesi-rollups-contracts-2.2.0/src/inputs/IInputBox.sol";
-import {LibMerkle32} from "cartesi-rollups-contracts-2.2.0/src/library/LibMerkle32.sol";
+} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
+import {ApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/ApplicationChecker.sol";
+import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
+import {LibBinaryMerkleTree} from "cartesi-rollups-contracts-3.0.0/src/library/LibBinaryMerkleTree.sol";
+import {LibKeccak256} from "cartesi-rollups-contracts-3.0.0/src/library/LibKeccak256.sol";
+import {LibMath} from "cartesi-rollups-contracts-3.0.0/src/library/LibMath.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
@@ -23,7 +26,6 @@ import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
-import {Merkle} from "./Merkle.sol";
 
 /// @notice Consensus contract with Dave tournaments.
 ///
@@ -47,9 +49,10 @@ import {Merkle} from "./Merkle.sol";
 /// the accumlating epoch will be sealed, and a new
 /// accumulating epoch will be created.
 ///
-contract DaveConsensus is IDaveConsensus, ERC165 {
-    using Merkle for bytes;
-    using LibMerkle32 for bytes32[];
+contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
+    using LibMath for uint256;
+    using LibBinaryMerkleTree for bytes;
+    using LibBinaryMerkleTree for bytes32[];
 
     /// @notice The input box contract
     IInputBox immutable _INPUT_BOX;
@@ -77,6 +80,9 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
 
     /// @notice Settled output trees' merkle root hash
     mapping(bytes32 => bool) _outputsMerkleRoots;
+
+    /// @notice Last-finalized machine state hash
+    Machine.Hash _lastFinalizedMachineStateHash;
 
     constructor(
         IInputBox inputBox,
@@ -108,7 +114,11 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         epochNumber = _epochNumber;
     }
 
-    function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external override {
+    function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof)
+        external
+        override
+        notForeclosed(_APP_CONTRACT)
+    {
         // Check tournament settlement
         require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
 
@@ -121,11 +131,12 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         // Check outputs Merkle root
         _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
 
-        // Seal current accumulating epoch, save settled output tree
+        // Seal current accumulating epoch, save settled output tree and machine state hash
         _epochNumber++;
         _inputIndexLowerBound = _inputIndexUpperBound;
         _inputIndexUpperBound = _INPUT_BOX.getNumberOfInputs(_APP_CONTRACT);
         _outputsMerkleRoots[outputsMerkleRoot] = true;
+        _lastFinalizedMachineStateHash = finalMachineStateHash;
 
         // Start new tournament
         _tournament = _TOURNAMENT_FACTORY.instantiate(finalMachineStateHash, this);
@@ -184,23 +195,33 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
             return bytes32(0);
         }
 
-        /// forge-lint: disable-next-line(asm-keccak256)
-        bytes32 calculatedInputHash = keccak256(input);
+        bytes32 calculatedInputHash = LibKeccak256.hashBytes(input);
         bytes32 realInputHash = _INPUT_BOX.getInputHash(_APP_CONTRACT, inputIndex);
         require(calculatedInputHash == realInputHash, InputHashMismatch(calculatedInputHash, realInputHash));
 
-        uint256 log2SizeOfDrive = input.getMinLog2SizeOfDrive();
-        return input.getMerkleRootFromBytes(log2SizeOfDrive);
+        uint256 log2DataBlockSize = Memory.LOG2_LEAF;
+        uint256 log2DriveSize = input.length.ceilLog2().max(log2DataBlockSize);
+        return input.merkleRoot(log2DriveSize, log2DataBlockSize, LibKeccak256.hashBlock, LibKeccak256.hashPair);
     }
 
     function isOutputsMerkleRootValid(address appContract, bytes32 outputsMerkleRoot)
         public
         view
         override
+        onlyValidAppContract(appContract)
         returns (bool)
     {
-        require(_APP_CONTRACT == appContract, ApplicationMismatch(_APP_CONTRACT, appContract));
         return _outputsMerkleRoots[outputsMerkleRoot];
+    }
+
+    function getLastFinalizedMachineMerkleRoot(address appContract)
+        external
+        view
+        override
+        onlyValidAppContract(appContract)
+        returns (bytes32)
+    {
+        return Machine.Hash.unwrap(_lastFinalizedMachineStateHash);
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(IERC165, ERC165) returns (bool) {
@@ -222,9 +243,19 @@ contract DaveConsensus is IDaveConsensus, ERC165 {
         require(proof.length == Memory.LOG2_MAX_SIZE, InvalidOutputsMerkleRootProofSize(proof.length));
         bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
             EmulatorConstants.PMA_CMIO_TX_BUFFER_START >> EmulatorConstants.TREE_LOG2_WORD_SIZE,
-            keccak256(abi.encode(outputsMerkleRoot))
+            keccak256(abi.encode(outputsMerkleRoot)),
+            LibKeccak256.hashPair
         );
 
         require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
+    }
+
+    modifier onlyValidAppContract(address appContract) {
+        _ensureAppContractIsValid(appContract);
+        _;
+    }
+
+    function _ensureAppContractIsValid(address appContract) internal view {
+        require(_APP_CONTRACT == appContract, ApplicationMismatch(_APP_CONTRACT, appContract));
     }
 }
