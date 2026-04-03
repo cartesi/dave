@@ -280,8 +280,10 @@ function Reader:balance(address)
 end
 
 function Reader:calculate_dave_app_address(template_hash, salt)
-    local sig = "calculateDaveAppAddress(bytes32,bytes32)(address,address)"
-    local ret = self:_call(self.dave_app_factory_address, sig, { template_hash, salt })
+    local sig = "calculateDaveAppAddress(bytes32,(address,uint8,uint8,uint64,address),bytes32)(address,address)"
+    local address_zero = "0x" .. string.rep("00", 20)
+    local withdrawal_config = string.format("(%s,0,0,0,%s)", address_zero, address_zero)
+    local ret = self:_call(self.dave_app_factory_address, sig, { template_hash, withdrawal_config, salt })
     assert(#ret == 2)
     return table.unpack(ret)
 end

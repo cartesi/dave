@@ -3,12 +3,14 @@
 
 pragma solidity ^0.8.8;
 
+import {BinaryMerkleTreeErrors} from "cartesi-rollups-contracts-3.0.0/src/common/BinaryMerkleTreeErrors.sol";
 import {
     IOutputsMerkleRootValidator
-} from "cartesi-rollups-contracts-2.2.0/src/consensus/IOutputsMerkleRootValidator.sol";
-import {IInputBox} from "cartesi-rollups-contracts-2.2.0/src/inputs/IInputBox.sol";
-import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
+import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
+import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 
+import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 
@@ -37,7 +39,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// the accumlating epoch will be sealed, and a new
 /// accumulating epoch will be created.
 ///
-interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator {
+interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator, IApplicationChecker, BinaryMerkleTreeErrors {
     /// @notice Consensus contract was created
     /// @param inputBox the input box contract
     /// @param appContract the application contract

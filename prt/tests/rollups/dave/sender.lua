@@ -113,11 +113,13 @@ function Sender:tx_add_inputs(inputs)
 end
 
 function Sender:tx_new_dave_app(template_hash, salt)
-    local sig = "newDaveApp(bytes32,bytes32)"
+    local sig = "newDaveApp(bytes32,(address,uint8,uint8,uint64,address),bytes32)"
+    local address_zero = "0x" .. string.rep("00", 20)
+    local withdrawal_config = string.format("(%s,0,0,0,%s)", address_zero, address_zero)
     return self:_send_tx(
         self.dave_app_factory_address,
         sig,
-        { template_hash, salt }
+        { template_hash, withdrawal_config, salt }
     )
 end
 

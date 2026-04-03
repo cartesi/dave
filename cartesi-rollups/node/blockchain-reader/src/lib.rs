@@ -753,8 +753,10 @@ mod blockchain_reader_tests {
 
         let (handle, mut state_manager) = state_access();
 
-        // Note that inputbox is deployed with 1 input already
-        // add inputs to epoch 0
+        let input_count_0 = 1;
+
+        // Note that one input has been sent already
+        // add inputs to epoch 1
         let input_count_1 = 2;
         add_input(&inputbox, address_book.app, INPUT_PAYLOAD, input_count_1).await?;
 
@@ -782,14 +784,19 @@ mod blockchain_reader_tests {
             })
         });
 
-        read_inputs_from_db_until_count(&mut state_manager, 0, 1).await?;
-        read_inputs_from_db_until_count(&mut state_manager, 1, input_count_1).await?;
+        read_inputs_from_db_until_count(&mut state_manager, 0, 0).await?;
+        read_inputs_from_db_until_count(&mut state_manager, 1, input_count_0 + input_count_1)
+            .await?;
 
-        // add inputs ttest_blockchain_readero epoch 1
+        // add inputs to epoch 1
         let input_count_2 = 3;
         add_input(&inputbox, address_book.app, INPUT_PAYLOAD, input_count_2).await?;
-        read_inputs_from_db_until_count(&mut state_manager, 1, input_count_1 + input_count_2)
-            .await?;
+        read_inputs_from_db_until_count(
+            &mut state_manager,
+            1,
+            input_count_0 + input_count_1 + input_count_2,
+        )
+        .await?;
 
         // add more inputs to epoch 1
         let input_count_3 = 3;
@@ -797,7 +804,7 @@ mod blockchain_reader_tests {
         read_inputs_from_db_until_count(
             &mut state_manager,
             1,
-            input_count_1 + input_count_2 + input_count_3,
+            input_count_0 + input_count_1 + input_count_2 + input_count_3,
         )
         .await?;
 

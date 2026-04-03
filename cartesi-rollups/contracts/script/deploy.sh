@@ -6,7 +6,7 @@ cd "${BASH_SOURCE%/*}/.."
 
 roots=(
     '../../prt/contracts'
-    'dependencies/cartesi-rollups-contracts-2.2.0'
+    'dependencies/cartesi-rollups-contracts-3.0.0-alpha.3'
     '.'
 )
 

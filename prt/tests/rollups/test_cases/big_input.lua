@@ -10,7 +10,7 @@ local conversion = require "utils.conversion"
 -- Main Execution
 env.spawn_blockchain {env.sample_inputs[1]}
 local first_epoch = assert(env.reader:read_epochs_sealed()[1])
-assert(first_epoch.input_upper_bound == 1) -- there's one input for epoch 0 already!
+assert(first_epoch.input_upper_bound == 0) -- there's no input for epoch 0!
 
 -- The reduction was 10, however it causes decoding error on some machines
 -- Using 13 to is still a big input but passes the test

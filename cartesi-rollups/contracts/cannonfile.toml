@@ -18,24 +18,3 @@ args = [
 create2 = true
 salt = "<%= zeroHash %>"
 ifExists = "continue"
-
-[deploy.TestFungibleToken]
-artifact = "TestFungibleToken"
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-chains = [13370]
-
-[deploy.TestNonFungibleToken]
-artifact = "TestNonFungibleToken"
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-chains = [13370]
-
-[deploy.TestMultiToken]
-artifact = "TestMultiToken"
-create2 = true
-salt = "<%= zeroHash %>"
-ifExists = "continue"
-chains = [13370]
