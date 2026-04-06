@@ -107,10 +107,20 @@ contract Tournament is ITournament {
         _;
     }
 
+    /// @notice Acquires the lock at the start,
+    /// and releases the lock at the end.
+    /// Avoids reentrancy attacks.
+    modifier withLock() {
+        _acquireLock();
+        _;
+        _releaseLock();
+    }
+
     /// @notice Refunds the message sender with the amount
     /// of Ether wasted on gas on this function call plus
     /// a profit, capped by the current contract balance
     /// and a fraction of the bond value.
+    /// Also acquires the lock beforehand and releases it afterward.
     /// @param gasEstimate A worst-case gas estimate for the modified function
     /// forge-lint: disable-next-line(unwrapped-modifier-logic)
     modifier refundable(uint256 gasEstimate) {
@@ -224,7 +234,7 @@ contract Tournament is ITournament {
         bytes32[] calldata _proof,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external payable override tournamentOpen {
+    ) external payable override withLock tournamentOpen {
         require(msg.value >= bondValue(), InsufficientBond());
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
@@ -359,7 +369,7 @@ contract Tournament is ITournament {
     ///     * Winner is the root tournament winner.
     /// - NON-ROOT:
     ///     * Winner is the inner winner that will be used by the parent tournament.
-    function tryRecoveringBond() public override returns (bool) {
+    function tryRecoveringBond() public override withLock returns (bool) {
         require(isFinished(), TournamentNotFinished());
 
         (bool hasDangling, Tree.Node winningCommitment) =
@@ -372,6 +382,10 @@ contract Tournament is ITournament {
         uint256 contractBalance = address(this).balance;
         (bool success,) = winner.call{value: contractBalance}("");
 
+        // This is the only part of the function body that is not
+        // compliant to the checks-effects-interactions pattern.
+        // So, in order to avoid reentrancy attacks, this function
+        // is modified to acquire (and release) the lock.
         if (success) {
             deleteClaimer(winningCommitment);
         }
@@ -943,9 +957,17 @@ contract Tournament is ITournament {
         return a.min(b).min(c);
     }
 
-    function _refundableBefore() private returns (uint256 gasBefore) {
+    function _acquireLock() private {
         require(!locked, ReentrancyDetected());
         locked = true;
+    }
+
+    function _releaseLock() private {
+        locked = false;
+    }
+
+    function _refundableBefore() private returns (uint256 gasBefore) {
+        _acquireLock();
         gasBefore = gasleft();
     }
 
@@ -963,7 +985,7 @@ contract Tournament is ITournament {
             msg.sender.call{value: refundValue}("");
         emit PartialBondRefund(msg.sender, refundValue, status, ret);
 
-        locked = false;
+        _releaseLock();
     }
 
     /// @inheritdoc ITournament
