@@ -63,7 +63,7 @@ pub struct MachineInstance {
     pub snapshot_path: PathBuf,
 }
 
-const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
+const CHECKPOINT_ADDRESS: u64 = 0xfe0;
 impl MachineInstance {
     pub fn new_from_path(path: &str) -> Result<Self> {
         let runtime_config = RuntimeConfig {
