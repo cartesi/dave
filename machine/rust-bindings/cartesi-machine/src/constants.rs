@@ -19,6 +19,7 @@ pub mod pma {
     pub const TX_START: u64 = CM_AR_CMIO_TX_BUFFER_START as u64;
     pub const TX_LOG2_SIZE: u64 = CM_AR_CMIO_TX_BUFFER_LOG2_SIZE as u64;
     pub const RAM_START: u64 = CM_AR_RAM_START as u64;
+    pub const SHADOW_REVERT_ROOT_HASH_START: u64 = CM_AR_SHADOW_REVERT_ROOT_HASH_START as u64;
 }
 
 pub mod break_reason {

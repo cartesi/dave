@@ -10,7 +10,10 @@ use cartesi_prt_core::machine::constants::{
 use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
     config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
-    constants::{break_reason, pma::TX_START},
+    constants::{
+        break_reason,
+        pma::{SHADOW_REVERT_ROOT_HASH_START, TX_START},
+    },
     error::{MachineError, MachineResult},
     machine::Machine,
     types::{
@@ -44,8 +47,6 @@ pub const STRIDE_COUNT_IN_INPUT: u64 =
 pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
     << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
         - LOG2_STRIDE);
-
-pub const CHECKPOINT_ADDRESS: u64 = 0x7ffff000;
 
 pub struct RollupsMachine {
     machine: Machine,
@@ -110,8 +111,8 @@ impl RollupsMachine {
             CmioRequest::Manual(ManualReason::RxAccepted { .. })
         ));
 
-        let checkpoint_hash = self.machine.root_hash()?;
-        self.feed_input(data, &checkpoint_hash)?;
+        let revert_root_hash = self.machine.root_hash()?;
+        self.feed_input(data, &revert_root_hash)?;
         self.run_machine(BIG_STEPS_IN_STRIDE)?;
 
         let mut state_hashes = Vec::with_capacity(1 << 20);
@@ -143,7 +144,7 @@ impl RollupsMachine {
 
             CmioRequest::Manual(reason) => {
                 state_hashes.push(CommitmentLeaf {
-                    hash: checkpoint_hash,
+                    hash: revert_root_hash,
                     repetitions: STRIDE_COUNT_IN_INPUT - i,
                 });
 
@@ -155,9 +156,9 @@ impl RollupsMachine {
         }
     }
 
-    fn feed_input(&mut self, input: &[u8], checkpoint_hash: &Hash) -> MachineResult<()> {
+    fn feed_input(&mut self, input: &[u8], revert_root_hash: &Hash) -> MachineResult<()> {
         self.machine
-            .write_memory(CHECKPOINT_ADDRESS, checkpoint_hash)?;
+            .write_memory(SHADOW_REVERT_ROOT_HASH_START, revert_root_hash)?;
         self.machine
             .send_cmio_response(CmioResponseReason::Advance, input)
     }
