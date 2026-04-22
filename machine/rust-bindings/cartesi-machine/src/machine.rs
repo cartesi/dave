@@ -63,16 +63,24 @@ impl Machine {
     // API functions
     // -----------------------------------------------------------------------------
 
-    /// Returns the default machine config.
+    /// Returns the default machine config as parsed by serde.
     pub fn default_config() -> Result<MachineConfig> {
+        let raw = Self::default_config_raw_json()?;
+        Ok(serde_json::from_str(&raw)
+            .expect("cm_get_default_config returned JSON that does not match MachineConfig"))
+    }
+
+    /// Returns the raw JSON string produced by `cm_get_default_config`,
+    /// without deserializing into a typed struct. Primarily used by the
+    /// round-trip schema test.
+    pub fn default_config_raw_json() -> Result<String> {
         let mut config_ptr: *const c_char = ptr::null();
         let err_code =
             unsafe { cartesi_machine_sys::cm_get_default_config(ptr::null(), &mut config_ptr) };
         check_err!(err_code)?;
 
-        let config = parse_json_from_cstring!(config_ptr);
-
-        Ok(config)
+        let cstr = unsafe { CStr::from_ptr(config_ptr) };
+        Ok(cstr.to_string_lossy().into_owned())
     }
 
     /// Gets the address of any x, f, or control state register.
