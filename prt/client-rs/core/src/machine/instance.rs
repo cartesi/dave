@@ -1,15 +1,15 @@
 use crate::db::dispute_state_access::DisputeStateAccess;
 use crate::machine::constants::{
-    BARCH_SPAN_TO_INPUT, INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH, LOG2_UARCH_SPAN_TO_INPUT,
-    UARCH_SPAN_TO_BARCH,
+    BARCH_SPAN_TO_INPUT, CHECKPOINT_ADDRESS, INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
+    LOG2_UARCH_SPAN_TO_INPUT, UARCH_SPAN_TO_BARCH,
 };
 use crate::machine::error::Result;
 use cartesi_dave_arithmetic as arithmetic;
 use cartesi_dave_merkle::Digest;
 use cartesi_machine::{
     cartesi_machine_sys,
-    config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
-    constants::machine::TREE_LOG2_ROOT_SIZE,
+    config::runtime::RuntimeConfig,
+    constants::machine::HASH_TREE_LOG2_ROOT_SIZE,
     machine::Machine,
     types::access_proof::AccessLog,
     types::{LogType, cmio::CmioResponseReason},
@@ -64,15 +64,9 @@ pub struct MachineInstance {
     pub snapshot_path: PathBuf,
 }
 
-const CHECKPOINT_ADDRESS: u64 = 0xfe0;
 impl MachineInstance {
     pub fn new_from_path(path: &str) -> Result<Self> {
-        let runtime_config = RuntimeConfig {
-            htif: Some(HTIFRuntimeConfig {
-                no_console_putchar: Some(true),
-            }),
-            ..Default::default()
-        };
+        let runtime_config = RuntimeConfig::quiet_console();
         let path = PathBuf::from(path);
         let mut machine = Machine::load(&path, &runtime_config)?;
 
@@ -110,12 +104,7 @@ impl MachineInstance {
         // load inner machine with snapshot, update cycle, keep everything else the same
         pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
             debug!("load snapshot from {}", snapshot_path.display());
-            let runtime_config = RuntimeConfig {
-                htif: Some(HTIFRuntimeConfig {
-                    no_console_putchar: Some(true),
-                }),
-                ..Default::default()
-            };
+            let runtime_config = RuntimeConfig::quiet_console();
             let mut machine = Machine::load(Path::new(snapshot_path), &runtime_config)?;
 
             let cycle = machine.mcycle()?;
@@ -257,12 +246,7 @@ impl MachineInstance {
             != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
         {
             trace!("Reject input,revert to previous snapshot");
-            let runtime_config = RuntimeConfig {
-                htif: Some(HTIFRuntimeConfig {
-                    no_console_putchar: Some(true),
-                }),
-                ..Default::default()
-            };
+            let runtime_config = RuntimeConfig::quiet_console();
 
             self.machine = Machine::load(&self.snapshot_path, &runtime_config)?;
         }
@@ -335,7 +319,7 @@ impl MachineInstance {
         let mut read = self.machine.read_memory(aligned_address, 32)?;
         let proof = self
             .machine
-            .proof(aligned_address, 5, TREE_LOG2_ROOT_SIZE)?;
+            .proof(aligned_address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
 
         let mut encoded: Vec<u8> = Vec::new();
 
@@ -355,7 +339,7 @@ impl MachineInstance {
         let read_hash = Digest::from_data(&read);
         let proof = self
             .machine
-            .proof(aligned_address, 5, TREE_LOG2_ROOT_SIZE)?;
+            .proof(aligned_address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
 
         let mut encoded: Vec<u8> = Vec::new();
 
@@ -375,7 +359,7 @@ impl MachineInstance {
         let read = self.machine.read_memory(address, 32)?;
         let read_hash = Digest::from_data(&read);
         // Get proof of write address
-        let proof = self.machine.proof(address, 5, TREE_LOG2_ROOT_SIZE)?;
+        let proof = self.machine.proof(address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
 
         let mut encoded: Vec<u8> = Vec::new();
 

@@ -322,9 +322,13 @@ pub enum VirtIODeviceConfig {
         host_directory: String,
     },
     #[serde(rename = "net-user")]
-    NetUser { hostfwd: VirtIOHostfwdArray },
+    NetUser {
+        hostfwd: VirtIOHostfwdArray,
+    },
     #[serde(rename = "net-tuntap")]
-    NetTuntap { iface: String },
+    NetTuntap {
+        iface: String,
+    },
 }
 
 impl Default for VirtIODeviceConfig {
@@ -502,6 +506,24 @@ fn library_default() -> MachineConfig {
 mod tests {
     use super::*;
     use crate::machine::Machine;
+    use crate::{EXPECTED_EMULATOR_VERSION, format_emulator_version};
+
+    /// Guardrail: the linked `libcartesi` must report the exact version these
+    /// bindings were written against. If this fails after an emulator bump,
+    /// update `EXPECTED_EMULATOR_VERSION` in `lib.rs` and rerun the config
+    /// round-trip tests to re-confirm the schema.
+    #[test]
+    fn test_emulator_version_pin() {
+        let linked = Machine::version();
+        assert_eq!(
+            linked,
+            EXPECTED_EMULATOR_VERSION,
+            "cartesi-machine bindings were written for emulator version {}, but libcartesi reports {}. \
+             Update EXPECTED_EMULATOR_VERSION after verifying the config schema still matches.",
+            format_emulator_version(EXPECTED_EMULATOR_VERSION),
+            format_emulator_version(linked),
+        );
+    }
 
     #[test]
     fn test_default_configs() {
@@ -528,8 +550,8 @@ mod tests {
     /// this file's structs to match whatever the C++ side now emits.
     #[test]
     fn test_default_config_json_roundtrip() {
-        let raw_json = Machine::default_config_raw_json()
-            .expect("failed to fetch raw default config JSON");
+        let raw_json =
+            Machine::default_config_raw_json().expect("failed to fetch raw default config JSON");
 
         let original: serde_json::Value = serde_json::from_str(&raw_json)
             .expect("raw JSON from cm_get_default_config is not valid JSON");
@@ -554,8 +576,8 @@ mod tests {
     /// refactor is fixing.
     #[test]
     fn test_unknown_field_is_rejected() {
-        let raw_json = Machine::default_config_raw_json()
-            .expect("failed to fetch raw default config JSON");
+        let raw_json =
+            Machine::default_config_raw_json().expect("failed to fetch raw default config JSON");
 
         // Inject an unknown top-level field.
         let mut value: serde_json::Value = serde_json::from_str(&raw_json).unwrap();

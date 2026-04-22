@@ -1,24 +1,39 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! Constants definitions from Cartesi Machine
+//! Constants definitions from Cartesi Machine.
+//!
+//! The names in this module track the v0.20 emulator naming convention:
+//! `HASH_TREE_LOG2_*` for hash-tree sizes (previously `TREE_LOG2_*`) and the
+//! `ar` module for address ranges (previously `pma`). The numeric values are
+//! unchanged from v0.19.
 
 pub mod machine {
     use cartesi_machine_sys::*;
     // pub const CYCLE_MAX: u64 = CM_MCYCLE_MAX as u64;
     pub const HASH_SIZE: u32 = CM_HASH_SIZE as u32;
-    pub const TREE_LOG2_WORD_SIZE: u32 = CM_HASH_TREE_LOG2_WORD_SIZE as u32;
-    pub const TREE_LOG2_PAGE_SIZE: u32 = CM_HASH_TREE_LOG2_PAGE_SIZE as u32;
-    pub const TREE_LOG2_ROOT_SIZE: u32 = CM_HASH_TREE_LOG2_ROOT_SIZE as u32;
+    pub const HASH_TREE_LOG2_WORD_SIZE: u32 = CM_HASH_TREE_LOG2_WORD_SIZE as u32;
+    pub const HASH_TREE_LOG2_PAGE_SIZE: u32 = CM_HASH_TREE_LOG2_PAGE_SIZE as u32;
+    pub const HASH_TREE_LOG2_ROOT_SIZE: u32 = CM_HASH_TREE_LOG2_ROOT_SIZE as u32;
 }
 
-pub mod pma {
+pub mod ar {
     use cartesi_machine_sys::*;
     pub const RX_START: u64 = CM_AR_CMIO_RX_BUFFER_START as u64;
     pub const RX_LOG2_SIZE: u64 = CM_AR_CMIO_RX_BUFFER_LOG2_SIZE as u64;
     pub const TX_START: u64 = CM_AR_CMIO_TX_BUFFER_START as u64;
     pub const TX_LOG2_SIZE: u64 = CM_AR_CMIO_TX_BUFFER_LOG2_SIZE as u64;
     pub const RAM_START: u64 = CM_AR_RAM_START as u64;
+    /// Dedicated memory slot the off-chain client writes the pre-input root
+    /// hash to before sending a CMIO input, so that on-chain
+    /// `revertIfNeeded` can read it back after a rejected input.
+    ///
+    /// Canonical source is the emulator C++; the Solidity side mirrors it
+    /// through the auto-generated
+    /// `step/src/EmulatorConstants.sol::REVERT_ROOT_HASH_ADDRESS`, used
+    /// only from `EmulatorCompat.{set,get}RevertRootHash` wrappers — no
+    /// other Solidity file should reference the raw address.
+    pub const SHADOW_REVERT_ROOT_HASH_START: u64 = CM_AR_SHADOW_REVERT_ROOT_HASH_START as u64;
 }
 
 pub mod break_reason {
