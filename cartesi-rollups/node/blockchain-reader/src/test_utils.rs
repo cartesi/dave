@@ -9,13 +9,10 @@ use alloy::{
     signers::{Signer, local::PrivateKeySigner},
 };
 use cartesi_dave_contracts::i_dave_app_factory::IDaveAppFactory::{self, WithdrawalConfig};
+use cartesi_machine::{Machine, config::runtime::RuntimeConfig};
 use cartesi_rollups_contracts::i_input_box::IInputBox;
 use serde::Deserialize;
-use std::{
-    fs::{self, File},
-    io::{Read, Seek},
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -76,15 +73,19 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
     let input_box = deployment_address("InputBox");
     let dave_app_factory = deployment_address("DaveAppFactory");
 
-    let initial_hash = {
-        // Root hash is stored in hash_tree.sht at offset 0x60 (node 1's hash in sparse tree).
-        // Equivalent to: xxd -seek 0x60 -l 0x20 -c 0x20 -p .../machine-image/hash_tree.sht
-        let mut file =
-            File::open(program_path.join("machine-image").join("hash_tree.sht")).unwrap();
-        file.seek(std::io::SeekFrom::Start(0x60)).unwrap();
-        let mut buffer = [0u8; 32];
-        file.read_exact(&mut buffer).unwrap();
-        buffer
+    // Load the stored machine through the emulator and ask it for the root
+    // hash, rather than reading the internal `hash_tree.sht` file directly.
+    // The file layout is an emulator implementation detail; going through
+    // `cm_load_new` + `cm_get_root_hash` is the only stable API.
+    let initial_hash: [u8; 32] = {
+        let mut machine = Machine::load(
+            &program_path.join("machine-image"),
+            &RuntimeConfig::quiet_console(),
+        )
+        .expect("failed to load stored machine");
+        machine
+            .root_hash()
+            .expect("failed to read machine root hash")
     };
 
     let withdrawal_config = WithdrawalConfig {

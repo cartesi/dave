@@ -1,4 +1,5 @@
 local arithmetic = require "utils.arithmetic"
+local cartesi = require "cartesi"
 
 -- log2 value of the maximal number of micro instructions that emulates a big instruction
 local log2_uarch_span_to_barch = 20
@@ -11,8 +12,14 @@ local log2_uarch_span_to_input = log2_uarch_span_to_barch + log2_barch_span_to_i
 -- log2 value of the maximal number of meta instructions
 local log2_uarch_span_to_epoch = log2_input_span_to_epoch + log2_barch_span_to_input + log2_uarch_span_to_barch
 
--- Checkpoint address for machine state snapshots
-local CHECKPOINT_ADDRESS = 0xfe0
+-- Memory slot where the off-chain client writes the pre-input root hash
+-- before sending a CMIO input, so that on-chain `revertIfNeeded` can read it
+-- back after a rejected input. Sourced from the emulator directly (v0.20+
+-- `cartesi.AR_SHADOW_REVERT_ROOT_HASH_START`, currently 0xfe0); the Solidity
+-- side mirrors this through step's auto-generated
+-- `EmulatorConstants.REVERT_ROOT_HASH_ADDRESS`.
+local CHECKPOINT_ADDRESS = cartesi.AR_SHADOW_REVERT_ROOT_HASH_START
+assert(CHECKPOINT_ADDRESS, "emulator missing AR_SHADOW_REVERT_ROOT_HASH_START (expected v0.20+)")
 
 local constants = {
     log2_uarch_span_to_barch = log2_uarch_span_to_barch,

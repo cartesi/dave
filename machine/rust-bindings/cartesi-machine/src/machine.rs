@@ -20,15 +20,28 @@ use crate::{
     },
 };
 
-/// Machine instance handle
+/// Machine instance handle.
+///
+/// Owns a `*mut cm_machine` and frees it on `Drop` via `cm_delete`. The raw
+/// pointer is kept private — exposing it would let callers clone it and cause
+/// a double-free when both `Machine`s get dropped.
+///
+/// `Machine` is intentionally `!Send + !Sync` (the default, given the raw
+/// pointer field). Do not add `unsafe impl Send for Machine` without auditing
+/// `cm_get_last_error_message`: the C library threads error messages through
+/// thread-local (or global) state with no machine-instance argument, so two
+/// `Machine`s running on different threads could scramble each other's
+/// `MachineError::message` fields.
 pub struct Machine {
-    pub machine: *mut cartesi_machine_sys::cm_machine,
+    machine: *mut cartesi_machine_sys::cm_machine,
 }
 
 impl Drop for Machine {
     fn drop(&mut self) {
-        unsafe {
-            cartesi_machine_sys::cm_delete(self.machine);
+        if !self.machine.is_null() {
+            unsafe {
+                cartesi_machine_sys::cm_delete(self.machine);
+            }
         }
     }
 }
@@ -43,6 +56,16 @@ macro_rules! check_err {
     };
 }
 
+/// Both `serde_json::to_string` and `CString::new` below panic on failure
+/// *by design*. They can only fail on:
+/// - A Rust config type holding non-serializable state. Our types are plain
+///   POD with derived `Serialize`, so this is statically impossible.
+/// - A JSON string containing an interior NUL byte. `serde_json` escapes NUL
+///   as `\u0000`, so the output is guaranteed NUL-free.
+///
+/// If either panic ever fires, it indicates a bug in this crate or in
+/// `serde_json` — there is no recovery, and a panic with a backtrace is more
+/// debuggable than a bubbled-up `Result` that crashes at the caller anyway.
 macro_rules! serialize_to_json {
     ($src:expr) => {
         CString::new(serde_json::to_string($src).expect("failed serializing to json"))
@@ -50,6 +73,13 @@ macro_rules! serialize_to_json {
     };
 }
 
+/// Panics on malformed JSON from the C library. This means either a bug in
+/// `libcartesi` or a mismatch between the Rust struct shape and the
+/// emulator's JSON schema — the round-trip tests in `config/machine.rs` and
+/// `config/runtime.rs` are expected to catch the latter before production.
+/// A `Result` return here would force every call site to propagate an error
+/// variant for a condition with no meaningful recovery path; panicking gives
+/// a clearer stacktrace.
 macro_rules! parse_json_from_cstring {
     ($src:expr) => {{
         let cstr = unsafe { CStr::from_ptr($src) };
@@ -62,6 +92,13 @@ impl Machine {
     // -----------------------------------------------------------------------------
     // API functions
     // -----------------------------------------------------------------------------
+
+    /// Returns the emulator semantic version of the linked `libcartesi`, as
+    /// returned by `cm_get_version`. Encoded as
+    /// `(major * 1000000) + (minor * 1000) + patch`.
+    pub fn version() -> u64 {
+        unsafe { cartesi_machine_sys::cm_get_version() }
+    }
 
     /// Returns the default machine config as parsed by serde.
     pub fn default_config() -> Result<MachineConfig> {
@@ -118,7 +155,7 @@ impl Machine {
 
     /// Loads a new machine instance from a previously stored directory.
     pub fn load(dir: &Path, runtime_config: &RuntimeConfig) -> Result<Self> {
-        let dir_cstr = path_to_cstring(dir);
+        let dir_cstr = path_to_cstring(dir)?;
         let runtime_config_json = serialize_to_json!(&runtime_config);
 
         let mut machine: *mut cartesi_machine_sys::cm_machine = ptr::null_mut();
@@ -140,7 +177,7 @@ impl Machine {
     /// address ranges (required when storing in-memory machines that have no
     /// backing files).
     pub fn store(&mut self, dir: &Path) -> Result<()> {
-        let dir_cstr = path_to_cstring(dir);
+        let dir_cstr = path_to_cstring(dir)?;
         let err_code = unsafe {
             cartesi_machine_sys::cm_store(
                 self.machine,
@@ -164,19 +201,42 @@ impl Machine {
         Ok(())
     }
 
-    /// Gets the machine runtime config.
+    /// Gets the machine runtime config as parsed by serde.
     pub fn runtime_config(&mut self) -> Result<RuntimeConfig> {
+        let raw = self.runtime_config_raw_json()?;
+        Ok(serde_json::from_str(&raw)
+            .expect("cm_get_runtime_config returned JSON that does not match RuntimeConfig"))
+    }
+
+    /// Returns the raw JSON string produced by `cm_get_runtime_config`. Used
+    /// by the round-trip schema test.
+    pub fn runtime_config_raw_json(&mut self) -> Result<String> {
         let mut rc_ptr: *const c_char = ptr::null();
         let err_code =
             unsafe { cartesi_machine_sys::cm_get_runtime_config(self.machine, &mut rc_ptr) };
         check_err!(err_code)?;
 
-        let runtime_config = parse_json_from_cstring!(rc_ptr);
-
-        Ok(runtime_config)
+        let cstr = unsafe { CStr::from_ptr(rc_ptr) };
+        Ok(cstr.to_string_lossy().into_owned())
     }
 
     /// Replaces a memory range.
+    ///
+    /// Two intentional simplifications vs. the full JSON schema the C API
+    /// accepts:
+    ///
+    /// - `read_only` is hardcoded to `false`. The C++
+    ///   `machine_address_ranges::replace` explicitly rejects both a
+    ///   read-only existing range and a replacement config with
+    ///   `read_only: true` (see `machine-address-ranges.cpp`), so exposing a
+    ///   `read_only` toggle here would always error. If that ever changes,
+    ///   widen this API then.
+    /// - When `image_path` is `None`, `data_filename` is serialized as the
+    ///   empty string. The C++ side treats empty `data_filename` as "no
+    ///   backing store" (`backing_store_config::newly_created()` returns
+    ///   true when `create || data_filename.empty()`), which is the same
+    ///   semantics as the old API's `NULL` pointer: the range is
+    ///   zero-filled in-memory.
     pub fn replace_memory_range(
         &mut self,
         start: u64,
@@ -249,7 +309,7 @@ impl Machine {
             cartesi_machine_sys::cm_get_proof(
                 self.machine,
                 address,
-                log2_target_size as i32,
+                log2_target_size as ::std::os::raw::c_int,
                 log2_root_size as ::std::os::raw::c_int,
                 &mut proof_ptr,
             )
@@ -294,7 +354,7 @@ impl Machine {
 
     /// Reads a chunk of data from a machine memory range, by its physical address.
     pub fn read_memory(&mut self, address: u64, size: u64) -> Result<Vec<u8>> {
-        let mut buffer = vec![0u8; size as usize];
+        let mut buffer = vec![0u8; u64_to_usize(size)?];
         let err_code = unsafe {
             cartesi_machine_sys::cm_read_memory(self.machine, address, buffer.as_mut_ptr(), size)
         };
@@ -320,7 +380,7 @@ impl Machine {
 
     /// Reads a chunk of data from a machine memory range, by its virtual memory.
     pub fn read_virtual_memory(&mut self, address: u64, size: u64) -> Result<Vec<u8>> {
-        let mut buffer = vec![0u8; size as usize];
+        let mut buffer = vec![0u8; u64_to_usize(size)?];
         let err_code = unsafe {
             cartesi_machine_sys::cm_read_virtual_memory(
                 self.machine,
@@ -428,7 +488,10 @@ impl Machine {
         let mut reason: u16 = 0;
         let mut length: u64 = 0;
 
-        // if data is NULL, length will still be set without reading any data.
+        // First call with a NULL data pointer: the C API just writes the
+        // required length into `length` and returns, without reading any
+        // bytes. (See machine-c-api.h: "If NULL, length will still be set
+        // without reading any data.")
         let err_code = unsafe {
             cartesi_machine_sys::cm_receive_cmio_request(
                 self.machine,
@@ -440,7 +503,11 @@ impl Machine {
         };
         check_err!(err_code)?;
 
-        let mut buffer = vec![0u8; length as usize];
+        // `length` is in-out per the C API contract ("Must be initialized to
+        // the size of data buffer"). Sizing the buffer to exactly `length`
+        // and then passing the same value back in makes the buffer-size
+        // precondition and the required-length output coincide.
+        let mut buffer = vec![0u8; u64_to_usize(length)?];
 
         let err_code = unsafe {
             cartesi_machine_sys::cm_receive_cmio_request(
@@ -478,7 +545,7 @@ impl Machine {
     /// Runs the machine for the given mcycle count and generates a log of accessed pages and proof data.
     pub fn log_step(&mut self, mcycle_count: u64, log_filename: &Path) -> Result<BreakReason> {
         let mut break_reason = BreakReason::default();
-        let log_filename_c = path_to_cstring(log_filename);
+        let log_filename_c = path_to_cstring(log_filename)?;
 
         let err_code = unsafe {
             cartesi_machine_sys::cm_log_step(
@@ -563,7 +630,7 @@ impl Machine {
         mcycle_count: u64,
         root_hash_after: &Hash,
     ) -> Result<BreakReason> {
-        let log_filename_c = path_to_cstring(log_filename);
+        let log_filename_c = path_to_cstring(log_filename)?;
 
         let mut break_reason = BreakReason::default();
         let err_code = unsafe {
@@ -590,6 +657,9 @@ impl Machine {
 
         let err_code = unsafe {
             cartesi_machine_sys::cm_verify_step_uarch(
+                // Optional `const cm_machine *m`; NULL means "local verification".
+                // See machine-c-api.h. (cm_verify_step itself doesn't take this
+                // argument — the asymmetry is intentional in the C API.)
                 ptr::null(),
                 root_hash_before,
                 log_cstr.as_ptr(),
@@ -610,6 +680,8 @@ impl Machine {
         let log_cstr = serialize_to_json!(&log);
         let err_code = unsafe {
             cartesi_machine_sys::cm_verify_reset_uarch(
+                // Optional `const cm_machine *m`; NULL means "local verification".
+                // See machine-c-api.h.
                 ptr::null(),
                 root_hash_before,
                 log_cstr.as_ptr(),
@@ -633,6 +705,8 @@ impl Machine {
 
         let err_code = unsafe {
             cartesi_machine_sys::cm_verify_send_cmio_response(
+                // Optional `const cm_machine *m`; NULL means "local verification".
+                // See machine-c-api.h.
                 ptr::null(),
                 reason as u16,
                 data.as_ptr(),
@@ -660,8 +734,49 @@ impl Machine {
     }
 }
 
-fn path_to_cstring(path: &Path) -> CString {
-    CString::new(path.to_string_lossy().as_bytes()).expect("CString::new failed")
+/// Converts a `u64` byte count (as used by the C API) to a Rust `usize`,
+/// erroring out if the value exceeds what the platform can address. Only
+/// matters on 32-bit targets — on 64-bit, `usize` and `u64` are the same
+/// width and this is a no-op. Guards against silent truncation that would
+/// result in an undersized buffer being passed to a C function expecting
+/// `size` bytes of space.
+fn u64_to_usize(size: u64) -> Result<usize> {
+    usize::try_from(size).map_err(|_| MachineError {
+        code: constants::error_code::OUT_OF_RANGE,
+        message: format!("byte count {size} exceeds usize range on this platform"),
+    })
+}
+
+/// Converts a `Path` to a `CString` for the C API.
+///
+/// On Unix, uses the raw `OsStr` bytes so that non-UTF-8 paths (which are
+/// legal on the platform) are passed through verbatim instead of being
+/// silently corrupted by `to_string_lossy` replacement. On other platforms,
+/// falls back to UTF-8 conversion and errors out if the path is not valid
+/// UTF-8.
+///
+/// Returns `CM_ERROR_INVALID_ARGUMENT` on an interior NUL byte or, on
+/// non-Unix, on a non-UTF-8 path.
+fn path_to_cstring(path: &Path) -> Result<CString> {
+    #[cfg(unix)]
+    let bytes = {
+        use std::os::unix::ffi::OsStrExt;
+        path.as_os_str().as_bytes().to_vec()
+    };
+    #[cfg(not(unix))]
+    let bytes = path
+        .to_str()
+        .ok_or_else(|| MachineError {
+            code: constants::error_code::INVALID_ARGUMENT,
+            message: format!("path is not valid UTF-8: {}", path.display()),
+        })?
+        .as_bytes()
+        .to_vec();
+
+    CString::new(bytes).map_err(|e| MachineError {
+        code: constants::error_code::INVALID_ARGUMENT,
+        message: format!("path contains NUL byte ({}): {}", e, path.display()),
+    })
 }
 
 #[cfg(test)]
@@ -722,13 +837,7 @@ mod tests {
     }
 
     fn create_machine(config: &MachineConfig) -> Result<Machine> {
-        let runtime_config = RuntimeConfig {
-            htif: Some(config::runtime::HTIFRuntimeConfig {
-                no_console_putchar: Some(true),
-            }),
-            ..Default::default()
-        };
-        Machine::create(config, &runtime_config)
+        Machine::create(config, &RuntimeConfig::quiet_console())
     }
 
     #[test]
@@ -951,7 +1060,7 @@ mod tests {
         let proof: Proof = machine.proof(
             range.start,
             u64::BITS - range.length.leading_zeros(),
-            constants::machine::TREE_LOG2_ROOT_SIZE,
+            constants::machine::HASH_TREE_LOG2_ROOT_SIZE,
         )?;
         assert_eq!(proof.target_address, range.start);
         assert_eq!(proof.log2_target_size, log2_size as u64);

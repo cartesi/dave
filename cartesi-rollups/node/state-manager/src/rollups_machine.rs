@@ -4,13 +4,14 @@
 use std::path::{Path, PathBuf};
 
 use cartesi_prt_core::machine::constants::{
-    LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
+    CHECKPOINT_ADDRESS, LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH,
+    LOG2_UARCH_SPAN_TO_BARCH,
 };
 
 use crate::{CommitmentLeaf, Proof};
 use cartesi_machine::{
-    config::runtime::{HTIFRuntimeConfig, RuntimeConfig},
-    constants::{break_reason, machine::TREE_LOG2_ROOT_SIZE, pma::TX_START},
+    config::runtime::RuntimeConfig,
+    constants::{ar::TX_START, break_reason, machine::HASH_TREE_LOG2_ROOT_SIZE},
     error::{MachineError, MachineResult},
     machine::Machine,
     types::{
@@ -45,8 +46,6 @@ pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
     << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
         - LOG2_STRIDE);
 
-pub const CHECKPOINT_ADDRESS: u64 = 0xfe0;
-
 pub struct RollupsMachine {
     machine: Machine,
     epoch_number: u64,
@@ -59,12 +58,7 @@ impl RollupsMachine {
         epoch_number: u64,
         next_input_index_in_epoch: u64,
     ) -> MachineResult<Self> {
-        let runtime_config = RuntimeConfig {
-            htif: Some(HTIFRuntimeConfig {
-                no_console_putchar: Some(true),
-            }),
-            ..Default::default()
-        };
+        let runtime_config = RuntimeConfig::quiet_console();
         let machine = Machine::load(path, &runtime_config)?;
 
         Ok(Self {
@@ -88,7 +82,7 @@ impl RollupsMachine {
     }
 
     pub fn outputs_proof(&mut self) -> MachineResult<(Hash, Proof)> {
-        let proof = self.machine.proof(TX_START, 5, TREE_LOG2_ROOT_SIZE)?;
+        let proof = self.machine.proof(TX_START, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
         let siblings = Proof::new(proof.sibling_hashes);
         let output_merkle = self.machine.read_memory(TX_START, 32)?;
 
