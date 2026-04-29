@@ -5,13 +5,14 @@ pragma solidity ^0.8.8;
 
 import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/WithdrawalConfig.sol";
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
+import {IApplicationFactoryErrors} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactoryErrors.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
 
 /// @title Dave-App Pair Factory
 /// @notice Allows anyone to reliably deploy an application
 /// validated a newly-deployed `IDaveConsensus` contract.
-interface IDaveAppFactory {
+interface IDaveAppFactory is IApplicationFactoryErrors {
     /// @notice A Dave-App pair was created.
     /// @param appContract The application contract
     /// @param daveConsensus The Dave consensus contract

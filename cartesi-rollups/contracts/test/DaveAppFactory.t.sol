@@ -15,6 +15,7 @@ import {ApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/Appli
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
 import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
 import {IApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactory.sol";
+import {IApplicationFactoryErrors} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactoryErrors.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 import {InputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/InputBox.sol";
 import {LibBinaryMerkleTree} from "cartesi-rollups-contracts-3.0.0/src/library/LibBinaryMerkleTree.sol";
@@ -671,14 +672,9 @@ contract DaveAppFactoryTest is Test {
     function _testNewDaveAppFailure(WithdrawalConfig calldata withdrawalConfig, bytes memory errorData) internal pure {
         (bool isValidError, bytes32 errorSelector, bytes memory errorArgs) = errorData.consumeBytes4();
         assertTrue(isValidError, "Expected error to contain a 4-byte selector");
-        if (errorSelector == bytes4(keccak256("Error(string)"))) {
-            string memory errorMsg = abi.decode(errorArgs, (string));
-            bytes32 errorMsgHash = keccak256(bytes(errorMsg));
-            if (errorMsgHash == keccak256("Invalid withdrawal config")) {
-                assertFalse(withdrawalConfig.isValid(), "Expected withdrawal config to be invalid");
-            } else {
-                revert("Unexpected error message");
-            }
+        if (errorSelector == IApplicationFactoryErrors.InvalidWithdrawalConfig.selector) {
+            assertEq(errorArgs, abi.encode(withdrawalConfig), "Expected withdrawal configs to match");
+            assertFalse(withdrawalConfig.isValid(), "Expected withdrawal config to be invalid");
         } else {
             revert("Unexpected error");
         }
