@@ -1,12 +1,13 @@
 # syntax=docker.io/docker/dockerfile:1
 
-ARG RUST_VERSION=1.86
+ARG RUST_VERSION=1.90
+ARG DEBIAN_VERSION=trixie
 ARG FOUNDRY_VERSION=1.4.3
 ARG PNPM_VERSION=10.7.0
 ARG JUST_VERSION=1.46.0
 
 #### base stage
-FROM rust:${RUST_VERSION} AS base
+FROM rust:${RUST_VERSION}-${DEBIAN_VERSION} AS base
 ARG DEBIAN_FRONTEND=noninteractive
 SHELL ["/usr/bin/env", "bash", "-euo", "pipefail", "-c"]
 RUN <<EOF
