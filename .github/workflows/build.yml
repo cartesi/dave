@@ -308,13 +308,24 @@ jobs:
         env:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-contract-artifacts.tar.gz
 
+      - name: Simulate deployment to supported testnets and mainnets
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          ./script/deploy-testnets.sh
+          ./script/deploy-mainnets.sh
+
+      - name: Compress testnet and mainnet deployment simulation artifacts
+        run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments
+        env:
+          FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-deployment-addresses.tar.gz
+
       - name: Build devnet
         working-directory: ./cartesi-rollups/contracts
         run: |
           just build-devnet
 
       - name: Compress devnet artifacts
-        run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments state.json
+        run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments/31337 state.json
         env:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-anvil-${{ steps.setup.outputs.installed-foundry-version }}.tar.gz
 
