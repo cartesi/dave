@@ -10,7 +10,7 @@ import {DaveAppFactory} from "src/DaveAppFactory.sol";
 contract DeploymentScript is BaseDeploymentScript {
     function run() external {
         _importDeployments("../../prt/contracts");
-        _importDeployments("dependencies/cartesi-rollups-contracts-3.0.0-alpha.5");
+        _importDeployments("dependencies/cartesi-rollups-contracts-3.0.0-alpha.6");
 
         address inputBox = _loadDeployment(".", "InputBox");
         address appFactory = _loadDeployment(".", "ApplicationFactory");
