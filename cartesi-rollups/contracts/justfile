@@ -16,8 +16,7 @@ fmt:
 check-fmt:
     forge fmt --check
 
-install-deps PNPM_INSTALL_ARGS='' PNPM_CI='true':
-    CI={{PNPM_CI}} pnpm install {{PNPM_INSTALL_ARGS}}
+install-deps:
     forge soldeer install
 
 # compile smart contracts
@@ -53,13 +52,3 @@ bind: clean-bindings
 
 build-devnet:
     ./script/build-devnet.sh
-
-deploy-core *OPTS: \
-        (deploy-prt-core OPTS) \
-        (deploy "cannonfile.toml" OPTS)
-
-deploy-prt-core *OPTS:
-    just -f ../../prt/contracts/justfile deploy-core {{OPTS}}
-
-deploy CANNONFILE *OPTS:
-    pnpm cannon build {{CANNONFILE}} {{OPTS}}

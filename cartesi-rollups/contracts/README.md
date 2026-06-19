@@ -9,11 +9,10 @@ This contract instantiates a PRT tournament every epoch to settle on the new sta
 - Integrates Dave PRT with Cartesi Rollups
 - Contains a factory contract for `DaveConsensus` contracts
 - Unit tests and deployment scripts in Solidity using Forge
-- Cannonfile for modular deployments
 
 ## Installing dependencies
 
-In order to install the Node.js and Solidity dependencies, please run the following command.
+In order to install the Solidity dependencies, please run the following command.
 
 ```sh
 just install-deps
@@ -38,10 +37,10 @@ just test
 ## Deploying the core contracts
 
 In order to deploy the core contracts, you may run the following command.
-You may want to consult the [Cannon CLI documentation] for deployment options.
+You may want to consult the [Forge script documentation] for options.
 
 ```sh
-just deploy-core  # [options...]
+./script/deploy.sh  # [options...]
 ```
 
-[Cannon CLI documentation]: https://usecannon.com/learn/cli
+[Forge script documentation]: https://www.getfoundry.sh/reference/forge/script#forge-script

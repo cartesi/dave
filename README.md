@@ -75,7 +75,6 @@ Choose the setup that best fits your workflow.
 
 - git
 - Docker
-- pnpm
 - just
 - GNU make
 - [foundry](https://github.com/foundry-rs/foundry)

@@ -12,7 +12,7 @@ use std::{fmt, path::PathBuf, time::Duration};
 
 use crate::provider::create_provider;
 
-const CANNON_CHAIN_ID: u64 = 31337;
+const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const SLEEP_DURATION: u64 = 30;
 
@@ -33,7 +33,7 @@ pub struct PRTArgs {
     pub web3_rpc_url: Url,
 
     /// blockchain chain id
-    #[arg(long, env, default_value_t = CANNON_CHAIN_ID)]
+    #[arg(long, env, default_value_t = ANVIL_CHAIN_ID)]
     pub web3_chain_id: u64,
 
     #[clap(subcommand)]
