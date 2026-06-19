@@ -79,27 +79,6 @@ RUN make -C src slirp=no release=yes
 ENV DESTDIR=/dave/machine/emulator/rootfs
 RUN mkdir -p ${DESTDIR} && make install
 
-#### pnpm stage
-FROM base AS pnpm
-ARG TARGETARCH
-ARG TARGETOS
-ARG PNPM_VERSION
-
-RUN <<EOF
-case "${TARGETARCH}" in
-    amd64)
-      curl -fsSL https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-${TARGETOS}-x64 \
-        -o /usr/local/bin/pnpm
-      echo "d1e8009b1ac8c54050efd969d4b6a96eae4fdc3e1ed138741eaf5699a85a16cf /usr/local/bin/pnpm" | sha256sum --check ;;
-    arm64)
-      curl -fsSL https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-${TARGETOS}-arm64 \
-        -o /usr/local/bin/pnpm
-      echo "68916f9fadde7cfea9eced8d88f3a2159d181b1fe5a1e405a71434fc05643405 /usr/local/bin/pnpm" | sha256sum --check ;;
-    *) echo "unsupported architecture: ${TARGETARCH}"; exit 1 ;;
-esac
-chmod 755 /usr/local/bin/pnpm
-EOF
-
 ####
 # final stage
 FROM base
@@ -123,16 +102,11 @@ COPY machine/emulator/ machine/emulator/
 COPY test/programs/ test/programs/
 RUN just -f test/programs/justfile download-deps
 
-# install pnpm
-COPY --from=pnpm /usr/local/bin/pnpm /usr/local/bin/pnpm
-
 # install solidity dependencies
 COPY prt/contracts/ prt/contracts/
 COPY cartesi-rollups/contracts/ cartesi-rollups/contracts/
-ARG PNPM_INSTALL_ARGS=""
-ARG PNPM_CI=true
-RUN just -f prt/contracts/justfile install-deps "${PNPM_INSTALL_ARGS}" "${PNPM_CI}"
-RUN just -f cartesi-rollups/contracts/justfile install-deps "${PNPM_INSTALL_ARGS}" "${PNPM_CI}"
+RUN just -f prt/contracts/justfile install-deps
+RUN just -f cartesi-rollups/contracts/justfile install-deps
 
 COPY machine/step/ machine/step/
 COPY justfile justfile

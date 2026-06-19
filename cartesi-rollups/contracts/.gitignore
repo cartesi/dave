@@ -19,7 +19,7 @@ docs/
 # Gas snapshot
 .gas-snapshot
 
-# Cannon
+# Forge deployment script
 /deployments
 /state.json
 

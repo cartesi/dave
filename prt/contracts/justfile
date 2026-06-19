@@ -31,8 +31,7 @@ fmt:
 check-fmt:
     forge fmt --check
 
-install-deps PNPM_INSTALL_ARGS='' PNPM_CI='true':
-    CI={{PNPM_CI}} pnpm install {{PNPM_INSTALL_ARGS}}
+install-deps:
     forge soldeer install
 
 clean-bindings:
@@ -46,9 +45,3 @@ bind: clean-bindings
     --module --bindings-path {{BINDINGS_DIR}} \
     --skip-extra-derives \
     --root {{SRC_DIR}}
-
-deploy-core *OPTS: \
-        (deploy "cannonfile.toml" OPTS)
-
-deploy CANNONFILE *OPTS:
-    pnpm cannon build {{CANNONFILE}} {{OPTS}}

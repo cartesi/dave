@@ -13,7 +13,7 @@ which spawns and eventually resolves with a result.
 
 ## Installing dependencies
 
-In order to install the Node.js and Solidity dependencies, please run the following command.
+In order to install the Solidity dependencies, please run the following command.
 
 ```sh
 just install-deps
@@ -34,14 +34,3 @@ You can run the unit tests with the following command.
 ```sh
 just test-all
 ```
-
-## Deploying the core contracts
-
-In order to deploy the core contracts, you may run the following command.
-You may want to consult the [Cannon CLI documentation] for deployment options.
-
-```sh
-just deploy-core  # [options...]
-```
-
-[Cannon CLI documentation]: https://usecannon.com/learn/cli
