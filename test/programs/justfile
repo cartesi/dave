@@ -33,7 +33,7 @@ clean-echo: (clean-program "echo")
 # honeypot/honeypot (requires docker)
 build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
   git clone https://github.com/cartesi/honeypot.git honeypot/project
-  git -C honeypot/project reset --hard 34d00721a527eeb7ed8cce2a13a142e3d8de9aad # v3.0.0
+  git -C honeypot/project reset --hard 589a9c1a26522904f79df4955caff69537d38b13 # v3.0.1
   sed -i 's/,filename:/,data_filename:/g' honeypot/project/Makefile
   sed -i 's/--append-bootargs=ro/--append-bootargs=rw/g' honeypot/project/Makefile
   sed -i 's/label:state,length:4096,user:dapp/label:state,length:4096,user:dapp,mke2fs:false,mount:false/g' honeypot/project/Makefile
