@@ -27,28 +27,6 @@ import {Memory} from "step/src/Memory.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
 
-/// @notice Consensus contract with Dave tournaments.
-///
-/// @notice This contract validates only one application,
-/// which read inputs from the InputBox contract.
-///
-/// @notice This contract also manages epoch boundaries, which
-/// are defined in terms of block numbers. We represent them
-/// as intervals of the form [a,b). They are also identified by
-/// incremental numbers that start from 0.
-///
-/// @notice Off-chain nodes can listen to `EpochSealed` events
-/// to know where epochs start and end, and which epochs have been
-/// settled already and which one is open for challenges still.
-/// Anyone can settle an epoch by calling `settle`.
-/// One can also check if it can be settled by calling `canSettle`.
-///
-/// @notice At any given time, there is always one sealed epoch.
-/// Prior to it, every epoch has been settled.
-/// After it, the next epoch is accumulating inputs. Once this epoch is settled,
-/// the accumlating epoch will be sealed, and a new
-/// accumulating epoch will be created.
-///
 contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     using LibMath for uint256;
     using LibBinaryMerkleTree for bytes;
@@ -62,6 +40,9 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
 
     /// @notice The contract used to instantiate tournaments
     ITournamentFactory immutable _TOURNAMENT_FACTORY;
+
+    /// @notice The claim staging period
+    uint256 immutable _CLAIM_STAGING_PERIOD;
 
     /// @notice Deployment block number
     uint256 immutable _DEPLOYMENT_BLOCK_NUMBER = block.number;
@@ -78,6 +59,21 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     /// @notice Current sealed epoch tournament
     ITournament _tournament;
 
+    /// @notice Whether the result of the current sealed epoch tournament is staged
+    bool _isTournamentResultStaged;
+
+    /// @notice The number of the block in which the tournament result was staged
+    /// @dev Only meaningful if _isTournamentResultStaged is true.
+    uint256 _stagingBlockNumber;
+
+    /// @notice The staged post-epoch machine state hash
+    /// @dev Only meaningful if _isTournamentResultStaged is true.
+    Machine.Hash _stagedPostEpochMachineStateHash;
+
+    /// @notice The staged post-epoch outputs Merkle root
+    /// @dev Only meaningful if _isTournamentResultStaged is true.
+    bytes32 _stagedPostEpochOutputsMerkleRoot;
+
     /// @notice Settled output trees' merkle root hash
     mapping(bytes32 => bool) _outputsMerkleRoots;
 
@@ -88,12 +84,14 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         IInputBox inputBox,
         address appContract,
         ITournamentFactory tournamentFactory,
-        Machine.Hash initialMachineStateHash
+        Machine.Hash initialMachineStateHash,
+        uint256 claimStagingPeriod
     ) {
         // Initialize immutable variables
         _INPUT_BOX = inputBox;
         _APP_CONTRACT = appContract;
         _TOURNAMENT_FACTORY = tournamentFactory;
+        _CLAIM_STAGING_PERIOD = claimStagingPeriod;
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
         // Initialize first sealed epoch
@@ -104,17 +102,24 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, bytes32(0), tournament);
     }
 
-    function canSettle()
+    function canStageTournamentResult()
         external
         view
         override
-        returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment)
+        returns (
+            bool isFinished,
+            bool isTournamentResultStaged,
+            uint256 epochNumber,
+            Tree.Node winnerCommitment,
+            Machine.Hash winnerPostEpochMachineStateHash
+        )
     {
-        (isFinished, winnerCommitment,) = _tournament.arbitrationResult();
         epochNumber = _epochNumber;
+        isTournamentResultStaged = _isTournamentResultStaged;
+        (isFinished, winnerCommitment, winnerPostEpochMachineStateHash) = _tournament.arbitrationResult();
     }
 
-    function settle(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof)
+    function stageTournamentResult(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof)
         external
         override
         notForeclosed(_APP_CONTRACT)
@@ -122,14 +127,69 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         // Check tournament settlement
         require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
 
+        // Check whether the tournament result is staged
+        require(!_isTournamentResultStaged, TournamentResultAlreadyStaged());
+
         // Check tournament finished
         (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournament.arbitrationResult();
         require(isFinished, TournamentNotFinishedYet());
-        ITournament oldTournament = _tournament;
-        _tournament = ITournament(address(0));
 
         // Check outputs Merkle root
         _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
+
+        // Stage tournament result, and store the current block number for
+        // later checking whether the claim staging period has elapsed
+        _stagingBlockNumber = block.number;
+        _stagedPostEpochMachineStateHash = finalMachineStateHash;
+        _stagedPostEpochOutputsMerkleRoot = outputsMerkleRoot;
+        _isTournamentResultStaged = true;
+
+        // Try recovering bond for tournament winner
+        try _tournament.tryRecoveringBond() {} catch {}
+
+        emit EpochStaged(epochNumber, finalMachineStateHash, outputsMerkleRoot);
+    }
+
+    function canAcceptStagedTournamentResult()
+        external
+        view
+        override
+        returns (
+            bool isTournamentResultStaged,
+            bool isClaimStagingPeriodOver,
+            uint256 epochNumber,
+            Machine.Hash stagedPostEpochMachineStateHash,
+            bytes32 stagedPostEpochOutputsMerkleRoot
+        )
+    {
+        epochNumber = _epochNumber;
+        isTournamentResultStaged = _isTournamentResultStaged;
+        if (_isTournamentResultStaged) {
+            isClaimStagingPeriodOver = ((block.number - _stagingBlockNumber) >= _CLAIM_STAGING_PERIOD);
+            stagedPostEpochMachineStateHash = _stagedPostEpochMachineStateHash;
+            stagedPostEpochOutputsMerkleRoot = _stagedPostEpochOutputsMerkleRoot;
+        }
+    }
+
+    function acceptStagedTournamentResult(uint256 epochNumber) external override notForeclosed(_APP_CONTRACT) {
+        // Check tournament settlement
+        require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
+
+        // Check whether the tournament result is staged
+        require(_isTournamentResultStaged, TournamentResultNotStaged());
+
+        // Check whether the claim staging period has elapsed
+        {
+            uint256 numberOfBlocksAfterStaging = block.number - _stagingBlockNumber;
+            require(
+                numberOfBlocksAfterStaging >= _CLAIM_STAGING_PERIOD,
+                ClaimStagingPeriodNotOverYet(numberOfBlocksAfterStaging, _CLAIM_STAGING_PERIOD)
+            );
+        }
+
+        // Get staged tournament result
+        Machine.Hash finalMachineStateHash = _stagedPostEpochMachineStateHash;
+        bytes32 outputsMerkleRoot = _stagedPostEpochOutputsMerkleRoot;
 
         // Seal current accumulating epoch, save settled output tree and machine state hash
         _epochNumber++;
@@ -137,6 +197,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         _inputIndexUpperBound = _INPUT_BOX.getNumberOfInputs(_APP_CONTRACT);
         _outputsMerkleRoots[outputsMerkleRoot] = true;
         _lastFinalizedMachineStateHash = finalMachineStateHash;
+        _isTournamentResultStaged = false;
 
         // Start new tournament
         _tournament = _TOURNAMENT_FACTORY.instantiate(finalMachineStateHash, this);
@@ -149,8 +210,6 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
             outputsMerkleRoot,
             _tournament
         );
-
-        oldTournament.tryRecoveringBond();
     }
 
     function getCurrentSealedEpoch()
@@ -161,13 +220,23 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
             uint256 epochNumber,
             uint256 inputIndexLowerBound,
             uint256 inputIndexUpperBound,
-            ITournament tournament
+            ITournament tournament,
+            bool isTournamentResultStaged,
+            uint256 stagingBlockNumber,
+            Machine.Hash stagedPostEpochMachineStateHash,
+            bytes32 stagedPostEpochOutputsMerkleRoot
         )
     {
         epochNumber = _epochNumber;
         inputIndexLowerBound = _inputIndexLowerBound;
         inputIndexUpperBound = _inputIndexUpperBound;
         tournament = _tournament;
+        isTournamentResultStaged = _isTournamentResultStaged;
+        if (_isTournamentResultStaged) {
+            stagingBlockNumber = _stagingBlockNumber;
+            stagedPostEpochMachineStateHash = _stagedPostEpochMachineStateHash;
+            stagedPostEpochOutputsMerkleRoot = _stagedPostEpochOutputsMerkleRoot;
+        }
     }
 
     function getInputBox() external view override returns (IInputBox) {
@@ -180,6 +249,10 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
 
     function getTournamentFactory() external view override returns (ITournamentFactory) {
         return _TOURNAMENT_FACTORY;
+    }
+
+    function getClaimStagingPeriod() external view override returns (uint256) {
+        return _CLAIM_STAGING_PERIOD;
     }
 
     function provideMerkleRootOfInput(uint256 inputIndexWithinEpoch, bytes calldata input)
