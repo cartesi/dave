@@ -5,6 +5,7 @@ use alloy::{
     node_bindings::{Anvil, AnvilInstance},
     primitives::Address,
     primitives::FixedBytes,
+    primitives::U256,
     providers::{DynProvider, Provider, ProviderBuilder},
     signers::{Signer, local::PrivateKeySigner},
 };
@@ -88,6 +89,8 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
             .expect("failed to read machine root hash")
     };
 
+    let claim_staging_period = U256::from(0);
+
     let withdrawal_config = WithdrawalConfig {
         guardian: Default::default(),
         log2LeavesPerAccount: Default::default(),
@@ -100,7 +103,12 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
 
     let dave_app_factory_contract = IDaveAppFactory::new(dave_app_factory, &provider);
     let (app, consensus) = dave_app_factory_contract
-        .calculateDaveAppAddress(initial_hash.into(), withdrawal_config.clone(), salt)
+        .calculateDaveAppAddress(
+            initial_hash.into(),
+            claim_staging_period,
+            withdrawal_config.clone(),
+            salt,
+        )
         .call()
         .await
         .expect("failed to calculate Dave app addresses")
@@ -108,7 +116,12 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .unwrap();
 
     dave_app_factory_contract
-        .newDaveApp(initial_hash.into(), withdrawal_config.clone(), salt)
+        .newDaveApp(
+            initial_hash.into(),
+            claim_staging_period,
+            withdrawal_config.clone(),
+            salt,
+        )
         .send()
         .await?
         .watch()

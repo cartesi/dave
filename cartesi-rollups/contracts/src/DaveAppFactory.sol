@@ -34,26 +34,28 @@ contract DaveAppFactory is IDaveAppFactory {
         TOURNAMENT_FACTORY = tournamentFactory;
     }
 
-    function newDaveApp(bytes32 templateHash, WithdrawalConfig calldata withdrawalConfig, bytes32 salt)
-        external
-        override
-        returns (IApplication appContract, IDaveConsensus daveConsensus)
-    {
+    function newDaveApp(
+        bytes32 templateHash,
+        uint256 claimStagingPeriod,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external override returns (IApplication appContract, IDaveConsensus daveConsensus) {
         appContract = _newApplication(templateHash, withdrawalConfig, salt);
-        daveConsensus = _newDaveConsensus(address(appContract), templateHash, salt);
+        daveConsensus = _newDaveConsensus(address(appContract), templateHash, claimStagingPeriod, salt);
         appContract.migrateToOutputsMerkleRootValidator(daveConsensus);
         appContract.renounceOwnership();
         emit DaveAppCreated(appContract, daveConsensus);
     }
 
-    function calculateDaveAppAddress(bytes32 templateHash, WithdrawalConfig calldata withdrawalConfig, bytes32 salt)
-        external
-        view
-        override
-        returns (address appContractAddress, address daveConsensusAddress)
-    {
+    function calculateDaveAppAddress(
+        bytes32 templateHash,
+        uint256 claimStagingPeriod,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external view override returns (address appContractAddress, address daveConsensusAddress) {
         appContractAddress = _calculateApplicationAddress(templateHash, withdrawalConfig, salt);
-        daveConsensusAddress = _calculateDaveConsensusAddress(appContractAddress, templateHash, salt);
+        daveConsensusAddress =
+            _calculateDaveConsensusAddress(appContractAddress, templateHash, claimStagingPeriod, salt);
     }
 
     /// @notice Encode the data availability blob for applications that only use the input box as DA.
@@ -76,12 +78,14 @@ contract DaveAppFactory is IDaveAppFactory {
     }
 
     /// @notice Instantiate a new `DaveConsensus` contract.
-    function _newDaveConsensus(address appContract, bytes32 templateHash, bytes32 salt)
+    function _newDaveConsensus(address appContract, bytes32 templateHash, uint256 claimStagingPeriod, bytes32 salt)
         internal
         returns (DaveConsensus)
     {
         Machine.Hash initialMachineStateHash = Machine.Hash.wrap(templateHash);
-        return new DaveConsensus{salt: salt}(INPUT_BOX, appContract, TOURNAMENT_FACTORY, initialMachineStateHash);
+        return new DaveConsensus{salt: salt}(
+            INPUT_BOX, appContract, TOURNAMENT_FACTORY, initialMachineStateHash, claimStagingPeriod
+        );
     }
 
     /// @notice Calculates the address of an application contract.
@@ -97,17 +101,18 @@ contract DaveAppFactory is IDaveAppFactory {
     }
 
     /// @notice Calculates the address of a `DaveConsensus` contract.
-    function _calculateDaveConsensusAddress(address appContract, bytes32 templateHash, bytes32 salt)
-        internal
-        view
-        returns (address)
-    {
+    function _calculateDaveConsensusAddress(
+        address appContract,
+        bytes32 templateHash,
+        uint256 claimStagingPeriod,
+        bytes32 salt
+    ) internal view returns (address) {
         return Create2.computeAddress(
             salt,
             keccak256(
                 abi.encodePacked(
                     type(DaveConsensus).creationCode,
-                    abi.encode(INPUT_BOX, appContract, TOURNAMENT_FACTORY, templateHash)
+                    abi.encode(INPUT_BOX, appContract, TOURNAMENT_FACTORY, templateHash, claimStagingPeriod)
                 )
             )
         );

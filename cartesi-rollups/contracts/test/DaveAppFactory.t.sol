@@ -86,15 +86,20 @@ contract DaveAppFactoryTest is Test {
         _daveAppFactory = new DaveAppFactory(_inputBox, _appFactory, _tournamentFactory);
     }
 
-    function testNewDaveApp(bytes32 templateHash, WithdrawalConfig calldata withdrawalConfig, bytes32 salt) external {
-        _randomizeBlockNumber();
+    function testNewDaveApp(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external {
+        _randomizeBlockNumber(claimStagingPeriod);
 
         (address precalculatedAppContractAddress, address precalculatedDaveConsensusAddress) =
-            _daveAppFactory.calculateDaveAppAddress(templateHash, withdrawalConfig, salt);
+            _daveAppFactory.calculateDaveAppAddress(templateHash, claimStagingPeriod, withdrawalConfig, salt);
 
         vm.recordLogs();
 
-        try _daveAppFactory.newDaveApp(templateHash, withdrawalConfig, salt) returns (
+        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, withdrawalConfig, salt) returns (
             IApplication appContract, IDaveConsensus daveConsensus
         ) {
             Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -111,10 +116,10 @@ contract DaveAppFactoryTest is Test {
                 "calculateDaveAppAddress(...)[1] != newDaveApp(...)[1]"
             );
 
-            _testNewDaveAppSuccess(templateHash, withdrawalConfig, appContract, daveConsensus, logs);
+            _testNewDaveAppSuccess(templateHash, claimStagingPeriod, withdrawalConfig, appContract, daveConsensus, logs);
 
             (precalculatedAppContractAddress, precalculatedDaveConsensusAddress) =
-                _daveAppFactory.calculateDaveAppAddress(templateHash, withdrawalConfig, salt);
+                _daveAppFactory.calculateDaveAppAddress(templateHash, claimStagingPeriod, withdrawalConfig, salt);
 
             assertEq(
                 precalculatedAppContractAddress,
@@ -133,7 +138,7 @@ contract DaveAppFactoryTest is Test {
         }
 
         // Cannot deploy an application with the same salt twice
-        try _daveAppFactory.newDaveApp(templateHash, withdrawalConfig, salt) {
+        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, withdrawalConfig, salt) {
             revert("second deterministic deployment did not revert");
         } catch (bytes memory errorData) {
             assertEq(
@@ -142,21 +147,22 @@ contract DaveAppFactoryTest is Test {
         }
     }
 
-    function testSettle(
+    function testStageAndAcceptTournamentResult(
         bytes32 templateHash,
+        uint64 claimStagingPeriod,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt,
         bytes32 outputsMerkleRoot,
-        bytes[] calldata inputPayloads,
-        bool foreclose
+        bytes[] calldata inputPayloads
     ) external {
-        _randomizeBlockNumber();
+        _randomizeBlockNumber(claimStagingPeriod);
 
         IApplication appContract;
         IDaveConsensus daveConsensus;
 
         vm.assumeNoRevert();
-        (appContract, daveConsensus) = _daveAppFactory.newDaveApp(templateHash, withdrawalConfig, salt);
+        (appContract, daveConsensus) =
+            _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, withdrawalConfig, salt);
 
         bytes[] memory inputs = new bytes[](inputPayloads.length);
 
@@ -164,7 +170,7 @@ contract DaveAppFactoryTest is Test {
             inputs[i] = _addInput(address(appContract), inputPayloads[i]);
         }
 
-        (,,, ITournament tournament) = daveConsensus.getCurrentSealedEpoch();
+        (,,, ITournament tournament,,,,) = daveConsensus.getCurrentSealedEpoch();
 
         bytes32[] memory outputsMerkleRootProof = _randomProof(Memory.LOG2_MAX_SIZE);
         bytes32 machineMerkleRoot = outputsMerkleRootProof.merkleRootAfterReplacement(
@@ -250,34 +256,47 @@ contract DaveAppFactoryTest is Test {
             uint256 val2;
             uint256 val3;
             ITournament val4;
+            bool val5;
 
-            (val1, val2, val3, val4) = daveConsensus.getCurrentSealedEpoch();
+            (val1, val2, val3, val4, val5,,,) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(val1, 0); // epochNumber
             assertEq(val2, 0); // inputIndexLowerBound
             assertEq(val3, 0); // inputIndexUpperBound
             assertEq(address(val4), address(tournament));
+            assertFalse(val5); // isTournamentResultStaged
         }
 
-        // Check epoch settlement readiness
+        // Check epoch staging readiness
+        {
+            bool val1;
+            bool val2;
+            uint256 val3;
+
+            (val1, val2, val3,,) = daveConsensus.canStageTournamentResult();
+
+            assertFalse(val1); // isFinished
+            assertFalse(val2); // isTournamentResultStaged
+            assertEq(val3, 0); // epochNumber
+        }
+
+        // Check epoch acceptance readiness
         {
             bool val1;
             uint256 val2;
 
-            (val1, val2,) = daveConsensus.canSettle();
+            (val1,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
 
-            assertFalse(val1); // isFinished
+            assertFalse(val1); // isTournamentResultStaged
             assertEq(val2, 0); // epochNumber
         }
 
-        address settler = vm.randomAddress();
-
-        vm.startPrank(settler);
         vm.expectRevert(IDaveConsensus.TournamentNotFinishedYet.selector);
-        daveConsensus.settle(0, outputsMerkleRoot, outputsMerkleRootProof);
-        vm.stopPrank();
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
 
-        vm.roll(vm.randomUint(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE), type(uint64).max));
+        uint64 maxBlockNumber = type(uint64).max - claimStagingPeriod;
+        vm.roll(vm.randomUint(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE), maxBlockNumber));
 
         assertTrue(tournament.isClosed());
         assertTrue(tournament.isFinished());
@@ -300,72 +319,306 @@ contract DaveAppFactoryTest is Test {
             uint256 val2;
             uint256 val3;
             ITournament val4;
+            bool val5;
 
-            (val1, val2, val3, val4) = daveConsensus.getCurrentSealedEpoch();
+            (val1, val2, val3, val4, val5,,,) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(val1, 0); // epochNumber
             assertEq(val2, 0); // inputIndexLowerBound
             assertEq(val3, 0); // inputIndexUpperBound
             assertEq(address(val4), address(tournament));
+            assertFalse(val5); // isTournamentResultStaged
         }
 
-        // Check epoch settlement readiness
+        // Check epoch staging readiness
+        {
+            bool val1;
+            bool val2;
+            uint256 val3;
+            Tree.Node val4;
+            Machine.Hash val5;
+
+            (val1, val2, val3, val4, val5) = daveConsensus.canStageTournamentResult();
+
+            assertTrue(val1); //  isFinished
+            assertFalse(val2); // isTournamentResultStaged
+            assertEq(val3, 0); // epochNumber
+            assertEq(Tree.Node.unwrap(val4), commitment);
+            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+        }
+
+        // Check epoch acceptance readiness
         {
             bool val1;
             uint256 val2;
-            Tree.Node val3;
 
-            (val1, val2, val3) = daveConsensus.canSettle();
+            (val1,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
 
-            assertTrue(val1); //  isFinished
+            assertFalse(val1); // isTournamentResultStaged
             assertEq(val2, 0); // epochNumber
-            assertEq(Tree.Node.unwrap(val3), commitment);
         }
 
-        vm.startPrank(settler);
+        // Try staging tournament result with an invalid epoch number
         {
             uint256 incorrectEpochNumber = vm.randomUint(1, type(uint256).max);
             vm.expectRevert(_encodeIncorrectEpochNumber(incorrectEpochNumber, 0));
-            daveConsensus.settle(incorrectEpochNumber, outputsMerkleRoot, outputsMerkleRootProof);
+            vm.prank(vm.randomAddress());
+            daveConsensus.stageTournamentResult(incorrectEpochNumber, outputsMerkleRoot, outputsMerkleRootProof);
         }
-        vm.stopPrank();
 
-        if (foreclose) {
-            vm.startPrank(appContract.getGuardian());
-            appContract.foreclose();
-            vm.stopPrank();
+        // Try staging tournament result with invalid outputs Merkle root proof size
+        while (true) {
+            uint256 invalidProofSize = vm.randomUint(0, 2 * outputsMerkleRootProof.length + 1);
+            if (invalidProofSize != outputsMerkleRootProof.length) {
+                bytes32[] memory invalidOutputsMerkleRootProof = _randomProof(invalidProofSize);
+                vm.expectRevert(_encodeInvalidOutputsMerkleRootProofSize(invalidProofSize));
+                vm.prank(vm.randomAddress());
+                daveConsensus.stageTournamentResult(0, outputsMerkleRoot, invalidOutputsMerkleRootProof);
+                break;
+            }
         }
+
+        // Try staging tournament result with invalid outputs Merkle root
+        while (true) {
+            bytes32 invalidOutputsMerkleRoot = bytes32(vm.randomUint());
+            if (invalidOutputsMerkleRoot != outputsMerkleRoot) {
+                vm.expectRevert(_encodeInvalidOutputsMerkleRootProof(machineMerkleRoot));
+                vm.prank(vm.randomAddress());
+                daveConsensus.stageTournamentResult(0, invalidOutputsMerkleRoot, outputsMerkleRootProof);
+                break;
+            }
+        }
+
+        vm.expectRevert(_encodeApplicationForeclosed(address(appContract)));
+        this.simulateForeclosureAndStaging(appContract, daveConsensus, 0, outputsMerkleRoot, outputsMerkleRootProof);
+
+        uint256 stagingBlockNumber = vm.getBlockNumber();
 
         vm.recordLogs();
 
-        vm.startPrank(settler);
-        try daveConsensus.settle(0, outputsMerkleRoot, outputsMerkleRootProof) {
-            assertFalse(foreclose);
-        } catch (bytes memory errorData) {
-            (bool isValidError, bytes32 errorSelector,) = errorData.consumeBytes4();
-            assertTrue(isValidError, "Expected error to contain a 4-byte selector");
-            if (errorSelector == IApplicationChecker.ApplicationForeclosed.selector) {
-                assertTrue(foreclose, "Application was foreclosed prior to settlement attempt");
-                assertTrue(appContract.isForeclosed(), "Application is indeed foreclosed");
-                return; // do not continue test case
-            } else {
-                revert("Unexpected error");
-            }
-        }
-        vm.stopPrank();
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
 
         logs = vm.getRecordedLogs();
 
+        uint256 numOfEpochStagedEvents;
+
+        for (uint256 i; i < logs.length; ++i) {
+            Vm.Log memory log = logs[i];
+            if (log.emitter == address(daveConsensus)) {
+                if (log.topics[0] == IDaveConsensus.EpochStaged.selector) {
+                    ++numOfEpochStagedEvents;
+
+                    uint256 arg1;
+                    bytes32 arg2;
+                    bytes32 arg3;
+
+                    (arg1, arg2, arg3) = abi.decode(log.data, (uint256, bytes32, bytes32));
+
+                    assertEq(arg1, 0); // epochNumber
+                    assertEq(arg2, machineMerkleRoot); // stagedPostEpochMachineStateHash
+                    assertEq(arg3, outputsMerkleRoot); // stagedPostEpochOutputsMerkleRoot
+                } else {
+                    revert UnexpectedLogTopic0(log);
+                }
+            } else {
+                revert UnexpectedLogEmitter(log);
+            }
+        }
+
+        assertEq(numOfEpochStagedEvents, 1);
+
+        // Check current sealed epoch
         {
             uint256 val1;
             uint256 val2;
             uint256 val3;
+            ITournament val4;
+            bool val5;
+            uint256 val6;
+            Machine.Hash val7;
+            bytes32 val8;
 
-            (val1, val2, val3, tournament) = daveConsensus.getCurrentSealedEpoch();
+            (val1, val2, val3, val4, val5, val6, val7, val8) = daveConsensus.getCurrentSealedEpoch();
+
+            assertEq(val1, 0); // epochNumber
+            assertEq(val2, 0); // inputIndexLowerBound
+            assertEq(val3, 0); // inputIndexUpperBound
+            assertEq(address(val4), address(tournament));
+            assertTrue(val5); // isTournamentResultStaged
+            assertEq(val6, stagingBlockNumber);
+            assertEq(Machine.Hash.unwrap(val7), machineMerkleRoot);
+            assertEq(val8, outputsMerkleRoot);
+        }
+
+        // Check epoch staging readiness
+        {
+            bool val1;
+            bool val2;
+            uint256 val3;
+            Tree.Node val4;
+            Machine.Hash val5;
+
+            (val1, val2, val3, val4, val5) = daveConsensus.canStageTournamentResult();
+
+            assertTrue(val1); //  isFinished
+            assertTrue(val2); // isTournamentResultStaged
+            assertEq(val3, 0); // epochNumber
+            assertEq(Tree.Node.unwrap(val4), commitment);
+            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+        }
+
+        // Check epoch acceptance readiness
+        {
+            bool val1;
+            bool val2;
+            uint256 val3;
+            Machine.Hash val4;
+            bytes32 val5;
+
+            (val1, val2, val3, val4, val5) = daveConsensus.canAcceptStagedTournamentResult();
+
+            assertTrue(val1); // isTournamentResultStaged
+            assertEq(val2, claimStagingPeriod == 0); // isClaimStagingPeriodOver
+            assertEq(val3, 0); // epochNumber
+            assertEq(Machine.Hash.unwrap(val4), machineMerkleRoot);
+            assertEq(val5, outputsMerkleRoot);
+        }
+
+        assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
+        assertFalse(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
+
+        // Try re-staging tournament result
+        vm.expectRevert(IDaveConsensus.TournamentResultAlreadyStaged.selector);
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
+
+        // Try accepting tournament result before claim staging period is over
+        if (claimStagingPeriod >= 1) {
+            uint256 numberOfBlocksAfterStaging = vm.randomUint(0, claimStagingPeriod - 1);
+            vm.roll(stagingBlockNumber + numberOfBlocksAfterStaging);
+            vm.expectRevert(_encodeClaimStagingPeriodNotOverYet(numberOfBlocksAfterStaging, claimStagingPeriod));
+            vm.prank(vm.randomAddress());
+            daveConsensus.acceptStagedTournamentResult(0);
+        }
+
+        vm.roll(vm.randomUint(stagingBlockNumber + claimStagingPeriod, type(uint64).max));
+
+        // Check current sealed epoch
+        {
+            uint256 val1;
+            uint256 val2;
+            uint256 val3;
+            ITournament val4;
+            bool val5;
+            uint256 val6;
+            Machine.Hash val7;
+            bytes32 val8;
+
+            (val1, val2, val3, val4, val5, val6, val7, val8) = daveConsensus.getCurrentSealedEpoch();
+
+            assertEq(val1, 0); // epochNumber
+            assertEq(val2, 0); // inputIndexLowerBound
+            assertEq(val3, 0); // inputIndexUpperBound
+            assertEq(address(val4), address(tournament));
+            assertTrue(val5); // isTournamentResultStaged
+            assertEq(val6, stagingBlockNumber);
+            assertEq(Machine.Hash.unwrap(val7), machineMerkleRoot);
+            assertEq(val8, outputsMerkleRoot);
+        }
+
+        // Check epoch staging readiness
+        {
+            bool val1;
+            bool val2;
+            uint256 val3;
+            Tree.Node val4;
+            Machine.Hash val5;
+
+            (val1, val2, val3, val4, val5) = daveConsensus.canStageTournamentResult();
+
+            assertTrue(val1); //  isFinished
+            assertTrue(val2); // isTournamentResultStaged
+            assertEq(val3, 0); // epochNumber
+            assertEq(Tree.Node.unwrap(val4), commitment);
+            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+        }
+
+        // Check epoch acceptance readiness
+        {
+            bool val1;
+            bool val2;
+            uint256 val3;
+            Machine.Hash val4;
+            bytes32 val5;
+
+            (val1, val2, val3, val4, val5) = daveConsensus.canAcceptStagedTournamentResult();
+
+            assertTrue(val1); // isTournamentResultStaged
+            assertTrue(val2); // isClaimStagingPeriodOver
+            assertEq(val3, 0); // epochNumber
+            assertEq(Machine.Hash.unwrap(val4), machineMerkleRoot);
+            assertEq(val5, outputsMerkleRoot);
+        }
+
+        assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
+        assertFalse(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
+
+        vm.expectRevert(_encodeApplicationForeclosed(address(appContract)));
+        this.simulateForeclosureAndAcceptance(appContract, daveConsensus, 0);
+
+        vm.recordLogs();
+
+        vm.prank(vm.randomAddress());
+        daveConsensus.acceptStagedTournamentResult(0);
+
+        logs = vm.getRecordedLogs();
+
+        // Check current sealed epoch
+        {
+            uint256 val1;
+            uint256 val2;
+            uint256 val3;
+            ITournament val4;
+            bool val5;
+
+            (val1, val2, val3, val4, val5,,,) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(val1, 1); // epochNumber
             assertEq(val2, 0); // inputIndexLowerBound
             assertEq(val3, inputs.length); // inputIndexUpperBound
+            tournament = val4;
+            assertFalse(val5); // isTournamentResultStaged
+        }
+
+        // Arbitration result
+        {
+            (bool isFinished,,) = tournament.arbitrationResult();
+            assertFalse(isFinished);
+        }
+
+        // Check epoch staging readiness
+        {
+            bool val1;
+            bool val2;
+            uint256 val3;
+
+            (val1, val2, val3,,) = daveConsensus.canStageTournamentResult();
+
+            assertFalse(val1); // isFinished
+            assertFalse(val2); // isTournamentResultStaged
+            assertEq(val3, 1); // epochNumber
+        }
+
+        // Check epoch acceptance readiness
+        {
+            bool val1;
+            uint256 val2;
+
+            (val1,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
+
+            assertFalse(val1); // isTournamentResultStaged
+            assertEq(val2, 1); // epochNumber
         }
 
         uint256 numOfTournamentCreatedEvents;
@@ -402,6 +655,8 @@ contract DaveAppFactoryTest is Test {
                     assertEq(arg4, machineMerkleRoot); // initialMachineStateHash
                     assertEq(arg5, outputsMerkleRoot);
                     assertEq(arg6, address(tournament));
+                } else {
+                    revert UnexpectedLogTopic0(log);
                 }
             } else {
                 revert UnexpectedLogEmitter(log);
@@ -420,15 +675,48 @@ contract DaveAppFactoryTest is Test {
         }
 
         {
-            uint256 inputIndexWithinBounds = vm.randomUint(inputs.length, type(uint256).max);
+            uint256 inputIndexOutOfBounds = vm.randomUint(inputs.length, type(uint256).max);
             uint256 inputLength = vm.randomUint(0, 100);
             bytes memory input = vm.randomBytes(inputLength);
-            assertEq(daveConsensus.provideMerkleRootOfInput(inputIndexWithinBounds, input), bytes32(0));
+            assertEq(daveConsensus.provideMerkleRootOfInput(inputIndexOutOfBounds, input), bytes32(0));
         }
+    }
+
+    /// @notice This function is used to simulate a foreclosure and a tournament-result staging.
+    /// If the staging succeeds, then the function reverts with error message "Successful staging".
+    /// If the staging fails, then the function propagates the error from the DaveConsensus contract.
+    function simulateForeclosureAndStaging(
+        IApplication appContract,
+        IDaveConsensus daveConsensus,
+        uint256 epochNumber,
+        bytes32 outputsMerkleRoot,
+        bytes32[] calldata proof
+    ) external {
+        vm.prank(appContract.getGuardian());
+        appContract.foreclose();
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(epochNumber, outputsMerkleRoot, proof);
+        revert("Successful staging");
+    }
+
+    /// @notice This function is used to simulate a foreclosure and a tournament-result acceptance.
+    /// If the acceptance succeeds, then the function reverts with error message "Successful acceptance".
+    /// If the acceptance fails, then the function propagates the error from the DaveConsensus contract.
+    function simulateForeclosureAndAcceptance(
+        IApplication appContract,
+        IDaveConsensus daveConsensus,
+        uint256 epochNumber
+    ) external {
+        vm.prank(appContract.getGuardian());
+        appContract.foreclose();
+        vm.prank(vm.randomAddress());
+        daveConsensus.acceptStagedTournamentResult(epochNumber);
+        revert("Successful acceptance");
     }
 
     function _testNewDaveAppSuccess(
         bytes32 templateHash,
+        uint64 claimStagingPeriod,
         WithdrawalConfig calldata withdrawalConfig,
         IApplication appContract,
         IDaveConsensus daveConsensus,
@@ -449,12 +737,19 @@ contract DaveAppFactoryTest is Test {
             uint256 val1;
             uint256 val2;
             uint256 val3;
+            ITournament val4;
+            bool val5;
+            uint256 val6;
+            Machine.Hash val7;
+            bytes32 val8;
 
-            (val1, val2, val3, tournament) = daveConsensus.getCurrentSealedEpoch();
+            (val1, val2, val3, val4, val5, val6, val7, val8) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(val1, 0); // epochNumber
             assertEq(val2, 0); // inputIndexLowerBound
             assertEq(val3, 0); // inputIndexUpperBound
+            tournament = val4;
+            assertFalse(val5); // isTournamentResultStaged
         }
 
         for (uint256 i; i < logs.length; ++i) {
@@ -612,17 +907,20 @@ contract DaveAppFactoryTest is Test {
         // Check epoch settlement readiness
         {
             bool val1;
-            uint256 val2;
+            bool val2;
+            uint256 val3;
 
-            (val1, val2,) = daveConsensus.canSettle();
+            (val1, val2, val3,,) = daveConsensus.canStageTournamentResult();
 
             assertFalse(val1); // isFinished
-            assertEq(val2, 0); // epochNumber
+            assertFalse(val2); // isTournamentResultStaged
+            assertEq(val3, 0); // epochNumber
         }
 
         assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
         assertEq(address(daveConsensus.getApplicationContract()), address(appContract));
         assertEq(address(daveConsensus.getTournamentFactory()), address(_tournamentFactory));
+        assertEq(daveConsensus.getClaimStagingPeriod(), claimStagingPeriod);
         assertEq(daveConsensus.getDeploymentBlockNumber(), vm.getBlockNumber());
         assertTrue(daveConsensus.supportsInterface(type(IERC165).interfaceId));
         assertTrue(daveConsensus.supportsInterface(type(IOutputsMerkleRootValidator).interfaceId));
@@ -680,12 +978,20 @@ contract DaveAppFactoryTest is Test {
         }
     }
 
-    function _randomizeBlockNumber() internal {
+    function _randomizeBlockNumber(uint64 claimStagingPeriod) internal {
         // We limit the block number by type(uint64).max because the PRT contracts
         // use block numbers for time-keeping, and stores them as uint64 values.
-        // We also give some slack (the maximum tournament allowance) so we can
-        // fast-forward to a block in which the tournament is closed.
-        vm.roll(vm.randomUint(vm.getBlockNumber(), type(uint64).max - Time.Duration.unwrap(MAX_ALLOWANCE)));
+        // We assume there is some slack so we can fast-forward to a block in which
+        // the tournament is closed, and we can stage the tournament result, and a
+        // block in which the staged tournament result can be accepted.
+        // We type the claim staging period as uint64 because otherwise the fuzzer
+        // would often pick values too high for these assumptions.
+        uint256 blockNumber = vm.getBlockNumber();
+        uint64 maxAllowance = Time.Duration.unwrap(MAX_ALLOWANCE);
+        vm.assume(blockNumber <= type(uint256).max - maxAllowance);
+        vm.assume(blockNumber + maxAllowance <= type(uint256).max - claimStagingPeriod);
+        vm.assume(blockNumber + maxAllowance + claimStagingPeriod <= type(uint64).max);
+        vm.roll(blockNumber + vm.randomUint(0, type(uint64).max - maxAllowance - claimStagingPeriod));
     }
 
     function _randomProof(uint256 n) internal returns (bytes32[] memory proof) {
@@ -748,5 +1054,35 @@ contract DaveAppFactoryTest is Test {
         returns (bytes memory encodedError)
     {
         return abi.encodeWithSelector(IDaveConsensus.IncorrectEpochNumber.selector, received, actual);
+    }
+
+    function _encodeInvalidOutputsMerkleRootProofSize(uint256 suppliedProofSize)
+        internal
+        pure
+        returns (bytes memory encodedError)
+    {
+        return abi.encodeWithSelector(IDaveConsensus.InvalidOutputsMerkleRootProofSize.selector, suppliedProofSize);
+    }
+
+    function _encodeInvalidOutputsMerkleRootProof(bytes32 machineMerkleRoot)
+        internal
+        pure
+        returns (bytes memory encodedError)
+    {
+        return abi.encodeWithSelector(IDaveConsensus.InvalidOutputsMerkleRootProof.selector, machineMerkleRoot);
+    }
+
+    function _encodeClaimStagingPeriodNotOverYet(uint256 numberOfBlocksAfterStaging, uint256 claimStagingPeriod)
+        internal
+        pure
+        returns (bytes memory encodedError)
+    {
+        return abi.encodeWithSelector(
+            IDaveConsensus.ClaimStagingPeriodNotOverYet.selector, numberOfBlocksAfterStaging, claimStagingPeriod
+        );
+    }
+
+    function _encodeApplicationForeclosed(address appContract) internal pure returns (bytes memory encodedError) {
+        return abi.encodeWithSelector(IApplicationChecker.ApplicationForeclosed.selector, appContract);
     }
 }

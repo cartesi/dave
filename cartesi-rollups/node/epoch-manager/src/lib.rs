@@ -68,15 +68,28 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
             alloy::network::Ethereum,
         >,
     ) -> Result<()> {
-        let can_settle = dave_consensus
-            .canSettle()
+        self.try_stage_tournament_result(dave_consensus).await?;
+        self.try_accept_staged_tournament_result(dave_consensus)
+            .await?;
+        Ok(())
+    }
+
+    async fn try_stage_tournament_result(
+        &mut self,
+        dave_consensus: &DaveConsensus::DaveConsensusInstance<
+            DynProvider,
+            alloy::network::Ethereum,
+        >,
+    ) -> Result<()> {
+        let can_stage = dave_consensus
+            .canStageTournamentResult()
             .block(alloy::eips::BlockId::pending())
             .call()
             .await?;
 
-        if can_settle.isFinished {
+        if can_stage.isFinished && !can_stage.isTournamentResultStaged {
             match self.state_manager.settlement_info(
-                can_settle
+                can_stage
                     .epochNumber
                     .to_u64()
                     .expect("fail to convert epoch number to u64"),
@@ -84,30 +97,76 @@ impl<AS: ArenaSender, SM: StateManager> EpochManager<AS, SM> {
                 Some(settlement) => {
                     assert_eq!(
                         settlement.computation_hash.data(),
-                        can_settle.winnerCommitment,
+                        can_stage.winnerCommitment,
                         "Winner commitment mismatch, notify all users!"
                     );
                     info!(
-                        "settle epoch {} with claim {}",
-                        can_settle.epochNumber,
+                        "stage tournament result of epoch {} with claim {}",
+                        can_stage.epochNumber,
                         settlement.computation_hash.to_hex()
                     );
                     let tx_result = dave_consensus
-                        .settle(
-                            can_settle.epochNumber,
+                        .stageTournamentResult(
+                            can_stage.epochNumber,
                             vec_u8_to_bytes_32(settlement.output_merkle.into()),
                             to_bytes_32_vec(settlement.output_proof),
                         )
                         .send()
                         .await;
-                    allow_revert_rethrow_others("settle", tx_result).await?;
+                    allow_revert_rethrow_others("stageTournamentResult", tx_result).await?;
                 }
                 None => {
                     trace!("wait for the `machine-runner` to insert the value");
                 }
             }
         } else {
-            trace!("epoch not ready to be settled");
+            trace!("tournament result not ready to be staged");
+        }
+        Ok(())
+    }
+
+    async fn try_accept_staged_tournament_result(
+        &mut self,
+        dave_consensus: &DaveConsensus::DaveConsensusInstance<
+            DynProvider,
+            alloy::network::Ethereum,
+        >,
+    ) -> Result<()> {
+        let can_accept = dave_consensus
+            .canAcceptStagedTournamentResult()
+            .block(alloy::eips::BlockId::pending())
+            .call()
+            .await?;
+
+        if can_accept.isTournamentResultStaged && can_accept.isClaimStagingPeriodOver {
+            match self.state_manager.settlement_info(
+                can_accept
+                    .epochNumber
+                    .to_u64()
+                    .expect("fail to convert epoch number to u64"),
+            )? {
+                Some(settlement) => {
+                    assert_eq!(
+                        vec_u8_to_bytes_32(settlement.output_merkle.into()),
+                        can_accept.stagedPostEpochOutputsMerkleRoot,
+                        "Staged outputs Merkle root mismatch, notify all users!"
+                    );
+                    info!(
+                        "accept staged tournament result of epoch {}",
+                        can_accept.epochNumber
+                    );
+                    let tx_result = dave_consensus
+                        .acceptStagedTournamentResult(can_accept.epochNumber)
+                        .send()
+                        .await;
+                    allow_revert_rethrow_others("acceptStagedTournamentResult", tx_result).await?;
+                }
+                None => {
+                    trace!("wait for the `machine-runner` to insert the value");
+                }
+            }
+        } else {
+            trace!("staged tournament result not ready to be accepted");
         }
         Ok(())
     }

@@ -11,7 +11,7 @@ import {IDaveConsensus} from "./IDaveConsensus.sol";
 
 /// @title Dave-App Pair Factory
 /// @notice Allows anyone to reliably deploy an application
-/// validated a newly-deployed `IDaveConsensus` contract.
+/// validated by a newly-deployed `IDaveConsensus` contract.
 interface IDaveAppFactory is IApplicationFactoryErrors {
     /// @notice A Dave-App pair was created.
     /// @param appContract The application contract
@@ -20,22 +20,29 @@ interface IDaveAppFactory is IApplicationFactoryErrors {
 
     /// @notice Deploy a new Dave-App pair deterministically.
     /// @param templateHash The application template hash
+    /// @param claimStagingPeriod The claim staging period
     /// @param withdrawalConfig The withdrawal configuration
     /// @param salt A 32-byte value used to add entropy to the addresses
     /// @return appContract The application contract
     /// @return daveConsensus The Dave consensus contract
-    function newDaveApp(bytes32 templateHash, WithdrawalConfig calldata withdrawalConfig, bytes32 salt)
-        external
-        returns (IApplication appContract, IDaveConsensus daveConsensus);
+    function newDaveApp(
+        bytes32 templateHash,
+        uint256 claimStagingPeriod,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external returns (IApplication appContract, IDaveConsensus daveConsensus);
 
     /// @notice Calculate the address of a Dave-App pair.
     /// @param templateHash The application template hash
+    /// @param claimStagingPeriod The claim staging period
     /// @param withdrawalConfig The withdrawal configuration
     /// @param salt A 32-byte value used to add entropy to the addresses
     /// @return appContractAddress The application contract address
     /// @return daveConsensusAddress The Dave consensus contract address
-    function calculateDaveAppAddress(bytes32 templateHash, WithdrawalConfig calldata withdrawalConfig, bytes32 salt)
-        external
-        view
-        returns (address appContractAddress, address daveConsensusAddress);
+    function calculateDaveAppAddress(
+        bytes32 templateHash,
+        uint256 claimStagingPeriod,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external view returns (address appContractAddress, address daveConsensusAddress);
 }
