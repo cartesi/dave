@@ -64,7 +64,7 @@ end
 local Reader = {}
 Reader.__index = Reader
 
-function Reader:new(input_box_address, dave_app_factory_address, template_hash, salt, endpoint, genesis)
+function Reader:new(input_box_address, dave_app_factory_address, template_hash, sentries, salt, endpoint, genesis)
     genesis = genesis or 0
     endpoint = endpoint or blockchain_constants.endpoint
     local reader = {
@@ -78,7 +78,7 @@ function Reader:new(input_box_address, dave_app_factory_address, template_hash, 
     setmetatable(reader, self)
 
     -- pre-calculate app and consensus addresses based on provided template hash and salt values
-    reader.app_address, reader.consensus_address = reader:calculate_dave_app_address(template_hash, salt)
+    reader.app_address, reader.consensus_address = reader:calculate_dave_app_address(template_hash, sentries, salt)
 
     return reader
 end
@@ -279,12 +279,13 @@ function Reader:balance(address)
     return uint256.new(balance)
 end
 
-function Reader:calculate_dave_app_address(template_hash, salt)
-    local sig = "calculateDaveAppAddress(bytes32,uint256,(address,uint8,uint8,uint64,address),bytes32)(address,address)"
-    local claim_staging_period = 0
+function Reader:calculate_dave_app_address(template_hash, sentries, salt)
+    local sig = "calculateDaveAppAddress(bytes32,uint256,address[],(address,uint8,uint8,uint64,address),bytes32)(address,address)"
+    local claim_staging_period = 1000
+    local sentries_str = "[" .. table.concat(sentries, ",") .. "]"
     local address_zero = "0x" .. string.rep("00", 20)
     local withdrawal_config = string.format("(%s,0,0,0,%s)", address_zero, address_zero)
-    local ret = self:_call(self.dave_app_factory_address, sig, { template_hash, claim_staging_period, withdrawal_config, salt })
+    local ret = self:_call(self.dave_app_factory_address, sig, { template_hash, claim_staging_period, sentries_str, withdrawal_config, salt })
     assert(#ret == 2)
     return table.unpack(ret)
 end

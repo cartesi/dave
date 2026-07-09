@@ -56,13 +56,14 @@ function Env.spawn_blockchain(inputs)
 
     local blockchain = Blockchain:new(ANVIL_LOAD_PATH, ANVIL_DUMP_PATH)
     Env.blockchain = blockchain
-    Env.reader = Reader:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, TEMPLATE_MACHINE_HASH, SALT, blockchain
+    Env.sentries = {Dave.wallet_address}
+    Env.reader = Reader:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, TEMPLATE_MACHINE_HASH, Env.sentries, SALT, blockchain
         .endpoint)
     Env.app_address = Env.reader.app_address
     Env.consensus_address = Env.reader.consensus_address
     Env.sender = Sender:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, Env.app_address, blockchain.pks[1],
         blockchain.endpoint)
-    Env.sender:tx_new_dave_app(TEMPLATE_MACHINE_HASH, SALT)
+    Env.sender:tx_new_dave_app(TEMPLATE_MACHINE_HASH, Env.sentries, SALT)
     Env.sender:tx_add_inputs(inputs)
     Env.sender:advance_blocks(2)
     return blockchain

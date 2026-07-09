@@ -64,6 +64,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
     let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
 
     signer.set_chain_id(Some(anvil.chain_id()));
+    let signer_address = signer.address();
     let wallet = EthereumWallet::from(signer);
 
     let provider = ProviderBuilder::new()
@@ -89,7 +90,9 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
             .expect("failed to read machine root hash")
     };
 
-    let claim_staging_period = U256::from(0);
+    let claim_staging_period = U256::from(1000);
+
+    let sentries = vec![signer_address];
 
     let withdrawal_config = WithdrawalConfig {
         guardian: Default::default(),
@@ -106,6 +109,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .calculateDaveAppAddress(
             initial_hash.into(),
             claim_staging_period,
+            sentries.clone(),
             withdrawal_config.clone(),
             salt,
         )
@@ -119,6 +123,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .newDaveApp(
             initial_hash.into(),
             claim_staging_period,
+            sentries.clone(),
             withdrawal_config.clone(),
             salt,
         )

@@ -46,6 +46,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 import {DaveAppFactory} from "src/DaveAppFactory.sol";
 import {IDaveAppFactory} from "src/IDaveAppFactory.sol";
 import {IDaveConsensus} from "src/IDaveConsensus.sol";
+import {ISentryErrors} from "src/ISentryErrors.sol";
 
 library LibExternalBinaryKeccak256MerkleTree {
     using LibBinaryMerkleTree for bytes32[];
@@ -89,17 +90,18 @@ contract DaveAppFactoryTest is Test {
     function testNewDaveApp(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
+        address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) external {
         _randomizeBlockNumber(claimStagingPeriod);
 
         (address precalculatedAppContractAddress, address precalculatedDaveConsensusAddress) =
-            _daveAppFactory.calculateDaveAppAddress(templateHash, claimStagingPeriod, withdrawalConfig, salt);
+            _daveAppFactory.calculateDaveAppAddress(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt);
 
         vm.recordLogs();
 
-        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, withdrawalConfig, salt) returns (
+        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt) returns (
             IApplication appContract, IDaveConsensus daveConsensus
         ) {
             Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -116,10 +118,14 @@ contract DaveAppFactoryTest is Test {
                 "calculateDaveAppAddress(...)[1] != newDaveApp(...)[1]"
             );
 
-            _testNewDaveAppSuccess(templateHash, claimStagingPeriod, withdrawalConfig, appContract, daveConsensus, logs);
+            _testNewDaveAppSuccess(
+                templateHash, claimStagingPeriod, sentries, withdrawalConfig, appContract, daveConsensus, logs
+            );
 
             (precalculatedAppContractAddress, precalculatedDaveConsensusAddress) =
-                _daveAppFactory.calculateDaveAppAddress(templateHash, claimStagingPeriod, withdrawalConfig, salt);
+                _daveAppFactory.calculateDaveAppAddress(
+                    templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt
+                );
 
             assertEq(
                 precalculatedAppContractAddress,
@@ -133,12 +139,12 @@ contract DaveAppFactoryTest is Test {
                 "calculateDaveAppAddress(...)[1] != newDaveApp(...)[1]"
             );
         } catch (bytes memory errorData) {
-            _testNewDaveAppFailure(withdrawalConfig, errorData);
+            _testNewDaveAppFailure(sentries, withdrawalConfig, errorData);
             return;
         }
 
         // Cannot deploy an application with the same salt twice
-        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, withdrawalConfig, salt) {
+        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt) {
             revert("second deterministic deployment did not revert");
         } catch (bytes memory errorData) {
             assertEq(
@@ -150,6 +156,7 @@ contract DaveAppFactoryTest is Test {
     function testStageAndAcceptTournamentResult(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
+        address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt,
         bytes32 outputsMerkleRoot,
@@ -162,7 +169,7 @@ contract DaveAppFactoryTest is Test {
 
         vm.assumeNoRevert();
         (appContract, daveConsensus) =
-            _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, withdrawalConfig, salt);
+            _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt);
 
         bytes[] memory inputs = new bytes[](inputPayloads.length);
 
@@ -285,7 +292,7 @@ contract DaveAppFactoryTest is Test {
             bool val1;
             uint256 val2;
 
-            (val1,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
+            (val1,,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
 
             assertFalse(val1); // isTournamentResultStaged
             assertEq(val2, 0); // epochNumber
@@ -352,7 +359,7 @@ contract DaveAppFactoryTest is Test {
             bool val1;
             uint256 val2;
 
-            (val1,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
+            (val1,,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
 
             assertFalse(val1); // isTournamentResultStaged
             assertEq(val2, 0); // epochNumber
@@ -472,17 +479,19 @@ contract DaveAppFactoryTest is Test {
         {
             bool val1;
             bool val2;
-            uint256 val3;
-            Machine.Hash val4;
-            bytes32 val5;
+            bool val3;
+            uint256 val4;
+            Machine.Hash val5;
+            bytes32 val6;
 
-            (val1, val2, val3, val4, val5) = daveConsensus.canAcceptStagedTournamentResult();
+            (val1, val2, val3, val4, val5, val6) = daveConsensus.canAcceptStagedTournamentResult();
 
             assertTrue(val1); // isTournamentResultStaged
-            assertEq(val2, claimStagingPeriod == 0); // isClaimStagingPeriodOver
-            assertEq(val3, 0); // epochNumber
-            assertEq(Machine.Hash.unwrap(val4), machineMerkleRoot);
-            assertEq(val5, outputsMerkleRoot);
+            assertFalse(val2); // doAllSentriesAgreeWithStagedTournamentResult
+            assertEq(val3, claimStagingPeriod == 0); // isClaimStagingPeriodOver
+            assertEq(val4, 0); // epochNumber
+            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+            assertEq(val6, outputsMerkleRoot);
         }
 
         assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
@@ -500,6 +509,17 @@ contract DaveAppFactoryTest is Test {
             vm.expectRevert(_encodeClaimStagingPeriodNotOverYet(numberOfBlocksAfterStaging, claimStagingPeriod));
             vm.prank(vm.randomAddress());
             daveConsensus.acceptStagedTournamentResult(0);
+        }
+
+        // If there is at least one sentry, at random decide to submit sentry claims
+        // corroborating with the staged tournament result
+        uint256 numOfSentries = daveConsensus.getNumberOfSentries();
+        uint256[] memory sentryIds = _getShuffledSentryIds(numOfSentries);
+        uint256 numOfClaims = vm.randomUint(0, numOfSentries);
+        bool doAllSentriesAgreeWithStagedTournamentResult = (numOfSentries > 0) && (numOfClaims == numOfSentries);
+        for (uint256 i; i < numOfClaims; ++i) {
+            _submitSentryClaim(appContract, daveConsensus, 0, sentryIds[i], Machine.Hash.wrap(machineMerkleRoot));
+            _attemptSentryClaimResubmission(daveConsensus, 0, sentryIds[vm.randomUint(0, i)]);
         }
 
         vm.roll(vm.randomUint(stagingBlockNumber + claimStagingPeriod, type(uint64).max));
@@ -548,17 +568,19 @@ contract DaveAppFactoryTest is Test {
         {
             bool val1;
             bool val2;
-            uint256 val3;
-            Machine.Hash val4;
-            bytes32 val5;
+            bool val3;
+            uint256 val4;
+            Machine.Hash val5;
+            bytes32 val6;
 
-            (val1, val2, val3, val4, val5) = daveConsensus.canAcceptStagedTournamentResult();
+            (val1, val2, val3, val4, val5, val6) = daveConsensus.canAcceptStagedTournamentResult();
 
             assertTrue(val1); // isTournamentResultStaged
-            assertTrue(val2); // isClaimStagingPeriodOver
-            assertEq(val3, 0); // epochNumber
-            assertEq(Machine.Hash.unwrap(val4), machineMerkleRoot);
-            assertEq(val5, outputsMerkleRoot);
+            assertEq(val2, doAllSentriesAgreeWithStagedTournamentResult);
+            assertTrue(val3); // isClaimStagingPeriodOver
+            assertEq(val4, 0); // epochNumber
+            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+            assertEq(val6, outputsMerkleRoot);
         }
 
         assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
@@ -615,7 +637,7 @@ contract DaveAppFactoryTest is Test {
             bool val1;
             uint256 val2;
 
-            (val1,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
+            (val1,,, val2,,) = daveConsensus.canAcceptStagedTournamentResult();
 
             assertFalse(val1); // isTournamentResultStaged
             assertEq(val2, 1); // epochNumber
@@ -699,6 +721,23 @@ contract DaveAppFactoryTest is Test {
         revert("Successful staging");
     }
 
+    /// @notice This function is used to simulate a foreclosure and a sentry claim.
+    /// If the claim succeeds, then the function reverts with error message "Successful claim".
+    /// If the claim fails, then the function propagates the error from the DaveConsensus contract.
+    function simulateForeclosureAndSentryClaim(
+        IApplication appContract,
+        IDaveConsensus daveConsensus,
+        uint256 epochNumber,
+        address sentry,
+        Machine.Hash postEpochMachineStateHash
+    ) external {
+        vm.prank(appContract.getGuardian());
+        appContract.foreclose();
+        vm.prank(sentry);
+        daveConsensus.submitSentryClaim(epochNumber, postEpochMachineStateHash);
+        revert("Successful claim");
+    }
+
     /// @notice This function is used to simulate a foreclosure and a tournament-result acceptance.
     /// If the acceptance succeeds, then the function reverts with error message "Successful acceptance".
     /// If the acceptance fails, then the function propagates the error from the DaveConsensus contract.
@@ -717,6 +756,7 @@ contract DaveAppFactoryTest is Test {
     function _testNewDaveAppSuccess(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
+        address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         IApplication appContract,
         IDaveConsensus daveConsensus,
@@ -921,6 +961,7 @@ contract DaveAppFactoryTest is Test {
         assertEq(address(daveConsensus.getApplicationContract()), address(appContract));
         assertEq(address(daveConsensus.getTournamentFactory()), address(_tournamentFactory));
         assertEq(daveConsensus.getClaimStagingPeriod(), claimStagingPeriod);
+        assertEq(_getSentries(daveConsensus), sentries);
         assertEq(daveConsensus.getDeploymentBlockNumber(), vm.getBlockNumber());
         assertTrue(daveConsensus.supportsInterface(type(IERC165).interfaceId));
         assertTrue(daveConsensus.supportsInterface(type(IOutputsMerkleRootValidator).interfaceId));
@@ -965,14 +1006,34 @@ contract DaveAppFactoryTest is Test {
             bytes memory input = vm.randomBytes(inputLength);
             assertEq(daveConsensus.provideMerkleRootOfInput(inputIndexWithinBounds, input), bytes32(0));
         }
+
+        assertEq(daveConsensus.getSentryId(address(0)), 0);
+        assertEq(daveConsensus.getSentryId(_randomAddressNotIn(sentries)), 0);
+        assertEq(daveConsensus.getSentryById(0), address(0));
+        assertEq(daveConsensus.getSentryById(vm.randomUint(sentries.length + 1, type(uint256).max)), address(0));
+        assertFalse(daveConsensus.hasSentryClaimedInEpoch(vm.randomUint(), vm.randomUint()));
+        assertEq(daveConsensus.getSentryClaimCount(vm.randomUint(), Machine.Hash.wrap(bytes32(vm.randomUint()))), 0);
     }
 
-    function _testNewDaveAppFailure(WithdrawalConfig calldata withdrawalConfig, bytes memory errorData) internal pure {
+    function _testNewDaveAppFailure(
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes memory errorData
+    ) internal pure {
         (bool isValidError, bytes32 errorSelector, bytes memory errorArgs) = errorData.consumeBytes4();
         assertTrue(isValidError, "Expected error to contain a 4-byte selector");
         if (errorSelector == IApplicationFactoryErrors.InvalidWithdrawalConfig.selector) {
             assertEq(errorArgs, abi.encode(withdrawalConfig), "Expected withdrawal configs to match");
             assertFalse(withdrawalConfig.isValid(), "Expected withdrawal config to be invalid");
+        } else if (errorSelector == ISentryErrors.ZeroSentryAddress.selector) {
+            assertEq(errorArgs, abi.encode());
+            assertTrue(_contains(sentries, address(0)), "Expected sentries array to have the zero address");
+        } else if (errorSelector == ISentryErrors.DuplicatedSentryAddress.selector) {
+            (uint256 sentryId, address sentry) = abi.decode(errorArgs, (uint256, address));
+            assertGe(sentryId, 1, "Expected sentry ID >= 1");
+            assertLe(sentryId, sentries.length, "Expected sentry ID <= N");
+            assertEq(sentries[sentryId - 1], sentry, "Expected array to have sentry at given index");
+            assertTrue(_contains(sentries[sentryId:], sentry), "Expected array to have duplicated address");
         } else {
             revert("Unexpected error");
         }
@@ -1040,6 +1101,85 @@ contract DaveAppFactoryTest is Test {
         }
     }
 
+    function _submitSentryClaim(
+        IApplication appContract,
+        IDaveConsensus daveConsensus,
+        uint256 epochNumber,
+        uint256 sentryId,
+        Machine.Hash postEpochMachineStateHash
+    ) internal {
+        address sentry = daveConsensus.getSentryById(sentryId);
+
+        // Pick a random hash for testing error cases
+        Machine.Hash randomHash = Machine.Hash.wrap(bytes32(vm.randomUint()));
+
+        // Attempt to claim a random hash for the wrong epoch number
+        uint256 randomEpochNumber = _randomUintNotEq(epochNumber);
+        vm.prank(sentry);
+        vm.expectRevert(_encodeIncorrectEpochNumber(randomEpochNumber, epochNumber));
+        daveConsensus.submitSentryClaim(randomEpochNumber, randomHash);
+
+        // Make a non-sentry attempt to claim a random hash
+        address nonSentry = _randomNonSentry(daveConsensus);
+        vm.prank(nonSentry);
+        vm.expectRevert(_encodeCallerIsNotSentry(nonSentry));
+        daveConsensus.submitSentryClaim(epochNumber, randomHash);
+
+        // Simulate foreclosure and attempt to claim a random hash
+        vm.expectRevert(_encodeApplicationForeclosed(address(appContract)));
+        this.simulateForeclosureAndSentryClaim(appContract, daveConsensus, epochNumber, sentry, randomHash);
+
+        // Ensure the sentry has not submitted a claim yet
+        assertFalse(daveConsensus.hasSentryClaimedInEpoch(epochNumber, sentryId));
+
+        // Get the current number of claims before the submission for later comparison
+        uint256 claimCountBefore = daveConsensus.getSentryClaimCount(epochNumber, postEpochMachineStateHash);
+        assertLe(claimCountBefore, daveConsensus.getNumberOfSentries());
+
+        // Make the sentry submit the claim while recording logs
+        vm.recordLogs();
+        vm.prank(sentry);
+        daveConsensus.submitSentryClaim(epochNumber, postEpochMachineStateHash);
+
+        // Check the logs for a SentryClaim event
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 numOfSentryClaimEvents;
+        for (uint256 i; i < logs.length; ++i) {
+            Vm.Log memory log = logs[i];
+            if (log.emitter == address(daveConsensus)) {
+                assertGe(log.topics.length, 1);
+                bytes32 topic0 = log.topics[0];
+                if (topic0 == IDaveConsensus.SentryClaim.selector) {
+                    assertEq(log.topics.length, 4);
+                    assertEq(log.topics[1], bytes32(epochNumber));
+                    assertEq(log.topics[2], bytes32(sentryId));
+                    assertEq(log.topics[3], bytes32(uint256(uint160(sentry))));
+                    assertEq(log.data, abi.encode(postEpochMachineStateHash));
+                    ++numOfSentryClaimEvents;
+                } else {
+                    revert UnexpectedLogTopic0(log);
+                }
+            } else {
+                revert UnexpectedLogEmitter(log);
+            }
+        }
+        assertEq(numOfSentryClaimEvents, 1);
+
+        // Ensure the sentry has claimed in epoch according to the contract and that
+        // the number of claims in the epoch increased by 1
+        assertTrue(daveConsensus.hasSentryClaimedInEpoch(epochNumber, sentryId));
+        assertEq(daveConsensus.getSentryClaimCount(epochNumber, postEpochMachineStateHash), claimCountBefore + 1);
+    }
+
+    function _attemptSentryClaimResubmission(IDaveConsensus daveConsensus, uint256 epochNumber, uint256 sentryId)
+        internal
+    {
+        address randomSentry = daveConsensus.getSentryById(sentryId);
+        vm.expectRevert(_encodeSentryAlreadyClaimed(epochNumber, sentryId));
+        vm.prank(randomSentry);
+        daveConsensus.submitSentryClaim(epochNumber, Machine.Hash.wrap(bytes32(vm.randomUint())));
+    }
+
     function _encodeApplicationMismatch(address expected, address obtained)
         internal
         pure
@@ -1084,5 +1224,84 @@ contract DaveAppFactoryTest is Test {
 
     function _encodeApplicationForeclosed(address appContract) internal pure returns (bytes memory encodedError) {
         return abi.encodeWithSelector(IApplicationChecker.ApplicationForeclosed.selector, appContract);
+    }
+
+    function _encodeSentryAlreadyClaimed(uint256 epochNumber, uint256 sentryId)
+        internal
+        pure
+        returns (bytes memory encodedError)
+    {
+        return abi.encodeWithSelector(IDaveConsensus.SentryAlreadyClaimed.selector, epochNumber, sentryId);
+    }
+
+    function _encodeCallerIsNotSentry(address caller) internal pure returns (bytes memory encodedError) {
+        return abi.encodeWithSelector(IDaveConsensus.CallerIsNotSentry.selector, caller);
+    }
+
+    function _randomUintNotEq(uint256 n) internal returns (uint256 m) {
+        while (true) {
+            m = vm.randomUint();
+            if (n != m) {
+                break;
+            }
+        }
+    }
+
+    function _contains(address[] memory array, address value) internal pure returns (bool) {
+        for (uint256 i; i < array.length; ++i) {
+            if (array[i] == value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function _randomAddressNotIn(address[] memory disallowList) internal returns (address addr) {
+        while (true) {
+            addr = vm.randomAddress();
+            if (!_contains(disallowList, addr)) {
+                break;
+            }
+        }
+    }
+
+    function _randomNonSentry(IDaveConsensus daveConsensus) internal returns (address nonSentry) {
+        while (true) {
+            nonSentry = vm.randomAddress();
+            if (daveConsensus.getSentryId(nonSentry) == 0) {
+                break;
+            }
+        }
+    }
+
+    function _getSentries(IDaveConsensus daveConsensus) internal view returns (address[] memory sentries) {
+        sentries = new address[](daveConsensus.getNumberOfSentries());
+        for (uint256 i; i < sentries.length; ++i) {
+            uint256 sentryId = i + 1;
+            sentries[i] = daveConsensus.getSentryById(sentryId);
+            assertEq(daveConsensus.getSentryId(sentries[i]), sentryId);
+            assertNotEq(sentries[i], address(0));
+        }
+    }
+
+    function _getShuffledSentryIds(uint256 numOfSentries) internal returns (uint256[] memory sentryIds) {
+        sentryIds = new uint256[](numOfSentries);
+        for (uint256 i; i < numOfSentries; ++i) {
+            sentryIds[i] = i + 1;
+        }
+        _shuffleInPlace(sentryIds);
+    }
+
+    function _shuffleInPlace(uint256[] memory array) internal {
+        // Nothing to be done.
+        if (array.length == 0) {
+            return;
+        }
+
+        // Fisher-Yates shuffle
+        for (uint256 i = array.length - 1; i > 0; --i) {
+            uint256 j = vm.randomUint(0, i);
+            (array[i], array[j]) = (array[j], array[i]);
+        }
     }
 }
