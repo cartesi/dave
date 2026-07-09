@@ -4,6 +4,7 @@ local Machine = require "computation.machine"
 local helper = require "utils.helper"
 local time = require "utils.time"
 
+local ANVIL_ADDRESS_7 = "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
 local ANVIL_KEY_7 = "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
 
 local function start_dave_node(machine_path, app_address, db_path, sleep_duration, verbosity, trace_level)
@@ -32,6 +33,7 @@ end
 
 local Dave = {}
 Dave.__index = Dave
+Dave.wallet_address = ANVIL_ADDRESS_7
 
 function Dave:new(machine_path, app_address, sender, sleep_duration, verbosity, trace_level)
     -- trace, debug, info, warn, error

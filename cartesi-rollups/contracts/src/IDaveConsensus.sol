@@ -17,6 +17,8 @@ import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
+import {ISentryErrors} from "./ISentryErrors.sol";
+
 /// @notice Consensus contract with Dave tournaments.
 ///
 /// @notice This contract validates only one application,
@@ -32,6 +34,8 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// settled already and which one is open for challenges still.
 /// Anyone can stage a tournament result by calling `stageTournamentResult`.
 /// One can also check if it can be staged by calling `canStageTournamentResult`.
+/// Sentries can submit claims for the post-epoch machine state hash
+/// in order to speed up epoch settlement (by skipping the claim staging period).
 /// Anyone can settle an epoch by calling `acceptStagedTournamentResult`.
 /// One can also check if it can be settled by calling `canAcceptStagedTournamentResult`.
 ///
@@ -43,9 +47,16 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// Every sealed epoch has an associated tournament.
 /// Once a tournament is finished, and a winner commitment is declared,
 /// it can then be staged by anyone. After the claim staging period is elapsed,
+/// or all sentries (if there is any) agree with the staged tournament result,
 /// anyone can settle the epoch by accepting the staged winner commitment.
 ///
-interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator, IApplicationChecker, BinaryMerkleTreeErrors {
+interface IDaveConsensus is
+    IDataProvider,
+    IOutputsMerkleRootValidator,
+    IApplicationChecker,
+    BinaryMerkleTreeErrors,
+    ISentryErrors
+{
     /// @notice Consensus contract was created
     /// @param inputBox the input box contract
     /// @param appContract the application contract
@@ -66,6 +77,18 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator, IApplica
         Machine.Hash initialMachineStateHash,
         bytes32 outputsMerkleRoot,
         ITournament tournament
+    );
+
+    /// @notice A sentry has claimed the post-epoch machine state hash.
+    /// @param epochNumber The epoch number
+    /// @param sentryId The sentry ID
+    /// @param sentry The sentry address
+    /// @param postEpochMachineStateHash The post-epoch machine state hash
+    event SentryClaim(
+        uint256 indexed epochNumber,
+        uint256 indexed sentryId,
+        address indexed sentry,
+        Machine.Hash postEpochMachineStateHash
     );
 
     /// @notice An epoch was staged
@@ -113,6 +136,17 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator, IApplica
     /// @param received Received application address
     error ApplicationMismatch(address expected, address received);
 
+    /// @notice This error is raised whenever the `submitSentryClaim`
+    /// function is called by someone who is not a sentry.
+    /// @param caller The caller address
+    error CallerIsNotSentry(address caller);
+
+    /// @notice This error is raised whenever a sentry attempts to call the
+    /// `submitSentryClaim` function twice for the same epoch.
+    /// @param epochNumber The epoch number
+    /// @param sentryId The sentry ID
+    error SentryAlreadyClaimed(uint256 epochNumber, uint256 sentryId);
+
     /// @notice Get the number of base-layer block in which the contract was deployed.
     function getDeploymentBlockNumber() external view returns (uint256);
 
@@ -127,9 +161,43 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator, IApplica
 
     /// @notice Get the number of base-layer blocks after which a staged claim can be accepted.
     /// @dev A claim, in the context of PRT, is the winner commitment of a tournament, if there is one.
-    /// Once a tournament finishes, and a winner is declared, anyone can stage the tournament result,
-    /// and, after the claim staging period is elapsed, accept it into finality.
+    /// Once a tournament finishes, and a winner is declared, anyone can stage the tournament result.
+    /// After all sentries agree with the staged claim or after the claim staging period is elapsed,
+    /// anyone can accept the staged claim into finality. If there are no sentries, then acceptance
+    /// can only occur after the claim staging period is elapsed.
     function getClaimStagingPeriod() external view returns (uint256);
+
+    /// @notice Get the number of sentries.
+    /// @dev This number can be zero, that is, there are no sentries.
+    function getNumberOfSentries() external view returns (uint256);
+
+    /// @notice Get the ID of a sentry.
+    /// @param sentry The sentry address
+    /// @dev Sentries are assigned IDs between 1 and `N`, the total number of sentries.
+    /// @dev Non-sentries are assigned to ID zero.
+    function getSentryId(address sentry) external view returns (uint256);
+
+    /// @notice Get the address of a sentry by its ID.
+    /// @param sentryId The sentry ID
+    /// @dev Sentry IDs range from 1 to `N`, the total number of sentries.
+    /// @dev Valid IDs do not map to address zero.
+    /// @dev Invalid IDs map to address zero.
+    function getSentryById(uint256 sentryId) external view returns (address);
+
+    /// @notice Check whether a sentry has claimed any post-epoch machine state in a given epoch.
+    /// @param epochNumber The epoch number
+    /// @param sentryId The sentry ID
+    /// @dev You can obtain the ID of a sentry by its address through the `getSentryId` function
+    /// or the address of a sentry by its ID through the `getSentryById` function.
+    function hasSentryClaimedInEpoch(uint256 epochNumber, uint256 sentryId) external view returns (bool);
+
+    /// @notice Get the number of sentries that have claimed a given post-epoch machine state in a given epoch.
+    /// @param epochNumber The epoch number
+    /// @param postEpochMachineStateHash The post-epoch machine state hash
+    function getSentryClaimCount(uint256 epochNumber, Machine.Hash postEpochMachineStateHash)
+        external
+        view
+        returns (uint256);
 
     /// @notice Get the current sealed epoch number, boundaries, tournament, and staging info.
     /// @return epochNumber The epoch number
@@ -181,21 +249,32 @@ interface IDaveConsensus is IDataProvider, IOutputsMerkleRootValidator, IApplica
     /// @dev On success, emits an `EpochStaged` event.
     function stageTournamentResult(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external;
 
+    /// @notice As a sentry, claim the post-epoch machine state hash for the current sealed epoch.
+    /// If all sentries claim the same post-epoch machine state hash as the staged tournament result,
+    /// then the claim staging period is skipped entirely, potentially shortening the finality delay.
+    /// Note that this skipping is only possible if the consensus has at least one sentry.
+    /// @param epochNumber The current sealed epoch number (used to avoid race conditions)
+    /// @param postEpochMachineStateHash The post-epoch machine state hash
+    /// @dev On success, emits a `SentryClaim` event.
+    function submitSentryClaim(uint256 epochNumber, Machine.Hash postEpochMachineStateHash) external;
+
     /// @notice Check whether the staged tournament result of the current sealed epoch can be accepted.
     /// @return isTournamentResultStaged Whether the tournament result (if there is one) is staged
+    /// @return doAllSentriesAgreeWithStagedTournamentResult Whether all sentries agree with staged tournament result
     /// @return isClaimStagingPeriodOver Whether the claim staging period is over
     /// @return epochNumber The current sealed epoch number
     /// @return stagedPostEpochMachineStateHash If the tournament result is staged, the staged post-epoch machine state hash
     /// @return stagedPostEpochOutputsMerkleRoot If the tournament result is staged, the staged post-epoch outputs Merkle root
-    /// @dev Validators should only call `acceptStagedTournamentResult` if both isTournamentResultStaged
-    /// and isClaimStagingPeriodOver are true. Be also mindful that isClaimStagingPeriodOver,
-    /// stagedPostEpochMachineStateHash, and stagedPostEpochOutputsMerkleRoot only have any meaning
-    /// if isTournamentResultStaged is true.
+    /// @dev Validators should only call `acceptStagedTournamentResult` if the Boolean expression isTournamentResultStaged
+    /// AND (doAllSentriesAgreeWithStagedTournamentResult OR isClaimStagingPeriodOver) is true. Be also mindful that
+    /// doAllSentriesAgreeWithStagedTournamentResult, isClaimStagingPeriodOver, stagedPostEpochMachineStateHash, and
+    /// stagedPostEpochOutputsMerkleRoot only have any meaning if isTournamentResultStaged is true.
     function canAcceptStagedTournamentResult()
         external
         view
         returns (
             bool isTournamentResultStaged,
+            bool doAllSentriesAgreeWithStagedTournamentResult,
             bool isClaimStagingPeriodOver,
             uint256 epochNumber,
             Machine.Hash stagedPostEpochMachineStateHash,

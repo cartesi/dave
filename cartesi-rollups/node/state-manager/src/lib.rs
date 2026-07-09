@@ -65,6 +65,7 @@ impl Proof {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Settlement {
     pub computation_hash: Digest,
+    pub final_state: Hash,
     pub output_merkle: Hash,
     pub output_proof: Proof,
 }

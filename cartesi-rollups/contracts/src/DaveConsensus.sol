@@ -5,6 +5,7 @@ pragma solidity ^0.8.8;
 
 import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.sol";
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
+import {BitMaps} from "@openzeppelin-contracts-5.2.0/utils/structs/BitMaps.sol";
 
 import {
     IOutputsMerkleRootValidator
@@ -29,6 +30,7 @@ import {IDaveConsensus} from "./IDaveConsensus.sol";
 
 contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     using LibMath for uint256;
+    using BitMaps for BitMaps.BitMap;
     using LibBinaryMerkleTree for bytes;
     using LibBinaryMerkleTree for bytes32[];
 
@@ -46,6 +48,10 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
 
     /// @notice Deployment block number
     uint256 immutable _DEPLOYMENT_BLOCK_NUMBER = block.number;
+
+    /// @notice The total number of sentries.
+    /// @notice See the `getNumberOfSentries` function.
+    uint256 immutable _NUM_OF_SENTRIES;
 
     /// @notice Current sealed epoch number
     uint256 _epochNumber;
@@ -80,18 +86,45 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     /// @notice Last-finalized machine state hash
     Machine.Hash _lastFinalizedMachineStateHash;
 
+    /// @notice Sentry IDs indexed by address.
+    /// @notice See the `getSentryId` function.
+    /// @dev Non-sentries are assigned to ID zero.
+    /// @dev Sentries have IDs greater than zero.
+    mapping(address => uint256) private _sentryId;
+
+    /// @notice Sentry addresses indexed by ID.
+    /// @notice See the `getSentryById` function.
+    /// @dev Invalid IDs map to address zero.
+    mapping(uint256 => address) private _sentryById;
+
+    /// @notice A mapping that keeps track of which sentries have claimed in any given epoch.
+    /// @notice See the `hasSentryClaimedInEpoch` function.
+    mapping(uint256 => BitMaps.BitMap) private _epochClaimBitMap;
+
+    /// @notice A mapping that keeps track of post-epoch machine state hash claim counts per epoch.
+    /// @notice See the `getSentryClaimCount` function.
+    mapping(uint256 => mapping(Machine.Hash => uint256)) private _claimCount;
+
     constructor(
         IInputBox inputBox,
         address appContract,
         ITournamentFactory tournamentFactory,
         Machine.Hash initialMachineStateHash,
-        uint256 claimStagingPeriod
+        uint256 claimStagingPeriod,
+        address[] memory sentries
     ) {
         // Initialize immutable variables
         _INPUT_BOX = inputBox;
         _APP_CONTRACT = appContract;
         _TOURNAMENT_FACTORY = tournamentFactory;
         _CLAIM_STAGING_PERIOD = claimStagingPeriod;
+        for (uint256 i; i < sentries.length; ++i) {
+            address sentry = sentries[i];
+            _ensureSentryAddressIsValid(sentry);
+            uint256 sentryId = ++_NUM_OF_SENTRIES;
+            _sentryId[sentry] = sentryId;
+            _sentryById[sentryId] = sentry;
+        }
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
         // Initialize first sealed epoch
@@ -150,12 +183,38 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         emit EpochStaged(epochNumber, finalMachineStateHash, outputsMerkleRoot);
     }
 
+    function submitSentryClaim(uint256 epochNumber, Machine.Hash postEpochMachineStateHash)
+        external
+        override
+        notForeclosed(_APP_CONTRACT)
+    {
+        // Check whether caller is authorized
+        address caller = msg.sender;
+        uint256 sentryId = getSentryId(caller);
+        require(sentryId > 0, CallerIsNotSentry(caller));
+
+        // Check epoch settlement
+        require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
+
+        // Check whether sentry has claimed in epoch already
+        BitMaps.BitMap storage epochClaimBitMap = _epochClaimBitMap[epochNumber];
+        require(!epochClaimBitMap.get(sentryId), SentryAlreadyClaimed(epochNumber, sentryId));
+
+        // Mark epoch as claimed (for sentry) and increment claim count for post-epoch state hash
+        epochClaimBitMap.set(sentryId);
+        ++_claimCount[epochNumber][postEpochMachineStateHash];
+
+        // Emit sentry claim event so that off-chain components can update their tallies
+        emit SentryClaim(epochNumber, sentryId, caller, postEpochMachineStateHash);
+    }
+
     function canAcceptStagedTournamentResult()
         external
         view
         override
         returns (
             bool isTournamentResultStaged,
+            bool doAllSentriesAgreeWithStagedTournamentResult,
             bool isClaimStagingPeriodOver,
             uint256 epochNumber,
             Machine.Hash stagedPostEpochMachineStateHash,
@@ -165,6 +224,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         epochNumber = _epochNumber;
         isTournamentResultStaged = _isTournamentResultStaged;
         if (_isTournamentResultStaged) {
+            doAllSentriesAgreeWithStagedTournamentResult = _doAllSentriesAgreeWithStagedTournamentResult();
             isClaimStagingPeriodOver = ((block.number - _stagingBlockNumber) >= _CLAIM_STAGING_PERIOD);
             stagedPostEpochMachineStateHash = _stagedPostEpochMachineStateHash;
             stagedPostEpochOutputsMerkleRoot = _stagedPostEpochOutputsMerkleRoot;
@@ -179,7 +239,8 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         require(_isTournamentResultStaged, TournamentResultNotStaged());
 
         // Check whether the claim staging period has elapsed
-        {
+        // if not all sentries agree with the staged tournament result
+        if (!_doAllSentriesAgreeWithStagedTournamentResult()) {
             uint256 numberOfBlocksAfterStaging = block.number - _stagingBlockNumber;
             require(
                 numberOfBlocksAfterStaging >= _CLAIM_STAGING_PERIOD,
@@ -255,6 +316,31 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         return _CLAIM_STAGING_PERIOD;
     }
 
+    function getNumberOfSentries() external view override returns (uint256) {
+        return _NUM_OF_SENTRIES;
+    }
+
+    function getSentryId(address sentry) public view override returns (uint256) {
+        return _sentryId[sentry];
+    }
+
+    function getSentryById(uint256 sentryId) external view override returns (address) {
+        return _sentryById[sentryId];
+    }
+
+    function hasSentryClaimedInEpoch(uint256 epochNumber, uint256 sentryId) external view override returns (bool) {
+        return _epochClaimBitMap[epochNumber].get(sentryId);
+    }
+
+    function getSentryClaimCount(uint256 epochNumber, Machine.Hash postEpochMachineStateHash)
+        external
+        view
+        override
+        returns (uint256)
+    {
+        return _claimCount[epochNumber][postEpochMachineStateHash];
+    }
+
     function provideMerkleRootOfInput(uint256 inputIndexWithinEpoch, bytes calldata input)
         external
         view
@@ -323,6 +409,10 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
     }
 
+    function _doAllSentriesAgreeWithStagedTournamentResult() internal view returns (bool) {
+        return _NUM_OF_SENTRIES > 0 && _claimCount[_epochNumber][_stagedPostEpochMachineStateHash] == _NUM_OF_SENTRIES;
+    }
+
     modifier onlyValidAppContract(address appContract) {
         _ensureAppContractIsValid(appContract);
         _;
@@ -330,5 +420,11 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
 
     function _ensureAppContractIsValid(address appContract) internal view {
         require(_APP_CONTRACT == appContract, ApplicationMismatch(_APP_CONTRACT, appContract));
+    }
+
+    function _ensureSentryAddressIsValid(address sentry) internal view {
+        require(sentry != address(0), ZeroSentryAddress());
+        uint256 sentryId = getSentryId(sentry);
+        require(sentryId == 0, DuplicatedSentryAddress(sentryId, sentry));
     }
 }
