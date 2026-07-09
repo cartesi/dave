@@ -257,7 +257,7 @@ impl<SM: StateManager> BlockchainReader<SM> {
                         .inputIndexUpperBound
                         .to_u64()
                         .expect("fail to convert epoch boundary"),
-                    root_tournament: e.tournament,
+                    root_tournament: e.task,
                     block_created_number: meta.block_number.expect("block number should exist"),
                 };
                 info!(

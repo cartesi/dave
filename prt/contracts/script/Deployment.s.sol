@@ -15,9 +15,6 @@ import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
 import {
-    CartesiStateTransition
-} from "src/state-transition/CartesiStateTransition.sol";
-import {
     CmioStateTransition
 } from "src/state-transition/CmioStateTransition.sol";
 import {

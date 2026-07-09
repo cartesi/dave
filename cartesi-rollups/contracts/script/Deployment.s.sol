@@ -14,13 +14,17 @@ contract DeploymentScript is BaseDeploymentScript {
 
         address inputBox = _loadDeployment(".", "InputBox");
         address appFactory = _loadDeployment(".", "ApplicationFactory");
-        address tournamentFactory = _loadDeployment(".", "MultiLevelTournamentFactory");
+
+        // The factory's bound proof system; apps that want a safety gate
+        // deploy one at app-creation time via `newGatedDaveApp` (see
+        // prt/docs/safety-gate.md).
+        address taskSpawner = _loadDeployment(".", "MultiLevelTournamentFactory");
 
         vmSafe.startBroadcast();
 
         _storeDeployment(
             type(DaveAppFactory).name,
-            _create2(type(DaveAppFactory).creationCode, abi.encode(inputBox, appFactory, tournamentFactory))
+            _create2(type(DaveAppFactory).creationCode, abi.encode(inputBox, appFactory, taskSpawner))
         );
 
         vmSafe.stopBroadcast();

@@ -1,5 +1,9 @@
 # Permissionless Refereed Tournaments
 
+## Documentation
+
+- [Safety Gate](docs/safety-gate.md) — delay middleware for tournament results, and the `ITask` abstraction.
+
 ## Running PRT
 
 This project uses git submodules.

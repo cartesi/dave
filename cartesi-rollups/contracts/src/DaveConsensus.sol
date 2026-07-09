@@ -16,18 +16,17 @@ import {LibKeccak256} from "cartesi-rollups-contracts-3.0.0/src/library/LibKecca
 import {LibMath} from "cartesi-rollups-contracts-3.0.0/src/library/LibMath.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {ITournament} from "prt-contracts/ITournament.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {ITask} from "prt-contracts/ITask.sol";
+import {ITaskSpawner} from "prt-contracts/ITaskSpawner.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
-import {Tree} from "prt-contracts/types/Tree.sol";
 
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
 
-/// @notice Consensus contract with Dave tournaments.
+/// @notice Consensus contract with Dave tasks.
 ///
 /// @notice This contract validates only one application,
 /// which read inputs from the InputBox contract.
@@ -60,8 +59,8 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     /// @notice The application contract
     address immutable _APP_CONTRACT;
 
-    /// @notice The contract used to instantiate tournaments
-    ITournamentFactory immutable _TOURNAMENT_FACTORY;
+    /// @notice The contract used to instantiate tasks
+    ITaskSpawner immutable _TASK_SPAWNER;
 
     /// @notice Deployment block number
     uint256 immutable _DEPLOYMENT_BLOCK_NUMBER = block.number;
@@ -75,8 +74,8 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     /// @notice Input index (exclusive) upper bound of the current sealed epoch
     uint256 _inputIndexUpperBound;
 
-    /// @notice Current sealed epoch tournament
-    ITournament _tournament;
+    /// @notice Current sealed epoch task
+    ITask _task;
 
     /// @notice Settled output trees' merkle root hash
     mapping(bytes32 => bool) _outputsMerkleRoots;
@@ -87,30 +86,30 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     constructor(
         IInputBox inputBox,
         address appContract,
-        ITournamentFactory tournamentFactory,
+        ITaskSpawner taskSpawner,
         Machine.Hash initialMachineStateHash
     ) {
         // Initialize immutable variables
         _INPUT_BOX = inputBox;
         _APP_CONTRACT = appContract;
-        _TOURNAMENT_FACTORY = tournamentFactory;
-        emit ConsensusCreation(inputBox, appContract, tournamentFactory);
+        _TASK_SPAWNER = taskSpawner;
+        emit ConsensusCreation(inputBox, appContract, taskSpawner);
 
         // Initialize first sealed epoch
         uint256 inputIndexUpperBound = inputBox.getNumberOfInputs(appContract);
         _inputIndexUpperBound = inputIndexUpperBound;
-        ITournament tournament = tournamentFactory.instantiate(initialMachineStateHash, this);
-        _tournament = tournament;
-        emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, bytes32(0), tournament);
+        ITask task = taskSpawner.spawn(initialMachineStateHash, this);
+        _task = task;
+        emit EpochSealed(0, 0, inputIndexUpperBound, initialMachineStateHash, bytes32(0), task);
     }
 
     function canSettle()
         external
         view
         override
-        returns (bool isFinished, uint256 epochNumber, Tree.Node winnerCommitment)
+        returns (bool isFinished, uint256 epochNumber, Machine.Hash finalState)
     {
-        (isFinished, winnerCommitment,) = _tournament.arbitrationResult();
+        (isFinished, finalState) = _task.result();
         epochNumber = _epochNumber;
     }
 
@@ -119,14 +118,14 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         override
         notForeclosed(_APP_CONTRACT)
     {
-        // Check tournament settlement
+        // Check task settlement
         require(epochNumber == _epochNumber, IncorrectEpochNumber(epochNumber, _epochNumber));
 
-        // Check tournament finished
-        (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournament.arbitrationResult();
+        // Check task finished
+        (bool isFinished, Machine.Hash finalMachineStateHash) = _task.result();
         require(isFinished, TournamentNotFinishedYet());
-        ITournament oldTournament = _tournament;
-        _tournament = ITournament(address(0));
+        ITask oldTask = _task;
+        _task = ITask(address(0));
 
         // Check outputs Merkle root
         _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
@@ -138,36 +137,26 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         _outputsMerkleRoots[outputsMerkleRoot] = true;
         _lastFinalizedMachineStateHash = finalMachineStateHash;
 
-        // Start new tournament
-        _tournament = _TOURNAMENT_FACTORY.instantiate(finalMachineStateHash, this);
+        // Start new task
+        _task = _TASK_SPAWNER.spawn(finalMachineStateHash, this);
 
         emit EpochSealed(
-            _epochNumber,
-            _inputIndexLowerBound,
-            _inputIndexUpperBound,
-            finalMachineStateHash,
-            outputsMerkleRoot,
-            _tournament
+            _epochNumber, _inputIndexLowerBound, _inputIndexUpperBound, finalMachineStateHash, outputsMerkleRoot, _task
         );
 
-        oldTournament.tryRecoveringBond();
+        _tryCleanup(oldTask);
     }
 
     function getCurrentSealedEpoch()
         external
         view
         override
-        returns (
-            uint256 epochNumber,
-            uint256 inputIndexLowerBound,
-            uint256 inputIndexUpperBound,
-            ITournament tournament
-        )
+        returns (uint256 epochNumber, uint256 inputIndexLowerBound, uint256 inputIndexUpperBound, ITask task)
     {
         epochNumber = _epochNumber;
         inputIndexLowerBound = _inputIndexLowerBound;
         inputIndexUpperBound = _inputIndexUpperBound;
-        tournament = _tournament;
+        task = _task;
     }
 
     function getInputBox() external view override returns (IInputBox) {
@@ -178,8 +167,8 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         return _APP_CONTRACT;
     }
 
-    function getTournamentFactory() external view override returns (ITournamentFactory) {
-        return _TOURNAMENT_FACTORY;
+    function getTaskSpawner() external view override returns (ITaskSpawner) {
+        return _TASK_SPAWNER;
     }
 
     function provideMerkleRootOfInput(uint256 inputIndexWithinEpoch, bytes calldata input)
@@ -248,6 +237,12 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         );
 
         require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
+    }
+
+    /// @dev Best-effort: settlement must never be blocked by a task whose
+    /// cleanup reverts.
+    function _tryCleanup(ITask task) internal {
+        try task.cleanup() returns (bool) {} catch {}
     }
 
     modifier onlyValidAppContract(address appContract) {
