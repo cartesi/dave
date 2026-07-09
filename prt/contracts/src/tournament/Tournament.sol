@@ -4,9 +4,13 @@
 pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
+import {
+    IERC165
+} from "@openzeppelin-contracts-5.5.0/utils/introspection/IERC165.sol";
 import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
 
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ITask} from "prt-contracts/ITask.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {
     IMultiLevelTournamentFactory
@@ -836,6 +840,51 @@ contract Tournament is ITournament {
 
         Machine.Hash _finalState = finalStates[_danglingCommitment];
         return (true, _danglingCommitment, _finalState);
+    }
+
+    /// @inheritdoc ITask
+    /// @dev Projection of `arbitrationResult` without the winner commitment.
+    /// Inherits its root-only semantics and its `TournamentFailedNoWinner`
+    /// revert when the tournament finishes with every commitment eliminated.
+    function result()
+        external
+        view
+        override
+        returns (bool finished, Machine.Hash finalState)
+    {
+        (finished,, finalState) = this.arbitrationResult();
+    }
+
+    /// @inheritdoc ITask
+    /// @dev Best-effort bond recovery for finished tournaments.
+    /// @dev Reentrancy hazard: `tryRecoveringBond` transfers Ether to the
+    /// winning claimer, which may be a contract (see `ITask.cleanup`).
+    /// Call last.
+    function cleanup() external override returns (bool cleaned) {
+        if (!isFinished()) {
+            return false;
+        }
+
+        // External self-call on purpose: `try` requires an external call,
+        // and `tryRecoveringBond` reverts in reachable states (no winner;
+        // bond already recovered). The try/catch turns those reverts into
+        // `false`, which is `cleanup`'s contract.
+        try this.tryRecoveringBond() returns (bool ok) {
+            return ok;
+        } catch {
+            return false;
+        }
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        external
+        pure
+        override
+        returns (bool)
+    {
+        return interfaceId == type(IERC165).interfaceId
+            || interfaceId == type(ITask).interfaceId
+            || interfaceId == type(ITournament).interfaceId;
     }
 
     //

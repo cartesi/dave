@@ -63,6 +63,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
     let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
 
     signer.set_chain_id(Some(anvil.chain_id()));
+    let signer_address = signer.address();
     let wallet = EthereumWallet::from(signer);
 
     let provider = ProviderBuilder::new()
@@ -98,17 +99,35 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
 
     let salt = FixedBytes::default();
 
+    // Deploy a *gated* app: the test signer plays sentry manager and sole
+    // sentry, exercising the safety gate in the e2e pipeline.
+    let sentries = vec![signer_address];
+    let disagreement_window = 10u64;
+
     let dave_app_factory_contract = IDaveAppFactory::new(dave_app_factory, &provider);
-    let (app, consensus) = dave_app_factory_contract
-        .calculateDaveAppAddress(initial_hash.into(), withdrawal_config.clone(), salt)
+    let addresses = dave_app_factory_contract
+        .calculateGatedDaveAppAddress(
+            initial_hash.into(),
+            withdrawal_config.clone(),
+            signer_address,
+            disagreement_window,
+            sentries.clone(),
+            salt,
+        )
         .call()
         .await
-        .expect("failed to calculate Dave app addresses")
-        .try_into()
-        .unwrap();
+        .expect("failed to calculate gated Dave app addresses");
+    let (app, consensus) = (addresses.appContractAddress, addresses.daveConsensusAddress);
 
     dave_app_factory_contract
-        .newDaveApp(initial_hash.into(), withdrawal_config.clone(), salt)
+        .newGatedDaveApp(
+            initial_hash.into(),
+            withdrawal_config.clone(),
+            signer_address,
+            disagreement_window,
+            sentries,
+            salt,
+        )
         .send()
         .await?
         .watch()

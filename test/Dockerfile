@@ -2,7 +2,7 @@
 
 ARG RUST_VERSION=1.90
 ARG DEBIAN_VERSION=trixie
-ARG FOUNDRY_VERSION=1.4.3
+ARG FOUNDRY_VERSION=1.5.1
 ARG PNPM_VERSION=10.7.0
 ARG JUST_VERSION=1.46.0
 
@@ -39,8 +39,8 @@ RUN <<EOF
 curl -fsSL https://github.com/foundry-rs/foundry/releases/download/v${FOUNDRY_VERSION}/foundry_v${FOUNDRY_VERSION}_${TARGETOS}_${TARGETARCH}.tar.gz \
   -o /tmp/foundry.tar.gz
 case "${TARGETARCH}" in
-    amd64) echo "325ba04dc5cb41c110723b00ac291f8269f8cd785028299aad8252ef980961a7 /tmp/foundry.tar.gz" | sha256sum --check ;;
-    arm64) echo "209492cb4ebd723d9eac002fa30f41f53c8810105b67d3c32fe8201cf70f89d4 /tmp/foundry.tar.gz" | sha256sum --check ;;
+    amd64) echo "73640b01bd9ed29fdb4965085099371f8cf0dbbec3e2086cf54564efc4dcfe88 /tmp/foundry.tar.gz" | sha256sum --check ;;
+    arm64) echo "cccf28bdf202289e837a9e21ed213b2b80dc1e806e12f1717bc98a44315c331e /tmp/foundry.tar.gz" | sha256sum --check ;;
     *) echo "unsupported architecture: ${TARGETARCH}"; exit 1 ;;
 esac
 tar -zx -f /tmp/foundry.tar.gz -C /usr/local/bin

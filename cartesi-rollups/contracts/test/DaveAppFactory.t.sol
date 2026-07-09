@@ -18,7 +18,6 @@ import {IApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApp
 import {IApplicationFactoryErrors} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactoryErrors.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 import {InputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/InputBox.sol";
-import {LibBinaryMerkleTree} from "cartesi-rollups-contracts-3.0.0/src/library/LibBinaryMerkleTree.sol";
 import {LibBytes} from "cartesi-rollups-contracts-3.0.0/src/library/LibBytes.sol";
 import {LibKeccak256} from "cartesi-rollups-contracts-3.0.0/src/library/LibKeccak256.sol";
 import {LibWithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/library/LibWithdrawalConfig.sol";
@@ -28,8 +27,8 @@ import {Memory} from "step/src/Memory.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ITask} from "prt-contracts/ITask.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
-import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {
     CanonicalTournamentParametersProvider
 } from "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
@@ -47,17 +46,7 @@ import {DaveAppFactory} from "src/DaveAppFactory.sol";
 import {IDaveAppFactory} from "src/IDaveAppFactory.sol";
 import {IDaveConsensus} from "src/IDaveConsensus.sol";
 
-library LibExternalBinaryKeccak256MerkleTree {
-    using LibBinaryMerkleTree for bytes32[];
-
-    function merkleRootAfterReplacement(bytes32[] calldata sibs, uint256 nodeIndex, bytes32 node)
-        external
-        pure
-        returns (bytes32)
-    {
-        return sibs.merkleRootAfterReplacement(nodeIndex, node, LibKeccak256.hashPair);
-    }
-}
+import {LibExternalBinaryKeccak256MerkleTree, getCommitmentChildren} from "./DaveTestLib.sol";
 
 contract DaveAppFactoryTest is Test {
     using LibExternalBinaryKeccak256MerkleTree for bytes32[];
@@ -70,7 +59,7 @@ contract DaveAppFactoryTest is Test {
     IInputBox _inputBox;
     IApplicationFactory _appFactory;
     IStateTransition _stateTransition;
-    ITournamentFactory _tournamentFactory;
+    MultiLevelTournamentFactory _tournamentFactory;
     IDaveAppFactory _daveAppFactory;
 
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5);
@@ -164,7 +153,13 @@ contract DaveAppFactoryTest is Test {
             inputs[i] = _addInput(address(appContract), inputPayloads[i]);
         }
 
-        (,,, ITournament tournament) = daveConsensus.getCurrentSealedEpoch();
+        ITournament tournament;
+        {
+            (,,, ITask task) = daveConsensus.getCurrentSealedEpoch();
+            // the task spawner is the tournament factory itself here,
+            // so the task is a root tournament
+            tournament = ITournament(address(task));
+        }
 
         bytes32[] memory outputsMerkleRootProof = _randomProof(Memory.LOG2_MAX_SIZE);
         bytes32 machineMerkleRoot = outputsMerkleRootProof.merkleRootAfterReplacement(
@@ -173,7 +168,7 @@ contract DaveAppFactoryTest is Test {
         );
 
         bytes32[] memory finalStateProof = _randomProof(tournament.tournamentArguments().commitmentArgs.height);
-        (bytes32 leftChild, bytes32 rightChild) = _getCommitmentChildren(machineMerkleRoot, finalStateProof);
+        (bytes32 leftChild, bytes32 rightChild) = getCommitmentChildren(machineMerkleRoot, finalStateProof);
         bytes32 commitment = LibKeccak256.hashPair(leftChild, rightChild);
 
         address submitter = vm.randomAddress();
@@ -249,7 +244,7 @@ contract DaveAppFactoryTest is Test {
             uint256 val1;
             uint256 val2;
             uint256 val3;
-            ITournament val4;
+            ITask val4;
 
             (val1, val2, val3, val4) = daveConsensus.getCurrentSealedEpoch();
 
@@ -299,7 +294,7 @@ contract DaveAppFactoryTest is Test {
             uint256 val1;
             uint256 val2;
             uint256 val3;
-            ITournament val4;
+            ITask val4;
 
             (val1, val2, val3, val4) = daveConsensus.getCurrentSealedEpoch();
 
@@ -313,13 +308,13 @@ contract DaveAppFactoryTest is Test {
         {
             bool val1;
             uint256 val2;
-            Tree.Node val3;
+            Machine.Hash val3;
 
             (val1, val2, val3) = daveConsensus.canSettle();
 
             assertTrue(val1); //  isFinished
             assertEq(val2, 0); // epochNumber
-            assertEq(Tree.Node.unwrap(val3), commitment);
+            assertEq(Machine.Hash.unwrap(val3), machineMerkleRoot);
         }
 
         vm.startPrank(settler);
@@ -360,12 +355,15 @@ contract DaveAppFactoryTest is Test {
             uint256 val1;
             uint256 val2;
             uint256 val3;
+            ITask val4;
 
-            (val1, val2, val3, tournament) = daveConsensus.getCurrentSealedEpoch();
+            (val1, val2, val3, val4) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(val1, 1); // epochNumber
             assertEq(val2, 0); // inputIndexLowerBound
             assertEq(val3, inputs.length); // inputIndexUpperBound
+
+            tournament = ITournament(address(val4));
         }
 
         uint256 numOfTournamentCreatedEvents;
@@ -374,7 +372,7 @@ contract DaveAppFactoryTest is Test {
         for (uint256 i; i < logs.length; ++i) {
             Vm.Log memory log = logs[i];
             if (log.emitter == address(_tournamentFactory)) {
-                if (log.topics[0] == ITournamentFactory.TournamentCreated.selector) {
+                if (log.topics[0] == MultiLevelTournamentFactory.TournamentCreated.selector) {
                     ++numOfTournamentCreatedEvents;
                     address arg1;
                     arg1 = abi.decode(log.data, (address));
@@ -449,12 +447,15 @@ contract DaveAppFactoryTest is Test {
             uint256 val1;
             uint256 val2;
             uint256 val3;
+            ITask val4;
 
-            (val1, val2, val3, tournament) = daveConsensus.getCurrentSealedEpoch();
+            (val1, val2, val3, val4) = daveConsensus.getCurrentSealedEpoch();
 
             assertEq(val1, 0); // epochNumber
             assertEq(val2, 0); // inputIndexLowerBound
             assertEq(val3, 0); // inputIndexUpperBound
+
+            tournament = ITournament(address(val4));
         }
 
         for (uint256 i; i < logs.length; ++i) {
@@ -539,16 +540,14 @@ contract DaveAppFactoryTest is Test {
             } else if (log.emitter == address(_daveAppFactory)) {
                 if (log.topics[0] == IDaveAppFactory.DaveAppCreated.selector) {
                     ++numOfDaveAppCreatedEvents;
-                    address arg1;
-                    address arg2;
-                    (arg1, arg2) = abi.decode(log.data, (address, address));
-                    assertEq(arg1, address(appContract));
-                    assertEq(arg2, address(daveConsensus));
+                    assertEq(log.topics[1], bytes32(uint256(uint160(address(appContract)))));
+                    assertEq(log.topics[2], bytes32(uint256(uint160(address(daveConsensus)))));
+                    assertEq(log.data.length, 0);
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }
             } else if (log.emitter == address(_tournamentFactory)) {
-                if (log.topics[0] == ITournamentFactory.TournamentCreated.selector) {
+                if (log.topics[0] == MultiLevelTournamentFactory.TournamentCreated.selector) {
                     ++numOfTournamentCreatedEvents;
                     address arg1;
                     arg1 = abi.decode(log.data, (address));
@@ -622,7 +621,7 @@ contract DaveAppFactoryTest is Test {
 
         assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
         assertEq(address(daveConsensus.getApplicationContract()), address(appContract));
-        assertEq(address(daveConsensus.getTournamentFactory()), address(_tournamentFactory));
+        assertEq(address(daveConsensus.getTaskSpawner()), address(_tournamentFactory));
         assertEq(daveConsensus.getDeploymentBlockNumber(), vm.getBlockNumber());
         assertTrue(daveConsensus.supportsInterface(type(IERC165).interfaceId));
         assertTrue(daveConsensus.supportsInterface(type(IOutputsMerkleRootValidator).interfaceId));
@@ -692,19 +691,6 @@ contract DaveAppFactoryTest is Test {
         proof = new bytes32[](n);
         for (uint256 i; i < proof.length; ++i) {
             proof[i] = bytes32(vm.randomUint());
-        }
-    }
-
-    function _getCommitmentChildren(bytes32 machineMerkleRoot, bytes32[] memory proof)
-        internal
-        pure
-        returns (bytes32 leftChild, bytes32 rightChild)
-    {
-        leftChild = proof[proof.length - 1];
-
-        rightChild = machineMerkleRoot;
-        for (uint256 i; i < proof.length - 1; ++i) {
-            rightChild = LibKeccak256.hashPair(proof[i], rightChild);
         }
     }
 

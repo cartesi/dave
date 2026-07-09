@@ -12,7 +12,12 @@
 
 pragma solidity ^0.8.0;
 
+import {
+    IERC165
+} from "@openzeppelin-contracts-5.5.0/utils/introspection/IERC165.sol";
+
 import {IDataProvider} from "src/IDataProvider.sol";
+import {ITask} from "src/ITask.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
     ArbitrationConstants
@@ -98,6 +103,41 @@ contract TopTournamentTest is Util {
         assertTrue(
             _finalState.eq(Machine.ZERO_STATE), "final state should be zero"
         );
+    }
+
+    function testTaskResult() public {
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
+
+        assertTrue(topTournament.supportsInterface(type(IERC165).interfaceId));
+        assertTrue(topTournament.supportsInterface(type(ITask).interfaceId));
+        assertTrue(
+            topTournament.supportsInterface(type(ITournament).interfaceId)
+        );
+        assertFalse(topTournament.supportsInterface(bytes4(0xffffffff)));
+
+        // before finish: result mirrors arbitrationResult, cleanup is a no-op
+        (bool _finished, Machine.Hash _finalState) = topTournament.result();
+        assertFalse(_finished, "task shouldn't be finished");
+        assertTrue(
+            _finalState.eq(Machine.ZERO_STATE), "final state should be zero"
+        );
+        assertFalse(topTournament.cleanup(), "no cleanup before finish");
+
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+
+        (bool _arbFinished,, Machine.Hash _arbFinalState) =
+            topTournament.arbitrationResult();
+        (_finished, _finalState) = topTournament.result();
+        assertTrue(_finished, "task should be finished");
+        assertTrue(_arbFinished, "arbitration result should be finished");
+        assertTrue(
+            _finalState.eq(_arbFinalState),
+            "result should project arbitrationResult"
+        );
+
+        // first cleanup recovers the bond; repeats are harmless no-ops
+        assertTrue(topTournament.cleanup(), "cleanup should recover bond");
+        assertFalse(topTournament.cleanup(), "repeated cleanup is a no-op");
     }
 
     function testInner() public {

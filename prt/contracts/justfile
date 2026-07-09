@@ -1,7 +1,7 @@
 BINDINGS_DIR := "./bindings-rs/src/contract"
 DEPLOYMENTS_DIR := "./deployments"
 SRC_DIR := "."
-BINDINGS_FILTER := "^[^I].+TournamentFactory|^Tournament$"
+BINDINGS_FILTER := "^[^I].+TournamentFactory|^Tournament$|^SafetyGateTask$"
 
 default: build
 
