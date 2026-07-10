@@ -37,12 +37,14 @@ contract DaveAppFactory is IDaveAppFactory {
     function newDaveApp(
         bytes32 templateHash,
         uint256 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) external override returns (IApplication appContract, IDaveConsensus daveConsensus) {
         appContract = _newApplication(templateHash, withdrawalConfig, salt);
-        daveConsensus = _newDaveConsensus(address(appContract), templateHash, claimStagingPeriod, sentries, salt);
+        daveConsensus =
+            _newDaveConsensus(address(appContract), templateHash, claimStagingPeriod, sentryManager, sentries, salt);
         appContract.migrateToOutputsMerkleRootValidator(daveConsensus);
         appContract.renounceOwnership();
         emit DaveAppCreated(appContract, daveConsensus);
@@ -51,13 +53,15 @@ contract DaveAppFactory is IDaveAppFactory {
     function calculateDaveAppAddress(
         bytes32 templateHash,
         uint256 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) external view override returns (address appContractAddress, address daveConsensusAddress) {
         appContractAddress = _calculateApplicationAddress(templateHash, withdrawalConfig, salt);
-        daveConsensusAddress =
-            _calculateDaveConsensusAddress(appContractAddress, templateHash, claimStagingPeriod, sentries, salt);
+        daveConsensusAddress = _calculateDaveConsensusAddress(
+            appContractAddress, templateHash, claimStagingPeriod, sentryManager, sentries, salt
+        );
     }
 
     /// @notice Encode the data availability blob for applications that only use the input box as DA.
@@ -84,12 +88,19 @@ contract DaveAppFactory is IDaveAppFactory {
         address appContract,
         bytes32 templateHash,
         uint256 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         bytes32 salt
     ) internal returns (DaveConsensus) {
         Machine.Hash initialMachineStateHash = Machine.Hash.wrap(templateHash);
         return new DaveConsensus{salt: salt}(
-            INPUT_BOX, appContract, TOURNAMENT_FACTORY, initialMachineStateHash, claimStagingPeriod, sentries
+            INPUT_BOX,
+            appContract,
+            TOURNAMENT_FACTORY,
+            initialMachineStateHash,
+            claimStagingPeriod,
+            sentryManager,
+            sentries
         );
     }
 
@@ -110,6 +121,7 @@ contract DaveAppFactory is IDaveAppFactory {
         address appContract,
         bytes32 templateHash,
         uint256 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         bytes32 salt
     ) internal view returns (address) {
@@ -118,7 +130,15 @@ contract DaveAppFactory is IDaveAppFactory {
             keccak256(
                 abi.encodePacked(
                     type(DaveConsensus).creationCode,
-                    abi.encode(INPUT_BOX, appContract, TOURNAMENT_FACTORY, templateHash, claimStagingPeriod, sentries)
+                    abi.encode(
+                        INPUT_BOX,
+                        appContract,
+                        TOURNAMENT_FACTORY,
+                        templateHash,
+                        claimStagingPeriod,
+                        sentryManager,
+                        sentries
+                    )
                 )
             )
         );

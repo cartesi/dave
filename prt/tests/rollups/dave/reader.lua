@@ -280,12 +280,13 @@ function Reader:balance(address)
 end
 
 function Reader:calculate_dave_app_address(template_hash, sentries, salt)
-    local sig = "calculateDaveAppAddress(bytes32,uint256,address[],(address,uint8,uint8,uint64,address),bytes32)(address,address)"
+    local sig = "calculateDaveAppAddress(bytes32,uint256,address,address[],(address,uint8,uint8,uint64,address),bytes32)(address,address)"
     local claim_staging_period = 1000
-    local sentries_str = "[" .. table.concat(sentries, ",") .. "]"
     local address_zero = "0x" .. string.rep("00", 20)
+    local sentry_manager = address_zero
+    local sentries_str = "[" .. table.concat(sentries, ",") .. "]"
     local withdrawal_config = string.format("(%s,0,0,0,%s)", address_zero, address_zero)
-    local ret = self:_call(self.dave_app_factory_address, sig, { template_hash, claim_staging_period, sentries_str, withdrawal_config, salt })
+    local ret = self:_call(self.dave_app_factory_address, sig, { template_hash, claim_staging_period, sentry_manager, sentries_str, withdrawal_config, salt })
     assert(#ret == 2)
     return table.unpack(ret)
 end

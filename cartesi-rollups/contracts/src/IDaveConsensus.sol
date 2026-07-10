@@ -99,6 +99,17 @@ interface IDaveConsensus is
         uint256 epochNumber, Machine.Hash stagedPostEpochMachineStateHash, bytes32 stagedPostEpochOutputsMerkleRoot
     );
 
+    /// @notice The sentry manager rotated a sentry.
+    /// @param sentryId The sentry ID
+    /// @param oldSentry The old sentry address
+    /// @param newSentry The new sentry address
+    /// @dev It is guaranteed that, in the instant right before the rotation,
+    /// `getSentryId(oldSentry) == sentryId`, `getSentryId(newSentry) == 0`, and `getSentryById(sentryId) == oldSentry`.
+    /// And, in the instant right after the rotation, it is also guaranteed that
+    /// `getSentryId(oldSentry) == 0`, `getSentryId(newSentry) == sentryId`, and `getSentryById(sentryId) == newSentry`.
+    /// Furthermore, the number of sentries is unchanged all other sentries keep their IDs and addresses.
+    event SentryRotation(uint256 indexed sentryId, address indexed oldSentry, address indexed newSentry);
+
     /// @notice Received epoch number is different from actual
     /// @param received The epoch number received as argument
     /// @param actual The actual epoch number in storage
@@ -147,6 +158,16 @@ interface IDaveConsensus is
     /// @param sentryId The sentry ID
     error SentryAlreadyClaimed(uint256 epochNumber, uint256 sentryId);
 
+    /// @notice This error is raised whenever the `rotateSentry`
+    /// function is called by someone who is not the sentry manager.
+    /// @param caller The caller address
+    error CallerIsNotSentryManager(address caller);
+
+    /// @notice This error is raised whenever the `rotateSentry`
+    /// function is called with a non-sentry address as `currentSentry`.
+    /// @param nonSentry The non-sentry address
+    error CannotRotateNonSentry(address nonSentry);
+
     /// @notice Get the number of base-layer block in which the contract was deployed.
     function getDeploymentBlockNumber() external view returns (uint256);
 
@@ -170,6 +191,10 @@ interface IDaveConsensus is
     /// @notice Get the number of sentries.
     /// @dev This number can be zero, that is, there are no sentries.
     function getNumberOfSentries() external view returns (uint256);
+
+    /// @notice Get the sentry manager address.
+    /// @dev The sentry manager is the only one capable of rotating sentries.
+    function getSentryManager() external view returns (address);
 
     /// @notice Get the ID of a sentry.
     /// @param sentry The sentry address
@@ -198,6 +223,22 @@ interface IDaveConsensus is
         external
         view
         returns (uint256);
+
+    /// @notice As a sentry manager, rotate a sentry.
+    /// @param currentSentry The current sentry address
+    /// @param newSentry The new sentry address that will inherit the current sentry's ID
+    /// @dev This action can be useful whenever a sentry account is compromised.
+    /// A compromised sentry may either purposefully submit false post-epoch machine state hashes
+    /// or drain the funds from the sentry account. In either case, the epoch settlement is delayed
+    /// by the claim staging period, which is undesired for application users and maintainers.
+    /// In those cases, the sentry manager can rotate the address of the compromised sentry slot,
+    /// ensuring epochs settle earlier in the happy path through sentry claims.
+    /// If a sentry has already claimed in the current sealed epoch, then rotating their address
+    /// will not erase their claim. Rather, rotation only updates the address that is authorized
+    /// to claim for that sentry slot. So, if that sentry slot has already placed a claim, then the
+    /// new sentry will only be able to submit a claim for the next epoch.
+    /// On success, emits a `SentryRotation` event.
+    function rotateSentry(address currentSentry, address newSentry) external;
 
     /// @notice Get the current sealed epoch number, boundaries, tournament, and staging info.
     /// @return epochNumber The epoch number
