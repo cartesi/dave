@@ -92,6 +92,8 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
 
     let claim_staging_period = U256::from(1000);
 
+    let sentry_manager = Address::ZERO;
+
     let sentries = vec![signer_address];
 
     let withdrawal_config = WithdrawalConfig {
@@ -109,6 +111,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .calculateDaveAppAddress(
             initial_hash.into(),
             claim_staging_period,
+            sentry_manager,
             sentries.clone(),
             withdrawal_config.clone(),
             salt,
@@ -123,6 +126,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .newDaveApp(
             initial_hash.into(),
             claim_staging_period,
+            sentry_manager,
             sentries.clone(),
             withdrawal_config.clone(),
             salt,

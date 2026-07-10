@@ -22,6 +22,7 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     /// @notice Deploy a new Dave-App pair deterministically.
     /// @param templateHash The application template hash
     /// @param claimStagingPeriod The claim staging period
+    /// @param sentryManager The sentry manager address
     /// @param sentries The array of sentries
     /// @param withdrawalConfig The withdrawal configuration
     /// @param salt A 32-byte value used to add entropy to the addresses
@@ -38,6 +39,7 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     function newDaveApp(
         bytes32 templateHash,
         uint256 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
@@ -46,6 +48,7 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     /// @notice Calculate the address of a Dave-App pair.
     /// @param templateHash The application template hash
     /// @param claimStagingPeriod The claim staging period
+    /// @param sentryManager The sentry manager address
     /// @param sentries The array of sentries
     /// @param withdrawalConfig The withdrawal configuration
     /// @param salt A 32-byte value used to add entropy to the addresses
@@ -54,6 +57,7 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     function calculateDaveAppAddress(
         bytes32 templateHash,
         uint256 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt

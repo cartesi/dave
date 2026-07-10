@@ -49,6 +49,10 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     /// @notice Deployment block number
     uint256 immutable _DEPLOYMENT_BLOCK_NUMBER = block.number;
 
+    /// @notice The account that is authorized to manage sentry rotations.
+    /// @notice See the `getSentryManager` function.
+    address immutable _SENTRY_MANAGER;
+
     /// @notice The total number of sentries.
     /// @notice See the `getNumberOfSentries` function.
     uint256 immutable _NUM_OF_SENTRIES;
@@ -111,6 +115,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         ITournamentFactory tournamentFactory,
         Machine.Hash initialMachineStateHash,
         uint256 claimStagingPeriod,
+        address sentryManager,
         address[] memory sentries
     ) {
         // Initialize immutable variables
@@ -118,6 +123,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         _APP_CONTRACT = appContract;
         _TOURNAMENT_FACTORY = tournamentFactory;
         _CLAIM_STAGING_PERIOD = claimStagingPeriod;
+        _SENTRY_MANAGER = sentryManager;
         for (uint256 i; i < sentries.length; ++i) {
             address sentry = sentries[i];
             _ensureSentryAddressIsValid(sentry);
@@ -273,6 +279,21 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         );
     }
 
+    function rotateSentry(address currentSentry, address newSentry)
+        external
+        override
+        onlySentryManager
+        notForeclosed(_APP_CONTRACT)
+    {
+        uint256 sentryId = getSentryId(currentSentry);
+        require(sentryId > 0, CannotRotateNonSentry(currentSentry));
+        _ensureSentryAddressIsValid(newSentry);
+        _sentryId[currentSentry] = 0;
+        _sentryId[newSentry] = sentryId;
+        _sentryById[sentryId] = newSentry;
+        emit SentryRotation(sentryId, currentSentry, newSentry);
+    }
+
     function getCurrentSealedEpoch()
         external
         view
@@ -314,6 +335,10 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
 
     function getClaimStagingPeriod() external view override returns (uint256) {
         return _CLAIM_STAGING_PERIOD;
+    }
+
+    function getSentryManager() external view override returns (address) {
+        return _SENTRY_MANAGER;
     }
 
     function getNumberOfSentries() external view override returns (uint256) {
@@ -418,6 +443,11 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         _;
     }
 
+    modifier onlySentryManager() {
+        _ensureCallerIsSentryManager();
+        _;
+    }
+
     function _ensureAppContractIsValid(address appContract) internal view {
         require(_APP_CONTRACT == appContract, ApplicationMismatch(_APP_CONTRACT, appContract));
     }
@@ -426,5 +456,10 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         require(sentry != address(0), ZeroSentryAddress());
         uint256 sentryId = getSentryId(sentry);
         require(sentryId == 0, DuplicatedSentryAddress(sentryId, sentry));
+    }
+
+    function _ensureCallerIsSentryManager() internal view {
+        address caller = msg.sender;
+        require(caller == _SENTRY_MANAGER, CallerIsNotSentryManager(caller));
     }
 }

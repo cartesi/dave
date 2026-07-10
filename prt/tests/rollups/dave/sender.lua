@@ -113,15 +113,16 @@ function Sender:tx_add_inputs(inputs)
 end
 
 function Sender:tx_new_dave_app(template_hash, sentries, salt)
-    local sig = "newDaveApp(bytes32,uint256,address[],(address,uint8,uint8,uint64,address),bytes32)"
+    local sig = "newDaveApp(bytes32,uint256,address,address[],(address,uint8,uint8,uint64,address),bytes32)"
     local claim_staging_period = 1000
-    local sentries_str = "[" .. table.concat(sentries, ",") .. "]"
     local address_zero = "0x" .. string.rep("00", 20)
+    local sentry_manager = address_zero
+    local sentries_str = "[" .. table.concat(sentries, ",") .. "]"
     local withdrawal_config = string.format("(%s,0,0,0,%s)", address_zero, address_zero)
     return self:_send_tx(
         self.dave_app_factory_address,
         sig,
-        { template_hash, claim_staging_period, sentries_str, withdrawal_config, salt }
+        { template_hash, claim_staging_period, sentry_manager, sentries_str, withdrawal_config, salt }
     )
 end
 

@@ -90,18 +90,22 @@ contract DaveAppFactoryTest is Test {
     function testNewDaveApp(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) external {
         _randomizeBlockNumber(claimStagingPeriod);
 
-        (address precalculatedAppContractAddress, address precalculatedDaveConsensusAddress) =
-            _daveAppFactory.calculateDaveAppAddress(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt);
+        (address precalculatedAppContractAddress, address precalculatedDaveConsensusAddress) = _daveAppFactory.calculateDaveAppAddress(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        );
 
         vm.recordLogs();
 
-        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt) returns (
+        try _daveAppFactory.newDaveApp(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        ) returns (
             IApplication appContract, IDaveConsensus daveConsensus
         ) {
             Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -119,12 +123,19 @@ contract DaveAppFactoryTest is Test {
             );
 
             _testNewDaveAppSuccess(
-                templateHash, claimStagingPeriod, sentries, withdrawalConfig, appContract, daveConsensus, logs
+                templateHash,
+                claimStagingPeriod,
+                sentryManager,
+                sentries,
+                withdrawalConfig,
+                appContract,
+                daveConsensus,
+                logs
             );
 
             (precalculatedAppContractAddress, precalculatedDaveConsensusAddress) =
                 _daveAppFactory.calculateDaveAppAddress(
-                    templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt
+                    templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
                 );
 
             assertEq(
@@ -144,7 +155,9 @@ contract DaveAppFactoryTest is Test {
         }
 
         // Cannot deploy an application with the same salt twice
-        try _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt) {
+        try _daveAppFactory.newDaveApp(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        ) {
             revert("second deterministic deployment did not revert");
         } catch (bytes memory errorData) {
             assertEq(
@@ -156,6 +169,7 @@ contract DaveAppFactoryTest is Test {
     function testStageAndAcceptTournamentResult(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt,
@@ -168,8 +182,9 @@ contract DaveAppFactoryTest is Test {
         IDaveConsensus daveConsensus;
 
         vm.assumeNoRevert();
-        (appContract, daveConsensus) =
-            _daveAppFactory.newDaveApp(templateHash, claimStagingPeriod, sentries, withdrawalConfig, salt);
+        (appContract, daveConsensus) = _daveAppFactory.newDaveApp(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        );
 
         bytes[] memory inputs = new bytes[](inputPayloads.length);
 
@@ -704,6 +719,110 @@ contract DaveAppFactoryTest is Test {
         }
     }
 
+    function testRotateSentry(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external {
+        IApplication appContract;
+        IDaveConsensus daveConsensus;
+
+        vm.assumeNoRevert();
+        (appContract, daveConsensus) = _daveAppFactory.newDaveApp(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        );
+
+        uint256 numOfSentries = daveConsensus.getNumberOfSentries();
+        uint256 numOfRounds = 16;
+
+        for (uint256 round; round < numOfRounds; ++round) {
+            address nonSentryManager = _randomAddressNotEq(sentryManager);
+
+            vm.prank(nonSentryManager);
+            vm.expectRevert(_encodeCallerIsNotSentryManager(nonSentryManager));
+            daveConsensus.rotateSentry(vm.randomAddress(), vm.randomAddress());
+
+            vm.expectRevert(_encodeApplicationForeclosed(address(appContract)));
+            this.simulateForeclosureAndRotation(appContract, daveConsensus, vm.randomAddress(), vm.randomAddress());
+
+            address nonSentry = _randomNonSentry(daveConsensus);
+
+            vm.prank(sentryManager);
+            vm.expectRevert(_encodeCannotRotateNonSentry(nonSentry));
+            daveConsensus.rotateSentry(nonSentry, vm.randomAddress());
+
+            if (numOfSentries >= 1) {
+                uint256 sentryId = vm.randomUint(1, numOfSentries);
+                address sentry = daveConsensus.getSentryById(sentryId);
+                assertEq(daveConsensus.getSentryId(sentry), sentryId);
+
+                uint256 anotherSentryId = vm.randomUint(1, numOfSentries);
+                address anotherSentry = daveConsensus.getSentryById(anotherSentryId);
+                assertEq(daveConsensus.getSentryId(anotherSentry), anotherSentryId);
+
+                vm.prank(sentryManager);
+                vm.expectRevert(_encodeDuplicatedSentryAddress(anotherSentryId, anotherSentry));
+                daveConsensus.rotateSentry(sentry, anotherSentry);
+
+                vm.prank(sentryManager);
+                vm.expectRevert(ISentryErrors.ZeroSentryAddress.selector);
+                daveConsensus.rotateSentry(sentry, address(0));
+
+                address[] memory sentriesBefore = _getSentries(daveConsensus);
+                assertEq(sentriesBefore.length, numOfSentries);
+
+                address newSentry = _randomValidNonSentry(daveConsensus);
+
+                vm.recordLogs();
+
+                vm.prank(sentryManager);
+                daveConsensus.rotateSentry(sentry, newSentry);
+
+                Vm.Log[] memory logs = vm.getRecordedLogs();
+                uint256 numOfSentryRotationEvents;
+                for (uint256 i; i < logs.length; ++i) {
+                    Vm.Log memory log = logs[i];
+                    if (log.emitter == address(daveConsensus)) {
+                        assertGe(log.topics.length, 1);
+                        bytes32 topic0 = log.topics[0];
+                        if (topic0 == IDaveConsensus.SentryRotation.selector) {
+                            assertEq(log.topics.length, 4);
+                            assertEq(log.topics[1], bytes32(sentryId));
+                            assertEq(log.topics[2], bytes32(uint256(uint160(sentry))));
+                            assertEq(log.topics[3], bytes32(uint256(uint160(newSentry))));
+                            assertEq(log.data, abi.encode());
+                            ++numOfSentryRotationEvents;
+                        } else {
+                            revert UnexpectedLogTopic0(log);
+                        }
+                    } else {
+                        revert UnexpectedLogEmitter(log);
+                    }
+                }
+                assertEq(numOfSentryRotationEvents, 1);
+
+                assertEq(daveConsensus.getSentryId(sentry), 0);
+                assertEq(daveConsensus.getSentryId(newSentry), sentryId);
+                assertEq(daveConsensus.getSentryById(sentryId), newSentry);
+
+                address[] memory sentriesAfter = _getSentries(daveConsensus);
+                assertEq(sentriesBefore.length, sentriesAfter.length);
+
+                for (uint256 i; i < sentriesAfter.length; ++i) {
+                    if (sentryId == (i + 1)) {
+                        assertEq(sentriesBefore[i], sentry);
+                        assertEq(sentriesAfter[i], newSentry);
+                    } else {
+                        assertEq(sentriesBefore[i], sentriesAfter[i]);
+                    }
+                }
+            }
+        }
+    }
+
     /// @notice This function is used to simulate a foreclosure and a tournament-result staging.
     /// If the staging succeeds, then the function reverts with error message "Successful staging".
     /// If the staging fails, then the function propagates the error from the DaveConsensus contract.
@@ -738,6 +857,22 @@ contract DaveAppFactoryTest is Test {
         revert("Successful claim");
     }
 
+    /// @notice This function is used to simulate a foreclosure and a sentry rotation.
+    /// If the rotation succeeds, then the function reverts with error message "Successful rotation".
+    /// If the rotation fails, then the function propagates the error from the DaveConsensus contract.
+    function simulateForeclosureAndRotation(
+        IApplication appContract,
+        IDaveConsensus daveConsensus,
+        address currentSentry,
+        address newSentry
+    ) external {
+        vm.prank(appContract.getGuardian());
+        appContract.foreclose();
+        vm.prank(daveConsensus.getSentryManager());
+        daveConsensus.rotateSentry(currentSentry, newSentry);
+        revert("Successful rotation");
+    }
+
     /// @notice This function is used to simulate a foreclosure and a tournament-result acceptance.
     /// If the acceptance succeeds, then the function reverts with error message "Successful acceptance".
     /// If the acceptance fails, then the function propagates the error from the DaveConsensus contract.
@@ -756,6 +891,7 @@ contract DaveAppFactoryTest is Test {
     function _testNewDaveAppSuccess(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
+        address sentryManager,
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         IApplication appContract,
@@ -961,6 +1097,7 @@ contract DaveAppFactoryTest is Test {
         assertEq(address(daveConsensus.getApplicationContract()), address(appContract));
         assertEq(address(daveConsensus.getTournamentFactory()), address(_tournamentFactory));
         assertEq(daveConsensus.getClaimStagingPeriod(), claimStagingPeriod);
+        assertEq(daveConsensus.getSentryManager(), sentryManager);
         assertEq(_getSentries(daveConsensus), sentries);
         assertEq(daveConsensus.getDeploymentBlockNumber(), vm.getBlockNumber());
         assertTrue(daveConsensus.supportsInterface(type(IERC165).interfaceId));
@@ -970,14 +1107,7 @@ contract DaveAppFactoryTest is Test {
         assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
         assertFalse(daveConsensus.isOutputsMerkleRootValid(address(appContract), bytes32(vm.randomUint())));
 
-        address notAppContract;
-
-        while (true) {
-            notAppContract = vm.randomAddress();
-            if (notAppContract != address(appContract)) {
-                break;
-            }
-        }
+        address notAppContract = _randomAddressNotEq(address(appContract));
 
         vm.expectRevert(_encodeApplicationMismatch(address(appContract), notAppContract));
         daveConsensus.getLastFinalizedMachineMerkleRoot(notAppContract);
@@ -1180,6 +1310,14 @@ contract DaveAppFactoryTest is Test {
         daveConsensus.submitSentryClaim(epochNumber, Machine.Hash.wrap(bytes32(vm.randomUint())));
     }
 
+    function _encodeDuplicatedSentryAddress(uint256 sentryId, address sentry)
+        internal
+        pure
+        returns (bytes memory encodedError)
+    {
+        return abi.encodeWithSelector(ISentryErrors.DuplicatedSentryAddress.selector, sentryId, sentry);
+    }
+
     function _encodeApplicationMismatch(address expected, address obtained)
         internal
         pure
@@ -1238,6 +1376,14 @@ contract DaveAppFactoryTest is Test {
         return abi.encodeWithSelector(IDaveConsensus.CallerIsNotSentry.selector, caller);
     }
 
+    function _encodeCallerIsNotSentryManager(address caller) internal pure returns (bytes memory encodedError) {
+        return abi.encodeWithSelector(IDaveConsensus.CallerIsNotSentryManager.selector, caller);
+    }
+
+    function _encodeCannotRotateNonSentry(address nonSentry) internal pure returns (bytes memory encodedError) {
+        return abi.encodeWithSelector(IDaveConsensus.CannotRotateNonSentry.selector, nonSentry);
+    }
+
     function _randomUintNotEq(uint256 n) internal returns (uint256 m) {
         while (true) {
             m = vm.randomUint();
@@ -1265,10 +1411,28 @@ contract DaveAppFactoryTest is Test {
         }
     }
 
+    function _randomAddressNotEq(address n) internal returns (address m) {
+        while (true) {
+            m = vm.randomAddress();
+            if (n != m) {
+                break;
+            }
+        }
+    }
+
     function _randomNonSentry(IDaveConsensus daveConsensus) internal returns (address nonSentry) {
         while (true) {
             nonSentry = vm.randomAddress();
             if (daveConsensus.getSentryId(nonSentry) == 0) {
+                break;
+            }
+        }
+    }
+
+    function _randomValidNonSentry(IDaveConsensus daveConsensus) internal returns (address nonSentry) {
+        while (true) {
+            nonSentry = _randomNonSentry(daveConsensus);
+            if (nonSentry != address(0)) {
                 break;
             }
         }
