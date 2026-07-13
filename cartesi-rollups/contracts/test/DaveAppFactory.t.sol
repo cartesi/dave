@@ -431,15 +431,15 @@ contract DaveAppFactoryTest is Test {
                 if (log.topics[0] == IDaveConsensus.EpochStaged.selector) {
                     ++numOfEpochStagedEvents;
 
-                    uint256 arg1;
+                    assertEq(log.topics[1], bytes32(0)); // epochNumber
+
+                    bytes32 arg1;
                     bytes32 arg2;
-                    bytes32 arg3;
 
-                    (arg1, arg2, arg3) = abi.decode(log.data, (uint256, bytes32, bytes32));
+                    (arg1, arg2) = abi.decode(log.data, (bytes32, bytes32));
 
-                    assertEq(arg1, 0); // epochNumber
-                    assertEq(arg2, machineMerkleRoot); // stagedPostEpochMachineStateHash
-                    assertEq(arg3, outputsMerkleRoot); // stagedPostEpochOutputsMerkleRoot
+                    assertEq(arg1, machineMerkleRoot); // stagedPostEpochMachineStateHash
+                    assertEq(arg2, outputsMerkleRoot); // stagedPostEpochOutputsMerkleRoot
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }
@@ -676,22 +676,21 @@ contract DaveAppFactoryTest is Test {
                 if (log.topics[0] == IDaveConsensus.EpochSealed.selector) {
                     ++numOfEpochSealedEvents;
 
+                    assertEq(log.topics[1], bytes32(uint256(1))); // epochNumber
+
                     uint256 arg1;
                     uint256 arg2;
-                    uint256 arg3;
+                    bytes32 arg3;
                     bytes32 arg4;
-                    bytes32 arg5;
-                    address arg6;
+                    address arg5;
 
-                    (arg1, arg2, arg3, arg4, arg5, arg6) =
-                        abi.decode(log.data, (uint256, uint256, uint256, bytes32, bytes32, address));
+                    (arg1, arg2, arg3, arg4, arg5) = abi.decode(log.data, (uint256, uint256, bytes32, bytes32, address));
 
-                    assertEq(arg1, 1); // epochNumber
-                    assertEq(arg2, 0); // inputIndexLowerBound
-                    assertEq(arg3, inputs.length); // inputIndexUpperBound
-                    assertEq(arg4, machineMerkleRoot); // initialMachineStateHash
-                    assertEq(arg5, outputsMerkleRoot);
-                    assertEq(arg6, address(tournament));
+                    assertEq(arg1, 0); // inputIndexLowerBound
+                    assertEq(arg2, inputs.length); // inputIndexUpperBound
+                    assertEq(arg3, machineMerkleRoot); // initialMachineStateHash
+                    assertEq(arg4, outputsMerkleRoot);
+                    assertEq(arg5, address(tournament));
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }
@@ -988,22 +987,21 @@ contract DaveAppFactoryTest is Test {
                 } else if (log.topics[0] == IDaveConsensus.EpochSealed.selector) {
                     ++numOfEpochSealedEvents;
 
+                    assertEq(log.topics[1], bytes32(0)); // epochNumber
+
                     uint256 arg1;
                     uint256 arg2;
-                    uint256 arg3;
+                    bytes32 arg3;
                     bytes32 arg4;
-                    bytes32 arg5;
-                    address arg6;
+                    address arg5;
 
-                    (arg1, arg2, arg3, arg4, arg5, arg6) =
-                        abi.decode(log.data, (uint256, uint256, uint256, bytes32, bytes32, address));
+                    (arg1, arg2, arg3, arg4, arg5) = abi.decode(log.data, (uint256, uint256, bytes32, bytes32, address));
 
-                    assertEq(arg1, 0); // epochNumber
-                    assertEq(arg2, 0); // inputIndexLowerBound
-                    assertEq(arg3, 0); // inputIndexUpperBound
-                    assertEq(arg4, templateHash); // initialMachineStateHash
-                    assertEq(arg5, bytes32(0)); // outputsMerkleRoot
-                    assertEq(arg6, address(tournament)); // tournament
+                    assertEq(arg1, 0); // inputIndexLowerBound
+                    assertEq(arg2, 0); // inputIndexUpperBound
+                    assertEq(arg3, templateHash); // initialMachineStateHash
+                    assertEq(arg4, bytes32(0)); // outputsMerkleRoot
+                    assertEq(arg5, address(tournament)); // tournament
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }

@@ -205,7 +205,7 @@ end
 
 function Reader:read_epochs_sealed()
     local sig = "EpochSealed(uint256,uint256,uint256,bytes32,bytes32,address)"
-    local data_sig = "(uint256,uint256,uint256,bytes32,bytes32,address)"
+    local data_sig = "(uint256,uint256,bytes32,bytes32,address)"
 
     local logs = self:_read_logs(self.consensus_address, sig, { false, false, false }, data_sig)
 
@@ -214,11 +214,11 @@ function Reader:read_epochs_sealed()
         local log = {}
         log.meta = v.meta
 
-        log.epoch_number = tonumber(v.decoded_data[1])
-        log.input_lower_bound = tonumber(v.decoded_data[2])
-        log.input_upper_bound = tonumber(v.decoded_data[3])
-        log.initial_machine_state_hash = v.decoded_data[4]
-        log.tournament = v.decoded_data[6]
+        log.epoch_number = tonumber(v.emited_topics[2])
+        log.input_lower_bound = tonumber(v.decoded_data[1])
+        log.input_upper_bound = tonumber(v.decoded_data[2])
+        log.initial_machine_state_hash = v.decoded_data[3]
+        log.tournament = v.decoded_data[5]
 
         ret[k] = log
     end

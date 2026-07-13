@@ -71,7 +71,7 @@ interface IDaveConsensus is
     /// @param outputsMerkleRoot the Merkle root hash of the outputs tree
     /// @param tournament the sealed epoch tournament contract
     event EpochSealed(
-        uint256 epochNumber,
+        uint256 indexed epochNumber,
         uint256 inputIndexLowerBound,
         uint256 inputIndexUpperBound,
         Machine.Hash initialMachineStateHash,
@@ -96,7 +96,9 @@ interface IDaveConsensus is
     /// @param stagedPostEpochMachineStateHash The staged post-epoch machine state hash
     /// @param stagedPostEpochOutputsMerkleRoot The staged post-epoch outputs Merkle root
     event EpochStaged(
-        uint256 epochNumber, Machine.Hash stagedPostEpochMachineStateHash, bytes32 stagedPostEpochOutputsMerkleRoot
+        uint256 indexed epochNumber,
+        Machine.Hash stagedPostEpochMachineStateHash,
+        bytes32 stagedPostEpochOutputsMerkleRoot
     );
 
     /// @notice The sentry manager rotated a sentry.
