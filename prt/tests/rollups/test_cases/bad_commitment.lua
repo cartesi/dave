@@ -25,19 +25,17 @@ print("Node commitment: ", commitment_node)
 local bad_commitment_proof = {}
 local final_state = Hash.zero
 
-local bad_commitment_left = Hash.zero
-local bad_commitment_right = final_state
+local commitment_root = final_state
 
-for _ = 1, 47 do
-    bad_commitment_right = Hash.zero:join(bad_commitment_right)
+for _ = 1, 48 do
+    commitment_root = Hash.zero:join(commitment_root)
     table.insert(bad_commitment_proof, Hash.zero)
 end
-table.insert(bad_commitment_proof, bad_commitment_left)
 
-print("Sending bad commitment: ", bad_commitment_left:join(bad_commitment_right))
+print("Sending bad commitment: ", commitment_root)
 assert(
     env.sender:tx_join_tournament(
-        first_epoch.tournament, final_state, bad_commitment_proof, bad_commitment_left, bad_commitment_right
+        first_epoch.tournament, final_state, bad_commitment_proof
     )
 )
 print("Bad commitment sent")

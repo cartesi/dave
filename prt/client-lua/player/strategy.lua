@@ -29,8 +29,6 @@ function HonestStrategy:enable_gc()
 end
 
 function HonestStrategy:_join_tournament(tournament, commitment)
-    local f, left, right = commitment:children()
-    assert(f)
     local last, proof = commitment:last()
 
     helper.log_full(self.sender.index, string.format(
@@ -39,13 +37,7 @@ function HonestStrategy:_join_tournament(tournament, commitment)
         tournament.level,
         commitment
     ))
-    local ok, e = self.sender:tx_join_tournament(
-        tournament.address,
-        last,
-        proof,
-        left,
-        right
-    )
+    local ok, e = self.sender:tx_join_tournament(tournament.address, last, proof)
     if not ok then
         helper.log_full(self.sender.index, string.format(
             "join tournament reverted: %s",

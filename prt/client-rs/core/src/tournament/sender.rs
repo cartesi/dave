@@ -46,8 +46,6 @@ pub trait ArenaSender: Send + Sync {
         &self,
         tournament: Address,
         proof: &MerkleProof,
-        left_child: Digest,
-        right_child: Digest,
         bond_value: U256,
     ) -> Result<()>;
 
@@ -121,8 +119,6 @@ impl ArenaSender for EthArenaSender {
         &self,
         tournament: Address,
         proof: &MerkleProof,
-        left_child: Digest,
-        right_child: Digest,
         bond_value: U256,
     ) -> Result<()> {
         let tournament = tournament::Tournament::new(tournament, &self.provider);
@@ -141,12 +137,7 @@ impl ArenaSender for EthArenaSender {
             proof.siblings.len()
         );
         let tx_result = tournament
-            .joinTournament(
-                proof.node.into(),
-                siblings,
-                left_child.into(),
-                right_child.into(),
-            )
+            .joinTournament(proof.node.into(), siblings)
             .value(bond_value)
             .send()
             .await;

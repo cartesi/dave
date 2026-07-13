@@ -244,10 +244,6 @@ contract Util is Test {
     // _player joins _tournament at _level
     function joinTournament(ITournament _tournament, uint256 _player) internal {
         (,,, uint64 height) = _tournament.tournamentLevelConstants();
-        Tree.Node _left = _player == 1
-            ? playerNodes[1][height - 1]
-            : playerNodes[0][height - 1];
-        Tree.Node _right = playerNodes[_player][height - 1];
         Machine.Hash _finalState = _player == 0 ? ONE_STATE : TWO_STATE;
         uint256 bondAmount = _tournament.bondValue();
         uint256 commitmentJoinedCountBefore =
@@ -255,7 +251,7 @@ contract Util is Test {
         uint256 matchCreatedCountBefore = _tournament.getMatchCreatedCount();
         vm.prank(addrs[_player]);
         _tournament.joinTournament{value: bondAmount}(
-            _finalState, generateFinalStateProof(_player, height), _left, _right
+            _finalState, generateFinalStateProof(_player, height)
         );
         assertEq(
             _tournament.getCommitmentJoinedCount(),

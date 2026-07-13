@@ -201,8 +201,7 @@ contract DaveAppFactoryTest is Test {
         );
 
         bytes32[] memory finalStateProof = _randomProof(tournament.tournamentArguments().commitmentArgs.height);
-        (bytes32 leftChild, bytes32 rightChild) = _getCommitmentChildren(machineMerkleRoot, finalStateProof);
-        bytes32 commitment = LibKeccak256.hashPair(leftChild, rightChild);
+        bytes32 commitment = _getCommitment(machineMerkleRoot, finalStateProof);
 
         address submitter = vm.randomAddress();
         uint256 bondValue = tournament.bondValue();
@@ -215,9 +214,7 @@ contract DaveAppFactoryTest is Test {
         vm.recordLogs();
 
         vm.startPrank(submitter);
-        tournament.joinTournament{value: callValue}(
-            Machine.Hash.wrap(machineMerkleRoot), finalStateProof, Tree.Node.wrap(leftChild), Tree.Node.wrap(rightChild)
-        );
+        tournament.joinTournament{value: callValue}(Machine.Hash.wrap(machineMerkleRoot), finalStateProof);
         vm.stopPrank();
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -1192,16 +1189,14 @@ contract DaveAppFactoryTest is Test {
         }
     }
 
-    function _getCommitmentChildren(bytes32 machineMerkleRoot, bytes32[] memory proof)
+    function _getCommitment(bytes32 machineMerkleRoot, bytes32[] memory proof)
         internal
         pure
-        returns (bytes32 leftChild, bytes32 rightChild)
+        returns (bytes32 commitment)
     {
-        leftChild = proof[proof.length - 1];
-
-        rightChild = machineMerkleRoot;
-        for (uint256 i; i < proof.length - 1; ++i) {
-            rightChild = LibKeccak256.hashPair(proof[i], rightChild);
+        commitment = machineMerkleRoot;
+        for (uint256 i; i < proof.length; ++i) {
+            commitment = LibKeccak256.hashPair(proof[i], commitment);
         }
     }
 

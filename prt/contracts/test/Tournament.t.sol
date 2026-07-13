@@ -97,13 +97,11 @@ contract TournamentTest is Util {
 
         // Try to join with insufficient bond - should fail
         (,,, uint64 height) = topTournament.tournamentLevelConstants();
-        Tree.Node _left = playerNodes[1][height - 1];
-        Tree.Node _right = playerNodes[1][height - 1];
         Machine.Hash _finalState = TWO_STATE;
 
         vm.expectRevert(ITournament.InsufficientBond.selector);
         topTournament.joinTournament{value: insufficientBond}(
-            _finalState, generateFinalStateProof(1, height), _left, _right
+            _finalState, generateFinalStateProof(1, height)
         );
     }
 

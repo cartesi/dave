@@ -420,8 +420,6 @@ interface ITournament {
     /// @notice Join the tournament with a commitment.
     /// @param finalState The last leaf of the commitment tree (final machine state hash)
     /// @param proof The bottom-up Merkle proof of the last leaf (final machine state hash) of the commitment tree
-    /// @param leftNode The commitment root left node
-    /// @param rightNode The commitment root right node
     /// @dev Root tournaments are open to everyone,
     /// while non-root tournaments are open to anyone
     /// whose final state hash matches the one of the two in the parent tournament.
@@ -441,15 +439,10 @@ interface ITournament {
     ///     0   1  2   3 4   5  6   7
     /// ```
     /// In this diagram, `finalState` is the leaf `7`,
-    /// `proof` is the array `[6, H45, H0123]`,
-    /// `leftNode` is the node `H0123`,
-    /// and `rightNode` is the node `H4567`.
-    function joinTournament(
-        Machine.Hash finalState,
-        bytes32[] calldata proof,
-        Tree.Node leftNode,
-        Tree.Node rightNode
-    ) external payable;
+    /// `proof` is the array `[6, H45, H0123]`.
+    function joinTournament(Machine.Hash finalState, bytes32[] calldata proof)
+        external
+        payable;
 
     /// @notice Advance a running match by one alternating double-bisection step
     /// toward the first conflicting leaf.

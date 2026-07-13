@@ -186,10 +186,6 @@ impl<AS: ArenaSender> Player<AS> {
         tournament_state: &TournamentState,
         commitment: &MachineCommitment,
     ) -> Result<()> {
-        let (left, right) = commitment
-            .merkle
-            .subtrees()
-            .expect("commitment should have subtrees");
         let proof_last = commitment.merkle.prove_last();
 
         info!(
@@ -210,13 +206,7 @@ impl<AS: ArenaSender> Player<AS> {
         self.arena_sender
             .lock()
             .await
-            .join_tournament(
-                tournament_state.address,
-                &proof_last,
-                left.root_hash(),
-                right.root_hash(),
-                bond_value,
-            )
+            .join_tournament(tournament_state.address, &proof_last, bond_value)
             .await?;
 
         Ok(())

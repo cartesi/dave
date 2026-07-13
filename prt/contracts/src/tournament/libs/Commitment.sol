@@ -75,37 +75,21 @@ library Commitment {
         return Tree.Node.wrap(leaf);
     }
 
-    function requireFinalState(
-        Tree.Node commitment,
+    function getRootChildrenFromFinalStateProof(
         uint64 treeHeight,
         Machine.Hash finalState,
-        bytes32[] calldata hashProof
-    ) internal pure {
-        Tree.Node computedCommitment =
-            getRootForLastLeaf(
-                treeHeight, Machine.Hash.unwrap(finalState), hashProof
-            );
-
-        require(
-            commitment.eq(computedCommitment),
-            ITournament.CommitmentStateMismatch(commitment, computedCommitment)
-        );
-    }
-
-    function getRootForLastLeaf(
-        uint64 treeHeight,
-        bytes32 leaf,
         bytes32[] calldata siblings
-    ) internal pure returns (Tree.Node) {
+    ) internal pure returns (Tree.Node left, Tree.Node right) {
         require(
-            treeHeight == siblings.length,
+            treeHeight == siblings.length && treeHeight >= 1,
             ITournament.CommitmentProofWrongSize(treeHeight, siblings.length)
         );
 
-        for (uint256 i = 0; i < treeHeight; i++) {
+        bytes32 leaf = Machine.Hash.unwrap(finalState);
+        for (uint256 i = 0; i < treeHeight - 1; i++) {
             leaf = Hashes.efficientKeccak256(siblings[i], leaf);
         }
 
-        return Tree.Node.wrap(leaf);
+        return (Tree.Node.wrap(siblings[treeHeight - 1]), Tree.Node.wrap(leaf));
     }
 }

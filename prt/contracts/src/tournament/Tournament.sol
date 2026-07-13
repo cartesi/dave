@@ -229,21 +229,22 @@ contract Tournament is ITournament {
     ///     * Open to all final states, contested fields in TournamentArguments are zero.
     /// - NON-ROOT (level > 0):
     ///     * Final state must match one of the two contested final states.
-    function joinTournament(
-        Machine.Hash _finalState,
-        bytes32[] calldata _proof,
-        Tree.Node _leftNode,
-        Tree.Node _rightNode
-    ) external payable override withLock tournamentOpen {
+    function joinTournament(Machine.Hash _finalState, bytes32[] calldata _proof)
+        external
+        payable
+        override
+        withLock
+        tournamentOpen
+    {
         require(msg.value >= bondValue(), InsufficientBond());
-
-        Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
         TournamentArguments memory args = tournamentArguments();
 
-        _commitmentRoot.requireFinalState(
+        (Tree.Node _leftNode, Tree.Node _rightNode) = Commitment.getRootChildrenFromFinalStateProof(
             args.commitmentArgs.height, _finalState, _proof
         );
+
+        Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
         requireValidContestedFinalState(_finalState);
         finalStates[_commitmentRoot] = _finalState;

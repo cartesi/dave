@@ -82,8 +82,8 @@ function Sender:_send_tx(tournament_address, sig, args, value)
     handle:close()
 end
 
-function Sender:tx_join_tournament(tournament_address, final_state, proof, left_child, right_child)
-    local sig = [[joinTournament(bytes32,bytes32[],bytes32,bytes32)]]
+function Sender:tx_join_tournament(tournament_address, final_state, proof)
+    local sig = [[joinTournament(bytes32,bytes32[])]]
 
     -- Get bond value by calling the view function
     local bondValueCmd = string.format(
@@ -112,7 +112,7 @@ function Sender:tx_join_tournament(tournament_address, final_state, proof, left_
         self,
         tournament_address,
         sig,
-        { final_state, proof, left_child, right_child },
+        { final_state, proof },
         bondValueDecimalStr
     )
 end
