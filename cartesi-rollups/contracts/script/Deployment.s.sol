@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0
 
-pragma solidity ^0.8.8;
+pragma solidity ^0.8.30;
 
 import {BaseDeploymentScript} from "prt-contracts/../script/BaseDeploymentScript.sol";
 
