@@ -164,6 +164,9 @@ refund. They are no longer conservative:
 - The bond-share cap is dimensioned at `MAX_GAS_PRICE`, currently 50 gwei.
   Sustained base fee above that value under-reimburses even if every execution
   estimate is exact.
+- Terminal child recovery now adds a value-bearing residual-burn call inside
+  `winInnerTournament` when the child has funds left. Recalibration must include
+  that branch.
 - The previous NatSpec promised gas reimbursement plus profit, which the
   formula does not guarantee. The comment is corrected in this documentation
   pass; the economic limitation remains.
@@ -229,7 +232,7 @@ existence from stored state or an explicit mapping membership flag.
 ### PRT-007: Successful bond recovery is not idempotent
 
 - Severity: High
-- Status: Open
+- Status: Resolved
 - Area: settlement liveness, recursive tournament propagation
 - Evidence: `Tournament.tryRecoveringBond`,
   `Tournament.winInnerTournament`, `DaveConsensus.settle`
@@ -250,47 +253,64 @@ both parent commitments; an incorrect commitment already waiting dangling can
 then become the root winner. The child path is therefore safety-relevant, not
 only a stuck payment path.
 
-Required fix:
+Resolution:
 
 1. If a finished tournament has a dangling winner but its claimer was already
    deleted after successful recovery, return `true` without another transfer.
+   This remains a state-neutral no-op even if ETH is forcibly sent afterward;
+   such later value stays stranded.
 2. Preserve the claimer and return `false` when the recipient call fails so a
    later retry remains possible.
-3. Add root double-recovery and child-pre-recovery/parent-propagation
-   regressions.
-4. Add a consensus integration regression that pre-recovers the root and then
-   settles the epoch successfully.
+3. `testTryRecoveringRootBondIsIdempotent` covers direct root recovery.
+4. `testInnerWinner` pre-recovers the child before parent propagation.
+5. The fuzzed `DaveAppFactoryTest.testSettle` covers ordinary and pre-recovered
+   root settlement.
 
 ### PRT-008: Residual winner sweep lets losing Sybil bonds be recycled
 
 - Severity: Medium
-- Status: Planned
+- Status: Resolved
 - Area: Sybil economics, bounded delay
 - Evidence: `Tournament.joinTournament`, `Tournament.deleteMatch`,
   `Tournament.tryRecoveringBond`
 
 The commitment root determines one claimer slot, and the first address to join
-that root owns it. The correct root is deterministic. An attacker can therefore
-claim it first, add many incorrect claims, let a correct validator perform the
-permissionless defense, and then receive the entire residual pool when the
-correct commitment wins. The attack still requires concurrent capital, but the
-losing bonds are not an irreversible exponential cost; much of the pool can be
-reused in later disputes.
+that root owns it. The correct root is deterministic. Before this fix, an
+attacker could therefore claim it first, add many incorrect claims, let a
+correct validator perform the permissionless defense, and then receive the
+entire residual pool when the correct commitment won. The attack still required
+concurrent capital, but much of the losing-bond pool could be reused in later
+disputes.
 
 First-claimer ownership of a duplicated root is intended. Bonds are Sybil
 protection, not an endogenous reward for identifying an honest validator, and
-the contract has no honest-address oracle. The agreed terminal rule is instead:
+the contract has no honest-address oracle.
+
+Resolution:
 
 1. Pay the registered first claimer of the eventual winning commitment at most
-   one bond.
-2. Burn every remaining tournament balance after that payment.
-3. Do not reserve a terminal bond. Legitimate progress refunds reduce the
-   remaining balance; terminal payment is `min(balance, bondValue())`, followed
-   by burning what remains.
+   `min(current balance, bondValue())`. No terminal bond is reserved, so
+   legitimate progress refunds may leave a smaller payment.
+2. If a nonzero winner payment fails, return `false` without deleting the
+   claimer or burning any of the full retryable balance.
+3. After a successful payment, burn the actual post-callback balance and delete
+   the claimer. A zero balance skips the recipient call and completes directly.
+4. Later calls are idempotent no-ops. The burn covers the balance present at
+   successful recovery, not ETH forcibly sent afterward.
+5. `testFuzzTryRecoveringRootBondCapsPayoutAndBurnsResidual` covers balances
+   from zero through three bonds and repeated recovery.
+6. `testTryRecoveringRootBondPreservesBalanceForRetry` covers rejection, full
+   balance preservation, retry, residual burn, and idempotence.
+7. `testTryRecoveringEmptyRootBondSkipsRecipientCall` covers zero-balance
+   completion with a rejecting recipient.
+8. `testInnerWinner` covers capped payout and burn when parent propagation
+   settles a child tournament.
+9. The fuzzed `DaveAppFactoryTest.testSettle` covers payout and burn whether
+   recovery happens before settlement or inside `DaveConsensus.settle`.
 
-This makes the reimbursement-adjusted portion of losing deposits irreversible.
-It does not eliminate small repeated vandalism: an attacker may still buy
-bounded delay in each independent epoch for a linear burned cost.
+This makes the unrefunded terminal portion of losing deposits irreversible. It
+does not eliminate small repeated vandalism: an attacker may still buy bounded
+delay in each independent epoch for a linear burned cost.
 
 ### PRT-009: Pairing grants bankable response time to fresh commitments
 
@@ -363,8 +383,9 @@ The following items were corrected or explicitly documented in this pass:
   commitment.
 - Permissionless factory calls can create orphan inner tournaments. A parent
   only consumes children linked from its own sealed matches.
-- Garbage collection advances protocol state; it does not universally unlock
-  every bond. A child eliminated without a winner has no winner sweep path.
+- Garbage collection advances protocol state; it does not universally settle
+  every balance. A child eliminated without a winner has no winning-claimer
+  payout or residual-burn path.
 - Refunds are bounded partial execution-gas payments, not guaranteed full-cost
   reimbursement or profit.
 - `arbitrationResult` lacks the root-only guard previously claimed by NatSpec.
@@ -385,8 +406,8 @@ The following items were corrected or explicitly documented in this pass:
   pairing can force a linear number of matches and transactions.
 - The intended allowance is `censorship + (levels - 1) * inner commitment
   time`. Pairing response latency is a separate budget.
-- Same-root first-claimer ownership is intended, but sweeping every losing
-  bond to that address is not.
+- Same-root first-claimer ownership is intended; terminal recovery now caps its
+  payout at one bond and burns the post-payment residual.
 
 ### Documentation model
 
@@ -413,17 +434,18 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 
 ### Priority 0
 
-- `TEST-RECOVERY-001`: recover a root winner twice and require the second call
+- `TEST-RECOVERY-001` (landed): recover a root winner twice and require the second call
   to succeed without transferring or mutating state.
-- `TEST-RECOVERY-002`: pre-recover a child winner, then propagate that child
+- `TEST-RECOVERY-002` (landed): pre-recover a child winner, then propagate that child
   through `winInnerTournament` successfully.
-- `TEST-RECOVERY-003`: pre-recover a root winner, then settle its epoch through
+- `TEST-RECOVERY-003` (landed): pre-recover a root winner, then settle its epoch through
   `DaveConsensus` successfully.
-- `TEST-BOND-001`: cap terminal winner payment at the lesser of the remaining
-  balance and one bond, then burn the residual; cover the intended correct-root
-  first claimer.
-- `TEST-BOND-002`: if the terminal recipient rejects payment, retain the
-  claimer and entire balance for retry; after success, recovery is idempotent.
+- `TEST-BOND-001` (landed): cap terminal winner payment at the lesser of the
+  remaining balance and one bond, then burn the residual; cover zero, sub-bond,
+  exact-bond, and excess-balance cases.
+- `TEST-BOND-002` (landed): if the terminal recipient rejects payment, retain
+  the claimer and entire balance without burning; retry successfully and make
+  later recovery idempotent.
 - `TEST-CLK-001`: reproduce the sealed-leaf restoration bug.
 - `TEST-CLK-002`: fuzz clock conservation for paused and running winners.
 - `TEST-CLK-003`: exercise exact expiry, one block before, and one block after;
@@ -445,8 +467,8 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   divergence position. Check both winner attribution and agree-proof selection.
 - Multi-level parameter fuzzing for one, two, three, and more levels, including
   malformed heights, strides, allowances, and unsafe shifts.
-- Economic invariants proving total refunds do not exceed available deposits or
-  consume another commitment's recoverable balance.
+- Economic invariants proving pooled-balance conservation across refunds,
+  terminal payment, residual burn, and repeated recovery.
 - Model-based one- and two-level delay tests covering balanced reservoirs,
   skewed/list pairing, late joins, and non-bankable response discounts.
 - Reverting and reentrant refund/bond receivers, including cross-instance
@@ -457,7 +479,7 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - Join and resolve at every close-time boundary.
 - Child win and elimination at every carryover deadline boundary.
 - Orphan and unknown child tournaments.
-- Same-root first-claimer ownership under current sweep behavior.
+- Same-root first-claimer ownership under the capped terminal payout.
 - No-winner child balance behavior.
 - Exact views for unknown matches, double timeout, nonexistent match cycles, and
   non-root result retrieval.
@@ -527,14 +549,14 @@ confirmed dispute-game defect:
 
 - Odd/even bisection parity and left/right winner attribution.
 - Agree-state proof selection at the final divergent leaf.
-- Child winner identity and clock mapping into the parent, excluding the
-  recovery call whose non-idempotence is PRT-007.
+- Child winner identity and clock mapping into the parent, including idempotent
+  recovery after PRT-007.
 - Parent-child linkage against permissionlessly created orphan children.
 - Live-match accounting through match deletion and winner re-pairing.
 - Inclusive tournament closure and the main timeout-elimination comparison.
 - Same-root first-claimer ownership: later callers cannot join the same
   commitment, while every defense operation remains permissionless. This is
-  intended; only the residual payout policy changes.
+  intended; PRT-008 changed only the residual payout policy.
 
 This is review evidence, not a proof. The parity and lifecycle properties still
 need exhaustive and stateful tests.
@@ -549,3 +571,17 @@ At the time of review:
   mismatch without evaluating state-transition correctness.
 - Foundry coverage did not produce a reliable aggregate because of the build
   issues recorded above.
+
+After the PRT-007 fix:
+
+- `prt/contracts`: `just test-disputes` passed 43 tests.
+- `cartesi-rollups/contracts`: `just test` passed both fuzz properties with 256
+  runs each, including settlement after pre-recovery.
+
+After the PRT-008 fix:
+
+- `prt/contracts`: `just test-disputes` passed 46 tests, including root and
+  child payout, burn, rejection, retry, zero-balance, and idempotence paths.
+- `cartesi-rollups/contracts`: `just test` passed both fuzz properties with 256
+  runs each, including capped payout and residual burn before or during
+  settlement.

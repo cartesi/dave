@@ -365,12 +365,17 @@ contract Tournament is ITournament {
         }
     }
 
-    /// @notice Try to recover the bond of the winning commitment submitter.
+    /// @notice Settle the tournament balance after a winner is established.
     /// @dev
     /// - ROOT:
     ///     * Winner is the root tournament winner.
     /// - NON-ROOT:
     ///     * Winner is the inner winner that will be used by the parent tournament.
+    /// - The winner receives at most one bond; earlier refunds may leave less.
+    /// - A zero balance completes without calling the winner.
+    /// - Any post-payment residual balance is burned.
+    /// - A call after successful recovery returns true without another transfer.
+    /// - A failed winner payment preserves the claimer and balance for retry.
     function tryRecoveringBond() public override withLock returns (bool) {
         require(isFinished(), TournamentNotFinished());
 
@@ -378,21 +383,32 @@ contract Tournament is ITournament {
             hasDanglingCommitment();
         require(hasDangling, NoWinner());
 
-        address winner = claimers[winningCommitment];
-        assert(winner != address(0));
-
-        uint256 contractBalance = address(this).balance;
-        (bool success,) = winner.call{value: contractBalance}("");
-
-        // This is the only part of the function body that is not
-        // compliant to the checks-effects-interactions pattern.
-        // So, in order to avoid reentrancy attacks, this function
-        // is modified to acquire (and release) the lock.
-        if (success) {
-            deleteClaimer(winningCommitment);
+        address winnerClaimer = claimers[winningCommitment];
+        if (winnerClaimer == address(0)) {
+            // A successful recovery deletes the claimer. Treat later
+            // permissionless recovery attempts as successful no-ops.
+            return true;
         }
 
-        return success;
+        uint256 winnerPayment = address(this).balance.min(bondValue());
+        if (winnerPayment > 0) {
+            (bool success,) = winnerClaimer.call{value: winnerPayment}("");
+            if (!success) {
+                return false;
+            }
+        }
+
+        uint256 residualBalance = address(this).balance;
+        if (residualBalance > 0) {
+            (bool success,) =
+                payable(address(0)).call{value: residualBalance}("");
+            assert(success);
+        }
+
+        // The external payment precedes this effect so a rejecting winner can
+        // retry. The transient lock prevents reentrancy during both transfers.
+        deleteClaimer(winningCommitment);
+        return true;
     }
 
     //

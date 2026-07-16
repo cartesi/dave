@@ -193,6 +193,8 @@ contract MiddleTournamentTest is Util {
 
         vm.roll(_rootTournamentFinish);
         (_finished, _winner,,) = middleTournament.innerTournamentWinner();
+        // Recovery is permissionless and may precede parent propagation.
+        assertTrue(middleTournament.tryRecoveringBond());
         Util.winInnerTournament(
             topTournament,
             middleTournament,
@@ -274,7 +276,6 @@ contract MiddleTournamentTest is Util {
         Util.joinTournament(middleTournament, 0);
 
         //let player 1 join, then timeout player 0
-        uint256 player1BalanceBefore = player1.balance;
         Util.joinTournament(middleTournament, _opponent);
 
         (Clock.State memory _player0Clock,) = middleTournament.getCommitment(
@@ -314,6 +315,12 @@ contract MiddleTournamentTest is Util {
         assertNoElimination();
 
         (_finished, _winner,,) = middleTournament.innerTournamentWinner();
+        uint256 player1BalanceBeforeRecovery = player1.balance;
+        uint256 tournamentBalanceBeforeRecovery =
+            address(middleTournament).balance;
+        uint256 burnedBalanceBefore = address(0).balance;
+        assertGe(tournamentBalanceBeforeRecovery, bondAmount);
+
         Util.winInnerTournament(
             topTournament,
             middleTournament,
@@ -328,8 +335,13 @@ contract MiddleTournamentTest is Util {
         );
         assertEq(
             player1.balance,
-            player1BalanceBefore + bondAmount,
-            "Player 1 should have received one extra bond"
+            player1BalanceBeforeRecovery + bondAmount,
+            "Player 1 should have recovered one bond"
+        );
+        assertEq(
+            address(0).balance,
+            burnedBalanceBefore + tournamentBalanceBeforeRecovery - bondAmount,
+            "Residual child balance should have been burned"
         );
         assertEq(
             address(middleTournament).balance,

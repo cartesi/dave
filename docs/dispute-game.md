@@ -60,7 +60,7 @@ successor liveness design that these contracts do not implement.
 | Pairing | Bracket-oriented | Commitments pair as they arrive and winners re-enter |
 | Dispute depth | Paper construction | Recursive, configurable tournament levels |
 | Per-match timing | High-level chess-clock model | Stored per-commitment clocks with explicit timeout entry points |
-| Economics | Conceptual permissionless incentives | On-chain bonds, partial refund caps, and winner balance sweep |
+| Economics | Conceptual permissionless incentives | On-chain bonds, partial refund caps, capped winner payment, and residual burn |
 | Child disputes | Paper construction | Parent-sealed match creates and links a child tournament |
 | Dave liveness improvement | Not applicable | Not implemented |
 
@@ -347,8 +347,9 @@ ledger. The proposed replacement API and test contract are recorded in
 
 ## Bonds and refunds
 
-Joining posts one bond to one tournament instance. A participant following a
-recursive dispute may have a separate bond locked at each active level.
+Joining posts at least one bond to one tournament instance. A participant
+following a recursive dispute may have a separate bond locked at each active
+level. Any excess join value enters the same pooled balance as the bonds.
 
 Each progress function uses a fixed gas allocation. The `refundable` modifier
 pays the caller the minimum of:
@@ -366,31 +367,41 @@ under-reimbursed even if the execution-gas estimate is exact. The fixed
 estimates must be kept conservative and tested against representative proof
 sizes. PRT-003 records known estimate failures.
 
-Under the current implementation, when a tournament finishes with a winner,
-the address that first joined the winning commitment may sweep the entire
-remaining tournament balance. A commitment root can be joined only once, so
-copying the correct root first intentionally claims that recipient slot; all
-progress and defense operations remain permissionless. Eliminated claimers lose
-their sweep claim. Garbage collection advances matches and parent tournaments,
-but does not imply that every child balance becomes recoverable. A no-winner
-child has no winner to perform the ordinary balance sweep.
+When a tournament finishes with a winner, `tryRecoveringBond` pays the address
+that first joined the winning commitment
+`min(current balance, bondValue())`. It does not reserve one bond: legitimate
+progress refunds may leave less than that amount. Only after a nonzero winner
+payment succeeds does the contract send the entire post-payment balance to the
+zero address. If the balance is zero, it skips the recipient call and completes
+recovery directly.
 
-Successful recovery deletes the winning claimer. The current function is not
-idempotent: a second permissionless call panics. This can block both root epoch
-settlement and propagation of an already-recovered child winner. PRT-007 tracks
-the fix.
+A commitment root can be joined only once, so copying the correct root first
+intentionally claims that capped recipient slot; all progress and defense
+operations remain permissionless. Eliminated claimers lose their terminal
+payment claim. Garbage collection advances matches and parent tournaments, but
+does not imply that every child balance is settled. A no-winner child has
+neither a winning-claimer payment nor this residual-burn path, so its balance
+remains locked absent another mechanism.
+
+Successful recovery deletes the winning claimer, and later calls return `true`
+as no-ops. This also means ETH forcibly sent after recovery remains stranded;
+the burn rule covers the balance present during successful recovery. If a
+nonzero recipient payment is rejected, recovery returns `false`, burns nothing,
+and preserves both the claimer and the full balance for retry. This idempotence
+and retry behavior are required because recovery is permissionless and both
+root settlement and parent propagation call it as part of their own lifecycle.
 
 Bonds are intended to provide Sybil resistance, not an endogenous validator
-incentive. The model assumes validators defend applications they value. The
-current residual sweep conflicts with the Sybil-cost model: an attacker can
-claim the deterministic correct root first, fund incorrect claims, let a correct
-validator perform permissionless defense, and recover the losers' residual pool
-through the winning claimer slot. The agreed redesign, not yet implemented,
-pays the registered claimer of the eventual winning commitment at most one bond
-and burns the rest. The contract cannot identify an honest address; it can
-identify only the winning commitment and its first claimer.
+incentive. The model assumes validators defend applications they value. A full
+residual sweep would conflict with that model: an attacker could claim the
+deterministic correct root first, fund incorrect claims, let a correct validator
+perform permissionless defense, and recover the losers' residual pool through
+the winning claimer slot. The capped payment and residual burn prevent that
+recycling after legitimate partial refunds. The contract cannot identify an
+honest address; it can identify only the winning commitment and its first
+claimer.
 
-Under that redesign, small repeated vandalism remains possible by design. For
+Under this rule, small repeated vandalism remains possible by design. For
 example, two incorrect claims can make one opponent active while the other
 waits dangling, buying roughly two single-level clock windows. Repeating the
 construction in sequential epochs creates linear cumulative disruption for
@@ -401,9 +412,10 @@ games whose brackets and clocks reset.
 Required economic invariants:
 
 - A caller cannot withdraw more than the configured refund cap for one action.
-- Aggregate refunds, terminal payout, and residual burn cannot exceed deposited
-  tournament funds or pay the same balance twice.
-- Failed refund transfers do not corrupt tournament state.
+- Aggregate refunds, terminal payout, and residual burn conserve the actual
+  tournament balance and cannot pay or burn the same value twice.
+- Failed refund transfers do not corrupt tournament state. A failed terminal
+  payout does not delete the claimer or burn any of the retryable balance.
 - Reentrant receivers cannot enter another state-changing operation on the same
   tournament.
 - The documented incentive model includes every fee it claims to cover.
@@ -412,8 +424,8 @@ Required economic invariants:
 
 Progress, timeout resolution, child propagation, garbage collection, and bond
 recovery are permissionless entry points. Correctness must not depend on the
-original claimer being the caller. Claimer identity controls only the final
-balance recipient.
+original claimer being the caller. Claimer identity controls only the capped
+terminal-payment recipient; the residual always goes to the fixed burn sink.
 
 The tournament uses a transient reentrancy lock around state-changing calls,
 external ETH transfers, and child interactions. Cross-instance child calls are

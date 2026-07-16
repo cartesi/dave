@@ -93,7 +93,7 @@ level. Terms marked (code) appear verbatim in identifiers.
 - garbage collection (gc): permissionlessly eliminating finished or
   timed-out matches/tournaments so protocol progress does not depend on their
   claimers. It does not guarantee recovery of every bond; a no-winner child has
-  no ordinary winner sweep path.
+  no winning-claimer payment or residual-burn path.
 - arbitration result: the root tournament's final answer (winner
   commitment and final machine state hash).
 

@@ -106,7 +106,8 @@ papers do not specify these contracts exactly.
      `eliminateMatchByTimeout` (both effectively out -> **both** eliminated).
 5. The surviving **dangling** commitment is the tournament's result; the root's
    is read via `arbitrationResult`, an inner's via `innerTournamentWinner`.
-   Bonds are swept by the winner via `tryRecoveringBond`.
+   `tryRecoveringBond` pays the registered winning claimer at most one bond,
+   then burns the remaining tournament balance.
 
 ## Mechanisms (verified against the code - *not* a correctness claim)
 
@@ -132,17 +133,19 @@ papers do not specify these contracts exactly.
   basefee + PRIORITY_FEE_CAP))`. This is a capped execution-gas payment, not a
   guarantee of full transaction cost or profit, and it does not model every L2
   data fee. The bond-share term also caps reimbursement at 50 gwei even when
-  base fee is higher. Today the first claimer of the winning commitment sweeps
-  the residual balance via `tryRecoveringBond`; the agreed redesign caps that
-  terminal payment at one bond and burns the rest so losing Sybil deposits
-  cannot be recycled.
+  base fee is higher. No terminal bond is reserved: earlier refunds may leave
+  the winning commitment's first claimer less than one bond. Recovery pays
+  `min(contract balance, bondValue())`; only after that payment succeeds is the
+  post-payment residual burned. This makes the unrefunded terminal portion of
+  losing Sybil deposits irreversible rather than recyclable.
 - **Reentrancy**: a transient `locked` flag guards state-mutating entrypoints -
   `withLock` on `joinTournament` and `tryRecoveringBond`, and `refundable`
   (which also takes the lock) on `advanceMatch` / the seal / win / eliminate
-  functions. The external ETH transfers (`tryRecoveringBond`'s balance sweep,
-  `refundable`'s refund) and the external child calls in `winInnerTournament`
-  (`child.canBeEliminated`, `child.tryRecoveringBond`) all execute inside the
-  lock. (Mechanism only - stress-testing it is exactly an audit's job.)
+  functions. The external ETH transfers (`tryRecoveringBond`'s capped payout
+  and residual burn, `refundable`'s refund) and the external child calls in
+  `winInnerTournament` (`child.canBeEliminated`,
+  `child.tryRecoveringBond`) all execute inside the lock. (Mechanism only -
+  stress-testing it is exactly an audit's job.)
 - **Termination**: `isClosed` = `now >= startInstant + allowance`;
   `isFinished` = `isClosed && matchCount == 0`; `canBeEliminated` (non-root only)
   = finished with no winner, **or** finished and the winner's allowance window
