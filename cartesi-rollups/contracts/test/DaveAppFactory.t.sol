@@ -174,7 +174,8 @@ contract DaveAppFactoryTest is Test {
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt,
         bytes32 outputsMerkleRoot,
-        bytes[] calldata inputPayloads
+        bytes[] calldata inputPayloads,
+        bool recoverBeforeStaging
     ) external {
         _randomizeBlockNumber(claimStagingPeriod);
 
@@ -414,12 +415,22 @@ contract DaveAppFactoryTest is Test {
         vm.expectRevert(_encodeApplicationForeclosed(address(appContract)));
         this.simulateForeclosureAndStaging(appContract, daveConsensus, 0, outputsMerkleRoot, outputsMerkleRootProof);
 
+        uint256 burnedBalanceBefore = address(0).balance;
+
+        if (recoverBeforeStaging) {
+            assertTrue(tournament.tryRecoveringBond());
+        }
+
         uint256 stagingBlockNumber = vm.getBlockNumber();
 
         vm.recordLogs();
 
         vm.prank(vm.randomAddress());
         daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
+
+        assertEq(address(tournament).balance, 0);
+        assertEq(submitter.balance, balanceBefore - callValue + bondValue);
+        assertEq(address(0).balance, burnedBalanceBefore + callValue - bondValue);
 
         logs = vm.getRecordedLogs();
 

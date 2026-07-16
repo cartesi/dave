@@ -27,6 +27,18 @@ import {Tree} from "src/types/Tree.sol";
 
 import {Util} from "./Util.sol";
 
+contract ConfigurableBondReceiver {
+    bool public rejectsPayment = true;
+
+    function acceptPayments() external {
+        rejectsPayment = false;
+    }
+
+    receive() external payable {
+        require(!rejectsPayment);
+    }
+}
+
 contract TopTournamentTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
@@ -97,6 +109,125 @@ contract TopTournamentTest is Util {
         assertFalse(_finished, "tournament shouldn't be finished");
         assertTrue(
             _finalState.eq(Machine.ZERO_STATE), "final state should be zero"
+        );
+    }
+
+    function testTryRecoveringRootBondIsIdempotent() public {
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+
+        uint256 winnerBalanceBefore = addrs[0].balance;
+        uint256 tournamentBalanceBefore = address(topTournament).balance;
+
+        assertTrue(topTournament.tryRecoveringBond());
+        assertEq(
+            addrs[0].balance, winnerBalanceBefore + tournamentBalanceBefore
+        );
+        assertEq(address(topTournament).balance, 0);
+
+        assertTrue(topTournament.tryRecoveringBond());
+        assertEq(
+            addrs[0].balance, winnerBalanceBefore + tournamentBalanceBefore
+        );
+        assertEq(address(topTournament).balance, 0);
+    }
+
+    function testFuzzTryRecoveringRootBondCapsPayoutAndBurnsResidual(uint256 remainingBalance)
+        public
+    {
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+
+        uint256 bond = topTournament.bondValue();
+        remainingBalance = bound(remainingBalance, 0, 3 * bond);
+        vm.deal(address(topTournament), remainingBalance);
+
+        uint256 winnerBalanceBefore = addrs[0].balance;
+        uint256 burnedBalanceBefore = address(0).balance;
+        uint256 expectedWinnerPayment =
+            remainingBalance < bond ? remainingBalance : bond;
+
+        assertTrue(topTournament.tryRecoveringBond());
+        assertEq(
+            addrs[0].balance,
+            winnerBalanceBefore + expectedWinnerPayment,
+            "winner payment should be capped at one bond"
+        );
+        assertEq(
+            address(0).balance,
+            burnedBalanceBefore + remainingBalance - expectedWinnerPayment,
+            "residual balance should be burned"
+        );
+        assertEq(address(topTournament).balance, 0);
+
+        assertTrue(topTournament.tryRecoveringBond());
+        assertEq(addrs[0].balance, winnerBalanceBefore + expectedWinnerPayment);
+        assertEq(
+            address(0).balance,
+            burnedBalanceBefore + remainingBalance - expectedWinnerPayment
+        );
+    }
+
+    function testTryRecoveringRootBondPreservesBalanceForRetry() public {
+        ConfigurableBondReceiver receiver = new ConfigurableBondReceiver();
+        topTournament = _initializeReceiverTournament(address(receiver));
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+
+        uint256 bond = topTournament.bondValue();
+        uint256 remainingBalance = 3 * bond;
+        vm.deal(address(topTournament), remainingBalance);
+
+        uint256 receiverBalanceBefore = address(receiver).balance;
+        uint256 burnedBalanceBefore = address(0).balance;
+
+        assertFalse(topTournament.tryRecoveringBond());
+        assertEq(address(receiver).balance, receiverBalanceBefore);
+        assertEq(address(0).balance, burnedBalanceBefore);
+        assertEq(address(topTournament).balance, remainingBalance);
+
+        receiver.acceptPayments();
+        assertTrue(topTournament.tryRecoveringBond());
+        assertEq(address(receiver).balance, receiverBalanceBefore + bond);
+        assertEq(
+            address(0).balance, burnedBalanceBefore + remainingBalance - bond
+        );
+        assertEq(address(topTournament).balance, 0);
+
+        assertTrue(topTournament.tryRecoveringBond());
+        assertEq(address(receiver).balance, receiverBalanceBefore + bond);
+        assertEq(
+            address(0).balance, burnedBalanceBefore + remainingBalance - bond
+        );
+    }
+
+    function testTryRecoveringEmptyRootBondSkipsRecipientCall() public {
+        ConfigurableBondReceiver receiver = new ConfigurableBondReceiver();
+        topTournament = _initializeReceiverTournament(address(receiver));
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+        vm.deal(address(topTournament), 0);
+
+        assertTrue(topTournament.tryRecoveringBond());
+        assertEq(address(receiver).balance, 0);
+        assertEq(address(topTournament).balance, 0);
+
+        assertTrue(topTournament.tryRecoveringBond());
+    }
+
+    function _initializeReceiverTournament(address receiver)
+        private
+        returns (ITournament tournament)
+    {
+        tournament = FACTORY.instantiate(ONE_STATE, IDataProvider(address(0)));
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+        uint256 bond = tournament.bondValue();
+
+        vm.deal(receiver, bond);
+        vm.prank(receiver);
+        tournament.joinTournament{value: bond}(
+            ONE_STATE,
+            generateFinalStateProof(0, height),
+            playerNodes[0][height - 1],
+            playerNodes[0][height - 1]
         );
     }
 

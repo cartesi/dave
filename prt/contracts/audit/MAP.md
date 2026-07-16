@@ -59,11 +59,12 @@ L2 = inner+leaf. The deployment target is L=2, so these tables must be regenerat
    (allowance reduced by elapsed since `startInstant`; reverts
    `InitializedClockCannotHaveZeroAllowance` if `elapsed >= allowance`, though
    `tournamentOpen` already blocks when closed); emit `CommitmentJoined`; `pairCommitment`;
-   `claimers[root] = msg.sender`. Excess ETH is retained (funds the bond pool).
+   `claimers[root] = msg.sender`. Excess ETH is retained in the pooled balance
+   and is subject to progress refunds, capped terminal payout, and residual burn.
    `requireNotInitialized` blocks re-joining the same commitment root (two distinct
    participants with the identical tree collide; only the first joins. First-claimer ownership is
-   intended because all progress calls are permissionless; the residual payout consequence is
-   tracked as PRT-008).
+   intended because all progress calls are permissionless; PRT-008 caps the
+   terminal payout consequence).
 
 2. **Async pairing** (`pairCommitment`): single `danglingCommitment` slot (`ZERO_NODE`
    sentinel). `assert(leftNode.join(rightNode) == rootHash)`. If a dangling exists:
@@ -116,10 +117,12 @@ L2 = inner+leaf. The deployment target is L=2, so these tables must be regenerat
      children must join to `winner`; parent `clock[winner].requireInitialized` then
      `reInitialized(innerClock)` (carryover = `timeLeft` of the deducted inner clock, paused;
      reverts if zero); `pairCommitment(winner)`; `deleteMatch(CHILD_TOURNAMENT, ONE/TWO)`;
-     delete mapping; `child.tryRecoveringBond()`. All child calls run inside the parent's lock.
+     delete mapping; `child.tryRecoveringBond()`. The returned boolean is ignored, so a rejected
+     child payment does not revert parent progress and leaves the child claimer and balance
+     retryable. All child calls run inside the parent's lock.
    - **Non-leaf eliminate** (`eliminateInnerTournament`): require non-leaf; require
      `child.canBeEliminated()`; `deleteMatch(CHILD_TOURNAMENT, NONE)` eliminating both parent
-     commitments; delete mapping. Does NOT recover child's bond.
+     commitments; delete mapping. It does not settle or burn the no-winner child's balance.
    - **Timeout win** (`winMatchByTimeout`, `refundable(WIN_MATCH_BY_TIMEOUT)`): exactly one
      of (clockOne hasTimeLeft, clockTwo hasTimeLeft) (else `NeitherClockHasTimedOut`);
      winner's children verified; winner `clock.deducted(loser.timeSinceTimeout())` - penalty
@@ -131,7 +134,7 @@ L2 = inner+leaf. The deployment target is L=2, so these tables must be regenerat
      symmetric; else `AtLeastOneClockHasNotTimedOut`. `deleteMatch(TIMEOUT, NONE)`, both
      claimers deleted.
 
-6. **Result & bond sweep:** `isClosed = now >= startInstant + allowance` (`timeoutElapsed`,
+6. **Result & terminal balance settlement:** `isClosed = now >= startInstant + allowance` (`timeoutElapsed`,
    inclusive at equality). `isFinished = isClosed && matchCount == 0`. The surviving dangling
    commitment is the result. Root: `arbitrationResult` returns `(true, dangling,
    finalStates[dangling])` or reverts `TournamentFailedNoWinner` if finished-with-no-dangling.
@@ -139,11 +142,13 @@ L2 = inner+leaf. The deployment target is L=2, so these tables must be regenerat
    winner's final state + winner + winner clock deducted by `now - finishedTime`; asserts the
    second branch) and `canBeEliminated` (finished+no-dangling OR finished+winner's allowance
    window elapsed since `winnerCouldHaveWon`; reverts on root). `tryRecoveringBond` (`withLock`,
-   public) sends `address(this).balance` to `claimers[dangling]` once `isFinished` and a
-   dangling exists; deletes the claimer only on success (so it can retry on a rejecting
-   recipient). Also sweeps unrecovered losers' bonds + leftover partial refunds. A parent calls
-   it on the child after consuming the result. A second call after success panics because the
-   claimer was deleted; this is PRT-007, not a benign zero-balance retry.
+   public) pays `min(address(this).balance, bondValue())` to `claimers[dangling]` once
+   `isFinished` and a dangling exists. A zero balance skips that call. If a nonzero recipient
+   call fails, it returns `false` with the claimer and full balance unchanged. After success,
+   it burns the actual post-callback residual and deletes the claimer. A parent calls it on the
+   child after consuming the result. PRT-007 made a second call after success an idempotent
+   no-op; ETH forcibly sent after that completion stays stranded. A no-winner child has no
+   corresponding payout or burn path.
 
 ### Timing / chess clocks (`Time.sol` + `Clock.sol`)
 
@@ -176,6 +181,10 @@ seal + one win per participant; a commitment that keeps winning re-enters and pl
 matches, each triggering `refundable` calls - **the global bound (is one bond's refundable
 share, summed across all matches a single commitment plays, capped below the posted bond?) is
 the central economic property to prove and is NOT locally enforced.**
+
+Terminal settlement reserves no bond against those refunds. It pays the winning claimer at most
+the lesser of the then-current balance and one bond, then burns the post-payment residual. A
+rejecting claimer leaves the entire balance unchanged for retry.
 
 ### Trust boundaries
 
@@ -224,7 +233,7 @@ the central economic property to prove and is NOT locally enforced.**
 
 A single transient `locked` flag guards `withLock` (`joinTournament`, `tryRecoveringBond`) and
 `refundable` (advance/seal/win/eliminate). All external ETH moves (`tryRecoveringBond`'s
-full-balance sweep, `refundable`'s refund) and the cross-contract child calls in
+capped payout and residual burn, `refundable`'s refund) and the cross-contract child calls in
 `winInnerTournament` (`canBeEliminated`, `innerTournamentWinner`, `tryRecoveringBond`) run
 inside the lock. The lock is per-instance and transient (resets each tx). Cross-contract VIEW
 calls to a DIFFERENT contract instance do not take this instance's lock, so trust in child view
@@ -379,20 +388,22 @@ Each: statement * where enforced * how it could break.
     `hasDanglingCommitment` treats non-zero as present.
   - *Breaks if:* a legitimate root equal to `ZERO_NODE` (keccak->0, negligible) read as "no
     dangling"; any path calling `setDanglingCommitment` while one exists (none currently).
-- **INV-FUND-1 - Fund safety and terminal payout.** Under current behavior the first claimer of the
-  winning commitment may extract the entire residual pool, including losing bonds. The agreed
-  policy is at most one terminal bond to that claimer and burning the remainder (PRT-008).
-  - *Enforced today:* `_refundableAfter` caps each action refund; `tryRecoveringBond` pays the full
-    residual balance to the dangling claimer; `deleteMatch` removes losers' claimers.
+- **INV-FUND-1 - Fund safety and terminal payout.** The first claimer of the winning commitment
+  receives at most one terminal bond; the post-payment residual is burned (PRT-008).
+  - *Enforced:* `_refundableAfter` caps each action refund; `tryRecoveringBond` pays
+    `min(balance, bondValue())`, burns the actual post-callback residual, and removes the winning
+    claimer only after success; `deleteMatch` removes losers' claimers.
   - *Breaks if:* the sum of per-function refund shares a single commitment triggers ACROSS MANY
-    MATCHES (a repeatedly-winning commitment re-enters) exceeds `_totalGasEstimate`, draining other
-    bonds / the winner's residual. **Multi-match accounting is unproven here.** Also the `+Gas.TX`
+    MATCHES (a repeatedly-winning commitment re-enters) exceeds `_totalGasEstimate`, draining the
+    pooled terminal balance. **Multi-match accounting is unproven here.** Also the `+Gas.TX`
     overhead in the gasUsed term could over-refund vs real gas in adversarial conditions.
-- **INV-FUND-2 - `tryRecoveringBond` reentrancy-safe and retry-safe.** Full-balance transfer occurs
-  inside `withLock`; a rejecting recipient retains its claimer for retry.
-  - *Enforced:* `withLock`; `winner.call{value: balance}`; `if (success) deleteClaimer`.
-  - *Broken:* success is not idempotent. A permissionless first recovery deletes the claimer, and a
-    later root settlement or parent propagation panics. Confirmed as PRT-007.
+- **INV-FUND-2 - `tryRecoveringBond` reentrancy-safe and retry-safe.** The capped payment and burn
+  occur inside `withLock`; a rejecting recipient retains its claimer and full balance for retry.
+  - *Enforced:* `withLock`; failed payment returns before burn or deletion; successful payment is
+    followed by residual burn and claimer deletion in the same transaction.
+  - *Enforced after PRT-007:* a missing claimer on a finished tournament with a winner means
+    recovery already succeeded, so later root settlement or parent propagation returns true
+    without another transfer. ETH forcibly sent after that point remains stranded.
 - **INV-REENT-1 - No re-entry into a state-mutating entrypoint.** Mid-execution external ETH
   transfers and child calls cannot re-enter.
   - *Enforced:* transient `locked`; `withLock` + `refundable`; all ETH moves and
@@ -493,8 +504,8 @@ Cross-checks between mappers; most resolved-but-flagged.
    `canBeEliminated`'s window with `innerTournamentWinner`'s `deduct` arithmetic.
 5. **Identical-commitment-tree front-running** - `requireNotInitialized` locks out the second
    submitter of the same root. **Decision:** first-claimer ownership is intended because defense is
-   permissionless. The full residual sweep lets that address recycle losing Sybil bonds; PRT-008
-   changes the payout, not commitment uniqueness.
+   permissionless. PRT-008 resolved the historical full-sweep recycling path by changing the
+   payout and residual handling, not commitment uniqueness.
 6. **`_refundableAfter` gas interplay** - the `+Gas.TX = 25000` added to measured gas vs real ETH
    spent; whether the refund can exceed real gas in any block-condition corner (bounded by balance
    and bond-share caps, but not exhaustively checked).

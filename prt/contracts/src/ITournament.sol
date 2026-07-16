@@ -192,8 +192,7 @@ interface ITournament {
     /// the bond value (which can be consulted through `bondValue`).
     error InsufficientBond();
 
-    /// @notice A bond refund cannot be issued to the tournament winner
-    /// because there is no tournament winner.
+    /// @notice Terminal recovery cannot occur because there is no winner.
     error NoWinner();
 
     /// @notice The divergence falls in the first leaf node of the commitment tree
@@ -221,8 +220,8 @@ interface ITournament {
     /// @notice The tournament is finished, which restricts most actions.
     error TournamentIsFinished();
 
-    /// @notice The tournament is not finished, which restricts bonds from
-    /// being recovered at this point, since a winner has not been declared yet.
+    /// @notice The tournament is not finished, so terminal settlement cannot
+    /// occur because a winner has not been declared yet.
     error TournamentNotFinished();
 
     /// @notice The tournament is closed, which restricts new commitments
@@ -400,8 +399,13 @@ interface ITournament {
     /// @dev The bond value may depend on the tournament level.
     function bondValue() external view returns (uint256);
 
-    /// @notice Try recovering the bond of the winner commitment submitter.
-    /// @return Whether the recovery was successful
+    /// @notice Settle the tournament balance after a winner is established.
+    /// @dev Pays the winning commitment's submitter at most one bond, without
+    /// reserving that amount against earlier refunds. A zero balance completes
+    /// without calling the recipient. After a successful payment, any residual
+    /// balance is burned and later calls succeed as no-ops. A failed recipient
+    /// call preserves the claimer and full balance so recovery can be retried.
+    /// @return Whether settlement completed or had already completed
     function tryRecoveringBond() external returns (bool);
 
     /// @notice Get the tournament's dangling winner and final state.
