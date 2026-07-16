@@ -19,11 +19,12 @@ import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
-/// @title Tournament — Asynchronous PRT-style dispute resolution
+/// @title Tournament - Asynchronous PRT-style dispute resolution
 /// @notice Core, permissionless tournament that resolves disputes among
-/// N parties in O(log N) depth under chess-clock timing. Pairing is asynchronous:
-/// claims are matched as they arrive (or when winners re-enter), without a
-/// prebuilt bracket.
+/// N parties under chess-clock timing. Each match bisects one commitment tree;
+/// total adversarial delay also depends on repeated pairing and tournament
+/// levels. Pairing is asynchronous: claims are matched as they arrive (or when
+/// winners re-enter), without a prebuilt bracket.
 ///
 /// @dev
 /// HIGH-LEVEL ROLE SPLIT (BY LEVEL)
@@ -34,8 +35,9 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 ///   * Winner is obtained via `arbitrationResult`.
 ///
 /// - Inner, non-root tournaments (level > 0, arbitrary levels >= 2):
-///   * Always created by a parent tournament via
-///     `sealInnerMatchAndCreateInnerTournament`.
+///   * A parent-linked instance is created by
+///     `sealInnerMatchAndCreateInnerTournament`; permissionless factory callers
+///     may also create orphan instances that no parent recognizes.
 ///   * Have exactly two contested final states, stored in `NestedDispute`.
 ///   * Can be eliminated by the parent once the inner winner's allowance
 ///     window expires.
@@ -116,10 +118,10 @@ contract Tournament is ITournament {
         _releaseLock();
     }
 
-    /// @notice Refunds the message sender with the amount
-    /// of Ether wasted on gas on this function call plus
-    /// a profit, capped by the current contract balance
-    /// and a fraction of the bond value.
+    /// @notice Pays the message sender a bounded partial execution-gas refund,
+    /// capped by the current contract balance, a fraction of the bond value,
+    /// the configured gas estimate, and the capped transaction gas price.
+    /// Chain-specific data fees and caller profit are not guaranteed.
     /// Also acquires the lock beforehand and releases it afterward.
     /// @param gasEstimate A worst-case gas estimate for the modified function
     /// forge-lint: disable-next-line(unwrapped-modifier-logic)
@@ -814,12 +816,10 @@ contract Tournament is ITournament {
         return (true, winnerCouldWin);
     }
 
-    /// @notice Get the root tournament's final result.
+    /// @notice Get this tournament's dangling winner and final state.
     /// @dev
-    /// - ROOT ONLY (level == 0):
-    ///     * Returns the winner commitment and its final state once finished.
-    /// - NON-ROOT:
-    ///     * Not used; parents call `innerTournamentWinner` instead.
+    /// - Intended for root consumers, but no root-only guard is enforced.
+    /// - Parents use `innerTournamentWinner` for non-root tournaments.
     function arbitrationResult()
         external
         view
@@ -991,7 +991,7 @@ contract Tournament is ITournament {
     /// @inheritdoc ITournament
     /// @dev
     /// - ROOT:
-    ///     * Reverts with `RequireNonRootTournament` — root tournaments are never eliminated.
+    ///     * Reverts with `RequireNonRootTournament` - root tournaments are never eliminated.
     /// - NON-ROOT:
     ///     * Returns true iff:
     ///         1. Tournament finished and has no winner, OR
@@ -1024,7 +1024,7 @@ contract Tournament is ITournament {
     /// @inheritdoc ITournament
     /// @dev
     /// - ROOT:
-    ///     * Reverts with `RequireNonRootTournament` — use `arbitrationResult` instead.
+    ///     * Reverts with `RequireNonRootTournament` - use `arbitrationResult` instead.
     /// - NON-ROOT:
     ///     * Returns:
     ///         - contested parent commitment (from the parent match),

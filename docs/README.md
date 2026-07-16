@@ -11,18 +11,20 @@ Reading order for newcomers:
 
 1. [glossary.md](glossary.md) - the vocabulary (ustep, meta-cycle,
    dangling commitment, ...).
-2. [epoch-lifecycle.md](epoch-lifecycle.md) - inputs, epochs, tournaments,
+2. [dispute-game.md](dispute-game.md) - the implemented PRT tournament,
+   clocks, recursive disputes, economics, and paper differences.
+3. [epoch-lifecycle.md](epoch-lifecycle.md) - inputs, epochs, tournaments,
    settlement; the system end to end.
-3. [computation-hash.md](computation-hash.md) - how commitments are built;
+4. [computation-hash.md](computation-hash.md) - how commitments are built;
    the micro-architecture gymnastics. The most load-bearing document here.
-4. [dimensioning.md](dimensioning.md) - the trust model and the
+5. [dimensioning.md](dimensioning.md) - the trust model and the
    worst-vs-average dimensioning rule; the reasoning behind every clock,
    span, and constant.
-5. [node-architecture.md](node-architecture.md) - the prototype node:
+6. [node-architecture.md](node-architecture.md) - the prototype node:
    threads, SQLite, and its known-debts inventory (the rewrite worklist).
-6. [test-harness.md](test-harness.md) - the Lua e2e orchestration, the
+7. [test-harness.md](test-harness.md) - the Lua e2e orchestration, the
    cross-implementation oracle, and coverage gaps.
-7. [build-system.md](build-system.md) - setup/build pipeline and open
+8. [build-system.md](build-system.md) - setup/build pipeline and open
    design questions (bindings, emulator dependency).
 
 Related, elsewhere in the repo:
@@ -30,8 +32,8 @@ Related, elsewhere in the repo:
 - `prt/contracts/AGENTS.md` - deep context on the dispute contracts (the
   security-critical core).
 - `prt/docs/prt.pdf`, `dave/docs/dave.pdf` - the papers. Beware: neither
-  matches the implemented variant exactly; see the variant notes in
-  `prt/contracts/AGENTS.md`.
+  matches the implemented variant exactly; see
+  [dispute-game.md](dispute-game.md#relationship-to-the-papers).
 
 Plans: [plans/](plans/) holds working documents for in-flight efforts
 (currently [plans/characterization.md](plans/characterization.md),
