@@ -86,12 +86,14 @@ level. Terms marked (code) appear verbatim in identifiers.
 - chess clock: per-commitment time budget within a match; exactly one
   side's clock runs at a time (except sealed leaf matches, where both
   run).
-- matchEffort / maxAllowance: clock time granted per pairing / cap on
-  total clock time (deployment parameters).
+- matchEffort / maxAllowance: response time granted to a commitment when it
+  is paired / cap on its total clock time (deployment parameters).
 - win by timeout / eliminate by timeout: resolving a match when one (or
   both) clocks run out.
 - garbage collection (gc): permissionlessly eliminating finished or
-  timed-out matches/tournaments to unlock bonds.
+  timed-out matches/tournaments so protocol progress does not depend on their
+  claimers. It does not guarantee recovery of every bond; a no-winner child has
+  no ordinary winner sweep path.
 - arbitration result: the root tournament's final answer (winner
   commitment and final machine state hash).
 

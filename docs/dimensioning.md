@@ -113,6 +113,55 @@ progress as of 2026-07-15); node-side scheduling of halted windows
 stays blocked on that work landing (the lead in one-engine.md step
 4), and the off-chain revert sites must be re-verified against it.
 
+## Tournament clock budgets
+
+Keep three wall-clock quantities separate:
+
+- `C`: the censorship budget within which a correct validator is assumed able
+  to land a transaction.
+- `T`: the maximum supported time to construct the commitment needed for one
+  inner tournament.
+- `G`: the small per-response inclusion and execution budget for a tournament
+  transaction.
+
+For `L` tournament levels, the intended root allowance and per-clock cap are
+
+```text
+maxAllowance = C + (L - 1) * T
+```
+
+The root claim starts with the censorship budget and may later have to construct
+one new commitment at each inner level. A child tournament does not necessarily
+receive this maximum: sealing delegates the greater live remainder of the two
+parent clocks, and that value becomes the child's tournament allowance. The
+global `maxAllowance` remains the cap on clocks inside the child.
+
+The checked-in mainnet value, one week plus one hour, is consistent with the
+historical three-level model at `T = 30 minutes`. The two-level target uses the
+new 60-minute inner budget and reaches the same numerical value. Its stride and
+height tables still need to replace the checked-in three-level constants as one
+coordinated change.
+
+`G` is not commitment-construction time. The current contracts front-load five
+minutes per commitment-tree height through `matchEffort` whenever a pair is
+created, including for a fresh newcomer. That makes clock conservation and late
+join delay harder to reason about. The proposed replacement discounts at most
+`G` of elapsed time after each successful eligible response without ever
+increasing the clock balance. The exact eligible transitions remain part of the
+clock redesign and must be covered by its delay proof and tests. Preserving the
+external `matchEffort` field does not preserve its current value: the aggregate
+7 hours 40 minutes must be recalibrated to the intended per-response `G`,
+currently five minutes.
+
+The historical `prt/measure_constants/measure.lua` script exposes the two inputs
+that shape the level layout: maximum acceptable root slowdown and the time
+budget for constructing an inner commitment. It derives strides and heights
+bottom-up. The current generator is `just measure-constants`
+(`measure.rs --constants`), with results and caveats recorded in
+`docs/plans/constants.md`. Generator output is evidence for a parameter set, not
+a permanent constant: measurements, hardware assumptions, rounding, and the
+intended level count must travel with the generated table.
+
 ## Measurement discipline
 
 Because clocks price the average, the average must be measured, and
@@ -131,8 +180,8 @@ measured validly:
 - Everything here is hardware-relative. A derived constant carries
   the machine it was measured on; use a reference machine or an
   explicit slack factor, and keep every derivation re-runnable
-  (prt/measure_constants; `just measure` / `just measure-stress`;
-  docs/plans/measurements*.md).
+  (`just measure-constants`; `just measure` / `just measure-stress`;
+  docs/plans/constants.md; docs/plans/measurements*.md).
 
 Known instances (measure.lua audited 2026-07-08): the script guards
 big-machine HALT correctly everywhere (its timing loops measure real
@@ -154,9 +203,11 @@ halt AND yield, use the correct enum, and round conservatively.
 - The "nested leaves are novel" invariant - why no cache or seed can
   ever cheapen a nested join - lives in computation-hash.md with its
   trap diagnosis. Read it before reasoning about dispute costs.
-- The level constants chain from two free knobs: log2step(1) from the
-  leaf-level dense build fitting the inner timeout at average
-  density, log2step(0) from the root slowdown budget; the heights
-  follow arithmetically (log2step[i] = log2step[i+1] + height[i+1],
-  log2step[0] + height[0] = 92). ArbitrationConstants.sol holds the
-  result; prt/measure_constants derives it.
+- The level constants chain from two free knobs. The leaf-level dense build
+  fitting the inner timeout at average density determines
+  `height[L - 1]`, with `log2step[L - 1] = 0`. Parent strides follow
+  recursively from
+  `log2step[i] = log2step[i + 1] + height[i + 1]`; the root slowdown budget
+  selects the top stride, and `log2step[0] + height[0] = 92` closes the
+  meta-cycle span. `ArbitrationConstants.sol` holds the result;
+  `measure.rs --constants` derives the current candidate table.

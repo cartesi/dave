@@ -36,7 +36,7 @@ interface ITournament {
     /// @param startInstant The start instant of the tournament
     /// @param allowance The time during which the tournament is open
     /// @param maxAllowance The maximum time of a player clock
-    /// @param matchEffort The worst-case time to compute a commitment
+    /// @param matchEffort The response time granted when a commitment is paired
     /// @param provider The contract that provides input Merkle roots
     /// @param nestedDispute Dispute information from parent match (zero for root tournaments)
     /// @param stateTransition State transition contract, used by leaf-level operations
@@ -44,7 +44,7 @@ interface ITournament {
     /// @dev A root tournament is at level 0.
     /// A single-level tournament has 1 level.
     /// A multi-level tournament has 2 or more levels.
-    /// Time is measured in base-layer blocks.
+    /// Time is measured by the contract time source, currently `block.number`.
     /// For root tournaments (level == 0), nestedDispute fields are zero.
     struct TournamentArguments {
         Commitment.Arguments commitmentArgs;
@@ -404,7 +404,9 @@ interface ITournament {
     /// @return Whether the recovery was successful
     function tryRecoveringBond() external returns (bool);
 
-    /// @notice Get the result of the tournament.
+    /// @notice Get the tournament's dangling winner and final state.
+    /// @dev Intended for root consumers. The current implementation does not
+    /// enforce a root-only guard; parents use `innerTournamentWinner` instead.
     /// @return finished Whether the tournament has finished already
     /// @return winnerCommitment The winner commitment (if finished)
     /// @return finalState The winning final state (if finished)
@@ -460,7 +462,7 @@ interface ITournament {
     ///   bisected at height `h`.
     /// - `leftNode` and `rightNode` MUST be the two children of that parent at
     ///   height `h-1`.
-    /// - The match logic compares the provided left child with the opposite tree’s
+    /// - The match logic compares the provided left child with the opposite tree's
     ///   baseline (kept in state) to decide whether disagreement lies on the left
     ///   or on the right half at height `h`.
     /// - The caller MUST also provide `newLeftNode`/`newRightNode`, which are the
@@ -509,25 +511,24 @@ interface ITournament {
     ///   to incentivize either party to complete the state-transition proof.
     ///
     /// WHEN IS ELIMINATION ALLOWED?
-    /// - Chess-clock model: exactly one side is “on turn” at a time. If a side lets
-    ///   its clock reach zero (times out), the *other* side’s clock immediately
-    ///   starts running. After leaf sealing, both may be running simultaneously.
-    ///   This function allows deletion **only after both** clocks
-    ///   have exhausted:
-    ///     • Case 1: commitmentOne timed out first AND
+    /// - During bisection, exactly one side is on turn. Its clock keeps
+    ///   accumulating overdue time after expiry; the paused opponent does not
+    ///   actually start until a valid advance swaps the turn. After leaf sealing,
+    ///   both clocks may run simultaneously. This function allows deletion only
+    ///   after neither commitment has enough budget to survive:
+    ///     * Case 1: commitmentOne timed out first AND
     ///               timeSinceTimeout(commitmentOne) >= timeLeft(commitmentTwo)
-    ///     • Case 2: commitmentTwo timed out first AND
+    ///     * Case 2: commitmentTwo timed out first AND
     ///               timeSinceTimeout(commitmentTwo) >= timeLeft(commitmentOne)
     ///
     /// - Intuition (covers both models): once the first clock hits zero, keep
-    ///   counting until the other clock’s remaining budget is fully drained;
+    ///   counting until the other clock's remaining budget is fully drained;
     ///   at that point both are out of time and the match can be eliminated.
     ///   If both clocks run and reach zero simultaneously after leaf sealing,
     ///   this condition holds immediately at that block.
     ///
-    /// - Occurrence: **Sybil vs. Sybil**. Under the honest-participant assumption,
-    ///   the honest side will act before timing out,
-    ///   so double-timeout should not occur when an honest commitment participates.
+    /// - Occurrence: **Sybil vs. Sybil**. Under the responsiveness and censorship
+    ///   assumptions, a correct participant acts before this state is reached.
     ///
     /// - Anyone may call this function; it is a public garbage-collection hook.
     ///
@@ -569,7 +570,7 @@ interface ITournament {
     /// - During bisection (advanceMatch), only one clock runs at a time.
     /// - After leaf sealing, both clocks are intentionally set to RUNNING to
     ///   incentivize either party to finalize via state-transition proof.
-    ///   This accelerates liveness without increasing anyone’s allowance.
+    ///   Both participants spend their own remaining allowance during this race.
     ///
     /// @param matchId        The logical pair of commitments for this match.
     /// @param leftLeaf       Left child of the parent being bisected at this step (height 1).
@@ -622,7 +623,9 @@ interface ITournament {
         view
         returns (TournamentArguments memory);
 
-    /// @notice Check whether a match can be won by timeout.
+    /// @notice Check whether at least one commitment clock has no time left.
+    /// @dev This is a coarse hint: it does not validate match existence and may
+    /// return true when both clocks are expired, where timeout victory reverts.
     /// @param matchId The match ID
     function canWinMatchByTimeout(Match.Id calldata matchId)
         external
