@@ -6,9 +6,6 @@ pragma solidity ^0.8.8;
 import {BaseDeploymentScript} from "./BaseDeploymentScript.sol";
 
 import {
-    ArbitrationConstants
-} from "src/arbitration-config/ArbitrationConstants.sol";
-import {
     CanonicalTournamentParametersProvider
 } from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {
@@ -277,9 +274,9 @@ contract DeploymentScript is BaseDeploymentScript {
         require(chainKindInfo.registered, UnregisteredChainKind(kind));
     }
 
-    /// @notice Calculate the match effort in avg number of blocks
-    /// based on the arbitration constants and the current chain.
-    /// @return matchEffort The match effort in avg number of blocks
+    /// @notice Calculate the per-response budget in average blocks for the
+    /// current chain.
+    /// @return matchEffort The per-response budget in average blocks
     function _getMatchEffort()
         internal
         view
@@ -290,40 +287,14 @@ contract DeploymentScript is BaseDeploymentScript {
         return _getMatchEffortInSeconds().toTimeDuration(avgBlockTime);
     }
 
-    /// @notice Calculate the match effort in seconds based on the arbitration constants.
-    /// @return matchEffortInSeconds The match effort in seconds
+    /// @notice Calculate the per-response budget in seconds.
+    /// @return matchEffortInSeconds The per-response budget in seconds
     function _getMatchEffortInSeconds()
         internal
         pure
         returns (Seconds matchEffortInSeconds)
     {
-        return Seconds.wrap(5 minutes * _sum(_getTournamentHeights()));
-    }
-
-    /// @notice Get the heights of each tournament level.
-    /// @return heights The height of each tournament level, from top to bottom.
-    function _getTournamentHeights()
-        internal
-        pure
-        returns (uint64[] memory heights)
-    {
-        heights = new uint64[](ArbitrationConstants.LEVELS);
-        for (uint64 level; level < heights.length; ++level) {
-            heights[level] = ArbitrationConstants.height(level);
-        }
-    }
-
-    /// @notice Sum up the elements of an array.
-    /// @param array An array of uint64 values
-    /// @return arraySum The sum of the array elements
-    function _sum(uint64[] memory array)
-        internal
-        pure
-        returns (uint64 arraySum)
-    {
-        for (uint256 i; i < array.length; ++i) {
-            arraySum += array[i];
-        }
+        return Seconds.wrap(5 minutes);
     }
 
     /// @notice Get the maximum allowance in avg number of blocks

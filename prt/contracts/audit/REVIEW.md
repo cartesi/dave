@@ -2,7 +2,7 @@
 
 Status: active
 
-Last reviewed: 2026-07-16
+Last reviewed: 2026-07-17
 
 This ledger records the reviewed conclusions and follow-up work for the Solidity
 dispute game under `prt/contracts/`. It is deliberately separate from the
@@ -32,11 +32,10 @@ Out of scope:
 - Correctness of the Cartesi Machine emulator and step implementation.
 - A full audit of the concrete data provider and off-chain clients.
 
-The review used source tracing, history inspection, deterministic Foundry tests,
-a focused regression test for clock conservation, diagnostic gas measurement,
-and a comparison with the original PRT paper. The clock reproduction was
-temporary and removed after establishing the issue. That is an evidence gap in
-the staged tree; the permanent regression must land with the clock fix.
+The review used source tracing, history inspection, deterministic and fuzzed
+Foundry tests, diagnostic gas measurement, and a comparison with the original
+PRT paper. Permanent clock-conservation and timeout-partition regressions now
+retain the original PRT-002 evidence in the tree.
 
 ## Status vocabulary
 
@@ -67,7 +66,9 @@ slower than the configured 2.5 seconds.
 Approximate consequences on Ethereum-parent Arbitrum chains:
 
 - 7 days + 1 hour becomes 33.8 days.
-- 7 hours 40 minutes of match effort becomes 36.8 hours.
+- One five-minute response budget becomes about 24 minutes; one 92-response
+  root-to-leaf descent with one match at each level becomes 36 hours 48
+  minutes. Repeated matches add their own discounts.
 - A 9-hour testnet allowance becomes 43.2 hours.
 
 This does not change which state transition is correct, but it violates the
@@ -94,16 +95,16 @@ review describes the `block.number` behavior:
 ### PRT-002: Sealed-leaf timeout restores elapsed winner time
 
 - Severity: Medium
-- Status: Open
+- Status: Resolved
 - Area: clock conservation, bounded delay
-- Evidence: `Clock.deducted`, `Tournament.sealLeafMatch`,
+- Evidence: `Clock.chargeAndPauseAt`, `Tournament.sealLeafMatch`,
   `Tournament.winMatchByTimeout`
 
-`Clock.deducted()` subtracts the late-claim penalty from the stored
-`state.allowance`. It does not first account for time already consumed by a
-running clock. This is hidden during normal bisection because the prospective
-winner is paused. It becomes observable after `sealLeafMatch`, where both clocks
-run.
+Before this fix, the former `Clock.deducted()` subtracted the late-claim penalty
+from stored `state.allowance`. It did not first account for time already consumed
+by a running clock. This was hidden during normal bisection because the
+prospective winner is paused. It became observable after `sealLeafMatch`, where
+both clocks run.
 
 A focused regression reached timeout resolution with 10 blocks of live winner
 time remaining. Resolution stored the full 2700-block allowance instead of 10.
@@ -118,8 +119,8 @@ eliminateMatchByTimeout is valid when 2 * (t - S) >= a1 + a2
 winMatchByTimeout remains valid while t - S < a1
 ```
 
-Throughout that overlap, both permissionless entry points succeed and
-transaction ordering chooses between eliminating both commitments and reviving
+Throughout that pre-fix overlap, both permissionless entry points succeeded and
+transaction ordering chose between eliminating both commitments and reviving
 commitment one as a survivor. Intended timeout classification gives the entire
 overlap to `ELIMINATE_BOTH` once the winner's live remaining time is less than
 or equal to the loser's overdue time.
@@ -133,15 +134,26 @@ remaining_after = remaining_at_resolution - loser_overdue
 The calculation must never use the raw stored allowance unless the operation
 has established that the clock is paused.
 
-Recommended response:
+Resolution:
 
-1. Define the desired clock API and phase transitions in
-   [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
-2. Add the focused regression plus boundary fuzzing.
-3. Calculate the deduction from live remaining time.
-4. Assert the exact tie: `remaining == overdue` eliminates both and the win path
-   reverts.
-5. Refactor ambiguous clock operations after the correctness fix is protected.
+1. `Clock.chargeAndPauseAt()` computes live remaining time at the operation's
+   explicit instant before applying the charge. A successful timeout win
+   therefore stores `liveRemaining - loserOverdue`.
+2. PRT-002 initially used `_setPaused`'s zero rejection as a safety backstop.
+   PRT-004 now classifies `liveRemaining <= loserOverdue`, including equality,
+   as `ELIMINATE_BOTH` before settlement, so the former overlap is an explicit
+   disjoint partition.
+3. `testSealedLeafTimeoutChargesLiveWinnerTime` pins conservation one block
+   before the equality boundary.
+4. `testSealedLeafTimeoutTieAndNextBlockEliminateBoth` pins equality and the
+   following block to double elimination.
+5. `testFuzzSealedLeafTimeoutPartition` covers both commitment orderings and
+   fuzzes the full interval in which exactly one sealed-leaf clock is expired.
+6. `testTimeout` retains both paused-winner orderings and now asserts that their
+   banked allowance is conserved.
+7. The explicit single-clock and pair-phase API is now implemented and fuzzed.
+   The shared timeout classifier was subsequently implemented by PRT-004, as
+   recorded in [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
 
 ### PRT-003: Bond and refund estimates do not bound actual transaction costs
 
@@ -159,6 +171,9 @@ refund. They are no longer conservative:
 - A sequential measurement put `CartesiStateTransition.transitionState()` alone
   at approximately 513k to 626k gas for the exercised proofs. The complete
   `WIN_LEAF_MATCH` allocation is 127,728 gas.
+- In the same mocked leaf-win gas harness, PRT-010's timeout classification
+  increased `winLeafMatch` from 143,290 to 146,264 gas. Both measurements already
+  exceed that allocation before a realistic state-transition proof.
 - OP Stack and Base charge L1 data or security fees separately from L2 execution
   gas. The current formula cannot reimburse those fees.
 - The bond-share cap is dimensioned at `MAX_GAS_PRICE`, currently 50 gwei.
@@ -185,18 +200,36 @@ Recommended response:
 ### PRT-004: Timeout capability view does not match timeout resolution
 
 - Severity: Low
-- Status: Open
+- Status: Resolved
 - Area: interface semantics
-- Evidence: `Tournament.canWinMatchByTimeout`,
-  `Tournament.winMatchByTimeout`
+- Evidence: `MatchClocks.classifyTimeoutAt`,
+  `Tournament.canWinMatchByTimeout`, `Tournament.winMatchByTimeout`,
+  `Tournament.eliminateMatchByTimeout`
 
-`canWinMatchByTimeout()` returns true when either clock has no time left. It also
-returns true when both clocks have no time left, while `winMatchByTimeout()`
-requires exactly one viable winner and reverts in the double-timeout case. The
-view does not validate that the match exists.
+Before this fix, `canWinMatchByTimeout()` returned true when either clock had no
+time left. It therefore returned true when both clocks were expired and when a
+nominal winner could not survive the overdue-time charge. It also did not
+validate that the match existed, so a fabricated ID composed from initialized
+commitment clocks could produce a false positive.
 
-Recommended response: derive the view and mutation from one timeout-outcome
-function returning `NONE`, `ONE_WINS`, `TWO_WINS`, or `ELIMINATE_BOTH`.
+Resolution:
+
+1. `MatchClocks.classifyTimeoutAt()` returns `NONE`, `ONE_WINS`, `TWO_WINS`, or
+   `ELIMINATE_BOTH`, together with the overdue duration to charge a winner.
+2. The capability view and both timeout mutation paths derive from that one
+   pure classification. A single winner requires
+   `winnerRemaining > loserOverdue`; equality eliminates both.
+3. The capability view returns false for nonexistent and deleted matches and
+   for `NONE` and `ELIMINATE_BOTH`.
+4. The external ABI and existing error selectors are unchanged. A timeout-win
+   call in any non-winner status now consistently reverts with the legacy
+   `NeitherClockHasTimedOut` selector instead of leaking the zero-allowance
+   storage sentinel throughout the one-expired double-elimination region,
+   including equality.
+5. Model-based fuzzing covers all legal pair phases, both commitment orderings,
+   symmetry, the exhaustive/disjoint partition, and exact bisection and sealed
+   leaf boundaries. Integration tests pin view/mutation agreement and
+   fabricated/deleted match behavior.
 
 ### PRT-005: `arbitrationResult` was documented as root-only but is not guarded
 
@@ -315,36 +348,105 @@ delay in each independent epoch for a linear burned cost.
 ### PRT-009: Pairing grants bankable response time to fresh commitments
 
 - Severity: Low
-- Status: Planned
+- Status: Resolved
 - Area: clock dimensioning, bounded delay
-- Evidence: `Tournament.pairCommitment`, `Clock.addMatchEffort`,
-  `Deployment._getMatchEffort`
+- Evidence: `Clock.pauseAfterResponseAt`, `MatchClocks.switchTurnAt`,
+  `MatchClocks.startLeafRaceAt`, `MatchClocks.pauseForInnerAt`,
+  `Tournament.pairCommitment`, `Deployment._getMatchEffort`
 
-Every pairing adds `matchEffort` to both clocks, including a newly joined
-commitment whose initial allowance was already reduced by late entry. A claim
-joining just before tournament close can therefore recover almost the full
-grant. On mainnet the current values are 169 hours of allowance and 7 hours 40
-minutes of pairing grant; one late incorrect claim can buy that extra tail, and
-multiple late or repeatedly surviving claims can mint more.
+Before this fix, every pairing added `matchEffort` to both clocks, including a
+newly joined commitment whose initial allowance was already reduced by late
+entry. A claim joining just before tournament close could therefore recover
+almost the full grant. The allowance was and remains 169 hours; the former
+pairing grant was 7 hours 40 minutes. One late incorrect claim could buy that
+extra tail, and multiple late or repeatedly surviving claims could mint more.
 
 Under prompt cleanup after joining closes, each one-level match has at most two
 capped clocks and produces at most one survivor, so bounded windows still halve
-the population. The current grants nevertheless break the clean conservation
-law between elapsed time and survivor balance, can return a child clock larger
-than its delegated allowance, and change finite delay constants. The agreed
-direction preserves the external `matchEffort` field but reinterprets it as a
-non-bankable per-bisection response discount:
+the population. Those grants nevertheless broke the clean conservation
+law between elapsed time and survivor balance, could return a child clock larger
+than its delegated allowance, and changed finite delay constants. The
+implemented resolution preserves the external `matchEffort` field but
+reinterprets it as a non-bankable per-bisection response discount:
 
 ```text
 require elapsed < startingBalance
 newBalance = startingBalance - max(elapsed - responseBudget, 0)
 ```
 
-The balance never increases and an expired clock is never revived. The field's
-value must change from the current aggregate 7 hours 40 minutes to the intended
-per-response value, currently five minutes. Implement this only after the
-PRT-002 fix and clock API refactor, with a model-based delay regression and an
-explicit list of eligible actions.
+The balance never increases and an expired clock is never revived.
+
+Resolution:
+
+1. Pairing and winner re-entry leave both balances unchanged.
+2. Every successful `advanceMatch` and the final leaf or inner seal applies the
+   formula above. A height-`H` match therefore has exactly `H` eligible
+   discounts.
+3. Joining, pairing, proof or timeout resolution, child propagation or
+   elimination, and bond recovery earn no discount.
+4. The legacy-named external field and tuple layout remain unchanged. Its
+   deployment value changed from the former `5 minutes * sum(heights)`
+   one-descent aggregate to the five-minute scalar, 25 blocks on Ethereum.
+5. Formula fuzzing and deterministic kink tests pin non-minting and the strict
+   original deadline. Integration regressions cover advance and both seal
+   paths, late joining, winner re-pairing, deployment conversion, and exact
+   child-to-parent clock carryover.
+
+For clock mass `M` and `h` remaining responses, `M + h * G` decreases by
+`max(elapsed, G)` after each response. A local height-`H` match therefore has
+the conservative bound `b1 + b2 + H * G <= 2A + H * G` to leaf resolution, or
+to non-leaf seal or timeout deletion before child resolution. Stateful global
+bracket models remain in the broader liveness backlog.
+
+### PRT-010: Leaf proof resolution overlaps timeout cleanup
+
+- Severity: Low
+- Status: Resolved
+- Area: clock policy, transaction ordering
+- Evidence: `MatchClocks.settleProvenLeafWinnerAt`,
+  `Tournament.winLeafMatch`, `Tournament.winMatchByTimeout`,
+  `Tournament.eliminateMatchByTimeout`
+
+Before this fix, `winLeafMatch` validated the objective state-transition result
+and then paused the proven winner whenever that winner still had positive live
+time. It did not classify or charge the opponent's overdue duration.
+
+If the opponent had expired, this created two timeout-path overlaps:
+
+- While `winnerRemaining > opponentOverdue`, both proof resolution and timeout
+  victory were valid. They selected the same survivor, but only timeout victory
+  charged the overdue duration from its clock.
+- While `0 < winnerRemaining <= opponentOverdue`, proof resolution and double
+  elimination were both valid. Transaction ordering chose between preserving
+  the proven winner and eliminating both commitments.
+- Once the proven winner itself expired, the former `pauseAt` rejected the
+  proof path.
+
+Resolution:
+
+1. The four-way timeout status is authoritative after objective proof
+   validation. `NONE` permits either proven side with a zero charge. A matching
+   `ONE_WINS` or `TWO_WINS` permits only that proven side and applies the exact
+   classified overdue charge.
+2. An opposite timeout winner or `ELIMINATE_BOTH` rejects the proof with the
+   existing `CannotAdvanceTimedOutClock` selector. Equality cannot produce a
+   survivor: proof settlement rejects, and `eliminateMatchByTimeout` is the
+   valid resolver.
+3. At the same observation instant, successful proof and timeout resolutions
+   cannot conflict. A proof compatible with a single-winner timeout outcome
+   selects the same survivor and clock charge before identical re-pairing; an
+   incompatible proof rejects and leaves the timeout outcome authoritative.
+   Deletion reason, gas use, and caller refund can still differ because proof
+   and timeout remain distinct entry points.
+4. This removes a transaction-order-dependent late rescue, not an independent
+   safety guarantee. Permissionless timeout cleanup could already defeat that
+   rescue. The explicit policy is that objective state-transition correctness
+   does not override a missed clock; a correct commitment may lose by timeout.
+5. Pair-level fuzzing covers all timeout outcomes and both proven sides.
+   Integration fuzzing compares compatible proof and timeout settlement from
+   identical snapshots in both commitment orderings, rejects the opposite proven
+   side without changing the match or clocks, and deterministic coverage pins
+   the inclusive equality boundary.
 
 ## Deferred state-transition issue
 
@@ -379,7 +481,8 @@ The following items were corrected or explicitly documented in this pass:
   to act within the configured clock and censorship bounds.
 - A participant may lock one bond at each active tournament level, not one bond
   for the entire recursive dispute.
-- `matchEffort` is a per-pairing response allowance, not the time to compute one
+- `matchEffort` is the legacy external name for a non-bankable per-response
+  elapsed-time discount, not time granted by pairing or time to compute one
   commitment.
 - Permissionless factory calls can create orphan inner tournaments. A parent
   only consumes children linked from its own sealed matches.
@@ -396,8 +499,13 @@ The following items were corrected or explicitly documented in this pass:
   source and conversion assumptions.
 - The checked-in constants use three levels while the deployment target is two;
   changing the count requires regenerating the entire stride and height table.
-- `winLeafMatch` is proof-gated, not clock-gated. A proof can resolve an expired
-  match until timeout elimination lands first.
+- `winLeafMatch` validates the objective post-state and then consults the same
+  timeout status as timeout cleanup. A compatible single winner receives the
+  same overdue charge; an incompatible proof rejects. Objective proof
+  correctness does not override a missed clock.
+- Timeout settlement now conserves the winner's live remaining time. A winner
+  must retain strictly more time than the loser's overdue duration; equality
+  and the following blocks eliminate both commitments.
 - At a leaf level, `K` live commitments imply `floor(K / 2)` running clocks. A
   sealed non-leaf pair instead delegates population reduction to a child, whose
   finish still depends on its matches and deeper children. At most one
@@ -417,8 +525,8 @@ The current layered approach is appropriate if each layer keeps one role:
   assumptions without silently presenting proposed fixes as live behavior.
 - `audit/REVIEW.md` retains findings, decisions, evidence, and regression
   targets after fixes land.
-- Focused design records such as `CLOCK-DESIGN.md` capture proposed behavior
-  before a security-sensitive refactor.
+- Focused design records such as `CLOCK-DESIGN.md` capture the decision before a
+  security-sensitive refactor, then record what landed and what remains deferred.
 - `AGENTS.md` is orientation and routing, not a second protocol specification.
 - `MAP.md` is a broad source inventory and lead generator, not an authority.
 
@@ -446,12 +554,21 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - `TEST-BOND-002` (landed): if the terminal recipient rejects payment, retain
   the claimer and entire balance without burning; retry successfully and make
   later recovery idempotent.
-- `TEST-CLK-001`: reproduce the sealed-leaf restoration bug.
-- `TEST-CLK-002`: fuzz clock conservation for paused and running winners.
-- `TEST-CLK-003`: exercise exact expiry, one block before, and one block after;
-  pin `remaining == overdue` to `ELIMINATE_BOTH`.
-- `TEST-CLK-004`: replace bankable pairing grants with the recalibrated
-  non-bankable response discount; pin late joins, repeated winners, and
+- `TEST-CLK-001` (landed): reproduce the sealed-leaf restoration bug and pin
+  the surviving clock to `liveRemaining - loserOverdue`.
+- `TEST-CLK-002` (landed): cover paused winners in both commitment orderings
+  and fuzz running sealed-leaf winners symmetrically.
+- `TEST-CLK-003` (landed): exercise the strict boundary before, at, and after
+  `remaining == overdue`; pin equality to `ELIMINATE_BOTH`.
+- `TEST-CLK-004` (landed): fuzz the shared four-way timeout model, symmetry,
+  bisection and sealed-leaf boundaries, view/mutation agreement, and
+  fabricated/deleted match IDs.
+- `TEST-CLK-005` (landed): make leaf-proof settlement follow the same timeout
+  status; fuzz both proven sides and compare proof-first with timeout-first
+  semantic outcomes from identical snapshots.
+- `TEST-CLK-006` (landed): replace bankable pairing grants with the recalibrated
+  non-bankable response discount; pin formula boundaries, advance and both seal
+  paths, late joins, repeated winners, deployment conversion, and
   child-to-parent clock conservation.
 - `TEST-TIME-001`: chain conformance for the time source and deployment
   conversion, especially Arbitrum.
@@ -481,8 +598,7 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - Orphan and unknown child tournaments.
 - Same-root first-claimer ownership under the capped terminal payout.
 - No-winner child balance behavior.
-- Exact views for unknown matches, double timeout, nonexistent match cycles, and
-  non-root result retrieval.
+- Exact views for nonexistent match cycles and non-root result retrieval.
 
 The current deterministic suite covers the principal lifecycle paths well, but
 the dispute game has almost no stateful invariant testing. Existing parity tests
@@ -492,12 +608,17 @@ the external machine-step imports.
 
 ## Readability and abstraction backlog
 
-### `Clock.State` and clock operations
+### `Clock.State` and clock operations (resolved)
 
-`Clock.State` encodes uninitialized, paused, running, and expired states through
-two fields. Operations named `advanceClock`, `deducted`, `setNewPaused`, and
-`addMatchEffort` hide phase transitions or elapsed-time charging. The proposed
-replacement is specified in [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
+`Clock.State` still encodes uninitialized, paused, running, and expired states
+through two ABI-compatible fields. The ambiguous toggle and silent-pause
+operations were replaced by explicit-instant single-clock operations and a
+`MatchClocks` phase library. Invalid pair phases now fail instead of being
+repaired. Timeout views, timeout mutations, and proven-leaf settlement now share
+a pure four-way classifier. The external tuple and `Tournament` ABI are
+byte-identical to the pre-refactor snapshot. PRT-009 completed the response
+budget design without changing that tuple; PRT-001 remains separate time-source
+work. See [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
 
 ### `Match.State` changes meaning after sealing
 
@@ -529,15 +650,21 @@ role and lifecycle explanations to `docs/dispute-game.md`.
 ### Smaller cleanup
 
 - Decode immutable tournament arguments once per entry point when practical.
-- Preserve the external `matchEffort` field for compatibility, but use a clearer
-  internal name when it becomes a non-bankable per-response discount.
+- Preserve the external `matchEffort` field for compatibility; internal clock
+  paths now call it `responseBudget`.
 - Add the same explicit stored-state existence check to
   `sealInnerMatchAndCreateInnerTournament` that the leaf seal path uses. The
   current zero state cannot be sealable, so this is hardening and symmetry, not
   a confirmed exploit.
 - Validate factory and parameter-provider addresses, level shapes, nonzero
-  allowances, and response budgets at construction rather than failing later
-  through clock or array panics.
+  allowances, and the chosen response-budget range at construction rather than
+  failing later through clock or array panics. A zero response budget is
+  mechanically safe and simply charges full elapsed time.
+- Coordinate `cartesi-rollups/node/src/bin/measure.rs` and its generated or
+  node-facing planning prose (`docs/plans/constants.md`, `measurements*.md`,
+  `snapshots.md`, and `sling-design.md`) with the landed response-discount
+  semantics on the node branch; do not describe `G` as a fresh 300-second grant
+  or deadline.
 - Remove the duplicate state-transition import in `Deployment.s.sol`.
 - Remove unused and dangerous arithmetic helpers such as non-saturating
   `Time.sub` if no invariant requires them.
@@ -585,3 +712,69 @@ After the PRT-008 fix:
 - `cartesi-rollups/contracts`: `just test` passed both fuzz properties with 256
   runs each, including capped payout and residual burn before or during
   settlement.
+
+After the PRT-002 fix:
+
+- `prt/contracts`: `just test-disputes` passed 49 tests, including symmetric
+  sealed-leaf timeout fuzzing and deterministic conservation, equality, and
+  post-equality boundaries.
+- `cartesi-rollups/contracts`: `just test` passed both fuzz properties with 256
+  runs each.
+- `forge fmt --check` passed in both contract packages.
+
+After the mechanical clock API refactor:
+
+- `prt/contracts`: `just test-disputes` passed 60 tests, including 16 focused
+  clock tests with 9 fuzz properties at 256 runs each.
+- All 9 focused clock properties passed 10,000 runs each, and the sealed-leaf
+  timeout partition passed 2,000 runs.
+- The existing sealed-leaf timeout partition and conservation regressions passed
+  unchanged.
+- `cartesi-rollups/contracts`: both integration fuzz properties passed 256 runs.
+- Pre/post `forge inspect Tournament abi` output was byte-identical.
+- `forge fmt --check` passed in both contract packages.
+
+After the PRT-004 timeout classifier:
+
+- `prt/contracts`: `just test-disputes` passed 65 tests, including 20 focused
+  clock tests with 12 fuzz properties at 256 runs each.
+- The three new classifier/model and boundary properties passed 10,000 runs
+  each, and the sealed-leaf view/mutation partition passed 2,000 runs.
+- `cartesi-rollups/contracts`: both integration fuzz properties passed 256 runs.
+- The pre/post `forge inspect Tournament abi` SHA-256 remained
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+- `forge fmt --check` passed in both contract packages.
+
+After the PRT-010 proven-leaf settlement policy:
+
+- `prt/contracts`: `just test-disputes` passed 67 tests, including 21 focused
+  clock tests with 13 fuzz properties at 256 runs each.
+- The pair-level proven-winner property passed 10,000 runs. The full
+  `winLeafMatch` property passed 2,000 runs across both commitment orderings,
+  compatible timeout victory, double elimination, and rejection of the
+  opposite proven side without state changes.
+- Deterministic coverage pins the inclusive equality boundary and rejects a
+  two-running-clock leaf phase with unequal start instants.
+- `cartesi-rollups/contracts`: both integration fuzz properties passed 256
+  runs.
+- The `forge inspect Tournament abi` SHA-256 remained
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+- `forge fmt --check` passed in both contract packages, and `git diff --check`
+  passed.
+
+After the PRT-009 non-bankable response budget:
+
+- `prt/contracts`: `just test-disputes` passed 71 tests, including 20 focused
+  clock tests with 12 fuzz properties at 256 runs each.
+- The response formula, both active sides, leaf transition, and inner-seal
+  properties passed 10,000 runs each. Late join plus winner re-pairing passed
+  5,000 runs; both sealed-leaf ordering properties passed 2,000 runs.
+- Deterministic integration tests pin strict-deadline rollback for advance and
+  both seal paths, reduced child delegation and exact parent return, and the
+  five-minute/25-Ethereum-block deployment calibration.
+- `cartesi-rollups/contracts`: both integration fuzz properties passed 256
+  runs.
+- The `forge inspect Tournament abi` SHA-256 remained
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+- `forge fmt --check` passed in both contract packages, and `git diff --check`
+  passed.

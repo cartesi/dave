@@ -35,8 +35,10 @@ interface ITournament {
     /// @param levels The number of tournament levels
     /// @param startInstant The start instant of the tournament
     /// @param allowance The time during which the tournament is open
-    /// @param maxAllowance The maximum time of a player clock
-    /// @param matchEffort The response time granted when a commitment is paired
+    /// @param maxAllowance The configured root allowance; parent-linked child
+    /// clocks inherit no more than this value
+    /// @param matchEffort The maximum elapsed-time discount earned by each
+    /// successful bisection response, including the final sealing response
     /// @param provider The contract that provides input Merkle roots
     /// @param nestedDispute Dispute information from parent match (zero for root tournaments)
     /// @param stateTransition State transition contract, used by leaf-level operations
@@ -250,12 +252,12 @@ interface ITournament {
         Tree.Node right
     );
 
-    /// @notice A player tried to win a match by timeout but neither of the
-    /// two match commitment clocks have timed out yet.
+    /// @notice Legacy selector used when no commitment can win by timeout.
+    /// @dev This includes both the no-timeout and double-elimination outcomes.
     error NeitherClockHasTimedOut();
 
-    /// @notice A player tried to eliminate a match by timeout but at
-    /// least one of the two match commitment clocks has not timed out yet.
+    /// @notice A player tried to eliminate a match whose timeout outcome is
+    /// not double elimination.
     error AtLeastOneClockHasNotTimedOut();
 
     /// @notice A player tried to join the inner tournament with a commitment
@@ -347,9 +349,10 @@ interface ITournament {
     /// the clock will be unpaused.
     error PausedClockCannotTimeout();
 
-    /// @notice There is an attempt to advance a clock with no time left,
-    /// but doing so would result in a clock with zero allowance,
-    /// which is used to indicate that such a clock is not initialized.
+    /// @notice A clock-dependent progress action cannot continue because a
+    /// required clock cannot be preserved under the current timeout accounting.
+    /// @dev This includes pausing an expired running clock and settling a proven
+    /// leaf side that is incompatible with the pair's timeout outcome.
     error CannotAdvanceTimedOutClock();
 
     /// @notice There is an attempt to initialize a clock with zero allowance,
@@ -496,18 +499,21 @@ interface ITournament {
         Tree.Node newRightNode
     ) external;
 
-    /// @notice Win a match by timeout.
-    /// @param matchId        The logical pair of commitments for this match.
-    /// @param leftNode       Left child of the commitment.
-    /// @param rightNode      Right child of the commitment.
+    /// @notice Resolve a timeout when exactly one commitment can still survive.
+    /// @dev Charges the expired commitment's overdue time against the winner's
+    /// live remaining time. The winner must retain strictly positive time;
+    /// equality or a larger overdue duration belongs to double elimination.
+    /// @param matchId The logical pair of commitments for this match.
+    /// @param leftNode Left child of the winning commitment.
+    /// @param rightNode Right child of the winning commitment.
     function winMatchByTimeout(
         Match.Id calldata matchId,
         Tree.Node leftNode,
         Tree.Node rightNode
     ) external;
 
-    /// @notice Permissionless cleanup: eliminate a stalled match after both sides
-    /// have timed out, i.e., neither party acted within its clock allowance.
+    /// @notice Permissionless cleanup when neither commitment can survive
+    /// timeout accounting.
     /// @dev
     /// CLOCK MODEL
     /// - During alternating double-bisection steps, exactly one clock runs.
@@ -520,10 +526,10 @@ interface ITournament {
     ///   actually start until a valid advance swaps the turn. After leaf sealing,
     ///   both clocks may run simultaneously. This function allows deletion only
     ///   after neither commitment has enough budget to survive:
-    ///     * Case 1: commitmentOne timed out first AND
-    ///               timeSinceTimeout(commitmentOne) >= timeLeft(commitmentTwo)
-    ///     * Case 2: commitmentTwo timed out first AND
-    ///               timeSinceTimeout(commitmentTwo) >= timeLeft(commitmentOne)
+    ///     * Case 1: commitmentOne timed out first AND its overdue duration is
+    ///               at least commitmentTwo's live remaining time.
+    ///     * Case 2: commitmentTwo timed out first AND its overdue duration is
+    ///               at least commitmentOne's live remaining time.
     ///
     /// - Intuition (covers both models): once the first clock hits zero, keep
     ///   counting until the other clock's remaining budget is fully drained;
@@ -589,7 +595,12 @@ interface ITournament {
         bytes32[] calldata agreeHashProof
     ) external;
 
-    /// @notice Win a leaf match.
+    /// @notice Win a leaf match through the state-transition proof.
+    /// @dev The proven winner must also be viable under the match's timeout
+    /// status. With no expired clock, timeout settlement charges zero. If it is
+    /// the timeout winner, the expired opponent's overdue duration is charged
+    /// before the survivor re-enters pairing. An opposite timeout winner or
+    /// double elimination rejects the proof.
     /// @param matchId         The logical pair of commitments for this match.
     /// @param leftNode        Left child of the winning commitment.
     /// @param rightNode       Right child of the winning commitment.
@@ -627,9 +638,10 @@ interface ITournament {
         view
         returns (TournamentArguments memory);
 
-    /// @notice Check whether at least one commitment clock has no time left.
-    /// @dev This is a coarse hint: it does not validate match existence and may
-    /// return true when both clocks are expired, where timeout victory reverts.
+    /// @notice Check whether an existing match has one timeout winner.
+    /// @dev Returns false for a nonexistent match, when neither clock is
+    /// expired, and when the outcome is double elimination. This does not
+    /// validate the Merkle children required to settle the winning commitment.
     /// @param matchId The match ID
     function canWinMatchByTimeout(Match.Id calldata matchId)
         external

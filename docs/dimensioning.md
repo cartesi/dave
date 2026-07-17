@@ -124,7 +124,8 @@ Keep three wall-clock quantities separate:
 - `G`: the small per-response inclusion and execution budget for a tournament
   transaction.
 
-For `L` tournament levels, the intended root allowance and per-clock cap are
+For `L` tournament levels, the intended root allowance and structural clock
+bound are
 
 ```text
 maxAllowance = C + (L - 1) * T
@@ -134,7 +135,8 @@ The root claim starts with the censorship budget and may later have to construct
 one new commitment at each inner level. A child tournament does not necessarily
 receive this maximum: sealing delegates the greater live remainder of the two
 parent clocks, and that value becomes the child's tournament allowance. The
-global `maxAllowance` remains the cap on clocks inside the child.
+global `maxAllowance` remains a structural upper bound for legitimate child
+clocks; no response operation dynamically raises a clock toward that bound.
 
 The checked-in mainnet value, one week plus one hour, is consistent with the
 historical three-level model at `T = 30 minutes`. The two-level target uses the
@@ -142,16 +144,31 @@ new 60-minute inner budget and reaches the same numerical value. Its stride and
 height tables still need to replace the checked-in three-level constants as one
 coordinated change.
 
-`G` is not commitment-construction time. The current contracts front-load five
-minutes per commitment-tree height through `matchEffort` whenever a pair is
-created, including for a fresh newcomer. That makes clock conservation and late
-join delay harder to reason about. The proposed replacement discounts at most
-`G` of elapsed time after each successful eligible response without ever
-increasing the clock balance. The exact eligible transitions remain part of the
-clock redesign and must be covered by its delay proof and tests. Preserving the
-external `matchEffort` field does not preserve its current value: the aggregate
-7 hours 40 minutes must be recalibrated to the intended per-response `G`,
-currently five minutes.
+`G` is not commitment-construction time. The contracts store the per-response
+value, currently five minutes, in the legacy-named `matchEffort` field. A
+height-`H` match earns at most `H` discounts: one for each of its `H - 1`
+successful advances and one for its final leaf or inner seal. If a response
+starts with balance `b` and arrives after elapsed time `e`, it requires `e < b`
+and leaves
+
+```text
+b' = b - max(e - G, 0)
+```
+
+The balance never increases, pairing earns no time, and an expired clock cannot
+be revived. Joining, proof resolution, timeout cleanup, child propagation,
+elimination, and bond recovery are not eligible responses. Across `q`
+responses, the total elapsed time plus the remaining clock mass is bounded by
+the starting mass plus `q * G`. One root-to-leaf descent with one match at each
+level spans 92 heights and may therefore earn at most 7 hours 40 minutes, but
+only action by action. Re-pairing creates a new match with new response
+discounts. The configured scalar remains five minutes, or 25 blocks on
+Ethereum.
+
+For the two-level target heights `[55, 37]`, a root match can earn at most 275
+minutes of discounts and a leaf match at most 185 minutes. One descent through
+one match at each level totals 460 minutes. These are per-match cumulative
+ceilings, not values deposited into a clock or a whole-tournament maximum.
 
 The historical `prt/measure_constants/measure.lua` script exposes the two inputs
 that shape the level layout: maximum acceptable root slowdown and the time
@@ -160,7 +177,11 @@ bottom-up. The current generator is `just measure-constants`
 (`measure.rs --constants`), with results and caveats recorded in
 `docs/plans/constants.md`. Generator output is evidence for a parameter set, not
 a permanent constant: measurements, hardware assumptions, rounding, and the
-intended level count must travel with the generated table.
+intended level count must travel with the generated table. These tools take `T`
+and root slowdown as inputs and derive strides and heights; they do not derive
+`G`. The node-owned generator and its generated planning prose still use the
+historical grant wording. That documentation correction is intentionally
+coordinated with the separate node branch and tracked in the review ledger.
 
 ## Measurement discipline
 

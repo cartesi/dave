@@ -162,11 +162,9 @@ contract MiddleTournamentTest is Util {
 
         assertNoElimination();
 
-        // player 0 should win after fast forward time to inner tournament finishes
+        // Player 0 should win after the inner tournament finishes.
         uint256 _t = vm.getBlockNumber();
-        // the delay is increased when a match is created
-        uint256 _rootTournamentFinish = _t + Time.Duration.unwrap(MAX_ALLOWANCE)
-            + Time.Duration.unwrap(MATCH_EFFORT);
+        uint256 _rootTournamentFinish = _t + Time.Duration.unwrap(MAX_ALLOWANCE);
         uint256 player0BalanceBefore = player0.balance;
         uint256 tournamentBalanceBefore = address(middleTournament).balance;
 
@@ -267,10 +265,8 @@ contract MiddleTournamentTest is Util {
         assertTrue(_winner.isZero(), "winner should be zero node");
 
         _t = vm.getBlockNumber();
-        // the delay is increased when a match is created
         _rootTournamentFinish = _t + Time.Duration.unwrap(MAX_ALLOWANCE);
-        uint256 _middleTournamentFinish =
-            _rootTournamentFinish + Time.Duration.unwrap(MATCH_EFFORT);
+        uint256 _middleTournamentFinish = _rootTournamentFinish;
 
         player0BalanceBefore = player0.balance;
         Util.joinTournament(middleTournament, 0);
@@ -511,6 +507,14 @@ contract MiddleTournamentTest is Util {
         Util.joinTournament(middleTournament, 0);
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT) + 3);
         Util.joinTournament(middleTournament, 1);
+        (Clock.State memory lateClock,) = middleTournament.getCommitment(
+            playerNodes[1][ArbitrationConstants.height(1)]
+        );
+        assertEq(
+            Time.Duration.unwrap(lateClock.allowance),
+            Time.Duration.unwrap(MAX_ALLOWANCE)
+                - Time.Duration.unwrap(MATCH_EFFORT) - 3
+        );
         middleTournament.advanceMatch(
             Util.matchId(1, 1),
             playerNodes[0][ArbitrationConstants.height(1) - 1],
@@ -537,11 +541,20 @@ contract MiddleTournamentTest is Util {
             playerNodes[0][ArbitrationConstants.height(1) - 1]
         );
 
-        (hasWinner,,,) = middleTournament.innerTournamentWinner();
+        Clock.State memory winningClock;
+        (hasWinner,,, winningClock) = middleTournament.innerTournamentWinner();
         assertTrue(hasWinner);
+        assertEq(
+            Time.Duration.unwrap(winningClock.allowance),
+            Time.Duration.unwrap(MAX_ALLOWANCE)
+                - Time.Duration.unwrap(MATCH_EFFORT)
+        );
         assertNoElimination();
 
-        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
+        vm.roll(
+            vm.getBlockNumber() + Time.Duration.unwrap(winningClock.allowance)
+                - 1
+        );
         assertNoElimination();
         vm.roll(vm.getBlockNumber() + 1);
         assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
@@ -577,10 +590,13 @@ contract MiddleTournamentTest is Util {
 
     function testInnerFairDeduction() public {
         topTournament = Util.initializePlayer0Tournament(FACTORY);
+        uint64 joinDelay = 3;
+        vm.roll(vm.getBlockNumber() + joinDelay);
         Util.joinTournament(topTournament, 1);
         Util.joinTournament(topTournament, 2);
 
         Match.Id memory _matchId = Util.matchId(1, 0);
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT) + 7);
         uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
 
         // expect new inner created
@@ -591,6 +607,24 @@ contract MiddleTournamentTest is Util {
         Vm.Log[] memory _entries = vm.getRecordedLogs();
         middleTournament =
             ITournament(address(uint160(uint256(_entries[0].topics[2]))));
+        ITournament.TournamentArguments memory childArgs =
+            middleTournament.tournamentArguments();
+        (Clock.State memory parentClockOne,) =
+            topTournament.getCommitment(_matchId.commitmentOne);
+        (Clock.State memory parentClockTwo,) =
+            topTournament.getCommitment(_matchId.commitmentTwo);
+        uint64 parentAllowanceOne =
+            Time.Duration.unwrap(parentClockOne.allowance);
+        uint64 parentAllowanceTwo =
+            Time.Duration.unwrap(parentClockTwo.allowance);
+        uint64 delegatedAllowance = parentAllowanceOne > parentAllowanceTwo
+            ? parentAllowanceOne
+            : parentAllowanceTwo;
+        assertEq(Time.Duration.unwrap(childArgs.allowance), delegatedAllowance);
+        assertLe(delegatedAllowance, Time.Duration.unwrap(MAX_ALLOWANCE));
+        assertEq(
+            delegatedAllowance, Time.Duration.unwrap(MAX_ALLOWANCE) - joinDelay
+        );
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);
@@ -600,7 +634,7 @@ contract MiddleTournamentTest is Util {
         (bool hasWinner,,,) = middleTournament.innerTournamentWinner();
         assertFalse(hasWinner);
 
-        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
+        vm.roll(vm.getBlockNumber() + delegatedAllowance - 1);
         vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
         middleTournament.winMatchByTimeout(
             Util.matchId(1, 1),
@@ -622,16 +656,27 @@ contract MiddleTournamentTest is Util {
             playerNodes[1][ArbitrationConstants.height(1) - 1]
         );
 
-        (hasWinner,,,) = middleTournament.innerTournamentWinner();
+        Clock.State memory winnerAtFinish;
+        (hasWinner,,, winnerAtFinish) = middleTournament.innerTournamentWinner();
         assertTrue(hasWinner);
         assertNoElimination();
 
-        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE) - 1);
+        vm.roll(
+            vm.getBlockNumber() + Time.Duration.unwrap(winnerAtFinish.allowance)
+                - 1
+        );
         assertNoElimination();
 
         vm.txGasPrice(2);
         uint256 callerBalanceBefore = address(this).balance;
         uint256 tournamentBalanceBefore = address(topTournament).balance;
+        Clock.State memory returnedClock;
+        (hasWinner,,, returnedClock) = middleTournament.innerTournamentWinner();
+        assertTrue(hasWinner);
+        assertTrue(returnedClock.startInstant.isZero());
+        assertLe(
+            Time.Duration.unwrap(returnedClock.allowance), delegatedAllowance
+        );
 
         // win at the last second
         Util.winInnerTournament(
@@ -640,6 +685,13 @@ contract MiddleTournamentTest is Util {
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
+        (Clock.State memory propagatedClock,) =
+            topTournament.getCommitment(_matchId.commitmentTwo);
+        assertEq(
+            Time.Duration.unwrap(propagatedClock.allowance),
+            Time.Duration.unwrap(returnedClock.allowance)
+        );
+        assertTrue(propagatedClock.startInstant.isZero());
 
         uint256 callerBalanceAfter = address(this).balance;
         uint256 tournamentBalanceAfter = address(topTournament).balance;
@@ -672,7 +724,23 @@ contract MiddleTournamentTest is Util {
             playerNodes[0][ArbitrationConstants.height(0) - 2]
         );
 
-        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT));
+        (Clock.State memory finalRunningClock,) = topTournament.getCommitment(
+            playerNodes[1][ArbitrationConstants.height(0)]
+        );
+        assertFalse(finalRunningClock.startInstant.isZero());
+        vm.roll(
+            Time.Instant
+                .unwrap(
+                    finalRunningClock.startInstant
+                        .add(
+                            Time.Duration
+                                .wrap(
+                                    Time.Duration
+                                        .unwrap(finalRunningClock.allowance) - 1
+                                )
+                        )
+                )
+        );
         vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
         topTournament.winMatchByTimeout(
             topMatch,
