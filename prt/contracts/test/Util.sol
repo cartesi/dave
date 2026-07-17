@@ -96,7 +96,7 @@ contract Util is Test {
     Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
     Time.Duration constant CENSORSHIP_TOLERANCE =
         Time.Duration.wrap(5 * 60 * 8);
-    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5 * 5 * 92);
+    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5 * 5);
     Time.Duration constant MAX_ALLOWANCE = Time.Duration
         .wrap(
             Time.Duration.unwrap(CENSORSHIP_TOLERANCE)

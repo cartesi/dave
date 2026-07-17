@@ -12,6 +12,7 @@
 
 pragma solidity ^0.8.0;
 
+import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
     ArbitrationConstants
@@ -21,6 +22,7 @@ import {
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Match} from "src/tournament/libs/Match.sol";
+import {MatchClocks} from "src/tournament/libs/MatchClocks.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
@@ -35,8 +37,16 @@ contract TournamentTest is Util {
     using Machine for Machine.Hash;
 
     MultiLevelTournamentFactory immutable FACTORY;
+    MultiLevelTournamentFactory immutable SINGLE_LEVEL_FACTORY;
     ITournament topTournament;
     ITournament middleTournament;
+
+    struct SealedLeafFixture {
+        ITournament tournament;
+        Match.Id matchId;
+        Clock.State clockOne;
+        Clock.State clockTwo;
+    }
 
     // Player accounts for testing
     address player0 = vm.addr(1);
@@ -44,6 +54,7 @@ contract TournamentTest is Util {
 
     constructor() {
         (FACTORY,) = Util.instantiateTournamentFactory();
+        SINGLE_LEVEL_FACTORY = Util.instantiateSingleLevelTournamentFactory();
     }
 
     receive() external payable {}
@@ -107,6 +118,213 @@ contract TournamentTest is Util {
         );
     }
 
+    function testAdvanceResponseBudgetDeadlineAndRollback() public {
+        ITournament tournament =
+            Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
+        uint256 opponent = 1;
+        Util.joinTournament(tournament, opponent);
+        Match.Id memory matchId = Util.matchId(opponent, 0);
+        Match.IdHash matchIdHash = matchId.hashFromId();
+        Match.State memory matchBefore = tournament.getMatch(matchIdHash);
+        (Clock.State memory clockOneBefore,) =
+            tournament.getCommitment(matchId.commitmentOne);
+        (Clock.State memory clockTwoBefore,) =
+            tournament.getCommitment(matchId.commitmentTwo);
+        uint256 snapshot = vm.snapshotState();
+        uint256 deadline = Time.Instant
+            .unwrap(clockOneBefore.startInstant.add(clockOneBefore.allowance));
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+
+        vm.roll(deadline - 1);
+        tournament.advanceMatch(
+            matchId,
+            playerNodes[0][height - 1],
+            playerNodes[0][height - 1],
+            playerNodes[0][height - 2],
+            playerNodes[0][height - 2]
+        );
+        (Clock.State memory clockOneAfter,) =
+            tournament.getCommitment(matchId.commitmentOne);
+        Match.State memory matchAfter = tournament.getMatch(matchIdHash);
+        assertEq(
+            Time.Duration.unwrap(clockOneAfter.allowance),
+            Time.Duration.unwrap(MATCH_EFFORT) + 1
+        );
+        assertTrue(clockOneAfter.startInstant.isZero());
+        assertEq(matchAfter.currentHeight, matchBefore.currentHeight - 1);
+
+        vm.revertToState(snapshot);
+        vm.roll(deadline);
+        vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
+        tournament.advanceMatch(
+            matchId,
+            playerNodes[0][height - 1],
+            playerNodes[0][height - 1],
+            playerNodes[0][height - 2],
+            playerNodes[0][height - 2]
+        );
+        _assertMatchUnchanged(tournament, matchIdHash, matchBefore);
+        _assertClockUnchanged(tournament, matchId.commitmentOne, clockOneBefore);
+        _assertClockUnchanged(tournament, matchId.commitmentTwo, clockTwoBefore);
+    }
+
+    function testLeafSealResponseBudgetDeadlineAndRollback() public {
+        ITournament tournament =
+            Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
+        uint256 opponent = 1;
+        Util.joinTournament(tournament, opponent);
+        Match.Id memory matchId = Util.matchId(opponent, 0);
+        uint256 playerToSeal = Util.advanceMatch(tournament, matchId, opponent);
+        Tree.Node responder =
+            playerToSeal == 0 ? matchId.commitmentOne : matchId.commitmentTwo;
+        Match.IdHash matchIdHash = matchId.hashFromId();
+        Match.State memory matchBefore = tournament.getMatch(matchIdHash);
+        (Clock.State memory clockOneBefore,) =
+            tournament.getCommitment(matchId.commitmentOne);
+        (Clock.State memory clockTwoBefore,) =
+            tournament.getCommitment(matchId.commitmentTwo);
+        Clock.State memory responderBefore =
+            playerToSeal == 0 ? clockOneBefore : clockTwoBefore;
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+        Tree.Node leftLeaf =
+            playerToSeal == 1 ? playerNodes[1][0] : playerNodes[0][0];
+        Tree.Node rightLeaf = playerNodes[playerToSeal][0];
+        bytes32[] memory agreeHashProof =
+            generateDivergenceProof(playerToSeal, height);
+        uint256 snapshot = vm.snapshotState();
+        uint256 deadline = Time.Instant
+            .unwrap(responderBefore.startInstant.add(responderBefore.allowance));
+
+        vm.roll(deadline - 1);
+        Util.sealLeafMatch(tournament, matchId, playerToSeal);
+        (Clock.State memory responderAfter,) =
+            tournament.getCommitment(responder);
+        assertEq(
+            Time.Duration.unwrap(responderAfter.allowance),
+            Time.Duration.unwrap(MATCH_EFFORT) + 1
+        );
+        assertFalse(responderAfter.startInstant.isZero());
+        assertTrue(tournament.getMatch(matchIdHash).isSealed());
+
+        vm.revertToState(snapshot);
+        vm.roll(deadline);
+        vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
+        tournament.sealLeafMatch(
+            matchId, leftLeaf, rightLeaf, ONE_STATE, agreeHashProof
+        );
+        _assertMatchUnchanged(tournament, matchIdHash, matchBefore);
+        _assertClockUnchanged(tournament, matchId.commitmentOne, clockOneBefore);
+        _assertClockUnchanged(tournament, matchId.commitmentTwo, clockTwoBefore);
+    }
+
+    function testInnerSealResponseBudgetDeadlineAndRollback() public {
+        ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
+        uint256 opponent = 1;
+        Util.joinTournament(tournament, opponent);
+        Match.Id memory matchId = Util.matchId(opponent, 0);
+        uint256 playerToSeal = Util.advanceMatch(tournament, matchId, opponent);
+        Tree.Node responder =
+            playerToSeal == 0 ? matchId.commitmentOne : matchId.commitmentTwo;
+        Match.IdHash matchIdHash = matchId.hashFromId();
+        Match.State memory matchBefore = tournament.getMatch(matchIdHash);
+        (Clock.State memory clockOneBefore,) =
+            tournament.getCommitment(matchId.commitmentOne);
+        (Clock.State memory clockTwoBefore,) =
+            tournament.getCommitment(matchId.commitmentTwo);
+        Clock.State memory responderBefore =
+            playerToSeal == 0 ? clockOneBefore : clockTwoBefore;
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+        Tree.Node leftLeaf =
+            playerToSeal == 1 ? playerNodes[1][0] : playerNodes[0][0];
+        Tree.Node rightLeaf = playerNodes[playerToSeal][0];
+        bytes32[] memory agreeHashProof =
+            generateDivergenceProof(playerToSeal, height);
+        uint256 childCountBefore = tournament.getNewInnerTournamentCount();
+        uint256 snapshot = vm.snapshotState();
+        uint256 deadline = Time.Instant
+            .unwrap(responderBefore.startInstant.add(responderBefore.allowance));
+
+        vm.roll(deadline - 1);
+        tournament.sealInnerMatchAndCreateInnerTournament(
+            matchId, leftLeaf, rightLeaf, ONE_STATE, agreeHashProof
+        );
+        (Clock.State memory responderAfter,) =
+            tournament.getCommitment(responder);
+        assertEq(
+            Time.Duration.unwrap(responderAfter.allowance),
+            Time.Duration.unwrap(MATCH_EFFORT) + 1
+        );
+        assertTrue(responderAfter.startInstant.isZero());
+        assertTrue(tournament.getMatch(matchIdHash).isSealed());
+        assertEq(tournament.getNewInnerTournamentCount(), childCountBefore + 1);
+
+        vm.revertToState(snapshot);
+        vm.roll(deadline);
+        vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
+        tournament.sealInnerMatchAndCreateInnerTournament(
+            matchId, leftLeaf, rightLeaf, ONE_STATE, agreeHashProof
+        );
+        _assertMatchUnchanged(tournament, matchIdHash, matchBefore);
+        _assertClockUnchanged(tournament, matchId.commitmentOne, clockOneBefore);
+        _assertClockUnchanged(tournament, matchId.commitmentTwo, clockTwoBefore);
+        assertEq(tournament.getNewInnerTournamentCount(), childCountBefore);
+    }
+
+    function testFuzzLateJoinAndWinnerRePairNeverGainAllowance(uint64 late)
+        public
+    {
+        ITournament tournament =
+            Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
+        ITournament.TournamentArguments memory args =
+            tournament.tournamentArguments();
+        uint64 initialAllowance = Time.Duration.unwrap(args.allowance);
+        late = uint64(bound(late, 1, initialAllowance - 1));
+        vm.roll(Time.Instant.unwrap(args.startInstant) + late);
+
+        Util.joinTournament(tournament, 1);
+        Util.joinTournament(tournament, 2);
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+        Tree.Node rootZero = playerNodes[0][height];
+        Tree.Node rootOne = playerNodes[1][height];
+        Tree.Node rootTwo = playerNodes[2][height];
+        (Clock.State memory clockZeroBefore,) =
+            tournament.getCommitment(rootZero);
+        (Clock.State memory clockOneBefore,) = tournament.getCommitment(rootOne);
+        (Clock.State memory danglingBefore,) = tournament.getCommitment(rootTwo);
+        assertEq(
+            Time.Duration.unwrap(clockZeroBefore.allowance), initialAllowance
+        );
+        assertEq(
+            Time.Duration.unwrap(clockOneBefore.allowance),
+            initialAllowance - late
+        );
+        assertEq(
+            Time.Duration.unwrap(danglingBefore.allowance),
+            initialAllowance - late
+        );
+        assertTrue(danglingBefore.startInstant.isZero());
+
+        Match.Id memory firstMatch = Match.Id(rootZero, rootOne);
+        uint256 playerToSeal = Util.advanceMatch(tournament, firstMatch, 1);
+        Util.sealLeafMatch(tournament, firstMatch, playerToSeal);
+        _mockLeafWinner(tournament, true);
+        Util.winLeafMatch(tournament, firstMatch, 0);
+
+        Match.Id memory secondMatch = Match.Id(rootTwo, rootZero);
+        assertTrue(tournament.getMatch(secondMatch.hashFromId()).exists());
+        (Clock.State memory survivorAfter,) = tournament.getCommitment(rootZero);
+        (Clock.State memory danglingAfter,) = tournament.getCommitment(rootTwo);
+        assertEq(
+            Time.Duration.unwrap(survivorAfter.allowance), initialAllowance
+        );
+        assertTrue(survivorAfter.startInstant.isZero());
+        assertEq(
+            Time.Duration.unwrap(danglingAfter.allowance),
+            initialAllowance - late
+        );
+        assertFalse(danglingAfter.startInstant.isZero());
+    }
+
     // function testDuplicateJoinTournament() public {
     //     topTournament = Util.initializePlayer0Tournament(FACTORY);
 
@@ -119,10 +337,8 @@ contract TournamentTest is Util {
         topTournament = Util.initializePlayer0Tournament(FACTORY);
 
         uint256 _t = vm.getBlockNumber();
-        // the delay is increased when a match is created
-        uint256 _tournamentFinishWithMatch = _t
-            + Time.Duration.unwrap(MAX_ALLOWANCE)
-            + Time.Duration.unwrap(MATCH_EFFORT);
+        uint256 _tournamentFinishWithMatch =
+            _t + Time.Duration.unwrap(MAX_ALLOWANCE);
 
         // player 1 joins tournament
         uint256 _opponent = 1;
@@ -148,6 +364,10 @@ contract TournamentTest is Util {
             topTournament.canWinMatchByTimeout(_matchId),
             "should be able to win match by timeout"
         );
+        (Clock.State memory _player1ClockBeforeWin,) = topTournament.getCommitment(
+            playerNodes[1][ArbitrationConstants.height(0)]
+        );
+        assertTrue(_player1ClockBeforeWin.startInstant.isZero());
 
         uint256 tournamentBalanceBefore = address(topTournament).balance;
         uint256 callerBalanceBefore = player0.balance;
@@ -162,6 +382,14 @@ contract TournamentTest is Util {
         vm.stopPrank();
         uint256 tournamentBalanceAfter = address(topTournament).balance;
         uint256 callerBalanceAfter = player0.balance;
+        (Clock.State memory _player1ClockAfterWin,) = topTournament.getCommitment(
+            playerNodes[1][ArbitrationConstants.height(0)]
+        );
+        assertTrue(_player1ClockAfterWin.startInstant.isZero());
+        assertEq(
+            Time.Duration.unwrap(_player1ClockAfterWin.allowance),
+            Time.Duration.unwrap(_player1ClockBeforeWin.allowance)
+        );
 
         uint256 bondAmount = topTournament.bondValue();
         assertEq(
@@ -201,9 +429,7 @@ contract TournamentTest is Util {
         topTournament = Util.initializePlayer0Tournament(FACTORY);
         _t = vm.getBlockNumber();
 
-        // the delay is increased when a match is created
-        _tournamentFinishWithMatch = _t + Time.Duration.unwrap(MAX_ALLOWANCE)
-            + Time.Duration.unwrap(MATCH_EFFORT);
+        _tournamentFinishWithMatch = _t + Time.Duration.unwrap(MAX_ALLOWANCE);
 
         // player 1 joins tournament
         Util.joinTournament(topTournament, _opponent);
@@ -233,6 +459,10 @@ contract TournamentTest is Util {
             tournamentBalanceBefore,
             "tounament should have paid gas"
         );
+        (Clock.State memory _player0ClockBeforeWin,) = topTournament.getCommitment(
+            playerNodes[0][ArbitrationConstants.height(0)]
+        );
+        assertTrue(_player0ClockBeforeWin.startInstant.isZero());
 
         (Clock.State memory _player1Clock,) = topTournament.getCommitment(
             playerNodes[1][ArbitrationConstants.height(0)]
@@ -252,6 +482,14 @@ contract TournamentTest is Util {
             playerNodes[0][ArbitrationConstants.height(0) - 1],
             playerNodes[0][ArbitrationConstants.height(0) - 1]
         );
+        (Clock.State memory _player0ClockAfterWin,) = topTournament.getCommitment(
+            playerNodes[0][ArbitrationConstants.height(0)]
+        );
+        assertTrue(_player0ClockAfterWin.startInstant.isZero());
+        assertEq(
+            Time.Duration.unwrap(_player0ClockAfterWin.allowance),
+            Time.Duration.unwrap(_player0ClockBeforeWin.allowance)
+        );
 
         vm.roll(_tournamentFinishWithMatch);
         (_finished, _winner, _finalState) = topTournament.arbitrationResult();
@@ -268,6 +506,44 @@ contract TournamentTest is Util {
             _finalState.eq(Util.finalStates[_winnerPlayer]),
             "final state should match"
         );
+    }
+
+    function testTimeoutCapabilityRejectsNonexistentAndDeletedMatches() public {
+        topTournament = Util.initializePlayer0Tournament(FACTORY);
+        uint256 opponent = 1;
+        Util.joinTournament(topTournament, opponent);
+
+        Match.Id memory matchId = Util.matchId(opponent, 0);
+        Match.Id memory reversedId = Match.Id({
+            commitmentOne: matchId.commitmentTwo,
+            commitmentTwo: matchId.commitmentOne
+        });
+        assertTrue(topTournament.getMatch(matchId.hashFromId()).exists());
+        assertFalse(topTournament.getMatch(reversedId.hashFromId()).exists());
+
+        (Clock.State memory clockOne,) =
+            topTournament.getCommitment(matchId.commitmentOne);
+        vm.roll(
+            Time.Instant.unwrap(clockOne.startInstant.add(clockOne.allowance))
+        );
+
+        assertTrue(topTournament.canWinMatchByTimeout(matchId));
+        assertFalse(topTournament.canWinMatchByTimeout(reversedId));
+
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        topTournament.winMatchByTimeout(
+            reversedId, Tree.Node.wrap(bytes32(0)), Tree.Node.wrap(bytes32(0))
+        );
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        topTournament.eliminateMatchByTimeout(reversedId);
+
+        Util.winMatchByTimeout(
+            topTournament,
+            matchId,
+            playerNodes[opponent][ArbitrationConstants.height(0) - 1],
+            playerNodes[opponent][ArbitrationConstants.height(0) - 1]
+        );
+        assertFalse(topTournament.canWinMatchByTimeout(matchId));
     }
 
     function testEliminateByTimeout() public {
@@ -290,11 +566,18 @@ contract TournamentTest is Util {
             _t + 2 * Time.Duration.unwrap(MAX_ALLOWANCE);
 
         vm.roll(_rootTournamentFinish - 1);
-        // cannot eliminate match when both blocks still have time
+        // The running clock is overdue, but the paused side can survive the
+        // charge by one block and therefore still wins by timeout.
+        assertTrue(topTournament.canWinMatchByTimeout(_matchId));
         vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
         topTournament.eliminateMatchByTimeout(_matchId);
 
         vm.roll(_rootTournamentFinish);
+        assertFalse(topTournament.canWinMatchByTimeout(_matchId));
+        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        topTournament.winMatchByTimeout(
+            _matchId, Tree.Node.wrap(bytes32(0)), Tree.Node.wrap(bytes32(0))
+        );
 
         uint256 tournamentBalanceBefore = address(topTournament).balance;
         uint256 callerBalanceBefore = address(this).balance;
@@ -315,6 +598,285 @@ contract TournamentTest is Util {
             callerBalanceBefore,
             "caller should have earned profit"
         );
+    }
+
+    function testSealedLeafTimeoutChargesLiveWinnerTime() public {
+        uint64 allowanceGap = 10;
+        SealedLeafFixture memory fixture =
+            _createAsymmetricSealedLeaf(true, allowanceGap);
+
+        uint64 shortAllowance = Time.Duration.unwrap(fixture.clockOne.allowance);
+        uint64 resolutionElapsed = shortAllowance + allowanceGap / 2 - 1;
+        vm.roll(
+            Time.Instant.unwrap(fixture.clockOne.startInstant)
+                + resolutionElapsed
+        );
+
+        uint64 winnerRemaining = Time.Duration
+            .unwrap(fixture.clockTwo.allowance) - resolutionElapsed;
+        uint64 loserOverdue = resolutionElapsed - shortAllowance;
+        Tree.Node winnerChild = _winnerChild(fixture.tournament, true);
+
+        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+        fixture.tournament.eliminateMatchByTimeout(fixture.matchId);
+
+        Util.winMatchByTimeout(
+            fixture.tournament, fixture.matchId, winnerChild, winnerChild
+        );
+
+        (Clock.State memory winnerClock,) =
+            fixture.tournament.getCommitment(fixture.matchId.commitmentTwo);
+        assertTrue(winnerClock.startInstant.isZero());
+        assertEq(
+            Time.Duration.unwrap(winnerClock.allowance),
+            winnerRemaining - loserOverdue
+        );
+    }
+
+    function testSealedLeafTimeoutTieAndNextBlockEliminateBoth() public {
+        uint64 allowanceGap = 10;
+        SealedLeafFixture memory fixture =
+            _createAsymmetricSealedLeaf(true, allowanceGap);
+
+        uint64 shortAllowance = Time.Duration.unwrap(fixture.clockOne.allowance);
+        uint64 resolutionElapsed = shortAllowance + allowanceGap / 2;
+        vm.roll(
+            Time.Instant.unwrap(fixture.clockOne.startInstant)
+                + resolutionElapsed
+        );
+
+        Tree.Node winnerChild = _winnerChild(fixture.tournament, true);
+        _mockLeafWinner(fixture.tournament, false);
+        vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
+        fixture.tournament
+            .winLeafMatch(
+                fixture.matchId, winnerChild, winnerChild, new bytes(0)
+            );
+        assertFalse(fixture.tournament.canWinMatchByTimeout(fixture.matchId));
+        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        fixture.tournament
+            .winMatchByTimeout(fixture.matchId, winnerChild, winnerChild);
+
+        Util.eliminateMatchByTimeout(fixture.tournament, fixture.matchId);
+
+        fixture = _createAsymmetricSealedLeaf(true, allowanceGap);
+        shortAllowance = Time.Duration.unwrap(fixture.clockOne.allowance);
+        resolutionElapsed = shortAllowance + allowanceGap / 2 + 1;
+        vm.roll(
+            Time.Instant.unwrap(fixture.clockOne.startInstant)
+                + resolutionElapsed
+        );
+
+        winnerChild = _winnerChild(fixture.tournament, true);
+        assertFalse(fixture.tournament.canWinMatchByTimeout(fixture.matchId));
+        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        fixture.tournament
+            .winMatchByTimeout(fixture.matchId, winnerChild, winnerChild);
+        Util.eliminateMatchByTimeout(fixture.tournament, fixture.matchId);
+    }
+
+    function testFuzzLeafProofAndTimeoutShareResolution(
+        bool commitmentOneIsShorter,
+        uint64 allowanceGap,
+        uint64 resolutionElapsed
+    ) public {
+        allowanceGap = uint64(
+            bound(
+                allowanceGap,
+                1,
+                Time.Duration.unwrap(MAX_ALLOWANCE)
+                    - Time.Duration.unwrap(MATCH_EFFORT) - 1
+            )
+        );
+        SealedLeafFixture memory fixture =
+            _createAsymmetricSealedLeaf(commitmentOneIsShorter, allowanceGap);
+
+        uint64 shortAllowance = commitmentOneIsShorter
+            ? Time.Duration.unwrap(fixture.clockOne.allowance)
+            : Time.Duration.unwrap(fixture.clockTwo.allowance);
+        uint64 longAllowance = commitmentOneIsShorter
+            ? Time.Duration.unwrap(fixture.clockTwo.allowance)
+            : Time.Duration.unwrap(fixture.clockOne.allowance);
+        resolutionElapsed =
+            uint64(bound(resolutionElapsed, shortAllowance, longAllowance - 1));
+        Time.Instant current = Time.Instant
+            .wrap(
+                Time.Instant.unwrap(fixture.clockOne.startInstant)
+                    + resolutionElapsed
+            );
+        vm.roll(Time.Instant.unwrap(current));
+
+        bool winnerIsOne = !commitmentOneIsShorter;
+        Tree.Node winnerChild =
+            _commitmentChild(fixture.tournament, winnerIsOne);
+        Tree.Node winnerCommitment = winnerIsOne
+            ? fixture.matchId.commitmentOne
+            : fixture.matchId.commitmentTwo;
+        uint64 winnerRemaining = longAllowance - resolutionElapsed;
+        uint64 loserOverdue = resolutionElapsed - shortAllowance;
+        MatchClocks.TimeoutStatus memory timeout = MatchClocks.classifyTimeoutAt(
+            fixture.clockOne, fixture.clockTwo, current
+        );
+        uint256 snapshot = vm.snapshotState();
+        if (winnerRemaining > loserOverdue) {
+            assertEq(
+                uint8(timeout.outcome),
+                uint8(
+                    winnerIsOne
+                        ? MatchClocks.TimeoutOutcome.ONE_WINS
+                        : MatchClocks.TimeoutOutcome.TWO_WINS
+                )
+            );
+            assertEq(Time.Duration.unwrap(timeout.winnerCharge), loserOverdue);
+
+            bool loserIsOne = !winnerIsOne;
+            Tree.Node loserChild =
+                _commitmentChild(fixture.tournament, loserIsOne);
+            _mockLeafWinner(fixture.tournament, loserIsOne);
+            vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
+            fixture.tournament
+                .winLeafMatch(
+                    fixture.matchId, loserChild, loserChild, new bytes(0)
+                );
+            assertTrue(
+                fixture.tournament.getMatch(fixture.matchId.hashFromId())
+                    .exists()
+            );
+            _assertClockUnchanged(
+                fixture.tournament,
+                fixture.matchId.commitmentOne,
+                fixture.clockOne
+            );
+            _assertClockUnchanged(
+                fixture.tournament,
+                fixture.matchId.commitmentTwo,
+                fixture.clockTwo
+            );
+
+            _mockLeafWinner(fixture.tournament, winnerIsOne);
+            fixture.tournament
+                .winLeafMatch(
+                    fixture.matchId, winnerChild, winnerChild, new bytes(0)
+                );
+            _assertResolvedWinner(
+                fixture.tournament,
+                fixture.matchId,
+                winnerCommitment,
+                winnerRemaining - loserOverdue
+            );
+
+            vm.revertToState(snapshot);
+            Util.winMatchByTimeout(
+                fixture.tournament, fixture.matchId, winnerChild, winnerChild
+            );
+            _assertResolvedWinner(
+                fixture.tournament,
+                fixture.matchId,
+                winnerCommitment,
+                winnerRemaining - loserOverdue
+            );
+        } else {
+            assertEq(
+                uint8(timeout.outcome),
+                uint8(MatchClocks.TimeoutOutcome.ELIMINATE_BOTH)
+            );
+            _mockLeafWinner(fixture.tournament, winnerIsOne);
+            vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
+            fixture.tournament
+                .winLeafMatch(
+                    fixture.matchId, winnerChild, winnerChild, new bytes(0)
+                );
+            assertTrue(
+                fixture.tournament.getMatch(fixture.matchId.hashFromId())
+                    .exists()
+            );
+            _assertClockUnchanged(
+                fixture.tournament,
+                fixture.matchId.commitmentOne,
+                fixture.clockOne
+            );
+            _assertClockUnchanged(
+                fixture.tournament,
+                fixture.matchId.commitmentTwo,
+                fixture.clockTwo
+            );
+            Util.eliminateMatchByTimeout(fixture.tournament, fixture.matchId);
+            assertFalse(
+                fixture.tournament.getMatch(fixture.matchId.hashFromId())
+                    .exists()
+            );
+
+            vm.revertToState(snapshot);
+            Util.eliminateMatchByTimeout(fixture.tournament, fixture.matchId);
+            assertFalse(
+                fixture.tournament.getMatch(fixture.matchId.hashFromId())
+                    .exists()
+            );
+        }
+    }
+
+    function testFuzzSealedLeafTimeoutPartition(
+        bool commitmentOneIsShorter,
+        uint64 allowanceGap,
+        uint64 resolutionElapsed
+    ) public {
+        allowanceGap = uint64(
+            bound(
+                allowanceGap,
+                1,
+                Time.Duration.unwrap(MAX_ALLOWANCE)
+                    - Time.Duration.unwrap(MATCH_EFFORT) - 1
+            )
+        );
+        SealedLeafFixture memory fixture =
+            _createAsymmetricSealedLeaf(commitmentOneIsShorter, allowanceGap);
+
+        uint64 shortAllowance = commitmentOneIsShorter
+            ? Time.Duration.unwrap(fixture.clockOne.allowance)
+            : Time.Duration.unwrap(fixture.clockTwo.allowance);
+        uint64 longAllowance = commitmentOneIsShorter
+            ? Time.Duration.unwrap(fixture.clockTwo.allowance)
+            : Time.Duration.unwrap(fixture.clockOne.allowance);
+        resolutionElapsed =
+            uint64(bound(resolutionElapsed, shortAllowance, longAllowance - 1));
+        vm.roll(
+            Time.Instant.unwrap(fixture.clockOne.startInstant)
+                + resolutionElapsed
+        );
+
+        uint64 winnerRemaining = longAllowance - resolutionElapsed;
+        uint64 loserOverdue = resolutionElapsed - shortAllowance;
+        Tree.Node winnerChild =
+            _winnerChild(fixture.tournament, commitmentOneIsShorter);
+        assertEq(
+            fixture.tournament.canWinMatchByTimeout(fixture.matchId),
+            winnerRemaining > loserOverdue
+        );
+
+        if (winnerRemaining > loserOverdue) {
+            vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+            fixture.tournament.eliminateMatchByTimeout(fixture.matchId);
+
+            Util.winMatchByTimeout(
+                fixture.tournament, fixture.matchId, winnerChild, winnerChild
+            );
+
+            Tree.Node winnerCommitment = commitmentOneIsShorter
+                ? fixture.matchId.commitmentTwo
+                : fixture.matchId.commitmentOne;
+            (Clock.State memory winnerClock,) =
+                fixture.tournament.getCommitment(winnerCommitment);
+            assertTrue(winnerClock.startInstant.isZero());
+            assertEq(
+                Time.Duration.unwrap(winnerClock.allowance),
+                winnerRemaining - loserOverdue
+            );
+        } else {
+            vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+            fixture.tournament
+                .winMatchByTimeout(fixture.matchId, winnerChild, winnerChild);
+            Util.eliminateMatchByTimeout(fixture.tournament, fixture.matchId);
+        }
     }
 
     function testWinByTimeoutWrongChildrenReverts() public {
@@ -350,5 +912,122 @@ contract TournamentTest is Util {
             playerNodes[1][ArbitrationConstants.height(0) - 1],
             playerNodes[1][ArbitrationConstants.height(0) - 1]
         );
+    }
+
+    function _createAsymmetricSealedLeaf(
+        bool commitmentOneIsShorter,
+        uint64 allowanceGap
+    ) private returns (SealedLeafFixture memory fixture) {
+        fixture.tournament =
+            Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
+        uint256 opponent = 1;
+        if (!commitmentOneIsShorter) {
+            vm.roll(vm.getBlockNumber() + allowanceGap);
+        }
+        Util.joinTournament(fixture.tournament, opponent);
+        fixture.matchId = Util.matchId(opponent, 0);
+
+        if (commitmentOneIsShorter) {
+            vm.roll(
+                vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT)
+                    + allowanceGap
+            );
+        }
+
+        uint256 playerToSeal =
+            Util.advanceMatch(fixture.tournament, fixture.matchId, opponent);
+
+        Util.sealLeafMatch(fixture.tournament, fixture.matchId, playerToSeal);
+        (fixture.clockOne,) =
+            fixture.tournament.getCommitment(fixture.matchId.commitmentOne);
+        (fixture.clockTwo,) =
+            fixture.tournament.getCommitment(fixture.matchId.commitmentTwo);
+
+        assertFalse(fixture.clockOne.startInstant.isZero());
+        assertEq(
+            Time.Instant.unwrap(fixture.clockOne.startInstant),
+            Time.Instant.unwrap(fixture.clockTwo.startInstant)
+        );
+
+        uint64 allowanceOne = Time.Duration.unwrap(fixture.clockOne.allowance);
+        uint64 allowanceTwo = Time.Duration.unwrap(fixture.clockTwo.allowance);
+        if (commitmentOneIsShorter) {
+            assertEq(allowanceTwo - allowanceOne, allowanceGap);
+        } else {
+            assertEq(allowanceOne - allowanceTwo, allowanceGap);
+        }
+    }
+
+    function _winnerChild(ITournament tournament, bool commitmentOneIsShorter)
+        private
+        view
+        returns (Tree.Node)
+    {
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+        uint256 winnerPlayer = commitmentOneIsShorter ? 1 : 0;
+        return playerNodes[winnerPlayer][height - 1];
+    }
+
+    function _commitmentChild(ITournament tournament, bool commitmentOne)
+        private
+        view
+        returns (Tree.Node)
+    {
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+        return playerNodes[commitmentOne ? 0 : 1][height - 1];
+    }
+
+    function _mockLeafWinner(ITournament tournament, bool commitmentOne)
+        private
+    {
+        ITournament.TournamentArguments memory args =
+            tournament.tournamentArguments();
+        Machine.Hash finalState = commitmentOne ? ONE_STATE : TWO_STATE;
+        vm.mockCall(
+            address(args.stateTransition),
+            abi.encode(IStateTransition.transitionState.selector),
+            abi.encode(Machine.Hash.unwrap(finalState))
+        );
+    }
+
+    function _assertResolvedWinner(
+        ITournament tournament,
+        Match.Id memory matchId,
+        Tree.Node winner,
+        uint64 expectedAllowance
+    ) private view {
+        assertFalse(tournament.getMatch(matchId.hashFromId()).exists());
+        (Clock.State memory clock,) = tournament.getCommitment(winner);
+        assertTrue(clock.startInstant.isZero());
+        assertEq(Time.Duration.unwrap(clock.allowance), expectedAllowance);
+        (bool finished, Tree.Node actualWinner,) =
+            tournament.arbitrationResult();
+        assertTrue(finished);
+        assertTrue(actualWinner.eq(winner));
+    }
+
+    function _assertClockUnchanged(
+        ITournament tournament,
+        Tree.Node commitment,
+        Clock.State memory expected
+    ) private view {
+        (Clock.State memory actual,) = tournament.getCommitment(commitment);
+        assertEq(
+            Time.Duration.unwrap(actual.allowance),
+            Time.Duration.unwrap(expected.allowance)
+        );
+        assertEq(
+            Time.Instant.unwrap(actual.startInstant),
+            Time.Instant.unwrap(expected.startInstant)
+        );
+    }
+
+    function _assertMatchUnchanged(
+        ITournament tournament,
+        Match.IdHash matchId,
+        Match.State memory expected
+    ) private view {
+        Match.State memory actual = tournament.getMatch(matchId);
+        assertEq(keccak256(abi.encode(actual)), keccak256(abi.encode(expected)));
     }
 }

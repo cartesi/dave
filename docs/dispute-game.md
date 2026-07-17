@@ -107,12 +107,10 @@ There is one dangling slot per tournament:
 - If one is dangling, the new commitment pairs with it and creates a match.
 
 The older dangling commitment is `commitmentOne`; the newcomer is
-`commitmentTwo`. The current implementation grants both clocks the configured
-pairing-response budget, capped by `maxAllowance`, and starts the older
-commitment's clock. This includes a fresh newcomer, so a late join can recover
-time that its decayed initial allowance had already lost. The delay-model
-consequences and proposed non-bankable replacement are tracked in the review
-ledger.
+`commitmentTwo`. Pairing does not change either clock balance. It starts the
+older commitment's clock and leaves the newcomer paused, so time already lost
+by a late join is never restored merely because that commitment finds an
+opponent. The same rule applies when a surviving winner re-enters pairing.
 
 Important invariants:
 
@@ -125,7 +123,22 @@ Important invariants:
 
 Each match compares two commitment trees. One clock runs while that participant
 must reveal the next children. A valid `advanceMatch` descends one tree level
-toward the first divergent leaf, then switches the turn.
+toward the first divergent leaf, then switches the turn. A height-`H` match has
+exactly `H` eligible responses: `H - 1` advances and one final leaf or inner
+seal.
+
+Let a response begin with clock balance `b`, arrive after elapsed time `e`, and
+have configured response budget `G` (the legacy-named `matchEffort` field). The
+response is accepted only while `e < b`, and pauses the responder with
+
+```text
+b' = b - max(e - G, 0)
+```
+
+Thus a valid response discounts at most `G` of that action's elapsed time but
+never increases the balance or revives an expired clock. Joining, pairing,
+proof resolution, timeout cleanup, child propagation, elimination, and bond
+recovery do not earn this discount.
 
 Important invariants:
 
@@ -144,9 +157,16 @@ flat `O(log N)` bound.
 ### Delay, work, and bracket shape
 
 Let `K` be the number of live commitments in one tournament. There are
-`floor(K / 2)` live matches and at most one dangling commitment. During
-bisection, one of each match's two clocks runs; after leaf sealing both run. A
-leaf tournament therefore has at least `floor(K / 2)` running clocks.
+`M = floor(K / 2)` live matches and `D` dangling commitments, with
+
+```text
+K = 2M + D
+D in {0, 1}
+```
+
+During bisection, one of each match's two clocks runs; after leaf sealing both
+run. A leaf tournament therefore has at least `M` running clocks. Stale clock
+storage for commitments already eliminated is not part of `K`.
 
 A sealed non-leaf match is the recursive exception: both parent clocks pause
 with live remainders `r1` and `r2`, and the child tournament receives
@@ -154,44 +174,59 @@ with live remainders `r1` and `r2`, and the child tournament receives
 finish still depends on resolving its matches and any deeper children. The
 recursive structural invariant is therefore that every parent pair either has a
 clock running or has delegated population reduction to a child tournament. At
-most one commitment per tournament escapes pairing by waiting dangling.
+most one commitment per tournament escapes pairing by waiting dangling. If `S`
+of the `M` parent matches are sealed-inner, the parent-local count is
+`runningClocks >= M - S`; each of those `S` exceptions has one linked child
+carrying the bounded resolution obligation.
 
 On successful propagation, the returned child-winner clock replaces the
 corresponding parent clock after post-finish deduction; it is not added to the
-parent balance. The intended non-bankable design should establish
-`returned <= max(r1, r2)`. Current pairing grants can violate that conservation
-predicate because child clocks are capped by the global `maxAllowance`, not by
-the smaller delegated allowance.
+parent balance. Pairing cannot refill it, so
+`returned <= max(r1, r2) <= maxAllowance`.
 
 That active-pair invariant, rather than the visual shape of the asynchronous
 bracket, gives the timeout bound. Once joining has closed, every bounded
 resolution window turns each existing pair into at most one survivor. The live
-population therefore falls by a constant factor per window. In the
-idealized model with no response grants and prompt permissionless cleanup, an
-all-at-once balanced attack with `P` total commitments reaches
+population therefore falls by a constant factor per window.
+
+For one height-`H` match, let `B` be the sum of its two clock balances and `h`
+the number of eligible responses still required. The potential
 
 ```text
-A * max(1, ceil(log2(P)))
+potential = B + h * G
 ```
 
-where `A` is the initial allowance. Progressively late joins can make the
-pairing tree look like a list, but their initial clocks have already lost the
-same time they spent waiting. Only one unmatched commitment can remain paused
-without an opposing running clock or delegated child. A new full-allowance
-delay layer therefore requires an exponentially larger reservoir of
-simultaneously live claims.
+drops by `max(e, G)` on a successful response of elapsed duration `e`. Across
+`q` responses,
 
-This reasoning depends on charging timeout winners from their live remaining
-time. It also becomes less exact when pairing grants bankable clock time. The
-current grants remain capped by `A`, so each newly created one-level match has
-at most `2A` total clock mass and produces at most one survivor. With prompt
-timeout cleanup after joining closes, each `2A` window therefore reduces the
-population to at most `ceil(K / 2)`, even if those survivors re-pair and receive
-another grant. The coarse one-level timeout bound remains logarithmic, but the
-grants change finite constants and let late claims buy bounded tails. The
-sealed-leaf accounting defect in PRT-002 and the current fresh-join grant are
-therefore liveness issues even though neither changes that coarse asymptotic
-statement.
+```text
+responseElapsed + B_after
+    = B_before + sum(min(e_i, G))
+    <= B_before + q * G
+```
+
+For a leaf match, `b1 + b2 + H * G` conservatively bounds resolution to at most
+one survivor. For a non-leaf match, the same expression bounds reaching local
+seal or timeout deletion, but excludes resolution of any child created by
+sealing. Consequently, in a single-level leaf tournament with per-clock bound
+`A`, a population-reduction window is at most `2A + H * G`. With prompt
+permissionless cleanup after joining closes, each such window reduces `K` live
+commitments to at most `ceil(K / 2)`. An all-at-once reservoir therefore has a
+coarse logarithmic clock-delay bound of
+
+```text
+(2A + H * G) * max(1, ceil(log2(P)))
+```
+
+for `P` commitments of one common height. This is deliberately conservative;
+many timeout paths consume only one clock. Progressively late joins can make
+the pairing tree look like a list, but their initial clocks have already lost
+the same time they spent waiting, and re-pairing cannot refill them. Only one
+unmatched commitment can remain paused without an opposing running clock or
+delegated child. A new full-allowance delay layer therefore requires an
+exponentially larger reservoir of simultaneously live claims. This reasoning
+also depends on charging timeout winners from their live remaining time, as
+fixed by PRT-002.
 
 For the intended two-level deployment, an attack with `R` root claims and `S`
 claims in each slow child has the approximate delay shape
@@ -200,7 +235,10 @@ claims in each slow child has the approximate delay shape
 log2(R) * (A0 + log2(S) * A1)
 ```
 
-and requires a full adversarial reservoir of order `R * S`. Here `N` counts
+This asymptotic expression suppresses finite response terms: discounts add up
+to `H_i * G` per match. For a conservative one-level leaf window, substitute
+`2A_i + H_i * G` for an allowance-only term. The construction requires a full
+adversarial reservoir of order `R * S`. Here `N` counts
 adversarial claim instances across distinct tournament contracts, not unique
 actors. With equal allowances and equal per-level bonds, a fixed claim budget is
 balanced at `R ~= S ~= sqrt(N)`, giving the familiar leading
@@ -225,12 +263,15 @@ post-states.
 For a leaf tournament:
 
 - `sealLeafMatch` verifies the agreed-state proof.
+- The active side's seal is the final eligible response and applies one
+  response discount.
 - Both clocks are made running.
 - Anyone may submit the state-transition proof.
 
 For a non-leaf tournament:
 
-- Both clocks are paused and their remaining times are snapshotted.
+- The active side's seal is the final eligible response; after its discount,
+  both clocks are paused.
 - The greater remaining duration becomes the child tournament's initial
   allowance.
 - A child tournament is created and linked to the sealed parent match.
@@ -241,14 +282,22 @@ must check the match phase before interpreting those fields.
 
 ### Resolution and winner re-entry
 
-A leaf match resolves when the state-transition contract computes a post-state
-equal to one contested final state. The corresponding commitment survives,
-becomes paused, and returns to asynchronous pairing. `winLeafMatch` checks match
-existence and the proof, but not whether either clock has expired. A valid proof
-can therefore beat a timeout until a timeout-resolution transaction actually
-eliminates the match. This makes proof resolution permissionless and avoids a
-separate clock race in that path; transaction ordering decides which valid
-resolution lands first.
+A leaf match may resolve for the side whose contested final state equals the
+post-state computed by the state-transition contract, but only if the shared
+timeout status also permits that side. With no timeout, clock settlement charges
+zero from the proven side's live remaining time. If the same commitment is the
+single timeout winner, it is charged the opponent's classified overdue duration.
+Its settled clock then returns to asynchronous pairing, which may leave it
+paused or immediately start another match. An opposite timeout winner or
+`ELIMINATE_BOTH` rejects the proof as too late.
+
+At the same observation instant, successful proof and timeout resolutions
+cannot select different survivors. A proof compatible with a single-winner
+timeout outcome selects the same survivor and clock charge before identical
+re-pairing; an incompatible proof rejects in favor of the timeout outcome.
+Objective state-transition correctness remains subordinate to clock viability:
+a correct commitment that misses its clock can lose by timeout, just as it
+could before this ordering ambiguity was removed.
 
 A non-leaf match resolves when its linked child finishes:
 
@@ -262,6 +311,14 @@ A timeout resolution has one of three effects:
 - Commitment one survives and is charged for commitment two's overdue time.
 - Commitment two survives and is charged for commitment one's overdue time.
 - Neither has enough time to survive, so both are eliminated.
+
+When exactly one clock is expired, its opponent survives only if the opponent's
+live remaining time is strictly greater than the expired clock's overdue time.
+Equality or a larger overdue duration eliminates both commitments. The two
+mutating timeout paths and `canWinMatchByTimeout` derive from the same pure
+four-way classification. The view is true only for a single-winner outcome and
+returns false for nonexistent or deleted matches. It does not validate the
+Merkle children needed to settle that winner.
 
 The survivor re-enters the same dangling/pairing mechanism. This repeated
 pairing is why total delay and total refunds are global properties rather than
@@ -317,13 +374,15 @@ clock retains its stored allowance and does not consume time.
 Required clock invariants:
 
 - Bisection has exactly one running clock.
-- A sealed leaf has two running clocks.
+- A sealed leaf has two running clocks with the same start instant.
 - A sealed inner match has two paused clocks.
 - A dangling commitment and a surviving winner are paused.
 - Pausing snapshots live remaining time.
 - Charging a clock starts from live remaining time, never stale stored
   allowance.
-- Effort grants are capped by `maxAllowance`.
+- Pairing and winner re-entry never increase either clock balance.
+- A response discount applies only before the responder's original deadline
+  and never increases its starting balance.
 - Parent carryover cannot create an initialized paused clock with zero time.
 
 The intended mainnet allowance is dimensioned from two distinct budgets:
@@ -337,12 +396,21 @@ plus one inner-tournament commitment budget, currently one hour. The historical
 `prt/measure_constants/measure.lua` tool explains how root slowdown and the
 maximum inner commitment-building time determine tournament strides and
 heights. These measured computation budgets are distinct from the
-five-minutes-per-anticipated-response budget, currently summed across 92 tree
-heights into 7 hours 40 minutes and front-loaded through `matchEffort`.
+per-response budget `G`. The deployment stores `G = 5 minutes` in the
+legacy-named `matchEffort` field; on Ethereum that is 25 blocks. One
+root-to-leaf descent with one match at each level spans 92 tree heights and can
+earn at most 7 hours 40 minutes of discounts, one at each successful response.
+Repeated matches receive their own bounded response discounts.
 
-The current `Clock.deducted()` violates the live-remaining rule when a sealed
-leaf timeout charges a still-running winner. This is PRT-002 in the review
-ledger. The proposed replacement API and test contract are recorded in
+`Clock.pauseAfterResponseAt()` implements the non-bankable response formula.
+`Clock.chargeAndPauseAt()` snapshots live remaining time before subtracting the
+loser's overdue duration and pausing the winner. Single-clock operations that
+observe elapsed time take an explicit instant, and `MatchClocks` owns the legal
+bisection, leaf-race, and inner-seal phase transitions plus the shared timeout
+classification and proven-leaf settlement policy. PRT-002 records the prior
+sealed-leaf defect, PRT-004 the capability-view correction, PRT-009 the former
+bankable pairing grant, and PRT-010 the removal of proof/timeout ordering
+ambiguity. The clock decisions and regression model are recorded in
 [`prt/contracts/audit/CLOCK-DESIGN.md`](../prt/contracts/audit/CLOCK-DESIGN.md).
 
 ## Bonds and refunds

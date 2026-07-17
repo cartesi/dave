@@ -86,8 +86,10 @@ level. Terms marked (code) appear verbatim in identifiers.
 - chess clock: per-commitment time budget within a match; exactly one
   side's clock runs at a time (except sealed leaf matches, where both
   run).
-- matchEffort / maxAllowance: response time granted to a commitment when it
-  is paired / cap on its total clock time (deployment parameters).
+- matchEffort: legacy external name for the non-bankable elapsed-time discount
+  available to each successful bisection response, including sealing.
+- maxAllowance: configured root allowance and structural upper bound for clocks
+  in parent-linked tournaments. No response operation raises a clock toward it.
 - win by timeout / eliminate by timeout: resolving a match when one (or
   both) clocks run out.
 - garbage collection (gc): permissionlessly eliminating finished or

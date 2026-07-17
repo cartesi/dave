@@ -15,6 +15,7 @@ import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
 import {Match} from "prt-contracts/tournament/libs/Match.sol";
+import {MatchClocks} from "prt-contracts/tournament/libs/MatchClocks.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
@@ -251,11 +252,11 @@ contract Tournament is ITournament {
         finalStates[_commitmentRoot] = _finalState;
 
         Clock.State storage _clock = clocks[_commitmentRoot];
-        _clock.requireNotInitialized();
-        _clock.setNewPaused(args.startInstant, args.allowance);
+        Time.Instant current = Time.currentTime();
+        _clock.initializePausedAt(args.startInstant, args.allowance, current);
 
         _emitCommitmentJoined(_commitmentRoot, _finalState, msg.sender);
-        pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
+        pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode, current);
         claimers[_commitmentRoot] = msg.sender;
     }
 
@@ -276,8 +277,13 @@ contract Tournament is ITournament {
             _leftNode, _rightNode, _newLeftNode, _newRightNode
         );
 
-        clocks[_matchId.commitmentOne].advanceClock();
-        clocks[_matchId.commitmentTwo].advanceClock();
+        Time.Duration responseBudget = tournamentArguments().matchEffort;
+        MatchClocks.switchTurnAt(
+            clocks[_matchId.commitmentOne],
+            clocks[_matchId.commitmentTwo],
+            responseBudget,
+            Time.currentTime()
+        );
 
         _emitMatchAdvanced(
             matchIdHash, _matchState.otherParent, _matchState.leftNode
@@ -288,6 +294,11 @@ contract Tournament is ITournament {
     /// @dev
     /// - Behavior is identical for root and inner tournaments; level only affects
     ///   how the winner is later interpreted by parent tournaments.
+    /// - The loser's overdue time is charged against the winner's live remaining
+    ///   time. The winner must retain positive time; otherwise both commitments
+    ///   must be eliminated through `eliminateMatchByTimeout`.
+    /// - `NeitherClockHasTimedOut` is the legacy selector for every outcome in
+    ///   which no individual commitment can win, including double elimination.
     function winMatchByTimeout(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
@@ -302,32 +313,41 @@ contract Tournament is ITournament {
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
 
-        _clockOne.requireInitialized();
-        _clockTwo.requireInitialized();
+        Time.Instant current = Time.currentTime();
+        MatchClocks.TimeoutStatus memory timeout =
+            MatchClocks.classifyTimeoutAt(_clockOne, _clockTwo, current);
 
-        if (_clockOne.hasTimeLeft() && !_clockTwo.hasTimeLeft()) {
+        if (timeout.outcome == MatchClocks.TimeoutOutcome.ONE_WINS) {
             require(
                 _matchId.commitmentOne.verify(_leftNode, _rightNode),
                 WrongChildren(1, _matchId.commitmentOne, _leftNode, _rightNode)
             );
 
-            _clockOne.deducted(_clockTwo.timeSinceTimeout());
+            _clockOne.chargeAndPauseAt(timeout.winnerCharge, current);
             pairCommitment(
-                _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
+                _matchId.commitmentOne,
+                _clockOne,
+                _leftNode,
+                _rightNode,
+                current
             );
 
             deleteMatch(
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.ONE
             );
-        } else if (!_clockOne.hasTimeLeft() && _clockTwo.hasTimeLeft()) {
+        } else if (timeout.outcome == MatchClocks.TimeoutOutcome.TWO_WINS) {
             require(
                 _matchId.commitmentTwo.verify(_leftNode, _rightNode),
                 WrongChildren(2, _matchId.commitmentTwo, _leftNode, _rightNode)
             );
 
-            _clockTwo.deducted(_clockOne.timeSinceTimeout());
+            _clockTwo.chargeAndPauseAt(timeout.winnerCharge, current);
             pairCommitment(
-                _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
+                _matchId.commitmentTwo,
+                _clockTwo,
+                _leftNode,
+                _rightNode,
+                current
             );
 
             deleteMatch(
@@ -348,15 +368,11 @@ contract Tournament is ITournament {
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
 
-        _clockOne.requireInitialized();
-        _clockTwo.requireInitialized();
+        Time.Instant current = Time.currentTime();
+        MatchClocks.TimeoutStatus memory timeout =
+            MatchClocks.classifyTimeoutAt(_clockOne, _clockTwo, current);
 
-        if (
-            (!_clockOne.hasTimeLeft()
-                    && !_clockTwo.timeLeft().gt(_clockOne.timeSinceTimeout()))
-                || (!_clockTwo.hasTimeLeft()
-                    && !_clockOne.timeLeft().gt(_clockTwo.timeSinceTimeout()))
-        ) {
+        if (timeout.outcome == MatchClocks.TimeoutOutcome.ELIMINATE_BOTH) {
             deleteMatch(
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.NONE
             );
@@ -440,10 +456,9 @@ contract Tournament is ITournament {
         {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
             Clock.State storage _clock2 = clocks[_matchId.commitmentTwo];
-            _clock1.setPaused();
-            _clock1.advanceClock();
-            _clock2.setPaused();
-            _clock2.advanceClock();
+            MatchClocks.startLeafRaceAt(
+                _clock1, _clock2, args.matchEffort, Time.currentTime()
+            );
         }
 
         _matchState.sealMatch(
@@ -494,6 +509,7 @@ contract Tournament is ITournament {
                     args.provider
                 )
             );
+        Time.Instant current = Time.currentTime();
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
             require(
@@ -501,9 +517,15 @@ contract Tournament is ITournament {
                 WrongFinalState(1, _finalState, _finalStateOne)
             );
 
-            _clockOne.setPaused();
+            MatchClocks.settleProvenLeafWinnerAt(
+                _clockOne, _clockTwo, WinnerCommitment.ONE, current
+            );
             pairCommitment(
-                _matchId.commitmentOne, _clockOne, _leftNode, _rightNode
+                _matchId.commitmentOne,
+                _clockOne,
+                _leftNode,
+                _rightNode,
+                current
             );
 
             deleteMatch(
@@ -515,9 +537,15 @@ contract Tournament is ITournament {
                 WrongFinalState(2, _finalState, _finalStateTwo)
             );
 
-            _clockTwo.setPaused();
+            MatchClocks.settleProvenLeafWinnerAt(
+                _clockOne, _clockTwo, WinnerCommitment.TWO, current
+            );
             pairCommitment(
-                _matchId.commitmentTwo, _clockTwo, _leftNode, _rightNode
+                _matchId.commitmentTwo,
+                _clockTwo,
+                _leftNode,
+                _rightNode,
+                current
             );
 
             deleteMatch(
@@ -562,9 +590,9 @@ contract Tournament is ITournament {
         {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
             Clock.State storage _clock2 = clocks[_matchId.commitmentTwo];
-            _clock1.setPaused();
-            _clock2.setPaused();
-            _maxDuration = Clock.max(_clock1, _clock2);
+            _maxDuration = MatchClocks.pauseForInnerAt(
+                _clock1, _clock2, args.matchEffort, Time.currentTime()
+            );
         }
 
         (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState.sealMatch(
@@ -633,9 +661,11 @@ contract Tournament is ITournament {
 
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.requireInitialized();
-        _clock.reInitialized(_innerClock);
+        _clock.replaceWithPaused(_innerClock);
 
-        pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode);
+        pairCommitment(
+            _commitmentRoot, _clock, _leftNode, _rightNode, Time.currentTime()
+        );
 
         WinnerCommitment _winnerCommitment;
 
@@ -729,10 +759,18 @@ contract Tournament is ITournament {
         override
         returns (bool)
     {
+        if (!matches[_matchId.hashFromId()].exists()) {
+            return false;
+        }
+
         Clock.State memory _clockOne = clocks[_matchId.commitmentOne];
         Clock.State memory _clockTwo = clocks[_matchId.commitmentTwo];
+        MatchClocks.TimeoutStatus memory timeout = MatchClocks.classifyTimeoutAt(
+            _clockOne, _clockTwo, Time.currentTime()
+        );
 
-        return !_clockOne.hasTimeLeft() || !_clockTwo.hasTimeLeft();
+        return timeout.outcome == MatchClocks.TimeoutOutcome.ONE_WINS
+            || timeout.outcome == MatchClocks.TimeoutOutcome.TWO_WINS;
     }
 
     function getCommitment(Tree.Node _commitmentRoot)
@@ -886,7 +924,8 @@ contract Tournament is ITournament {
         Tree.Node _rootHash,
         Clock.State storage _newClock,
         Tree.Node _leftNode,
-        Tree.Node _rightNode
+        Tree.Node _rightNode,
+        Time.Instant current
     ) internal {
         assert(_leftNode.join(_rightNode).eq(_rootHash));
         (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
@@ -905,11 +944,7 @@ contract Tournament is ITournament {
             matches[_matchId] = _matchState;
 
             Clock.State storage _firstClock = clocks[_danglingCommitment];
-
-            _firstClock.addMatchEffort(args.matchEffort, args.maxAllowance);
-            _newClock.addMatchEffort(args.matchEffort, args.maxAllowance);
-
-            _firstClock.advanceClock();
+            MatchClocks.startBisectionAt(_firstClock, _newClock, current);
 
             clearDanglingCommitment();
             matchCount++;
@@ -1071,7 +1106,7 @@ contract Tournament is ITournament {
         assert(finished);
 
         Clock.State memory _clock = clocks[_winner];
-        _clock = _clock.deduct(Time.currentTime().timeSpan(finishedTime));
+        _clock = _clock.deductPaused(Time.currentTime().timeSpan(finishedTime));
 
         NestedDispute memory nestedDispute = args.nestedDispute;
         Machine.Hash _finalState = finalStates[_winner];

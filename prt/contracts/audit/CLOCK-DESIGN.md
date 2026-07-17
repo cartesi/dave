@@ -1,35 +1,38 @@
 # Clock API design checkpoint
 
-Status: proposed, not implemented
+Status: clock API, timeout classifier, and response budget implemented
 
-Last reviewed: 2026-07-16
+Last reviewed: 2026-07-17
 
-This document defines the intended shape of the dispute-game clock abstraction
-before Solidity behavior is changed. It is a working design record, not a claim
-about the current implementation. Current protocol behavior is documented in
-[`docs/dispute-game.md`](../../../docs/dispute-game.md); confirmed clock defects
-are tracked in [`REVIEW.md`](REVIEW.md).
+This document records the implemented dispute-game clock abstraction and its
+policy decisions. Current protocol behavior is documented in
+[`docs/dispute-game.md`](../../../docs/dispute-game.md); confirmed and resolved
+clock findings are tracked in [`REVIEW.md`](REVIEW.md).
 
-## Goals
+## Implemented scope
 
-- Make every phase transition explicit at the call site.
-- Make elapsed-time accounting impossible to bypass accidentally.
-- Separate single-clock arithmetic from two-player match policy.
-- Make the semantic core pure and directly fuzzable.
-- Read the chain time source once per tournament operation.
-- Preserve the current one-slot storage representation initially, unless an ABI
-  review approves a status field.
+- Every clock phase transition is explicit at the call site.
+- Elapsed-time accounting is centralized in pure functions with an explicit
+  observation instant.
+- Single-clock arithmetic is separate from two-player match policy.
+- Timeout resolution is one pure four-way classification shared by the
+  capability view, both timeout mutation paths, and proven-leaf settlement.
+- Response latency is discounted only after a successful bisection response;
+  pairing and winner re-entry never increase clock balances.
+- Tournament operations read the chain time source once for their clock work and
+  pass that value through.
+- The one-slot storage representation and external tuple are unchanged.
 
-Non-goals for the first clock change:
+The work deliberately did not select a new cross-chain time source, change the
+allowance formula or level layout, move error declarations, or refactor
+unrelated lifecycle code. Those remain separate reviewable changes. The
+response-budget migration did change the configured legacy-named `matchEffort`
+value from the former `5 minutes * sum(heights)` one-descent aggregate to the
+per-response scalar.
 
-- Selecting the final cross-chain time source.
-- Redesigning tournament deadlines or dimensioning constants.
-- Changing the economic timeout policy.
-- Refactoring unrelated tournament lifecycle code.
+## Representation and compatibility fence
 
-## Current representation
-
-`Clock.State` contains:
+`Clock.State` remains:
 
 ```solidity
 struct State {
@@ -46,141 +49,151 @@ The stored states are interpreted as follows:
 | positive | zero | Initialized and paused |
 | positive | positive | Initialized and running |
 
-An expired clock remains in the third representation. Expiry is derived from
+An expired clock remains in the running representation. Expiry is derived from
 the current instant; it is not a stored phase. An initialized paused clock with
-zero allowance is forbidden.
+zero allowance is forbidden because zero allowance is the initialization
+sentinel.
 
-This representation fits in one storage slot. The main problem is not its size;
-it is that callers manipulate it through operations whose names do not expose
-their preconditions or phase changes.
+The refactor preserved the library and type name, field names, order, and
+user-defined value types. This is stricter than preserving function selectors:
 
-## Required single-clock invariants
+- `getCommitment` and `innerTournamentWinner` expose the tuple.
+- ABI component names appear in generated bindings.
+- The Rust binding reads `allowance` and `startInstant` by name.
+- The Lua reader decodes the two `uint64` values positionally.
 
-For an initialized clock and an instant `now`:
+A pre/post `forge inspect Tournament abi` comparison was byte-identical. No
+status field was added, and clock errors remain declared in `ITournament`.
+Moving a same-signature error would preserve its raw selector, but it would
+break Solidity source consumers that reference `ITournament.ClockNotInitialized`
+and the other qualified names.
+
+## Single-clock invariants
+
+For an initialized clock and an observation instant `current`:
 
 ```text
-elapsed = running ? now - startInstant : 0
+elapsed = running ? current - startInstant : 0
 remaining = max(allowance - elapsed, 0)
 overdue = running ? max(elapsed - allowance, 0) : undefined
 ```
 
-The implementation must maintain these rules:
+The implementation maintains these rules:
 
 1. Uninitialized clocks cannot be queried as tournament participants or
    transitioned to running.
-2. Starting requires an initialized, paused clock with positive remaining time.
-3. Pausing snapshots live remaining time and clears the start instant.
-4. No mutation may use raw `allowance` as remaining time unless it has proved
+2. Starting requires an initialized paused clock and a nonzero start instant.
+3. Response pausing requires a running clock before its deadline, charges
+   `max(elapsed - responseBudget, 0)`, and clears the start instant.
+4. No mutation uses raw `allowance` as remaining time unless it has established
    that the clock is paused.
-5. Charging a clock first snapshots live remaining time, then subtracts the
-   charge, then pauses it.
-6. Granting effort first snapshots live remaining time, adds the grant up to the
-   cap, then pauses it.
-7. A storage transition may not create an initialized paused clock with zero
+5. Charging first snapshots live remaining time, subtracts the charge, and
+   pauses the clock.
+6. A response discount never increases the action-start balance and cannot
+   revive an expired running clock.
+7. A storage transition cannot create an initialized paused clock with zero
    remaining time.
-8. `now` must not precede a running clock's start instant.
+8. `current` cannot precede a running clock's start instant.
 
 At the exact deadline, remaining time is zero and the clock is expired. Its
-overdue duration is still zero. This distinction is intentional: expiry is a
-state predicate, while overdue duration measures how late resolution is.
+overdue duration is still zero. Expiry is a predicate; overdue is a duration.
 
-## Proposed single-clock interface
+## Implemented single-clock interface
 
-Names are part of the security boundary. The API should prefer explicit verbs
-and explicit instants:
+`Clock` now exposes explicit verbs. Operations that observe elapsed time take an
+explicit instant; paused-only arithmetic does not:
 
 ```solidity
 function isInitialized(State memory state) internal pure returns (bool);
 function isRunning(State memory state) internal pure returns (bool);
 
-function remainingAt(State memory state, Time.Instant now)
-    internal pure returns (Time.Duration);
+function requireInitialized(State memory state) internal pure;
+function requireUninitialized(State memory state) internal pure;
+function requirePaused(State memory state) internal pure;
+function requireRunning(State memory state) internal pure;
 
-function overdueByAt(State memory state, Time.Instant now)
+function remainingAt(State memory state, Time.Instant current)
+    internal pure returns (Time.Duration);
+function overdueByAt(State memory state, Time.Instant current)
     internal pure returns (Time.Duration);
 
 function initializePausedAt(
     State storage state,
     Time.Instant checkin,
     Time.Duration initialAllowance,
-    Time.Instant now
+    Time.Instant current
 ) internal;
-
-function startAt(State storage state, Time.Instant now) internal;
-function pauseAt(State storage state, Time.Instant now) internal;
-
+function startAt(State storage state, Time.Instant current) internal;
+function pauseAfterResponseAt(
+    State storage state,
+    Time.Duration responseBudget,
+    Time.Instant current
+) internal;
 function chargeAndPauseAt(
     State storage state,
     Time.Duration charge,
-    Time.Instant now
+    Time.Instant current
 ) internal;
-
-function grantAndPauseAt(
-    State storage state,
-    Time.Duration grant,
-    Time.Duration maximum,
-    Time.Instant now
-) internal;
+function replaceWithPaused(State storage state, State memory source) internal;
+function deductPaused(State memory state, Time.Duration charge)
+    internal pure returns (State memory);
 ```
 
-The existing operations map approximately as follows:
+The ambiguous toggle and silent repair operations were removed:
 
-| Current | Proposed direction |
+| Removed operation | Implemented replacement |
 | --- | --- |
 | `notInitialized` | `!isInitialized` |
-| `hasTimeLeft` | `remainingAt(now) > 0`, after initialization check |
+| `hasTimeLeft` | `remainingAt(current) > 0`, after an initialization check |
 | `timeLeft` | `remainingAt` |
 | `timeSinceTimeout` | `overdueByAt` |
-| `max` | A pair-level maximum with an explicit both-paused precondition |
+| `max` | `pauseForInnerAt`, after snapshotting the running side |
 | `setNewPaused` | `initializePausedAt` |
-| `advanceClock` | Remove; use `startAt` or `pauseAt` |
-| `setPaused` | Remove; pair-level helpers know which clock must pause |
+| `advanceClock` | `startAt`, `pauseAfterResponseAt`, or a pair-level transition |
+| `setPaused` | `pauseAfterResponseAt` from an explicitly running response phase |
 | `deducted` | `chargeAndPauseAt` |
-| `deduct` on memory | A pure snapshot/charge helper with a paused precondition |
-| `addMatchEffort` | `grantAndPauseAt` |
-| `reInitialized` | An explicit child-to-parent carryover operation |
+| memory `deduct` | `deductPaused` |
+| `addMatchEffort` | Removed; pairing does not mutate clock balances |
+| `reInitialized` | `replaceWithPaused` |
 
-`Time.currentTime()` should not be called throughout the library. Tournament
-entry points should obtain one `now` value from the configured time source and
-pass it through. `block.number` is already constant within one transaction, so
-this is not an intra-transaction consistency fix. It makes the core arithmetic
-pure and directly fuzzable, and it centralizes the eventual time-source decision
-behind one seam.
-
-Clock-specific errors should live with the clock abstraction or in a small error
-module. The low-level library should not import the whole `ITournament`
-interface solely to obtain error selectors.
-
-`remainingAt` should reject uninitialized clocks. `overdueByAt` should reject
-both uninitialized and paused clocks. Callers that need only phase information
-must use `isInitialized` and `isRunning` rather than relying on zero-valued time.
+`Time.currentTime()` is no longer called by `Clock`. `block.number` is already
+constant within one transaction, so this is not an intra-transaction consistency
+fix. It makes the arithmetic pure and fuzzable and centralizes a future
+time-source decision behind the tournament boundary.
 
 ## Pair-level policy
 
-Several important invariants involve two clocks and cannot be enforced by a
-single-clock API. A `MatchClocks` library or tightly scoped tournament helper
-should own these transitions:
+`MatchClocks` owns the transitions whose invariant involves two clocks:
 
 ```solidity
 function startBisectionAt(
     State storage one,
     State storage two,
-    Time.Instant now
+    Time.Instant current
 );
-function switchTurnAt(State storage one, State storage two, Time.Instant now);
-function startLeafRaceAt(State storage one, State storage two, Time.Instant now);
-function pauseForInnerAt(State storage one, State storage two, Time.Instant now);
-function maximumPausedRemainingAt(
-    State memory one,
-    State memory two,
-    Time.Instant now
+function switchTurnAt(
+    State storage one,
+    State storage two,
+    Time.Duration responseBudget,
+    Time.Instant current
+);
+function startLeafRaceAt(
+    State storage one,
+    State storage two,
+    Time.Duration responseBudget,
+    Time.Instant current
+);
+function pauseForInnerAt(
+    State storage one,
+    State storage two,
+    Time.Duration responseBudget,
+    Time.Instant current
 ) returns (Time.Duration);
-function timeoutOutcomeAt(State memory one, State memory two, Time.Instant now)
-    returns (TimeoutOutcome);
-function settleTimeoutWinnerAt(
-    State storage winner,
-    State memory loser,
-    Time.Instant now
+function settleProvenLeafWinnerAt(
+    State storage one,
+    State storage two,
+    ITournament.WinnerCommitment provenWinner,
+    Time.Instant current
 );
 ```
 
@@ -193,13 +206,18 @@ The legal phase table is:
 | Sealed inner | Paused | Paused |
 | Dangling or surviving winner | Paused | Not applicable |
 
-`switchTurnAt` must establish that exactly one clock was running before it
-changes either clock. `startLeafRaceAt` must establish the same source phase,
-pause the running clock, then start both. `pauseForInnerAt` must establish the
-source phase and pause its running clock. These helpers should fail on an
-illegal phase instead of repairing it silently.
+`switchTurnAt` establishes that exactly one clock was running, applies the
+response discount, and swaps the turn. `startLeafRaceAt` establishes the same
+source phase, discounts the final responder, and starts both clocks at the
+supplied instant. `pauseForInnerAt` discounts the final responder, leaves both
+clocks paused, and returns their maximum remainder. `settleProvenLeafWinnerAt`
+requires the two-running-clock leaf phase, including a shared start instant,
+and applies the timeout status to the proven side. These helpers assert on an
+illegal internal phase instead of repairing it silently.
 
-Timeout resolution should be one shared classification:
+## Implemented timeout classifier
+
+PRT-004 made timeout resolution one shared classification:
 
 ```solidity
 enum TimeoutOutcome {
@@ -208,33 +226,53 @@ enum TimeoutOutcome {
     TWO_WINS,
     ELIMINATE_BOTH
 }
+
+struct TimeoutStatus {
+    TimeoutOutcome outcome;
+    Time.Duration winnerCharge;
+}
 ```
 
 - A live clock wins only when its live remaining time is greater than the other
   clock's overdue duration.
-- Settlement charges that overdue duration from the winner's live remaining
-  time and pauses it.
-- If the charge consumes all winner time, both commitments are eliminable.
+- Settlement charges that overdue duration from the winner's live remainder and
+  pauses it.
+- Equality belongs to `ELIMINATE_BOTH`.
 - If both clocks are expired, neither can win by timeout.
-- The capability view and mutating entry points must derive from the same
-  classification.
+- `winnerCharge` carries the overdue duration used to reach a single-winner
+  result, so settlement does not independently reconstruct the policy.
+- `canWinMatchByTimeout`, `winMatchByTimeout`, and
+  `eliminateMatchByTimeout` derive from the same status.
+- The capability view returns false for nonexistent or deleted matches and for
+  `NONE` and `ELIMINATE_BOTH`.
 
-The minimal PRT-002 fix intentionally changes a sealed-leaf boundary. Suppose
-both clocks started together, commitment one has more allowance, and commitment
-two expires first. Today there is a window in which `winMatchByTimeout` can
-declare commitment one the winner while `eliminateMatchByTimeout` can also
-eliminate both; transaction ordering chooses the result. After the fix, a
-winner exists only while its live remaining time is strictly greater than the
-loser's overdue time. Equality belongs to `ELIMINATE_BOTH`, so the win path must
-revert throughout the former overlap.
+The classifier assumes its two initialized clocks already belong to a legal
+match phase. It does not revalidate, for example, that two running sealed-leaf
+clocks share a start instant; the pair transition that created the phase
+establishes that invariant.
 
-## Non-bankable response budget
+The external ABI is unchanged. `NeitherClockHasTimedOut` remains the legacy
+selector for every status in which no individual commitment can win. This
+normalizes the former accidental zero-allowance revert throughout the
+one-expired double-elimination region, including equality.
 
-The current `addMatchEffort` front-loads a bankable grant onto both commitments
-whenever they pair. It can restore time to a fresh late join and lets repeated
-winners accumulate newly minted clock budget. The cleaner follow-up is to
-discount a small amount of elapsed time only when a valid bisection response is
-actually submitted.
+PRT-010 made the classifier authoritative for `winLeafMatch` too. A proof may
+settle under `NONE` or the single-winner outcome matching the proven side. The
+former applies a zero charge; the latter applies `winnerCharge`. An opposite
+winner or `ELIMINATE_BOTH` rejects the proof with the existing
+`CannotAdvanceTimedOutClock` selector. Proof and timeout entry points now agree
+whenever both succeed: at the same observation instant they select the same
+survivor and clock charge before identical re-pairing. If the proven side is
+opposite the timeout winner, or the timeout outcome is `ELIMINATE_BOTH`, proof
+settlement rejects and leaves the timeout outcome authoritative.
+
+## Implemented non-bankable response budget
+
+Before PRT-009, `pairCommitment` front-loaded a capped bankable grant onto both
+commitments whenever they paired. That restored time to a fresh late join and
+let repeated winners accumulate newly minted clock budget. Pairing now leaves
+both balances unchanged. A small amount of elapsed time is discounted only
+after a valid bisection response succeeds.
 
 For a response that starts with balance `b`, arrives after elapsed time `e`, and
 has response budget `G`:
@@ -244,64 +282,75 @@ require e < b
 newBalance = b - max(e - G, 0)
 ```
 
-This preserves the existing expiry boundary, never increases a balance, never
-revives an expired clock, and refunds at most `G` of the latency of that action.
-The first response needs no special front-loaded grant: the initial allowance
-already covers its deadline, and the discount is applied when the response
-lands. An adversary can spend every eligible discount deliberately, so all such
-discounts must appear in the per-match delay bound.
+This preserves the original strict expiry boundary, never increases a balance,
+never revives an expired clock, and discounts at most `G` of that action's
+latency. An adversary can deliberately spend every eligible discount, so every
+discount appears in the delay bound.
 
-If only `advanceMatch` is eligible, a height-`H` match has `H - 1` discounts and
-the additive budget is at most `(H - 1) * G`. If sealing is also eligible, that
-becomes `H * G`. The implementation decision must enumerate eligible actions
-and state how seal and resolution inclusion latency is paid; it must not infer
-the count from height without that mapping.
+The eligible actions are exactly:
 
-The external `TournamentArguments.matchEffort` field can be preserved and
-reinterpreted as `G`, avoiding an ABI shape change. Its value must be
-recalibrated: today the field contains the aggregate
-`5 minutes * sum(heights)`, or 7 hours 40 minutes, which cannot be applied to
-every response. The behavior and parameter change should follow the correctness
-fix and mechanical clock API refactor as a separate commit with a delay-model
-regression.
+- every successful `advanceMatch`;
+- the final `sealLeafMatch`; and
+- the final `sealInnerMatchAndCreateInnerTournament`.
 
-## Storage and ABI decision
+A height-`H` match therefore has `H - 1` advance discounts plus one sealing
+discount, for at most `H * G`. Joining, pairing, timeout cleanup, leaf-proof
+resolution, child propagation or elimination, and bond recovery receive none.
+Proof resolution is deliberately excluded so it remains convergent with the
+shared timeout outcome established by PRT-010.
 
-An explicit status enum would make uninitialized, paused, and running states
-more obvious and would still fit with the two `uint64` values in one storage
-slot. It would, however, change the ABI tuples returned by `getCommitment` and
-`innerTournamentWinner`, generated Rust bindings, and off-chain decoding.
+For clock mass `M` and `h` eligible responses remaining, the potential
 
-Recommendation for the first patch:
+```text
+P = M + h * G
+```
 
-1. Preserve the two-field representation.
-2. Centralize and document its validity predicate.
-3. Make all transitions explicit and enforce their preconditions.
-4. Review external consumers before deciding whether an enum is worth the ABI
-   change in a later version.
+drops by `max(e, G)` on each successful response. Across `q` responses,
 
-## Test contract for the redesign
+```text
+responseElapsed + M_after
+    = M_before + sum(min(e_i, G))
+    <= M_before + q * G
+```
 
-The refactor is complete only when tests establish:
+A conservative local height-`H` bound to leaf resolution, or to non-leaf seal
+or timeout deletion before child resolution, is therefore
+`b1 + b2 + H * G <= 2A + H * G`, where `A` bounds each starting clock. Child
+allowance is the maximum post-response parent balance, and child return plus
+parent re-pairing cannot raise it.
 
-- Initialization is one-shot and elapsed pre-checkin time is charged.
-- Start and pause transitions reject illegal source phases.
-- Remaining time is monotonic while running and unchanged while paused.
-- Pause snapshots exactly the live remaining time.
-- Charge and grant always use live remaining time.
-- Exact deadline semantics are consistent across all views and mutations.
-- Bisection always has exactly one running clock.
-- Leaf sealing always produces two running clocks without restoring time.
-- Inner sealing always produces two paused clocks.
-- Timeout classification partitions all fuzzed clock pairs into one outcome.
-- Timeout settlement conserves time for both paused and running winners.
-- After inner sealing with parent remainders `r1` and `r2`, a propagated child
-  winner replaces the corresponding parent clock and returns no more than
-  `max(r1, r2)` once bankable grants are removed.
-- Child-to-parent carryover cannot be simultaneously non-eliminable and
-  impossible to initialize.
+The external `TournamentArguments.matchEffort` field and tuple order remain
+unchanged for compatibility, but internal code calls the value
+`responseBudget`. Deployment now stores the per-response scalar `G = 5
+minutes`, or 25 blocks on Ethereum, instead of the former
+`5 minutes * sum(heights)` one-descent aggregate.
+One root-to-leaf descent with one match at each level spans 92 heights and can
+still earn at most 7 hours 40 minutes, one successful response at a time.
+Repeated matches receive new bounded discounts.
 
-The first clock implementation commit should contain the PRT-002 regression and
-the minimal correctness fix. The API refactor should follow as a separate
-mechanical commit protected by these properties. Replacing bankable pairing
-grants with the non-bankable response budget is a third behavioral commit.
+## Validation and remaining test work
+
+The PRT-002 integration tests continue to protect running-winner conservation,
+both timeout branches, and the strict equality boundary. The refactor and its
+policy follow-ups added explicit-instant fuzz properties for:
+
+- one-shot initialization and late-entry charging;
+- remaining and overdue arithmetic, including the exact deadline;
+- start, non-bankable response pausing, and live-time charge;
+- the exact response formula, strict deadline, and both running sides;
+- paused child carryover and its zero boundary;
+- bisection turn changes, leaf racing, and inner sealing;
+- rejection of illegal source phases;
+- the four-way timeout model, symmetry, and disjoint/exhaustive partition;
+- exact bisection and sealed-leaf deadline and equality boundaries;
+- proven-leaf eligibility and charging for both sides under every timeout
+  outcome, including rejection of unequal leaf-race start instants.
+
+The integration suite also checks agreement between the capability view and
+both timeout mutation paths, including fabricated and deleted match IDs. It
+compares compatible proof and timeout settlement from identical snapshots and
+checks that incompatible proofs leave the match and both clocks unchanged.
+PRT-009 adds strict-deadline rollback for advance and both seal paths, a late
+join plus winner re-pairing property, deployment calibration, and exact child
+allowance return without a parent refill. The broader stateful one- and
+two-level population model remains follow-up work.

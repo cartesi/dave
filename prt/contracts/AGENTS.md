@@ -73,7 +73,8 @@ papers do not specify these contracts exactly.
     tables consistently. At the checked-in L=3:
     L0 = root + non-leaf, L1 = inner + non-leaf, L2 = inner + **leaf** (the only
     level that verifies a machine step on-chain).
-- **Libraries**: `Match` (bisection state machine), `Clock` (chess-clock timing),
+- **Libraries**: `Match` (bisection state machine), `Clock` (one-clock
+  arithmetic and transitions), `MatchClocks` (legal two-clock match phases),
   `Commitment` + `types/Tree` (Merkle commitment construction & proofs), `Time`
   (block-number-based time), `Gas` (gas constants used to size the bond).
   Types: `Machine`, `Tree`, `TournamentParameters`.
@@ -90,20 +91,26 @@ papers do not specify these contracts exactly.
    Inner tournaments only accept commitments whose final state matches one of
    the two *contested* final states inherited from the parent match.
 2. **Bisect** (`advanceMatch`) - alternating double-bisection descends both
-   commitment trees toward the first divergent leaf; both clocks `advanceClock()`
-   each step (which swaps the one that is running).
+   commitment trees toward the first divergent leaf; `MatchClocks.switchTurnAt`
+   discounts the valid response, pauses its clock, and starts the other at the
+   same instant.
 3. **Seal** (once the match bottoms out / becomes sealable):
-   - *leaf*: `sealLeafMatch` - both clocks are set running (a race to prove).
+   - *leaf*: `sealLeafMatch` - `startLeafRaceAt` moves the active bisection
+     into a two-running-clock race to prove.
    - *non-leaf*: `sealInnerMatchAndCreateInnerTournament` - spawns a child
      tournament at `level + 1`, seeded with the contested states and the
-     `max` of the two clocks' allowances.
+     maximum of the two clocks' snapshotted allowances; both parent clocks are
+     paused.
 4. **Resolve**:
    - *leaf*: `winLeafMatch` - submit the on-chain state-transition proof; the
-     commitment whose claimed final state matches the computed one wins.
+     commitment whose claimed final state matches the computed one wins only if
+     the shared timeout status permits that side. A matching single-winner
+     timeout outcome also charges the expired opponent's overdue duration.
    - *non-leaf*: `winInnerTournament` / `eliminateInnerTournament` - propagate
      the child's result up to the parent match.
-   - *timeout*: `winMatchByTimeout` (one clock out of time) /
-     `eliminateMatchByTimeout` (both effectively out -> **both** eliminated).
+   - *timeout*: `winMatchByTimeout` when one commitment survives the expired
+     side's overdue charge / `eliminateMatchByTimeout` when neither survives
+     that accounting (both eliminated).
 5. The surviving **dangling** commitment is the tournament's result; the root's
    is read via `arbitrationResult`, an inner's via `innerTournamentWinner`.
    `tryRecoveringBond` pays the registered winning claimer at most one bond,
@@ -111,20 +118,29 @@ papers do not specify these contracts exactly.
 
 ## Mechanisms (verified against the code - *not* a correctness claim)
 
-- **Clock** (`Clock.sol`): a *paused* clock (`startInstant == 0`) always reports
-  `hasTimeLeft == true`, including the uninitialized mapping value.
-  `advanceClock` toggles run/pause, so within an active bisection exactly one
-  clock runs at a time; `sealLeafMatch` deliberately runs both. `addMatchEffort`
-  grants a bankable response budget to both sides per pairing, including a fresh
-  newcomer, capped at `maxAllowance`. This changes finite delay constants and is
-  under redesign. A storage clock cannot be initialized or paused with zero
+- **Clock phases and response budget** (`Clock.sol` + `MatchClocks.sol`):
+  `allowance == 0` is uninitialized. An initialized clock is paused when
+  `startInstant == 0` and running otherwise. Operations that observe elapsed
+  time take an explicit instant. Uninitialized live-time queries revert.
+  `MatchClocks` asserts the source phase for each pair transition: active
+  bisection has exactly one running clock, a sealed leaf has two running clocks
+  with the same start instant, and a sealed inner match has two paused clocks.
+  Pairing never changes balances. For each successful advance or final seal,
+  `pauseAfterResponseAt` requires `elapsed < balance` and leaves
+  `balance - max(elapsed - responseBudget, 0)`. The discount never increases a
+  balance or revives an expired clock. A height-`H` match has exactly `H` such
+  responses. A storage clock cannot be initialized or paused with zero
   allowance.
-- **Timeout charging**: `winMatchByTimeout` attempts to deduct the loser's
-  `timeSinceTimeout` from the winner; if the deduction consumes the winner's
-  clock, only `eliminateMatchByTimeout` can eliminate both commitments. The
-  current `Clock.deducted` uses stored allowance rather than live remaining time,
-  so a sealed-leaf timeout can restore the running winner's elapsed time. Track
-  this as PRT-002 in `audit/REVIEW.md`.
+- **Timeout charging**: `MatchClocks.classifyTimeoutAt` compares the prospective
+  winner's `remainingAt(current)` with the expired side's
+  `overdueByAt(current)`. A strictly positive post-charge remainder produces a
+  single winner; equality or a larger overdue duration produces double
+  elimination, even while the nominal winner still has live time. The
+  classifier supplies that four-way outcome and winner charge to the capability
+  view, both timeout mutation paths, and proven-leaf settlement.
+  `canWinMatchByTimeout` is true only for an existing match with one viable
+  timeout winner. PRT-002 fixed the former sealed-leaf time restoration, and
+  PRT-004 fixed the prior view/mutation mismatch.
 - **Bond and partial refunds**: `bondValue() = _totalGasEstimate() *
   MAX_GAS_PRICE` (50 gwei), where
   `_totalGasEstimate = ADVANCE_MATCH * height + max(leaf seal+win, inner
@@ -150,9 +166,15 @@ papers do not specify these contracts exactly.
   `isFinished` = `isClosed && matchCount == 0`; `canBeEliminated` (non-root only)
   = finished with no winner, **or** finished and the winner's allowance window
   has elapsed.
-- **Leaf-proof ordering**: `winLeafMatch` verifies match existence and the state
-  transition, but does not reject an expired clock. A proof can resolve the
-  match until a timeout transaction actually eliminates it.
+- **Leaf-proof ordering**: `winLeafMatch` follows the shared timeout
+  classification after validating the objective state-transition result. With
+  `NONE`, it pauses the proven winner with its live remainder. With the matching
+  single-winner outcome, it applies the same overdue charge as timeout victory.
+  An opposite timeout winner or `ELIMINATE_BOTH` rejects the proof. At the same
+  observation instant, successful proof and timeout resolutions cannot select
+  different survivors: a compatible proof enters re-pairing with the same
+  survivor and charged clock balance, while an incompatible proof rejects.
+  Objective proof correctness does not override a missed clock.
 - **Access control**: `MultiLevelTournamentFactory.instantiateInner` is
   **permissionless** - anyone can mint an orphan inner tournament not linked to
   any parent match. Legitimacy is established off-chain by following the
@@ -173,10 +195,14 @@ experimental until validated. The current Arbitrum entries do not match the
 - `maxAllowance` = 1 week + 1 hour (mainnet), 9 hours (testnet), 1 hour (devnet).
   The intended formula is `censorship + (levels - 1) * inner commitment time`;
   the same checked-in mainnet value corresponds either to the historical
-  3-level/30-minute model or the target 2-level/60-minute model. It is also the
-  per-clock cap; child tournament allowances may be smaller.
-- `matchEffort` = 5 minutes x sum of tournament heights (48+17+27 = 92, so
-  about 7.67 hours) - same on every chain kind
+  3-level/30-minute model or the target 2-level/60-minute model. It is the
+  structural upper bound for parent-linked clocks; child tournament allowances
+  may be smaller, and no response operation raises a clock toward the bound.
+- `matchEffort` = 5 minutes per successful bisection response, including the
+  final seal. One root-to-leaf descent with one match at each level spans 92
+  heights and can earn at most 7 hours 40 minutes, one response at a time;
+  re-pairing creates a new match with new discounts. On Ethereum the scalar is
+  25 blocks.
 - `MAX_GAS_PRICE` = 50 gwei, `PRIORITY_FEE_CAP` = 10 gwei (`Tournament.sol`)
 
 ## Subtle areas worth understanding before touching anything
@@ -188,13 +214,14 @@ experimental until validated. The current Arbitrum entries do not match the
   leaf back to the correct commitment (`commitmentOne` vs `commitmentTwo`). The
   parity bookkeeping is easy to get wrong and decides *who wins* a match.
 - **Clock alternation vs the leaf race**: bisection keeps one clock running;
-  `sealLeafMatch` intentionally starts **both**. The double-run is by design,
-  but every later charge must start from each clock's live remaining time.
+  `MatchClocks.startLeafRaceAt` intentionally starts **both** from one explicit
+  instant. The double-run is by design, and timeout charging starts from the
+  winner's live remaining time at that same operation instant.
 - **The multi-level delay bound** (see the threat model above) - the property
   that is least captured by a one-line summary.
-- **Inner-clock carryover**: `winInnerTournament` re-initializes the parent
-  clock from the inner winner's remaining time, and `innerTournamentWinner`
-  deducts the time elapsed since the inner tournament finished.
+- **Inner-clock carryover**: `innerTournamentWinner` returns a paused clock
+  after deducting the time elapsed since the inner tournament finished;
+  `winInnerTournament` replaces the paused parent clock with that state.
 - **No fixed-level assumptions**: the level count `L` is configurable, but
   `ArbitrationConstants` hardcodes the per-level `log2step` / `height` arrays at
   `LEVELS = 3`. A deployment with a different L must regenerate those
