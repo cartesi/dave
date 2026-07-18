@@ -113,26 +113,14 @@ interface ITournament {
 
     /// @notice A match has advanced.
     /// @param matchIdHash The match ID hash
-    /// @param otherParent The new `otherParent` value
-    /// @param leftNode The new `leftNode` value
-    /// @dev Players take turns to advance the match by
-    /// going down their commitment trees in order to find
-    /// the first diverging leaf node.
-    /// At any given moment, for a given match,
-    /// the tournament contract only stored three nodes:
-    /// - `leftNode`: the left node of the last-opened commitment
-    /// - `rightNode`: the right node of the last-opened commitment
-    /// - `otherParent`: the parent node of the other commitment
-    /// When a match is advanced, the `otherParent` commitment is opened,
-    /// exposing its left and right children nodes. If the left nodes
-    /// of both commitment nodes are equal, then the match advances to
-    /// the right node. Otherwise, it advances to the left node.
-    /// The value of `otherParent` is then updated to be the diverging
-    /// parent node of the other commitment, and `leftNode` and `rightNode`
-    /// are updated to be the left and right nodes of the lats-opened commitment.
-    /// The right node does not need to be exposed, because it is not necessary
-    /// for the opposite player to know which node to which the match should advance.
-    /// Players only need to know whether their left nodes are equal.
+    /// @param otherParent The parent the next responder must reveal
+    /// @param leftNode The waiting side's left child after the advance
+    /// @dev Each advance selects the left half when the two left children differ,
+    /// otherwise the right half, then swaps revealing and waiting roles. The
+    /// event exposes the post-advance revealing parent and waiting left child.
+    /// The waiting right child is unnecessary for selecting the next branch,
+    /// which depends only on left-child equality; the full raw state remains
+    /// available through `getMatch`.
     event MatchAdvanced(
         Match.IdHash indexed matchIdHash,
         Tree.Node otherParent,
@@ -469,9 +457,8 @@ interface ITournament {
     ///   bisected at height `h`.
     /// - `leftNode` and `rightNode` MUST be the two children of that parent at
     ///   height `h-1`.
-    /// - The match logic compares the provided left child with the opposite tree's
-    ///   baseline (kept in state) to decide whether disagreement lies on the left
-    ///   or on the right half at height `h`.
+    /// - The match compares the supplied revealing left child with the stored
+    ///   waiting left child. A mismatch selects left; equality selects right.
     /// - The caller MUST also provide `newLeftNode`/`newRightNode`, which are the
     ///   children of the **chosen half** (left or right) that we descend into. These
     ///   seed the next step after roles flip (alternation).
@@ -659,6 +646,12 @@ interface ITournament {
         returns (Clock.State memory clock, Machine.Hash finalState);
 
     /// @notice Get a match state by its ID hash.
+    /// @dev Returns the raw compatibility tuple without an existence check.
+    /// `isInit == false` means absent or deleted. For a valid positive-height
+    /// initialized state, the node fields describe the unresolved bisection
+    /// segment while `currentHeight > 0`. At `currentHeight == 0`, they hold the
+    /// agree state and branch-encoded divergent leaves; interpret them only with
+    /// the match phase and original commitment height.
     /// @param matchIdHash The match ID hash
     function getMatch(Match.IdHash matchIdHash)
         external
@@ -666,7 +659,9 @@ interface ITournament {
         returns (Match.State memory);
 
     /// @notice Get the running machine cycle of a match by its ID hash.
-    /// @dev Reverts if the match does not exist or has already been deleted.
+    /// @dev Before sealing, returns the first cycle in the unresolved segment;
+    /// after sealing, returns the disputed transition cycle. Reverts if the
+    /// match does not exist or has already been deleted.
     /// @param matchIdHash The match ID hash
     function getMatchCycle(Match.IdHash matchIdHash)
         external
@@ -674,7 +669,7 @@ interface ITournament {
         returns (uint256);
 
     /// @notice Get tournament-level constants.
-    /// @return maxLevel The maximum number of tournament levels
+    /// @return maxLevel The total level count, despite the legacy return name
     /// @return level The current tournament level
     /// @return log2step The log2 number of steps between commitment leaves
     /// @return height The height of the commitment tree

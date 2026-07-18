@@ -19,7 +19,7 @@ library MatchBisectionMutation {
         Tree.Node newLeftNode,
         Tree.Node newRightNode
     ) external {
-        Match.advanceMatch(
+        Match.advanceBisection(
             state, leftNode, rightNode, newLeftNode, newRightNode
         );
     }
@@ -36,7 +36,7 @@ library MatchBisectionMutation {
         external
         returns (Machine.Hash divergentStateOne, Machine.Hash divergentStateTwo)
     {
-        return Match.sealMatch(
+        return Match.sealDivergence(
             state, args, id, leftLeaf, rightLeaf, agreeState, agreeStateProof
         );
     }
@@ -44,8 +44,8 @@ library MatchBisectionMutation {
 
 /// @dev Checks Match against a test-owned sparse Merkle model. The general
 /// model differs from a uniform tree at one selected leaf, so arbitrary heights
-/// and positions require only linear space. A focused two-difference trace also
-/// checks leftmost-divergence precedence.
+/// and positions require only linear space. Focused two-difference traces also
+/// check leftmost-divergence precedence between subtrees and terminal leaves.
 contract MatchBisectionParityTest is Test {
     using Match for Match.State;
     using Tree for Tree.Node;
@@ -159,6 +159,11 @@ contract MatchBisectionParityTest is Test {
         _assertMultipleDifferenceTrace(true);
     }
 
+    function testBothFinalLeavesDifferChoosesLeftmost() public {
+        _assertHeightOneLeftmost(false);
+        _assertHeightOneLeftmost(true);
+    }
+
     function testFuzzParityAcrossReviewedGeometry(
         uint8 rawHeight,
         uint256 rawPosition,
@@ -195,6 +200,58 @@ contract MatchBisectionParityTest is Test {
         _sealMultipleDifferenceTrace(trace);
     }
 
+    function _assertHeightOneLeftmost(bool commitmentOneDiffers) internal {
+        Tree.Node commonLeaf = Tree.Node.wrap(Machine.Hash.unwrap(COMMON_STATE));
+        Tree.Node divergentLeaf =
+            Tree.Node.wrap(Machine.Hash.unwrap(DIVERGENT_STATE));
+        Tree.Node laterLeaf = Tree.Node.wrap(Machine.Hash.unwrap(LATER_STATE));
+        Tree.Node commonRoot = commonLeaf.join(commonLeaf);
+        Tree.Node bothDifferRoot = divergentLeaf.join(laterLeaf);
+
+        Trace memory trace;
+        trace.height = 1;
+        trace.remainingHeight = 1;
+        trace.commitmentOneDiffers = commitmentOneDiffers;
+        trace.responderIsOne = true;
+        trace.args = Commitment.Arguments({
+            initialHash: INITIAL_STATE,
+            startCycle: START_CYCLE,
+            log2step: LOG2_STEP,
+            height: 1
+        });
+        trace.id = commitmentOneDiffers
+            ? Match.Id(bothDifferRoot, commonRoot)
+            : Match.Id(commonRoot, bothDifferRoot);
+
+        Tree.Node oneLeft = commitmentOneDiffers ? divergentLeaf : commonLeaf;
+        Tree.Node oneRight = commitmentOneDiffers ? laterLeaf : commonLeaf;
+        Tree.Node twoLeft = commitmentOneDiffers ? commonLeaf : divergentLeaf;
+        Tree.Node twoRight = commitmentOneDiffers ? commonLeaf : laterLeaf;
+        assertFalse(oneLeft.eq(twoLeft));
+        assertFalse(oneRight.eq(twoRight));
+
+        (Match.IdHash idHash, Match.State memory initialState) = Match.create(
+            trace.args,
+            trace.id.commitmentOne,
+            trace.id.commitmentTwo,
+            twoLeft,
+            twoRight
+        );
+        _state = initialState;
+        _assertInitialState(trace, idHash, twoLeft, twoRight);
+
+        (Machine.Hash sealedOne, Machine.Hash sealedTwo) = MatchBisectionMutation.seal(
+            _state,
+            trace.args,
+            trace.id,
+            oneLeft,
+            oneRight,
+            INITIAL_STATE,
+            new bytes32[](0)
+        );
+        _assertSealedState(trace, INITIAL_STATE, sealedOne, sealedTwo);
+    }
+
     function _initializeMultipleDifferenceTrace(bool commitmentOneDiffers)
         internal
         returns (MultipleDifferenceTrace memory trace)
@@ -224,7 +281,7 @@ contract MatchBisectionParityTest is Test {
             commitmentOneDiffers ? trace.uniformSubtree : trace.firstSubtree;
         Tree.Node twoRight =
             commitmentOneDiffers ? trace.uniformSubtree : trace.laterSubtree;
-        (, Match.State memory initialState) = Match.createMatch(
+        (, Match.State memory initialState) = Match.create(
             trace.args,
             trace.id.commitmentOne,
             trace.id.commitmentTwo,
@@ -328,7 +385,7 @@ contract MatchBisectionParityTest is Test {
             trace.position,
             trace.uniform
         );
-        (, Match.State memory initialState) = Match.createMatch(
+        (Match.IdHash idHash, Match.State memory initialState) = Match.create(
             trace.args,
             trace.id.commitmentOne,
             trace.id.commitmentTwo,
@@ -336,6 +393,22 @@ contract MatchBisectionParityTest is Test {
             twoRight
         );
         _state = initialState;
+        _assertInitialState(trace, idHash, twoLeft, twoRight);
+    }
+
+    function _assertInitialState(
+        Trace memory trace,
+        Match.IdHash idHash,
+        Tree.Node twoLeft,
+        Tree.Node twoRight
+    ) internal view {
+        assertEq(Match.IdHash.unwrap(idHash), keccak256(abi.encode(trace.id)));
+        assertTrue(_state.isInit);
+        assertEq(_state.currentHeight, trace.args.height);
+        assertEq(_state.runningLeafPosition, 0);
+        _assertNode(_state.otherParent, trace.id.commitmentOne);
+        _assertNode(_state.leftNode, twoLeft);
+        _assertNode(_state.rightNode, twoRight);
     }
 
     function _advanceTrace(Trace memory trace) internal {
@@ -371,6 +444,7 @@ contract MatchBisectionParityTest is Test {
     }
 
     function _assertActiveState(Trace memory trace) internal view {
+        assertTrue(_state.isInit);
         assertEq(_state.currentHeight, trace.remainingHeight);
         assertEq(_state.runningLeafPosition, trace.runningPosition);
         assertEq(
@@ -471,13 +545,33 @@ contract MatchBisectionParityTest is Test {
             trace.commitmentOneDiffers ? COMMON_STATE : DIVERGENT_STATE;
         _assertHash(sealedOne, expectedOne);
         _assertHash(sealedTwo, expectedTwo);
+        _assertRawSealedState(trace, agreeState, expectedOne, expectedTwo);
+        _assertStoredDivergence(trace, agreeState, expectedOne, expectedTwo);
+    }
 
+    function _assertRawSealedState(
+        Trace memory trace,
+        Machine.Hash agreeState,
+        Machine.Hash expectedOne,
+        Machine.Hash expectedTwo
+    ) internal view {
+        assertTrue(_state.isInit);
         assertEq(_state.currentHeight, 0);
         assertEq(_state.runningLeafPosition, trace.position);
         _assertNode(
             _state.otherParent, Tree.Node.wrap(Machine.Hash.unwrap(agreeState))
         );
-        _assertStoredDivergence(trace, agreeState, expectedOne, expectedTwo);
+
+        bool leftStoresOne =
+            uint256(trace.args.height % 2) == trace.position % 2;
+        Machine.Hash expectedLeft = leftStoresOne ? expectedOne : expectedTwo;
+        Machine.Hash expectedRight = leftStoresOne ? expectedTwo : expectedOne;
+        _assertNode(
+            _state.leftNode, Tree.Node.wrap(Machine.Hash.unwrap(expectedLeft))
+        );
+        _assertNode(
+            _state.rightNode, Tree.Node.wrap(Machine.Hash.unwrap(expectedRight))
+        );
     }
 
     function _assertStoredDivergence(

@@ -789,6 +789,34 @@ contract AdvanceMatchGasTest is TournamentGasTest {
     }
 }
 
+contract AdvanceMatchLeftGasTest is TournamentGasTest {
+    function setUp() public {
+        _initializeFixture();
+        _rootMatchFixture(CommitmentShape.FIRST_DIFFERENT);
+    }
+
+    function testMeasureFirstChargedLeftAdvance() public {
+        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        (Tree.Node left, Tree.Node right) =
+            children(CommitmentShape.SAME, ROOT_HEIGHT);
+        (Tree.Node newLeft, Tree.Node newRight) =
+            children(CommitmentShape.SAME, ROOT_HEIGHT - 1);
+        bytes memory callData = abi.encodeCall(
+            ITournament.advanceMatch, (matchId, left, right, newLeft, newRight)
+        );
+
+        Measurement memory result = _measure(callData, Gas.ADVANCE_MATCH);
+        _logMeasurement("advance match left", result);
+        _assertReviewedHeadroom(result, Gas.ADVANCE_MATCH);
+
+        Match.State memory state =
+            tournament.getMatch(Match.hashFromId(matchId));
+        assertEq(state.currentHeight, ROOT_HEIGHT - 1);
+        assertEq(state.runningLeafPosition, 0);
+        assertEq(tournament.getMatchAdvancedCount(), 1);
+    }
+}
+
 contract SealLeafMatchGasTest is TournamentGasTest {
     function setUp() public {
         _initializeFixture();
@@ -807,6 +835,27 @@ contract SealLeafMatchGasTest is TournamentGasTest {
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
         assertTrue(Match.isSealed(state));
         assertEq(state.runningLeafPosition, 1);
+    }
+}
+
+contract SealLeafMatchLeftGasTest is TournamentGasTest {
+    function setUp() public {
+        _initializeFixture();
+        _leafMatchFixture(CommitmentShape.THIRD_DIFFERENT);
+        _advanceToSealable(LEAF_HEIGHT, CommitmentShape.THIRD_DIFFERENT);
+    }
+
+    function testMeasureChargedFullProofLeftLeafSealAtPositionTwo() public {
+        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        Measurement memory result =
+            _measure(_sealCall(true), Gas.SEAL_LEAF_MATCH);
+        _logMeasurement("seal leaf match left", result);
+        _assertReviewedHeadroom(result, Gas.SEAL_LEAF_MATCH);
+
+        Match.State memory state =
+            tournament.getMatch(Match.hashFromId(matchId));
+        assertTrue(Match.isSealed(state));
+        assertEq(state.runningLeafPosition, 2);
     }
 }
 
@@ -831,6 +880,31 @@ contract SealInnerMatchGasTest is TournamentGasTest {
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
         assertTrue(Match.isSealed(state));
         assertEq(state.runningLeafPosition, 1);
+        assertEq(tournament.getNewInnerTournamentCount(), 1);
+    }
+}
+
+contract SealInnerMatchLeftGasTest is TournamentGasTest {
+    function setUp() public {
+        _initializeFixture();
+        _rootMatchFixture(CommitmentShape.THIRD_DIFFERENT);
+        _advanceToSealable(ROOT_HEIGHT, CommitmentShape.THIRD_DIFFERENT);
+    }
+
+    function testMeasureChargedFullProofLeftInnerSealAtPositionTwo() public {
+        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        Measurement memory result = _measure(
+            _sealCall(false), Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+        );
+        _logMeasurement("seal inner match left", result);
+        _assertReviewedHeadroom(
+            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+        );
+
+        Match.State memory state =
+            tournament.getMatch(Match.hashFromId(matchId));
+        assertTrue(Match.isSealed(state));
+        assertEq(state.runningLeafPosition, 2);
         assertEq(tournament.getNewInnerTournamentCount(), 1);
     }
 }

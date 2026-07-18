@@ -1147,7 +1147,7 @@ contract TournamentLifecycleHandler is Test {
             return (INITIAL_STATE, new bytes32[](0));
         }
 
-        // Match.sealMatch verifies nonzero agree positions against commitment
+        // Match.sealDivergence verifies nonzero agree positions against commitment
         // one for an odd-height tree. Derive that owner from HEIGHT here rather
         // than from the current responder.
         uint8 proofOwner =

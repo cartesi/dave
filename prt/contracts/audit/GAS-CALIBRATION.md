@@ -158,11 +158,11 @@ for the leaf. Historical top/middle/bottom suites do not define this envelope.
 
 The current advance maximum is the first right descent: it performs the common
 node and height writes plus a zero-to-nonzero `runningLeafPosition` write that a
-first left descent omits. That storage transition establishes its dominance
-under the current `Match.State` layout. The seal witnesses retain the nonzero
-position and full proof, but only one divergence orientation is currently
-measured. Add the alternate seal orientation as a comparator before production
-sign-off, or document a reviewed opcode/storage proof that it cannot dominate.
+first left descent omits. The retained left comparator confirms that the right
+descent dominates under the current `Match.State` layout. The seal witnesses
+retain nonzero positions and maximum-length agree proofs for both divergence
+orientations. At both levels, the right divergence at position one dominates
+the retained left divergence at position two.
 
 ## 4. Run and read the report
 
@@ -265,9 +265,14 @@ Before and after a contract change, record:
 
 ```bash
 direnv exec . sh -c \
-  'cd prt/contracts && forge inspect Tournament abi | sha256sum'
+  'cd prt/contracts && forge inspect --json Tournament abi | jq -S . | sha256sum'
 direnv exec . sh -c \
-  'cd prt/contracts && forge inspect Tournament storageLayout | sha256sum'
+  'cd prt/contracts && forge inspect --json Tournament storageLayout \
+    | jq -S -f audit/storage-layout-semantic.jq | sha256sum'
+direnv exec . sh -c \
+  'cd prt/contracts && forge inspect --no-metadata Tournament bytecode | sha256sum'
+direnv exec . sh -c \
+  'cd prt/contracts && forge inspect --no-metadata Tournament deployedBytecode | sha256sum'
 ```
 
 The hashes are comparison aids, not substitutes for inspecting an unexpected
@@ -383,7 +388,7 @@ that design is brought into scope:
 1. measure its InputBox submission cost separately;
 2. replace, rather than mix, the current input-boundary witnesses;
 3. rerun every full `winLeafMatch` witness;
-4. recompute the common terminal maximum and every join deposit; and
+4. recompute the configured common terminal allocation and every join deposit;
 5. record exact calldata length, zero/nonzero byte composition, and intrinsic
    calldata gas even though calldata is not subsidized by the current refund
    formula.
@@ -399,11 +404,11 @@ capital requirement, and the already-measured InputBox submission increase.
 That makes bringing the InputBox change into scope an explicit protocol tradeoff
 rather than an undocumented reaction to one gas number.
 
-The current common terminal maximum is 703,000 gas and `SEAL_LEAF_MATCH` is
-109,000 gas. Therefore any `WIN_LEAF_MATCH` allocation above 594,000 gas makes
-leaf seal plus proof the new common maximum and raises every level's work
-reserve. Existing input-boundary state-transition measurements already exceed
-that threshold before Tournament overhead and reviewed margin. Under the current
-InputBox path, a production calibration will therefore raise all join deposits;
-the remaining questions are by how much and whether the pre-Merkleized design is
-worth that avoided cost.
+The current configured common terminal allocation is 701,000 gas and
+`SEAL_LEAF_MATCH` is 107,000 gas. Therefore any `WIN_LEAF_MATCH` allocation above
+594,000 gas makes leaf seal plus proof the new configured maximum and raises
+every level's work reserve. Existing input-boundary state-transition measurements
+already exceed that threshold before Tournament overhead and reviewed margin.
+Under the current InputBox path, a production calibration will therefore raise
+all join deposits; the remaining questions are by how much and whether the
+pre-Merkleized design is worth that avoided cost.
