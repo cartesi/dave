@@ -120,8 +120,9 @@ papers do not specify these contracts exactly.
      that accounting (both eliminated).
 5. The surviving **dangling** commitment is the tournament's result; the root's
    is read via `arbitrationResult`, an inner's via `innerTournamentWinner`.
-   `tryRecoveringBond` pays the registered winning claimer at most one bond,
-   then burns the remaining tournament balance.
+   `tryRecoveringBond` attempts to pay the registered winning claimer at most
+   one bond. An accepting recipient is paid before the remaining tournament
+   balance is burned.
 
 ## Mechanisms (verified against the code - *not* a correctness claim)
 
@@ -151,34 +152,34 @@ papers do not specify these contracts exactly.
 - **Bond and partial refunds**: `Bond` separates one explicit
   `SYBIL_PRINCIPAL` from the refundable work reserve. For height `h`,
   `bondValue = principal + ((h - 1) * ADVANCE_MATCH + terminalMaximum) *
-  WORK_PRICE_CAP`. The `refundable` modifier caps an action directly at its gas
-  allocation times the 50-gwei work-price cap, then also caps by tournament
-  balance and measured work priced at `min(tx.gasprice, basefee +
-  PRIORITY_FEE_CAP)`. This is a bounded gross-EVM work subsidy, not a guarantee
-  of receipt-exact cost or profit, and it does not model dynamic calldata or L2
-  data fees. Zero-value payments skip recipient code; nonzero refund and
-  terminal-payment recipients receive at most 50,000 gas, and return data is
-  not copied. For `J` paid joins, at most `J - 1` matches consume configured
-  work reserves. Recovery returns the winning deposit and burns at least one
-  principal per loser. The current 0.00450875 ETH literal preserves the former
-  residual-principal value but is not security-calibrated. See
-  [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md) for the design and
+  WORK_PRICE_CAP`. For `units = Gas.TX + gasBefore - gasAfter`, the modifier
+  requests `min(balance, allocation * WORK_PRICE_CAP, units *
+  min(tx.gasprice, basefee + PRIORITY_FEE_CAP))`. The refund event records that
+  requested value; a failed nonzero recipient call transfers nothing and leaves
+  it in the pool. This is a bounded gross-EVM work subsidy, not a guarantee of
+  receipt-exact cost or profit, and it does not model dynamic calldata or L2 data
+  fees. Zero-value payments skip recipient code; nonzero refund and
+  terminal-payment recipients receive at most 50,000 gas, and return data is not
+  copied. For `J` paid joins, at most `J - 1` matches consume configured work
+  reserves. An accepting winner recovers one deposit under that reserve, and at
+  least one principal per loser is burned. The current 0.00450875 ETH literal
+  preserves the former residual-principal value but is not security-calibrated.
+  See [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md) for the design and
   [`audit/GAS-CALIBRATION.md`](audit/GAS-CALIBRATION.md) for the reproducible
   measurement and update procedure.
-- **Reentrancy**: a transient `locked` flag guards state-mutating entrypoints -
-  `withLock` on `joinTournament` and `tryRecoveringBond`, and `refundable`
-  (which also takes the lock) on `advanceMatch` / the seal / win / eliminate
-  functions. The external ETH transfers (`tryRecoveringBond`'s capped payout
-  and residual burn, `refundable`'s refund) and the external child calls in
-  `winInnerTournament` (`child.canBeEliminated` and
-  `child.innerTournamentWinner`) all execute inside the lock. Child balance
-  recovery is a separate permissionless operation and is not part of parent
-  progress. A failed action refund leaves its attempted value in the pool; a
-  failed terminal payment preserves the full balance and claimer for retry.
-  Tournament-result staging keeps its synchronous best-effort recovery attempt.
-  It ignores both `false` and a recovery revert, so recipient failure cannot
-  undo staging or block later acceptance. (Mechanism only - stress-testing it
-  is exactly an audit's job.)
+- **Reentrancy**: each clone has its own transient `locked` flag.
+  `withLock` guards `joinTournament` and `tryRecoveringBond`; `refundable` also
+  locks advance, seal, win, and eliminate functions. The external ETH transfers
+  and child calls execute while the source clone is locked. A nested mutation of
+  that clone reverts with `ReentrancyDetected`, while a payment callback may
+  mutate a different clone whose independent lock is free if the nested work
+  fits the 50,000-gas callback ceiling. Child balance recovery is a separate
+  permissionless operation and is not part of parent progress. A failed action
+  refund leaves its requested value in the pool; a failed terminal payment
+  preserves the full balance and claimer for retry. Tournament-result staging
+  keeps its synchronous best-effort recovery attempt. It ignores both `false`
+  and a recovery revert, so recipient failure cannot undo staging or block later
+  acceptance. (Mechanism only - stress-testing it is exactly an audit's job.)
 - **Termination**: `isClosed` = `now >= startInstant + allowance`;
   `isFinished` = `isClosed && matchCount == 0`; `canBeEliminated` (non-root only)
   = finished with no winner, **or** finished and the winner's allowance window
@@ -233,12 +234,20 @@ experimental until validated. The current Arbitrum entries do not match the
   `commitmentTwo`. Sparse-tree properties exhaust every position through height
   eight and cover boundary, representative, and fuzzed paths through height 55;
   this bookkeeping decides *who wins* a match.
+- **Raw Match phase predicates**: `Match.isSealed` checks only that the stored
+  height is zero, so it is also true for an uninitialized mapping slot. Establish
+  `exists()` first, or use the existence-aware `phase`, whenever absence is
+  possible. Production callers preserve that ordering; tests must not make a
+  vacuous sealed-state assertion.
 - **Clock alternation vs the leaf race**: bisection keeps one clock running;
   `MatchClocks.startLeafRaceAt` intentionally starts **both** from one explicit
   instant. The double-run is by design, and timeout charging starts from the
   winner's live remaining time at that same operation instant.
 - **The multi-level delay bound** (see the threat model above) - the property
-  that is least captured by a one-line summary.
+  that is least captured by a one-line summary. The fixed four-root trace in
+  `test/properties/ConcurrentRecursivePopulation.t.sol` pins coexisting child
+  obligations and parent re-pairing, not the adversarial asynchronous upper
+  bound.
 - **Inner-clock carryover**: `innerTournamentWinner` returns a paused clock
   after deducting the time elapsed since the inner tournament finished;
   `winInnerTournament` replaces the paused parent clock with that state.
@@ -274,11 +283,12 @@ transition and gas recipes select their respective subsets; `just test-stf` and
 `just test-stf-fuzzy` require `--ffi` plus the `machine/step` submodule. Gas
 calibration must use the plain test runner, not coverage instrumentation; follow
 `audit/GAS-CALIBRATION.md`.
-The coverage recipe excludes FFI, gas-calibration, and state-transition tests
-and sources. It also skips the stateful invariant executors: the ordinary test
-gate runs those campaigns, while deterministic companion traces map their
+The coverage recipe excludes FFI, gas-calibration, exact refund-formula, and
+state-transition tests and sources. Coverage instrumentation changes the
+measured refund units and can make an action cap bind, invalidating both gas
+observation suites. It also skips the stateful invariant executors: the ordinary
+test gate runs those campaigns, while deterministic companion traces map their
 production paths without slow IR instrumentation. Coverage uses IR-minimum
-source maps as a stack-depth workaround, so branch totals are directional
-rather than a correctness claim. Foundry's noisy IR anchor warnings are
-suppressed by default; set `COVERAGE_RUST_LOG=warn` only when debugging the
-mapper itself.
+source maps as a stack-depth workaround, so branch totals are directional rather
+than a correctness claim. Foundry's noisy IR anchor warnings are suppressed by
+default; set `COVERAGE_RUST_LOG=warn` only when debugging the mapper itself.

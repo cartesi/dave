@@ -51,18 +51,28 @@ contract CallbackStateTransition is IStateTransition {
     }
 }
 
+contract InspectableCallbackTournament is Tournament {
+    function claimerOf(Tree.Node commitment) external view returns (address) {
+        return claimers[commitment];
+    }
+}
+
 contract PaymentCallbackReceiver {
     enum Behavior {
         ACCEPT,
         EXHAUST_GAS,
         RETURN_LARGE_DATA,
         REVERT_LARGE_DATA,
-        REENTER_RECOVERY
+        REENTER_RECOVERY,
+        REENTER_OTHER_RECOVERY
     }
 
+    bytes4 public constant RECOVERY_SUCCEEDED = 0xffffffff;
+
     Behavior public behavior;
+    bytes4 public recoveryCallResult;
+    ITournament public recoveryTarget;
     uint256 public entryGas;
-    bool public reentrySucceeded;
 
     constructor(Behavior initialBehavior) {
         behavior = initialBehavior;
@@ -70,6 +80,10 @@ contract PaymentCallbackReceiver {
 
     function setBehavior(Behavior newBehavior) external {
         behavior = newBehavior;
+    }
+
+    function setRecoveryTarget(ITournament newTarget) external {
+        recoveryTarget = newTarget;
     }
 
     function invoke(address target, bytes calldata data) external {
@@ -116,10 +130,31 @@ contract PaymentCallbackReceiver {
             }
         }
         if (current == Behavior.REENTER_RECOVERY) {
-            (reentrySucceeded,) = msg.sender
-                .call(abi.encodeCall(ITournament.tryRecoveringBond, ()));
+            _recordRecoveryCall(msg.sender);
+            return;
+        }
+        if (current == Behavior.REENTER_OTHER_RECOVERY) {
+            _recordRecoveryCall(address(recoveryTarget));
+            return;
         }
         entryGas = gasleft();
+    }
+
+    function _recordRecoveryCall(address target) private {
+        (bool success, bytes memory ret) =
+            target.call(abi.encodeCall(ITournament.tryRecoveringBond, ()));
+        if (success) {
+            recoveryCallResult = RECOVERY_SUCCEEDED;
+            return;
+        }
+
+        bytes4 selector;
+        if (ret.length >= 4) {
+            assembly ("memory-safe") {
+                selector := mload(add(ret, 32))
+            }
+        }
+        recoveryCallResult = selector;
     }
 }
 
@@ -137,7 +172,7 @@ contract RefundCallbacksTest is Test {
 
     constructor() {
         factory = new MultiLevelTournamentFactory(
-            new Tournament(),
+            new InspectableCallbackTournament(),
             new CallbackParametersProvider(),
             new CallbackStateTransition()
         );
@@ -156,13 +191,49 @@ contract RefundCallbacksTest is Test {
         receiver.invoke(address(tournament), sealCall);
 
         uint256 refund = address(receiver).balance - receiverBalanceBefore;
-        assertTrue(tournament.getMatch(matchId.hashFromId()).isSealed());
+        _assertSealedMatch(tournament, matchId);
         assertGt(refund, 0);
         assertEq(tournamentBalanceBefore - address(tournament).balance, refund);
         assertGt(receiver.entryGas(), 0);
         assertEq(Bond.PAYMENT_CALLBACK_GAS_LIMIT, 50_000);
         assertLe(receiver.entryGas(), Bond.PAYMENT_CALLBACK_GAS_LIMIT);
         assertEq(_refundEvent(tournament, receiver, true), refund);
+    }
+
+    function testRefundCallbackCannotReenterSameTournament() public {
+        (ITournament tournament, Match.Id memory matchId) = _matchFixture();
+        PaymentCallbackReceiver receiver = new PaymentCallbackReceiver(
+            PaymentCallbackReceiver.Behavior.REENTER_RECOVERY
+        );
+        uint256 tournamentBalanceBefore = address(tournament).balance;
+
+        vm.recordLogs();
+        receiver.invoke(address(tournament), _sealCall(matchId));
+
+        uint256 refund = address(receiver).balance;
+        _assertSealedMatch(tournament, matchId);
+        assertEq(
+            receiver.recoveryCallResult(),
+            ITournament.ReentrancyDetected.selector
+        );
+        assertGt(refund, 0);
+        assertEq(tournamentBalanceBefore - address(tournament).balance, refund);
+        assertEq(_refundEvent(tournament, receiver, true), refund);
+    }
+
+    function testCallbackBehaviorDoesNotChangeRequestedRefund() public {
+        uint256 accepted =
+            _requestedSealRefund(PaymentCallbackReceiver.Behavior.ACCEPT, true);
+        uint256 rejected = _requestedSealRefund(
+            PaymentCallbackReceiver.Behavior.EXHAUST_GAS, false
+        );
+        uint256 reentrant = _requestedSealRefund(
+            PaymentCallbackReceiver.Behavior.REENTER_RECOVERY, true
+        );
+
+        assertGt(accepted, 0);
+        assertEq(rejected, accepted);
+        assertEq(reentrant, accepted);
     }
 
     function testGasExhaustingRefundCallbackCannotRevertProgress() public {
@@ -181,7 +252,7 @@ contract RefundCallbacksTest is Test {
         );
         uint256 gasUsed = gasBefore - gasleft();
 
-        assertTrue(tournament.getMatch(matchId.hashFromId()).isSealed());
+        _assertSealedMatch(tournament, matchId);
         assertEq(address(receiver).balance, 0);
         assertEq(address(tournament).balance, tournamentBalanceBefore);
         assertLt(gasUsed, WHOLE_CALL_GAS_CEILING);
@@ -204,7 +275,7 @@ contract RefundCallbacksTest is Test {
         receiver.invoke(address(tournament), _sealCall(matchId));
         uint256 gasUsed = gasBefore - gasleft();
 
-        assertTrue(tournament.getMatch(matchId.hashFromId()).isSealed());
+        _assertSealedMatch(tournament, matchId);
         assertEq(address(receiver).balance, 0);
         assertEq(address(tournament).balance, tournamentBalanceBefore);
         assertLt(gasUsed, WHOLE_CALL_GAS_CEILING);
@@ -224,7 +295,7 @@ contract RefundCallbacksTest is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         uint256 refund = address(receiver).balance;
-        assertTrue(tournament.getMatch(matchId.hashFromId()).isSealed());
+        _assertSealedMatch(tournament, matchId);
         assertGt(refund, 0);
         assertEq(tournamentBalanceBefore - address(tournament).balance, refund);
         assertLt(gasUsed, WHOLE_CALL_GAS_CEILING);
@@ -241,7 +312,7 @@ contract RefundCallbacksTest is Test {
         vm.recordLogs();
         receiver.invoke(address(tournament), _sealCall(matchId));
 
-        assertTrue(tournament.getMatch(matchId.hashFromId()).isSealed());
+        _assertSealedMatch(tournament, matchId);
         assertEq(address(receiver).balance, 0);
         assertEq(_refundEvent(tournament, receiver, true), 0);
     }
@@ -269,8 +340,11 @@ contract RefundCallbacksTest is Test {
         PaymentCallbackReceiver receiver = new PaymentCallbackReceiver(
             PaymentCallbackReceiver.Behavior.EXHAUST_GAS
         );
-        ITournament tournament = _finishedTournament(address(receiver));
+        (ITournament tournament, Tree.Node winner) =
+            _finishedTournamentWithWinner(address(receiver));
         uint256 bond = tournament.bondValue();
+        uint256 fundedBalance = 2 * bond;
+        vm.deal(address(tournament), fundedBalance);
 
         uint256 gasBefore = gasleft();
         assertFalse(tournament.tryRecoveringBond());
@@ -278,31 +352,70 @@ contract RefundCallbacksTest is Test {
 
         assertLt(gasUsed, WHOLE_CALL_GAS_CEILING);
         assertEq(address(receiver).balance, 0);
-        assertEq(address(tournament).balance, bond);
+        assertEq(address(tournament).balance, fundedBalance);
+        assertEq(_claimerOf(tournament, winner), address(receiver));
 
         receiver.setBehavior(PaymentCallbackReceiver.Behavior.ACCEPT);
+        uint256 burnedBalanceBefore = address(0).balance;
         assertTrue(tournament.tryRecoveringBond());
         assertEq(address(receiver).balance, bond);
         assertGt(receiver.entryGas(), 0);
         assertLe(receiver.entryGas(), Bond.PAYMENT_CALLBACK_GAS_LIMIT);
         assertEq(address(tournament).balance, 0);
+        assertEq(address(0).balance - burnedBalanceBefore, bond);
+        assertEq(_claimerOf(tournament, winner), address(0));
     }
 
     function testTerminalCallbackCannotReenterRecovery() public {
         PaymentCallbackReceiver receiver = new PaymentCallbackReceiver(
             PaymentCallbackReceiver.Behavior.REENTER_RECOVERY
         );
-        ITournament tournament = _finishedTournament(address(receiver));
+        (ITournament tournament, Tree.Node winner) =
+            _finishedTournamentWithWinner(address(receiver));
         uint256 bond = tournament.bondValue();
+        vm.deal(address(tournament), 2 * bond);
+        uint256 burnedBalanceBefore = address(0).balance;
 
         assertTrue(tournament.tryRecoveringBond());
 
-        assertFalse(receiver.reentrySucceeded());
+        assertEq(
+            receiver.recoveryCallResult(),
+            ITournament.ReentrancyDetected.selector
+        );
         assertEq(address(receiver).balance, bond);
-        assertGt(receiver.entryGas(), 0);
-        assertLe(receiver.entryGas(), Bond.PAYMENT_CALLBACK_GAS_LIMIT);
         assertEq(address(tournament).balance, 0);
+        assertEq(address(0).balance - burnedBalanceBefore, bond);
+        assertEq(_claimerOf(tournament, winner), address(0));
+
         assertTrue(tournament.tryRecoveringBond());
+        assertEq(address(receiver).balance, bond);
+        assertEq(address(0).balance - burnedBalanceBefore, bond);
+    }
+
+    function testPaymentCallbackCanRecoverDifferentTournament() public {
+        address secondClaimer = vm.addr(1234);
+        (ITournament second, Tree.Node secondWinner) =
+            _finishedTournamentWithWinner(secondClaimer);
+        vm.deal(address(second), 0);
+        assertEq(_claimerOf(second, secondWinner), secondClaimer);
+
+        PaymentCallbackReceiver receiver = new PaymentCallbackReceiver(
+            PaymentCallbackReceiver.Behavior.REENTER_OTHER_RECOVERY
+        );
+        receiver.setRecoveryTarget(second);
+        (ITournament first, Tree.Node firstWinner) =
+            _finishedTournamentWithWinner(address(receiver));
+        uint256 firstBond = first.bondValue();
+
+        assertTrue(first.tryRecoveringBond());
+
+        assertEq(receiver.recoveryCallResult(), receiver.RECOVERY_SUCCEEDED());
+        assertEq(address(receiver).balance, firstBond);
+        assertEq(address(first).balance, 0);
+        assertEq(_claimerOf(first, firstWinner), address(0));
+        assertEq(address(second).balance, 0);
+        assertEq(_claimerOf(second, secondWinner), address(0));
+        assertEq(secondClaimer.balance, 0);
     }
 
     function _matchFixture()
@@ -326,12 +439,33 @@ contract RefundCallbacksTest is Test {
         internal
         returns (ITournament tournament)
     {
+        (tournament,) = _finishedTournamentWithWinner(claimer);
+    }
+
+    function _finishedTournamentWithWinner(address claimer)
+        internal
+        returns (ITournament tournament, Tree.Node winner)
+    {
         vm.roll(100);
         tournament =
             factory.instantiate(INITIAL_STATE, IDataProvider(address(0)));
-        _join(tournament, claimer, INITIAL_STATE);
+        winner = _join(tournament, claimer, INITIAL_STATE);
         vm.roll(101);
         assertTrue(tournament.isFinished());
+    }
+
+    function _requestedSealRefund(
+        PaymentCallbackReceiver.Behavior behavior,
+        bool expectedSuccess
+    ) internal returns (uint256) {
+        (ITournament tournament, Match.Id memory matchId) = _matchFixture();
+        PaymentCallbackReceiver receiver = new PaymentCallbackReceiver(behavior);
+
+        vm.recordLogs();
+        receiver.invoke(address(tournament), _sealCall(matchId));
+
+        _assertSealedMatch(tournament, matchId);
+        return _refundEvent(tournament, receiver, expectedSuccess);
     }
 
     function _join(
@@ -399,5 +533,23 @@ contract RefundCallbacksTest is Test {
             assertEq(ret, bytes(""));
         }
         assertEq(refundEvents, 1);
+    }
+
+    function _assertSealedMatch(ITournament tournament, Match.Id memory matchId)
+        internal
+        view
+    {
+        Match.State memory state = tournament.getMatch(matchId.hashFromId());
+        assertTrue(state.exists());
+        assertTrue(state.isSealed());
+    }
+
+    function _claimerOf(ITournament tournament, Tree.Node commitment)
+        internal
+        view
+        returns (address)
+    {
+        return InspectableCallbackTournament(address(tournament))
+            .claimerOf(commitment);
     }
 }

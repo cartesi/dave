@@ -102,7 +102,9 @@ coverage:
     #!/usr/bin/env bash
     set -euo pipefail
     step_path=$(cd ../../machine/step && pwd -P)
-    excluded_contracts='.*(FfiTest|GasTest|StateTransitionTest|TournamentLifecycle.*InvariantTest)'
+    # Gas instrumentation changes the production gasleft quantity that the
+    # calibration and refund-formula suites are designed to observe.
+    excluded_contracts='.*(FfiTest|GasTest|RefundFormulaTest|StateTransitionTest|TournamentLifecycle.*InvariantTest)'
     RUST_LOG="${COVERAGE_RUST_LOG:-error}" forge coverage \
       --ir-minimum \
       --fuzz-runs 256 \

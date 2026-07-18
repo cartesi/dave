@@ -151,12 +151,14 @@ interface ITournament {
         address indexed submitter
     );
 
-    /// @notice Partial bond refund.
+    /// @notice Requested partial bond refund and payment result.
     /// @param recipient The recipient
     /// @param value The computed refund, whether or not payment succeeded
-    /// @param success Whether payment succeeded or no payment was needed
+    /// @param success Whether the requested payment succeeded or was zero
     /// @param ret Retained for event ABI compatibility; always empty
-    /// @dev Recipient execution is gas-bounded and return data is not copied.
+    /// @dev `value` is the computed request, not necessarily the amount
+    /// transferred. Recipient execution is gas-bounded and return data is not
+    /// copied.
     /// Failure may result from recipient code, call depth, or insufficient
     /// forwarded gas; EOAs may also execute delegated code under EIP-7702. A
     /// zero-value refund skips the callback and reports success.
@@ -219,8 +221,9 @@ interface ITournament {
     /// has already elapsed.
     error TournamentIsClosed();
 
-    /// @notice A reentrancy-attack attempt has been detected and neutralized
-    /// by reverting the nested call to the tournament contract.
+    /// @notice A nested state-changing call tried to re-enter this tournament.
+    /// @dev Each tournament clone has an independent transient lock; this error
+    /// does not prevent calls to another tournament instance.
     error ReentrancyDetected();
 
     /// @notice A player provided commitment root children nodes that produced
@@ -390,8 +393,8 @@ interface ITournament {
     function bondValue() external view returns (uint256);
 
     /// @notice Settle the tournament balance after a winner is established.
-    /// @dev Pays the winning commitment's submitter at most one bond. The
-    /// configured refund accounting reserves one complete bond before
+    /// @dev Attempts to pay the winning commitment's submitter at most one bond.
+    /// The configured refund accounting reserves one complete bond before
     /// terminal recovery. A zero balance defensively completes without calling
     /// the recipient. After a successful payment, any residual balance is
     /// burned and later calls succeed as no-ops. A failed recipient call

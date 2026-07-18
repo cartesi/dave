@@ -109,20 +109,21 @@ contract Tournament is ITournament {
         _;
     }
 
-    /// @notice Acquires the lock at the start,
-    /// and releases the lock at the end.
-    /// Avoids reentrancy attacks.
+    /// @notice Acquires this tournament clone's lock for the modified call.
+    /// @dev Blocks nested state-changing calls to this instance. Other
+    /// tournament clones have independent transient locks.
     modifier withLock() {
         _acquireLock();
         _;
         _releaseLock();
     }
 
-    /// @notice Pays the message sender a bounded gross-EVM work subsidy.
-    /// @dev The payment is capped by the current balance, this action's
+    /// @notice Computes and attempts a bounded gross-EVM work subsidy.
+    /// @dev The requested value is capped by the current balance, this action's
     /// configured refund cap, and measured work plus a fixed overhead at the
-    /// capped price. Dynamic calldata, receipt-exact cost, chain-specific fees,
-    /// and caller profit are not guaranteed.
+    /// capped price. The event records that request even if the recipient call
+    /// fails and transfers nothing. Dynamic calldata, receipt-exact cost,
+    /// chain-specific fees, and caller profit are not guaranteed.
     /// Also acquires the lock beforehand and releases it afterward.
     /// @param gasEstimate The configured allocation for the modified function
     /// forge-lint: disable-next-line(unwrapped-modifier-logic)
@@ -404,7 +405,8 @@ contract Tournament is ITournament {
         }
 
         // The external payment precedes this effect so a rejecting winner can
-        // retry. The transient lock prevents reentrancy during both transfers.
+        // retry. The instance-local transient lock prevents re-entering this
+        // tournament during both transfers.
         deleteClaimer(winningCommitment);
         return true;
     }

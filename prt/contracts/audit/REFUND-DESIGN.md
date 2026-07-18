@@ -1,7 +1,7 @@
 # Bond and refund design checkpoint
 
-Status: accounting and callback boundary implemented; seven actions calibrated;
-leaf-proof envelope open
+Status: accounting, exact refund formula, and callback boundary implemented;
+seven actions calibrated; leaf-proof envelope open
 
 Last reviewed: 2026-07-18
 
@@ -10,7 +10,7 @@ into one formula:
 
 1. the irreversible principal that makes a losing Sybil claim costly;
 2. the work reserve that pays bounded dispute-game action refunds; and
-3. the terminal payment returned to the first claimer of the winning root.
+3. the terminal payment attempted for the first claimer of the winning root.
 
 The derivation below describes the current code. It corrects the former claim
 that progress refunds can consume the winning commitment's entire deposit, but
@@ -59,6 +59,23 @@ actionRefundCap(g) = g * P
 The absolute action cap is therefore independent of tournament height and of
 the economic principal. `S` preserved the inherited value when it was made
 explicit, but gas calibration no longer changes it implicitly.
+
+For one successful action body, define:
+
+```text
+units = Gas.TX + gasBefore - gasAfter
+effectivePrice = min(tx.gasprice, block.basefee + Bond.PRIORITY_FEE_CAP)
+requestedRefund = min(
+    tournament balance before the callback,
+    actionRefundCap(g),
+    units * effectivePrice
+)
+```
+
+`PartialBondRefund.value` is `requestedRefund` even when the recipient rejects
+the payment. `success` distinguishes an accepted nonzero transfer from a failed
+one; a zero request skips recipient code and reports success. A failed transfer
+leaves the requested amount in the pooled tournament balance.
 
 The current constants give:
 
@@ -305,6 +322,19 @@ both local Forge 1.5.1-dev and release Foundry v1.4.3; see
 Compiler, EVM, dependency, geometry, or supported-proof changes require a new
 calibration even when an old ceiling happens to pass.
 
+The production-formula campaign separately pins the three-way minimum rather
+than selecting an allocation. Independent timeout-action twins first recover
+`units` at zero base fee and a one-Wei gas price, then vary base fee, priority
+fee, tournament balance, receiver behavior, and whether the winner becomes
+dangling or creates a replacement match. The fuzz property passed 10,000 runs;
+six deterministic cases pin zero price, measured work, balance, priority,
+allocation, and rejected-recipient boundaries. `vm.deal` deliberately creates
+underfunded test balances to isolate the balance cap; that fixture does not
+contradict the reserve theorem for normally funded tournaments. Foundry's
+`lastCallGas.gasRefunded` values, 28,800 for the no-dangling twins and 31,600 for
+the replacement-match twins, remain diagnostics. The protocol formula uses the
+gross `gasleft()` delta and does not reconcile that storage-refund counter.
+
 The first target-two-level witnesses use injected heights 55 and 37 rather than
 the checked-in canonical geometry:
 
@@ -412,10 +442,27 @@ PRT-013 now gives both remaining recipient calls one shared boundary:
 - Zero-value payments skip recipient execution. A zero action refund still
   emits `PartialBondRefund` with `success = true`.
 
+The transient lock belongs to one tournament clone, not to the protocol as a
+whole. A callback that tries another state-changing operation on the same clone
+receives `ReentrancyDetected`; if it handles that failure, the outer payment and
+action may still complete. A callback may mutate a different clone whose lock is
+free. The retained cross-instance trace performs zero-balance recovery on a
+second finished tournament during the first tournament's payment and deletes
+the second claimer. It proves instance isolation, not that an arbitrary nested
+operation fits the 50,000-gas callback ceiling.
+
 An action-refund failure does not revert the action. Its computed value remains
 in the pooled tournament balance and is not earmarked for that caller. A
 terminal winner-payment failure returns `false` before payout, burn, or claimer
 deletion, preserving the full balance for permissionless retry.
+
+The callback suite also pins the terminal sequence with a two-bond pool.
+Same-instance recovery reentry fails with the exact selector; the outer
+recovery pays one bond, burns the other, deletes the claimer, and cannot pay
+twice. A rejecting callback instead preserves both bonds and the claimer, after
+which an accepting retry pays one bond and burns the residual. Across refund
+callbacks, acceptance, rejection, and handled same-instance reentry produce the
+same requested value because the gas snapshot precedes recipient execution.
 
 `DaveConsensus.stageTournamentResult` still invokes terminal recovery
 synchronously, after storing the staged result. Recipient rejection or callback
@@ -445,10 +492,11 @@ Changing `Tournament` creation bytecode changes its zero-salt CREATE2 address;
 the factory address changes too because its constructor embeds the implementation
 address. Deployment artifacts must be regenerated for the release.
 
-The five production counters are external API today. Tests no longer depend on
-them, but removing their writes would change getter semantics. Keep them and
-include their worst-case storage writes in gas measurements unless a later ABI
-version explicitly deprecates them.
+The five production counters are external API today and remain asserted as
+compatibility and observability semantics across lifecycle, recursive, gas, and
+rollups integration tests. Removing their writes would change getter semantics.
+Keep them and include their worst-case storage writes in gas measurements unless
+a later ABI version explicitly deprecates them.
 
 ## Decisions and open questions
 
@@ -462,6 +510,8 @@ The following constraints are selected for this campaign:
 - Child economic recovery stays independent of parent winner propagation.
 - Recipient callbacks have a 50,000-gas execution ceiling, copy no return data,
   and are skipped for zero value.
+- Reentrancy locks are per clone: same-instance mutation is rejected, while a
+  different clone may progress within the callback gas ceiling.
 
 The following decisions remain open before economic calibration:
 
@@ -497,6 +547,10 @@ The following decisions remain open before economic calibration:
    envelope remains undefined.
 7. Partially complete: seven of eight action budgets have reviewed headroom and
    executable ceilings. `WIN_LEAF_MATCH` remains uncalibrated.
+8. Completed: exact formula fuzzing and six deterministic cap boundaries cover
+   both timeout topologies, accepted and rejected transfers, and event/request
+   semantics. Callback tests cover same-instance rejection, cross-instance lock
+   isolation, terminal retry, one-bond payout, and residual burn.
 
 The state-transition workstream must define a finite maximum supported proof or
 proof-class set before `WIN_LEAF_MATCH` can be claimed as a true upper bound.

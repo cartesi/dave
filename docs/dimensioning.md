@@ -184,6 +184,11 @@ and root slowdown as inputs and derive strides and heights; they do not derive
 historical grant wording. That documentation correction is intentionally
 coordinated with the separate node branch and tracked in the review ledger.
 
+This timing and geometry process is separate from EVM refund calibration.
+`prt/contracts/audit/GAS-CALIBRATION.md` owns the manual procedure for measuring
+refundable contract actions, changing `Gas.sol`, and tracing the resulting bond
+and deployment effects.
+
 ## Measurement discipline
 
 Because clocks price the average, the average must be measured, and
