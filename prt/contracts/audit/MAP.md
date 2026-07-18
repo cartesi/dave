@@ -15,6 +15,27 @@
 
 ---
 
+## Post-map Match implementation note
+
+The generated sections below preserve the Match implementation that existed at
+audit start, so their internal helper names are historical evidence rather than
+the current API. The implemented library now uses `Match.create`,
+`advanceBisection`, and `sealDivergence`. One branch selector, one total-height
+sealing-side derivation, and one sealed-state encoder/decoder replace
+`agreesOnLeftNode`, `_goDown*`, and the `_setDivergence*` /
+`_getDivergence*` families. The legacy `createMatch`, library `advanceMatch`,
+library `sealMatch`, and direct encoding helpers were removed after replacement
+coverage landed.
+
+The representation did not change: the running position remains even during
+bisection, the final right branch alone makes it odd, and decoding combines that
+bit with total-height parity to recover fixed commitment ownership. See
+[`MATCH-DESIGN.md`](MATCH-DESIGN.md) for the compatibility fence and
+[`REVIEW.md`](REVIEW.md) for validation evidence. The external Tournament entry
+point remains named `advanceMatch`.
+
+---
+
 ## 1. System model
 
 PRT (Permissionless Refereed Tournaments) is Cartesi's on-chain fraud-proof dispute
@@ -221,14 +242,14 @@ boundary.
    `requireFinalState` hard-codes the rightmost (all-ones) path. `toMachineHash` is an
    unchecked `bytes32 -> Machine.Hash` reinterpret, safe only because Match descended to
    height 0 (true leaf).
-2. **Bisection parity** (`Match.sol`): `runningLeafPosition` is EVEN until the final seal
-   (every interior right-descent adds `1 << currentHeight` with `currentHeight >= 1`, i.e.
-   even; the only odd `+1` is `_setDivergenceOnRightLeaf`). Hence `getDivergence`'s
-   `runningLeafPosition % 2` reconstructs exactly the left/right choice `sealMatch` made via
-   the live `agreesOnLeftNode` comparison. Three `height % 2` uses (agree-proof commitment
-   selection in `sealMatch`; `_getDivergenceOnLeftLeaf`; `_getDivergenceOnRightLeaf`) decide
-   who wins; their mutual consistency is the prime safety target (tests `Match.t.sol` pin the
-   four divergence tables for heights 2/3).
+2. **Bisection parity** (`Match.sol`): `runningLeafPosition` is EVEN until the final seal.
+   Every interior right descent in `advanceBisection` adds an aligned even offset; only a final
+   right `sealDivergence` increments it to odd. `_decodeDivergence` therefore reconstructs the
+   final left/right branch from the low bit. `_sealingSide` derives the final revealer once from
+   total-height parity, and `_fixedSideFinalStates` uses that side to recover commitment-one/two
+   ownership. The sparse-Merkle property model checks their mutual consistency for every
+   position and both commitment orders through height 8, plus representative and fuzzed paths
+   through height 55.
 3. **State transition** (`state-transition/*`): leaf `winLeafMatch` delegates the disputed
    step entirely to `IStateTransition.transitionState` (`CartesiStateTransition`). It
    bit-decodes `counter` into one of three branches (input boundary: `counter & INPUT_MASK ==
@@ -287,33 +308,33 @@ Each: statement * where enforced * how it could break.
 - **SAFE-1 - Responsive root survivor = correct result.** Under the responsiveness and
   censorship-bound assumptions, the surviving dangling commitment at the ROOT is the canonical
   correct result.
-  - *Enforced:* emergent across `winLeafMatch`, `Match.getDivergence`/`_getDivergenceOn{Left,
-    Right}Leaf` parity, `validContestedFinalState` forwarding, `winInnerTournament` recursion,
-    `arbitrationResult` (just reads dangling). NOT a single `require`.
+  - *Enforced:* emergent across `winLeafMatch`, `Match.sealDivergence` / `_decodeDivergence` /
+    `_fixedSideFinalStates`, `validContestedFinalState` forwarding, `winInnerTournament`
+    recursion, `arbitrationResult` (just reads dangling). NOT a single `require`.
   - *Breaks if:* any parity flaw (winner mis-attribution); inconsistency between the agree-proof
-    commitment selection in `sealMatch` (odd->One, even->Two) and the winner mapping; wrong
+    commitment selected by `_sealingSide` and the winner mapping; wrong
     contested-state forwarded to a child; `transitionState` returning a wrong-but-self-consistent
     post-state; a counter-decode branch error; `runningLeafPosition` parity desync; the correct
     participant missing its clock.
 - **SAFE-2 - `runningLeafPosition` parity.** Even at every point before the final leaf seal;
-  becomes odd iff divergence is on the right leaf; `getDivergence`'s `% 2` reconstructs exactly
-  the branch `sealMatch` chose via live `agreesOnLeftNode`.
-  - *Enforced:* `_goDownRightTree` adds `1 << currentHeight` (post-decrement >= 1 -> even >= 2);
-    `_setDivergenceOnRightLeaf` adds exactly 1 (sole odd increment); `getDivergence` branches on
-    `% 2`.
+  becomes odd iff divergence is on the right leaf; `_decodeDivergence` reconstructs exactly the
+  branch selected by `_selectBranch` at seal.
+  - *Enforced:* right `advanceBisection` adds `1 << (currentHeight - 1)` while source height is
+    greater than one; right `sealDivergence` adds exactly one; `_decodeDivergence` reads `% 2`.
   - *Breaks if:* any interior right-descent adds an odd value (off-by-one making the shift
     `1 << 0`); `advanceMatch` reachable at `currentHeight == 1`; the final right seal adds an even
     value. High-value deep-tree fuzz target.
 - **SAFE-3 - Agree-proof vs winner-mapping cross-consistency.** The agree-state-proof commitment
   selection (odd->One, even->Two, at `runningLeafPosition - 1`) is mutually consistent with the
-  winner mapping (`_getDivergenceOn*Leaf` `% 2`) for ALL heights and BOTH divergence sides.
-  - *Enforced:* `sealMatch` (`if (height % 2 == 1)`) + `_getDivergenceOn{Left,Right}Leaf`; tests
-    pin heights 2/3 only.
+  winner mapping for ALL heights and BOTH divergence sides.
+  - *Enforced:* `sealDivergence` derives one `_sealingSide`; `_requireAgreeState` and
+    `_fixedSideFinalStates` consume that same side, while `_decodeDivergence` recovers the branch.
+    The sparse-Merkle property model checks every position and both commitment orders through
+    height 8, representative paths through height 55, and fuzzed heights/positions/orders.
   - *Breaks if:* an adversary asserts an agree state its opponent never committed because the
     agree proof is checked against the wrong commitment relative to which leaf is bound as
-    `finalStateOne/Two`. The geometric justification is nowhere derived in code; only small-height
-    tests cover it. **Independent derivation required across odd/even height x left/right
-    divergence.**
+    `finalStateOne/Two`. The geometric derivation is recorded in `MATCH-DESIGN.md`; keeping the
+    independent property model is essential when the parity branches are centralized.
 - **SAFE-4 - Leaf verdict = one on-chain step, subject to clock viability.** The disputed step's
   post-state is computed once and never cross-checked; the proven side advances only if the
   shared timeout status still permits it.
@@ -405,22 +426,22 @@ Each: statement * where enforced * how it could break.
 - **INV-MATCH-1 - Lifecycle monotonicity.** `currentHeight` starts at `args.height`, decreases by
   exactly 1 per advance and per seal, reaching 0 only at seal; never increases. Predicates
   (`canBeAdvanced > 1`, `canBeSealed == 1`, `isSealed == 0`) partition the lifecycle.
-  - *Enforced:* `_goDown*` `assert(currentHeight > 1)` then `--`; `_setDivergence*`
-    `assert(currentHeight == 1)` then `= 0`; predicates gate entrypoints.
+  - *Enforced:* `advanceBisection` asserts `currentHeight > 1` before decrementing;
+    `_encodeDivergence` asserts `currentHeight == 1` before setting zero; predicates gate
+    entrypoints and `phase` names the four derived states.
   - *Breaks if:* a new internal caller decrements without the assert, or allows advance at height 1
     / seal at height > 1. Asserts Panic (hard abort) - fine for safety, fragile for new callers.
 - **INV-MATCH-2 - Slot semantics across seal.** `otherParent` holds `join(children)` until seal,
   then is repurposed to the agree-state hash; `leftNode`/`rightNode` hold children until seal,
   then the two contested final-state leaves.
-  - *Enforced:* `requireParentHasChildren` checks `otherParent == join(left,right)` each step;
-    `_goDown*` set `otherParent` to the chosen child; `_setAgreeState` overwrites post-seal;
-    `_setDivergence*` write the divergent leaf into the opposite-named slot.
-  - *Breaks if:* a reader interprets `otherParent` as a parent node after seal (none do today);
-    alternation ever sets `otherParent` to the wrong child - `requireParentHasChildren` on the
-    NEXT step still passes (only checks the join relation) but bisection tracks the wrong subtree.
+  - *Enforced:* `advanceBisection` checks the revealing parent and selected child, then performs
+    one role swap; `sealDivergence` writes the legacy branch encoding and agree state;
+    `bisectionView` and `sealedView` expose phase-specific meanings.
+  - *Breaks if:* a raw-tuple reader ignores the phase; alternation sets `otherParent` to the wrong
+    child; or encoding and decoding stop being inverses.
 - **INV-MATCH-3 - Order-sensitive match identity.** Keyed by `keccak(abi.encode(Id{commitmentOne,
   commitmentTwo}))`; pairing always assigns dangling = One, newcomer = Two.
-  - *Enforced:* `Match.hashFromId`; `pairCommitment`/`createMatch` ordering; existence checks on
+  - *Enforced:* `Match.hashFromId`; `pairCommitment`/`Match.create` ordering; existence checks on
     the stored `Match.State`.
   - *Breaks if:* a caller constructs `Id` with swapped order -> `getMatch` misses and the
     One/Two->final-state mapping inverts. `Match.sol` does NOT enforce ordering; it trusts
@@ -495,12 +516,13 @@ Each: statement * where enforced * how it could break.
 
 Cross-checks between mappers; most resolved-but-flagged.
 
-1. **height%2 parity cross-consistency. Resolved.** The left/right-selector consistency between
-   `sealMatch`'s live `agreesOnLeftNode` and `getDivergence`'s `runningLeafPosition % 2` was proven
-   (runningLeafPosition stays even until the final seal). An independent sparse-Merkle model now
-   exhausts both commitment orders and every position through height 8, covers boundary and
-   alternating paths through height 55, and derives agree-proof ownership without copying Match's
-   parity table. A multi-difference comparator pins leftmost-divergence precedence.
+1. **height%2 parity cross-consistency. Resolved.** `_selectBranch` and
+   `_decodeDivergence` are consistent because `runningLeafPosition` stays even until a final right
+   seal. One `_sealingSide` now feeds both agree-proof ownership and fixed-side final-state
+   ordering. An independent sparse-Merkle model exhausts both commitment orders and every
+   position through height 8, covers boundary and alternating paths through height 55, and derives
+   ownership without copying Match's implementation. A multi-difference comparator pins
+   leftmost-divergence precedence.
 2. **`sealInnerMatchAndCreateInnerTournament` omitted `requireExist()`.** **Resolved:** the inner
    and leaf seal paths now both require stored-state existence before sealability. The regression
    pins the accurate `MatchDoesNotExist` selector for a fabricated match.

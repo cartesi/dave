@@ -226,10 +226,13 @@ experimental until validated. The current Arbitrum entries do not match the
 
 *Comprehension aids - deliberately framed as "understand this," not "this is fine."*
 
-- **Double-bisection parity**: `Match.getDivergence` and
-  `_getDivergenceOn{Left,Right}Leaf` use `height % 2` to map the first divergent
-  leaf back to the correct commitment (`commitmentOne` vs `commitmentTwo`). The
-  parity bookkeeping is easy to get wrong and decides *who wins* a match.
+- **Double-bisection parity**: `Match.sealDivergence` derives the final revealing
+  side once from total-height parity. The sealed position's low bit records the
+  final left/right branch; `_decodeDivergence` reconstructs revealing and waiting
+  leaves, and `_fixedSideFinalStates` orders them by `commitmentOne` and
+  `commitmentTwo`. Sparse-tree properties exhaust every position through height
+  eight and cover boundary, representative, and fuzzed paths through height 55;
+  this bookkeeping decides *who wins* a match.
 - **Clock alternation vs the leaf race**: bisection keeps one clock running;
   `MatchClocks.startLeafRaceAt` intentionally starts **both** from one explicit
   instant. The double-run is by design, and timeout charging starts from the

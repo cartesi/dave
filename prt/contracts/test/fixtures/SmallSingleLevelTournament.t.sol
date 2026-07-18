@@ -168,6 +168,73 @@ contract SmallSingleLevelTournamentTest is Test {
         );
     }
 
+    function testMatchAdvancedEventMatchesStoredStateOnBothBranches() public {
+        _assertMatchAdvancedEvent(false);
+        _assertMatchAdvancedEvent(true);
+    }
+
+    function _assertMatchAdvancedEvent(bool descendRight) internal {
+        InspectableTournament tournament = InspectableTournament(
+            address(
+                FACTORY.instantiate(INITIAL_STATE, IDataProvider(address(0)))
+            )
+        );
+        (SmallFullTree.Data memory one, SmallFullTree.Data memory two) =
+            _eventTrees(descendRight);
+        uint256 bond = tournament.bondValue();
+        _join(tournament, one, CLAIMER_ONE, bond);
+        _join(tournament, two, CLAIMER_TWO, bond);
+
+        Match.Id memory id = Match.Id(one.root(), two.root());
+        (Tree.Node oneLeft, Tree.Node oneRight) = one.children(HEIGHT, 0);
+        (Tree.Node twoLeft, Tree.Node twoRight) = two.children(HEIGHT, 0);
+        uint256 childIndex = descendRight ? 1 : 0;
+        (Tree.Node newLeft, Tree.Node newRight) =
+            one.children(HEIGHT - 1, childIndex);
+        Tree.Node expectedOtherParent = descendRight ? twoRight : twoLeft;
+
+        vm.expectEmit(true, false, false, true, address(tournament));
+        emit ITournament.MatchAdvanced(
+            id.hashFromId(), expectedOtherParent, newLeft
+        );
+        tournament.advanceMatch(id, oneLeft, oneRight, newLeft, newRight);
+
+        Match.State memory state = tournament.getMatch(id.hashFromId());
+        assertTrue(state.isInit);
+        assertEq(state.currentHeight, HEIGHT - 1);
+        assertEq(
+            state.runningLeafPosition,
+            descendRight ? uint256(1) << (HEIGHT - 1) : 0
+        );
+        assertTrue(state.otherParent.eq(expectedOtherParent));
+        assertTrue(state.leftNode.eq(newLeft));
+        assertTrue(state.rightNode.eq(newRight));
+        assertEq(tournament.getMatchAdvancedCount(), 1);
+    }
+
+    function _eventTrees(bool rightHalfDiffers)
+        internal
+        pure
+        returns (SmallFullTree.Data memory one, SmallFullTree.Data memory two)
+    {
+        uint256 leafCount = uint256(1) << HEIGHT;
+        Tree.Node[] memory oneLeaves = new Tree.Node[](leafCount);
+        Tree.Node[] memory twoLeaves = new Tree.Node[](leafCount);
+        for (uint256 i; i < leafCount; ++i) {
+            Tree.Node leaf =
+                Tree.Node.wrap(keccak256(abi.encode(uint256(0x1111), i)));
+            oneLeaves[i] = leaf;
+            twoLeaves[i] = leaf;
+        }
+
+        uint256 divergentPosition =
+            rightHalfDiffers ? uint256(1) << (HEIGHT - 1) : 0;
+        twoLeaves[divergentPosition] = Tree.Node
+            .wrap(keccak256(abi.encode(uint256(0x2222), divergentPosition)));
+        one = SmallFullTree.buildFromLeaves(oneLeaves);
+        two = SmallFullTree.buildFromLeaves(twoLeaves);
+    }
+
     function _join(
         InspectableTournament tournament,
         SmallFullTree.Data memory tree,

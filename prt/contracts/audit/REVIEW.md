@@ -172,7 +172,7 @@ Resolution:
   [`GAS-CALIBRATION.md`](GAS-CALIBRATION.md)
 
 The hard-coded gas constants are used to size the bond's work reserve and cap
-each caller refund. Calibration is in progress. The remaining inherited
+each caller refund. Seven actions are calibrated; the remaining inherited
 `WIN_LEAF_MATCH` literal is not validated and is known to be non-conservative:
 
 - Five production storage counters were added after the constants. Tests no
@@ -216,19 +216,21 @@ each caller refund. Calibration is in progress. The remaining inherited
   arbitrarily large declared input segment on a successful fixpoint path,
   subject to transaction/block limits. A canonical encoding or on-chain bound
   is required before claiming a finite worst-case successful proof.
-- The common terminal maximum is 703,000 gas and leaf sealing is 109,000 gas.
+- The configured common terminal allocation is 701,000 gas and leaf sealing is
+  107,000 gas.
   Any `WIN_LEAF_MATCH` allocation above 594,000 makes leaf seal plus proof the
   new common maximum. Existing input-boundary transition measurements already
   cross that threshold before Tournament overhead and margin, so calibrating
   the current canonical path will raise every level's join deposit.
 - A test-owned target-two-level harness now measures the modifier's exact
   reimbursable quantity from `PartialBondRefund` with cold target accesses. The
-  first charged right advance measured 116,470 allocation units against the old
-  90,175 allocation. A position-one height-55 inner seal measured 334,941
-  against 262,531; it combines a full proof with the first nonzero position
-  write. The equivalent height-37 leaf seal measured 98,085 against 82,355.
+  first charged right advance measures 115,351 allocation units. A
+  position-one height-55 right inner seal measures 332,958; it combines a full
+  proof with a real child clone. The equivalent height-37 right leaf seal
+  measures 96,327. Retained left comparators measure 95,050 for advance,
+  312,744 for inner seal, and 76,113 for leaf seal.
   With `max(10,000, ceil(delta / 10))` headroom and 1,000-gas rounding, those
-  allocations are now 127,000, 366,000, and 109,000.
+  shared allocations are now 126,000, 364,000, and 107,000.
 - Timeout calibration retains both winner orientations in active bisection and
   in the sealed-leaf race. Every winner is positively charged, the old match has
   a nonzero position, and a third dangling commitment forces the expensive
@@ -239,17 +241,18 @@ each caller refund. Calibration is in progress. The remaining inherited
   position-one sealed leaf at the inclusive `remaining == overdue` boundary.
   They measured 123,940 and 124,269 allocation units. The 135,000 allocation
   preserves the reviewed margin. The leaf-seal-plus-timeout sequences are
-  369,000 and 244,000 gas; both remained below the then-existing 619,030 inner
-  terminal maximum, so that calibration slice did not change bond values.
+  367,000 and 242,000 gas; both remain below the common inner terminal maximum,
+  so neither action determines bond values.
 - Child-resolution calibration uses real factory-created children and preserves
   decoupled recovery. Resolved children selecting parent sides one and two
-  currently measure 307,576 and 307,751 allocation units at the final legal
-  carryover block; a single-claim side-two comparator measures 307,706. Expired
-  resolved and single-claim winners measure 158,769 and 158,754, while a child
-  with no winner measures 153,830. The 337,000 and 173,000 allocations preserve
-  the reviewed margins. Inner seal plus winner propagation is now 703,000 gas,
-  raising every work reserve by 83,970 gas and every join deposit by 0.0041985
-  ETH at the price cap. Only `WIN_LEAF_MATCH` retains an inherited literal.
+  currently measure 307,612 and 307,787 allocation units at the final legal
+  carryover block; a single-claim side-two comparator measures 307,742. Expired
+  resolved and single-claim winners measure 158,805 and 158,790, while a child
+  with no winner measures 153,866. The 337,000 and 173,000 allocations preserve
+  the reviewed margins. Inner seal plus winner propagation is now 701,000 gas,
+  81,970 above the pre-calibration maximum, so the terminal component of every
+  join deposit is 0.0040985 ETH higher at the price cap. Only `WIN_LEAF_MATCH`
+  retains an inherited literal.
 - The previous NatSpec promised gas reimbursement plus profit, which the
   formula does not guarantee. The comment is corrected in this documentation
   pass; the economic limitation remains.
@@ -261,11 +264,11 @@ Recommended response:
 2. PRT-013 completed the callback boundary. Define the supported maximum
    state-transition proof envelope before claiming finite complete-operation
    ceilings.
-3. In progress: add CI ceilings for every refundable branch under a recorded,
-   release-matched toolchain. The first seven allocations preserve the selected
-   10-percent/10,000-gas minimum margin. Their retained measurements reproduced
-   exactly under both local Forge 1.5.1-dev and the Foundry v1.4.3 release pin;
-   the new runbook rejects an unpinned authoritative report.
+3. Completed for seven actions: CI ceilings cover their refundable branches
+   under a recorded, release-matched toolchain. The allocations preserve the
+   selected 10-percent/10,000-gas minimum margin across 18 retained witnesses,
+   and the runbook rejects an unpinned authoritative report. `WIN_LEAF_MATCH`
+   remains blocked on the finite proof/input envelope above.
 4. Adopt the bounded gross-Ethereum-work promise in `REFUND-DESIGN.md`, or
    explicitly design broader calldata and receipt accounting.
 5. The population-wide reserve theorem proves that configured refund caps
@@ -967,23 +970,26 @@ byte-identical to the pre-refactor snapshot. PRT-009 completed the response
 budget design without changing that tuple; PRT-001 remains separate time-source
 work. See [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
 
-### `Match.State` changes meaning after sealing
+### `Match.State` phase and mutation API (resolved)
 
 Before sealing, `otherParent`, `leftNode`, and `rightNode` describe bisection
 nodes. After sealing, those slots hold the agree hash and the two contested final
-states. Derive an explicit phase and introduce phase-specific internal accessors
-so that readers cannot apply pre-seal meanings to post-seal data. Do not add a
-stored phase or reshape/reorder the tuple while external `getMatch` exposes
-`Match.State`; that compatibility fence is the same reason the clock refactor
-preserved its two-field representation.
+states. `Match` now derives an explicit internal phase and exposes phase-specific
+views without adding storage or reshaping the externally visible tuple. Creation,
+advance, and seal use state-machine verbs; branch choice, sealing-side parity,
+legacy sealed encoding, decoding, and fixed-side ordering each have one
+implementation. Raw state, events, error precedence, ABI, and storage layout are
+pinned by separate compatibility suites. The design and validation record lives
+in [`MATCH-DESIGN.md`](MATCH-DESIGN.md).
 
 ### `Tournament` mixes all lifecycle layers
 
 The single deployed implementation is reasonable, but the source combines
 joining, pairing, bisection, clock policy, child creation, settlement, refunds,
-and observability. After characterization tests exist, extract internal helpers
-or libraries around these lifecycle boundaries without changing the clone
-architecture.
+and observability. Characterization now covers lifecycle and rejection behavior,
+recursive propagation, Match encoding and events, and refundable gas witnesses.
+Any future extraction around these lifecycle boundaries should use those fences
+and remain a separately reviewed change to the existing clone architecture.
 
 ### Test instrumentation changes production economics
 
@@ -1617,3 +1623,50 @@ After extending recursive timing and composition coverage:
   focused lint, and `git diff --check` passed. This slice changes tests and
   documentation only; production Solidity, external interfaces, storage,
   bytecode, and node source are unchanged.
+
+After completing the Match refactor and gas recalibration:
+
+- `Match` now derives its phase and exposes phase-specific views. Creation,
+  bisection, and sealing use `create`, `advanceBisection`, and
+  `sealDivergence`; branch selection, total-height sealing parity, legacy
+  sealed encoding, decoding, and fixed-side final-state ordering each have one
+  implementation. `Tournament` uses those verbs without changing an external
+  function name.
+- Compatibility characterization pins exact active and sealed tuples, events,
+  errors, validation order, and rollback. The 379-line zero-heavy helper suite
+  and its legacy wrappers were removed. A concrete zero-pair Match ID remains
+  pinned at
+  `0xad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5`,
+  and a separate vector proves commitment-order sensitivity.
+- The retained gas suite now has 18 witnesses. Right and left advance measure
+  115,351 and 95,050 allocation units; right and left leaf seal measure 96,327
+  and 76,113; right and left real-child inner seal measure 332,958 and 312,744.
+  Their shared allocations are 126,000, 107,000, and 364,000 gas respectively,
+  using the recorded 10-percent/10,000-gas minimum margin and 1,000-gas
+  rounding rule.
+- The configured common terminal allocation is 701,000 gas. Under that
+  accounting, checked-in heights 48, 17, and 27 have work reserves 6,623,000,
+  2,717,000, and 3,977,000 gas and join deposits 0.33565875, 0.14035875, and
+  0.20335875 ETH. Target two-level heights 55 and 37 have work reserves
+  7,505,000 and 5,237,000 gas and deposits 0.37975875 and 0.26635875 ETH under
+  the same price policy.
+- Local Forge 1.5.1-dev and release Forge 1.4.3 reproduced all 18 gas witnesses
+  exactly and passed all 159 dispute-game tests. On both versions, the positive
+  stateful model completed 32,768 calls and the rejection model completed
+  16,384 calls with no handler reverts or discards. `rollups-contracts` passed
+  all three integration tests, including both 256-run fuzz properties and the
+  bounded-callback settlement trace.
+- The coverage recipe passed 135 included tests. `Match.sol` maps 107/107 lines,
+  102/102 statements, 10/20 branches, and 24/24 functions; aggregate production
+  totals are 697/719 lines, 711/735 statements, 64/130 branches, and 144/146
+  functions. IR-minimum source-map qualifications still apply.
+- The canonical ABI hash remains
+  `67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a`, and the
+  semantic storage-layout hash remains
+  `952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329`.
+  Executable bytecode changed intentionally: final metadata-free creation and
+  runtime hashes are
+  `94798529a349a513d59fbb4b3ff697dc41a1062fca3fcc8dc3f50574dc6d3dbe` and
+  `cdcb81a8c101935b5700b491cf4046d4a2ed0583d0c26f5f49f06eacfb0185b7`.
+  Deployment and CREATE2 artifacts must be regenerated and reviewed before
+  release. No node source changed.

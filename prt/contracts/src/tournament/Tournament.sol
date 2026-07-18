@@ -23,10 +23,11 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @title Tournament - Asynchronous PRT-style dispute resolution
 /// @notice Core, permissionless tournament that resolves disputes among
-/// N parties under chess-clock timing. Each match bisects one commitment tree;
-/// total adversarial delay also depends on repeated pairing and tournament
-/// levels. Pairing is asynchronous: claims are matched as they arrive (or when
-/// winners re-enter), without a prebuilt bracket.
+/// N parties under chess-clock timing. Each match compares two commitment trees
+/// by alternating which tree is bisected. Total adversarial delay also depends
+/// on repeated pairing and tournament levels. Pairing is asynchronous: claims
+/// are matched as they arrive (or when winners re-enter), without a prebuilt
+/// bracket.
 ///
 /// @dev
 /// HIGH-LEVEL ROLE SPLIT (BY LEVEL)
@@ -255,7 +256,7 @@ contract Tournament is ITournament {
         _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
 
-        _matchState.advanceMatch(
+        _matchState.advanceBisection(
             _leftNode, _rightNode, _newLeftNode, _newRightNode
         );
 
@@ -442,7 +443,7 @@ contract Tournament is ITournament {
             );
         }
 
-        _matchState.sealMatch(
+        _matchState.sealDivergence(
             args.commitmentArgs,
             _matchId,
             _leftLeaf,
@@ -577,7 +578,7 @@ contract Tournament is ITournament {
             );
         }
 
-        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState.sealMatch(
+        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState.sealDivergence(
             args.commitmentArgs,
             _matchId,
             _leftLeaf,
@@ -832,8 +833,7 @@ contract Tournament is ITournament {
     /// @notice Returns the time at which this tournament became "safe to decide".
     /// @dev
     /// - ROOT:
-    ///     * Used to measure bond recovery and elimination windows when acting
-    ///       as an inner tournament of a hypothetical higher level.
+    ///     * Observable, but not consumed by root settlement.
     /// - NON-ROOT:
     ///     * Used by `canBeEliminated` and `innerTournamentWinner`.
     function timeFinished() public view override returns (bool, Time.Instant) {
@@ -912,7 +912,7 @@ contract Tournament is ITournament {
 
         if (_hasDanglingCommitment) {
             TournamentArguments memory args = tournamentArguments();
-            (Match.IdHash _matchId, Match.State memory _matchState) = Match.createMatch(
+            (Match.IdHash _matchId, Match.State memory _matchState) = Match.create(
                 args.commitmentArgs,
                 _danglingCommitment,
                 _rootHash,

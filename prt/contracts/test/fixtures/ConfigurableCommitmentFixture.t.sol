@@ -70,14 +70,21 @@ contract ConfigurableCommitmentFixtureTest is
         assertFalse(sameNode(HEIGHT).eq(rightmostNode(HEIGHT)));
         assertFalse(sameNode(HEIGHT).eq(secondDifferentNode(HEIGHT)));
         assertFalse(sameNode(HEIGHT).eq(firstDifferentNode(HEIGHT)));
+        assertFalse(sameNode(HEIGHT).eq(thirdDifferentNode(HEIGHT)));
         assertFalse(rightmostNode(HEIGHT).eq(secondDifferentNode(HEIGHT)));
         assertFalse(rightmostNode(HEIGHT).eq(firstDifferentNode(HEIGHT)));
+        assertFalse(rightmostNode(HEIGHT).eq(thirdDifferentNode(HEIGHT)));
         assertFalse(secondDifferentNode(HEIGHT).eq(firstDifferentNode(HEIGHT)));
+        assertFalse(secondDifferentNode(HEIGHT).eq(thirdDifferentNode(HEIGHT)));
+        assertFalse(firstDifferentNode(HEIGHT).eq(thirdDifferentNode(HEIGHT)));
 
         _assertChildren(CommitmentShape.SAME, 1);
         _assertChildren(CommitmentShape.RIGHTMOST_DIFFERENT, 2);
         _assertChildren(CommitmentShape.SECOND_DIFFERENT, HEIGHT);
         _assertChildren(CommitmentShape.FIRST_DIFFERENT, HEIGHT);
+        _assertChildren(CommitmentShape.THIRD_DIFFERENT, 1);
+        _assertChildren(CommitmentShape.THIRD_DIFFERENT, 2);
+        _assertChildren(CommitmentShape.THIRD_DIFFERENT, HEIGHT);
     }
 
     function testFinalProofsAtHeight55() public view {
@@ -85,6 +92,7 @@ contract ConfigurableCommitmentFixtureTest is
         _assertFinalProof(CommitmentShape.RIGHTMOST_DIFFERENT);
         _assertFinalProof(CommitmentShape.SECOND_DIFFERENT);
         _assertFinalProof(CommitmentShape.FIRST_DIFFERENT);
+        _assertFinalProof(CommitmentShape.THIRD_DIFFERENT);
     }
 
     function testSecondLastAgreeProofsAtHeight55() public view {
@@ -92,6 +100,7 @@ contract ConfigurableCommitmentFixtureTest is
         _assertSecondLastProof(CommitmentShape.RIGHTMOST_DIFFERENT, HEIGHT);
         _assertSecondLastProof(CommitmentShape.SECOND_DIFFERENT, HEIGHT);
         _assertSecondLastProof(CommitmentShape.FIRST_DIFFERENT, HEIGHT);
+        _assertSecondLastProof(CommitmentShape.THIRD_DIFFERENT, HEIGHT);
     }
 
     function testFirstDifferentHeightOneProofUsesItsFirstLeaf() public view {

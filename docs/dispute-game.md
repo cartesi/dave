@@ -296,7 +296,10 @@ For a non-leaf tournament:
 
 After sealing, the current `Match.State` storage slots change meaning: fields
 that held bisection nodes hold the agree hash and contested final states. Code
-must check the match phase before interpreting those fields.
+must check the match phase before interpreting those fields. The implementation
+derives uninitialized, bisecting, ready-to-seal, and sealed phases from the
+existing fields and exposes phase-specific internal views; it does not add a
+stored phase or change the externally visible tuple.
 
 ### Resolution and winner re-entry
 

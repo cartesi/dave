@@ -17,7 +17,8 @@ abstract contract ConfigurableCommitmentFixture {
         SAME,
         RIGHTMOST_DIFFERENT,
         SECOND_DIFFERENT,
-        FIRST_DIFFERENT
+        FIRST_DIFFERENT,
+        THIRD_DIFFERENT
     }
 
     error InvalidFixtureHeight(uint64 height);
@@ -34,6 +35,7 @@ abstract contract ConfigurableCommitmentFixture {
     Tree.Node[] private _rightmostNodes;
     Tree.Node[] private _secondDifferentNodes;
     Tree.Node[] private _firstDifferentNodes;
+    Tree.Node[] private _thirdDifferentNodes;
 
     /// @dev Initializes every family through maxHeight, inclusively.
     /// Reinitialization is supported so a test can select its own geometry.
@@ -61,6 +63,7 @@ abstract contract ConfigurableCommitmentFixture {
         delete _rightmostNodes;
         delete _secondDifferentNodes;
         delete _firstDifferentNodes;
+        delete _thirdDifferentNodes;
 
         _fixtureMaxHeight = maxHeight;
         _sameState = sameState_;
@@ -71,6 +74,7 @@ abstract contract ConfigurableCommitmentFixture {
         _rightmostNodes.push(Tree.Node.wrap(rightmostHash));
         _secondDifferentNodes.push(Tree.Node.wrap(sameHash));
         _firstDifferentNodes.push(Tree.Node.wrap(firstHash));
+        _thirdDifferentNodes.push(Tree.Node.wrap(firstHash));
 
         for (uint64 height = 1; height <= maxHeight; ++height) {
             Tree.Node sameChild = _sameNodes[height - 1];
@@ -86,6 +90,17 @@ abstract contract ConfigurableCommitmentFixture {
             _firstDifferentNodes.push(
                 _firstDifferentNodes[height - 1].join(sameChild)
             );
+            if (height == 1) {
+                _thirdDifferentNodes.push(_firstDifferentNodes[height]);
+            } else if (height == 2) {
+                _thirdDifferentNodes.push(
+                    sameChild.join(_thirdDifferentNodes[height - 1])
+                );
+            } else {
+                _thirdDifferentNodes.push(
+                    _thirdDifferentNodes[height - 1].join(sameChild)
+                );
+            }
         }
     }
 
@@ -127,6 +142,18 @@ abstract contract ConfigurableCommitmentFixture {
         return _firstDifferentNodes[height];
     }
 
+    /// @dev Root whose third leaf differs at height two and above. At height
+    /// one the first leaf differs, which is the selected subtree at the end of
+    /// the same bisection path.
+    function thirdDifferentNode(uint64 height)
+        internal
+        view
+        returns (Tree.Node)
+    {
+        _requireAvailable(height);
+        return _thirdDifferentNodes[height];
+    }
+
     function node(CommitmentShape shape, uint64 height)
         internal
         view
@@ -139,7 +166,11 @@ abstract contract ConfigurableCommitmentFixture {
         if (shape == CommitmentShape.SECOND_DIFFERENT) {
             return secondDifferentNode(height);
         }
-        return firstDifferentNode(height);
+        if (shape == CommitmentShape.FIRST_DIFFERENT) {
+            return firstDifferentNode(height);
+        }
+        assert(shape == CommitmentShape.THIRD_DIFFERENT);
+        return thirdDifferentNode(height);
     }
 
     /// @dev Returns the children of the selected height-h subtree root.
@@ -165,9 +196,21 @@ abstract contract ConfigurableCommitmentFixture {
                 left = secondDifferentNode(childHeight);
                 right = sameNode(childHeight);
             }
-        } else {
+        } else if (shape == CommitmentShape.FIRST_DIFFERENT) {
             left = firstDifferentNode(childHeight);
             right = sameNode(childHeight);
+        } else {
+            assert(shape == CommitmentShape.THIRD_DIFFERENT);
+            if (height == 1) {
+                left = thirdDifferentNode(0);
+                right = sameNode(0);
+            } else if (height == 2) {
+                left = sameNode(childHeight);
+                right = thirdDifferentNode(childHeight);
+            } else {
+                left = thirdDifferentNode(childHeight);
+                right = sameNode(childHeight);
+            }
         }
     }
 
@@ -213,6 +256,13 @@ abstract contract ConfigurableCommitmentFixture {
         } else if (shape == CommitmentShape.SECOND_DIFFERENT && height > 1) {
             proof[height - 1] =
                 Tree.Node.unwrap(secondDifferentNode(height - 1));
+        } else if (shape == CommitmentShape.THIRD_DIFFERENT) {
+            if (height <= 2) {
+                proof[0] = Tree.Node.unwrap(thirdDifferentNode(0));
+            } else {
+                proof[height - 1] =
+                    Tree.Node.unwrap(thirdDifferentNode(height - 1));
+            }
         }
     }
 
@@ -238,6 +288,8 @@ abstract contract ConfigurableCommitmentFixture {
             }
         } else if (shape == CommitmentShape.FIRST_DIFFERENT && height > 1) {
             proof[height - 1] = Tree.Node.unwrap(firstDifferentNode(height - 1));
+        } else if (shape == CommitmentShape.THIRD_DIFFERENT && height > 2) {
+            proof[height - 1] = Tree.Node.unwrap(thirdDifferentNode(height - 1));
         }
     }
 
@@ -248,7 +300,10 @@ abstract contract ConfigurableCommitmentFixture {
         returns (Machine.Hash)
     {
         _requirePositiveAvailable(height);
-        if (shape == CommitmentShape.FIRST_DIFFERENT && height == 1) {
+        if (
+            (shape == CommitmentShape.FIRST_DIFFERENT && height == 1)
+                || (shape == CommitmentShape.THIRD_DIFFERENT && height <= 2)
+        ) {
             return _firstState;
         }
         return _sameState;
