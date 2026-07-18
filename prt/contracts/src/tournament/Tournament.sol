@@ -11,6 +11,7 @@ import {ITournament} from "prt-contracts/ITournament.sol";
 import {
     IMultiLevelTournamentFactory
 } from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import {Bond} from "prt-contracts/tournament/libs/Bond.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
@@ -81,8 +82,6 @@ contract Tournament is ITournament {
     uint256 matchDeletedCount;
     uint256 newInnerTournamentCount;
 
-    uint256 constant MAX_GAS_PRICE = 50 gwei;
-    uint256 constant PRIORITY_FEE_CAP = 10 gwei;
     bool transient locked;
 
     mapping(Tree.Node => Clock.State) clocks;
@@ -119,12 +118,13 @@ contract Tournament is ITournament {
         _releaseLock();
     }
 
-    /// @notice Pays the message sender a bounded partial execution-gas refund,
-    /// capped by the current contract balance, a fraction of the bond value,
-    /// the configured gas estimate, and the capped transaction gas price.
-    /// Chain-specific data fees and caller profit are not guaranteed.
+    /// @notice Pays the message sender a bounded gross-EVM work subsidy.
+    /// @dev The payment is capped by the current balance, this action's
+    /// configured refund cap, and measured work plus a fixed overhead at the
+    /// capped price. Dynamic calldata, receipt-exact cost, chain-specific fees,
+    /// and caller profit are not guaranteed.
     /// Also acquires the lock beforehand and releases it afterward.
-    /// @param gasEstimate A worst-case gas estimate for the modified function
+    /// @param gasEstimate The configured allocation for the modified function
     /// forge-lint: disable-next-line(unwrapped-modifier-logic)
     modifier refundable(uint256 gasEstimate) {
         uint256 gasBefore = _refundableBefore();
@@ -201,29 +201,12 @@ contract Tournament is ITournament {
         );
     }
 
-    /// @notice Total gas estimate used to size the tournament bond.
-    /// @dev Includes:
-    ///  - ADVANCE_MATCH across tree height (common to all levels),
-    ///  - Leaf operations (seal + win),
-    ///  - Inner operations (seal + win).
-    /// The extra term is chosen as max(leaf, inner) to keep a single,
-    /// safe bond size across root / inner / leaf tournaments.
-    function _totalGasEstimate() internal view returns (uint256) {
-        TournamentArguments memory args = tournamentArguments();
-        uint256 base = Gas.ADVANCE_MATCH * args.commitmentArgs.height;
-        uint256 leafPart = Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH;
-        uint256 innerPart = Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
-            + Gas.WIN_INNER_TOURNAMENT;
-        uint256 extra = leafPart > innerPart ? leafPart : innerPart;
-        return base + extra;
-    }
-
     //
     // Methods
     //
 
     function bondValue() public view override returns (uint256) {
-        return _totalGasEstimate() * MAX_GAS_PRICE;
+        return Bond.bondValue(tournamentArguments().commitmentArgs.height);
     }
 
     /// @notice Join a tournament (root or inner) with a commitment.
@@ -387,11 +370,13 @@ contract Tournament is ITournament {
     ///     * Winner is the root tournament winner.
     /// - NON-ROOT:
     ///     * Winner is the inner winner that will be used by the parent tournament.
-    /// - The winner receives at most one bond; earlier refunds may leave less.
+    /// - Configured refund shares reserve one complete winning bond; the
+    ///   defensive payment remains capped by the current balance.
     /// - A zero balance completes without calling the winner.
     /// - Any post-payment residual balance is burned.
     /// - A call after successful recovery returns true without another transfer.
     /// - A failed winner payment preserves the claimer and balance for retry.
+    /// - Recipient code runs within the configured payment callback gas limit.
     function tryRecoveringBond() public override withLock returns (bool) {
         require(isFinished(), TournamentNotFinished());
 
@@ -407,11 +392,8 @@ contract Tournament is ITournament {
         }
 
         uint256 winnerPayment = address(this).balance.min(bondValue());
-        if (winnerPayment > 0) {
-            (bool success,) = winnerClaimer.call{value: winnerPayment}("");
-            if (!success) {
-                return false;
-            }
+        if (!_tryPayment(winnerClaimer, winnerPayment)) {
+            return false;
         }
 
         uint256 residualBalance = address(this).balance;
@@ -682,8 +664,6 @@ contract Tournament is ITournament {
             _matchId, MatchDeletionReason.CHILD_TOURNAMENT, _winnerCommitment
         );
         delete matchIdFromInnerTournaments[_childTournament];
-
-        _childTournament.tryRecoveringBond();
     }
 
     /// @inheritdoc ITournament
@@ -1028,16 +1008,30 @@ contract Tournament is ITournament {
 
         uint256 refundValue = _min(
             address(this).balance,
-            bondValue() * gasEstimate / _totalGasEstimate(),
+            Bond.actionRefundCap(gasEstimate),
             (Gas.TX + gasBefore - gasAfter)
-                * tx.gasprice.min(block.basefee + PRIORITY_FEE_CAP)
+                * tx.gasprice.min(block.basefee + Bond.PRIORITY_FEE_CAP)
         );
 
-        (bool status, bytes memory ret) =
-            msg.sender.call{value: refundValue}("");
-        emit PartialBondRefund(msg.sender, refundValue, status, ret);
+        bool status = _tryPayment(msg.sender, refundValue);
+        emit PartialBondRefund(msg.sender, refundValue, status, bytes(""));
 
         _releaseLock();
+    }
+
+    /// @dev Skips zero value and never copies recipient return data.
+    function _tryPayment(address recipient, uint256 value)
+        private
+        returns (bool success)
+    {
+        if (value == 0) {
+            return true;
+        }
+
+        uint256 callGas = Bond.PAYMENT_CALL_GAS;
+        assembly ("memory-safe") {
+            success := call(callGas, recipient, value, 0, 0, 0, 0)
+        }
     }
 
     /// @inheritdoc ITournament

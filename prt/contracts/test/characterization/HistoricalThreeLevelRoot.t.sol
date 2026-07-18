@@ -53,14 +53,6 @@ contract HistoricalThreeLevelRootTest is Util {
         (FACTORY,) = Util.instantiateHistoricalThreeLevelTournamentFactory();
     }
 
-    function testEventCounters(
-        Machine.Hash initialState,
-        IDataProvider dataProvider
-    ) external {
-        topTournament = FACTORY.instantiate(initialState, dataProvider);
-        Util.assertEventCountersEqualZero(topTournament);
-    }
-
     function testRootWinner() public {
         topTournament = Util.initializePlayer0Tournament(FACTORY);
 

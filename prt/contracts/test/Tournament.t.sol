@@ -84,19 +84,12 @@ contract TournamentTest is Util {
         );
 
         uint256 player1BalanceBefore = player1.balance;
-        uint256 matchCreatedCountBefore = topTournament.getMatchCreatedCount();
         Util.joinTournament(topTournament, _opponent);
         uint256 player1BalanceAfter = player1.balance;
-        uint256 matchCreatedCountAfter = topTournament.getMatchCreatedCount();
         assertEq(
             player1BalanceBefore - bondAmount,
             player1BalanceAfter,
             "Player 1 should have paid bond"
-        );
-        assertEq(
-            matchCreatedCountAfter,
-            matchCreatedCountBefore + 1,
-            "MatchCreated count should increase by 1"
         );
     }
 
@@ -241,7 +234,6 @@ contract TournamentTest is Util {
         Tree.Node rightLeaf = playerNodes[playerToSeal][0];
         bytes32[] memory agreeHashProof =
             generateDivergenceProof(playerToSeal, height);
-        uint256 childCountBefore = tournament.getNewInnerTournamentCount();
         uint256 snapshot = vm.snapshotState();
         uint256 deadline = Time.Instant
             .unwrap(responderBefore.startInstant.add(responderBefore.allowance));
@@ -258,7 +250,6 @@ contract TournamentTest is Util {
         );
         assertTrue(responderAfter.startInstant.isZero());
         assertTrue(tournament.getMatch(matchIdHash).isSealed());
-        assertEq(tournament.getNewInnerTournamentCount(), childCountBefore + 1);
 
         vm.revertToState(snapshot);
         vm.roll(deadline);
@@ -269,7 +260,6 @@ contract TournamentTest is Util {
         _assertMatchUnchanged(tournament, matchIdHash, matchBefore);
         _assertClockUnchanged(tournament, matchId.commitmentOne, clockOneBefore);
         _assertClockUnchanged(tournament, matchId.commitmentTwo, clockTwoBefore);
-        assertEq(tournament.getNewInnerTournamentCount(), childCountBefore);
     }
 
     function testInnerSealRejectsNonexistentMatch() public {
@@ -420,11 +410,11 @@ contract TournamentTest is Util {
             tournamentBalanceBefore,
             "tournament balance should be less than before"
         );
-        // the caller should have received refund from the gas spent and profit
+        // The caller receives a positive bounded subsidy in this test setup.
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller balance should be greater than before"
+            "caller should have received a partial refund"
         );
 
         vm.roll(_tournamentFinishWithMatch);
@@ -470,12 +460,12 @@ contract TournamentTest is Util {
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller should have earned profit"
+            "caller should have received a partial refund"
         );
         assertLt(
             tournamentBalanceAfter,
             tournamentBalanceBefore,
-            "tounament should have paid gas"
+            "tournament should have funded the partial refund"
         );
         (Clock.State memory _player0ClockBeforeWin,) = topTournament.getCommitment(
             playerNodes[0][HistoricalGeometry.height(0)]
@@ -609,12 +599,12 @@ contract TournamentTest is Util {
         assertLt(
             tournamentBalanceAfter,
             tournamentBalanceBefore,
-            "tournament should have paid gas"
+            "tournament should have funded the partial refund"
         );
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller should have earned profit"
+            "caller should have received a partial refund"
         );
     }
 

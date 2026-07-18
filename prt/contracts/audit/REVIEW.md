@@ -2,7 +2,7 @@
 
 Status: active
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-07-18
 
 This ledger records the reviewed conclusions and follow-up work for the Solidity
 dispute game under `prt/contracts/`. It is deliberately separate from the
@@ -167,42 +167,59 @@ Resolution:
 - Severity: Medium
 - Status: Open
 - Area: economics, permissionless participation
-- Evidence: `Gas`, `Tournament._totalGasEstimate`, `Tournament.refundable`,
-  event counters in `Tournament`
+- Evidence: `Gas`, `Bond`, `Tournament.refundable`,
+  event counters in `Tournament`, [`REFUND-DESIGN.md`](REFUND-DESIGN.md)
 
-The hard-coded gas constants are used to size the bond and cap each caller
-refund. They are no longer conservative:
+The hard-coded gas constants are used to size the bond's work reserve and cap
+each caller refund. They are no longer conservative:
 
-- Five production storage counters were added after the constants and are only
-  consumed by tests. Their `SSTORE` cost is paid in production.
+- Five production storage counters were added after the constants. Tests no
+  longer consume them, but their getters are external API and their `SSTORE`
+  cost is still paid in production.
 - A sequential measurement put `CartesiStateTransition.transitionState()` alone
   at approximately 513k to 626k gas for the exercised proofs. The complete
   `WIN_LEAF_MATCH` allocation is 127,728 gas.
 - In the same mocked leaf-win gas harness, PRT-010's timeout classification
   increased `winLeafMatch` from 143,290 to 146,264 gas. Both measurements already
   exceed that allocation before a realistic state-transition proof.
-- OP Stack and Base charge L1 data or security fees separately from L2 execution
-  gas. The current formula cannot reimburse those fees.
-- The bond-share cap is dimensioned at `MAX_GAS_PRICE`, currently 50 gwei.
-  Sustained base fee above that value under-reimburses even if every execution
-  estimate is exact.
-- Terminal child recovery now adds a value-bearing residual-burn call inside
-  `winInnerTournament` when the child has funds left. Recalibration must include
-  that branch.
+- Dynamic calldata, storage-refund credits, and receipt-exact transaction gas
+  are not represented by the measured delta plus flat 25,000-gas overhead.
+  Experimental OP Stack and Base deployments also charge separate L1 data or
+  security fees that the formula does not reimburse.
+- The action cap is its configured allocation times 50 gwei, not a
+  universal 50-gwei price ceiling for actual work. When actual work exceeds the
+  allocation, saturation begins below 50 gwei; a 600k-gas leaf action against
+  the current 127,728-gas allocation saturates near 10.64 gwei.
+- Before PRT-011, `winInnerTournament` also performed terminal child recovery,
+  making its cost depend on the winning claimer's callback. Recovery is now
+  separate; recalibration must use the decoupled path.
+- PRT-012's explicit direct action cap removes the former clone-argument decode
+  and multiply/divide from the unmetered refund postlude. Configured payments
+  are unchanged at the checkpoint value, but transaction gas is lower and must
+  be remeasured.
+- PRT-013 bounds nonzero recipient execution at 50,000 gas, skips zero-value
+  calls, and removes recipient return-data copying. Callback work remains
+  outside the refund measurement; the supported proof envelope and fixed action
+  allocations remain open.
 - The previous NatSpec promised gas reimbursement plus profit, which the
   formula does not guarantee. The comment is corrected in this documentation
   pass; the economic limitation remains.
 
 Recommended response:
 
-1. Remove test-only counters from production and assert emitted events instead.
-2. Add CI gas ceilings for every refundable entry point, compiler setting, and
-   representative leaf-proof size.
-3. Generate reviewed constants with an explicit safety margin.
-4. Specify the complete fee model the refund promises to cover, including L1
-   data fees and the base-fee ceiling, or design chain-aware payment.
-5. Prove that aggregate refunds across repeated re-pairing cannot consume funds
-   belonging to other commitments.
+1. Preserve the production-counter semantics under the current external-API
+   constraint and include their worst-case writes in measurements.
+2. PRT-013 completed the callback boundary. Define the supported maximum
+   state-transition proof envelope before claiming finite complete-operation
+   ceilings.
+3. Add CI ceilings for every refundable branch under pinned compiler and EVM
+   settings, then generate allocations with an explicit safety margin.
+4. Adopt the bounded gross-Ethereum-work promise in `REFUND-DESIGN.md`, or
+   explicitly design broader calldata and receipt accounting.
+5. The global reserve theorem now proves that configured refund caps preserve one
+   winning deposit across repeated re-pairing. Pure models and real height-1
+   traces now make the theorem executable; a general multi-level handler remains
+   open.
 
 ### PRT-004: Timeout capability view does not match timeout resolution
 
@@ -275,7 +292,7 @@ existence from stored state or an explicit mapping membership flag.
 - Status: Resolved
 - Area: settlement liveness, recursive tournament propagation
 - Evidence: `Tournament.tryRecoveringBond`,
-  `Tournament.winInnerTournament`, `DaveConsensus.settle`
+  `Tournament.winInnerTournament`, `DaveConsensus.stageTournamentResult`
 
 After a successful `tryRecoveringBond()`, the tournament deletes the winning
 commitment's claimer. A second call reaches `assert(winner != address(0))` and
@@ -283,9 +300,11 @@ panics instead of reporting that recovery has already completed. Because the
 entry point is permissionless, anyone can force this state before a required
 caller reaches it.
 
-At the root, an attacker can recover the tournament first. Every later
-`DaveConsensus.settle()` calls `oldTournament.tryRecoveringBond()` and reverts,
-rolling back epoch settlement. In a child, an attacker can recover first and
+At the root on the campaign's pre-sling base, an attacker could recover the
+tournament first. Every later `DaveConsensus.settle()` called
+`oldTournament.tryRecoveringBond()` and reverted, rolling back epoch settlement.
+The current staging flow instead invokes the same recovery idempotently. In a
+child, an attacker could recover first and
 make the parent's `winInnerTournament()` revert at its final child-recovery
 call. This can block propagation of the only correct child winner. Once the
 child's winner carryover window expires, `eliminateInnerTournament()` deletes
@@ -303,8 +322,10 @@ Resolution:
    later retry remains possible.
 3. `testTryRecoveringRootBondIsIdempotent` covers direct root recovery.
 4. `testInnerWinner` pre-recovers the child before parent propagation.
-5. The fuzzed `DaveAppFactoryTest.testSettle` covers ordinary and pre-recovered
-   root settlement.
+5. The fuzzed `DaveAppFactoryTest.testStageAndAcceptTournamentResult` covers
+   ordinary and pre-recovered root recovery during result staging.
+6. PRT-011 subsequently made child recovery independent of parent propagation,
+   removing the child path's recovery dependency entirely.
 
 ### PRT-008: Residual winner sweep lets losing Sybil bonds be recycled
 
@@ -329,8 +350,8 @@ the contract has no honest-address oracle.
 Resolution:
 
 1. Pay the registered first claimer of the eventual winning commitment at most
-   `min(current balance, bondValue())`. No terminal bond is reserved, so
-   legitimate progress refunds may leave a smaller payment.
+   `min(current balance, bondValue())`. The configured work-reserve invariant
+   reserves one complete winning deposit before recovery.
 2. If a nonzero winner payment fails, return `false` without deleting the
    claimer or burning any of the full retryable balance.
 3. After a successful payment, burn the actual post-callback balance and delete
@@ -343,14 +364,18 @@ Resolution:
    balance preservation, retry, residual burn, and idempotence.
 7. `testTryRecoveringEmptyRootBondSkipsRecipientCall` covers zero-balance
    completion with a rejecting recipient.
-8. `testInnerWinner` covers capped payout and burn when parent propagation
-   settles a child tournament.
-9. The fuzzed `DaveAppFactoryTest.testSettle` covers payout and burn whether
-   recovery happens before settlement or inside `DaveConsensus.settle`.
+8. `testInnerWinner` covers both child orderings: recovery before propagation,
+   and propagation followed by explicit recovery and residual burn.
+9. The fuzzed `DaveAppFactoryTest.testStageAndAcceptTournamentResult` covers
+   payout and burn whether recovery happens before staging or inside
+   `DaveConsensus.stageTournamentResult`.
 
-This makes the unrefunded terminal portion of losing deposits irreversible. It
-does not eliminate small repeated vandalism: an attacker may still buy bounded
-delay in each independent epoch for a linear burned cost.
+This makes the configured per-loser principal irreversible. The guaranteed
+burn is the explicit `Bond.SYBIL_PRINCIPAL`, not the full join deposit. Its
+current 0.00450875 ETH checkpoint was never selected from an economic security
+target. Small repeated vandalism remains possible: an
+attacker may still buy bounded delay in each independent epoch for a linear
+burned cost.
 
 ### PRT-009: Pairing grants bankable response time to fresh commitments
 
@@ -454,6 +479,135 @@ Resolution:
    identical snapshots in both commitment orderings, rejects the opposite proven
    side without changing the match or clocks, and deterministic coverage pins
    the inclusive equality boundary.
+
+### PRT-011: Parent propagation performs unrelated child bond recovery
+
+- Severity: Low
+- Status: Resolved
+- Area: settlement liveness, gas accounting, separation of concerns
+- Evidence: `Tournament.winInnerTournament`,
+  `Tournament.tryRecoveringBond`, `Tournament.refundable`
+
+Before this fix, `winInnerTournament` propagated the child winner, deleted the
+parent match, and then called `child.tryRecoveringBond()`. Child recovery pays
+the first claimer of the winning commitment with a value call that forwards all
+available gas, subject to EIP-150. That recipient is not trusted. Although a
+rejected payment returned `false` and the parent ignored the result, a receiver
+could consume nearly all forwarded gas before failing. Parent progress
+therefore had a recipient-controlled gas tail, and its fixed gas estimate could
+not bound the complete operation. It also coupled adjudication to terminal
+economic cleanup that does not affect the child result.
+
+Resolution:
+
+1. `winInnerTournament` consumes only the linked child's result and parent clock
+   carryover. It does not invoke the child claimer or change the child balance.
+2. `tryRecoveringBond` remains public, permissionless, retryable, and
+   idempotent. Anyone may recover a winning child before or after propagation.
+3. `testInnerWinner` pins both valid orderings and verifies that propagation
+   alone leaves the child's claimer payout, residual burn, and balance
+   untouched.
+4. The external ABI, storage layout, events, and tournament winner semantics are
+   unchanged. `Gas.WIN_INNER_TOURNAMENT` remains unchanged pending recalibration
+   of all refundable paths together under PRT-003.
+
+### PRT-012: Sybil principal lacks economic calibration
+
+- Severity: Medium
+- Status: Needs decision
+- Area: Sybil economics, bond dimensioning
+- Evidence: `Bond`, `Tournament._refundableAfter`,
+  [`REFUND-DESIGN.md`](REFUND-DESIGN.md)
+
+Write `A = Gas.ADVANCE_MATCH`, `E` for the largest configured terminal path,
+`P = Bond.WORK_PRICE_CAP`, `S = Bond.SYBIL_PRINCIPAL`, and
+`W(h) = (h - 1)*A + E`. A height-`h` match consumes at most `W(h)*P` in
+configured refunds. With `J` unique paid joins, pairing and resolution create at
+most `J - 1` matches even when winners repeatedly re-enter. Since
+`bondValue(h) = S + W(h)*P`, configured refunds leave at least:
+
+```text
+bondValue(h) + (J - 1) * S
+```
+
+before terminal recovery. This proves that one complete winning deposit is
+reserved and that successful recovery burns at least `S` per eliminated
+commitment.
+
+The inherited value `A*P`, currently 0.00450875 ETH, was the guaranteed
+irreversible Sybil principal. A participant may execute progress itself and
+receive the same bounded work subsidy, so the much larger join deposit is not
+all at risk. The implementation now names that inherited value as
+`Bond.SYBIL_PRINCIPAL`, so changing a gas estimate no longer changes the Sybil
+price implicitly. Leaf and cheaper terminal paths retain additional slack, so
+the effective burn is also path- and level-dependent. No current dimensioning
+document selects the literal as the intended cost of one adversarial identity.
+
+Recommended response:
+
+1. Implemented: use one common Wei-denominated principal and size the join
+   deposit as `sybilPrincipal + configuredMatchWorkReserve`.
+2. Implemented checkpoint: pin 0.00450875 ETH to preserve inherited behavior
+   without treating it as policy approval.
+3. Select the final principal against the intended delay-cost analysis before
+   deployment. Gas recalibration must not silently choose it.
+4. The pure path and topology models fuzz the global `J`, match-count, and
+   configured-liability bounds independently of canonical geometry. Real
+   height-1 traces cover nonzero refunds, repeated winners, double elimination,
+   pooled-balance conservation, exact winning payment, and residual burn.
+
+### PRT-013: Payment callbacks have an unbounded gas and return-data tail
+
+- Severity: Medium
+- Status: Resolved
+- Area: settlement liveness, gas accounting, external-call safety
+- Evidence: `Tournament._refundableAfter`, `Tournament.tryRecoveringBond`,
+  `DaveConsensus.stageTournamentResult`
+
+Both ETH payment paths previously used Solidity calls without an explicit gas
+limit. Under the pinned Solidity 0.8.30 optimized IR, even the ignored return
+slot in `tryRecoveringBond` materialized and copied the complete return buffer;
+`_refundableAfter` additionally emitted it. A refund caller primarily controlled
+its own callback, but gas exhaustion or return-data expansion could revert the
+already-completed action and prevented a deterministic complete-operation
+ceiling.
+
+The terminal boundary was adversarial: the first claimer of the winning root
+may be an attacker. The campaign's pre-sling `DaveConsensus.settle` invoked root
+recovery synchronously, and the current `stageTournamentResult` flow retains a
+synchronous best-effort attempt. Without a bound, a gas-burning or
+return-data-bomb recipient could therefore put an unbounded external tail on
+protocol progress even though recipient behavior does not affect the
+arbitration result.
+
+Resolution:
+
+1. Both nonzero payments use one assembly helper with a 47,700-gas `CALL`
+   operand. The EVM's 2,300-gas value stipend gives recipient code an effective
+   ceiling of 50,000 gas; EIP-150 may reduce it for an under-gassed caller.
+2. The call supplies no output buffer, so recipient return data is never copied.
+   The `PartialBondRefund` signature is preserved, but its `ret` field is now
+   always empty.
+3. Zero-value payments skip recipient execution. A zero refund still emits the
+   existing event and reports success.
+4. Refund failure remains non-reverting after progress and leaves the attempted
+   value in the tournament pool. Terminal failure remains retryable and returns
+   before payment, residual burn, or claimer deletion.
+5. Tournament-result staging stores the result before its synchronous recovery
+   attempt. It ignores both `false` from a bounded recipient failure and a
+   recovery revert, leaving the old tournament retryable without undoing
+   staging or blocking later acceptance.
+6. Focused tests pin the effective gas ceiling, gas exhaustion, zero-value
+   skipping, empty return data, action persistence, terminal retry,
+   idempotence, and rejection of same-tournament recovery reentry. A downstream
+   integration test proves staging and acceptance advance under a gas-exhausting
+   winning claimer and that later recovery succeeds.
+
+Recipient contracts are now subject to an explicit compatibility rule: their
+ETH receive path, including EIP-7702 delegated code, must complete within the
+50,000-gas ceiling. Fixed `CALL` overhead is outside that ceiling. The change
+preserves selectors, event signatures, storage, and clone arguments, but changes
+event payload behavior and `Tournament` creation bytecode.
 
 ## Configuration decision
 
@@ -562,6 +716,13 @@ The following items were corrected or explicitly documented in this pass:
   time`. Pairing response latency is a separate budget.
 - Same-root first-claimer ownership is intended; terminal recovery now caps its
   payout at one bond and burns the post-payment residual.
+- Configured action caps reserve one complete winning deposit across repeated
+  re-pairing. The guaranteed per-loser burn is the explicit 0.00450875 ETH
+  checkpoint principal, whose final calibrated value remains an open decision.
+- Refund and terminal-payment recipients have a 50,000-gas execution ceiling;
+  return data is discarded, zero-value callbacks are skipped, and
+  tournament-result staging and acceptance advance after a bounded
+  terminal-payment failure.
 
 ### Documentation model
 
@@ -571,8 +732,9 @@ The current layered approach is appropriate if each layer keeps one role:
   assumptions without silently presenting proposed fixes as live behavior.
 - `audit/REVIEW.md` retains findings, decisions, evidence, and regression
   targets after fixes land.
-- Focused design records such as `CLOCK-DESIGN.md` capture the decision before a
-  security-sensitive refactor, then record what landed and what remains deferred.
+- Focused design records such as `CLOCK-DESIGN.md` and `REFUND-DESIGN.md`
+  capture the decision before a security-sensitive refactor, then record what
+  landed and what remains deferred.
 - `AGENTS.md` is orientation and routing, not a second protocol specification.
 - `MAP.md` is a broad source inventory and lead generator, not an authority.
 
@@ -621,6 +783,25 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   especially Arbitrum.
 - `TEST-GAS-001`: fail when any refundable path exceeds its allocation.
 - `TEST-GAS-002`: measure realistic leaf proofs and calldata sizes.
+- `TEST-FUND-001` (landed): fuzz positive heights and every current terminal
+  branch; require each match's configured refunds to stay within its work
+  reserve and pin the current maximum branch.
+- `TEST-FUND-002` (landed model): fuzz joins, pairing, repeated winners, and
+  double elimination in a geometry-independent population model; require
+  `matches <= joins - 1` and pessimistically reserve full work for every live
+  or resolved match.
+- `TEST-FUND-003` (landed): execute height-1 tournaments with nonzero refunds,
+  repeated winner re-entry, and double elimination; assert pooled-balance
+  conservation, one full winning deposit, and the minimum configured residual
+  burn.
+- `TEST-CALLBACK-001` (landed): bound action-refund recipient gas, discard large
+  success and revert data, skip zero-value callbacks, and require gas exhaustion
+  to preserve completed progress while reporting the attempted refund as failed.
+  A second mutation in the same transaction pins lock release.
+- `TEST-CALLBACK-002` (landed): bound terminal recipient gas, preserve the bond
+  and claimer after failure, reject same-tournament recovery reentry, retry
+  successfully, and advance tournament-result staging and acceptance despite a
+  gas-exhausting winning claimer.
 
 ### Priority 1
 
@@ -632,12 +813,11 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   winner attribution and agree-proof selection.
 - Multi-level parameter fuzzing for one, two, three, and more levels, including
   malformed heights, strides, allowances, and unsafe shifts.
-- Economic invariants proving pooled-balance conservation across refunds,
-  terminal payment, residual burn, and repeated recovery.
+- Refund-formula fuzzing around balance, allocation, actual-work, base-fee, and
+  priority-fee caps, including failed receivers and storage-refund differences.
 - Model-based one- and two-level delay tests covering balanced reservoirs,
   skewed/list pairing, late joins, and non-bankable response discounts.
-- Reverting and reentrant refund/bond receivers, including cross-instance
-  callbacks.
+- Cross-instance callback and reentrancy scenarios.
 
 ### Priority 2
 
@@ -648,11 +828,12 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - No-winner child balance behavior.
 - Exact views for nonexistent match cycles and non-root result retrieval.
 
-The current deterministic suite covers the principal lifecycle paths well, but
-the dispute game has almost no stateful invariant testing. Existing parity tests
-focus on small heights and edge divergences. The coverage command also needs
-repair: the non-IR path hits stack depth, while the IR/Solar path does not resolve
-the external machine-step imports.
+The current deterministic suite covers the principal lifecycle paths well. The
+new real height-1 accounting traces exercise focused stateful sequences, but the
+dispute game still lacks a general stateful handler. Existing parity tests focus
+on small heights and edge divergences. The coverage command also needs repair:
+the non-IR path hits stack depth, while the IR/Solar path does not resolve the
+external machine-step imports.
 
 ## Readability and abstraction backlog
 
@@ -685,9 +866,11 @@ architecture.
 
 ### Test instrumentation changes production economics
 
-Production storage counters exist to make tests easier. Replace them with event
-recording and assertions so that tests do not alter the gas behavior being
-tested.
+Production storage counters still add writes to the paths whose gas they are
+used to estimate. Test helpers no longer read or assert those counters; new
+tests use events and protocol state. The slots and external getters remain
+pending an explicit compatibility decision, so the production writes have not
+yet been removed.
 
 ### Comments restate role matrices
 
@@ -847,3 +1030,71 @@ After separating tests from canonical geometry:
   `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
 - `forge fmt --check` and `git diff --check` passed. No production Solidity or
   node source changed in the test-isolation commits.
+
+After deriving the refund reserve:
+
+- `prt/contracts`: `just test-disputes` passed 76 tests. Three new accounting
+  properties fuzz the production bond formula, every current configured match
+  path, and the pairing population model for 256 runs each.
+- The model covers every positive `uint64` height and up to 64 modeled join or
+  resolution operations per run, including single-winner re-pairing and double
+  elimination. It pessimistically books one complete work reserve when each
+  match is created, including active matches whose advances or seal may already
+  have been refunded.
+- `cartesi-rollups/contracts`: both integration fuzz properties passed 256 runs.
+- `forge fmt --check` and `git diff --check` passed. The accounting tests import
+  production gas allocations but no canonical geometry, production contract,
+  or node source changed.
+
+After exercising the pooled refund reserve:
+
+- `prt/contracts`: `just test-disputes` passed 78 tests. The two real height-1
+  traces execute nonzero seal, leaf-win, and timeout-elimination refunds.
+- The repeated-winner trace fuzzes one through eight losing commitments for 256
+  runs, exercises the winner in both match orientations, and conserves the
+  pooled balance through every re-pairing.
+- The double-elimination trace resolves at the exact common clock deadline and
+  preserves the independent dangling winner.
+- Both traces pay exactly one bond to the winning claimer, burn the terminal
+  residual, and conserve all joined value across refunds, payout, and burn.
+
+After making bond policy explicit:
+
+- `prt/contracts`: `just test-disputes` passed 79 tests. The policy checkpoint
+  pins one common 0.00450875 ETH principal, direct action caps, and algebraic
+  equivalence with the former formula using unconstrained `uint64` fuzz inputs.
+- Invalid height zero remains behavior-compatible pending separate parameter
+  validation; height one exposes exactly the literal principal above the common
+  terminal work reserve.
+- The real repeated-winner and double-elimination accounting traces pass with
+  the explicit principal and direct refund cap.
+- `cartesi-rollups/contracts`: both integration fuzz properties passed 256 runs.
+- The `Tournament` ABI SHA-256 remains
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+  Persistent slots 0 through 12, the transient lock, clone arguments, events,
+  errors, and factory interfaces are unchanged.
+- `Tournament` creation bytecode changes, so its zero-salt CREATE2 deployment
+  address and the dependent factory address must be regenerated.
+- `forge fmt --check` passed in both contract packages, and `git diff --check`
+  passed. No node source changed.
+
+After bounding payment callbacks:
+
+- `prt/contracts`: `just test-disputes` passed 87 tests. Eight focused callback
+  regressions cover the literal 50,000-gas recipient ceiling, successful and
+  failed large return data, gas exhaustion, zero-value skipping, empty event
+  return data, same-transaction lock release, terminal retry and idempotence,
+  and rejected recovery reentry.
+- `cartesi-rollups/contracts`: all three tests passed, including both fuzz
+  properties with 256 runs and a deterministic staging-and-acceptance trace.
+  The trace keeps complete proof validation, stages under a gas-exhausting
+  winning claimer within a 500,000-gas ceiling, accepts the result, records both
+  final roots, and then recovers the old tournament separately.
+- The `Tournament` ABI SHA-256 remains
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+  Persistent slots 0 through 12, the transient lock, clone arguments, event
+  signatures, errors, and factory interfaces are unchanged.
+- `Tournament` creation bytecode changes, so its zero-salt CREATE2 deployment
+  address and the dependent factory address must be regenerated.
+- `forge fmt --check` passed in both contract packages, and `git diff --check`
+  passed. No node source changed.

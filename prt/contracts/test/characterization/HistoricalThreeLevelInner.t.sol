@@ -74,8 +74,6 @@ contract HistoricalThreeLevelInnerTest is Util {
         middleTournament =
             ITournament(address(uint160(uint256(_entries[0].topics[2]))));
 
-        Util.assertEventCountersEqualZero(middleTournament);
-
         // Only player 0 joins middle; let it finish by timeout (no matches occur)
         Util.joinTournament(middleTournament, 0);
 
@@ -325,6 +323,23 @@ contract HistoricalThreeLevelInnerTest is Util {
         );
 
         assertEq(
+            player1.balance,
+            player1BalanceBeforeRecovery,
+            "Propagation should not settle the child bond"
+        );
+        assertEq(
+            address(0).balance,
+            burnedBalanceBefore,
+            "Propagation should not burn the child balance"
+        );
+        assertEq(
+            address(middleTournament).balance,
+            tournamentBalanceBeforeRecovery,
+            "Propagation should leave the child balance recoverable"
+        );
+
+        assertTrue(middleTournament.tryRecoveringBond());
+        assertEq(
             player0.balance,
             player0BalanceBefore - bondAmount,
             "Player 0 should have cost one bond"
@@ -570,12 +585,12 @@ contract HistoricalThreeLevelInnerTest is Util {
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller should have earned profit"
+            "caller should have received a partial refund"
         );
         assertLt(
             tournamentBalanceAfter,
             tournamentBalanceBefore,
-            "tounament should have paid gas"
+            "tournament should have funded the partial refund"
         );
 
         (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =
@@ -698,12 +713,12 @@ contract HistoricalThreeLevelInnerTest is Util {
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller should have earned profit"
+            "caller should have received a partial refund"
         );
         assertLt(
             tournamentBalanceAfter,
             tournamentBalanceBefore,
-            "tounament should have paid gas"
+            "tournament should have funded the partial refund"
         );
 
         (bool _finishedTop, Tree.Node _commitment, Machine.Hash _finalState) =

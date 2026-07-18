@@ -165,13 +165,13 @@ interface ITournament {
 
     /// @notice Partial bond refund.
     /// @param recipient The recipient
-    /// @param value The amount that was refunded
-    /// @param success Whether the refund was successful
-    /// @param ret The return data of the refund call
-    /// @dev In the case of a failed refund (success = false),
-    /// the argument `ret` may encode an smart contract error.
-    /// A refund should only fail if the recipient account
-    /// has any code (which can be an EOA, see EIP-7702).
+    /// @param value The computed refund, whether or not payment succeeded
+    /// @param success Whether payment succeeded or no payment was needed
+    /// @param ret Retained for event ABI compatibility; always empty
+    /// @dev Recipient execution is gas-bounded and return data is not copied.
+    /// Failure may result from recipient code, call depth, or insufficient
+    /// forwarded gas; EOAs may also execute delegated code under EIP-7702. A
+    /// zero-value refund skips the callback and reports success.
     event PartialBondRefund(
         address indexed recipient,
         uint256 value,
@@ -403,11 +403,12 @@ interface ITournament {
     function bondValue() external view returns (uint256);
 
     /// @notice Settle the tournament balance after a winner is established.
-    /// @dev Pays the winning commitment's submitter at most one bond, without
-    /// reserving that amount against earlier refunds. A zero balance completes
-    /// without calling the recipient. After a successful payment, any residual
-    /// balance is burned and later calls succeed as no-ops. A failed recipient
-    /// call preserves the claimer and full balance so recovery can be retried.
+    /// @dev Pays the winning commitment's submitter at most one bond. The
+    /// configured refund accounting reserves one complete bond before
+    /// terminal recovery. A zero balance defensively completes without calling
+    /// the recipient. After a successful payment, any residual balance is
+    /// burned and later calls succeed as no-ops. A failed recipient call
+    /// preserves the claimer and full balance so recovery can be retried.
     /// @return Whether settlement completed or had already completed
     function tryRecoveringBond() external returns (bool);
 
@@ -559,7 +560,8 @@ interface ITournament {
         bytes32[] calldata agreeHashProof
     ) external;
 
-    /// @notice Win an inner tournament.
+    /// @notice Propagate an inner tournament winner into its parent match.
+    /// @dev Child balance recovery is a separate permissionless operation.
     /// @param childTournament The inner/child tournament
     /// @param leftNode        Left child of the winning commitment.
     /// @param rightNode       Right child of the winning commitment.

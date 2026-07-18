@@ -426,31 +426,47 @@ Each progress function uses a fixed gas allocation. The `refundable` modifier
 pays the caller the minimum of:
 
 - The tournament's current balance.
-- The function's configured fraction of one bond.
+- The function's allocation times the configured work-price cap.
 - Measured execution gas priced by a capped gas price, with a fixed transaction
   overhead.
 
 This is a bounded partial refund, not a guarantee of full transaction cost or
-profit. In particular, the formula does not account for every chain-specific L1
-data or security fee. The bond-share cap also assumes at most the configured
-`MAX_GAS_PRICE`, currently 50 gwei, so sustained base fees above that value are
-under-reimbursed even if the execution-gas estimate is exact. The fixed
-estimates must be kept conservative and tested against representative proof
-sizes. PRT-003 records known estimate failures.
+profit. The measured delta is gross EVM work plus a fixed overhead, not exact
+receipt gas; dynamic calldata, storage-refund credits, and chain-specific data
+or security fees are outside the promise. Priority fee above 10 gwei is also
+excluded. The action cap is the action allocation times 50 gwei. When real
+work exceeds that allocation, its effective reimbursed price ceiling is below
+50 gwei. The fixed allocations must be recalibrated and tested against every
+supported proof shape. PRT-003 records known estimate failures, and
+[`REFUND-DESIGN.md`](../prt/contracts/audit/REFUND-DESIGN.md) derives the full
+accounting boundary.
+
+The refund callback occurs after the gas measurement. Recipient code receives
+at most 50,000 gas, and its return data is not copied. The ABI-compatible
+`PartialBondRefund.ret` field is therefore always empty. A zero refund skips
+recipient execution and reports success. A failed nonzero callback does not
+revert the completed action; the attempted value stays in the pooled balance
+and is not reserved for a later retry by that caller.
 
 When a tournament finishes with a winner, `tryRecoveringBond` pays the address
 that first joined the winning commitment
-`min(current balance, bondValue())`. It does not reserve one bond: legitimate
-progress refunds may leave less than that amount. Only after a nonzero winner
-payment succeeds does the contract send the entire post-payment balance to the
-zero address. If the balance is zero, it skips the recipient call and completes
-recovery directly.
+`min(current balance, bondValue())`. The configured refund shares reserve one
+complete winning deposit. A height-`h` match has at most `h - 1` advances, and
+`J` unique paid joins create at most `J - 1` matches. Before terminal recovery,
+the balance is therefore at least one winning deposit plus one explicit Sybil
+principal per eliminated commitment. Only after a nonzero winner payment
+succeeds does the contract send the entire post-payment balance to the zero
+address. If the balance is zero, it skips the recipient call and completes
+recovery defensively.
 
 A commitment root can be joined only once, so copying the correct root first
 intentionally claims that capped recipient slot; all progress and defense
 operations remain permissionless. Eliminated claimers lose their terminal
-payment claim. Garbage collection advances matches and parent tournaments, but
-does not imply that every child balance is settled. A no-winner child has
+payment claim. `Bond` keeps the economic principal separate from gas
+allocations and tournament height; its current 0.00450875 ETH literal preserves
+the inherited value but is not security-calibrated. Garbage collection advances
+matches and parent tournaments, but does not imply that every child balance is
+settled. A no-winner child has
 neither a winning-claimer payment nor this residual-burn path, so its balance
 remains locked absent another mechanism.
 
@@ -459,8 +475,20 @@ as no-ops. This also means ETH forcibly sent after recovery remains stranded;
 the burn rule covers the balance present during successful recovery. If a
 nonzero recipient payment is rejected, recovery returns `false`, burns nothing,
 and preserves both the claimer and the full balance for retry. This idempotence
-and retry behavior are required because recovery is permissionless and both
-root settlement and parent propagation call it as part of their own lifecycle.
+and retry behavior are required because recovery is permissionless and
+tournament-result staging invokes it as best-effort cleanup. Parent propagation
+deliberately does not settle the child balance: recovery is separate cleanup,
+so a winning claimer's callback cannot consume gas needed to propagate the
+child result.
+
+Terminal recipient code has the same 50,000-gas execution ceiling and no
+return-data copy. `DaveConsensus.stageTournamentResult` stores the result before
+attempting recovery. It ignores both a `false` result and a recovery revert, so
+recipient failure cannot undo staging or later acceptance; the old tournament
+remains permissionlessly recoverable. An EOA, delegated EOA, or smart-wallet
+receive path that cannot complete within the ceiling cannot receive through
+this interface. Fixed call overhead is outside the recipient ceiling, and
+EIP-150 may reduce forwarded gas in an under-gassed outer call.
 
 Bonds are intended to provide Sybil resistance, not an endogenous validator
 incentive. The model assumes validators defend applications they value. A full
@@ -470,7 +498,9 @@ perform permissionless defense, and recover the losers' residual pool through
 the winning claimer slot. The capped payment and residual burn prevent that
 recycling after legitimate partial refunds. The contract cannot identify an
 honest address; it can identify only the winning commitment and its first
-claimer.
+claimer. The guaranteed burn per eliminated commitment is the explicit
+`SYBIL_PRINCIPAL`, rather than the full join deposit. Its final value remains an
+economic policy decision.
 
 Under this rule, small repeated vandalism remains possible by design. For
 example, two incorrect claims can make one opponent active while the other
@@ -483,10 +513,16 @@ games whose brackets and clocks reset.
 Required economic invariants:
 
 - A caller cannot withdraw more than the configured refund cap for one action.
+- `J` unique paid joins create at most `J - 1` matches, and each match consumes
+  at most its configured work reserve.
+- Before successful winner recovery, configured refund caps preserve one full
+  winning deposit plus one explicit Sybil principal per eliminated commitment.
 - Aggregate refunds, terminal payout, and residual burn conserve the actual
   tournament balance and cannot pay or burn the same value twice.
 - Failed refund transfers do not corrupt tournament state. A failed terminal
   payout does not delete the claimer or burn any of the retryable balance.
+- Recipient execution is bounded and return data cannot create an unbounded
+  settlement or action-refund tail.
 - Reentrant receivers cannot enter another state-changing operation on the same
   tournament.
 - The documented incentive model includes every fee it claims to cover.

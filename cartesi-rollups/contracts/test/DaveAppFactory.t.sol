@@ -44,6 +44,7 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 import {DaveAppFactory} from "src/DaveAppFactory.sol";
+import {DaveConsensus} from "src/DaveConsensus.sol";
 import {IDaveAppFactory} from "src/IDaveAppFactory.sol";
 import {IDaveConsensus} from "src/IDaveConsensus.sol";
 import {ISentryErrors} from "src/ISentryErrors.sol";
@@ -57,6 +58,28 @@ library LibExternalBinaryKeccak256MerkleTree {
         returns (bytes32)
     {
         return sibs.merkleRootAfterReplacement(nodeIndex, node, LibKeccak256.hashPair);
+    }
+}
+
+contract SettlementApplication {
+    function isForeclosed() external pure returns (bool) {
+        return false;
+    }
+}
+
+contract SettlementCallbackReceiver {
+    bool public exhaustsGas = true;
+
+    function acceptPayments() external {
+        exhaustsGas = false;
+    }
+
+    receive() external payable {
+        if (exhaustsGas) {
+            assembly ("memory-safe") {
+                for {} 1 {} { pop(keccak256(0, 0)) }
+            }
+        }
     }
 }
 
@@ -76,6 +99,7 @@ contract DaveAppFactoryTest is Test {
 
     Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5);
     Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(120);
+    uint256 constant STAGING_GAS_CEILING = 500_000;
 
     function setUp() external {
         _inputBox = new InputBox();
@@ -896,6 +920,78 @@ contract DaveAppFactoryTest is Test {
         vm.prank(vm.randomAddress());
         daveConsensus.acceptStagedTournamentResult(epochNumber);
         revert("Successful acceptance");
+    }
+
+    function testStageAndAcceptAdvanceWhenWinnerExhaustsPaymentCallback() external {
+        _randomizeBlockNumber(0);
+
+        SettlementApplication appContract = new SettlementApplication();
+        address[] memory sentries = new address[](0);
+        IDaveConsensus daveConsensus = new DaveConsensus(
+            _inputBox,
+            address(appContract),
+            _tournamentFactory,
+            Machine.Hash.wrap(bytes32(uint256(1))),
+            0,
+            address(0),
+            sentries
+        );
+        (,,, ITournament tournament,,,,) = daveConsensus.getCurrentSealedEpoch();
+
+        bytes32 outputsMerkleRoot = bytes32(uint256(2));
+        bytes32[] memory outputsMerkleRootProof = _randomProof(Memory.LOG2_MAX_SIZE);
+        bytes32 machineMerkleRoot = outputsMerkleRootProof.merkleRootAfterReplacement(
+            EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.HASH_TREE_LOG2_WORD_SIZE,
+            keccak256(abi.encode(outputsMerkleRoot))
+        );
+
+        bytes32[] memory finalStateProof = _randomProof(tournament.tournamentArguments().commitmentArgs.height);
+        (bytes32 leftChild, bytes32 rightChild) = _getCommitmentChildren(machineMerkleRoot, finalStateProof);
+        SettlementCallbackReceiver receiver = new SettlementCallbackReceiver();
+        uint256 bond = tournament.bondValue();
+        vm.deal(address(receiver), bond);
+        vm.prank(address(receiver));
+        tournament.joinTournament{value: bond}(
+            Machine.Hash.wrap(machineMerkleRoot), finalStateProof, Tree.Node.wrap(leftChild), Tree.Node.wrap(rightChild)
+        );
+
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+        assertTrue(tournament.isFinished());
+
+        uint256 gasBefore = gasleft();
+        daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
+        uint256 stagingGasUsed = gasBefore - gasleft();
+        assertLt(stagingGasUsed, STAGING_GAS_CEILING);
+
+        (
+            uint256 stagedEpochNumber,,,
+            ITournament stagedTournament,
+            bool isTournamentResultStaged,,
+            Machine.Hash stagedMachineStateHash,
+            bytes32 stagedOutputsMerkleRoot
+        ) = daveConsensus.getCurrentSealedEpoch();
+        assertEq(stagedEpochNumber, 0);
+        assertEq(address(stagedTournament), address(tournament));
+        assertTrue(isTournamentResultStaged);
+        assertEq(Machine.Hash.unwrap(stagedMachineStateHash), machineMerkleRoot);
+        assertEq(stagedOutputsMerkleRoot, outputsMerkleRoot);
+        assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
+        assertFalse(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
+        assertEq(address(receiver).balance, 0);
+        assertEq(address(tournament).balance, bond);
+
+        daveConsensus.acceptStagedTournamentResult(0);
+
+        (uint256 nextEpochNumber,,, ITournament nextTournament,,,,) = daveConsensus.getCurrentSealedEpoch();
+        assertEq(nextEpochNumber, 1);
+        assertNotEq(address(nextTournament), address(tournament));
+        assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), machineMerkleRoot);
+        assertTrue(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
+
+        receiver.acceptPayments();
+        assertTrue(tournament.tryRecoveringBond());
+        assertEq(address(receiver).balance, bond);
+        assertEq(address(tournament).balance, 0);
     }
 
     function _testNewDaveAppSuccess(
