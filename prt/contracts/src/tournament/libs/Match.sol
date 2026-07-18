@@ -12,7 +12,6 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 library Match {
     using Tree for Tree.Node;
     using Match for Id;
-    using Match for IdHash;
     using Match for State;
     using Machine for Machine.Hash;
     using Commitment for Tree.Node;
@@ -31,24 +30,8 @@ library Match {
     //
     type IdHash is bytes32;
 
-    IdHash constant ZERO_ID = IdHash.wrap(bytes32(0x0));
-
     function hashFromId(Id memory id) internal pure returns (IdHash) {
         return IdHash.wrap(keccak256(abi.encode(id)));
-    }
-
-    function isZero(IdHash idHash) internal pure returns (bool) {
-        return IdHash.unwrap(idHash) == 0x0;
-    }
-
-    function eq(IdHash left, IdHash right) internal pure returns (bool) {
-        bytes32 l = IdHash.unwrap(left);
-        bytes32 r = IdHash.unwrap(right);
-        return l == r;
-    }
-
-    function requireExist(IdHash idHash) internal pure {
-        require(!idHash.isZero(), ITournament.MatchDoesNotExist());
     }
 
     //

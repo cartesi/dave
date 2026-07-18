@@ -278,6 +278,50 @@ contract TournamentTest is Util {
         );
     }
 
+    function testInnerResolutionRejectsUnlinkedTournament() public {
+        ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
+        ITournament.TournamentArguments memory args =
+            tournament.tournamentArguments();
+        ITournament unlinked = FACTORY.instantiateInner(
+            ONE_STATE,
+            ONE_NODE,
+            ONE_STATE,
+            TWO_NODE,
+            TWO_STATE,
+            MAX_ALLOWANCE,
+            1,
+            1,
+            args.provider
+        );
+
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        tournament.winInnerTournament(unlinked, ONE_NODE, TWO_NODE);
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        tournament.eliminateInnerTournament(unlinked);
+    }
+
+    function testGetMatchCycleRejectsNonexistentInnerMatch() public {
+        ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
+        ITournament.TournamentArguments memory args =
+            tournament.tournamentArguments();
+        ITournament inner = FACTORY.instantiateInner(
+            ONE_STATE,
+            ONE_NODE,
+            ONE_STATE,
+            TWO_NODE,
+            TWO_STATE,
+            MAX_ALLOWANCE,
+            1234,
+            1,
+            args.provider
+        );
+        Match.IdHash nonexistent = Match.Id(ONE_NODE, TWO_NODE).hashFromId();
+        assertFalse(inner.getMatch(nonexistent).exists());
+
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        inner.getMatchCycle(nonexistent);
+    }
+
     function testFuzzLateJoinAndWinnerRePairNeverGainAllowance(uint64 late)
         public
     {
@@ -552,6 +596,8 @@ contract TournamentTest is Util {
             playerNodes[opponent][HistoricalGeometry.height(0) - 1]
         );
         assertFalse(topTournament.canWinMatchByTimeout(matchId));
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        topTournament.getMatchCycle(matchId.hashFromId());
     }
 
     function testEliminateByTimeout() public {
