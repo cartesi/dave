@@ -272,6 +272,22 @@ contract TournamentTest is Util {
         assertEq(tournament.getNewInnerTournamentCount(), childCountBefore);
     }
 
+    function testInnerSealRejectsNonexistentMatch() public {
+        ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
+        Util.joinTournament(tournament, 1);
+        Match.Id memory existing = Util.historicalMatchId(1, 0);
+        Match.Id memory nonexistent = Match.Id({
+            commitmentOne: existing.commitmentTwo,
+            commitmentTwo: existing.commitmentOne
+        });
+        assertFalse(tournament.getMatch(nonexistent.hashFromId()).exists());
+
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        tournament.sealInnerMatchAndCreateInnerTournament(
+            nonexistent, ONE_NODE, TWO_NODE, ONE_STATE, new bytes32[](0)
+        );
+    }
+
     function testFuzzLateJoinAndWinnerRePairNeverGainAllowance(uint64 late)
         public
     {

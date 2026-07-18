@@ -584,6 +584,7 @@ contract Tournament is ITournament {
         }
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
+        _matchState.requireExist();
         _matchState.requireCanBeSealed();
 
         Time.Duration _maxDuration;

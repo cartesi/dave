@@ -692,10 +692,11 @@ role and lifecycle explanations to `docs/dispute-game.md`.
 - Decode immutable tournament arguments once per entry point when practical.
 - Preserve the external `matchEffort` field for compatibility; internal clock
   paths now call it `responseBudget`.
-- Add the same explicit stored-state existence check to
-  `sealInnerMatchAndCreateInnerTournament` that the leaf seal path uses. The
-  current zero state cannot be sealable, so this is hardening and symmetry, not
-  a confirmed exploit.
+- Resolved: `sealInnerMatchAndCreateInnerTournament` now performs the same
+  explicit stored-state existence check as the leaf seal path. The former zero
+  state was not sealable, so this changes the nonexistent-match error from
+  `MatchCannotBeSealed` to the accurate `MatchDoesNotExist`; it fixes abstraction
+  symmetry rather than an exploit.
 - Validate factory and parameter-provider addresses, level shapes, nonzero
   allowances, and the chosen response-budget range at construction rather than
   failing later through clock or array panics. A zero response budget is
