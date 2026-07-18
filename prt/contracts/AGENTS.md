@@ -160,8 +160,8 @@ papers do not specify these contracts exactly.
   terminal-payment recipients receive at most 50,000 gas, and return data is
   not copied. For `J` paid joins, at most `J - 1` matches consume configured
   work reserves. Recovery returns the winning deposit and burns at least one
-  principal per loser. The current 0.00450875 ETH literal preserves inherited
-  behavior but is not security-calibrated. See
+  principal per loser. The current 0.00450875 ETH literal preserves the former
+  residual-principal value but is not security-calibrated. See
   [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md).
 - **Reentrancy**: a transient `locked` flag guards state-mutating entrypoints -
   `withLock` on `joinTournament` and `tryRecoveringBond`, and `refundable`
