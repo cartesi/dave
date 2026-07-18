@@ -18,7 +18,9 @@ than the full amount paid at join time.
 
 PRT-003 in [`REVIEW.md`](REVIEW.md) tracks the stale gas estimates and incomplete
 fee model. PRT-008 records why terminal recovery pays at most one winning
-deposit and burns the residual.
+deposit and burns the residual. [`GAS-CALIBRATION.md`](GAS-CALIBRATION.md) is
+the operational procedure for reproducing the measurements, changing a
+constant, tracing its propagated effects, and recording the result.
 
 ## Current formula
 
@@ -286,9 +288,11 @@ allocation = roundUpTo1000(Gas.TX + delta + margin(delta))
 ```
 
 CI asserts that the complete reviewed margin remains; it does not wait for the
-literal cap itself to be crossed. The pinned environment is Solidity 0.8.30,
-optimized IR, Prague EVM, Forge 1.5.1-dev, and the dependencies in
-`soldeer.lock`.
+literal cap itself to be crossed. Solidity 0.8.30, optimized IR with 200 runs,
+the Prague EVM, and the dependencies in `soldeer.lock` are pinned. All 15
+retained allocation and complete-call measurements reproduced exactly under
+Forge 1.5.1-dev and the gas recipe's release Foundry v1.4.3. The recipe, CI, and
+release container name that release pin; see `GAS-CALIBRATION.md`.
 Compiler, EVM, dependency, geometry, or supported-proof changes require a new
 calibration even when an old ceiling happens to pass.
 
@@ -483,3 +487,5 @@ The following decisions remain open before economic calibration:
 
 The state-transition workstream must define a finite maximum supported proof or
 proof-class set before `WIN_LEAF_MATCH` can be claimed as a true upper bound.
+The exact measurement and update checklist, including the current InputBox path
+and the pre-Merkleized alternative, lives in `GAS-CALIBRATION.md`.

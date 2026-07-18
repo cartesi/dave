@@ -128,7 +128,22 @@ Each match compares two commitment trees. One clock runs while that participant
 must reveal the next children. A valid `advanceMatch` descends one tree level
 toward the first divergent leaf, then switches the turn. A height-`H` match has
 exactly `H` eligible responses: `H - 1` advances and one final leaf or inner
-seal.
+seal. If both child subtrees differ, bisection selects the left child, preserving
+the first-divergence rule.
+
+Commitment one reveals first, and each advance swaps the revealer. The final
+response therefore reveals commitment one's subtree and checks its agree-state
+proof against commitment one when `H` is odd; it uses commitment two when `H`
+is even. This turn derivation, rather than an independent parity convention, is
+what justifies the odd/even proof selection.
+
+If the first divergent leaf is `p` and the match still has height `h`, its
+running position is the `h`-bit-aligned prefix
+`floor(p / 2^h) * 2^h`. Interior right descents add an aligned power of two, so
+the position remains even before sealing. Only a final right-leaf seal adds one;
+the sealed position's low bit therefore records whether the divergence was in
+the left or right leaf. Together with the final revealer, that bit determines
+which contested state belongs to each original commitment.
 
 Let a response begin with clock balance `b`, arrive after elapsed time `e`, and
 have configured response budget `G` (the legacy-named `matchEffort` field). The

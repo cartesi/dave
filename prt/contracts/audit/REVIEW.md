@@ -168,7 +168,8 @@ Resolution:
 - Status: Open
 - Area: economics, permissionless participation
 - Evidence: `Gas`, `Bond`, `Tournament.refundable`,
-  event counters in `Tournament`, [`REFUND-DESIGN.md`](REFUND-DESIGN.md)
+  event counters in `Tournament`, [`REFUND-DESIGN.md`](REFUND-DESIGN.md),
+  [`GAS-CALIBRATION.md`](GAS-CALIBRATION.md)
 
 The hard-coded gas constants are used to size the bond's work reserve and cap
 each caller refund. Calibration is in progress. The remaining inherited
@@ -177,9 +178,11 @@ each caller refund. Calibration is in progress. The remaining inherited
 - Five production storage counters were added after the constants. Tests no
   longer consume them, but their getters are external API and their `SSTORE`
   cost is still paid in production.
-- A sequential measurement put `CartesiStateTransition.transitionState()` alone
-  at approximately 513k to 626k gas for the exercised proofs. The complete
-  `WIN_LEAF_MATCH` allocation is 127,728 gas.
+- Sequential measurements put ordinary and reset
+  `CartesiStateTransition.transitionState()` calls alone at approximately 244k
+  to 624k gas for the exercised proofs. Input-boundary calls already reached
+  approximately 1.08 million gas with only 32- to 128-byte synthetic inputs.
+  The complete `WIN_LEAF_MATCH` allocation is 127,728 gas.
 - In the same mocked leaf-win gas harness, PRT-010's timeout classification
   increased `winLeafMatch` from 143,290 to 146,264 gas. Both measurements already
   exceed that allocation before a realistic state-transition proof.
@@ -201,6 +204,23 @@ each caller refund. Calibration is in progress. The remaining inherited
   calls, and removes recipient return-data copying. Callback work remains
   outside the refund measurement; the supported proof envelope and
   `WIN_LEAF_MATCH` allocation remain open.
+- The current InputBox caps the complete encoded input at 64 KiB but stores only
+  its hash. An input-boundary dispute resubmits the input; the data provider
+  hashes it, checks the stored hash, and Merkleizes it before the state
+  transition uses the root. Dynamic calldata is outside the refund snapshot,
+  while the provider hashing and Merkleization are inside. A pre-Merkleized
+  InputBox is a possible separate design if the full maximum-input witness makes
+  the present path unreasonable.
+- At an out-of-range input index, the provider returns zero before validating
+  the supplied input. The current proof encoding can therefore carry an
+  arbitrarily large declared input segment on a successful fixpoint path,
+  subject to transaction/block limits. A canonical encoding or on-chain bound
+  is required before claiming a finite worst-case successful proof.
+- The common terminal maximum is 703,000 gas and leaf sealing is 109,000 gas.
+  Any `WIN_LEAF_MATCH` allocation above 594,000 makes leaf seal plus proof the
+  new common maximum. Existing input-boundary transition measurements already
+  cross that threshold before Tournament overhead and margin, so calibrating
+  the current canonical path will raise every level's join deposit.
 - A test-owned target-two-level harness now measures the modifier's exact
   reimbursable quantity from `PartialBondRefund` with cold target accesses. The
   first charged right advance measured 116,470 allocation units against the old
@@ -241,15 +261,18 @@ Recommended response:
 2. PRT-013 completed the callback boundary. Define the supported maximum
    state-transition proof envelope before claiming finite complete-operation
    ceilings.
-3. In progress: add CI ceilings for every refundable branch under pinned
-   compiler and EVM settings. The first seven allocations now preserve the
-   selected 10-percent/10,000-gas minimum margin.
+3. In progress: add CI ceilings for every refundable branch under a recorded,
+   release-matched toolchain. The first seven allocations preserve the selected
+   10-percent/10,000-gas minimum margin. Their retained measurements reproduced
+   exactly under both local Forge 1.5.1-dev and the Foundry v1.4.3 release pin;
+   the new runbook rejects an unpinned authoritative report.
 4. Adopt the bounded gross-Ethereum-work promise in `REFUND-DESIGN.md`, or
    explicitly design broader calldata and receipt accounting.
-5. The global reserve theorem now proves that configured refund caps preserve one
-   winning deposit across repeated re-pairing. Pure models and real height-1
-   traces now make the theorem executable; a general multi-level handler remains
-   open.
+5. The population-wide reserve theorem proves that configured refund caps
+   preserve one winning deposit across repeated re-pairing within each
+   tournament. Pure models and real height-1 traces make the theorem executable.
+   Recursive traces isolate child balances and compose two sequential children,
+   so a recursive lifecycle handler is not a missing premise of this proof.
 
 ### PRT-004: Timeout capability view does not match timeout resolution
 
@@ -466,6 +489,10 @@ Resolution:
    original deadline. Integration regressions cover advance and both seal
    paths, late joining, winner re-pairing, deployment conversion, and exact
    child-to-parent clock carryover.
+6. Two-level fuzzing covers child check-in across the nonzero pre-close portion
+   of the delegated allowance and exact post-close proof charging. Reduced child
+   carryover remains exact after parent re-pairing, while sequential child
+   creation pins the next delegated tournament's arguments and linkage.
 
 For clock mass `M` and `h` remaining responses, `M + h * G` decreases by
 `max(elapsed, G)` after each response. A local height-`H` match therefore has
@@ -779,6 +806,9 @@ The current layered approach is appropriate if each layer keeps one role:
 - Focused design records such as `CLOCK-DESIGN.md` and `REFUND-DESIGN.md`
   capture the decision before a security-sensitive refactor, then record what
   landed and what remains deferred.
+- `GAS-CALIBRATION.md` is an operational runbook: it pins how to regenerate
+  volatile measurements and trace their effects without turning the findings
+  ledger into a build script.
 - `AGENTS.md` is orientation and routing, not a second protocol specification.
 - `MAP.md` is a broad source inventory and lead generator, not an authority.
 
@@ -851,36 +881,77 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 
 ### Priority 1
 
-- Stateful tournament handler checking `matchCount`, the single dangling slot,
-  match uniqueness, monotonic match height, legal clock phases, winner re-entry,
-  and terminal state.
-- Exhaustive or fuzzed bisection parity through the largest checked-in or
-  selected height (currently 55) and every divergence position. Check both
-  winner attribution and agree-proof selection.
+- Landed: a stateful tournament handler checks population partitioning,
+  `matchCount`, the single dangling slot, match uniqueness and exact Merkle
+  coordinates, monotonic match height, clock balances and legal phases, the
+  floor-half-running invariant, claimers, winner re-entry, and terminal state.
+  The positive campaign requires every model-legal production call to succeed.
+- Landed: a complementary stateful rejection campaign interleaves legal
+  progress with exact-selector checks for duplicate and late joins, wrong Match
+  phases, expired responses, disallowed timeout resolution, ineligible proofs,
+  and every progress path over deleted matches. Deterministic companion traces
+  prove that each rejection family is reached rather than relying on random
+  selector frequency.
+- Landed: an independent sparse-Merkle model exhausts every position through
+  height 8, covers boundary paths at every height through 55, fuzzes arbitrary
+  positions and both commitment orders, and checks winner attribution plus
+  agree-proof ownership without reproducing Match's height-parity table. A
+  multi-difference comparator pins leftmost-divergence precedence.
+- Landed deterministic seam: a test-owned two-level provider injects the smallest
+  nontrivial tiling, root `(height=2, log2step=2)` over leaf
+  `(height=2, log2step=0)`, through the production factory and clone path.
+  Coordinate-coherent parent and child claims derive from one 16-state table;
+  complete traces cover both child winners, propagation and parent re-pairing,
+  child double elimination, the final legal carryover block, the inclusive
+  elimination boundary, child balance isolation, and terminal root results.
+  Fuzzing covers late single entrants and active child resolution strictly after
+  global close. A further trace composes two sequential children on different
+  disputed segments after parent re-pairing.
+- Rejected as duplicative: a one-child stateful recursive oracle over that fixed
+  seam would permute already pinned branches while reproducing substantial Match
+  and clock policy in its ghost state. Meaningful remaining stateful work must
+  vary concurrent parent matches, child populations, and adversarial arrival
+  schedules; that belongs to the population-delay model below.
 - Multi-level parameter fuzzing for one, two, three, and more levels, including
   malformed heights, strides, allowances, and unsafe shifts.
 - Refund-formula fuzzing around balance, allocation, actual-work, base-fee, and
   priority-fee caps, including failed receivers and storage-refund differences.
-- Model-based one- and two-level delay tests covering balanced reservoirs,
-  skewed/list pairing, late joins, and non-bankable response discounts.
+- Model-based one- and two-level population-delay tests covering balanced
+  reservoirs, skewed/list pairing, late joins, concurrent child tournaments,
+  and non-bankable response discounts.
 - Cross-instance callback and reentrancy scenarios.
 
 ### Priority 2
 
-- Join and resolve at every close-time boundary.
-- Child win and elimination at every carryover deadline boundary.
+- Partially landed for close-time boundaries: a single child entrant fuzzes nonzero
+  pre-close lateness and exact check-in deduction. A paired child fuzzes proof
+  resolution strictly after global close, including the winner's elapsed time,
+  the opponent's overdue charge, and `timeFinished = lastMatchDeleted`. The
+  generic rejection trace pins join rejection at exact close. A broader role
+  and operation matrix remains open.
+- Landed for the strict carryover edge: child propagation succeeds with one
+  block remaining and rejects at equality, while elimination has the inverse
+  availability.
 - Orphan and unknown child tournaments.
 - Same-root first-claimer ownership under the capped terminal payout.
-- No-winner child balance behavior.
+- Landed: a child with no winner is immediately eliminable after its final match
+  is deleted, and parent elimination does not touch the child balance.
 - Landed: nonexistent and deleted match-cycle queries reject consistently.
-  Exact non-root result retrieval remains to be characterized.
+  Exact non-root result retrieval and parent-commitment mapping are now pinned
+  by the recursive traces.
 
-The current deterministic suite covers the principal lifecycle paths well. The
-new real height-1 accounting traces exercise focused stateful sequences, but the
-dispute game still lacks a general stateful handler. Existing parity tests focus
-on small heights and edge divergences. The coverage command also needs repair:
-the non-IR path hits stack depth, while the IR/Solar path does not resolve the
-external machine-step imports.
+The deterministic suite covers the principal lifecycle paths, and the small
+single-level handler now explores both their legal composition and their public
+rejection surface against an independent shadow model. The sparse Match model
+still owns exhaustive bisection path and parity coverage; the lifecycle pool
+selects representative divergence positions instead of duplicating that
+campaign. Coverage reporting is operational: the recipe computes an absolute
+`machine/step` remapping for Solar, uses IR-minimum as the stack-depth
+workaround, and excludes FFI, gas-calibration, out-of-scope state-transition
+tests and sources, and the slow invariant executors. Companion deterministic
+lifecycle traces remain instrumented. IR-minimum can produce
+inaccurate source mappings, so line and especially branch totals remain a map
+for investigation rather than evidence that an invariant is covered.
 
 ## Readability and abstraction backlog
 
@@ -900,8 +971,11 @@ work. See [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
 
 Before sealing, `otherParent`, `leftNode`, and `rightNode` describe bisection
 nodes. After sealing, those slots hold the agree hash and the two contested final
-states. Introduce an explicit phase and phase-specific accessors or structures so
-that readers cannot apply pre-seal meanings to post-seal data.
+states. Derive an explicit phase and introduce phase-specific internal accessors
+so that readers cannot apply pre-seal meanings to post-seal data. Do not add a
+stored phase or reshape/reorder the tuple while external `getMatch` exposes
+`Match.State`; that compatibility fence is the same reason the clock refactor
+preserved its two-field representation.
 
 ### `Tournament` mixes all lifecycle layers
 
@@ -935,10 +1009,21 @@ role and lifecycle explanations to `docs/dispute-game.md`.
   state was not sealable, so this changes the nonexistent-match error from
   `MatchCannotBeSealed` to the accurate `MatchDoesNotExist`; it fixes abstraction
   symmetry rather than an exploit.
-- Validate factory and parameter-provider addresses, level shapes, nonzero
-  allowances, and the chosen response-budget range at construction rather than
-  failing later through clock or array panics. A zero response budget is
-  mechanically safe and simply charges full elapsed time.
+- Needs decision: `winLeafMatch` checks both commitment clocks before stored
+  match existence. A fabricated ID with unknown roots therefore rejects with
+  `ClockNotInitialized`, while a reversed or deleted ID whose roots were joined
+  rejects with `MatchDoesNotExist`. Checking the match first would normalize the
+  rejection surface but change public error precedence; no safety impact is
+  known.
+- Landed at test time: the canonical parameter table is checked row by row and
+  validated for inter-level tiling. Canonical geometry changes must regenerate
+  that table and pass the conformance test; they do not need a repeated runtime
+  check on every clone.
+- Needs decision for generic providers: validate factory/provider addresses,
+  level shapes, and nonzero allowances before a clone later fails through clock
+  or array panics. A zero response budget is mechanically safe and simply
+  charges full elapsed time, so it is a policy choice rather than an invalid
+  shape.
 - Coordinate `cartesi-rollups/node/src/bin/measure.rs` and its generated or
   node-facing planning prose (`docs/plans/constants.md`, `measurements*.md`,
   `snapshots.md`, and `sling-design.md`) with the landed response-discount
@@ -955,8 +1040,11 @@ role and lifecycle explanations to `docs/dispute-game.md`.
 The following high-risk paths were traced and cross-checked without finding a
 confirmed dispute-game defect:
 
-- Odd/even bisection parity and left/right winner attribution.
-- Agree-state proof selection at the final divergent leaf.
+- Odd/even bisection parity, left/right winner attribution, and final-revealer
+  agree-proof selection. The independent sparse model covers both commitment
+  orders, every position through height 8, and arbitrary positions through the
+  reviewed height-55 test bound; a two-difference comparator covers the case in
+  which both child subtrees disagree.
 - Child winner identity and clock mapping into the parent, including idempotent
   recovery after PRT-007.
 - Parent-child linkage against permissionlessly created orphan children.
@@ -966,8 +1054,12 @@ confirmed dispute-game defect:
   commitment, while every defense operation remains permissionless. This is
   intended; PRT-008 changed only the residual payout policy.
 
-This is review evidence, not a proof. The parity and lifecycle properties still
-need exhaustive and stateful tests.
+This is review evidence, not a proof. Independent parity properties and the
+single-level lifecycle model cover exhaustive bisection paths, legal stateful
+composition, and rejected operations. Recursive traces cover both winner
+mappings, strict carryover boundaries, late child entry, post-close child
+resolution, and two sequential child tournaments. The remaining recursive gap
+is adversarial multi-population delay composition, not the fixed one-child seam.
 
 ## Validation baseline
 
@@ -1240,3 +1332,288 @@ After the PRT-006 state-backed existence slice:
   Storage layout, selectors, events, and external functions are unchanged.
   Runtime and creation bytecode change, so deployment artifacts and CREATE2
   addresses must be regenerated. No node source changed.
+
+After the refund-gas calibration runbook slice:
+
+- `measure-gas` now rejects a dirty authoritative run, Foundry-version drift,
+  `FOUNDRY_*` overrides, an unexpected effective compiler configuration, and
+  installed-dependency drift. It records the candidate revision, release
+  Foundry build, effective configuration, configuration and dependency hashes,
+  and recursive submodule revisions before forcing a single-threaded rebuild.
+- All 15 retained gas witnesses passed under the Foundry v1.4.3 release pin.
+  Every measured allocation, rounded recommendation, and diagnostic complete
+  call matched the Forge 1.5.1-dev comparison exactly. The report now prints the
+  reviewed minimum and rounded recommendation instead of requiring manual
+  arithmetic.
+- `prt/contracts`: the release-pinned `test-disputes` passed 108 tests. The
+  configured seven action allocations and all alternate retained branches still
+  preserve their reviewed margins. `WIN_LEAF_MATCH` remains explicitly
+  uncalibrated pending the canonical proof/input envelope.
+- `cartesi-rollups/contracts`: all three integration tests passed, including
+  both fuzz properties with 256 runs and the bounded-callback settlement trace.
+- `optimizer_runs = 200` now makes the former Foundry default explicit. The
+  `Tournament` ABI, storage-layout, creation-bytecode, and runtime-bytecode
+  SHA-256 values remain respectively
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`,
+  `61246ee7057c132a3e6d9db0da88c522bfe599c8348e04ed622f1a888984be87`,
+  `b58ec836bdddd732862e7fc2f35892fee23ecd6537fb413fc06e3b98cf2fea5c`,
+  and `c6707d539aaf32b6d072cdd576ef84f4b2248dc7f98fe67e8c2426975c138a8e`.
+  The slice changes only tests, documentation, and reproducibility tooling. No
+  node source changed.
+
+After restoring dispute-game coverage reporting:
+
+- The instrumented in-scope suite passed 89 tests under both the release-pinned
+  Foundry v1.4.3 and the local Forge 1.5.1-dev comparison.
+- Excluding tests, scripts, dependencies, the external machine step, and the
+  out-of-scope state-transition sources, the report measured 673 of 707 lines
+  (95.19%), 684 of 715 statements (95.66%), 66 of 134 branches (49.25%), and
+  138 of 145 functions (95.17%).
+- `Tournament` remains the main gap: 92.44% of lines and 93.82% of statements
+  are mapped, but only 44.00% of branches and 91.23% of functions. `Match`,
+  `Clock`, and `MatchClocks` have complete line, statement, and function
+  mappings, while their branch mappings remain incomplete where applicable.
+- The recipe uses Foundry's IR-minimum mode to avoid the coverage-only stack
+  depth failure. Foundry warns that this mode can produce inaccurate source
+  mappings, so these numbers prioritize investigation; they neither prove
+  execution of every reported source location nor cover protocol invariants.
+- This slice changes only test tooling and documentation. It does not change
+  production Solidity, external interfaces, storage, bytecode, or node source.
+
+After the independent bisection-parity model:
+
+- `prt/contracts`: `just test-disputes` passed 114 tests. The new suite executes
+  1,313 deterministic complete bisection traces: every position through height
+  8 in both commitment orders, both boundary paths and orders at every height
+  through 55, mixed height-55 paths, and final-responder proof rejection at
+  every reviewed height. Two additional traces give both root children
+  different hashes and require bisection to choose the leftmost divergence.
+- The arbitrary-height, arbitrary-position, and commitment-order property
+  passed 10,000 fuzz runs. Its sparse Merkle oracle uses linear space and tracks
+  the revealer by turn alternation rather than copying Match's odd/even proof or
+  winner tables.
+- Every advance checks height, aligned running position, next revealer, and both
+  stored children. Every seal checks agree-proof ownership, the agree state and
+  cycle, exact leaf position, and contested-state attribution to the original
+  commitment order. The opposite commitment's proof is rejected after every
+  possible count of revealer swaps.
+- The release-pinned coverage recipe passed all 95 included tests, but its
+  aggregate source-map totals remained exactly unchanged. This is useful
+  evidence that line and branch percentages do not measure input-domain,
+  sequence, or independent-oracle strength.
+- `cartesi-rollups/contracts`: all three integration tests passed, including
+  both fuzz properties with 256 runs and the bounded-callback settlement trace.
+- This slice changes only tests and documentation. It does not change
+  production Solidity, external interfaces, storage, bytecode, or node source.
+
+After adding the small full-tree fixture:
+
+- `prt/contracts`: `just test-disputes` passed 118 tests. The test-owned fixture
+  builds complete trees for injected heights 1 through 8 without importing a
+  canonical or historical parameter provider. Callers may supply leaves to
+  create shared prefixes and nonzero divergence positions; malformed sizes and
+  unsupported heights reject explicitly.
+- Every node coordinate is reconstructed from its two children, and every leaf
+  proof is checked through production `Commitment.getRoot`. The rightmost state
+  and proof are also checked through the specialized final-leaf path used by
+  `joinTournament`.
+- The fixture exposes roots, leaves, arbitrary subtree nodes and children,
+  proofs, final states, and first-divergence discovery. This is the reusable
+  witness layer for the pending small-geometry tournament handler, not a second
+  protocol implementation.
+- This slice changes only test infrastructure and its validation ledger. It does
+  not change production Solidity, external interfaces, storage, bytecode, or
+  node source.
+
+After wiring the inspectable small tournament:
+
+- `prt/contracts`: `just test-disputes` passed 120 tests. The production
+  multi-level factory now has a test-only specialization that injects one
+  level, height three, and caller-selected timing parameters while preserving
+  the production clone and immutable-argument paths.
+- A functions-only `Tournament` subclass exposes the dangling commitment,
+  active-match count, most recent deletion, and claimer mapping without adding
+  storage or initialization behavior. The production ABI and storage layout
+  remain untouched.
+- The wiring test checks every injected clone argument, the first commitment's
+  dangling and paused-clock state, the second commitment's exact pairing and
+  stored match witnesses, both claimers and allowances, and all applicable
+  counters. The parameters provider rejects unsupported levels, and the
+  settlement stub rejects malformed payloads.
+- The selected-state transition is deliberately only a tournament-settlement
+  harness; it is not evidence about state-transition correctness. This slice
+  changes only test infrastructure and its validation ledger. It does not
+  change production Solidity, external interfaces, storage, bytecode, or node
+  source.
+
+After adding the small-tournament lifecycle model:
+
+- `prt/contracts`: `just test-disputes` passed 127 tests. The positive stateful
+  campaign completed 256 runs of depth 128: 32,768 generated calls distributed
+  across join, advance, leaf seal, leaf proof, timeout resolution, and time
+  elapse, with zero reverts or discards.
+- The shadow model independently tracks population, pairing, exact clock
+  balances, match heights, claimers, counters, deletion time, and terminal
+  results. Full-tree coordinates derive every expected live `Match.State`
+  directly rather than storing and replaying production's three-node mutation.
+- The invariant enforces the exact population partition, unique historical
+  match IDs, `created - deleted == active`, positive non-increasing allowances,
+  one running bisection clock, two equal-start sealed clocks, and
+  `running == active + sealed`. Since `live = 2 * active + dangling`, at least
+  `floor(live / 2)` clocks run and the only odd-population slack is one paused
+  dangling commitment.
+- Six deterministic companion traces pin both active timeout winners, a sealed
+  timeout winner with residual time, the sealed inclusive tie, repeated proven
+  winners and re-pairing, and a double-elimination terminal without a winner.
+  Candidate commitments have unique final states and representative first
+  divergences at positions 0, 2, and 5; the independent parity suite retains
+  exhaustive path ownership.
+- The coverage recipe passed 107 instrumented tests and now maps 683 of 707
+  lines (96.61%), 689 of 715 statements (96.36%), 66 of 134 branches (49.25%),
+  and 143 of 145 functions (98.62%). `Tournament` maps 340 of 357 lines,
+  339 of 356 statements, 33 of 75 branches, and all 57 functions.
+- Instrumenting the full invariant executor produced exactly the same source
+  totals as its deterministic companion traces but increased the instrumented
+  test phase from seconds to more than three minutes. The coverage recipe now
+  excludes only that executor; `test-disputes` remains the authoritative
+  invariant gate.
+- This is a positive lifecycle model: model-illegal calls return before touching
+  production, so a separate negative stateful campaign remains open. This slice
+  changes only tests, test tooling, documentation, and the validation ledger.
+  It does not change production Solidity, external interfaces, storage,
+  bytecode, or node source.
+
+After adding the stateful lifecycle rejection campaign:
+
+- `prt/contracts`: `just test-disputes` passed 135 tests. The original positive
+  campaign again completed 256 runs of depth 128, or 32,768 calls, with zero
+  reverts or discards. The mixed legal/rejection campaign completed another 128
+  runs of depth 128, or 16,384 calls, with zero handler reverts or discards.
+- Rejection actions derive their preconditions from the independent ghost
+  state, call production through a low-level test helper, and require the exact
+  public error selector. An unexpected success, a different error, or a model
+  drift fails the invariant without updating ghost state.
+- Seven deterministic traces pin duplicate and closed joins, Match phase
+  errors, every disallowed timeout branch, expired advance and seal paths, a
+  timed loser's otherwise-valid proof, proof rejection during double
+  elimination, and all five progress operations over a deleted match.
+- `MatchDoesNotExist` documentation now describes its stored-state meaning; the
+  obsolete zero-hash-sentinel rationale was removed with no interface change.
+- The coverage recipe passed 114 instrumented tests. Both stateful executors
+  remain in the ordinary test gate while 13 deterministic lifecycle traces map
+  their production paths. Source totals remain 683 of 707 lines (96.61%), 689
+  of 715 statements (96.36%), 66 of 134 branches (49.25%), and 143 of 145
+  functions (98.62%).
+- `forge fmt --check`, focused lint, and `git diff --check` passed. This slice
+  changes tests, test tooling, comments, and the validation ledger. It does not
+  change executable production behavior, external interfaces, storage, or node
+  source.
+
+After synchronizing the audit-start documentation:
+
+- `MAP.md` now identifies itself as a historical map rather than the current
+  backlog. Its parity lead, child-clock carryover question, and broad coverage
+  gap are annotated with their landed derivations and remaining recursive work.
+- `CLOCK-DESIGN.md` records the landed single-level legal and rejection models.
+  The Match backlog now states the external tuple compatibility fence, and
+  generic-provider hardening is separated from landed canonical-table
+  conformance tests.
+- `git diff --check` passed. This slice changes documentation only; no Solidity,
+  test, interface, storage, bytecode, or node source changes.
+
+After adding the injected two-level fixture:
+
+- `prt/contracts`: `just test-disputes` passed 137 tests. The provider exposes
+  only rows zero and one and rejects any deeper level with a named error.
+- The root row `(height=2, log2step=2)` and leaf row
+  `(height=2, log2step=0)` satisfy exact inter-level tiling and each retain one
+  real advance before sealing. Clone-argument tests pin both roles, delegated
+  versus maximum allowance, nested contested values, start cycle, factory,
+  and the wrong-level operation guards.
+- The proof-selected state-transition stub moved into a level-neutral shared
+  fixture. It remains explicitly a settlement selector rather than an oracle
+  for state-transition correctness.
+- Focused fixture lint, `forge fmt --check`, and `git diff --check` passed. This
+  slice changes test fixtures, tests, and the validation ledger only; no
+  production, external interface, storage, bytecode, or node source changes.
+
+After adding coherent two-level claims:
+
+- `prt/contracts`: `just test-disputes` passed 140 tests. The witness fixture
+  derives four parent leaves as the final states of four consecutive four-state
+  segments rather than constructing unrelated trees at each level.
+- Parent claims one and two share the first two segment finals and first diverge
+  at parent position two. Their child claims start at cycle eight from the same
+  prior state, end at the exact parent contested states, and first diverge at
+  local child position zero. A third distinct parent claim remains available
+  for post-propagation re-pairing.
+- The fixture is explicitly coordinate-coherent rather than transition-correct;
+  state-transition semantics remain outside this campaign. Focused fixture
+  lint, `forge fmt --check`, and `git diff --check` passed. No production,
+  external interface, storage, bytecode, or node source changes.
+
+After tracing the recursive two-level lifecycle:
+
+- `prt/contracts`: `just test-disputes` passed 146 tests. Six deterministic
+  traces create a child through the production factory, resolve it for either
+  contested parent commitment, propagate the winner, re-pair it with a waiting
+  third claim, and finish the root by timeout. Separate traces cover child
+  double elimination and winner expiry.
+- The parent seal trace independently pins the shared prior state, cycle eight,
+  both contested states, delegated allowance, paused parent clocks, exact
+  parent-child link, and every parent counter. Child proof payloads select a
+  disputed child leaf only; they are not state-transition correctness evidence.
+- At `F + A - 1`, child elimination rejects and propagation stores exactly one
+  block in the parent. At `F + A`, propagation rejects and parent elimination
+  succeeds. Both propagation and elimination leave the child's balance
+  untouched, clear the link, and produce the expected parent topology,
+  claimers, deletion time, and arbitration result.
+- Coverage passed 125 instrumented tests and now maps 685 of 707 lines (96.89%),
+  691 of 715 statements (96.64%), 68 of 134 branches (50.75%), and 143 of 145
+  functions (98.62%). `Tournament` maps 342 of 357 lines, 341 of 356
+  statements, 35 of 75 branches, and all 57 functions. The two-line and
+  two-branch increase is localized to the recursive seam; IR-minimum source-map
+  qualifications still apply.
+- Reconciling Forge's final suite total exposed that the prior ledger correction
+  was inverted: it omitted the six positive single-level companion traces from
+  every later full-suite total. Starting from the measured 120-test baseline,
+  the commit-local additions are seven positive lifecycle tests, eight rejection
+  tests, two injected-fixture tests, three coherent-claim tests, and six
+  recursive traces. The corrected progression is therefore 127, 135, 137, 140,
+  and 146. No test was added or removed by this ledger correction.
+- `forge fmt --check`, focused lint, and `git diff --check` passed. The
+  `InspectableTournament` test subclass adds only a view over the existing child
+  link mapping. Production Solidity, external interfaces, storage, bytecode,
+  and node source are unchanged.
+
+After extending recursive timing and composition coverage:
+
+- The focused recursive suite passed 9 tests, including two fuzz properties at
+  256 runs each. `prt/contracts`: `just test-disputes` passed 149 tests. A late
+  sole entrant is checked over the bounded nonzero pre-close domain and carries
+  exactly `allowance - lateness` without a match or refill.
+- A paired child resolves strictly after global close. For join lateness `J` and
+  post-close delay `R`, the bounded domain requires `J > 2R`; the trace checks
+  winner live time `J - R`, loser overdue time `R`, and exact parent carryover
+  `J - 2R`. Since the match is deleted after close, `timeFinished()` is the
+  deletion block rather than the global deadline.
+- The sequential trace resolves an A/B dispute on parent segment two, propagates
+  A into a C/A re-pairing after the root has closed, then resolves a second child
+  on segment zero. It pins both child argument sets, winner mappings, links,
+  balances, counters, claimers, and the terminal A result at the second deletion
+  time.
+- Coverage passed 128 instrumented tests and remains 685 of 707 lines (96.89%),
+  691 of 715 statements (96.64%), 68 of 134 branches (50.75%), and 143 of 145
+  functions (98.62%). `Tournament` remains 342 of 357 lines, 341 of 356
+  statements, 35 of 75 branches, and all 57 functions. The unchanged production
+  totals are expected: these tests compose already mapped paths at new recursive
+  timing and population boundaries.
+- A proposed fixed one-child stateful oracle was rejected because it would
+  duplicate this seam with a large second implementation of Match and clock
+  policy. The remaining stateful recursive campaign is the materially different
+  multi-population delay model with concurrent children and adversarial arrival
+  schedules.
+- Focused recursive tests, `just test-disputes`, coverage, `forge fmt --check`,
+  focused lint, and `git diff --check` passed. This slice changes tests and
+  documentation only; production Solidity, external interfaces, storage,
+  bytecode, and node source are unchanged.

@@ -3,6 +3,8 @@ BIND_STAMP := "./bindings-rs/src/.bind-stamp"
 DEPLOYMENTS_DIR := "./deployments"
 SRC_DIR := "."
 BINDINGS_FILTER := "^[^I].+TournamentFactory|^Tournament$"
+GAS_FOUNDRY_VERSION := "1.4.3"
+GAS_DEPENDENCIES_SHA256 := "ef44ca028e8ae45ab0d7a6b183c9db0fded37461db8355456f2b2b876ce57ac3"
 
 default: build
 
@@ -16,6 +18,101 @@ test-all: test-disputes test-stf test-stf-fuzzy
 
 test-disputes:
     forge test --no-match-contract ".*FfiTest"
+
+# validate every retained refund-gas witness against the configured allocations
+test-gas:
+    forge test --match-path "test/gas/TournamentGas.t.sol"
+
+# print the reproducibility header and retained refund-gas measurements
+measure-gas:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    diagnostic="${ALLOW_DIAGNOSTIC_GAS_MEASUREMENT:-0}"
+    foundry_overrides=$(env | sed -n '/^FOUNDRY_/p')
+    if [ -n "$foundry_overrides" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf '%s\n' 'error: clear FOUNDRY_* overrides for gas calibration' >&2
+        exit 1
+      fi
+      printf '%s\n' \
+        'warning: FOUNDRY_* overrides make this report diagnostic only' >&2
+    fi
+    export FOUNDRY_PROFILE=default
+    revision=$(git rev-parse HEAD)
+    if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+      revision="$revision (dirty)"
+      if [ "$diagnostic" != "1" ]; then
+        printf '%s\n' \
+          'error: authoritative gas calibration requires a clean worktree' >&2
+        exit 1
+      fi
+      printf '%s\n' \
+        'warning: dirty worktree makes this report diagnostic only' >&2
+    fi
+    expected_version="{{GAS_FOUNDRY_VERSION}}"
+    version_output=$(forge --version)
+    actual_version=$(printf '%s\n' "$version_output" \
+      | sed -n 's/^forge Version: //p')
+    if [[ "$actual_version" != "$expected_version"* ]]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf 'error: gas calibration requires Forge %s, found %s\n' \
+          "$expected_version" "$actual_version" >&2
+        exit 1
+      fi
+      printf 'warning: unpinned Forge %s; report is diagnostic only\n' \
+        "$actual_version" >&2
+    fi
+    effective_config=$(forge config --json | jq -c \
+      '{solc, via_ir, optimizer, optimizer_runs, evm_version}')
+    expected_config='{"solc":"0.8.30","via_ir":true,"optimizer":true,"optimizer_runs":200,"evm_version":"prague"}'
+    if [ "$effective_config" != "$expected_config" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf 'error: unexpected effective Foundry config: %s\n' \
+          "$effective_config" >&2
+        exit 1
+      fi
+      printf 'warning: unexpected effective config: %s\n' \
+        "$effective_config" >&2
+    fi
+    dependency_digest=$(find dependencies -type f -print0 \
+      | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum \
+      | cut -d' ' -f1)
+    if [ "$dependency_digest" != "{{GAS_DEPENDENCIES_SHA256}}" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf 'error: unexpected dependency digest: %s\n' \
+          "$dependency_digest" >&2
+        exit 1
+      fi
+      printf 'warning: unexpected dependency digest: %s\n' \
+        "$dependency_digest" >&2
+    fi
+    printf 'revision: %s\n' "$revision"
+    printf '%s\n' "$version_output"
+    printf 'effective config: %s\n' "$effective_config"
+    printf 'dependencies sha256: %s\n' "$dependency_digest"
+    sha256sum foundry.toml soldeer.lock
+    git submodule status --recursive
+    forge test --force --threads 1 --color never \
+      --match-path "test/gas/TournamentGas.t.sol" -vv
+
+# summarize dispute-game coverage without instrumenting FFI or gas witnesses
+# The stateful invariants run in test-disputes. Their deterministic companion
+# traces map the same production lifecycle without slow IR instrumentation.
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    step_path=$(cd ../../machine/step && pwd -P)
+    excluded_contracts='.*(FfiTest|GasTest|StateTransitionTest|TournamentLifecycle.*InvariantTest)'
+    RUST_LOG="${COVERAGE_RUST_LOG:-error}" forge coverage \
+      --ir-minimum \
+      --fuzz-runs 256 \
+      --fuzz-seed 0x5eed \
+      --color never \
+      --no-match-contract "$excluded_contracts" \
+      --remappings "step/=$step_path/" \
+      --no-match-coverage \
+        "(^|/)(test|script|dependencies)(/|$)|(^|/)machine/step(/|$)|(^|/)src/state-transition(/|$)" \
+      --report summary
 
 test-stf:
     forge test --match-contract ".*FfiTest" --no-match-test ".*Fuzzy" --ffi
