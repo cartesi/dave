@@ -306,12 +306,12 @@ the checked-in canonical geometry:
 | Sealed-leaf timeout, side two wins; charged survivor, position one, dangling re-pair | 238,304 | 21,331 | 260,000 |
 | Active double elimination; nonzero position, exact equality boundary | 123,940 | 10,000 | 135,000 |
 | Sealed-leaf double elimination; position one, later classifier branch, exact equality boundary | 124,269 | 10,000 | 135,000 |
-| Resolved child selects parent side one; one-block carryover, position-one parent, dangling re-pair | 307,595 | 28,260 | 337,000 |
-| Resolved child selects parent side two; one-block carryover, position-one parent, dangling re-pair | 307,770 | 28,277 | 337,000 |
-| Single-claim child selects parent side two; positive carryover deduction and dangling re-pair | 307,725 | 28,273 | 337,000 |
-| Resolved child winner expires; position-one parent deletion | 158,788 | 13,379 | 173,000 |
-| Single-claim child winner expires; position-one parent deletion | 158,773 | 13,378 | 173,000 |
-| Child finishes without a winner; position-one parent deletion | 153,849 | 12,885 | 173,000 |
+| Resolved child selects parent side one; one-block carryover, position-one parent, dangling re-pair | 307,576 | 28,258 | 337,000 |
+| Resolved child selects parent side two; one-block carryover, position-one parent, dangling re-pair | 307,751 | 28,276 | 337,000 |
+| Single-claim child selects parent side two; positive carryover deduction and dangling re-pair | 307,706 | 28,271 | 337,000 |
+| Resolved child winner expires; position-one parent deletion | 158,769 | 13,377 | 173,000 |
+| Single-claim child winner expires; position-one parent deletion | 158,754 | 13,376 | 173,000 |
+| Child finishes without a winner; position-one parent deletion | 153,830 | 12,883 | 173,000 |
 
 Rows for one entry point share one configured constant, selected from its
 largest retained witness. The other rows enforce that the shared constant still

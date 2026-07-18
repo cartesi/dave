@@ -65,7 +65,6 @@ contract Tournament is ITournament {
     using Clock for Clock.State;
 
     using Match for Match.Id;
-    using Match for Match.IdHash;
     using Match for Match.State;
 
     using Math for uint256;
@@ -620,7 +619,6 @@ contract Tournament is ITournament {
 
         Match.Id memory _matchId = matchIdFromInnerTournaments[_childTournament];
         Match.IdHash _matchIdHash = _matchId.hashFromId();
-        _matchIdHash.requireExist();
 
         Match.State storage _matchState = matches[_matchIdHash];
         _matchState.requireExist();
@@ -680,7 +678,6 @@ contract Tournament is ITournament {
 
         Match.Id memory _matchId = matchIdFromInnerTournaments[_childTournament];
         Match.IdHash _matchIdHash = _matchId.hashFromId();
-        _matchIdHash.requireExist();
 
         Match.State storage _matchState = matches[_matchIdHash];
         _matchState.requireExist();
@@ -779,6 +776,7 @@ contract Tournament is ITournament {
         returns (uint256)
     {
         Match.State memory _m = getMatch(_matchIdHash);
+        _m.requireExist();
         Commitment.Arguments memory args = tournamentArguments().commitmentArgs;
 
         return args.toCycle(_m.runningLeafPosition);

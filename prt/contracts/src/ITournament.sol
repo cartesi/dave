@@ -667,6 +667,7 @@ interface ITournament {
         returns (Match.State memory);
 
     /// @notice Get the running machine cycle of a match by its ID hash.
+    /// @dev Reverts if the match does not exist or has already been deleted.
     /// @param matchIdHash The match ID hash
     function getMatchCycle(Match.IdHash matchIdHash)
         external

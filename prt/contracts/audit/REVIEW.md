@@ -223,11 +223,11 @@ each caller refund. Calibration is in progress. The remaining inherited
   terminal maximum, so that calibration slice did not change bond values.
 - Child-resolution calibration uses real factory-created children and preserves
   decoupled recovery. Resolved children selecting parent sides one and two
-  measured 307,595 and 307,770 allocation units at the final legal carryover
-  block; a single-claim side-two comparator measured 307,725. Expired resolved
-  and single-claim winners measured 158,788 and 158,773, while a child with no
-  winner measured 153,849. The 337,000 and 173,000 allocations preserve the
-  reviewed margins. Inner seal plus winner propagation is now 703,000 gas,
+  currently measure 307,576 and 307,751 allocation units at the final legal
+  carryover block; a single-claim side-two comparator measures 307,706. Expired
+  resolved and single-claim winners measure 158,769 and 158,754, while a child
+  with no winner measures 153,830. The 337,000 and 173,000 allocations preserve
+  the reviewed margins. Inner seal plus winner propagation is now 703,000 gas,
   raising every work reserve by 83,970 gas and every join deposit by 0.0041985
   ETH at the price cap. Only `WIN_LEAF_MATCH` retains an inherited literal.
 - The previous NatSpec promised gas reimbursement plus profit, which the
@@ -304,17 +304,30 @@ future interface version rather than adding a breaking guard or rename now.
 ### PRT-006: Match ID hash zero is not a valid existence sentinel
 
 - Severity: Low
-- Status: Open
+- Status: Resolved
 - Area: abstraction correctness, readability
-- Evidence: `Match.IdHash.ZERO_ID`, `Match.hashFromId`, `Match.requireExist`
+- Evidence: `Match.hashFromId`, `Match.State.requireExist`,
+  `Tournament.getMatchCycle`, child-resolution entry points
 
 Hashing `Match.Id(0, 0)` produces a nonzero hash, so `IdHash.requireExist()` does
-not establish that a mapped match or parent-child link exists. Actual
-`Match.State.requireExist()` checks protect the important paths today, making
-some ID-hash checks redundant rather than protective.
+not establish that a mapped match or parent-child link exists. The child paths
+already loaded the corresponding state and checked `Match.State.requireExist()`,
+making their ID-hash checks redundant rather than protective. The cycle view
+lacked the stored-state check and returned a plausible cycle for an absent slot.
 
-Recommended response: remove the misleading sentinel check and establish
-existence from stored state or an explicit mapping membership flag.
+Resolution:
+
+1. Remove `ZERO_ID`, `IdHash.isZero`, `IdHash.requireExist`, and the unused
+   ID-hash equality helper. A hash identifies a mapping slot; it does not prove
+   that the slot contains a live match.
+2. Child winner propagation and elimination now derive the mapped ID and rely
+   on the immediately loaded `Match.State.requireExist()` check. Unlinked child
+   tournaments still reject with `MatchDoesNotExist` before any child call.
+3. `getMatchCycle` now applies the same stored-state check. It no longer returns
+   the tournament's `startCycle` for a nonexistent match, and deleted matches
+   reject consistently.
+4. Regressions pin the nonzero hash of the default all-zero ID, both unlinked
+   child-resolution entry points, and nonexistent and deleted cycle queries.
 
 ### PRT-007: Successful bond recovery is not idempotent
 
@@ -859,7 +872,8 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - Orphan and unknown child tournaments.
 - Same-root first-claimer ownership under the capped terminal payout.
 - No-winner child balance behavior.
-- Exact views for nonexistent match cycles and non-root result retrieval.
+- Landed: nonexistent and deleted match-cycle queries reject consistently.
+  Exact non-root result retrieval remains to be characterized.
 
 The current deterministic suite covers the principal lifecycle paths well. The
 new real height-1 accounting traces exercise focused stateful sequences, but the
@@ -1205,3 +1219,24 @@ After the child-resolution PRT-003 calibration slice:
   Storage layout and external interfaces are unchanged. Runtime and creation
   bytecode change, so deployment artifacts and CREATE2 addresses must be
   regenerated. No node source changed.
+
+After the PRT-006 state-backed existence slice:
+
+- `prt/contracts`: `just test-disputes` passed 108 tests. Regressions prove that
+  unlinked child tournaments reject through stored match state, nonexistent
+  inner-match cycles reject even when the tournament has a nonzero start cycle,
+  and deleted match cycles reject with `MatchDoesNotExist`.
+- Removing the dead ID-hash check lowered every child winner and elimination
+  witness by 19 gas. The largest paths now measure 307,751 and 158,769
+  allocation units; the 337,000 and 173,000 allocations retain their selected
+  headroom. `Bond.terminalAllocation`, every work reserve and deposit, and the
+  explicit Sybil principal are unchanged.
+- `cartesi-rollups/contracts`: all three integration tests passed, including
+  both fuzz properties with 256 runs and the bounded-callback settlement trace.
+- The actual runner remains Forge 1.5.1-dev with Solidity 0.8.30, optimized IR,
+  and the Prague EVM. `forge fmt --check` and `git diff --check` passed.
+- The `Tournament` ABI SHA-256 remains
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+  Storage layout, selectors, events, and external functions are unchanged.
+  Runtime and creation bytecode change, so deployment artifacts and CREATE2
+  addresses must be regenerated. No node source changed.

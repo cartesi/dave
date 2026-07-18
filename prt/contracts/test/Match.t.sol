@@ -371,16 +371,9 @@ contract MatchTest is Test {
         );
     }
 
-    function testEqual() public view {
-        assertTrue(leftDivergenceMatchIdHash.eq(leftDivergenceMatchIdHash));
-        assertTrue(rightDivergenceMatchIdHash.eq(rightDivergenceMatchIdHash));
-        assertTrue(!leftDivergenceMatchIdHash.eq(rightDivergenceMatchIdHash));
-        assertTrue(!rightDivergenceMatchIdHash.eq(leftDivergenceMatchIdHash));
-    }
-
-    function testIdHash() public pure {
+    function testZeroNodeIdHashIsNonzero() public pure {
         Match.Id memory id = Match.Id(Tree.ZERO_NODE, Tree.ZERO_NODE);
         Match.IdHash idHash = id.hashFromId();
-        idHash.requireExist();
+        assertNotEq(Match.IdHash.unwrap(idHash), bytes32(0));
     }
 }

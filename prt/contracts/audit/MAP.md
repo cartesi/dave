@@ -96,8 +96,7 @@ remains gated on the coordinated stride-37 node change.
      proves agreeState against `commitmentOne` (if height odd) or `commitmentTwo` (if height
      even) at position `runningLeafPosition - 1`, or `== initialHash` when position 0.
    - **Non-leaf** (`sealInnerMatchAndCreateInnerTournament`, `refundable(SEAL_INNER...)`):
-     require non-leaf; `requireCanBeSealed` ONLY (**no `requireExist`** - relies on a zeroed
-     `State` having `currentHeight 0` failing `canBeSealed`);
+     require non-leaf; `requireExist` + `requireCanBeSealed`;
      `MatchClocks.pauseForInnerAt` requires the active bisection phase, discounts the final
      responder, leaves both paused, and returns their maximum allowance; `sealMatch`; `instantiateInner`
      spawns a child at `level+1` seeded with `agreeHash` as `initialHash`, the two contested
@@ -120,8 +119,8 @@ remains gated on the coordinated stride-37 node change.
      re-pairing with the same survivor and charged clock balance, while an incompatible proof
      rejects (PRT-010).
    - **Non-leaf win** (`winInnerTournament`, `refundable(WIN_INNER_TOURNAMENT)`): require
-     non-leaf; `matchId` from `matchIdFromInnerTournaments[child]`; `requireExist` +
-     `requireIsSealed`; require `!child.canBeEliminated()`; `(finished, winner, , innerClock)
+     non-leaf; `matchId` from `matchIdFromInnerTournaments[child]`; the loaded match state must
+     exist and be sealed; require `!child.canBeEliminated()`; `(finished, winner, , innerClock)
      = child.innerTournamentWinner()`; require `finished`; `winner.requireExist`; supplied
      children must join to `winner`; parent `clock[winner].requireInitialized` then
      `replaceWithPaused(innerClock)` (the returned inner clock is already paused after carryover;
@@ -129,7 +128,8 @@ remains gated on the coordinated stride-37 node change.
      delete mapping. Child balance recovery is independent and permissionless; propagation does
      not invoke the winning claimer or burn the child's residual balance. The child result reads
      run inside the parent's lock.
-   - **Non-leaf eliminate** (`eliminateInnerTournament`): require non-leaf; require
+   - **Non-leaf eliminate** (`eliminateInnerTournament`): require non-leaf; load the child-linked
+     match ID and require its stored state to exist and be sealed; require
      `child.canBeEliminated()`; `deleteMatch(CHILD_TOURNAMENT, NONE)` eliminating both parent
      commitments; delete mapping. It does not settle or burn the no-winner child's balance.
    - **Timeout win** (`winMatchByTimeout`, `refundable(WIN_MATCH_BY_TIMEOUT)`): at one explicit
@@ -325,8 +325,9 @@ Each: statement * where enforced * how it could break.
 - **SAFE-5 - Parent-child binding.** Only a child tournament THIS tournament created can be
   consumed by win/eliminate `InnerTournament`.
   - *Enforced:* `matchIdFromInnerTournaments[child]` set only in
-    `sealInnerMatchAndCreateInnerTournament`; consumers look it up and `requireExist` (unknown
-    child -> `Id{0,0}` -> `ZERO_ID` -> `MatchDoesNotExist`); mapping deleted in both consume paths.
+    `sealInnerMatchAndCreateInnerTournament`; consumers look it up and require the corresponding
+    stored `Match.State` to exist (an unknown child maps to the default ID, whose state is absent);
+    mapping deleted in both consume paths.
   - *Breaks if:* two distinct real matches hash to the same `Match.IdHash` (keccak collision);
     mapping not cleared (it is); a path writing the mapping for an attacker child (none found).
     Permissionless `instantiateInner` mints orphans, harmless only while no honest parent
@@ -414,8 +415,8 @@ Each: statement * where enforced * how it could break.
     NEXT step still passes (only checks the join relation) but bisection tracks the wrong subtree.
 - **INV-MATCH-3 - Order-sensitive match identity.** Keyed by `keccak(abi.encode(Id{commitmentOne,
   commitmentTwo}))`; pairing always assigns dangling = One, newcomer = Two.
-  - *Enforced:* `Match.hashFromId`; `pairCommitment`/`createMatch` ordering; `requireExist` on
-    idHash.
+  - *Enforced:* `Match.hashFromId`; `pairCommitment`/`createMatch` ordering; existence checks on
+    the stored `Match.State`.
   - *Breaks if:* a caller constructs `Id` with swapped order -> `getMatch` misses and the
     One/Two->final-state mapping inverts. `Match.sol` does NOT enforce ordering; it trusts
     `Tournament`.
@@ -497,10 +498,9 @@ Cross-checks between mappers; most resolved-but-flagged.
    (`_getDivergenceOn*Leaf` `% 2`) consistency is **not provable from in-scope code + tests alone**
    (tests pin only heights 2/3). *Why it matters:* SAFE-2/SAFE-3 - the mechanism that decides who
    wins. Needs independent derivation / exhaustive fuzz across odd/even height x left/right.
-2. **`sealInnerMatchAndCreateInnerTournament` omits `requireExist()`** (only `requireCanBeSealed`),
-   unlike `sealLeafMatch` (both). **Confirmed.** Benign today: a zeroed State has `currentHeight ==
-   0` and `canBeSealed` requires `== 1`; `createMatch` is the only writer of a nonzero
-   `currentHeight`. *Why it matters:* INV-MATCH-1 latent fragility - flag for regression-guarding.
+2. **`sealInnerMatchAndCreateInnerTournament` omitted `requireExist()`.** **Resolved:** the inner
+   and leaf seal paths now both require stored-state existence before sealability. The regression
+   pins the accurate `MatchDoesNotExist` selector for a fabricated match.
 3. **`RiscVStateTransition.step` discards `UArchStepStatus`.** **Confirmed** in `machine/step`:
    `step()` returns `{Success, CycleOverflow, UArchHalted}`; `RiscVStateTransition.step` does
    `UArchStep.step(a); return a;` discarding it. A CycleOverflow/UArchHalted step is a silent no-op
@@ -523,9 +523,8 @@ Cross-checks between mappers; most resolved-but-flagged.
    **Resolved by PRT-009:** pairing now changes neither balance. `advanceMatch` and the final seal
    instead discount at most one `G` from elapsed response time without increasing the responder's
    action-start balance. Late joins and repeated winners cannot recover time through re-pairing.
-7. **`Time.sub` appears unused / dead code.** **Confirmed** via grep: no `src` file outside
-   `Time.sol` references `Time.sub` (non-saturating subtraction next to saturating `monus`). Minor
-   footgun for future edits - low-priority cleanup.
+7. **`Time.sub` was unused dead code.** **Resolved:** the strict helper and its test-only wrapper
+   were removed. Intentional saturating differences use the explicitly named `Time.monus`.
 
 ---
 
@@ -583,7 +582,7 @@ One finder per surface, using the listed vantages.
    wrong-subtree where `requireParentHasChildren` still passes (INV-MATCH-2).
 2. **Tournament lifecycle & resolution state machine** - `tournament/Tournament.sol`. SAFE-1/4/5,
    INV-LIFE-1/2, INV-FUND-1/2, INV-REENT-1, leaf/non-leaf segregation, generic
-   `arbitrationResult` behavior, `sealInner` missing `requireExist`, and the resolved
+   `arbitrationResult` behavior, symmetric seal existence checks, and the resolved
    leaf-proof/timeout compatibility policy. *Vantages:*
    state-machine finder (reachable (match,clock,dangling) states; `matchCount` conservation;
    single-dangling; delete-once); reentrancy finder (lock covers every ETH move + child call;
@@ -591,8 +590,8 @@ One finder per surface, using the listed vantages.
    `arbitrationResult` consumer impact); economic finder (make the global reserve theorem and
    explicit Sybil principal executable across repeated matches).
 3. **Chess-clock timing primitives** - `tournament/libs/Clock.sol`, `MatchClocks.sol`, `Time.sol`.
-   INV-CLK-1..5; `Time.sub` dead code; monus saturation asymmetry; `deductPaused` zero-allowance
-   escape; pair-phase assertions. *Vantages:* boundary/
+   INV-CLK-1..5; monus saturation boundaries; paused carryover zero-allowance rejection;
+   pair-phase assertions. *Vantages:* boundary/
    off-by-one finder (preserve the PRT-002 running-winner and equality regressions;
    strict-vs-inclusive mismatches in remaining views); carryover finder
    (INV-CLK-5); liveness finder (response-coupon bound, no-refill invariant, and bracket model).
