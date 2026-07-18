@@ -197,6 +197,17 @@ of the `M` parent matches are sealed-inner, the parent-local count is
 `runningClocks >= M - S`; each of those `S` exceptions has one linked child
 carrying the bounded resolution obligation.
 
+The executable
+[`ConcurrentRecursivePopulation.t.sol`](../prt/contracts/test/properties/ConcurrentRecursivePopulation.t.sol)
+trace pins one production instance of this accounting: four parent commitments
+form two sealed matches, the two linked children coexist with the same deadline,
+and each child reduces four live commitments to one over two timeout waves before
+propagation re-pairs the parent winners. The trace covers local timed matches
+versus linked-child obligations at both even and odd parent populations. It is a
+fixed balanced-arrival witness, not an asynchronous upper-bound model: parent
+seals are immediate, allowances are equal, and cleanup occurs promptly at exact
+deadlines.
+
 On successful propagation, the returned child-winner clock replaces the
 corresponding parent clock after post-finish deduction; it is not added to the
 parent balance. Pairing cannot refill it, so
@@ -261,9 +272,10 @@ adversarial claim instances across distinct tournament contracts, not unique
 actors. With equal allowances and equal per-level bonds, a fixed claim budget is
 balanced at `R ~= S ~= sqrt(N)`, giving the familiar leading
 `log2(N)^2 / 4` factor. Actual fixed-ETH dimensioning must weight levels by
-their different bond values. This is a validated attack construction and
-dimensioning model, not yet a formal upper bound over every asynchronous
-ordering.
+their different bond values. This expression is a dimensioning construction,
+not a formal upper bound over every asynchronous ordering. The retained
+on-chain trace validates concurrent-child population mechanics for its fixed
+four-root, four-child-claim shape, not the expression's worst-case timing.
 
 Clock-induced delay and transaction work are different properties. A skewed
 arrival schedule can force a correct survivor through a linear number of
@@ -440,13 +452,21 @@ Joining posts at least one bond to one tournament instance. A participant
 following a recursive dispute may have a separate bond locked at each active
 level. Any excess join value enters the same pooled balance as the bonds.
 
-Each progress function uses a fixed gas allocation. The `refundable` modifier
-pays the caller the minimum of:
+Each progress function uses a fixed `gasAllocation`. After the action body, the
+`refundable` modifier computes:
 
-- The tournament's current balance.
-- The function's allocation times the configured work-price cap.
-- Measured execution gas priced by a capped gas price, with a fixed transaction
-  overhead.
+```text
+units = Gas.TX + gasBefore - gasAfter
+effectivePrice = min(tx.gasprice, block.basefee + Bond.PRIORITY_FEE_CAP)
+requestedRefund = min(
+    tournament balance before the callback,
+    gasAllocation * Bond.WORK_PRICE_CAP,
+    units * effectivePrice
+)
+```
+
+It then attempts to transfer `requestedRefund` to the caller. The balance term,
+the action-allocation term, and the measured-work term are independent caps.
 
 This is a bounded partial refund, not a guarantee of full transaction cost or
 profit. The measured delta is gross EVM work plus a fixed overhead, not exact
@@ -459,23 +479,28 @@ supported proof shape. PRT-003 records known estimate failures, and
 [`REFUND-DESIGN.md`](../prt/contracts/audit/REFUND-DESIGN.md) derives the full
 accounting boundary.
 
-The refund callback occurs after the gas measurement. Recipient code receives
-at most 50,000 gas, and its return data is not copied. The ABI-compatible
-`PartialBondRefund.ret` field is therefore always empty. A zero refund skips
-recipient execution and reports success. A failed nonzero callback does not
-revert the completed action; the attempted value stays in the pooled balance
-and is not reserved for a later retry by that caller.
+The refund callback occurs after `gasAfter` is sampled, so accepting, rejecting,
+or reentrant recipient behavior cannot change the requested value.
+`PartialBondRefund.value` records that request whether or not the transfer
+succeeds; `success` records whether a nonzero recipient call succeeded, or is
+`true` when a zero request skipped the call. Recipient code receives at most
+50,000 gas, and its return data is not copied. The
+ABI-compatible `PartialBondRefund.ret` field is therefore always empty. A zero
+refund skips recipient execution and reports success. A failed nonzero callback
+transfers nothing and does not revert the completed action; the requested value
+stays in the pooled balance and is not reserved for a later retry by that caller.
 
-When a tournament finishes with a winner, `tryRecoveringBond` pays the address
-that first joined the winning commitment
+When a tournament finishes with a winner, `tryRecoveringBond` attempts to pay the
+address that first joined the winning commitment
 `min(current balance, bondValue())`. The configured refund shares reserve one
-complete winning deposit. A height-`h` match has at most `h - 1` advances, and
-`J` unique paid joins create at most `J - 1` matches. Before terminal recovery,
-the balance is therefore at least one winning deposit plus one explicit Sybil
-principal per eliminated commitment. Only after a nonzero winner payment
-succeeds does the contract send the entire post-payment balance to the zero
-address. If the balance is zero, it skips the recipient call and completes
-recovery defensively.
+complete winning deposit, so an accepting winner receives one full bond under
+the configured reserve invariant. A height-`h` match has at most `h - 1`
+advances, and `J` unique paid joins create at most `J - 1` matches. Before
+terminal recovery, the balance is therefore at least one winning deposit plus
+one explicit Sybil principal per eliminated commitment. Only after a nonzero
+winner payment succeeds does the contract send the entire post-payment balance
+to the zero address. If the balance is zero, it skips the recipient call and
+completes recovery defensively.
 
 A commitment root can be joined only once, so copying the correct root first
 intentionally claims that capped recipient slot; all progress and defense
@@ -552,9 +577,13 @@ recovery are permissionless entry points. Correctness must not depend on the
 original claimer being the caller. Claimer identity controls only the capped
 terminal-payment recipient; the residual always goes to the fixed burn sink.
 
-The tournament uses a transient reentrancy lock around state-changing calls,
-external ETH transfers, and child interactions. Cross-instance child calls are
-still trust boundaries and must consume only children linked by the parent.
+Each tournament clone uses its own transient reentrancy lock around
+state-changing calls, external ETH transfers, and child interactions. A nested
+state-changing call to the same clone reverts with `ReentrancyDetected`. A
+payment callback may enter and mutate a different clone whose independent lock
+is free, provided the nested work fits the callback gas ceiling. The lock does
+not globally serialize tournament instances. Cross-instance child calls remain
+trust boundaries and must consume only children linked by the parent.
 
 ## Executable specification priorities
 

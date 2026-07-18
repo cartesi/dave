@@ -382,6 +382,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
 
         Match.State memory parentMatch =
             tournament.getMatch(Match.hashFromId(matchId));
+        assertTrue(Match.exists(parentMatch));
         assertTrue(Match.isSealed(parentMatch));
         assertEq(parentMatch.runningLeafPosition, 1);
         assertEq(tournament.getNewInnerTournamentCount(), 1);
@@ -437,6 +438,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
 
         Match.State memory state =
             tournament.getMatch(Match.hashFromId(matchId));
+        assertTrue(Match.exists(state));
         assertTrue(Match.isSealed(state));
         assertEq(state.runningLeafPosition, 1);
 
@@ -833,6 +835,7 @@ contract SealLeafMatchGasTest is TournamentGasTest {
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
+        assertTrue(Match.exists(state));
         assertTrue(Match.isSealed(state));
         assertEq(state.runningLeafPosition, 1);
     }
@@ -854,6 +857,7 @@ contract SealLeafMatchLeftGasTest is TournamentGasTest {
 
         Match.State memory state =
             tournament.getMatch(Match.hashFromId(matchId));
+        assertTrue(Match.exists(state));
         assertTrue(Match.isSealed(state));
         assertEq(state.runningLeafPosition, 2);
     }
@@ -878,6 +882,7 @@ contract SealInnerMatchGasTest is TournamentGasTest {
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
+        assertTrue(Match.exists(state));
         assertTrue(Match.isSealed(state));
         assertEq(state.runningLeafPosition, 1);
         assertEq(tournament.getNewInnerTournamentCount(), 1);
@@ -903,6 +908,7 @@ contract SealInnerMatchLeftGasTest is TournamentGasTest {
 
         Match.State memory state =
             tournament.getMatch(Match.hashFromId(matchId));
+        assertTrue(Match.exists(state));
         assertTrue(Match.isSealed(state));
         assertEq(state.runningLeafPosition, 2);
         assertEq(tournament.getNewInnerTournamentCount(), 1);

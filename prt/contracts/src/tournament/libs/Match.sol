@@ -239,6 +239,9 @@ library Match {
         return state.isInit;
     }
 
+    /// @dev This raw height predicate does not imply existence: uninitialized
+    /// zero storage also has height zero. Establish existence first when the
+    /// state may come from a mapping lookup.
     function isSealed(State memory state) internal pure returns (bool) {
         return state.currentHeight == 0;
     }

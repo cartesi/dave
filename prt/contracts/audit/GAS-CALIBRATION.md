@@ -24,15 +24,20 @@ outputs.
 | Principal, price policy, terminal maximum, and bond formula | `src/tournament/libs/Bond.sol` |
 | Retained execution witnesses and measurement helper | `test/gas/TournamentGas.t.sol` |
 | Reserve algebra and population properties | `test/accounting/RefundReserve.t.sol` |
+| Exact refund formula and cap boundaries | `test/accounting/RefundFormula.t.sol` |
+| Recipient callback and per-clone lock behavior | `test/accounting/RefundCallbacks.t.sol` |
 | Compiler, optimizer, and EVM settings | `foundry.toml` |
 | Solidity dependency revisions | `soldeer.lock` |
 | Current derivation and accepted measurements | `audit/REFUND-DESIGN.md` |
 | Finding and validation ledger | `audit/REVIEW.md` |
 
 The gas tests observe the production `PartialBondRefund` event; they do not add
-instrumentation to `Tournament`. At zero base fee and a transaction gas price of
-one Wei, the event value in Wei is numerically equal to the allocation units
-consumed by the successful call.
+instrumentation to `Tournament`. Their recipient accepts and their balance and
+action caps do not bind. At zero base fee and a transaction gas price of one
+Wei, the requested event value in Wei is therefore numerically equal to the
+allocation units consumed by the successful call. `RefundFormula.t.sol`
+separately checks requested values, successful transfers, and failed transfers;
+it is not a substitute for the retained gas witnesses.
 
 ## What the number means
 
@@ -48,6 +53,22 @@ reviewed minimum = measured allocation + margin
 recommended allocation = roundUpTo1000(reviewed minimum)
 ```
 
+The production postlude then computes:
+
+```text
+units = Gas.TX + delta
+effectivePrice = min(tx.gasprice, block.basefee + Bond.PRIORITY_FEE_CAP)
+requestedRefund = min(
+    tournament balance before the callback,
+    allocation * Bond.WORK_PRICE_CAP,
+    units * effectivePrice
+)
+```
+
+`PartialBondRefund.value` records `requestedRefund` even when its nonzero
+recipient call fails and transfers nothing. `gasAfter` is sampled before that
+callback, so recipient behavior cannot change the request.
+
 `Gas.TX` is a fixed policy allowance for unmetered work. It is not measured
 transaction-intrinsic gas. The refund excludes dynamic calldata cost, dispatch
 and decoding before the snapshot, exact storage-refund reconciliation, and
@@ -57,7 +78,10 @@ is not used to select an allocation.
 Do not use `forge snapshot` as a substitute for this report. It measures the
 test entry point, not the production refund seam. Do not measure under `forge
 coverage`: coverage instrumentation changes execution gas. Every coverage
-command must therefore exclude these gas tests.
+command must therefore exclude both the retained gas witnesses and the exact
+refund-formula suite. Under IR coverage instrumentation, the formula control
+path grows past its production action cap, so its event no longer reveals the
+uncapped measured units.
 
 ## 1. Freeze and record the environment
 
@@ -261,6 +285,20 @@ direnv exec . just rollups-contracts::test
 git diff --check
 ```
 
+`test-disputes` includes the exact-formula and callback suites. During focused
+development they can also be run directly from `prt/contracts`:
+
+```bash
+direnv exec . forge test --match-path test/accounting/RefundFormula.t.sol
+direnv exec . forge test --match-path test/accounting/RefundCallbacks.t.sol
+```
+
+The formula suite uses `vm.deal` to isolate balances below the ordinary reserve
+lower bound. That is a cap test, not evidence that a normally funded tournament
+can violate the reserve theorem. Its `lastCallGas.gasRefunded` readings are
+diagnostic only: the production formula intentionally prices the gross
+`gasleft()` delta rather than reconciling Foundry's storage-refund counter.
+
 Before and after a contract change, record:
 
 ```bash
@@ -297,6 +335,7 @@ The committed record must include:
 - work reserves and join deposits at every supported height;
 - confirmation that economic policy constants did or did not change;
 - focused, full, and downstream test results;
+- exact refund-formula and callback-isolation results;
 - ABI and storage comparison; and
 - deployment-artifact regeneration status.
 
@@ -322,6 +361,12 @@ A small source diff is not an exemption. Re-run the report and retain unchanged
 numbers as evidence when the trigger does not affect the selected maximum.
 
 ## `winLeafMatch` and the InputBox decision
+
+InputBox pre-Merkleization is out of scope for the current calibration branch.
+First measure and document the current supported proof/input envelope. If that
+result makes leaf-proof gas, calldata, blockspace, or honest capital
+unreasonable, evaluate pre-Merkleization as a separate protocol change and then
+repeat this complete runbook.
 
 `winLeafMatch` is the remaining uncalibrated action. Its witness must call the
 complete tournament entry point with the deployed `CartesiStateTransition` and

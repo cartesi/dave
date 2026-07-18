@@ -175,9 +175,9 @@ The hard-coded gas constants are used to size the bond's work reserve and cap
 each caller refund. Seven actions are calibrated; the remaining inherited
 `WIN_LEAF_MATCH` literal is not validated and is known to be non-conservative:
 
-- Five production storage counters were added after the constants. Tests no
-  longer consume them, but their getters are external API and their `SSTORE`
-  cost is still paid in production.
+- Five production storage counters were added after the original constants.
+  Their getters and values remain asserted compatibility and observability
+  semantics, and their `SSTORE` cost is paid in production.
 - Sequential measurements put ordinary and reset
   `CartesiStateTransition.transitionState()` calls alone at approximately 244k
   to 624k gas for the exercised proofs. Input-boundary calls already reached
@@ -204,6 +204,13 @@ each caller refund. Seven actions are calibrated; the remaining inherited
   calls, and removes recipient return-data copying. Callback work remains
   outside the refund measurement; the supported proof envelope and
   `WIN_LEAF_MATCH` allocation remain open.
+- The production refund formula is now pinned independently of the allocation
+  measurements. A timeout-action twin derives `Gas.TX + gasBefore - gasAfter`
+  at a one-Wei price, then exact fuzzing varies balance, base fee, priority fee,
+  receiver behavior, and both dangling and replacement-match topologies. The
+  emitted value is the requested refund even when a rejecting recipient
+  receives nothing. This establishes the implemented caps, not receipt-exact
+  reimbursement or the adequacy of any action allocation.
 - The current InputBox caps the complete encoded input at 64 KiB but stores only
   its hash. An input-boundary dispute resubmits the input; the data provider
   hashes it, checks the stored hash, and Merkleizes it before the state
@@ -276,6 +283,9 @@ Recommended response:
    tournament. Pure models and real height-1 traces make the theorem executable.
    Recursive traces isolate child balances and compose two sequential children,
    so a recursive lifecycle handler is not a missing premise of this proof.
+6. Exact formula and callback properties now distinguish requested values from
+   successful transfers and same-instance locking from permitted cross-instance
+   mutation. Keep those tests separate from gas allocation measurements.
 
 ### PRT-004: Timeout capability view does not match timeout resolution
 
@@ -664,7 +674,7 @@ Resolution:
    always empty.
 3. Zero-value payments skip recipient execution. A zero refund still emits the
    existing event and reports success.
-4. Refund failure remains non-reverting after progress and leaves the attempted
+4. Refund failure remains non-reverting after progress and leaves the requested
    value in the tournament pool. Terminal failure remains retryable and returns
    before payment, residual burn, or claimer deletion.
 5. Tournament-result staging stores the result before its synchronous recovery
@@ -672,10 +682,14 @@ Resolution:
    recovery revert, leaving the old tournament retryable without undoing
    staging or blocking later acceptance.
 6. Focused tests pin the effective gas ceiling, gas exhaustion, zero-value
-   skipping, empty return data, action persistence, terminal retry,
-   idempotence, and rejection of same-tournament recovery reentry. A downstream
-   integration test proves staging and acceptance advance under a gas-exhausting
-   winning claimer and that later recovery succeeds.
+   skipping, empty return data, action persistence, terminal retry, idempotence,
+   and the exact `ReentrancyDetected` selector for same-tournament recovery
+   reentry. They also prove that a callback can complete zero-balance recovery
+   on a different clone whose independent lock is free. This cross-instance
+   witness performs real mutation but does not claim arbitrary nested actions
+   fit the 50,000-gas ceiling. A downstream integration test proves staging and
+   acceptance advance under a gas-exhausting winning claimer and that later
+   recovery succeeds.
 
 Recipient contracts are now subject to an explicit compatibility rule: their
 ETH receive path, including EIP-7702 delegated code, must complete within the
@@ -797,6 +811,11 @@ The following items were corrected or explicitly documented in this pass:
   return data is discarded, zero-value callbacks are skipped, and
   tournament-result staging and acceptance advance after a bounded
   terminal-payment failure.
+- `PartialBondRefund.value` is the requested amount, while `success` and balance
+  movement distinguish an accepted transfer. Recipient behavior occurs after
+  the gas snapshot and cannot change that request.
+- Reentrancy locks belong to individual clones. Same-instance nested mutation
+  rejects exactly; a different clone may mutate within the callback gas budget.
 
 ### Documentation model
 
@@ -875,12 +894,15 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   burn.
 - `TEST-CALLBACK-001` (landed): bound action-refund recipient gas, discard large
   success and revert data, skip zero-value callbacks, and require gas exhaustion
-  to preserve completed progress while reporting the attempted refund as failed.
-  A second mutation in the same transaction pins lock release.
+  to preserve completed progress while reporting the requested refund as failed.
+  The emitted request is identical for accepting, rejecting, and handled
+  same-instance-reentry callbacks. A second mutation in the same transaction
+  pins lock release.
 - `TEST-CALLBACK-002` (landed): bound terminal recipient gas, preserve the bond
-  and claimer after failure, reject same-tournament recovery reentry, retry
-  successfully, and advance tournament-result staging and acceptance despite a
-  gas-exhausting winning claimer.
+  and claimer after failure, reject same-tournament recovery reentry with the
+  exact selector, retry successfully, pay at most one bond, burn the residual,
+  and advance tournament-result staging and acceptance despite a gas-exhausting
+  winning claimer.
 
 ### Priority 1
 
@@ -909,20 +931,36 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   elimination boundary, child balance isolation, and terminal root results.
   Fuzzing covers late single entrants and active child resolution strictly after
   global close. A further trace composes two sequential children on different
-  disputed segments after parent re-pairing.
+  disputed segments after parent re-pairing. A fixed balanced-arrival trace now
+  adds four parent commitments, two coexisting linked children, four
+  same-final-state commitments per child, two timeout reduction waves, and the
+  parent population sequence `4 -> 3 -> 2 -> 1`.
 - Rejected as duplicative: a one-child stateful recursive oracle over that fixed
   seam would permute already pinned branches while reproducing substantial Match
   and clock policy in its ghost state. Meaningful remaining stateful work must
-  vary concurrent parent matches, child populations, and adversarial arrival
-  schedules; that belongs to the population-delay model below.
-- Multi-level parameter fuzzing for one, two, three, and more levels, including
-  malformed heights, strides, allowances, and unsafe shifts.
-- Refund-formula fuzzing around balance, allocation, actual-work, base-fee, and
-  priority-fee caps, including failed receivers and storage-refund differences.
-- Model-based one- and two-level population-delay tests covering balanced
-  reservoirs, skewed/list pairing, late joins, concurrent child tournaments,
-  and non-bankable response discounts.
-- Cross-instance callback and reentrancy scenarios.
+  vary adversarial arrival schedules and timing rather than duplicate the now
+  landed concurrent-child seam; that belongs to the population-delay model
+  below.
+- Partially landed: injected production-path suites cover one and two levels,
+  while the frozen historical and canonical suites cover three. Remaining
+  parameter work starts at four levels and includes malformed heights, strides,
+  allowances, and unsafe shifts.
+- Landed: exact refund-formula fuzzing covers balance, allocation, measured-work,
+  base-fee, and priority-fee caps, both timeout-winner topologies, zero requests,
+  and failed receivers. Six deterministic cases pin every kink. Foundry's
+  storage-refund counter remains diagnostic because the implemented promise
+  deliberately prices the gross `gasleft()` delta.
+- Partially landed: the deterministic production trace covers a balanced
+  four-root reservoir, two coexisting child tournaments, four same-final-state
+  claims per child, propagation, re-pairing, and exact-deadline cleanup. Still
+  open is an independent one- and two-level model or fuzz campaign over balanced
+  reservoirs, skewed/list and late arrivals, staggered child populations,
+  unequal allowances and timeout charges, response discounts, and the
+  adversarial upper bound.
+- Landed: same-instance refund and terminal reentry reject with the exact
+  selector, while a callback can mutate a second finished clone through
+  zero-balance recovery. The latter proves lock isolation, not that arbitrary
+  cross-instance actions fit the callback gas ceiling.
 
 ### Priority 2
 
@@ -935,8 +973,13 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - Landed for the strict carryover edge: child propagation succeeds with one
   block remaining and rejects at equality, while elimination has the inverse
   availability.
-- Orphan and unknown child tournaments.
-- Same-root first-claimer ownership under the capped terminal payout.
+- Landed: a real but unlinked child is rejected by both parent winner and parent
+  elimination entry points through the stored-match existence check. An
+  arbitrary unknown address reaches the same check before any child call.
+- Decision landed: the first claimer owns a same-root commitment and later
+  callers cannot join it; defense remains permissionless. Fixture tests pin the
+  first claimer and rejection tests pin duplicate-root failure, while the capped
+  payout and residual burn prevent the former losing-bond recycling path.
 - Landed: a child with no winner is immediately eliminable after its final match
   is deleted, and parent elimination does not touch the child balance.
 - Landed: nonexistent and deleted match-cycle queries reject consistently.
@@ -950,9 +993,12 @@ still owns exhaustive bisection path and parity coverage; the lifecycle pool
 selects representative divergence positions instead of duplicating that
 campaign. Coverage reporting is operational: the recipe computes an absolute
 `machine/step` remapping for Solar, uses IR-minimum as the stack-depth
-workaround, and excludes FFI, gas-calibration, out-of-scope state-transition
-tests and sources, and the slow invariant executors. Companion deterministic
-lifecycle traces remain instrumented. IR-minimum can produce
+workaround, and excludes FFI, gas-calibration, exact refund-formula,
+out-of-scope state-transition tests and sources, and the slow invariant
+executors. Coverage instrumentation changes measured refund units and can make
+the production action cap bind, so the ordinary dispute gate owns both gas
+observation suites. Companion deterministic lifecycle traces remain
+instrumented. IR-minimum can produce
 inaccurate source mappings, so line and especially branch totals remain a map
 for investigation rather than evidence that an invariant is covered.
 
@@ -991,13 +1037,14 @@ recursive propagation, Match encoding and events, and refundable gas witnesses.
 Any future extraction around these lifecycle boundaries should use those fences
 and remain a separately reviewed change to the existing clone architecture.
 
-### Test instrumentation changes production economics
+### Production event counters affect economics
 
 Production storage counters still add writes to the paths whose gas they are
-used to estimate. Test helpers no longer read or assert those counters; new
-tests use events and protocol state. The slots and external getters remain
-pending an explicit compatibility decision, so the production writes have not
-yet been removed.
+used to estimate. Characterization, lifecycle, recursive, gas, and rollups
+integration tests assert their values, so they now function as compatibility
+and observability semantics rather than disposable test instrumentation. Keep
+their worst-case writes in gas witnesses; removal belongs to an explicit
+versioned interface decision.
 
 ### Comments restate role matrices
 
@@ -1015,21 +1062,21 @@ role and lifecycle explanations to `docs/dispute-game.md`.
   state was not sealable, so this changes the nonexistent-match error from
   `MatchCannotBeSealed` to the accurate `MatchDoesNotExist`; it fixes abstraction
   symmetry rather than an exploit.
-- Needs decision: `winLeafMatch` checks both commitment clocks before stored
-  match existence. A fabricated ID with unknown roots therefore rejects with
-  `ClockNotInitialized`, while a reversed or deleted ID whose roots were joined
-  rejects with `MatchDoesNotExist`. Checking the match first would normalize the
-  rejection surface but change public error precedence; no safety impact is
-  known.
+- Decision: preserve the current validation order. `winLeafMatch` checks both
+  commitment clocks before stored match existence. A fabricated ID with unknown
+  roots therefore rejects with `ClockNotInitialized`, while a reversed or
+  deleted ID whose roots were joined rejects with `MatchDoesNotExist`.
+  Normalizing this public error precedence has no known safety benefit and would
+  spend the compatibility budget without strengthening an invariant.
 - Landed at test time: the canonical parameter table is checked row by row and
   validated for inter-level tiling. Canonical geometry changes must regenerate
   that table and pass the conformance test; they do not need a repeated runtime
   check on every clone.
-- Needs decision for generic providers: validate factory/provider addresses,
-  level shapes, and nonzero allowances before a clone later fails through clock
-  or array panics. A zero response budget is mechanically safe and simply
-  charges full elapsed time, so it is a policy choice rather than an invalid
-  shape.
+- Open only for generic providers: decide whether to validate factory/provider
+  addresses, level shapes, and nonzero allowances before a clone later fails
+  through clock or array panics. A zero response budget is mechanically safe
+  and simply charges full elapsed time, so it is a policy choice rather than an
+  invalid shape.
 - Coordinate `cartesi-rollups/node/src/bin/measure.rs` and its generated or
   node-facing planning prose (`docs/plans/constants.md`, `measurements*.md`,
   `snapshots.md`, and `sling-design.md`) with the landed response-discount
@@ -1059,13 +1106,18 @@ confirmed dispute-game defect:
 - Same-root first-claimer ownership: later callers cannot join the same
   commitment, while every defense operation remains permissionless. This is
   intended; PRT-008 changed only the residual payout policy.
+- Payment callbacks cannot re-enter the source clone's state-changing surface,
+  but may progress another clone under its independent lock. The source action's
+  requested refund is fixed before any callback behavior.
 
 This is review evidence, not a proof. Independent parity properties and the
 single-level lifecycle model cover exhaustive bisection paths, legal stateful
 composition, and rejected operations. Recursive traces cover both winner
 mappings, strict carryover boundaries, late child entry, post-close child
-resolution, and two sequential child tournaments. The remaining recursive gap
-is adversarial multi-population delay composition, not the fixed one-child seam.
+resolution, two sequential child tournaments, and one fixed four-root trace
+with two coexisting children. The concurrent-child production seam is landed;
+the remaining recursive gap is an independent model of adversarial arrivals
+and the upper bound, not another fixed lifecycle trace.
 
 ## Validation baseline
 
@@ -1670,3 +1722,73 @@ After completing the Match refactor and gas recalibration:
   `cdcb81a8c101935b5700b491cf4046d4a2ed0583d0c26f5f49f06eacfb0185b7`.
   Deployment and CREATE2 artifacts must be regenerated and reviewed before
   release. No node source changed.
+
+After tracing concurrent recursive population:
+
+- The coordinate-coherent fixture now retains the original three claims while
+  adding a fourth root claim and four deterministic child variants per claim.
+  Paired roots first diverge at segment two; every variant preserves the
+  parent-selected final state, and each noncanonical variant changes only a
+  non-final child leaf. The fixtures are timeout and topology witnesses, not
+  execution oracles.
+- A production-path trace joins four parent roots, seals two parent matches,
+  and keeps both linked children alive under the same block-300 deadline. Each
+  child population reduces `4 -> 3 -> 2 -> 1` over the block-300 and block-500
+  timeout waves. Propagation then reduces the parent `4 -> 3 -> 2`, re-pairs
+  both child winners, and reaches one root winner at block 700.
+- The trace pins both child initial states, both contested final states, cycle
+  eight, parent-child links, exact clocks and zero-overdue deadline boundaries,
+  topology, deletion times, counters, carryover, cleared links, claimers, and
+  the final arbitration result. Every sealed-state assertion establishes match
+  existence first because raw `Match.isSealed()` is also true for zero storage.
+- This is fixed balanced-arrival characterization, not an asynchronous delay
+  model or proof of the dimensioning expression. Parent seals are immediate,
+  allowances are equal, cleanup is prompt at exact deadlines, and each child's
+  four commitments share one contested final state.
+- `prt/contracts`: `just test-disputes` passed all 163 tests. The positive and
+  rejection stateful campaigns again completed 32,768 and 16,384 calls with no
+  handler reverts or discards. The focused concurrent trace, focused lint,
+  `forge fmt --check`, and `git diff --check` passed.
+- These slices change fixtures, tests, prose, and one source comment only. They
+  do not change executable production behavior, the external interface,
+  storage layout, or node source. The ABI, semantic storage-layout, and both
+  metadata-free bytecode hashes recorded immediately above remain exact.
+
+After pinning callback isolation and the exact refund formula:
+
+- `RefundFormulaTest` passed all 3 tests. Its fuzz property completed 10,000
+  runs across balance, base-fee, priority-fee, recipient, and topology inputs;
+  one deterministic matrix covers six cap boundaries. Independent unit-price
+  twins pin equal measured units, exact event requests, actual transfers, and
+  progress for both dangling and replacement-match outcomes.
+- The formula fixture uses `vm.deal` to isolate balances below the ordinary
+  reserve lower bound; this does not weaken the funded-tournament theorem.
+  Foundry's reported storage refunds remain diagnostic: the no-dangling and
+  replacement-match twins report 28,800 and 31,600 while production prices the
+  gross `gasleft()` delta.
+- `RefundCallbacksTest` passed all 11 tests. Same-instance refund and terminal
+  reentry return the exact `ReentrancyDetected` selector; a zero-balance recovery
+  on a second clone mutates that clone during the first clone's payment. The
+  terminal two-bond cases pay at most one bond, burn one residual bond after
+  success, preserve the full pool and claimer after rejection, and remain
+  idempotent.
+- `just test-disputes` passed all 169 tests. The positive and rejection stateful
+  campaigns completed 32,768 and 16,384 calls with no handler reverts or
+  discards.
+- Coverage passed all 142 included tests and remains 697/719 lines, 711/735
+  statements, 64/130 branches, and 144/146 functions. `Tournament` remains
+  342/357 lines, 341/356 statements, 35/75 branches, and 57/57 functions. The
+  gas-calibration and exact-formula observation suites are intentionally
+  excluded: IR instrumentation raises the formula control to 279,771 units,
+  above its 260,000 action cap, so the event can no longer expose the uncapped
+  quantity being tested.
+- The ABI, semantic storage-layout, metadata-free creation, and metadata-free
+  runtime hashes remain respectively
+  `67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a`,
+  `952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329`,
+  `94798529a349a513d59fbb4b3ff697dc41a1062fca3fcc8dc3f50574dc6d3dbe`, and
+  `cdcb81a8c101935b5700b491cf4046d4a2ed0583d0c26f5f49f06eacfb0185b7`.
+  This campaign changes tests, coverage routing, prose, and source comments. It
+  does not change executable production behavior, external interfaces, storage,
+  metadata-free bytecode, or node source. `forge fmt --check`, scoped
+  high-severity lint, ASCII validation, and `git diff --check` passed.

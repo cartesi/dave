@@ -431,6 +431,7 @@ contract RecursiveTournamentLifecycleTest is Test {
 
         Match.State memory sealedMatch =
             parent.getMatch(parentMatch.hashFromId());
+        assertTrue(sealedMatch.exists());
         assertTrue(sealedMatch.isSealed());
         assertEq(sealedMatch.runningLeafPosition, CONTESTED_SEGMENT);
         assertEq(
@@ -510,6 +511,7 @@ contract RecursiveTournamentLifecycleTest is Test {
         child = _recordedChild(parentMatch);
 
         Match.State memory state = parent.getMatch(parentMatch.hashFromId());
+        assertTrue(state.exists());
         assertTrue(state.isSealed());
         assertEq(state.runningLeafPosition, CONTESTED_SEGMENT);
         _assertLiveOrigin();
@@ -573,6 +575,7 @@ contract RecursiveTournamentLifecycleTest is Test {
         secondChild = _recordedChild(secondParentMatch);
 
         state = parent.getMatch(secondParentMatch.hashFromId());
+        assertTrue(state.exists());
         assertTrue(state.isSealed());
         assertEq(state.runningLeafPosition, 0);
         assertEq(parent.getMatchCycle(secondParentMatch.hashFromId()), 0);
@@ -691,6 +694,7 @@ contract RecursiveTournamentLifecycleTest is Test {
         );
 
         Match.State memory state = child.getMatch(childMatch.hashFromId());
+        assertTrue(state.exists());
         assertTrue(state.isSealed());
         assertEq(state.runningLeafPosition, 0);
         assertEq(

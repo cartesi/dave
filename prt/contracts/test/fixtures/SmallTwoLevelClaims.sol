@@ -16,7 +16,11 @@ library SmallTwoLevelClaims {
 
     uint8 internal constant CLAIM_ONE = 0;
     uint8 internal constant CLAIM_TWO = 1;
-    uint8 internal constant DANGLING_CLAIM = 2;
+    uint8 internal constant CLAIM_THREE = 2;
+    uint8 internal constant DANGLING_CLAIM = CLAIM_THREE;
+    uint8 internal constant CLAIM_FOUR = 3;
+    uint8 internal constant CLAIM_COUNT = 4;
+    uint8 internal constant CHILD_VARIANT_COUNT = 4;
 
     uint64 internal constant FINE_HEIGHT = 4;
     uint64 internal constant ROOT_HEIGHT = 2;
@@ -26,6 +30,7 @@ library SmallTwoLevelClaims {
 
     error InvalidClaim(uint8 claim);
     error InvalidSegment(uint256 segment);
+    error InvalidChildVariant(uint8 variant);
 
     function initialState() internal pure returns (Machine.Hash) {
         return Machine.Hash.wrap(bytes32(uint256(0x0abc)));
@@ -57,12 +62,32 @@ library SmallTwoLevelClaims {
         pure
         returns (SmallFullTree.Data memory)
     {
+        return childTreeVariant(claim, segment, 0);
+    }
+
+    /// @dev Variant zero is the canonical child slice. The other variants
+    /// change only the first child leaf, keeping the parent-selected final
+    /// state fixed while producing distinct commitment roots for population
+    /// tests. They are plumbing witnesses, not execution traces.
+    function childTreeVariant(uint8 claim, uint256 segment, uint8 variant)
+        internal
+        pure
+        returns (SmallFullTree.Data memory)
+    {
         if (segment >= SEGMENT_COUNT) revert InvalidSegment(segment);
+        if (variant >= CHILD_VARIANT_COUNT) {
+            revert InvalidChildVariant(variant);
+        }
         Tree.Node[] memory fine = _fineLeaves(claim);
         Tree.Node[] memory child = new Tree.Node[](SEGMENT_SIZE);
         uint256 offset = segment * SEGMENT_SIZE;
         for (uint256 i; i < SEGMENT_SIZE; ++i) {
             child[i] = fine[offset + i];
+        }
+        if (variant != 0) {
+            uint256 variantLeaf =
+                0x80000000 + (uint256(claim) << 16) + (segment << 8) + variant;
+            child[0] = Tree.Node.wrap(bytes32(variantLeaf));
         }
         return SmallFullTree.buildFromLeaves(child);
     }
@@ -87,19 +112,21 @@ library SmallTwoLevelClaims {
         pure
         returns (Tree.Node[] memory fine)
     {
-        if (claim > DANGLING_CLAIM) revert InvalidClaim(claim);
+        if (claim >= CLAIM_COUNT) revert InvalidClaim(claim);
 
         fine = new Tree.Node[](1 << FINE_HEIGHT);
         for (uint256 i; i < fine.length; ++i) {
-            uint256 value;
-            if (claim == CLAIM_ONE || (claim == CLAIM_TWO && i < 8)) {
-                value = 0x1000 + i;
+            uint256 family;
+            if (claim == CLAIM_ONE) {
+                family = 0x1000;
             } else if (claim == CLAIM_TWO) {
-                value = 0x2000 + i;
+                family = i < 8 ? 0x1000 : 0x2000;
+            } else if (claim == CLAIM_THREE) {
+                family = 0x3000;
             } else {
-                value = 0x3000 + i;
+                family = i < 8 ? 0x3000 : 0x4000;
             }
-            fine[i] = Tree.Node.wrap(bytes32(value));
+            fine[i] = Tree.Node.wrap(bytes32(family + i));
         }
     }
 }

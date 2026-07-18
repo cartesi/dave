@@ -17,34 +17,130 @@ contract SmallTwoLevelClaimsTest is Test {
     using Tree for Tree.Node;
 
     function testParentClaimsSelectSegmentFinalStates() public pure {
-        SmallFullTree.Data memory fineOne =
-            SmallTwoLevelClaims.fineTree(SmallTwoLevelClaims.CLAIM_ONE);
-        SmallFullTree.Data memory rootOne =
-            SmallTwoLevelClaims.rootTree(SmallTwoLevelClaims.CLAIM_ONE);
+        for (uint8 claim; claim < SmallTwoLevelClaims.CLAIM_COUNT; ++claim) {
+            SmallFullTree.Data memory fine = SmallTwoLevelClaims.fineTree(claim);
+            SmallFullTree.Data memory root = SmallTwoLevelClaims.rootTree(claim);
 
-        assertEq(fineOne.height(), 4);
-        assertEq(rootOne.height(), 2);
-        for (uint256 segment; segment < 4; ++segment) {
-            assertTrue(rootOne.leaf(segment).eq(fineOne.leaf(4 * segment + 3)));
+            assertEq(fine.height(), 4);
+            assertEq(root.height(), 2);
+            for (
+                uint256 segment;
+                segment < SmallTwoLevelClaims.SEGMENT_COUNT;
+                ++segment
+            ) {
+                assertTrue(
+                    root.leaf(segment)
+                        .eq(
+                            fine.leaf(
+                                SmallTwoLevelClaims.SEGMENT_SIZE * (segment + 1)
+                                    - 1
+                            )
+                        )
+                );
+            }
         }
     }
 
-    function testRootAndChildSeamIsCoherent() public pure {
+    function testPairedRootAndChildSeamsAreCoherent() public pure {
+        _assertCoherentPair(
+            SmallTwoLevelClaims.CLAIM_ONE, SmallTwoLevelClaims.CLAIM_TWO
+        );
+        _assertCoherentPair(
+            SmallTwoLevelClaims.CLAIM_THREE, SmallTwoLevelClaims.CLAIM_FOUR
+        );
+    }
+
+    function testAllRootCommitmentsAreDistinct() public pure {
+        Tree.Node[] memory roots =
+            new Tree.Node[](SmallTwoLevelClaims.CLAIM_COUNT);
+        for (uint8 claim; claim < SmallTwoLevelClaims.CLAIM_COUNT; ++claim) {
+            SmallFullTree.Data memory root = SmallTwoLevelClaims.rootTree(claim);
+            _requireNewRoot(roots, claim, root.root());
+            roots[claim] = root.root();
+        }
+    }
+
+    function testChildVariantsPreserveShapeFinalStateAndUniqueness()
+        public
+        pure
+    {
+        for (uint8 claim; claim < SmallTwoLevelClaims.CLAIM_COUNT; ++claim) {
+            SmallFullTree.Data memory root = SmallTwoLevelClaims.rootTree(claim);
+            for (
+                uint256 segment;
+                segment < SmallTwoLevelClaims.SEGMENT_COUNT;
+                ++segment
+            ) {
+                Machine.Hash expectedFinal = root.leaf(segment).toMachineHash();
+                Tree.Node[] memory variantRoots =
+                    new Tree.Node[](SmallTwoLevelClaims.CHILD_VARIANT_COUNT);
+                for (
+                    uint8 variant;
+                    variant < SmallTwoLevelClaims.CHILD_VARIANT_COUNT;
+                    ++variant
+                ) {
+                    SmallFullTree.Data memory child =
+                        SmallTwoLevelClaims.childTreeVariant(
+                            claim, segment, variant
+                        );
+                    assertEq(child.height(), SmallTwoLevelClaims.CHILD_HEIGHT);
+                    assertEq(
+                        child.leafCount(), SmallTwoLevelClaims.SEGMENT_SIZE
+                    );
+                    assertTrue(child.finalState().eq(expectedFinal));
+                    if (variant == 0) {
+                        assertTrue(
+                            child.root()
+                                .eq(
+                                    SmallTwoLevelClaims.childTree(
+                                            claim, segment
+                                        ).root()
+                                )
+                        );
+                    }
+
+                    _requireNewRoot(variantRoots, variant, child.root());
+                    variantRoots[variant] = child.root();
+                }
+            }
+        }
+    }
+
+    function testPairedChildPopulationsHaveDistinctRoots() public pure {
+        _assertDistinctChildPopulation(
+            SmallTwoLevelClaims.CLAIM_ONE, SmallTwoLevelClaims.CLAIM_TWO
+        );
+        _assertDistinctChildPopulation(
+            SmallTwoLevelClaims.CLAIM_THREE, SmallTwoLevelClaims.CLAIM_FOUR
+        );
+    }
+
+    function testDanglingClaimRemainsTheThirdClaim() public pure {
+        assertEq(
+            SmallTwoLevelClaims.DANGLING_CLAIM, SmallTwoLevelClaims.CLAIM_THREE
+        );
+    }
+
+    function _assertCoherentPair(uint8 claimOne, uint8 claimTwo) private pure {
         SmallFullTree.Data memory rootOne =
-            SmallTwoLevelClaims.rootTree(SmallTwoLevelClaims.CLAIM_ONE);
+            SmallTwoLevelClaims.rootTree(claimOne);
         SmallFullTree.Data memory rootTwo =
-            SmallTwoLevelClaims.rootTree(SmallTwoLevelClaims.CLAIM_TWO);
+            SmallTwoLevelClaims.rootTree(claimTwo);
         (bool parentDiffers, uint256 parentPosition) =
             rootOne.firstDivergence(rootTwo);
         assertTrue(parentDiffers);
         assertEq(parentPosition, 2);
+        for (uint256 segment; segment < parentPosition; ++segment) {
+            assertTrue(
+                SmallTwoLevelClaims.childTree(claimOne, segment).root()
+                    .eq(SmallTwoLevelClaims.childTree(claimTwo, segment).root())
+            );
+        }
 
-        Machine.Hash childInitialOne = SmallTwoLevelClaims.childInitialState(
-            SmallTwoLevelClaims.CLAIM_ONE, parentPosition
-        );
-        Machine.Hash childInitialTwo = SmallTwoLevelClaims.childInitialState(
-            SmallTwoLevelClaims.CLAIM_TWO, parentPosition
-        );
+        Machine.Hash childInitialOne =
+            SmallTwoLevelClaims.childInitialState(claimOne, parentPosition);
+        Machine.Hash childInitialTwo =
+            SmallTwoLevelClaims.childInitialState(claimTwo, parentPosition);
         assertEq(
             Machine.Hash.unwrap(childInitialOne),
             Machine.Hash.unwrap(childInitialTwo)
@@ -55,12 +151,10 @@ contract SmallTwoLevelClaimsTest is Test {
         );
         assertEq(SmallTwoLevelClaims.childStartCycle(parentPosition), 8);
 
-        SmallFullTree.Data memory childOne = SmallTwoLevelClaims.childTree(
-            SmallTwoLevelClaims.CLAIM_ONE, parentPosition
-        );
-        SmallFullTree.Data memory childTwo = SmallTwoLevelClaims.childTree(
-            SmallTwoLevelClaims.CLAIM_TWO, parentPosition
-        );
+        SmallFullTree.Data memory childOne =
+            SmallTwoLevelClaims.childTree(claimOne, parentPosition);
+        SmallFullTree.Data memory childTwo =
+            SmallTwoLevelClaims.childTree(claimTwo, parentPosition);
         assertTrue(
             childOne.finalState()
                 .eq(rootOne.leaf(parentPosition).toMachineHash())
@@ -75,22 +169,45 @@ contract SmallTwoLevelClaimsTest is Test {
         assertEq(childPosition, 0);
     }
 
-    function testDanglingClaimIsDistinct() public pure {
-        SmallFullTree.Data memory dangling =
-            SmallTwoLevelClaims.rootTree(SmallTwoLevelClaims.DANGLING_CLAIM);
-        assertFalse(
-            dangling.root()
-                .eq(
-                    SmallTwoLevelClaims.rootTree(SmallTwoLevelClaims.CLAIM_ONE)
-                        .root()
-                )
-        );
-        assertFalse(
-            dangling.root()
-                .eq(
-                    SmallTwoLevelClaims.rootTree(SmallTwoLevelClaims.CLAIM_TWO)
-                        .root()
-                )
-        );
+    function _assertDistinctChildPopulation(uint8 claimOne, uint8 claimTwo)
+        private
+        pure
+    {
+        Tree.Node[] memory roots =
+            new Tree.Node[](2 * SmallTwoLevelClaims.CHILD_VARIANT_COUNT);
+        uint256 count;
+        for (
+            uint8 variant;
+            variant < SmallTwoLevelClaims.CHILD_VARIANT_COUNT;
+            ++variant
+        ) {
+            Tree.Node root =
+                SmallTwoLevelClaims.childTreeVariant(claimOne, 2, variant)
+                    .root();
+            _requireNewRoot(roots, count, root);
+            roots[count++] = root;
+        }
+        for (
+            uint8 variant;
+            variant < SmallTwoLevelClaims.CHILD_VARIANT_COUNT;
+            ++variant
+        ) {
+            Tree.Node root =
+                SmallTwoLevelClaims.childTreeVariant(claimTwo, 2, variant)
+                    .root();
+            _requireNewRoot(roots, count, root);
+            roots[count++] = root;
+        }
+        assertEq(count, roots.length);
+    }
+
+    function _requireNewRoot(
+        Tree.Node[] memory roots,
+        uint256 count,
+        Tree.Node candidate
+    ) private pure {
+        for (uint256 i; i < count; ++i) {
+            assertFalse(candidate.eq(roots[i]));
+        }
     }
 }

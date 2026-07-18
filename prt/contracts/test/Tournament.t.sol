@@ -199,7 +199,9 @@ contract TournamentTest is Util {
             Time.Duration.unwrap(MATCH_EFFORT) + 1
         );
         assertFalse(responderAfter.startInstant.isZero());
-        assertTrue(tournament.getMatch(matchIdHash).isSealed());
+        Match.State memory sealedMatch = tournament.getMatch(matchIdHash);
+        assertTrue(sealedMatch.exists());
+        assertTrue(sealedMatch.isSealed());
 
         vm.revertToState(snapshot);
         vm.roll(deadline);
@@ -249,7 +251,9 @@ contract TournamentTest is Util {
             Time.Duration.unwrap(MATCH_EFFORT) + 1
         );
         assertTrue(responderAfter.startInstant.isZero());
-        assertTrue(tournament.getMatch(matchIdHash).isSealed());
+        Match.State memory sealedMatch = tournament.getMatch(matchIdHash);
+        assertTrue(sealedMatch.exists());
+        assertTrue(sealedMatch.isSealed());
 
         vm.revertToState(snapshot);
         vm.roll(deadline);
