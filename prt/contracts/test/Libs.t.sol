@@ -14,39 +14,10 @@ pragma solidity ^0.8.0;
 
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
-import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
-
-library ExternalTime {
-    function sub(Time.Duration left, Time.Duration right)
-        external
-        pure
-        returns (Time.Duration)
-    {
-        return Time.sub(left, right);
-    }
-}
 
 contract LibraryTest is Test {
     using Machine for Machine.Hash;
-    using Time for Time.Duration;
-
-    function testTimeSub() public pure {
-        Time.Duration l = Time.Duration.wrap(25);
-        Time.Duration r = Time.Duration.wrap(25);
-        assertEq(Time.Duration.unwrap(l.sub(r)), 0);
-
-        l = Time.Duration.wrap(26);
-        r = Time.Duration.wrap(25);
-        assertEq(Time.Duration.unwrap(l.sub(r)), 1);
-    }
-
-    function testTimeSubRevert() public {
-        vm.expectRevert();
-        Time.Duration l = Time.Duration.wrap(25);
-        Time.Duration r = Time.Duration.wrap(35);
-        ExternalTime.sub(l, r);
-    }
 
     function testMachineNotInitialized() public pure {
         assertTrue(Machine.ZERO_STATE.notInitialized());

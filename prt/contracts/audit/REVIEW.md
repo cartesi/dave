@@ -52,7 +52,7 @@ retain the original PRT-002 evidence in the tree.
 ### PRT-001: Arbitrum clocks use the wrong time calibration
 
 - Severity: Medium
-- Status: Open
+- Status: Deferred
 - Area: liveness, deployment configuration
 - Evidence: `Time.currentTime`, `Deployment._registerChains`,
   `Deployment._getMatchEffort`, `Deployment._getMaxAllowance`
@@ -73,6 +73,8 @@ Approximate consequences on Ethereum-parent Arbitrum chains:
 
 This does not change which state transition is correct, but it violates the
 bounded-delay and capital-lock assumptions used by operators and clients.
+The severity applies if the current parameters are deployed on Arbitrum; the
+supported Ethereum target is not affected.
 
 Ethereum is the supported target. Deployments on other base chains are
 experimental until the contract time coordinate and conversion are validated.
@@ -87,6 +89,11 @@ Recommended response:
    or adopt and document a different source, including upgrade and sequencer
    assumptions.
 4. Add fork-based conformance tests for every chain promoted to supported.
+
+Decision: defer non-Ethereum time-source work. Chain registration allows the
+deployment script to produce parameters; it does not designate protocol
+support. Ethereum is the only supported target. Every other registered chain
+remains experimental until the requirements above are met.
 
 External reference: the Arbitrum documentation-hosted Trail of Bits security
 review describes the `block.number` behavior:
@@ -609,8 +616,9 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   non-bankable response discount; pin formula boundaries, advance and both seal
   paths, late joins, repeated winners, deployment conversion, and
   child-to-parent clock conservation.
-- `TEST-TIME-001`: chain conformance for the time source and deployment
-  conversion, especially Arbitrum.
+- `TEST-TIME-001` (deferred): chain conformance for the time source and
+  deployment conversion is required before promoting any non-Ethereum target,
+  especially Arbitrum.
 - `TEST-GAS-001`: fail when any refundable path exceeds its allocation.
 - `TEST-GAS-002`: measure realistic leaf proofs and calldata sizes.
 
@@ -706,9 +714,11 @@ role and lifecycle explanations to `docs/dispute-game.md`.
   `snapshots.md`, and `sling-design.md`) with the landed response-discount
   semantics on the node branch; do not describe `G` as a fresh 300-second grant
   or deadline.
-- Remove the duplicate state-transition import in `Deployment.s.sol`.
-- Remove unused and dangerous arithmetic helpers such as non-saturating
-  `Time.sub` if no invariant requires them.
+- Resolved: the duplicate `CartesiStateTransition` import in
+  `Deployment.s.sol` was removed.
+- Resolved: the unused strict `Time.sub` helper and its test-only wrapper were
+  removed. Duration differences that intentionally clamp at zero use the
+  explicitly named `Time.monus` operation.
 
 ## Areas reviewed without a confirmed defect
 

@@ -12,9 +12,6 @@ import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
 import {
-    CartesiStateTransition
-} from "src/state-transition/CartesiStateTransition.sol";
-import {
     CmioStateTransition
 } from "src/state-transition/CmioStateTransition.sol";
 import {
@@ -129,8 +126,8 @@ contract DeploymentScript is BaseDeploymentScript {
     error ChainInfoAlreadyRegistered(uint256 chainId);
 
     /// @notice This error is raised whenever the script is run against a chain
-    /// that has not been registered. If you wish to support this chain, please register
-    /// the chain kind in the `_registerChains` function.
+    /// that has not been registered. Register the chain in `_registerChains`
+    /// before deploying to it.
     /// @param chainId The chain ID
     error UnregisteredChain(uint256 chainId);
 
@@ -140,8 +137,8 @@ contract DeploymentScript is BaseDeploymentScript {
     error ChainKindAlreadyRegistered(ChainKind chainKind);
 
     /// @notice This error is raised whenever the script is run against a chain
-    /// whose kind has not been registered. If you wish to support this chain, please register
-    /// the chain kind in the `_registerChainKinds` function.
+    /// whose kind has not been registered. Register the chain kind in
+    /// `_registerChainKinds` before deploying to it.
     /// @param chainKind The chain kind
     error UnregisteredChainKind(ChainKind chainKind);
 
@@ -202,7 +199,10 @@ contract DeploymentScript is BaseDeploymentScript {
         vmSafe.stopBroadcast();
     }
 
-    /// @notice Register all supported chains.
+    /// @notice Register configured deployment targets.
+    /// @dev Registration is not a protocol-support designation. Ethereum is
+    /// the supported target; other entries are experimental until their time
+    /// coordinate and conversion are validated.
     function _registerChains() internal {
         _registerChain(1, ChainKind.MAINNET, Milliseconds.wrap(12000));
         _registerChain(10, ChainKind.MAINNET, Milliseconds.wrap(2000));

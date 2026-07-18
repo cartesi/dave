@@ -59,16 +59,6 @@ library Time {
         return Duration.wrap(l + r);
     }
 
-    function sub(Duration left, Duration right)
-        internal
-        pure
-        returns (Duration)
-    {
-        uint64 l = Duration.unwrap(left);
-        uint64 r = Duration.unwrap(right);
-        return Duration.wrap(l - r);
-    }
-
     function monus(Duration left, Duration right)
         internal
         pure
