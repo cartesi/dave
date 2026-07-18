@@ -5,6 +5,7 @@ libs = ["dependencies"]
 auto_detect_remappings = false
 via_ir = true
 optimizer = true
+optimizer_runs = 200
 
 allow_paths = ['../../machine/step/']
 remappings = [

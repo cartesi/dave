@@ -162,7 +162,9 @@ papers do not specify these contracts exactly.
   work reserves. Recovery returns the winning deposit and burns at least one
   principal per loser. The current 0.00450875 ETH literal preserves the former
   residual-principal value but is not security-calibrated. See
-  [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md).
+  [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md) for the design and
+  [`audit/GAS-CALIBRATION.md`](audit/GAS-CALIBRATION.md) for the reproducible
+  measurement and update procedure.
 - **Reentrancy**: a transient `locked` flag guards state-mutating entrypoints -
   `withLock` on `joinTournament` and `tryRecoveringBond`, and `refundable`
   (which also takes the lock) on `advanceMatch` / the seal / win / eliminate
@@ -259,8 +261,21 @@ Then from `prt/contracts/`:
 just install-deps   # forge soldeer install
 just build          # forge build + generate Rust bindings
 just test-all       # dispute tests + STF tests + STF fuzz tests
+just test-gas       # validate retained refund-gas witnesses
+just measure-gas    # release-pinned report; see GAS-CALIBRATION.md
+just coverage       # instrumented dispute-game coverage summary
 ```
 
-`just test-disputes` is the pure-Solidity tournament suite (no FFI);
-`just test-stf` and `just test-stf-fuzzy` cover the state transition and require
-`--ffi` plus the `machine/step` submodule.
+`just test-disputes` runs every non-FFI Solidity test. The focused state
+transition and gas recipes select their respective subsets; `just test-stf` and
+`just test-stf-fuzzy` require `--ffi` plus the `machine/step` submodule. Gas
+calibration must use the plain test runner, not coverage instrumentation; follow
+`audit/GAS-CALIBRATION.md`.
+The coverage recipe excludes FFI, gas-calibration, and state-transition tests
+and sources. It also skips the stateful invariant executors: the ordinary test
+gate runs those campaigns, while deterministic companion traces map their
+production paths without slow IR instrumentation. Coverage uses IR-minimum
+source maps as a stack-depth workaround, so branch totals are directional
+rather than a correctness claim. Foundry's noisy IR anchor warnings are
+suppressed by default; set `COVERAGE_RUST_LOG=warn` only when debugging the
+mapper itself.

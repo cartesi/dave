@@ -715,6 +715,14 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         internal
     {
         emit log_named_uint(label, result.allocationUnits);
+        uint256 minimumAllocation = _minimumReviewedAllocation(result);
+        emit log_named_uint(
+            string.concat(label, " reviewed minimum"), minimumAllocation
+        );
+        emit log_named_uint(
+            string.concat(label, " rounded recommendation"),
+            _roundUpToThousand(minimumAllocation)
+        );
         emit log_named_uint(
             string.concat(label, " complete call"), result.completeCallGas
         );
@@ -731,9 +739,9 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         Measurement memory result,
         uint256 allocation
     ) internal pure {
-        uint256 minimumAllocation = _minimumReviewedAllocation(result);
-        uint256 roundedAllocation = (minimumAllocation + 999) / 1000 * 1000;
-        assertEq(allocation, roundedAllocation);
+        assertEq(
+            allocation, _roundUpToThousand(_minimumReviewedAllocation(result))
+        );
     }
 
     function _minimumReviewedAllocation(Measurement memory result)
@@ -746,6 +754,10 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         uint256 margin =
             proportionalMargin > 10_000 ? proportionalMargin : 10_000;
         return result.allocationUnits + margin;
+    }
+
+    function _roundUpToThousand(uint256 value) private pure returns (uint256) {
+        return (value + 999) / 1000 * 1000;
     }
 }
 

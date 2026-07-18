@@ -5,12 +5,13 @@
 > 23 in-scope Solidity files, then a consolidator re-read code to adjudicate
 > disagreements. ~723k tokens, 7 agents.
 >
-> **Status: machine-generated, to be verified.** This is the audit's working model,
-> not gospel. The **code is the source of truth**; treat every claim here -
-> especially anything marked "confirmed" or "verified" - as a lead to re-check, not
-> a fact to rely on. Line numbers are deliberately omitted (they drift); symbols are
-> cited instead. Scope: Solidity under `prt/contracts/src/`. Out of scope: off-chain
-> clients, `machine/step` execution semantics, the concrete `IDataProvider`.
+> **Status: audit-start map with manual resolution annotations.** This is not the
+> current findings or test backlog; use `REVIEW.md` for those. The **code is the
+> source of truth**; treat every unannotated claim here - especially anything
+> marked "confirmed" or "verified" - as a lead to re-check, not a fact to rely on.
+> Line numbers are deliberately omitted (they drift); symbols are cited instead.
+> Scope: Solidity under `prt/contracts/src/`. Out of scope: off-chain clients,
+> `machine/step` execution semantics, the concrete `IDataProvider`.
 
 ---
 
@@ -172,17 +173,20 @@ operations read `currentTime()` once for each related transition.
 `pauseAfterResponseAt`, `chargeAndPauseAt`, and paused-state carryover. For response balance `b`,
 elapsed time `e`, and budget `G`, response pausing requires `e < b` and stores
 `b - max(e - G, 0)`. Pairing cannot increase a balance. `_setPaused` rejects zero allowance,
-keeping storage sentinels disjoint. The pure memory `deductPaused` used by
-`innerTournamentWinner` may return zero; `replaceWithPaused` rejects that zero if a parent later
-stores it. `MatchClocks` owns pair phases and asserts its source phase: an active bisection has
-exactly one running clock, a sealed leaf has two running clocks with the same start instant, and a
-sealed inner match has two paused clocks. Its pure timeout classifier returns `NONE`, one of two
-single-winner outcomes with a winner charge, or `ELIMINATE_BOTH`; the capability view and both
-timeout mutations consume that status. Proven leaf settlement consumes it too and asserts the
-sealed-leaf phase. Mainnet: `maxAllowance = 7d+1h`, the legacy-named `matchEffort = G = 5min`
-(25 Ethereum blocks), `WORK_PRICE_CAP = 50 gwei`, `PRIORITY_FEE_CAP = 10 gwei`. Across the 92
-height units in one root-to-leaf descent with one match at each level, the maximum cumulative
-response discount is 7 hours 40 minutes. Re-pairing creates a new match with new discounts.
+keeping storage sentinels disjoint. `Clock.deductPaused` can return zero in isolation. For finish
+time `F` and stored allowance `A`, `innerTournamentWinner` calls it for a winner only while
+`current < F + A`, so a parent-visible carried clock is strictly positive. `replaceWithPaused`
+defensively rejects zero storage allowance.
+`MatchClocks` owns pair phases
+and asserts its source phase: an active bisection has exactly one running clock, a sealed leaf has
+two running clocks with the same start instant, and a sealed inner match has two paused clocks.
+Its pure timeout classifier returns `NONE`, one of two single-winner outcomes with a winner
+charge, or `ELIMINATE_BOTH`; the capability view and both timeout mutations consume that status.
+Proven leaf settlement consumes it too and asserts the sealed-leaf phase. Mainnet:
+`maxAllowance = 7d+1h`, the legacy-named `matchEffort = G = 5min` (25 Ethereum blocks),
+`WORK_PRICE_CAP = 50 gwei`, `PRIORITY_FEE_CAP = 10 gwei`. Across the 92 height units in one
+root-to-leaf descent with one match at each level, the maximum cumulative response discount is
+7 hours 40 minutes. Re-pairing creates a new match with new discounts.
 
 ### Bond economics (`Bond.sol` + `Gas.sol` + `refundable`)
 
@@ -390,13 +394,14 @@ Each: statement * where enforced * how it could break.
   reverting if zero. The returned balance cannot exceed the delegated child allowance, and
   re-pairing cannot refill it.
   - *Enforced:* `winInnerTournament`'s `replaceWithPaused(innerClock)` -> `_setPaused` rejects
-    zero; `innerTournamentWinner` returns `clock.deductPaused(now - finishedTime)` (memory, can
-    be zero); `canBeEliminated` gates whether `winInnerTournament` is even allowed.
-  - *Breaks if:* a window where child is NOT yet eliminable (so `winInnerTournament` is allowed)
-    YET `deductPaused()` floors the carried clock to ~0, causing `replaceWithPaused` to revert -
-    **bricking the legitimate winner's propagation up.** Reconcile `canBeEliminated`'s
-    `timeoutElapsed(clock.allowance)` window vs `innerTournamentWinner`'s `deductPaused(now -
-    finishedTime)`.
+    zero; `innerTournamentWinner` returns `clock.deductPaused(now - finishedTime)` only while
+    `canBeEliminated` is false.
+  - *Established boundary:* if finish time is `F` and stored allowance is `A`, propagation is
+    valid through `F + A - 1`, where the returned balance is one. At `F + A`, winner retrieval is
+    suppressed and elimination is valid. Algebra and deterministic boundary traces pin the
+    partition; fuzzing exercises varied positive carryover and post-close charging inside it.
+  - *Breaks if:* winner retrieval and elimination stop sharing that strict/inclusive boundary,
+    elapsed time is charged from a different finish instant, or re-pairing refills carryover.
 - **INV-MATCH-1 - Lifecycle monotonicity.** `currentHeight` starts at `args.height`, decreases by
   exactly 1 per advance and per seal, reaching 0 only at seal; never increases. Predicates
   (`canBeAdvanced > 1`, `canBeSealed == 1`, `isSealed == 0`) partition the lifecycle.
@@ -490,14 +495,12 @@ Each: statement * where enforced * how it could break.
 
 Cross-checks between mappers; most resolved-but-flagged.
 
-1. **height%2 parity cross-consistency** *(resolved to the extent code allows; cross-consistency
-   proof remains OPEN - the #1 audit lead)*. The left/right-selector consistency between
+1. **height%2 parity cross-consistency. Resolved.** The left/right-selector consistency between
    `sealMatch`'s live `agreesOnLeftNode` and `getDivergence`'s `runningLeafPosition % 2` was proven
-   (runningLeafPosition even until the final seal). The agree-PROOF commitment selection
-   (odd->One/even->Two at `runningLeafPosition - 1`) vs the winner-MAPPING
-   (`_getDivergenceOn*Leaf` `% 2`) consistency is **not provable from in-scope code + tests alone**
-   (tests pin only heights 2/3). *Why it matters:* SAFE-2/SAFE-3 - the mechanism that decides who
-   wins. Needs independent derivation / exhaustive fuzz across odd/even height x left/right.
+   (runningLeafPosition stays even until the final seal). An independent sparse-Merkle model now
+   exhausts both commitment orders and every position through height 8, covers boundary and
+   alternating paths through height 55, and derives agree-proof ownership without copying Match's
+   parity table. A multi-difference comparator pins leftmost-divergence precedence.
 2. **`sealInnerMatchAndCreateInnerTournament` omitted `requireExist()`.** **Resolved:** the inner
    and leaf seal paths now both require stored-state existence before sealability. The regression
    pins the accurate `MatchDoesNotExist` selector for a fabricated match.
@@ -545,9 +548,11 @@ Cross-checks between mappers; most resolved-but-flagged.
    eliminated commitment. The current 0.00450875 ETH literal preserves the inherited one-advance
    margin but is not an economically calibrated parameter. PRT-012 and `REFUND-DESIGN.md` keep
    that final policy decision open.
-4. **Clock-carryover boundary (INV-CLK-5)** - whether a window exists where child is not-yet-
-   eliminable yet `deductPaused` floors the carried clock to 0, reverting `replaceWithPaused`.
-   Reconcile `canBeEliminated`'s window with `innerTournamentWinner`'s `deductPaused` arithmetic.
+4. **Clock-carryover boundary (INV-CLK-5). Resolved.** Let `F` be `timeFinished()` and `A` the
+   paused winner allowance. `innerTournamentWinner` can return a winner only while
+   `current < F + A`; therefore `current - F < A`, and `deductPaused` remains strictly positive.
+   At equality `canBeEliminated` is already true and deduction is skipped. Historical inner tests
+   pin the final propagation block and the inclusive elimination boundary.
 5. **Identical-commitment-tree front-running** - `initializePausedAt` locks out the second
    submitter of the same root. **Decision:** first-claimer ownership is intended because defense is
    permissionless. PRT-008 resolved the historical full-sweep recycling path by changing the
@@ -562,17 +567,21 @@ Cross-checks between mappers; most resolved-but-flagged.
    violate the selected liveness policy. `Deployment.s.sol`/cannonfile partly constrain this, but
    not every chain-kind path was traced (could any registered chain round
    `maxAllowance`/`avgBlockTime` to 0 blocks?).
-8. **Existing test coverage** of deep-tree parity and multi-match bond accounting remains thin.
-   The timeout boundary now has deterministic integration coverage and model-based fuzzing across
-   both orderings and legal clock phases.
+8. **Recursive test coverage is partially landed.** Deep-tree parity, pooled bond accounting,
+   and single-level lifecycle composition have independent property campaigns. Two-level traces
+   cover child linkage, both winner mappings, late entry, post-close resolution, strict carryover
+   boundaries, parent re-pairing, and two sequential children. A fixed one-child stateful oracle
+   was rejected as duplicative. The remaining gap is a multi-population delay model with
+   concurrent matches and children under adversarial arrival schedules.
 9. **`BaseDeploymentScript.sol`** (referenced by `Deployment.s.sol`, provides
    `_create2`/`_storeDeployment`) was not read - outside the core trust boundary, low priority.
 
 ---
 
-## 5. Coverage plan for the find stage
+## 5. Historical coverage plan from the find stage
 
-One finder per surface, using the listed vantages.
+This plan records how the audit-start leads were generated. `REVIEW.md` tracks
+which campaigns subsequently landed and what remains.
 
 1. **Bisection parity & divergence mapping (the who-wins core)** - `tournament/libs/Match.sol`.
    SAFE-1/2/3. *Vantages:* property/parity finder (exhaustively derive agree-proof-vs-winner

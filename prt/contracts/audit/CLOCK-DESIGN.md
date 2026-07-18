@@ -352,5 +352,14 @@ compares compatible proof and timeout settlement from identical snapshots and
 checks that incompatible proofs leave the match and both clocks unchanged.
 PRT-009 adds strict-deadline rollback for advance and both seal paths, a late
 join plus winner re-pairing property, deployment calibration, and exact child
-allowance return without a parent refill. The broader stateful one- and
-two-level population model remains follow-up work.
+allowance return without a parent refill. The injected single-level stateful
+model covers legal lifecycle composition and rejected operations. Deterministic
+two-level traces now pin child delegation, both winner mappings, exact
+carryover, parent re-pairing, child double elimination, and the strict
+`F + A - 1` / `F + A` boundary. Two-level fuzzing also covers late child
+check-in and proof resolution strictly after global close, and a sequential
+trace composes two child tournaments on different parent segments. A fixed
+one-child stateful oracle was evaluated and rejected because it would duplicate
+the covered seam rather than explore a new clock state space. Recursive
+multi-population delay modeling remains separate from the completed Clock API
+work.

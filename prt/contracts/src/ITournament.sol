@@ -361,8 +361,7 @@ interface ITournament {
     error InitializedClockCannotHaveZeroAllowance();
 
     /// @notice The match does not exist.
-    /// @dev This happens when the match ID hash is zero
-    /// or when the match state is not initialized.
+    /// @dev This happens when the stored match state is not initialized.
     error MatchDoesNotExist();
 
     /// @notice The match is not sealed.
