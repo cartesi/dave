@@ -448,6 +448,45 @@ Resolution:
    side without changing the match or clocks, and deterministic coverage pins
    the inclusive equality boundary.
 
+## Configuration decision
+
+### CFG-001: Coordinate the selected two-level tournament layout
+
+- Status: Planned
+- Evidence: `ArbitrationConstants`, `docs/dimensioning.md`,
+  `docs/plans/constants.md`
+
+The selected deployment layout has two levels with
+`log2step = [37, 0]` and `height = [55, 37]`. The root tree spans
+`55 + 37 = 92` meta-cycle bits, and the inner leaf tree refines one root
+stride down to individual usteps. The table comes from the documented
+60-minute inner-commitment measurement under the selected root-slowdown
+assumptions.
+
+Selection records the protocol direction, not production calibration sign-off.
+The checked-in derivation is a single-machine, single-run measurement;
+validator-grade calibration remains required before deployment.
+
+The checked-in contracts still use the historical three-level table
+`log2step = [44, 27, 0]`, `height = [48, 17, 27]`. This is deliberate while
+the current node constructs root commitments at stride 44 and the Solidity
+tests still need to be separated from canonical deployment constants. A
+contracts-only switch would create a silent cross-implementation mismatch.
+
+Before CFG-001 is implemented:
+
+1. Completed: generic and historical contract tests inject a frozen test-owned
+   geometry; only the canonical conformance suite imports
+   `ArbitrationConstants`.
+2. The coordinated node branch must construct level-zero commitments at stride
+   37 and update its generated or node-facing parameter records.
+3. Contract, node, and documentation conformance checks must agree on the same
+   complete table before deployment.
+
+This review branch does not touch the node. The selected table may be applied
+to contracts in a later, integration-gated commit, but it must not be deployed
+with a stride-44 node.
+
 ## Deferred state-transition issue
 
 ### STF-TODO-001: `RiscVStateTransition.step` discards `UArchStepStatus`
@@ -497,8 +536,8 @@ The following items were corrected or explicitly documented in this pass:
   meta-cycle span.
 - Mainnet wall-clock values are only as accurate as the chain-specific time
   source and conversion assumptions.
-- The checked-in constants use three levels while the deployment target is two;
-  changing the count requires regenerating the entire stride and height table.
+- The checked-in constants use the historical three-level table while CFG-001
+  records the selected two-level table and its integration gate.
 - `winLeafMatch` validates the objective post-state and then consults the same
   timeout status as timeout cleanup. A compatible single winner receives the
   same overdue charge; an incompatible proof rejects. Objective proof
@@ -580,8 +619,9 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - Stateful tournament handler checking `matchCount`, the single dangling slot,
   match uniqueness, monotonic match height, legal clock phases, winner re-entry,
   and terminal state.
-- Exhaustive or fuzzed bisection parity for heights 1 through 48 and every
-  divergence position. Check both winner attribution and agree-proof selection.
+- Exhaustive or fuzzed bisection parity through the largest checked-in or
+  selected height (currently 55) and every divergence position. Check both
+  winner attribution and agree-proof selection.
 - Multi-level parameter fuzzing for one, two, three, and more levels, including
   malformed heights, strides, allowances, and unsafe shifts.
 - Economic invariants proving pooled-balance conservation across refunds,
@@ -778,3 +818,21 @@ After the PRT-009 non-bankable response budget:
   `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
 - `forge fmt --check` passed in both contract packages, and `git diff --check`
   passed.
+
+After separating tests from canonical geometry:
+
+- The premature contracts-only two-level switch was reverted. The live
+  provider remains the historical three-level table while CFG-001 retains the
+  selected two-level table and its node integration gate.
+- `prt/contracts`: `just test-disputes` passed 75 tests. The historical
+  root/inner/leaf suites run under `test/characterization/` against a frozen
+  test-owned provider, and the canonical configuration suite pins the complete
+  live table plus its tiling invariants.
+- `ArbitrationConstants` is imported only by the canonical configuration suite;
+  behavioral tests do not change when the production table changes.
+- `cartesi-rollups/contracts`: both integration fuzz properties passed 256
+  runs.
+- The `forge inspect Tournament abi` SHA-256 remained
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+- `forge fmt --check` and `git diff --check` passed. No production Solidity or
+  node source changed in the test-isolation commits.

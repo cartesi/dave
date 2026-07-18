@@ -17,9 +17,6 @@ import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
-    ArbitrationConstants
-} from "src/arbitration-config/ArbitrationConstants.sol";
-import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
 import {
@@ -31,9 +28,12 @@ import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
 
-import {Util} from "./Util.sol";
+import {Util} from "../Util.sol";
+import {
+    HistoricalThreeLevelGeometry as HistoricalGeometry
+} from "../fixtures/HistoricalThreeLevelGeometry.sol";
 
-contract BottomTournamentTest is Util {
+contract HistoricalThreeLevelLeafTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
@@ -49,7 +49,8 @@ contract BottomTournamentTest is Util {
     error WrongNodesForStep();
 
     constructor() {
-        (FACTORY, STATE_TRANSITION) = Util.instantiateTournamentFactory();
+        (FACTORY, STATE_TRANSITION) =
+            Util.instantiateHistoricalThreeLevelTournamentFactory();
     }
 
     receive() external payable {}
@@ -63,7 +64,7 @@ contract BottomTournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
@@ -100,7 +101,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
@@ -155,7 +156,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = bottomTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
@@ -237,7 +238,7 @@ contract BottomTournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
@@ -257,9 +258,9 @@ contract BottomTournamentTest is Util {
 
         uint256 cycle =
             (1
-                        << (ArbitrationConstants.height(0)
-                                + ArbitrationConstants.log2step(0)))
-                - (1 << ArbitrationConstants.log2step(0));
+                        << (HistoricalGeometry.height(0)
+                                + HistoricalGeometry.log2step(0)))
+                - (1 << HistoricalGeometry.log2step(0));
         assertEq(
             topTournament.getMatchCycle(_matchId.hashFromId()),
             cycle,
@@ -279,7 +280,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
@@ -297,9 +298,9 @@ contract BottomTournamentTest is Util {
 
         cycle =
             (1
-                        << (ArbitrationConstants.height(0)
-                                + ArbitrationConstants.log2step(0)))
-                - (1 << ArbitrationConstants.log2step(1));
+                        << (HistoricalGeometry.height(0)
+                                + HistoricalGeometry.log2step(0)))
+                - (1 << HistoricalGeometry.log2step(1));
         assertEq(
             middleTournament.getMatchCycle(_matchId.hashFromId()),
             cycle,
@@ -319,7 +320,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = bottomTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
@@ -331,9 +332,9 @@ contract BottomTournamentTest is Util {
 
         cycle =
             (1
-                        << (ArbitrationConstants.height(0)
-                                + ArbitrationConstants.log2step(0)))
-                - (1 << ArbitrationConstants.log2step(2));
+                        << (HistoricalGeometry.height(0)
+                                + HistoricalGeometry.log2step(0)))
+                - (1 << HistoricalGeometry.log2step(2));
         assertEq(
             bottomTournament.getMatchCycle(_matchId.hashFromId()),
             cycle,
@@ -357,7 +358,7 @@ contract BottomTournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
@@ -394,7 +395,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
@@ -429,7 +430,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = bottomTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
@@ -464,7 +465,7 @@ contract BottomTournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
@@ -484,7 +485,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(middleTournament, 0);
         Util.joinTournament(middleTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "mid match should exist");
 
@@ -503,7 +504,7 @@ contract BottomTournamentTest is Util {
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = bottomTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "bottom match should exist");
 

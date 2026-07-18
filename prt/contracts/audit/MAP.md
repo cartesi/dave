@@ -46,7 +46,9 @@ level; `level >= 3` reverts with Panic 0x32 array-OOB, **not** a named error). T
 logic (`level+1` recursion, leaf/root detection, bond sizing via `commitmentArgs.height`) is
 genuinely L-agnostic; the **only** baked-in `L=3` is in `ArbitrationConstants`. `matchEffort`
 and `maxAllowance` are level-independent. For L=3: L0 = root+non-leaf, L1 = inner+non-leaf,
-L2 = inner+leaf. The deployment target is L=2, so these tables must be regenerated and validated.
+L2 = inner+leaf. CFG-001 selects L=2 with `log2step = [37,0]` and
+`height = [55,37]`. Solidity test decoupling is complete; implementation
+remains gated on the coordinated stride-37 node change.
 
 ### Lifecycle (per tournament instance)
 

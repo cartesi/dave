@@ -17,9 +17,6 @@ import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {IDataProvider} from "src/IDataProvider.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
-    ArbitrationConstants
-} from "src/arbitration-config/ArbitrationConstants.sol";
-import {
     CanonicalTournamentParametersProvider
 } from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {
@@ -43,6 +40,11 @@ import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
 import {Tree} from "src/types/Tree.sol";
+
+import {
+    HistoricalThreeLevelGeometry,
+    HistoricalThreeLevelParametersProvider
+} from "./fixtures/HistoricalThreeLevelGeometry.sol";
 
 // Simple parameters provider for single-level tournaments (levels = 1)
 contract SingleLevelTournamentParametersProvider is
@@ -387,32 +389,28 @@ contract Util is Test {
         );
     }
 
-    // create match id for player 0 and _opponent at _level
-    function matchId(uint256 _opponent, uint64 _level)
+    function historicalMatchId(uint256 _opponent, uint64 _level)
         internal
         view
         returns (Match.Id memory)
     {
         return Match.Id(
-            playerNodes[0][ArbitrationConstants.height(_level)],
-            playerNodes[_opponent][ArbitrationConstants.height(_level)]
+            playerNodes[0][HistoricalThreeLevelGeometry.height(_level)],
+            playerNodes[_opponent][HistoricalThreeLevelGeometry.height(_level)]
         );
     }
 
     // instantiates all sub-factories and TournamentFactory
-    function instantiateSingleLevelTournamentFactory()
-        internal
-        returns (MultiLevelTournamentFactory)
-    {
+    function instantiateSingleLevelTournamentFactory(
+        uint64 log2step,
+        uint64 height
+    ) internal returns (MultiLevelTournamentFactory) {
         (CartesiStateTransition stateTransition,,) =
             instantiateStateTransition();
         MultiLevelTournamentFactory singleLevelFactory = new MultiLevelTournamentFactory(
             new Tournament(),
             new SingleLevelTournamentParametersProvider(
-                ArbitrationConstants.log2step(0),
-                ArbitrationConstants.height(0),
-                MATCH_EFFORT,
-                MAX_ALLOWANCE
+                log2step, height, MATCH_EFFORT, MAX_ALLOWANCE
             ),
             stateTransition
         );
@@ -421,7 +419,7 @@ contract Util is Test {
     }
 
     // instantiates all sub-factories and TournamentFactory
-    function instantiateTournamentFactory()
+    function instantiateCanonicalTournamentFactory()
         internal
         returns (MultiLevelTournamentFactory, CartesiStateTransition)
     {
@@ -431,6 +429,24 @@ contract Util is Test {
             new MultiLevelTournamentFactory(
                 new Tournament(),
                 new CanonicalTournamentParametersProvider(
+                    MATCH_EFFORT, MAX_ALLOWANCE
+                ),
+                stateTransition
+            ),
+            stateTransition
+        );
+    }
+
+    function instantiateHistoricalThreeLevelTournamentFactory()
+        internal
+        returns (MultiLevelTournamentFactory, CartesiStateTransition)
+    {
+        (CartesiStateTransition stateTransition,,) =
+            instantiateStateTransition();
+        return (
+            new MultiLevelTournamentFactory(
+                new Tournament(),
+                new HistoricalThreeLevelParametersProvider(
                     MATCH_EFFORT, MAX_ALLOWANCE
                 ),
                 stateTransition
