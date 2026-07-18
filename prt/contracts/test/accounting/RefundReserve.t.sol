@@ -92,24 +92,22 @@ contract RefundReserveTest is Test {
         assertEq(Bond.SYBIL_PRINCIPAL, 4_508_750_000_000_000);
         assertEq(Bond.WORK_PRICE_CAP, 50 gwei);
         assertEq(Bond.PRIORITY_FEE_CAP, 10 gwei);
-        assertEq(
-            Bond.SYBIL_PRINCIPAL,
-            Gas.ADVANCE_MATCH * Bond.WORK_PRICE_CAP,
-            "checkpoint must preserve the inherited bond value"
-        );
         uint256 terminal = Bond.terminalAllocation();
+        uint256 invalidZeroWork = terminal - Gas.ADVANCE_MATCH;
+        uint256 invalidZeroBond =
+            Bond.SYBIL_PRINCIPAL + invalidZeroWork * Bond.WORK_PRICE_CAP;
         assertEq(
             Bond.bondValue(0),
-            terminal * Bond.WORK_PRICE_CAP,
-            "invalid height zero remains a compatibility checkpoint"
+            invalidZeroBond,
+            "invalid height zero must follow the explicit formula"
         );
         provider.setHeight(0);
         ITournament zeroHeightTournament =
             factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
         assertEq(
             zeroHeightTournament.bondValue(),
-            terminal * Bond.WORK_PRICE_CAP,
-            "tournament must preserve the invalid height-zero value"
+            invalidZeroBond,
+            "tournament must expose the explicit invalid-zero formula"
         );
         assertEq(
             Bond.bondValue(1) - terminal * Bond.WORK_PRICE_CAP,
@@ -124,10 +122,8 @@ contract RefundReserveTest is Test {
         ITournament tournament =
             factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
 
-        uint256 total = _totalAllocation(height);
         uint256 work = _matchWorkAllocation(height);
         uint256 bond = Bond.SYBIL_PRINCIPAL + work * Bond.WORK_PRICE_CAP;
-        assertEq(bond, total * Bond.WORK_PRICE_CAP);
         assertEq(Bond.matchWorkAllocation(height), work);
         assertEq(Bond.bondValue(height), bond);
         assertEq(tournament.bondValue(), bond);
@@ -149,9 +145,6 @@ contract RefundReserveTest is Test {
                 Bond.actionRefundCap(allocation),
                 allocation * Bond.WORK_PRICE_CAP
             );
-            assertEq(
-                Bond.actionRefundCap(allocation), bond * allocation / total
-            );
         }
     }
 
@@ -161,19 +154,24 @@ contract RefundReserveTest is Test {
     {
         height = uint64(bound(height, 1, type(uint64).max));
         uint256 workReserve = _matchWorkAllocation(height);
+        uint256 largestLegalPath;
 
         for (
             uint256 path;
             path <= uint256(TerminalPath.INNER_ELIMINATION);
             ++path
         ) {
-            assertLe(_pathAllocation(height, TerminalPath(path)), workReserve);
+            uint256 pathAllocation = _pathAllocation(height, TerminalPath(path));
+            assertLe(pathAllocation, workReserve);
+            if (pathAllocation > largestLegalPath) {
+                largestLegalPath = pathAllocation;
+            }
         }
 
         assertEq(
-            _pathAllocation(height, TerminalPath.INNER_WIN),
+            largestLegalPath,
             workReserve,
-            "inner winner path should define the current maximum"
+            "reserve must equal the largest current legal path"
         );
     }
 
@@ -564,23 +562,13 @@ contract RefundReserveTest is Test {
         assertEq(refunds + bond + burned, joins * bond);
     }
 
-    function _totalAllocation(uint64 height) internal pure returns (uint256) {
-        return uint256(height) * Gas.ADVANCE_MATCH + _terminalAllocation();
-    }
-
     function _matchWorkAllocation(uint64 height)
         internal
         pure
         returns (uint256)
     {
-        return _totalAllocation(height) - Gas.ADVANCE_MATCH;
-    }
-
-    function _terminalAllocation() internal pure returns (uint256) {
-        uint256 leaf = Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH;
-        uint256 inner = Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
-            + Gas.WIN_INNER_TOURNAMENT;
-        return leaf > inner ? leaf : inner;
+        return uint256(height) * Gas.ADVANCE_MATCH + Bond.terminalAllocation()
+            - Gas.ADVANCE_MATCH;
     }
 
     function _pathAllocation(uint64 height, TerminalPath path)

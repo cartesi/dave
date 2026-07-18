@@ -8,7 +8,7 @@ import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
 /// @notice Economic policy and configured work-reserve accounting for one join.
 /// @dev The Sybil principal is deliberately independent of gas allocations.
 library Bond {
-    /// @notice Inherited behavior checkpoint, not a security-calibrated value.
+    /// @notice Inherited residual-principal checkpoint, not a calibrated value.
     uint256 constant SYBIL_PRINCIPAL = 0.00450875 ether;
 
     uint256 constant WORK_PRICE_CAP = 50 gwei;
@@ -23,10 +23,24 @@ library Bond {
 
     /// @notice Largest configured terminal allocation shared by every level.
     function terminalAllocation() internal pure returns (uint256) {
-        uint256 leaf = Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH;
-        uint256 inner = Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
-            + Gas.WIN_INNER_TOURNAMENT;
-        return leaf > inner ? leaf : inner;
+        uint256 terminal = Gas.WIN_MATCH_BY_TIMEOUT;
+        terminal = _max(terminal, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
+        terminal = _max(terminal, Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH);
+        terminal =
+            _max(terminal, Gas.SEAL_LEAF_MATCH + Gas.WIN_MATCH_BY_TIMEOUT);
+        terminal = _max(
+            terminal, Gas.SEAL_LEAF_MATCH + Gas.ELIMINATE_MATCH_BY_TIMEOUT
+        );
+        terminal = _max(
+            terminal,
+            Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+                + Gas.WIN_INNER_TOURNAMENT
+        );
+        return _max(
+            terminal,
+            Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+                + Gas.ELIMINATE_INNER_TOURNAMENT
+        );
     }
 
     /// @notice Configured refundable work for one height-`height` match.
@@ -36,9 +50,9 @@ library Bond {
         pure
         returns (uint256)
     {
-        // Subtracting after adding the terminal allocation also preserves the
-        // former height-zero value. Zero is invalid geometry, but runtime
-        // validation is a separate change.
+        // Subtracting after the addition leaves invalid height zero defined
+        // without weakening the positive-height path bound. Geometry
+        // validation remains separate.
         return uint256(height) * Gas.ADVANCE_MATCH + terminalAllocation()
             - Gas.ADVANCE_MATCH;
     }
@@ -53,5 +67,9 @@ library Bond {
         returns (uint256)
     {
         return gasAllocation * WORK_PRICE_CAP;
+    }
+
+    function _max(uint256 a, uint256 b) private pure returns (uint256) {
+        return a > b ? a : b;
     }
 }

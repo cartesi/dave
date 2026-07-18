@@ -1,6 +1,6 @@
 # Bond and refund design checkpoint
 
-Status: accounting and callback boundary implemented; calibration and gas budgets open
+Status: accounting and callback boundary implemented; gas calibration in progress
 
 Last reviewed: 2026-07-18
 
@@ -27,9 +27,17 @@ For one tournament instance, define:
 ```text
 A = Gas.ADVANCE_MATCH
 E = max(
-        Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH,
-        Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
-            + Gas.WIN_INNER_TOURNAMENT
+        Gas.WIN_MATCH_BY_TIMEOUT,
+        Gas.ELIMINATE_MATCH_BY_TIMEOUT,
+        Gas.SEAL_LEAF_MATCH + max(
+            Gas.WIN_LEAF_MATCH,
+            Gas.WIN_MATCH_BY_TIMEOUT,
+            Gas.ELIMINATE_MATCH_BY_TIMEOUT
+        ),
+        Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + max(
+            Gas.WIN_INNER_TOURNAMENT,
+            Gas.ELIMINATE_INNER_TOURNAMENT
+        )
     )
 h = commitment tree height for this tournament
 P = Bond.WORK_PRICE_CAP
@@ -46,19 +54,14 @@ actionRefundCap(g) = g * P
 ```
 
 The absolute action cap is therefore independent of tournament height and of
-the economic principal. The inherited checkpoint sets `S = A * P`, so the
-current join value remains exactly equal to the former formula:
-
-```text
-B(h) = A * P + ((h - 1) * A + E) * P
-     = (h * A + E) * P
-```
+the economic principal. `S` preserved the inherited value when it was made
+explicit, but gas calibration no longer changes it implicitly.
 
 The current constants give:
 
 ```text
-A = 90,175 gas
-E = 515,561 gas
+A = 127,000 gas
+E = 703,000 gas
 P = 50 gwei
 S = 0.00450875 ETH
 ```
@@ -67,38 +70,39 @@ Every allocation currently includes the flat 25,000-gas `Gas.TX` term:
 
 | Action | Allocation `g` | Absolute share cap `g * P` |
 | --- | ---: | ---: |
-| Advance match | 90,175 gas | 0.00450875 ETH |
-| Win by timeout | 111,203 gas | 0.00556015 ETH |
-| Eliminate by timeout | 87,135 gas | 0.00435675 ETH |
-| Seal inner match | 262,531 gas | 0.01312655 ETH |
-| Propagate inner winner | 253,030 gas | 0.01265150 ETH |
-| Eliminate inner match | 110,183 gas | 0.00550915 ETH |
-| Seal leaf match | 82,355 gas | 0.00411775 ETH |
+| Advance match | 127,000 gas | 0.00635000 ETH |
+| Win by timeout | 260,000 gas | 0.01300000 ETH |
+| Eliminate by timeout | 135,000 gas | 0.00675000 ETH |
+| Seal inner match | 366,000 gas | 0.01830000 ETH |
+| Propagate inner winner | 337,000 gas | 0.01685000 ETH |
+| Eliminate inner match | 173,000 gas | 0.00865000 ETH |
+| Seal leaf match | 109,000 gas | 0.00545000 ETH |
 | Win leaf match | 127,728 gas | 0.00638640 ETH |
 
 The checked-in heights produce the following join deposits:
 
-| Height | `T(h)` | `B(h)` |
+| Height | `W(h)` | `B(h)` |
 | ---: | ---: | ---: |
-| 48 | 4,843,961 gas | 0.24219805 ETH |
-| 17 | 2,048,536 gas | 0.10242680 ETH |
-| 27 | 2,950,286 gas | 0.14751430 ETH |
+| 48 | 6,672,000 gas | 0.33810875 ETH |
+| 17 | 2,735,000 gas | 0.14125875 ETH |
+| 27 | 4,005,000 gas | 0.20475875 ETH |
 
-These are accounting values, not validated gas ceilings. PRT-003 establishes
-that several current estimates understate real execution.
+These are accounting values, not a claim that every gas ceiling is validated.
+`WIN_LEAF_MATCH` is the only inherited action and remains confirmed
+non-conservative.
 
 ## Per-match work bound
 
 A new match starts at height `h`. `advanceMatch` is legal only while its current
-height is greater than one, so one match can advance at most `h - 1` times. Its
-largest configured terminal branch is inner seal followed by inner winner
-propagation, whose allocation is `E`.
+height is greater than one, so one match can advance at most `h - 1` times.
+`Bond.terminalAllocation` explicitly takes the maximum over every legal direct,
+leaf, and inner terminal sequence. The current maximum is inner seal followed
+by inner winner propagation.
 
 The maximum configured refundable work for one resolved match is therefore:
 
 ```text
 W(h) = (h - 1) * A + E
-     = T(h) - A
 ```
 
 Leaf proof, sealed-leaf timeout, direct timeout, and inner elimination all have
@@ -109,13 +113,13 @@ At the maximum `h - 1` advances, the configured path totals are:
 
 | Terminal path | Configured match total |
 | --- | ---: |
-| Direct timeout win | `(h - 1) * A + 111,203` |
-| Direct timeout elimination | `(h - 1) * A + 87,135` |
-| Leaf seal and proof | `T(h) - 395,653` |
-| Leaf seal and timeout win | `T(h) - 412,178` |
-| Leaf seal and timeout elimination | `T(h) - 436,246` |
-| Inner seal and winner propagation | `T(h) - A` |
-| Inner seal and elimination | `T(h) - 233,022` |
+| Direct timeout win | `(h - 1) * A + 260,000` |
+| Direct timeout elimination | `(h - 1) * A + 135,000` |
+| Leaf seal and proof | `(h - 1) * A + 236,728` |
+| Leaf seal and timeout win | `(h - 1) * A + 369,000` |
+| Leaf seal and timeout elimination | `(h - 1) * A + 244,000` |
+| Inner seal and winner propagation | `(h - 1) * A + 703,000` |
+| Inner seal and elimination | `(h - 1) * A + 539,000` |
 
 This bound assumes a valid positive tournament height. Canonical and test-owned
 geometry validation should reject a zero-height configuration before
@@ -175,11 +179,11 @@ permissionlessly execute progress itself and receive the same bounded work
 refunds as an honest validator. If those refunds accurately cover its work, the
 guaranteed principal burned for each eliminated claim is `S`, not `B(h)`.
 
-The inherited value was an accidental consequence of the off-by-one between
-`h` budgeted advances and at most `h - 1` legal advances:
+The inherited value was an accidental consequence of the former off-by-one
+between `h` budgeted advances and at most `h - 1` legal advances:
 
 ```text
-S = 90,175 * 50 gwei = 0.00450875 ETH
+S = former ADVANCE_MATCH (90,175) * 50 gwei = 0.00450875 ETH
 ```
 
 This is the minimum guaranteed residual across tournament kinds. A leaf
@@ -205,12 +209,13 @@ and an action is capped directly at:
 actionRefundCap(g) = g * WORK_PRICE_CAP
 ```
 
-The initial `0.00450875 ETH` literal is behavior-identical to the former formula.
-It is a mechanical refactor checkpoint, not approval of that economic value.
-The direct action cap also removes a clone-argument decode and a multiply/divide
-from the refund postlude. That work occurs after the modifier's gas snapshot, so
-the configured payment is unchanged at this checkpoint while total transaction
-gas decreases. PRT-003 measurements must use the new path.
+The initial `0.00450875 ETH` literal was behavior-identical when the formula was
+refactored. It is a mechanical checkpoint, not approval of that economic value.
+Subsequent gas calibration may change the common work reserve without changing
+this literal. Increasing a cheaper terminal action does not change the reserve
+while it remains below the existing maximum. The direct action cap also removed
+a clone-argument decode and a multiply/divide from the refund postlude; PRT-003
+measurements use that newer path.
 
 ## Principal calibration rule
 
@@ -262,6 +267,78 @@ writes. It excludes:
 - exact end-of-transaction storage-refund credits; and
 - chain-specific data, envelope, blob, or L2 security fees.
 
+For calibration, define `delta = gasBefore - gasAfter` at those production
+snapshots. With base fee zero, transaction gas price one Wei, and enough pooled
+balance, `PartialBondRefund.value` is exactly:
+
+```text
+(Gas.TX + delta) * 1 Wei
+```
+
+The test harness therefore measures the quantity the action cap governs without
+adding production instrumentation. Fixture construction occurs in Foundry's
+separate `setUp` transaction, so the measured action starts with cold tournament
+and nested-contract accesses. The selected headroom is:
+
+```text
+margin(delta) = max(10,000 gas, ceil(delta / 10))
+allocation = roundUpTo1000(Gas.TX + delta + margin(delta))
+```
+
+CI asserts that the complete reviewed margin remains; it does not wait for the
+literal cap itself to be crossed. The pinned environment is Solidity 0.8.30,
+optimized IR, Prague EVM, Forge 1.5.1-dev, and the dependencies in
+`soldeer.lock`.
+Compiler, EVM, dependency, geometry, or supported-proof changes require a new
+calibration even when an old ceiling happens to pass.
+
+The first target-two-level witnesses use injected heights 55 and 37 rather than
+the checked-in canonical geometry:
+
+| Action and retained witness | `Gas.TX + delta` | Margin | Shared action allocation |
+| --- | ---: | ---: | ---: |
+| First charged right advance; first counter and position writes | 116,470 | 10,000 | 127,000 |
+| Charged position-one leaf seal; full 37-sibling proof and first position write | 98,085 | 10,000 | 109,000 |
+| Charged position-one inner seal; full 55-sibling proof, first position write, real child clone | 334,941 | 30,995 | 366,000 |
+| Active timeout, side one wins; charged survivor, nonzero position, dangling re-pair | 237,603 | 21,261 | 260,000 |
+| Active timeout, side two wins; charged survivor, nonzero position, dangling re-pair | 237,646 | 21,265 | 260,000 |
+| Sealed-leaf timeout, side one wins; charged survivor, position one, dangling re-pair | 238,261 | 21,327 | 260,000 |
+| Sealed-leaf timeout, side two wins; charged survivor, position one, dangling re-pair | 238,304 | 21,331 | 260,000 |
+| Active double elimination; nonzero position, exact equality boundary | 123,940 | 10,000 | 135,000 |
+| Sealed-leaf double elimination; position one, later classifier branch, exact equality boundary | 124,269 | 10,000 | 135,000 |
+| Resolved child selects parent side one; one-block carryover, position-one parent, dangling re-pair | 307,595 | 28,260 | 337,000 |
+| Resolved child selects parent side two; one-block carryover, position-one parent, dangling re-pair | 307,770 | 28,277 | 337,000 |
+| Single-claim child selects parent side two; positive carryover deduction and dangling re-pair | 307,725 | 28,273 | 337,000 |
+| Resolved child winner expires; position-one parent deletion | 158,788 | 13,379 | 173,000 |
+| Single-claim child winner expires; position-one parent deletion | 158,773 | 13,378 | 173,000 |
+| Child finishes without a winner; position-one parent deletion | 153,849 | 12,885 | 173,000 |
+
+Rows for one entry point share one configured constant, selected from its
+largest retained witness. The other rows enforce that the shared constant still
+covers their reviewed margins; they are not separate per-branch allocations.
+Each largest witness also pins the 1,000-gas rounding rule exactly.
+For timeout winners, a dangling re-pair dominates merely storing the survivor
+as dangling because it also creates and starts a fresh match. A nonzero old
+position clears one more storage word. Elimination does not inspect the dangling
+slot; its retained maximum combines a nonzero position with the later timeout
+classifier branch.
+
+Child propagation uses real factory-created children and leaves child recovery
+separate. The resolved-winner fixtures propagate at the final legal carryover
+block, so the parent stores a one-block allowance, and a parent dangling claim
+forces a fresh match. Both contested-parent orientations are retained. The
+single-claim comparator covers the alternate child-finish branch. Child
+elimination covers no-winner, single-claim winner, and resolved-winner states at
+their inclusive deadlines; the resolved winner is the largest retained path.
+
+These witnesses recalibrate seven actions. Only `winLeafMatch` remains on an
+inherited literal. In particular, the deterministic transition stub used for
+the leaf-seal witness says nothing about leaf-proof execution. The current
+maximum is inner seal plus winner propagation at 703,000 gas. Recalibrating the
+real-child path raises `E` by 83,970 gas, so every work reserve increases by
+83,970 gas and every join deposit increases by 0.0041985 ETH at `P`; the
+explicit Sybil principal remains unchanged.
+
 The price term is:
 
 ```text
@@ -309,8 +386,9 @@ PRT-013 now gives both remaining recipient calls one shared boundary:
   reduce the forwarded amount when the caller has too little remaining gas; the
   policy is a ceiling, not a guaranteed minimum.
 - Fixed `CALL` costs, including account access and value transfer, execute on
-  the tournament side and are paid by the transaction sender outside both the
-  recipient-execution ceiling and the refund measurement.
+  the tournament side outside the measured delta. They are covered only
+  indirectly by the flat 25,000-gas proxy, not reconciled receipt-exactly.
+  Recipient execution remains outside the measurement.
 - The assembly call supplies no output buffer. Recipient return data is never
   copied into tournament memory, and the ABI-compatible `ret` event field is
   always empty.
@@ -375,8 +453,8 @@ The following decisions remain open before economic calibration:
 2. Keep the common maximum terminal reserve, or use the known leaf/non-leaf
    role to avoid path-dependent excess slack.
 3. Define the maximum supported state-transition proof and input envelope.
-4. Select action headroom, the 50-gwei work-price cap, and the 10-gwei priority
-   cap from deployment policy rather than historical constants.
+4. The action headroom is selected above. Select the 50-gwei work-price cap and
+   10-gwei priority cap from deployment policy rather than history.
 5. Decide whether no-winner tournament balances remain locked or gain a
    permissionless burn path.
 
@@ -396,10 +474,12 @@ The following decisions remain open before economic calibration:
    or storage.
 5. Completed: bound refund and terminal callback recipient execution and
    discard return data.
-6. Measure every successful refundable branch, including supported maximum
-   state-transition proof shapes, under pinned compiler and EVM settings.
-7. Generate new action budgets with reviewed headroom and enforce ceilings in
-   CI.
+6. In progress: measure every successful refundable branch, including supported
+   maximum state-transition proof shapes, under pinned compiler and EVM
+   settings. Advance, timeout, double-elimination, both seal paths, and both
+   real-child resolution actions now have retained witnesses.
+7. In progress: generate new action budgets with reviewed headroom and enforce
+   ceilings in CI. Seven of eight actions are recalibrated.
 
 The state-transition workstream must define a finite maximum supported proof or
 proof-class set before `WIN_LEAF_MATCH` can be claimed as a true upper bound.

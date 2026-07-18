@@ -171,7 +171,8 @@ Resolution:
   event counters in `Tournament`, [`REFUND-DESIGN.md`](REFUND-DESIGN.md)
 
 The hard-coded gas constants are used to size the bond's work reserve and cap
-each caller refund. They are no longer conservative:
+each caller refund. Calibration is in progress. The remaining inherited
+`WIN_LEAF_MATCH` literal is not validated and is known to be non-conservative:
 
 - Five production storage counters were added after the constants. Tests no
   longer consume them, but their getters are external API and their `SSTORE`
@@ -193,14 +194,42 @@ each caller refund. They are no longer conservative:
 - Before PRT-011, `winInnerTournament` also performed terminal child recovery,
   making its cost depend on the winning claimer's callback. Recovery is now
   separate; recalibration must use the decoupled path.
-- PRT-012's explicit direct action cap removes the former clone-argument decode
-  and multiply/divide from the unmetered refund postlude. Configured payments
-  are unchanged at the checkpoint value, but transaction gas is lower and must
-  be remeasured.
+- PRT-012's explicit direct action cap removed the former clone-argument decode
+  and multiply/divide from the unmetered refund postlude. It preserved payments
+  at that checkpoint; this calibration measures the resulting path.
 - PRT-013 bounds nonzero recipient execution at 50,000 gas, skips zero-value
   calls, and removes recipient return-data copying. Callback work remains
-  outside the refund measurement; the supported proof envelope and fixed action
-  allocations remain open.
+  outside the refund measurement; the supported proof envelope and
+  `WIN_LEAF_MATCH` allocation remain open.
+- A test-owned target-two-level harness now measures the modifier's exact
+  reimbursable quantity from `PartialBondRefund` with cold target accesses. The
+  first charged right advance measured 116,470 allocation units against the old
+  90,175 allocation. A position-one height-55 inner seal measured 334,941
+  against 262,531; it combines a full proof with the first nonzero position
+  write. The equivalent height-37 leaf seal measured 98,085 against 82,355.
+  With `max(10,000, ceil(delta / 10))` headroom and 1,000-gas rounding, those
+  allocations are now 127,000, 366,000, and 109,000.
+- Timeout calibration retains both winner orientations in active bisection and
+  in the sealed-leaf race. Every winner is positively charged, the old match has
+  a nonzero position, and a third dangling commitment forces the expensive
+  re-pair branch. The active paths measured 237,603 and 237,646 allocation
+  units; sealed leaf measured 238,261 and 238,304. The 260,000 allocation
+  preserves the reviewed margin over the largest path.
+- Double-elimination calibration retains an advanced active match and a
+  position-one sealed leaf at the inclusive `remaining == overdue` boundary.
+  They measured 123,940 and 124,269 allocation units. The 135,000 allocation
+  preserves the reviewed margin. The leaf-seal-plus-timeout sequences are
+  369,000 and 244,000 gas; both remained below the then-existing 619,030 inner
+  terminal maximum, so that calibration slice did not change bond values.
+- Child-resolution calibration uses real factory-created children and preserves
+  decoupled recovery. Resolved children selecting parent sides one and two
+  measured 307,595 and 307,770 allocation units at the final legal carryover
+  block; a single-claim side-two comparator measured 307,725. Expired resolved
+  and single-claim winners measured 158,788 and 158,773, while a child with no
+  winner measured 153,849. The 337,000 and 173,000 allocations preserve the
+  reviewed margins. Inner seal plus winner propagation is now 703,000 gas,
+  raising every work reserve by 83,970 gas and every join deposit by 0.0041985
+  ETH at the price cap. Only `WIN_LEAF_MATCH` retains an inherited literal.
 - The previous NatSpec promised gas reimbursement plus profit, which the
   formula does not guarantee. The comment is corrected in this documentation
   pass; the economic limitation remains.
@@ -212,8 +241,9 @@ Recommended response:
 2. PRT-013 completed the callback boundary. Define the supported maximum
    state-transition proof envelope before claiming finite complete-operation
    ceilings.
-3. Add CI ceilings for every refundable branch under pinned compiler and EVM
-   settings, then generate allocations with an explicit safety margin.
+3. In progress: add CI ceilings for every refundable branch under pinned
+   compiler and EVM settings. The first seven allocations now preserve the
+   selected 10-percent/10,000-gas minimum margin.
 4. Adopt the bounded gross-Ethereum-work promise in `REFUND-DESIGN.md`, or
    explicitly design broader calldata and receipt accounting.
 5. The global reserve theorem now proves that configured refund caps preserve one
@@ -508,8 +538,8 @@ Resolution:
    alone leaves the child's claimer payout, residual burn, and balance
    untouched.
 4. The external ABI, storage layout, events, and tournament winner semantics are
-   unchanged. `Gas.WIN_INNER_TOURNAMENT` remains unchanged pending recalibration
-   of all refundable paths together under PRT-003.
+   unchanged. PRT-003 now calibrates `Gas.WIN_INNER_TOURNAMENT` on this
+   decoupled path with real child tournaments.
 
 ### PRT-012: Sybil principal lacks economic calibration
 
@@ -534,10 +564,11 @@ before terminal recovery. This proves that one complete winning deposit is
 reserved and that successful recovery burns at least `S` per eliminated
 commitment.
 
-The inherited value `A*P`, currently 0.00450875 ETH, was the guaranteed
-irreversible Sybil principal. A participant may execute progress itself and
-receive the same bounded work subsidy, so the much larger join deposit is not
-all at risk. The implementation now names that inherited value as
+The inherited value `former A * P`, or 0.00450875 ETH, was the guaranteed
+irreversible Sybil principal. The recalibrated `A` no longer equals that
+literal. A participant may execute progress itself and receive the same bounded
+work subsidy, so the much larger join deposit is not all at risk. The
+implementation now names that inherited value as
 `Bond.SYBIL_PRINCIPAL`, so changing a gas estimate no longer changes the Sybil
 price implicitly. Leaf and cheaper terminal paths retain additional slack, so
 the effective burn is also path- and level-dependent. No current dimensioning
@@ -547,8 +578,8 @@ Recommended response:
 
 1. Implemented: use one common Wei-denominated principal and size the join
    deposit as `sybilPrincipal + configuredMatchWorkReserve`.
-2. Implemented checkpoint: pin 0.00450875 ETH to preserve inherited behavior
-   without treating it as policy approval.
+2. Implemented checkpoint: pin the inherited 0.00450875 ETH residual-principal
+   value without treating it as policy approval.
 3. Select the final principal against the intended delay-cost analysis before
    deployment. Gas recalibration must not silently choose it.
 4. The pure path and topology models fuzz the global `J`, match-count, and
@@ -781,11 +812,13 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - `TEST-TIME-001` (deferred): chain conformance for the time source and
   deployment conversion is required before promoting any non-Ethereum target,
   especially Arbitrum.
-- `TEST-GAS-001`: fail when any refundable path exceeds its allocation.
+- `TEST-GAS-001` (in progress): retained cold witnesses enforce reviewed
+  headroom for advance, timeout win and elimination, both seal paths, and real
+  child winner and elimination branches. Only leaf-proof paths remain.
 - `TEST-GAS-002`: measure realistic leaf proofs and calldata sizes.
 - `TEST-FUND-001` (landed): fuzz positive heights and every current terminal
   branch; require each match's configured refunds to stay within its work
-  reserve and pin the current maximum branch.
+  reserve and require the reserve to equal the maximum across all legal paths.
 - `TEST-FUND-002` (landed model): fuzz joins, pairing, repeated winners, and
   double elimination in a geometry-independent population model; require
   `matches <= joins - 1` and pessimistically reserve full work for every live
@@ -1098,3 +1131,77 @@ After bounding payment callbacks:
   address and the dependent factory address must be regenerated.
 - `forge fmt --check` passed in both contract packages, and `git diff --check`
   passed. No node source changed.
+
+After the first PRT-003 calibration slice:
+
+- `prt/contracts`: `just test-disputes` passed 95 tests. The new configurable
+  fixture validates sparse height-55 roots, final-state proofs, and second-last
+  agree-state proofs without canonical or historical geometry.
+- Cold target-two-level witnesses measured 116,470 allocation units for the
+  first charged right advance, 98,085 for a position-one full-proof leaf seal,
+  and 334,941 for the equivalent inner seal with a real child clone. The
+  127,000, 109,000, and 366,000 allocations preserve the selected reviewed
+  headroom.
+- The reserve tests prove that recalibrating `ADVANCE_MATCH` does not change the
+  explicit 0.00450875 ETH Sybil principal. `Bond.terminalAllocation` now takes
+  the maximum over every legal direct, leaf, and inner terminal sequence.
+- The invalid height-zero bond changed in this slice and follows the explicit
+  formula. Zero remains unsupported geometry, not a frozen-value compatibility
+  promise.
+- The actual runner is Forge 1.5.1-dev with Solidity 0.8.30, optimized IR, and the
+  Prague EVM. `forge fmt --check` and `git diff --check` passed.
+- The `Tournament` ABI SHA-256 remains
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+  Storage layout and external interfaces are unchanged. Runtime and creation
+  bytecode change, so deployment artifacts and CREATE2 addresses must be
+  regenerated. No node source changed.
+
+After the timeout PRT-003 calibration slice:
+
+- `prt/contracts`: `just test-disputes` passed 101 tests. Six retained timeout
+  tests cover active and sealed-leaf phases, both winning orientations, positive
+  winner charges, nonzero match positions, dangling re-pairing, and exact
+  double-elimination boundaries.
+- Cold active timeout winners measured 237,603 and 237,646 allocation units.
+  Sealed-leaf winners measured 238,261 and 238,304. Cold active and sealed-leaf
+  double eliminations measured 123,940 and 124,269. The 260,000 and 135,000
+  allocations preserve the selected reviewed headroom.
+- The 369,000-gas leaf-seal-plus-timeout-win and 244,000-gas
+  leaf-seal-plus-double-elimination paths remained below the then-existing
+  619,030-gas inner terminal maximum. The common work reserve, all three
+  canonical-height deposits, and the explicit 0.00450875 ETH Sybil principal
+  were unchanged in that slice.
+- The actual runner remains Forge 1.5.1-dev with Solidity 0.8.30, optimized IR,
+  and the Prague EVM. `forge fmt --check` and `git diff --check` passed.
+- The `Tournament` ABI SHA-256 remains
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+  Storage layout and external interfaces are unchanged. Runtime and creation
+  bytecode change, so deployment artifacts and CREATE2 addresses must be
+  regenerated. No node source changed.
+
+After the child-resolution PRT-003 calibration slice:
+
+- `prt/contracts`: `just test-disputes` passed 107 tests. Six new cold
+  real-child witnesses cover both propagated parent winners, resolved and
+  single-claim child finish states, expired winners, and a child with no winner.
+  Propagation leaves child balances untouched and rejects reuse after
+  propagation.
+- Resolved child winners measured 307,595 and 307,770 allocation units; the
+  single-claim side-two comparator measured 307,725. Resolved-winner,
+  single-claim-winner, and no-winner eliminations measured 158,788, 158,773, and
+  153,849. The 337,000 and 173,000 allocations pin the selected rounding and
+  reviewed headroom.
+- `Bond.terminalAllocation` is now 703,000 gas. The height-48, height-17, and
+  height-27 work reserves are 6,672,000, 2,735,000, and 4,005,000 gas; their
+  deposits are 0.33810875, 0.14125875, and 0.20475875 ETH. The principal remains
+  exactly 0.00450875 ETH. The reserve fuzz test now proves equality with the
+  largest legal path without hard-coding which terminal branch is largest.
+- `cartesi-rollups/contracts`: all three integration tests passed, including
+  both fuzz properties with 256 runs and the bounded-callback settlement trace.
+- The actual runner remains Forge 1.5.1-dev with Solidity 0.8.30, optimized IR,
+  and the Prague EVM. `forge fmt --check` and `git diff --check` passed.
+- The `Tournament` ABI SHA-256 remains
+  `ece9dcb68d32fe686388894f69e03afa0c2522ea9458909fa342a83c15cab0e9`.
+  Storage layout and external interfaces are unchanged. Runtime and creation
+  bytecode change, so deployment artifacts and CREATE2 addresses must be
+  regenerated. No node source changed.
