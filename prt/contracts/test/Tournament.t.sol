@@ -15,9 +15,6 @@ pragma solidity ^0.8.0;
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
-    ArbitrationConstants
-} from "src/arbitration-config/ArbitrationConstants.sol";
-import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
@@ -28,6 +25,9 @@ import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
 
 import {Util} from "./Util.sol";
+import {
+    HistoricalThreeLevelGeometry as HistoricalGeometry
+} from "./fixtures/HistoricalThreeLevelGeometry.sol";
 
 contract TournamentTest is Util {
     using Tree for Tree.Node;
@@ -53,8 +53,10 @@ contract TournamentTest is Util {
     address player1 = vm.addr(2);
 
     constructor() {
-        (FACTORY,) = Util.instantiateTournamentFactory();
-        SINGLE_LEVEL_FACTORY = Util.instantiateSingleLevelTournamentFactory();
+        (FACTORY,) = Util.instantiateHistoricalThreeLevelTournamentFactory();
+        SINGLE_LEVEL_FACTORY = Util.instantiateSingleLevelTournamentFactory(
+            HistoricalGeometry.log2step(0), HistoricalGeometry.height(0)
+        );
     }
 
     receive() external payable {}
@@ -75,10 +77,10 @@ contract TournamentTest is Util {
         // pair commitment, expect a match
         vm.expectEmit(true, true, true, true, address(topTournament));
         emit ITournament.MatchCreated(
-            Util.matchId(_opponent, 0).hashFromId(),
-            playerNodes[0][ArbitrationConstants.height(0)],
-            playerNodes[1][ArbitrationConstants.height(0)],
-            playerNodes[1][ArbitrationConstants.height(0) - 1]
+            Util.historicalMatchId(_opponent, 0).hashFromId(),
+            playerNodes[0][HistoricalGeometry.height(0)],
+            playerNodes[1][HistoricalGeometry.height(0)],
+            playerNodes[1][HistoricalGeometry.height(0) - 1]
         );
 
         uint256 player1BalanceBefore = player1.balance;
@@ -123,7 +125,7 @@ contract TournamentTest is Util {
             Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
         uint256 opponent = 1;
         Util.joinTournament(tournament, opponent);
-        Match.Id memory matchId = Util.matchId(opponent, 0);
+        Match.Id memory matchId = Util.historicalMatchId(opponent, 0);
         Match.IdHash matchIdHash = matchId.hashFromId();
         Match.State memory matchBefore = tournament.getMatch(matchIdHash);
         (Clock.State memory clockOneBefore,) =
@@ -173,7 +175,7 @@ contract TournamentTest is Util {
             Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
         uint256 opponent = 1;
         Util.joinTournament(tournament, opponent);
-        Match.Id memory matchId = Util.matchId(opponent, 0);
+        Match.Id memory matchId = Util.historicalMatchId(opponent, 0);
         uint256 playerToSeal = Util.advanceMatch(tournament, matchId, opponent);
         Tree.Node responder =
             playerToSeal == 0 ? matchId.commitmentOne : matchId.commitmentTwo;
@@ -221,7 +223,7 @@ contract TournamentTest is Util {
         ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
         uint256 opponent = 1;
         Util.joinTournament(tournament, opponent);
-        Match.Id memory matchId = Util.matchId(opponent, 0);
+        Match.Id memory matchId = Util.historicalMatchId(opponent, 0);
         uint256 playerToSeal = Util.advanceMatch(tournament, matchId, opponent);
         Tree.Node responder =
             playerToSeal == 0 ? matchId.commitmentOne : matchId.commitmentTwo;
@@ -345,7 +347,7 @@ contract TournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
         assertFalse(
             topTournament.canWinMatchByTimeout(_matchId),
             "shouldn't be able to win match by timeout"
@@ -354,7 +356,7 @@ contract TournamentTest is Util {
         // player 1 should win after fast forward time to player 0 timeout
         // player 0 timeout first because he's supposed to advance match first after the match is created
         (Clock.State memory _player0Clock,) = topTournament.getCommitment(
-            playerNodes[0][ArbitrationConstants.height(0)]
+            playerNodes[0][HistoricalGeometry.height(0)]
         );
         vm.roll(
             Time.Instant
@@ -365,7 +367,7 @@ contract TournamentTest is Util {
             "should be able to win match by timeout"
         );
         (Clock.State memory _player1ClockBeforeWin,) = topTournament.getCommitment(
-            playerNodes[1][ArbitrationConstants.height(0)]
+            playerNodes[1][HistoricalGeometry.height(0)]
         );
         assertTrue(_player1ClockBeforeWin.startInstant.isZero());
 
@@ -376,14 +378,14 @@ contract TournamentTest is Util {
         Util.winMatchByTimeout(
             topTournament,
             _matchId,
-            playerNodes[1][ArbitrationConstants.height(0) - 1],
-            playerNodes[1][ArbitrationConstants.height(0) - 1]
+            playerNodes[1][HistoricalGeometry.height(0) - 1],
+            playerNodes[1][HistoricalGeometry.height(0) - 1]
         );
         vm.stopPrank();
         uint256 tournamentBalanceAfter = address(topTournament).balance;
         uint256 callerBalanceAfter = player0.balance;
         (Clock.State memory _player1ClockAfterWin,) = topTournament.getCommitment(
-            playerNodes[1][ArbitrationConstants.height(0)]
+            playerNodes[1][HistoricalGeometry.height(0)]
         );
         assertTrue(_player1ClockAfterWin.startInstant.isZero());
         assertEq(
@@ -416,7 +418,7 @@ contract TournamentTest is Util {
         uint256 _winnerPlayer = 1;
         assertTrue(
             _winner.eq(
-                playerNodes[_winnerPlayer][ArbitrationConstants.height(0)]
+                playerNodes[_winnerPlayer][HistoricalGeometry.height(0)]
             ),
             "winner should be player 1"
         );
@@ -436,16 +438,16 @@ contract TournamentTest is Util {
 
         // player 0 should win after fast forward time to player 1 timeout
         // player 1 timeout first because he's supposed to advance match after player 0 advanced
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
 
         callerBalanceBefore = address(this).balance;
         tournamentBalanceBefore = address(topTournament).balance;
         topTournament.advanceMatch(
             _matchId,
-            playerNodes[0][ArbitrationConstants.height(0) - 1],
-            playerNodes[0][ArbitrationConstants.height(0) - 1],
-            playerNodes[0][ArbitrationConstants.height(0) - 2],
-            playerNodes[0][ArbitrationConstants.height(0) - 2]
+            playerNodes[0][HistoricalGeometry.height(0) - 1],
+            playerNodes[0][HistoricalGeometry.height(0) - 1],
+            playerNodes[0][HistoricalGeometry.height(0) - 2],
+            playerNodes[0][HistoricalGeometry.height(0) - 2]
         );
         callerBalanceAfter = address(this).balance;
         tournamentBalanceAfter = address(topTournament).balance;
@@ -460,12 +462,12 @@ contract TournamentTest is Util {
             "tounament should have paid gas"
         );
         (Clock.State memory _player0ClockBeforeWin,) = topTournament.getCommitment(
-            playerNodes[0][ArbitrationConstants.height(0)]
+            playerNodes[0][HistoricalGeometry.height(0)]
         );
         assertTrue(_player0ClockBeforeWin.startInstant.isZero());
 
         (Clock.State memory _player1Clock,) = topTournament.getCommitment(
-            playerNodes[1][ArbitrationConstants.height(0)]
+            playerNodes[1][HistoricalGeometry.height(0)]
         );
         vm.roll(
             Time.Instant
@@ -479,11 +481,11 @@ contract TournamentTest is Util {
         Util.winMatchByTimeout(
             topTournament,
             _matchId,
-            playerNodes[0][ArbitrationConstants.height(0) - 1],
-            playerNodes[0][ArbitrationConstants.height(0) - 1]
+            playerNodes[0][HistoricalGeometry.height(0) - 1],
+            playerNodes[0][HistoricalGeometry.height(0) - 1]
         );
         (Clock.State memory _player0ClockAfterWin,) = topTournament.getCommitment(
-            playerNodes[0][ArbitrationConstants.height(0)]
+            playerNodes[0][HistoricalGeometry.height(0)]
         );
         assertTrue(_player0ClockAfterWin.startInstant.isZero());
         assertEq(
@@ -497,7 +499,7 @@ contract TournamentTest is Util {
         _winnerPlayer = 0;
         assertTrue(
             _winner.eq(
-                playerNodes[_winnerPlayer][ArbitrationConstants.height(0)]
+                playerNodes[_winnerPlayer][HistoricalGeometry.height(0)]
             ),
             "winner should be player 0"
         );
@@ -513,7 +515,7 @@ contract TournamentTest is Util {
         uint256 opponent = 1;
         Util.joinTournament(topTournament, opponent);
 
-        Match.Id memory matchId = Util.matchId(opponent, 0);
+        Match.Id memory matchId = Util.historicalMatchId(opponent, 0);
         Match.Id memory reversedId = Match.Id({
             commitmentOne: matchId.commitmentTwo,
             commitmentTwo: matchId.commitmentOne
@@ -540,8 +542,8 @@ contract TournamentTest is Util {
         Util.winMatchByTimeout(
             topTournament,
             matchId,
-            playerNodes[opponent][ArbitrationConstants.height(0) - 1],
-            playerNodes[opponent][ArbitrationConstants.height(0) - 1]
+            playerNodes[opponent][HistoricalGeometry.height(0) - 1],
+            playerNodes[opponent][HistoricalGeometry.height(0) - 1]
         );
         assertFalse(topTournament.canWinMatchByTimeout(matchId));
     }
@@ -555,7 +557,7 @@ contract TournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
@@ -886,11 +888,11 @@ contract TournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
 
         // Let commitmentOne time out (player 0), then attempt with wrong children
         (Clock.State memory _player0Clock,) = topTournament.getCommitment(
-            playerNodes[0][ArbitrationConstants.height(0)]
+            playerNodes[0][HistoricalGeometry.height(0)]
         );
         vm.roll(
             Time.Instant
@@ -901,16 +903,16 @@ contract TournamentTest is Util {
         topTournament.winMatchByTimeout(
             _matchId,
             // wrong child nodes for commitmentTwo
-            playerNodes[0][ArbitrationConstants.height(0) - 1],
-            playerNodes[0][ArbitrationConstants.height(0) - 1]
+            playerNodes[0][HistoricalGeometry.height(0) - 1],
+            playerNodes[0][HistoricalGeometry.height(0) - 1]
         );
 
         // Correct children should succeed
         Util.winMatchByTimeout(
             topTournament,
             _matchId,
-            playerNodes[1][ArbitrationConstants.height(0) - 1],
-            playerNodes[1][ArbitrationConstants.height(0) - 1]
+            playerNodes[1][HistoricalGeometry.height(0) - 1],
+            playerNodes[1][HistoricalGeometry.height(0) - 1]
         );
     }
 
@@ -925,7 +927,7 @@ contract TournamentTest is Util {
             vm.roll(vm.getBlockNumber() + allowanceGap);
         }
         Util.joinTournament(fixture.tournament, opponent);
-        fixture.matchId = Util.matchId(opponent, 0);
+        fixture.matchId = Util.historicalMatchId(opponent, 0);
 
         if (commitmentOneIsShorter) {
             vm.roll(

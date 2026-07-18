@@ -82,10 +82,13 @@ Immutable arguments determine its role:
 - A non-leaf tournament has `level < levels - 1`. Its sealed matches create
   child tournaments.
 
-The checked-in canonical provider configures three levels. The deployment
-target is two levels, and that change requires regenerated and validated height
-and stride tables. The tournament lifecycle is intended to depend on `levels`,
-not on either number.
+The checked-in canonical provider configures the historical three-level table
+`log2step = [44, 27, 0]`, `height = [48, 17, 27]`. The selected deployment
+layout is the two-level table `log2step = [37, 0]`, `height = [55, 37]`.
+That switch is not live. Generic and historical Solidity tests now inject their
+own geometry, leaving the coordinated node change from root stride 44 to 37 as
+an integration gate. The tournament lifecycle is intended to depend on
+`levels`, not on either number.
 
 The factory permits anyone to instantiate root or inner clones. An inner clone
 created directly through the factory is an orphan: it is not authoritative for

@@ -139,10 +139,11 @@ global `maxAllowance` remains a structural upper bound for legitimate child
 clocks; no response operation dynamically raises a clock toward that bound.
 
 The checked-in mainnet value, one week plus one hour, is consistent with the
-historical three-level model at `T = 30 minutes`. The two-level target uses the
-new 60-minute inner budget and reaches the same numerical value. Its stride and
-height tables still need to replace the checked-in three-level constants as one
-coordinated change.
+historical three-level model at `T = 30 minutes`. The selected two-level
+replacement uses `T = 60 minutes`, `log2step = [37, 0]`, and
+`height = [55, 37]`, reaching the same numerical allowance. It remains planned
+and must land with the separate node branch rather than changing the contract
+constants in isolation.
 
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the legacy-named `matchEffort` field. A
@@ -230,5 +231,6 @@ halt AND yield, use the correct enum, and round conservatively.
   recursively from
   `log2step[i] = log2step[i + 1] + height[i + 1]`; the root slowdown budget
   selects the top stride, and `log2step[0] + height[0] = 92` closes the
-  meta-cycle span. `ArbitrationConstants.sol` holds the result;
-  `measure.rs --constants` derives the current candidate table.
+  meta-cycle span. `ArbitrationConstants.sol` holds the live result;
+  `measure.rs --constants` derives candidate tables, and
+  `prt/contracts/audit/REVIEW.md` records the selected migration.

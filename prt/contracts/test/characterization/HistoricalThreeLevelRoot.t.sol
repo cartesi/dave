@@ -15,9 +15,6 @@ pragma solidity ^0.8.0;
 import {IDataProvider} from "src/IDataProvider.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
-    ArbitrationConstants
-} from "src/arbitration-config/ArbitrationConstants.sol";
-import {
     MultiLevelTournamentFactory
 } from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Match} from "src/tournament/libs/Match.sol";
@@ -25,7 +22,10 @@ import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
 
-import {Util} from "./Util.sol";
+import {Util} from "../Util.sol";
+import {
+    HistoricalThreeLevelGeometry as HistoricalGeometry
+} from "../fixtures/HistoricalThreeLevelGeometry.sol";
 
 contract ConfigurableBondReceiver {
     bool public rejectsPayment = true;
@@ -39,7 +39,7 @@ contract ConfigurableBondReceiver {
     }
 }
 
-contract TopTournamentTest is Util {
+contract HistoricalThreeLevelRootTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
     using Match for Match.Id;
@@ -50,7 +50,7 @@ contract TopTournamentTest is Util {
     ITournament topTournament;
 
     constructor() {
-        (FACTORY,) = Util.instantiateTournamentFactory();
+        (FACTORY,) = Util.instantiateHistoricalThreeLevelTournamentFactory();
     }
 
     function testEventCounters(
@@ -84,7 +84,7 @@ contract TopTournamentTest is Util {
         uint256 _winnerPlayer = 0;
         assertTrue(
             _winner.eq(
-                playerNodes[_winnerPlayer][ArbitrationConstants.height(0)]
+                playerNodes[_winnerPlayer][HistoricalGeometry.height(0)]
             ),
             "winner should be player 0"
         );
@@ -240,7 +240,7 @@ contract TopTournamentTest is Util {
         uint64 _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        Match.Id memory _matchId = Util.matchId(_opponent, _height);
+        Match.Id memory _matchId = Util.historicalMatchId(_opponent, _height);
         Match.State memory _match =
             topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
@@ -269,7 +269,7 @@ contract TopTournamentTest is Util {
         _height = 0;
         Util.joinTournament(topTournament, _opponent);
 
-        _matchId = Util.matchId(_opponent, _height);
+        _matchId = Util.historicalMatchId(_opponent, _height);
         _match = topTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
@@ -282,8 +282,8 @@ contract TopTournamentTest is Util {
         );
         _height += 1;
 
-        uint256 step = 1 << ArbitrationConstants.log2step(0);
-        uint256 _leafPosition = (1 << ArbitrationConstants.height(0)) - 1;
+        uint256 step = 1 << HistoricalGeometry.log2step(0);
+        uint256 _leafPosition = (1 << HistoricalGeometry.height(0)) - 1;
 
         assertEq(
             topTournament.getMatchCycle(_matchId.hashFromId()),

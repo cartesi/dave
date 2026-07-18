@@ -57,7 +57,8 @@ papers do not specify these contracts exactly.
   (`cloneWithImmutableArgs`). There are **no** separate Top/Middle/Bottom
   contracts - "top/middle/bottom" are the *same code* at levels 0/1/2,
   distinguished only by the `level` in the clone's immutable `TournamentArguments`.
-  (The `*Tournament.t.sol` test files exercise that one contract at each level.)
+  The historical three-level suites under `test/characterization/` exercise
+  that one contract in each of those roles against a frozen test profile.
 - **Factory.** `tournament/factories/MultiLevelTournamentFactory` deploys the
   root (level 0) via `instantiate`; deeper tournaments are created at `level + 1`
   when a non-leaf match is sealed. `instantiateInner` is also permissionless, so
@@ -68,9 +69,12 @@ papers do not specify these contracts exactly.
   - *non-leaf* (`level < levels - 1`) vs *leaf* (`level == levels - 1`)
   - The **level count `L` is a deployment parameter** (`ArbitrationConstants.LEVELS`
     / the parameters provider). The checked-in constants currently use **3**;
-    the deployment target is **2**. The contract logic is meant to hold for
-    *any* L, but a new layout must regenerate and validate its height and stride
-    tables consistently. At the checked-in L=3:
+    the selected deployment layout uses **2** with
+    `log2step = [37, 0]` and `height = [55, 37]`. That switch is planned but
+    integration-gated on the coordinated node change; it is not live in these
+    contracts. The contract logic is meant to hold for *any* L, but a new
+    layout must regenerate and validate its height and stride tables
+    consistently. At the checked-in L=3:
     L0 = root + non-leaf, L1 = inner + non-leaf, L2 = inner + **leaf** (the only
     level that verifies a machine step on-chain).
 - **Libraries**: `Match` (bisection state machine), `Clock` (one-clock
@@ -224,10 +228,11 @@ experimental until validated. The current Arbitrum entries do not match the
   `winInnerTournament` replaces the paused parent clock with that state.
 - **No fixed-level assumptions**: the level count `L` is configurable, but
   `ArbitrationConstants` hardcodes the per-level `log2step` / `height` arrays at
-  `LEVELS = 3`. A deployment with a different L must regenerate those
-  consistently, and the generic logic (`level + 1` recursion, leaf/root
-  detection, bond sizing) must hold for any L - worth checking for accidental
-  "== 3" assumptions.
+  `LEVELS = 3`. CFG-001 in `audit/REVIEW.md` records the selected two-level
+  replacement and its cross-implementation gate. A deployment with a different
+  L must regenerate those consistently, and the generic logic (`level + 1`
+  recursion, leaf/root detection, bond sizing) must hold for any L - worth
+  checking for accidental "== 3" assumptions.
 
 ## Build / test
 
