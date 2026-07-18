@@ -145,6 +145,16 @@ replacement uses `T = 60 minutes`, `log2step = [37, 0]`, and
 and must land with the separate node branch rather than changing the contract
 constants in isolation.
 
+Before adopting any generated table, run the test-only whole-table validator
+under `prt/contracts/test/config/`. It checks the declared level count, positive
+heights and root allowance, 256-bit shift and extent limits, root span,
+inter-level tiling, and zero leaf stride. Then run a production-path recursive
+trace for the intended level count; the four-level miniature proves that the
+generic contract path can cross three child seams. These checks catch malformed
+Solidity geometry, but cannot prove cross-implementation agreement. The node's
+commitment strides and the complete contract table must still be compared as a
+release gate.
+
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the legacy-named `matchEffort` field. A
 height-`H` match earns at most `H` discounts: one for each of its `H - 1`
@@ -165,6 +175,32 @@ level spans 92 heights and may therefore earn at most 7 hours 40 minutes, but
 only action by action. Re-pairing creates a new match with new response
 discounts. The configured scalar remains five minutes, or 25 blocks on
 Ethereum.
+
+For one leaf match with current live balances `b1`, `b2` and `h` responses left,
+the safe local wall-time bound is `b1 + b2 + h * G`. It cannot be replaced by one
+allowance: a reachable equal-allowance schedule takes `2A - 1`, and a third
+same-time claim waiting dangling extends completion to `3A - 1`. Population
+halving after a common bounded window, aggregate transaction work, and finite
+blockspace serialization are separate quantities. The current traces establish
+these lower bounds and structural accounting.
+
+A proof-inclusive finite-state search now exhausts `N = 1..6`, `A = 1..4`,
+`G = 0..2`, and `H = 1..3`, assuming every timeout is cleaned up in its first
+eligible block while all join, response, proof, and same-block orderings remain
+scheduler-controlled. For heights two and three, every cell in that domain has
+completion time `A` for `N = 1`; for `N >= 2`, with
+`g = min(G, A - 1)`, the observed maximum is
+
+```text
+2A - 1 + (H - 1)g
+    + (ceil(N / 2) - 1) * (A + (H - 1)g)
+```
+
+Height one has a different two-running-clock leaf-race table. These are finite
+results, not an induction step. The model independently permits either side to
+be objectively provable and does not impose an honest strategy, so it is a
+clock-only upper envelope. A general attacker-versus-honest upper bound still
+needs an unbounded proof or counterexample.
 
 For the two-level target heights `[55, 37]`, a root match can earn at most 275
 minutes of discounts and a leaf match at most 185 minutes. One descent through

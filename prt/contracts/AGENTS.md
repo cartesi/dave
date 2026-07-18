@@ -25,17 +25,20 @@ result of a Cartesi rollup computation.
   population reduction to a child tournament; the child deadline alone does not
   finish live child matches. At one level, capped per-match clock mass and prompt
   cleanup make each bounded window reduce the live population by a constant
-  factor after joining closes. With multiple levels, slow child tournaments nest
-  inside that elimination tree. The intended two-level resource model has the
+  factor after joining closes. The safe local leaf bound is
+  `W <= b1 + b2 + h * G`, not one allowance: a reachable pair can take
+  `2A - 1`, and adding one same-time dangling claim can extend completion to
+  `3A - 1`. With multiple levels, slow child tournaments nest inside that
+  elimination tree. The intended two-level resource model has the
   balanced leading factor `log^2(N) / 4`; the more general
   `(log(N) / L)^L` expression is a dimensioning model, not a substitute for
-  checking the implemented clock and refund rules.
+  an unbounded proof over adversarial arrival schedules.
 
   Do not confuse timeout delay with work. Asynchronous arrival can skew the
   bracket into a list and force a correct survivor through a linear number of
-  matches even though late claims cannot each manufacture a full clock window.
-  Blockspace, transaction count, and aggregate refunds therefore need separate
-  bounds. Background - the Felten/augusto exchange:
+  matches. Clock conservation, structural population reduction, transaction
+  work, and wall-clock serialization therefore need separate bounds.
+  Background - the Felten/augusto exchange:
   <https://research.arbitrum.io/t/solutions-to-delay-attacks-on-rollups/692>
 - **Sybil / resource-exhaustion resistance** - an adversary pays one bond per
   commitment in each tournament it joins. Clock, refund, and re-pairing rules
@@ -65,7 +68,9 @@ papers do not specify these contracts exactly.
   root (level 0) via `instantiate`; deeper tournaments are created at `level + 1`
   when a non-leaf match is sealed. `instantiateInner` is also permissionless, so
   callers can create orphan inner tournaments. A parent only consumes a child
-  recorded from one of its own sealed matches.
+  recorded from one of its own sealed matches. Factory construction rejects a
+  no-code tournament implementation, parameters provider, or state transition;
+  it does not validate a generic provider's returned table on every read.
 - **Role split** (well documented in `Tournament.sol`'s header NatSpec):
   - *root* (`level == 0`) vs *inner/non-root* (`level > 0`)
   - *non-leaf* (`level < levels - 1`) vs *leaf* (`level == levels - 1`)
@@ -76,7 +81,10 @@ papers do not specify these contracts exactly.
     integration-gated on the coordinated node change; it is not live in these
     contracts. The contract logic is meant to hold for *any* L, but a new
     layout must regenerate and validate its height and stride tables
-    consistently. At the checked-in L=3:
+    consistently. A test-only whole-table validator pins those shape rules, and
+    a strict four-level production trace exercises three recursive child seams.
+    Neither proves that an off-chain node uses the same table, so the selected
+    L=2 layout retains its integration gate. At the checked-in L=3:
     L0 = root + non-leaf, L1 = inner + non-leaf, L2 = inner + **leaf** (the only
     level that verifies a machine step on-chain).
 - **Libraries**: `Match` (bisection state machine), `Clock` (one-clock
@@ -216,6 +224,8 @@ experimental until validated. The current Arbitrum entries do not match the
   3-level/30-minute model or the target 2-level/60-minute model. It is the
   structural upper bound for parent-linked clocks; child tournament allowances
   may be smaller, and no response operation raises a clock toward the bound.
+  The canonical provider rejects zero; before that guard a zero-allowance root
+  was immediately closed and rejected every join.
 - `matchEffort` = 5 minutes per successful bisection response, including the
   final seal. One root-to-leaf descent with one match at each level spans 92
   heights and can earn at most 7 hours 40 minutes, one response at a time;
@@ -247,7 +257,12 @@ experimental until validated. The current Arbitrum entries do not match the
   that is least captured by a one-line summary. The fixed four-root trace in
   `test/properties/ConcurrentRecursivePopulation.t.sol` pins coexisting child
   obligations and parent re-pairing, not the adversarial asynchronous upper
-  bound.
+  bound. `LeafPopulationDelay.t.sol` pins reachable `2A - 1` and `3A - 1`
+  lower-bound schedules. `BoundedOneLevelDelay.t.sol` exhausts a proof-inclusive
+  clock-only envelope for `N <= 6`, `A <= 4`, `G <= 2`, and `H <= 3` under
+  prompt timeout cleanup. It independently chooses proof winners and has no
+  honest strategy, so the unbounded attacker-versus-honest proof or
+  counterexample remains open.
 - **Inner-clock carryover**: `innerTournamentWinner` returns a paused clock
   after deducting the time elapsed since the inner tournament finished;
   `winInnerTournament` replaces the paused parent clock with that state.
@@ -255,9 +270,10 @@ experimental until validated. The current Arbitrum entries do not match the
   `ArbitrationConstants` hardcodes the per-level `log2step` / `height` arrays at
   `LEVELS = 3`. CFG-001 in `audit/REVIEW.md` records the selected two-level
   replacement and its cross-implementation gate. A deployment with a different
-  L must regenerate those consistently, and the generic logic (`level + 1`
-  recursion, leaf/root detection, bond sizing) must hold for any L - worth
-  checking for accidental "== 3" assumptions.
+  L must regenerate those consistently and run the test-only table validator.
+  The generic logic (`level + 1` recursion, leaf/root detection, bond sizing)
+  must hold for any L; `FourLevelRecursiveLifecycle.t.sol` protects one strict
+  four-level path without claiming arbitrary-table or node conformance.
 
 ## Build / test
 

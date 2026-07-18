@@ -49,6 +49,30 @@ contract CanonicalTournamentGeometryTest is Util {
         assertEq(ArbitrationConstants.height(2), 27);
     }
 
+    function testCanonicalProviderRejectsZeroMaxAllowance() public {
+        vm.expectRevert(
+            CanonicalTournamentParametersProvider.MaxAllowanceCannotBeZero
+            .selector
+        );
+        new CanonicalTournamentParametersProvider(
+            MATCH_EFFORT, Time.ZERO_DURATION
+        );
+    }
+
+    function testCanonicalProviderAcceptsZeroMatchEffort() public {
+        CanonicalTournamentParametersProvider provider = new CanonicalTournamentParametersProvider(
+            Time.ZERO_DURATION, MAX_ALLOWANCE
+        );
+        TournamentParameters memory parameters =
+            provider.tournamentParameters(0);
+
+        assertEq(Time.Duration.unwrap(parameters.matchEffort), 0);
+        assertEq(
+            Time.Duration.unwrap(parameters.maxAllowance),
+            Time.Duration.unwrap(MAX_ALLOWANCE)
+        );
+    }
+
     function testCanonicalProviderRowsAndTiling() public view {
         uint64 levels = ArbitrationConstants.LEVELS;
         assertGt(levels, 0);

@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
+import {Errors} from "@openzeppelin-contracts-5.5.0/utils/Errors.sol";
 
 import {IMultiLevelTournamentFactory} from "./IMultiLevelTournamentFactory.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
@@ -33,6 +34,17 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         ITournamentParametersProvider _tournamentParametersProvider,
         IStateTransition _stateTransition
     ) {
+        // Clones accepts a no-code implementation, while the other dependencies
+        // would otherwise fail only when a tournament is instantiated or used.
+        require(address(_impl).code.length > 0, Errors.FailedDeployment());
+        require(
+            address(_tournamentParametersProvider).code.length > 0,
+            Errors.FailedDeployment()
+        );
+        require(
+            address(_stateTransition).code.length > 0, Errors.FailedDeployment()
+        );
+
         IMPL = _impl;
         TOURNAMENT_PARAMETERS_PROVIDER = _tournamentParametersProvider;
         STATE_TRANSITION = _stateTransition;

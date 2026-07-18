@@ -90,10 +90,34 @@ own geometry, leaving the coordinated node change from root stride 44 to 37 as
 an integration gate. The tournament lifecycle is intended to depend on
 `levels`, not on either number.
 
+A test-only table validator makes the shape rules executable: every row must
+declare the same positive level count, heights must be positive, shifts and row
+extents must fit the 256-bit coordinate space, adjacent rows must tile, the root
+must span the expected coordinate width, and the leaf stride must be zero. It
+also rejects a zero root allowance while deliberately accepting a zero response
+budget. This is deployment evidence, not runtime validation. In particular, a
+well-formed Solidity table does not prove that an off-chain node constructs the
+same commitments. The selected two-level table therefore remains gated on
+contract, node, and documentation conformance.
+
+The generic recursion path is also exercised with a strict test-owned
+four-level table, `log2step = [3, 2, 1, 0]` and
+`height = [1, 1, 1, 1]`. That production factory-and-clone trace creates three
+nested children, resolves the leaf, and propagates one winner through every
+parent. It protects level-independent plumbing; it is not evidence that every
+possible table is safe or that the test state sequence is a valid machine
+execution.
+
 The factory permits anyone to instantiate root or inner clones. An inner clone
 created directly through the factory is an orphan: it is not authoritative for
 any parent. A parent accepts only a child recorded in its own
 `matchIdFromInnerTournaments` mapping when that parent sealed a match.
+Factory construction rejects a no-code tournament implementation, parameters
+provider, or state-transition dependency so those wiring errors fail before a
+clone is instantiated. The per-tournament `IDataProvider` remains a protocol
+dependency rather than a generic code-presence check: test state transitions
+may legitimately ignore it, while production correctness depends on its
+semantics rather than code length alone.
 
 ## Commitment lifecycle
 
@@ -214,9 +238,9 @@ parent balance. Pairing cannot refill it, so
 `returned <= max(r1, r2) <= maxAllowance`.
 
 That active-pair invariant, rather than the visual shape of the asynchronous
-bracket, gives the timeout bound. Once joining has closed, every bounded
-resolution window turns each existing pair into at most one survivor. The live
-population therefore falls by a constant factor per window.
+bracket, gives a structural population reduction. It does not say that one
+clock allowance resolves a pair: the two clocks in one match can consume time
+serially.
 
 For one height-`H` match, let `B` be the sum of its two clock balances and `h`
 the number of eligible responses still required. The potential
@@ -234,28 +258,78 @@ responseElapsed + B_after
     <= B_before + q * G
 ```
 
-For a leaf match, `b1 + b2 + H * G` conservatively bounds resolution to at most
-one survivor. For a non-leaf match, the same expression bounds reaching local
-seal or timeout deletion, but excludes resolution of any child created by
-sealing. Consequently, in a single-level leaf tournament with per-clock bound
-`A`, a population-reduction window is at most `2A + H * G`. With prompt
-permissionless cleanup after joining closes, each such window reduces `K` live
-commitments to at most `ceil(K / 2)`. An all-at-once reservoir therefore has a
-coarse logarithmic clock-delay bound of
+From any observation instant, a leaf match with current live balances `b1` and
+`b2` and `h` eligible responses left has the safe local bound
+
+```text
+W_match <= b1 + b2 + h * G
+```
+
+to resolution with at most one survivor. For a non-leaf match, the same
+expression bounds reaching local seal or timeout deletion, but excludes
+resolution of any child created by sealing. Consequently, in a single-level
+leaf tournament with per-clock bound `A`, every match present at instant `t`
+resolves within the common bound `W = 2A + H * G`. If joining has closed and
+permissionless cleanup is prompt, the structural population statement is
+
+```text
+K(t + W) <= ceil(K(t) / 2)
+```
+
+This treats transactions as available when needed; finite blockspace is a
+separate source of wall-clock serialization. Iterating the structural statement
+gives an all-at-once reservoir the coarse clock-delay upper bound
 
 ```text
 (2A + H * G) * max(1, ceil(log2(P)))
 ```
 
 for `P` commitments of one common height. This is deliberately conservative;
-many timeout paths consume only one clock. Progressively late joins can make
-the pairing tree look like a list, but their initial clocks have already lost
-the same time they spent waiting, and re-pairing cannot refill them. Only one
-unmatched commitment can remain paused without an opposing running clock or
-delegated child. A new full-allowance delay layer therefore requires an
-exponentially larger reservoir of simultaneously live claims. This reasoning
-also depends on charging timeout winners from their live remaining time, as
-fixed by PRT-002.
+many timeout paths consume only one clock. It is also an upper-bound argument,
+not a claim that half the population disappears after one allowance.
+
+Production-path lower-bound traces show why that distinction matters. In the
+height-three fixture, let two equal clocks start with allowance `A >= 2` and let
+`0 <= G < A`. The active side can respond at `A - 1`, retaining `G + 1`, then
+make the other side consume its full allowance. The first match is deleted at
+elapsed time `2A - 1`. If a third claim has waited dangling since the initial
+block, re-pairing starts its untouched clock and its timeout becomes available
+at `3A - 1`. These schedules are reachable for both `G = 0` and `G > 0`; the
+discount is the only extra term in the exact clock-mass identity. They show
+that both clocks of a pair and then a dangling claim can serialize in wall
+time. They neither show that a responsive correct participant must follow the
+schedule, disprove the coarser population-window upper bound, nor prove that
+this is the globally optimal adversarial strategy.
+
+A separate proof-inclusive finite-state model exhausts every schedule in its
+clock abstraction for `N = 1..6`, `A = 1..4`, `G = 0..2`, and `H = 1..3`
+under prompt first-eligible-block timeout cleanup. It explores late joins,
+responses, pre-timeout proofs, timeout and proof settlement, re-pairing, and
+same-block ordering. For heights two and three, its finite maxima match
+
+```text
+N = 1: A
+N >= 2: 2A - 1 + (H - 1)g
+          + (ceil(N / 2) - 1) * (A + (H - 1)g)
+where g = min(G, A - 1)
+```
+
+Height one has a distinct leaf-race table. The model deliberately lets either
+side be provable independently at each leaf, forgetting cross-match correctness
+correlation, and it does not impose an honest-validator strategy. Its values are
+therefore a conservative clock-only envelope for that finite box, not the
+general adversarial theorem. The executable maximum witness for
+`N = 3, A = 4, G = 2, H = 3` completes at relative block 19 and is replayed
+against `Tournament`.
+
+Progressively late joins have their initial clocks reduced by their lateness,
+and re-pairing never refills a survivor. Still, the asynchronous bracket can
+look like a list and a same-time dangling claim can retain a full paused clock.
+Only one unmatched commitment per tournament can wait without an opposing
+running clock or delegated child. Full population-halving rounds require a
+corresponding live claim reservoir, but that structural fact must not be
+substituted for a finite wall-time proof. The timeout argument also depends on
+charging winners from their live remaining time, as fixed by PRT-002.
 
 For the intended two-level deployment, an attack with `R` root claims and `S`
 claims in each slow child has the approximate delay shape
@@ -280,10 +354,10 @@ four-root, four-child-claim shape, not the expression's worst-case timing.
 Clock-induced delay and transaction work are different properties. A skewed
 arrival schedule can force a correct survivor through a linear number of
 matches, with work proportional to the number of claims times the commitment
-height, even though it cannot give every match a fresh allowance-sized delay.
-Finite blockspace can turn that work into additional wall-clock delay. Bond
-dimensioning and operational capacity must cover this resource attack
-separately from the chess-clock bound.
+height. Clock conservation prevents arbitrary refill, but does not make that
+work logarithmic. Finite blockspace can turn the linear transaction workload
+into additional wall-clock delay. Bond dimensioning and operational capacity
+must cover this resource attack separately from the chess-clock bound.
 
 ### Sealing
 
@@ -418,6 +492,13 @@ Required clock invariants:
   and never increases its starting balance.
 - Parent carryover cannot create an initialized paused clock with zero time.
 
+The canonical parameters provider rejects `maxAllowance == 0` at deployment.
+Before that guard, a canonical root with zero allowance was already closed at
+its creation instant, so every join failed with `TournamentIsClosed` before
+clock initialization. A zero response budget remains valid and simply applies
+no discount. A generic parameters provider is not validated on every factory
+read; supported deployments must validate its complete table before use.
+
 The intended mainnet allowance is dimensioned from two distinct budgets:
 
 ```text
@@ -547,11 +628,12 @@ economic policy decision.
 
 Under this rule, small repeated vandalism remains possible by design. For
 example, two incorrect claims can make one opponent active while the other
-waits dangling, buying roughly two single-level clock windows. Repeating the
-construction in sequential epochs creates linear cumulative disruption for
-linear bond burn net of legitimate partial refunds. The logarithmic delay
-statement is per tournament, not a promise of exponential deterrence across
-games whose brackets and clocks reset.
+waits dangling, serializing the active pair and then a replacement match.
+Repeating the construction in sequential epochs creates linear cumulative
+disruption for linear bond burn net of legitimate partial refunds. The
+structural population-window argument applies within one tournament after
+joining closes; it is neither exponential deterrence across games whose clocks
+reset nor a bound on transaction work.
 
 Required economic invariants:
 
@@ -593,8 +675,15 @@ The most important prose invariants should also exist as Foundry properties:
 - Clock conservation and timeout-outcome partitioning.
 - Exhaustive bisection parity and divergence attribution.
 - Parent-child winner and clock carryover.
+- Parameter-table shape and recursion beyond the canonical level count.
 - Aggregate bond and refund accounting.
 - Deployment time-source conformance.
+
+The bounded single-level scheduler is landed. Remaining liveness work is an
+unbounded proof or counterexample, plus a recursive model that distinguishes an
+attacker's choices from the responsive correct participant's strategy. The
+finite search discovers and retains clock schedules; it must not be presented
+as that general theorem.
 
 The detailed test backlog is maintained in the review ledger rather than here,
 so this document can remain focused on protocol behavior.

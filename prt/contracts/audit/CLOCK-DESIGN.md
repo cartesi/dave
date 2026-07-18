@@ -319,6 +319,15 @@ or timeout deletion before child resolution, is therefore
 allowance is the maximum post-response parent balance, and child return plus
 parent re-pairing cannot raise it.
 
+The local bound must not be shortened to one allowance. A production-path
+height-three trace waits `A - 1` before one response, leaving the responder
+`G + 1`, then lets the opposing clock consume all `A`. The pair resolves at
+`2A - 1`. With a third claim already waiting dangling, re-pairing starts that
+claim's untouched clock and completion reaches `3A - 1`. The traces cover
+`G = 0`, a positive `G`, and fuzz `A >= 2` with `0 <= G < A`. They are reachable
+lower bounds, not a proof of the optimal attack or a contradiction of the
+coarser population-window upper bound.
+
 The external `TournamentArguments.matchEffort` field and tuple order remain
 unchanged for compatibility, but internal code calls the value
 `responseBudget`. Deployment now stores the per-response scalar `G = 5
@@ -360,6 +369,11 @@ carryover, parent re-pairing, child double elimination, and the strict
 check-in and proof resolution strictly after global close, and a sequential
 trace composes two child tournaments on different parent segments. A fixed
 one-child stateful oracle was evaluated and rejected because it would duplicate
-the covered seam rather than explore a new clock state space. Recursive
-multi-population delay modeling remains separate from the completed Clock API
-work.
+the covered seam rather than explore a new clock state space. The sequential
+leaf lower-bound trace now separates per-match clock conservation from bracket
+shape. A proof-inclusive finite-state scheduler subsequently exhausted the
+clock-only envelope for `N <= 6`, `A <= 4`, `G <= 2`, and `H <= 3` under prompt
+timeout cleanup. It does not correlate proof winners across matches or impose
+an honest strategy. Recursive multi-population modeling and the unbounded
+attacker-versus-honest proof or counterexample remain separate from the
+completed Clock API work.

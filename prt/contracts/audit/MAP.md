@@ -209,6 +209,14 @@ Proven leaf settlement consumes it too and asserts the sealed-leaf phase. Mainne
 root-to-leaf descent with one match at each level, the maximum cumulative response discount is
 7 hours 40 minutes. Re-pairing creates a new match with new discounts.
 
+For a leaf match with current live balances `b1`, `b2` and `h` responses left, the safe local
+potential bound is `W <= b1 + b2 + h * G`. This is not one allowance: executable schedules reach `2A - 1`
+for two equal-allowance claims and `3A - 1` when a third same-time claim waits dangling. The
+floor-half-running invariant is structural population accounting, not an exact wall-time or work
+bound. A proof-inclusive clock model exhausts `N <= 6`, `A <= 4`, `G <= 2`, and `H <= 3` under
+prompt timeout cleanup. It independently selects proof winners and imposes no honest strategy, so
+an unbounded attacker-versus-honest proof or counterexample remains open.
+
 ### Bond economics (`Bond.sol` + `Gas.sol` + `refundable`)
 
 `Bond` defines one common `SYBIL_PRINCIPAL`, a 50-gwei `WORK_PRICE_CAP`, and
@@ -268,14 +276,17 @@ boundary.
    `SendCmioResponse` reverts if the write exceeds `AR_CMIO_RX_BUFFER_LOG2_SIZE`. Machine
    version is NOT pinned on-chain ("TODO add CM_MARCHID").
 4. **Factory** (`MultiLevelTournamentFactory`): `instantiate` (root) is permissionless;
-   `instantiateInner` is **fully permissionless with NO validation** (no `msg.sender` gate, no
-   level-range check, no link to a real parent match). Orphan inner tournaments are inert
+   `instantiateInner` is **fully permissionless with no caller or parent validation** (no
+   `msg.sender` gate, no generic level-range check, no link to a real parent match). Orphan inner
+   tournaments are inert
    against honest parents because a parent only ever consumes children recorded in its own
    `matchIdFromInnerTournaments`. Factory keeps no registry; emits `TournamentCreated` only for
-   roots (inner creation is announced by the parent's `NewInnerTournament` event). No
-   zero-address/sanity checks in either constructor. `maxAllowance == 0` would deploy fine but
-   brick clocks at first use; `matchEffort == 0` is mechanically valid and disables the response
-   discount.
+   roots (inner creation is announced by the parent's `NewInnerTournament` event). The factory
+   constructor now rejects a no-code tournament implementation, parameters provider, or state
+   transition. The canonical provider rejects `maxAllowance == 0`; before that guard a root was
+   immediately closed and joins reverted `TournamentIsClosed`, rather than bricking later during
+   clock initialization. `matchEffort == 0` is mechanically valid and disables the response
+   discount. Generic provider rows are not shape-validated at runtime.
 
 ### Reentrancy
 
@@ -498,7 +509,9 @@ Each: statement * where enforced * how it could break.
   proofs `length == height`.
   - *Enforced:* factory copies `params.levels`/`log2step`/`height`;
     `CanonicalTournamentParametersProvider` returns `ArbitrationConstants.LEVELS`; `getRoot*`
-    require `siblings.length == height`.
+    require `siblings.length == height`. The supported static table is checked by a test-only
+    whole-table validator; this is a release check, not a runtime invariant for arbitrary
+    providers and not proof of node agreement.
   - *Breaks if:* a non-canonical provider returns different `levels` per level, or mismatched
     `log2step`/`height`; `ArbitrationConstants` arrays regenerated inconsistently for a different L;
     `instantiateInner` with `_level >= LEVELS` (OOB Panic) - masked legitimately because
@@ -587,19 +600,23 @@ Cross-checks between mappers; most resolved-but-flagged.
    `Gas.TX = 25000` proxy over- or under-refunds receipt-exact cost after storage refunds remains
    outside the implemented promise. PRT-013 separately bounded recipient execution and removed
    return-data copying; callback work remains outside the measurement.
-7. **No zero-address / sanity validation** in `MultiLevelTournamentFactory` or
-   `CanonicalTournamentParametersProvider` constructors; `maxAllowance == 0` would deploy fine
-   and brick clocks. A zero `matchEffort` charges full response latency and is safe, though it may
-   violate the selected liveness policy. `Deployment.s.sol`/cannonfile partly constrain this, but
-   not every chain-kind path was traced (could any registered chain round
-   `maxAllowance`/`avgBlockTime` to 0 blocks?).
+7. **Factory dependency and canonical allowance checks are landed.** The factory rejects no-code
+   implementation, parameters-provider, and state-transition dependencies. The canonical provider
+   rejects zero `maxAllowance`; previously that value made the root immediately closed. A zero
+   `matchEffort` charges full response latency and is safe, though it may violate the selected
+   liveness policy. A custom provider's full table still requires the test-time validator, and
+   `Deployment.s.sol`/cannonfile conversion remains a release input (could any registered chain
+   round a duration to zero blocks?).
 8. **Recursive test coverage is partially landed.** Deep-tree parity, pooled bond accounting,
    and single-level lifecycle composition have independent property campaigns. Two-level traces
    cover child linkage, both winner mappings, late entry, post-close resolution, strict carryover
    boundaries, parent re-pairing, two sequential children, and a fixed four-root population with
-   two coexisting children. A fixed one-child stateful oracle was rejected as duplicative. The
-   concurrent-child production seam is landed; the remaining gap is an independent
-   population-delay model over adversarial arrival schedules and the claimed upper bound.
+   two coexisting children. A strict four-level trace crosses three child seams. Single-level
+   lower-bound traces reach `2A - 1` for one pair and `3A - 1` with a third dangling claim. A fixed
+   one-child stateful oracle was rejected as duplicative. A proof-inclusive bounded clock model now
+   exhausts small one-level populations, timings, heights, and action orderings. The remaining gap
+   is recursive scheduling plus an unbounded attacker-versus-honest proof or counterexample;
+   finite exhaustion cannot establish the claimed general upper bound.
 9. **`BaseDeploymentScript.sol`** (referenced by `Deployment.s.sol`, provides
    `_create2`/`_storeDeployment`) was not read - outside the core trust boundary, low priority.
 
@@ -652,12 +669,13 @@ which campaigns subsequently landed and what remains.
    input matches canonical box, return canonical root or 0 only for true OOB; flag the concrete
    provider must be audited separately; note the overloaded-zero-return control-flow risk).
 7. **Factory & inner-tournament instantiation** - `tournament/factories/*`, `ITournamentFactory.sol`.
-   SAFE-5, INV-CFG-1/2: permissionless `instantiateInner` with no validation; non-deterministic
-   CREATE clones; no zero-address checks; no inner-creation event; `tournamentFactory` blind-cast.
+   SAFE-5, INV-CFG-1/2: permissionless `instantiateInner` with no parent validation;
+   non-deterministic CREATE clones; no inner-creation event; `tournamentFactory` blind-cast. The
+   factory dependency code checks and canonical zero-allowance guard subsequently landed.
    *Vantages:* access-control/abuse finder (can an orphan inner with attacker-chosen provider ever
    be consumed by a legitimate parent - trace every writer of `matchIdFromInnerTournaments`? orphan
    spam / event-spoofing confusing off-chain clients? `_level >= LEVELS` OOB masked?); config finder
-   (zero-param deployment bricking).
+   (custom-provider zero timing or malformed shape).
 8. **Arbitration config & parameters** - `arbitration-config/*`, `types/TournamentParameters.sol`.
    INV-CFG-2, INV-STF-1: hardcoded `LEVELS = 3` + magic arrays; per-level array OOB Panic; the
    L=3 <-> 20/48 linkage with no compiler enforcement; the future L=2 migration risk. The height
