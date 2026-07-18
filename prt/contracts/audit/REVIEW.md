@@ -463,7 +463,8 @@ burned cost.
 - Area: clock dimensioning, bounded delay
 - Evidence: `Clock.pauseAfterResponseAt`, `MatchClocks.switchTurnAt`,
   `MatchClocks.startLeafRaceAt`, `MatchClocks.pauseForInnerAt`,
-  `Tournament.pairCommitment`, `Deployment._getMatchEffort`
+  `Tournament.pairCommitment`, `Deployment._getMatchEffort`,
+  `LeafPopulationDelay.t.sol`
 
 Before this fix, every pairing added `matchEffort` to both clocks, including a
 newly joined commitment whose initial allowance was already reduced by late
@@ -473,8 +474,9 @@ pairing grant was 7 hours 40 minutes. One late incorrect claim could buy that
 extra tail, and multiple late or repeatedly surviving claims could mint more.
 
 Under prompt cleanup after joining closes, each one-level match has at most two
-capped clocks and produces at most one survivor, so bounded windows still halve
-the population. Those grants nevertheless broke the clean conservation
+capped clocks and produces at most one survivor. A common window bounded by the
+two clocks plus response discounts therefore halves the structural population;
+one allowance does not. Those grants nevertheless broke the clean conservation
 law between elapsed time and survivor balance, could return a child clock larger
 than its delegated allowance, and changed finite delay constants. The
 implemented resolution preserves the external `matchEffort` field but
@@ -510,8 +512,13 @@ Resolution:
 For clock mass `M` and `h` remaining responses, `M + h * G` decreases by
 `max(elapsed, G)` after each response. A local height-`H` match therefore has
 the conservative bound `b1 + b2 + H * G <= 2A + H * G` to leaf resolution, or
-to non-leaf seal or timeout deletion before child resolution. Stateful global
-bracket models remain in the broader liveness backlog.
+to non-leaf seal or timeout deletion before child resolution. Subsequent
+production traces reach `2A - 1` for one pair and `3A - 1` with a third
+same-time dangling claim. A proof-inclusive finite-state model subsequently
+exhausted a clock-only upper envelope for `N <= 6`, `A <= 4`, `G <= 2`, and
+`H <= 3` under prompt timeout cleanup. It independently chooses proof winners
+and has no honest strategy, so the unbounded attacker-versus-honest proof or
+counterexample remains in the broader liveness backlog.
 
 ### PRT-010: Leaf proof resolution overlaps timeout cleanup
 
@@ -703,7 +710,8 @@ event payload behavior and `Tournament` creation bytecode.
 
 - Status: Planned
 - Evidence: `ArbitrationConstants`, `docs/dimensioning.md`,
-  `docs/plans/constants.md`
+  `docs/plans/constants.md`, `TournamentParameterTableValidator.t.sol`,
+  `FourLevelRecursiveLifecycle.t.sol`
 
 The selected deployment layout has two levels with
 `log2step = [37, 0]` and `height = [55, 37]`. The root tree spans
@@ -719,22 +727,65 @@ validator-grade calibration remains required before deployment.
 The checked-in contracts still use the historical three-level table
 `log2step = [44, 27, 0]`, `height = [48, 17, 27]`. This is deliberate while
 the current node constructs root commitments at stride 44 and the Solidity
-tests still need to be separated from canonical deployment constants. A
-contracts-only switch would create a silent cross-implementation mismatch.
+tests use injected, test-owned geometry outside the canonical conformance
+suite. A contracts-only switch would create a silent cross-implementation
+mismatch.
 
 Before CFG-001 is implemented:
 
 1. Completed: generic and historical contract tests inject a frozen test-owned
    geometry; only the canonical conformance suite imports
    `ArbitrationConstants`.
-2. The coordinated node branch must construct level-zero commitments at stride
+2. Completed: a test-only whole-table validator checks positive and consistent
+   level counts, positive heights and root allowance, 256-bit shift and extent
+   bounds, the expected root span, inter-level tiling, and zero leaf stride. It
+   accepts a zero response budget because that is mechanically valid.
+3. Completed: a strict four-level production factory-and-clone trace uses
+   `log2step = [3, 2, 1, 0]` and `height = [1, 1, 1, 1]`, creates three nested
+   children, resolves the leaf, and propagates the winner to the root.
+4. The coordinated node branch must construct level-zero commitments at stride
    37 and update its generated or node-facing parameter records.
-3. Contract, node, and documentation conformance checks must agree on the same
+5. Contract, node, and documentation conformance checks must agree on the same
    complete table before deployment.
+
+The test-only validator proves internal table shape, not that the node builds
+commitments with the same strides or coordinate semantics. The four-level trace
+proves one strict recursive path, not arbitrary-table safety. Neither removes
+the cross-implementation gate.
 
 This review branch does not touch the node. The selected table may be applied
 to contracts in a later, integration-gated commit, but it must not be deployed
 with a stride-44 node.
+
+### CFG-002: Fail early on unusable factory dependencies and canonical timing
+
+- Status: Resolved
+- Evidence: `MultiLevelTournamentFactory.constructor`,
+  `CanonicalTournamentParametersProvider.constructor`,
+  `MultiLevelTournamentFactoryDependencies.t.sol`,
+  `CanonicalTournamentGeometry.t.sol`
+
+The factory constructor now rejects a no-code tournament implementation,
+parameters provider, or state-transition dependency with `FailedDeployment`.
+Without those guards, clone creation or the first provider or transition call
+could fail only after an unusable factory had been deployed. The per-root
+`IDataProvider` is not included in this generic code-presence policy: test state
+transitions may ignore it, and production correctness depends on its semantics
+rather than code length alone.
+
+The canonical parameters provider now rejects `maxAllowance == 0` with
+`MaxAllowanceCannotBeZero`. The previous exact behavior was not a later clock
+panic: a zero-allowance root was closed at its creation instant, so
+`joinTournament` reverted `TournamentIsClosed` before clock initialization.
+Zero `matchEffort` remains accepted and means that all response latency is
+charged.
+
+This hardening does not make an arbitrary parameters provider safe. Production
+keeps the canonical table static and validates the full table in tests rather
+than paying for repeated runtime geometry checks. A supported deployment must
+run that validator and the cross-implementation conformance gate described by
+CFG-001. No callable selector changed; `MaxAllowanceCannotBeZero` is an additive
+deployment-error ABI item.
 
 ## Deferred state-transition issue
 
@@ -787,6 +838,14 @@ The following items were corrected or explicitly documented in this pass:
   source and conversion assumptions.
 - The checked-in constants use the historical three-level table while CFG-001
   records the selected two-level table and its integration gate.
+- Factory deployment rejects no-code implementations, parameter providers, and
+  state transitions. The canonical provider rejects zero maximum allowance;
+  before that guard a zero-allowance root was immediately closed rather than
+  failing later during clock initialization.
+- Whole-table validation is test-only and catches malformed Solidity geometry,
+  but cannot establish that the node builds the same commitments. A strict
+  four-level trace protects generic recursion without removing that integration
+  gate.
 - `winLeafMatch` validates the objective post-state and then consults the same
   timeout status as timeout cleanup. A compatible single winner receives the
   same overdue charge; an incompatible proof rejects. Objective proof
@@ -794,12 +853,16 @@ The following items were corrected or explicitly documented in this pass:
 - Timeout settlement now conserves the winner's live remaining time. A winner
   must retain strictly more time than the loser's overdue duration; equality
   and the following blocks eliminate both commitments.
-- At a leaf level, `K` live commitments imply `floor(K / 2)` running clocks. A
-  sealed non-leaf pair instead delegates population reduction to a child, whose
+- At a leaf level, `K` live commitments imply `floor(K / 2)` running clocks, but
+  both clocks in one pair may consume time serially. The safe local leaf bound
+  is `W <= b1 + b2 + h * G`; production traces reach `2A - 1` for two claims
+  and `3A - 1` when a third same-time claim waits dangling.
+- A sealed non-leaf pair delegates population reduction to a child, whose
   finish still depends on its matches and deeper children. At most one
   commitment per tournament may wait dangling.
-- Logarithmic clock-induced delay does not imply logarithmic work; asynchronous
-  pairing can force a linear number of matches and transactions.
+- Structural population reduction, clock-induced wall time, transaction work,
+  and blockspace serialization are distinct. Asynchronous pairing can force a
+  linear number of matches and transactions even when clock mass is conserved.
 - The intended allowance is `censorship + (levels - 1) * inner commitment
   time`. Pairing response latency is a separate budget.
 - Same-root first-claimer ownership is intended; terminal recovery now caps its
@@ -941,10 +1004,13 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   vary adversarial arrival schedules and timing rather than duplicate the now
   landed concurrent-child seam; that belongs to the population-delay model
   below.
-- Partially landed: injected production-path suites cover one and two levels,
-  while the frozen historical and canonical suites cover three. Remaining
-  parameter work starts at four levels and includes malformed heights, strides,
-  allowances, and unsafe shifts.
+- Landed: injected production-path suites cover one and two levels, while the
+  frozen historical and canonical suites cover three. A strict four-level trace
+  crosses three child seams and propagates one leaf winner to the root. A
+  test-only table validator covers empty and inconsistent tables, zero allowance
+  and height, 256-bit height/stride/extent boundaries, wrong root span,
+  non-tiling rows, and nonzero leaf stride. This is contract-shape evidence, not
+  arbitrary-provider or node conformance.
 - Landed: exact refund-formula fuzzing covers balance, allocation, measured-work,
   base-fee, and priority-fee caps, both timeout-winner topologies, zero requests,
   and failed receivers. Six deterministic cases pin every kink. Foundry's
@@ -952,11 +1018,16 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   deliberately prices the gross `gasleft()` delta.
 - Partially landed: the deterministic production trace covers a balanced
   four-root reservoir, two coexisting child tournaments, four same-final-state
-  claims per child, propagation, re-pairing, and exact-deadline cleanup. Still
-  open is an independent one- and two-level model or fuzz campaign over balanced
-  reservoirs, skewed/list and late arrivals, staggered child populations,
-  unequal allowances and timeout charges, response discounts, and the
-  adversarial upper bound.
+  claims per child, propagation, re-pairing, and exact-deadline cleanup. A
+  single-level production trace reaches `2A - 1` with two equal-allowance claims
+  and `3A - 1` with a third same-time dangling claim, for zero and positive
+  response budgets and across the bounded fuzz domain. A proof-inclusive
+  finite-state model now exhausts all joins, responses, pre-timeout proofs,
+  timeout cleanup, re-pairing, and same-block orderings for `N <= 6`, `A <= 4`,
+  `G <= 2`, and `H <= 3`. It treats proof winners as independently selectable,
+  so it is a clock-only upper envelope rather than an exact one-honest game.
+  Still open are staggered recursive child populations and an unbounded
+  attacker-versus-honest proof or counterexample.
 - Landed: same-instance refund and terminal reentry reject with the exact
   selector, while a callback can mutate a second finished clone through
   zero-balance recovery. The latter proves lock isolation, not that arbitrary
@@ -1068,15 +1139,18 @@ role and lifecycle explanations to `docs/dispute-game.md`.
   deleted ID whose roots were joined rejects with `MatchDoesNotExist`.
   Normalizing this public error precedence has no known safety benefit and would
   spend the compatibility budget without strengthening an invariant.
-- Landed at test time: the canonical parameter table is checked row by row and
-  validated for inter-level tiling. Canonical geometry changes must regenerate
-  that table and pass the conformance test; they do not need a repeated runtime
-  check on every clone.
-- Open only for generic providers: decide whether to validate factory/provider
-  addresses, level shapes, and nonzero allowances before a clone later fails
-  through clock or array panics. A zero response budget is mechanically safe
-  and simply charges full elapsed time, so it is a policy choice rather than an
-  invalid shape.
+- Landed at test time: the whole canonical parameter table is validated for
+  level consistency, positive and 256-bit-safe geometry, root extent,
+  inter-level tiling, zero leaf stride, and positive root allowance. Canonical
+  geometry changes must regenerate the table and pass that conformance test;
+  they do not need a repeated runtime check on every clone.
+- Resolved for immutable factory dependencies and canonical timing: the factory
+  rejects no-code implementation, parameters-provider, and state-transition
+  addresses, and the canonical provider rejects zero maximum allowance. A zero
+  response budget is mechanically safe and remains accepted.
+- Decision for generic providers: do not add repeated runtime shape validation.
+  A custom deployment must validate its whole table before use. This catches
+  malformed contract geometry but does not replace node agreement checks.
 - Coordinate `cartesi-rollups/node/src/bin/measure.rs` and its generated or
   node-facing planning prose (`docs/plans/constants.md`, `measurements*.md`,
   `snapshots.md`, and `sling-design.md`) with the landed response-discount
@@ -1115,9 +1189,12 @@ single-level lifecycle model cover exhaustive bisection paths, legal stateful
 composition, and rejected operations. Recursive traces cover both winner
 mappings, strict carryover boundaries, late child entry, post-close child
 resolution, two sequential child tournaments, and one fixed four-root trace
-with two coexisting children. The concurrent-child production seam is landed;
-the remaining recursive gap is an independent model of adversarial arrivals
-and the upper bound, not another fixed lifecycle trace.
+with two coexisting children. A strict four-level trace crosses three child
+seams, while the sequential leaf traces pin reachable two- and three-claim
+lower bounds. A bounded proof-inclusive model exhausts the small one-level
+clock envelope. The remaining liveness gap is recursive scheduling and an
+unbounded attacker-versus-honest proof or counterexample, not another fixed
+lifecycle trace or an extrapolation from finite search.
 
 ## Validation baseline
 
@@ -1792,3 +1869,34 @@ After pinning callback isolation and the exact refund formula:
   does not change executable production behavior, external interfaces, storage,
   metadata-free bytecode, or node source. `forge fmt --check`, scoped
   high-severity lint, ASCII validation, and `git diff --check` passed.
+
+After hardening configuration and expanding shape and delay coverage:
+
+- The factory dependency suite passed all 7 cases: zero and no-code tournament
+  implementations, parameters providers, and state transitions reject with
+  `FailedDeployment`, while valid dependencies produce a callable root clone.
+  The canonical configuration suite passed all 5 cases, including exact
+  rejection of zero maximum allowance and acceptance of zero response budget.
+- The test-only table validator passed all 20 tests. It validates the checked-in
+  canonical table and the four-level miniature, pins every named malformed
+  shape, and runs five 256-run boundary properties around height, stride,
+  extent, tiling, and leaf stride.
+- The strict four-level production trace passed from root creation through
+  three child seals, leaf proof resolution, three winner propagations, and the
+  final root result. It pins every clone's arguments, coordinate-coherent
+  commitments, parent-child link, clocks, topology, claimers, and counters.
+- The sequential leaf-delay suite passed its zero-budget and positive-budget
+  schedules plus the bounded fuzz property over `A >= 2` and `0 <= G < A`. It
+  reaches the exact `2A - 1` pair deletion and `3A - 1` three-claim completion
+  times while retaining the survivor's `G + 1` balance.
+- The bounded proof-inclusive scheduler passed all 6 tests and exhausts 216
+  configurations across `N = 1..6`, `A = 1..4`, `G = 0..2`, and `H = 1..3`.
+  It retains a relative-block-19 timeout witness replayed against `Tournament`
+  and a separate maximum witness that requires pre-timeout proof settlement.
+- `prt/contracts`: `just test-disputes` passed all 208 tests. The positive and
+  rejection stateful campaigns completed 32,768 and 16,384 calls with no
+  handler reverts or discards.
+- The table, recursion, and delay additions are test-only. The factory and
+  canonical-provider guards change only deployment behavior and do not change
+  tournament storage or callable selectors. No node source changed. The
+  selected two-level table remains integration-gated on node agreement.

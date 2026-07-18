@@ -15,10 +15,17 @@ import {
 contract CanonicalTournamentParametersProvider is
     ITournamentParametersProvider
 {
+    /// @notice The maximum allowance must span at least one block.
+    error MaxAllowanceCannotBeZero();
+
     Time.Duration immutable MATCH_EFFORT;
     Time.Duration immutable MAX_ALLOWANCE;
 
     constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
+        if (Time.Duration.unwrap(maxAllowance) == 0) {
+            revert MaxAllowanceCannotBeZero();
+        }
+
         MATCH_EFFORT = matchEffort;
         MAX_ALLOWANCE = maxAllowance;
     }
