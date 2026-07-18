@@ -126,9 +126,9 @@ remains gated on the coordinated stride-37 node change.
      children must join to `winner`; parent `clock[winner].requireInitialized` then
      `replaceWithPaused(innerClock)` (the returned inner clock is already paused after carryover;
      reverts if zero); `pairCommitment(winner)`; `deleteMatch(CHILD_TOURNAMENT, ONE/TWO)`;
-     delete mapping; `child.tryRecoveringBond()`. The returned boolean is ignored, so a rejected
-     child payment does not revert parent progress and leaves the child claimer and balance
-     retryable. All child calls run inside the parent's lock.
+     delete mapping. Child balance recovery is independent and permissionless; propagation does
+     not invoke the winning claimer or burn the child's residual balance. The child result reads
+     run inside the parent's lock.
    - **Non-leaf eliminate** (`eliminateInnerTournament`): require non-leaf; require
      `child.canBeEliminated()`; `deleteMatch(CHILD_TOURNAMENT, NONE)` eliminating both parent
      commitments; delete mapping. It does not settle or burn the no-winner child's balance.
@@ -153,10 +153,10 @@ remains gated on the coordinated stride-37 node change.
    public) pays `min(address(this).balance, bondValue())` to `claimers[dangling]` once
    `isFinished` and a dangling exists. A zero balance skips that call. If a nonzero recipient
    call fails, it returns `false` with the claimer and full balance unchanged. After success,
-   it burns the actual post-callback residual and deletes the claimer. A parent calls it on the
-   child after consuming the result. PRT-007 made a second call after success an idempotent
-   no-op; ETH forcibly sent after that completion stays stranded. A no-winner child has no
-   corresponding payout or burn path.
+   it burns the actual post-callback residual and deletes the claimer. PRT-007 made a second call
+   after success an idempotent no-op; ETH forcibly sent after that completion stays stranded.
+   Child recovery is a separate permissionless operation independent of parent propagation. A
+   no-winner child has no corresponding payout or burn path.
 
 ### Timing / chess clocks (`Time.sol` + `Clock.sol` + `MatchClocks.sol`)
 
@@ -180,27 +180,32 @@ sealed inner match has two paused clocks. Its pure timeout classifier returns `N
 single-winner outcomes with a winner charge, or `ELIMINATE_BOTH`; the capability view and both
 timeout mutations consume that status. Proven leaf settlement consumes it too and asserts the
 sealed-leaf phase. Mainnet: `maxAllowance = 7d+1h`, the legacy-named `matchEffort = G = 5min`
-(25 Ethereum blocks), `MAX_GAS_PRICE = 50 gwei`, `PRIORITY_FEE_CAP = 10 gwei`. Across the 92
+(25 Ethereum blocks), `WORK_PRICE_CAP = 50 gwei`, `PRIORITY_FEE_CAP = 10 gwei`. Across the 92
 height units in one root-to-leaf descent with one match at each level, the maximum cumulative
 response discount is 7 hours 40 minutes. Re-pairing creates a new match with new discounts.
 
-### Bond economics (`Gas.sol` + `refundable`)
+### Bond economics (`Bond.sol` + `Gas.sol` + `refundable`)
 
-`bondValue() = _totalGasEstimate() * MAX_GAS_PRICE (50 gwei)`. `_totalGasEstimate =
-Gas.ADVANCE_MATCH * commitmentArgs.height + max(SEAL_LEAF + WIN_LEAF, SEAL_INNER + WIN_INNER)`.
-Each Gas constant includes a fixed `TX = 25000` overhead. `refundable(gasEstimate)` acquires
-the lock, runs, then refunds `msg.sender` `min(contract balance, bondValue * gasEstimate /
-_totalGasEstimate, (Gas.TX + gasBefore - gasAfter) * min(tx.gasprice, basefee +
-PRIORITY_FEE_CAP))`, emits `PartialBondRefund`, releases lock. A rejecting recipient gets
-`success = false` but the call does NOT revert. The bond is sized for ~height advances + one
-seal + one win per participant; a commitment that keeps winning re-enters and plays many
-matches, each triggering `refundable` calls - **the global bound (is one bond's refundable
-share, summed across all matches a single commitment plays, capped below the posted bond?) is
-the central economic property to prove and is NOT locally enforced.**
+`Bond` defines one common `SYBIL_PRINCIPAL`, a 50-gwei `WORK_PRICE_CAP`, and
+`bondValue(h) = principal + ((h - 1) * ADVANCE_MATCH + terminalMaximum) * WORK_PRICE_CAP`.
+Each `Gas` allocation includes a fixed `TX = 25000` overhead. `refundable(gasEstimate)` acquires
+the lock, runs, then refunds `msg.sender` `min(contract balance, gasEstimate * WORK_PRICE_CAP,
+(Gas.TX + gasBefore - gasAfter) * min(tx.gasprice, basefee + PRIORITY_FEE_CAP))`, emits
+`PartialBondRefund`, and releases the lock. A rejecting recipient gets `success = false` but the
+call does NOT revert. Recipient execution is capped at 50,000 gas, return data is not copied, and
+a zero refund skips the callback while reporting success. A height-`h` match has at most `h - 1`
+advances and at most the common terminal allocation, so it consumes at most its configured work
+reserve.
 
-Terminal settlement reserves no bond against those refunds. It pays the winning claimer at most
-the lesser of the then-current balance and one bond, then burns the post-payment residual. A
-rejecting claimer leaves the entire balance unchanged for retry.
+With `J` unique paid joins, pairing and resolution create at most `J-1` matches even when a
+winner repeatedly re-enters. The pre-recovery balance is therefore at least one full join deposit
+plus one explicit principal per loser. Terminal settlement returns the winning deposit and burns
+the residual if the recipient accepts. The current 0.00450875 ETH principal preserves inherited
+behavior but still lacks economic calibration. A rejecting claimer leaves the entire balance
+unchanged for retry. Its recipient execution has the same 50,000-gas ceiling.
+Tournament-result staging ignores both `false` and a recovery revert, preserving the staged
+result while leaving the old tournament retryable. See `REFUND-DESIGN.md` for the proof and fee
+boundary.
 
 ### Trust boundaries
 
@@ -250,11 +255,13 @@ rejecting claimer leaves the entire balance unchanged for retry.
 
 A single transient `locked` flag guards `withLock` (`joinTournament`, `tryRecoveringBond`) and
 `refundable` (advance/seal/win/eliminate). All external ETH moves (`tryRecoveringBond`'s
-capped payout and residual burn, `refundable`'s refund) and the cross-contract child calls in
-`winInnerTournament` (`canBeEliminated`, `innerTournamentWinner`, `tryRecoveringBond`) run
-inside the lock. The lock is per-instance and transient (resets each tx). Cross-contract VIEW
+capped payout and residual burn, `refundable`'s refund) and the cross-contract child reads in
+`winInnerTournament` (`canBeEliminated`, `innerTournamentWinner`) run inside the lock. The lock
+is per-instance and transient (resets each tx). Cross-contract VIEW
 calls to a DIFFERENT contract instance do not take this instance's lock, so trust in child view
-results rests on the parent-child binding being unforgeable.
+results rests on the parent-child binding being unforgeable. Recipient payment calls are
+gas-bounded and use no return-data output buffer; the zero-address residual burn has no untrusted
+code boundary.
 
 ### Safety anchor (conditional and emergent, not locally enforced)
 
@@ -425,21 +432,25 @@ Each: statement * where enforced * how it could break.
   - *Breaks if:* a legitimate root equal to `ZERO_NODE` (keccak->0, negligible) read as "no
     dangling"; any path calling `setDanglingCommitment` while one exists (none currently).
 - **INV-FUND-1 - Fund safety and terminal payout.** The first claimer of the winning commitment
-  receives at most one terminal bond; the post-payment residual is burned (PRT-008).
+  receives one full terminal bond under the configured work-reserve invariant; the post-payment
+  residual is burned (PRT-008).
   - *Enforced:* `_refundableAfter` caps each action refund; `tryRecoveringBond` pays
     `min(balance, bondValue())`, burns the actual post-callback residual, and removes the winning
     claimer only after success; `deleteMatch` removes losers' claimers.
-  - *Breaks if:* the sum of per-function refund shares a single commitment triggers ACROSS MANY
-    MATCHES (a repeatedly-winning commitment re-enters) exceeds `_totalGasEstimate`, draining the
-    pooled terminal balance. **Multi-match accounting is unproven here.** Also the `+Gas.TX`
-    overhead in the gasUsed term could over-refund vs real gas in adversarial conditions.
+  - *Global bound:* `J` joins create at most `J-1` matches; each match consumes at most its
+    configured work reserve, leaving at least `bondValue()+(J-1)*SYBIL_PRINCIPAL` before recovery.
+    Re-pairing does not add a match without a newly joined opponent. This configured-reserve proof
+    does not establish that actual transaction fees are fully reimbursed or that the checkpoint
+    principal is economically adequate.
 - **INV-FUND-2 - `tryRecoveringBond` reentrancy-safe and retry-safe.** The capped payment and burn
   occur inside `withLock`; a rejecting recipient retains its claimer and full balance for retry.
-  - *Enforced:* `withLock`; failed payment returns before burn or deletion; successful payment is
-    followed by residual burn and claimer deletion in the same transaction.
+  - *Enforced:* `withLock`; recipient execution is capped at 50,000 gas and its return data is not
+    copied; failed payment returns before burn or deletion; successful payment is followed by
+    residual burn and claimer deletion in the same transaction.
   - *Enforced after PRT-007:* a missing claimer on a finished tournament with a winner means
-    recovery already succeeded, so later root settlement or parent propagation returns true
-    without another transfer. ETH forcibly sent after that point remains stranded.
+    recovery already succeeded, so later recovery or tournament-result staging returns true without
+    another transfer. ETH forcibly sent after that point remains stranded. Parent propagation
+    does not depend on recovery.
 - **INV-REENT-1 - No re-entry into a state-mutating entrypoint.** Mid-execution external ETH
   transfers and child calls cannot re-enter.
   - *Enforced:* transient `locked`; `withLock` + `refundable`; all ETH moves and
@@ -530,9 +541,11 @@ Cross-checks between mappers; most resolved-but-flagged.
    the internal correctness of those libs is unverified here. The coupling between the on-chain
    counter bit-layout (20/48) and off-chain leaf spacing (`log2step = [44,27,0]`) is asserted, not
    proven.
-3. **Global bond-sufficiency (INV-FUND-1)** - whether one bond's summed refundable share across ALL
-   matches a single repeatedly-winning commitment plays stays below the posted bond - needs a global
-   worst-case match-count analysis tying re-pairing, the delay bound, and the refundable cap.
+3. **Sybil-principal dimensioning (INV-FUND-1)** - the global match-count analysis proves that
+   configured refunds reserve one winning bond and burn at least the explicit principal per
+   eliminated commitment. The current 0.00450875 ETH literal preserves the inherited one-advance
+   margin but is not an economically calibrated parameter. PRT-012 and `REFUND-DESIGN.md` keep
+   that final policy decision open.
 4. **Clock-carryover boundary (INV-CLK-5)** - whether a window exists where child is not-yet-
    eliminable yet `deductPaused` floors the carried clock to 0, reverting `replaceWithPaused`.
    Reconcile `canBeEliminated`'s window with `innerTournamentWinner`'s `deductPaused` arithmetic.
@@ -542,7 +555,8 @@ Cross-checks between mappers; most resolved-but-flagged.
    payout and residual handling, not commitment uniqueness.
 6. **`_refundableAfter` gas interplay** - the `+Gas.TX = 25000` added to measured gas vs real ETH
    spent; whether the refund can exceed real gas in any block-condition corner (bounded by balance
-   and bond-share caps, but not exhaustively checked).
+   and direct action caps, but not exhaustively checked). PRT-013 separately bounded recipient
+   execution and removed return-data copying; callback work remains outside the measurement.
 7. **No zero-address / sanity validation** in `MultiLevelTournamentFactory` or
    `CanonicalTournamentParametersProvider` constructors; `maxAllowance == 0` would deploy fine
    and brick clocks. A zero `matchEffort` charges full response latency and is safe, though it may
@@ -574,7 +588,8 @@ One finder per surface, using the listed vantages.
    state-machine finder (reachable (match,clock,dangling) states; `matchCount` conservation;
    single-dangling; delete-once); reentrancy finder (lock covers every ETH move + child call;
    cross-instance view trust); access-control finder (leaf/non-leaf/root guards; generic
-   `arbitrationResult` consumer impact); economic finder (multi-match refund vs one bond).
+   `arbitrationResult` consumer impact); economic finder (make the global reserve theorem and
+   explicit Sybil principal executable across repeated matches).
 3. **Chess-clock timing primitives** - `tournament/libs/Clock.sol`, `MatchClocks.sol`, `Time.sol`.
    INV-CLK-1..5; `Time.sub` dead code; monus saturation asymmetry; `deductPaused` zero-allowance
    escape; pair-phase assertions. *Vantages:* boundary/

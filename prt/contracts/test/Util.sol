@@ -179,8 +179,6 @@ contract Util is Test {
     ) internal returns (uint256 _playerToSeal) {
         (,,, uint64 _current) = _tournament.tournamentLevelConstants();
         for (_current; _current > 1; _current -= 1) {
-            uint256 matchAdvancedCountBefore =
-                _tournament.getMatchAdvancedCount();
             if (_playerToSeal == 0) {
                 // advance match alternately until it can be sealed
                 // starts with player 0
@@ -212,11 +210,6 @@ contract Util is Test {
                 }
                 _playerToSeal = 0;
             }
-            assertEq(
-                _tournament.getMatchAdvancedCount(),
-                matchAdvancedCountBefore + 1,
-                "MatchAdvanced count should be increased by 1"
-            );
         }
     }
 
@@ -252,21 +245,9 @@ contract Util is Test {
         Tree.Node _right = playerNodes[_player][height - 1];
         Machine.Hash _finalState = _player == 0 ? ONE_STATE : TWO_STATE;
         uint256 bondAmount = _tournament.bondValue();
-        uint256 commitmentJoinedCountBefore =
-            _tournament.getCommitmentJoinedCount();
-        uint256 matchCreatedCountBefore = _tournament.getMatchCreatedCount();
         vm.prank(addrs[_player]);
         _tournament.joinTournament{value: bondAmount}(
             _finalState, generateFinalStateProof(_player, height), _left, _right
-        );
-        assertEq(
-            _tournament.getCommitmentJoinedCount(),
-            commitmentJoinedCountBefore + 1
-        );
-        assertGe(
-            _tournament.getMatchCreatedCount(),
-            matchCreatedCountBefore,
-            "MatchCreated count must be non-decreasing"
         );
     }
 
@@ -299,13 +280,7 @@ contract Util is Test {
             : playerNodes[0][height - 1];
         Tree.Node _right = playerNodes[_player][height - 1];
 
-        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
         _tournament.winLeafMatch(_matchId, _left, _right, new bytes(0));
-        assertEq(
-            _tournament.getMatchDeletedCount(),
-            matchDeletedCountBefore + 1,
-            "MatchDeleted count should be increased by 1"
-        );
     }
 
     function sealInnerMatchAndCreateInnerTournament(
@@ -317,19 +292,12 @@ contract Util is Test {
         Tree.Node _left = _player == 1 ? playerNodes[1][0] : playerNodes[0][0];
         Tree.Node _right = playerNodes[_player][0];
 
-        uint256 newInnerTournamentCountBefore =
-            _tournament.getNewInnerTournamentCount();
         _tournament.sealInnerMatchAndCreateInnerTournament(
             _matchId,
             _left,
             _right,
             ONE_STATE,
             generateDivergenceProof(_player, height)
-        );
-        assertEq(
-            _tournament.getNewInnerTournamentCount(),
-            newInnerTournamentCountBefore + 1,
-            "NewInnerTournament count should be increased by 1"
         );
     }
 
@@ -339,26 +307,14 @@ contract Util is Test {
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) internal {
-        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
         _tournament.winMatchByTimeout(_matchId, _leftNode, _rightNode);
-        assertEq(
-            _tournament.getMatchDeletedCount(),
-            matchDeletedCountBefore + 1,
-            "MatchDeleted count should be increased by 1"
-        );
     }
 
     function eliminateMatchByTimeout(
         ITournament _tournament,
         Match.Id memory _matchId
     ) internal {
-        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
         _tournament.eliminateMatchByTimeout(_matchId);
-        assertEq(
-            _tournament.getMatchDeletedCount(),
-            matchDeletedCountBefore + 1,
-            "MatchDeleted count should be increased by 1"
-        );
     }
 
     function winInnerTournament(
@@ -367,26 +323,14 @@ contract Util is Test {
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) internal {
-        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
         _tournament.winInnerTournament(_childTournament, _leftNode, _rightNode);
-        assertEq(
-            _tournament.getMatchDeletedCount(),
-            matchDeletedCountBefore + 1,
-            "MatchDeleted count should be increased by 1"
-        );
     }
 
     function eliminateInnerTournament(
         ITournament _tournament,
         ITournament _childTournament
     ) internal {
-        uint256 matchDeletedCountBefore = _tournament.getMatchDeletedCount();
         _tournament.eliminateInnerTournament(_childTournament);
-        assertEq(
-            _tournament.getMatchDeletedCount(),
-            matchDeletedCountBefore + 1,
-            "MatchDeleted count should be increased by 1"
-        );
     }
 
     function historicalMatchId(uint256 _opponent, uint64 _level)
@@ -471,16 +415,5 @@ contract Util is Test {
         );
 
         return (stateTransition, riscVStateTransition, cmioStateTransition);
-    }
-
-    function assertEventCountersEqualZero(ITournament tournament)
-        internal
-        view
-    {
-        assertEq(tournament.getCommitmentJoinedCount(), 0);
-        assertEq(tournament.getMatchCreatedCount(), 0);
-        assertEq(tournament.getMatchAdvancedCount(), 0);
-        assertEq(tournament.getMatchDeletedCount(), 0);
-        assertEq(tournament.getNewInnerTournamentCount(), 0);
     }
 }

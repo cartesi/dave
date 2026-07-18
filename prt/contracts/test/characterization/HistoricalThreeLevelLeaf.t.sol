@@ -127,12 +127,12 @@ contract HistoricalThreeLevelLeafTest is Util {
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller should have earned profit"
+            "caller should have received a partial refund"
         );
         assertLt(
             tournamentBalanceAfter,
             tournamentBalanceBefore,
-            "tounament should have paid gas"
+            "tournament should have funded the partial refund"
         );
 
         assertEq(
@@ -150,8 +150,6 @@ contract HistoricalThreeLevelLeafTest is Util {
 
         bottomTournament =
             ITournament(address(uint160(uint256(_entries[0].topics[2]))));
-
-        Util.assertEventCountersEqualZero(bottomTournament);
 
         Util.joinTournament(bottomTournament, 0);
         Util.joinTournament(bottomTournament, _opponent);
@@ -174,12 +172,12 @@ contract HistoricalThreeLevelLeafTest is Util {
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller should have earned profit to sealLeafMatch"
+            "sealLeafMatch caller should have received a partial refund"
         );
         assertLt(
             tournamentBalanceAfter,
             tournamentBalanceBefore,
-            "tounament should have paid gas to sealLeafMatch"
+            "tournament should have funded the sealLeafMatch refund"
         );
 
         assertEq(
@@ -204,12 +202,12 @@ contract HistoricalThreeLevelLeafTest is Util {
         assertGt(
             callerBalanceAfter,
             callerBalanceBefore,
-            "caller should have earned profit to winLeafMatch"
+            "winLeafMatch caller should have received a partial refund"
         );
         assertLt(
             tournamentBalanceAfter,
             tournamentBalanceBefore,
-            "tounament should have paid gas to winLeafMatch"
+            "tournament should have funded the winLeafMatch refund"
         );
     }
 

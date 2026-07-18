@@ -59,6 +59,8 @@ papers do not specify these contracts exactly.
   distinguished only by the `level` in the clone's immutable `TournamentArguments`.
   The historical three-level suites under `test/characterization/` exercise
   that one contract in each of those roles against a frozen test profile.
+  Geometry-independent economic models live under `test/accounting/`; they use
+  production gas allocations without importing canonical tournament constants.
 - **Factory.** `tournament/factories/MultiLevelTournamentFactory` deploys the
   root (level 0) via `instantiate`; deeper tournaments are created at `level + 1`
   when a non-leaf match is sealed. `instantiateInner` is also permissionless, so
@@ -80,7 +82,8 @@ papers do not specify these contracts exactly.
 - **Libraries**: `Match` (bisection state machine), `Clock` (one-clock
   arithmetic and transitions), `MatchClocks` (legal two-clock match phases),
   `Commitment` + `types/Tree` (Merkle commitment construction & proofs), `Time`
-  (block-number-based time), `Gas` (gas constants used to size the bond).
+  (block-number-based time), `Gas` (action work allocations), and `Bond`
+  (economic policy plus work-reserve accounting).
   Types: `Machine`, `Tree`, `TournamentParameters`.
 - **Leaf resolution** calls `IStateTransition` (`CartesiStateTransition` ->
   `RiscVStateTransition` + `CmioStateTransition`) to verify a single machine
@@ -145,27 +148,35 @@ papers do not specify these contracts exactly.
   `canWinMatchByTimeout` is true only for an existing match with one viable
   timeout winner. PRT-002 fixed the former sealed-leaf time restoration, and
   PRT-004 fixed the prior view/mutation mismatch.
-- **Bond and partial refunds**: `bondValue() = _totalGasEstimate() *
-  MAX_GAS_PRICE` (50 gwei), where
-  `_totalGasEstimate = ADVANCE_MATCH * height + max(leaf seal+win, inner
-  seal+win)` (see `Gas.sol`). The `refundable` modifier refunds the caller
-  `min(contract balance, this function's bond-share, gas used x min(tx.gasprice,
-  basefee + PRIORITY_FEE_CAP))`. This is a capped execution-gas payment, not a
-  guarantee of full transaction cost or profit, and it does not model every L2
-  data fee. The bond-share term also caps reimbursement at 50 gwei even when
-  base fee is higher. No terminal bond is reserved: earlier refunds may leave
-  the winning commitment's first claimer less than one bond. Recovery pays
-  `min(contract balance, bondValue())`; only after that payment succeeds is the
-  post-payment residual burned. This makes the unrefunded terminal portion of
-  losing Sybil deposits irreversible rather than recyclable.
+- **Bond and partial refunds**: `Bond` separates one explicit
+  `SYBIL_PRINCIPAL` from the refundable work reserve. For height `h`,
+  `bondValue = principal + ((h - 1) * ADVANCE_MATCH + terminalMaximum) *
+  WORK_PRICE_CAP`. The `refundable` modifier caps an action directly at its gas
+  allocation times the 50-gwei work-price cap, then also caps by tournament
+  balance and measured work priced at `min(tx.gasprice, basefee +
+  PRIORITY_FEE_CAP)`. This is a bounded gross-EVM work subsidy, not a guarantee
+  of receipt-exact cost or profit, and it does not model dynamic calldata or L2
+  data fees. Zero-value payments skip recipient code; nonzero refund and
+  terminal-payment recipients receive at most 50,000 gas, and return data is
+  not copied. For `J` paid joins, at most `J - 1` matches consume configured
+  work reserves. Recovery returns the winning deposit and burns at least one
+  principal per loser. The current 0.00450875 ETH literal preserves inherited
+  behavior but is not security-calibrated. See
+  [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md).
 - **Reentrancy**: a transient `locked` flag guards state-mutating entrypoints -
   `withLock` on `joinTournament` and `tryRecoveringBond`, and `refundable`
   (which also takes the lock) on `advanceMatch` / the seal / win / eliminate
   functions. The external ETH transfers (`tryRecoveringBond`'s capped payout
   and residual burn, `refundable`'s refund) and the external child calls in
-  `winInnerTournament` (`child.canBeEliminated`,
-  `child.tryRecoveringBond`) all execute inside the lock. (Mechanism only -
-  stress-testing it is exactly an audit's job.)
+  `winInnerTournament` (`child.canBeEliminated` and
+  `child.innerTournamentWinner`) all execute inside the lock. Child balance
+  recovery is a separate permissionless operation and is not part of parent
+  progress. A failed action refund leaves its attempted value in the pool; a
+  failed terminal payment preserves the full balance and claimer for retry.
+  Tournament-result staging keeps its synchronous best-effort recovery attempt.
+  It ignores both `false` and a recovery revert, so recipient failure cannot
+  undo staging or block later acceptance. (Mechanism only - stress-testing it
+  is exactly an audit's job.)
 - **Termination**: `isClosed` = `now >= startInstant + allowance`;
   `isFinished` = `isClosed && matchCount == 0`; `canBeEliminated` (non-root only)
   = finished with no winner, **or** finished and the winner's allowance window
@@ -207,7 +218,7 @@ experimental until validated. The current Arbitrum entries do not match the
   heights and can earn at most 7 hours 40 minutes, one response at a time;
   re-pairing creates a new match with new discounts. On Ethereum the scalar is
   25 blocks.
-- `MAX_GAS_PRICE` = 50 gwei, `PRIORITY_FEE_CAP` = 10 gwei (`Tournament.sol`)
+- `WORK_PRICE_CAP` = 50 gwei, `PRIORITY_FEE_CAP` = 10 gwei (`Bond.sol`)
 
 ## Subtle areas worth understanding before touching anything
 

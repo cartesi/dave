@@ -3,6 +3,8 @@
 
 pragma solidity ^0.8.17;
 
+/// @notice Configured work allocations used to cap action refunds.
+/// @dev Economic principal and fee policy live in `Bond`.
 library Gas {
     uint256 constant TX = 25000;
 
