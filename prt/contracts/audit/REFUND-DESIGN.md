@@ -1,27 +1,30 @@
 # Bond and refund design checkpoint
 
 Status: accounting, exact refund formula, and callback boundary implemented;
-seven actions calibrated; leaf-proof envelope open
+seven actions calibrated; leaf proof uses an explicit provisional subsidy
 
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-19
 
-This document separates three concepts that the current implementation folds
-into one formula:
+This document relates three accounting flows:
 
-1. the irreversible principal that makes a losing Sybil claim costly;
-2. the work reserve that pays bounded dispute-game action refunds; and
-3. the terminal payment attempted for the first claimer of the winning root.
+1. the work reserve required from every join and available for bounded
+   dispute-game action refunds;
+2. the terminal payment attempted for the first claimer of the winning root;
+   and
+3. the residual balance burned after that payment succeeds.
 
-The derivation below describes the current code. It corrects the former claim
-that progress refunds can consume the winning commitment's entire deposit, but
-it also exposes that the current irreversible Sybil principal is much smaller
-than the full amount paid at join time.
+The bond has no additional Sybil stake. It derives automatically from the
+reviewed gas table, tournament height, and work-price cap. For a tournament
+that ends with an accepting winner, every losing reserve is either paid as a
+bounded subsidy for successful dispute progress or remains in the terminal
+residual and is burned. This is aggregate resource accounting, not a promise of
+receipt-exact attacker cost or a positive per-loser ETH burn.
 
 PRT-003 in [`REVIEW.md`](REVIEW.md) tracks the stale gas estimates and incomplete
-fee model. PRT-008 records why terminal recovery pays at most one winning
-deposit and burns the residual. [`GAS-CALIBRATION.md`](GAS-CALIBRATION.md) is
-the operational procedure for reproducing the measurements, changing a
-constant, tracing its propagated effects, and recording the result.
+fee model. PRT-008 records why terminal recovery pays at most one configured
+bond and burns the residual. [`GAS-CALIBRATION.md`](GAS-CALIBRATION.md) is the
+operational procedure for reproducing the measurements, changing a constant,
+tracing its propagated effects, and recording the result.
 
 ## Current formula
 
@@ -44,9 +47,8 @@ E = max(
     )
 h = commitment tree height for this tournament
 P = Bond.WORK_PRICE_CAP
-S = Bond.SYBIL_PRINCIPAL
 W(h) = (h - 1) * A + E
-B(h) = S + W(h) * P
+B(h) = W(h) * P
 ```
 
 `B(h)` is the amount required by `joinTournament`. For an action with configured
@@ -56,9 +58,9 @@ allocation `g`, the refund cap is now expressed directly:
 actionRefundCap(g) = g * P
 ```
 
-The absolute action cap is therefore independent of tournament height and of
-the economic principal. `S` preserved the inherited value when it was made
-explicit, but gas calibration no longer changes it implicitly.
+The absolute action cap is independent of tournament height. The join bond is
+the complete configured match-work reserve, so changes to `A`, `E`, or `P`
+propagate into it without another manually maintained value.
 
 For one successful action body, define:
 
@@ -81,9 +83,8 @@ The current constants give:
 
 ```text
 A = 126,000 gas
-E = 701,000 gas
+E = 950,000 gas
 P = 50 gwei
-S = 0.00450875 ETH
 ```
 
 Every allocation currently includes the flat 25,000-gas `Gas.TX` term:
@@ -97,35 +98,36 @@ Every allocation currently includes the flat 25,000-gas `Gas.TX` term:
 | Propagate inner winner | 337,000 gas | 0.01685000 ETH |
 | Eliminate inner match | 173,000 gas | 0.00865000 ETH |
 | Seal leaf match | 107,000 gas | 0.00535000 ETH |
-| Win leaf match | 127,728 gas | 0.00638640 ETH |
+| Win leaf match | 843,000 gas | 0.04215000 ETH |
 
 The checked-in heights produce the following join deposits:
 
 | Height | `W(h)` | `B(h)` |
 | ---: | ---: | ---: |
-| 48 | 6,623,000 gas | 0.33565875 ETH |
-| 17 | 2,717,000 gas | 0.14035875 ETH |
-| 27 | 3,977,000 gas | 0.20335875 ETH |
+| 48 | 6,872,000 gas | 0.34360000 ETH |
+| 17 | 2,966,000 gas | 0.14830000 ETH |
+| 27 | 4,226,000 gas | 0.21130000 ETH |
 
 The target two-level gas witnesses use heights 55 and 37. If deployed with the
 same accounting constants, they would require:
 
 | Height | `W(h)` | `B(h)` |
 | ---: | ---: | ---: |
-| 55 | 7,505,000 gas | 0.37975875 ETH |
-| 37 | 5,237,000 gas | 0.26635875 ETH |
+| 55 | 7,754,000 gas | 0.38770000 ETH |
+| 37 | 5,486,000 gas | 0.27430000 ETH |
 
 These are accounting values, not a claim that every gas ceiling is validated.
-`WIN_LEAF_MATCH` is the only inherited action and remains confirmed
-non-conservative.
+`WIN_LEAF_MATCH` is deliberately a heuristic subsidy. It uses the rounded
+recommendation from one canonical ordinary proof and is not a maximum across
+state-transition proof or input classes.
 
 ## Per-match work bound
 
 A new match starts at height `h`. `advanceMatch` is legal only while its current
 height is greater than one, so one match can advance at most `h - 1` times.
 `Bond.terminalAllocation` explicitly takes the maximum over every legal direct,
-leaf, and inner terminal sequence. The current configured maximum is inner seal
-followed by inner winner propagation.
+leaf, and inner terminal sequence. The current configured maximum is leaf seal
+followed by proof resolution.
 
 The maximum configured refundable work for one resolved match is therefore:
 
@@ -143,7 +145,7 @@ At the maximum `h - 1` advances, the configured path totals are:
 | --- | ---: |
 | Direct timeout win | `(h - 1) * A + 260,000` |
 | Direct timeout elimination | `(h - 1) * A + 135,000` |
-| Leaf seal and proof | `(h - 1) * A + 234,728` |
+| Leaf seal and proof | `(h - 1) * A + 950,000` |
 | Leaf seal and timeout win | `(h - 1) * A + 367,000` |
 | Leaf seal and timeout elimination | `(h - 1) * A + 242,000` |
 | Inner seal and winner propagation | `(h - 1) * A + 701,000` |
@@ -167,33 +169,37 @@ C <= J - 1
 ```
 
 Let `Q` be the total successful progress-refund outflow before terminal
-recovery. Each match consumes at most `W(h) * P` in configured refunds, hence:
+recovery. Since `B(h) = W(h) * P`, each match consumes at most one bond in
+configured refunds, hence:
 
 ```text
-Q <= (J - 1) * W(h) * P
-```
-
-The current checkpoint satisfies:
-
-```text
-B(h) = S + W(h) * P
+Q <= C * B(h) <= (J - 1) * B(h)
 ```
 
 Since each join deposits at least `B(h)`, a finished tournament with a winner
 has, immediately before its first successful terminal recovery:
 
 ```text
-balance >= J * B(h) - (J - 1) * W(h) * P
-        = B(h) + (J - 1) * S
+balance >= J * B(h) - C * B(h)
+        = (J - C) * B(h)
+        >= B(h)
 ```
 
 Failed refund callbacks, under-budget actions, excess join value, and forced ETH
 only increase this lower bound. Therefore, under the configured share caps:
 
-- one complete winning join deposit is reserved;
+- one minimum join bond is reserved;
 - an accepting winning claimer receives exactly `B(h)`, not merely "up to" a
   possibly depleted amount; and
-- terminal recovery burns at least `(J - 1) * S` from eliminated commitments.
+- after that payment, the residual may be zero when every possible match
+  consumes its complete configured reserve.
+
+With exact-value joins and no forced ETH, terminal conservation is:
+
+```text
+successful progress refunds + winning payment + residual burn = J * B(h)
+successful progress refunds + residual burn = (J - 1) * B(h)
+```
 
 The qualifications still matter. A rejecting winning claimer defers both payout
 and burn for retry. A no-winner tournament has no terminal recovery path, so its
@@ -202,83 +208,49 @@ its own joins, work reserve, and terminal accounting.
 
 ## The economic policy exposed by the proof
 
-The full join deposit is not the irreversible Sybil cost. A participant can
-permissionlessly execute progress itself and receive the same bounded work
-refunds as an honest validator. If those refunds accurately cover its work, the
-guaranteed principal burned for each eliminated claim is `S`, not `B(h)`.
-
-The inherited value was an accidental consequence of the former off-by-one
-between `h` budgeted advances and at most `h - 1` legal advances:
+The work reserve is also the forfeitable Sybil bond. Aggregate losing reserves
+have two possible destinations:
 
 ```text
-S = former ADVANCE_MATCH (90,175) * 50 gwei = 0.00450875 ETH
+losing reserves = successful progress refunds + residual burn
 ```
 
-This is the minimum guaranteed residual across tournament kinds. A leaf
-tournament cannot take the larger inner terminal path used to compute `E`, so
-it retains additional configured slack. Direct timeout and inner-elimination
-paths also retain more. A common maximum keeps the formula simple but makes the
-effective losing cost path- and level-dependent.
+If an honest validator performs the work, the attacker's pooled reserve pays
+that caller or remains for burning. If the attacker performs successful work
+and receives the refund, the transaction still consumes Ethereum execution and
+blockspace. The capped winner payment prevents the winning claimer from
+recovering unused losing reserves directly.
 
-Nothing documents that amount as the intended price of one Sybil identity. The
-implementation now names it as a Wei-denominated `Bond.SYBIL_PRINCIPAL`, so
-recalibrating `Gas.ADVANCE_MATCH` cannot change it implicitly. Its final value
-is still a protocol decision, not a gas measurement result.
+This is not an identity-level cost theorem. Refunds go to immediate
+`msg.sender`, which need not be the bond poster or top-level gas payer. The
+formula uses a per-action fixed allowance and a gross `gasleft()` delta rather
+than receipt gas, and it does not reconcile storage-refund credits. A batching
+contract, paymaster, or proposer coalition can therefore make its private cost
+differ from the requested refund. Every successful refund accompanies real EVM
+work, but the contract does not prove `refund <= recipient transaction cost`.
 
-The implemented join deposit is:
+The selected policy does not add an independent ETH-burn floor. Exact
+reimbursement is not a correctness assumption, and the bonds are intended to
+make adversarial identities fund dispute work rather than create an endogenous
+validator incentive. If a future policy requires an additional fee-market- and
+caller-independent loss, it should add and calibrate an explicit stake. Doubling
+the work reserve without increasing refund liability would merely disguise
+such a stake and double honest capital requirements.
+
+The implemented formulas are:
 
 ```text
-bondValue(h) = sybilPrincipal + W(h) * WORK_PRICE_CAP
-```
-
-and an action is capped directly at:
-
-```text
+bondValue(h) = W(h) * WORK_PRICE_CAP
 actionRefundCap(g) = g * WORK_PRICE_CAP
 ```
 
-The initial `0.00450875 ETH` literal was behavior-identical when the formula was
-refactored. It is a mechanical checkpoint, not approval of that economic value.
-Subsequent gas calibration may change the common work reserve without changing
-this literal. Increasing a cheaper terminal action does not change the reserve
-while it remains below the existing maximum. The direct action cap also removed
-a clone-argument decode and a multiply/divide from the refund postlude; PRT-003
-measurements use that newer path.
-
-## Principal calibration rule
-
-Use one common principal floor for every tournament level. The refundable work
-reserve already varies with height, so peak capital remains level-dependent.
-Making the irreversible principal depend on height, gas estimates, or allowance
-would couple economic security back to implementation parameters. A per-level
-schedule would also create a cheapest-level bottleneck unless its ratios came
-from a reviewed marginal-delay model; no such model currently justifies extra
-parameters.
-
-Keep three attacker costs separate:
-
-1. Peak capital fronts `principal + workReserve(level)` for every live claim.
-   Refunds and a winning terminal payment can make much of that capital reusable.
-2. Irreversible loss is at least one principal for each eliminated claim.
-3. Transactions and blockspace are separate resources, only partially covered
-   by the work-subsidy policy.
-
-The geometry and timing tools derive how claims turn into delay; they do not
-price that delay. In particular, `measure.lua` takes root slowdown and inner
-commitment time as inputs. It supplies neither an attacker budget nor the value
-of disrupting an application. In a two-level reservoir strategy, root claims
-and replicated child claims trade off multiplicatively, so the final principal
-must be chosen by minimizing irreversible cost over those strategies for a
-stated tolerated delay. The missing deployment inputs are:
-
-- the disruption duration to price;
-- the minimum attacker burn desired at that duration; and
-- the maximum capital an honest validator should need across active levels.
-
-A fixed Wei value also changes in external purchasing power. Treat the final
-literal as deployment policy with a review cadence, not a universal protocol
-constant. Until those inputs are selected, the inherited literal is the only
-non-arbitrary compatibility checkpoint.
+`Bond.terminalAllocation()` derives `E` directly from the manual `Gas` table,
+and `matchWorkAllocation(h)` derives `W(h)`. Gas calibration therefore changes
+every affected join bond automatically. Increasing a cheaper terminal action
+does not change a bond while its legal sequence remains below the current
+maximum. The direct action cap also removed a clone-argument decode and a
+multiply/divide from the refund postlude; PRT-003 measurements use that newer
+path.
 
 ## Refund promise
 
@@ -377,14 +349,17 @@ single-claim comparator covers the alternate child-finish branch. Child
 elimination covers no-winner, single-claim winner, and resolved-winner states at
 their inclusive deadlines; the resolved winner is the largest retained path.
 
-These witnesses recalibrate seven actions. Only `winLeafMatch` remains on an
-inherited literal. In particular, the deterministic transition stub used for
-the leaf-seal witness says nothing about leaf-proof execution. The current
-configured maximum is inner seal plus winner propagation at 701,000 gas.
-Relative to the pre-calibration 619,030-gas configured maximum, the retained
-real-child path raises `E` by 81,970 gas, so the terminal component of every
-work reserve increases by 81,970 gas and its deposit component increases by
-0.0040985 ETH at `P`; the explicit Sybil principal remains unchanged.
+The retained suite calibrates seven actions. A focused full-stack run of an
+ordinary canonical uarch proof through the real Tournament, Cartesi state
+transition, dangling re-pair, and refund seam measured 768,416 allocation
+units. The ordinary margin rule produced 842,758 and rounded to the provisional
+843,000-gas subsidy. This is not a retained maximum witness and does not cover
+reset, input-boundary, halt, exception, or arbitrary proof encodings.
+
+Leaf seal plus the provisional proof subsidy is 950,000 gas, replacing the
+701,000-gas inner winner path as `E`. Every work reserve therefore increases by
+249,000 gas and every join deposit by 0.01245 ETH at `P`. There is no separate
+bond parameter to update.
 
 The price term is:
 
@@ -395,8 +370,8 @@ min(tx.gasprice, block.basefee + 10 gwei)
 so priority fee above 10 gwei is excluded. The action cap is `g * P`, not
 a direct 50-gwei cap on every unit actually consumed. If measured work `X`
 exceeds configured estimate `g`, share saturation begins at `g * P / X`, which
-may be well below 50 gwei. For example, a 600,000-gas leaf action against the
-current 127,728-gas allocation saturates near 10.64 gwei.
+may be well below 50 gwei. The provisional leaf allocation is not intended to
+remove that possibility for every proof class.
 
 The recommended promise is therefore:
 
@@ -414,7 +389,8 @@ The selected accounting scope is:
 | --- | --- |
 | Successful action body and nested proof work | Gross `gasleft` delta |
 | Unmetered prelude and postlude | Flat 25,000-gas proxy |
-| Dynamic calldata and transaction envelope | Excluded |
+| Transaction-intrinsic calldata and pre-snapshot decoding | Excluded |
+| Proof forwarding, copying, and memory expansion in the action body | Included in the gross delta |
 | End-of-transaction storage-refund credits | Not reconciled |
 | Refund-recipient callback | Outside measurement; recipient execution capped at 50,000 gas |
 | `joinTournament` and `tryRecoveringBond` | Not refundable |
@@ -505,6 +481,8 @@ The following constraints are selected for this campaign:
 - Ethereum is the supported fee environment. Other registered chains remain
   experimental.
 - Refunds are bounded work subsidies, not validator profit or exact receipts.
+- The bond is exactly the configured match-work reserve. There is no additional
+  Sybil stake or guaranteed positive terminal burn.
 - Existing selectors, event signatures, tuple shapes, storage, and counter
   semantics remain compatible.
 - Child economic recovery stays independent of parent winner propagation.
@@ -513,16 +491,14 @@ The following constraints are selected for this campaign:
 - Reentrancy locks are per clone: same-instance mutation is rejected, while a
   different clone may progress within the callback gas ceiling.
 
-The following decisions remain open before economic calibration:
+The following economic and accounting decisions remain open:
 
-1. Select the final value of the common Sybil principal from an attacker budget,
-   tolerated disruption, and honest-validator liquidity target.
-2. Keep the common maximum terminal reserve, or use the known leaf/non-leaf
+1. Keep the common maximum terminal reserve, or use the known leaf/non-leaf
    role to avoid path-dependent excess slack.
-3. Define the maximum supported state-transition proof and input envelope.
-4. The action headroom is selected above. Select the 50-gwei work-price cap and
+2. Define the maximum supported state-transition proof and input envelope.
+3. The action headroom is selected above. Select the 50-gwei work-price cap and
    10-gwei priority cap from deployment policy rather than history.
-5. Decide whether no-winner tournament balances remain locked or gain a
+4. Decide whether no-winner tournament balances remain locked or gain a
    permissionless burn path.
 
 ## Sequencing
@@ -532,27 +508,28 @@ The following decisions remain open before economic calibration:
 2. Completed: the pure population model covers joins, repeated re-pairing,
    winners, double elimination, and worst-case work liability. Real height-1
    traces exercise nonzero refunds, both recurring-winner orientations, exact
-   terminal payout, residual burn, and pooled-balance conservation. The common
-   maximum inner path remains an algebraic bound until the general multi-level
-   Match handler lands.
-3. Completed design checkpoint: use one common Wei-denominated principal and
-   pin the inherited value without treating it as calibrated policy.
+   terminal payout, residual burn, and pooled-balance conservation.
+3. Completed: remove the inherited additive principal. The complete bond now
+   derives from the manual gas table, tournament height, and work-price cap.
 4. Completed: make the accounting formula explicit without changing selectors
    or storage.
 5. Completed: bound refund and terminal callback recipient execution and
    discard return data.
-6. Partially complete: advance, timeout, double-elimination, both seal paths,
-   and both real-child resolution actions have retained witnesses under pinned
-   compiler and EVM settings. The supported state-transition proof/input
-   envelope remains undefined.
-7. Partially complete: seven of eight action budgets have reviewed headroom and
-   executable ceilings. `WIN_LEAF_MATCH` remains uncalibrated.
+6. Completed for the selected policy: advance, timeout, double-elimination,
+   both seal paths, and both real-child resolution actions have retained
+   witnesses under pinned compiler and EVM settings. Leaf proof instead uses a
+   documented provisional ordinary-proof subsidy.
+7. Completed for accounting: all eight actions have explicit caps and feed the
+   reserve algebra. Seven are retained ceilings; `WIN_LEAF_MATCH` is knowingly
+   heuristic and may be revisited without changing any safety assumption.
 8. Completed: exact formula fuzzing and six deterministic cap boundaries cover
    both timeout topologies, accepted and rejected transfers, and event/request
    semantics. Callback tests cover same-instance rejection, cross-instance lock
    isolation, terminal retry, one-bond payout, and residual burn.
 
-The state-transition workstream must define a finite maximum supported proof or
-proof-class set before `WIN_LEAF_MATCH` can be claimed as a true upper bound.
-The exact measurement and update checklist, including the current InputBox path
-and the pre-Merkleized alternative, lives in `GAS-CALIBRATION.md`.
+The state-transition workstream would need a finite canonical proof language
+before `WIN_LEAF_MATCH` could be claimed as a true upper bound. The refund is
+not a correctness mechanism or an endogenous validator incentive, so that
+stronger claim is not required by the selected policy. The optional measurement
+and update checklist, including the current InputBox path and the
+pre-Merkleized alternative, lives in `GAS-CALIBRATION.md`.

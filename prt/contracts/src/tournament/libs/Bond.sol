@@ -5,12 +5,8 @@ pragma solidity ^0.8.17;
 
 import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
 
-/// @notice Economic policy and configured work-reserve accounting for one join.
-/// @dev The Sybil principal is deliberately independent of gas allocations.
+/// @notice Configured work-reserve accounting for one join.
 library Bond {
-    /// @notice Inherited residual-principal checkpoint, not a calibrated value.
-    uint256 constant SYBIL_PRINCIPAL = 0.00450875 ether;
-
     uint256 constant WORK_PRICE_CAP = 50 gwei;
     uint256 constant PRIORITY_FEE_CAP = 10 gwei;
 
@@ -58,7 +54,7 @@ library Bond {
     }
 
     function bondValue(uint64 height) internal pure returns (uint256) {
-        return SYBIL_PRINCIPAL + matchWorkAllocation(height) * WORK_PRICE_CAP;
+        return matchWorkAllocation(height) * WORK_PRICE_CAP;
     }
 
     function actionRefundCap(uint256 gasAllocation)

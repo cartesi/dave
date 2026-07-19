@@ -157,21 +157,27 @@ papers do not specify these contracts exactly.
   `canWinMatchByTimeout` is true only for an existing match with one viable
   timeout winner. PRT-002 fixed the former sealed-leaf time restoration, and
   PRT-004 fixed the prior view/mutation mismatch.
-- **Bond and partial refunds**: `Bond` separates one explicit
-  `SYBIL_PRINCIPAL` from the refundable work reserve. For height `h`,
-  `bondValue = principal + ((h - 1) * ADVANCE_MATCH + terminalMaximum) *
-  WORK_PRICE_CAP`. For `units = Gas.TX + gasBefore - gasAfter`, the modifier
+- **Bond and partial refunds**: `Bond` derives each join deposit directly from
+  the refundable work reserve. For positive height `h`, `bondValue = ((h - 1) *
+  ADVANCE_MATCH + terminalMaximum) * WORK_PRICE_CAP`. For
+  `units = Gas.TX + gasBefore - gasAfter`, the modifier
   requests `min(balance, allocation * WORK_PRICE_CAP, units *
   min(tx.gasprice, basefee + PRIORITY_FEE_CAP))`. The refund event records that
   requested value; a failed nonzero recipient call transfers nothing and leaves
   it in the pool. This is a bounded gross-EVM work subsidy, not a guarantee of
-  receipt-exact cost or profit, and it does not model dynamic calldata or L2 data
-  fees. Zero-value payments skip recipient code; nonzero refund and
+  receipt-exact cost or profit. It excludes transaction-intrinsic calldata and
+  L2 data fees, while proof copying after the snapshot remains in the measured
+  delta. Seven action caps have retained measured ceilings; `WIN_LEAF_MATCH`
+  deliberately uses a provisional ordinary-proof subsidy. Exact reimbursement
+  is not a correctness assumption or an endogenous validator incentive.
+  Zero-value payments skip recipient code; nonzero refund and
   terminal-payment recipients receive at most 50,000 gas, and return data is not
   copied. For `J` paid joins, at most `J - 1` matches consume configured work
-  reserves. An accepting winner recovers one deposit under that reserve, and at
-  least one principal per loser is burned. The current 0.00450875 ETH literal
-  preserves the former residual-principal value but is not security-calibrated.
+  reserves. An accepting winner recovers one minimum join bond. For a tournament
+  that reaches successful winner recovery, aggregate losing reserves are either
+  paid as bounded subsidies for successful progress or remain for terminal
+  burning; no positive burn per loser is guaranteed. This is aggregate resource
+  accounting, not a receipt-exact or identity-level attacker-cost theorem.
   See [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md) for the design and
   [`audit/GAS-CALIBRATION.md`](audit/GAS-CALIBRATION.md) for the reproducible
   measurement and update procedure.

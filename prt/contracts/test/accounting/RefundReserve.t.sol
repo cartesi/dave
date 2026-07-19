@@ -89,13 +89,24 @@ contract RefundReserveTest is Test {
     receive() external payable {}
 
     function testCurrentBondPolicyCheckpoint() public {
-        assertEq(Bond.SYBIL_PRINCIPAL, 4_508_750_000_000_000);
         assertEq(Bond.WORK_PRICE_CAP, 50 gwei);
         assertEq(Bond.PRIORITY_FEE_CAP, 10 gwei);
         uint256 terminal = Bond.terminalAllocation();
+        assertEq(Gas.WIN_LEAF_MATCH, 843_000);
+        assertEq(terminal, 950_000);
+        assertEq(Bond.actionRefundCap(Gas.WIN_LEAF_MATCH), 0.04215 ether);
+        assertEq(Bond.matchWorkAllocation(48), 6_872_000);
+        assertEq(Bond.matchWorkAllocation(17), 2_966_000);
+        assertEq(Bond.matchWorkAllocation(27), 4_226_000);
+        assertEq(Bond.matchWorkAllocation(55), 7_754_000);
+        assertEq(Bond.matchWorkAllocation(37), 5_486_000);
+        assertEq(Bond.bondValue(48), 0.3436 ether);
+        assertEq(Bond.bondValue(17), 0.1483 ether);
+        assertEq(Bond.bondValue(27), 0.2113 ether);
+        assertEq(Bond.bondValue(55), 0.3877 ether);
+        assertEq(Bond.bondValue(37), 0.2743 ether);
         uint256 invalidZeroWork = terminal - Gas.ADVANCE_MATCH;
-        uint256 invalidZeroBond =
-            Bond.SYBIL_PRINCIPAL + invalidZeroWork * Bond.WORK_PRICE_CAP;
+        uint256 invalidZeroBond = invalidZeroWork * Bond.WORK_PRICE_CAP;
         assertEq(
             Bond.bondValue(0),
             invalidZeroBond,
@@ -110,9 +121,9 @@ contract RefundReserveTest is Test {
             "tournament must expose the explicit invalid-zero formula"
         );
         assertEq(
-            Bond.bondValue(1) - terminal * Bond.WORK_PRICE_CAP,
-            Bond.SYBIL_PRINCIPAL,
-            "height one must expose the literal principal"
+            Bond.bondValue(1),
+            terminal * Bond.WORK_PRICE_CAP,
+            "height one minimum bond must equal its terminal work reserve"
         );
     }
 
@@ -123,7 +134,7 @@ contract RefundReserveTest is Test {
             factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
 
         uint256 work = _matchWorkAllocation(height);
-        uint256 bond = Bond.SYBIL_PRINCIPAL + work * Bond.WORK_PRICE_CAP;
+        uint256 bond = work * Bond.WORK_PRICE_CAP;
         assertEq(Bond.matchWorkAllocation(height), work);
         assertEq(Bond.bondValue(height), bond);
         assertEq(tournament.bondValue(), bond);
@@ -183,7 +194,7 @@ contract RefundReserveTest is Test {
 
         uint256 bond = Bond.bondValue(height);
         uint256 matchWork = _matchWorkAllocation(height) * Bond.WORK_PRICE_CAP;
-        uint256 sybilPrincipal = Bond.SYBIL_PRINCIPAL;
+        assertEq(bond, matchWork);
 
         uint256 joins = 1;
         uint256 liveCommitments = 1;
@@ -245,10 +256,7 @@ contract RefundReserveTest is Test {
             assertLe(matchesCreated, joins - 1);
             assertLe(resolvedMatchAllocation, matchesResolved * matchWork);
             uint256 currentWorstCaseLiability = matchesCreated * matchWork;
-            assertGe(
-                joins * bond - currentWorstCaseLiability,
-                bond + (joins - 1) * sybilPrincipal
-            );
+            assertGe(joins * bond - currentWorstCaseLiability, bond);
         }
 
         assertEq(liveCommitments, dangling + 2 * activeMatches);
@@ -256,13 +264,10 @@ contract RefundReserveTest is Test {
         assertLe(matchesCreated, joins - 1);
         assertLe(resolvedMatchAllocation, matchesResolved * matchWork);
         uint256 finalWorstCaseLiability = matchesCreated * matchWork;
-        assertGe(
-            joins * bond - finalWorstCaseLiability,
-            bond + (joins - 1) * sybilPrincipal
-        );
+        assertGe(joins * bond - finalWorstCaseLiability, bond);
     }
 
-    function testFuzzHeightOneRepeatedWinnerPreservesDepositAndPrincipal(uint8 losingCommitments)
+    function testFuzzHeightOneRepeatedWinnerPreservesDepositAndWorkDisposition(uint8 losingCommitments)
         public
     {
         losingCommitments = uint8(bound(losingCommitments, 1, 8));
@@ -520,16 +525,11 @@ contract RefundReserveTest is Test {
     ) internal view {
         uint256 refunds =
             address(this).balance - refundRecipientBalanceBefore;
-        uint256 sybilPrincipal = Bond.SYBIL_PRINCIPAL;
-        uint256 matchWorkReserve = bond - sybilPrincipal;
         assertEq(address(tournament).balance + refunds, joins * bond);
         assertGe(
-            address(tournament).balance,
-            joins * bond - matchesCreated * matchWorkReserve
+            address(tournament).balance, joins * bond - matchesCreated * bond
         );
-        assertGe(
-            address(tournament).balance, bond + (joins - 1) * sybilPrincipal
-        );
+        assertGe(address(tournament).balance, bond);
     }
 
     function _recoverAndAssertTerminalAccounting(
@@ -551,13 +551,11 @@ contract RefundReserveTest is Test {
         assertEq(winnerClaimer.balance - winnerBalanceBefore, bond);
         assertEq(burned, tournamentBalanceBefore - bond);
         assertEq(address(tournament).balance, 0);
-        uint256 sybilPrincipal = Bond.SYBIL_PRINCIPAL;
-        uint256 matchWorkReserve = bond - sybilPrincipal;
-        assertGe(burned, (joins - 1) * sybilPrincipal);
-        assertGe(
-            burned,
-            (joins - 1) * sybilPrincipal + (joins - 1 - matchesCreated)
-                * matchWorkReserve
+        assertGe(burned, (joins - 1 - matchesCreated) * bond);
+        assertEq(
+            refunds + burned,
+            (joins - 1) * bond,
+            "losing reserves must fund successful work or burn"
         );
         assertEq(refunds + bond + burned, joins * bond);
     }

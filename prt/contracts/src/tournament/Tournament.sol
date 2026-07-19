@@ -371,7 +371,7 @@ contract Tournament is ITournament {
     ///     * Winner is the root tournament winner.
     /// - NON-ROOT:
     ///     * Winner is the inner winner that will be used by the parent tournament.
-    /// - Configured refund shares reserve one complete winning bond; the
+    /// - Configured refund caps reserve one minimum join bond; the
     ///   defensive payment remains capped by the current balance.
     /// - A zero balance completes without calling the winner.
     /// - Any post-payment residual balance is burned.
