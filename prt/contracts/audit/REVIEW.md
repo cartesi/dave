@@ -2,7 +2,7 @@
 
 Status: active
 
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-19
 
 This ledger records the reviewed conclusions and follow-up work for the Solidity
 dispute game under `prt/contracts/`. It is deliberately separate from the
@@ -164,36 +164,41 @@ Resolution:
 
 ### PRT-003: Bond and refund estimates do not bound actual transaction costs
 
-- Severity: Medium
-- Status: Open
+- Severity: Low
+- Status: Resolved - bounded heuristic subsidy selected
 - Area: economics, permissionless participation
 - Evidence: `Gas`, `Bond`, `Tournament.refundable`,
   event counters in `Tournament`, [`REFUND-DESIGN.md`](REFUND-DESIGN.md),
   [`GAS-CALIBRATION.md`](GAS-CALIBRATION.md)
 
-The hard-coded gas constants are used to size the bond's work reserve and cap
-each caller refund. Seven actions are calibrated; the remaining inherited
-`WIN_LEAF_MATCH` literal is not validated and is known to be non-conservative:
+The hard-coded gas constants size the bond's work reserve and cap each caller
+refund. They are best-effort subsidies for altruistic validators, not a safety
+mechanism, an endogenous incentive, or a promise to cover every accepted proof.
+Seven actions have retained calibrated ceilings. `WIN_LEAF_MATCH` instead uses
+an explicit provisional ordinary-proof reference:
 
 - Five production storage counters were added after the original constants.
   Their getters and values remain asserted compatibility and observability
   semantics, and their `SSTORE` cost is paid in production.
 - Sequential measurements put ordinary and reset
   `CartesiStateTransition.transitionState()` calls alone at approximately 244k
-  to 624k gas for the exercised proofs. Input-boundary calls already reached
+  to 624k gas for the exercised proofs. Input-boundary calls reached
   approximately 1.08 million gas with only 32- to 128-byte synthetic inputs.
-  The complete `WIN_LEAF_MATCH` allocation is 127,728 gas.
+  A focused full-stack ordinary-proof run then measured 768,416 allocation
+  units; its 842,758 reviewed minimum rounded to the selected provisional
+  843,000-gas allocation.
 - In the same mocked leaf-win gas harness, PRT-010's timeout classification
-  increased `winLeafMatch` from 143,290 to 146,264 gas. Both measurements already
-  exceed that allocation before a realistic state-transition proof.
-- Dynamic calldata, storage-refund credits, and receipt-exact transaction gas
-  are not represented by the measured delta plus flat 25,000-gas overhead.
-  Experimental OP Stack and Base deployments also charge separate L1 data or
-  security fees that the formula does not reimburse.
-- The action cap is its configured allocation times 50 gwei, not a
-  universal 50-gwei price ceiling for actual work. When actual work exceeds the
-  allocation, saturation begins below 50 gwei; a 600k-gas leaf action against
-  the current 127,728-gas allocation saturates near 10.64 gwei.
+  increased `winLeafMatch` from 143,290 to 146,264 gas. Both exceeded the former
+  127,728-gas allocation before a realistic state-transition proof.
+- Transaction-intrinsic calldata, storage-refund credits, and receipt-exact
+  transaction gas are not represented by the measured delta plus flat
+  25,000-gas overhead. Proof forwarding, copying, and memory expansion after the
+  snapshot are represented. Experimental OP Stack and Base deployments also
+  charge separate L1 data or security fees that the formula does not reimburse.
+- The action cap is its configured allocation times 50 gwei, not a universal
+  50-gwei price ceiling for actual work. When actual work exceeds the
+  allocation, saturation begins below 50 gwei. This underpayment is accepted by
+  the selected best-effort subsidy policy.
 - Before PRT-011, `winInnerTournament` also performed terminal child recovery,
   making its cost depend on the winning claimer's callback. Recovery is now
   separate; recalibration must use the decoupled path.
@@ -202,8 +207,7 @@ each caller refund. Seven actions are calibrated; the remaining inherited
   at that checkpoint; this calibration measures the resulting path.
 - PRT-013 bounds nonzero recipient execution at 50,000 gas, skips zero-value
   calls, and removes recipient return-data copying. Callback work remains
-  outside the refund measurement; the supported proof envelope and
-  `WIN_LEAF_MATCH` allocation remain open.
+  outside the refund measurement.
 - The production refund formula is now pinned independently of the allocation
   measurements. A timeout-action twin derives `Gas.TX + gasBefore - gasAfter`
   at a one-Wei price, then exact fuzzing varies balance, base fee, priority fee,
@@ -211,24 +215,21 @@ each caller refund. Seven actions are calibrated; the remaining inherited
   emitted value is the requested refund even when a rejecting recipient
   receives nothing. This establishes the implemented caps, not receipt-exact
   reimbursement or the adequacy of any action allocation.
-- The current InputBox caps the complete encoded input at 64 KiB but stores only
-  its hash. An input-boundary dispute resubmits the input; the data provider
-  hashes it, checks the stored hash, and Merkleizes it before the state
-  transition uses the root. Dynamic calldata is outside the refund snapshot,
-  while the provider hashing and Merkleization are inside. A pre-Merkleized
-  InputBox is a possible separate design if the full maximum-input witness makes
-  the present path unreasonable.
-- At an out-of-range input index, the provider returns zero before validating
-  the supplied input. The current proof encoding can therefore carry an
-  arbitrarily large declared input segment on a successful fixpoint path,
-  subject to transaction/block limits. A canonical encoding or on-chain bound
-  is required before claiming a finite worst-case successful proof.
-- The configured common terminal allocation is 701,000 gas and leaf sealing is
-  107,000 gas.
-  Any `WIN_LEAF_MATCH` allocation above 594,000 makes leaf seal plus proof the
-  new common maximum. Existing input-boundary transition measurements already
-  cross that threshold before Tournament overhead and margin, so calibrating
-  the current canonical path will raise every level's join deposit.
+- The current InputBox stores only the input hash. Its 65,536-byte cap and ABI
+  framing permit at most 65,508 encoded bytes from a 65,216-byte payload. An
+  input-boundary dispute resubmits the input; the provider hashes it, checks the
+  stored hash, and Merkleizes it before the state transition uses the root. A
+  pre-Merkleized InputBox remains a possible separate optimization.
+- Successful proof encodings are not finitely bounded. `Buffer` does not require
+  complete consumption, so every valid proof prefix can carry trailing bytes.
+  At an out-of-range input index, the provider also returns zero before
+  validating the supplied input, allowing an arbitrary declared input segment
+  before valid access logs. This does not make the refund itself unbounded: the
+  configured action cap limits the subsidy regardless of accepted proof size.
+- Leaf sealing plus the provisional allocation is now the common terminal
+  maximum at 950,000 gas. This is 249,000 gas above the former inner path, so
+  every work reserve rises by 249,000 gas and every join deposit by 0.01245 ETH
+  at the work-price cap.
 - A test-owned target-two-level harness now measures the modifier's exact
   reimbursable quantity from `PartialBondRefund` with cold target accesses. The
   first charged right advance measures 115,351 allocation units. A
@@ -248,38 +249,33 @@ each caller refund. Seven actions are calibrated; the remaining inherited
   position-one sealed leaf at the inclusive `remaining == overdue` boundary.
   They measured 123,940 and 124,269 allocation units. The 135,000 allocation
   preserves the reviewed margin. The leaf-seal-plus-timeout sequences are
-  367,000 and 242,000 gas; both remain below the common inner terminal maximum,
-  so neither action determines bond values.
+  367,000 and 242,000 gas; both remain below the current terminal maximum, so
+  neither action determines bond values.
 - Child-resolution calibration uses real factory-created children and preserves
   decoupled recovery. Resolved children selecting parent sides one and two
   currently measure 307,612 and 307,787 allocation units at the final legal
   carryover block; a single-claim side-two comparator measures 307,742. Expired
   resolved and single-claim winners measure 158,805 and 158,790, while a child
   with no winner measures 153,866. The 337,000 and 173,000 allocations preserve
-  the reviewed margins. Inner seal plus winner propagation is now 701,000 gas,
-  81,970 above the pre-calibration maximum, so the terminal component of every
-  join deposit is 0.0040985 ETH higher at the price cap. Only `WIN_LEAF_MATCH`
-  retains an inherited literal.
+  the reviewed margins. Inner seal plus winner propagation remains 701,000 gas;
+  the provisional leaf path now supersedes it for reserve sizing.
 - The previous NatSpec promised gas reimbursement plus profit, which the
   formula does not guarantee. The comment is corrected in this documentation
   pass; the economic limitation remains.
 
-Recommended response:
+Selected response:
 
-1. Preserve the production-counter semantics under the current external-API
-   constraint and include their worst-case writes in measurements.
-2. PRT-013 completed the callback boundary. Define the supported maximum
-   state-transition proof envelope before claiming finite complete-operation
-   ceilings.
-3. Completed for seven actions: CI ceilings cover their refundable branches
-   under a recorded, release-matched toolchain. The allocations preserve the
-   selected 10-percent/10,000-gas minimum margin across 18 retained witnesses,
-   and the runbook rejects an unpinned authoritative report. `WIN_LEAF_MATCH`
-   remains blocked on the finite proof/input envelope above.
-4. Adopt the bounded gross-Ethereum-work promise in `REFUND-DESIGN.md`, or
-   explicitly design broader calldata and receipt accounting.
+1. Preserve the production-counter semantics and the seven retained calibrated
+   action ceilings.
+2. Use 843,000 gas as a documented provisional subsidy for canonical ordinary
+   leaf proofs. Do not describe it as a complete proof-class or transaction
+   bound.
+3. Keep the bounded gross-Ethereum-work promise in `REFUND-DESIGN.md`; validation
+   correctness and validator incentives do not depend on exact reimbursement.
+4. Treat broader leaf-proof measurement, proof canonicalization, and InputBox
+   pre-Merkleization as optional separate improvements.
 5. The population-wide reserve theorem proves that configured refund caps
-   preserve one winning deposit across repeated re-pairing within each
+   preserve one minimum join bond across repeated re-pairing within each
    tournament. Pure models and real height-1 traces make the theorem executable.
    Recursive traces isolate child balances and compose two sequential children,
    so a recursive lifecycle handler is not a missing premise of this proof.
@@ -430,7 +426,7 @@ Resolution:
 
 1. Pay the registered first claimer of the eventual winning commitment at most
    `min(current balance, bondValue())`. The configured work-reserve invariant
-   reserves one complete winning deposit before recovery.
+   reserves one minimum join bond before recovery.
 2. If a nonzero winner payment fails, return `false` without deleting the
    claimer or burning any of the full retryable balance.
 3. After a successful payment, burn the actual post-callback balance and delete
@@ -449,12 +445,11 @@ Resolution:
    payout and burn whether recovery happens before staging or inside
    `DaveConsensus.stageTournamentResult`.
 
-This makes the configured per-loser principal irreversible. The guaranteed
-burn is the explicit `Bond.SYBIL_PRINCIPAL`, not the full join deposit. Its
-current 0.00450875 ETH checkpoint was never selected from an economic security
-target. Small repeated vandalism remains possible: an
-attacker may still buy bounded delay in each independent epoch for a linear
-burned cost.
+This prevents the winning claimer from recovering unused losing reserves
+directly. Those reserves can leave only as bounded refunds for successful
+progress; otherwise they remain for terminal burning. Small repeated vandalism
+remains possible: an attacker may still buy bounded delay in each independent
+epoch for linear forfeited reserves and transaction work.
 
 ### PRT-009: Pairing grants bankable response time to fresh commitments
 
@@ -601,51 +596,60 @@ Resolution:
    unchanged. PRT-003 now calibrates `Gas.WIN_INNER_TOURNAMENT` on this
    decoupled path with real child tournaments.
 
-### PRT-012: Sybil principal lacks economic calibration
+### PRT-012: An additional Sybil principal was not justified
 
 - Severity: Medium
-- Status: Needs decision
+- Status: Resolved
 - Area: Sybil economics, bond dimensioning
 - Evidence: `Bond`, `Tournament._refundableAfter`,
   [`REFUND-DESIGN.md`](REFUND-DESIGN.md)
 
 Write `A = Gas.ADVANCE_MATCH`, `E` for the largest configured terminal path,
-`P = Bond.WORK_PRICE_CAP`, `S = Bond.SYBIL_PRINCIPAL`, and
-`W(h) = (h - 1)*A + E`. A height-`h` match consumes at most `W(h)*P` in
-configured refunds. With `J` unique paid joins, pairing and resolution create at
-most `J - 1` matches even when winners repeatedly re-enter. Since
-`bondValue(h) = S + W(h)*P`, configured refunds leave at least:
+`P = Bond.WORK_PRICE_CAP`, `W(h) = (h - 1)*A + E`, and
+`B(h) = W(h)*P`. A height-`h` match consumes at most one `B(h)` in configured
+refunds. With `J` unique paid joins and `C` created matches, pairing and
+resolution give `C <= J - 1` even when winners repeatedly re-enter. Configured
+refunds therefore leave at least:
 
 ```text
-bondValue(h) + (J - 1) * S
+J * B(h) - C * B(h) = (J - C) * B(h) >= B(h)
 ```
 
-before terminal recovery. This proves that one complete winning deposit is
-reserved and that successful recovery burns at least `S` per eliminated
-commitment.
+before terminal recovery. One minimum join bond is reserved without an
+additional stake. With exact-value joins and an accepting winner:
 
-The inherited value `former A * P`, or 0.00450875 ETH, was the guaranteed
-irreversible Sybil principal. The recalibrated `A` no longer equals that
-literal. A participant may execute progress itself and receive the same bounded
-work subsidy, so the much larger join deposit is not all at risk. The
-implementation now names that inherited value as
-`Bond.SYBIL_PRINCIPAL`, so changing a gas estimate no longer changes the Sybil
-price implicitly. Leaf and cheaper terminal paths retain additional slack, so
-the effective burn is also path- and level-dependent. No current dimensioning
-document selects the literal as the intended cost of one adversarial identity.
+```text
+successful progress refunds + residual burn = (J - 1) * B(h)
+```
 
-Recommended response:
+The earlier accounting extracted an inherited 0.00450875 ETH remainder from
+the former off-by-one advance reserve and called it a Sybil principal. That
+reasoning treated contract burn as the only adversarial cost. The selected
+policy instead counts the disposition of the complete losing reserve. If an
+honest validator performs progress, the losing pool funds that caller. If the
+attacker receives the refund itself, the successful transaction still consumes
+Ethereum execution and blockspace. Anything not refunded remains for terminal
+burning.
 
-1. Implemented: use one common Wei-denominated principal and size the join
-   deposit as `sybilPrincipal + configuredMatchWorkReserve`.
-2. Implemented checkpoint: pin the inherited 0.00450875 ETH residual-principal
-   value without treating it as policy approval.
-3. Select the final principal against the intended delay-cost analysis before
-   deployment. Gas recalibration must not silently choose it.
-4. The pure path and topology models fuzz the global `J`, match-count, and
-   configured-liability bounds independently of canonical geometry. Real
-   height-1 traces cover nonzero refunds, repeated winners, double elimination,
-   pooled-balance conservation, exact winning payment, and residual burn.
+This is aggregate resource accounting, not a receipt-exact or identity-level
+cost theorem. Refunds go to immediate `msg.sender`, not necessarily the bond
+poster or top-level gas payer. The fixed allowance, gross gas measurement,
+storage-refund credits, batching, paymasters, and proposer fee recovery can all
+make private cost differ from the requested refund. The contract therefore
+promises neither a positive per-loser ETH burn nor a precise attacker-cost
+floor.
+
+Resolution:
+
+1. Remove the uncalibrated additive principal. Define `bondValue(h) = W(h)*P`,
+   so the bond rolls automatically from the reviewed gas table, terminal
+   maximum, tournament height, and work-price cap.
+2. Preserve the one-winning-bond theorem and cap the winning claimer at that
+   amount. Do not double the work reserve: with unchanged refund liability that
+   would merely add a height-dependent stake and double honest capital.
+3. The pure topology model and real height-1 traces pin one-bond solvency,
+   nonzero refunds, repeated winners, double elimination, exact terminal
+   payout, and the work-or-burn conservation identity.
 
 ### PRT-013: Payment callbacks have an unbounded gas and return-data tail
 
@@ -867,9 +871,11 @@ The following items were corrected or explicitly documented in this pass:
   time`. Pairing response latency is a separate budget.
 - Same-root first-claimer ownership is intended; terminal recovery now caps its
   payout at one bond and burns the post-payment residual.
-- Configured action caps reserve one complete winning deposit across repeated
-  re-pairing. The guaranteed per-loser burn is the explicit 0.00450875 ETH
-  checkpoint principal, whose final calibrated value remains an open decision.
+- Configured action caps reserve one minimum join bond across repeated
+  re-pairing. The bond is exactly the configured match-work reserve and rolls
+  automatically from the gas table. Aggregate losing reserves pay bounded
+  successful-work subsidies or remain for terminal burning; no positive
+  per-loser burn is guaranteed.
 - Refund and terminal-payment recipients have a 50,000-gas execution ceiling;
   return data is discarded, zero-value callbacks are skipped, and
   tournament-result staging and acceptance advance after a bounded
@@ -940,10 +946,12 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
 - `TEST-TIME-001` (deferred): chain conformance for the time source and
   deployment conversion is required before promoting any non-Ethereum target,
   especially Arbitrum.
-- `TEST-GAS-001` (in progress): retained cold witnesses enforce reviewed
-  headroom for advance, timeout win and elimination, both seal paths, and real
-  child winner and elimination branches. Only leaf-proof paths remain.
-- `TEST-GAS-002`: measure realistic leaf proofs and calldata sizes.
+- `TEST-GAS-001` (landed for seven actions): retained cold witnesses enforce
+  reviewed headroom for advance, timeout win and elimination, both seal paths,
+  and real child winner and elimination branches. Leaf proof uses the explicit
+  provisional subsidy instead of a retained ceiling.
+- `TEST-GAS-002` (optional): measure additional realistic leaf-proof classes and
+  calldata sizes if tighter reimbursement or the InputBox redesign is pursued.
 - `TEST-FUND-001` (landed): fuzz positive heights and every current terminal
   branch; require each match's configured refunds to stay within its work
   reserve and require the reserve to equal the maximum across all legal paths.
@@ -953,8 +961,8 @@ Priority 1 means high-value invariant coverage. Priority 2 is broader hardening.
   or resolved match.
 - `TEST-FUND-003` (landed): execute height-1 tournaments with nonzero refunds,
   repeated winner re-entry, and double elimination; assert pooled-balance
-  conservation, one full winning deposit, and the minimum configured residual
-  burn.
+  conservation, one minimum join bond, and that aggregate losing reserves
+  fund successful progress or remain for terminal burning.
 - `TEST-CALLBACK-001` (landed): bound action-refund recipient gas, discard large
   success and revert data, skip zero-value callbacks, and require gas exhaustion
   to preserve completed progress while reporting the requested refund as failed.
@@ -1900,3 +1908,61 @@ After hardening configuration and expanding shape and delay coverage:
   canonical-provider guards change only deployment behavior and do not change
   tournament storage or callable selectors. No node source changed. The
   selected two-level table remains integration-gated on node agreement.
+
+After selecting the provisional leaf-proof subsidy:
+
+- Progress refunds are now explicitly documented as best-effort subsidies for
+  altruistic validators, not correctness mechanisms, endogenous incentives, or
+  exact reimbursement promises. PRT-003 is resolved under that policy; broader
+  proof-class calibration remains optional.
+- A focused full-stack ordinary-proof run measured 768,416 allocation units.
+  Its reviewed minimum was 842,758, rounded to the provisional 843,000-gas
+  `WIN_LEAF_MATCH` allocation. The reference path is not presented as a retained
+  proof-class maximum.
+- Leaf seal plus proof is now the 950,000-gas terminal maximum. Every work
+  reserve increases by 249,000 gas and every join deposit by 0.01245 ETH at the
+  50-gwei cap. The checked-in height-48, height-17, and height-27 bonds are
+  0.34810875, 0.15280875, and 0.21580875 ETH. Target height-55 and height-37
+  bonds are 0.39220875 and 0.27880875 ETH.
+- `RefundReserveTest` passed all 6 tests. The retained gas suite passed all 18
+  witnesses, `test-disputes` passed all 208 tests, and `rollups-contracts`
+  passed all 3 integration tests. The positive and rejection stateful campaigns
+  completed 32,768 and 16,384 calls with no handler reverts or discards.
+- `forge fmt --check` passed. The ABI and semantic storage hashes remain
+  `67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a` and
+  `952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329`.
+  The metadata-free creation and runtime hashes changed intentionally to
+  `7e588430fe82973d26f5f3303fbff8c1ffe2860f5d4acf3e343fcfcc2e716d3e` and
+  `65eee8b9ea55b333ea1ae567c4f3ff45feadd951701bd33c38609ab2fded797c`.
+  Deployment and CREATE2 artifacts must be regenerated before release. No node
+  source changed.
+
+After deriving the bond entirely from the configured work reserve:
+
+- The uncalibrated 0.00450875 ETH additive principal was removed. For positive
+  height `h`, `bondValue(h) = ((h - 1) * ADVANCE_MATCH + terminalMaximum) *
+  WORK_PRICE_CAP`. Existing gas-allocation changes now propagate automatically
+  through the terminal maximum, work reserve, and bond; a new legal terminal
+  sequence must still be added explicitly to the enumeration and path test.
+- The checked-in height-48, height-17, and height-27 bonds are now 0.3436,
+  0.1483, and 0.2113 ETH. Target height-55 and height-37 bonds are 0.3877 and
+  0.2743 ETH. Work allocations, action caps, and the 950,000-gas terminal
+  maximum are unchanged.
+- The reserve theorem now proves that `J` exact-value joins and at most `J - 1`
+  matches preserve one minimum join bond. With an accepting winner, successful
+  progress refunds plus residual burn equal all aggregate losing bonds. No
+  positive per-loser burn or receipt-exact attacker cost is promised.
+- `RefundReserveTest` passed all 6 tests. The retained gas suite passed all 18
+  witnesses, `test-disputes` passed all 208 tests, and `rollups-contracts`
+  passed all 3 integration tests. The positive and rejection stateful campaigns
+  completed 32,768 and 16,384 calls with no handler reverts or discards.
+- `forge fmt --check`, scoped high-severity lint, ASCII validation, and
+  `git diff --check` passed.
+  The ABI and semantic storage hashes remain
+  `67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a` and
+  `952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329`.
+  The metadata-free creation and runtime hashes changed intentionally to
+  `2fc9a85a0b72cdbffd2e19d5bf51d8003478da10d9d8bb966cdf4c20a866b791` and
+  `9d24e85b0e71038c2c40bde3725f20a70f95c1826dda44e3d4031c63055eb1ad`.
+  Deployment and CREATE2 artifacts must be regenerated before release. No node
+  source changed.

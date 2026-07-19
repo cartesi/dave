@@ -551,12 +551,18 @@ the action-allocation term, and the measured-work term are independent caps.
 
 This is a bounded partial refund, not a guarantee of full transaction cost or
 profit. The measured delta is gross EVM work plus a fixed overhead, not exact
-receipt gas; dynamic calldata, storage-refund credits, and chain-specific data
-or security fees are outside the promise. Priority fee above 10 gwei is also
-excluded. The action cap is the action allocation times 50 gwei. When real
-work exceeds that allocation, its effective reimbursed price ceiling is below
-50 gwei. The fixed allocations must be recalibrated and tested against every
-supported proof shape. PRT-003 records known estimate failures, and
+receipt gas; transaction-intrinsic calldata, storage-refund credits, and
+chain-specific data or security fees are outside the promise. Proof forwarding
+and copying after the snapshot remain inside the measured delta. Priority fee
+above 10 gwei is also excluded. The action cap is the action allocation times
+50 gwei. When real work exceeds that allocation, its effective reimbursed price
+ceiling is below 50 gwei.
+
+Exact reimbursement is not a correctness assumption or an endogenous validator
+incentive. Seven action allocations have retained measured ceilings;
+`WIN_LEAF_MATCH` uses a documented provisional subsidy for a canonical ordinary
+proof. Broader proof-class calibration is optional. PRT-003 records the design
+decision and known limitations, and
 [`REFUND-DESIGN.md`](../prt/contracts/audit/REFUND-DESIGN.md) derives the full
 accounting boundary.
 
@@ -573,26 +579,26 @@ stays in the pooled balance and is not reserved for a later retry by that caller
 
 When a tournament finishes with a winner, `tryRecoveringBond` attempts to pay the
 address that first joined the winning commitment
-`min(current balance, bondValue())`. The configured refund shares reserve one
-complete winning deposit, so an accepting winner receives one full bond under
+`min(current balance, bondValue())`. The configured refund caps reserve one
+minimum join bond, so an accepting winner receives that amount under
 the configured reserve invariant. A height-`h` match has at most `h - 1`
 advances, and `J` unique paid joins create at most `J - 1` matches. Before
-terminal recovery, the balance is therefore at least one winning deposit plus
-one explicit Sybil principal per eliminated commitment. Only after a nonzero
-winner payment succeeds does the contract send the entire post-payment balance
-to the zero address. If the balance is zero, it skips the recipient call and
-completes recovery defensively.
+terminal recovery, the balance is therefore at least one minimum join bond. Only
+after a nonzero winner payment succeeds does the contract send the entire
+post-payment balance to the zero address. That residual may be zero when every
+possible match consumes its complete configured reserve. If the balance is
+zero, recovery skips the recipient call and completes defensively.
 
 A commitment root can be joined only once, so copying the correct root first
 intentionally claims that capped recipient slot; all progress and defense
 operations remain permissionless. Eliminated claimers lose their terminal
-payment claim. `Bond` keeps the economic principal separate from gas
-allocations and tournament height; its current 0.00450875 ETH literal preserves
-the inherited value but is not security-calibrated. Garbage collection advances
-matches and parent tournaments, but does not imply that every child balance is
-settled. A no-winner child has
-neither a winning-claimer payment nor this residual-burn path, so its balance
-remains locked absent another mechanism.
+payment claim. `Bond` derives the minimum join bond from the configured
+match-work reserve: the manual gas table determines the terminal maximum,
+tournament height determines the advance count, and the work-price cap converts
+that allocation to Wei. Garbage collection advances matches and parent
+tournaments, but does not imply that every child balance is settled. A
+no-winner child has neither a winning-claimer payment nor this residual-burn
+path, so its balance remains locked absent another mechanism.
 
 Successful recovery deletes the winning claimer, and later calls return `true`
 as no-ops. This also means ETH forcibly sent after recovery remains stranded;
@@ -622,26 +628,36 @@ perform permissionless defense, and recover the losers' residual pool through
 the winning claimer slot. The capped payment and residual burn prevent that
 recycling after legitimate partial refunds. The contract cannot identify an
 honest address; it can identify only the winning commitment and its first
-claimer. The guaranteed burn per eliminated commitment is the explicit
-`SYBIL_PRINCIPAL`, rather than the full join deposit. Its final value remains an
-economic policy decision.
+claimer.
+
+There is no additional Sybil stake. For a tournament with an accepting winner,
+the aggregate losing reserves are either paid as bounded subsidies for
+successful dispute work or remain for terminal burning. If an honest validator
+performs the work, the attacker's pooled reserve funds that caller. If an
+attacker collects a refund itself, the successful action still consumes
+Ethereum execution and blockspace. This is not a receipt-exact or identity-level
+attacker-cost theorem: refunds go to immediate `msg.sender`, the top-level gas
+payer may differ, and the gross measurement can differ from receipt gas.
 
 Under this rule, small repeated vandalism remains possible by design. For
 example, two incorrect claims can make one opponent active while the other
 waits dangling, serializing the active pair and then a replacement match.
 Repeating the construction in sequential epochs creates linear cumulative
-disruption for linear bond burn net of legitimate partial refunds. The
-structural population-window argument applies within one tournament after
-joining closes; it is neither exponential deterrence across games whose clocks
-reset nor a bound on transaction work.
+disruption for linear forfeited reserves and transaction work. The structural
+population-window argument applies within one tournament after joining closes;
+it is neither exponential deterrence across games whose clocks reset nor a
+bound on transaction work.
 
 Required economic invariants:
 
 - A caller cannot withdraw more than the configured refund cap for one action.
 - `J` unique paid joins create at most `J - 1` matches, and each match consumes
   at most its configured work reserve.
-- Before successful winner recovery, configured refund caps preserve one full
-  winning deposit plus one explicit Sybil principal per eliminated commitment.
+- Before successful winner recovery, configured refund caps preserve one
+  minimum join bond.
+- With exact-value joins and an accepting winner, aggregate losing reserves are
+  either paid for successful dispute work or burned as terminal
+  residual. No positive residual burn is guaranteed.
 - Aggregate refunds, terminal payout, and residual burn conserve the actual
   tournament balance and cannot pay or burn the same value twice.
 - Failed refund transfers do not corrupt tournament state. A failed terminal

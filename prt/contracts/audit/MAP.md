@@ -219,8 +219,9 @@ an unbounded attacker-versus-honest proof or counterexample remains open.
 
 ### Bond economics (`Bond.sol` + `Gas.sol` + `refundable`)
 
-`Bond` defines one common `SYBIL_PRINCIPAL`, a 50-gwei `WORK_PRICE_CAP`, and
-`bondValue(h) = principal + ((h - 1) * ADVANCE_MATCH + terminalMaximum) * WORK_PRICE_CAP`.
+`Bond` defines a 50-gwei `WORK_PRICE_CAP` and
+`bondValue(h) = ((h - 1) * ADVANCE_MATCH + terminalMaximum) * WORK_PRICE_CAP`
+for positive heights.
 Each `Gas` allocation includes a fixed `TX = 25000` overhead. `refundable(gasEstimate)` acquires
 the lock, runs, then computes the requested refund as `min(contract balance, gasEstimate *
 WORK_PRICE_CAP, (Gas.TX + gasBefore - gasAfter) * min(tx.gasprice, basefee +
@@ -232,11 +233,11 @@ success. A height-`h` match has at most `h - 1` advances and at most the common 
 allocation, so it consumes at most its configured work reserve.
 
 With `J` unique paid joins, pairing and resolution create at most `J-1` matches even when a
-winner repeatedly re-enters. The pre-recovery balance is therefore at least one full join deposit
-plus one explicit principal per loser. An accepting winning claimer receives one deposit and the
-residual is burned. The current 0.00450875 ETH principal preserves inherited behavior but still
-lacks economic calibration. A rejecting claimer receives nothing and leaves the entire balance
-unchanged for retry. Its recipient execution has the same 50,000-gas ceiling.
+winner repeatedly re-enters. The pre-recovery balance is therefore at least one minimum join bond
+after refunds. An accepting winning claimer receives that bond and the residual is burned.
+Aggregate losing reserves therefore fund successful progress refunds or remain for terminal
+burning; no positive residual is guaranteed. A rejecting claimer receives nothing and leaves the
+entire balance unchanged for retry. Its recipient execution has the same 50,000-gas ceiling.
 Tournament-result staging ignores both `false` and a recovery revert, preserving the staged
 result while leaving the old tournament retryable. See `REFUND-DESIGN.md` for the proof and fee
 boundary.
@@ -472,16 +473,16 @@ Each: statement * where enforced * how it could break.
   - *Breaks if:* a legitimate root equal to `ZERO_NODE` (keccak->0, negligible) read as "no
     dangling"; any path calling `setDanglingCommitment` while one exists (none currently).
 - **INV-FUND-1 - Fund safety and terminal payout.** An accepting first claimer of the winning
-  commitment receives one full terminal bond under the configured work-reserve invariant; the
+  commitment receives one minimum join bond under the work-reserve invariant; the
   post-payment residual is burned (PRT-008).
   - *Enforced:* `_refundableAfter` caps each action refund; `tryRecoveringBond` pays
     `min(balance, bondValue())`, burns the actual post-callback residual, and removes the winning
     claimer only after success; `deleteMatch` removes losers' claimers.
-  - *Global bound:* `J` joins create at most `J-1` matches; each match consumes at most its
-    configured work reserve, leaving at least `bondValue()+(J-1)*SYBIL_PRINCIPAL` before recovery.
-    Re-pairing does not add a match without a newly joined opponent. This configured-reserve proof
-    does not establish that actual transaction fees are fully reimbursed or that the checkpoint
-    principal is economically adequate.
+  - *Global bound:* `J` joins create at most `J-1` matches; each match consumes at most one bond's
+    configured work reserve, leaving at least `bondValue()` before recovery. Re-pairing does not
+    add a match without a newly joined opponent. This configured-reserve proof does not establish
+    that actual transaction fees are fully reimbursed or that refunds equal an attacker's private
+    cost.
 - **INV-FUND-2 - `tryRecoveringBond` reentrancy-safe and retry-safe.** The capped payment and burn
   occur inside `withLock`; a rejecting recipient retains its claimer and full balance for retry.
   - *Enforced:* `withLock`; recipient execution is capped at 50,000 gas and its return data is not
@@ -580,11 +581,12 @@ Cross-checks between mappers; most resolved-but-flagged.
    the internal correctness of those libs is unverified here. The coupling between the on-chain
    counter bit-layout (20/48) and off-chain leaf spacing (`log2step = [44,27,0]`) is asserted, not
    proven.
-3. **Sybil-principal dimensioning (INV-FUND-1)** - the global match-count analysis proves that
-   configured refunds reserve one winning bond and burn at least the explicit principal per
-   eliminated commitment. The current 0.00450875 ETH literal preserves the inherited one-advance
-   margin but is not an economically calibrated parameter. PRT-012 and `REFUND-DESIGN.md` keep
-   that final policy decision open.
+3. **Attacker-cost exactness (INV-FUND-1)** - the global match-count analysis proves that
+   configured refunds reserve one winning bond and that aggregate losing reserves fund successful
+   progress or remain for terminal burning. It does not prove receipt-exact or identity-level
+   attacker cost because refund recipient, top-level gas payer, gross gas, storage refunds, and
+   proposer fee recovery can differ. PRT-012 and `REFUND-DESIGN.md` record the selected policy of
+   no additional stake.
 4. **Clock-carryover boundary (INV-CLK-5). Resolved.** Let `F` be `timeFinished()` and `A` the
    paused winner allowance. `innerTournamentWinner` can return a winner only while
    `current < F + A`; therefore `current - F < A`, and `deductPaused` remains strictly positive.
@@ -642,7 +644,7 @@ which campaigns subsequently landed and what remains.
    and child call; permitted cross-instance mutation; cross-instance view trust); access-control
    finder (leaf/non-leaf/root guards; generic
    `arbitrationResult` consumer impact); economic finder (make the global reserve theorem and
-   explicit Sybil principal executable across repeated matches).
+   work-reserve disposition executable across repeated matches).
 3. **Chess-clock timing primitives** - `tournament/libs/Clock.sol`, `MatchClocks.sol`, `Time.sol`.
    INV-CLK-1..5; monus saturation boundaries; paused carryover zero-allowance rejection;
    pair-phase assertions. *Vantages:* boundary/
@@ -684,7 +686,7 @@ which campaigns subsequently landed and what remains.
    heights = 92, leaf `log2step = 0`; what breaks if L changes without regenerating arrays;
    level-vs-LEVELS sourced from two places never disagree).
 9. **Core types & gas constants** - `types/Machine.sol`, `tournament/libs/Gas.sol`. `Machine.Hash`
-   `ZERO_STATE` sentinel collision; Gas constants size the bond + refund shares. *Vantages:*
+   `ZERO_STATE` sentinel collision; Gas constants size the bond and refund caps. *Vantages:*
    economic finder (validate each Gas constant vs actual measured gas; bond covers worst-case at the
    configured gas price); sentinel finder (a real machine state can never be `ZERO_STATE`).
 10. **Tournament interface & error/event contract** - `ITournament.sol`. Defines `TournamentArguments`/

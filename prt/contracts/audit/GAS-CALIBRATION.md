@@ -1,10 +1,10 @@
 # Refund gas calibration runbook
 
 Status: seven dispute-game actions calibrated against retained witnesses and
-reproduced with the release Foundry version; `winLeafMatch` blocked on its
-supported state-transition proof and input envelope
+reproduced with the release Foundry version; `winLeafMatch` uses a documented
+provisional ordinary-proof subsidy
 
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-19
 
 This is the reproducible procedure for measuring and changing the gas-unit
 allocations in `tournament/libs/Gas.sol`. The procedure is deliberately manual:
@@ -12,16 +12,17 @@ the reviewer chooses the supported witnesses and checks the derived reserve.
 The retained tests make the measurements and arithmetic executable.
 
 This runbook covers successful dispute-game action refunds on Ethereum. It does
-not select the Sybil principal, gas-price caps, validator incentives, or L2 fee
-policy. Those are economic decisions in `REFUND-DESIGN.md`, not gas measurement
-outputs.
+not select gas-price caps, validator incentives, or L2 fee policy. Those are
+economic decisions in `REFUND-DESIGN.md`, not gas measurement outputs. Join
+bonds do roll off automatically from the reviewed gas table and the separately
+selected work-price cap.
 
 ## Sources of truth
 
 | Concern | Source |
 | --- | --- |
 | Production action allocations | `src/tournament/libs/Gas.sol` |
-| Principal, price policy, terminal maximum, and bond formula | `src/tournament/libs/Bond.sol` |
+| Price policy, terminal maximum, and bond formula | `src/tournament/libs/Bond.sol` |
 | Retained execution witnesses and measurement helper | `test/gas/TournamentGas.t.sol` |
 | Reserve algebra and population properties | `test/accounting/RefundReserve.t.sol` |
 | Exact refund formula and cap boundaries | `test/accounting/RefundFormula.t.sol` |
@@ -70,10 +71,11 @@ recipient call fails and transfers nothing. `gasAfter` is sampled before that
 callback, so recipient behavior cannot change the request.
 
 `Gas.TX` is a fixed policy allowance for unmetered work. It is not measured
-transaction-intrinsic gas. The refund excludes dynamic calldata cost, dispatch
-and decoding before the snapshot, exact storage-refund reconciliation, and
-chain-specific data fees. `complete call` in the report is diagnostic only; it
-is not used to select an allocation.
+transaction-intrinsic gas. The refund excludes transaction-intrinsic calldata,
+dispatch and decoding before the snapshot, exact storage-refund reconciliation,
+and chain-specific data fees. Forwarding and copying proof bytes after the
+snapshot remain inside the measured delta. `complete call` in the report is
+diagnostic only; it is not used to select an allocation.
 
 Do not use `forge snapshot` as a substitute for this report. It measures the
 test entry point, not the production refund seam. Do not measure under `forge
@@ -157,8 +159,9 @@ and thereby trigger this runbook, but the two measurement processes must remain
 separate.
 
 Do not label an allocation a worst-case bound while a successful proof encoding
-can grow outside the documented envelope. The current `winLeafMatch` literal is
-intentionally not calibrated for this reason.
+can grow outside the documented envelope. A heuristic subsidy may deliberately
+choose a useful reference path instead, but its source and limitations must be
+stated explicitly.
 
 ## 3. Retain the worst successful paths
 
@@ -175,7 +178,7 @@ as regression witnesses.
 | `SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT` | Charged seal at nonzero position with the maximum supported proof and a real factory clone. |
 | `WIN_INNER_TOURNAMENT` | Both parent winner orientations; resolved and single-claim children; final legal carryover block; dangling parent re-pairing. |
 | `ELIMINATE_INNER_TOURNAMENT` | Expired resolved winner, expired single-claim winner, and no-winner child; nonzero parent position. |
-| `WIN_LEAF_MATCH` | Full production `Tournament.winLeafMatch`, not an isolated transition or stub; every supported state-transition and input proof class described below. |
+| `WIN_LEAF_MATCH`, when claiming a proof-class ceiling | Full production `Tournament.winLeafMatch`, not an isolated transition or stub; every supported state-transition and input proof class described below. |
 
 The present two-level target witnesses use height 55 for the root and height 37
 for the leaf. Historical top/middle/bottom suites do not define this envelope.
@@ -241,7 +244,6 @@ For each action family, apply this checklist in one reviewable commit:
 
 Never change these values merely because a gas witness changed:
 
-- `Bond.SYBIL_PRINCIPAL`;
 - `Bond.WORK_PRICE_CAP`;
 - `Bond.PRIORITY_FEE_CAP`; or
 - `Bond.PAYMENT_CALLBACK_GAS_LIMIT`.
@@ -267,11 +269,18 @@ action changes every reserve only if its legal sequence becomes the new common
 terminal maximum. Because the current design uses one common maximum, an
 expensive leaf path can raise non-leaf deposits as well.
 
-The explicit Sybil principal must remain unchanged during this propagation.
-External selectors, events, tuple shapes, and storage should also remain
-unchanged for a constants-only calibration, but runtime and creation bytecode
-will change. Regenerate deployment artifacts and CREATE2 addresses before a
-deployment. Do not quietly reuse artifacts produced from an older allocation.
+There is no separately maintained bond value: the join deposit must change with
+the derived work reserve. External selectors, events, tuple shapes, and storage
+should remain unchanged for a constants-only calibration, but runtime and
+creation bytecode will change. Regenerate deployment artifacts and CREATE2
+addresses before a deployment. Do not quietly reuse artifacts produced from an
+older allocation.
+
+Changing an existing `Gas` allocation propagates automatically through the
+enumerated terminal maximum, height-dependent work reserve, and bond. Adding a
+new action or legal terminal sequence is a structural change: add it explicitly
+to `Bond.terminalAllocation()` and to the independent legal-path accounting
+test before relying on that propagation.
 
 ## 7. Validate the candidate
 
@@ -362,24 +371,24 @@ numbers as evidence when the trigger does not affect the selected maximum.
 
 ## `winLeafMatch` and the InputBox decision
 
-InputBox pre-Merkleization is out of scope for the current calibration branch.
-First measure and document the current supported proof/input envelope. If that
-result makes leaf-proof gas, calldata, blockspace, or honest capital
-unreasonable, evaluate pre-Merkleization as a separate protocol change and then
-repeat this complete runbook.
+InputBox pre-Merkleization remains a separate protocol decision. The selected
+policy does not require a complete leaf-proof envelope because progress refunds
+are a bounded subsidy for altruistic validators, not a correctness mechanism or
+an endogenous incentive.
 
-`winLeafMatch` is the remaining uncalibrated action. Its witness must call the
-complete tournament entry point with the deployed `CartesiStateTransition` and
-data provider. Measuring `transitionState` alone establishes useful component
-costs but omits Tournament resolution, clock settlement, re-pairing, deletion,
-refund postlude, and nested-call coldness.
+`winLeafMatch` currently receives a provisional 843,000-gas subsidy. A focused
+full-stack ordinary-proof run measured 768,416 allocation units; the standard
+margin produced 842,758 and rounded to 843,000. The run covered the real
+Tournament and Cartesi state transition with nonzero match position, dangling
+re-pairing, and deletion, and it executed through the refund postlude. The
+measured delta ends at `gasAfter`; `Gas.TX` remains the policy proxy for later
+refund calculation, payment, event, and lock-release work. It was a reference
+measurement, not a retained maximum witness.
 
-The resulting envelope applies only to the canonical deployment using the
-reviewed `CartesiStateTransition` and `DaveConsensus`/InputBox provider. The
+The reference measurement used the reviewed `CartesiStateTransition`. The
 generic tournament factory accepts arbitrary transition and provider contracts;
-those deployments receive only the configured bounded subsidy and must define
-and calibrate their own envelope. No common gas constant can promise exact
-coverage for arbitrary external implementations.
+those deployments still receive only the configured bounded subsidy. No common
+gas constant can promise exact coverage for arbitrary external implementations.
 
 The current input-boundary path is:
 
@@ -390,13 +399,15 @@ The current input-boundary path is:
    and builds its Merkle root.
 5. The state transition sends that root and length into the machine proof.
 
-The current InputBox caps the complete encoded input at `1 << 16` bytes. The
-dynamic calldata needed to resubmit it is outside the refund snapshot, while
-the provider call, hashing, Merkleization, and state-transition work are inside.
-The calibration record must distinguish those two costs.
+The current InputBox caps the complete encoded input at `1 << 16` bytes. ABI
+framing means the largest reachable encoding is 65,508 bytes, produced by a
+65,216-byte payload. Transaction-intrinsic calldata and initial decoding are
+outside the refund snapshot. Proof forwarding and copying, the provider call,
+hashing, Merkleization, and state-transition work are inside. A future
+calibration record must distinguish those costs.
 
-Before selecting `WIN_LEAF_MATCH`, retain full-entry-point witnesses for at
-least:
+Before claiming a comprehensive `WIN_LEAF_MATCH` ceiling, retain
+full-entry-point witnesses for at least:
 
 - an ordinary uarch step;
 - the reset/revert boundary;
@@ -412,16 +423,16 @@ charge, nonzero match state deletion, and dangling re-pairing. An isolated
 state-transition maximum is not necessarily the Tournament maximum.
 
 The state-transition workstream must also define whether trailing or otherwise
-noncanonical proof bytes are rejected. Until the accepted proof/input envelope
-is finite and documented, `WIN_LEAF_MATCH` must remain explicitly uncalibrated.
+noncanonical proof bytes are rejected before any finite worst-case claim.
 
-There is a concrete unbounded successful encoding today. At an input boundary
-whose index lies outside the sealed epoch, `DaveConsensus` returns zero before
-hashing or validating the supplied input. A proof can therefore declare an
-arbitrarily large input segment, place valid access logs after it, and still
-reach the successful fixpoint path, subject only to transaction/block limits.
-Canonical encoding or an on-chain input-length/proof-consumption bound is needed
-before an allocation can be described as a finite worst-case success bound.
+Successful proof encodings are not finitely bounded today. `Buffer` does not
+require complete consumption, so a valid proof prefix can carry trailing bytes
+on every branch. At an out-of-range input boundary, `DaveConsensus` also returns
+zero before validating the supplied input, allowing an arbitrary declared input
+segment before valid access logs. These behaviors do not endanger the bounded
+subsidy: work beyond the configured cap is simply not reimbursed. Canonical
+encoding or on-chain input-length and proof-consumption bounds would be needed
+only before describing an allocation as a finite worst-case success bound.
 
 A future pre-Merkleized InputBox would move input hashing and Merkleization to
 input submission and let the dispute consume the commitment without
@@ -449,11 +460,9 @@ capital requirement, and the already-measured InputBox submission increase.
 That makes bringing the InputBox change into scope an explicit protocol tradeoff
 rather than an undocumented reaction to one gas number.
 
-The current configured common terminal allocation is 701,000 gas and
-`SEAL_LEAF_MATCH` is 107,000 gas. Therefore any `WIN_LEAF_MATCH` allocation above
-594,000 gas makes leaf seal plus proof the new configured maximum and raises
-every level's work reserve. Existing input-boundary state-transition measurements
-already exceed that threshold before Tournament overhead and reviewed margin.
-Under the current InputBox path, a production calibration will therefore raise
-all join deposits; the remaining questions are by how much and whether the
-pre-Merkleized design is worth that avoided cost.
+The provisional allocation makes leaf seal plus proof the configured terminal
+maximum at 950,000 gas. This is 249,000 above the former 701,000-gas inner path,
+so every work reserve rises by 249,000 gas and every join deposit by 0.01245 ETH
+at the 50-gwei cap. Further leaf-proof measurement or InputBox redesign should
+be justified by the expected improvement over this explicit heuristic, not by
+a safety requirement.
