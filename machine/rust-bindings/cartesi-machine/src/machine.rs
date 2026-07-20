@@ -12,7 +12,7 @@ use crate::{
     constants,
     error::{MachineError, MachineResult as Result},
     types::{
-        BreakReason, Hash, LogType, Register, UArchBreakReason,
+        BreakReason, Hash, LogType, Register, SharingMode, UArchBreakReason,
         access_proof::AccessLog,
         cmio::{CmioRequest, CmioResponseReason},
         memory_proof::Proof,
@@ -153,8 +153,28 @@ impl Machine {
         Ok(Self { machine })
     }
 
-    /// Loads a new machine instance from a previously stored directory.
+    /// Loads a new machine instance from a previously stored directory,
+    /// with the config's own per-range sharing (fully private in
+    /// practice: mutations stay in memory).
     pub fn load(dir: &Path, runtime_config: &RuntimeConfig) -> Result<Self> {
+        Self::load_with_sharing(dir, runtime_config, SharingMode::Config)
+    }
+
+    /// Loads a stored machine with an explicit sharing mode.
+    ///
+    /// With [`SharingMode::All`] the machine mutates the directory in
+    /// place, and the directory remains a valid stored machine after
+    /// drop without any explicit flush: dirtiness is recorded in the
+    /// persisted dirty-page sidecars and the next `root_hash` rehashes
+    /// exactly the dirty set. Calling [`Machine::root_hash`] before
+    /// drop leaves the on-disk hash tree exact. Note the lifetime
+    /// exclusive lock: the directory cannot be cloned or re-loaded
+    /// shared until this machine is dropped.
+    pub fn load_with_sharing(
+        dir: &Path,
+        runtime_config: &RuntimeConfig,
+        sharing: SharingMode,
+    ) -> Result<Self> {
         let dir_cstr = path_to_cstring(dir)?;
         let runtime_config_json = serialize_to_json!(&runtime_config);
 
@@ -163,10 +183,56 @@ impl Machine {
             cartesi_machine_sys::cm_load_new(
                 dir_cstr.as_ptr(),
                 runtime_config_json.as_ptr(),
-                cartesi_machine_sys::CM_SHARING_CONFIG,
+                sharing.into(),
                 &mut machine,
             )
         };
+        check_err!(err_code)?;
+
+        Ok(Self { machine })
+    }
+
+    /// Clones a stored machine directory without loading it: read-only
+    /// files hard-link, writable files reflink on CoW filesystems, and
+    /// either falls back to a sparse-aware copy where unsupported - so
+    /// the clone is cheap where the filesystem cooperates and correct
+    /// everywhere. Refuses an existing destination. Fails while the
+    /// source is loaded with [`SharingMode::All`] (the load holds the
+    /// lock); drop that machine first.
+    pub fn clone_stored(from_dir: &Path, to_dir: &Path) -> Result<()> {
+        let from_cstr = path_to_cstring(from_dir)?;
+        let to_cstr = path_to_cstring(to_dir)?;
+        let empty = Self::new_empty()?;
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_clone_stored(
+                empty.machine,
+                from_cstr.as_ptr(),
+                to_cstr.as_ptr(),
+            )
+        };
+        check_err!(err_code)?;
+
+        Ok(())
+    }
+
+    /// Removes a stored machine directory. The directory must not be
+    /// in use; on failure some files may remain.
+    pub fn remove_stored(dir: &Path) -> Result<()> {
+        let dir_cstr = path_to_cstring(dir)?;
+        let empty = Self::new_empty()?;
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_remove_stored(empty.machine, dir_cstr.as_ptr()) };
+        check_err!(err_code)?;
+
+        Ok(())
+    }
+
+    /// An empty local machine object (`cm_new`): holds no instance,
+    /// exists only to dispatch stored-directory operations. The C API
+    /// rejects a NULL object despite its header's claim.
+    fn new_empty() -> Result<Self> {
+        let mut machine: *mut cartesi_machine_sys::cm_machine = ptr::null_mut();
+        let err_code = unsafe { cartesi_machine_sys::cm_new(&mut machine) };
         check_err!(err_code)?;
 
         Ok(Self { machine })
@@ -1087,6 +1153,114 @@ mod tests {
 
         let val_via_read_reg2 = machine.read_reg(reg)?;
         assert_eq!(val_via_read_reg2, new_reg_value);
+
+        Ok(())
+    }
+
+    /// The CoW clone loop's foundational facts (docs/plans/snapshots.md):
+    /// a clone loaded with SharingMode::All advances on disk and remains
+    /// a valid stored machine after drop, with the hash sidecars exact
+    /// when root_hash ran before the drop, and self-healing from the
+    /// recorded dirty pages when it did not (the crash shape). Both
+    /// clones must reload to the root hash of an in-memory advance of
+    /// the same cycles, and the clone source must not move.
+    #[test]
+    fn test_clone_stored_round_trip_sharing_all() -> Result<()> {
+        const PREFIX: u64 = 5_000_000;
+        const TARGET: u64 = 15_000_000;
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+        let hashed = tmp.path().join("hashed");
+        let crashed = tmp.path().join("crashed");
+
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+        assert_eq!(
+            machine.run(PREFIX)?,
+            constants::break_reason::REACHED_TARGET_MCYCLE
+        );
+        machine.store(&stored)?;
+        assert_eq!(
+            machine.run(TARGET)?,
+            constants::break_reason::REACHED_TARGET_MCYCLE
+        );
+        let expected = machine.root_hash()?;
+        drop(machine);
+
+        // Advance one clone on disk with the sidecars brought exact
+        // before the drop.
+        Machine::clone_stored(&stored, &hashed)?;
+        {
+            let mut on_disk = Machine::load_with_sharing(
+                &hashed,
+                &RuntimeConfig::quiet_console(),
+                SharingMode::All,
+            )?;
+            on_disk.run(TARGET)?;
+            on_disk.root_hash()?;
+        }
+
+        // Advance another and drop it cold: no root_hash, stale hash
+        // sidecars, dirtiness recorded. The crash shape.
+        Machine::clone_stored(&stored, &crashed)?;
+        {
+            let mut on_disk = Machine::load_with_sharing(
+                &crashed,
+                &RuntimeConfig::quiet_console(),
+                SharingMode::All,
+            )?;
+            on_disk.run(TARGET)?;
+        }
+
+        for dir in [&hashed, &crashed] {
+            let mut reloaded = Machine::load(dir, &RuntimeConfig::quiet_console())?;
+            assert_eq!(reloaded.mcycle()?, TARGET);
+            assert_eq!(reloaded.root_hash()?, expected);
+        }
+
+        // Clone isolation: writes to the clones never reach the source.
+        let mut source = Machine::load(&stored, &RuntimeConfig::quiet_console())?;
+        assert_eq!(source.mcycle()?, PREFIX);
+
+        Ok(())
+    }
+
+    /// A SharingMode::All load owns its directory for its lifetime (the
+    /// emulator's advisory locks): cloning it must fail until the
+    /// machine drops. And remove_stored deletes a stored machine
+    /// wholesale.
+    #[test]
+    fn test_clone_stored_locked_while_loaded_shared() -> Result<()> {
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+        let blocked = tmp.path().join("blocked");
+        let after = tmp.path().join("after");
+
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+        machine.run(1_000_000)?;
+        machine.store(&stored)?;
+        drop(machine);
+
+        {
+            let _held = Machine::load_with_sharing(
+                &stored,
+                &RuntimeConfig::quiet_console(),
+                SharingMode::All,
+            )?;
+            assert!(
+                Machine::clone_stored(&stored, &blocked).is_err(),
+                "cloning a directory loaded SharingMode::All must fail"
+            );
+        }
+
+        // A fresh destination after the drop: the failed attempt may
+        // leave partial files behind, but the lock is gone.
+        Machine::clone_stored(&stored, &after)?;
+        assert!(after.join("config.json").exists());
+
+        Machine::remove_stored(&after)?;
+        assert!(!after.exists());
 
         Ok(())
     }

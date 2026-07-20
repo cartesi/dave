@@ -11,10 +11,10 @@
 pub mod machine {
     use cartesi_machine_sys::*;
     // pub const CYCLE_MAX: u64 = CM_MCYCLE_MAX as u64;
-    pub const HASH_SIZE: u32 = CM_HASH_SIZE as u32;
-    pub const HASH_TREE_LOG2_WORD_SIZE: u32 = CM_HASH_TREE_LOG2_WORD_SIZE as u32;
-    pub const HASH_TREE_LOG2_PAGE_SIZE: u32 = CM_HASH_TREE_LOG2_PAGE_SIZE as u32;
-    pub const HASH_TREE_LOG2_ROOT_SIZE: u32 = CM_HASH_TREE_LOG2_ROOT_SIZE as u32;
+    pub const HASH_SIZE: u32 = CM_HASH_SIZE;
+    pub const HASH_TREE_LOG2_WORD_SIZE: u32 = CM_HASH_TREE_LOG2_WORD_SIZE;
+    pub const HASH_TREE_LOG2_PAGE_SIZE: u32 = CM_HASH_TREE_LOG2_PAGE_SIZE;
+    pub const HASH_TREE_LOG2_ROOT_SIZE: u32 = CM_HASH_TREE_LOG2_ROOT_SIZE;
 }
 
 pub mod ar {

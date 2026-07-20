@@ -12,20 +12,30 @@ fn main() {
         .canonicalize()
         .expect("cannot canonicalize path");
 
-    // Clean build artifacts and start from scratch
-    // clean(&machine_dir_path);
+    // Where libcartesi comes from, in order of precedence:
+    // 1. the `external_cartesi` feature (LIBCARTESI_PATH, or the submodule's
+    //    src/ if unset);
+    // 2. a LIBCARTESI_PATH in the environment (e.g. exported by the nix
+    //    devshell), even without the feature;
+    // 3. fallback: build the emulator from the `machine/emulator` submodule.
+    // The fallback is what lets these bindings track an arbitrary emulator
+    // commit: unset LIBCARTESI_PATH (or point it at the submodule's src/)
+    // and cargo builds whatever the submodule is checked out at.
+    let external_lib_dir = env::var("LIBCARTESI_PATH").ok().map(PathBuf::from);
 
-    // tell Cargo where to look for libraries
     cfg_if::cfg_if! {
         if #[cfg(feature = "external_cartesi")] {
-            let libpath =
-                env::var("LIBCARTESI_PATH")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| machine_dir_path.join("src"));
-            println!("cargo:rustc-link-search={}", libpath.to_str().unwrap());
+            let libpath = external_lib_dir
+                .clone()
+                .unwrap_or_else(|| machine_dir_path.join("src"));
+            link_external(&libpath, &out_path);
         } else {
-            build_cm::build(&machine_dir_path, &out_path);
-            println!("cargo:rustc-link-search={}", out_path.to_str().unwrap());
+            if let Some(libpath) = external_lib_dir.as_ref() {
+                link_external(libpath, &out_path);
+            } else {
+                build_cm::build(&machine_dir_path, &out_path);
+                println!("cargo:rustc-link-search={}", out_path.to_str().unwrap());
+            }
         }
     }
 
@@ -65,19 +75,19 @@ fn main() {
     //  Generate bindings
     //
 
-    // find headers
-    #[allow(clippy::needless_late_init)]
-    let include_path;
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "external_cartesi")] {
-            include_path = env::var("INCLUDECARTESI_PATH")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| machine_dir_path.join("src"));
-
-        } else {
-            include_path = machine_dir_path.join("src");
-        }
-    };
+    // Find headers, mirroring the library precedence: INCLUDECARTESI_PATH
+    // wins; an external lib dir implies its sibling include/cartesi-machine
+    // (the emulator's install layout); otherwise the submodule sources.
+    let include_path = env::var("INCLUDECARTESI_PATH")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(|| {
+            external_lib_dir
+                .as_ref()
+                .and_then(|lib| lib.parent().map(|p| p.join("include/cartesi-machine")))
+                .filter(|p| p.join("machine-c-api.h").exists())
+        })
+        .unwrap_or_else(|| machine_dir_path.join("src"));
 
     // generate machine api
     let machine_bindings = bindgen::Builder::default()
@@ -103,6 +113,38 @@ fn main() {
     );
     println!("cargo::rerun-if-env-changed=UARCH_PRISTINE_HASH_PATH");
     println!("cargo::rerun-if-env-changed=UARCH_PRISTINE_RAM_PATH");
+    println!("cargo::rerun-if-env-changed=LIBCARTESI_PATH");
+    println!("cargo::rerun-if-env-changed=INCLUDECARTESI_PATH");
+}
+
+// Stage the external static archives into OUT_DIR and search only there.
+// Searching the provider's lib dir directly is not safe: it usually also
+// contains libcartesi dylibs, and ld64 prefers a dylib over an archive
+// even under rustc's `static=` modifier, producing binaries that need an
+// rpath into the provider's tree at runtime.
+fn link_external(libdir: &std::path::Path, out_path: &std::path::Path) {
+    stage_archive(&libdir.join("libcartesi.a"), out_path);
+
+    // Only present in installs built with the jsonrpc machine; required
+    // just for the `remote_machine` feature.
+    let jsonrpc = libdir.join("libcartesi_jsonrpc.a");
+    if jsonrpc.exists() {
+        stage_archive(&jsonrpc, out_path);
+    }
+
+    println!("cargo:rustc-link-search={}", out_path.to_str().unwrap());
+}
+
+fn stage_archive(archive: &std::path::Path, out_path: &std::path::Path) {
+    let staged = out_path.join(archive.file_name().unwrap());
+    // fs::copy preserves the source mode; a nix-store source stages a
+    // read-only copy that the next build-script run cannot overwrite.
+    if staged.exists() {
+        std::fs::remove_file(&staged)
+            .unwrap_or_else(|e| panic!("failed to unstage `{}`: {e}", staged.display()));
+    }
+    std::fs::copy(archive, &staged)
+        .unwrap_or_else(|e| panic!("failed to copy `{}` to OUT_DIR: {e}", archive.display()));
 }
 
 #[cfg(not(feature = "external_cartesi"))]
