@@ -3,14 +3,17 @@
 Status: campaign test goals met within the stated scope; remaining gaps are
 explicit non-claims
 
-Last reviewed: 2026-07-20
+Last reviewed: 2026-07-21
 
-Contract and test candidate: `9b0198b1556a877f3ad9cd8a371a70501e6e7def`
+Solidity and test tree: `ac3bea0c5057702e5778b3ea00086bfc31cc68ea`
 
-This revision updates the closed campaign report through the simplification
-batch and its coverage follow-up. Earlier snapshots survive in the `REVIEW.md`
-validation entries. Subsequent revisions through this report changed
-documentation only.
+Post-rebase release-calibration candidate:
+`7565ec29797388a0108a267ba0b4676d09b63837`
+
+The first revision contains the last Solidity or test change. The second adds
+the exact official-Foundry calibration guard and runbook alignment without
+changing that Solidity and test tree. Earlier snapshots survive in the
+`REVIEW.md` validation entries. This report revision changes documentation only.
 
 This report assesses the tests added or reorganized during the contract review.
 It is a current assessment, not a chronological change log. Findings and their
@@ -43,9 +46,9 @@ are not reasons to keep adding unrelated tests to this branch.
 
 ## Scope and counting
 
-The assessed scope is the Solidity dispute game under `prt/contracts` plus the
-three downstream `rollups-contracts` settlement tests. The following remain out
-of scope:
+The assessed scope is the Solidity dispute game under `prt/contracts` plus four
+downstream `rollups-contracts` integration tests. The following remain out of
+scope:
 
 - the implementation semantics of the state-transition function;
 - the Rust node and Lua client;
@@ -85,7 +88,7 @@ of this report evaluates domains, oracles, and failure sensitivity instead.
 | Compatibility | Match snapshots, events, errors, hashes, and public precedence tests | ABI, storage, raw encoding, selectors, and observable ordering | Hash comparison remains a manual release check |
 | Mutation sensitivity | Four targeted manual mutations | Each mutation was killed by a named test family | No automated mutation score or systematic campaign |
 | Gas | 18 retained witnesses plus exact formula and callback suites | Release-pinned measurements and enforced caps | Leaf proof is a provisional subsidy, not a retained maximum |
-| Downstream integration | `rollups-contracts` | Settlement, capped payout, residual burn, and callback exhaustion | No real validator node or Lua client |
+| Downstream integration | `rollups-contracts` | Factory wiring, staged-result acceptance, sentry rotation, capped payout, residual burn, and callback exhaustion | No real validator node or Lua client |
 | Coverage map | `just coverage` | Points to source locations worth investigation | IR-minimum mappings are directional and exclude several special-purpose suites |
 
 Each layer has one job. Characterization should not become the semantic oracle;
@@ -240,15 +243,15 @@ their override and seed.
 
 | Check | Result |
 | --- | --- |
-| Full `test-disputes` gate, Forge 1.5.1-dev | 231 passed |
+| Full `test-disputes` gate, official Forge 1.5.1 | 231 passed |
 | Clock and MatchClocks focused suites, seed `0x5eed` | 36 passed; all 12 fuzz properties passed 10,000 runs |
 | Match phase, identity, parity, and validation, seed `0x5eed` | 24 passed; both fuzz properties passed 10,000 runs |
 | Positive lifecycle invariant | 256 runs x 128 depth = 32,768 handler invocations; 0 handler reverts or discards |
 | Rejection lifecycle invariant | 128 runs x 128 depth = 16,384 mixed handler invocations; 0 handler reverts or discards |
-| Retained gas witnesses, Forge 1.5.1-dev | 18 of 18 passed at the recalibrated allocations |
+| Clean post-rebase gas checkpoint, official Forge 1.5.1 | 18 of 18 passed on the exact release-calibration candidate; reproduced the 125,000 and 363,000 recommendations exactly; see [REVIEW.md](REVIEW.md#release-calibration-checkpoint-after-rebase) |
 | Clean pre-rebase gas checkpoint, Forge 1.4.3 | 18 of 18 passed on the candidate-equivalent tree recorded in [REVIEW.md](REVIEW.md#release-calibration-checkpoint-before-rebase); reproduced the 125,000 and 363,000 recommendations exactly |
-| Downstream `rollups-contracts` | 3 of 3 passed; both fuzz properties used 256 runs |
-| Coverage map | 204 included tests passed |
+| Downstream `rollups-contracts`, official Forge 1.5.1 | 4 of 4 passed; all three fuzz properties used 256 runs |
+| Coverage map, official Forge 1.5.1 | 204 included tests passed |
 
 The coverage summary mapped 693/705 lines, 715/727 statements, 65/138
 branches, and 145/145 functions. `Clock`, `Match`, and `Time` each mapped every
@@ -312,10 +315,11 @@ one of the explicit deferred questions above as its own scoped task. More fixed
 lifecycle traces or higher headline counts, by themselves, would now have
 diminishing audit value.
 
-The final `test-disputes` gate passed all 231 tests on the contract and test
-candidate `9b0198b1556a877f3ad9cd8a371a70501e6e7def`, and the documentation
-consistency checks passed. This satisfies the stop rule and closes the campaign.
-The simplification batch and its coverage follow-up reopened the closed campaign
+The final `test-disputes` gate passed all 231 tests on release-calibration
+candidate `7565ec29797388a0108a267ba0b4676d09b63837`, whose Solidity and test tree
+ends at `ac3bea0c5057702e5778b3ea00086bfc31cc68ea`. The documentation consistency
+checks also passed. This satisfies the stop rule and closes the campaign. The
+simplification batch and its coverage follow-up reopened the closed campaign
 under this rule's own terms: each added test protects a new production change or
 pins a behavior the follow-up established, and this revision restores the report
 through the current tested contract and test tree.

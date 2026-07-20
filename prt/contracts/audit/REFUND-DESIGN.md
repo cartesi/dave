@@ -3,7 +3,7 @@
 Status: accounting, exact refund formula, and callback boundary implemented;
 seven actions calibrated; leaf proof uses an explicit provisional subsidy
 
-Last reviewed: 2026-07-20
+Last reviewed: 2026-07-21
 
 This document relates three accounting flows:
 
@@ -289,13 +289,13 @@ CI asserts that the complete reviewed margin remains; it does not wait for the
 literal cap itself to be crossed. Solidity 0.8.30, optimized IR with 200 runs,
 the Prague EVM, and the dependencies in `soldeer.lock` are pinned. The current
 witnesses, including the simplification batch's recalibrated advance and inner
-seal allocations, reproduced under local Forge 1.5.1-dev and the clean
-pre-rebase Forge 1.4.3 checkpoint recorded in
-[`REVIEW.md`](REVIEW.md#release-calibration-checkpoint-before-rebase).
+seal allocations, reproduced under official Forge 1.5.1 on clean post-rebase
+candidate `7565ec29797388a0108a267ba0b4676d09b63837`. All 18 witnesses matched the
+historical pre-rebase Forge 1.4.3 checkpoint, including the 125,000-gas advance
+and 363,000-gas inner-seal recommendations; see the
+[post-rebase release record](REVIEW.md#release-calibration-checkpoint-after-rebase).
 Compiler, EVM, dependency, geometry, or supported-proof changes require a new
-calibration even when an old ceiling happens to pass. The planned rebase changes
-the Foundry pin, so this release checkpoint must be repeated on the clean
-post-rebase candidate before merge.
+calibration even when an old ceiling happens to pass.
 
 The production-formula campaign separately pins the three-way minimum rather
 than selecting an allocation. Independent timeout-action twins first recover

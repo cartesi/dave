@@ -3,7 +3,7 @@
 Status: complete for this campaign; deferred work and release gates remain
 explicit below
 
-Last reviewed: 2026-07-20
+Last reviewed: 2026-07-21
 
 This ledger records the reviewed conclusions and follow-up work for the Solidity
 dispute game under `prt/contracts/`. It is deliberately separate from the
@@ -2105,8 +2105,9 @@ After the simplification batch:
   the height-48, height-17, and height-27 bonds 0.34115, 0.1474, and 0.2099
   ETH, and the target height-55 and height-37 bonds 0.3849 and 0.2724 ETH.
   All 18 witnesses and the updated bond-policy checkpoint pass under local
-  Forge 1.5.1-dev. The clean release-Forge cross-check is recorded in the
-  pre-rebase calibration checkpoint below.
+  Forge 1.5.1-dev. The historical clean release-Forge cross-check is recorded
+  in the pre-rebase calibration checkpoint below; the current release record
+  follows it.
 - The complete non-FFI gate passed 229 tests, including three new
   `pausedAllowance` regressions and a new zero-height
   `create` assertion regression. `rollups-contracts` passed all 3 downstream
@@ -2179,9 +2180,71 @@ reserves and bonds, and economic policy remain in
 ABI, storage, and pending deployment-artifact results remain in this ledger and
 [`TEST-REPORT.md`](TEST-REPORT.md).
 
-This is a pre-rebase checkpoint, not final release approval. The completed
-history rewrite replaced revision identifiers but preserved the contract and
-test tree exactly. The planned rebase changes the Foundry pin, which is a
-recalibration trigger under
-[`GAS-CALIBRATION.md`](GAS-CALIBRATION.md), so the complete procedure must run
-again on the clean post-rebase candidate and append a new record before merge.
+This is a historical pre-rebase checkpoint, not final release approval. The
+completed history rewrite replaced revision identifiers but preserved the
+contract and test tree exactly. The rebase changed the Foundry pin, which is a
+recalibration trigger under [`GAS-CALIBRATION.md`](GAS-CALIBRATION.md). The
+following post-rebase record completes that required rerun.
+
+### Release calibration checkpoint after rebase
+
+On 2026-07-21, the release-pinned gas recipe ran from a clean worktree at
+post-rebase candidate `7565ec29797388a0108a267ba0b4676d09b63837` on macOS
+26.5.2 (Darwin 25.5.0) arm64. The last Solidity or test change is
+`ac3bea0c5057702e5778b3ea00086bfc31cc68ea`; the intervening audit and
+calibration commits do not change that tree.
+
+The reproducibility inputs were:
+
+```text
+Forge: 1.5.1-v1.5.1
+Forge commit: b0a9dd9ceda36f63e2326ce530c10e6916f4b8a2
+release archive sha256: b3bf1752be066e0877911721e0624058171c88fc5616e228937fe4620b41c40d
+forge binary sha256: 051dc63dd492b3eb85a8d4fecafd4b0701ad9b2b2ece92237e9ceee3f589ad5c
+effective config: {"solc":"0.8.30","via_ir":true,"optimizer":true,"optimizer_runs":200,"evm_version":"prague"}
+foundry.toml sha256: 52cbcb59a04926e546a2498ad27383b6f3670dcd6de4c1e051b118190d87acf6
+soldeer.lock sha256: fdd646e1cc6cd5d2308d22c0f97fabc1f6df4c72ec14703e918a78fe8b1a2f53
+dependency digest: ef44ca028e8ae45ab0d7a6b183c9db0fded37461db8355456f2b2b876ce57ac3
+machine/emulator: 8bfca6912f4849e03b7b55677e17e385c0b2dfbe
+machine/emulator/third-party/riscv-arch-test: 8f92acd11aa5d59005505ec7a48569c75e128167
+machine/emulator/third-party/riscv-tests: a64ad67b8235c681cd244b087ced36c4d5df3cb9
+machine/emulator/third-party/riscv-tests/env: d3931fa7c5d3fd9725351dc2fe26f578eb782335
+machine/step: 3f5d163df0f7564fef3345fc919252a371e5fb9f
+machine/step/lib/forge-std: 1714bee72e286e73f76e320d110e0eaf5c4e649d
+```
+
+The run used no `FOUNDRY_*` overrides. An earlier command placed the release
+binary before `direnv`, whose environment then restored local Forge 1.5.1-dev.
+The former prefix check accepted that development build. Its matching
+measurements are diagnostic only. The recipe now requires the exact
+`1.5.1-v1.5.1` version string; the unqualified development environment fails
+closed before measurement.
+
+All 18 retained witnesses passed and reproduced the pre-rebase measurements
+exactly. The first charged right advance measured 114,077 gas and retained the
+125,000-gas allocation. The full-proof position-one inner seal measured 331,520
+gas and retained the 363,000-gas allocation. The post-rebase rerun required no
+further `Gas` or `Bond` change. The terminal maximum remains 948,000 gas; the
+supported work reserves, bonds, fee boundary, and provisional leaf-proof policy
+remain those derived in
+[`REFUND-DESIGN.md`](REFUND-DESIGN.md).
+
+Official Forge 1.5.1 also passed all 231 dispute tests across 52 suites and all
+4 downstream `rollups-contracts` tests. The three downstream fuzz properties
+used 256 runs each; the deterministic gas-exhausting winner regression staged
+and accepted the result, then recovered the old tournament separately. The
+coverage recipe passed 204 included tests and mapped 693/705 lines, 715/727
+statements, 65/138 branches, and 145/145 functions, exactly reproducing the
+current snapshot in [`TEST-REPORT.md`](TEST-REPORT.md).
+
+The compatibility witnesses also reproduced exactly:
+
+```text
+Tournament ABI sha256: 67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a
+semantic storage-layout sha256: 952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329
+metadata-free creation bytecode sha256: a638837b16a7cb21139706ff3aaecbb79a2f3b663d1b1dbb50f1e0243735ed4c
+metadata-free runtime bytecode sha256: 631eb0908dfce360f6b6d85fb827ff4c5fe201b9e48e6af74b99f0cd35d2d5d3
+```
+
+No node source changed. Deployment and CREATE2 artifacts remain to be
+regenerated before release.
