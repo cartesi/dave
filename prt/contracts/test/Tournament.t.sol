@@ -604,6 +604,54 @@ contract TournamentTest is Util {
         topTournament.getMatchCycle(matchId.hashFromId());
     }
 
+    function testWinLeafMatchPreservesClockBeforeMatchErrorPrecedence() public {
+        ITournament tournament =
+            Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
+        uint256 opponent = 1;
+        Util.joinTournament(tournament, opponent);
+        Match.Id memory matchId = Util.historicalMatchId(opponent, 0);
+        // Keep a dangling commitment available so resolution creates another
+        // match and the tournament-level finished guard does not mask the
+        // deleted-match error below.
+        Util.joinTournament(tournament, 2);
+        Match.Id memory reversedId = Match.Id({
+            commitmentOne: matchId.commitmentTwo,
+            commitmentTwo: matchId.commitmentOne
+        });
+        Match.Id memory unknownId = Match.Id({
+            commitmentOne: Tree.Node.wrap(bytes32(uint256(0xdead))),
+            commitmentTwo: Tree.Node.wrap(bytes32(uint256(0xbeef)))
+        });
+
+        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        tournament.winLeafMatch(
+            unknownId, Tree.ZERO_NODE, Tree.ZERO_NODE, bytes("")
+        );
+
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        tournament.winLeafMatch(
+            reversedId, Tree.ZERO_NODE, Tree.ZERO_NODE, bytes("")
+        );
+
+        (Clock.State memory clockOne,) =
+            tournament.getCommitment(matchId.commitmentOne);
+        vm.roll(
+            Time.Instant.unwrap(clockOne.startInstant.add(clockOne.allowance))
+        );
+        (,,, uint64 height) = tournament.tournamentLevelConstants();
+        Util.winMatchByTimeout(
+            tournament,
+            matchId,
+            playerNodes[opponent][height - 1],
+            playerNodes[opponent][height - 1]
+        );
+
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        tournament.winLeafMatch(
+            matchId, Tree.ZERO_NODE, Tree.ZERO_NODE, bytes("")
+        );
+    }
+
     function testEliminateByTimeout() public {
         topTournament = Util.initializePlayer0Tournament(FACTORY);
 

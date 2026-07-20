@@ -254,7 +254,6 @@ contract Tournament is ITournament {
     ) external override refundable(Gas.ADVANCE_MATCH) tournamentNotFinished {
         Match.IdHash matchIdHash = _matchId.hashFromId();
         Match.State storage _matchState = matches[matchIdHash];
-        _matchState.requireExist();
         _matchState.requireCanBeAdvanced();
 
         _matchState.advanceBisection(
@@ -293,7 +292,9 @@ contract Tournament is ITournament {
         refundable(Gas.WIN_MATCH_BY_TIMEOUT)
         tournamentNotFinished
     {
-        matches[_matchId.hashFromId()].requireExist();
+        // Timeouts are Match-phase-neutral by design: for any existing
+        // match, the clock configuration alone decides the outcome.
+        matches[_matchId.hashFromId()].requireExists();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
 
@@ -348,7 +349,9 @@ contract Tournament is ITournament {
         refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT)
         tournamentNotFinished
     {
-        matches[_matchId.hashFromId()].requireExist();
+        // Timeouts are Match-phase-neutral by design: for any existing
+        // match, the clock configuration alone decides the outcome.
+        matches[_matchId.hashFromId()].requireExists();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
 
@@ -434,7 +437,6 @@ contract Tournament is ITournament {
         }
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
-        _matchState.requireExist();
         _matchState.requireCanBeSealed();
 
         {
@@ -472,23 +474,18 @@ contract Tournament is ITournament {
         _clockOne.requireInitialized();
         _clockTwo.requireInitialized();
 
-        Match.State storage _matchState = matches[_matchId.hashFromId()];
-        _matchState.requireExist();
-        _matchState.requireIsSealed();
-
-        (
-            Machine.Hash _agreeHash,
-            uint256 _agreeCycle,
-            Machine.Hash _finalStateOne,
-            Machine.Hash _finalStateTwo
-        ) = _matchState.getDivergence(args.commitmentArgs);
+        Match.SealedView memory divergence = Match.sealedView(
+            matches[_matchId.hashFromId()], args.commitmentArgs.height
+        );
+        uint256 agreeCycle =
+            args.commitmentArgs.toCycle(divergence.divergencePosition);
 
         IStateTransition stateTransition = _tournamentArgs().stateTransition;
         Machine.Hash _finalState = Machine.Hash
             .wrap(
                 stateTransition.transitionState(
-                    Machine.Hash.unwrap(_agreeHash),
-                    _agreeCycle,
+                    Machine.Hash.unwrap(divergence.agreeState),
+                    agreeCycle,
                     proofs,
                     args.provider
                 )
@@ -497,8 +494,8 @@ contract Tournament is ITournament {
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
             require(
-                _finalState.eq(_finalStateOne),
-                WrongFinalState(1, _finalState, _finalStateOne)
+                _finalState.eq(divergence.finalStateOne),
+                WrongFinalState(1, _finalState, divergence.finalStateOne)
             );
 
             MatchClocks.settleProvenLeafWinnerAt(
@@ -517,8 +514,8 @@ contract Tournament is ITournament {
             );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
             require(
-                _finalState.eq(_finalStateTwo),
-                WrongFinalState(2, _finalState, _finalStateTwo)
+                _finalState.eq(divergence.finalStateTwo),
+                WrongFinalState(2, _finalState, divergence.finalStateTwo)
             );
 
             MatchClocks.settleProvenLeafWinnerAt(
@@ -568,7 +565,6 @@ contract Tournament is ITournament {
         }
 
         Match.State storage _matchState = matches[_matchId.hashFromId()];
-        _matchState.requireExist();
         _matchState.requireCanBeSealed();
 
         Time.Duration _maxDuration;
@@ -596,7 +592,7 @@ contract Tournament is ITournament {
             _matchId.commitmentTwo,
             _finalStateTwo,
             _maxDuration,
-            _matchState.toCycle(args.commitmentArgs),
+            args.commitmentArgs.toCycle(_matchState.runningLeafPosition),
             args.level + 1
         );
         matchIdFromInnerTournaments[_inner] = _matchId;
@@ -624,8 +620,7 @@ contract Tournament is ITournament {
         Match.IdHash _matchIdHash = _matchId.hashFromId();
 
         Match.State storage _matchState = matches[_matchIdHash];
-        _matchState.requireExist();
-        _matchState.requireIsSealed();
+        _matchState.requireSealed();
 
         require(
             !_childTournament.canBeEliminated(),
@@ -683,8 +678,7 @@ contract Tournament is ITournament {
         Match.IdHash _matchIdHash = _matchId.hashFromId();
 
         Match.State storage _matchState = matches[_matchIdHash];
-        _matchState.requireExist();
-        _matchState.requireIsSealed();
+        _matchState.requireSealed();
 
         require(
             _childTournament.canBeEliminated(),
@@ -778,11 +772,11 @@ contract Tournament is ITournament {
         override
         returns (uint256)
     {
-        Match.State memory _m = getMatch(_matchIdHash);
-        _m.requireExist();
+        Match.State storage _matchState = matches[_matchIdHash];
+        _matchState.requireExists();
         Commitment.Arguments memory args = tournamentArguments().commitmentArgs;
 
-        return args.toCycle(_m.runningLeafPosition);
+        return args.toCycle(_matchState.runningLeafPosition);
     }
 
     /// @notice Return core tournament parameters derived from `TournamentArguments`.
@@ -915,7 +909,7 @@ contract Tournament is ITournament {
         if (_hasDanglingCommitment) {
             TournamentArguments memory args = tournamentArguments();
             (Match.IdHash _matchId, Match.State memory _matchState) = Match.create(
-                args.commitmentArgs,
+                args.commitmentArgs.height,
                 _danglingCommitment,
                 _rootHash,
                 _leftNode,

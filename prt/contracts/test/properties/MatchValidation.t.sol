@@ -3,6 +3,7 @@
 
 pragma solidity ^0.8.17;
 
+import {stdError} from "forge-std-1.9.6/src/StdError.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {ITournament} from "src/ITournament.sol";
@@ -14,6 +15,16 @@ import {Tree} from "src/types/Tree.sol";
 import {SmallFullTree} from "../fixtures/SmallFullTree.sol";
 
 library MatchValidationMutation {
+    function create(
+        uint64 height,
+        Tree.Node one,
+        Tree.Node two,
+        Tree.Node leftNodeOfTwo,
+        Tree.Node rightNodeOfTwo
+    ) external pure {
+        Match.create(height, one, two, leftNodeOfTwo, rightNodeOfTwo);
+    }
+
     function advance(
         Match.State storage state,
         Tree.Node leftNode,
@@ -51,6 +62,34 @@ contract MatchValidationTest is Test {
         Machine.Hash.wrap(bytes32(uint256(0x12)));
 
     Match.State private _state;
+
+    function testCreateRejectsInvalidNewcomerChildren() public {
+        SmallFullTree.Data memory one =
+            SmallFullTree.build(bytes32(uint256(1)), 1);
+        SmallFullTree.Data memory two =
+            SmallFullTree.build(bytes32(uint256(2)), 1);
+        (Tree.Node twoLeft, Tree.Node twoRight) = two.children(1, 0);
+
+        vm.expectRevert(stdError.assertionError);
+        MatchValidationMutation.create(
+            1, one.root(), two.root(), _differentNode(twoLeft), twoRight
+        );
+    }
+
+    function testCreateRejectsZeroHeight() public {
+        SmallFullTree.Data memory one =
+            SmallFullTree.build(bytes32(uint256(1)), 1);
+        SmallFullTree.Data memory two =
+            SmallFullTree.build(bytes32(uint256(2)), 1);
+        (Tree.Node twoLeft, Tree.Node twoRight) = two.children(1, 0);
+
+        // A zero-height state would be phase-indistinguishable from SEALED,
+        // so creation trips the birth-site invariant assert.
+        vm.expectRevert(stdError.assertionError);
+        MatchValidationMutation.create(
+            0, one.root(), two.root(), twoLeft, twoRight
+        );
+    }
 
     function testAdvanceRejectsInvalidCurrentParentChildrenWithoutMutation()
         public
@@ -253,7 +292,7 @@ contract MatchValidationTest is Test {
         id = Match.Id({commitmentOne: one.root(), commitmentTwo: two.root()});
         (Tree.Node twoLeft, Tree.Node twoRight) = two.children(height, 0);
         (, Match.State memory state) = Match.create(
-            args, id.commitmentOne, id.commitmentTwo, twoLeft, twoRight
+            args.height, id.commitmentOne, id.commitmentTwo, twoLeft, twoRight
         );
         _state = state;
     }

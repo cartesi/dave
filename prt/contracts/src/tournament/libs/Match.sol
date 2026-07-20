@@ -11,15 +11,14 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// @notice Advances alternating bisection until the first divergent leaf is
 /// sealed.
 /// @dev `State` preserves a phase-overloaded external tuple. New raw-state
-/// readers should use the derived phase and phase-specific views instead of
-/// interpreting slots directly.
+/// readers should establish the derived phase and use `SealedView` for sealed
+/// state instead of interpreting its overloaded slots directly.
 library Match {
     using Tree for Tree.Node;
     using Match for Id;
     using Match for State;
     using Machine for Machine.Hash;
     using Commitment for Tree.Node;
-    using Commitment for Commitment.Arguments;
 
     //
     // Id
@@ -66,19 +65,9 @@ library Match {
         RIGHT
     }
 
-    enum Side {
+    enum CommitmentSide {
         ONE,
         TWO
-    }
-
-    /// @dev The unresolved representation shared by bisection and the final
-    /// reveal at height one.
-    struct BisectionView {
-        Tree.Node revealingParent;
-        Tree.Node waitingLeft;
-        Tree.Node waitingRight;
-        uint256 segmentStart;
-        uint64 height;
     }
 
     struct SealedView {
@@ -94,16 +83,16 @@ library Match {
         uint256 position;
     }
 
-    // uint64 log2step; // constant
-    // uint64 height; // constant
-
     function create(
-        Commitment.Arguments memory args,
+        uint64 height,
         Tree.Node one,
         Tree.Node two,
         Tree.Node leftNodeOfTwo,
         Tree.Node rightNodeOfTwo
     ) internal pure returns (IdHash, State memory) {
+        // A zero-height state would be born phase-indistinguishable from
+        // SEALED; supported geometries are validated to positive height.
+        assert(height > 0);
         assert(two.verify(leftNodeOfTwo, rightNodeOfTwo));
 
         Id memory matchId = Id({commitmentOne: one, commitmentTwo: two});
@@ -113,7 +102,7 @@ library Match {
             leftNode: leftNodeOfTwo,
             rightNode: rightNodeOfTwo,
             runningLeafPosition: 0,
-            currentHeight: args.height,
+            currentHeight: height,
             isInit: true
         });
 
@@ -169,16 +158,15 @@ library Match {
             branch == Branch.LEFT ? state.leftNode : state.rightNode;
         divergence.position = state.runningLeafPosition;
         if (branch == Branch.RIGHT) ++divergence.position;
-        Side revealingSide = _sealingSide(args.height);
+        CommitmentSide revealingSide = _finalRevealingSide(args.height);
 
         _requireAgreeState(
             divergence, revealingSide, args, id, agreeState, agreeStateProof
         );
         (finalStateOne, finalStateTwo) =
-            _fixedSideFinalStates(divergence, revealingSide);
+            _finalStatesByCommitment(divergence, revealingSide);
 
-        _encodeDivergence(state, divergence, branch);
-        state._setAgreeState(agreeState);
+        _storeSealedDivergence(state, divergence, branch, agreeState);
     }
 
     //
@@ -188,31 +176,7 @@ library Match {
     /// zero-height state is phase-indistinguishable from SEALED because both have
     /// `isInit == true` and `currentHeight == 0`.
     function phase(State memory state) internal pure returns (Phase) {
-        if (!state.isInit) return Phase.UNINITIALIZED;
-        if (state.currentHeight > 1) return Phase.BISECTING;
-        if (state.currentHeight == 1) return Phase.READY_TO_SEAL;
-        return Phase.SEALED;
-    }
-
-    function bisectionView(State memory state)
-        internal
-        pure
-        returns (BisectionView memory view_)
-    {
-        state.requireExist();
-        Phase currentPhase = state.phase();
-        assert(
-            currentPhase == Phase.BISECTING
-                || currentPhase == Phase.READY_TO_SEAL
-        );
-
-        view_ = BisectionView({
-            revealingParent: state.otherParent,
-            waitingLeft: state.leftNode,
-            waitingRight: state.rightNode,
-            segmentStart: state.runningLeafPosition,
-            height: state.currentHeight
-        });
+        return _phase(state.isInit, state.currentHeight);
     }
 
     function sealedView(State memory state, uint64 totalHeight)
@@ -220,12 +184,16 @@ library Match {
         pure
         returns (SealedView memory view_)
     {
-        state.requireExist();
-        state.requireIsSealed();
+        Phase currentPhase = state.phase();
+        require(
+            currentPhase != Phase.UNINITIALIZED, ITournament.MatchDoesNotExist()
+        );
+        require(currentPhase == Phase.SEALED, ITournament.MatchIsNotSealed());
 
         Divergence memory divergence = _decodeDivergence(state);
-        (Machine.Hash finalStateOne, Machine.Hash finalStateTwo) =
-            _fixedSideFinalStates(divergence, _sealingSide(totalHeight));
+        (Machine.Hash finalStateOne, Machine.Hash finalStateTwo) = _finalStatesByCommitment(
+            divergence, _finalRevealingSide(totalHeight)
+        );
 
         view_ = SealedView({
             agreeState: state.otherParent.toMachineHash(),
@@ -239,64 +207,43 @@ library Match {
         return state.isInit;
     }
 
-    /// @dev This raw height predicate does not imply existence: uninitialized
-    /// zero storage also has height zero. Establish existence first when the
-    /// state may come from a mapping lookup.
     function isSealed(State memory state) internal pure returns (bool) {
-        return state.currentHeight == 0;
+        return state.phase() == Phase.SEALED;
     }
 
     function canBeSealed(State memory state) internal pure returns (bool) {
-        return state.currentHeight == 1;
+        return state.phase() == Phase.READY_TO_SEAL;
     }
 
     function canBeAdvanced(State memory state) internal pure returns (bool) {
-        return state.currentHeight > 1;
-    }
-
-    function toCycle(State memory state, Commitment.Arguments memory args)
-        internal
-        pure
-        returns (uint256)
-    {
-        return args.toCycle(state.runningLeafPosition);
-    }
-
-    function getDivergence(State memory state, Commitment.Arguments memory args)
-        internal
-        pure
-        returns (
-            Machine.Hash agreeHash,
-            uint256 agreeCycle,
-            Machine.Hash finalStateOne,
-            Machine.Hash finalStateTwo
-        )
-    {
-        assert(state.currentHeight == 0);
-        Divergence memory divergence = _decodeDivergence(state);
-        agreeHash = state.otherParent.toMachineHash();
-        agreeCycle = state.toCycle(args);
-        (finalStateOne, finalStateTwo) =
-            _fixedSideFinalStates(divergence, _sealingSide(args.height));
+        return state.phase() == Phase.BISECTING;
     }
 
     //
     // Requires
     //
-    function requireExist(State memory state) internal pure {
-        require(state.exists(), ITournament.MatchDoesNotExist());
+    function requireExists(State storage state) internal view {
+        require(state.isInit, ITournament.MatchDoesNotExist());
     }
 
-    function requireIsSealed(State memory state) internal pure {
-        require(state.isSealed(), ITournament.MatchIsNotSealed());
+    function requireSealed(State storage state) internal view {
+        Phase currentPhase = _establishedPhase(state);
+        require(currentPhase == Phase.SEALED, ITournament.MatchIsNotSealed());
     }
 
-    function requireCanBeSealed(State memory state) internal pure {
-        require(state.canBeSealed(), ITournament.MatchCannotBeSealed());
+    function requireCanBeSealed(State storage state) internal view {
+        Phase currentPhase = _establishedPhase(state);
+        require(
+            currentPhase == Phase.READY_TO_SEAL,
+            ITournament.MatchCannotBeSealed()
+        );
     }
 
-    function requireCanBeAdvanced(State memory state) internal pure {
-        require(state.canBeAdvanced(), ITournament.MatchCannotBeAdvanced());
+    function requireCanBeAdvanced(State storage state) internal view {
+        Phase currentPhase = _establishedPhase(state);
+        require(
+            currentPhase == Phase.BISECTING, ITournament.MatchCannotBeAdvanced()
+        );
     }
 
     //
@@ -311,15 +258,19 @@ library Match {
         return revealingLeft.eq(waitingLeft) ? Branch.RIGHT : Branch.LEFT;
     }
 
-    function _sealingSide(uint64 totalHeight) private pure returns (Side) {
+    function _finalRevealingSide(uint64 totalHeight)
+        private
+        pure
+        returns (CommitmentSide)
+    {
         // Commitment one reveals first; H - 1 advances make it the final
         // revealer exactly when the total height is odd.
-        return totalHeight % 2 == 1 ? Side.ONE : Side.TWO;
+        return totalHeight % 2 == 1 ? CommitmentSide.ONE : CommitmentSide.TWO;
     }
 
     function _requireAgreeState(
         Divergence memory divergence,
-        Side revealingSide,
+        CommitmentSide revealingSide,
         Commitment.Arguments memory args,
         Id calldata id,
         Machine.Hash agreeState,
@@ -333,16 +284,17 @@ library Match {
             return;
         }
 
-        Tree.Node commitment =
-            revealingSide == Side.ONE ? id.commitmentOne : id.commitmentTwo;
+        Tree.Node commitment = revealingSide == CommitmentSide.ONE
+            ? id.commitmentOne
+            : id.commitmentTwo;
         commitment.requireState(
             args.height, divergence.position - 1, agreeState, agreeStateProof
         );
     }
 
-    function _fixedSideFinalStates(
+    function _finalStatesByCommitment(
         Divergence memory divergence,
-        Side revealingSide
+        CommitmentSide revealingSide
     )
         private
         pure
@@ -350,16 +302,17 @@ library Match {
     {
         Machine.Hash revealingState = divergence.revealingLeaf.toMachineHash();
         Machine.Hash waitingState = divergence.waitingLeaf.toMachineHash();
-        if (revealingSide == Side.ONE) {
+        if (revealingSide == CommitmentSide.ONE) {
             return (revealingState, waitingState);
         }
         return (waitingState, revealingState);
     }
 
-    function _encodeDivergence(
+    function _storeSealedDivergence(
         State storage state,
         Divergence memory divergence,
-        Branch branch
+        Branch branch,
+        Machine.Hash agreeState
     ) private {
         assert(state.currentHeight == 1);
         // Preserve the external branch-dependent encoding: left stores
@@ -371,6 +324,7 @@ library Match {
             state.leftNode = divergence.revealingLeaf;
             state.runningLeafPosition = divergence.position;
         }
+        state.otherParent = Tree.Node.wrap(Machine.Hash.unwrap(agreeState));
         state.currentHeight = 0;
     }
 
@@ -394,10 +348,28 @@ library Match {
         });
     }
 
-    function _setAgreeState(State storage state, Machine.Hash agreeState)
-        internal
+    function _phase(bool isInit, uint64 currentHeight)
+        private
+        pure
+        returns (Phase)
     {
-        assert(state.currentHeight == 0);
-        state.otherParent = Tree.Node.wrap(Machine.Hash.unwrap(agreeState));
+        if (!isInit) return Phase.UNINITIALIZED;
+        if (currentHeight > 1) return Phase.BISECTING;
+        if (currentHeight == 1) return Phase.READY_TO_SEAL;
+        return Phase.SEALED;
+    }
+
+    /// @dev Establishes existence before any phase-specific error, reading
+    /// only the packed phase slot. `sealedView` is the memory-domain twin of
+    /// this precedence rule.
+    function _establishedPhase(State storage state)
+        private
+        view
+        returns (Phase currentPhase)
+    {
+        currentPhase = _phase(state.isInit, state.currentHeight);
+        require(
+            currentPhase != Phase.UNINITIALIZED, ITournament.MatchDoesNotExist()
+        );
     }
 }

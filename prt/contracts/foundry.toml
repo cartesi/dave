@@ -19,6 +19,9 @@ solc_version = "0.8.30"
 evm_version = "prague"
 fs_permissions = [{ access = "read-write", path = "deployments" }]
 
+[profile.default.fuzz]
+runs = 256
+
 [soldeer]
 remappings_location = "config"
 
