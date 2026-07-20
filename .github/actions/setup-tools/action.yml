@@ -57,3 +57,9 @@ runs:
 
     - name: Install just
       uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      with:
+        # Pinned like rust and foundry above: a floating "latest"
+        # upgrades CI's toolchain silently mid-week (1.56 -> 1.57
+        # landed between two runs of this workflow and muddied a
+        # two-day CI hunt). Bump deliberately.
+        just-version: "1.57.0"

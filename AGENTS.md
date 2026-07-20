@@ -90,6 +90,11 @@ When something fails mysteriously, run `just doctor` before debugging: it
 checks tools, submodules, bindings, machine images, and devnet artifacts,
 and prints the fixing command for anything missing.
 
+For long commands, prefer `just logged <file> <cmd...>`: it writes the
+full output to the file and reports the TRUE exit code. Piping through
+`tail`/`grep`/`head` reports the last pipe stage's status and has
+laundered real failures into green output more than once.
+
 At the end of a work session, run `just worktrees-sweep` (and
 `just rollups-tests::sweep` after reading e2e results): session worktrees
 accumulate regenerable bulk - build caches and e2e state - that outlives

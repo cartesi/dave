@@ -11,9 +11,27 @@ mod? rollups-contracts 'cartesi-rollups/contracts'
 mod? rollups-tests 'prt/tests/rollups'
 mod? programs 'test/programs'
 
+# Recipe lines with pipes fail honestly instead of reporting the
+# last stage's status (no recipe here pipes to head/tail, where
+# pipefail would surface benign SIGPIPEs).
+set shell := ["bash", "-o", "pipefail", "-cu"]
+
 [private]
 default:
     @just --list
+
+# Run a command with full output to a log file; print the tail and
+# the TRUE exit code. Shell pipelines like `cmd | tail` report the
+# LAST stage's status, silently laundering failures - this recipe
+# retires that trap for long builds and test runs.
+logged log +cmd:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    status=0
+    {{ cmd }} > "{{ log }}" 2>&1 || status=$?
+    tail -n 40 "{{ log }}"
+    echo "[logged] exit: $status (full log: {{ log }})"
+    exit $status
 
 # ------------------------------------------------------------------
 # Setup: one-time preparation. Idempotent; safe to re-run. Does NOT
@@ -30,8 +48,25 @@ update-submodules:
 apply-generated-files-diff VERSION="v0.20.0" FILEHASH="d9c2afcefc2759e7cd37bbedc83d54c81515f0fddb671103b489b8789aee33bb":
     #!/usr/bin/env bash
     set -euo pipefail
+    # Guard the arg-eating trap: `just <this-recipe> <another-recipe>`
+    # feeds the next recipe NAME into VERSION (just's CLI grammar; it
+    # cost two days of silent CI 404s, 2026-07-20). Chain via the
+    # `setup` recipe's dependency form instead.
+    if [[ ! "{{VERSION}}" =~ ^v[0-9] ]]; then
+      echo "error: VERSION '{{VERSION}}' does not look like a release tag." >&2
+      echo "hint: another CLI word was likely consumed as this recipe's argument;" >&2
+      echo "      invoke through 'just setup', or put this recipe last." >&2
+      exit 2
+    fi
     cd machine/emulator
-    wget -q -O add-generated-files.diff \
+    # curl over wget: wget -q swallowed the HTTP error entirely (two
+    # silent exit-8 CI failures, 2026-07-20, cause invisible). -fsSL
+    # is quiet on success and names the refusal on failure;
+    # --retry-all-errors also retries the 403s GitHub's asset rate
+    # limiter hands out. The sha256 gate below is the integrity
+    # check either way, and curl exists where wget does not (macOS).
+    curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
+      -o add-generated-files.diff \
       https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff
     trap 'rm -f add-generated-files.diff' EXIT
     echo "{{FILEHASH}} add-generated-files.diff" | sha256sum -c -
