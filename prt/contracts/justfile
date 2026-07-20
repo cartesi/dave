@@ -1,4 +1,5 @@
 BINDINGS_DIR := "./bindings-rs/src/contract"
+BIND_STAMP := "./bindings-rs/src/.bind-stamp"
 DEPLOYMENTS_DIR := "./deployments"
 SRC_DIR := "."
 BINDINGS_FILTER := "^[^I].+TournamentFactory|^Tournament$"
@@ -35,13 +36,31 @@ install-deps:
     forge soldeer install
 
 clean-bindings:
-    rm -rf {{BINDINGS_DIR}}
+    rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}
 
 clean-deployments:
     rm -rf {{DEPLOYMENTS_DIR}}
 
-bind: clean-bindings
+# The stamp hashes the contract sources, the config, and the forge
+# version; when it matches, the existing bindings are already correct.
+
+# regenerate Rust bindings only when their inputs changed
+bind:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    hash=$( (forge --version; \
+             cat foundry.toml soldeer.lock justfile; \
+             find src -name '*.sol' | LC_ALL=C sort | xargs cat) \
+           | sha256sum | cut -d' ' -f1 )
+    if [ -d "{{BINDINGS_DIR}}" ] && [ -f "{{BIND_STAMP}}" ] \
+       && [ "$(cat {{BIND_STAMP}})" = "$hash" ]; then
+      exit 0
+    fi
+    rm -rf {{BINDINGS_DIR}}
     forge bind --alloy --select "{{BINDINGS_FILTER}}" \
-    --module --bindings-path {{BINDINGS_DIR}} \
-    --skip-extra-derives \
-    --root {{SRC_DIR}}
+      --module --bindings-path {{BINDINGS_DIR}} \
+      --skip-extra-derives \
+      --root {{SRC_DIR}}
+    echo "$hash" > {{BIND_STAMP}}
+
+bind-force: clean-bindings bind

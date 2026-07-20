@@ -22,6 +22,7 @@ docs/
 # Forge deployment script
 /deployments
 /state.json
+/state.fingerprint
 
 # Forge coverage
 /coverage

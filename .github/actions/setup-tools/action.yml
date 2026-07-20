@@ -8,7 +8,9 @@ inputs:
   rust-version:
     description: 'Rust version to install (if Rust is setup)'
     required: false
-    default: '1.86'
+    # Keep in step with the release container (rust:1.90-trixie in
+    # build.yml); the workspace uses post-1.86 std APIs.
+    default: '1.90'
   foundry-version:
     description: 'Foundry version to install'
     required: false
@@ -36,7 +38,7 @@ runs:
       uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
       if: ${{ inputs.setup-rust == 'true' }}
       with:
-        components: rustfmt
+        components: rustfmt,clippy
         target: ${{ inputs.target }}
         toolchain: ${{ inputs.rust-version }}
         cache-on-failure: false
