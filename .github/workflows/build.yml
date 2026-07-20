@@ -1,6 +1,15 @@
 name: Build
+# Push covers the long-lived branches and release tags; pull_request
+# covers everything else, including forks (which get no CI at all
+# under a bare push trigger). The concurrency group below dedupes.
 on:
   push:
+    branches:
+      - main
+      - "next/*"
+    tags:
+      - "v*"
+  pull_request:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -105,8 +114,9 @@ jobs:
           just test-rollups-honeypot-ci
       # B2 batched sibling: SIGKILL mid advance batch, the resumed run
       # must re-execute the batch and settle identically to the oracle.
-      # Cheap (no dispute), and the only e2e that runs the node above
-      # snapshot gap 1.
+      # Cheap (no dispute), and the only e2e that puts a full
+      # multi-record batch under the kill (the harness default is
+      # gap 2, small batches).
       - name: Test batched catch-up kill
         timeout-minutes: 15
         run: |
@@ -163,11 +173,29 @@ jobs:
           rm ./xgenext2fs.deb
           xgenext2fs --version
 
+      # The from-source emulator build dominates this job. The tree is
+      # make-based and the diff apply detects an already-patched tree,
+      # so on a cache hit the same recipes below no-op; on an emulator
+      # bump the key changes and the from-source path runs for real.
+      - name: Emulator cache key
+        id: emulator-key
+        run: echo "sha=$(git rev-parse HEAD:machine/emulator)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache emulator build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: machine/emulator
+          key: emulator-build-${{ runner.os }}-${{ steps.emulator-key.outputs.sha }}
+
       # The version and diff hash live in the justfile recipe; CI must
-      # not carry its own copy of either.
+      # not carry its own copy of either. Dependency form (`setup`)
+      # deliberately: chaining recipes on one CLI feeds the NEXT
+      # recipe name into a parameterized recipe's arguments (just's
+      # grammar) - `apply-generated-files-diff build-emulator` once
+      # downloaded release "build-emulator" and 404ed silently.
       - name: Install Cartesi Machine
         run: |
-          just bundle-boost apply-generated-files-diff build-emulator
+          just setup
           sudo make -C machine/emulator install
 
       - name: Setup env
