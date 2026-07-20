@@ -43,6 +43,7 @@ contract RecursiveTournamentLifecycleTest is Test {
     address internal constant CLAIMER_ONE = address(0xa11ce);
     address internal constant CLAIMER_TWO = address(0xb0b);
     address internal constant CLAIMER_DANGLING = address(0xca11);
+    address internal constant CLAIMER_IMPOSTOR = address(0xbad);
 
     SmallTwoLevelTournamentFactory internal immutable FACTORY;
 
@@ -69,6 +70,7 @@ contract RecursiveTournamentLifecycleTest is Test {
         vm.deal(CLAIMER_ONE, 100 ether);
         vm.deal(CLAIMER_TWO, 100 ether);
         vm.deal(CLAIMER_DANGLING, 100 ether);
+        vm.deal(CLAIMER_IMPOSTOR, 100 ether);
 
         parent = InspectableTournament(
             address(
@@ -116,6 +118,75 @@ contract RecursiveTournamentLifecycleTest is Test {
         Match.Id memory finalMatch =
             _propagateChildWinner(SmallTwoLevelClaims.CLAIM_TWO, MAX_ALLOWANCE);
         _resolveFinalRootTimeout(SmallTwoLevelClaims.CLAIM_TWO, finalMatch);
+    }
+
+    /// @dev A child winner selects the parent side by contested final state,
+    /// not by tree identity. A distinct-root entrant sharing side one's final
+    /// state may win the child; propagation rejects that root's own children
+    /// and resolves the sealed match for parent side one.
+    function testChildWinnerSelectsParentSideByFinalStateNotByRoot() public {
+        _sealParent();
+
+        // The entrant shares contested side one's final state but not its
+        // root, and separately holds an unrelated parent commitment that
+        // pairs against the waiting dangling claim.
+        SmallFullTree.Data memory entrant = SmallTwoLevelClaims.childTreeVariant(
+            SmallTwoLevelClaims.CLAIM_ONE, CONTESTED_SEGMENT, 1
+        );
+        Tree.Node entrantRoot = _join(parent, entrant, CLAIMER_IMPOSTOR);
+        assertFalse(entrantRoot.eq(parentOne) || entrantRoot.eq(parentTwo));
+        _assertNodeEq(_join(child, entrant, CLAIMER_IMPOSTOR), entrantRoot);
+
+        ITournament.TournamentArguments memory args =
+            child.tournamentArguments();
+        vm.roll(_deadline(args.startInstant, args.allowance));
+        assertTrue(child.isFinished());
+        assertFalse(child.canBeEliminated());
+        _assertInnerWinner(
+            SmallTwoLevelClaims.CLAIM_ONE, entrantRoot, MAX_ALLOWANCE
+        );
+
+        // Snapshot the entrant's unrelated parent match and clock before
+        // either propagation attempt.
+        Match.IdHash entrantMatch =
+            Match.Id(parentDangling, entrantRoot).hashFromId();
+        bytes memory entrantMatchBefore =
+            abi.encode(parent.getMatch(entrantMatch));
+        (Clock.State memory entrantClockBefore,) =
+            parent.getCommitment(entrantRoot);
+
+        // The child winner's own children are not the selected parent side.
+        (Tree.Node left, Tree.Node right) =
+            entrant.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ITournament.WrongTournamentWinner.selector,
+                entrantRoot,
+                parentOne
+            )
+        );
+        parent.winInnerTournament(child, left, right);
+
+        // Parent side one, which shares the winner's final state, propagates.
+        SmallFullTree.Data memory selected =
+            _parentTree(SmallTwoLevelClaims.CLAIM_ONE);
+        (Tree.Node selectedLeft, Tree.Node selectedRight) =
+            selected.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
+        parent.winInnerTournament(child, selectedLeft, selectedRight);
+
+        // Side one becomes the dangling survivor with the carried child
+        // clock; the entrant's own parent match and clock are unchanged.
+        (Tree.Node dangling, uint256 matches,) = parent.observedTopology();
+        _assertNodeEq(dangling, parentOne);
+        assertEq(matches, 1);
+        assertFalse(parent.getMatch(parentMatch.hashFromId()).exists());
+        assertEq(abi.encode(parent.getMatch(entrantMatch)), entrantMatchBefore);
+        (Clock.State memory entrantClockAfter,) =
+            parent.getCommitment(entrantRoot);
+        assertEq(abi.encode(entrantClockAfter), abi.encode(entrantClockBefore));
+        (Clock.State memory carried,) = parent.getCommitment(parentOne);
+        assertFalse(carried.isRunning());
+        assertEq(Time.Duration.unwrap(carried.allowance), MAX_ALLOWANCE);
     }
 
     function testFuzzLateSingleChildEntrantCarriesRemainingAllowance(uint64 late)

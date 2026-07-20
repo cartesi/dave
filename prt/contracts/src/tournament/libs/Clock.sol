@@ -72,6 +72,18 @@ library Clock {
         return state.allowance.monus(current.timeSpan(state.startInstant));
     }
 
+    /// @return A paused clock's full remaining allowance.
+    /// @dev Requires an initialized paused clock, for which the stored
+    /// allowance is exactly the live remaining time.
+    function pausedAllowance(State memory state)
+        internal
+        pure
+        returns (Time.Duration)
+    {
+        state.requirePaused();
+        return state.allowance;
+    }
+
     /// @return Time elapsed after the deadline, saturated at zero.
     /// @dev Reverts for an uninitialized or paused clock. At the exact
     /// deadline, the result is zero even though `remainingAt` is also zero.

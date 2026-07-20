@@ -15,12 +15,12 @@ library Gas {
     /// receives it once for every successful refundable action.
     uint256 constant TX = 25000;
 
-    uint256 constant ADVANCE_MATCH = 101000 + TX;
+    uint256 constant ADVANCE_MATCH = 100000 + TX;
     uint256 constant WIN_MATCH_BY_TIMEOUT = 235000 + TX;
     uint256 constant ELIMINATE_MATCH_BY_TIMEOUT = 110000 + TX;
-    uint256 constant SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT = 339000 + TX;
-    uint256 constant WIN_INNER_TOURNAMENT = 312000 + TX;
-    uint256 constant ELIMINATE_INNER_TOURNAMENT = 148000 + TX;
-    uint256 constant SEAL_LEAF_MATCH = 82000 + TX;
+    uint256 constant SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT = 338000 + TX;
+    uint256 constant WIN_INNER_TOURNAMENT = 311000 + TX;
+    uint256 constant ELIMINATE_INNER_TOURNAMENT = 147000 + TX;
+    uint256 constant SEAL_LEAF_MATCH = 80000 + TX;
     uint256 constant WIN_LEAF_MATCH = 818000 + TX;
 }

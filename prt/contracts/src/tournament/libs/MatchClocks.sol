@@ -124,14 +124,10 @@ library MatchClocks {
         Time.Duration responseBudget,
         Time.Instant current
     ) internal {
-        _requireBisection(one, two);
-        if (one.isRunning()) {
-            one.pauseAfterResponseAt(responseBudget, current);
-            two.startAt(current);
-        } else {
-            two.pauseAfterResponseAt(responseBudget, current);
-            one.startAt(current);
-        }
+        Clock.State storage idle = _pauseResponderAt(
+            one, two, responseBudget, current
+        );
+        idle.startAt(current);
     }
 
     /// @notice Discount the final response and enter a two-clock leaf race.
@@ -141,12 +137,7 @@ library MatchClocks {
         Time.Duration responseBudget,
         Time.Instant current
     ) internal {
-        _requireBisection(one, two);
-        if (one.isRunning()) {
-            one.pauseAfterResponseAt(responseBudget, current);
-        } else {
-            two.pauseAfterResponseAt(responseBudget, current);
-        }
+        _pauseResponderAt(one, two, responseBudget, current);
         one.startAt(current);
         two.startAt(current);
     }
@@ -159,14 +150,27 @@ library MatchClocks {
         Time.Duration responseBudget,
         Time.Instant current
     ) internal returns (Time.Duration) {
+        _pauseResponderAt(one, two, responseBudget, current);
+        return one.pausedAllowance().max(two.pausedAllowance());
+    }
+
+    /// @notice Pause the running responder, discounting its response.
+    /// @dev Every legal exit from active bisection discounts the responder
+    /// exactly once; the public verbs differ only in which clocks run next.
+    /// @return idle The other, still-paused clock.
+    function _pauseResponderAt(
+        Clock.State storage one,
+        Clock.State storage two,
+        Time.Duration responseBudget,
+        Time.Instant current
+    ) private returns (Clock.State storage idle) {
         _requireBisection(one, two);
         if (one.isRunning()) {
             one.pauseAfterResponseAt(responseBudget, current);
-        } else {
-            two.pauseAfterResponseAt(responseBudget, current);
+            return two;
         }
-
-        return one.allowance.gt(two.allowance) ? one.allowance : two.allowance;
+        two.pauseAfterResponseAt(responseBudget, current);
+        return one;
     }
 
     function _requireBisection(Clock.State memory one, Clock.State memory two)

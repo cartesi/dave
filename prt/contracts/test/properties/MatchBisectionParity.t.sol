@@ -47,6 +47,7 @@ library MatchBisectionMutation {
 /// and positions require only linear space. Focused two-difference traces also
 /// check leftmost-divergence precedence between subtrees and terminal leaves.
 contract MatchBisectionParityTest is Test {
+    using Commitment for Commitment.Arguments;
     using Match for Match.State;
     using Tree for Tree.Node;
 
@@ -164,6 +165,44 @@ contract MatchBisectionParityTest is Test {
         _assertHeightOneLeftmost(true);
     }
 
+    function testZeroHashesRemainValidMatchData() public {
+        Tree.Node zero = Tree.ZERO_NODE;
+        Tree.Node other = Tree.Node.wrap(bytes32(uint256(0x99)));
+        Match.Id memory id = Match.Id({
+            commitmentOne: zero.join(zero), commitmentTwo: zero.join(other)
+        });
+        Commitment.Arguments memory args = Commitment.Arguments({
+            initialHash: INITIAL_STATE,
+            startCycle: START_CYCLE,
+            log2step: LOG2_STEP,
+            height: 1
+        });
+        (, Match.State memory initialState) = Match.create(
+            args.height, id.commitmentOne, id.commitmentTwo, zero, other
+        );
+        _state = initialState;
+
+        bytes32[] memory agreeProof = new bytes32[](1);
+        agreeProof[0] = Tree.Node.unwrap(zero);
+        (Machine.Hash finalStateOne, Machine.Hash finalStateTwo) = MatchBisectionMutation.seal(
+            _state,
+            args,
+            id,
+            zero,
+            zero,
+            Machine.Hash.wrap(bytes32(0)),
+            agreeProof
+        );
+
+        Match.SealedView memory view_ = _state.sealedView(args.height);
+        _assertHash(view_.agreeState, Machine.Hash.wrap(bytes32(0)));
+        assertEq(view_.divergencePosition, 1);
+        _assertHash(finalStateOne, Machine.Hash.wrap(bytes32(0)));
+        _assertHash(finalStateTwo, other.toMachineHash());
+        _assertHash(view_.finalStateOne, finalStateOne);
+        _assertHash(view_.finalStateTwo, finalStateTwo);
+    }
+
     function testFuzzParityAcrossReviewedGeometry(
         uint8 rawHeight,
         uint256 rawPosition,
@@ -231,7 +270,7 @@ contract MatchBisectionParityTest is Test {
         assertFalse(oneRight.eq(twoRight));
 
         (Match.IdHash idHash, Match.State memory initialState) = Match.create(
-            trace.args,
+            trace.args.height,
             trace.id.commitmentOne,
             trace.id.commitmentTwo,
             twoLeft,
@@ -282,7 +321,7 @@ contract MatchBisectionParityTest is Test {
         Tree.Node twoRight =
             commitmentOneDiffers ? trace.uniformSubtree : trace.laterSubtree;
         (, Match.State memory initialState) = Match.create(
-            trace.args,
+            trace.args.height,
             trace.id.commitmentOne,
             trace.id.commitmentTwo,
             twoLeft,
@@ -386,7 +425,7 @@ contract MatchBisectionParityTest is Test {
             trace.uniform
         );
         (Match.IdHash idHash, Match.State memory initialState) = Match.create(
-            trace.args,
+            trace.args.height,
             trace.id.commitmentOne,
             trace.id.commitmentTwo,
             twoLeft,
@@ -462,14 +501,16 @@ contract MatchBisectionParityTest is Test {
             )
         );
 
-        (Tree.Node expectedLeft, Tree.Node expectedRight) = _children(
-            trace.responderIsOne != trace.commitmentOneDiffers,
-            trace.remainingHeight,
-            trace.relativePosition,
-            trace.uniform
-        );
-        _assertNode(_state.leftNode, expectedLeft);
-        _assertNode(_state.rightNode, expectedRight);
+        {
+            (Tree.Node expectedLeft, Tree.Node expectedRight) = _children(
+                trace.responderIsOne != trace.commitmentOneDiffers,
+                trace.remainingHeight,
+                trace.relativePosition,
+                trace.uniform
+            );
+            _assertNode(_state.leftNode, expectedLeft);
+            _assertNode(_state.rightNode, expectedRight);
+        }
     }
 
     function _sealTrace(Trace memory trace, bool rejectOtherProof) internal {
@@ -580,19 +621,15 @@ contract MatchBisectionParityTest is Test {
         Machine.Hash expectedOne,
         Machine.Hash expectedTwo
     ) internal view {
-        (
-            Machine.Hash storedAgree,
-            uint256 agreeCycle,
-            Machine.Hash finalStateOne,
-            Machine.Hash finalStateTwo
-        ) = _state.getDivergence(trace.args);
-        _assertHash(storedAgree, agreeState);
+        Match.SealedView memory view_ = _state.sealedView(trace.args.height);
+        uint256 agreeCycle = trace.args.toCycle(view_.divergencePosition);
+        _assertHash(view_.agreeState, agreeState);
         assertEq(
             agreeCycle,
             START_CYCLE + (trace.position * (uint256(1) << LOG2_STEP))
         );
-        _assertHash(finalStateOne, expectedOne);
-        _assertHash(finalStateTwo, expectedTwo);
+        _assertHash(view_.finalStateOne, expectedOne);
+        _assertHash(view_.finalStateTwo, expectedTwo);
     }
 
     function _uniformNodes(uint64 height)

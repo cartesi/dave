@@ -157,6 +157,41 @@ contract SmallTwoLevelTournamentTest is Test {
         );
     }
 
+    /// @dev Every remaining role-guarded entry point rejects the wrong role
+    /// before any match, clock, or child validation.
+    function testRejectsRemainingWrongRoleOperations() public {
+        ITournament root =
+            factory.instantiate(INITIAL_STATE, IDataProvider(address(0)));
+        ITournament leaf = factory.instantiateInner(
+            INITIAL_STATE,
+            Tree.Node.wrap(bytes32(uint256(1))),
+            Machine.Hash.wrap(bytes32(uint256(2))),
+            Tree.Node.wrap(bytes32(uint256(3))),
+            Machine.Hash.wrap(bytes32(uint256(4))),
+            Time.Duration.wrap(MAX_ALLOWANCE),
+            0,
+            1,
+            IDataProvider(address(0))
+        );
+
+        vm.expectRevert(ITournament.RequireLeafTournament.selector);
+        root.winLeafMatch(_zeroMatch(), Tree.ZERO_NODE, Tree.ZERO_NODE, "");
+
+        vm.expectRevert(ITournament.RequireNonLeafTournament.selector);
+        leaf.winInnerTournament(
+            ITournament(address(0)), Tree.ZERO_NODE, Tree.ZERO_NODE
+        );
+
+        vm.expectRevert(ITournament.RequireNonLeafTournament.selector);
+        leaf.eliminateInnerTournament(ITournament(address(0)));
+
+        vm.expectRevert(ITournament.RequireNonRootTournament.selector);
+        root.canBeEliminated();
+
+        vm.expectRevert(ITournament.RequireNonRootTournament.selector);
+        root.innerTournamentWinner();
+    }
+
     function _zeroMatch() private pure returns (Match.Id memory) {
         return Match.Id({
             commitmentOne: Tree.ZERO_NODE, commitmentTwo: Tree.ZERO_NODE

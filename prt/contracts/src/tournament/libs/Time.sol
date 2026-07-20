@@ -49,16 +49,6 @@ library Time {
         return d == 0;
     }
 
-    function add(Duration left, Duration right)
-        internal
-        pure
-        returns (Duration)
-    {
-        uint64 l = Duration.unwrap(left);
-        uint64 r = Duration.unwrap(right);
-        return Duration.wrap(l + r);
-    }
-
     function monus(Duration left, Duration right)
         internal
         pure
@@ -95,12 +85,12 @@ library Time {
         return timestamp.timeoutElapsedSince(duration, currentTime());
     }
 
-    function min(Duration left, Duration right)
+    function max(Duration left, Duration right)
         internal
         pure
         returns (Duration)
     {
-        return left.gt(right) ? right : left;
+        return left.gt(right) ? left : right;
     }
 
     function max(Instant left, Instant right) internal pure returns (Instant) {

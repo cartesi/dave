@@ -3,7 +3,6 @@
 
 pragma solidity ^0.8.17;
 
-import {stdError} from "forge-std-1.9.6/src/StdError.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {ITournament} from "src/ITournament.sol";
@@ -12,12 +11,24 @@ import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
 
 contract MatchViewsHarness {
-    function bisectionView(Match.State calldata state)
-        external
-        pure
-        returns (Match.BisectionView memory)
-    {
-        return Match.bisectionView(state);
+    using Match for Match.State;
+
+    Match.State private stored;
+
+    function store(Match.State calldata state) external {
+        stored = state;
+    }
+
+    function requireCanBeAdvanced() external view {
+        stored.requireCanBeAdvanced();
+    }
+
+    function requireCanBeSealed() external view {
+        stored.requireCanBeSealed();
+    }
+
+    function requireSealed() external view {
+        stored.requireSealed();
     }
 
     function sealedView(Match.State calldata state, uint64 totalHeight)
@@ -38,41 +49,68 @@ contract MatchViewsTest is Test {
         HARNESS = new MatchViewsHarness();
     }
 
-    function testPhaseIsDerivedFromExistenceBeforeHeight() public pure {
-        Match.State memory state;
-        assertEq(uint256(state.phase()), uint256(Match.Phase.UNINITIALIZED));
+    function testFuzzPhaseAndPredicatesFormOnePartition(
+        bool isInit,
+        uint64 height
+    ) public pure {
+        Match.State memory state = _state(height, 7, isInit);
+        Match.Phase expected = !isInit
+            ? Match.Phase.UNINITIALIZED
+            : height > 1
+                ? Match.Phase.BISECTING
+                : height == 1 ? Match.Phase.READY_TO_SEAL : Match.Phase.SEALED;
 
-        state.currentHeight = 7;
-        assertEq(uint256(state.phase()), uint256(Match.Phase.UNINITIALIZED));
-
-        state.isInit = true;
-        assertEq(uint256(state.phase()), uint256(Match.Phase.BISECTING));
-
-        state.currentHeight = 1;
-        assertEq(uint256(state.phase()), uint256(Match.Phase.READY_TO_SEAL));
-
-        state.currentHeight = 0;
-        assertEq(uint256(state.phase()), uint256(Match.Phase.SEALED));
+        assertEq(uint256(state.phase()), uint256(expected));
+        assertEq(state.exists(), isInit);
+        assertEq(state.canBeAdvanced(), expected == Match.Phase.BISECTING);
+        assertEq(state.canBeSealed(), expected == Match.Phase.READY_TO_SEAL);
+        assertEq(state.isSealed(), expected == Match.Phase.SEALED);
     }
 
-    function testBisectionViewNamesRolesAtBothUnsealedPhases() public pure {
-        Match.State memory state = _state(2, 8, true);
-        Match.BisectionView memory view_ = state.bisectionView();
-        _assertBisectionView(view_, state);
+    function testStorageGuardsRejectAbsenceBeforePhase() public {
+        Match.State memory absent;
+        HARNESS.store(absent);
 
-        state.currentHeight = 1;
-        view_ = state.bisectionView();
-        _assertBisectionView(view_, state);
-    }
-
-    function testBisectionViewRejectsAbsentAndSealedStates() public {
-        Match.State memory state;
         vm.expectRevert(ITournament.MatchDoesNotExist.selector);
-        HARNESS.bisectionView(state);
+        HARNESS.requireCanBeAdvanced();
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        HARNESS.requireCanBeSealed();
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
+        HARNESS.requireSealed();
+    }
 
-        state = _state(0, 8, true);
-        vm.expectRevert(stdError.assertionError);
-        HARNESS.bisectionView(state);
+    function testStorageGuardsPreserveWrongPhaseErrors() public {
+        HARNESS.store(_state(1, 0, true));
+        vm.expectRevert(ITournament.MatchCannotBeAdvanced.selector);
+        HARNESS.requireCanBeAdvanced();
+        HARNESS.store(_state(0, 0, true));
+        vm.expectRevert(ITournament.MatchCannotBeAdvanced.selector);
+        HARNESS.requireCanBeAdvanced();
+
+        HARNESS.store(_state(2, 0, true));
+        vm.expectRevert(ITournament.MatchCannotBeSealed.selector);
+        HARNESS.requireCanBeSealed();
+        HARNESS.store(_state(0, 0, true));
+        vm.expectRevert(ITournament.MatchCannotBeSealed.selector);
+        HARNESS.requireCanBeSealed();
+
+        HARNESS.store(_state(2, 0, true));
+        vm.expectRevert(ITournament.MatchIsNotSealed.selector);
+        HARNESS.requireSealed();
+        HARNESS.store(_state(1, 0, true));
+        vm.expectRevert(ITournament.MatchIsNotSealed.selector);
+        HARNESS.requireSealed();
+    }
+
+    function testStorageGuardsAcceptTheirExactPhase() public {
+        HARNESS.store(_state(2, 0, true));
+        HARNESS.requireCanBeAdvanced();
+
+        HARNESS.store(_state(1, 0, true));
+        HARNESS.requireCanBeSealed();
+
+        HARNESS.store(_state(0, 0, true));
+        HARNESS.requireSealed();
     }
 
     function testSealedViewDecodesEveryHeightAndPositionParity() public pure {
@@ -90,26 +128,6 @@ contract MatchViewsTest is Test {
         state = _state(1, 0, true);
         vm.expectRevert(ITournament.MatchIsNotSealed.selector);
         HARNESS.sealedView(state, 2);
-    }
-
-    function _assertBisectionView(
-        Match.BisectionView memory view_,
-        Match.State memory state
-    ) internal pure {
-        assertEq(
-            Tree.Node.unwrap(view_.revealingParent),
-            Tree.Node.unwrap(state.otherParent)
-        );
-        assertEq(
-            Tree.Node.unwrap(view_.waitingLeft),
-            Tree.Node.unwrap(state.leftNode)
-        );
-        assertEq(
-            Tree.Node.unwrap(view_.waitingRight),
-            Tree.Node.unwrap(state.rightNode)
-        );
-        assertEq(view_.segmentStart, state.runningLeafPosition);
-        assertEq(view_.height, state.currentHeight);
     }
 
     function _assertSealedView(uint64 totalHeight, uint256 position)
