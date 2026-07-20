@@ -138,10 +138,15 @@ papers do not specify these contracts exactly.
   `allowance == 0` is uninitialized. An initialized clock is paused when
   `startInstant == 0` and running otherwise. Operations that observe elapsed
   time take an explicit instant. Uninitialized live-time queries revert.
-  `MatchClocks` asserts the source phase for each pair transition: active
+  `MatchClocks` asserts the clock shape for each pair transition: active
   bisection has exactly one running clock, a sealed leaf has two running clocks
   with the same start instant, and a sealed inner match has two paused clocks.
-  Pairing never changes balances. For each successful advance or final seal,
+  This is not the complete structural Match phase: two paused clocks also
+  describe a pair ready to start bisection. `Match` guards and the ordering in
+  `Tournament` establish that structural state before the pair transition.
+  Initialized clocks persist as participation history and do not alone prove
+  that a commitment is live. Pairing never changes balances. For each
+  successful advance or final seal,
   `pauseAfterResponseAt` requires `elapsed < balance` and leaves
   `balance - max(elapsed - responseBudget, 0)`. The discount never increases a
   balance or revives an expired clock. A height-`H` match has exactly `H` such
@@ -246,15 +251,17 @@ experimental until validated. The current Arbitrum entries do not match the
 - **Double-bisection parity**: `Match.sealDivergence` derives the final revealing
   side once from total-height parity. The sealed position's low bit records the
   final left/right branch; `_decodeDivergence` reconstructs revealing and waiting
-  leaves, and `_fixedSideFinalStates` orders them by `commitmentOne` and
+  leaves, and `_finalStatesByCommitment` orders them by `commitmentOne` and
   `commitmentTwo`. Sparse-tree properties exhaust every position through height
   eight and cover boundary, representative, and fuzzed paths through height 55;
   this bookkeeping decides *who wins* a match.
-- **Raw Match phase predicates**: `Match.isSealed` checks only that the stored
-  height is zero, so it is also true for an uninitialized mapping slot. Establish
-  `exists()` first, or use the existence-aware `phase`, whenever absence is
-  possible. Production callers preserve that ordering; tests must not make a
-  vacuous sealed-state assertion.
+- **Derived Match phase**: `isInit` owns existence and `currentHeight` owns the
+  phase of an initialized state. Memory predicates and storage guards use one
+  derivation; storage phase guards reject absence before the phase-specific
+  error. The active representation is documented directly on `Match.State`;
+  `SealedView` is the existence-aware parity decoder used by leaf settlement.
+  Raw `getMatch` output remains externally visible for compatibility and should
+  not be interpreted without first establishing its phase.
 - **Clock alternation vs the leaf race**: bisection keeps one clock running;
   `MatchClocks.startLeafRaceAt` intentionally starts **both** from one explicit
   instant. The double-run is by design, and timeout charging starts from the
@@ -305,6 +312,12 @@ transition and gas recipes select their respective subsets; `just test-stf` and
 `just test-stf-fuzzy` require `--ffi` plus the `machine/step` submodule. Gas
 calibration must use the plain test runner, not coverage instrumentation; follow
 `audit/GAS-CALIBRATION.md`.
+[`audit/TEST-REPORT.md`](audit/TEST-REPORT.md) maps the test layers, their
+oracles and limitations, the current verification snapshot, and the campaign
+stop rule.
+The ordinary Foundry fuzz budget is explicitly pinned at 256 runs in
+`foundry.toml`; deeper campaigns must record their override rather than relying
+on a local Foundry default.
 The coverage recipe excludes FFI, gas-calibration, exact refund-formula, and
 state-transition tests and sources. Coverage instrumentation changes the
 measured refund units and can make an action cap bind, invalidating both gas

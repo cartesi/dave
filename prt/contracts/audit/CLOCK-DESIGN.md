@@ -2,7 +2,7 @@
 
 Status: clock API, timeout classifier, and response budget implemented
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-07-19
 
 This document records the implemented dispute-game clock abstraction and its
 policy decisions. Current protocol behavior is documented in
@@ -116,6 +116,8 @@ function remainingAt(State memory state, Time.Instant current)
     internal pure returns (Time.Duration);
 function overdueByAt(State memory state, Time.Instant current)
     internal pure returns (Time.Duration);
+function pausedAllowance(State memory state)
+    internal pure returns (Time.Duration);
 
 function initializePausedAt(
     State storage state,
@@ -197,7 +199,7 @@ function settleProvenLeafWinnerAt(
 );
 ```
 
-The legal phase table is:
+The clock-shape table is:
 
 | Match phase | Commitment one | Commitment two |
 | --- | --- | --- |
@@ -214,6 +216,25 @@ clocks paused, and returns their maximum remainder. `settleProvenLeafWinnerAt`
 requires the two-running-clock leaf phase, including a shared start instant,
 and applies the timeout status to the proven side. These helpers assert on an
 illegal internal phase instead of repairing it silently.
+
+The three bisection exits share one private `_pauseResponderAt` helper: every
+legal exit from active bisection discounts the running responder exactly once,
+and the public verbs differ only in which clocks run afterward (the other, both,
+or neither). The response-discount charge therefore has a single implementation.
+`pauseForInnerAt` reads the snapshotted remainders through
+`Clock.pausedAllowance`, which requires the paused phase, instead of accessing
+the raw allowance field.
+
+This table is not a complete structural match state machine. In particular,
+two paused clocks describe both a pair that is ready to start bisection and a
+sealed non-leaf match waiting on its child tournament. `MatchClocks` cannot and
+should not distinguish those states: it owns clock-pair policy, while `Match`
+owns existence and bisection/sealed phase. `Tournament` composes the two by
+checking or creating the structural match state before invoking the matching
+clock transition. Similarly, an initialized clock persists as participation
+history and prevents a second join; by itself it does not prove that the
+commitment is currently live. This boundary keeps Clock free of commitment
+geometry without weakening the caller's state-machine obligation.
 
 ## Implemented timeout classifier
 
@@ -338,6 +359,23 @@ still earn at most 7 hours 40 minutes, one successful response at a time.
 Repeated matches receive new bounded discounts.
 
 ## Validation and remaining test work
+
+The test layout mirrors the production boundary. `Clock.t.sol` contains a
+single-clock harness for representation, arithmetic, and storage transitions.
+`MatchClocks.t.sol` contains a two-clock harness for timeout policy and pair
+transitions. The latter deliberately fabricates clock shapes without a Match
+object: those tests prove the local preconditions of `MatchClocks`, while the
+Tournament integration tests prove structural phase composition. The default
+Foundry fuzz budget is pinned in `foundry.toml` at 256 runs so the ordinary gate
+does not depend on a tool-version default.
+
+The negative transition matrix covers uninitialized, paused, one-running, and
+two-running shapes for every mutating pair transition. Proven-leaf settlement
+separately pins its equal-start requirement and rejects
+`WinnerCommitment.NONE` only after clock-shape validation. Carryover tests
+distinguish a valid zero in-memory result from the forbidden attempt to store it
+as an initialized clock, and pin the paused target/source requirements of
+replacement and deduction.
 
 The PRT-002 integration tests continue to protect running-winner conservation,
 both timeout branches, and the strict equality boundary. The refactor and its

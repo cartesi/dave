@@ -3,7 +3,7 @@
 Status: accounting, exact refund formula, and callback boundary implemented;
 seven actions calibrated; leaf proof uses an explicit provisional subsidy
 
-Last reviewed: 2026-07-19
+Last reviewed: 2026-07-20
 
 This document relates three accounting flows:
 
@@ -82,8 +82,8 @@ leaves the requested amount in the pooled tournament balance.
 The current constants give:
 
 ```text
-A = 126,000 gas
-E = 950,000 gas
+A = 125,000 gas
+E = 948,000 gas
 P = 50 gwei
 ```
 
@@ -91,30 +91,30 @@ Every allocation currently includes the flat 25,000-gas `Gas.TX` term:
 
 | Action | Allocation `g` | Absolute share cap `g * P` |
 | --- | ---: | ---: |
-| Advance match | 126,000 gas | 0.00630000 ETH |
+| Advance match | 125,000 gas | 0.00625000 ETH |
 | Win by timeout | 260,000 gas | 0.01300000 ETH |
 | Eliminate by timeout | 135,000 gas | 0.00675000 ETH |
-| Seal inner match | 364,000 gas | 0.01820000 ETH |
-| Propagate inner winner | 337,000 gas | 0.01685000 ETH |
-| Eliminate inner match | 173,000 gas | 0.00865000 ETH |
-| Seal leaf match | 107,000 gas | 0.00535000 ETH |
+| Seal inner match | 363,000 gas | 0.01815000 ETH |
+| Propagate inner winner | 336,000 gas | 0.01680000 ETH |
+| Eliminate inner match | 172,000 gas | 0.00860000 ETH |
+| Seal leaf match | 105,000 gas | 0.00525000 ETH |
 | Win leaf match | 843,000 gas | 0.04215000 ETH |
 
 The checked-in heights produce the following join deposits:
 
 | Height | `W(h)` | `B(h)` |
 | ---: | ---: | ---: |
-| 48 | 6,872,000 gas | 0.34360000 ETH |
-| 17 | 2,966,000 gas | 0.14830000 ETH |
-| 27 | 4,226,000 gas | 0.21130000 ETH |
+| 48 | 6,823,000 gas | 0.34115000 ETH |
+| 17 | 2,948,000 gas | 0.14740000 ETH |
+| 27 | 4,198,000 gas | 0.20990000 ETH |
 
 The target two-level gas witnesses use heights 55 and 37. If deployed with the
 same accounting constants, they would require:
 
 | Height | `W(h)` | `B(h)` |
 | ---: | ---: | ---: |
-| 55 | 7,754,000 gas | 0.38770000 ETH |
-| 37 | 5,486,000 gas | 0.27430000 ETH |
+| 55 | 7,698,000 gas | 0.38490000 ETH |
+| 37 | 5,448,000 gas | 0.27240000 ETH |
 
 These are accounting values, not a claim that every gas ceiling is validated.
 `WIN_LEAF_MATCH` is deliberately a heuristic subsidy. It uses the rounded
@@ -145,11 +145,11 @@ At the maximum `h - 1` advances, the configured path totals are:
 | --- | ---: |
 | Direct timeout win | `(h - 1) * A + 260,000` |
 | Direct timeout elimination | `(h - 1) * A + 135,000` |
-| Leaf seal and proof | `(h - 1) * A + 950,000` |
-| Leaf seal and timeout win | `(h - 1) * A + 367,000` |
-| Leaf seal and timeout elimination | `(h - 1) * A + 242,000` |
-| Inner seal and winner propagation | `(h - 1) * A + 701,000` |
-| Inner seal and elimination | `(h - 1) * A + 537,000` |
+| Leaf seal and proof | `(h - 1) * A + 948,000` |
+| Leaf seal and timeout win | `(h - 1) * A + 365,000` |
+| Leaf seal and timeout elimination | `(h - 1) * A + 240,000` |
+| Inner seal and winner propagation | `(h - 1) * A + 699,000` |
+| Inner seal and elimination | `(h - 1) * A + 535,000` |
 
 This bound assumes a valid positive tournament height. Canonical and test-owned
 geometry validation should reject a zero-height configuration before
@@ -287,12 +287,15 @@ allocation = roundUpTo1000(Gas.TX + delta + margin(delta))
 
 CI asserts that the complete reviewed margin remains; it does not wait for the
 literal cap itself to be crossed. Solidity 0.8.30, optimized IR with 200 runs,
-the Prague EVM, and the dependencies in `soldeer.lock` are pinned. All 18
-retained allocation and complete-call measurements reproduced exactly under
-both local Forge 1.5.1-dev and release Foundry v1.4.3; see
-`GAS-CALIBRATION.md`.
+the Prague EVM, and the dependencies in `soldeer.lock` are pinned. The current
+witnesses, including the simplification batch's recalibrated advance and inner
+seal allocations, reproduced under local Forge 1.5.1-dev and the clean
+pre-rebase Forge 1.4.3 checkpoint recorded in
+[`REVIEW.md`](REVIEW.md#release-calibration-checkpoint-before-rebase).
 Compiler, EVM, dependency, geometry, or supported-proof changes require a new
-calibration even when an old ceiling happens to pass.
+calibration even when an old ceiling happens to pass. The planned rebase changes
+the Foundry pin, so this release checkpoint must be repeated on the clean
+post-rebase candidate before merge.
 
 The production-formula campaign separately pins the three-way minimum rather
 than selecting an allocation. Independent timeout-action twins first recover
@@ -312,24 +315,24 @@ the checked-in canonical geometry:
 
 | Action and retained witness | `Gas.TX + delta` | Margin | Shared action allocation |
 | --- | ---: | ---: | ---: |
-| First charged right advance; first counter and position writes | 115,351 | 10,000 | 126,000 |
-| First charged left advance; position remains zero | 95,050 | 10,000 | 126,000 |
-| Charged position-one right leaf seal; full 37-sibling proof | 96,327 | 10,000 | 107,000 |
-| Charged position-two left leaf seal; full 37-sibling proof | 76,113 | 10,000 | 107,000 |
-| Charged position-one right inner seal; full 55-sibling proof and real child clone | 332,958 | 30,796 | 364,000 |
-| Charged position-two left inner seal; full 55-sibling proof and real child clone | 312,744 | 28,775 | 364,000 |
-| Active timeout, side one wins; charged survivor, nonzero position, dangling re-pair | 237,603 | 21,261 | 260,000 |
-| Active timeout, side two wins; charged survivor, nonzero position, dangling re-pair | 237,646 | 21,265 | 260,000 |
-| Sealed-leaf timeout, side one wins; charged survivor, position one, dangling re-pair | 238,261 | 21,327 | 260,000 |
-| Sealed-leaf timeout, side two wins; charged survivor, position one, dangling re-pair | 238,304 | 21,331 | 260,000 |
-| Active double elimination; nonzero position, exact equality boundary | 123,940 | 10,000 | 135,000 |
-| Sealed-leaf double elimination; position one, later classifier branch, exact equality boundary | 124,269 | 10,000 | 135,000 |
-| Resolved child selects parent side one; one-block carryover, position-one parent, dangling re-pair | 307,612 | 28,262 | 337,000 |
-| Resolved child selects parent side two; one-block carryover, position-one parent, dangling re-pair | 307,787 | 28,279 | 337,000 |
-| Single-claim child selects parent side two; positive carryover deduction and dangling re-pair | 307,742 | 28,275 | 337,000 |
-| Resolved child winner expires; position-one parent deletion | 158,805 | 13,381 | 173,000 |
-| Single-claim child winner expires; position-one parent deletion | 158,790 | 13,379 | 173,000 |
-| Child finishes without a winner; position-one parent deletion | 153,866 | 12,887 | 173,000 |
+| First charged right advance; first counter and position writes | 114,077 | 10,000 | 125,000 |
+| First charged left advance; position remains zero | 91,876 | 10,000 | 125,000 |
+| Charged position-one right leaf seal; full 37-sibling proof | 94,902 | 10,000 | 105,000 |
+| Charged position-two left leaf seal; full 37-sibling proof | 74,788 | 10,000 | 105,000 |
+| Charged position-one right inner seal; full 55-sibling proof and real child clone | 331,520 | 30,652 | 363,000 |
+| Charged position-two left inner seal; full 55-sibling proof and real child clone | 311,406 | 28,641 | 363,000 |
+| Active timeout, side one wins; charged survivor, nonzero position, dangling re-pair | 237,443 | 21,245 | 260,000 |
+| Active timeout, side two wins; charged survivor, nonzero position, dangling re-pair | 237,559 | 21,256 | 260,000 |
+| Sealed-leaf timeout, side one wins; charged survivor, position one, dangling re-pair | 238,101 | 21,311 | 260,000 |
+| Sealed-leaf timeout, side two wins; charged survivor, position one, dangling re-pair | 238,217 | 21,322 | 260,000 |
+| Active double elimination; nonzero position, exact equality boundary | 123,734 | 10,000 | 135,000 |
+| Sealed-leaf double elimination; position one, later classifier branch, exact equality boundary | 124,063 | 10,000 | 135,000 |
+| Resolved child selects parent side one; one-block carryover, position-one parent, dangling re-pair | 306,800 | 28,180 | 336,000 |
+| Resolved child selects parent side two; one-block carryover, position-one parent, dangling re-pair | 306,975 | 28,198 | 336,000 |
+| Single-claim child selects parent side two; positive carryover deduction and dangling re-pair | 306,930 | 28,193 | 336,000 |
+| Resolved child winner expires; position-one parent deletion | 157,949 | 13,295 | 172,000 |
+| Single-claim child winner expires; position-one parent deletion | 157,934 | 13,294 | 172,000 |
+| Child finishes without a winner; position-one parent deletion | 153,010 | 12,801 | 172,000 |
 
 Rows for one entry point share one configured constant, selected from its
 largest retained witness. The other rows enforce that the shared constant still
@@ -356,10 +359,10 @@ units. The ordinary margin rule produced 842,758 and rounded to the provisional
 843,000-gas subsidy. This is not a retained maximum witness and does not cover
 reset, input-boundary, halt, exception, or arbitrary proof encodings.
 
-Leaf seal plus the provisional proof subsidy is 950,000 gas, replacing the
-701,000-gas inner winner path as `E`. Every work reserve therefore increases by
-249,000 gas and every join deposit by 0.01245 ETH at `P`. There is no separate
-bond parameter to update.
+Leaf seal plus the provisional proof subsidy is 948,000 gas and remains larger
+than the 699,000-gas inner winner path, so it defines `E`. There is no separate
+bond parameter to update: allocation changes flow through `E`, `W(h)`, and
+`B(h)` automatically.
 
 The price term is:
 

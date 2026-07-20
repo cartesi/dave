@@ -27,6 +27,15 @@ sealing-side derivation, and one sealed-state encoder/decoder replace
 library `sealMatch`, and direct encoding helpers were removed after replacement
 coverage landed.
 
+A post-campaign simplification batch further renamed the storage guards to
+`requireExists` and `requireSealed` (the phase guards already subsume the
+existence check, so the walk's former `requireExist` + phase-guard pairs are one
+call today), narrowed `create` to take the commitment height directly, and made
+`create` assert positive height so a zero-height state can never be born
+phase-indistinguishable from SEALED. `MatchClocks` centralized its response
+discount in one private `_pauseResponderAt` helper; the public pair-transition
+verbs are unchanged.
+
 The representation did not change: the running position remains even during
 bisection, the final right branch alone makes it odd, and decoding combines that
 bit with total-height parity to recover fixed commitment ownership. See
