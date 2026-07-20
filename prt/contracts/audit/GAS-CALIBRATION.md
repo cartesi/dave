@@ -107,9 +107,11 @@ stable report order, and disables terminal color so the output can be retained
 verbatim.
 
 The contract configuration currently pins Solidity 0.8.30, optimized IR, and
-200 optimizer runs for the Prague EVM. The gas recipe requires Foundry v1.4.3,
-matching repository CI and the release container. Forge itself is supplied by
-the environment rather than installed by the recipe.
+200 optimizer runs for the Prague EVM. The gas recipe requires the exact
+official Foundry v1.5.1 release (`forge Version: 1.5.1-v1.5.1`), matching
+repository CI and the release container. A development build with the same
+semver does not satisfy the guard. Forge itself is supplied by the environment
+rather than installed by the recipe.
 
 This campaign also compared Forge 1.5.1-dev from an external parent development
 environment. An intentional dirty, overridden, or unpinned comparison may
