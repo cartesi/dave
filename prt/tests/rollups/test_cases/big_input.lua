@@ -8,7 +8,13 @@ local env = require "test_env"
 local conversion = require "utils.conversion"
 
 -- Main Execution
-env.spawn_blockchain {env.sample_inputs[1]}
+-- No sample input: DaveConsensus (3.0) seals the next epoch with the
+-- InputBox count at the settle transaction's block, and every input
+-- below lands before the node's first settle. The big input must be
+-- the sealed epoch's ONLY input so the dispute patches below target
+-- ITS first state transition (the input-feeding step is what forces
+-- the 64KB blob through the on-chain STF).
+env.spawn_blockchain()
 local first_epoch = assert(env.reader:read_epochs_sealed()[1])
 assert(first_epoch.input_upper_bound == 0) -- there's no input for epoch 0!
 

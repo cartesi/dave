@@ -4,11 +4,30 @@ local helper = require "utils.helper"
 local slots_in_an_epoch = 1
 local default_account_number = 40
 
+local blockchain_data = require "blockchain.constants"
+local instance = os.getenv("TEST_INSTANCE")
+local anvil_log = instance and ("anvil-" .. instance .. ".log") or "anvil.log"
+
+-- The anvil port must be free before spawning: macOS port reuse lets a
+-- stray listener coexist with ours and silently absorb traffic,
+-- turning runs nondeterministic instead of failing.
+local function assert_port_free(port)
+    local connected = os.execute(
+        string.format("bash -c 'exec 3<>/dev/tcp/127.0.0.1/%s' 2>/dev/null", port)
+    )
+    assert(not connected, string.format(
+        "something is already listening on 127.0.0.1:%s; kill it or pick another TEST_INSTANCE",
+        port))
+end
+
 -- spawn an anvil node with 40 accounts, auto-mine, and finalize block at height N-2
 local function start_blockchain(anvil_load_path, anvil_dump_path)
+    assert_port_free(blockchain_data.port)
     print(string.format("Starting blockchain with %d accounts...", default_account_number))
 
     local anvil_args = {
+        "--port",
+        blockchain_data.port,
         "--slots-in-an-epoch",
         slots_in_an_epoch,
         "-a",
@@ -27,8 +46,9 @@ local function start_blockchain(anvil_load_path, anvil_dump_path)
     end
 
     local cmd = string.format(
-        [[ echo $$ ; exec anvil %s > anvil.log 2>&1 ]],
-        table.concat(anvil_args, " ")
+        [[ echo $$ ; exec anvil %s > %s 2>&1 ]],
+        table.concat(anvil_args, " "),
+        anvil_log
     )
 
     local reader = io.popen(cmd)
@@ -48,7 +68,6 @@ local function start_blockchain(anvil_load_path, anvil_dump_path)
 end
 
 local function capture_blockchain_data()
-    local blockchain_data = require "blockchain.constants"
     return blockchain_data.pks, blockchain_data.endpoint
 end
 

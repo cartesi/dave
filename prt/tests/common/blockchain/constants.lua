@@ -1,6 +1,13 @@
 -- contains default 40 accounts of anvil test node
+-- TEST_INSTANCE isolates parallel runs: it is the anvil port, and the
+-- harness suffixes every working-directory singleton with it
+-- (_state-<id>, dave-<id>.log, anvil-<id>.log, _oracle-<id>). Unset
+-- means the historical defaults.
+local port = os.getenv("TEST_INSTANCE") or "8545"
+
 local constants = {
-    endpoint = "http://127.0.0.1:8545",
+    endpoint = "http://127.0.0.1:" .. port,
+    port = port,
     hero_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
     pks = {
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",

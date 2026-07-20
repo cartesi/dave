@@ -37,7 +37,8 @@ local patches = {
 
 local honest_commitment_builder = CommitmentBuilder:new(env.template_machine, inputs, commitment)
 local patched_commitment_builder = PatchedCommitmentBuilder:new(patches, honest_commitment_builder)
-local player = start_sybil(patched_commitment_builder, env.template_machine, sealed_epoch.tournament, inputs, 1, {pk = env.pk, endpoint = env.gateway})
+local player = start_sybil(patched_commitment_builder, env.template_machine,
+    sealed_epoch.tournament, inputs, 1, {pk = env.pk, endpoint = env.gateway})
 
 local function player_react(player_coroutine)
     local success, log = coroutine.resume(player_coroutine)

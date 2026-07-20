@@ -51,7 +51,17 @@ Machine.__index = Machine
 
 local machine_settings = { htif = { no_console_putchar = true } }
 
-function Machine:new_from_path(path)
+-- Default home for revert snapshots (the hash-named machine stores
+-- feed_input writes): a run-local scratch directory. The old default
+-- put them next to the source image, littering shared program
+-- directories (test/programs/) and risking collisions between
+-- parallel runs; TEST_INSTANCE keeps the scratch disjoint the same
+-- way it does the harness's other working-dir singletons. Exported so
+-- the harness can clear it at scenario start.
+Machine.default_snapshot_scratch = "_machine_scratch"
+    .. (os.getenv("TEST_INSTANCE") and ("-" .. os.getenv("TEST_INSTANCE")) or "")
+
+function Machine:new_from_path(path, snapshot_dir)
     local machine = cartesi.machine(path, machine_settings)
     local start_cycle = machine:read_reg("mcycle")
 
@@ -59,8 +69,13 @@ function Machine:new_from_path(path)
     -- Validators must verify this first
     assert(machine:read_reg("uarch_cycle") == 0)
 
-    -- Derive snapshot_dir from path's parent directory
-    local snapshot_dir = path:match("(.*)/[^/]*$") or "/dispute/snapshots"
+    -- Revert snapshots go to the run-local scratch unless the caller
+    -- provides a dedicated directory (callers own their dir's
+    -- lifecycle; the default's parent is ensured here).
+    if not snapshot_dir then
+        snapshot_dir = Machine.default_snapshot_scratch
+        os.execute("mkdir -p " .. snapshot_dir)
+    end
 
     local b = {
         machine = machine,
@@ -130,7 +145,7 @@ local function advance_rollup(self, meta_cycle, inputs)
 end
 
 function Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
-    local machine = Machine:new_from_path(path)
+    local machine = self:new_from_path(path)
     advance_rollup(machine, meta_cycle, inputs)
     return machine
 end
@@ -156,33 +171,48 @@ local function process_input(machine, log2_stride)
     end
 end
 
-function Machine.root_rollup_commitment(pristine_path, log2_stride, inputs)
-    local machine = Machine:new_from_path(pristine_path)
-    assert(machine:is_yielded())
+-- Computes one epoch's commitment from the machine's current state,
+-- advancing it through the epoch. A lineage can call this repeatedly,
+-- epoch after epoch, without ever touching foreign snapshots.
+function Machine:rollup_commitment(log2_stride, inputs)
+    assert(self:is_yielded())
     assert(consts.log2_barch_span_to_input > (log2_stride - consts.log2_uarch_span_to_barch))
 
     local max_input_count = 1 << (consts.log2_input_span_to_epoch)
 
     local builder = MerkleBuilder:new()
-    local state = machine:state()
-    local initial_hash = state.root_hash
+    local initial_hash = self:state().root_hash
 
     local input_i = 0
+    local processing_bigs = {}
     while input_i < max_input_count do
         if inputs[input_i + 1] then
             local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
-            machine:feed_input(input_bin);
-            local tree = process_input(machine, log2_stride)
+            self:feed_input(input_bin);
+            local tree = process_input(self, log2_stride)
             builder:add(tree)
             input_i = input_i + 1
+            -- Big cycles input_i consumed; scenarios use it to aim
+            -- patch chains at the revert closing slot.
+            processing_bigs[input_i] = self._last_input_bigs
         else
-            local tree = process_input(machine, log2_stride)
+            local tree = process_input(self, log2_stride)
             builder:add(tree, max_input_count - input_i)
             break
         end
     end
 
-    return initial_hash, builder:build(initial_hash)
+    return initial_hash, builder:build(initial_hash), processing_bigs
+end
+
+function Machine.root_rollup_commitment(pristine_path, log2_stride, inputs)
+    local machine = Machine:new_from_path(pristine_path)
+    return machine:rollup_commitment(log2_stride, inputs)
+end
+
+-- Store the current machine as a new snapshot directory.
+function Machine:store_to(path)
+    self.machine:store(path)
 end
 
 function Machine:state()
@@ -231,6 +261,9 @@ function Machine:feed_input(input_bin)
     end
 
     self.snapshot_path = new_snapshot_path
+    -- Marks the window start so the yield below can report how many
+    -- big cycles the input consumed.
+    self._input_start_cycle = self:physical_cycle()
     self:write_checkpoint(self.machine:get_root_hash())
     self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
 end
@@ -247,6 +280,13 @@ function Machine:run(cycle)
         self:physical_cycle() == target_physical_cycle
 
     if self:is_yielded() then
+        -- Captured before the revert reloads the snapshot: the big
+        -- cycle count the input consumed, yield instruction included.
+        -- The revert of a rejected input lands at the closing slot of
+        -- big cycle (this count - 1) of its window.
+        if self._input_start_cycle then
+            self._last_input_bigs = self:physical_cycle() - self._input_start_cycle
+        end
         self:revert_if_needed()
     end
     self.cycle = cycle
@@ -258,14 +298,23 @@ function Machine:revert_if_needed()
     -- revert if needed only when machine yields
     assert(self:is_yielded())
 
-    -- we check if the request is accepted
-    -- if it is not, we revert the machine state to previous snapshot
+    -- The on-chain closing slot restores the checkpoint ONLY on
+    -- RX_REJECTED (AdvanceStatus + revertIfNeeded): an exception
+    -- yield keeps the exception state, and any other manual reason
+    -- has no defined transition on-chain. Solidity is the source of
+    -- truth; treating every non-accept as a revert was a consensus
+    -- mismatch shared with the node (found 2026-07-15).
     local _, reason, _ = self.machine:receive_cmio_request()
-    if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
+    if reason == cartesi.CMIO_YIELD_MANUAL_REASON_RX_REJECTED then
         -- Revert to previous snapshot
         print("revert to previous snapshot")
         local machine = cartesi.machine(self.snapshot_path, machine_settings)
         self.machine = machine
+    elseif
+        reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED
+        and reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_TX_EXCEPTION
+    then
+        error(string.format("manual yield reason %d has no defined state transition", reason))
     end
 end
 
@@ -281,8 +330,11 @@ function Machine:prove_revert_if_needed()
         local to_host_proof = self:prove_read_word(to_host_address)
         proof = proof .. to_host_proof
 
+        -- The chain consumes the checkpoint leaf only on the REJECTED
+        -- branch (getRevertRootHash); an exception yield reads nothing
+        -- more.
         local _, reason, _ = self.machine:receive_cmio_request()
-        if reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED then
+        if reason == cartesi.CMIO_YIELD_MANUAL_REASON_RX_REJECTED then
             local checkpoint_proof = self:prove_read_leaf(consts.CHECKPOINT_ADDRESS)
             proof = proof .. checkpoint_proof
         end
