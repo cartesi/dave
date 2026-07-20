@@ -1,3 +1,6 @@
 *.log
-_state/
+*.log.prev
+_state*/
+_oracle*/
+_battery/
 anvil*.json

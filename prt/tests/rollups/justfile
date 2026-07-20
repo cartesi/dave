@@ -3,12 +3,39 @@ DEPLOYMENTS_DIR := "../../../cartesi-rollups/contracts/deployments/31337"
 
 WEB3_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
-# run PRT rollups test
-test PROGRAM SCRIPT:
-  rm -rf _state
+# Fail fast with a pointer instead of a cryptic jq/lua error when the
+# checkout is missing an e2e prerequisite; `just doctor` at the repo
+# root diagnoses everything at once.
+[private]
+preflight PROGRAM:
+    #!/usr/bin/env bash
+    set -u
+    fail() {
+      echo "preflight: $1" >&2
+      echo "preflight: run 'just doctor' at the repo root for a full diagnosis" >&2
+      exit 1
+    }
+    [ -d ../../../test/programs/{{PROGRAM}}/machine-image ] \
+      || fail "test/programs/{{PROGRAM}}/machine-image missing (just setup-local, or copy from a sibling worktree)"
+    [ -f {{ANVIL_LOAD_PATH}} ] || fail "devnet state.json missing (just rollups-contracts::build-devnet)"
+    [ -d {{DEPLOYMENTS_DIR}} ] || fail "devnet deployments missing (just rollups-contracts::build-devnet)"
+    command -v lua5.4 > /dev/null || fail "lua5.4 not on PATH"
+    command -v cartesi-machine-stored-hash > /dev/null || fail "cartesi-machine-stored-hash not on PATH"
+    [ -x ../../../target/debug/cartesi-rollups-prt-node ] \
+      || fail "node binary not built (just build-rust-workspace at the repo root)"
+
+# run PRT rollups test. Set TEST_INSTANCE=<free port> for a fully
+# isolated parallel run (own anvil port, _state-<id>, dave-<id>.log,
+# anvil-<id>.log, _oracle-<id>); Dave:new resets the instance's own
+# state dir, so no recipe-level rm - it would race a parallel sibling.
+# Set ANVIL_DUMP_PATH to capture a state dump; it is opt-in because
+# the flag pair it enables (--dump-state --preserve-historical-states)
+# makes anvil retain every historical state in memory, which under
+# tens of thousands of fast-forwarded blocks ballooned five parallel
+# lanes into swap (the 2026-07-10 battery freezes).
+test PROGRAM SCRIPT: (preflight PROGRAM)
   WEB3_PRIVATE_KEY={{WEB3_PRIVATE_KEY}} \
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
-  ANVIL_DUMP_PATH="anvil_{{PROGRAM}}_{{SCRIPT}}.json" \
   TEMPLATE_MACHINE=`realpath ../../../test/programs/{{PROGRAM}}/machine-image` \
   TEMPLATE_MACHINE_HASH=0x`cartesi-machine-stored-hash ../../../test/programs/{{PROGRAM}}/machine-image` \
   DAVE_APP_FACTORY=`jq -r .address {{DEPLOYMENTS_DIR}}/DaveAppFactory.json` \
@@ -21,6 +48,36 @@ test PROGRAM SCRIPT:
 test-echo: \
         (test "echo" "simple")
 
+# run PRT rollups chaos test (B1: dispute under SIGKILL/respawn fire;
+# reproduce a run with CHAOS_SEED=<seed>)
+test-chaos: \
+        (test "echo" "chaos")
+
+# run the targeted crash scenarios (B2-B5 in characterization.md,
+# plus the batched-advance sibling of B2 and the join-point kill)
+test-kill-all: \
+        (test "echo" "kill_catchup") \
+        (test "echo" "kill_catchup_batched") \
+        (test "echo" "kill_settle") \
+        (test "echo" "kill_commitment_build") \
+        (test "echo" "kill_mid_match") \
+        (test "echo" "kill_join")
+
+# the multi-match scenario (node-audit.md findings 2/6/7): four
+# commitments, two concurrent matches, a real timeout elimination
+test-multi-sybil: \
+        (test "echo" "multi_sybil")
+
+# the CI slice of the crash scenarios: cheap (no dispute), and the one
+# scenario that exercises the multi-record advance batch end to end
+test-kill-ci: \
+        (test "echo" "kill_catchup_batched")
+
+# the state-transition coverage suite alone (CI runs it on honeypot;
+# its image is already built there)
+test-honeypot-stf: \
+        (test "honeypot" "stf_all")
+
 # run PRT rollups honeypot test
 test-honeypot-all: \
         (test "honeypot" "deposit_withdrawal") \
@@ -31,10 +88,12 @@ test-honeypot-all: \
         (test "honeypot" "gc_tournament") \
         (test "honeypot" "bad_commitment")
 
-# run PRT rollups yield test
+# run PRT rollups yield test (stf_revert is yield's unique net: the
+# full revert restore, position computed from the oracle at runtime)
 test-yield-all: \
         (test "yield" "simple_no_input") \
         (test "yield" "stf_all") \
+        (test "yield" "stf_revert") \
         (test "yield" "big_input") \
         (test "yield" "gc_match") \
         (test "yield" "gc_tournament") \
@@ -55,6 +114,12 @@ test-yield-case CASE: \
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:
   cat dave.log; tail -f dave.log
+
+# remove state dirs, oracle dirs, and logs left by past runs: kept
+# for forensics, but at ~5 GB per battery lane they can quietly fill
+# the disk (which slows every machine store system-wide)
+sweep:
+  rm -rf _state* _oracle* _machine_scratch* _battery dave*.log* anvil*.log
 
 # sepolia-honeypot
 download-sepolia-honeypot: clean-sepolia-honeypot-snapshot

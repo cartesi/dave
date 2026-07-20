@@ -22,6 +22,19 @@ build-yield: clean-yield
     -- "while true; do yield manual rx-accepted; yield manual rx-rejected; done"
 clean-yield: (clean-program "yield")
 
+# stress: the compute-heavy workload (docs/plans/node-refactor.md,
+# workstream 2b). Each input burns a deterministic ~2^27 big cycles
+# (8 MB of zeros through sha256sum), so several level-0 leaf spans
+# per input are fully active - the worst-case replay shape the
+# measurement baseline needs.
+build-stress: clean-stress
+  mkdir -p stress
+  cartesi-machine --ram-image=./linux.bin --final-hash \
+    --flash-drive=label:root,data_filename:./rootfs.ext2 \
+    --no-rollback --store=./stress/machine-image \
+    -- "while true; do yield manual rx-accepted; dd if=/dev/zero bs=1M count=8 2>/dev/null | sha256sum > /dev/null; done"
+clean-stress: (clean-program "stress")
+
 # echo
 build-echo: clean-echo
   cartesi-machine --ram-image=./linux.bin --final-hash \

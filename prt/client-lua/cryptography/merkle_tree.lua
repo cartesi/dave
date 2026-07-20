@@ -29,7 +29,7 @@ function MerkleTree:new(leafs, root_hash, log2size, implicit_hash)
         height = height,
         implicit_hash = implicit_hash,
     }
-    setmetatable(m, MerkleTree)
+    setmetatable(m, self)
     return m
 end
 

@@ -10,7 +10,8 @@
 -- print(color.invert .. "This is inverted..." .. color.reset .. " And this isn't.")
 -- print(color.fg(0xDE) .. color.bg(0xEE) .. "You can use xterm-256 colors too!" .. color.reset)
 -- print("And also " .. color.bold .. "BOLD" .. color.normal .. " if you want.")
--- print(color.bold .. color.fg.BLUE .. color.bg.blue .. "Miss your " .. color.fg.RED .. "C-64" .. color.fg.BLUE .. "?" .. color.reset)
+-- print(color.bold .. color.fg.BLUE .. color.bg.blue .. "Miss your "
+--     .. color.fg.RED .. "C-64" .. color.fg.BLUE .. "?" .. color.reset)
 --
 -- You can see all these examples in action by calling color.test()
 --
@@ -67,15 +68,15 @@ end
 for i, name in ipairs(hi_names) do
    color.fg[name] = esc .. tostring(90+i-1) .. 'm'
    _M[name] = color.fg[name]
-   color.bg[name] = esc .. tostring(100+i-1) .. 'm'   
+   color.bg[name] = esc .. tostring(100+i-1) .. 'm'
 end
 
 local function fg256(_,n)
-   return esc .. "38;5;" .. n .. 'm'   
+   return esc .. "38;5;" .. n .. 'm'
 end
 
 local function bg256(_,n)
-   return esc .. "48;5;" .. n .. 'm'   
+   return esc .. "48;5;" .. n .. 'm'
 end
 
 setmetatable(color.fg, {__call = fg256})
@@ -126,7 +127,8 @@ function color.test()
    print(color.invert .. "This is inverted..." .. color.reset .. " And this isn't.")
    print(color.fg(0xDE) .. color.bg(0xEE) .. "You can use xterm-256 colors too!" .. color.reset)
    print("And also " .. color.bold .. "BOLD" .. color.normal .. " if you want.")
-   print(color.bold .. color.fg.BLUE .. color.bg.blue .. "Miss your " .. color.fg.RED .. "C-64" .. color.fg.BLUE .. "?" .. color.reset)
+   print(color.bold .. color.fg.BLUE .. color.bg.blue .. "Miss your "
+       .. color.fg.RED .. "C-64" .. color.fg.BLUE .. "?" .. color.reset)
    print("Try printing " .. color.underline .. _M._NAME .. ".chart()" .. color.reset)
 end
 

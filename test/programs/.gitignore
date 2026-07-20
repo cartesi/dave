@@ -4,3 +4,7 @@ rootfs.ext2
 **/machine-image/
 
 **/*tar.gz
+
+# Lua machine wrapper snapshot litter (hash-named dirs beside the
+# source images); a proper scratch-dir fix is queued.
+**/0x*/

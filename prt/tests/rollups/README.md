@@ -1,16 +1,30 @@
-# PRT Rollups test
+# PRT rollups tests
 
-This tests the rollups Rust node.
-The node test will be conducted with a Lua orchestrator script spawning an honest rollups node in the background to advance the rollups states and to defend the application.
-The Lua orchestrator script also spawns multiple [dishonest nodes](../compute/README.md) trying to tamper with the rollups states.
+End-to-end tests for the rollups Rust node. A Lua orchestrator spawns an
+honest node in the background to advance the rollups state and defend the
+application, plus dishonest sybil players (built from the Lua client, see
+`prt/tests/common/runners/`) that tamper with commitments and must lose.
 
-Remember to either clone the repository with the flag `--recurse-submodules`, or run `git submodule update --recursive --init` after cloning.
-You need a docker installation to run the Dave Lua node.
+How the harness works, what the scenarios cover, and how to add one:
+see [docs/test-harness.md](../../../docs/test-harness.md).
 
-## Run echo test
+## Setup
 
-A simple [echo program](./program/echo/) is provided to test the rollups.
+Clone with `--recurse-submodules`, or run
+`git submodule update --recursive --init` after cloning, then follow the
+setup in the [root README](../../../README.md). Building the honeypot
+machine image requires docker.
+
+## Running
+
+From the repository root:
 
 ```bash
-just test-echo
+just test-rollups-echo             # echo program, simple scenario
+just test-rollups-honeypot        # full honeypot scenario suite
+just test-rollups-honeypot-case gc_match   # one scenario
+just view-rollups-logs             # tail the node's dave.log
 ```
+
+Machine programs live in [test/programs](../../../test/programs/); the
+scenario scripts live in [test_cases](./test_cases/).

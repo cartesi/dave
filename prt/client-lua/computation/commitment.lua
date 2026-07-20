@@ -2,11 +2,9 @@ local MerkleBuilder = require "cryptography.merkle_builder"
 local Machine = require "computation.machine"
 
 local conversion = require "utils.conversion"
-local cartesi = require "cartesi"
 local arithmetic = require "utils.arithmetic"
 local consts = require "computation.constants"
 local uint256 = require "utils.bint" (256)
-local helper = require "utils.helper"
 
 local ulte = arithmetic.ulte
 
@@ -42,7 +40,7 @@ local function run_uarch_span(machine)
 
     -- Now we do the last state transition (ureset), and add the last state,
     -- closing in a power-of-two number of leaves (`2^a` leaves).
-    machine_state = machine:ureset()
+    machine:ureset()
 
     -- Check if machine is yielded and handle revert if needed
     if machine:is_yielded() then
@@ -70,8 +68,8 @@ local function build_small_machine_commitment(log2_stride_count, machine, initia
 
         -- Optional optimization, just comment to remove.
         if machine_state.halted or machine_state.yielded then
-            uarch_span, _ = run_uarch_span(machine)
-            builder:add(uarch_span, instruction_count - instruction + 1)
+            local last_span = run_uarch_span(machine)
+            builder:add(last_span, instruction_count - instruction + 1)
             break
         end
     end
