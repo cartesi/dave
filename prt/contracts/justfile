@@ -3,7 +3,7 @@ BIND_STAMP := "./bindings-rs/src/.bind-stamp"
 DEPLOYMENTS_DIR := "./deployments"
 SRC_DIR := "."
 BINDINGS_FILTER := "^[^I].+TournamentFactory|^Tournament$"
-GAS_FOUNDRY_VERSION := "1.4.3"
+GAS_FOUNDRY_VERSION := "1.5.1-v1.5.1"
 GAS_DEPENDENCIES_SHA256 := "ef44ca028e8ae45ab0d7a6b183c9db0fded37461db8355456f2b2b876ce57ac3"
 
 default: build
@@ -53,7 +53,7 @@ measure-gas:
     version_output=$(forge --version)
     actual_version=$(printf '%s\n' "$version_output" \
       | sed -n 's/^forge Version: //p')
-    if [[ "$actual_version" != "$expected_version"* ]]; then
+    if [ "$actual_version" != "$expected_version" ]; then
       if [ "$diagnostic" != "1" ]; then
         printf 'error: gas calibration requires Forge %s, found %s\n' \
           "$expected_version" "$actual_version" >&2
