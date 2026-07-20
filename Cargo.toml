@@ -5,20 +5,8 @@ members = [
   "cartesi-rollups/contracts/bindings-rs",
   "prt/contracts/bindings-rs",
 
-  # common-rs
-  "common-rs/merkle",
-  "common-rs/arithmetic",
-  "common-rs/kms",
-
-  # prt
-  "prt/client-rs/core",
-
   # rollups-node
-  "cartesi-rollups/node/blockchain-reader",
-  "cartesi-rollups/node/cartesi-rollups-prt-node",
-  "cartesi-rollups/node/epoch-manager",
-  "cartesi-rollups/node/machine-runner",
-  "cartesi-rollups/node/state-manager",
+  "cartesi-rollups/node",
 
   # machine bindings
   "machine/rust-bindings/cartesi-machine",
@@ -53,18 +41,8 @@ cartesi-dave-contracts = { path = "cartesi-rollups/contracts/bindings-rs" }
 cartesi-prt-contracts = { path = "prt/contracts/bindings-rs" }
 
 # rollups-node
-rollups-blockchain-reader = { version = "2.0.0", path = "cartesi-rollups/node/blockchain-reader" }
-rollups-epoch-manager = { version = "2.0.0", path = "cartesi-rollups/node/epoch-manager" }
-rollups-machine-runner = { version = "2.0.0", path = "cartesi-rollups/node/machine-runner" }
-rollups-state-manager = { version = "2.0.0", path = "cartesi-rollups/node/state-manager" }
 
-# common-rs
-cartesi-dave-arithmetic = { path = "common-rs/arithmetic" }
-cartesi-dave-merkle = { path = "common-rs/merkle" }
-cartesi-dave-kms = { path = "common-rs/kms" }
 
-# prt
-cartesi-prt-core = { path = "prt/client-rs/core" }
 
 
 ## Dependencies
@@ -106,4 +84,3 @@ rusqlite_migration = "1.2.0"
 clap = { version = "4.5", features = ["derive", "env"] }
 hex = "0.4"
 log = "0.4"
-num-traits = "0.2"

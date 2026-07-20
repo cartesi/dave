@@ -1,5 +1,38 @@
 # Dave Rollups Node
 
+The prototype PRT validator node, one crate: it follows an application's
+inputs, recomputes its state, and defends the correct result in disputes.
+Architecture and known debts: [docs/node-architecture.md](../../docs/node-architecture.md).
+How epochs and disputes flow: [docs/epoch-lifecycle.md](../../docs/epoch-lifecycle.md).
+
+## Layout (`src/`)
+
+Worker modules - one thread each, synchronizing through the node
+database: `blockchain_reader` (chain logs to db), `machine_runner`
+(inputs to machine execution to leaf hashes and snapshots),
+`epoch_manager` (settlement and disputes). `storage` is the single
+view of that database and the only module that speaks SQL.
+
+The dispute engine (formerly the `cartesi-prt-core` crate):
+
+- `machine/` - commitment construction: driving the Cartesi Machine
+  through meta-cycles, building leaf sequences, generating on-chain step
+  proofs (`get_logs`). Read `docs/computation-hash.md` first; this is the
+  arcane part.
+- `sling/` - the quartet cache, the ruler geometry engine, and the
+  dispute source serving every tree query a dispute needs; the design
+  lives in `docs/plans/sling-design.md`.
+- `strategy/` - the `Player`: the react loop that joins tournaments,
+  bisects matches, seals, proves, and wins timeouts. Plus the garbage
+  collector that frees bonds.
+- `tournament/` - chain interface: `StateReader` (reconstructs the full
+  tournament tree from events and calls) and `ArenaSender` (transaction
+  wrappers, revert-tolerant).
+
+The Lua client (`prt/client-lua/`) implements the same commitment
+construction and honest strategy; the e2e tests assert both agree. Keep
+it that way.
+
 ## Build (release)
 
 Run at the repository root:

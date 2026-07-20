@@ -315,7 +315,9 @@ pub type VirtIOHostfwdArray = Vec<VirtIOHostfwdConfig>;
 /// `to_json(virtio_device_config)` implementation.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
+#[derive(Default)]
 pub enum VirtIODeviceConfig {
+    #[default]
     Console,
     P9fs {
         tag: String,
@@ -329,12 +331,6 @@ pub enum VirtIODeviceConfig {
     NetTuntap {
         iface: String,
     },
-}
-
-impl Default for VirtIODeviceConfig {
-    fn default() -> Self {
-        VirtIODeviceConfig::Console
-    }
 }
 
 pub type VirtIOConfigs = Vec<VirtIODeviceConfig>;

@@ -1663,38 +1663,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cartesi-dave-arithmetic"
-version = "2.0.0"
-
-[[package]]
 name = "cartesi-dave-contracts"
 version = "0.1.0"
 dependencies = [
  "alloy",
-]
-
-[[package]]
-name = "cartesi-dave-kms"
-version = "2.0.0"
-dependencies = [
- "alloy",
- "anyhow",
- "aws-config",
- "aws-sdk-kms",
- "lazy_static",
- "testcontainers-modules",
- "tokio",
-]
-
-[[package]]
-name = "cartesi-dave-merkle"
-version = "2.0.0"
-dependencies = [
- "alloy",
- "hex",
- "ruint",
- "thiserror",
- "tiny-keccak",
 ]
 
 [[package]]
@@ -1732,34 +1704,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cartesi-prt-core"
-version = "2.0.0"
-dependencies = [
- "alloy",
- "anyhow",
- "async-recursion",
- "async-trait",
- "cartesi-dave-arithmetic",
- "cartesi-dave-kms",
- "cartesi-dave-merkle",
- "cartesi-machine",
- "cartesi-prt-contracts",
- "clap",
- "hex",
- "lazy_static",
- "log",
- "num-traits",
- "ruint",
- "rusqlite",
- "rusqlite_migration",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "cartesi-rollups-contracts"
 version = "3.0.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1777,20 +1721,30 @@ dependencies = [
  "alloy-chains",
  "alloy-transport",
  "anyhow",
- "cartesi-dave-kms",
+ "async-recursion",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-kms",
+ "cartesi-dave-contracts",
  "cartesi-machine",
- "cartesi-prt-core",
+ "cartesi-prt-contracts",
  "cartesi-rollups-contracts",
  "clap",
  "env_logger",
  "futures",
+ "hex",
+ "lazy_static",
  "log",
  "reqwest",
- "rollups-blockchain-reader",
- "rollups-epoch-manager",
- "rollups-machine-runner",
- "rollups-state-manager",
+ "ruint",
  "rusqlite",
+ "rusqlite_migration",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "testcontainers-modules",
+ "thiserror",
+ "tiny-keccak",
  "tokio",
 ]
 
@@ -4375,78 +4329,6 @@ checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
 dependencies = [
  "bytes",
  "rustc-hex",
-]
-
-[[package]]
-name = "rollups-blockchain-reader"
-version = "2.0.0"
-dependencies = [
- "alloy",
- "anyhow",
- "async-recursion",
- "cartesi-dave-contracts",
- "cartesi-dave-merkle",
- "cartesi-machine",
- "cartesi-prt-contracts",
- "cartesi-rollups-contracts",
- "clap",
- "log",
- "num-traits",
- "rollups-state-manager",
- "rusqlite",
- "rusqlite_migration",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "rollups-epoch-manager"
-version = "2.0.0"
-dependencies = [
- "alloy",
- "anyhow",
- "cartesi-dave-contracts",
- "cartesi-prt-core",
- "log",
- "num-traits",
- "rollups-state-manager",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "rollups-machine-runner"
-version = "2.0.0"
-dependencies = [
- "alloy",
- "cartesi-dave-merkle",
- "cartesi-machine",
- "cartesi-prt-core",
- "cartesi-rollups-contracts",
- "hex",
- "log",
- "rollups-state-manager",
- "thiserror",
-]
-
-[[package]]
-name = "rollups-state-manager"
-version = "2.0.0"
-dependencies = [
- "alloy",
- "anyhow",
- "cartesi-dave-merkle",
- "cartesi-machine",
- "cartesi-prt-core",
- "hex",
- "lazy_static",
- "rusqlite",
- "rusqlite_migration",
- "tempfile",
- "thiserror",
 ]
 
 [[package]]
