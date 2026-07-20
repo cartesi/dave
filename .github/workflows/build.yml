@@ -95,10 +95,39 @@ jobs:
         working-directory: ./test/programs/
         run: |
           just build-honeypot-snapshot
+      - name: Build echo
+        working-directory: ./test/programs/
+        run: |
+          just build-echo
       - name: Test prt-rollups
         timeout-minutes: 20
         run: |
           just test-rollups-honeypot-ci
+      # B2 batched sibling: SIGKILL mid advance batch, the resumed run
+      # must re-execute the batch and settle identically to the oracle.
+      # Cheap (no dispute), and the only e2e that runs the node above
+      # snapshot gap 1.
+      - name: Test batched catch-up kill
+        timeout-minutes: 15
+        run: |
+          just test-rollups-kill-ci
+      # B1 chaos loop (docs/plans/characterization.md): the dispute must
+      # survive SIGKILL/respawn fire. Fixed seed: CI is the regression
+      # net; seed exploration stays in local runs.
+      - name: Test chaos
+        timeout-minutes: 15
+        env:
+          CHAOS_SEED: "1"
+        run: |
+          just test-rollups-chaos
+      # The state-transition coverage suite: every on-chain STF shape
+      # driven through a real dispute (docs/test-harness.md coverage
+      # matrix). The battery's most valuable net; it rotted once while
+      # living outside CI.
+      - name: Test stf_all
+        timeout-minutes: 60
+        run: |
+          just test-rollups-honeypot-stf
       - name: Show failing log
         if: failure()
         run: |
@@ -126,7 +155,7 @@ jobs:
             build-essential git wget \
             libslirp-dev \
             libclang-dev \
-            liblua5.4-dev lua5.4 \
+            liblua5.4-dev lua5.4 lua-check \
             xxd jq sqlite3 libc6 clang libarchive13
 
           wget -O xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
@@ -134,25 +163,31 @@ jobs:
           rm ./xgenext2fs.deb
           xgenext2fs --version
 
+      # The version and diff hash live in the justfile recipe; CI must
+      # not carry its own copy of either.
       - name: Install Cartesi Machine
-        working-directory: ./machine/emulator
         run: |
-          make bundle-boost
-          wget -O add-generated-files.diff https://github.com/cartesi/machine-emulator/releases/download/v0.20.0/add-generated-files.diff
-          echo "d9c2afcefc2759e7cd37bbedc83d54c81515f0fddb671103b489b8789aee33bb add-generated-files.diff" | sha256sum -c
-          git apply add-generated-files.diff
-          rm add-generated-files.diff
-          make
-          sudo make install
+          just bundle-boost apply-generated-files-diff build-emulator
+          sudo make -C machine/emulator install
 
       - name: Setup env
         run: |
           just setup-local
 
+      # The same targets `just check` runs locally, one step each so a
+      # failure is legible in the Actions UI.
       - name: Rust fmt and check
         run: |
           just check-fmt-rust-workspace
           just check-rust-workspace
+
+      - name: Clippy
+        run: |
+          just clippy-rust-workspace
+
+      - name: Lua lint
+        run: |
+          just lint-lua
 
       - name: Rust build
         run: |

@@ -1,112 +1,394 @@
-update-submodules:
-  git submodule update --recursive --init
+# Dave build orchestration.
+#
+# Subsystem recipes live in their own justfiles, exposed here as modules:
+# run `just <module>::<recipe>`, e.g. `just prt-contracts::test-disputes`.
+# `just --list` shows root recipes; `just --list <module>` shows a module's.
+# Modules are declared optional (mod?) so partial checkouts, like docker
+# build stages, can still parse this file.
 
+mod? prt-contracts 'prt/contracts'
+mod? rollups-contracts 'cartesi-rollups/contracts'
+mod? rollups-tests 'prt/tests/rollups'
+mod? programs 'test/programs'
+
+[private]
+default:
+    @just --list
+
+# ------------------------------------------------------------------
+# Setup: one-time preparation. Idempotent; safe to re-run. Does NOT
+# clean anything (see the clean recipes for that).
+# ------------------------------------------------------------------
+
+update-submodules:
+    git submodule update --recursive --init
+
+# The emulator needs generated sources that are not in its repo; they are
+# fetched from the matching release and sha256-checked.
+
+# fetch the emulator's generated sources (no-op if already applied)
 apply-generated-files-diff VERSION="v0.20.0" FILEHASH="d9c2afcefc2759e7cd37bbedc83d54c81515f0fddb671103b489b8789aee33bb":
-  cd machine/emulator && \
-    (wget -O add-generated-files.diff https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff && \
-    (echo "{{FILEHASH}} add-generated-files.diff" | sha256sum -c) && \
-    git apply add-generated-files.diff) ; \
-    rm -f add-generated-files.diff
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd machine/emulator
+    wget -q -O add-generated-files.diff \
+      https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff
+    trap 'rm -f add-generated-files.diff' EXIT
+    echo "{{FILEHASH}} add-generated-files.diff" | sha256sum -c -
+    if git apply --check add-generated-files.diff 2>/dev/null; then
+      git apply add-generated-files.diff
+    elif git apply --check --reverse add-generated-files.diff 2>/dev/null; then
+      echo "generated files already present; skipping"
+    else
+      echo "error: generated-files diff neither applies nor reverse-applies." >&2
+      echo "The emulator submodule has diverged; try 'just clean-emulator' first." >&2
+      exit 1
+    fi
 
 bundle-boost:
-  make -C machine/emulator bundle-boost
+    make -C machine/emulator bundle-boost
 
-clean-emulator:
-  make -C machine/emulator clean depclean distclean
+# build the emulator from the submodule (requires docker)
+build-emulator:
+    make -C machine/emulator -j8
 
-clean-contracts: clean-consensus-contracts clean-prt-contracts clean-bindings clean-deployments
-  make -C machine/emulator clean depclean distclean
+# Everything the Rust workspace needs to compile.
+setup: update-submodules bundle-boost apply-generated-files-diff build-emulator
 
-setup: update-submodules clean-emulator clean-contracts bundle-boost apply-generated-files-diff
-  make -C machine/emulator -j8 # Requires docker, necessary for machine bindings
+# Setup plus everything the e2e tests need, running natively.
+setup-local: setup
+    just prt-contracts::install-deps
+    just rollups-contracts::install-deps
+    just rollups-contracts::build-devnet
+    just programs::download-deps
+    just programs::build-programs
+    just programs::build-honeypot-snapshot  # requires docker
 
-# Run this once after cloning, if using a docker environment
+# Setup for the dockerized workflow.
 setup-docker: setup build-docker-image
 
-# Run this once after cloning, if using local environment
-setup-local: setup
-  just -f ./prt/contracts/justfile install-deps
-  just -f ./cartesi-rollups/contracts/justfile install-deps
-  just -f ./cartesi-rollups/contracts/justfile build-devnet
-  just -f ./test/programs/justfile download-deps
-  just -f ./test/programs/justfile build-programs
-  just -f ./test/programs/justfile build-honeypot-snapshot # Requires docker, necessary for tests
+# diagnose the checkout: reports what is missing and the command that fixes it
+doctor:
+    #!/usr/bin/env bash
+    # Not set -e: every check must run; failures are counted, not fatal.
+    set -u
+    fails=0; warns=0
+    ok()   { printf '  ok      %s\n' "$1"; }
+    miss() { printf '  MISSING %s\n' "$1"; printf '          fix: %s\n' "$2"; fails=$((fails+1)); }
+    warn() { printf '  warn    %s\n' "$1"; printf '          %s\n' "$2"; warns=$((warns+1)); }
 
-build-consensus:
-    just -f ./cartesi-rollups/contracts/justfile build
-test-consensus:
-    just -f ./cartesi-rollups/contracts/justfile test
-clean-consensus-contracts:
-    just -f ./cartesi-rollups/contracts/justfile clean-smart-contracts
-clean-consensus-bindings:
-    just -f ./cartesi-rollups/contracts/justfile clean-bindings
-clean-consensus-deployments:
-    just -f ./cartesi-rollups/contracts/justfile clean-deployments
-bind-consensus:
-    just -f ./cartesi-rollups/contracts/justfile bind
-build-devnet:
-    just -f ./cartesi-rollups/contracts/justfile build-devnet
+    echo "toolchain (nix users: 'direnv allow' provides all of these)"
+    for tool in cargo forge lua5.4 luacheck jq sqlite3 wget; do
+      if command -v "$tool" > /dev/null; then ok "$tool"; else
+        miss "$tool not on PATH" "install it (see README.md requirements)"; fi
+    done
+    if command -v docker > /dev/null; then ok "docker"; else
+      warn "docker not on PATH" "needed only for the honeypot image and dockerized workflows"; fi
+    for tool in cartesi-machine cartesi-machine-stored-hash; do
+      if command -v "$tool" > /dev/null; then ok "$tool"; else
+        miss "$tool not on PATH" "install the Cartesi Machine (nix devshell has it), needed to build/run test programs"; fi
+    done
 
-build-prt:
-    just -f ./prt/contracts/justfile build
-test-prt:
-    just -f ./prt/contracts/justfile test-disputes
-clean-prt-contracts:
-    just -f ./prt/contracts/justfile clean-smart-contracts
-clean-prt-bindings:
-    just -f ./prt/contracts/justfile clean-bindings
-clean-prt-deployments:
-    just -f ./prt/contracts/justfile clean-deployments
-bind-prt:
-    just -f ./prt/contracts/justfile bind
+    echo "rust build inputs"
+    if [ -f machine/step/src/EmulatorConstants.sol ]; then ok "machine/step submodule"; else
+      miss "machine/step submodule not initialized" "run: just update-submodules"; fi
+    if [ -n "${LIBCARTESI_PATH:-}" ] && [ -e "$LIBCARTESI_PATH/libcartesi.a" ]; then
+      ok "emulator library (external, LIBCARTESI_PATH)"
+    elif [ -e machine/emulator/src/libcartesi.a ]; then
+      ok "emulator library (submodule build)"
+    else
+      miss "no emulator library" "nix: 'direnv allow' (exports LIBCARTESI_PATH); otherwise run: just setup"
+    fi
+    for dir in prt/contracts cartesi-rollups/contracts; do
+      if [ -d "$dir/dependencies" ] && [ -n "$(ls -A "$dir/dependencies" 2>/dev/null)" ]; then
+        ok "$dir soldeer deps"; else
+        miss "$dir/dependencies missing" "run: just setup-local (or cd $dir && just install-deps)"; fi
+      if [ -d "$dir/bindings-rs/src/contract" ]; then ok "$dir bindings"; else
+        miss "$dir Rust bindings not generated" "run: just bind"; fi
+    done
 
-build-smart-contracts: build-consensus build-prt
-test-smart-contracts: build-smart-contracts test-consensus test-prt
-bind: bind-consensus bind-prt
-clean-bindings: clean-consensus-bindings clean-prt-bindings
-clean-deployments: clean-consensus-deployments clean-prt-deployments
+    echo "e2e test inputs (docs/test-harness.md)"
+    for f in linux.bin rootfs.ext2; do
+      if [ -f "test/programs/$f" ]; then ok "test/programs/$f"; else
+        miss "test/programs/$f missing" "run: just programs::download-deps"; fi
+    done
+    for prog in echo yield honeypot; do
+      if [ -d "test/programs/$prog/machine-image" ]; then ok "$prog machine image"; else
+        miss "test/programs/$prog/machine-image missing" \
+          "run: just setup-local, or copy from a sibling worktree (images are hardware-independent)"; fi
+    done
+    if [ -f cartesi-rollups/contracts/state.json ] && [ -d cartesi-rollups/contracts/deployments/31337 ]; then
+      ok "devnet state + deployments"
+      # A stale devnet (contracts moved since deployment) fails e2e
+      # with a winner-commitment mismatch - the scariest message in
+      # the node - and cost a bisect to diagnose (2026-07-14).
+      if [ -f cartesi-rollups/contracts/state.fingerprint ]; then
+        if [ "$(./script/devnet-fingerprint.sh)" = "$(cat cartesi-rollups/contracts/state.fingerprint)" ]; then
+          ok "devnet state fingerprint"
+        else
+          warn "devnet state was deployed from different contract sources" \
+            "a stale devnet fails e2e loudly and misleadingly; rebuild: just rollups-contracts::build-devnet"
+        fi
+      else
+        warn "devnet state has no fingerprint" \
+          "predates the freshness check; rebuild to adopt: just rollups-contracts::build-devnet"
+      fi
+    else
+      miss "devnet state.json / deployments missing" "run: just rollups-contracts::build-devnet"; fi
+    if command -v lsof > /dev/null && lsof -iTCP:8545 -sTCP:LISTEN > /dev/null 2>&1; then
+      warn "something is listening on port 8545" \
+        "a stale anvil makes e2e runs nondeterministic; kill it or run tests with TEST_INSTANCE=<free port>"
+    fi
+    # Battery/e2e instance dirs are left for forensics and are BIG
+    # (~5 GB each); a full disk quietly slows every machine store.
+    litter=$(du -sm prt/tests/rollups/_state* 2>/dev/null | awk '{sum+=$1} END {printf "%d", sum}')
+    if [ "${litter:-0}" -gt 10000 ]; then
+      warn "e2e state dirs hold ${litter} MB (prt/tests/rollups/_state*)" \
+        "forensic litter from past runs; sweep with: just rollups-tests::sweep"
+    fi
+    # Historic leak class (806 GB found 2026-07-11): tests that
+    # tempdir().keep() into the system TMPDIR leave orphans nothing
+    # sweeps. Test scratch belongs under target/ (CARGO_TARGET_TMPDIR).
+    if command -v getconf > /dev/null; then
+      sys_tmp=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)
+      if [ -n "$sys_tmp" ]; then
+        tmp_litter=$(du -sm "$sys_tmp".tmp* 2>/dev/null | awk '{sum+=$1} END {printf "%d", sum}')
+        if [ "${tmp_litter:-0}" -gt 10000 ]; then
+          warn "system TMPDIR holds ${tmp_litter} MB of .tmp* orphans" \
+            "leaked test scratch; sweep with: rm -rf \"$sys_tmp\".tmp*"
+        fi
+      fi
+    fi
+
+    echo
+    if [ "$fails" -eq 0 ]; then
+      echo "doctor: healthy ($warns warning(s)). setup docs: docs/build-system.md"
+    else
+      echo "doctor: $fails problem(s), $warns warning(s). setup docs: docs/build-system.md"
+    fi
+    exit "$fails"
+
+# ------------------------------------------------------------------
+# Contracts and Rust bindings
+# ------------------------------------------------------------------
+
+build-smart-contracts:
+    just prt-contracts::build-smart-contracts
+    just rollups-contracts::build-smart-contracts
+
+test-smart-contracts:
+    just prt-contracts::test-disputes
+    just rollups-contracts::test
+
+# regenerate Rust bindings from the contracts (no-op when sources unchanged)
+bind:
+    just prt-contracts::bind
+    just rollups-contracts::bind
+
+bind-force:
+    just prt-contracts::bind-force
+    just rollups-contracts::bind-force
+
+# ------------------------------------------------------------------
+# Validation. `just check` is the pre-commit gate: every fast check
+# in one command, cheapest first (e2e stays separate - see the
+# end-to-end section). CI runs these same targets; if you are about
+# to commit, run `just check`.
+# ------------------------------------------------------------------
+
+# everything fast: formatting, lints, unit tests
+check: check-fmt lint-lua clippy-rust-workspace test-rust-workspace
+
+# format everything (rust workspace + both contract dirs)
+fmt: fmt-rust-workspace
+    just prt-contracts::fmt
+    just rollups-contracts::fmt
+
+# Forge's formatter changes wrapping heuristics across releases; when
+# this disagrees with CI, align the setup-tools foundry pin and the
+# devshell forge rather than hand-formatting around either.
+check-fmt: check-fmt-rust-workspace
+    just prt-contracts::check-fmt
+    just rollups-contracts::check-fmt
+
+# lint the Lua client and test harness
+lint-lua:
+    luacheck prt/client-lua prt/tests/rollups --exclude-files "**/dependencies/**"
+
+clippy-rust-workspace: bind
+    cargo clippy --workspace --all-targets --features download_uarch -- -D warnings
+
+# ------------------------------------------------------------------
+# Rust workspace. All recipes depend on bind because the bindings
+# crates are generated code (gitignored); bind is incremental, so
+# this costs nothing when contracts are unchanged.
+# ------------------------------------------------------------------
 
 fmt-rust-workspace: bind
-  cargo fmt
+    cargo fmt
+
 check-fmt-rust-workspace: bind
-  cargo fmt --check
+    cargo fmt --check
+
 check-rust-workspace: bind
-  cargo check --features download_uarch
+    cargo check --features download_uarch
+
+# ensure-docker: the kms tests spin testcontainers, and a sleeping
+# Docker Desktop fails them with noise that reads like a code bug
 test-rust-workspace: bind
-  cargo test --features download_uarch
+    ./script/ensure-docker.sh
+    cargo test --features download_uarch
+
+# regenerate the measurement baselines (docs/plans/measurements*.md)
+measure *ARGS: bind
+    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+      --machine test/programs/echo/machine-image \
+      --out docs/plans/measurements.md {{ARGS}}
+
+measure-stress *ARGS: bind
+    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+      --machine test/programs/stress/machine-image \
+      --out docs/plans/measurements-stress.md {{ARGS}}
+
+# derive tournament level constants (docs/plans/constants.md)
+measure-constants *ARGS: bind
+    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+      --machine test/programs/stress/machine-image --constants \
+      --out docs/plans/constants.md {{ARGS}}
+
 build-rust-workspace *ARGS: bind
-  cargo build {{ARGS}} --features download_uarch
+    cargo build {{ARGS}} --features download_uarch
+
 build-release-rust-workspace *ARGS: bind
-  cargo build --release {{ARGS}} --features download_uarch
-clean-rust-workspace: bind
-  cargo clean
+    cargo build --release {{ARGS}} --features download_uarch
 
-build: build-smart-contracts bind build-rust-workspace
+build: build-smart-contracts build-rust-workspace
 
-build-docker-image TAG="dave:dev":
-  docker build -f test/Dockerfile -t {{TAG}} .
-run-dockered +CMD: build-docker-image
-  docker run -it --rm --name dave-node dave:dev {{CMD}}
-exec-dockered +CMD:
-  docker exec dave-node {{CMD}}
+# ------------------------------------------------------------------
+# Worktree janitor. Session worktrees accumulate regenerable bulk
+# (target/ at 5-15 GB, e2e state at ~5 GB a lane) long after their
+# sessions end; 2026-07-11 found ~90 GB of it. Run the report when
+# disk feels tight, the sweep at the end of a work session.
+# ------------------------------------------------------------------
+
+# survey every registered worktree: size, dirtiness, last activity
+worktrees-report:
+    #!/usr/bin/env bash
+    set -u
+    printf '%-42s %8s %7s %-16s %s\n' WORKTREE SIZE DIRTY LAST_COMMIT BRANCH
+    git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
+      # Exclude .claude: the main checkout hosts the session
+      # worktrees under .claude/worktrees; count each tree once.
+      # GNU du (nix devshell) and BSD du (stock macOS) disagree on
+      # the flag.
+      size=$(du -sh --exclude=.claude "$wt" 2>/dev/null | cut -f1)
+      [ -z "$size" ] && size=$(du -sh -I .claude "$wt" 2>/dev/null | cut -f1)
+      dirty=$(git -C "$wt" status --porcelain --ignore-submodules=all 2>/dev/null | wc -l | tr -d ' ')
+      last=$(git -C "$wt" log -1 --format='%cr' 2>/dev/null)
+      branch=$(git -C "$wt" branch --show-current 2>/dev/null)
+      printf '%-42s %8s %7s %-16s %s\n' \
+        "$(basename "$wt")" "$size" "$dirty" "$last" "${branch:-detached}"
+    done
+
+# remove regenerables (target/, e2e litter) from every CLEAN session
+# worktree except the one running this; dirty worktrees are refused,
+# sources and branches are never touched
+worktrees-sweep:
+    #!/usr/bin/env bash
+    set -u
+    here=$(pwd -P)
+    git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
+      case "$wt" in
+        */.claude/worktrees/*) ;;    # session worktrees only
+        *) continue ;;               # never the main checkout
+      esac
+      [ "$(cd "$wt" && pwd -P)" = "$here" ] && continue
+      # Submodule pointer drift is checkout state, not user work;
+      # any real uncommitted change refuses the sweep.
+      if [ -n "$(git -C "$wt" status --porcelain --ignore-submodules=all 2>/dev/null)" ]; then
+        echo "skip (dirty): $(basename "$wt")"
+        continue
+      fi
+      before=$(du -sm "$wt" 2>/dev/null | cut -f1)
+      rm -rf "$wt/target"
+      (cd "$wt/prt/tests/rollups" 2>/dev/null \
+        && shopt -s nullglob \
+        && rm -rf _state* _oracle* _machine_scratch* _battery dave*.log* anvil*.log)
+      after=$(du -sm "$wt" 2>/dev/null | cut -f1)
+      echo "swept $(basename "$wt"): ${before:-?} MB -> ${after:-?} MB"
+    done
+
+# ------------------------------------------------------------------
+# Clean
+# ------------------------------------------------------------------
+
+clean-emulator:
+    make -C machine/emulator clean depclean distclean
+
+clean-contracts:
+    just prt-contracts::clean
+    just rollups-contracts::clean
+
+clean-rust-workspace:
+    cargo clean
+
+clean: clean-contracts clean-rust-workspace
+
+# ------------------------------------------------------------------
+# End-to-end tests (see docs/test-harness.md)
+# ------------------------------------------------------------------
 
 test-rollups-echo: build-rust-workspace
-    just -f ./prt/tests/rollups/justfile test-echo
+    just rollups-tests::test-echo
+
+test-rollups-chaos: build-rust-workspace
+    just rollups-tests::test-chaos
+
 test-rollups-honeypot: build-rust-workspace
-    just -f ./prt/tests/rollups/justfile test-honeypot-all
+    just rollups-tests::test-honeypot-all
+
 test-rollups-honeypot-ci: build-rust-workspace
-    just -f ./prt/tests/rollups/justfile test-honeypot-ci
+    just rollups-tests::test-honeypot-ci
+
+test-rollups-honeypot-stf: build-rust-workspace
+    just rollups-tests::test-honeypot-stf
+
+test-rollups-kill-ci: build-rust-workspace
+    just rollups-tests::test-kill-ci
+
 test-rollups-honeypot-case CASE: build-rust-workspace
-    just -f ./prt/tests/rollups/justfile test-honeypot-case {{CASE}}
+    just rollups-tests::test-honeypot-case {{CASE}}
+
 view-rollups-logs:
-    just -f ./prt/tests/rollups/justfile read-node-logs
+    just rollups-tests::read-node-logs
+
+# ------------------------------------------------------------------
+# Docker environment
+# ------------------------------------------------------------------
+
+build-docker-image TAG="dave:dev":
+    docker build -f test/Dockerfile -t {{TAG}} .
+
+run-dockered +CMD: build-docker-image
+    docker run -it --rm --name dave-node dave:dev {{CMD}}
+
+exec-dockered +CMD:
+    docker exec dave-node {{CMD}}
+
+# ------------------------------------------------------------------
+# KMS test harness
+# ------------------------------------------------------------------
 
 kms-test-start:
-  docker compose -f common-rs/kms/compose.yaml up --wait
+    docker compose -f common-rs/kms/compose.yaml up --wait
+
 kms-test-stop:
-  docker compose -f common-rs/kms/compose.yaml down --volumes --remove-orphans
+    docker compose -f common-rs/kms/compose.yaml down --volumes --remove-orphans
+
 kms-test-restart: kms-test-stop kms-test-start
+
 kms-test-logs:
-  docker compose -f common-rs/kms/compose.yaml logs -f
+    docker compose -f common-rs/kms/compose.yaml logs -f
+
 kms-test-dave-logs:
-  docker compose -f common-rs/kms/compose.yaml exec dave-kms tail -f ./prt/tests/rollups/dave.log
+    docker compose -f common-rs/kms/compose.yaml exec dave-kms tail -f ./prt/tests/rollups/dave.log

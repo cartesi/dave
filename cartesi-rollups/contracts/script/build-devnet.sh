@@ -68,3 +68,10 @@ private_key='0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
     --private-key "$private_key" \
     --rpc-url "$rpc_url" \
     --slow
+
+# Fingerprint the contract sources this state was deployed from, so
+# the doctor can tell a stale state.json from a fresh one. A stale
+# devnet fails e2e runs with the scariest possible message (a winner
+# commitment mismatch), which cost a bisect to diagnose (2026-07-14).
+../../script/devnet-fingerprint.sh > state.fingerprint
+echo "state fingerprint: $(cat state.fingerprint)"
