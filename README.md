@@ -129,6 +129,16 @@ The repository includes an example for PRT Dave:
 
 ---
 
+## Documentation
+
+The knowledge base lives in [docs/](docs/) — start with
+[docs/README.md](docs/README.md). It covers the commitment construction
+([computation-hash](docs/computation-hash.md)), the epoch and dispute
+lifecycle, the node architecture, the test harness, and the build system.
+Agent-facing context and repo conventions are in [AGENTS.md](AGENTS.md).
+
+---
+
 ## Contributing
 
 Thank you for your interest in Cartesi!
