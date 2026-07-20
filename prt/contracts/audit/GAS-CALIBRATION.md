@@ -460,9 +460,14 @@ capital requirement, and the already-measured InputBox submission increase.
 That makes bringing the InputBox change into scope an explicit protocol tradeoff
 rather than an undocumented reaction to one gas number.
 
-The provisional allocation makes leaf seal plus proof the configured terminal
-maximum at 950,000 gas. This is 249,000 above the former 701,000-gas inner path,
-so every work reserve rises by 249,000 gas and every join deposit by 0.01245 ETH
-at the 50-gwei cap. Further leaf-proof measurement or InputBox redesign should
-be justified by the expected improvement over this explicit heuristic, not by
-a safety requirement.
+The initial provisional-proof calibration made leaf seal plus proof a
+950,000-gas terminal path, 249,000 above the then-current 701,000-gas inner
+path. The subsequent Match implementation review reduced the retained leaf
+seal allocation to 105,000 and the largest inner terminal path to 698,000; the
+later simplification batch nudged advance to 125,000 and inner seal to
+363,000, raising that inner path to 699,000. The current terminal maximum
+remains 948,000 gas. `Bond` derives every work reserve and join deposit from
+that maximum, so these recalibrations require no independent bond parameter
+edit. Further leaf-proof measurement or InputBox
+redesign should be justified by the expected improvement over this explicit
+heuristic, not by a safety requirement.

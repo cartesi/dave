@@ -2,7 +2,7 @@
 
 Status: implemented and validated
 
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-20
 
 This document records the compatibility fence, implemented internal shape, and
 validation evidence for the dispute-game `Match` library. The goal was to make
@@ -11,7 +11,7 @@ protocol behavior, the external ABI, the raw stored representation, or event
 semantics.
 
 The implementation was split into small reviewable commits: representation
-characterization, phase views, mutation centralization, call-site migration,
+characterization, derived phase and sealed view, mutation centralization, call-site migration,
 legacy cleanup, branch-complete gas witnesses, and gas recalibration.
 
 ## Scope and exclusions
@@ -19,8 +19,8 @@ legacy cleanup, branch-complete gas witnesses, and gas recalibration.
 The redesign:
 
 - derive one explicit phase from the existing stored fields;
-- expose phase-specific internal views instead of asking callers to interpret
-  overloaded slots;
+- expose a sealed-state view instead of asking callers to decode the overloaded
+  sealed slots;
 - name the revealing and waiting roles in alternating bisection;
 - centralize branch selection, sealing-side parity, agree-proof ownership, and
   final-state ordering;
@@ -37,14 +37,15 @@ It did not:
 - decompose unrelated `Tournament` lifecycle code; or
 - require any node or client change.
 
-All supported tournament geometries have `height >= 1`. A zero-height match is
-currently constructible through a misconfigured parameters provider and is born
-with `isInit == true, currentHeight == 0`; its creation encoding is therefore
-indistinguishable from the sealed sentinel. Zero height remains explicitly
-unsupported trusted configuration. The canonical table test and every injected
-fixture must enforce positive height. Runtime parameter validation, if desired,
-is a separate policy change rather than an accidental consequence of this
-refactor.
+All supported tournament geometries have `height >= 1`. A zero-height match
+would be born with `isInit == true, currentHeight == 0`; its creation encoding
+would therefore be indistinguishable from the sealed sentinel. Zero height
+remains explicitly unsupported trusted configuration; the canonical table test
+and every injected fixture enforce positive height. Since the simplification
+batch, `create` also asserts positive height at the birth site. This is an
+invariant tripwire in the style of the library's other asserts, not runtime
+parameter validation: a misconfigured provider now fails loudly at first
+pairing instead of minting a phantom sealed match.
 
 ## Pre-refactor abstraction failures
 
@@ -68,11 +69,11 @@ slots without first establishing the phase.
 
 ### Phase is implicit and order-dependent
 
-The default mapping value has `currentHeight == 0`, so the current
-`isSealed()` predicate returns true even though the match does not exist.
-Production callers correctly check `requireExist()` first, but correctness
-depends on remembering that ordering. `currentHeight > 1`, `== 1`, and `== 0`
-otherwise encode bisection, ready-to-seal, and sealed phases.
+Before the phase refactor, the default mapping value had
+`currentHeight == 0`, so `isSealed()` returned true even though the match did
+not exist. Production callers had to remember to call `requireExist()` first.
+`currentHeight > 1`, `== 1`, and `== 0` otherwise encode bisection,
+ready-to-seal, and sealed phases.
 
 `runningLeafPosition` is similarly overloaded. Before seal it is aligned to the
 current subtree and names that segment's first leaf. Seal turns it into the
@@ -158,9 +159,9 @@ The refactor must also preserve exact raw values:
 
 That last item includes public revert precedence. Advance validates the Match
 before switching clocks. Leaf and inner sealing establish the tournament role,
-match existence, and seal readiness, then transition clocks before validating
-the leaf pair and agree proof. Leaf proof resolution checks its clock phase
-before its Match existence/sealed checks. Transaction rollback makes every
+then use one existence-aware Match phase guard before transitioning clocks and
+validating the leaf pair and agree proof. Leaf proof resolution checks its clock
+phase before the existence-aware sealed view. Transaction rollback makes every
 failed path atomic, but reordering those checks would still change the public
 error contract.
 
@@ -219,14 +220,14 @@ prevents a source hash from masquerading as executable change. The hashes are
 local compatibility witnesses, not substitutes for inspecting the semantic
 test vectors below.
 
-The derived phase and read-only views landed without a production call-site
-change. Against the pre-slice worktree, the ABI, semantic storage layout, and
-both no-metadata bytecode hashes above remain exact. Full bytecode differs only
-in source metadata.
+The initial derived phase and read-only views landed without a production
+call-site change. Against the pre-slice worktree, the ABI, semantic storage
+layout, and both no-metadata bytecode hashes above remained exact. Full bytecode
+differed only in source metadata.
 
 The subsequent mutation refactor deliberately changed executable bytecode while
-preserving the ABI and semantic storage-layout hashes above. The final
-metadata-free witnesses are:
+preserving the ABI and semantic storage-layout hashes above. Its pre-follow-up
+metadata-free checkpoint was:
 
 ```text
 Tournament creation bytecode without metadata sha256:
@@ -234,6 +235,43 @@ Tournament creation bytecode without metadata sha256:
 
 Tournament runtime bytecode without metadata sha256:
 cdcb81a8c101935b5700b491cf4046d4a2ed0583d0c26f5f49f06eacfb0185b7
+```
+
+The bounded implementation review described below and its consequent gas
+recalibration produced these witnesses:
+
+```text
+canonical Tournament ABI sha256:
+67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a
+
+semantic Tournament storage-layout JSON sha256:
+952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329
+
+Tournament creation bytecode without metadata sha256:
+4e7afa78938feda5bbaca9e6f9caa1194c2059d8dd43a87ac9ace285486a3032
+
+Tournament runtime bytecode without metadata sha256:
+0ae057042e4bb4a0852140a59787f3a4ee90937b33907557381fa186041c28ed
+```
+
+The post-campaign simplification batch (one response-discount implementation in
+`MatchClocks`, one existence-precedence rule in the `Match` storage guards, the
+`requireExists` / `requireSealed` renames, height-narrowed asserting `create`,
+and the `pausedAllowance` boundary accessor) and its consequent recalibration
+of the advance and inner-seal allocations produced the current witnesses:
+
+```text
+canonical Tournament ABI sha256:
+67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a
+
+semantic Tournament storage-layout JSON sha256:
+952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329
+
+Tournament creation bytecode without metadata sha256:
+a638837b16a7cb21139706ff3aaecbb79a2f3b663d1b1dbb50f1e0243735ed4c
+
+Tournament runtime bytecode without metadata sha256:
+631eb0908dfce360f6b6d85fb827ff4c5fe201b9e48e6af74b99f0cd35d2d5d3
 ```
 
 ## Derived phase and invariants
@@ -257,6 +295,11 @@ a valid representation produced by positive-height geometry. Any parity helper
 that also receives total height must assert `currentHeight <= totalHeight` or
 compare parity directly; it must not use an unchecked
 `totalHeight - currentHeight` subtraction.
+
+All memory predicates and storage phase guards use this same derivation. The
+storage guards reject `UNINITIALIZED` with `MatchDoesNotExist` before applying
+their phase-specific error, so callers cannot accidentally classify a default
+mapping slot as sealed.
 
 Existing public errors remain authoritative:
 
@@ -325,17 +368,9 @@ Keep one `Match` library. Identity, the compressed bisection witness, and sealed
 decoding are one coherent representation; splitting files would add navigation
 without separating policy as cleanly as `Clock` / `MatchClocks` did.
 
-Phase-specific internal views make the overloading explicit:
+The sealed-state view makes the nontrivial overloading explicit:
 
 ```solidity
-struct BisectionView {
-    Tree.Node revealingParent;
-    Tree.Node waitingLeft;
-    Tree.Node waitingRight;
-    uint256 segmentStart;
-    uint64 height;
-}
-
 struct SealedView {
     Machine.Hash agreeState;
     uint256 divergencePosition;
@@ -345,24 +380,23 @@ struct SealedView {
 
 function phase(State memory state) internal pure returns (Phase);
 
-function bisectionView(State memory state)
-    internal pure returns (BisectionView memory);
-
 function sealedView(State memory state, uint64 totalHeight)
     internal pure returns (SealedView memory);
 ```
 
-`BisectionView` covers both `BISECTING` and `READY_TO_SEAL`; both phases use the
-same revealing/waiting representation, including a match created directly at
-height one. `sealedView` establishes existence before the sealed phase and
-decodes fixed commitment identity using the original total height.
+The initially introduced `BisectionView` was removed during implementation
+review. It only copied already-accessible active fields, had no production
+consumer, and encoded no invariant or decoding rule. The `State` NatSpec and
+mutation names document the revealing/waiting roles without adding an
+abstraction-shaped test target. `sealedView` remains because it establishes
+existence and phase, decodes branch parity, orders results by fixed commitment
+identity, and is consumed by production leaf settlement.
 
-The existing `toCycle` remains the deliberately phase-neutral compatibility
-helper behind `getMatchCycle`: before sealing it returns the unresolved
-segment's first cycle, and after sealing it returns the disputed transition
-cycle. The compatibility `getDivergence` helper still uses that behavior;
-future phase-specific call sites can compute the latter explicitly from the
-sealed divergence position instead of introducing another overloaded accessor.
+The public `getMatchCycle` behavior remains deliberately phase-neutral: before
+sealing it returns the unresolved segment's first cycle, and after sealing it
+returns the disputed transition cycle. Cycle conversion belongs to
+`Commitment.Arguments`, so callers pass the Match position to
+`Commitment.toCycle` instead of using another overloaded Match accessor.
 
 Mutation verbs name the state machine rather than repeat the library name:
 
@@ -381,26 +415,26 @@ Named private decisions replace the parity table:
 
 - select `LEFT` or `RIGHT` from the supplied and waiting left nodes;
 - perform one common descent mutation;
-- derive the sealing side once from total-height parity;
-- select the agree-proof commitment from that sealing side;
+- derive the final revealing side once from total-height parity;
+- select the agree-proof commitment from that revealing side;
 - encode the exact legacy sealed slots once; and
 - decode them once before ordering final states by commitment one and two.
 
-Tournament call sites retain explicit existence and public phase guards before
-coordinating clock transitions. Match mutations assert their expected internal
-source representation and never repair it. This preserves current public error
-ordering while making misuse by a future internal caller fail locally.
+Tournament call sites use storage-aware Match phase guards before coordinating
+clock transitions. Each phase guard includes the existence check, eliminating
+the former two-call ordering dependency without changing the public selector.
+Match mutations assert their expected internal source representation and never
+repair it. This preserves current public error ordering while making misuse by
+a future internal caller fail locally.
 
-`sealedView` establishes both existence and the sealed phase. The compatibility
-`getDivergence` helper still asserts only `currentHeight == 0`, which the default
-absent mapping value also satisfies. Existing public callers retain their
-explicit existence guards and public revert ordering; new internal readers can
-use the safe view directly.
+`sealedView` establishes both existence and the sealed phase. `winLeafMatch`
+uses it after the intentional clock-initialization checks, then derives the
+transition cycle from `divergencePosition`. There is no second raw sealed-state
+decoder or phase-unsafe compatibility helper.
 
-Memory views are available to internal readers and make phase interpretation
-directly testable. The hot leaf-winner path retains the guarded compatibility
-tuple returned by `getDivergence`; both paths still share the single divergence
-decoder and fixed-side ordering implementation.
+`SealedView` is both a production read boundary and a directly testable decoder,
+so the hot leaf-winner path shares the same phase check, branch decoder, and
+fixed-side ordering implementation as the semantic tests.
 
 ## Test treatment
 
@@ -419,6 +453,14 @@ The Match campaign has four clearly separated owners:
 4. **Lifecycle integration** owns public phase errors, clocks, deletion,
    re-pairing, recursion, and terminal results. Match unit tests should not
    recreate those tournament fixtures.
+
+The focused phase suite additionally fuzzes the complete phase partition,
+checks every storage guard's absent and accepted behavior plus representative
+wrong phases. The semantic suite reads the production `SealedView`, including a
+regression proving that zero agree and final-state hashes remain valid payload
+rather than an existence sentinel. Lifecycle integration pins the intentional
+`winLeafMatch` precedence for unknown roots, reversed IDs, and deleted IDs whose
+clocks remain initialized.
 
 The pre-refactor fence pins these observable cases:
 
@@ -461,12 +503,20 @@ existence sentinel.
    before the three shared allocations were recalibrated.
 9. The audit ledger and protocol documentation were synchronized with the
    implemented result.
+10. A bounded implementation review made the derived phase authoritative,
+    moved production sealed reads to `SealedView`, removed the redundant active
+    view, cycle, and divergence accessors, and added the focused phase and
+    compatibility regressions above.
 
 No commit in this sequence touches node source or changes the external ABI.
 
-## Validation result
+## Match-refactor validation checkpoint
 
-The completed campaign checked all of the following:
+The bounded Match implementation review before the final Clock and Match
+simplification checked all of the following. This is a historical checkpoint
+for the Match refactor, not the current campaign summary;
+[`TEST-REPORT.md`](TEST-REPORT.md) owns the current candidate and latest
+aggregate test, gas, and coverage results.
 
 - The canonical `Tournament` ABI and semantic storage-layout hashes remain
   `67e34c...feb8a` and `952af2...a329`; selectors, tuple field order, raw active
@@ -475,22 +525,32 @@ The completed campaign checked all of the following:
   commitment orders through height eight, covers representative height-55
   paths, and fuzzes the reviewed geometry.
 - The positive lifecycle invariant completed 256 runs of depth 128, or 32,768
-  calls, with no handler reverts or discards. The independent rejection model
-  completed 128 runs of depth 128, or 16,384 calls, with the same result.
+  targeted handler calls, with no handler reverts or discards. The independent
+  rejection model completed 128 runs of depth 128, or 16,384 targeted handler
+  calls, with the same result. Deterministic traces separately pin critical
+  branch reachability.
 - Recursive two-level timing, winner propagation, double elimination, and two
   sequential children remain covered.
-- The release-style coverage recipe passed 135 included tests. `Match.sol` maps
-  107/107 lines, 102/102 statements, 10/20 branches, and 24/24 functions; as
-  documented in the recipe, IR-minimum branch mappings are investigative rather
-  than semantic evidence.
-- All 159 dispute-game tests passed under both Forge 1.5.1-dev and release Forge
-  1.4.3.
-- All 18 retained refund-gas witnesses reproduced exactly under both versions.
-  The shared advance, inner-seal, and leaf-seal allocations are respectively
-  126,000, 364,000, and 107,000 gas.
+- The complete dispute gate passed 212 tests under Forge 1.5.1-dev. The focused
+  Match phase, parity, and validation suites passed 21 tests, including fuzzed
+  phase partitioning and parity across the reviewed geometry.
+- All 18 retained refund-gas witnesses reproduced under Forge 1.5.1-dev and
+  release Forge 1.4.3. The storage-aware guards lowered five rounded
+  recommendations: advance to 124,000, inner seal to 362,000, leaf seal to
+  105,000, inner winner propagation to 336,000, and inner elimination to
+  172,000 gas. `Bond` automatically propagated the new 948,000-gas terminal
+  maximum into every work reserve and join deposit.
 - `rollups-contracts` retained all three integration tests, including both fuzz
   properties at 256 runs and the bounded-callback settlement trace.
-- `forge fmt --check`, focused lint, and `git diff --check` passed throughout.
+- Release Forge 1.4.3 and local Forge 1.5.1-dev formatting checks agree on the
+  changed Solidity. `git diff --check` passed.
+
+That checkpoint did not silently promote the prior release-style coverage
+result. The current coverage map lives in the campaign test report; IR-minimum
+branch mappings remain investigative rather than semantic evidence. The later
+simplification batch raised the complete dispute gate to 231 tests and changed
+the shared advance and inner-seal allocations to 125,000 and 363,000 gas, as
+recorded there.
 
 Production bytecode changed intentionally. The final metadata-free creation and
 runtime hashes are recorded above, so deployment and CREATE2 artifacts must be

@@ -1,8 +1,9 @@
 # PRT dispute-game review ledger
 
-Status: active
+Status: complete for this campaign; deferred work and release gates remain
+explicit below
 
-Last reviewed: 2026-07-19
+Last reviewed: 2026-07-20
 
 This ledger records the reviewed conclusions and follow-up work for the Solidity
 dispute game under `prt/contracts/`. It is deliberately separate from the
@@ -338,12 +339,12 @@ future interface version rather than adding a breaking guard or rename now.
 - Severity: Low
 - Status: Resolved
 - Area: abstraction correctness, readability
-- Evidence: `Match.hashFromId`, `Match.State.requireExist`,
+- Evidence: `Match.hashFromId`, `Match.State.requireExists`,
   `Tournament.getMatchCycle`, child-resolution entry points
 
 Hashing `Match.Id(0, 0)` produces a nonzero hash, so `IdHash.requireExist()` does
 not establish that a mapped match or parent-child link exists. The child paths
-already loaded the corresponding state and checked `Match.State.requireExist()`,
+already loaded the corresponding state and checked `Match.State.requireExists()`,
 making their ID-hash checks redundant rather than protective. The cycle view
 lacked the stored-state check and returned a plausible cycle for an absent slot.
 
@@ -353,7 +354,7 @@ Resolution:
    ID-hash equality helper. A hash identifies a mapping slot; it does not prove
    that the slot contains a live match.
 2. Child winner propagation and elimination now derive the mapped ID and rely
-   on the immediately loaded `Match.State.requireExist()` check. Unlinked child
+   on the immediately loaded `Match.State.requireExists()` check. Unlinked child
    tournaments still reject with `MatchDoesNotExist` before any child call.
 3. `getMatchCycle` now applies the same stored-state check. It no longer returns
    the tournament's `startCycle` for a nonexistent match, and deleted matches
@@ -900,6 +901,9 @@ The current layered approach is appropriate if each layer keeps one role:
 - `GAS-CALIBRATION.md` is an operational runbook: it pins how to regenerate
   volatile measurements and trace their effects without turning the findings
   ledger into a build script.
+- `TEST-REPORT.md` assesses the current test layers, oracle independence,
+  mutation evidence, limitations, and stop rule without duplicating this
+  chronological ledger.
 - `AGENTS.md` is orientation and routing, not a second protocol specification.
 - `MAP.md` is a broad source inventory and lead generator, not an authority.
 
@@ -1093,7 +1097,11 @@ repaired. Timeout views, timeout mutations, and proven-leaf settlement now share
 a pure four-way classifier. The external tuple and `Tournament` ABI are
 byte-identical to the pre-refactor snapshot. PRT-009 completed the response
 budget design without changing that tuple; PRT-001 remains separate time-source
-work. See [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
+work. Mutating `MatchClocks` transitions validate their required local clock
+shape; the timeout classifier assumes a legal caller-supplied shape. `Match`
+and `Tournament` retain structural phase ownership. The focused tests mirror
+that split in separate single-clock and pair-policy harnesses. See
+[`CLOCK-DESIGN.md`](CLOCK-DESIGN.md).
 
 ### `Match.State` phase and mutation API (resolved)
 
@@ -1169,6 +1177,25 @@ role and lifecycle explanations to `docs/dispute-game.md`.
 - Resolved: the unused strict `Time.sub` helper and its test-only wrapper were
   removed. Duration differences that intentionally clamp at zero use the
   explicitly named `Time.monus` operation.
+- Resolved by the simplification batch: the three `MatchClocks` bisection
+  exits share one private `_pauseResponderAt` helper, so the response discount
+  has a single implementation; `pauseForInnerAt` reads snapshotted remainders
+  through the phase-checked `Clock.pausedAllowance` instead of the raw
+  allowance field, using a new `Time.max` for durations.
+- Resolved by the simplification batch: the `Match` storage phase guards share
+  one `_establishedPhase` implementation of the existence-before-phase-error
+  precedence. The guards were renamed to `requireExists` and `requireSealed`,
+  which also removes the accidental name collision with `Tree.requireExist`.
+- Resolved by the simplification batch: `Match.create` takes the commitment
+  height directly and asserts it positive, so a zero-height state can no
+  longer be born phase-indistinguishable from `SEALED`. This is a birth-site
+  invariant tripwire, consistent with the library's other asserts, not runtime
+  parameter validation.
+- Resolved by the coverage follow-up: the `Time.add(Duration, Duration)` and
+  `Time.min(Duration, Duration)` helpers lost their last callers when the
+  PRT-009 refactor removed `addMatchEffort` and were deleted, following the
+  `Time.sub` precedent. Both metadata-free Tournament bytecode witnesses were
+  byte-identical before and after, confirming the functions were unreferenced.
 
 ## Areas reviewed without a confirmed defect
 
@@ -1191,6 +1218,16 @@ confirmed dispute-game defect:
 - Payment callbacks cannot re-enter the source clone's state-changing surface,
   but may progress another clone under its independent lock. The source action's
   requested refund is fixed before any callback behavior.
+- Child-winner propagation selects the parent side by contested final state,
+  not by tree identity. A distinct-root child entrant sharing a contested
+  final state may win the child; `innerTournamentWinner` maps it to the parent
+  commitment with that state, propagation rejects the entrant's own children
+  with `WrongTournamentWinner`, and the entrant's separate parent commitment
+  is untouched. This is intended: an inner tournament adjudicates final
+  states. `InvalidTournamentWinner` remains defensive dead code for
+  parent-created children, whose seeded contested commitments always equal
+  the recorded match id, like `InvalidWinnerCommitment` in match deletion. A
+  deterministic trace now pins both the rejection and the selection.
 
 This is review evidence, not a proof. Independent parity properties and the
 single-level lifecycle model cover exhaustive bisection paths, legal stateful
@@ -1824,8 +1861,10 @@ After tracing concurrent recursive population:
 - The trace pins both child initial states, both contested final states, cycle
   eight, parent-child links, exact clocks and zero-overdue deadline boundaries,
   topology, deletion times, counters, carryover, cleared links, claimers, and
-  the final arbitration result. Every sealed-state assertion establishes match
-  existence first because raw `Match.isSealed()` is also true for zero storage.
+  the final arbitration result. At that historical checkpoint, every
+  sealed-state assertion established match existence first because raw
+  `Match.isSealed()` also returned true for zero storage. The later derived-phase
+  review removed that ambiguity.
 - This is fixed balanced-arrival characterization, not an asynchronous delay
   model or proof of the dimensioning expression. Parent seals are immediate,
   allowances are equal, cleanup is prompt at exact deadlines, and each child's
@@ -1966,3 +2005,183 @@ After deriving the bond entirely from the configured work reserve:
   `9d24e85b0e71038c2c40bde3725f20a70f95c1826dda44e3d4031c63055eb1ad`.
   Deployment and CREATE2 artifacts must be regenerated before release. No node
   source changed.
+
+After the bounded Match implementation review:
+
+- The derived Match phase is now authoritative for all memory predicates and
+  storage phase guards. Storage guards establish existence before returning the
+  existing phase-specific error, so a default mapping slot cannot be
+  misclassified as sealed. `winLeafMatch` consumes the existence-aware
+  `SealedView` after its intentional clock checks and computes the cycle from
+  the decoded divergence position.
+- The sealed writer now owns the agree state, divergent leaves, position, and
+  terminal height in one operation. The redundant raw `getDivergence`, Match
+  `toCycle`, `_setAgreeState`, and test-only `BisectionView` abstractions were
+  removed. The active representation remains documented directly on
+  `Match.State`; the retained sealed view performs real parity decoding and has
+  a production consumer.
+- The focused regressions fuzz the complete phase partition, exhaust the
+  storage-guard matrix, reject invalid newcomer children, prove zero agree and
+  final-state hashes remain valid payload, and pin `winLeafMatch` precedence for
+  unknown roots, reversed IDs, and deleted IDs with initialized clocks. The
+  independent sparse-Merkle oracle now reads the production sealed view.
+- The storage-aware reads reduced five retained gas recommendations. The
+  configured allocations are now 124,000 for advance, 362,000 for inner seal,
+  105,000 for leaf seal, 336,000 for inner winner propagation, and 172,000 for
+  inner elimination. All 18 witnesses pass under local Forge 1.5.1-dev and
+  release Forge 1.4.3.
+- The terminal maximum is now 948,000 gas. Automatic work-reserve propagation
+  makes the height-48, height-17, and height-27 bonds 0.3388, 0.1466, and
+  0.2086 ETH; target height-55 and height-37 bonds are 0.3822 and 0.2706 ETH.
+- The complete dispute gate passed 212 tests. The positive and rejection
+  stateful campaigns completed 32,768 and 16,384 targeted handler calls with no
+  handler reverts or discards. `rollups-contracts` passed all 3 integration
+  tests.
+- The ABI and semantic storage hashes remain
+  `67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a` and
+  `952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329`.
+  Current metadata-free creation and runtime hashes are
+  `4e7afa78938feda5bbaca9e6f9caa1194c2059d8dd43a87ac9ace285486a3032` and
+  `0ae057042e4bb4a0852140a59787f3a4ee90937b33907557381fa186041c28ed`.
+  Deployment and CREATE2 artifacts must be regenerated before release.
+- Deployed ABI, storage, raw Match encoding, events, selectors, and protocol
+  outcomes are preserved. Solidity projects that imported the removed internal
+  Match helpers would need to rebuild against the new source API; repository
+  clients use the deployed interface and require no change. No node source was
+  touched.
+
+After the bounded Clock implementation review and test assessment:
+
+- No further production Clock or MatchClocks refactor was justified. `Clock`
+  owns one-clock representation and arithmetic, `MatchClocks` owns pair policy,
+  `Match` owns structural phase, and `Tournament` composes them.
+- The former mixed Clock harness was split into 17 single-clock tests and 16
+  pair-policy tests. The rejection matrix now pins every relevant clock shape,
+  proven-leaf validation precedence, paused carryover source and target phases,
+  the valid zero in-memory deduction, and its forbidden storage boundary.
+- The default Foundry fuzz budget is pinned at 256 runs. All 33 focused Clock
+  and MatchClocks tests passed; their 12 fuzz properties also passed 10,000 runs
+  with seed `0x5eed`. The 21 focused Match phase, parity, and validation tests
+  passed with both fuzz properties at 10,000 runs under the same seed.
+- The complete non-FFI gate passed 225 tests. The positive and rejection
+  lifecycle campaigns completed 32,768 positive and 16,384 mixed handler
+  invocations with no handler reverts or discards. `rollups-contracts` passed
+  all 3 downstream integration tests.
+- A clean Forge 1.4.3 calibration at that pre-simplification contract and test
+  checkpoint reproduced all 18 retained gas witnesses. Release-pinned coverage
+  passed 198 included tests and mapped
+  686/708 lines, 710/734 statements, 65/147 branches, and 141/143 functions;
+  IR-minimum mapping qualifications still apply.
+- ABI, semantic storage, and both metadata-free bytecode hashes remain exactly
+  those recorded in the preceding Match checkpoint. This slice changes tests,
+  Foundry fuzz configuration, and documentation only; no production Solidity or
+  node source changed.
+- [`TEST-REPORT.md`](TEST-REPORT.md) records the goal assessment, test-layer
+  ownership, oracle independence, manual mutation evidence, current snapshot,
+  explicit non-claims, and the campaign stop rule.
+
+After the simplification batch:
+
+- The batch deliberately reopened the "no further refactor" decision above at
+  the maintainer's request, with a taste-level goal: extract the remaining
+  one-place invariants without changing supported dispute outcomes. Two
+  behaviors did change deliberately: unsupported zero-height match creation
+  now fails the birth-site assert, and the consequent gas recalibration
+  changes two refund caps and every derived bond value. `MatchClocks` centralizes
+  its response discount in one private `_pauseResponderAt` helper; `Match`
+  centralizes existence-before-phase-error precedence in `_establishedPhase`;
+  `create` takes the height directly and asserts it positive; `pauseForInnerAt`
+  reads remainders through the phase-checked `Clock.pausedAllowance` and a new
+  `Time.max` for durations; the guards are now `requireExists` and
+  `requireSealed`, removing the accidental name collision with
+  `Tree.requireExist`. Public verbs, selectors, events, and revert precedence
+  are unchanged.
+- The gas witnesses caught the batch as designed: measured units moved by 0 to
+  +754 depending on path (double eliminations moved exactly zero), pushing the
+  advance and inner-seal recommendations across their rounding boundaries.
+  Following the calibration procedure, `Gas.ADVANCE_MATCH` is now 125,000 and
+  `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT` 363,000. The terminal
+  maximum remains 948,000, so `E` is unchanged; automatic propagation makes
+  the height-48, height-17, and height-27 bonds 0.34115, 0.1474, and 0.2099
+  ETH, and the target height-55 and height-37 bonds 0.3849 and 0.2724 ETH.
+  All 18 witnesses and the updated bond-policy checkpoint pass under local
+  Forge 1.5.1-dev. The clean release-Forge cross-check is recorded in the
+  pre-rebase calibration checkpoint below.
+- The complete non-FFI gate passed 229 tests, including three new
+  `pausedAllowance` regressions and a new zero-height
+  `create` assertion regression. `rollups-contracts` passed all 3 downstream
+  integration tests, including bounded-callback settlement.
+- The ABI and semantic storage hashes remain byte-identical
+  (`67e34c...feb8a`, `952af2...a329`). New metadata-free creation and runtime
+  bytecode hashes are recorded in [`MATCH-DESIGN.md`](MATCH-DESIGN.md);
+  deployment and CREATE2 artifacts must be regenerated before release.
+
+After the coverage follow-up:
+
+- An intermediate instrumented dispute summary, taken before the dead-helper
+  removal and the follow-up tests landed, reported 96.77% lines (688/711),
+  96.60% statements (710/735), and 98.64% functions (145/147) over 199
+  included tests; the current campaign snapshot lives in
+  [`TEST-REPORT.md`](TEST-REPORT.md). An lcov detail pass classified every
+  uncovered production line.
+  Modifier plumbing, `pairCommitment`'s dangling clear, the payment assembly
+  call, the factory return, and the pair-helper return are IR-minimum mapping
+  artifacts contradicted by function-level coverage and demonstrably executing
+  tests. All four simplification-batch functions are covered, with the
+  MatchClocks branch metric complete.
+- The uncovered-function signal exposed the dead `Time` duration helpers,
+  which were removed with byte-identical bytecode witnesses.
+- Every role-guarded entry point now has a wrong-role rejection:
+  `winLeafMatch` on a non-leaf, `winInnerTournament` and
+  `eliminateInnerTournament` on a leaf, and `canBeEliminated` and
+  `innerTournamentWinner` on a root, joining the two previously pinned seal
+  guards.
+- A deterministic trace pins child-winner selection by contested final state:
+  a distinct-root child entrant sharing side one's final state wins the child,
+  its own children are rejected with `WrongTournamentWinner`, parent side one
+  propagates with the carried clock, and the entrant's separate parent match
+  is untouched. `InvalidTournamentWinner` is reclassified above as defensive
+  dead code for parent-created children.
+- The complete non-FFI gate passed 231 tests and all 18 gas witnesses. The
+  metadata-free creation and runtime bytecode hashes are unchanged from the
+  simplification batch, so no recalibration or artifact regeneration is
+  required beyond what that batch already recorded.
+
+### Release calibration checkpoint before rebase
+
+On 2026-07-20, the release-pinned gas recipe ran from a clean worktree at
+pre-squash revision `a6e077a0db360164a746c4d9552f3c5740887cd6` on Darwin
+25.5.0 arm64. The history rewrite preserved its measured contract and test tree
+exactly in candidate `9b0198b1556a877f3ad9cd8a371a70501e6e7def`, recorded in
+[`TEST-REPORT.md`](TEST-REPORT.md); the following revision changes documentation
+only.
+
+The reproducibility inputs were:
+
+```text
+Forge: 1.4.3-v1.4.3
+Forge commit: fa9f934bdac4bcf57e694e852a61997dda90668a
+effective config: {"solc":"0.8.30","via_ir":true,"optimizer":true,"optimizer_runs":200,"evm_version":"prague"}
+foundry.toml sha256: 52cbcb59a04926e546a2498ad27383b6f3670dcd6de4c1e051b118190d87acf6
+soldeer.lock sha256: fdd646e1cc6cd5d2308d22c0f97fabc1f6df4c72ec14703e918a78fe8b1a2f53
+dependency digest: ef44ca028e8ae45ab0d7a6b183c9db0fded37461db8355456f2b2b876ce57ac3
+```
+
+All 18 retained witnesses passed. The first charged right advance measured
+114,077 gas and retained the 125,000-gas allocation; the full-proof
+position-one inner seal measured 331,520 gas and retained the 363,000-gas
+allocation. At the same revision, local Forge 1.5.1-dev passed the complete
+231-test dispute gate and the 204-test coverage map; all 3 downstream
+`rollups-contracts` tests also passed. The supported envelope, complete
+measurement table, unchanged 948,000-gas terminal maximum, derived work
+reserves and bonds, and economic policy remain in
+[`REFUND-DESIGN.md`](REFUND-DESIGN.md). The refund-formula, callback-isolation,
+ABI, storage, and pending deployment-artifact results remain in this ledger and
+[`TEST-REPORT.md`](TEST-REPORT.md).
+
+This is a pre-rebase checkpoint, not final release approval. The completed
+history rewrite replaced revision identifiers but preserved the contract and
+test tree exactly. The planned rebase changes the Foundry pin, which is a
+recalibration trigger under
+[`GAS-CALIBRATION.md`](GAS-CALIBRATION.md), so the complete procedure must run
+again on the clean post-rebase candidate and append a new record before merge.
