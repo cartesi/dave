@@ -1,5 +1,8 @@
 # Bond and refund design checkpoint
 
+> Archived internal engineering review snapshot. Current accounting policy is
+> documented in `docs/prt-refund-accounting.md`.
+
 Status: accounting, exact refund formula, and callback boundary implemented;
 seven actions calibrated; leaf proof uses an explicit provisional subsidy
 

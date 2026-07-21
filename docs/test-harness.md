@@ -6,6 +6,10 @@ attack it with dishonest players. They are the acceptance oracle for any
 node refactoring: behavior is pinned at the on-chain-outcome level, not at
 the implementation level.
 
+This is distinct from the Solidity and Foundry test architecture under
+`prt/contracts`, documented in
+[`prt-contract-testing.md`](prt-contract-testing.md).
+
 ## Anatomy of a test run
 
 ```

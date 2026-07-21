@@ -10,9 +10,11 @@ The implementation of the Cartesi state-transition function is outside this
 document. At the leaf level, the dispute game treats that function as the
 authority that maps an agreed pre-state and proof to the next state.
 
-Active review findings and proposed changes live in
-[`prt/contracts/audit/REVIEW.md`](../prt/contracts/audit/REVIEW.md). They are not
-silently presented here as implemented behavior.
+The completed 2026-07 internal review, including resolved findings and deferred
+leads, is preserved in
+[`REVIEW.md`](reviews/2026-07-21-prt-dispute-game/REVIEW.md). That archive is
+historical evidence, not an active backlog or a substitute for this description
+of implemented behavior.
 
 ## Security statement and assumptions
 
@@ -524,8 +526,9 @@ bisection, leaf-race, and inner-seal phase transitions plus the shared timeout
 classification and proven-leaf settlement policy. PRT-002 records the prior
 sealed-leaf defect, PRT-004 the capability-view correction, PRT-009 the former
 bankable pairing grant, and PRT-010 the removal of proof/timeout ordering
-ambiguity. The clock decisions and regression model are recorded in
-[`prt/contracts/audit/CLOCK-DESIGN.md`](../prt/contracts/audit/CLOCK-DESIGN.md).
+ambiguity. The review-time clock decisions and compatibility fence are
+preserved in
+[`CLOCK-DESIGN.md`](reviews/2026-07-21-prt-dispute-game/CLOCK-DESIGN.md).
 
 ## Bonds and refunds
 
@@ -561,10 +564,10 @@ ceiling is below 50 gwei.
 Exact reimbursement is not a correctness assumption or an endogenous validator
 incentive. Seven action allocations have retained measured ceilings;
 `WIN_LEAF_MATCH` uses a documented provisional subsidy for a canonical ordinary
-proof. Broader proof-class calibration is optional. PRT-003 records the design
-decision and known limitations, and
-[`REFUND-DESIGN.md`](../prt/contracts/audit/REFUND-DESIGN.md) derives the full
-accounting boundary.
+proof. Broader proof-class calibration is optional. PRT-003 records the review
+decision and known limitations;
+[`prt-refund-accounting.md`](prt-refund-accounting.md) derives the living
+reserve and conservation boundary.
 
 The refund callback occurs after `gasAfter` is sampled, so accepting, rejecting,
 or reentrant recipient behavior cannot change the requested value.

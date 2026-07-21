@@ -1,5 +1,8 @@
 # Clock API design checkpoint
 
+> Archived internal engineering review snapshot. Current protocol behavior is
+> documented in `docs/dispute-game.md`.
+
 Status: clock API, timeout classifier, and response budget implemented
 
 Last reviewed: 2026-07-19

@@ -1,5 +1,8 @@
 # Refund gas calibration runbook
 
+> Archived internal engineering review snapshot. The maintained procedure is
+> `docs/runbooks/prt-refund-gas-calibration.md`.
+
 Status: seven dispute-game actions calibrated against retained witnesses and
 reproduced with the release Foundry version; `winLeafMatch` uses a documented
 provisional ordinary-proof subsidy
@@ -29,8 +32,8 @@ selected work-price cap.
 | Recipient callback and per-clone lock behavior | `test/accounting/RefundCallbacks.t.sol` |
 | Compiler, optimizer, and EVM settings | `foundry.toml` |
 | Solidity dependency revisions | `soldeer.lock` |
-| Current derivation and accepted measurements | `audit/REFUND-DESIGN.md` |
-| Finding and validation ledger | `audit/REVIEW.md` |
+| Current derivation and accepted measurements | [`REFUND-DESIGN.md`](REFUND-DESIGN.md) |
+| Finding and validation ledger | [`REVIEW.md`](REVIEW.md) |
 
 The gas tests observe the production `PartialBondRefund` event; they do not add
 instrumentation to `Tournament`. Their recipient accepts and their balance and
@@ -317,7 +320,7 @@ direnv exec . sh -c \
   'cd prt/contracts && forge inspect --json Tournament abi | jq -S . | sha256sum'
 direnv exec . sh -c \
   'cd prt/contracts && forge inspect --json Tournament storageLayout \
-    | jq -S -f audit/storage-layout-semantic.jq | sha256sum'
+    | jq -S -f script/storage-layout-semantic.jq | sha256sum'
 direnv exec . sh -c \
   'cd prt/contracts && forge inspect --no-metadata Tournament bytecode | sha256sum'
 direnv exec . sh -c \

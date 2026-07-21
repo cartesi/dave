@@ -1,16 +1,15 @@
-# Prototype node architecture
+# Rollups node architecture
 
-The rollups node (`cartesi-rollups/node/`) is an acknowledged prototype,
-scheduled for an incremental rewrite (working name: sling node). This
-document records how it currently works and, just as importantly, an
-honest inventory of its known debts. The debts list is the seed worklist
-for the rewrite; keep it current.
+The rollups node (`cartesi-rollups/node/`) is the single-crate implementation
+produced by the sling rewrite. This document records how it currently works and,
+just as importantly, an honest inventory of its remaining debts. Dated plans
+under `docs/plans/` preserve the rewrite history; they are not the current
+architecture specification.
 
-What to preserve in a rewrite: the core architecture works and was chosen
-deliberately - a central SQLite database with independent worker threads
-that communicate and synchronize only through it. The schema is what
-needs rework, not the pattern (the per-epoch side databases retired at
-sling increment E).
+The core architecture is deliberate: a central SQLite database with independent
+worker threads that communicate and synchronize through its transaction
+boundary. The per-epoch side databases retired during the rewrite; remaining
+schema and storage debts are tracked below.
 
 ## Process layout
 
@@ -114,7 +113,7 @@ finality is trusted, nothing is ever rolled back. Oversized
 by provider-specific error codes passed in as configuration
 (`--long-block-range-error-codes`).
 
-## Known debts (rewrite worklist)
+## Known debts
 
 State and storage:
 

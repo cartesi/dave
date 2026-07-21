@@ -3,12 +3,26 @@
 Dave is Cartesi's permissionless, interactive fraud-proof system, currently
 implemented on top of the Permissionless Refereed Tournaments (PRT) algorithm.
 This repository holds the on-chain dispute contracts, two off-chain clients
-(a prototype Rust node and a Lua testing node), the Cartesi Machine
+(the Rust validator node and the Lua testing/reference client), the Cartesi Machine
 integration, and the test infrastructure that ties them together.
 
 > The code is the source of truth. The papers, the comments, and these docs
 > have drifted before and will drift again. Where they disagree, trust the
 > code, and prefer verifying a claim over relying on any document's specifics.
+
+## Instruction scope
+
+- This root file applies to the whole repository.
+- Before editing, look for a nested `AGENTS.md` on the path to the target. Root
+  and nested instructions accumulate; the nearest file wins only when rules
+  conflict.
+- Keep nested files for real trust, semantic, or tooling boundaries. They should
+  route agents to sources of truth and local gates rather than duplicate a
+  subsystem specification.
+- `CLAUDE.md` files are compatibility shims that import the adjacent
+  `AGENTS.md`. Do not maintain a second set of instructions in them.
+
+The current nested boundary is `prt/contracts/AGENTS.md`.
 
 ## Repository map
 
@@ -25,8 +39,8 @@ dave/docs/           The Dave paper (dave.pdf), a liveness improvement over
 cartesi-rollups/
   contracts/         Rollups consensus contracts (DaveConsensus, app factory).
   node/              The rollups node, a single crate: worker modules
-                     synchronize through the storage module (the only
-                     SQL surface); the dispute engine lives in the
+                     synchronize through the database and storage transaction
+                     boundary; the dispute engine lives in the
                      engine/hero/tournament modules, and the shared
                      primitives (merkle, arithmetic, kms) are folded-in
                      modules, not separate crates.
@@ -38,9 +52,10 @@ docs/                The knowledge base. Start at docs/README.md.
 
 ## What matters where
 
-- `prt/contracts/` is on-chain and trust-bearing: it decides which computation
-  result is canonical. Bugs there are consensus bugs. See
-  `prt/contracts/AGENTS.md` before touching anything.
+- `prt/contracts/` is on-chain and trust-bearing. Result-selection defects can
+  become consensus failures; clock and accounting defects can break liveness or
+  resource bounds. Treat every change as security-sensitive and read
+  `prt/contracts/AGENTS.md` first.
 - The node (`cartesi-rollups/node/`) is the honest
   validator's sword. A node bug does not break the protocol, but it can
   forfeit a dispute the honest party should have won: wrong commitments or
@@ -52,6 +67,8 @@ docs/                The knowledge base. Start at docs/README.md.
 
 ## Where knowledge lives
 
+- `docs/dispute-game.md` - the implemented tournament, clocks, recursive
+  resolution, refunds, and explicit non-claims.
 - `docs/computation-hash.md` - how commitments are built: the meta-cycle
   coordinate system, uarch spans, checkpoints, and revert. Read this before
   touching anything under `cartesi-rollups/node/src/engine/` or
@@ -60,14 +77,20 @@ docs/                The knowledge base. Start at docs/README.md.
   the worst-vs-average dimensioning rule with its reasoning. Read before
   touching clocks, spans, timeouts, or tournament constants.
 - `docs/epoch-lifecycle.md` - inputs, epochs, sealing, disputes, settlement.
-- `docs/node-architecture.md` - the prototype node's threads, database, and
-  known technical debts.
+- `docs/node-architecture.md` - the Rust node's workers, database boundary,
+  dispute engine, and known technical debts.
 - `docs/test-harness.md` - how the Lua e2e orchestration works and how to add
   scenarios.
 - `docs/glossary.md` - the project vocabulary (ustep, ureset, barch,
   meta-cycle, dangling commitment, and the span-vs-mask naming trap).
 - `docs/build-system.md` - how setup and builds work, and open design
   questions (bindings generation, emulator dependency).
+- `docs/prt-refund-accounting.md` - the work-reserve and terminal-conservation
+  argument.
+- `docs/prt-contract-testing.md` - Foundry test ownership and evidence rules.
+- `docs/runbooks/` - maintained operational procedures.
+- `docs/reviews/` - frozen internal review evidence, not current specifications
+  or third-party assurance reports.
 
 ## Build and test
 
@@ -128,13 +151,15 @@ Code:
 - Match the surrounding code's style and idiom; this is a multi-author
   codebase with history.
 
-## Current state (written 2026-07)
+## Change discipline
 
-- `main` holds the released 2.x line; `next/3.0` is the base branch for the
-  next version. New work targets `next/3.0`.
-- The Rust node is an acknowledged prototype. It works and passes the e2e
-  suites, but it is scheduled for an incremental rewrite (the "sling node").
-  Recon and characterization tests come first; avoid opportunistic
-  refactoring of node internals until that harness exists.
-- An external security audit of `prt/contracts` is ongoing. Be conservative
-  with contract changes.
+- Inspect the current branch, merge base, worktree status, and relevant history
+  before assuming a release line or campaign state. Do not encode volatile
+  branch status in this file.
+- Keep security-sensitive changes small and reviewable. Separate contract,
+  client, deployment, and generated-artifact changes when they have different
+  compatibility or validation boundaries.
+- Changes to commitment geometry, proof formats, state-transition semantics, or
+  deployed interfaces require coordinated cross-implementation validation.
+- Treat dated plans and reviews as provenance. Confirm their conclusions
+  against current code and living documentation before acting on them.

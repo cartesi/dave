@@ -1,5 +1,8 @@
 # PRT dispute-game review ledger
 
+> Archived internal engineering review snapshot. Findings remain here as
+> historical evidence after resolution; this is not an active backlog.
+
 Status: complete for this campaign; deferred work and release gates remain
 explicit below
 
@@ -893,7 +896,7 @@ The current layered approach is appropriate if each layer keeps one role:
 
 - `docs/dispute-game.md` states implemented behavior, invariants, and trust
   assumptions without silently presenting proposed fixes as live behavior.
-- `audit/REVIEW.md` retains findings, decisions, evidence, and regression
+- `REVIEW.md` retains findings, decisions, evidence, and regression
   targets after fixes land.
 - Focused design records such as `CLOCK-DESIGN.md` and `REFUND-DESIGN.md`
   capture the decision before a security-sensitive refactor, then record what

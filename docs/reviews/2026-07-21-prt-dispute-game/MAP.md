@@ -1,5 +1,8 @@
 # PRT Contracts - Audit System Map (Stage 1)
 
+> Archived internal engineering review snapshot. This map describes the
+> audit-start code and remains a lead inventory, not an authority.
+
 > **Provenance.** Generated 2026-06-10 by the stage-1 mapping workflow
 > (`prt-audit-map`, run `wf_60452ddc-ea6`): 6 parallel subsystem mappers read all
 > 23 in-scope Solidity files, then a consolidator re-read code to adjudicate

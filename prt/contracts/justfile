@@ -131,6 +131,20 @@ fmt:
 check-fmt:
     forge fmt --check
 
+# print compatibility witnesses for review before and after contract changes
+compatibility-hashes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Tournament ABI sha256:"
+    forge inspect --json Tournament abi | jq -S . | sha256sum
+    echo "Semantic Tournament storage-layout sha256:"
+    forge inspect --json Tournament storageLayout \
+      | jq -S -f script/storage-layout-semantic.jq | sha256sum
+    echo "Tournament creation bytecode without metadata sha256:"
+    forge inspect --no-metadata Tournament bytecode | sha256sum
+    echo "Tournament runtime bytecode without metadata sha256:"
+    forge inspect --no-metadata Tournament deployedBytecode | sha256sum
+
 install-deps:
     forge soldeer install
 
