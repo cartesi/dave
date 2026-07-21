@@ -1,5 +1,8 @@
 # Dispute-game test assessment
 
+> Archived internal engineering review snapshot. Current test architecture and
+> test-writing rules live in `docs/prt-contract-testing.md`.
+
 Status: campaign test goals met within the stated scope; remaining gaps are
 explicit non-claims
 

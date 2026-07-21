@@ -7,8 +7,12 @@ asynchronously pair commitments and eventually produce a result.
 This code is security-critical. Read [AGENTS.md](AGENTS.md) before changing it
 and use [the dispute-game documentation](../../docs/dispute-game.md) for the
 implemented protocol and its assumptions. The original PRT paper is background,
-not the contract specification. Active review findings are tracked in
-[audit/REVIEW.md](audit/REVIEW.md).
+not the contract specification. The completed 2026-07 internal review is
+preserved in
+[docs/reviews/2026-07-21-prt-dispute-game](../../docs/reviews/2026-07-21-prt-dispute-game/);
+current refund accounting and test guidance live in
+[prt-refund-accounting.md](../../docs/prt-refund-accounting.md) and
+[prt-contract-testing.md](../../docs/prt-contract-testing.md).
 
 ## Features
 

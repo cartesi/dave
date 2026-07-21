@@ -221,9 +221,9 @@ historical grant wording. That documentation correction is intentionally
 coordinated with the separate node branch and tracked in the review ledger.
 
 This timing and geometry process is separate from EVM refund calibration.
-`prt/contracts/audit/GAS-CALIBRATION.md` owns the manual procedure for measuring
-refundable contract actions, changing `Gas.sol`, and tracing the resulting bond
-and deployment effects.
+[`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md) owns
+the manual procedure for measuring refundable contract actions, changing
+`Gas.sol`, and tracing the resulting bond and deployment effects.
 
 ## Measurement discipline
 
@@ -273,5 +273,7 @@ halt AND yield, use the correct enum, and round conservatively.
   `log2step[i] = log2step[i + 1] + height[i + 1]`; the root slowdown budget
   selects the top stride, and `log2step[0] + height[0] = 92` closes the
   meta-cycle span. `ArbitrationConstants.sol` holds the live result;
-  `measure.rs --constants` derives candidate tables, and
-  `prt/contracts/audit/REVIEW.md` records the selected migration.
+  `measure.rs --constants` derives candidate tables,
+  [plans/constants.md](plans/constants.md) owns the integration work, and the
+  [completed review](reviews/2026-07-21-prt-dispute-game/REVIEW.md) preserves
+  the decision provenance.

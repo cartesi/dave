@@ -20,8 +20,8 @@ Reading order for newcomers:
 5. [dimensioning.md](dimensioning.md) - the trust model and the
    worst-vs-average dimensioning rule; the reasoning behind every clock,
    span, and constant.
-6. [node-architecture.md](node-architecture.md) - the prototype node:
-   threads, SQLite, and its known-debts inventory (the rewrite worklist).
+6. [node-architecture.md](node-architecture.md) - the Rust node's workers,
+   SQLite boundary, dispute engine, and known-debts inventory.
 7. [test-harness.md](test-harness.md) - the Lua e2e orchestration, the
    cross-implementation oracle, and coverage gaps.
 8. [build-system.md](build-system.md) - setup/build pipeline and open
@@ -35,12 +35,24 @@ Related, elsewhere in the repo:
   matches the implemented variant exactly; see
   [dispute-game.md](dispute-game.md#relationship-to-the-papers).
 
-Plans: [plans/](plans/) holds working documents for in-flight efforts
-(currently [plans/characterization.md](plans/characterization.md),
-[plans/sling-design.md](plans/sling-design.md) for the dispute core,
-and [plans/node-refactor.md](plans/node-refactor.md) for the
-whole-node simplification campaign above it). They are snapshots of
-intent, not knowledge; archive or delete them when the work completes.
+PRT contract engineering:
+
+- [prt-refund-accounting.md](prt-refund-accounting.md) - the work-reserve,
+  population, terminal-payment, and conservation argument.
+- [prt-contract-testing.md](prt-contract-testing.md) - Foundry test ownership,
+  geometry independence, oracle design, and coverage discipline.
+- [runbooks/prt-refund-gas-calibration.md](runbooks/prt-refund-gas-calibration.md)
+  - the maintained procedure for measuring action allocations and tracing their
+  effects into bonds and deployment artifacts.
+
+Historical internal reviews live under [reviews/](reviews/README.md). They preserve
+findings and evidence, but they are not current specifications or third-party
+assurance reports. The completed 2026-07 PRT campaign is archived at
+[reviews/2026-07-21-prt-dispute-game/](reviews/2026-07-21-prt-dispute-game/).
+
+Plans: [plans/](plans/) contains dated design and implementation snapshots.
+Read each status header before relying on it. Plans are intent and history, not
+current knowledge; archive or delete them when the work completes.
 
 Maintenance: when a change makes one of these files wrong, fixing the file
 is part of the change. If a document keeps drifting, that is a sign its

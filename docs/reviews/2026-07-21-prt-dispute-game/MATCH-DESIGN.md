@@ -1,5 +1,8 @@
 # Match API design and implementation record
 
+> Archived internal engineering review snapshot. Current protocol behavior is
+> documented in `docs/dispute-game.md`.
+
 Status: implemented and validated
 
 Last reviewed: 2026-07-20
@@ -202,7 +205,7 @@ The ABI canonical form is produced with
 
 ```sh
 forge inspect --json Tournament storageLayout \
-    | jq -S -f audit/storage-layout-semantic.jq \
+    | jq -S -f script/storage-layout-semantic.jq \
     | sha256sum
 ```
 

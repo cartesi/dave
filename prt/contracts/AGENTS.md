@@ -1,329 +1,171 @@
-# PRT Contracts - Architecture & Agent Context
+# PRT contracts - agent guidance
 
-**Security-critical.** The Solidity implementation of Permissionless Refereed
-Tournaments (PRT): the on-chain dispute resolution that decides the canonical
-result of a Cartesi rollup computation.
+This directory is the security-critical Solidity boundary for Permissionless
+Refereed Tournaments. It selects the canonical computation result and enforces
+the clocks, accounting, and recursive dispute rules that make participation
+possible.
 
-> This file is orientation, not gospel. The **code is the source of truth**;
-> comments and papers have drifted before. Treat every specific claim below as a
-> lead to verify, not a fact to rely on - and especially never read it as
-> asserting that a given mechanism is *correct*. Verifying that is the work.
+These instructions extend the root `AGENTS.md`. The code is the source of
+truth. Treat comments, papers, dated plans, and review records as context to
+verify, never as evidence that a mechanism is correct.
 
-## What the system must guarantee (the properties to protect)
+## Read before editing
 
-- **Safety** - provided that a correct commitment joins and its participant can
-  act within the configured clock and censorship bounds, an incorrect
-  computation result must not win the root tournament. This also assumes the
-  configured state-transition contract and data provider are correct, hashes
-  have their expected security properties, and the application is disputable
-  within the configured dimensions.
-- **Liveness / bounded delay** - under those assumptions, a party committing to
-  the correct result can make progress and ultimately win within the time and
-  economic budget. With `K` live commitments, there are `floor(K / 2)` matches
-  and at most one dangling commitment. At a leaf level, at least one clock runs
-  in every match. A sealed non-leaf match pauses both parent clocks and delegates
-  population reduction to a child tournament; the child deadline alone does not
-  finish live child matches. At one level, capped per-match clock mass and prompt
-  cleanup make each bounded window reduce the live population by a constant
-  factor after joining closes. The safe local leaf bound is
-  `W <= b1 + b2 + h * G`, not one allowance: a reachable pair can take
-  `2A - 1`, and adding one same-time dangling claim can extend completion to
-  `3A - 1`. With multiple levels, slow child tournaments nest inside that
-  elimination tree. The intended two-level resource model has the
-  balanced leading factor `log^2(N) / 4`; the more general
-  `(log(N) / L)^L` expression is a dimensioning model, not a substitute for
-  an unbounded proof over adversarial arrival schedules.
+Choose the narrowest relevant living document:
 
-  Do not confuse timeout delay with work. Asynchronous arrival can skew the
-  bracket into a list and force a correct survivor through a linear number of
-  matches. Clock conservation, structural population reduction, transaction
-  work, and wall-clock serialization therefore need separate bounds.
-  Background - the Felten/augusto exchange:
-  <https://research.arbitrum.io/t/solutions-to-delay-attacks-on-rollups/692>
-- **Sybil / resource-exhaustion resistance** - an adversary pays one bond per
-  commitment in each tournament it joins. Clock, refund, and re-pairing rules
-  must bound the time and funds an adversary can force other participants to
-  spend; this is a property to prove, not an automatic consequence of bonding.
-- **Censorship bound** - holds while the honest party is not censored past its
-  allowance. The intended mainnet value is about 7 days + 1 hour, but the
-  wall-clock duration also depends on the chain's `block.number` semantics and
-  deployment conversion.
+| Work | Required context |
+| --- | --- |
+| Any dispute-game behavior | [`docs/dispute-game.md`](../../docs/dispute-game.md) |
+| Clocks, timeouts, allowances, geometry, or level constants | [`docs/dimensioning.md`](../../docs/dimensioning.md) |
+| Bonds, refunds, terminal payments, or burns | [`docs/prt-refund-accounting.md`](../../docs/prt-refund-accounting.md) |
+| Gas allocation changes | [`docs/runbooks/prt-refund-gas-calibration.md`](../../docs/runbooks/prt-refund-gas-calibration.md) |
+| Foundry tests or fixtures | [`docs/prt-contract-testing.md`](../../docs/prt-contract-testing.md) |
+| Commitment coordinates or machine spans | [`docs/computation-hash.md`](../../docs/computation-hash.md) |
+| Historical findings or refactor rationale | [`docs/reviews/2026-07-21-prt-dispute-game/`](../../docs/reviews/2026-07-21-prt-dispute-game/) |
 
-The durable description of the implemented game and its assumptions is
-[`docs/dispute-game.md`](../../docs/dispute-game.md). The original PRT and Dave
-papers do not specify these contracts exactly.
+The PRT and Dave papers are background, not specifications for these contracts.
 
-## Architecture
+## Trust boundary and assumptions
 
-- **One contract does it all.** `tournament/Tournament.sol` is instantiated at
-  every level as an ERC-1167 clone with immutable args
-  (`cloneWithImmutableArgs`). There are **no** separate Top/Middle/Bottom
-  contracts - "top/middle/bottom" are the *same code* at levels 0/1/2,
-  distinguished only by the `level` in the clone's immutable `TournamentArguments`.
-  The historical three-level suites under `test/characterization/` exercise
-  that one contract in each of those roles against a frozen test profile.
-  Geometry-independent economic models live under `test/accounting/`; they use
-  production gas allocations without importing canonical tournament constants.
-- **Factory.** `tournament/factories/MultiLevelTournamentFactory` deploys the
-  root (level 0) via `instantiate`; deeper tournaments are created at `level + 1`
-  when a non-leaf match is sealed. `instantiateInner` is also permissionless, so
-  callers can create orphan inner tournaments. A parent only consumes a child
-  recorded from one of its own sealed matches. Factory construction rejects a
-  no-code tournament implementation, parameters provider, or state transition;
-  it does not validate a generic provider's returned table on every read.
-- **Role split** (well documented in `Tournament.sol`'s header NatSpec):
-  - *root* (`level == 0`) vs *inner/non-root* (`level > 0`)
-  - *non-leaf* (`level < levels - 1`) vs *leaf* (`level == levels - 1`)
-  - The **level count `L` is a deployment parameter** (`ArbitrationConstants.LEVELS`
-    / the parameters provider). The checked-in constants currently use **3**;
-    the selected deployment layout uses **2** with
-    `log2step = [37, 0]` and `height = [55, 37]`. That switch is planned but
-    integration-gated on the coordinated node change; it is not live in these
-    contracts. The contract logic is meant to hold for *any* L, but a new
-    layout must regenerate and validate its height and stride tables
-    consistently. A test-only whole-table validator pins those shape rules, and
-    a strict four-level production trace exercises three recursive child seams.
-    Neither proves that an off-chain node uses the same table, so the selected
-    L=2 layout retains its integration gate. At the checked-in L=3:
-    L0 = root + non-leaf, L1 = inner + non-leaf, L2 = inner + **leaf** (the only
-    level that verifies a machine step on-chain).
-- **Libraries**: `Match` (bisection state machine), `Clock` (one-clock
-  arithmetic and transitions), `MatchClocks` (legal two-clock match phases),
-  `Commitment` + `types/Tree` (Merkle commitment construction & proofs), `Time`
-  (block-number-based time), `Gas` (action work allocations), and `Bond`
-  (economic policy plus work-reserve accounting).
-  Types: `Machine`, `Tree`, `TournamentParameters`.
-- **Leaf resolution** calls `IStateTransition` (`CartesiStateTransition` ->
-  `RiscVStateTransition` + `CmioStateTransition`) to verify a single machine
-  step. The step *semantics* live in the `machine/step` submodule and are out of
-  scope as a contract here.
+Distinguish the property affected by a change:
 
-## Lifecycle of one tournament
+- Result-selection safety assumes at least one correct commitment joins, its
+  participant can act within the clock and censorship bounds, and the configured
+  hashes, provider, and state transition are correct.
+- Liveness depends on clock conservation, legal progress, cleanup, chain-time
+  semantics, and the participant not being censored past its allowance.
+- Resource resistance depends on population reduction, work reserves, bounded
+  refunds, and callback isolation. A posted bond is not by itself a proof of a
+  delay or cost bound.
 
-1. **Join** (`joinTournament`) - post a bond (`bondValue()`) and a commitment
-   (Merkle root over machine-state hashes). `pairCommitment` either pairs it
-   with the current dangling commitment (-> a new match) or makes it dangling.
-   Inner tournaments only accept commitments whose final state matches one of
-   the two *contested* final states inherited from the parent match.
-2. **Bisect** (`advanceMatch`) - alternating double-bisection descends both
-   commitment trees toward the first divergent leaf; `MatchClocks.switchTurnAt`
-   discounts the valid response, pauses its clock, and starts the other at the
-   same instant.
-3. **Seal** (once the match bottoms out / becomes sealable):
-   - *leaf*: `sealLeafMatch` - `startLeafRaceAt` moves the active bisection
-     into a two-running-clock race to prove.
-   - *non-leaf*: `sealInnerMatchAndCreateInnerTournament` - spawns a child
-     tournament at `level + 1`, seeded with the contested states and the
-     maximum of the two clocks' snapshotted allowances; both parent clocks are
-     paused.
-4. **Resolve**:
-   - *leaf*: `winLeafMatch` - submit the on-chain state-transition proof; the
-     commitment whose claimed final state matches the computed one wins only if
-     the shared timeout status permits that side. A matching single-winner
-     timeout outcome also charges the expired opponent's overdue duration.
-   - *non-leaf*: `winInnerTournament` / `eliminateInnerTournament` - propagate
-     the child's result up to the parent match.
-   - *timeout*: `winMatchByTimeout` when one commitment survives the expired
-     side's overdue charge / `eliminateMatchByTimeout` when neither survives
-     that accounting (both eliminated).
-5. The surviving **dangling** commitment is the tournament's result; the root's
-   is read via `arbitrationResult`, an inner's via `innerTournamentWinner`.
-   `tryRecoveringBond` attempts to pay the registered winning claimer at most
-   one bond. An accepting recipient is paid before the remaining tournament
-   balance is burned.
+Ethereum is the supported timing and fee environment. Other registered chains
+remain experimental until their `block.number`, fee, and upgrade assumptions
+are validated.
 
-## Mechanisms (verified against the code - *not* a correctness claim)
+Instruction semantics are owned by `machine/step`. The Solidity adapters and
+their composition with `Tournament` remain in this directory; changes across
+that seam require the Solidity, machine, and client implementations to agree.
 
-- **Clock phases and response budget** (`Clock.sol` + `MatchClocks.sol`):
-  `allowance == 0` is uninitialized. An initialized clock is paused when
-  `startInstant == 0` and running otherwise. Operations that observe elapsed
-  time take an explicit instant. Uninitialized live-time queries revert.
-  `MatchClocks` asserts the clock shape for each pair transition: active
-  bisection has exactly one running clock, a sealed leaf has two running clocks
-  with the same start instant, and a sealed inner match has two paused clocks.
-  This is not the complete structural Match phase: two paused clocks also
-  describe a pair ready to start bisection. `Match` guards and the ordering in
-  `Tournament` establish that structural state before the pair transition.
-  Initialized clocks persist as participation history and do not alone prove
-  that a commitment is live. Pairing never changes balances. For each
-  successful advance or final seal,
-  `pauseAfterResponseAt` requires `elapsed < balance` and leaves
-  `balance - max(elapsed - responseBudget, 0)`. The discount never increases a
-  balance or revives an expired clock. A height-`H` match has exactly `H` such
-  responses. A storage clock cannot be initialized or paused with zero
-  allowance.
-- **Timeout charging**: `MatchClocks.classifyTimeoutAt` compares the prospective
-  winner's `remainingAt(current)` with the expired side's
-  `overdueByAt(current)`. A strictly positive post-charge remainder produces a
-  single winner; equality or a larger overdue duration produces double
-  elimination, even while the nominal winner still has live time. The
-  classifier supplies that four-way outcome and winner charge to the capability
-  view, both timeout mutation paths, and proven-leaf settlement.
-  `canWinMatchByTimeout` is true only for an existing match with one viable
-  timeout winner. PRT-002 fixed the former sealed-leaf time restoration, and
-  PRT-004 fixed the prior view/mutation mismatch.
-- **Bond and partial refunds**: `Bond` derives each join deposit directly from
-  the refundable work reserve. For positive height `h`, `bondValue = ((h - 1) *
-  ADVANCE_MATCH + terminalMaximum) * WORK_PRICE_CAP`. For
-  `units = Gas.TX + gasBefore - gasAfter`, the modifier
-  requests `min(balance, allocation * WORK_PRICE_CAP, units *
-  min(tx.gasprice, basefee + PRIORITY_FEE_CAP))`. The refund event records that
-  requested value; a failed nonzero recipient call transfers nothing and leaves
-  it in the pool. This is a bounded gross-EVM work subsidy, not a guarantee of
-  receipt-exact cost or profit. It excludes transaction-intrinsic calldata and
-  L2 data fees, while proof copying after the snapshot remains in the measured
-  delta. Seven action caps have retained measured ceilings; `WIN_LEAF_MATCH`
-  deliberately uses a provisional ordinary-proof subsidy. Exact reimbursement
-  is not a correctness assumption or an endogenous validator incentive.
-  Zero-value payments skip recipient code; nonzero refund and
-  terminal-payment recipients receive at most 50,000 gas, and return data is not
-  copied. For `J` paid joins, at most `J - 1` matches consume configured work
-  reserves. An accepting winner recovers one minimum join bond. For a tournament
-  that reaches successful winner recovery, aggregate losing reserves are either
-  paid as bounded subsidies for successful progress or remain for terminal
-  burning; no positive burn per loser is guaranteed. This is aggregate resource
-  accounting, not a receipt-exact or identity-level attacker-cost theorem.
-  See [`audit/REFUND-DESIGN.md`](audit/REFUND-DESIGN.md) for the design and
-  [`audit/GAS-CALIBRATION.md`](audit/GAS-CALIBRATION.md) for the reproducible
-  measurement and update procedure.
-- **Reentrancy**: each clone has its own transient `locked` flag.
-  `withLock` guards `joinTournament` and `tryRecoveringBond`; `refundable` also
-  locks advance, seal, win, and eliminate functions. The external ETH transfers
-  and child calls execute while the source clone is locked. A nested mutation of
-  that clone reverts with `ReentrancyDetected`, while a payment callback may
-  mutate a different clone whose independent lock is free if the nested work
-  fits the 50,000-gas callback ceiling. Child balance recovery is a separate
-  permissionless operation and is not part of parent progress. A failed action
-  refund leaves its requested value in the pool; a failed terminal payment
-  preserves the full balance and claimer for retry. Tournament-result staging
-  keeps its synchronous best-effort recovery attempt. It ignores both `false`
-  and a recovery revert, so recipient failure cannot undo staging or block later
-  acceptance. (Mechanism only - stress-testing it is exactly an audit's job.)
-- **Termination**: `isClosed` = `now >= startInstant + allowance`;
-  `isFinished` = `isClosed && matchCount == 0`; `canBeEliminated` (non-root only)
-  = finished with no winner, **or** finished and the winner's allowance window
-  has elapsed.
-- **Leaf-proof ordering**: `winLeafMatch` follows the shared timeout
-  classification after validating the objective state-transition result. With
-  `NONE`, it pauses the proven winner with its live remainder. With the matching
-  single-winner outcome, it applies the same overdue charge as timeout victory.
-  An opposite timeout winner or `ELIMINATE_BOTH` rejects the proof. At the same
-  observation instant, successful proof and timeout resolutions cannot select
-  different survivors: a compatible proof enters re-pairing with the same
-  survivor and charged clock balance, while an incompatible proof rejects.
-  Objective proof correctness does not override a missed clock.
-- **Access control**: `MultiLevelTournamentFactory.instantiateInner` is
-  **permissionless** - anyone can mint an orphan inner tournament not linked to
-  any parent match. Legitimacy is established off-chain by following the
-  `NewInnerTournament` event chain from the root; on-chain, a parent only ever
-  consumes inner tournaments *it* created (tracked in
-  `matchIdFromInnerTournaments`).
+## Source map
 
-## Deployment parameters
+- `src/tournament/Tournament.sol` composes joins, pairing, bisection, sealing,
+  recursive children, proofs, timeouts, refunds, and recovery.
+- `src/tournament/libs/Match.sol` owns Match existence, phase, bisection, and
+  sealed-divergence encoding.
+- `src/tournament/libs/Clock.sol` owns one-clock arithmetic and storage
+  transitions.
+- `src/tournament/libs/MatchClocks.sol` owns legal two-clock transitions,
+  response discounts, timeout classification, and proven-leaf clock policy.
+- `src/tournament/libs/Gas.sol` contains reviewed action allocations.
+- `src/tournament/libs/Bond.sol` derives refund caps, terminal work, and join
+  bonds from those allocations and fee policy.
+- `src/tournament/factories/MultiLevelTournamentFactory.sol` creates root and
+  inner ERC-1167 clones.
+- `src/arbitration-config/` owns the checked-in canonical parameter table and
+  provider.
+- `src/state-transition/` adapts leaf proof verification.
+- `src/ITournament.sol` and provider/factory interfaces define external
+  compatibility surfaces.
+- `script/Deployment.s.sol` converts deployment policy into chain-specific
+  parameters.
 
-From `script/Deployment.s.sol` (the chain-kind registry) - durations are
-converted to **block counts** using a registered average block time. The
-conversion is valid only when it matches that chain's `block.number` semantics.
-Ethereum is the supported deployment target; other base chains are
-experimental until validated. The current Arbitrum entries do not match the
-`NUMBER` opcode's parent-chain coordinate, as tracked by PRT-001 in
-`audit/REVIEW.md`.
+Every tournament level uses the same `Tournament` implementation. Root versus
+inner and leaf versus non-leaf behavior derive from clone arguments and the
+configured level count; there are no production Top/Middle/Bottom contracts.
 
-- `maxAllowance` = 1 week + 1 hour (mainnet), 9 hours (testnet), 1 hour (devnet).
-  The intended formula is `censorship + (levels - 1) * inner commitment time`;
-  the same checked-in mainnet value corresponds either to the historical
-  3-level/30-minute model or the target 2-level/60-minute model. It is the
-  structural upper bound for parent-linked clocks; child tournament allowances
-  may be smaller, and no response operation raises a clock toward the bound.
-  The canonical provider rejects zero; before that guard a zero-allowance root
-  was immediately closed and rejected every join.
-- `matchEffort` = 5 minutes per successful bisection response, including the
-  final seal. One root-to-leaf descent with one match at each level spans 92
-  heights and can earn at most 7 hours 40 minutes, one response at a time;
-  re-pairing creates a new match with new discounts. On Ethereum the scalar is
-  25 blocks.
-- `WORK_PRICE_CAP` = 50 gwei, `PRIORITY_FEE_CAP` = 10 gwei (`Bond.sol`)
+## Invariants to protect
 
-## Subtle areas worth understanding before touching anything
+- Match existence comes from initialized mapped state, not from a hash sentinel.
+  Uninitialized and deleted matches must fail before phase-specific decoding.
+- Match phase is derived from the existing representation. Do not add storage or
+  reshape the raw external tuple without an explicit compatibility change.
+- Active bisection has exactly one running clock. A sealed leaf has two clocks
+  running from one instant. A sealed inner match has two paused clocks while its
+  linked child resolves.
+- Pairing and survivor re-entry never increase clock balances. Each successful
+  advance or final seal applies the response discount exactly once and cannot
+  revive an expired clock.
+- One shared timeout classification drives the capability view, timeout
+  mutation, and proven-leaf settlement. Equality belongs to double elimination.
+- A parent consumes only a child it recorded from its own sealed match.
+  Permissionless orphan child creation does not establish parent legitimacy.
+- A valid leaf proof is still subject to the same clock outcome as timeout
+  cleanup. Objective proof correctness does not erase a missed deadline.
+- Each paid join contributes one height-derived match work reserve. Progress
+  refunds are bounded subsidies; terminal recovery pays at most one bond and
+  burns the residual only after successful payment.
+- Refund and winner callbacks are bounded, copy no return data, and cannot make
+  completed progress depend on recipient acceptance. A failed terminal payment
+  preserves the full state for retry.
 
-*Comprehension aids - deliberately framed as "understand this," not "this is fine."*
+The checked-in canonical table remains the historical three-level geometry.
+The selected two-level table is integration-gated and must not be enabled here
+without coordinated node, Lua, deployment, and conformance work.
 
-- **Double-bisection parity**: `Match.sealDivergence` derives the final revealing
-  side once from total-height parity. The sealed position's low bit records the
-  final left/right branch; `_decodeDivergence` reconstructs revealing and waiting
-  leaves, and `_finalStatesByCommitment` orders them by `commitmentOne` and
-  `commitmentTwo`. Sparse-tree properties exhaust every position through height
-  eight and cover boundary, representative, and fuzzed paths through height 55;
-  this bookkeeping decides *who wins* a match.
-- **Derived Match phase**: `isInit` owns existence and `currentHeight` owns the
-  phase of an initialized state. Memory predicates and storage guards use one
-  derivation; storage phase guards reject absence before the phase-specific
-  error. The active representation is documented directly on `Match.State`;
-  `SealedView` is the existence-aware parity decoder used by leaf settlement.
-  Raw `getMatch` output remains externally visible for compatibility and should
-  not be interpreted without first establishing its phase.
-- **Clock alternation vs the leaf race**: bisection keeps one clock running;
-  `MatchClocks.startLeafRaceAt` intentionally starts **both** from one explicit
-  instant. The double-run is by design, and timeout charging starts from the
-  winner's live remaining time at that same operation instant.
-- **The multi-level delay bound** (see the threat model above) - the property
-  that is least captured by a one-line summary. The fixed four-root trace in
-  `test/properties/ConcurrentRecursivePopulation.t.sol` pins coexisting child
-  obligations and parent re-pairing, not the adversarial asynchronous upper
-  bound. `LeafPopulationDelay.t.sol` pins reachable `2A - 1` and `3A - 1`
-  lower-bound schedules. `BoundedOneLevelDelay.t.sol` exhausts a proof-inclusive
-  clock-only envelope for `N <= 6`, `A <= 4`, `G <= 2`, and `H <= 3` under
-  prompt timeout cleanup. It independently chooses proof winners and has no
-  honest strategy, so the unbounded attacker-versus-honest proof or
-  counterexample remains open.
-- **Inner-clock carryover**: `innerTournamentWinner` returns a paused clock
-  after deducting the time elapsed since the inner tournament finished;
-  `winInnerTournament` replaces the paused parent clock with that state.
-- **No fixed-level assumptions**: the level count `L` is configurable, but
-  `ArbitrationConstants` hardcodes the per-level `log2step` / `height` arrays at
-  `LEVELS = 3`. CFG-001 in `audit/REVIEW.md` records the selected two-level
-  replacement and its cross-implementation gate. A deployment with a different
-  L must regenerate those consistently and run the test-only table validator.
-  The generic logic (`level + 1` recursion, leaf/root detection, bond sizing)
-  must hold for any L; `FourLevelRecursiveLifecycle.t.sol` protects one strict
-  four-level path without claiming arbitrary-table or node conformance.
+## Change guardrails
 
-## Build / test
+- Preserve the deployed ABI, storage layout, clone arguments, raw Match and
+  Clock tuples, event signatures, and error selectors unless the task explicitly
+  authorizes a compatibility break.
+- Run `just prt-contracts::compatibility-hashes` before and after production
+  changes and inspect every unexpected difference. Hashes are comparison aids,
+  not approval to update a snapshot mechanically.
+- A Clock change needs one-clock arithmetic tests, the full MatchClocks shape
+  and orientation matrix, and public Tournament composition.
+- A Match change needs raw compatibility tests, an independent sparse-tree or
+  parity oracle, malformed-input tests, and public lifecycle composition.
+- Behavioral tests must inject the geometry they require. Production constants
+  belong only in conformance tests.
+- A gas-affecting change must follow the calibration runbook even when the
+  selected allocation remains unchanged. Never calibrate under coverage.
+- Geometry changes must validate the complete table and coordinate every
+  commitment producer and consumer. Do not hide a production switch in a test
+  fixture or deployment-only commit.
+- Time-source or chain-registration changes must state the exact EVM coordinate
+  and fee assumptions. An average interval is a deployment assumption, not a
+  protocol guarantee.
+- State-transition changes must retain cross-implementation proof vectors and
+  define halt, exception, reset, and padding behavior before contracts rely on
+  them.
+- Production bytecode changes require regenerated deployment artifacts and
+  CREATE2-derived addresses before release.
 
-From the repo root, init the state-transition submodule:
+## Build and test
+
+Run from the repository root unless a focused command says otherwise:
 
 ```bash
-git submodule update --init machine/step
+just prt-contracts::check-fmt
+just prt-contracts::test-disputes
+just prt-contracts::test-gas
+just prt-contracts::coverage
+just rollups-contracts::test
 ```
 
-Then from `prt/contracts/`:
+State-transition tests require the `machine/step` submodule and FFI:
 
 ```bash
-just install-deps   # forge soldeer install
-just build          # forge build + generate Rust bindings
-just test-all       # dispute tests + STF tests + STF fuzz tests
-just test-gas       # validate retained refund-gas witnesses
-just measure-gas    # release-pinned report; see GAS-CALIBRATION.md
-just coverage       # instrumented dispute-game coverage summary
+just prt-contracts::test-stf
+just prt-contracts::test-stf-fuzzy
 ```
 
-`just test-disputes` runs every non-FFI Solidity test. The focused state
-transition and gas recipes select their respective subsets; `just test-stf` and
-`just test-stf-fuzzy` require `--ffi` plus the `machine/step` submodule. Gas
-calibration must use the plain test runner, not coverage instrumentation; follow
-`audit/GAS-CALIBRATION.md`.
-[`audit/TEST-REPORT.md`](audit/TEST-REPORT.md) maps the test layers, their
-oracles and limitations, the current verification snapshot, and the campaign
-stop rule.
-The ordinary Foundry fuzz budget is explicitly pinned at 256 runs in
-`foundry.toml`; deeper campaigns must record their override rather than relying
-on a local Foundry default.
-The coverage recipe excludes FFI, gas-calibration, exact refund-formula, and
-state-transition tests and sources. Coverage instrumentation changes the
-measured refund units and can make an action cap bind, invalidating both gas
-observation suites. It also skips the stateful invariant executors: the ordinary
-test gate runs those campaigns, while deterministic companion traces map their
-production paths without slow IR instrumentation. Coverage uses IR-minimum
-source maps as a stack-depth workaround, so branch totals are directional rather
-than a correctness claim. Foundry's noisy IR anchor warnings are suppressed by
-default; set `COVERAGE_RUST_LOG=warn` only when debugging the mapper itself.
+Use `just prt-contracts::test-all` for the combined contract gate. Use
+`just logged <file> <command...>` for long runs so a display pipeline cannot
+hide the real exit code.
+
+The ordinary fuzz count is pinned in `foundry.toml`. Record seeds and overrides
+for deeper campaigns. Coverage excludes suites whose semantics or measured gas
+would be changed by instrumentation; its optimized-IR branch map is
+investigative, not a correctness claim.
+
+## Explicit non-claims
+
+Do not claim more than the maintained evidence establishes:
+
+- there is no general recursive adversarial-arrival liveness proof;
+- selected two-level geometry is not enabled by these contracts alone;
+- non-Ethereum time and fee conformance is not established;
+- state-transition halt and exception semantics are owned by separate work;
+- the leaf-proof refund is not a universal proof-class gas ceiling; and
+- archived review findings and test counts describe their recorded revision,
+  not every future change.
