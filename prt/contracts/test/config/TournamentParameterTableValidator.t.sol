@@ -111,7 +111,7 @@ contract TournamentParameterTableValidatorTest is Test {
         VALIDATOR.validate(table, 0);
     }
 
-    function testRejectsHeightAbove256() public {
+    function testRejectsHeightAboveCoordinateSpace() public {
         TournamentParameters[] memory table = _oneLevelTable(257, 0, 1);
 
         vm.expectRevert(
@@ -125,12 +125,18 @@ contract TournamentParameterTableValidatorTest is Test {
         VALIDATOR.validate(table, 257);
     }
 
-    function testAcceptsHeightExactly256() public view {
+    function testRejectsHeightAtCoordinateSpaceWidth() public {
         TournamentParameters[] memory table = _oneLevelTable(256, 0, 1);
 
-        (, uint64 totalLog2Span) = VALIDATOR.validate(table, 256);
-
-        assertEq(totalLog2Span, 256);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TournamentParameterTableValidator.HeightExceedsCoordinateSpace
+                .selector,
+                uint64(0),
+                uint64(256)
+            )
+        );
+        VALIDATOR.validate(table, 256);
     }
 
     function testRejectsLog2StepAt256() public {
@@ -147,12 +153,12 @@ contract TournamentParameterTableValidatorTest is Test {
         VALIDATOR.validate(table, 257);
     }
 
-    function testRejectsRowExtentAbove256() public {
+    function testRejectsRowExtentAboveCoordinateSpace() public {
         TournamentParameters[] memory table = _oneLevelTable(129, 128, 1);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                TournamentParameterTableValidator.RowExtentExceedsCoordinateSpace
+                TournamentParameterTableValidator.RowExtentOutsideCoordinateSpace
                     .selector,
                 uint64(0),
                 uint64(129),
@@ -160,6 +166,21 @@ contract TournamentParameterTableValidatorTest is Test {
             )
         );
         VALIDATOR.validate(table, 257);
+    }
+
+    function testRejectsRowExtentAtCoordinateSpaceWidth() public {
+        TournamentParameters[] memory table = _oneLevelTable(128, 128, 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TournamentParameterTableValidator.RowExtentOutsideCoordinateSpace
+                    .selector,
+                uint64(0),
+                uint64(128),
+                uint64(128)
+            )
+        );
+        VALIDATOR.validate(table, 256);
     }
 
     function testRejectsWrongRootExtent() public {
@@ -217,7 +238,7 @@ contract TournamentParameterTableValidatorTest is Test {
         uint64 height = uint64(bound(rawHeight, 248, 264));
         TournamentParameters[] memory table = _oneLevelTable(height, 0, 1);
 
-        if (height <= 256) {
+        if (height < 256) {
             VALIDATOR.validate(table, height);
         } else {
             vm.expectRevert(
@@ -238,7 +259,18 @@ contract TournamentParameterTableValidatorTest is Test {
         table[0] = _row(2, log2step, 1, 0, 1);
         table[1] = _row(2, 0, log2step, 0, 1);
 
-        if (log2step < 256) {
+        if (log2step < 255) {
+            VALIDATOR.validate(table, log2step + 1);
+        } else if (log2step == 255) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TournamentParameterTableValidator.RowExtentOutsideCoordinateSpace
+                        .selector,
+                    uint64(0),
+                    uint64(1),
+                    log2step
+                )
+            );
             VALIDATOR.validate(table, log2step + 1);
         } else {
             vm.expectRevert(
@@ -259,12 +291,12 @@ contract TournamentParameterTableValidatorTest is Test {
         table[0] = _row(2, 128, rootHeight, 0, 1);
         table[1] = _row(2, 0, 128, 0, 1);
 
-        if (rootHeight <= 128) {
+        if (rootHeight < 128) {
             VALIDATOR.validate(table, rootHeight + 128);
         } else {
             vm.expectRevert(
                 abi.encodeWithSelector(
-                    TournamentParameterTableValidator.RowExtentExceedsCoordinateSpace
+                    TournamentParameterTableValidator.RowExtentOutsideCoordinateSpace
                         .selector,
                     uint64(0),
                     rootHeight,

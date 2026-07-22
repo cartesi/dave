@@ -1,5 +1,6 @@
 local eth_abi = require "utils.eth_abi"
 local blockchain_constants = require "blockchain.constants"
+local Hash = require "cryptography.hash"
 local InnerReader = require "player.reader"
 local uint256 = require "utils.bint" (256)
 local time = require "utils.time"
@@ -242,6 +243,56 @@ function Reader:read_inputs_added()
         log.data = v.decoded_data[1]
 
         ret[k] = log
+    end
+
+    return ret
+end
+
+local MATCH_DELETION_REASON = {
+    [0] = "step",
+    [1] = "timeout",
+    [2] = "child_tournament",
+}
+
+local WINNER_COMMITMENT = {
+    [0] = "none",
+    [1] = "one",
+    [2] = "two",
+}
+
+-- Test-only structural evidence for cleanup scenarios. The production
+-- client intentionally hides deleted matches from its live-state view,
+-- so retain the deletion reason and participants from the contract log.
+function Reader:read_match_deleted(tournament_address, match_id_hash)
+    local sig = "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)"
+    local data_sig = "(uint8,uint8)"
+    local match_topic = match_id_hash and match_id_hash:hex_string() or false
+    local logs = self.inner_reader:_read_logs(
+        tournament_address,
+        sig,
+        { match_topic, false, false },
+        data_sig
+    )
+
+    local ret = {}
+    for k, v in ipairs(logs) do
+        local reason_code = assert(tonumber(v.decoded_data[1]),
+            "MatchDeleted reason is not numeric")
+        local winner_code = assert(tonumber(v.decoded_data[2]),
+            "MatchDeleted winner is not numeric")
+        local reason = assert(MATCH_DELETION_REASON[reason_code],
+            "MatchDeleted has an unknown reason")
+        local winner = assert(WINNER_COMMITMENT[winner_code],
+            "MatchDeleted has an unknown winner")
+
+        ret[k] = {
+            meta = v.meta,
+            match_id_hash = Hash:from_digest_hex(v.emited_topics[2]),
+            commitment_one = Hash:from_digest_hex(v.emited_topics[3]),
+            commitment_two = Hash:from_digest_hex(v.emited_topics[4]),
+            reason = reason,
+            winner_commitment = winner,
+        }
     end
 
     return ret

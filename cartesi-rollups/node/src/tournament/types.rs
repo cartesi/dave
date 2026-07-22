@@ -1,11 +1,17 @@
 //! The tournament value types shared by the fold, the reader, and the
 //! Hero, and the reader's product: [`DisputeState`], the dispute's
-//! event-derived structure plus the per-tick point-read overlay.
+//! event-derived structure plus one disposable semantic observation.
 
 use crate::merkle::Digest;
-use alloy::primitives::{Address, U256};
+use alloy::primitives::Address;
+#[cfg(test)]
+use alloy::primitives::U256;
 use std::collections::HashMap;
 
+use crate::chain::ChainHead;
+#[cfg(test)]
+use crate::tournament::adapter::ShadowReport;
+use crate::tournament::adapter::TournamentObservation;
 use crate::tournament::fold::{Fold, TournamentFold};
 
 /// Struct used to identify a match.
@@ -33,6 +39,7 @@ impl From<MatchID> for cartesi_prt_contracts::tournament::Match::Id {
 }
 
 /// Struct used to communicate the state of a clock.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 pub struct ClockState {
     pub allowance: u64,
@@ -48,6 +55,7 @@ pub struct ClockState {
 // (kill_mid_match, 2026-07-09). The reader now pins every read at
 // the tick's block, which makes that state unreachable; saturation
 // keeps the type total anyway.
+#[cfg(test)]
 impl ClockState {
     pub fn has_time(&self) -> bool {
         if self.start_instant == 0 {
@@ -65,36 +73,76 @@ impl ClockState {
         }
     }
 
+    /// Live remaining time: the full allowance while paused, the
+    /// undrained balance while ticking (Clock.sol's remainingAt).
+    pub fn remaining(&self) -> u64 {
+        if self.start_instant == 0 {
+            self.allowance
+        } else {
+            self.allowance
+                .saturating_sub(self.block_number.saturating_sub(self.start_instant))
+        }
+    }
+
     // deadline of clock if it's ticking
     fn deadline(&self) -> u64 {
         self.start_instant.saturating_add(self.allowance)
     }
 }
 
+/// Timeout resolution for one match's clock pair, in match orientation.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimeoutOutcome {
+    None,
+    OneWins,
+    TwoWins,
+    EliminateBoth,
+}
+
+/// Classify timeout resolution exactly as the contract does
+/// (MatchClocks.classifyTimeoutAt): a winner must retain strictly
+/// positive time after the expired side's overdue duration is
+/// charged, and equality eliminates both. Both clocks carry the same
+/// tick's block stamp; the reader pins every read at that height.
+#[cfg(test)]
+pub fn classify_timeout(one: &ClockState, two: &ClockState) -> TimeoutOutcome {
+    if !one.has_time() {
+        if two.remaining() > one.time_since_timeout() {
+            TimeoutOutcome::TwoWins
+        } else {
+            TimeoutOutcome::EliminateBoth
+        }
+    } else if !two.has_time() {
+        if one.remaining() > two.time_since_timeout() {
+            TimeoutOutcome::OneWins
+        } else {
+            TimeoutOutcome::EliminateBoth
+        }
+    } else {
+        TimeoutOutcome::None
+    }
+}
+
+#[cfg(test)]
 impl std::fmt::Display for ClockState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.start_instant == 0 {
             write!(f, "clock paused, {} blocks left", self.allowance)
+        } else if self.has_time() {
+            write!(f, "clock ticking, {} blocks left", self.remaining())
         } else {
-            let time_elapsed = self.block_number.saturating_sub(self.start_instant);
-            if self.allowance >= time_elapsed {
-                write!(
-                    f,
-                    "clock ticking, {} blocks left",
-                    self.allowance - time_elapsed
-                )
-            } else {
-                write!(
-                    f,
-                    "clock ticking, {} blocks overdue",
-                    time_elapsed - self.allowance
-                )
-            }
+            write!(
+                f,
+                "clock ticking, {} blocks overdue",
+                self.time_since_timeout()
+            )
         }
     }
 }
 
 /// Enum used to represent the winner of a tournament.
+#[cfg(test)]
 #[derive(Clone, PartialEq, Debug)]
 pub enum TournamentWinner {
     Root(Digest, Digest),
@@ -103,6 +151,7 @@ pub enum TournamentWinner {
 
 /// What events cannot determine about a running match (see the fold
 /// module doc): the contract's live positioning, point-read each tick.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 pub struct MatchLive {
     pub other_parent: Digest,
@@ -115,6 +164,7 @@ pub struct MatchLive {
 
 /// One reachable tournament's point-read overlay: everything the
 /// chain owns that the event fold deliberately does not derive.
+#[cfg(test)]
 #[derive(Clone, Debug)]
 pub struct TournamentOverlay {
     /// Level geometry from tournamentLevelConstants; the level itself
@@ -133,39 +183,85 @@ pub struct TournamentOverlay {
     pub live_matches: HashMap<Digest, MatchLive>,
 }
 
-/// The reader's product: structure from the event fold, volatile
-/// state from the overlay. The overlay covers REACHABLE tournaments
-/// only - the root, plus inners whose parent match is still live; a
-/// settled inner disappears with its match, exactly as the old
-/// recursive walk never reached it.
+/// One accepted dispute observation. The fold owns structural history and may
+/// include a disposable number-range tail; `observations` owns point semantics
+/// read at `head.hash`. Contract mutators revalidate any action derived from
+/// this value.
 #[derive(Clone, Debug)]
 pub struct DisputeState {
+    pub head: ChainHead,
     pub fold: Fold,
-    pub overlay: HashMap<Address, TournamentOverlay>,
+    pub observations: HashMap<Address, TournamentObservation>,
+}
+
+/// Best-effort evidence from the superseded raw-getter reader. It is never an
+/// authority for Hero or GC. It remains only in differential tests; live
+/// sampling is deliberately outside the deadline-sensitive reader product.
+#[cfg(test)]
+#[derive(Clone, Debug)]
+pub enum LegacyShadow {
+    /// The old overlay completed and passed the strict differential. Reports
+    /// contain only explicitly accepted corrections.
+    Accepted {
+        overlay: HashMap<Address, TournamentOverlay>,
+        reports: HashMap<Address, ShadowReport>,
+    },
+    /// The old overlay or its differential failed. The diagnostic is retained
+    /// as migration evidence; the authoritative observation remains usable.
+    Rejected { diagnostic: String },
+}
+
+#[cfg(test)]
+impl LegacyShadow {
+    pub fn rejected(diagnostic: impl Into<String>) -> Self {
+        Self::Rejected {
+            diagnostic: diagnostic.into(),
+        }
+    }
+
+    pub fn overlay(&self) -> Option<&HashMap<Address, TournamentOverlay>> {
+        match self {
+            Self::Accepted { overlay, .. } => Some(overlay),
+            Self::Rejected { .. } => None,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Default for LegacyShadow {
+    fn default() -> Self {
+        Self::rejected("legacy shadow was not run")
+    }
 }
 
 impl DisputeState {
-    /// A reachable tournament's structure and overlay together.
-    pub fn tournament(&self, address: &Address) -> Option<(&TournamentFold, &TournamentOverlay)> {
-        let overlay = self.overlay.get(address)?;
+    /// A reachable tournament's structure and semantic observation together.
+    pub fn tournament(
+        &self,
+        address: &Address,
+    ) -> Option<(&TournamentFold, &TournamentObservation)> {
+        let observation = self.observations.get(address)?;
         let fold = self
             .fold
             .tournament(address)
-            .expect("overlay covers only folded tournaments");
-        Some((fold, overlay))
+            .expect("observations cover only folded tournaments");
+        Some((fold, observation))
     }
 
     /// Every reachable tournament, parents before children.
-    pub fn reachable(&self) -> impl Iterator<Item = (&TournamentFold, &TournamentOverlay)> {
-        self.fold
-            .tournaments()
-            .filter_map(|tf| self.overlay.get(&tf.address).map(|ov| (tf, ov)))
+    pub fn reachable(&self) -> impl Iterator<Item = (&TournamentFold, &TournamentObservation)> {
+        self.fold.tournaments().filter_map(|tf| {
+            self.observations
+                .get(&tf.address)
+                .map(|observation| (tf, observation))
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tournament::domain::{JoinDisposition, TournamentDescriptor, TournamentStanding};
     use crate::tournament::fold::{EventKind, TournamentEvent};
 
     fn digest(byte: u8) -> Digest {
@@ -176,25 +272,23 @@ mod tests {
         Address::from([byte; 20])
     }
 
-    fn bare_overlay() -> TournamentOverlay {
-        TournamentOverlay {
-            max_level: 3,
-            log2_stride: 44,
-            log2_stride_count: 48,
-            base_cycle: U256::ZERO,
-            winner: None,
-            can_be_eliminated: false,
-            clocks: HashMap::new(),
-            live_matches: HashMap::new(),
-        }
+    fn observation(tournament: Address, level: u64, levels: u64) -> TournamentObservation {
+        TournamentObservation::from_parts(
+            TournamentDescriptor::try_new(tournament, level, levels, digest(1), U256::ZERO, 0, 1)
+                .unwrap(),
+            TournamentStanding::MatchesActive {
+                candidate: None,
+                joins: JoinDisposition::Open,
+            },
+            HashMap::new(),
+        )
     }
 
-    /// Reachability IS overlay membership: the iterator walks
-    /// discovery order and silently skips tournaments the overlay
-    /// never covered, and point lookups on them answer None - the
-    /// contract the GC's sweep and the Hero's descent both lean on.
+    /// Reachability is semantic-observation membership: the iterator walks
+    /// discovery order and skips tournaments the authoritative reader did not
+    /// observe.
     #[test]
-    fn dispute_state_serves_only_the_overlaid() {
+    fn dispute_state_serves_only_the_observed() {
         let (root, inner) = (address(1), address(2));
         let mut fold = Fold::new(root);
         for (seed, kind) in [
@@ -246,10 +340,16 @@ mod tests {
         })
         .unwrap();
 
-        // Overlay covers the root only: the inner is history.
-        let mut overlay = HashMap::new();
-        overlay.insert(root, bare_overlay());
-        let dispute = DisputeState { fold, overlay };
+        // The semantic observation covers the root only: the inner is history.
+        let observations = HashMap::from([(root, observation(root, 0, 2))]);
+        let dispute = DisputeState {
+            head: ChainHead {
+                number: 3,
+                hash: alloy::primitives::B256::repeat_byte(3),
+            },
+            fold,
+            observations,
+        };
 
         let reachable: Vec<Address> = dispute.reachable().map(|(tf, _)| tf.address).collect();
         assert_eq!(reachable, vec![root]);
@@ -298,5 +398,108 @@ mod tests {
         assert_eq!(format!("{overdue}"), "clock ticking, 100 blocks overdue");
         assert!(!overdue.has_time());
         assert_eq!(overdue.time_since_timeout(), 100);
+    }
+
+    fn paused(allowance: u64, block_number: u64) -> ClockState {
+        ClockState {
+            allowance,
+            start_instant: 0,
+            block_number,
+        }
+    }
+
+    fn ticking(allowance: u64, start_instant: u64, block_number: u64) -> ClockState {
+        ClockState {
+            allowance,
+            start_instant,
+            block_number,
+        }
+    }
+
+    fn assert_symmetric(one: ClockState, two: ClockState, expected: TimeoutOutcome) {
+        assert_eq!(classify_timeout(&one, &two), expected);
+        let mirrored = match expected {
+            TimeoutOutcome::OneWins => TimeoutOutcome::TwoWins,
+            TimeoutOutcome::TwoWins => TimeoutOutcome::OneWins,
+            other => other,
+        };
+        assert_eq!(classify_timeout(&two, &one), mirrored);
+    }
+
+    /// The bisection boundary matrix of MatchClocks.t.sol
+    /// (testFuzzBisectionTimeoutBoundaries): the paused side wins from
+    /// the running side's deadline until its own allowance equals the
+    /// overdue duration, where both are eliminated.
+    #[test]
+    fn bisection_timeout_matches_the_contract_boundaries() {
+        let (start, running_allowance, paused_allowance) = (10, 100, 300);
+        let at = |block| {
+            (
+                ticking(running_allowance, start, block),
+                paused(paused_allowance, block),
+            )
+        };
+
+        let (one, two) = at(start + running_allowance - 1);
+        assert_symmetric(one, two, TimeoutOutcome::None);
+
+        let (one, two) = at(start + running_allowance);
+        assert_symmetric(one, two, TimeoutOutcome::TwoWins);
+
+        let (one, two) = at(start + running_allowance + paused_allowance - 1);
+        assert_symmetric(one, two, TimeoutOutcome::TwoWins);
+
+        let (one, two) = at(start + running_allowance + paused_allowance);
+        assert_symmetric(one, two, TimeoutOutcome::EliminateBoth);
+    }
+
+    /// The leaf-race boundary matrix of MatchClocks.t.sol
+    /// (testFuzzSealedLeafTimeoutBoundaries): both clocks drain in
+    /// real time, so the longer side must claim its timeout win
+    /// before the midpoint of the combined allowances - NOT within
+    /// the opponent's full static allowance, the pre-alignment gate.
+    #[test]
+    fn leaf_race_timeout_matches_the_contract_boundaries() {
+        let (start, short, long) = (10, 100, 300);
+        let at = |block| (ticking(short, start, block), ticking(long, start, block));
+
+        let (one, two) = at(start + short - 1);
+        assert_symmetric(one, two, TimeoutOutcome::None);
+
+        let (one, two) = at(start + short);
+        assert_symmetric(one, two, TimeoutOutcome::TwoWins);
+
+        let (one, two) = at(start + (short + long).div_ceil(2) - 1);
+        assert_symmetric(one, two, TimeoutOutcome::TwoWins);
+
+        let (one, two) = at(start + (short + long).div_ceil(2));
+        assert_symmetric(one, two, TimeoutOutcome::EliminateBoth);
+    }
+
+    /// Equal allowances racing from one instant die together at their
+    /// shared deadline - the double elimination the old static-
+    /// allowance gate deferred for another full allowance.
+    #[test]
+    fn equal_leaf_race_eliminates_both_at_the_shared_deadline() {
+        let (start, allowance) = (10, 100);
+        let at = |block| {
+            (
+                ticking(allowance, start, block),
+                ticking(allowance, start, block),
+            )
+        };
+
+        let (one, two) = at(start + allowance - 1);
+        assert_symmetric(one, two, TimeoutOutcome::None);
+
+        let (one, two) = at(start + allowance);
+        assert_symmetric(one, two, TimeoutOutcome::EliminateBoth);
+    }
+
+    /// A sealed inner match holds two paused clocks; no timeout
+    /// resolution applies while the child tournament runs.
+    #[test]
+    fn paused_pair_never_times_out() {
+        assert_symmetric(paused(100, 5000), paused(300, 5000), TimeoutOutcome::None);
     }
 }

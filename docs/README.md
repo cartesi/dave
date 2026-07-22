@@ -41,6 +41,12 @@ PRT contract engineering:
   population, terminal-payment, and conservation argument.
 - [prt-contract-testing.md](prt-contract-testing.md) - Foundry test ownership,
   geometry independence, oracle design, and coverage discipline.
+- [plans/prt-client-interface.md](plans/prt-client-interface.md) - active
+  typed-view, event-fold, domain-model, and planner campaign between the PRT
+  contracts and clients.
+- [plans/prt-client-interface-decisions.md](plans/prt-client-interface-decisions.md)
+  - design reasoning, alternatives, parked event-stream proposals, and
+  reopening conditions for the contract-client interface.
 - [runbooks/prt-refund-gas-calibration.md](runbooks/prt-refund-gas-calibration.md)
   - the maintained procedure for measuring action allocations and tracing their
   effects into bonds and deployment artifacts.

@@ -54,9 +54,10 @@ tempfile = "3"
 env_logger = "0.11.5"
 
 [dev-dependencies]
-alloy = { workspace = true, features = ["node-bindings", "rpc-types"] }
+alloy = { workspace = true, features = ["json-rpc", "node-bindings", "rpc-types"] }
 hex = "0.4.3"
 tempfile = "3"
+tower = "0.5"
 # the kms module's localstack round-trip test
 testcontainers-modules = { version = "0.13.0", default-features = false, features = [
     "localstack",

@@ -242,7 +242,7 @@ bind-force:
 # ------------------------------------------------------------------
 
 # everything fast: formatting, lints, unit tests
-check: check-fmt lint-lua clippy-rust-workspace test-rust-workspace
+check: check-fmt lint-lua test-lua-client clippy-rust-workspace test-rust-workspace
 
 # format everything (rust workspace + both contract dirs)
 fmt: fmt-rust-workspace
@@ -259,6 +259,10 @@ check-fmt: check-fmt-rust-workspace
 # lint the Lua client and test harness
 lint-lua:
     luacheck prt/client-lua prt/tests/rollups --exclude-files "**/dependencies/**"
+
+# fast, provider-free semantic tests for the Lua PRT client
+test-lua-client:
+    lua5.4 prt/client-lua/tests/run.lua
 
 clippy-rust-workspace: bind
     cargo clippy --workspace --all-targets --features download_uarch -- -D warnings
@@ -400,6 +404,9 @@ test-rollups-honeypot-stf: build-rust-workspace
 
 test-rollups-kill-ci: build-rust-workspace
     just rollups-tests::test-kill-ci
+
+test-prt-timeout-boundaries: build-rust-workspace
+    just rollups-tests::test-sealed-leaf-timeouts
 
 test-rollups-honeypot-case CASE: build-rust-workspace
     just rollups-tests::test-honeypot-case {{CASE}}

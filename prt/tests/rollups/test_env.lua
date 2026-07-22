@@ -126,6 +126,30 @@ function Env.wait_until_epoch(target_epoch, ff)
     return assert(epochs[total_epochs])
 end
 
+-- Assert the durable cleanup evidence, not merely the eventual tournament
+-- winner. MatchDeleted preserves the reason and participants after getMatch
+-- has been cleared; the zero read confirms the parent consumed the match.
+function Env.assert_match_deleted(tournament_address, match, reason, winner_commitment)
+    local deletions = Env.reader:read_match_deleted(tournament_address, match.match_id_hash)
+    assert(#deletions == 1, "expected exactly one MatchDeleted event for the match")
+
+    local deletion = deletions[1]
+    assert(deletion.commitment_one == match.commitment_one,
+        "MatchDeleted commitment one differs from MatchCreated")
+    assert(deletion.commitment_two == match.commitment_two,
+        "MatchDeleted commitment two differs from MatchCreated")
+    assert(deletion.reason == reason,
+        string.format("unexpected MatchDeleted reason: %s", deletion.reason))
+    assert(deletion.winner_commitment == winner_commitment,
+        string.format("unexpected MatchDeleted winner: %s", deletion.winner_commitment))
+
+    local stored = Env.reader.inner_reader:read_match(tournament_address, match.match_id_hash)
+    assert(stored[1]:is_zero() and stored[2]:is_zero() and stored[3]:is_zero(),
+        "deleted match still exists in tournament storage")
+
+    return deletion
+end
+
 -- The oracle: an independent machine lineage anchored at the template.
 -- It replays only chain inputs, epoch after epoch, so node output is
 -- never an input to the oracle, only a subject of comparison.

@@ -1,16 +1,12 @@
 -- Required Modules
 local blockchain_consts = require "blockchain.constants"
-local HonestStrategy = require "player.strategy"
+local Actor = require "player.actor"
+local SemanticReader = require "player.semantic_reader"
 local Sender = require "player.sender"
-local StateFetcher = require "player.state"
 
-local function sybil_player(root_tournament, strategy, blockchain_endpoint)
-    local state_fetcher = StateFetcher:new(root_tournament, blockchain_endpoint)
-
+local function sybil_player(actor)
     local function react()
-        local state = state_fetcher:fetch()
-        local log = strategy:react(state)
-        return { idle = log.idle, finished = log.finished, has_lost = log.has_lost, state = state }
+        return actor:react()
     end
 
     return coroutine.create(function()
@@ -43,22 +39,31 @@ local function sybil_runner(commitment_builder, machine_path, root_tournament, i
     assert(blockchain_consts.pks[player_id], "no test account for player_id " .. player_id)
     local pk = config.pk or blockchain_consts.pks[player_id]
     local endpoint = config.endpoint or blockchain_consts.endpoint
-
-    local strategy = HonestStrategy:new(
-        commitment_builder,
-        inputs,
-        machine_path,
-        Sender:new(pk, player_id, endpoint)
-    )
-    strategy:disable_gc()
-
-    local react = sybil_player(
+    local sender =
+        config.sender or Sender:new(pk, player_id, endpoint)
+    local reader = config.reader or SemanticReader.from_endpoint(
         root_tournament,
-        strategy,
+        config.creation_block or 0,
         endpoint
     )
-
-    return react
+    local actor = Actor.new {
+        reader = reader,
+        commitment_builder = commitment_builder,
+        machine_path = machine_path,
+        inputs = inputs,
+        sender = sender,
+        root_initial_hash = config.root_initial_hash,
+        gc_enabled = config.gc_enabled == true,
+        machine_logs = config.machine_logs,
+        -- Patched sybils deliberately claim a wrong post-state. They still
+        -- submit the locally valid proof so the contract rejects the move and
+        -- the adversarial clock path remains exercised.
+        allow_invalid_claims = config.allow_invalid_claims ~= false,
+    }
+    if config.gc_enabled == false then
+        actor:disable_gc()
+    end
+    return sybil_player(actor)
 end
 
 return sybil_runner

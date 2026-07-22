@@ -221,13 +221,15 @@ constants in isolation.
 
 Before adopting any generated table, run the test-only whole-table validator
 under `prt/contracts/test/config/`. It checks the declared level count, positive
-heights and root allowance, 256-bit shift and extent limits, root span,
-inter-level tiling, and zero leaf stride. Then run a production-path recursive
-trace for the intended level count; the four-level miniature proves that the
-generic contract path can cross three child seams. These checks catch malformed
-Solidity geometry, but cannot prove cross-implementation agreement. The node's
-commitment strides and the complete contract table must still be compared as a
-release gate.
+heights and root allowance, heights and row extents strictly below 256,
+256-bit shift limits, root span, inter-level tiling, and zero leaf stride. A
+height or row extent of 256 would require representing the span `2^256`, which
+does not fit the clients' 256-bit coordinate type. Then run a production-path
+recursive trace for the intended level count; the four-level miniature proves
+that the generic contract path can cross three child seams. These checks catch
+malformed Solidity geometry, but cannot prove cross-implementation agreement.
+The node's commitment strides and the complete contract table must still be
+compared as a release gate.
 
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the `responseBudget` field. A

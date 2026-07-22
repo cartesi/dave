@@ -295,7 +295,8 @@ impl Storage {
         let previous_epoch_number = machine.epoch();
 
         let computation_hash = self.settlement_root(&mut machine)?;
-        let (output_merkle, output_proof) = machine.outputs_proof()?;
+        let (outputs_merkle_root, outputs_merkle_root_proof) =
+            machine.outputs_merkle_root_with_proof()?;
 
         machine.finish_epoch();
 
@@ -311,8 +312,8 @@ impl Storage {
         let settlement = Settlement {
             computation_hash,
             final_state: state_hash,
-            output_merkle,
-            output_proof,
+            outputs_merkle_root,
+            outputs_merkle_root_proof,
         };
 
         let orphans = self.write(|tx| {
@@ -426,7 +427,7 @@ pub(super) fn insert_settlement_in(
         .prepare_cached(
             r#"
             INSERT INTO settlement_info
-            (epoch_number, computation_hash, output_merkle, output_proof, final_state)
+            (epoch_number, computation_hash, outputs_merkle_root, outputs_merkle_root_proof, final_state)
             VALUES (?1, ?2, ?3, ?4, ?5)
             ON CONFLICT (epoch_number) DO NOTHING
             "#,
@@ -437,8 +438,8 @@ pub(super) fn insert_settlement_in(
         .execute(params![
             u64_to_i64(epoch_number),
             settlement.computation_hash.data(),
-            &settlement.output_merkle,
-            &settlement.output_proof.flatten(),
+            &settlement.outputs_merkle_root,
+            &settlement.outputs_merkle_root_proof.flatten(),
             &settlement.final_state,
         ])
         .map_err(anyhow::Error::from)?;
@@ -591,8 +592,8 @@ mod tests {
         let settlement = Settlement {
             computation_hash: [0xAA; 32].into(),
             final_state: [0xDD; 32],
-            output_merkle: [0xBB; 32],
-            output_proof: Proof::new(vec![[0; 32]]),
+            outputs_merkle_root: [0xBB; 32],
+            outputs_merkle_root_proof: Proof::new(vec![[0; 32]]),
         };
         s.write(|tx| insert_settlement_in(tx, &settlement, 42))
             .unwrap();
@@ -610,14 +611,14 @@ mod tests {
         let settlement = Settlement {
             computation_hash: [0xAA; 32].into(),
             final_state: [0xDD; 32],
-            output_merkle: [0xBB; 32],
-            output_proof: Proof::new(vec![[0; 32]]),
+            outputs_merkle_root: [0xBB; 32],
+            outputs_merkle_root_proof: Proof::new(vec![[0; 32]]),
         };
         s.write(|tx| insert_settlement_in(tx, &settlement, 42))
             .unwrap();
 
         let mut drifted = settlement.clone();
-        drifted.output_merkle = [0xCC; 32];
+        drifted.outputs_merkle_root = [0xCC; 32];
         let _ = s.write(|tx| insert_settlement_in(tx, &drifted, 42));
     }
 

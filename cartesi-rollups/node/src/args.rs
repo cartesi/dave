@@ -3,12 +3,15 @@
 
 use crate::blockchain_reader::AddressBook;
 use crate::storage::{Storage, StorageError};
-use alloy::{primitives::Address, providers::DynProvider, transports::http::reqwest::Url};
+use alloy::{
+    network::EthereumWallet, primitives::Address, providers::DynProvider,
+    transports::http::reqwest::Url,
+};
 use alloy_chains::NamedChain;
 use clap::{ArgGroup, Parser, Subcommand};
 use std::{fmt, path::PathBuf, time::Duration};
 
-use crate::provider::create_provider;
+use crate::provider::{TransactionLane, create_rpc_provider, create_signer};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
@@ -18,7 +21,7 @@ const SLEEP_DURATION: u64 = 30;
 #[command(name = "cartesi_prt_args")]
 #[command(about = "Arguments of Cartesi PRT")]
 pub struct PRTArgs {
-    /// addresss of application
+    /// address of application
     #[arg(long, env)]
     pub app_address: Address,
 
@@ -26,9 +29,13 @@ pub struct PRTArgs {
     #[arg(long, env)]
     pub machine_path: PathBuf,
 
-    /// blockchain gateway endpoint url
+    /// blockchain read gateway endpoint URL
     #[arg(long, env, default_value = ANVIL_URL)]
     pub web3_rpc_url: Url,
+
+    /// raw-transaction submission endpoint URL; defaults to the read gateway
+    #[arg(long, env)]
+    pub web3_submit_rpc_url: Option<Url>,
 
     /// blockchain chain id
     #[arg(long, env, default_value_t = ANVIL_CHAIN_ID)]
@@ -59,7 +66,7 @@ pub struct PRTArgs {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum SignerArgs {
-    /// private‐key signer
+    /// private-key signer
     #[command(
         group(
             ArgGroup::new("pk_source")
@@ -109,6 +116,7 @@ pub struct NodeConfig {
     // Provider
     pub chain_id: NamedChain,
     pub ethereum_gateway: Url,
+    pub ethereum_submit_gateway: Url,
     pub signer_address: Address,
 
     // State
@@ -119,8 +127,8 @@ pub struct NodeConfig {
     pub long_block_range_error_codes: Vec<String>,
     pub snapshot_gap_inputs: u64,
 
-    // private
-    signer: SignerArgs,
+    // Private signing capability. Read providers remain signerless.
+    wallet: EthereumWallet,
 }
 
 impl fmt::Display for NodeConfig {
@@ -129,7 +137,8 @@ impl fmt::Display for NodeConfig {
         writeln!(f, "Machine path: {}", self.machine_path.display())?;
         writeln!(f, "Signer address: {}", self.signer_address)?;
         writeln!(f, "Chain Id: {} ({})", self.chain_id, self.chain_id as u64)?;
-        writeln!(f, "Ethereum gateway: <redacted>")?;
+        writeln!(f, "Ethereum read gateway: <redacted>")?;
+        writeln!(f, "Ethereum submit gateway: <redacted>")?;
         writeln!(f, "State directory: {}", self.state_dir.display())?;
         writeln!(
             f,
@@ -162,10 +171,25 @@ impl NodeConfig {
         Storage::open_read_only(&self.state_dir)
     }
 
-    pub async fn provider(&self) -> DynProvider {
-        create_provider(&self.ethereum_gateway, self.chain_id, &self.signer)
-            .await
-            .1
+    pub async fn read_provider(&self) -> DynProvider {
+        create_rpc_provider(&self.ethereum_gateway, self.chain_id).await
+    }
+
+    pub async fn transaction_lane(&self, read_provider: DynProvider) -> TransactionLane {
+        let submit_provider =
+            create_rpc_provider(&self.ethereum_submit_gateway, self.chain_id).await;
+        let lane = TransactionLane::new(
+            read_provider,
+            submit_provider,
+            self.chain_id as u64,
+            self.wallet.clone(),
+        );
+        assert_eq!(
+            lane.signer_address(),
+            self.signer_address,
+            "transaction lane signer does not match configured signer"
+        );
+        lane
     }
 
     pub async fn setup() -> (Self, Storage) {
@@ -176,9 +200,12 @@ impl NodeConfig {
             .try_into()
             .expect("fail to convert chain id");
 
-        let (signer_address, provider) =
-            create_provider(&args.web3_rpc_url, chain_id, &args.signer).await;
+        let provider = create_rpc_provider(&args.web3_rpc_url, chain_id).await;
+        let (signer_address, wallet) = create_signer(chain_id, &args.signer).await;
         let address_book = AddressBook::new(args.app_address, &provider).await;
+        let ethereum_submit_gateway = args
+            .web3_submit_rpc_url
+            .unwrap_or_else(|| args.web3_rpc_url.clone());
 
         let mut storage = Storage::migrate(
             &args.state_dir,
@@ -206,8 +233,9 @@ impl NodeConfig {
                 chain_id,
                 signer_address,
                 ethereum_gateway: args.web3_rpc_url,
+                ethereum_submit_gateway,
                 sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
-                signer: args.signer,
+                wallet,
                 long_block_range_error_codes: args.long_block_range_error_codes,
                 snapshot_gap_inputs: args.snapshot_gap_inputs,
             },

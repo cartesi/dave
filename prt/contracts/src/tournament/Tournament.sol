@@ -8,6 +8,7 @@ import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
 
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITournamentObserver} from "prt-contracts/ITournamentObserver.sol";
 import {
     IMultiLevelTournamentFactory
 } from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
@@ -53,7 +54,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 ///   * Non-leaf tournaments (level < levels - 1):
 ///       - Use `sealInnerMatchAndCreateInnerTournament` and `winInnerTournament`.
 ///       - Can recursively create new inner tournaments via `instantiateInner`.
-contract Tournament is ITournament {
+contract Tournament is ITournament, ITournamentObserver {
     using Clones for address;
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
@@ -736,6 +737,230 @@ contract Tournament is ITournament {
     // View methods
     //
 
+    function bisectingMatch(Match.IdHash _matchIdHash)
+        external
+        view
+        override
+        returns (
+            Match.Phase actualPhase,
+            ITournamentObserver.BisectingMatchView memory value
+        )
+    {
+        Match.State memory state = matches[_matchIdHash];
+        actualPhase = state.phase();
+        if (actualPhase != Match.Phase.BISECTING) {
+            return (actualPhase, value);
+        }
+
+        Commitment.Arguments memory args = _tournamentArgs().commitmentArgs;
+        Match.CommitmentSide responder =
+            _responder(args.height, state.currentHeight);
+        value = ITournamentObserver.BisectingMatchView({
+            revealingParent: state.otherParent,
+            waitingLeft: state.leftNode,
+            waitingRight: state.rightNode,
+            segmentStartPosition: state.runningLeafPosition,
+            segmentStartCycle: args.toCycle(state.runningLeafPosition),
+            currentHeight: state.currentHeight,
+            responder: responder
+        });
+    }
+
+    function readyToSealMatch(Match.IdHash _matchIdHash)
+        external
+        view
+        override
+        returns (
+            Match.Phase actualPhase,
+            ITournamentObserver.ReadyToSealMatchView memory value
+        )
+    {
+        Match.State memory state = matches[_matchIdHash];
+        actualPhase = state.phase();
+        if (actualPhase != Match.Phase.READY_TO_SEAL) {
+            return (actualPhase, value);
+        }
+
+        Commitment.Arguments memory args = _tournamentArgs().commitmentArgs;
+        Match.CommitmentSide responder =
+            _responder(args.height, state.currentHeight);
+        value = ITournamentObserver.ReadyToSealMatchView({
+            revealingParent: state.otherParent,
+            waitingLeft: state.leftNode,
+            waitingRight: state.rightNode,
+            segmentStartPosition: state.runningLeafPosition,
+            segmentStartCycle: args.toCycle(state.runningLeafPosition),
+            responder: responder
+        });
+    }
+
+    function sealedMatch(Match.IdHash _matchIdHash)
+        external
+        view
+        override
+        returns (
+            Match.Phase actualPhase,
+            ITournamentObserver.SealedMatchView memory value
+        )
+    {
+        Match.State memory state = matches[_matchIdHash];
+        actualPhase = state.phase();
+        if (actualPhase != Match.Phase.SEALED) {
+            return (actualPhase, value);
+        }
+
+        TournamentArguments memory tournamentArgs = _tournamentArgs();
+        Match.SealedView memory divergence =
+            state.sealedView(tournamentArgs.commitmentArgs.height);
+        value = ITournamentObserver.SealedMatchView({
+            agreeState: divergence.agreeState,
+            divergencePosition: divergence.divergencePosition,
+            divergenceCycle: tournamentArgs.commitmentArgs
+                .toCycle(divergence.divergencePosition),
+            finalStateOne: divergence.finalStateOne,
+            finalStateTwo: divergence.finalStateTwo
+        });
+    }
+
+    function matchTimeoutStatus(Match.Id calldata _matchId)
+        external
+        view
+        override
+        returns (
+            Match.Phase actualPhase,
+            ITournamentObserver.MatchTimeoutOutcome outcome,
+            Time.Duration deferredCharge
+        )
+    {
+        Match.State memory state = matches[_matchId.hashFromId()];
+        actualPhase = state.phase();
+        if (actualPhase == Match.Phase.UNINITIALIZED) {
+            return (
+                actualPhase,
+                ITournamentObserver.MatchTimeoutOutcome.NONE,
+                Time.ZERO_DURATION
+            );
+        }
+
+        TournamentArguments memory args = _tournamentArgs();
+        if (actualPhase == Match.Phase.SEALED && !_isLeafTournament(args)) {
+            _requireSealedClockShape(_matchId, false);
+            return (
+                actualPhase,
+                ITournamentObserver.MatchTimeoutOutcome.NONE,
+                Time.ZERO_DURATION
+            );
+        }
+
+        if (actualPhase == Match.Phase.SEALED) {
+            _requireSealedClockShape(_matchId, true);
+        } else {
+            _requireActiveClockShape(
+                _matchId, state, args.commitmentArgs.height
+            );
+        }
+
+        MatchClocks.TimeoutStatus memory status = MatchClocks.classifyTimeoutAt(
+            clocks[_matchId.commitmentOne],
+            clocks[_matchId.commitmentTwo],
+            Time.currentTime()
+        );
+        return (
+            actualPhase,
+            _observerTimeoutOutcome(status.outcome),
+            status.deferredCharge
+        );
+    }
+
+    function tournamentDescriptor()
+        external
+        view
+        override
+        returns (ITournamentObserver.TournamentDescriptor memory descriptor)
+    {
+        TournamentArguments memory args = _tournamentArgs();
+        Commitment.Arguments memory commitmentArgs = args.commitmentArgs;
+        descriptor = ITournamentObserver.TournamentDescriptor({
+            initialHash: commitmentArgs.initialHash,
+            baseCycle: commitmentArgs.startCycle,
+            log2step: commitmentArgs.log2step,
+            height: commitmentArgs.height,
+            level: args.level,
+            levels: args.levels,
+            kind: _isLeafTournament(args)
+                ? ITournamentObserver.TournamentKind.LEAF
+                : ITournamentObserver.TournamentKind.NON_LEAF
+        });
+    }
+
+    function tournamentStanding()
+        external
+        view
+        override
+        returns (ITournamentObserver.TournamentStandingView memory standing)
+    {
+        TournamentArguments memory args = _tournamentArgs();
+        Tree.Node candidate = danglingCommitment;
+        bool hasCandidate = !candidate.eq(Tree.ZERO_NODE);
+        Time.Instant current = Time.currentTime();
+        Time.Instant closedAt = args.startInstant.add(args.allowance);
+        standing.acceptsJoins = closedAt.gt(current);
+
+        if (matchCount != 0) {
+            standing.standing =
+            ITournamentObserver.TournamentStanding.MATCHES_ACTIVE;
+            standing.hasCandidate = hasCandidate;
+            standing.candidate = candidate;
+            return standing;
+        }
+
+        Time.Instant resultAt = closedAt.max(lastMatchDeleted);
+        if (resultAt.gt(current)) {
+            standing.standing =
+            ITournamentObserver.TournamentStanding.AWAITING_CLOSURE;
+            standing.hasCandidate = hasCandidate;
+            standing.candidate = candidate;
+            return standing;
+        }
+
+        if (_isRootTournament(args)) {
+            if (!hasCandidate) {
+                standing.standing =
+                ITournamentObserver.TournamentStanding.ROOT_FAILED;
+                return standing;
+            }
+
+            standing.standing =
+            ITournamentObserver.TournamentStanding.ROOT_WINNER;
+            standing.hasCandidate = true;
+            standing.candidate = candidate;
+            standing.finalState = finalStates[candidate];
+            return standing;
+        }
+
+        if (!hasCandidate) {
+            standing.standing =
+            ITournamentObserver.TournamentStanding.INNER_ELIMINABLE_NO_WINNER;
+            return standing;
+        }
+
+        Clock.State memory winnerClock = clocks[candidate];
+        winnerClock.requirePaused();
+        Time.Instant eliminationAt = resultAt.add(winnerClock.pausedAllowance());
+        standing.hasCandidate = true;
+        standing.candidate = candidate;
+        if (eliminationAt.gt(current)) {
+            standing.standing =
+            ITournamentObserver.TournamentStanding.INNER_WINNER;
+            standing.parentCommitment =
+                _parentCommitment(args.nestedDispute, finalStates[candidate]);
+        } else {
+            standing.standing =
+            ITournamentObserver.TournamentStanding
+                .INNER_ELIMINABLE_WINNER_EXPIRED;
+        }
+    }
+
     function canWinMatchByTimeout(Match.Id calldata _matchId)
         external
         view
@@ -897,6 +1122,84 @@ contract Tournament is ITournament {
         if (!_node.isZero()) {
             _h = true;
         }
+    }
+
+    function _responder(uint64 totalHeight, uint64 currentHeight)
+        private
+        pure
+        returns (Match.CommitmentSide)
+    {
+        assert(currentHeight > 0 && currentHeight <= totalHeight);
+        uint64 advances = totalHeight - currentHeight;
+        return
+            advances % 2 == 0
+                ? Match.CommitmentSide.ONE
+                : Match.CommitmentSide.TWO;
+    }
+
+    function _requireActiveClockShape(
+        Match.Id calldata matchId,
+        Match.State memory state,
+        uint64 totalHeight
+    ) private view {
+        Clock.State memory one = clocks[matchId.commitmentOne];
+        Clock.State memory two = clocks[matchId.commitmentTwo];
+        one.requireInitialized();
+        two.requireInitialized();
+        assert(one.isRunning() != two.isRunning());
+
+        Match.CommitmentSide clockResponder = one.isRunning()
+            ? Match.CommitmentSide.ONE
+            : Match.CommitmentSide.TWO;
+        assert(clockResponder == _responder(totalHeight, state.currentHeight));
+    }
+
+    function _requireSealedClockShape(Match.Id calldata matchId, bool leaf)
+        private
+        view
+    {
+        Clock.State memory one = clocks[matchId.commitmentOne];
+        Clock.State memory two = clocks[matchId.commitmentTwo];
+        one.requireInitialized();
+        two.requireInitialized();
+        if (leaf) {
+            assert(one.isRunning() && two.isRunning());
+            assert(
+                Time.Instant.unwrap(one.startInstant)
+                    == Time.Instant.unwrap(two.startInstant)
+            );
+        } else {
+            assert(!one.isRunning() && !two.isRunning());
+        }
+    }
+
+    function _observerTimeoutOutcome(MatchClocks.TimeoutOutcome outcome)
+        private
+        pure
+        returns (ITournamentObserver.MatchTimeoutOutcome)
+    {
+        if (outcome == MatchClocks.TimeoutOutcome.NONE) {
+            return ITournamentObserver.MatchTimeoutOutcome.NONE;
+        } else if (outcome == MatchClocks.TimeoutOutcome.ONE_WINS) {
+            return ITournamentObserver.MatchTimeoutOutcome.ONE_WINS;
+        } else if (outcome == MatchClocks.TimeoutOutcome.TWO_WINS) {
+            return ITournamentObserver.MatchTimeoutOutcome.TWO_WINS;
+        } else {
+            assert(outcome == MatchClocks.TimeoutOutcome.ELIMINATE_BOTH);
+            return ITournamentObserver.MatchTimeoutOutcome.ELIMINATE_BOTH;
+        }
+    }
+
+    function _parentCommitment(
+        NestedDispute memory nestedDispute,
+        Machine.Hash finalState
+    ) private pure returns (Tree.Node) {
+        if (finalState.eq(nestedDispute.contestedFinalStateOne)) {
+            return nestedDispute.contestedCommitmentOne;
+        }
+
+        assert(finalState.eq(nestedDispute.contestedFinalStateTwo));
+        return nestedDispute.contestedCommitmentTwo;
     }
 
     /// @notice Pair a new commitment into the tournament, creating a match if an

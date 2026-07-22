@@ -178,7 +178,7 @@ pub(super) fn settlement_info_in(
     let mut stmt = tx
         .prepare_cached(
             r#"
-            SELECT computation_hash, output_merkle, output_proof, final_state
+            SELECT computation_hash, outputs_merkle_root, outputs_merkle_root_proof, final_state
             FROM settlement_info
             WHERE epoch_number = ?1
             "#,
@@ -198,12 +198,12 @@ pub(super) fn settlement_info_in(
         .map_err(anyhow::Error::from)?;
 
     row.map(
-        |(computation_hash, output_merkle, output_proof, final_state)| {
+        |(computation_hash, outputs_merkle_root, outputs_merkle_root_proof, final_state)| {
             Ok(Settlement {
                 computation_hash: super::convert::blob_to_digest(computation_hash)?,
                 final_state: blob_to_hash(final_state)?,
-                output_merkle: blob_to_hash(output_merkle)?,
-                output_proof: Proof::from_flattened(output_proof)?,
+                outputs_merkle_root: blob_to_hash(outputs_merkle_root)?,
+                outputs_merkle_root_proof: Proof::from_flattened(outputs_merkle_root_proof)?,
             })
         },
     )

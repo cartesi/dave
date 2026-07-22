@@ -26,7 +26,8 @@ end
 -- Compute honest commitment
 -- 44 is the initial log2_stride currently configured in the smart contracts.
 local initial_state, commitment = Machine.root_rollup_commitment(env.template_machine, 44, inputs)
-assert(sealed_epoch.initial_machine_state_hash, initial_state)
+assert(Hash:from_digest_hex(sealed_epoch.initial_machine_state_hash) == initial_state,
+    "chain-sealed initial machine state hash differs from the computed state")
 
 local patches = {
     -- add input 2 + ustep

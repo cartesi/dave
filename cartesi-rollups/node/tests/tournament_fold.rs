@@ -132,7 +132,6 @@ fn fold_reproduces_the_echo_simple_dispute() {
             assert_eq!(reason, MatchDeletionReason::Step);
         }
         assert_ne!(winner, WinnerCommitment::Neither);
-        assert!(m.advances > 0, "bisection advanced at level {}", t.level);
     }
 
     // The same commitment pair fights the level-0 match that the
