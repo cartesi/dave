@@ -25,11 +25,18 @@ just rollups-tests::test <program> <script>
   wrappers in `dave/reader.lua` / `dave/sender.lua`).
 - `spawn_node()` launches `target/debug/cartesi-rollups-prt-node` with a
   private-key signer, state dir `_state/`, logs to `dave.log`.
-- Dishonest players (sybils) are the honest Lua strategy
-  (`prt/client-lua/player/strategy.lua`) driven as a coroutine, with a
-  `PatchedCommitmentBuilder` that corrupts chosen leaf hashes at chosen
-  levels (`prt/tests/common/runners/`). They play the protocol perfectly
-  while defending a wrong commitment - the strongest polite adversary.
+- Dishonest players (sybils) drive the Lua semantic actor
+  (`prt/client-lua/player/actor.lua`) as a coroutine. Its independent fold,
+  strict observer adapter, domain context, pure planner, fulfiller, and
+  dispatcher mirror the Rust client's protocol boundaries without sharing
+  expected values. A `PatchedCommitmentBuilder` corrupts chosen leaf hashes at
+  chosen levels (`prt/tests/common/runners/`). The sybils play the protocol
+  perfectly while defending a wrong commitment - the strongest polite
+  adversary. The honest Lua fulfiller rejects a machine post-state that differs
+  from its claim by default. Only the sybil runner enables the explicit
+  `allow_invalid_claims` harness mode: it submits the valid machine transition
+  proof against the deliberately wrong claim so the contract rejection and
+  adversarial clock path remain exercised.
 - Time is driven manually: the harness advances anvil blocks
   (`advance_blocks`) and sleeps until the node reacts, so wall-clock
   timeouts in the protocol become block-count fast-forwards.
@@ -126,7 +133,7 @@ scenario that kills on it):
 - `computing quartet` (sling cache, dispute-time machine work only,
   since level 0 is served from the frontier fold):
   kill_commitment_build.
-- `advance match` (player bisection): kill_mid_match, and the log
+- `advance match` (Hero dispatch): kill_mid_match, and the log
   line the suites grep to observe dispute progress.
 - `settle epoch` (epoch-manager, logged before the accept
   transaction - the settlement-finalizing step of the staged
@@ -308,17 +315,25 @@ construction: one input total).
 
 Known blind spots, by layer:
 
-- The tournament reader has no tests at all; workstream 5's fold plus
-  the chain recordings fix this. Recorded so far: `echo_simple`,
-  `multilevel_stf`, and `multi_sybil` (concurrent matches plus a real
-  timeout deletion, 2026-07-15).
-- (closed 2026-07-09) The Hero's decision table now has a unit
-  surface: hero/mod.rs tests drive react_tournament and the GC over
-  hand-built DisputeStates and the toy sling source, with a recording
-  arena in place of the chain - every arena verb the react loop can
-  choose is pinned, including witness shape selection (the toy
-  implements the proving verbs with inert marker bytes). E2e remains
-  the outer net that checks the chain agrees with these choices.
+- (closed 2026-07-24) The tournament reader now has focused tests for
+  finalized-prefix plus exact-hash-tail assembly, global log ordering,
+  dynamic child discovery, canonical-head rejection, watermark discipline,
+  and semantic-adapter rejection before persistence. Recorded folds still
+  cover `echo_simple`, `multilevel_stf`, and `multi_sybil` (concurrent matches
+  plus a real timeout deletion).
+- (closed 2026-07-24) Hero policy, context assembly, fulfillment, dispatch, and
+  GC are separate unit surfaces. Table-driven planner tests cover terminal,
+  join, timeout, phase, and recursive-child decisions; action tests cover
+  proof/opening preparation; the recording sender proves that each prepared
+  variant invokes exactly one mutation. E2e remains the outer net that checks
+  the contracts agree with those choices.
+- (closed 2026-07-24) The Lua sybil path uses the same semantic observer
+  boundary as the Rust node through an independent implementation. Its
+  provider-free suite covers domain invariants, the structural fold, strict
+  ABI adaptation, exact-head reading, context assembly, pure Hero and GC
+  planning, fulfillment, and one-action dispatch. The focused `gc_match`,
+  `gc_tournament`, and `multi_sybil` scenarios are the cross-process evidence
+  for match cleanup, recursive cleanup, and concurrent live matches.
 - The e2e battery runs the node at snapshot gap 2 by default (since
   2026-07-13; it ran gap 1 before). At gap 1 three node paths were
   dark in every scenario: the non-boundary GC's modulo never fired,
@@ -486,6 +501,14 @@ reader - remeasure before optimizing anything); a dead node
 manifests as an infinite hang, not a failure (lever 4); and
 per-run log truncation destroyed the first run's evidence (worth
 teeing dave.log per run into a scratch dir before rm).
+
+Case study, 2026-07-24: the semantic Hero cutover initially made
+`kill_mid_match` finish the dispute without killing the node. The action still
+landed, but the new single-dispatch seam had dropped the stable `advance match`
+marker, so the harness never observed its protocol kill point. Restoring
+concise markers at that seam made the scenario kill, respawn, and win again
+without changing a timeout or assertion. The marker contract above is
+behavioral test infrastructure, not incidental log prose.
 
 Case study, 2026-07-10 (the pin's other edge): the first full
 parallel battery failed exactly two scenarios - both gc_tournament

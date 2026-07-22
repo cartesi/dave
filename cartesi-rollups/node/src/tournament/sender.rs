@@ -3,14 +3,15 @@
 
 use crate::hero::error::Result;
 use alloy::{
-    contract::Error,
-    network::Ethereum,
+    eips::BlockId,
     primitives::{Address, B256, Bytes, U256},
-    providers::{DynProvider, PendingTransactionBuilder},
+    providers::DynProvider,
 };
 use async_trait::async_trait;
-use log::{trace, warn};
+use log::trace;
+use std::sync::Arc;
 
+use crate::provider::TransactionLane;
 use crate::tournament::MatchID;
 
 /// A transition witness in chain encoding (Ruler::prove_transition's
@@ -24,7 +25,7 @@ use cartesi_prt_contracts::tournament;
 /// Override with `GAS_LIMIT` env var if needed.
 const DEFAULT_GAS_LIMIT: u64 = 15_000_000;
 
-fn gas_limit() -> u64 {
+pub(crate) fn gas_limit() -> u64 {
     std::env::var("GAS_LIMIT")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -33,12 +34,25 @@ fn gas_limit() -> u64 {
 
 #[derive(Clone, Debug)]
 pub struct EthArenaSender {
-    provider: DynProvider,
+    read_provider: DynProvider,
+    transaction_lane: Arc<TransactionLane>,
 }
 
 impl EthArenaSender {
-    pub fn new(provider: DynProvider) -> anyhow::Result<Self> {
-        Ok(Self { provider })
+    pub fn new(read_provider: DynProvider, transaction_lane: Arc<TransactionLane>) -> Self {
+        Self {
+            read_provider,
+            transaction_lane,
+        }
+    }
+
+    async fn submit_call(
+        &self,
+        label: &'static str,
+        request: alloy::rpc::types::TransactionRequest,
+    ) -> Result<()> {
+        self.transaction_lane.submit(label, request).await?;
+        Ok(())
     }
 }
 
@@ -115,7 +129,9 @@ pub trait ArenaSender: Send + Sync {
         inner_tournament: Address,
     ) -> Result<()>;
 
-    async fn bond_value(&self, tournament: Address) -> Result<U256>;
+    /// Read the immutable join bond at the same accepted block as the intent
+    /// being fulfilled.
+    async fn bond_value(&self, tournament: Address, at: BlockId) -> Result<U256>;
 }
 
 #[async_trait]
@@ -128,7 +144,7 @@ impl ArenaSender for EthArenaSender {
         right_child: Digest,
         bond_value: U256,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let siblings = proof
             .siblings
             .iter()
@@ -143,7 +159,7 @@ impl ArenaSender for EthArenaSender {
             right_child,
             proof.siblings.len()
         );
-        let tx_result = tournament
+        let request = tournament
             .joinTournament(
                 proof.node.into(),
                 siblings,
@@ -151,9 +167,9 @@ impl ArenaSender for EthArenaSender {
                 right_child.into(),
             )
             .value(bond_value)
-            .send()
-            .await;
-        allow_revert_rethrow_others("joinTournament", tx_result).await
+            .gas(gas_limit())
+            .into_transaction_request();
+        self.submit_call("joinTournament", request).await
     }
 
     async fn advance_match(
@@ -165,8 +181,8 @@ impl ArenaSender for EthArenaSender {
         new_left_node: Digest,
         new_right_node: Digest,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let tx_result = tournament
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
+        let request = tournament
             .advanceMatch(
                 match_id.into(),
                 left_node.into(),
@@ -175,9 +191,8 @@ impl ArenaSender for EthArenaSender {
                 new_right_node.into(),
             )
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("advanceMatch", tx_result).await
+            .into_transaction_request();
+        self.submit_call("advanceMatch", request).await
     }
 
     async fn seal_inner_match(
@@ -188,13 +203,13 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
             .map(|h| -> B256 { (*h).into() })
             .collect();
-        let tx_result = tournament
+        let request = tournament
             .sealInnerMatchAndCreateInnerTournament(
                 match_id.into(),
                 left_leaf.into(),
@@ -203,9 +218,9 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_siblings,
             )
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("sealInnerMatchAndCreateInnerTournament", tx_result).await
+            .into_transaction_request();
+        self.submit_call("sealInnerMatchAndCreateInnerTournament", request)
+            .await
     }
 
     async fn win_inner_match(
@@ -215,13 +230,12 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let tx_result = tournament
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
+        let request = tournament
             .winInnerTournament(child_tournament, left_node.into(), right_node.into())
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("winInnerTournament", tx_result).await
+            .into_transaction_request();
+        self.submit_call("winInnerTournament", request).await
     }
 
     async fn win_timeout_match(
@@ -231,13 +245,12 @@ impl ArenaSender for EthArenaSender {
         left_node: Digest,
         right_node: Digest,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let tx_result = tournament
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
+        let request = tournament
             .winMatchByTimeout(match_id.into(), left_node.into(), right_node.into())
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("winMatchByTimeout", tx_result).await
+            .into_transaction_request();
+        self.submit_call("winMatchByTimeout", request).await
     }
 
     async fn seal_leaf_match(
@@ -248,13 +261,13 @@ impl ArenaSender for EthArenaSender {
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let initial_hash_siblings = initial_hash_proof
             .siblings
             .iter()
             .map(|h| -> B256 { (*h).into() })
             .collect();
-        let tx_result = tournament
+        let request = tournament
             .sealLeafMatch(
                 match_id.into(),
                 left_leaf.into(),
@@ -263,9 +276,8 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_siblings,
             )
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("sealLeafMatch", tx_result).await
+            .into_transaction_request();
+        self.submit_call("sealLeafMatch", request).await
     }
 
     async fn win_leaf_match(
@@ -276,8 +288,8 @@ impl ArenaSender for EthArenaSender {
         right_node: Digest,
         proofs: MachineProof,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let tx_result = tournament
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
+        let request = tournament
             .winLeafMatch(
                 match_id.into(),
                 left_node.into(),
@@ -285,19 +297,17 @@ impl ArenaSender for EthArenaSender {
                 Bytes::from(proofs),
             )
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("winLeafMatch", tx_result).await
+            .into_transaction_request();
+        self.submit_call("winLeafMatch", request).await
     }
 
     async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let tx_result = tournament
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
+        let request = tournament
             .eliminateMatchByTimeout(match_id.into())
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("eliminateMatchByTimeout", tx_result).await
+            .into_transaction_request();
+        self.submit_call("eliminateMatchByTimeout", request).await
     }
 
     async fn eliminate_inner_tournament(
@@ -305,38 +315,17 @@ impl ArenaSender for EthArenaSender {
         tournament: Address,
         inner_tournament: Address,
     ) -> Result<()> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let tx_result = tournament
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
+        let request = tournament
             .eliminateInnerTournament(inner_tournament)
             .gas(gas_limit())
-            .send()
-            .await;
-        allow_revert_rethrow_others("eliminateInnerTournament", tx_result).await
+            .into_transaction_request();
+        self.submit_call("eliminateInnerTournament", request).await
     }
 
-    async fn bond_value(&self, tournament: Address) -> Result<U256> {
-        let tournament = tournament::Tournament::new(tournament, &self.provider);
-        let bond_value_result = tournament.bondValue().call().await?;
+    async fn bond_value(&self, tournament: Address, at: BlockId) -> Result<U256> {
+        let tournament = tournament::Tournament::new(tournament, &self.read_provider);
+        let bond_value_result = tournament.bondValue().block(at).call().await?;
         Ok(bond_value_result)
     }
-}
-
-pub async fn allow_revert_rethrow_others(
-    tx_call: &str,
-    tx_result: std::result::Result<PendingTransactionBuilder<Ethereum>, Error>,
-) -> Result<()> {
-    if let Err(e) = tx_result {
-        match e.as_revert_data() {
-            Some(revert_data) => {
-                // allow transactions to be reverted
-                warn!("{} transaction reverted with data {}", tx_call, revert_data);
-            }
-            None => {
-                // rethrow any other errors
-                return Err(e.into());
-            }
-        }
-    }
-
-    Ok(())
 }

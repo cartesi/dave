@@ -125,13 +125,16 @@ impl RollupsMachine {
         self.next_input_index_in_epoch = 0;
     }
 
-    pub fn outputs_proof(&mut self) -> MachineResult<(Hash, Proof)> {
+    /// The contracts' canonical outputsMerkleRoot (the machine leaves
+    /// it at TX_START) plus the siblings that prove it against the
+    /// machine state hash - what stageTournamentResult consumes.
+    pub fn outputs_merkle_root_with_proof(&mut self) -> MachineResult<(Hash, Proof)> {
         let proof = self.inner().proof(TX_START, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
         let siblings = Proof::new(proof.sibling_hashes);
-        let output_merkle = self.inner().read_memory(TX_START, 32)?;
+        let outputs_merkle_root = self.inner().read_memory(TX_START, 32)?;
 
-        assert_eq!(output_merkle.len(), 32);
-        Ok((output_merkle.try_into().unwrap(), siblings))
+        assert_eq!(outputs_merkle_root.len(), 32);
+        Ok((outputs_merkle_root.try_into().unwrap(), siblings))
     }
 
     pub fn state_hash(&mut self) -> MachineResult<Hash> {

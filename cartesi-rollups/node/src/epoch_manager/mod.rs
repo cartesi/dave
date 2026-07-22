@@ -10,16 +10,19 @@ use log::{debug, info, trace};
 use std::{sync::Arc, time::Duration};
 
 use crate::chain::Chain;
+use crate::provider::TransactionLane;
 use crate::storage::{Epoch, Proof, Storage};
 use crate::sync::ShutdownSignal;
+use crate::tournament::domain::GcIntent;
 use crate::{
-    hero::Hero,
-    tournament::{ArenaSender, allow_revert_rethrow_others},
+    hero::{Hero, HeroTick, TournamentResult},
+    tournament::{ArenaSender, gas_limit},
 };
 use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 
 pub struct EpochManager<AS: ArenaSender> {
     arena_sender: Arc<AS>,
+    transaction_lane: Arc<TransactionLane>,
     consensus: Address,
     signer_address: Address,
     sleep_duration: Duration,
@@ -27,9 +30,50 @@ pub struct EpochManager<AS: ArenaSender> {
     epoch_hero: (Option<Hero<AS>>, u64),
 }
 
+enum EpochReaction {
+    Absent,
+    Preparing,
+    Ticked(HeroTick),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EpochWritePlan {
+    None,
+    GarbageCollect(GcIntent),
+    Settle {
+        garbage_collect_if_idle: Option<GcIntent>,
+    },
+}
+
+impl EpochReaction {
+    /// Selects at most one write lane from one observation. Settlement stays
+    /// off the active-dispute lane, including while local dispute material is
+    /// still being prepared. The shared transaction lane preserves this
+    /// priority across ticks by replacing the same mined nonce.
+    fn write_plan(self) -> EpochWritePlan {
+        match self {
+            Self::Absent => EpochWritePlan::Settle {
+                garbage_collect_if_idle: None,
+            },
+            Self::Preparing => EpochWritePlan::None,
+            Self::Ticked(tick) if tick.action_attempted() => EpochWritePlan::None,
+            Self::Ticked(tick) if tick.result() == TournamentResult::Running => tick
+                .gc_intent()
+                .map_or(EpochWritePlan::None, EpochWritePlan::GarbageCollect),
+            Self::Ticked(tick) if tick.result() == TournamentResult::Won => {
+                EpochWritePlan::Settle {
+                    garbage_collect_if_idle: tick.gc_intent(),
+                }
+            }
+            Self::Ticked(_) => EpochWritePlan::None,
+        }
+    }
+}
+
 impl<AS: ArenaSender> EpochManager<AS> {
     pub fn new(
         arena_sender: Arc<AS>,
+        transaction_lane: Arc<TransactionLane>,
         consensus_address: Address,
         signer_address: Address,
         storage: Storage,
@@ -37,6 +81,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
     ) -> Self {
         Self {
             arena_sender,
+            transaction_lane,
             consensus: consensus_address,
             signer_address,
             sleep_duration,
@@ -57,11 +102,36 @@ impl<AS: ArenaSender> EpochManager<AS> {
         // Consensus violations stay fatal: they are asserts, not
         // errors.
         loop {
-            if let Err(e) = self.try_settle_epoch(&dave_consensus).await {
-                log::warn!("settle attempt failed, retrying next tick: {e}");
-            }
-            if let Err(e) = self.try_react_epoch(&chain).await {
-                log::warn!("dispute tick failed, retrying next tick: {e}");
+            let write_plan = match self.try_react_epoch(&chain).await {
+                Ok(reaction) => reaction.write_plan(),
+                Err(e) => {
+                    log::warn!("dispute tick failed, retrying next tick: {e}");
+                    EpochWritePlan::None
+                }
+            };
+
+            match write_plan {
+                EpochWritePlan::None => {}
+                EpochWritePlan::GarbageCollect(intent) => {
+                    if let Err(e) = self.try_gc_epoch(intent).await {
+                        log::warn!("cleanup tick failed, retrying next tick: {e}");
+                    }
+                }
+                EpochWritePlan::Settle {
+                    garbage_collect_if_idle,
+                } => match self.try_settle_epoch(&dave_consensus).await {
+                    Ok(false) => {
+                        if let Some(intent) = garbage_collect_if_idle
+                            && let Err(e) = self.try_gc_epoch(intent).await
+                        {
+                            log::warn!("cleanup tick failed, retrying next tick: {e}");
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        log::warn!("settle attempt failed, retrying next tick: {e}");
+                    }
+                },
             }
 
             tokio::select! { biased;
@@ -75,19 +145,22 @@ impl<AS: ArenaSender> EpochManager<AS> {
     /// when this signer is a sentry, then staging the finished
     /// tournament's result, then accepting it once every sentry
     /// agrees or the claim staging period elapses. Each step is
-    /// guarded and idempotent, so one tick can advance whichever
-    /// step the chain is ready for.
+    /// guarded and idempotent. At most one mutation is attempted so a later
+    /// settlement step never queues behind an earlier step from stale state.
     pub async fn try_settle_epoch(
         &mut self,
         dave_consensus: &DaveConsensus::DaveConsensusInstance<
             DynProvider,
             alloy::network::Ethereum,
         >,
-    ) -> Result<()> {
-        self.try_submit_sentry_claim(dave_consensus).await?;
-        self.try_stage_tournament_result(dave_consensus).await?;
-        self.try_accept_tournament_result(dave_consensus).await?;
-        Ok(())
+    ) -> Result<bool> {
+        if self.try_submit_sentry_claim(dave_consensus).await? {
+            return Ok(true);
+        }
+        if self.try_stage_tournament_result(dave_consensus).await? {
+            return Ok(true);
+        }
+        self.try_accept_tournament_result(dave_consensus).await
     }
 
     /// A sentry claims the post-epoch state it computed itself -
@@ -99,10 +172,10 @@ impl<AS: ArenaSender> EpochManager<AS> {
             DynProvider,
             alloy::network::Ethereum,
         >,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let sentry_id = dave_consensus
             .getSentryId(self.signer_address)
-            .block(alloy::eips::BlockId::pending())
+            .block(alloy::eips::BlockId::latest())
             .call()
             .await?;
 
@@ -112,19 +185,19 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 self.signer_address,
                 dave_consensus.address()
             );
-            return Ok(());
+            return Ok(false);
         }
 
         let current_sealed_epoch = dave_consensus
             .getCurrentSealedEpoch()
-            .block(alloy::eips::BlockId::pending())
+            .block(alloy::eips::BlockId::latest())
             .call()
             .await?;
         let epoch_number = current_sealed_epoch.epochNumber;
 
         let has_claimed = dave_consensus
             .hasSentryClaimedInEpoch(epoch_number, sentry_id)
-            .block(alloy::eips::BlockId::pending())
+            .block(alloy::eips::BlockId::latest())
             .call()
             .await?;
 
@@ -133,12 +206,12 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 "sentry {} (id {}) has already claimed for epoch {}",
                 self.signer_address, sentry_id, epoch_number
             );
-            return Ok(());
+            return Ok(false);
         }
 
         let can_accept = dave_consensus
             .canAcceptStagedTournamentResult()
-            .block(alloy::eips::BlockId::pending())
+            .block(alloy::eips::BlockId::latest())
             .call()
             .await?;
 
@@ -147,7 +220,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 "epoch {} already has a staged result past its staging period; a claim buys nothing",
                 epoch_number
             );
-            return Ok(());
+            return Ok(false);
         }
 
         match self.storage.settlement_info(
@@ -156,17 +229,21 @@ impl<AS: ArenaSender> EpochManager<AS> {
             Some(settlement) => {
                 let claim = vec_u8_to_bytes_32(settlement.final_state.into());
                 info!("submit sentry claim {} for epoch {}", claim, epoch_number);
-                let tx_result = dave_consensus
+                let request = dave_consensus
                     .submitSentryClaim(epoch_number, claim)
-                    .send()
-                    .await;
-                allow_revert_rethrow_others("submitSentryClaim", tx_result).await?;
+                    .gas(gas_limit())
+                    .into_transaction_request();
+                self.transaction_lane
+                    .submit("submitSentryClaim", request)
+                    .await
+                    .map_err(crate::hero::error::ReactError::from)?;
+                return Ok(true);
             }
             None => {
                 trace!("wait for the `machine-runner` to insert the value");
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     async fn try_stage_tournament_result(
@@ -175,16 +252,16 @@ impl<AS: ArenaSender> EpochManager<AS> {
             DynProvider,
             alloy::network::Ethereum,
         >,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let can_stage = dave_consensus
             .canStageTournamentResult()
-            .block(alloy::eips::BlockId::pending())
+            .block(alloy::eips::BlockId::latest())
             .call()
             .await?;
 
         if !can_stage.isFinished || can_stage.isTournamentResultStaged {
             trace!("tournament result not ready to be staged");
-            return Ok(());
+            return Ok(false);
         }
 
         match self.storage.settlement_info(
@@ -206,21 +283,25 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     can_stage.epochNumber,
                     settlement.computation_hash.to_hex()
                 );
-                let tx_result = dave_consensus
+                let request = dave_consensus
                     .stageTournamentResult(
                         can_stage.epochNumber,
-                        vec_u8_to_bytes_32(settlement.output_merkle.into()),
-                        to_bytes_32_vec(settlement.output_proof),
+                        vec_u8_to_bytes_32(settlement.outputs_merkle_root.into()),
+                        to_bytes_32_vec(settlement.outputs_merkle_root_proof),
                     )
-                    .send()
-                    .await;
-                allow_revert_rethrow_others("stageTournamentResult", tx_result).await?;
+                    .gas(gas_limit())
+                    .into_transaction_request();
+                self.transaction_lane
+                    .submit("stageTournamentResult", request)
+                    .await
+                    .map_err(crate::hero::error::ReactError::from)?;
+                return Ok(true);
             }
             None => {
                 trace!("wait for the `machine-runner` to insert the value");
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     async fn try_accept_tournament_result(
@@ -229,16 +310,16 @@ impl<AS: ArenaSender> EpochManager<AS> {
             DynProvider,
             alloy::network::Ethereum,
         >,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let can_accept = dave_consensus
             .canAcceptStagedTournamentResult()
-            .block(alloy::eips::BlockId::pending())
+            .block(alloy::eips::BlockId::latest())
             .call()
             .await?;
 
         if !can_accept.isTournamentResultStaged {
             trace!("staged tournament result not ready to be accepted");
-            return Ok(());
+            return Ok(false);
         }
 
         match self.storage.settlement_info(
@@ -251,7 +332,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     "Staged final state mismatch, notify all users!"
                 );
                 assert_eq!(
-                    vec_u8_to_bytes_32(settlement.output_merkle.into()),
+                    vec_u8_to_bytes_32(settlement.outputs_merkle_root.into()),
                     can_accept.stagedPostEpochOutputsMerkleRoot,
                     "Staged outputs Merkle root mismatch, notify all users!"
                 );
@@ -262,21 +343,25 @@ impl<AS: ArenaSender> EpochManager<AS> {
                         "settle epoch {}: accept staged tournament result",
                         can_accept.epochNumber
                     );
-                    let tx_result = dave_consensus
+                    let request = dave_consensus
                         .acceptStagedTournamentResult(can_accept.epochNumber)
-                        .send()
-                        .await;
-                    allow_revert_rethrow_others("acceptStagedTournamentResult", tx_result).await?;
+                        .gas(gas_limit())
+                        .into_transaction_request();
+                    self.transaction_lane
+                        .submit("acceptStagedTournamentResult", request)
+                        .await
+                        .map_err(crate::hero::error::ReactError::from)?;
+                    return Ok(true);
                 }
             }
             None => {
                 trace!("wait for the `machine-runner` to insert the value");
             }
         }
-        Ok(())
+        Ok(false)
     }
 
-    async fn try_react_epoch(&mut self, chain: &Chain) -> Result<()> {
+    async fn try_react_epoch(&mut self, chain: &Chain) -> Result<EpochReaction> {
         // participate in last sealed epoch tournament
         if let Some(last_sealed_epoch) = self.storage.last_sealed_epoch()? {
             match self
@@ -288,29 +373,61 @@ impl<AS: ArenaSender> EpochManager<AS> {
                         "dispute tournaments for epoch {}",
                         last_sealed_epoch.epoch_number
                     );
-                    self.react_dispute(chain, &last_sealed_epoch).await?
+                    return self
+                        .react_dispute(chain, &last_sealed_epoch)
+                        .await
+                        .map(EpochReaction::Ticked);
                 }
                 None => {
                     debug!(
                         "wait for `machine-runner` to insert settlement values for epoch {}",
                         last_sealed_epoch.epoch_number
                     );
+                    return Ok(EpochReaction::Preparing);
                 }
             }
         }
-        Ok(())
+        Ok(EpochReaction::Absent)
     }
 
-    async fn react_dispute(&mut self, chain: &Chain, last_sealed_epoch: &Epoch) -> Result<()> {
+    async fn react_dispute(
+        &mut self,
+        chain: &Chain,
+        last_sealed_epoch: &Epoch,
+    ) -> Result<HeroTick> {
         self.get_latest_hero(last_sealed_epoch, chain)?;
-        self.epoch_hero
+        let tick = self
+            .epoch_hero
             .0
             .as_mut()
             .expect("hero should be instantiated")
             .tick()
             .await?;
 
-        Ok(())
+        match tick.result() {
+            TournamentResult::Running => {}
+            TournamentResult::Won => info!(
+                "local commitment won dispute tournament for epoch {}",
+                last_sealed_epoch.epoch_number
+            ),
+            TournamentResult::Lost => log::error!(
+                "local commitment lost dispute tournament for epoch {}",
+                last_sealed_epoch.epoch_number
+            ),
+            TournamentResult::FailedNoWinner => log::error!(
+                "dispute tournament for epoch {} finished without a winner",
+                last_sealed_epoch.epoch_number
+            ),
+        }
+
+        Ok(tick)
+    }
+
+    async fn try_gc_epoch(&mut self, intent: GcIntent) -> Result<()> {
+        match self.epoch_hero.0.as_mut() {
+            Some(hero) => hero.submit_gc(intent).await.map_err(Into::into),
+            None => Ok(()),
+        }
     }
 
     fn get_latest_hero(&mut self, last_sealed_epoch: &Epoch, chain: &Chain) -> Result<()> {
@@ -343,4 +460,69 @@ fn to_bytes_32_vec(proof: Proof) -> Vec<B256> {
 
 fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
     B256::from_slice(&hash)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gc_intent() -> GcIntent {
+        GcIntent::EliminateChild {
+            parent_tournament: Address::repeat_byte(0x11),
+            child_tournament: Address::repeat_byte(0x22),
+        }
+    }
+
+    fn tick(
+        result: TournamentResult,
+        action_attempted: bool,
+        gc_intent: Option<GcIntent>,
+    ) -> EpochReaction {
+        EpochReaction::Ticked(HeroTick::new(result, action_attempted, gc_intent))
+    }
+
+    #[test]
+    fn epoch_write_plan_preserves_hero_priority_and_one_write_lane() {
+        assert_eq!(
+            EpochReaction::Absent.write_plan(),
+            EpochWritePlan::Settle {
+                garbage_collect_if_idle: None
+            }
+        );
+        assert_eq!(EpochReaction::Preparing.write_plan(), EpochWritePlan::None);
+        for result in [
+            TournamentResult::Running,
+            TournamentResult::Won,
+            TournamentResult::Lost,
+            TournamentResult::FailedNoWinner,
+        ] {
+            assert_eq!(
+                tick(result, true, Some(gc_intent())).write_plan(),
+                EpochWritePlan::None
+            );
+        }
+        assert_eq!(
+            tick(TournamentResult::Running, false, Some(gc_intent())).write_plan(),
+            EpochWritePlan::GarbageCollect(gc_intent())
+        );
+        assert_eq!(
+            tick(TournamentResult::Running, false, None).write_plan(),
+            EpochWritePlan::None
+        );
+
+        assert_eq!(
+            tick(TournamentResult::Won, false, Some(gc_intent())).write_plan(),
+            EpochWritePlan::Settle {
+                garbage_collect_if_idle: Some(gc_intent())
+            }
+        );
+        assert_eq!(
+            tick(TournamentResult::Lost, false, Some(gc_intent())).write_plan(),
+            EpochWritePlan::None
+        );
+        assert_eq!(
+            tick(TournamentResult::FailedNoWinner, false, Some(gc_intent())).write_plan(),
+            EpochWritePlan::None
+        );
+    }
 }

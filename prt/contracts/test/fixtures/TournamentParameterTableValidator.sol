@@ -14,6 +14,7 @@ import {
 /// any Match transition logic into tests.
 library TournamentParameterTableValidator {
     uint256 internal constant MAX_LOG2_EXTENT = 256;
+    uint256 internal constant MAX_HEIGHT = MAX_LOG2_EXTENT - 1;
 
     error EmptyTable();
     error LevelsCannotBeZero(uint64 row);
@@ -22,7 +23,7 @@ library TournamentParameterTableValidator {
     error HeightCannotBeZero(uint64 row);
     error HeightExceedsCoordinateSpace(uint64 row, uint64 height);
     error Log2StepOutsideCoordinateSpace(uint64 row, uint64 log2step);
-    error RowExtentExceedsCoordinateSpace(
+    error RowExtentOutsideCoordinateSpace(
         uint64 row, uint64 height, uint64 log2step
     );
     error RootExtentMismatch(uint256 actual, uint64 expected);
@@ -58,7 +59,7 @@ library TournamentParameterTableValidator {
             uint64 log2step = table[row].log2step;
 
             if (height == 0) revert HeightCannotBeZero(row);
-            if (height > MAX_LOG2_EXTENT) {
+            if (height > MAX_HEIGHT) {
                 revert HeightExceedsCoordinateSpace(row, height);
             }
             if (log2step >= MAX_LOG2_EXTENT) {
@@ -66,8 +67,8 @@ library TournamentParameterTableValidator {
             }
 
             uint256 extent = uint256(height) + log2step;
-            if (extent > MAX_LOG2_EXTENT) {
-                revert RowExtentExceedsCoordinateSpace(row, height, log2step);
+            if (extent >= MAX_LOG2_EXTENT) {
+                revert RowExtentOutsideCoordinateSpace(row, height, log2step);
             }
             extents[row] = extent;
         }

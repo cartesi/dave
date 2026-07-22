@@ -14,21 +14,23 @@
 //! ever persisted, and cold start equals tick.
 //!
 //! What events deliberately do NOT determine stays out of the fold
-//! and in the per-tick point-read overlay:
+//! and in the per-tick semantic observer:
 //!
 //! - Live match positions (runningLeafPosition, currentHeight,
 //!   otherParent/leftNode): MatchAdvanced names the new otherParent,
 //!   but when a node's children are equal hashes (real in padded
 //!   regions) the descent direction is ambiguous from events alone,
-//!   and the position depends on it. The contract knows; getMatch is
-//!   the authority.
+//!   and the position depends on it. Phase-specific observer views are
+//!   authoritative. The fold only checks that an advance targets a
+//!   known live match.
 //! - Clocks: every Clock mutation is deterministic in (state, block),
 //!   but MatchAdvanced does not name the mover, so allowances are not
-//!   attributable from events alone. getCommitment is the authority.
-//! - Winners and elimination: arbitrationResult,
-//!   innerTournamentWinner, and canBeEliminated encode validity logic
-//!   the chain owns; MatchDeleted's winner is recorded as structure,
-//!   but the tournament-level verdict stays a point read.
+//!   attributable from events alone. The full-ID timeout observer is
+//!   the strategy authority; raw clock sentinels never enter policy.
+//! - Winners and elimination combine closure, clock, and nested-dispute
+//!   validity rules the contract owns. MatchDeleted's winner is recorded
+//!   as structure, but tournament-level disposition comes from the tagged
+//!   standing observer.
 
 use std::collections::HashMap;
 
@@ -171,13 +173,6 @@ pub struct CommitmentFold {
 pub struct MatchFold {
     pub id: MatchID,
     pub created_at_block: u64,
-    /// MatchAdvanced count: how far the bisection has descended.
-    pub advances: u64,
-    /// The last event-reported (otherParent, leftNode). Structural
-    /// breadcrumbs only - live positioning reads the chain (see the
-    /// module doc on descent ambiguity).
-    pub last_other_parent: Digest,
-    pub last_left_node: Digest,
     pub inner_tournament: Option<Address>,
     pub deleted: Option<(MatchDeletionReason, WinnerCommitment)>,
 }
@@ -296,7 +291,7 @@ impl Fold {
             EventKind::MatchCreated {
                 one,
                 two,
-                left_of_two,
+                left_of_two: _,
             } => {
                 let id = MatchID {
                     commitment_one: *one,
@@ -311,9 +306,6 @@ impl Fold {
                 tournament.matches.push(MatchFold {
                     id,
                     created_at_block: event.block,
-                    advances: 0,
-                    last_other_parent: *one,
-                    last_left_node: *left_of_two,
                     inner_tournament: None,
                     deleted: None,
                 });
@@ -329,16 +321,9 @@ impl Fold {
                 }
             }
 
-            EventKind::MatchAdvanced {
-                match_id_hash,
-                other_parent,
-                left_node,
-            } => {
+            EventKind::MatchAdvanced { match_id_hash, .. } => {
                 let m = mutable_match(tournament, match_id_hash)?;
                 ensure!(m.is_live(), "advance on a deleted match {match_id_hash}");
-                m.advances += 1;
-                m.last_other_parent = *other_parent;
-                m.last_left_node = *left_node;
             }
 
             EventKind::MatchDeleted {
@@ -489,7 +474,6 @@ mod tests {
             "final state rides the join event"
         );
         let m = t.match_by_id_hash(&id_hash).unwrap();
-        assert_eq!(m.advances, 1);
         assert_eq!(m.inner_tournament, Some(inner));
         assert!(m.is_live());
 
@@ -575,5 +559,31 @@ mod tests {
         // double join
         fold.apply(&event(root, 1, join(10))).unwrap();
         assert!(fold.apply(&event(root, 2, join(10))).is_err());
+    }
+
+    #[test]
+    fn fold_rejects_duplicate_match_creation() {
+        let root = address(1);
+        let mut fold = Fold::new(root);
+        fold.apply(&event(root, 1, join(10))).unwrap();
+        fold.apply(&event(root, 2, join(20))).unwrap();
+
+        let creation = event(
+            root,
+            3,
+            EventKind::MatchCreated {
+                one: digest(10),
+                two: digest(20),
+                left_of_two: digest(21),
+            },
+        );
+        fold.apply(&creation).unwrap();
+
+        let error = fold.apply(&creation).unwrap_err();
+        assert!(
+            error.to_string().contains("created twice"),
+            "unexpected duplicate-creation error: {error:#}"
+        );
+        assert_eq!(fold.tournament(&root).unwrap().matches.len(), 1);
     }
 }

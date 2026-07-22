@@ -80,7 +80,12 @@ impl KmsSignerBuilder {
     }
 
     async fn new_client(&self) -> Client {
-        let config = aws_config::defaults(BehaviorVersion::latest())
+        let config = aws_config::defaults(BehaviorVersion::latest());
+        // LocalStack accepts fake credentials but still requires signed
+        // requests. Production builds retain the default AWS credential chain.
+        #[cfg(test)]
+        let config = config.test_credentials();
+        let config = config
             .endpoint_url(self.aws_endpoint_url.clone())
             .region(self.aws_region.clone())
             .load()
@@ -91,13 +96,17 @@ impl KmsSignerBuilder {
 
 #[cfg(test)]
 mod tests {
+    use futures::FutureExt;
     use std::{
         future::Future,
-        panic::{UnwindSafe, catch_unwind},
+        panic::{AssertUnwindSafe, resume_unwind},
     };
 
     use alloy::{
-        network::{Ethereum, EthereumWallet, NetworkWallet},
+        consensus::Transaction,
+        network::{Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder},
+        primitives::Address,
+        rpc::types::TransactionRequest,
         signers::Signer,
     };
     use lazy_static::lazy_static;
@@ -143,7 +152,7 @@ mod tests {
 
     async fn run_test<T, F>(test: T) -> anyhow::Result<()>
     where
-        T: FnOnce() -> F + UnwindSafe,
+        T: FnOnce() -> F,
         F: Future<Output = ()>,
     {
         // lock
@@ -154,11 +163,14 @@ mod tests {
 
         println!("Container: {:?}", container);
 
-        let result = catch_unwind(test);
+        let result = AssertUnwindSafe(test()).catch_unwind().await;
 
-        teardown(&container).await?;
+        let teardown_result = teardown(&container).await;
 
-        assert!(result.is_ok());
+        if let Err(payload) = result {
+            resume_unwind(payload);
+        }
+        teardown_result?;
 
         // unlock
         println!("Lock released");
@@ -215,6 +227,26 @@ mod tests {
             let wallet_address =
                 <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
+            let envelope = TransactionRequest::default()
+                .with_to(Address::repeat_byte(0x11))
+                .with_chain_id(chain_id)
+                .with_nonce(7)
+                .with_gas_limit(21_000)
+                .with_max_fee_per_gas(2_000_000_000)
+                .with_max_priority_fee_per_gas(1_000_000_000)
+                .build(&wallet)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                envelope
+                    .signature()
+                    .recover_address_from_prehash(&envelope.signature_hash())
+                    .unwrap(),
+                wallet_address
+            );
+            assert_eq!(envelope.chain_id(), Some(chain_id));
+            assert_eq!(envelope.nonce(), 7);
             println!("Wallet address: {:?}", wallet_address);
         })
         .await

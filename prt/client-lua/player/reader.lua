@@ -121,6 +121,18 @@ function CommitmentClock:time_since_timeout()
     end
 end
 
+-- Live remaining time: the full allowance while paused, the undrained
+-- balance while ticking (Clock.sol's remainingAt).
+function CommitmentClock:remaining()
+    local clock = self
+    if clock.last_resume == 0 then
+        return clock.allowance
+    else
+        local remaining = clock.allowance - (clock.block_number - clock.last_resume)
+        return math.max(remaining, 0)
+    end
+end
+
 local Reader = {}
 Reader.__index = Reader
 

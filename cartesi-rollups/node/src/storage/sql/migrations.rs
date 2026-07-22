@@ -24,25 +24,40 @@ lazy_static! {
             "CREATE TABLE IF NOT EXISTS settlement_info (
                 epoch_number INTEGER NOT NULL PRIMARY KEY CHECK (epoch_number >= 0),
                 computation_hash BLOB NOT NULL,
-                output_merkle BLOB NOT NULL,
-                output_proof BLOB NOT NULL,
+                outputs_merkle_root BLOB NOT NULL,
+                outputs_merkle_root_proof BLOB NOT NULL,
+                final_state BLOB NOT NULL
+            );",
+        ),
+        // The settlement columns took the contracts' canonical names
+        // (outputsMerkleRoot): v1's DDL renamed in place, so fresh
+        // stores are born v4 via the idempotent no-op below, and v3
+        // stores (old column names) are refused in migrate_to_latest.
+        M::up(
+            "CREATE TABLE IF NOT EXISTS settlement_info (
+                epoch_number INTEGER NOT NULL PRIMARY KEY CHECK (epoch_number >= 0),
+                computation_hash BLOB NOT NULL,
+                outputs_merkle_root BLOB NOT NULL,
+                outputs_merkle_root_proof BLOB NOT NULL,
                 final_state BLOB NOT NULL
             );",
         ),
     ]);
 }
 
-/// Stores below v3 predate settlement_info.final_state. The value
-/// cannot be backfilled (gc_old_epochs may have dropped the boundary
-/// rows that held it) and a placeholder would trip the settlement
-/// asserts as a false consensus alarm, so the upgrade refuses loudly
-/// instead of wedging or alarming. Fresh stores initialize at the
-/// current shape.
+/// Stores below v4 predate settlement_info's current shape (v3 added
+/// final_state, which cannot be backfilled - gc_old_epochs may have
+/// dropped the boundary rows that held it - and v4 renamed the
+/// settlement columns to the contracts' canonical names). A partial
+/// upgrade would trip the settlement asserts as a false consensus
+/// alarm or fail on the old column names, so the upgrade refuses
+/// loudly instead of wedging or alarming. Fresh stores initialize at
+/// the current shape.
 pub fn migrate_to_latest(conn: &mut Connection) -> anyhow::Result<()> {
     let version: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     anyhow::ensure!(
-        version == 0 || version >= 3,
-        "store schema v{version} predates settlement_info.final_state and cannot be \
+        version == 0 || version >= 4,
+        "store schema v{version} predates settlement_info's current shape and cannot be \
          upgraded in place; wipe the state dir and let the node rebuild"
     );
     MIGRATIONS.to_latest(conn)?;

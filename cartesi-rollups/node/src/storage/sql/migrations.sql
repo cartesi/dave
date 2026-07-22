@@ -4,8 +4,8 @@
 CREATE TABLE IF NOT EXISTS settlement_info (
     epoch_number INTEGER NOT NULL PRIMARY KEY CHECK (epoch_number >= 0),
     computation_hash BLOB NOT NULL,
-    output_merkle BLOB NOT NULL,
-    output_proof BLOB NOT NULL,
+    outputs_merkle_root BLOB NOT NULL,
+    outputs_merkle_root_proof BLOB NOT NULL,
     final_state BLOB NOT NULL
 );
 

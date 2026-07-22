@@ -74,7 +74,7 @@ Main schema (`storage/sql/migrations.sql`):
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`
 - `inputs(epoch_number, input_index_in_epoch, input)`
 - `latest_processed(block)` - singleton; last finalized block ingested
-- `settlement_info(epoch_number, computation_hash, output_merkle, output_proof, final_state)`
+- `settlement_info(epoch_number, computation_hash, outputs_merkle_root, outputs_merkle_root_proof, final_state)`
 - `machine_state_snapshots(state_hash, file_path)` + `epoch_snapshot_info`
   (which (epoch, input) has which snapshot) + `template_machine` (pins the
   genesis snapshot)
@@ -106,12 +106,27 @@ One schema note to know about:
 
 ## Chain ingestion stance
 
-The reader consumes logs only up to the chain's finalized block
-(`BlockNumberOrTag::Finalized`). That is the entire reorg strategy:
-finality is trusted, nothing is ever rolled back. Oversized
-`eth_getLogs` ranges are handled by recursive binary partition, triggered
-by provider-specific error codes passed in as configuration
-(`--long-block-range-error-codes`).
+Epoch and input ingestion consumes logs only up to the chain's finalized block
+(`BlockNumberOrTag::Finalized`). Finality is trusted and those rows are never
+rolled back. Oversized `eth_getLogs` ranges are handled by recursive binary
+partition, triggered by provider-specific error codes passed in as
+configuration (`--long-block-range-error-codes`).
+
+The deadline-sensitive tournament reader has a two-part observation. It
+replays its persisted prefix, samples finalized `F`, extends the prefix through
+`F` with bounded number-range queries, and persists that durable progress
+immediately. Only then does it sample latest `H`, clone the fold, and fetch
+`F + 1..H` as a disposable number-range suffix. Semantic point views are
+pinned to the sampled hash `H`, without requiring that hash to remain
+canonical.
+
+The suffix is deliberately optimistic. A reorg can make its events disagree
+with the pinned views or make the resulting transaction stale. The adapter
+rejects semantic contradictions, contract mutators revalidate every submitted
+transition, and the next tick rebuilds the suffix. No unfinalized event becomes
+durable. Oversized suffix ranges use the same recursive binary partition as
+other log ingestion. The old raw-getter overlay remains only in focused
+differential tests; it performs no RPC on the deadline-sensitive action path.
 
 ## Known debts
 
@@ -140,8 +155,11 @@ State and storage:
 Error handling and observability:
 
 5. Panics and asserts as control flow on hot paths: the settle-mismatch
-   assert in `src/epoch_manager/mod.rs` (crashes the node exactly when it
-   must act) and dozens of `expect`s in the hero module.
+   assertions in `src/epoch_manager/mod.rs` deliberately stop on a
+   consensus-critical local/on-chain disagreement. The semantic Hero path now
+   returns adapter, context, and fulfillment errors for ordinary invalid
+   observations, but invariant `expect`s remain and still need a dedicated
+   panic-surface audit.
    (`MachineInstance` retired to test scaffolding at workstream 4; its
    window-local cycle bookkeeping was fragile in the same spirit:
    `advance_rollups`
@@ -174,9 +192,19 @@ Structure:
 11. `get_events` binary partition recursion has no depth bound.
 12. No graceful-shutdown story for in-flight work: a mid-epoch machine run
     or mid-dispute reaction is only interrupted at the next poll.
+13. (resolved 2026-07-24) Hero actions, cleanup, and epoch settlement share one
+    explicit transaction lane rather than a signer-bearing provider. The lane
+    reads the account nonce from `latest` mined state, rebroadcasts or replaces
+    that same nonce until inclusion advances it, signs fully specified EIP-1559
+    transactions, and returns after bounded raw RPC submission. Read and submit
+    endpoints are independently configurable; the submit endpoint defaults to
+    the read endpoint. The signer must remain exclusive to one node instance.
 
 Documented design assumptions (fine, but should stay explicit):
 
-13. Finalized-only ingestion; no reorg handling by construction.
-14. One node instance per state dir; SQLite WAL is the only cross-thread
+14. Finalized-only persistence. The tournament reader additionally acts on a
+    disposable number-range tail and point views at one sampled hash. It does
+    not prove the tail belongs to that hash's ancestry; stale work is safe
+    because mutators revalidate it, and the next tick rebuilds the tail.
+15. One node instance per state dir; SQLite WAL is the only cross-thread
     coordination.

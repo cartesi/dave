@@ -80,7 +80,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         tokio::spawn(async move {
             let storage = params.storage()?;
             let chain = Chain::new(
-                params.provider().await,
+                params.read_provider().await,
                 params.long_block_range_error_codes.clone(),
             );
             let blockchain_reader =
@@ -96,14 +96,16 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
             // the epoch manager's own handle only reads; the Hero it
             // spawns opens its own writer
             let storage = params.storage_read_only()?;
+            let read_provider = params.read_provider().await;
+            let transaction_lane = Arc::new(params.transaction_lane(read_provider.clone()).await);
             let chain = Chain::new(
-                params.provider().await,
+                read_provider.clone(),
                 params.long_block_range_error_codes.clone(),
             );
-            let arena_sender =
-                EthArenaSender::new(chain.provider().clone()).expect("could not create sender");
+            let arena_sender = EthArenaSender::new(read_provider, transaction_lane.clone());
             let epoch_manager = EpochManager::new(
                 Arc::new(arena_sender),
+                transaction_lane,
                 params.address_book.consensus,
                 params.signer_address,
                 storage,

@@ -84,8 +84,8 @@ pub struct Settlement {
     /// The post-epoch machine state hash: the new epoch's initial
     /// boundary, claimed by sentries and staged on-chain.
     pub final_state: Hash,
-    pub output_merkle: Hash,
-    pub output_proof: Proof,
+    pub outputs_merkle_root: Hash,
+    pub outputs_merkle_root_proof: Proof,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -331,10 +331,15 @@ mod tests {
             "computation_hash shouldn't exist"
         );
 
-        let (final_state, output_merkle, output_proof) = {
+        let (final_state, outputs_merkle_root, outputs_merkle_root_proof) = {
             let mut machine = access.latest_snapshot()?;
-            let (output_merkle, output_proof) = machine.outputs_proof()?;
-            (machine.state_hash()?, output_merkle, output_proof)
+            let (outputs_merkle_root, outputs_merkle_root_proof) =
+                machine.outputs_merkle_root_with_proof()?;
+            (
+                machine.state_hash()?,
+                outputs_merkle_root,
+                outputs_merkle_root_proof,
+            )
         };
         access.roll_epoch()?;
         assert_eq!(access.latest_snapshot()?.epoch(), 1);
@@ -353,8 +358,8 @@ mod tests {
             Settlement {
                 computation_hash: expected_root,
                 final_state,
-                output_merkle,
-                output_proof
+                outputs_merkle_root,
+                outputs_merkle_root_proof
             },
             "settlement info of epoch 0 should match"
         );

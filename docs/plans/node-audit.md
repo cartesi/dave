@@ -45,7 +45,7 @@ every witness byte layout traced clean against the contracts.
 | 5 | med | two docs describe the deleted runs-table serving as current | CONFIRMED | FIXED this session |
 | 6 | med | MatchDeletionReason::Timeout never decoded from a real chain log | CONFIRMED (gap) | CLOSED: multi_sybil recording + fold test |
 | 7 | med | no kill scenario at join or leaf-resolution lifecycle points | CONFIRMED (gap) | CLOSED: kill_join scenario |
-| 8 | low | gc.rs elimination gate uses static allowance, not live timeLeft | CONFIRMED (conservative-only) | LEAD: minor, delay not misfire |
+| 8 | low | gc.rs elimination gate uses static allowance, not live timeLeft | CONFIRMED (conservative-only) | FIXED: shared classify_timeout |
 | 9 | low | span-width constants also lacked a cross-repo guard | CONFIRMED | FIXED with 4 |
 | 10 | low | frontier's full-capacity (no-padding) branch untested | CONFIRMED | FIXED this session |
 
@@ -151,14 +151,24 @@ in-flight or landed - with the respawn required to end up joined
 exactly once and win (green on its first run). The stable-marker
 contract in test-harness.md gained the `join tournament` line.
 
-### 8. gc.rs allowance vs timeLeft (low, lead)
+### 8. gc.rs allowance vs timeLeft (CLOSED 2026-07-22)
 
-The elimination gate compares against the opponent clock's static
+The elimination gate compared against the opponent clock's static
 allowance where Tournament.sol uses live timeLeft; reachable only in
 the leaf-race window where both clocks run. Strictly conservative
-(the node waits longer than necessary to sweep a dead match, never
-fires early), inherited verbatim from the pre-rewrite reference.
-Align when the tournament module is next open.
+(the node waited longer than necessary to sweep a dead match, never
+fired early), inherited verbatim from the pre-rewrite reference.
+
+Closed by mirroring the contract's shared classification
+(MatchClocks.classifyTimeoutAt) as tournament::classify_timeout and
+driving BOTH timeout paths through it: the GC eliminates exactly on
+EliminateBoth (equality included, matching the contract), and the
+Hero's win_timeout_match fires only when its own side wins - the
+old opponent-timed-out gate could submit a winMatchByTimeout the
+contract rejects (NeitherClockHasTimedOut) inside the eliminate-both
+zone. Unit tests pin the contract's bisection and leaf-race boundary
+matrices (types.rs) and both hero-side zones plus the shared-deadline
+sweep (hero/mod.rs).
 
 ### 10. Full-capacity frontier branch (fixed)
 

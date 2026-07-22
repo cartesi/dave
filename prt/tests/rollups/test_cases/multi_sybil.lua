@@ -40,7 +40,8 @@ end
 
 -- Compute honest commitment (44 is the contracts' level-0 log2_stride).
 local initial_state, commitment = Machine.root_rollup_commitment(env.template_machine, 44, inputs)
-assert(second_epoch.initial_machine_state_hash, initial_state)
+assert(Hash:from_digest_hex(second_epoch.initial_machine_state_hash) == initial_state,
+    "chain-sealed initial machine state hash differs from the computed state")
 
 local honest_builder = CommitmentBuilder:new(env.template_machine, inputs, commitment)
 -- Distinct level-0 leaves: the sybils diverge from the honest
@@ -81,6 +82,18 @@ env.drive_player_until(player1, joined_at_least(2))
 env.drive_player_until(player2, joined_at_least(3))
 env.drive_player_until(player3, joined_at_least(4))
 
+-- The players join serially above, so the third non-honest root is player 3,
+-- which goes silent below. Retain its on-chain commitment for the eventual
+-- deletion assertion.
+local adversarial_commitments = {}
+for _, joined in ipairs(env.reader.inner_reader:read_commitment_joined(second_epoch.tournament)) do
+    if joined.root ~= commitment.root_hash then
+        table.insert(adversarial_commitments, joined.root)
+    end
+end
+assert(#adversarial_commitments == 3, "expected exactly three adversarial root commitments")
+local silent_commitment = adversarial_commitments[3]
+
 -- Sybil 3 goes silent here: its match must die by timeout. Sybils 1
 -- and 2 play on, interleaved (either may be paired with the other,
 -- so neither can be driven to completion alone). When both report
@@ -113,6 +126,28 @@ print "both active sybils have lost"
 -- The silent sybil's match resolves by timeout (the honest node's
 -- win or GC sweep) on the way to settlement.
 env.wait_until_epoch(2)
+
+-- Pin the real chain deletion that contains the silent commitment. It may
+-- award the other side or eliminate both, but the silent side cannot win.
+local silent_timeout
+for _, deletion in ipairs(env.reader:read_match_deleted(second_epoch.tournament)) do
+    local silent_is_one = deletion.commitment_one == silent_commitment
+    local silent_is_two = deletion.commitment_two == silent_commitment
+    local silent_won = (silent_is_one and deletion.winner_commitment == "one")
+        or (silent_is_two and deletion.winner_commitment == "two")
+    if deletion.reason == "timeout" and (silent_is_one or silent_is_two) and not silent_won then
+        assert(not silent_timeout, "silent commitment was deleted by timeout more than once")
+        silent_timeout = deletion
+    end
+end
+assert(silent_timeout, "silent commitment was not eliminated by a timeout deletion")
+
+local stored_match = env.reader.inner_reader:read_match(
+    second_epoch.tournament,
+    silent_timeout.match_id_hash
+)
+assert(stored_match[1]:is_zero() and stored_match[2]:is_zero() and stored_match[3]:is_zero(),
+    "silent commitment's deleted match still exists in tournament storage")
 
 -- validate winners
 local winner = env.reader:root_tournament_winner(second_epoch.tournament)

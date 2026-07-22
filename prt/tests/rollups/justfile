@@ -68,6 +68,12 @@ test-kill-all: \
 test-multi-sybil: \
         (test "echo" "multi_sybil")
 
+# Exact sealed-leaf clock boundaries retained by
+# docs/plans/prt-timeout-alignment.md.
+test-sealed-leaf-timeouts: \
+        (test "echo" "sealed_leaf_timeout_winner") \
+        (test "echo" "sealed_leaf_timeout_both")
+
 # the CI slice of the crash scenarios: cheap (no dispute), and the one
 # scenario that exercises the multi-record advance batch end to end
 test-kill-ci: \

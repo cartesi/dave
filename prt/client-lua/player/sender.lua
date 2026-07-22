@@ -143,6 +143,19 @@ function Sender:eliminate_match(
     )
 end
 
+function Sender:eliminate_inner_tournament(
+    tournament_address, child_tournament_address
+)
+    local sig = [[eliminateInnerTournament(address)]]
+    return pcall(
+        self._send_tx,
+        self,
+        tournament_address,
+        sig,
+        { child_tournament_address }
+    )
+end
+
 function Sender:tx_seal_inner_match(
     tournament_address, commitment_one, commitment_two, left, right, initial_hash, proof
 )

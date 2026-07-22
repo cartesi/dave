@@ -1,9 +1,12 @@
-//! This module defines the struct [StateReader] that is responsible for the reading the states
-//! of tournaments; and the struct [EthArenaSender] that is responsible for the sending transactions
-//! to tournaments
+//! Tournament integration boundary: a structural event fold, pinned semantic
+//! observations, wire-independent domain values, and the transaction sender
+//! used by the Hero executor.
 
 mod types;
 pub use types::*;
+
+pub mod adapter;
+pub mod domain;
 
 mod reader;
 pub use reader::*;

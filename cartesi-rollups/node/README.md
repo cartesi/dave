@@ -48,6 +48,10 @@ The executable will appear at:
 ## Run
 
 Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
+Reads use `--web3-rpc-url`. Raw signed transactions use
+`--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
+name a private relay with revert protection. The signer must be exclusive to
+one node process because the node owns its mined nonce and replacement slot.
 Here are its arguments:
 
 ```
@@ -56,21 +60,25 @@ Arguments of Cartesi PRT
 Usage: cartesi-rollups-prt-node [OPTIONS] --app-address <APP_ADDRESS> --machine-path <MACHINE_PATH> <COMMAND>
 
 Commands:
-  pk       private‐key signer
+  pk       private-key signer
   aws-kms  AWS KMS signer
   help     Print this message or the help of the given subcommand(s)
 
 Options:
       --app-address <APP_ADDRESS>
-          addresss of application [env: APP_ADDRESS=]
+          address of application [env: APP_ADDRESS=]
       --machine-path <MACHINE_PATH>
           path to machine template image [env: MACHINE_PATH=]
       --web3-rpc-url <WEB3_RPC_URL>
-          blockchain gateway endpoint url [env: WEB3_RPC_URL=] [default: http://127.0.0.1:8545]
+          blockchain read gateway endpoint URL [env: WEB3_RPC_URL=] [default: http://127.0.0.1:8545]
+      --web3-submit-rpc-url <WEB3_SUBMIT_RPC_URL>
+          raw-transaction submission endpoint URL; defaults to the read gateway [env: WEB3_SUBMIT_RPC_URL=]
       --web3-chain-id <WEB3_CHAIN_ID>
           blockchain chain id [env: WEB3_CHAIN_ID=] [default: 31337]
       --sleep-duration-seconds <SLEEP_DURATION_SECONDS>
           polling sleep interval [env: SLEEP_DURATION_SECONDS=] [default: 30]
+      --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
+          keep every Nth input-boundary machine snapshot (1 keeps all); the disk-vs-dispute-replay knob [env: SNAPSHOT_GAP_INPUTS=] [default: 64]
       --state-dir <STATE_DIR>
           [env: STATE_DIR=] [default: /var/folders/kf/1rg78mtx0c7f81_n7t6x6c6r0000gn/T/]
       --long-block-range-error-codes <LONG_BLOCK_RANGE_ERROR_CODES>
