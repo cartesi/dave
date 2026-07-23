@@ -142,7 +142,7 @@ The retained suite must cover at least:
 | --- | --- |
 | `ADVANCE_MATCH` | Charged right advance with first counter and position writes; alternate orientation retained |
 | `WIN_MATCH_BY_TIMEOUT` | Active and sealed-leaf phases; both winners; nonzero position; dangling re-pairing |
-| `ELIMINATE_MATCH_BY_TIMEOUT` | Active and sealed-leaf phases; equality boundary; nonzero position; both classifier orderings |
+| `ELIMINATE_MATCH_BY_TIMEOUT` | Active equality boundary and sealed-leaf longer-clock deadline; nonzero position; both classifier orderings |
 | `SEAL_LEAF_MATCH` | Charged nonzero-position seal with the maximum supported agree-state proof |
 | `SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT` | Charged nonzero-position seal with maximum proof and real child clone |
 | `WIN_INNER_TOURNAMENT` | Both parent winners; resolved and single-claim children; final legal carryover block; dangling re-pairing |
@@ -166,21 +166,33 @@ recommendation, and diagnostic complete-call gas. The retained tests must prove:
 - one refund event per successful action;
 - fixtures whose balance and action caps do not hide measured work;
 - the complete reviewed margin for every retained branch; and
-- exact equality between the selected maximum and its rounded recommendation.
+- an exact, recorded relationship between each configured allocation and the
+  selected maximum.
+
+The ordinary selection is the maximum rounded recommendation. A higher existing
+allocation may be retained to avoid production and deployment churn for a small
+downward measurement shift. Record and assert the exact retained headroom; do
+not let a generic upper-bound assertion hide a stale or arbitrarily oversized
+selection.
 
 ## 5. Change an allocation
 
 For one action family:
 
 1. take the maximum rounded recommendation over retained witnesses;
-2. update only the corresponding `Gas.sol` constant;
-3. make the selected witness assert exact equality and alternates retain their
-   full margin;
-4. rerun the report on the candidate;
-5. recompute every legal terminal sequence;
-6. recompute work reserves and join bonds for supported heights; and
-7. record the accepted environment, measurements, derived values, tests, and
+2. either adopt that recommendation or explicitly retain a higher existing
+   allocation and quantify the headroom;
+3. update only the corresponding `Gas.sol` constant if the selection changes;
+4. make the selected witness assert the exact recommendation plus any recorded
+   headroom, while alternates retain their full margin;
+5. rerun the report on the candidate;
+6. recompute every legal terminal sequence;
+7. recompute work reserves and join bonds for supported heights; and
+8. record the accepted environment, measurements, derived values, tests, and
    deployment-artifact status.
+
+Never select less than the maximum rounded recommendation. Retained headroom is
+a deliberate stability choice, not permission to skip remeasurement.
 
 Do not change `WORK_PRICE_CAP`, `PRIORITY_FEE_CAP`, or
 `PAYMENT_CALLBACK_GAS_LIMIT` merely because a witness changed. They are policy
@@ -236,7 +248,8 @@ Record:
 - toolchain, compiler settings, lockfile, dependencies, submodules, OS, and
   architecture;
 - supported geometry and proof/input envelope;
-- every retained measurement, margin, and selected allocation;
+- every retained measurement, margin, selected allocation, and deliberately
+  retained headroom;
 - old and new terminal maximum;
 - work reserves and join bonds at supported heights;
 - whether economic policy constants changed;
@@ -279,9 +292,11 @@ Before claiming a comprehensive ceiling, retain full-entry-point witnesses for:
 - the out-of-range input fixpoint; and
 - every supported halt and exception outcome.
 
-Cover both winner orientations and material Tournament states: no timeout,
-compatible timeout charging, nonzero Match deletion, and dangling re-pairing.
-An isolated transition maximum is not necessarily the Tournament maximum.
+Cover both winner orientations and material successful Tournament states:
+no timeout, nonzero Match deletion, and dangling re-pairing. Leaf proofs reject
+once either clock expires, so the timeout boundary belongs in semantic
+rejection tests rather than a successful gas witness. An isolated transition
+maximum is not necessarily the Tournament maximum.
 
 The reviewed implementation permits successful proof encodings with trailing
 bytes because buffer consumption is not required to end exactly at the proof

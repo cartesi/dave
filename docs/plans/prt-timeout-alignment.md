@@ -1,9 +1,8 @@
 # PRT timeout alignment
 
-Status: OPEN (2026-07-23). The contract change is being reviewed independently
-from the off-chain clients and gas calibration. Do not deploy or release this
-contract behavior until the Rust and Lua clients and the gas witnesses pass the
-alignment gates below.
+Status: OPEN (updated 2026-07-23). The contract semantics and gas calibration
+are complete. Do not deploy or release this behavior until the Rust and Lua
+clients and the end-to-end scenarios pass the remaining alignment gates below.
 
 ## Contract rule to mirror
 
@@ -45,26 +44,13 @@ responder's overdue interval as a deferred charge to subtract.
 No off-chain source is changed by the contract commit. This file is the handoff
 for the node and Lua workstreams.
 
-## Deferred gas calibration
+## Contract gas calibration
 
-The contract change deliberately does not edit
-`prt/contracts/test/gas/TournamentGas.t.sol`. Three witnesses there retain the
-superseded sealed-leaf policy:
-
-- the two timeout-winner witnesses expect the running survivor to pay elapsed
-  time twice; and
-- the elimination witness resolves at the former midpoint instead of the
-  longer clock's deadline.
-
-The later behavior-preserving Match readability pass also rewrites advance and
-seal control flow and changes optimized Tournament bytecode. It introduces no
-new semantic witness, but it broadens the deferred work from the three stale
-timeout scenarios to the complete retained gas matrix.
-
-Update those scenarios in a separate gas-calibration pass following
-[`prt-refund-gas-calibration.md`](../runbooks/prt-refund-gas-calibration.md).
-Re-measure every supported path before deciding whether any `Gas` allocation
-changes. Do not treat a semantic witness rewrite as calibration evidence.
+The three sealed-leaf witnesses now follow the phase-aware timeout policy. The
+complete 18-witness matrix was remeasured under the release-pinned toolchain
+after the Match readability refactor. No production allocation changed; the
+accepted evidence is
+[`2026-07-23-prt-timeout-gas-calibration`](../reviews/2026-07-23-prt-timeout-gas-calibration/).
 
 ## Completion gates
 
@@ -76,7 +62,7 @@ changes. Do not treat a semantic witness rewrite as calibration evidence.
    correct longer clock wins after the former midpoint boundary.
 4. Run an end-to-end leaf dispute through the longer deadline and observe
    double elimination.
-5. Align the three sealed-leaf semantic witnesses and re-measure the complete
-   gas matrix under the pinned release toolchain.
+5. COMPLETE: align the three sealed-leaf semantic witnesses and re-measure the
+   complete gas matrix under the pinned release toolchain.
 6. Remove or close this plan only after the contract, Rust node, Lua client, and
    gas witnesses agree on the table.

@@ -21,3 +21,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-07-21-prt-dispute-game/`](2026-07-21-prt-dispute-game/) - Solidity PRT
   dispute-game security, correctness, documentation, testing, and abstraction
   review.
+- [`2026-07-23-prt-timeout-gas-calibration/`](2026-07-23-prt-timeout-gas-calibration/)
+  - accepted follow-up gas calibration for the cumulative-censorship timeout
+  fix and Match readability refactor.

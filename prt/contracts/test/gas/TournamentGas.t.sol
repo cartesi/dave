@@ -551,12 +551,13 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
             Time.Instant.unwrap(clockTwo.startInstant)
         );
 
-        uint256 combinedAllowance = Time.Duration.unwrap(clockOne.allowance)
-            + Time.Duration.unwrap(clockTwo.allowance);
-        // Both clocks run from one instant. At this ceiling midpoint, one
-        // side's live remainder is no greater than the other's overdue time.
-        return Time.Instant.unwrap(clockOne.startInstant)
-            + (combinedAllowance + 1) / 2;
+        uint256 allowanceOne = Time.Duration.unwrap(clockOne.allowance);
+        uint256 allowanceTwo = Time.Duration.unwrap(clockTwo.allowance);
+        uint256 longerAllowance =
+            allowanceOne > allowanceTwo ? allowanceOne : allowanceTwo;
+        // The longer clock's inclusive deadline is the first instant at which
+        // neither side can survive the sealed-leaf race.
+        return Time.Instant.unwrap(clockOne.startInstant) + longerAllowance;
     }
 
     function _assertRepairedMatch(
@@ -746,6 +747,18 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         );
     }
 
+    function _assertCalibratedAllocationWithHeadroom(
+        Measurement memory result,
+        uint256 allocation,
+        uint256 retainedHeadroom
+    ) internal pure {
+        assertEq(
+            allocation,
+            _roundUpToThousand(_minimumReviewedAllocation(result))
+            + retainedHeadroom
+        );
+    }
+
     function _minimumReviewedAllocation(Measurement memory result)
         private
         pure
@@ -781,7 +794,9 @@ contract AdvanceMatchGasTest is TournamentGasTest {
 
         Measurement memory result = _measure(callData, Gas.ADVANCE_MATCH);
         _logMeasurement("advance match", result);
-        _assertCalibratedAllocation(result, Gas.ADVANCE_MATCH);
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.ADVANCE_MATCH, 1_000
+        );
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
@@ -976,7 +991,7 @@ contract SealedLeafOneWinsTimeoutGasTest is TournamentGasTest {
             "sealed leaf one wins timeout",
             CommitmentShape.SAME,
             LEAF_HEIGHT,
-            CLOCK_CHARGE - 2 * TIMEOUT_OVERDUE
+            CLOCK_CHARGE - TIMEOUT_OVERDUE
         );
     }
 }
@@ -992,7 +1007,7 @@ contract SealedLeafTwoWinsTimeoutGasTest is TournamentGasTest {
             "sealed leaf two wins timeout",
             CommitmentShape.SECOND_DIFFERENT,
             LEAF_HEIGHT,
-            CLOCK_CHARGE - 2 * TIMEOUT_OVERDUE
+            CLOCK_CHARGE - TIMEOUT_OVERDUE
         );
         _assertCalibratedAllocation(result, Gas.WIN_MATCH_BY_TIMEOUT);
     }
@@ -1010,7 +1025,11 @@ contract ActiveAdvancedEliminationGasTest is TournamentGasTest {
     }
 
     function testMeasureEqualityEliminatesBoth() public {
-        _measureTimeoutElimination("active advanced timeout elimination");
+        Measurement memory result =
+            _measureTimeoutElimination("active advanced timeout elimination");
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.ELIMINATE_MATCH_BY_TIMEOUT, 1_000
+        );
     }
 }
 
@@ -1031,17 +1050,14 @@ contract SealedLeafEliminationGasTest is TournamentGasTest {
         );
         assertLe(resolutionBlock, type(uint64).max);
         Time.Instant boundary = Time.Instant.wrap(uint64(resolutionBlock));
-        assertEq(
-            Time.Duration.unwrap(Clock.remainingAt(clockOne, boundary)),
-            Time.Duration.unwrap(Clock.overdueByAt(clockTwo, boundary))
-        );
+        assertEq(Time.Duration.unwrap(Clock.remainingAt(clockOne, boundary)), 0);
         assertEq(Time.Duration.unwrap(Clock.remainingAt(clockTwo, boundary)), 0);
     }
 
-    function testMeasureEqualityEliminatesBoth() public {
+    function testMeasureLongDeadlineEliminatesBoth() public {
         Measurement memory result =
-            _measureTimeoutElimination("sealed leaf timeout elimination");
-        _assertCalibratedAllocation(result, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
+            _measureTimeoutElimination("sealed leaf long deadline elimination");
+        _assertReviewedHeadroom(result, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
     }
 }
 
