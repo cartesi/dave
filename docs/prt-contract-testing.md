@@ -84,9 +84,13 @@ explicit observation instant.
 Pair-clock tests should cover every supported local shape: uninitialized, two
 paused, exactly one running, and two running. Each transition needs both
 orientations and a rejection matrix. The shared timeout classifier must remain
-exhaustive and disjoint, with equality assigned explicitly. Response-budget
-tests must prove that a successful response discounts elapsed time once without
-increasing the prior balance; pairing and survivor re-entry must not grant time.
+exhaustive and disjoint, with equality assigned explicitly. Its independent
+oracle must distinguish a paused winner's deferred overdue charge from a running
+winner's zero deferred charge. Tournament tests own the strict verb partition:
+a leaf proof is valid only under `NONE`, single-winner statuses select timeout
+victory, and `ELIMINATE_BOTH` selects elimination. Response-budget tests must
+prove that a successful response discounts elapsed time once without increasing
+the prior balance; pairing and survivor re-entry must not grant time.
 
 Tournament integration owns the structural distinctions that pair clocks alone
 cannot infer, including ready-to-bisect versus sealed-inner states when both

@@ -113,12 +113,45 @@ progress as of 2026-07-15); node-side scheduling of halted windows
 stays blocked on that work landing (the lead in one-engine.md step
 4), and the off-chain revert sites must be re-verified against it.
 
+## Base-layer censorship model
+
+The contracts adopt the base-layer adversary model from Section 3 of the
+[`Dave paper`](../dave/docs/dave.pdf), without adopting Dave's dispute
+algorithm or its delay bound. The adversary may delay any set of the correct
+participant's transactions, split that delay into intervals of arbitrary
+length, and reorder transactions. Across the chain timeline, the total duration
+for which correct-participant transactions are censored is bounded by one
+global budget `C`.
+
+`C` is cumulative and non-rechargeable. It is not a fresh budget for each
+transaction, match, tournament level, or timeout. A clock design is therefore
+unsafe if the same censorship interval can reduce the correct commitment's
+allowance twice.
+
+Timeout accounting depends on which clocks were consuming that interval:
+
+- During active bisection exactly one clock runs. If that responder expires,
+  its opponent was paused. Charging the paused survivor for the responder's
+  overdue interval accounts for the time in which timeout cleanup itself could
+  have been censored.
+- During a sealed leaf both clocks run. A surviving clock's live remainder has
+  already paid for every elapsed block since sealing. Transferring the expired
+  opponent's overdue interval would charge the same time twice.
+- Delay chosen by a sybil for its own transaction is not censorship of the
+  correct participant. An adversary cannot manufacture transferable clock debt
+  merely by leaving its own clock overdue.
+
+The contract-level timeout-accounting invariant is that one elapsed interval
+reduces a correct commitment's clock at most once. This is narrower than a
+complete PRT liveness proof: asynchronous arrivals, finite blockspace,
+transaction work, and multi-level population reduction remain separate
+concerns.
+
 ## Tournament clock budgets
 
 Keep three wall-clock quantities separate:
 
-- `C`: the censorship budget within which a correct validator is assumed able
-  to land a transaction.
+- `C`: the global cumulative censorship budget across the modeled dispute.
 - `T`: the maximum supported time to construct the commitment needed for one
   inner tournament.
 - `G`: the small per-response inclusion and execution budget for a tournament
@@ -182,7 +215,10 @@ allowance: a reachable equal-allowance schedule takes `2A - 1`, and a third
 same-time claim waiting dangling extends completion to `3A - 1`. Population
 halving after a common bounded window, aggregate transaction work, and finite
 blockspace serialization are separate quantities. The current traces establish
-these lower bounds and structural accounting.
+these lower bounds and structural accounting. The bound does not require both
+leaf clocks to keep consuming after the first expires: from that deadline
+through the longer clock's deadline, only the live survivor continues to lose
+time.
 
 A proof-inclusive finite-state search now exhausts `N = 1..6`, `A = 1..4`,
 `G = 0..2`, and `H = 1..3`, assuming every timeout is cleaned up in its first

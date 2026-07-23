@@ -71,7 +71,7 @@ contract TournamentLifecycleHandler is Test {
 
     struct TimeoutStatus {
         TimeoutOutcome outcome;
-        uint64 winnerCharge;
+        uint64 deferredCharge;
     }
 
     InspectableTournament internal immutable TOURNAMENT;
@@ -232,22 +232,16 @@ contract TournamentLifecycleHandler is Test {
         if (ghost.currentHeight != 0) return;
 
         TimeoutStatus memory timeout = _classify(ghost, _current());
-        if (timeout.outcome == TimeoutOutcome.ELIMINATE_BOTH) {
+        if (timeout.outcome != TimeoutOutcome.NONE) {
             return;
         }
-        uint8 winner = timeout.outcome == TimeoutOutcome.ONE_WINS
-            ? ghost.commitmentOne
-            : timeout.outcome == TimeoutOutcome.TWO_WINS
-                ? ghost.commitmentTwo
-                : chooseTwo ? ghost.commitmentTwo : ghost.commitmentOne;
+        uint8 winner = chooseTwo ? ghost.commitmentTwo : ghost.commitmentOne;
 
         (Tree.Node left, Tree.Node right, bytes memory proof) =
             _proofWitness(ghost, winner);
         TOURNAMENT.winLeafMatch(_id(ghost), left, right, proof);
 
-        uint64 charge =
-            timeout.outcome == TimeoutOutcome.NONE ? 0 : timeout.winnerCharge;
-        _chargeAndPause(_commitments[winner].clock, charge, _current());
+        _chargeAndPause(_commitments[winner].clock, 0, _current());
         _settleWithWinner(matchIndex, winner, _current());
     }
 
@@ -274,7 +268,7 @@ contract TournamentLifecycleHandler is Test {
         TOURNAMENT.winMatchByTimeout(id, left, right);
 
         _chargeAndPause(
-            _commitments[winner].clock, timeout.winnerCharge, _current()
+            _commitments[winner].clock, timeout.deferredCharge, _current()
         );
         _settleWithWinner(matchIndex, winner, _current());
     }
@@ -911,28 +905,41 @@ contract TournamentLifecycleHandler is Test {
         uint64 remainingTwo = _remaining(two, current);
 
         if (remainingOne == 0) {
+            if (remainingTwo == 0) {
+                return TimeoutStatus({
+                    outcome: TimeoutOutcome.ELIMINATE_BOTH, deferredCharge: 0
+                });
+            }
+
             uint64 overdueOne = current - one.startInstant - one.allowance;
-            if (remainingTwo > overdueOne) {
+            uint64 deferredCharge = two.startInstant == 0 ? overdueOne : 0;
+            if (remainingTwo > deferredCharge) {
                 return TimeoutStatus({
-                    outcome: TimeoutOutcome.TWO_WINS, winnerCharge: overdueOne
+                    outcome: TimeoutOutcome.TWO_WINS,
+                    deferredCharge: deferredCharge
+                });
+            } else {
+                return TimeoutStatus({
+                    outcome: TimeoutOutcome.ELIMINATE_BOTH, deferredCharge: 0
                 });
             }
-            return TimeoutStatus({
-                outcome: TimeoutOutcome.ELIMINATE_BOTH, winnerCharge: 0
-            });
-        }
-        if (remainingTwo == 0) {
+        } else if (remainingTwo == 0) {
             uint64 overdueTwo = current - two.startInstant - two.allowance;
-            if (remainingOne > overdueTwo) {
+            uint64 deferredCharge = one.startInstant == 0 ? overdueTwo : 0;
+            if (remainingOne > deferredCharge) {
                 return TimeoutStatus({
-                    outcome: TimeoutOutcome.ONE_WINS, winnerCharge: overdueTwo
+                    outcome: TimeoutOutcome.ONE_WINS,
+                    deferredCharge: deferredCharge
+                });
+            } else {
+                return TimeoutStatus({
+                    outcome: TimeoutOutcome.ELIMINATE_BOTH, deferredCharge: 0
                 });
             }
-            return TimeoutStatus({
-                outcome: TimeoutOutcome.ELIMINATE_BOTH, winnerCharge: 0
-            });
+        } else {
+            return
+                TimeoutStatus({outcome: TimeoutOutcome.NONE, deferredCharge: 0});
         }
-        return TimeoutStatus({outcome: TimeoutOutcome.NONE, winnerCharge: 0});
     }
 
     function _remaining(GhostClock storage clock, uint64 current)
@@ -1494,7 +1501,7 @@ contract TournamentLifecycleRejectionTraceTest is TournamentLifecycleTestBase {
         handler.sealLeaf(0);
 
         // Side one has 190 blocks and side two has 195. At side one's
-        // deadline only side two may win, whether by proof or timeout.
+        // deadline only side two may win, and proof settlement is too late.
         vm.roll(START_BLOCK + 220);
         handler.rejectIneligibleProof(0, false);
         handler.rejectTimeout(0, true);

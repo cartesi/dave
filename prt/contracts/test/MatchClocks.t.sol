@@ -80,13 +80,6 @@ contract MatchClocksHarness {
     {
         return MatchClocks.pauseForInnerAt(one, two, responseBudget, current);
     }
-
-    function settleProvenLeafWinnerAt(
-        ITournament.WinnerCommitment winner,
-        Time.Instant current
-    ) external {
-        MatchClocks.settleProvenLeafWinnerAt(one, two, winner, current);
-    }
 }
 
 contract MatchClocksTest is Test {
@@ -135,13 +128,22 @@ contract MatchClocksTest is Test {
             twoRunning ? _monus(allowanceTwo, elapsedTwo) : allowanceTwo;
         uint64 overdueOne = oneRunning ? _monus(elapsedOne, allowanceOne) : 0;
         uint64 overdueTwo = twoRunning ? _monus(elapsedTwo, allowanceTwo) : 0;
-        (MatchClocks.TimeoutOutcome expectedOutcome, uint64 expectedCharge) =
-            _modelTimeout(remainingOne, overdueOne, remainingTwo, overdueTwo);
+        (
+            MatchClocks.TimeoutOutcome expectedOutcome,
+            uint64 expectedDeferredCharge
+        ) = _modelTimeout(
+            remainingOne,
+            overdueOne,
+            oneRunning,
+            remainingTwo,
+            overdueTwo,
+            twoRunning
+        );
 
         MatchClocks.TimeoutStatus memory status =
             MatchClocks.classifyTimeoutAt(one, two, _instant(current));
         assertEq(uint8(status.outcome), uint8(expectedOutcome));
-        assertEq(_unwrap(status.winnerCharge), expectedCharge);
+        assertEq(_unwrap(status.deferredCharge), expectedDeferredCharge);
 
         bool canWin = status.outcome == MatchClocks.TimeoutOutcome.ONE_WINS
             || status.outcome == MatchClocks.TimeoutOutcome.TWO_WINS;
@@ -156,7 +158,7 @@ contract MatchClocksTest is Test {
         assertEq(
             uint8(swapped.outcome), uint8(_swapTimeoutOutcome(expectedOutcome))
         );
-        assertEq(_unwrap(swapped.winnerCharge), expectedCharge);
+        assertEq(_unwrap(swapped.deferredCharge), expectedDeferredCharge);
     }
 
     function testFuzzBisectionTimeoutBoundaries(
@@ -231,9 +233,6 @@ contract MatchClocksTest is Test {
         MatchClocks.TimeoutOutcome winner = commitmentOneIsShorter
             ? MatchClocks.TimeoutOutcome.TWO_WINS
             : MatchClocks.TimeoutOutcome.ONE_WINS;
-        uint64 lastWinningElapsed = (shortAllowance + longAllowance - 1) / 2;
-        uint64 firstEliminationElapsed =
-            (shortAllowance + longAllowance + 1) / 2;
 
         _assertTimeout(
             commitmentOneIsShorter,
@@ -255,16 +254,8 @@ contract MatchClocksTest is Test {
             commitmentOneIsShorter,
             shortClock,
             longClock,
-            start + lastWinningElapsed,
+            start + longAllowance - 1,
             winner,
-            lastWinningElapsed - shortAllowance
-        );
-        _assertTimeout(
-            commitmentOneIsShorter,
-            shortClock,
-            longClock,
-            start + firstEliminationElapsed,
-            MatchClocks.TimeoutOutcome.ELIMINATE_BOTH,
             0
         );
         _assertTimeout(
@@ -286,57 +277,6 @@ contract MatchClocksTest is Test {
         _assertTimeout(
             true, one, two, 15, MatchClocks.TimeoutOutcome.ELIMINATE_BOTH, 0
         );
-    }
-
-    function testFuzzProvenLeafWinnerFollowsTimeoutStatus(
-        bool oneWon,
-        uint64 rawAllowanceOne,
-        uint64 rawAllowanceTwo,
-        uint64 rawElapsed
-    ) public {
-        uint64 allowanceOne = _boundU64(rawAllowanceOne, 1, MAX_FUZZ_DURATION);
-        uint64 allowanceTwo = _boundU64(rawAllowanceTwo, 1, MAX_FUZZ_DURATION);
-        uint64 elapsed = _boundU64(rawElapsed, 0, allowanceOne + allowanceTwo);
-        _initializeBoth(allowanceOne, allowanceTwo);
-        harness.startBisectionAt(_instant(11));
-        harness.startLeafRace(_duration(0), _instant(11));
-
-        uint64 remainingOne = _monus(allowanceOne, elapsed);
-        uint64 remainingTwo = _monus(allowanceTwo, elapsed);
-        uint64 overdueOne = _monus(elapsed, allowanceOne);
-        uint64 overdueTwo = _monus(elapsed, allowanceTwo);
-        (MatchClocks.TimeoutOutcome outcome, uint64 winnerCharge) =
-            _modelTimeout(remainingOne, overdueOne, remainingTwo, overdueTwo);
-        bool allowed = outcome == MatchClocks.TimeoutOutcome.NONE
-            || (oneWon && outcome == MatchClocks.TimeoutOutcome.ONE_WINS)
-            || (!oneWon && outcome == MatchClocks.TimeoutOutcome.TWO_WINS);
-
-        if (!allowed) {
-            vm.expectRevert(ITournament.CannotAdvanceTimedOutClock.selector);
-        }
-        harness.settleProvenLeafWinnerAt(
-            oneWon
-                ? ITournament.WinnerCommitment.ONE
-                : ITournament.WinnerCommitment.TWO,
-            _instant(11 + elapsed)
-        );
-
-        Clock.State memory one = harness.oneState();
-        Clock.State memory two = harness.twoState();
-        if (allowed) {
-            Clock.State memory winner = oneWon ? one : two;
-            Clock.State memory loser = oneWon ? two : one;
-            uint64 winnerRemaining = oneWon ? remainingOne : remainingTwo;
-            uint64 loserAllowance = oneWon ? allowanceTwo : allowanceOne;
-            assertFalse(winner.isRunning());
-            assertTrue(loser.isRunning());
-            assertEq(_unwrap(winner.allowance), winnerRemaining - winnerCharge);
-            assertEq(_unwrap(loser.allowance), loserAllowance);
-            assertEq(Time.Instant.unwrap(loser.startInstant), 11);
-        } else {
-            assertTrue(one.isRunning());
-            assertTrue(two.isRunning());
-        }
     }
 
     function testFuzzBisectionAndLeafRacePreservePhaseAndTime(
@@ -532,67 +472,6 @@ contract MatchClocksTest is Test {
         harness.pauseForInner(_duration(0), _instant(11));
     }
 
-    function testProvenLeafSettlementRequiresTwoInitializedRunningClocks()
-        public
-    {
-        MatchClocksHarness oneMissing = new MatchClocksHarness();
-        oneMissing.initializeTwo(_instant(10), _duration(30), _instant(10));
-        oneMissing.startTwoAt(_instant(11));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
-        oneMissing.settleProvenLeafWinnerAt(
-            ITournament.WinnerCommitment.NONE, _instant(11)
-        );
-
-        harness.initializeOne(_instant(10), _duration(20), _instant(10));
-        harness.startOneAt(_instant(11));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
-        harness.settleProvenLeafWinnerAt(
-            ITournament.WinnerCommitment.ONE, _instant(11)
-        );
-
-        MatchClocksHarness bothPaused = _newInitializedPair(20, 30);
-        vm.expectRevert(stdError.assertionError);
-        bothPaused.settleProvenLeafWinnerAt(
-            ITournament.WinnerCommitment.ONE, _instant(11)
-        );
-
-        MatchClocksHarness oneRunning = _newInitializedPair(20, 30);
-        oneRunning.startOneAt(_instant(11));
-        vm.expectRevert(stdError.assertionError);
-        oneRunning.settleProvenLeafWinnerAt(
-            ITournament.WinnerCommitment.ONE, _instant(11)
-        );
-
-        MatchClocksHarness twoRunning = _newInitializedPair(20, 30);
-        twoRunning.startTwoAt(_instant(11));
-        vm.expectRevert(stdError.assertionError);
-        twoRunning.settleProvenLeafWinnerAt(
-            ITournament.WinnerCommitment.ONE, _instant(11)
-        );
-    }
-
-    function testProvenLeafSettlementRejectsUnequalRaceStarts() public {
-        _initializeBoth(20, 30);
-        harness.startOneAt(_instant(11));
-        harness.startTwoAt(_instant(12));
-
-        vm.expectRevert(stdError.assertionError);
-        harness.settleProvenLeafWinnerAt(
-            ITournament.WinnerCommitment.ONE, _instant(12)
-        );
-    }
-
-    function testProvenLeafSettlementRejectsNoWinner() public {
-        _initializeBoth(20, 30);
-        harness.startOneAt(_instant(11));
-        harness.startTwoAt(_instant(11));
-
-        vm.expectRevert(stdError.assertionError);
-        harness.settleProvenLeafWinnerAt(
-            ITournament.WinnerCommitment.NONE, _instant(11)
-        );
-    }
-
     function _initializeBoth(uint64 allowanceOne, uint64 allowanceTwo) private {
         harness.initializeOne(
             _instant(10), _duration(allowanceOne), _instant(10)
@@ -628,23 +507,36 @@ contract MatchClocksTest is Test {
     function _modelTimeout(
         uint64 remainingOne,
         uint64 overdueOne,
+        bool oneRunning,
         uint64 remainingTwo,
-        uint64 overdueTwo
+        uint64 overdueTwo,
+        bool twoRunning
     )
         private
         pure
-        returns (MatchClocks.TimeoutOutcome outcome, uint64 winnerCharge)
+        returns (MatchClocks.TimeoutOutcome outcome, uint64 deferredCharge)
     {
-        if (remainingOne == 0 && remainingTwo > overdueOne) {
-            return (MatchClocks.TimeoutOutcome.TWO_WINS, overdueOne);
+        if (remainingOne == 0) {
+            if (remainingTwo == 0) {
+                return (MatchClocks.TimeoutOutcome.ELIMINATE_BOTH, 0);
+            }
+
+            deferredCharge = twoRunning ? 0 : overdueOne;
+            if (remainingTwo > deferredCharge) {
+                return (MatchClocks.TimeoutOutcome.TWO_WINS, deferredCharge);
+            } else {
+                return (MatchClocks.TimeoutOutcome.ELIMINATE_BOTH, 0);
+            }
+        } else if (remainingTwo == 0) {
+            deferredCharge = oneRunning ? 0 : overdueTwo;
+            if (remainingOne > deferredCharge) {
+                return (MatchClocks.TimeoutOutcome.ONE_WINS, deferredCharge);
+            } else {
+                return (MatchClocks.TimeoutOutcome.ELIMINATE_BOTH, 0);
+            }
+        } else {
+            return (MatchClocks.TimeoutOutcome.NONE, 0);
         }
-        if (remainingTwo == 0 && remainingOne > overdueTwo) {
-            return (MatchClocks.TimeoutOutcome.ONE_WINS, overdueTwo);
-        }
-        if (remainingOne == 0 || remainingTwo == 0) {
-            return (MatchClocks.TimeoutOutcome.ELIMINATE_BOTH, 0);
-        }
-        return (MatchClocks.TimeoutOutcome.NONE, 0);
     }
 
     function _swapTimeoutOutcome(MatchClocks.TimeoutOutcome outcome)
@@ -673,7 +565,7 @@ contract MatchClocksTest is Test {
             ? MatchClocks.classifyTimeoutAt(first, second, _instant(current))
             : MatchClocks.classifyTimeoutAt(second, first, _instant(current));
         assertEq(uint8(status.outcome), uint8(expectedOutcome));
-        assertEq(_unwrap(status.winnerCharge), expectedCharge);
+        assertEq(_unwrap(status.deferredCharge), expectedCharge);
     }
 
     function _boundU64(uint64 value, uint64 minimum, uint64 maximum)

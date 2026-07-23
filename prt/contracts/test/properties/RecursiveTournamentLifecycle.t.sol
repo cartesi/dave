@@ -292,10 +292,13 @@ contract RecursiveTournamentLifecycleTest is Test {
             resolveLate
         );
 
-        Tree.Node winningChild = _winChildAtFirstLeaf(
-            SmallTwoLevelClaims.CLAIM_ONE, CONTESTED_SEGMENT
-        );
-        uint64 carried = joinLate - 2 * resolveLate;
+        SmallFullTree.Data memory winner =
+            _childTree(SmallTwoLevelClaims.CLAIM_ONE);
+        (Tree.Node left, Tree.Node right) =
+            winner.children(SmallTwoLevelGeometry.LEAF_HEIGHT, 0);
+        child.winMatchByTimeout(childMatch, left, right);
+        Tree.Node winningChild = winner.root();
+        uint64 carried = joinLate - resolveLate;
         assertTrue(child.isFinished());
         assertFalse(child.canBeEliminated());
         (bool timeKnown, Time.Instant finishedAt) = child.timeFinished();

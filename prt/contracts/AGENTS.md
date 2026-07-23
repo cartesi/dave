@@ -30,8 +30,10 @@ The PRT and Dave papers are background, not specifications for these contracts.
 Distinguish the property affected by a change:
 
 - Result-selection safety assumes at least one correct commitment joins, its
-  participant can act within the clock and censorship bounds, and the configured
-  hashes, provider, and state transition are correct.
+  participant can act within the clock and censorship bounds, and the
+  configured hashes, provider, and state transition are correct. The
+  censorship budget is global and non-rechargeable across the modeled dispute,
+  not fresh per action or match.
 - Liveness depends on clock conservation, legal progress, cleanup, chain-time
   semantics, and the participant not being censored past its allowance.
 - Resource resistance depends on population reduction, work reserves, bounded
@@ -55,7 +57,7 @@ that seam require the Solidity, machine, and client implementations to agree.
 - `src/tournament/libs/Clock.sol` owns one-clock arithmetic and storage
   transitions.
 - `src/tournament/libs/MatchClocks.sol` owns legal two-clock transitions,
-  response discounts, timeout classification, and proven-leaf clock policy.
+  response discounts, phase-aware timeout classification, and deferred charges.
 - `src/tournament/libs/Gas.sol` contains reviewed action allocations.
 - `src/tournament/libs/Bond.sol` derives refund caps, terminal work, and join
   bonds from those allocations and fee policy.
@@ -85,12 +87,17 @@ configured level count; there are no production Top/Middle/Bottom contracts.
 - Pairing and survivor re-entry never increase clock balances. Each successful
   advance or final seal applies the response discount exactly once and cannot
   revive an expired clock.
-- One shared timeout classification drives the capability view, timeout
-  mutation, and proven-leaf settlement. Equality belongs to double elimination.
+- One shared timeout classification drives the capability view and both
+  timeout mutations. Leaf proofs are valid only while that classification is
+  `NONE`; once a timeout begins, callers must use the selected timeout verb.
+- A running timeout winner receives no extra overdue charge because its live
+  remainder already reflects elapsed time. A paused winner may receive a
+  deferred charge to subtract for the expired responder's overdue interval.
+  Never charge one censorship interval twice.
 - A parent consumes only a child it recorded from its own sealed match.
   Permissionless orphan child creation does not establish parent legitimacy.
-- A valid leaf proof is still subject to the same clock outcome as timeout
-  cleanup. Objective proof correctness does not erase a missed deadline.
+- Objective proof correctness does not erase a missed deadline. A leaf proof
+  and timeout cleanup must never be simultaneously valid.
 - Each paid join contributes one height-derived match work reserve. Progress
   refunds are bounded subsidies; terminal recovery pays at most one bond and
   burns the residual only after successful payment.
