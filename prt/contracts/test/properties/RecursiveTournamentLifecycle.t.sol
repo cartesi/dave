@@ -524,6 +524,54 @@ contract RecursiveTournamentLifecycleTest is Test {
         assertEq(parent.getNewInnerTournamentCount(), 1);
     }
 
+    function testChildReturnUsesSharedParentPairEnvelope() public {
+        vm.roll(120);
+        _advanceParent();
+        vm.roll(130);
+        _sealParentAfterAdvance();
+
+        (Clock.State memory smallerBefore,) = parent.getCommitment(parentOne);
+        (Clock.State memory largerBefore,) = parent.getCommitment(parentTwo);
+        uint64 smallerAllowance = Time.Duration.unwrap(smallerBefore.allowance);
+        uint64 largerAllowance = Time.Duration.unwrap(largerBefore.allowance);
+        assertLt(smallerAllowance, largerAllowance);
+
+        SmallFullTree.Data memory winner =
+            _childTree(SmallTwoLevelClaims.CLAIM_ONE);
+        Tree.Node winningChild = _join(child, winner, CLAIMER_ONE);
+        ITournament.TournamentArguments memory args =
+            child.tournamentArguments();
+        assertEq(Time.Duration.unwrap(args.allowance), largerAllowance);
+
+        vm.roll(_deadline(args.startInstant, args.allowance));
+        _assertInnerWinner(
+            SmallTwoLevelClaims.CLAIM_ONE, winningChild, largerAllowance
+        );
+        _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, largerAllowance);
+
+        (Clock.State memory returned,) = parent.getCommitment(parentOne);
+        uint64 returnedAllowance = Time.Duration.unwrap(returned.allowance);
+        assertGt(returnedAllowance, smallerAllowance);
+        assertLe(returnedAllowance, largerAllowance);
+        assertLe(
+            uint256(returnedAllowance),
+            uint256(smallerAllowance) + largerAllowance
+        );
+    }
+
+    function testSealedParentCannotResolveThroughClockTimeouts() public {
+        _sealParent();
+        vm.roll(START_BLOCK + 2 * MAX_ALLOWANCE);
+
+        assertFalse(parent.canWinMatchByTimeout(parentMatch));
+        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        parent.winMatchByTimeout(parentMatch, Tree.ZERO_NODE, Tree.ZERO_NODE);
+
+        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+        parent.eliminateMatchByTimeout(parentMatch);
+        assertTrue(parent.getMatch(parentMatch.hashFromId()).exists());
+    }
+
     function _assertParentSeeded() private view {
         (Tree.Node dangling, uint256 matches, Time.Instant lastDeleted) =
             parent.observedTopology();
