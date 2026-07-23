@@ -368,14 +368,14 @@ function Machine:prove_read_leaf(address)
 
     local aligned_address = address & ~0x1F
     local read = self.machine:read_memory(aligned_address, 32)
-    local read_hash = Hash:from_digest(read)
+    local read_hash = Hash:from_data(read)
     local merkle_proof = self.machine:get_proof(aligned_address, 5)
 
     local proof = {}
 
-    -- Append both read data and read hash
+    -- Append the raw checkpoint, its leaf hash, and its siblings.
     table.insert(proof, read)
-    table.insert(proof, read_hash:digest())
+    table.insert(proof, read_hash.digest)
 
     -- Append sibling hashes from the merkle proof
     for _, hash in ipairs(merkle_proof.sibling_hashes) do
