@@ -15,7 +15,7 @@ Run from the repository root:
 
 ```bash
 just prt-contracts::test-disputes
-just prt-contracts::test-gas
+just test-prt-gas
 just prt-contracts::coverage
 just rollups-contracts::test
 ```
@@ -31,6 +31,9 @@ just prt-contracts::test-stf-fuzzy
 Gas calibration has stricter toolchain and clean-tree requirements; follow
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md)
 instead of treating an ordinary gas-test pass as an accepted calibration.
+`just test-prt-gas` runs both the Tournament-only witnesses and the serialized
+full-stack FFI leaf-proof matrix. Ordinary Rollups contract tests and coverage
+exclude the `*FfiTest` contracts deliberately.
 
 ## Directory ownership
 
@@ -44,6 +47,12 @@ instead of treating an ordinary gas-test pass as an accepted calibration.
 | `test/gas/` | Retained production refund witnesses |
 | `test/properties/` | Match parity, lifecycle, recursion, population, and delay properties |
 | `test/step/` and FFI suites | Solidity-step and external state-transition oracles |
+
+The full-stack leaf-proof gas fixture lives under
+`cartesi-rollups/contracts/test/gas/`, where it can compose the production
+InputBox, DaveConsensus provider, Cartesi state transition, and PRT Tournament.
+Its height-one, position-one commitments are coordinate coherent and inject
+only the geometry needed by the measured entry point.
 
 Characterization is a compatibility fossil, not the preferred semantic oracle.
 New behavior tests should use the smallest injected geometry that exposes the

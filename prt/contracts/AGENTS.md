@@ -154,7 +154,7 @@ Run from the repository root unless a focused command says otherwise:
 ```bash
 just prt-contracts::check-fmt
 just prt-contracts::test-disputes
-just prt-contracts::test-gas
+just test-prt-gas
 just prt-contracts::coverage
 just rollups-contracts::test
 ```
@@ -169,6 +169,10 @@ just prt-contracts::test-stf-fuzzy
 Use `just prt-contracts::test-all` for the combined contract gate. Use
 `just logged <file> <command...>` for long runs so a display pipeline cannot
 hide the real exit code.
+
+The accepted gas-calibration gate is `just measure-prt-gas` under the pinned
+release environment described by the calibration runbook. It combines the PRT
+Tournament-only matrix with the serialized full-stack FFI leaf-proof matrix.
 
 The ordinary fuzz count is pinned in `foundry.toml`. Record seeds and overrides
 for deeper campaigns. Coverage excludes suites whose semantics or measured gas

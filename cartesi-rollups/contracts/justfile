@@ -5,6 +5,9 @@ DEPLOYMENTS_DIR := "./deployments"
 DEVNET_STATE := "state.json"
 SRC_DIR := "."
 BINDINGS_FILTER := "DaveConsensus|DaveAppFactory"
+PRT_GAS_FOUNDRY_VERSION := "1.5.1-v1.5.1"
+PRT_GAS_DEPENDENCIES_SHA256 := "e90c4e0e6b7b4000a7f75b8af2d8562cfce0bef655033e1f2dfa36115d61e4c9"
+PRT_GAS_MACHINE_HASH := "d83e7921ab07b55e7e57217bd0f3427faea7474bf81b15866d8d4c1f873c51e0"
 
 default: build
 
@@ -25,11 +28,135 @@ build-smart-contracts:
     forge build
 
 test:
-    forge test
+    forge test --no-match-contract ".*FfiTest"
+
+# validate the retained full-stack PRT leaf-proof gas witnesses
+test-prt-leaf-gas:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    instance="${TEST_INSTANCE:-prt-leaf-gas-$$}"
+    if [[ ! "$instance" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      printf 'error: unsafe TEST_INSTANCE: %s\n' "$instance" >&2
+      exit 1
+    fi
+    scratch="_machine_scratch-$instance"
+    if [ -e "$scratch" ]; then
+      printf 'error: scratch path already exists: %s\n' "$scratch" >&2
+      exit 1
+    fi
+    trap 'rm -rf -- "$scratch"' EXIT
+    TEST_INSTANCE="$instance" forge test --force --threads 1 --color never \
+      --match-path "test/gas/PrtLeafProofGasFfi.t.sol" --ffi -vv
+
+# print the reproducibility header and full-stack PRT leaf-proof measurements
+measure-prt-leaf-gas:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    diagnostic="${ALLOW_DIAGNOSTIC_GAS_MEASUREMENT:-0}"
+    foundry_overrides=$(env | sed -n '/^FOUNDRY_/p')
+    if [ -n "$foundry_overrides" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf '%s\n' 'error: clear FOUNDRY_* overrides for gas calibration' >&2
+        exit 1
+      fi
+      printf '%s\n' \
+        'warning: FOUNDRY_* overrides make this report diagnostic only' >&2
+    fi
+    export FOUNDRY_PROFILE=default
+    revision=$(git rev-parse HEAD)
+    if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+      revision="$revision (dirty)"
+      if [ "$diagnostic" != "1" ]; then
+        printf '%s\n' \
+          'error: authoritative gas calibration requires a clean worktree' >&2
+        exit 1
+      fi
+      printf '%s\n' \
+        'warning: dirty worktree makes this report diagnostic only' >&2
+    fi
+    expected_version="{{PRT_GAS_FOUNDRY_VERSION}}"
+    version_output=$(forge --version)
+    actual_version=$(printf '%s\n' "$version_output" \
+      | sed -n 's/^forge Version: //p')
+    if [ "$actual_version" != "$expected_version" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf 'error: gas calibration requires Forge %s, found %s\n' \
+          "$expected_version" "$actual_version" >&2
+        exit 1
+      fi
+      printf 'warning: unpinned Forge %s; report is diagnostic only\n' \
+        "$actual_version" >&2
+    fi
+    effective_config=$(forge config --json | jq -c \
+      '{solc, via_ir, optimizer, optimizer_runs, evm_version}')
+    expected_config='{"solc":"0.8.30","via_ir":true,"optimizer":true,"optimizer_runs":200,"evm_version":"prague"}'
+    if [ "$effective_config" != "$expected_config" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf 'error: unexpected effective Foundry config: %s\n' \
+          "$effective_config" >&2
+        exit 1
+      fi
+      printf 'warning: unexpected effective config: %s\n' \
+        "$effective_config" >&2
+    fi
+    dependency_digest=$( \
+      find dependencies ../../prt/contracts/dependencies -type f -print0 \
+      | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum \
+      | cut -d' ' -f1)
+    if [ "$dependency_digest" != "{{PRT_GAS_DEPENDENCIES_SHA256}}" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf 'error: unexpected dependency digest: %s\n' \
+          "$dependency_digest" >&2
+        exit 1
+      fi
+      printf 'warning: unexpected dependency digest: %s\n' \
+        "$dependency_digest" >&2
+    fi
+    if ! command -v cartesi-machine-stored-hash >/dev/null; then
+      printf '%s\n' \
+        'error: cartesi-machine-stored-hash is required; enter the dev shell' >&2
+      exit 1
+    fi
+    for tool in lua cartesi-machine; do
+      if ! command -v "$tool" >/dev/null; then
+        printf 'error: %s is required; enter the dev shell\n' "$tool" >&2
+        exit 1
+      fi
+    done
+    machine_hash=$( \
+      cartesi-machine-stored-hash ../../test/programs/yield/machine-image)
+    if [ "$machine_hash" != "{{PRT_GAS_MACHINE_HASH}}" ]; then
+      if [ "$diagnostic" != "1" ]; then
+        printf 'error: unexpected yield machine hash: %s\n' \
+          "$machine_hash" >&2
+        exit 1
+      fi
+      printf 'warning: unexpected yield machine hash: %s\n' \
+        "$machine_hash" >&2
+    fi
+    lua_version=$(lua -v 2>&1)
+    machine_version=$(cartesi-machine --version)
+    cartesi_lua=$( \
+      lua -e 'io.write(assert(package.searchpath("cartesi", package.cpath)))')
+    cartesi_lua_hash=$(sha256sum "$cartesi_lua" | cut -d' ' -f1)
+    printf 'revision: %s\n' "$revision"
+    printf '%s\n' "$version_output"
+    printf 'effective config: %s\n' "$effective_config"
+    printf 'dependencies sha256: %s\n' "$dependency_digest"
+    printf 'yield machine hash: %s\n' "$machine_hash"
+    printf 'lua: %s\n' "$lua_version"
+    printf '%s\n' "$machine_version"
+    printf 'cartesi lua module: %s\n' "$cartesi_lua"
+    printf 'cartesi lua module sha256: %s\n' "$cartesi_lua_hash"
+    sha256sum foundry.toml soldeer.lock \
+      ../../prt/contracts/foundry.toml ../../prt/contracts/soldeer.lock
+    git submodule status --recursive
+    just test-prt-leaf-gas
 
 # generate LCOV coverage report
 coverage:
-    forge coverage --report lcov --lcov-version 2
+    forge coverage --no-match-contract ".*FfiTest" \
+      --report lcov --lcov-version 2
     genhtml -o coverage lcov.info --rc derive_function_end_line=0
 
 # clean smart contracts artifacts
