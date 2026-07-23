@@ -109,6 +109,13 @@ library Match {
         return (matchId.hashFromId(), state);
     }
 
+    /// @notice Advance the shared divergence frontier by one tree level.
+    /// @dev The waiting commitment's children are already cached. The current
+    /// revealer opens its parent to select the first divergent branch, then
+    /// opens its selected child into `nextLeft` and `nextRight`. The selected
+    /// child from each commitment becomes the next frontier and the roles swap.
+    /// Each commitment therefore supplies two adjacent openings on alternating
+    /// turns, while the two-tree search descends one level per call.
     function advanceBisection(
         State storage state,
         Tree.Node revealingLeft,
@@ -120,13 +127,11 @@ library Match {
         state.otherParent.requireChildren(revealingLeft, revealingRight);
 
         Branch branch = _selectBranch(state.leftNode, revealingLeft);
-        Tree.Node revealingChild =
-            branch == Branch.LEFT ? revealingLeft : revealingRight;
-        revealingChild.requireChildren(nextLeft, nextRight);
-
         if (branch == Branch.LEFT) {
+            revealingLeft.requireChildren(nextLeft, nextRight);
             state.otherParent = state.leftNode;
         } else {
+            revealingRight.requireChildren(nextLeft, nextRight);
             state.otherParent = state.rightNode;
             state.runningLeafPosition += uint256(1) << (state.currentHeight - 1);
         }
@@ -152,12 +157,19 @@ library Match {
 
         Branch branch = _selectBranch(state.leftNode, revealingLeft);
         Divergence memory divergence;
-        divergence.revealingLeaf =
-            branch == Branch.LEFT ? revealingLeft : revealingRight;
-        divergence.waitingLeaf =
-            branch == Branch.LEFT ? state.leftNode : state.rightNode;
-        divergence.position = state.runningLeafPosition;
-        if (branch == Branch.RIGHT) ++divergence.position;
+        if (branch == Branch.LEFT) {
+            divergence = Divergence({
+                revealingLeaf: revealingLeft,
+                waitingLeaf: state.leftNode,
+                position: state.runningLeafPosition
+            });
+        } else {
+            divergence = Divergence({
+                revealingLeaf: revealingRight,
+                waitingLeaf: state.rightNode,
+                position: state.runningLeafPosition + 1
+            });
+        }
         CommitmentSide revealingSide = _finalRevealingSide(args.height);
 
         _requireAgreeState(
@@ -337,15 +349,19 @@ library Match {
         // makes the position odd, so its low bit recovers the sealed branch.
         Branch branch =
             state.runningLeafPosition % 2 == 0 ? Branch.LEFT : Branch.RIGHT;
-        divergence = Divergence({
-            revealingLeaf: branch == Branch.LEFT
-                ? state.rightNode
-                : state.leftNode,
-            waitingLeaf: branch == Branch.LEFT
-                ? state.leftNode
-                : state.rightNode,
-            position: state.runningLeafPosition
-        });
+        if (branch == Branch.LEFT) {
+            divergence = Divergence({
+                revealingLeaf: state.rightNode,
+                waitingLeaf: state.leftNode,
+                position: state.runningLeafPosition
+            });
+        } else {
+            divergence = Divergence({
+                revealingLeaf: state.leftNode,
+                waitingLeaf: state.rightNode,
+                position: state.runningLeafPosition
+            });
+        }
     }
 
     function _phase(bool isInit, uint64 currentHeight)
@@ -353,10 +369,15 @@ library Match {
         pure
         returns (Phase)
     {
-        if (!isInit) return Phase.UNINITIALIZED;
-        if (currentHeight > 1) return Phase.BISECTING;
-        if (currentHeight == 1) return Phase.READY_TO_SEAL;
-        return Phase.SEALED;
+        if (!isInit) {
+            return Phase.UNINITIALIZED;
+        } else if (currentHeight > 1) {
+            return Phase.BISECTING;
+        } else if (currentHeight == 1) {
+            return Phase.READY_TO_SEAL;
+        } else {
+            return Phase.SEALED;
+        }
     }
 
     /// @dev Establishes existence before any phase-specific error, reading

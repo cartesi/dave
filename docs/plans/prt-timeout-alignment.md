@@ -56,9 +56,14 @@ superseded sealed-leaf policy:
 - the elimination witness resolves at the former midpoint instead of the
   longer clock's deadline.
 
+The later behavior-preserving Match readability pass also rewrites advance and
+seal control flow and changes optimized Tournament bytecode. It introduces no
+new semantic witness, but it broadens the deferred work from the three stale
+timeout scenarios to the complete retained gas matrix.
+
 Update those scenarios in a separate gas-calibration pass following
 [`prt-refund-gas-calibration.md`](../runbooks/prt-refund-gas-calibration.md).
-Re-measure the supported paths before deciding whether any `Gas` allocation
+Re-measure every supported path before deciding whether any `Gas` allocation
 changes. Do not treat a semantic witness rewrite as calibration evidence.
 
 ## Completion gates
@@ -71,7 +76,7 @@ changes. Do not treat a semantic witness rewrite as calibration evidence.
    correct longer clock wins after the former midpoint boundary.
 4. Run an end-to-end leaf dispute through the longer deadline and observe
    double elimination.
-5. Align and re-measure the three sealed-leaf gas witnesses under the pinned
-   release toolchain.
+5. Align the three sealed-leaf semantic witnesses and re-measure the complete
+   gas matrix under the pinned release toolchain.
 6. Remove or close this plan only after the contract, Rust node, Lua client, and
    gas witnesses agree on the table.

@@ -114,6 +114,8 @@ without coordinated node, Lua, deployment, and conformance work.
 - Preserve the deployed ABI, storage layout, clone arguments, raw Match and
   Clock tuples, event signatures, and error selectors unless the task explicitly
   authorizes a compatibility break.
+- Use braces for every Solidity control-flow body, including a single
+  statement.
 - Run `just prt-contracts::compatibility-hashes` before and after production
   changes and inspect every unexpected difference. Hashes are comparison aids,
   not approval to update a snapshot mechanically.
