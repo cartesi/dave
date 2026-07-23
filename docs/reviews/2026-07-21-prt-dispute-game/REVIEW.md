@@ -2251,3 +2251,56 @@ metadata-free runtime bytecode sha256: 631eb0908dfce360f6b6d85fb827ff4c5fe201b9e
 
 No node source changed. Deployment and CREATE2 artifacts remain to be
 regenerated before release.
+
+## Erratum: 2026-07-23 - sealed-leaf censorship amplification
+
+This erratum corrects the reviewed PRT-002, PRT-004, and PRT-010 timeout policy.
+It does not rewrite the historical findings or validation record above.
+
+The PRT-002 repair correctly stopped settlement from restoring time already
+consumed by a running winner. The subsequent shared classifier nevertheless
+made a wrong policy choice for sealed leaves: it subtracted the expired
+opponent's overdue duration from the winner's live remainder in every phase.
+That policy treated the censorship allowance as if it recharged for timeout
+cleanup. The adopted threat model instead gives the adversary one cumulative,
+non-rechargeable censorship budget across the modeled dispute.
+
+Let a sealed leaf start both clocks at instant `S`, with correct allowance
+`h` and shorter sybil allowance `s`, where `h > s`. While the sybil is expired
+and the correct clock remains live, `s <= x < h`, the reviewed classifier
+required
+
+```text
+h - x > x - s
+```
+
+so it began double elimination at `2x >= h + s`, while the correct clock still
+had positive live time until `x >= h`. The interval after the sybil expired was
+charged once by the correct clock continuing to run and a second time by
+subtracting the sybil's overdue duration. A sacrificial sybil could therefore
+remove the correct commitment near the midpoint. With a third incorrect claim
+waiting dangling, that premature removal could leave an incorrect tournament
+winner without spending an equivalent additional censorship interval against
+the correct participant.
+
+The corrected policy is phase-aware:
+
+1. During active bisection the prospective winner is paused. The responder's
+   overdue duration remains a deferred charge because the winner was not
+   consuming that interval.
+2. During a sealed leaf both clocks run. A live survivor receives zero deferred
+   charge because its live remainder already accounts for the elapsed interval.
+   It may win from the shorter deadline through the block before the longer
+   deadline. At the longer deadline both commitments are eliminated.
+3. Leaf proof resolution is valid only while the timeout classifier returns
+   `NONE`. After the first deadline, callers must use timeout victory or double
+   elimination. Proof and timeout verbs are disjoint.
+
+`testSealedLeafTimeoutDoesNotChargeRunningWinnerTwice`,
+`testSealedLeafTimeoutEliminatesAtLongClockDeadline`,
+`testFuzzLeafProofYieldsToTimeout`, and
+`testSacrificialLeafCannotAmplifyCensorshipIntoDanglingWinner` retain the
+contract-level regressions. The independent pair-clock oracle, stateful
+lifecycle model, recursive lifecycle, and bounded scheduler were updated to the
+same phase table. Off-chain Rust and Lua alignment is tracked separately in
+[`prt-timeout-alignment.md`](../../plans/prt-timeout-alignment.md).

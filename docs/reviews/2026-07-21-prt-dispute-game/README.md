@@ -16,8 +16,8 @@ evidence that explain how the reviewed code reached its current shape.
 
 Read in this order:
 
-1. [`REVIEW.md`](REVIEW.md) - confirmed findings, decisions, deferred work, and
-   the chronological validation ledger.
+1. [`REVIEW.md`](REVIEW.md) - confirmed findings, decisions, deferred work, the
+   chronological validation ledger, and clearly dated later errata.
 2. [`TEST-REPORT.md`](TEST-REPORT.md) - the campaign test assessment, exact
    verification snapshot, limitations, and stop rule.
 3. [`CLOCK-DESIGN.md`](CLOCK-DESIGN.md),

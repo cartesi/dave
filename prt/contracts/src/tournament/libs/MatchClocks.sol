@@ -3,8 +3,6 @@
 
 pragma solidity ^0.8.17;
 
-import {ITournament} from "prt-contracts/ITournament.sol";
-
 import {Clock} from "./Clock.sol";
 import {Time} from "./Time.sol";
 
@@ -25,14 +23,16 @@ library MatchClocks {
 
     struct TimeoutStatus {
         TimeoutOutcome outcome;
-        Time.Duration winnerCharge;
+        Time.Duration deferredCharge;
     }
 
     /// @notice Classify timeout resolution for a match at one instant.
     /// @dev Assumes both initialized clocks belong to a legal match phase; it
-    /// classifies but does not validate that phase. A winner must retain
-    /// strictly positive time after the expired side's overdue duration is
-    /// charged. Equality eliminates both sides.
+    /// classifies but does not validate that phase. A running winner has already
+    /// paid for elapsed time through its live remainder. A paused winner is
+    /// charged the expired side's overdue duration, which represents the
+    /// deferred interval in which timeout cleanup could be censored. A winner
+    /// must retain positive time after any deferred charge.
     function classifyTimeoutAt(
         Clock.State memory one,
         Clock.State memory two,
@@ -42,67 +42,42 @@ library MatchClocks {
         Time.Duration remainingTwo = two.remainingAt(current);
 
         if (remainingOne.isZero()) {
-            Time.Duration overdueOne = one.overdueByAt(current);
-            if (remainingTwo.gt(overdueOne)) {
+            if (remainingTwo.isZero()) {
                 return TimeoutStatus({
-                    outcome: TimeoutOutcome.TWO_WINS, winnerCharge: overdueOne
+                    outcome: TimeoutOutcome.ELIMINATE_BOTH,
+                    deferredCharge: Time.ZERO_DURATION
                 });
             }
-            return TimeoutStatus({
-                outcome: TimeoutOutcome.ELIMINATE_BOTH,
-                winnerCharge: Time.ZERO_DURATION
-            });
-        }
 
-        if (remainingTwo.isZero()) {
-            Time.Duration overdueTwo = two.overdueByAt(current);
-            if (remainingOne.gt(overdueTwo)) {
+            Time.Duration deferredCharge = _deferredCharge(two, one, current);
+            if (remainingTwo.gt(deferredCharge)) {
                 return TimeoutStatus({
-                    outcome: TimeoutOutcome.ONE_WINS, winnerCharge: overdueTwo
+                    outcome: TimeoutOutcome.TWO_WINS,
+                    deferredCharge: deferredCharge
+                });
+            } else {
+                return TimeoutStatus({
+                    outcome: TimeoutOutcome.ELIMINATE_BOTH,
+                    deferredCharge: Time.ZERO_DURATION
                 });
             }
-            return TimeoutStatus({
-                outcome: TimeoutOutcome.ELIMINATE_BOTH,
-                winnerCharge: Time.ZERO_DURATION
-            });
-        }
-
-        return TimeoutStatus({
-            outcome: TimeoutOutcome.NONE, winnerCharge: Time.ZERO_DURATION
-        });
-    }
-
-    /// @notice Settle the clock of an objectively proven leaf winner.
-    /// @dev Proof resolution follows the same timeout status as permissionless
-    /// cleanup. With no timeout, the winner is charged zero. With one timeout
-    /// winner, the proof must select that side and pays the classified charge.
-    /// Every other outcome rejects the proof as too late. Both clocks must be
-    /// running from the same leaf-race start instant.
-    function settleProvenLeafWinnerAt(
-        Clock.State storage one,
-        Clock.State storage two,
-        ITournament.WinnerCommitment provenWinner,
-        Time.Instant current
-    ) internal {
-        _requireLeafRace(one, two);
-        assert(provenWinner != ITournament.WinnerCommitment.NONE);
-
-        TimeoutStatus memory timeout = classifyTimeoutAt(one, two, current);
-        TimeoutOutcome requiredOutcome = provenWinner
-            == ITournament.WinnerCommitment.ONE
-            ? TimeoutOutcome.ONE_WINS
-            : TimeoutOutcome.TWO_WINS;
-        if (
-            timeout.outcome != TimeoutOutcome.NONE
-                && timeout.outcome != requiredOutcome
-        ) {
-            revert ITournament.CannotAdvanceTimedOutClock();
-        }
-
-        if (provenWinner == ITournament.WinnerCommitment.ONE) {
-            one.chargeAndPauseAt(timeout.winnerCharge, current);
+        } else if (remainingTwo.isZero()) {
+            Time.Duration deferredCharge = _deferredCharge(one, two, current);
+            if (remainingOne.gt(deferredCharge)) {
+                return TimeoutStatus({
+                    outcome: TimeoutOutcome.ONE_WINS,
+                    deferredCharge: deferredCharge
+                });
+            } else {
+                return TimeoutStatus({
+                    outcome: TimeoutOutcome.ELIMINATE_BOTH,
+                    deferredCharge: Time.ZERO_DURATION
+                });
+            }
         } else {
-            two.chargeAndPauseAt(timeout.winnerCharge, current);
+            return TimeoutStatus({
+                outcome: TimeoutOutcome.NONE, deferredCharge: Time.ZERO_DURATION
+            });
         }
     }
 
@@ -182,15 +157,20 @@ library MatchClocks {
         assert(one.isRunning() != two.isRunning());
     }
 
-    function _requireLeafRace(Clock.State memory one, Clock.State memory two)
-        private
-        pure
-    {
-        one.requireRunning();
-        two.requireRunning();
-        assert(
-            Time.Instant.unwrap(one.startInstant)
-                == Time.Instant.unwrap(two.startInstant)
-        );
+    /// @dev Charge only elapsed time not already reflected in the winner's
+    /// live remainder. During bisection the winner is paused, so the expired
+    /// responder's overdue interval is deferred to it. During a leaf race the
+    /// winner is already running, so transferring that interval would charge
+    /// the same censorship time twice.
+    function _deferredCharge(
+        Clock.State memory winner,
+        Clock.State memory loser,
+        Time.Instant current
+    ) private pure returns (Time.Duration) {
+        if (winner.isRunning()) {
+            return Time.ZERO_DURATION;
+        } else {
+            return loser.overdueByAt(current);
+        }
     }
 }

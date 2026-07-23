@@ -10,9 +10,9 @@ pragma solidity ^0.8.17;
 /// to happen in the first eligible block: while any match can time out, other
 /// same-block actions may execute, but the model cannot advance time.
 /// Before timeout, objective leaf proofs branch on whether the low- or
-/// high-allowance side is correct. Equal branches are collapsed. At timeout, a
-/// proof either has the same survivor and clock as cleanup or reverts, so the
-/// timeout action represents both successful settlement paths.
+/// high-allowance side is correct. Equal branches are collapsed. Once either
+/// leaf clock expires, proof settlement is no longer available and the timeout
+/// action owns resolution.
 /// All participant responses are scheduler-controlled; the model does not
 /// designate an honest commitment or impose an honest proof strategy. Each
 /// proof may independently choose either side, deliberately forgetting the
@@ -406,10 +406,7 @@ contract BoundedOneLevelDelayModel {
         } else {
             uint8 remainingTwo =
                 allowanceTwo > elapsed ? allowanceTwo - elapsed : 0;
-            uint8 overdueOne = elapsed - allowanceOne;
-            if (remainingTwo > overdueOne) {
-                survivorAllowance = remainingTwo - overdueOne;
-            }
+            survivorAllowance = remainingTwo;
         }
 
         return

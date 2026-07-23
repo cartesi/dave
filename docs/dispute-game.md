@@ -38,7 +38,9 @@ Safety requires:
 
 Liveness and bounded delay additionally require:
 
-- The correct participant is not censored beyond the configured allowance.
+- The adversary's cumulative censorship of the correct participant does not
+  exceed the one global budget `C`; that budget does not reset per transaction,
+  match, or tournament level.
 - The application is disputable within the clock dimensioning assumptions in
   [`dimensioning.md`](dimensioning.md).
 - The chain time source advances according to the assumptions used to convert
@@ -53,8 +55,12 @@ not evidence that the surviving computation was executed correctly.
 ## Relationship to the papers
 
 The original [`prt/docs/prt.pdf`](../prt/docs/prt.pdf) is an architectural
-ancestor, not a specification of these contracts. The Dave paper describes a
-successor liveness design that these contracts do not implement.
+ancestor, not a specification of these contracts. The
+[`Dave paper`](../dave/docs/dave.pdf) describes a successor liveness design
+that these contracts do not implement. These contracts do adopt its base-layer
+threat model: censorship can be split and reordered, but its duration is one
+cumulative, non-rechargeable budget. Importing that adversary model does not
+import Dave's tournament algorithm or delay bound.
 
 | Subject | Original PRT paper | Current contracts |
 | --- | --- | --- |
@@ -331,7 +337,9 @@ Only one unmatched commitment per tournament can wait without an opposing
 running clock or delegated child. Full population-halving rounds require a
 corresponding live claim reservoir, but that structural fact must not be
 substituted for a finite wall-time proof. The timeout argument also depends on
-charging winners from their live remaining time, as fixed by PRT-002.
+charging each elapsed interval at most once: a paused bisection winner inherits
+the responder's overdue interval, while a running leaf winner has already paid
+for it through its live remainder.
 
 For the intended two-level deployment, an attack with `R` root claims and `S`
 claims in each slow child has the approximate delay shape
@@ -391,22 +399,18 @@ stored phase or change the externally visible tuple.
 
 ### Resolution and winner re-entry
 
-A leaf match may resolve for the side whose contested final state equals the
-post-state computed by the state-transition contract, but only if the shared
-timeout status also permits that side. With no timeout, clock settlement charges
-zero from the proven side's live remaining time. If the same commitment is the
-single timeout winner, it is charged the opponent's classified overdue duration.
-Its settled clock then returns to asynchronous pairing, which may leave it
-paused or immediately start another match. An opposite timeout winner or
-`ELIMINATE_BOTH` rejects the proof as too late.
+A leaf proof is available only while neither clock has expired. `winLeafMatch`
+checks that timeout status before invoking the state-transition contract. A
+successful proof snapshots and pauses the proven side's live remainder, then
+returns it to asynchronous pairing. Once either clock expires, proof resolution
+reverts with `CannotAdvanceTimedOutClock`; callers must use the timeout verb
+selected by the shared classifier.
 
-At the same observation instant, successful proof and timeout resolutions
-cannot select different survivors. A proof compatible with a single-winner
-timeout outcome selects the same survivor and clock charge before identical
-re-pairing; an incompatible proof rejects in favor of the timeout outcome.
-Objective state-transition correctness remains subordinate to clock viability:
-a correct commitment that misses its clock can lose by timeout, just as it
-could before this ordering ambiguity was removed.
+This makes proof, single-winner timeout, and double elimination disjoint at one
+observation instant. Objective state-transition correctness remains subordinate
+to clock viability: a correct commitment that misses its clock can lose by
+timeout. The strict verb partition also avoids doing an expensive proof after
+the match has already become timeout-resolvable.
 
 A non-leaf match resolves when its linked child finishes:
 
@@ -417,16 +421,26 @@ A non-leaf match resolves when its linked child finishes:
 
 A timeout resolution has one of three effects:
 
-- Commitment one survives and is charged for commitment two's overdue time.
-- Commitment two survives and is charged for commitment one's overdue time.
+- Commitment one survives after any phase-dependent deferred charge is
+  subtracted.
+- Commitment two survives after any phase-dependent deferred charge is
+  subtracted.
 - Neither has enough time to survive, so both are eliminated.
 
-When exactly one clock is expired, its opponent survives only if the opponent's
-live remaining time is strictly greater than the expired clock's overdue time.
-Equality or a larger overdue duration eliminates both commitments. The two
-mutating timeout paths and `canWinMatchByTimeout` derive from the same pure
-four-way classification. The view is true only for a single-winner outcome and
-returns false for nonexistent or deleted matches. It does not validate the
+The charge depends on the legal match phase. During active bisection the
+prospective winner is paused, so the expired responder's overdue duration is a
+deferred interval in which timeout cleanup could itself have been censored. The
+paused winner survives only when its stored remainder is strictly greater than
+that charge; equality eliminates both commitments. During a sealed leaf both
+clocks are already running, so the survivor's live remainder has paid for the
+elapsed interval and the deferred charge is zero. When the allowances differ,
+the shorter clock's deadline begins a single-winner window that lasts through
+the block before the longer clock's deadline; at the longer deadline both are
+eliminated.
+
+The two mutating timeout paths and `canWinMatchByTimeout` derive from the same
+pure four-way classification. The view is true only for a single-winner outcome
+and returns false for nonexistent or deleted matches. It does not validate the
 Merkle children needed to settle that winner.
 
 The survivor re-enters the same dangling/pairing mechanism. This repeated
@@ -489,6 +503,11 @@ Required clock invariants:
 - Pausing snapshots live remaining time.
 - Charging a clock starts from live remaining time, never stale stored
   allowance.
+- Timeout accounting subtracts one elapsed interval from a correct
+  commitment's clock at most once.
+- A running timeout winner is assigned no deferred charge because its live
+  remainder already reflects elapsed time. A paused timeout winner is charged
+  the expired responder's overdue duration.
 - Pairing and winner re-entry never increase either clock balance.
 - A response discount applies only before the responder's original deadline
   and never increases its starting balance.
@@ -519,15 +538,16 @@ earn at most 7 hours 40 minutes of discounts, one at each successful response.
 Repeated matches receive their own bounded response discounts.
 
 `Clock.pauseAfterResponseAt()` implements the non-bankable response formula.
-`Clock.chargeAndPauseAt()` snapshots live remaining time before subtracting the
-loser's overdue duration and pausing the winner. Single-clock operations that
-observe elapsed time take an explicit instant, and `MatchClocks` owns the legal
-bisection, leaf-race, and inner-seal phase transitions plus the shared timeout
-classification and proven-leaf settlement policy. PRT-002 records the prior
-sealed-leaf defect, PRT-004 the capability-view correction, PRT-009 the former
-bankable pairing grant, and PRT-010 the removal of proof/timeout ordering
-ambiguity. The review-time clock decisions and compatibility fence are
-preserved in
+`Clock.chargeAndPauseAt()` snapshots live remaining time before subtracting a
+caller-supplied deferred charge and pausing the winner. Single-clock operations
+that observe elapsed time take an explicit instant, and `MatchClocks` owns the
+legal bisection, leaf-race, and inner-seal phase transitions plus the shared
+timeout classification. PRT-002 records the original sealed-leaf restoration
+defect, PRT-004 the capability-view correction, PRT-009 the former bankable
+pairing grant, and PRT-010 the historical proof/timeout overlap. The later
+cumulative-censorship correction is recorded as a dated erratum in the review
+archive. The review-time clock decisions and compatibility fence are preserved
+in
 [`CLOCK-DESIGN.md`](reviews/2026-07-21-prt-dispute-game/CLOCK-DESIGN.md).
 
 ## Bonds and refunds
@@ -691,7 +711,8 @@ trust boundaries and must consume only children linked by the parent.
 The most important prose invariants should also exist as Foundry properties:
 
 - Stateful tournament accounting and legal lifecycle phases.
-- Clock conservation and timeout-outcome partitioning.
+- Clock conservation, non-amplification of cumulative censorship, and
+  timeout-outcome partitioning.
 - Exhaustive bisection parity and divergence attribution.
 - Parent-child winner and clock carryover.
 - Parameter-table shape and recursion beyond the canonical level count.

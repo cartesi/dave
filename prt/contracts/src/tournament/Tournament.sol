@@ -277,9 +277,12 @@ contract Tournament is ITournament {
     /// @dev
     /// - Behavior is identical for root and inner tournaments; level only affects
     ///   how the winner is later interpreted by parent tournaments.
-    /// - The loser's overdue time is charged against the winner's live remaining
-    ///   time. The winner must retain positive time; otherwise both commitments
-    ///   must be eliminated through `eliminateMatchByTimeout`.
+    /// - A paused winner is charged the loser's overdue time. A running winner
+    ///   has already paid for the same interval through its live remaining time,
+    ///   so no additional charge applies.
+    /// - The winner must retain positive time after any deferred charge;
+    ///   otherwise both commitments must be eliminated through
+    ///   `eliminateMatchByTimeout`.
     /// - `NeitherClockHasTimedOut` is the legacy selector for every outcome in
     ///   which no individual commitment can win, including double elimination.
     function winMatchByTimeout(
@@ -292,8 +295,8 @@ contract Tournament is ITournament {
         refundable(Gas.WIN_MATCH_BY_TIMEOUT)
         tournamentNotFinished
     {
-        // Timeouts are Match-phase-neutral by design: for any existing
-        // match, the clock configuration alone decides the outcome.
+        // The legal clock configuration encodes the match phase, so an
+        // existing match needs no separate structural decode here.
         matches[_matchId.hashFromId()].requireExists();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
@@ -308,7 +311,7 @@ contract Tournament is ITournament {
                 WrongChildren(1, _matchId.commitmentOne, _leftNode, _rightNode)
             );
 
-            _clockOne.chargeAndPauseAt(timeout.winnerCharge, current);
+            _clockOne.chargeAndPauseAt(timeout.deferredCharge, current);
             pairCommitment(
                 _matchId.commitmentOne,
                 _clockOne,
@@ -326,7 +329,7 @@ contract Tournament is ITournament {
                 WrongChildren(2, _matchId.commitmentTwo, _leftNode, _rightNode)
             );
 
-            _clockTwo.chargeAndPauseAt(timeout.winnerCharge, current);
+            _clockTwo.chargeAndPauseAt(timeout.deferredCharge, current);
             pairCommitment(
                 _matchId.commitmentTwo,
                 _clockTwo,
@@ -349,8 +352,8 @@ contract Tournament is ITournament {
         refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT)
         tournamentNotFinished
     {
-        // Timeouts are Match-phase-neutral by design: for any existing
-        // match, the clock configuration alone decides the outcome.
+        // The legal clock configuration encodes the match phase, so an
+        // existing match needs no separate structural decode here.
         matches[_matchId.hashFromId()].requireExists();
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
@@ -477,9 +480,18 @@ contract Tournament is ITournament {
         Match.SealedView memory divergence = Match.sealedView(
             matches[_matchId.hashFromId()], args.commitmentArgs.height
         );
+        Time.Instant current = Time.currentTime();
+        MatchClocks.TimeoutStatus memory timeout =
+            MatchClocks.classifyTimeoutAt(_clockOne, _clockTwo, current);
+        if (timeout.outcome != MatchClocks.TimeoutOutcome.NONE) {
+            revert CannotAdvanceTimedOutClock();
+        }
+
         uint256 agreeCycle =
             args.commitmentArgs.toCycle(divergence.divergencePosition);
 
+        // The entire dispute converges here: verify the one machine transition
+        // immediately after the last state on which both commitments agree.
         IStateTransition stateTransition = _tournamentArgs().stateTransition;
         Machine.Hash _finalState = Machine.Hash
             .wrap(
@@ -490,7 +502,6 @@ contract Tournament is ITournament {
                     args.provider
                 )
             );
-        Time.Instant current = Time.currentTime();
 
         if (_leftNode.join(_rightNode).eq(_matchId.commitmentOne)) {
             require(
@@ -498,9 +509,7 @@ contract Tournament is ITournament {
                 WrongFinalState(1, _finalState, divergence.finalStateOne)
             );
 
-            MatchClocks.settleProvenLeafWinnerAt(
-                _clockOne, _clockTwo, WinnerCommitment.ONE, current
-            );
+            _clockOne.chargeAndPauseAt(Time.ZERO_DURATION, current);
             pairCommitment(
                 _matchId.commitmentOne,
                 _clockOne,
@@ -518,9 +527,7 @@ contract Tournament is ITournament {
                 WrongFinalState(2, _finalState, divergence.finalStateTwo)
             );
 
-            MatchClocks.settleProvenLeafWinnerAt(
-                _clockOne, _clockTwo, WinnerCommitment.TWO, current
-            );
+            _clockTwo.chargeAndPauseAt(Time.ZERO_DURATION, current);
             pairCommitment(
                 _matchId.commitmentTwo,
                 _clockTwo,
