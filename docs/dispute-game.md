@@ -691,11 +691,24 @@ ceiling is below 50 gwei.
 
 Exact reimbursement is not a correctness assumption or an endogenous validator
 incentive. Seven action allocations have retained measured ceilings;
-`WIN_LEAF_MATCH` uses a documented provisional subsidy for a canonical ordinary
-proof. Broader proof-class calibration is optional. PRT-003 records the review
-decision and known limitations;
+`WIN_LEAF_MATCH` uses a documented provisional subsidy selected from the
+largest canonical InputBox reference witness. That full-stack witness covers
+the production provider and state transition, but it is not a universal
+proof-class or whole-transaction ceiling: arbitrary trailing proof bytes,
+unresolved halt and exception semantics, and transaction-intrinsic calldata
+remain outside the claim. Broader proof-class calibration is optional. PRT-003
+records the review decision and known limitations;
 [`prt-refund-accounting.md`](prt-refund-accounting.md) derives the living
 reserve and conservation boundary.
+
+The dated 2026-07-23 calibration measured a 5,359,940-unit whole-transaction
+diagnostic for the maximum retained canonical input. That was 31.95% of
+Ethereum's 16,777,216-unit per-transaction cap and 8.93% of its 60,000,000-unit
+block gas limit. This establishes material admission headroom for that retained
+witness, not a permanent limit over future forks, proof encodings, or
+state-transition behavior. The
+[`PRT leaf-proof gas calibration`](reviews/2026-07-23-prt-leaf-proof-gas-calibration/)
+records the comparison, and the runbook requires it to be repeated.
 
 The refund callback occurs after `gasAfter` is sampled, so accepting, rejecting,
 or reentrant recipient behavior cannot change the requested value.

@@ -215,6 +215,16 @@ test-smart-contracts:
     just prt-contracts::test-disputes
     just rollups-contracts::test
 
+# validate every retained PRT refund-gas witness
+test-prt-gas:
+    just prt-contracts::test-gas
+    just rollups-contracts::test-prt-leaf-gas
+
+# reproduce every retained PRT refund-gas measurement and its environment
+measure-prt-gas:
+    just prt-contracts::measure-gas
+    just rollups-contracts::measure-prt-leaf-gas
+
 # regenerate Rust bindings from the contracts (no-op when sources unchanged)
 bind:
     just prt-contracts::bind

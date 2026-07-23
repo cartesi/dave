@@ -20,22 +20,26 @@ archive.
 
 ## Sources of truth
 
-Paths in this table are relative to `prt/contracts`.
+Paths in this table are relative to the repository root.
 
 | Concern | Source |
 | --- | --- |
-| Production action allocations | `src/tournament/libs/Gas.sol` |
-| Price policy, terminal maximum, and bond formula | `src/tournament/libs/Bond.sol` |
-| Retained execution witnesses | `test/gas/TournamentGas.t.sol` |
-| Reserve algebra and population properties | `test/accounting/RefundReserve.t.sol` |
-| Exact refund formula and cap boundaries | `test/accounting/RefundFormula.t.sol` |
-| Callback and per-clone lock behavior | `test/accounting/RefundCallbacks.t.sol` |
-| Compiler, optimizer, and EVM settings | `foundry.toml` |
-| Solidity dependency revisions | `soldeer.lock` |
+| Production action allocations | `prt/contracts/src/tournament/libs/Gas.sol` |
+| Price policy, terminal maximum, and bond formula | `prt/contracts/src/tournament/libs/Bond.sol` |
+| Retained Tournament-only witnesses | `prt/contracts/test/gas/TournamentGas.t.sol` |
+| Full-stack leaf-proof witnesses | `cartesi-rollups/contracts/test/gas/PrtLeafProofGasFfi.t.sol` |
+| Reserve algebra and population properties | `prt/contracts/test/accounting/RefundReserve.t.sol` |
+| Exact refund formula and cap boundaries | `prt/contracts/test/accounting/RefundFormula.t.sol` |
+| Callback and per-clone lock behavior | `prt/contracts/test/accounting/RefundCallbacks.t.sol` |
+| Compiler, optimizer, and EVM settings | Both contracts projects' `foundry.toml` files |
+| Solidity dependency revisions | Both contracts projects' `soldeer.lock` files |
 
 The gas tests observe the production `PartialBondRefund` event; they do not add
 instrumentation to `Tournament`. Formula and callback tests establish payment
-semantics separately and are not substitutes for production gas witnesses.
+semantics separately and are not substitutes for production gas witnesses. The
+leaf-proof suite lives in the Rollups contracts project so it can use the real
+`InputBox`, `DaveConsensus` provider, Cartesi state transition, and Tournament
+without adding an upward dependency from PRT.
 
 ## What is measured
 
@@ -83,26 +87,43 @@ the production cap bind before the event exposes the uncapped units.
 Run from a clean repository root inside the repository development environment:
 
 ```bash
-direnv exec . just prt-contracts::measure-gas
+direnv exec . just measure-prt-gas
 ```
 
-The recipe owns the required Forge release and gas-relevant Foundry settings.
-It records:
+The recipe verifies the required Forge release; it does not install it. It
+records:
 
 - the Git revision and clean state;
 - the exact Forge version;
-- effective Solidity, optimizer, IR, and EVM settings;
-- hashes of `foundry.toml`, `soldeer.lock`, and installed dependencies; and
+- both projects' effective Solidity, optimizer, IR, and EVM settings;
+- hashes of both projects' configuration, lockfiles, and installed
+  dependencies;
+- the yield-machine root, Lua version, Cartesi Machine version, and resolved
+  native Cartesi Lua module; and
 - recursive submodule revisions.
 
 Also record the operating system and architecture. Use a fresh checkout or CI
 job for an accepted run and restore dependencies from the lockfile.
 
+The development shell may expose a development Forge build. Obtain the release
+named by `GAS_FOUNDRY_VERSION` and `PRT_GAS_FOUNDRY_VERSION`, verify its archive
+and binary hashes against the latest accepted calibration record, and prepend
+its directory inside `direnv exec`:
+
+```bash
+direnv exec . bash -lc \
+  'export PATH=/absolute/path/to/release-foundry:$PATH; just measure-prt-gas'
+```
+
+Prepending outside `direnv exec` is insufficient because the development
+environment may replace `PATH`. A version bump requires a new accepted record,
+including new release hashes; do not copy old hashes forward.
+
 For exploratory work only:
 
 ```bash
 ALLOW_DIAGNOSTIC_GAS_MEASUREMENT=1 \
-  direnv exec . just prt-contracts::measure-gas
+  direnv exec . just measure-prt-gas
 ```
 
 Never approve constants from a diagnostic report. Reproduce the result on the
@@ -119,8 +140,9 @@ Before choosing a ceiling, record:
    orientation, dangling re-pairing, and nested calls;
 4. maximum Merkle proof lengths;
 5. state-transition and input proof classes, representations, and size bounds;
-   and
-6. production counters and callback behavior included in deployed code.
+6. production counters and callback behavior included in deployed code; and
+7. the target chain's active per-transaction gas-limit cap and observed block
+   gas limit.
 
 Gas witnesses inject the geometry they require. They must not import canonical
 deployment constants merely for convenience. A geometry change matters when it
@@ -147,7 +169,7 @@ The retained suite must cover at least:
 | `SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT` | Charged nonzero-position seal with maximum proof and real child clone |
 | `WIN_INNER_TOURNAMENT` | Both parent winners; resolved and single-claim children; final legal carryover block; dangling re-pairing |
 | `ELIMINATE_INNER_TOURNAMENT` | Expired resolved winner, expired single claimant, and no-winner child |
-| `WIN_LEAF_MATCH`, if claiming a proof-class ceiling | Full Tournament entry point for every supported transition and input class |
+| `WIN_LEAF_MATCH` reference subsidy | Full Tournament entry point through the production provider and state transition; ordinary, reset, rejected-input revert, in-range input boundaries, out-of-range fixpoint, both expensive winner orientations, nonzero position, and dangling re-pairing |
 
 When a more expensive reachable shape appears, it becomes the selected maximum.
 Keep cheaper alternate branches as regressions when their storage or control
@@ -156,8 +178,8 @@ flow differs.
 ## 4. Run and interpret
 
 ```bash
-direnv exec . just prt-contracts::measure-gas
-direnv exec . just prt-contracts::test-gas
+direnv exec . just measure-prt-gas
+direnv exec . just test-prt-gas
 ```
 
 The verbose report prints the measured allocation, reviewed minimum, rounded
@@ -174,6 +196,29 @@ allocation may be retained to avoid production and deployment churn for a small
 downward measurement shift. Record and assert the exact retained headroom; do
 not let a generic upper-bound assertion hide a stale or arbitrarily oversized
 selection.
+
+### Check network admission headroom
+
+The configured action allocation and the whole-transaction gas requirement are
+different quantities. For the largest retained whole-transaction diagnostic:
+
+1. compare it with the target chain's active per-transaction gas-limit cap;
+2. compare it with the observed block gas limit;
+3. record the absolute remaining per-transaction space and both percentages;
+   and
+4. leave an explicit operational buffer for estimation variance.
+
+Query these limits for the target chain and active fork. Do not assume
+Ethereum's values are permanent or that an L2 inherits them. A transaction can
+be insufficiently refundable yet executable, or fully subsidized yet too large
+for network admission; neither conclusion follows from the other.
+
+As of the 2026-07-23 calibration, Ethereum Mainnet's
+[EIP-7825](https://eips.ethereum.org/EIPS/eip-7825) transaction cap was
+16,777,216 units and its observed block gas limit was 60,000,000 units. The
+retained 5,359,940-unit maximum canonical-input diagnostic occupied 31.95% of
+the transaction cap and 8.93% of the block limit. Treat that as dated evidence,
+not a permanent constant.
 
 ## 5. Change an allocation
 
@@ -225,7 +270,7 @@ Run at least:
 
 ```bash
 direnv exec . just prt-contracts::check-fmt
-direnv exec . just prt-contracts::test-gas
+direnv exec . just test-prt-gas
 direnv exec . just prt-contracts::test-disputes
 direnv exec . just rollups-contracts::test
 direnv exec . just prt-contracts::compatibility-hashes
@@ -252,6 +297,8 @@ Record:
   retained headroom;
 - old and new terminal maximum;
 - work reserves and join bonds at supported heights;
+- the active per-transaction and block gas limits, plus the maximum retained
+  whole-transaction diagnostic and its headroom against both;
 - whether economic policy constants changed;
 - focused, dispute, and downstream test results;
 - exact refund-formula and callback results;
@@ -271,7 +318,8 @@ Repeat the complete procedure after changes to:
 - production counters, callbacks, locks, or the refund modifier;
 - supported geometry or Merkle proof lengths;
 - state-transition implementation or accepted proof encoding;
-- data-provider or InputBox representation and maximum size; or
+- data-provider or InputBox representation and maximum size;
+- target-chain transaction or block gas limits and calldata repricing; or
 - the set of supported successful branches.
 
 A small diff is not an exemption. An unchanged recommendation is still a result
@@ -279,9 +327,19 @@ that must be reproduced and recorded.
 
 ## Leaf proofs and InputBox changes
 
-`WIN_LEAF_MATCH` may be configured as a provisional ordinary-proof subsidy
-rather than a finite proof-class ceiling. This is compatible with the refund's
-role as a bounded aid to altruistic validation; it must be documented honestly.
+`WIN_LEAF_MATCH` is configured as a provisional reference-path subsidy, not a
+finite proof-class ceiling. Its selected witness uses the largest canonical
+input currently reachable through the production InputBox, then executes the
+full `Tournament.winLeafMatch -> CartesiStateTransition -> DaveConsensus ->
+InputBox` path. This is compatible with the refund's role as a bounded aid to
+altruistic validation; it must be documented honestly.
+
+The retained full-stack matrix also covers ordinary uarch steps, resets,
+rejected-input reverts, small and representative in-range inputs, the
+out-of-range fixpoint, both expensive winner orientations, nonzero divergence,
+match deletion, and dangling re-pairing. It uses exact InputBox event bytes and
+pins the first payload above the maximum as rejected. FFI execution is serial
+because the machine snapshot helper is not safe for concurrent writers.
 
 Before claiming a comprehensive ceiling, retain full-entry-point witnesses for:
 
@@ -298,12 +356,13 @@ once either clock expires, so the timeout boundary belongs in semantic
 rejection tests rather than a successful gas witness. An isolated transition
 maximum is not necessarily the Tournament maximum.
 
-The reviewed implementation permits successful proof encodings with trailing
-bytes because buffer consumption is not required to end exactly at the proof
-boundary. The out-of-range input path can also return zero before validating
-the supplied input segment. Verify these properties against current code before
-making a finite bound claim; canonical proof consumption or explicit size
-bounds may be prerequisites.
+The current evidence still does not enumerate every honest instruction/access
+shape or settle halt and exception behavior. The implementation also permits
+successful proof encodings with trailing bytes because buffer consumption is
+not required to end exactly at the proof boundary. The out-of-range input path
+can return zero before validating the supplied input segment. These properties
+prevent a universal finite ceiling claim; canonical proof consumption or
+explicit size bounds may be prerequisites.
 
 The current InputBox path stores a hash, then resubmits the encoded input during
 a dispute so the provider can authenticate and Merkleize it before the state

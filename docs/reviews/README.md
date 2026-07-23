@@ -24,3 +24,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-07-23-prt-timeout-gas-calibration/`](2026-07-23-prt-timeout-gas-calibration/)
   - accepted follow-up gas calibration for the cumulative-censorship timeout
   fix and Match readability refactor.
+- [`2026-07-23-prt-leaf-proof-gas-calibration/`](2026-07-23-prt-leaf-proof-gas-calibration/)
+  - full-stack leaf-proof subsidy calibration through the production InputBox,
+  DaveConsensus provider, state transition, and Tournament entry point.
