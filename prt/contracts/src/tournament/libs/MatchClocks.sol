@@ -143,9 +143,10 @@ library MatchClocks {
         if (one.isRunning()) {
             one.pauseAfterResponseAt(responseBudget, current);
             return two;
+        } else {
+            two.pauseAfterResponseAt(responseBudget, current);
+            return one;
         }
-        two.pauseAfterResponseAt(responseBudget, current);
-        return one;
     }
 
     function _requireBisection(Clock.State memory one, Clock.State memory two)

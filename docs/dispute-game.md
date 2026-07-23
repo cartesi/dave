@@ -157,11 +157,20 @@ Important invariants:
 ### Bisection
 
 Each match compares two commitment trees. One clock runs while that participant
-must reveal the next children. A valid `advanceMatch` descends one tree level
-toward the first divergent leaf, then switches the turn. A height-`H` match has
-exactly `H` eligible responses: `H - 1` advances and one final leaf or inner
-seal. If both child subtrees differ, bisection selects the left child, preserving
-the first-divergence rule.
+must reveal the next children. A valid `advanceMatch` moves the shared
+first-divergence frontier one tree level, then switches the turn. A height-`H`
+match has exactly `H` eligible responses: `H - 1` advances and one final leaf or
+inner seal. If both child subtrees differ, bisection selects the left child,
+preserving the first-divergence rule.
+
+The stored reveal is deliberately staggered. At the start of a turn, the
+waiting commitment's children are already cached. The current revealer opens
+its parent to choose the divergent branch, then also opens its selected child.
+The selected child from each commitment becomes the next divergence frontier:
+the waiting child becomes the next `otherParent`, while the revealer's
+grandchildren become the next cached pair. Roles then swap. Conceptually, the
+two-tree search descends one level per advance even though each commitment
+supplies two adjacent tree openings on its alternating turns.
 
 Commitment one reveals first, and each advance swaps the revealer. The final
 response therefore reveals commitment one's subtree and checks its agree-state
