@@ -19,24 +19,14 @@ library Bond {
 
     /// @notice Largest configured terminal allocation shared by every level.
     function terminalAllocation() internal pure returns (uint256) {
-        uint256 terminal = Gas.WIN_MATCH_BY_TIMEOUT;
-        terminal = _max(terminal, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
-        terminal = _max(terminal, Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH);
-        terminal =
-            _max(terminal, Gas.SEAL_LEAF_MATCH + Gas.WIN_MATCH_BY_TIMEOUT);
-        terminal = _max(
-            terminal, Gas.SEAL_LEAF_MATCH + Gas.ELIMINATE_MATCH_BY_TIMEOUT
-        );
-        terminal = _max(
-            terminal,
-            Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
-                + Gas.WIN_INNER_TOURNAMENT
-        );
-        return _max(
-            terminal,
-            Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
-                + Gas.ELIMINATE_INNER_TOURNAMENT
-        );
+        uint256 timeoutTerminal =
+            _max(Gas.WIN_MATCH_BY_TIMEOUT, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
+        uint256 leafTerminal =
+            Gas.SEAL_LEAF_MATCH + _max(Gas.WIN_LEAF_MATCH, timeoutTerminal);
+        uint256 innerTerminal = Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+            + _max(Gas.WIN_INNER_TOURNAMENT, Gas.ELIMINATE_INNER_TOURNAMENT);
+
+        return _max(timeoutTerminal, _max(leafTerminal, innerTerminal));
     }
 
     /// @notice Configured refundable work for one height-`height` match.

@@ -45,10 +45,11 @@ the legal direct, leaf, and inner terminal sequences:
 | Inner winner propagation | `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + Gas.WIN_INNER_TOURNAMENT` |
 | Inner elimination | `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + Gas.ELIMINATE_INNER_TOURNAMENT` |
 
-`Bond.terminalAllocation()` enumerates these paths. A new successful terminal
-path must be added there and to the independent legal-path accounting tests.
-Changing an existing allocation flows automatically through `E`, `W(h)`, and
-`B(h)` when that path becomes or remains the maximum.
+`Bond.terminalAllocation()` factors these paths into direct timeout,
+sealed-leaf, and sealed-inner families. The independent accounting tests
+enumerate every path separately. A new successful terminal path must be added
+to both. Changing an existing allocation flows automatically through `E`,
+`W(h)`, and `B(h)` when that path becomes or remains the maximum.
 
 The formula assumes valid positive geometry. Canonical and custom deployment
 tables must reject zero-height matches before deployment.

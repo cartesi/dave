@@ -3,13 +3,14 @@
 Status: accepted 2026-07-23
 
 This record captures the gas recalibration required by the cumulative-censorship
-timeout fix and the subsequent Match readability refactor. It is historical
-evidence, not the maintained calibration procedure. Follow
+timeout fix, the subsequent Match readability refactor, and the final
+terminal-reserve factorization. It is historical evidence, not the maintained
+calibration procedure. Follow
 [`prt-refund-gas-calibration.md`](../../runbooks/prt-refund-gas-calibration.md)
 for later changes.
 
 The accepted candidate is
-`1aea024dd10372001a637d39a05f4bbd55aa5436`. The worktree was clean. The
+`b25b9fe8a301ad5eab3566ef1d392175ccf17772`. The worktree was clean. The
 retained matrix passed without changing any production gas, fee, refund, or bond
 constant.
 
@@ -44,7 +45,8 @@ The official Darwin arm64 v1.5.1 release archive was downloaded to a temporary
 directory, both hashes above were verified, and its `bin` directory was placed
 first on `PATH` after entering the `direnv` environment. No `FOUNDRY_*`
 override was present. The fresh-worktree measurements reproduced the earlier
-clean development-worktree measurements exactly.
+clean development-worktree measurements and every retained measurement from the
+preceding pre-factorization candidate exactly.
 
 ## Supported witness envelope
 
@@ -115,8 +117,9 @@ amounts, without improving a security property. The selected witnesses now
 assert exactly the rounded maximum plus the recorded 1,000-unit headroom, so
 a change in the rounded recommendation fails visibly.
 
-No `Gas.sol`, `Bond.sol`, `WORK_PRICE_CAP`, `PRIORITY_FEE_CAP`, or payment
-callback value changed.
+No allocation, work-price, priority-fee, payment-callback, terminal, reserve, or
+bond value changed. `Bond.terminalAllocation()` was factored by protocol phase
+without changing its result.
 
 ## Derived accounting
 
@@ -164,15 +167,17 @@ Current Tournament compatibility hashes are:
 ```text
 ABI: 67e34ced79c75e19935e3cfc67305ac22f634a0a90f9477e10062ac0bc8feb8a
 semantic storage: 952af2f68c5d04f9bf27a720e04c12492453d2edd76b7516bcdb1cf2e873a329
-creation bytecode without metadata: 4d03edb91eab5f546c3419594bb8f5657886d2502df96bcf1af6737e067d386d
-runtime bytecode without metadata: d6aada33d49b29ce88a970d262e5eeb816580a769950a5ad85df0a0b1d0f7ddd
+creation bytecode without metadata: cf083fa85ae2b9136128dc131dfcf462600f0a8b68ad46c49f8c535dd731d6c1
+runtime bytecode without metadata: 09f376fc598c89b2d69d14c543458dd6e18b7002d0ce5b4743c3e1e6796e346e
 ```
 
 ABI and semantic storage remain unchanged from the pre-fix contract. Production
-bytecode changed in the earlier timeout and Match commits, not in the witness
-or calibration-selection commits. Deployment artifacts and derived CREATE2
-addresses were not regenerated in this pass; they must be regenerated from the
-final rebased production tree before release.
+bytecode changed in the timeout, Match, and terminal-reserve refactors, not in
+the witness or calibration-selection commits. The terminal-reserve factorization
+reduced both metadata-free creation and runtime bytecode by 124 bytes relative
+to the preceding candidate. Deployment artifacts and derived CREATE2 addresses
+were not regenerated in this pass; they must be regenerated from the final
+rebased production tree before release.
 
 The Rust and Lua timeout strategies and end-to-end timeout scenarios remain
 owned by [`prt-timeout-alignment.md`](../../plans/prt-timeout-alignment.md).
