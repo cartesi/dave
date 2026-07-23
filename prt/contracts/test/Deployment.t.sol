@@ -13,18 +13,45 @@ contract DeploymentHarness is DeploymentScript {
         return Seconds.unwrap(_getMatchEffortInSeconds());
     }
 
-    function registerAndGetMatchEffort() external returns (uint64) {
+    function registerAndGetTiming() external returns (uint64, uint64) {
         _registerChains();
-        return Time.Duration.unwrap(_getMatchEffort());
+        _registerChainKinds();
+        return (
+            Time.Duration.unwrap(_getMatchEffort()),
+            Time.Duration.unwrap(_getMaxAllowance())
+        );
     }
 }
 
 contract DeploymentTest is Test {
-    function testResponseBudgetCalibration() public {
+    function testDevnetClockCalibration() public {
         DeploymentHarness harness = new DeploymentHarness();
         assertEq(harness.matchEffortInSeconds(), 5 minutes);
 
         vm.chainId(31337);
-        assertEq(harness.registerAndGetMatchEffort(), 25);
+        (uint64 matchEffort, uint64 maxAllowance) =
+            harness.registerAndGetTiming();
+        assertEq(matchEffort, (5 minutes) / (12 seconds));
+        assertEq(maxAllowance, (1 hours) / (12 seconds));
+    }
+
+    function testEthereumMainnetClockCalibration() public {
+        DeploymentHarness harness = new DeploymentHarness();
+        vm.chainId(1);
+
+        (uint64 matchEffort, uint64 maxAllowance) =
+            harness.registerAndGetTiming();
+        assertEq(matchEffort, (5 minutes) / (12 seconds));
+        assertEq(maxAllowance, (1 weeks + 1 hours) / (12 seconds));
+    }
+
+    function testEthereumSepoliaClockCalibration() public {
+        DeploymentHarness harness = new DeploymentHarness();
+        vm.chainId(11155111);
+
+        (uint64 matchEffort, uint64 maxAllowance) =
+            harness.registerAndGetTiming();
+        assertEq(matchEffort, (5 minutes) / (12 seconds));
+        assertEq(maxAllowance, (9 hours) / (12 seconds));
     }
 }
