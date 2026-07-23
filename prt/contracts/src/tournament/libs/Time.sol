@@ -3,6 +3,9 @@
 
 pragma solidity ^0.8.17;
 
+/// @notice Block-number time types and arithmetic for tournament deadlines.
+/// @dev Instants use `uint64(block.number)`, not `block.timestamp`. Clock storage
+/// uses the zero instant as its paused marker.
 library Time {
     type Instant is uint64;
     type Duration is uint64;
@@ -13,6 +16,8 @@ library Time {
     Instant constant ZERO_INSTANT = Instant.wrap(0);
     Duration constant ZERO_DURATION = Duration.wrap(0);
 
+    /// @notice Return the current EVM block-number coordinate.
+    /// @dev Deployment policy converts wall-clock durations into this coordinate.
     function currentTime() internal view returns (Instant) {
         return Instant.wrap(uint64(block.number));
     }
@@ -59,6 +64,8 @@ library Time {
         return Duration.wrap(l < r ? 0 : l - r);
     }
 
+    /// @notice Return the duration from `right` to `left`.
+    /// @dev Requires `left >= right`; checked arithmetic reverts otherwise.
     function timeSpan(Instant left, Instant right)
         internal
         pure
@@ -69,6 +76,8 @@ library Time {
         return Duration.wrap(l - r);
     }
 
+    /// @notice Return whether `current` has reached the deadline.
+    /// @dev Expiry is inclusive: equality with `timestamp + duration` is timed out.
     function timeoutElapsedSince(
         Instant timestamp,
         Duration duration,

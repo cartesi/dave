@@ -39,14 +39,24 @@ Safety requires:
 Liveness and bounded delay additionally require:
 
 - The adversary's cumulative censorship of the correct participant does not
-  exceed the one global budget `C`; that budget does not reset per transaction,
-  match, or tournament level.
+  exceed the one global budget `C` across one root dispute and all of its linked
+  descendants; that budget does not reset per transaction, match, or level.
 - The application is disputable within the clock dimensioning assumptions in
   [`dimensioning.md`](dimensioning.md).
 - The chain time source advances according to the assumptions used to convert
   wall-clock durations into protocol durations.
 - At least one externally motivated actor submits required progress and cleanup
   transactions. The protocol does not promise an endogenous validator profit.
+
+Every timer uses an inclusive expiry boundary. A join at the tournament
+deadline fails, although existing matches may continue resolving after closure.
+A response or seal at the responder's deadline fails, and a leaf proof at either
+leaf-clock deadline fails; the selected timeout verb becomes eligible at that
+clock boundary. A child winner is no longer usable at its carryover deadline,
+when child elimination becomes eligible. A configured duration must therefore
+strictly exceed the aggregate block delay before a required progress action. If
+a policy input such as `C` or `T` is specified as an inclusive wall-clock
+maximum, deployment conversion must add the necessary boundary slack.
 
 A timeout can make an incorrect commitment survive if the correct participant
 does not act within those assumptions. Timeout victory is part of the protocol,
@@ -227,14 +237,15 @@ During bisection, one of each match's two clocks runs; after leaf sealing both
 run. A leaf tournament therefore has at least `M` running clocks. Stale clock
 storage for commitments already eliminated is not part of `K`.
 
-A sealed non-leaf match is the recursive exception: both parent clocks pause
-with live remainders `r1` and `r2`, and the child tournament receives
-`max(r1, r2)` as its initial allowance. A child deadline closes joining; child
-finish still depends on resolving its matches and any deeper children. The
-recursive structural invariant is therefore that every parent pair either has a
-clock running or has delegated population reduction to a child tournament. At
-most one commitment per tournament escapes pairing by waiting dangling. If `S`
-of the `M` parent matches are sealed-inner, the parent-local count is
+A sealed non-leaf match is the recursive exception: after the final response
+discount, both parent clocks pause with snapshotted remainders `r1` and `r2`,
+and the child tournament receives `max(r1, r2)` as its initial allowance. A
+child deadline closes joining; child finish still depends on resolving its
+matches and any deeper children. The recursive structural invariant is
+therefore that every parent pair either has a clock running or has delegated
+population reduction to a child tournament. At most one commitment per
+tournament escapes pairing by waiting dangling. If `S` of the `M` parent
+matches are sealed-inner, the parent-local count is
 `runningClocks >= M - S`; each of those `S` exceptions has one linked child
 carrying the bounded resolution obligation.
 
@@ -251,8 +262,28 @@ deadlines.
 
 On successful propagation, the returned child-winner clock replaces the
 corresponding parent clock after post-finish deduction; it is not added to the
-parent balance. Pairing cannot refill it, so
-`returned <= max(r1, r2) <= maxAllowance`.
+parent balance. The maximum is a shared pair envelope, not side-specific
+carryover. If the child winner maps to the side with the smaller post-discount
+snapshot, that side may return with more than its own `r_i`. The other parent is
+eliminated, and the returned survivor still satisfies
+
+```text
+0 < returned <= max(r1, r2) <= r1 + r2
+returned <= maxAllowance
+```
+
+The shared maximum is a worst-case envelope, not side-specific conservation. An
+adversary controlling both sides can choose which Sybil survives. Against a
+correct side, a child commitment is classified by its contested final state
+rather than by claimer or root lineage, so a distinct child root may enter
+either parent's final-state class. More exact lineage accounting would alter
+individual schedules without excluding the preserved-clock delay strategy.
+The fixed-budget, fixed-metric qualification and its non-claims are documented
+in [`dimensioning.md`](dimensioning.md).
+Thus recursive propagation may transfer live clock mass within the sealed pair,
+but does not create live pair-level clock mass. The eliminated side's historical
+clock storage may remain. Ordinary same-tournament settlement and pairing never
+grant time.
 
 That active-pair invariant, rather than the visual shape of the asynchronous
 bracket, gives a structural population reduction. It does not say that one
@@ -340,8 +371,9 @@ general adversarial theorem. The executable maximum witness for
 against `Tournament`.
 
 Progressively late joins have their initial clocks reduced by their lateness,
-and re-pairing never refills a survivor. Still, the asynchronous bracket can
-look like a list and a same-time dangling claim can retain a full paused clock.
+and ordinary re-pairing never refills a survivor. Still, the asynchronous
+bracket can look like a list and a same-time dangling claim can retain a full
+paused clock.
 Only one unmatched commitment per tournament can wait without an opposing
 running clock or delegated child. Full population-halving rounds require a
 corresponding live claim reservoir, but that structural fact must not be
@@ -350,25 +382,48 @@ charging each elapsed interval at most once: a paused bisection winner inherits
 the responder's overdue interval, while a running leaf winner has already paid
 for it through its live remainder.
 
-For the intended two-level deployment, an attack with `R` root claims and `S`
-claims in each slow child has the approximate delay shape
+For the intended two-level deployment, let `A_i` denote the allowance-scale
+term available at level `i`. An attack with `R` root claims and `S` claims in
+each slow child has the approximate allowance-only delay shape
 
 ```text
 log2(R) * (A0 + log2(S) * A1)
 ```
 
-This asymptotic expression suppresses finite response terms: discounts add up
-to `H_i * G` per match. For a conservative one-level leaf window, substitute
-`2A_i + H_i * G` for an allowance-only term. The construction requires a full
-adversarial reservoir of order `R * S`. Here `N` counts
-adversarial claim instances across distinct tournament contracts, not unique
-actors. With equal allowances and equal per-level bonds, a fixed claim budget is
-balanced at `R ~= S ~= sqrt(N)`, giving the familiar leading
-`log2(N)^2 / 4` factor. Actual fixed-ETH dimensioning must weight levels by
-their different bond values. This expression is a dimensioning construction,
-not a formal upper bound over every asynchronous ordering. The retained
-on-chain trace validates concurrent-child population mechanics for its fixed
-four-root, four-child-claim shape, not the expression's worst-case timing.
+For `L` per-level reservoirs `n_i`, with total claim instances approximately
+`N = product(n_i)`, the deepest nested allowance term has the shape
+
+```text
+A_(L - 1) * product(log2(n_i))
+```
+
+Under comparable per-level allowance and claim costs, the balanced construction
+uses `n_i ~= N^(1/L)` and has the familiar leading shape
+
+```text
+A * (log2(N) / L)^L
+```
+
+These asymptotic expressions suppress finite response terms. For a conservative
+one-level leaf window, substitute `W_i = 2A_i + H_i * G` for an
+allowance-only term. The construction requires a full adversarial reservoir of
+order `product(n_i)`. Here `N` counts claim instances across distinct
+tournament contracts, not unique actors. Different per-level bond values change
+the budget-balancing point.
+
+The status of the delay claims is:
+
+| Claim | Scope | Status |
+| --- | --- | --- |
+| At least `floor(K / 2)` clocks run | Single-level leaf tournament | Exact structural lower bound |
+| `K(t + W) <= ceil(K(t) / 2)` | Joining closed, prompt cleanup, available transaction capacity | Conditional single-level bound |
+| Balanced `(log2(N) / L)^L` shape | Multi-level claim-reservoir construction | Asymptotic attack construction |
+| General attacker-versus-correct delay | Arbitrary recursive arrivals and finite blockspace | Open non-claim |
+
+The construction is not a recursive upper bound over every asynchronous
+ordering. The retained on-chain trace validates concurrent-child population
+mechanics for its fixed four-root, four-child-claim shape, not the expression's
+worst-case timing.
 
 Clock-induced delay and transaction work are different properties. A skewed
 arrival schedule can force a correct survivor through a linear number of
@@ -447,6 +502,20 @@ the shorter clock's deadline begins a single-winner window that lasts through
 the block before the longer clock's deadline; at the longer deadline both are
 eliminated.
 
+| Phase | No expired clock | Exactly one expired | Both expired |
+| --- | --- | --- | --- |
+| Active bisection | `NONE` | Paused opponent wins iff its remainder is greater than responder overdue; otherwise eliminate both | Not reachable in a legal pair |
+| Sealed leaf | `NONE` | Running survivor wins with zero deferred charge | Eliminate both |
+| Sealed inner | `NONE` | Not reachable; both clocks are paused | Not reachable |
+
+The contract cannot identify why cleanup was delayed. Under the threat model, a
+responsive correct participant and sufficient transaction capacity make the
+permissionless timeout transaction available as soon as it becomes valid. The
+model charges any further inclusion delay against `C`; in a real deployment the
+same interval may instead arise from ordinary congestion. A
+Sybil-versus-Sybil match may remain overdue by choice, but that does not
+establish a delay bound for a correct participant.
+
 The two mutating timeout paths and `canWinMatchByTimeout` derive from the same
 pure four-way classification. The view is true only for a single-winner outcome
 and returns false for nonexistent or deleted matches. It does not validate the
@@ -483,8 +552,9 @@ chain's `block.number` semantics and the registered conversion agree. Ethereum
 is the supported deployment target. Other base chains are experimental unless
 their time coordinate and conversion have been validated explicitly. In
 particular, the current Arbitrum entries are not valid because the EVM
-`NUMBER` opcode exposes the parent-chain block coordinate. See PRT-001 in the
-review ledger.
+`NUMBER` opcode exposes the parent-chain block coordinate. See historical
+finding PRT-001 in the
+[`REVIEW.md`](reviews/2026-07-21-prt-dispute-game/REVIEW.md).
 
 Each commitment clock stores an allowance and a start instant:
 
@@ -492,6 +562,10 @@ Each commitment clock stores an allowance and a start instant:
 - `allowance > 0` and `startInstant == 0` means paused.
 - `allowance > 0` and `startInstant > 0` means running.
 - Expiry is derived when elapsed running time reaches the stored allowance.
+
+Initialization and running are structural storage states, not topology or
+viability checks. Eliminated commitments retain historical initialized clocks,
+and an expired clock may remain structurally running even after match deletion.
 
 For a running clock at instant `now`:
 
@@ -502,6 +576,15 @@ overdue = max((now - startInstant) - allowance, 0)
 
 At exact equality the clock is expired and overdue is zero. A paused initialized
 clock retains its stored allowance and does not consume time.
+
+| Live phase | Clock shape | Permitted next transition |
+| --- | --- | --- |
+| Dangling commitment | One paused clock | Pair with the next eligible commitment |
+| Bisecting | Exactly one running, one paused | Advance or phase-aware timeout |
+| Ready to seal | Exactly one running, one paused | Leaf or inner seal, or phase-aware timeout |
+| Sealed leaf | Both running from the same instant | Proof while status is `NONE`, otherwise the selected timeout verb |
+| Sealed inner | Both paused with one linked child | Child propagation or child elimination |
+| Deleted match | No live match; historical clocks may remain initialized | None |
 
 Required clock invariants:
 
@@ -517,10 +600,25 @@ Required clock invariants:
 - A running timeout winner is assigned no deferred charge because its live
   remainder already reflects elapsed time. A paused timeout winner is charged
   the expired responder's overdue duration.
-- Pairing and winner re-entry never increase either clock balance.
+- Pairing and ordinary same-tournament winner re-entry never grant time.
+- Recursive child return may increase the selected side only within the shared
+  sealed-pair envelope; it remains bounded by `max(r1, r2)` and by the pair's
+  post-discount live clock mass.
 - A response discount applies only before the responder's original deadline
   and never increases its starting balance.
 - Parent carryover cannot create an initialized paused clock with zero time.
+
+The principal time intervals are accounted for as follows:
+
+| Interval | Clock accounting |
+| --- | --- |
+| Tournament creation to join | Deducted during initialization |
+| Active turn to successful response | Charged to the responder except for at most `G` |
+| Responder deadline to active-match cleanup | Deferred to the paused survivor |
+| Leaf seal to proof or timeout | Reflected in both live remainders |
+| Parent seal through child resolution | Parent clocks pause; the child owns the shared bounded obligation |
+| Child finish to parent propagation | Deducted from the returned child winner |
+| Dangling wait | Clock remains paused; closure stops new joins, but existing matches and children may delay finish; one slot bounds only the unpaired population |
 
 The canonical parameters provider rejects `maxAllowance == 0` at deployment.
 Before that guard, a canonical root with zero allowance was already closed at
@@ -554,10 +652,11 @@ legal bisection, leaf-race, and inner-seal phase transitions plus the shared
 timeout classification. PRT-002 records the original sealed-leaf restoration
 defect, PRT-004 the capability-view correction, PRT-009 the former bankable
 pairing grant, and PRT-010 the historical proof/timeout overlap. The later
-cumulative-censorship correction is recorded as a dated erratum in the review
-archive. The review-time clock decisions and compatibility fence are preserved
-in
-[`CLOCK-DESIGN.md`](reviews/2026-07-21-prt-dispute-game/CLOCK-DESIGN.md).
+cumulative-censorship correction is recorded in the review archive's
+[dated erratum](reviews/2026-07-21-prt-dispute-game/REVIEW.md#erratum-2026-07-23---sealed-leaf-censorship-amplification).
+The pre-correction design history and compatibility fence are preserved in
+[`CLOCK-DESIGN.md`](reviews/2026-07-21-prt-dispute-game/CLOCK-DESIGN.md);
+neither archive file is the current clock specification.
 
 ## Bonds and refunds
 
@@ -734,5 +833,8 @@ attacker's choices from the responsive correct participant's strategy. The
 finite search discovers and retains clock schedules; it must not be presented
 as that general theorem.
 
-The detailed test backlog is maintained in the review ledger rather than here,
-so this document can remain focused on protocol behavior.
+Current Foundry evidence and its remaining gaps live in
+[`prt-contract-testing.md`](prt-contract-testing.md). Cross-client timeout
+alignment remains tracked in
+[`prt-timeout-alignment.md`](plans/prt-timeout-alignment.md). The review archive
+is historical evidence, not a hidden backlog.

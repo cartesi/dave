@@ -216,6 +216,8 @@ contract Tournament is ITournament {
     ///     * Open to all final states, contested fields in TournamentArguments are zero.
     /// - NON-ROOT (level > 0):
     ///     * Final state must match one of the two contested final states.
+    /// - Clock initialization deducts time since this tournament's start, so a
+    ///   late join never receives the original allowance in full.
     function joinTournament(
         Machine.Hash _finalState,
         bytes32[] calldata _proof,
@@ -647,6 +649,9 @@ contract Tournament is ITournament {
 
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.requireInitialized();
+        // A child carries the sealed pair's shared maximum. It may therefore
+        // exceed this selected side's snapshot, but never the pair maximum or
+        // the sealed pair's post-discount live clock mass.
         _clock.replaceWithPaused(_innerClock);
 
         pairCommitment(
@@ -901,7 +906,8 @@ contract Tournament is ITournament {
     /// @notice Pair a new commitment into the tournament, creating a match if an
     /// existing dangling commitment is available.
     /// @dev If there's a dangling commitment, creates a match between it and the
-    /// new commitment. Otherwise, stores the new commitment as dangling.
+    /// new commitment and starts only the older dangling clock. Pairing changes
+    /// neither balance. Otherwise, stores the new commitment as dangling.
     function pairCommitment(
         Tree.Node _rootHash,
         Clock.State storage _newClock,

@@ -897,7 +897,7 @@ contract TournamentLifecycleHandler is Test {
         returns (TimeoutStatus memory)
     {
         // Express timeout policy directly from the two raw clock balances.
-        // Clock.t.sol owns the exhaustive truth table; the directed lifecycle
+        // MatchClocks.t.sol owns the exhaustive truth table; the directed lifecycle
         // traces below pin both winners and the inclusive equality boundary.
         GhostClock storage one = _commitments[ghost.commitmentOne].clock;
         GhostClock storage two = _commitments[ghost.commitmentTwo].clock;

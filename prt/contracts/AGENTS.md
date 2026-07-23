@@ -11,12 +11,14 @@ verify, never as evidence that a mechanism is correct.
 
 ## Read before editing
 
-Choose the narrowest relevant living document:
+Every production behavior change requires `docs/dispute-game.md`. Read the
+specialized living documents in addition, not instead:
 
 | Work | Required context |
 | --- | --- |
 | Any dispute-game behavior | [`docs/dispute-game.md`](../../docs/dispute-game.md) |
-| Clocks, timeouts, allowances, geometry, or level constants | [`docs/dimensioning.md`](../../docs/dimensioning.md) |
+| Clocks, timeouts, allowances, geometry, or level constants | [`docs/dispute-game.md`](../../docs/dispute-game.md) and [`docs/dimensioning.md`](../../docs/dimensioning.md) |
+| Timeout behavior or client parity while alignment is open | [`docs/plans/prt-timeout-alignment.md`](../../docs/plans/prt-timeout-alignment.md) |
 | Bonds, refunds, terminal payments, or burns | [`docs/prt-refund-accounting.md`](../../docs/prt-refund-accounting.md) |
 | Gas allocation changes | [`docs/runbooks/prt-refund-gas-calibration.md`](../../docs/runbooks/prt-refund-gas-calibration.md) |
 | Foundry tests or fixtures | [`docs/prt-contract-testing.md`](../../docs/prt-contract-testing.md) |
@@ -32,8 +34,8 @@ Distinguish the property affected by a change:
 - Result-selection safety assumes at least one correct commitment joins, its
   participant can act within the clock and censorship bounds, and the
   configured hashes, provider, and state transition are correct. The
-  censorship budget is global and non-rechargeable across the modeled dispute,
-  not fresh per action or match.
+  censorship budget is global and non-rechargeable across one root dispute and
+  its linked descendants, not fresh per action, match, or level.
 - Liveness depends on clock conservation, legal progress, cleanup, chain-time
   semantics, and the participant not being censored past its allowance.
 - Resource resistance depends on population reduction, work reserves, bounded
@@ -58,6 +60,8 @@ that seam require the Solidity, machine, and client implementations to agree.
   transitions.
 - `src/tournament/libs/MatchClocks.sol` owns legal two-clock transitions,
   response discounts, phase-aware timeout classification, and deferred charges.
+- `src/tournament/libs/Time.sol` owns the block-number coordinate and inclusive
+  expiry arithmetic; `Clock` uses its zero instant as the paused sentinel.
 - `src/tournament/libs/Gas.sol` contains reviewed action allocations.
 - `src/tournament/libs/Bond.sol` derives refund caps, terminal work, and join
   bonds from those allocations and fee policy.
@@ -66,8 +70,9 @@ that seam require the Solidity, machine, and client implementations to agree.
 - `src/arbitration-config/` owns the checked-in canonical parameter table and
   provider.
 - `src/state-transition/` adapts leaf proof verification.
-- `src/ITournament.sol` and provider/factory interfaces define external
-  compatibility surfaces.
+- `src/ITournament.sol` defines the external behavior and compatibility
+  surface, including the caller-facing clock and timeout contract.
+- Provider and factory interfaces define their external compatibility surfaces.
 - `script/Deployment.s.sol` converts deployment policy into chain-specific
   parameters.
 
@@ -84,9 +89,12 @@ configured level count; there are no production Top/Middle/Bottom contracts.
 - Active bisection has exactly one running clock. A sealed leaf has two clocks
   running from one instant. A sealed inner match has two paused clocks while its
   linked child resolves.
-- Pairing and survivor re-entry never increase clock balances. Each successful
-  advance or final seal applies the response discount exactly once and cannot
-  revive an expired clock.
+- Pairing and ordinary same-tournament survivor re-entry never grant time. Each
+  successful advance or final seal applies the response discount exactly once
+  and cannot revive an expired clock.
+- Inner sealing delegates `max(r1, r2)` as one shared pair envelope. A returned
+  child winner may exceed the selected side's snapshotted remainder, but cannot
+  exceed the sealed pair maximum or its post-discount live pair mass.
 - One shared timeout classification drives the capability view and both
   timeout mutations. Leaf proofs are valid only while that classification is
   `NONE`; once a timeout begins, callers must use the selected timeout verb.
@@ -172,6 +180,8 @@ investigative, not a correctness claim.
 Do not claim more than the maintained evidence establishes:
 
 - there is no general recursive adversarial-arrival liveness proof;
+- the exact `floor(K / 2)` running-clock invariant is single-level; sealed
+  inner matches pause both parent clocks and delegate their obligation;
 - selected two-level geometry is not enabled by these contracts alone;
 - non-Ethereum time and fee conformance is not established;
 - state-transition halt and exception semantics are owned by separate work;

@@ -20,9 +20,11 @@ Dave is permissionless.
 This means anyone can participate in the consensus.
 Since anyone can participate, there's the possibility of Sybil attacks, where an attacker can generate an army of fake personas and try to shift the consensus in their favour.
 
-Dave's security is one of N: a single honest validator can enforce the correct result.
-It doesn't matter if it's you against the world.
-If you're honest, Dave's got your back; you can fight a mountain of powerful, well-funded crooks and win, using a single laptop, in a relatively timely manner.
+Dave targets one-of-N security: under the protocol's stated correctness,
+clock, and censorship assumptions, one correct validator can prevent an
+incorrect result. It does not matter how many other validators are adversarial.
+The implemented PRT guarantees, assumptions, and non-claims are documented in
+the [dispute-game specification](docs/dispute-game.md#security-statement-and-assumptions).
 
 Dave is inspired by the David vs. Goliath archetype.
 
@@ -50,8 +52,13 @@ As long as one can provide a self-contained state-transition function, Dave will
 
 The first implementation of Dave is based on the Permissionless Refereed Tournaments (PRT) primitive.
 The paper can be found [here](https://arxiv.org/abs/2212.12439).
-The maximum delay and expenses grow logarithmically on the number of Sybils, and hardware and bonds are both low and constant, regardless of the number of Sybils.
-As such, the defenders have an exponential resource advantage over the attackers (making the algorithm secure), it's easy to become a validator (low bonds and hardware requirements, making the algorithm decentralized), and delay grows slowly.
+Under the paper's model, maximum delay and defender expense grow
+logarithmically with the number of Sybils, while validator hardware and bond
+requirements remain bounded. This repository implements a related recursive
+tournament variant; its local bounds and executable evidence do not yet amount
+to a general recursive attacker-versus-correct delay theorem. See the
+[implemented delay model](docs/dispute-game.md#delay-work-and-bracket-shape)
+before applying the paper's asymptotic claim to a deployment.
 
 
 ### Dave fraud-proof algorithm
@@ -131,7 +138,7 @@ The repository includes an example for PRT Dave:
 
 ## Documentation
 
-The knowledge base lives in [docs/](docs/) — start with
+The knowledge base lives in [docs/](docs/) - start with
 [docs/README.md](docs/README.md). It covers the commitment construction
 ([computation-hash](docs/computation-hash.md)), the epoch and dispute
 lifecycle, the node architecture, the test harness, and the build system.

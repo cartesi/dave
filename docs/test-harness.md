@@ -253,7 +253,9 @@ unverified claims - check before relying on them:
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
 - Multiple honest nodes defending the same epoch concurrently.
 - Timeout/clock edge cases from the node's side (the contracts have unit
-  tests; the node's reaction to being nearly out of time does not).
+  tests; the node's reaction to being nearly out of time does not). The current
+  cross-implementation release blocker is
+  [`prt-timeout-alignment.md`](plans/prt-timeout-alignment.md).
 - (closed 2026-07-09) Port hygiene: the free-port assert (2026-07-02)
   plus TEST_INSTANCE isolation - set it to a free port and the run
   gets its own anvil port and suffixed working-dir singletons

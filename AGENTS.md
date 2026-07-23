@@ -34,8 +34,9 @@ prt/client-lua/      PRT client in Lua. Testing node, sybil actor, and
 prt/tests/           Lua-orchestrated end-to-end tests. Spawns the real Rust
                      node plus dishonest sybils against anvil.
 prt/docs/            The original PRT paper (prt.pdf).
-dave/docs/           The Dave paper (dave.pdf), a liveness improvement over
-                     PRT. NOT what the current contracts implement.
+dave/docs/           The Dave paper (dave.pdf). Its successor tournament
+                     algorithm is not implemented here; its base-layer
+                     censorship model is adopted by the current clock design.
 cartesi-rollups/
   contracts/         Rollups consensus contracts (DaveConsensus, app factory).
   node/              The rollups node, a single crate: worker modules

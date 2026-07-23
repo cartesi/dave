@@ -342,8 +342,8 @@ interface ITournament {
 
     /// @notice A clock-dependent progress action cannot continue because a
     /// required clock cannot be preserved under the current timeout accounting.
-    /// @dev This includes pausing an expired running clock and settling a proven
-    /// leaf side that is incompatible with the pair's timeout outcome.
+    /// @dev This includes responding at or after a running clock's deadline and
+    /// proving a leaf after the shared classifier selects a timeout outcome.
     error CannotAdvanceTimedOutClock();
 
     /// @notice There is an attempt to initialize a clock with zero allowance,
@@ -451,26 +451,21 @@ interface ITournament {
         Tree.Node rightNode
     ) external payable;
 
-    /// @notice Advance a running match by one alternating double-bisection step
-    /// toward the first conflicting leaf.
+    /// @notice Advance the shared first-divergence frontier by one tree level.
     ///
     /// @dev
     /// ROLE & INPUTS FOR THIS STEP
-    /// - At this call, the tree stored in `Match.State.otherParent` is the one being
-    ///   bisected at height `h`.
-    /// - `leftNode` and `rightNode` MUST be the two children of that parent at
-    ///   height `h-1`.
+    /// - `Match.State.otherParent` is the current revealer's parent at height `h`.
+    /// - `leftNode` and `rightNode` MUST be its children at height `h - 1`.
     /// - The match compares the supplied revealing left child with the stored
     ///   waiting left child. A mismatch selects left; equality selects right.
-    /// - The caller MUST also provide `newLeftNode`/`newRightNode`, which are the
-    ///   children of the **chosen half** (left or right) that we descend into. These
-    ///   seed the next step after roles flip (alternation).
-    ///
+    /// - `newLeftNode` and `newRightNode` MUST open the selected revealing child.
+    ///   They seed the next turn after the commitment roles flip.
     ///
     /// INVARIANTS (enforced by the library)
-    /// - Height decreases monotonically toward leaves.
-    /// - Exactly one tree is double-bisected per call; roles alternate automatically.
-    /// - Node relationships are checked at every step (parent->children, child->children).
+    /// - The shared two-tree frontier descends exactly one level per call.
+    /// - One commitment supplies two adjacent openings; roles then alternate.
+    /// - Every supplied parent-to-child relationship is checked.
     ///
     /// @param matchId        The logical pair of commitments for this match.
     /// @param leftNode       Left child of the parent being bisected at this step (height h-1).
@@ -490,9 +485,11 @@ interface ITournament {
     ) external;
 
     /// @notice Resolve a timeout when exactly one commitment can still survive.
-    /// @dev Charges the expired commitment's overdue time against the winner's
-    /// live remaining time. The winner must retain strictly positive time;
-    /// equality or a larger overdue duration belongs to double elimination.
+    /// @dev During active bisection, the winner is paused and pays the expired
+    /// responder's overdue duration. During a sealed leaf, the winner is already
+    /// running, so its live remainder accounts for elapsed time and the deferred
+    /// charge is zero. The resulting paused clock must remain positive;
+    /// otherwise use `eliminateMatchByTimeout`.
     /// @param matchId The logical pair of commitments for this match.
     /// @param leftNode Left child of the winning commitment.
     /// @param rightNode Right child of the winning commitment.
@@ -505,33 +502,11 @@ interface ITournament {
     /// @notice Permissionless cleanup when neither commitment can survive
     /// timeout accounting.
     /// @dev
-    /// CLOCK MODEL
-    /// - During alternating double-bisection steps, exactly one clock runs.
-    /// - After leaf sealing (in leaf tournaments), both clocks intentionally run
-    ///   to incentivize either party to complete the state-transition proof.
-    ///
-    /// WHEN IS ELIMINATION ALLOWED?
-    /// - During bisection, exactly one side is on turn. Its clock keeps
-    ///   accumulating overdue time after expiry; the paused opponent does not
-    ///   actually start until a valid advance swaps the turn. After leaf sealing,
-    ///   both clocks may run simultaneously. This function allows deletion only
-    ///   after neither commitment has enough budget to survive:
-    ///     * Case 1: commitmentOne timed out first AND its overdue duration is
-    ///               at least commitmentTwo's live remaining time.
-    ///     * Case 2: commitmentTwo timed out first AND its overdue duration is
-    ///               at least commitmentOne's live remaining time.
-    ///
-    /// - Intuition (covers both models): once the first clock hits zero, keep
-    ///   counting until the other clock's remaining budget is fully drained;
-    ///   at that point both are out of time and the match can be eliminated.
-    ///   If both clocks run and reach zero simultaneously after leaf sealing,
-    ///   this condition holds immediately at that block.
-    ///
-    /// - Occurrence: **Sybil vs. Sybil**. Under the responsiveness and censorship
-    ///   assumptions, a correct participant acts before this state is reached.
-    ///
-    /// - Anyone may call this function; it is a public garbage-collection hook.
-    ///
+    /// During active bisection, elimination applies when the responder is expired
+    /// and its overdue duration is at least the paused opponent's remainder;
+    /// equality eliminates both. During a sealed leaf, it applies only when both
+    /// live remainders are zero. With unequal leaf allowances, the longer clock
+    /// wins from the shorter deadline through the block before its own deadline.
     /// @param matchId The pair of commitments that define the match to eliminate.
     function eliminateMatchByTimeout(Match.Id calldata matchId) external;
 
@@ -550,7 +525,10 @@ interface ITournament {
     ) external;
 
     /// @notice Propagate an inner tournament winner into its parent match.
-    /// @dev Child balance recovery is a separate permissionless operation.
+    /// @dev The returned clock replaces the selected parent side. Because the
+    /// child used the sealed pair's shared maximum, it may exceed that side's
+    /// snapshotted remainder but cannot exceed the pair maximum. Child balance
+    /// recovery is a separate permissionless operation.
     /// @param childTournament The inner/child tournament
     /// @param leftNode        Left child of the winning commitment.
     /// @param rightNode       Right child of the winning commitment.
@@ -587,11 +565,11 @@ interface ITournament {
     ) external;
 
     /// @notice Win a leaf match through the state-transition proof.
-    /// @dev The proven winner must also be viable under the match's timeout
-    /// status. With no expired clock, timeout settlement charges zero. If it is
-    /// the timeout winner, the expired opponent's overdue duration is charged
-    /// before the survivor re-enters pairing. An opposite timeout winner or
-    /// double elimination rejects the proof.
+    /// @dev Available only while timeout classification is `NONE`. Once either
+    /// clock reaches its deadline, this function reverts with
+    /// `CannotAdvanceTimedOutClock`; callers must use the timeout verb selected by
+    /// the shared classifier. A successful proof snapshots the proven side's
+    /// live remainder without a response discount.
     /// @param matchId         The logical pair of commitments for this match.
     /// @param leftNode        Left child of the winning commitment.
     /// @param rightNode       Right child of the winning commitment.

@@ -32,7 +32,9 @@ library MatchClocks {
     /// paid for elapsed time through its live remainder. A paused winner is
     /// charged the expired side's overdue duration, which represents the
     /// deferred interval in which timeout cleanup could be censored. A winner
-    /// must retain positive time after any deferred charge.
+    /// must retain positive time after any deferred charge; equality eliminates
+    /// both. Leaf transitions establish the common start instant expected when
+    /// both clocks are running.
     function classifyTimeoutAt(
         Clock.State memory one,
         Clock.State memory two,
@@ -118,7 +120,8 @@ library MatchClocks {
     }
 
     /// @notice Discount the final response and pause before inner delegation.
-    /// @return The larger of the two snapshotted remainders.
+    /// @return The larger remainder, used as the child tournament's shared pair
+    /// envelope rather than as side-specific carryover.
     function pauseForInnerAt(
         Clock.State storage one,
         Clock.State storage two,

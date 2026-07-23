@@ -90,11 +90,40 @@ winner's zero deferred charge. Tournament tests own the strict verb partition:
 a leaf proof is valid only under `NONE`, single-winner statuses select timeout
 victory, and `ELIMINATE_BOTH` selects elimination. Response-budget tests must
 prove that a successful response discounts elapsed time once without increasing
-the prior balance; pairing and survivor re-entry must not grant time.
+the prior balance; pairing and ordinary same-tournament survivor re-entry must
+not grant time. Recursive integration separately owns the shared pair envelope:
+a child return may exceed the selected side's snapshotted remainder, but not
+`max(r1, r2)` or the post-discount live pair mass.
 
 Tournament integration owns the structural distinctions that pair clocks alone
 cannot infer, including ready-to-bisect versus sealed-inner states when both
 clocks are paused.
+
+The living clock evidence map is:
+
+| Concern | Primary evidence |
+| --- | --- |
+| One-clock arithmetic, strict deadlines, and zero sentinel | `test/Clock.t.sol` |
+| Legal pair shapes, timeout partition, equality, and orientation symmetry | `test/MatchClocks.t.sol` |
+| Public proof, timeout, pairing, and rollback composition | `test/Tournament.t.sol` |
+| Independent one-level topology and clock ghost state | `test/properties/TournamentLifecycleInvariant.t.sol` |
+| Reachable lower bounds and exhaustive small one-level schedules | `test/properties/LeafPopulationDelay.t.sol` and `test/properties/BoundedOneLevelDelay.t.sol` |
+| Shared child envelopes, propagation, concurrent children, and generic depth | `test/properties/RecursiveTournamentLifecycle.t.sol`, `ConcurrentRecursivePopulation.t.sol`, and `FourLevelRecursiveLifecycle.t.sol` |
+| Ethereum and local-devnet block conversion for response and allowance budgets | `test/Deployment.t.sol` |
+
+Within `RecursiveTournamentLifecycle.t.sol`,
+`testChildWinnerSelectsParentSideByFinalStateNotByRoot` pins final-state
+classification, while `testChildReturnUsesSharedParentPairEnvelope` pins the
+asymmetric clock return. Together they establish the mechanics behind the
+simplification; they do not identify an optimal attacker schedule or prove a
+general recursive delay bound.
+
+The one-level invariant establishes the exact parity-aware relation
+`runningClocks >= floor(K / 2)` for leaf tournaments. It is not a recursive
+clock theorem: sealed inner parents pause both clocks and delegate the
+obligation to a linked child. No current model combines an identified correct
+commitment, an eager correct strategy, an adversarial scheduler, and one shared
+censorship ledger `C`; that general recursive result remains open.
 
 ## Match ownership
 
