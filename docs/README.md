@@ -44,6 +44,9 @@ PRT contract engineering:
 - [runbooks/prt-refund-gas-calibration.md](runbooks/prt-refund-gas-calibration.md)
   - the maintained procedure for measuring action allocations and tracing their
   effects into bonds and deployment artifacts.
+- [plans/prt-timeout-alignment.md](plans/prt-timeout-alignment.md) - the open
+  release gate for aligning Rust and Lua clients with the contract's
+  phase-aware timeout policy.
 
 Historical internal reviews live under [reviews/](reviews/README.md). They preserve
 findings and evidence, but they are not current specifications or third-party

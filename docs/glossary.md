@@ -64,7 +64,7 @@ level. Terms marked (code) appear verbatim in identifiers.
   dave/docs/dave.pdf) improving PRT liveness - not yet what the contracts
   implement.
 - level: dispute granularity tier. Level 0 disputes the whole epoch at
-  coarse stride; the leaf level (currently 2) disputes single usteps.
+  coarse stride; level `levels - 1` disputes single usteps.
 - commitment (in a tournament): a joined claim, i.e. a Merkle root plus
   bond, paired into matches.
 - dangling commitment: the commitment currently waiting for an opponent in
@@ -83,13 +83,21 @@ level. Terms marked (code) appear verbatim in identifiers.
   clocks - the naive form loops forever, the subtle form concentrates
   maximally-long uarch instructions. Excluded by assumption: the app
   developer is trusted (docs/dimensioning.md).
-- chess clock: per-commitment time budget within a match; exactly one
-  side's clock runs at a time (except sealed leaf matches, where both
-  run).
+- chess clock: per-commitment time budget. Exactly one side runs during
+  bisection; both run after leaf sealing; both pause while a sealed inner match
+  delegates to its child; and a dangling commitment remains paused.
+- clock deadline: the inclusive expiry boundary
+  `current >= startInstant + allowance`. Progress that requires a live clock is
+  too late at equality; timeout resolution becomes eligible there.
+- censorship budget (`C`): one cumulative, non-rechargeable bound on delaying
+  the correct participant across a root dispute and all linked descendants.
 - matchEffort: legacy external name for the non-bankable elapsed-time discount
-  available to each successful bisection response, including sealing.
+  applied after each successful bisection response, including sealing. It is
+  never deposited into a clock.
 - maxAllowance: configured root allowance and structural upper bound for clocks
-  in parent-linked tournaments. No response operation raises a clock toward it.
+  in parent-linked tournaments. Inner sealing delegates the pair's greater
+  remainder as a shared child envelope; no response operation raises a clock
+  toward this bound.
 - win by timeout / eliminate by timeout: resolving a match when one (or
   both) clocks run out.
 - garbage collection (gc): permissionlessly eliminating finished or

@@ -121,7 +121,7 @@ algorithm or its delay bound. The adversary may delay any set of the correct
 participant's transactions, split that delay into intervals of arbitrary
 length, and reorder transactions. Across the chain timeline, the total duration
 for which correct-participant transactions are censored is bounded by one
-global budget `C`.
+global budget `C` for one root dispute and all of its linked descendants.
 
 `C` is cumulative and non-rechargeable. It is not a fresh budget for each
 transaction, match, tournament level, or timeout. A clock design is therefore
@@ -137,9 +137,12 @@ Timeout accounting depends on which clocks were consuming that interval:
 - During a sealed leaf both clocks run. A surviving clock's live remainder has
   already paid for every elapsed block since sealing. Transferring the expired
   opponent's overdue interval would charge the same time twice.
-- Delay chosen by a sybil for its own transaction is not censorship of the
-  correct participant. An adversary cannot manufacture transferable clock debt
-  merely by leaving its own clock overdue.
+- Delay chosen by a Sybil for its own transaction is not censorship of the
+  correct participant. The contract cannot observe that distinction, so this
+  statement relies on a responsive correct actor and sufficient transaction
+  capacity for immediate permissionless cleanup. The model charges any further
+  inclusion delay against `C`; the contract cannot distinguish censorship from
+  ordinary congestion.
 
 The contract-level timeout-accounting invariant is that one elapsed interval
 reduces a correct commitment's clock at most once. This is narrower than a
@@ -147,15 +150,33 @@ complete PRT liveness proof: asynchronous arrivals, finite blockspace,
 transaction work, and multi-level population reduction remain separate
 concerns.
 
+When comparing adversarial schedules, hold fixed both the adversary's resource
+budget and the damage metric. For clock dimensioning, the metric is
+clock-induced settlement delay. Dimensioning targets a schedule that maximizes
+that delay: making a dominated schedule more precise does not improve the
+worst-case bound while the maximizing schedule remains available. This is a
+design heuristic, not a proof that an optimal recursive schedule has been
+characterized. It does not compare transaction work, fees, refunds, or other
+damage metrics, and it does not relax correctness requirements for any
+schedule.
+
 ## Tournament clock budgets
 
 Keep three wall-clock quantities separate:
 
-- `C`: the global cumulative censorship budget across the modeled dispute.
-- `T`: the maximum supported time to construct the commitment needed for one
-  inner tournament.
+- `C`: the global cumulative censorship budget across one root dispute and its
+  linked descendants.
+- `T`: the supported time to construct the commitment needed for one inner
+  tournament.
 - `G`: the small per-response inclusion and execution budget for a tournament
   transaction.
+
+The contract expires a clock when `elapsed >= allowance`. These duration
+components are therefore strict provisioning bounds in the on-chain block
+coordinate: modeled consumption before a required progress action must remain
+below the configured duration. Timeout resolution becomes eligible at equality.
+If a wall-clock policy states an inclusive maximum, its conversion must add
+boundary slack rather than map equality to equality.
 
 For `L` tournament levels, the intended root allowance and structural clock
 bound are
@@ -167,9 +188,29 @@ maxAllowance = C + (L - 1) * T
 The root claim starts with the censorship budget and may later have to construct
 one new commitment at each inner level. A child tournament does not necessarily
 receive this maximum: sealing delegates the greater live remainder of the two
-parent clocks, and that value becomes the child's tournament allowance. The
-global `maxAllowance` remains a structural upper bound for legitimate child
-clocks; no response operation dynamically raises a clock toward that bound.
+parent clocks as a shared pair envelope, and that value becomes the child's
+tournament allowance. On return, the selected parent side may therefore receive
+more than its own snapshotted remainder, but
+`returned <= max(r1, r2) <= r1 + r2`, where `r1` and `r2` are the post-discount
+remainders snapshotted by the final seal. The parent has not yet established
+which side is correct, so the maximum prevents either side's lower remainder
+from truncating the other side's child dispute. The global `maxAllowance`
+remains a structural upper bound for legitimate child clocks; no response
+operation dynamically raises a clock toward that bound.
+
+The shared maximum is a deliberate worst-case simplification. In a
+Sybil-versus-Sybil parent match, the adversary controls both sides and can
+already choose which one survives, preserving the more useful remainder at the
+other's expense. In a correct-versus-Sybil match, child lineage is not
+authenticated by parent root or claimer: a distinct child commitment may bind
+to either contested final state, and the child result maps back to a parent
+side by final state. The adversary can therefore enter the correct side's
+final-state class instead of being forced to inherit one particular Sybil
+clock. Exact per-lineage accounting would change some schedule-specific
+balances, but would not remove the preserved-clock strategy that
+`max(r1, r2)` exposes. This is not a claim of schedule-by-schedule equivalence
+or a formal recursive delay theorem. Any corresponding leniency toward a
+correct participant is incidental, not the security rationale.
 
 The checked-in mainnet value, one week plus one hour, is consistent with the
 historical three-level model at `T = 30 minutes`. The selected two-level
@@ -199,15 +240,15 @@ and leaves
 b' = b - max(e - G, 0)
 ```
 
-The balance never increases, pairing earns no time, and an expired clock cannot
-be revived. Joining, proof resolution, timeout cleanup, child propagation,
-elimination, and bond recovery are not eligible responses. Across `q`
-responses, the total elapsed time plus the remaining clock mass is bounded by
-the starting mass plus `q * G`. One root-to-leaf descent with one match at each
-level spans 92 heights and may therefore earn at most 7 hours 40 minutes, but
-only action by action. Re-pairing creates a new match with new response
-discounts. The configured scalar remains five minutes, or 25 blocks on
-Ethereum.
+The response never increases its starting balance, pairing earns no time, and
+an expired clock cannot be revived. Joining, proof resolution, timeout cleanup,
+child propagation, elimination, and bond recovery are not eligible responses.
+Across `q` responses, the total elapsed time plus the remaining clock mass is
+bounded by the starting mass plus `q * G`. One root-to-leaf descent with one
+match at each level spans 92 heights and may therefore earn at most 7 hours
+40 minutes, but only action by action. Re-pairing creates a new match with new
+response discounts. The configured scalar remains five minutes, or 25 blocks
+on Ethereum.
 
 For one leaf match with current live balances `b1`, `b2` and `h` responses left,
 the safe local wall-time bound is `b1 + b2 + h * G`. It cannot be replaced by one
@@ -254,7 +295,8 @@ intended level count must travel with the generated table. These tools take `T`
 and root slowdown as inputs and derive strides and heights; they do not derive
 `G`. The node-owned generator and its generated planning prose still use the
 historical grant wording. That documentation correction is intentionally
-coordinated with the separate node branch and tracked in the review ledger.
+coordinated with the separate node branch and tracked in
+[`constants.md`](plans/constants.md).
 
 This timing and geometry process is separate from EVM refund calibration.
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md) owns

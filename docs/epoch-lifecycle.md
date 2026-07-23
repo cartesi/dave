@@ -1,8 +1,9 @@
 # Epoch lifecycle
 
 How inputs become epochs, epochs become tournaments, and tournaments become
-settled results. This is the rollups-level view; the dispute internals are
-in `docs/computation-hash.md` and `prt/contracts/AGENTS.md`.
+settled results. This is the rollups-level view; the implemented tournament
+protocol is specified in [`dispute-game.md`](dispute-game.md), while commitment
+construction is specified in [`computation-hash.md`](computation-hash.md).
 
 ## On-chain actors
 

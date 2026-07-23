@@ -26,10 +26,16 @@ library Clock {
     // View/Pure methods
     //
 
+    /// @notice Whether the clock has ever been initialized.
+    /// @dev This does not imply that its commitment is still live. Eliminated
+    /// commitments intentionally leave historical clock storage behind.
     function isInitialized(State memory state) internal pure returns (bool) {
         return !state.allowance.isZero();
     }
 
+    /// @notice Whether the clock structurally has a start instant.
+    /// @dev An expired clock remains running and accumulates overdue even after
+    /// match deletion. Match topology, not clock storage, determines liveness.
     function isRunning(State memory state) internal pure returns (bool) {
         return !state.startInstant.isZero();
     }
@@ -104,6 +110,8 @@ library Clock {
     //
 
     /// @notice Initialize a clock once, paused at its live check-in allowance.
+    /// @dev Stores `initialAllowance - (current - checkinInstant)`, saturating at
+    /// zero. A zero result reverts because zero allowance means uninitialized.
     function initializePausedAt(
         State storage state,
         Time.Instant checkinInstant,
@@ -156,6 +164,9 @@ library Clock {
     }
 
     /// @notice Replace an initialized paused clock with another paused state.
+    /// @dev This primitive is not monotone relative to the target clock. The
+    /// caller owns the source bound; recursive propagation uses a shared pair
+    /// envelope that may exceed the target's current allowance.
     function replaceWithPaused(State storage state, State memory source)
         internal
     {
