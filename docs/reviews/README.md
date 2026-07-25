@@ -18,6 +18,9 @@ Do not use a dated review directory as a hidden backlog.
 
 ## Reviews
 
+- [`2026-07-09-e2e-suite-economics/`](2026-07-09-e2e-suite-economics/) - e2e
+  suite measurements and incident case studies, moved verbatim from
+  docs/test-harness.md; the living summary stays there.
 - [`2026-07-21-prt-dispute-game/`](2026-07-21-prt-dispute-game/) - Solidity PRT
   dispute-game security, correctness, documentation, testing, and abstraction
   review.

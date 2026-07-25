@@ -1,5 +1,11 @@
 # The node refactor campaign (settled 2026-07-05)
 
+Status: COMPLETED AND FROZEN - the title date marks when the plan
+settled; workstream entries kept landing through 2026-07-20 and their
+notes live inline. Kept in place as cited provenance (code comments
+reference its workstreams by number). Living successor:
+docs/node-architecture.md.
+
 The whole-node simplification plan, designed in discussion after the
 single-crate consolidation landed. sling-design.md remains the deep
 design of the dispute core (quartets, ruler, cache); this document is

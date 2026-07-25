@@ -246,8 +246,8 @@ mod tests {
         };
         s.assert_valid();
 
-        // The toy picture of docs/computation-hash.md: window span 32,
-        // big span 8.
+        // A larger cousin of docs/computation-hash.md's toy picture:
+        // 4 inputs, 4 big cycles per input, 8 uarch slots per big cycle.
         let cases = [
             (
                 0u64,

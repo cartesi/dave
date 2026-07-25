@@ -78,6 +78,11 @@ Main schema (`storage/sql/migrations.sql`):
 - `machine_state_snapshots(state_hash, file_path)` + `epoch_snapshot_info`
   (which (epoch, input) has which snapshot) + `template_machine` (pins the
   genesis snapshot)
+- `tournament_events(root_tournament, block_number, log_index, raw_log)` +
+  `tournament_events_watermark` - the dispute reader's persisted finalized
+  prefix: prunable derived store (chain-refetchable, deleted with the
+  settled epoch); rows are final once written and never outrun the
+  per-dispute finalized watermark
 
 Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
@@ -143,14 +148,16 @@ State and storage:
    gone - GC returns orphaned paths and the runner removes them after
    commit. Still open: a post-commit removal can in principle delete a
    snapshot directory while another thread is loading it.
-3. The `inputs_and_leafs.json` bootstrap side-channel in
-   `DisputeStateAccess::new`, which also treats any db open error as
-   "database does not exist" and swallows JSON parse errors.
+3. (retired 2026-07-20, one-engine rewrite) The `inputs_and_leafs.json`
+   bootstrap side-channel and `DisputeStateAccess` are gone; Hero
+   construction reads everything from the main database through
+   `DisputeSource::on_store`.
 4. Snapshots are keyed by root hash but pruned by epoch bookkeeping;
-   `store_if_needed` no-ops on hash collision across epochs, which couples
-   correctness to GC ordering. (The partial-store half of this debt is
-   fixed: stores stage and rename atomically, so the exists() gate can
-   no longer adopt a torn directory.)
+   `stage_machine_store`'s exists() gate (`storage/snapshots.rs`) no-ops
+   on hash collision across epochs, which couples correctness to GC
+   ordering. (The partial-store half of this debt is fixed: stores stage
+   and rename atomically, so the exists() gate can no longer adopt a
+   torn directory.)
 
 Error handling and observability:
 
@@ -177,19 +184,21 @@ Error handling and observability:
 
 Structure:
 
-8. (narrowed 2026-07-11) The three per-worker runtimes collapsed to
+8. (narrowed 2026-07-11; async_recursion itself removed 2026-07-24 with
+   the semantic interface) The three per-worker runtimes collapsed to
    one, with the machine runner on the blocking lane. Remaining: the
    Hero's dispute loop still runs async inside the epoch manager's
    task and pins a runtime worker during machine work; moving it to
-   the blocking lane and de-asyncing the dispute path (async_recursion
-   and .await noise) is the sync-core phase of
-   docs/plans/simplification.md.
+   the blocking lane and de-asyncing the dispute path is the sync-core
+   phase of docs/plans/simplification.md.
 9. `EpochManager.epoch_hero: (Option<Hero>, u64)` - anonymous
    tuple state machine; `Hero` construction takes a pile of positional
    arguments.
 10. Commented-out code blocks kept as reference (the test-scaffolding
     `instance.rs` snapshot logic) and disabled/empty tests.
-11. `get_events` binary partition recursion has no depth bound.
+11. (retired 2026-07-20, one-engine rewrite) `get_events`'s recursive
+    binary partition became `logs_bisecting`'s iterative worklist
+    (`src/chain.rs`); there is no recursion depth left to bound.
 12. No graceful-shutdown story for in-flight work: a mid-epoch machine run
     or mid-dispute reaction is only interrupted at the next poll.
 13. (resolved 2026-07-24) Hero actions, cleanup, and epoch settlement share one

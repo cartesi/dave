@@ -16,21 +16,30 @@ mod? programs 'test/programs'
 # pipefail would surface benign SIGPIPEs).
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
+# Recipe arguments also arrive as real positional arguments ($1...),
+# so recipes like `logged` can pass them through verbatim instead of
+# rejoining them with spaces (which destroys shell quoting).
+set positional-arguments
+
 [private]
 default:
     @just --list
 
-# Run a command with full output to a log file; print the tail and
-# the TRUE exit code. Shell pipelines like `cmd | tail` report the
-# LAST stage's status, silently laundering failures - this recipe
-# retires that trap for long builds and test runs.
+# Shell pipelines like `cmd | tail` report the LAST stage's status,
+# silently laundering failures - this recipe retires that trap for
+# long builds and test runs. Arguments pass through verbatim
+# (positional-arguments above), so quoting survives: plain commands
+# run as argv, and shell constructs work as written via
+# `just logged <file> bash -c 'a && b'`.
+# run a command with full output to a log file; print the tail and the TRUE exit code
 logged log +cmd:
     #!/usr/bin/env bash
     set -uo pipefail
+    log="$1"; shift
     status=0
-    {{ cmd }} > "{{ log }}" 2>&1 || status=$?
-    tail -n 40 "{{ log }}"
-    echo "[logged] exit: $status (full log: {{ log }})"
+    "$@" > "$log" 2>&1 || status=$?
+    tail -n 40 "$log"
+    echo "[logged] exit: $status (full log: $log)"
     exit $status
 
 # ------------------------------------------------------------------
@@ -83,8 +92,14 @@ apply-generated-files-diff VERSION="v0.20.0" FILEHASH="d9c2afcefc2759e7cd37bbedc
 bundle-boost:
     make -C machine/emulator bundle-boost
 
-# build the emulator from the submodule (requires docker)
+# build the emulator natively from the submodule (C++ toolchain, no docker); no-op under LIBCARTESI_PATH
 build-emulator:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "${LIBCARTESI_PATH:-}" ] && [ -e "$LIBCARTESI_PATH/libcartesi.a" ]; then
+      echo "build-emulator: LIBCARTESI_PATH provides libcartesi.a; skipping the submodule build"
+      exit 0
+    fi
     make -C machine/emulator -j8
 
 # Everything the Rust workspace needs to compile.
@@ -113,12 +128,50 @@ doctor:
     warn() { printf '  warn    %s\n' "$1"; printf '          %s\n' "$2"; warns=$((warns+1)); }
 
     echo "toolchain (nix users: 'direnv allow' provides all of these)"
-    for tool in cargo forge lua5.4 luacheck jq sqlite3 wget; do
+    for tool in git cargo forge anvil cast lua5.4 luacheck jq sqlite3 \
+        wget curl realpath sha256sum sort; do
       if command -v "$tool" > /dev/null; then ok "$tool"; else
         miss "$tool not on PATH" "install it (see README.md requirements)"; fi
     done
+    if command -v make >/dev/null; then
+      make_version=$(make --version 2>/dev/null | sed -n '1p')
+      case "$make_version" in
+        "GNU Make "*) ok "$make_version" ;;
+        *) miss "GNU make not available" \
+          "install GNU make (the nix devshell provides it)" ;;
+      esac
+    else
+      miss "GNU make not available" \
+        "install GNU make (the nix devshell provides it)"
+    fi
+    if command -v sort >/dev/null; then
+      sort_version=$(sort --version 2>/dev/null | sed -n '1p')
+      case "$sort_version" in
+        *"GNU coreutils"*) ok "$sort_version" ;;
+        *) miss "GNU sort not available" \
+          "install GNU coreutils (the nix devshell provides it)" ;;
+      esac
+    fi
     if command -v docker > /dev/null; then ok "docker"; else
       warn "docker not on PATH" "needed only for the honeypot image and dockerized workflows"; fi
+    if command -v xgenext2fs > /dev/null; then ok "xgenext2fs"; else
+      warn "xgenext2fs not on PATH" \
+        "needed only to build the honeypot image (its project generates rootfs from a tarball with it)"; fi
+    # Forge formatter heuristics drift across releases; a local/CI
+    # version split fails CI fmt with no local reproduction. Compare
+    # against the setup-tools pin instead of documenting the advice.
+    if command -v forge > /dev/null; then
+      ci_pin=$(sed -n "s/.*default: 'v\([0-9][0-9.]*\)'.*/\1/p" .github/actions/setup-tools/action.yml | head -1)
+      local_forge=$(forge --version 2>/dev/null | sed -n 's/.*Version: \([0-9][0-9.]*\).*/\1/p' | head -1)
+      if [ -n "$ci_pin" ] && [ -n "$local_forge" ]; then
+        if [ "$local_forge" = "$ci_pin" ]; then
+          ok "forge $local_forge matches the CI pin"
+        else
+          warn "forge $local_forge != CI pin v$ci_pin" \
+            "formatter output will differ from CI; align the flake and .github/actions/setup-tools"
+        fi
+      fi
+    fi
     for tool in cartesi-machine cartesi-machine-stored-hash; do
       if command -v "$tool" > /dev/null; then ok "$tool"; else
         miss "$tool not on PATH" "install the Cartesi Machine (nix devshell has it), needed to build/run test programs"; fi
@@ -148,25 +201,27 @@ doctor:
         miss "test/programs/$f missing" "run: just programs::download-deps"; fi
     done
     for prog in echo yield honeypot; do
-      if [ -d "test/programs/$prog/machine-image" ]; then ok "$prog machine image"; else
-        miss "test/programs/$prog/machine-image missing" \
-          "run: just setup-local, or copy from a sibling worktree (images are hardware-independent)"; fi
+      case "$prog" in
+        honeypot) build_command="just programs::build-honeypot-snapshot" ;;
+        *) build_command="just programs::build-$prog" ;;
+      esac
+      if ./script/machine-image-fingerprint.sh verify "$prog" >/dev/null 2>&1; then
+        ok "$prog machine image + fingerprint"
+      else
+        miss "$prog machine image missing, stale, or unverified" \
+          "run: $build_command (copied images need their matching fingerprint)"
+      fi
     done
     if [ -f cartesi-rollups/contracts/state.json ] && [ -d cartesi-rollups/contracts/deployments/31337 ]; then
       ok "devnet state + deployments"
       # A stale devnet (contracts moved since deployment) fails e2e
       # with a winner-commitment mismatch - the scariest message in
       # the node - and cost a bisect to diagnose (2026-07-14).
-      if [ -f cartesi-rollups/contracts/state.fingerprint ]; then
-        if [ "$(./script/devnet-fingerprint.sh)" = "$(cat cartesi-rollups/contracts/state.fingerprint)" ]; then
-          ok "devnet state fingerprint"
-        else
-          warn "devnet state was deployed from different contract sources" \
-            "a stale devnet fails e2e loudly and misleadingly; rebuild: just rollups-contracts::build-devnet"
-        fi
+      if ./script/devnet-fingerprint.sh verify >/dev/null 2>&1; then
+        ok "devnet bundle fingerprint"
       else
-        warn "devnet state has no fingerprint" \
-          "predates the freshness check; rebuild to adopt: just rollups-contracts::build-devnet"
+        miss "devnet bundle is stale, mixed, or unverified" \
+          "rebuild source, state, and deployments together: just rollups-contracts::build-devnet"
       fi
     else
       miss "devnet state.json / deployments missing" "run: just rollups-contracts::build-devnet"; fi
@@ -252,6 +307,7 @@ fmt: fmt-rust-workspace
 # Forge's formatter changes wrapping heuristics across releases; when
 # this disagrees with CI, align the setup-tools foundry pin and the
 # devshell forge rather than hand-formatting around either.
+# check formatting everywhere (rust workspace + both contract dirs)
 check-fmt: check-fmt-rust-workspace
     just prt-contracts::check-fmt
     just rollups-contracts::check-fmt
@@ -283,27 +339,31 @@ check-rust-workspace: bind
     cargo check --features download_uarch
 
 # ensure-docker: the kms tests spin testcontainers, and a sleeping
-# Docker Desktop fails them with noise that reads like a code bug
+# Docker Desktop fails them with noise that reads like a code bug.
+# rust workspace unit tests (the kms tests spin docker testcontainers)
 test-rust-workspace: bind
     ./script/ensure-docker.sh
     cargo test --features download_uarch
 
-# regenerate the measurement baselines (docs/plans/measurements*.md)
+# regenerate the measurement baselines (docs/measurements/)
 measure *ARGS: bind
+    ./script/machine-image-fingerprint.sh verify echo
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/echo/machine-image \
-      --out docs/plans/measurements.md {{ARGS}}
+      --out docs/measurements/measurements.md --profile echo {{ARGS}}
 
 measure-stress *ARGS: bind
+    ./script/machine-image-fingerprint.sh verify stress
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/stress/machine-image \
-      --out docs/plans/measurements-stress.md {{ARGS}}
+      --out docs/measurements/measurements-stress.md --profile stress {{ARGS}}
 
-# derive tournament level constants (docs/plans/constants.md)
+# derive tournament level constants (docs/measurements/constants.md)
 measure-constants *ARGS: bind
+    ./script/machine-image-fingerprint.sh verify stress
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/stress/machine-image --constants \
-      --out docs/plans/constants.md {{ARGS}}
+      --out docs/measurements/constants.md --profile stress {{ARGS}}
 
 build-rust-workspace *ARGS: bind
     cargo build {{ARGS}} --features download_uarch
@@ -339,9 +399,86 @@ worktrees-report:
         "$(basename "$wt")" "$size" "$dirty" "$last" "${branch:-detached}"
     done
 
-# remove regenerables (target/, e2e litter) from every CLEAN session
-# worktree except the one running this; dirty worktrees are refused,
-# sources and branches are never touched
+# Copied artifacts are accepted only when their recorded inputs match
+# this checkout. Machine-image fingerprints also bind the semantic
+# machine root; the devnet state, deployments, and marker move as one
+# bundle. Doctor verdicts the result either way.
+# bootstrap a fresh worktree; SOURCE=<green sibling worktree> copies its images and devnet
+bootstrap-worktree SOURCE="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source_root="${1:-}"
+    target_root=$(pwd -P)
+    if [ -n "$source_root" ]; then
+      source_root=$(cd "$source_root" && pwd -P)
+      if [ "$source_root" = "$target_root" ]; then
+        echo "error: SOURCE must be a different worktree" >&2
+        exit 2
+      fi
+    fi
+
+    git submodule update --init machine/step
+    just prt-contracts::install-deps
+    just rollups-contracts::install-deps
+    just bind
+
+    if [ -n "$source_root" ]; then
+      for f in linux.bin rootfs.ext2; do
+        if [ -f "$source_root/test/programs/$f" ] && [ ! -f "test/programs/$f" ]; then
+          cp "$source_root/test/programs/$f" "test/programs/$f"
+          echo "copied $f"
+        fi
+      done
+
+      devnet_dir=cartesi-rollups/contracts
+      target_devnet_valid=0
+      if ./script/devnet-fingerprint.sh verify "$devnet_dir" >/dev/null 2>&1; then
+        target_devnet_valid=1
+        echo "kept verified target devnet bundle"
+      fi
+
+      if [ "$target_devnet_valid" -eq 0 ]; then
+        source_devnet="$source_root/$devnet_dir"
+        rm -rf "$devnet_dir/state.json" "$devnet_dir/state.fingerprint" \
+          "$devnet_dir/deployments"
+        if ./script/devnet-fingerprint.sh verify "$source_devnet" \
+            >/dev/null 2>&1; then
+          cp "$source_devnet/state.json" "$devnet_dir/state.json"
+          cp -R "$source_devnet/deployments" "$devnet_dir/deployments"
+          cp "$source_devnet/state.fingerprint" "$devnet_dir/state.fingerprint"
+          ./script/devnet-fingerprint.sh verify "$devnet_dir" >/dev/null
+          echo "copied verified devnet bundle"
+        else
+          echo "source devnet is incomplete or stale; rebuilding"
+          just rollups-contracts::build-devnet
+        fi
+      fi
+
+      for prog in echo yield honeypot; do
+        image="test/programs/$prog/machine-image"
+        manifest="test/programs/$prog/machine-image.fingerprint"
+        if ./script/machine-image-fingerprint.sh verify "$prog" >/dev/null 2>&1; then
+          echo "kept verified $prog machine image"
+          continue
+        fi
+
+        source_image="$source_root/$image"
+        source_manifest="$source_root/$manifest"
+        rm -rf "$image" "$manifest"
+        if ./script/machine-image-fingerprint.sh verify "$prog" \
+            "$source_image" "$source_manifest" >/dev/null 2>&1; then
+          cp -R "$source_image" "$image"
+          cp "$source_manifest" "$manifest"
+          echo "copied verified $prog machine image"
+        else
+          echo "source $prog machine image is missing, stale, or unverified"
+        fi
+      done
+    fi
+    just doctor
+
+# Dirty worktrees are refused; sources and branches are never touched.
+# remove regenerables (target/, e2e litter) from every clean session worktree except this one
 worktrees-sweep:
     #!/usr/bin/env bash
     set -u

@@ -1,10 +1,11 @@
 # One engine: the sling type redraw (analysis, 2026-07-14)
 
-Status: DECIDED (Gabriel, 2026-07-14) - all sections approved as the
-campaign plan; work proceeds in the section-9 order with the session
-split below. The standing instruction for the whole campaign:
-question and reevaluate design and implementation decisions as they
-are reached, including the ones in this document.
+Status: COMPLETED AND FROZEN - all five section-9 steps LANDED by
+2026-07-20 (the src/sling -> src/engine rename was the last); per-step
+notes live inline in section 9. Kept in place as the campaign's
+reasoning of record: code comments and living docs cite its sections.
+Living successor: docs/node-architecture.md. Originally DECIDED by
+Gabriel, 2026-07-14.
 
 Gabriel asked
 why Ruler/Stf/Structure/Leaf/Run relate the way they do, whether the
@@ -22,7 +23,7 @@ Split along battery boundaries and reviewer-sized diffs; steps that
 touch the same files share a session, consensus-critical work gets a
 session with nothing else moving:
 
-- Session A (underway): steps 1 + 2 - the facade merge and the
+- Session A (landed): steps 1 + 2 - the facade merge and the
   input provider. Both are semantics-free and touch the same files
   (dispute/cache/machine_stf/ruler/hero); doing them together avoids
   re-touching. One battery at the end.

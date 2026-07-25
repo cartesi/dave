@@ -5,12 +5,13 @@ regenerate on the machine that matters and commit the diff. One
 sample per operation - treat entries as order-of-magnitude until
 the harness grows repetitions and percentiles.
 
-Workload: `/Users/gcdepaula/projects/cartesi-dev/dave/.claude/worktrees/node-rewrite-continuation-5756ee/test/programs/echo/machine-image`.
+Workload: `test/programs/echo/machine-image`.
 Caveats: the echo workload is idle-dominated (it yields almost
-immediately), so span replays here exercise the idle-churn path;
-the compute-heavy program (workstream 2b) supplies the missing
-worst-case rows. Not yet measured: get_logs probe, RSS per
-worker, disk breakdown per epoch (logged node-side at roll).
+immediately), so span replays here exercise the idle-churn path.
+Use `just measure-stress --full` for the instruction-heavy synthetic
+sample.
+Not yet measured: get_logs probe, RSS per worker, disk breakdown
+per epoch (logged node-side at roll).
 Level-1 root replay skipped (run with --full).
 
 ## Level-0 fold (synthetic runs, one 2^24-leaf tier)
@@ -81,4 +82,3 @@ root-shape replay on the first cold descent.
 |---|---|---:|---:|---:|
 | 1 | 2^44 usteps | not measured | 300 s | - |
 | 2 | 2^27 usteps | 1.45 s | 300 s | 207x |
-

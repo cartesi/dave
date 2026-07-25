@@ -47,9 +47,11 @@ to the average case.
   slowdown budget, and the strides derived from them): these price
   aggregates - sums of per-step costs over whole gaps. Rare heavy
   instructions vanish into a sum of millions of terms. The honest
-  program lives at the average (~50 executed usteps per big cycle
-  against the 2^20 span: a factor of ~20,000), and the trusted party
-  authors that distribution. So clocks are sized to average density
+  program lives at the average (typical code runs ~50 executed usteps
+  per big cycle against the 2^20 span, a factor of ~20,000; even the
+  deliberately instruction-heavy stress workload measures ~616 - see
+  the density labels in docs/measurements/constants.md), and the trusted
+  party authors that distribution. So clocks are sized to average density
   plus a hardware slack factor - not to the worst instruction
   repeated wall to wall, which is precisely the un-disputable machine
   the trust assumption excludes.
@@ -213,7 +215,10 @@ or a formal recursive delay theorem. Any corresponding leniency toward a
 correct participant is incidental, not the security rationale.
 
 The checked-in mainnet value, one week plus one hour, is consistent with the
-historical three-level model at `T = 30 minutes`. The selected two-level
+historical three-level model at `T = 30 minutes` - consistent in total
+allowance only, not per-level shape: a fresh `T = 30` derivation produces a
+different geometry (docs/measurements/constants.md), and the checked-in table
+predates the current measurement tooling. The selected two-level
 replacement uses `T = 60 minutes`, `log2step = [37, 0]`, and
 `height = [55, 37]`, reaching the same numerical allowance. It remains planned
 and must land with the separate node branch rather than changing the contract
@@ -291,14 +296,14 @@ that shape the level layout: maximum acceptable root slowdown and the time
 budget for constructing an inner commitment. It derives strides and heights
 bottom-up. The current generator is `just measure-constants`
 (`measure.rs --constants`), with results and caveats recorded in
-`docs/plans/constants.md`. Generator output is evidence for a parameter set, not
+`docs/measurements/constants.md`. Generator output is evidence for a parameter set, not
 a permanent constant: measurements, hardware assumptions, rounding, and the
 intended level count must travel with the generated table. These tools take `T`
 and root slowdown as inputs and derive strides and heights; they do not derive
 `G`. The node-owned generator and its generated planning prose still use the
 historical grant wording. That documentation correction is intentionally
 coordinated with the separate node branch and tracked in
-[`constants.md`](plans/constants.md).
+[`constants.md`](measurements/constants.md).
 
 This timing and geometry process is separate from EVM refund calibration.
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md) owns
@@ -312,8 +317,10 @@ measured validly:
 
 - Measure on real workloads and label the density. An idle machine
   churns ~34 usteps per big cycle; typical executing code runs ~50;
-  the span allows 2^20. A throughput number without its density label
-  is meaningless for dimensioning.
+  the instruction-heavy stress workload measures ~616 (the density
+  label in docs/measurements/constants.md, and the basis for the candidate
+  tables derived there); the span allows 2^20. A throughput number
+  without its density label is meaningless for dimensioning.
 - The classic measurement bug: timing a loop while the machine is in
   the wrong state - uarch halted (ustep is identity), machine yielded
   or halted (big steps no-op into idle churn), or a span the program
@@ -324,7 +331,7 @@ measured validly:
   the machine it was measured on; use a reference machine or an
   explicit slack factor, and keep every derivation re-runnable
   (`just measure-constants`; `just measure` / `just measure-stress`;
-  docs/plans/constants.md; docs/plans/measurements*.md).
+  docs/measurements/constants.md; docs/measurements/measurements*.md).
 
 Known instances (measure.lua audited 2026-07-08): the script guards
 big-machine HALT correctly everywhere (its timing loops measure real
@@ -354,6 +361,7 @@ halt AND yield, use the correct enum, and round conservatively.
   selects the top stride, and `log2step[0] + height[0] = 92` closes the
   meta-cycle span. `ArbitrationConstants.sol` holds the live result;
   `measure.rs --constants` derives candidate tables,
-  [plans/constants.md](plans/constants.md) owns the integration work, and the
+  [measurements/constants.md](measurements/constants.md) owns the integration
+  work, and the
   [completed review](reviews/2026-07-21-prt-dispute-game/REVIEW.md) preserves
   the decision provenance.

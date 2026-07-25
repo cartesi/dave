@@ -112,7 +112,7 @@ the moment it exists.
    validator hardware (the WS8 numbers - log2step [37,0], heights
    [55,37] at a 60-min inner timeout - were measured on 0.20 and
    are stale the moment the machine changes); walk the adoption
-   gates of docs/plans/constants.md. Level-0 stride moving 44 ->
+   gates of docs/measurements/constants.md. Level-0 stride moving 44 ->
    37 moves the window-root quartet coordinate, the frontier
    fold's geometry, the drift-guard pins, and every recording and
    fold fixture (the echo fixture asserts THREE tournament

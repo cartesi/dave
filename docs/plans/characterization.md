@@ -1,9 +1,10 @@
 # Characterization plan (pre-rewrite)
 
-Status: draft v3, 2026-07-02. Working document, not knowledge base; expect
-this file to change and eventually be archived when the work completes.
+Status: COMPLETED AND FROZEN. The rewrite this plan gated has landed;
+the B1-B5 tier names remain cited by e2e test cases and
+docs/test-harness.md, which is the living owner of harness coverage.
 Companion: `sling-design.md` (the target design; its testing-implications
-section drives the tiering below).
+section drove the tiering below). Originally draft v3, 2026-07-02.
 
 ## Goal, and the two axes
 

@@ -95,9 +95,9 @@ measure-gas:
     forge test --force --threads 1 --color never \
       --match-path "test/gas/TournamentGas.t.sol" -vv
 
-# summarize dispute-game coverage without instrumenting FFI or gas witnesses
 # The stateful invariants run in test-disputes. Their deterministic companion
 # traces map the same production lifecycle without slow IR instrumentation.
+# summarize dispute-game coverage without instrumenting FFI or gas witnesses
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail

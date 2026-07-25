@@ -55,8 +55,12 @@ successful terminal path must be added to both production and that role's
 model. Changing an existing allocation flows automatically through `E_r`,
 `W_r(h)`, and `B_r(h)` when that path becomes or remains the role maximum.
 
-The formula assumes valid positive geometry. Canonical and custom deployment
-tables must reject zero-height matches before deployment.
+The formula assumes valid positive geometry. Nothing at runtime rejects a
+zero-height table - `Bond.bondValue(0)` returns a defined but meaningless
+value - so zero-height rejection is enforced only by the pre-deployment
+test gate (`test/fixtures/TournamentParameterTableValidator.sol`, run by
+`test/config/*.t.sol`), which must be pointed at any new table before it
+ships.
 
 ## Tournament-wide reserve proof
 

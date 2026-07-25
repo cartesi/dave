@@ -10,8 +10,8 @@ use cartesi_machine::{
 };
 use cartesi_rollups_prt_node::arithmetic;
 use cartesi_rollups_prt_node::engine::constants::{
-    BARCH_SPAN_TO_INPUT, CHECKPOINT_ADDRESS, INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
-    LOG2_UARCH_SPAN_TO_INPUT, UARCH_SPAN_TO_BARCH,
+    BARCH_MASK_TO_INPUT, CHECKPOINT_ADDRESS, INPUT_MASK_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
+    LOG2_UARCH_SPAN_TO_INPUT, UARCH_MASK_TO_BARCH,
 };
 use cartesi_rollups_prt_node::merkle::Digest;
 use log::trace;
@@ -125,10 +125,10 @@ impl MachineInstance {
         let input_count = u64::try_from(meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT)
             .expect("input count too big to fit in u64");
         let cycle = {
-            let c = (meta_cycle >> LOG2_UARCH_SPAN_TO_BARCH) & U256::from(BARCH_SPAN_TO_INPUT);
+            let c = (meta_cycle >> LOG2_UARCH_SPAN_TO_BARCH) & U256::from(BARCH_MASK_TO_INPUT);
             u64::try_from(c).expect("cycle too big to fit in u64")
         };
-        let ucycle = u64::try_from(meta_cycle & U256::from(UARCH_SPAN_TO_BARCH))
+        let ucycle = u64::try_from(meta_cycle & U256::from(UARCH_MASK_TO_BARCH))
             .expect("ucycle too big to fit in u64");
 
         let snapshot_path = db.work_path.join(self.root_hash()?.to_hex());
@@ -191,7 +191,7 @@ impl MachineInstance {
         db: &EpochData,
     ) -> Result<MachineInstance> {
         let input_count = u64::try_from(meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT).unwrap();
-        assert!(input_count <= INPUT_SPAN_TO_EPOCH);
+        assert!(input_count <= INPUT_MASK_TO_EPOCH);
         assert!(start_input <= input_count, "snapshot past the target");
 
         let mut machine = MachineInstance::new_from_path(path)?;
@@ -448,7 +448,7 @@ impl MachineInstance {
         db: &EpochData,
     ) -> Result<(Vec<u8>, Digest)> {
         let input_mask = (U256::ONE << LOG2_UARCH_SPAN_TO_INPUT) - U256::ONE;
-        let big_step_mask = UARCH_SPAN_TO_BARCH;
+        let big_step_mask = UARCH_MASK_TO_BARCH;
 
         assert!(((meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT) & !input_mask).is_zero());
 

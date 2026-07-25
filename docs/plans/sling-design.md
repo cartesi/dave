@@ -1,9 +1,12 @@
 # Sling node - design notes (converging)
 
-Status: draft, 2026-07-02. Captures the design as described by Gabriel,
-still converging, plus commentary and open questions (marked). This is a
-working document feeding `characterization.md`; when the design settles
-it should graduate into the knowledge base.
+Status: COMPLETED AND FROZEN. The design settled and graduated:
+docs/node-architecture.md is the living successor, and the node's
+engine/hero/tournament modules implement it. Kept in place as the deep
+design rationale of record - code comments cite it by increment.
+Originally a draft of 2026-07-02 capturing the design as described by
+Gabriel; the draft commentary and open questions below are preserved
+as written.
 
 ## Two regimes
 

@@ -22,7 +22,8 @@ integration, and the test infrastructure that ties them together.
 - `CLAUDE.md` files are compatibility shims that import the adjacent
   `AGENTS.md`. Do not maintain a second set of instructions in them.
 
-The current nested boundary is `prt/contracts/AGENTS.md`.
+The current nested boundaries are `prt/contracts/AGENTS.md`,
+`cartesi-rollups/contracts/AGENTS.md`, and `machine/AGENTS.md`.
 
 ## Repository map
 
@@ -38,7 +39,9 @@ dave/docs/           The Dave paper (dave.pdf). Its successor tournament
                      algorithm is not implemented here; its base-layer
                      censorship model is adopted by the current clock design.
 cartesi-rollups/
-  contracts/         Rollups consensus contracts (DaveConsensus, app factory).
+  contracts/         Rollups consensus contracts (DaveConsensus, app
+                     factory) - SECURITY-CRITICAL trust boundary. Deep
+                     context in cartesi-rollups/contracts/AGENTS.md.
   node/              The rollups node, a single crate: worker modules
                      synchronize through the database and storage transaction
                      boundary; the dispute engine lives in the
@@ -46,7 +49,8 @@ cartesi-rollups/
                      primitives (merkle, arithmetic, kms) are folded-in
                      modules, not separate crates.
 machine/             Cartesi Machine: emulator + solidity-step submodules and
-                     the Rust bindings that link against the emulator.
+                     the Rust bindings that link against the emulator. A
+                     cross-implementation seam; see machine/AGENTS.md.
 test/programs/       Machine images used by tests (echo, yield, honeypot).
 docs/                The knowledge base. Start at docs/README.md.
 ```

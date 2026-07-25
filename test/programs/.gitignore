@@ -2,6 +2,9 @@ linux.bin
 rootfs.ext2
 
 **/machine-image/
+**/machine-image.fingerprint
+**/machine-image.fingerprint.pending
+**/machine-image.fingerprint.tmp.*
 
 **/*tar.gz
 

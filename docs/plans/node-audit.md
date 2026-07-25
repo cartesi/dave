@@ -3,7 +3,10 @@
 Status: ROUND 1 COMPLETE. Findings verified and dispositioned below;
 fixes landed the same session (battery-gated). Re-run the method
 after the contracts-side halt/exception rework lands and after any
-campaign that reshapes a module.
+campaign that reshapes a module. (Trigger note, 2026-07-25: the
+one-engine landing through 2026-07-20 and the prt-client-interface
+campaign through 2026-07-24 both reshaped modules after Round 1; a
+Round 2 has not run yet.)
 
 ## Method
 

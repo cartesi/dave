@@ -1,6 +1,6 @@
 # Dave
 
-Dave is a permissionless, interactive fraud-proof system. This repo contains the Dave software suite, including support for both rollups and compute (_i.e._ a one-shot computation, like a rollup without inputs):
+Dave is a permissionless, interactive fraud-proof system. This repo contains the Dave software suite for rollups:
 
 * Solidity smart contracts;
 * off-chain testing node in Lua;
@@ -110,10 +110,16 @@ If you prefer running Dave natively on your machine, you'll need additional depe
 **Additional Dependencies:**
 
 - A C++ compiler
-- A local installation of the Cartesi machine
+- A local installation of the [Cartesi Machine](https://github.com/cartesi/machine-emulator)
 - Lua 5.4
 - Rust
-- [`xgenext2fs`](https://github.com/cartesi/genext2fs)
+- [`xgenext2fs`](https://github.com/cartesi/genext2fs), only to build the
+  honeypot machine image (the honeypot project generates its rootfs from
+  a tarball with it)
+
+The lists above are the big pieces; `just doctor` (below) checks the
+complete toolchain, including the smaller utilities the test harness
+expects.
 
 **Setup Steps:**
 
@@ -125,6 +131,18 @@ If you prefer running Dave natively on your machine, you'll need additional depe
    ```bash
    just setup-local
    ```
+
+### Checking your setup
+
+At any point, run:
+```bash
+just doctor
+```
+It diagnoses the whole checkout - toolchain, submodules, emulator
+linkage, contract dependencies, bindings, machine images, devnet
+artifacts - and prints the command that fixes anything missing. Run it
+before debugging any mysterious failure. `just --list` shows every
+available recipe, and `just check` is the pre-commit gate.
 
 ### Running Examples
 
