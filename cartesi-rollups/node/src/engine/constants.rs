@@ -2,23 +2,23 @@
 //! numeric authority for the production machine's shape. Everything
 //! else derives from these - [`super::Structure::PRODUCTION`] and the
 //! stride constants in `storage/rollups_machine.rs` - so a span change
-//! happens here and nowhere else. Despite the `*_SPAN_*` names, the
-//! non-LOG2 values are masks (2^n - 1), not spans; see
-//! docs/glossary.md.
+//! happens here and nowhere else. Naming: `LOG2_*_SPAN_*` are field
+//! widths (matching the Solidity constants of the same names);
+//! `*_MASK_*` are the corresponding field masks (2^n - 1).
 
 use crate::arithmetic;
 
 // log2 value of the maximal number of micro instructions that emulates a big instruction
 pub const LOG2_UARCH_SPAN_TO_BARCH: u64 = 20;
-pub const UARCH_SPAN_TO_BARCH: u64 = arithmetic::max_uint(LOG2_UARCH_SPAN_TO_BARCH);
+pub const UARCH_MASK_TO_BARCH: u64 = arithmetic::max_uint(LOG2_UARCH_SPAN_TO_BARCH);
 
 // log2 value of the maximal number of big instructions that executes an input
 pub const LOG2_BARCH_SPAN_TO_INPUT: u64 = 48;
-pub const BARCH_SPAN_TO_INPUT: u64 = arithmetic::max_uint(LOG2_BARCH_SPAN_TO_INPUT);
+pub const BARCH_MASK_TO_INPUT: u64 = arithmetic::max_uint(LOG2_BARCH_SPAN_TO_INPUT);
 
 // log2 value of the maximal number of inputs that allowed in an epoch
 pub const LOG2_INPUT_SPAN_TO_EPOCH: u64 = 24;
-pub const INPUT_SPAN_TO_EPOCH: u64 = arithmetic::max_uint(LOG2_INPUT_SPAN_TO_EPOCH);
+pub const INPUT_MASK_TO_EPOCH: u64 = arithmetic::max_uint(LOG2_INPUT_SPAN_TO_EPOCH);
 
 // log2 value of the maximal number of micro instructions that executes an input
 pub const LOG2_UARCH_SPAN_TO_INPUT: u64 = LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH;

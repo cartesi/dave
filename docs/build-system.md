@@ -111,24 +111,30 @@ toolchain overrides. Two historical traps, fixed in the flake on
   `DEVELOPER_DIR`, which the devshell points back into nix.
 
 Also note `RUSTFLAGS` set in the environment replaces (not merges with)
-`.cargo/config.toml` rustflags; the homebrew LLVM paths in that file
-assume a non-nix setup and are dead weight under the flake.
+`.cargo/config.toml` rustflags. The config file in question is the
+developer's own global one - this repo commits none; homebrew LLVM
+paths in such a file assume a non-nix setup and are dead weight under
+the flake.
 
 ## Fresh worktree bootstrap
 
-A new git worktree starts without the gitignored artifacts. The
-recipe (verified 2026-07): `git submodule update --init` for
-`machine/step` (contract tooling; `machine/emulator` only if building
-the emulator natively); soldeer deps in both contract dirs
-(`just <module>::install-deps`); `just bind` for the Rust bindings;
-machine images and devnet state (`test/programs/*/machine-image`,
-`cartesi-rollups/contracts/state.json` and `deployments/`) either
-rebuilt (`just setup-local`, `just rollups-contracts::build-devnet`)
-or copied from a sibling worktree - they are hardware-independent
-artifacts. Copy the devnet's `state.fingerprint` along with it and
-trust `just doctor`'s fingerprint check: a devnet deployed from
-older contract sources fails e2e with a misleading consensus assert
-(the 2026-07-14 incident in docs/test-harness.md).
+A new git worktree starts without the gitignored artifacts. Run
+`just bootstrap-worktree [SOURCE]`: it initializes `machine/step`,
+installs soldeer deps in both contract dirs, regenerates bindings,
+optionally copies machine images and devnet state from SOURCE (a green
+sibling worktree), and ends with `just doctor` for the verdict. A copied
+machine image is accepted only when its sidecar proves that the current
+inputs match and that the stored machine root is unchanged. Devnet state,
+deployments, and `state.fingerprint` move as one bundle; the marker binds
+the checked-out sources, installed dependencies, effective compiler
+configuration, state dump, and deployment files. Any mismatch forces a
+rebuild. Without a SOURCE, rebuild the artifacts with `just setup-local`.
+
+These checks prevent the 2026-07-14 failure mode: a devnet deployed from
+older contract sources fails e2e with a misleading consensus assert.
+Fingerprints are published only after successful image construction or
+after Anvil has dumped a complete state, so interrupted builds cannot
+bless their old output.
 
 ## Shell and tooling traps
 
@@ -151,9 +157,9 @@ debugging the environment:
 
 ## Validation
 
-`just check` is the pre-commit gate: rust fmt check, luacheck over
-the Lua client and harness, clippy with warnings denied, and the
-unit suite. `just doctor` diagnoses a checkout - tools, submodules,
+`just check` is the pre-commit gate: fmt checks (Rust workspace and
+both contract dirs), luacheck over the Lua client and harness,
+clippy with warnings denied, and the Rust and Lua unit suites. `just doctor` diagnoses a checkout - tools, submodules,
 emulator linkage, soldeer deps, bindings, machine images, devnet
 artifacts - and every failed check prints the command that fixes it;
 run it before debugging any mysterious failure, especially in a
@@ -183,6 +189,6 @@ command copies - the one inline emulator install drifted its
 version pin into YAML before this rule.
 
 Known CI gaps, deliberate: the forge fuzz suite
-(prt-contracts::test-stf-fuzzy) and the full 21-scenario battery
+(prt-contracts::test-stf-fuzzy) and the full battery
 (battery.sh) run locally only; LIBCARTESI_PATH-in-CI (skipping the
 emulator source build) is an open speedup.

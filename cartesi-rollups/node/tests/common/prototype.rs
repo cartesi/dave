@@ -76,7 +76,7 @@ fn digest_tree(hash: &[u8; 32]) -> Arc<MerkleTree> {
 fn leafs_with_uarch(leafs: Vec<Leaf>, log2_stride_count: u64) -> Vec<(Arc<MerkleTree>, u64)> {
     let mut main_tree = Vec::new();
     let span_count = max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH) + 1;
-    let span_size = constants::UARCH_SPAN_TO_BARCH + 1;
+    let span_size = constants::UARCH_MASK_TO_BARCH + 1;
     let mut accumulated_repetitions = 0;
     let mut uarch_tree_builder = MerkleBuilder::default();
 
@@ -345,10 +345,10 @@ fn run_uarch_span(
     }
 
     // Add padding leaf to complete the span
-    if i < constants::UARCH_SPAN_TO_BARCH {
+    if i < constants::UARCH_MASK_TO_BARCH {
         leafs.push(Leaf {
             hash: machine_state.root_hash.into(),
-            repetitions: constants::UARCH_SPAN_TO_BARCH - i,
+            repetitions: constants::UARCH_MASK_TO_BARCH - i,
         });
     }
 

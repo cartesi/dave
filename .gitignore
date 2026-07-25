@@ -10,3 +10,7 @@ node_modules
 **/rollups_data/
 **/_machine_scratch*/
 soljson-latest.js
+
+# Claude Code local state (session worktrees live under .claude/worktrees in the main checkout)
+.claude/settings.local.json
+.claude/worktrees/

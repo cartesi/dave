@@ -1,9 +1,10 @@
 # The boundary store (designed 2026-07-13, landed 2026-07-14)
 
-Status: LANDED - all five steps of section 7 are in, each
+Status: LANDED AND FROZEN - all five steps of section 7 are in, each
 battery-gated; per-step status lives inline there. The design
 sections below are kept as written (they are the reasoning of
-record); where implementation diverged, the step notes say how. The
+record); where implementation diverged, the step notes say how.
+Living successor: docs/node-architecture.md (the Storage section). The
 resource model (resource-model.md) supplies the disk/RAM numbers
 and the CoW mechanism; this document supplies the abstraction
 analysis and the plan. Emulator claims below were verified against

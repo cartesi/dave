@@ -50,10 +50,13 @@ level. Terms marked (code) appear verbatim in identifiers.
 - stride / log2step (code): leaf granularity of a tournament level; a
   level-k leaf covers 2^log2step[k] usteps.
 - height (code): tree height at a level; 2^height leaves per tree.
-- span vs mask trap: constants named `*_SPAN_*` (engine/constants.rs)
-  are defined as 2^k - 1 (masks), not 2^k. Verify usage before changing
-  anything around them. Sling code is immune by construction: it speaks
-  `Structure` log2 fields and `Position` coordinates, never the masks.
+- span vs mask naming: in engine/constants.rs, `LOG2_*_SPAN_*` are
+  field widths and `*_MASK_TO_*` are the matching field masks
+  (2^k - 1). The historical trap - masks named `*_SPAN_*`, colliding
+  with the Solidity tests' true-span constants of the same names - was
+  retired by renaming on 2026-07-25. Engine code is additionally
+  immune by construction: it speaks `Structure` log2 fields and
+  `Position` coordinates, never the masks.
 
 ## Tournament (PRT)
 
@@ -121,10 +124,13 @@ level. Terms marked (code) appear verbatim in identifiers.
   defending a corrupted commitment. Hero is also the node's name for its
   dispute module (`cartesi-rollups/node/src/hero`, formerly `strategy`
   with its `Player` struct): the paper's term for the honest validator.
-- state manager (code): the SQLite-backed storage layer all node workers
-  share.
-- Watch (code): the condvar-based shutdown/error broadcast between node
-  threads.
+- Storage (code): the SQLite-backed storage layer all node workers
+  share. The older name "state manager" survives only in the
+  `StateManagerError` error variants.
+- ShutdownSignal (code): the shutdown broadcast between node threads
+  (`src/sync.rs`). Deliberately carries no errors - worker errors return
+  through join handles; its retired predecessor (Watch) conflated the
+  two.
 - sling node: working name for the productized rewrite of the prototype
   node. The geometry module itself is named `engine` (renamed from
   `sling` at one-engine step 5); "sling" survives as the codename in

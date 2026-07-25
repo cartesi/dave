@@ -15,23 +15,28 @@ view of that database and the only module that speaks SQL.
 
 The dispute engine (formerly the `cartesi-prt-core` crate):
 
-- `machine/` - commitment construction: driving the Cartesi Machine
-  through meta-cycles, building leaf sequences, generating on-chain step
-  proofs (`get_logs`). Read `docs/computation-hash.md` first; this is the
-  arcane part.
-- `sling/` - the quartet cache, the ruler geometry engine, and the
-  dispute source serving every tree query a dispute needs; the design
-  lives in `docs/plans/sling-design.md`.
-- `strategy/` - the `Player`: the react loop that joins tournaments,
-  bisects matches, seals, proves, and wins timeouts. Plus the garbage
-  collector that frees bonds.
-- `tournament/` - chain interface: `StateReader` (reconstructs the full
-  tournament tree from events and calls) and `ArenaSender` (transaction
-  wrappers, revert-tolerant).
+- `engine/` - commitment construction and geometry: driving the Cartesi
+  Machine through meta-cycles (`machine_stf`, `stf`), the
+  `Structure`/`Position` coordinate system (`structure`), the quartet
+  cache and the ruler (`cache`, `ruler` - `Ruler::prove_transition`
+  generates on-chain step proofs), and the dispute source serving every
+  tree query a dispute needs (`dispute`). Read
+  `docs/computation-hash.md` first; this is the arcane part. Design
+  provenance: `docs/plans/sling-design.md` (frozen).
+- `hero/` - the honest player: per tick it observes, plans, and
+  dispatches at most one dispute action - join, bisect, seal, prove,
+  win by timeout - and proposes bond-freeing cleanup (`gc_planner`).
+- `tournament/` - the semantic chain interface: `reader` and `fold`
+  (one finalized-prefix observation of the tournament tree), `domain`
+  and `adapter` (the typed semantic boundary), `sender` (transaction
+  dispatch).
+- `merkle/` - the tree builders shared by commitment construction.
 
-The Lua client (`prt/client-lua/`) implements the same commitment
-construction and honest strategy; the e2e tests assert both agree. Keep
-it that way.
+The Rust node is the reference implementation. The Lua client
+(`prt/client-lua/`) mirrors the same commitment construction and honest
+strategy as a testing companion - the e2e tests cross-check the two
+every epoch, and the Lua module shape makes sybil actors cheap to
+script. Keep them in agreement.
 
 ## Build (release)
 

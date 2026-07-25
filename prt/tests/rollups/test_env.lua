@@ -260,12 +260,11 @@ function Env.drive_player_until(player_coroutine, condition_f, on_step)
         if on_step then
             on_step()
         end
-        -- One block per poll, unconditionally: the node ingests
-        -- FINALIZED blocks, so a quiet chain freezes its view and
-        -- deadlocks any wait-for-the-node loop (the finality-freeze
-        -- class, node-audit.md). One block per second is the natural
-        -- cadence - it cannot starve the node's turn the way bulk
-        -- fast-forwards can (see Env.fast_forward).
+        -- One block per poll, unconditionally: epoch discovery still
+        -- needs finalized progress, while an active tournament also
+        -- consumes a disposable latest tail. One block per second is
+        -- the natural cadence - it cannot starve the node's turn the
+        -- way bulk fast-forwards can (see Env.fast_forward).
         Env.sender:advance_blocks(1)
         time.sleep(Env.sleep_time)
     end

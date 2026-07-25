@@ -1,10 +1,11 @@
 # PRT contract-client interface decision log
 
-Status: ACTIVE DESIGN AND IMPLEMENTATION RECORD (updated 2026-07-24). The
+Status: ACTIVE DECISION RECORD (updated 2026-07-25). The
 [campaign plan](prt-client-interface.md) records the implemented Campaign 1
-slice and its remaining gates. This document preserves the alternatives,
-reasoning, failed reductions, evidence, and reopening conditions that produced
-it.
+slice. One non-reproduced same-head contradiction remains a fail-closed
+empirical watch. This document preserves the alternatives, reasoning, failed
+reductions, evidence, and reopening conditions that produced the
+implementation.
 
 The code remains the source of truth for current behavior. No entry here is an
 implementation specification unless the campaign plan marks it as current and

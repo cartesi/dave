@@ -48,7 +48,8 @@ Archive status must not hide unfinished work. The living owners are:
   [`prt-refund-gas-calibration.md`](../../runbooks/prt-refund-gas-calibration.md);
 - Solidity test architecture and test-writing rules:
   [`prt-contract-testing.md`](../../prt-contract-testing.md);
-- selected two-level integration work: [`constants.md`](../../plans/constants.md);
+- selected two-level integration work: [`constants.md`](../../measurements/constants.md)
+  (moved from plans/ on 2026-07-25);
 - state-transition halt and exception semantics: the separate state-transition
   workstream, outside this review's scope.
 

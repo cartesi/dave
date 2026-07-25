@@ -4,56 +4,88 @@ set -euo pipefail
 
 cd "${BASH_SOURCE%/*}/.."
 
+deployment_complete=0
+build_fingerprint=$(../../script/devnet-fingerprint.sh inputs)
+base_contracts=dependencies/cartesi-rollups-contracts-3.0.0-alpha.6
+
 cleanup() {
     exit_code=$?
+    trap - EXIT
     if kill -0 "$anvil_pid" 2>/dev/null
     then
-        echo "🚧 Killing Anvil (PID $anvil_pid)..."
+        echo "Killing Anvil (PID $anvil_pid)..."
         kill "$anvil_pid"
-        echo "🚧 Waiting for Anvil to finish...."
-        wait "$anvil_pid"
-        anvil_exit_code=$?
-        if [[ "$anvil_exit_code" -eq 0 ]]
+        echo "Waiting for Anvil to finish..."
+        if wait "$anvil_pid"
         then
-            echo "✅ Anvil exited with code $anvil_exit_code"
+            echo "Anvil exited with code 0"
         else
-            echo "❌ Anvil exited with code $anvil_exit_code"
+            anvil_exit_code=$?
+            echo "Anvil exited with code $anvil_exit_code" >&2
             if [[ "$exit_code" -eq 0 ]]
             then
                 exit_code=$anvil_exit_code
             fi
         fi
     else
-        echo "💡 Anvil (PID $anvil_pid) exited prematurely"
+        echo "Anvil (PID $anvil_pid) exited prematurely" >&2
+        wait "$anvil_pid" 2>/dev/null || true
+        if [[ "$exit_code" -eq 0 ]]
+        then
+            exit_code=1
+        fi
+    fi
+
+    if [[ "$exit_code" -eq 0 && "$deployment_complete" -eq 1 ]]
+    then
+        if [[ ! -s state.json || ! -d deployments/31337 ]]
+        then
+            echo "error: Anvil did not publish a complete devnet bundle" >&2
+            exit_code=1
+        else
+            if ../../script/devnet-fingerprint.sh write "$build_fingerprint" \
+                cartesi-rollups/contracts
+            then
+                echo "state fingerprint: $(cat state.fingerprint)"
+            else
+                exit_code=1
+            fi
+        fi
     fi
     exit "$exit_code"
 }
 
-trap cleanup EXIT
+rm -rf deployments "$base_contracts/deployments" \
+    ../../prt/contracts/deployments \
+    state.json state.fingerprint state.fingerprint.pending
+forge clean --root ../../prt/contracts
+forge clean --root "$base_contracts"
+forge clean --root .
 
-echo "🚧 Spawning Anvil..."
+echo "Spawning Anvil..."
 
 anvil --dump-state state.json --preserve-historical-states --quiet &
 anvil_pid=$!
+trap cleanup EXIT
 
-echo "✅ Anvil spawned!"
+echo "Anvil spawned"
 
 wait_for_anvil() {
     delay=0.5
     for i in {1..10}
     do
-        echo "🚧 Pinging Anvil..."
+        echo "Pinging Anvil..."
         if cast chain-id >/dev/null 2>/dev/null
         then
-            echo "✅ Anvil is listening!"
+            echo "Anvil is listening"
             return
         else
-            echo "🚧 Anvil is not listening yet. Waiting $delay ms..."
+            echo "Anvil is not listening yet. Waiting $delay seconds..."
             sleep "$delay"
         fi
     done
 
-    >&2 echo "❌ Anvil did not respond within a reasonable amount of time."
+    >&2 echo "Anvil did not respond within a reasonable amount of time."
     exit 1
 }
 
@@ -69,9 +101,6 @@ private_key='0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
     --rpc-url "$rpc_url" \
     --slow
 
-# Fingerprint the contract sources this state was deployed from, so
-# the doctor can tell a stale state.json from a fresh one. A stale
-# devnet fails e2e runs with the scariest possible message (a winner
-# commitment mismatch), which cost a bisect to diagnose (2026-07-14).
-../../script/devnet-fingerprint.sh > state.fingerprint
-echo "state fingerprint: $(cat state.fingerprint)"
+# The EXIT trap stops Anvil first, which makes it dump state.json, then
+# publishes the source fingerprint. Interrupted builds leave no marker.
+deployment_complete=1

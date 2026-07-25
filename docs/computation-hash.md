@@ -203,8 +203,9 @@ the cold path; docs/dimensioning.md says which case (worst or
 average) each dimension takes and why.
 
 Two generation regimes exist off-chain (the sling ruler,
-`cartesi-rollups/node/src/engine/ruler.rs`; the prototype's `commitment.rs`
-implements the same split and survives as a differential test oracle):
+`cartesi-rollups/node/src/engine/ruler.rs`; the prototype builder in
+`cartesi-rollups/node/tests/common/prototype.rs` implements the same split
+and survives as a differential test oracle):
 
 - Coarse sampling (`log2_stride >= 20`): run the big machine
   `stride / 2^20` big cycles at a time, one leaf per stop; on halt or yield,

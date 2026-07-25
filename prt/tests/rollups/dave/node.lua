@@ -24,11 +24,11 @@ local ENDPOINT = require("blockchain.constants").endpoint
 local function start_dave_node(machine_path, app_address, db_path, sleep_duration, snapshot_gap,
                                verbosity, trace_level)
     -- Appends to the log so respawns keep one monotonic file; Dave:new
-    -- archives the previous run's log once per test run. The default
+    -- archives the previous run's log once per test run. An explicit
     -- snapshot gap of 1 keeps every input boundary so disputes
-    -- exercise mid-epoch snapshot resumes; a scenario passes a larger
-    -- gap to exercise the batched advance cadence instead (one commit
-    -- per gap of inputs).
+    -- exercise mid-epoch snapshot resumes; the default is 2, and a
+    -- scenario can pass a larger gap to exercise the batched advance
+    -- cadence instead (one commit per gap of inputs).
     local cmd = string.format(
         [[echo $$ ; exec env MACHINE_PATH='%s' APP_ADDRESS='%s' STATE_DIR='%s' \
         RUST_BACKTRACE='%s' RUST_LOG='info',cartesi_rollups_prt_node='%s' \

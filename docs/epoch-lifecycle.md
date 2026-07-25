@@ -18,8 +18,9 @@ construction is specified in [`computation-hash.md`](computation-hash.md).
   hash) is correct for the sealed epoch.
 
 The `EpochSealed` event is the pivot. It carries the epoch number, the
-input index upper bound (exclusive, global indexing), the root tournament
-address, and the initial machine state hash.
+input index lower and upper bounds (exclusive upper, global indexing),
+the initial machine state hash, the settled previous epoch's outputs
+Merkle root (zero at genesis), and the root tournament address.
 
 ## Epoch states, from the node's perspective
 
@@ -40,6 +41,12 @@ address, and the initial machine state hash.
    hash OR the claim staging period elapsed - with zero sentries, only
    the period path exists). Accepting settles the epoch and seals the
    next one; `EpochSealed` fires here.
+
+All four mutating entry points (stage, sentry claim, accept, sentry
+rotation) are gated by `notForeclosed(appContract)`: a foreclosed
+application freezes epoch progress entirely. Check foreclosure status
+before debugging an unexpected revert on any settlement call. Deeper
+contract context: `cartesi-rollups/contracts/AGENTS.md`.
 
 ## Node data flow
 
@@ -70,17 +77,26 @@ Three worker threads share one SQLite database (see
   the epoch: stores the settlement info (computation hash, post-epoch
   machine state hash, output merkle, output proof) and the epoch-boundary
   snapshot.
-- epoch-manager (`cartesi-rollups/node/src/epoch_manager`): two duties per
-  iteration. (a) Settle, in three guarded steps per tick: submit a sentry
-  claim when the signer is a sentry (always the locally computed
-  post-epoch hash, never the staged value - claims stay an independent
-  check); stage the finished tournament's result after asserting the
-  on-chain winner matches the local settlement (commitment root AND
-  post-epoch state); accept the staged result once every sentry agrees or
-  the staging period elapses, after asserting the staged values match the
-  local ones. (b) Defend: for the last sealed epoch, instantiate a `Hero`
-  with the epoch's inputs, leaves, and snapshot, and let it react to the
-  tournament.
+- epoch-manager (`cartesi-rollups/node/src/epoch_manager`): each iteration
+  runs the dispute tick first - for the last sealed epoch, instantiate a
+  `Hero` with the epoch's inputs, leaves, and snapshot, and let it react
+  to the tournament - then derives from that tick at most one write for
+  the shared transaction lane (`EpochWritePlan`): the Hero's own dispute
+  action, a garbage-collection intent the Hero proposed, or settlement.
+  Settlement is gated on the tick's outcome, not an independent duty: it
+  runs only when the tick reports the tournament Won, or when there is
+  no sealed epoch to defend (bootstrap). While machine-runner has not
+  yet written the sealed epoch's settlement info, the tick reports
+  Preparing and nothing is written at all. Settle itself makes at most
+  one guarded, idempotent mutation per tick: submit a sentry claim when
+  the signer is a sentry (always the locally computed post-epoch hash,
+  never the staged value - claims stay an independent check); stage the
+  finished tournament's result after asserting the on-chain winner
+  matches the local settlement (commitment root AND post-epoch state);
+  accept the staged result once every sentry agrees or the staging
+  period elapses. The lane replaces the same mined nonce until inclusion
+  advances it, so the selected write keeps its priority across ticks and
+  a dispute action is never queued behind settlement.
 
 ## The dispute loop (Hero)
 
@@ -88,9 +104,7 @@ Three worker threads share one SQLite database (see
 
 1. Fetch the full tournament tree state from chain (`StateReader`,
    `tournament/reader.rs`): tournaments, commitments, matches, clocks.
-2. Garbage-collect: eliminate dead matches and inner tournaments to free
-   bonds (`hero/gc.rs`).
-3. React recursively from the root tournament:
+2. React recursively from the root tournament:
    - Build (or load from the dispute db) the commitment for this
      tournament's level.
    - Not joined yet: join with the commitment root and last-leaf proof.
@@ -99,8 +113,14 @@ Three worker threads share one SQLite database (see
    - At height 1: seal (leaf match or inner match). Sealing a non-leaf
      match spawns a child tournament one level deeper; recurse into it.
    - Sealed leaf match: compute the transition proof for the divergent
-     meta-cycle (`MachineInstance::get_logs`) and call `winLeafMatch`.
+     meta-cycle (`Ruler::prove_transition`, `engine/ruler.rs`) and call
+     `winLeafMatch`.
    - Opponent out of time: win by timeout.
+3. Plan cleanup as a byproduct: when the tick attempted no dispute action
+   (or the tournament is won), propose at most one garbage-collection
+   intent (`hero/gc_planner.rs`) - eliminating dead matches and inner
+   tournaments to free bonds - which epoch-manager executes only if the
+   write lane is free.
 4. A won inner tournament propagates to the parent match; losing the root
    tournament is reported (and should page a human: it means our
    commitment is wrong or we were censored beyond the protocol's bound).

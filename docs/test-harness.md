@@ -24,7 +24,9 @@ just rollups-tests::test <program> <script>
   `DaveAppFactory`, and wires up a `Reader` and `Sender` (thin cast-style
   wrappers in `dave/reader.lua` / `dave/sender.lua`).
 - `spawn_node()` launches `target/debug/cartesi-rollups-prt-node` with a
-  private-key signer, state dir `_state/`, logs to `dave.log`.
+  private-key signer, state dir `_state/`, and logs to `dave.log`. Under
+  `TEST_INSTANCE=<id>`, the state and log become `_state-<id>/` and
+  `dave-<id>.log`.
 - Dishonest players (sybils) drive the Lua semantic actor
   (`prt/client-lua/player/actor.lua`) as a coroutine. Its independent fold,
   strict observer adapter, domain context, pure planner, fulfiller, and
@@ -87,10 +89,10 @@ Operational traps that used to be folklore are now enforced by the
 harness itself (each was hard-earned; see node-audit.md finding 2's
 build notes for the discovery stories):
 
-- Every `drive_player_until` poll advances one block: the node
-  ingests FINALIZED blocks, so a quiet chain froze its view and
-  deadlocked wait-for-the-node loops. One block per second is the
-  natural cadence and cannot starve the node's turn.
+- Every `drive_player_until` poll advances one block. Epoch discovery still
+  progresses through finalized ingestion; once an epoch is discovered, its
+  tournament reader also acts on a disposable latest tail. One block per
+  second is the natural cadence and cannot starve the node's turn.
 - `Env.fast_forward(blocks)` is the clock-safe scenario
   fast-forward: it sleeps first so the node's pending move lands,
   then advances. Bulk advances between the node's one-second ticks
@@ -120,9 +122,9 @@ the blast radius - treat it as the interface and keep it thin.
 
 The same file owns the process lifecycle: `Dave:kill(signal)` (SIGKILL
 by default - crash scenarios deliberately skip graceful shutdown) and
-`Dave:respawn()`, which relaunches over the surviving `_state/` and
-appends to the same `dave.log`. `Dave:wait_log(pattern, offset)` blocks
-until the log matches; `Dave:find_log(pattern, offset)` is the
+`Dave:respawn()`, which relaunches over the surviving state and appends
+to the same instance-specific node log. `Dave:wait_log(pattern, offset)`
+blocks until the log matches; `Dave:find_log(pattern, offset)` is the
 non-blocking probe for use inside the sybil drive loop. Kill points are
 protocol events, not sleeps, so the patterns scenarios rely on are a
 stable-marker contract between the node's logging and the harness.
@@ -147,7 +149,8 @@ scenario that kills on it):
 
 Machine programs (`test/programs/`): `echo` (accepts and rejects inputs),
 `yield` (alternates accept/reject), `honeypot` (real application),
-`compute` (no-input computation).
+`compute` (no-input computation; buildable but not yet wired into any
+scenario).
 
 Test cases (`prt/tests/rollups/test_cases/`):
 
@@ -174,8 +177,8 @@ Test cases (`prt/tests/rollups/test_cases/`):
   `just rollups-tests::test-kill-all`.
 - `kill_catchup_batched`: B2 at snapshot gap 3 - the SIGKILL lands mid
   advance batch, the uncommitted records drop whole, and the resumed
-  run must re-execute the batch to the oracle's settlement. The one
-  e2e that runs the node above gap 1 (in CI).
+  run must re-execute the batch to the oracle's settlement. This is the
+  focused gap-3 case; other scenarios default to gap 2.
 - `bad_commitment`: adversary joins with a hand-built garbage commitment.
 - `gc_match` / `gc_tournament`: elimination and bond garbage-collection
   paths.
@@ -187,6 +190,10 @@ Test cases (`prt/tests/rollups/test_cases/`):
   (RECORD_CHAIN_FIXTURE, tournament_fold.rs).
 - `kill_join`: SIGKILL at the hero's join decision (see the marker
   contract above).
+- `sealed_leaf_timeout_winner` / `sealed_leaf_timeout_both`: construct
+  unequal leaf clocks, assert the semantic timeout view at exact boundaries,
+  then respawn the Rust node and require either the longer-clock winner or
+  double elimination.
 - `deposit_withdrawal` (honeypot): application-level end-to-end flow.
 
 ## Steering disputes: patch chains
@@ -238,12 +245,13 @@ this. Not yet pinned: capacity boundaries (last input slot, last
 stride).
 
 CI (`.github/workflows/build.yml`): the contracts jobs run the forge
-suites (prt disputes + stf, consensus); the workspace job runs fmt,
-check, and `test-rust-workspace`; the e2e job runs honeypot `simple`,
-the batched catch-up kill, chaos at a fixed seed, and honeypot
-`stf_all`. Everything else - echo, the full kill battery, chaos seed
-sweeps, honeypot-all, yield-all - is manual, which makes it rot-prone
-(see the state of the nets below).
+suites (prt disputes + stf, consensus); the workspace job runs Rust fmt
+and check, Clippy, Lua lint and client unit tests, the Rust build, and
+`test-rust-workspace`; the e2e job runs honeypot `simple`, the batched
+catch-up kill, chaos at a fixed seed, and honeypot `stf_all`. Everything
+else - echo, the full kill battery, chaos seed sweeps, honeypot-all, and
+yield-all - is manual, which makes it rot-prone (see the state of the
+nets below).
 
 There is also a Sepolia smoke setup (`prt/tests/rollups/sepolia/`) that
 runs the node against a testnet deployment of the honeypot.
@@ -259,9 +267,11 @@ unverified claims - check before relying on them:
 - Epochs at capacity boundaries (max inputs, input at the last stride).
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
 - Multiple honest nodes defending the same epoch concurrently.
-- Timeout/clock edge cases from the node's side (the contracts have unit
-  tests; the node's reaction to being nearly out of time does not). The current
-  cross-implementation release blocker is
+- (closed 2026-07-25) Sealed-leaf timeout boundaries from the node's side:
+  `sealed_leaf_timeout_winner` observes the longer clock winning after the
+  retired midpoint and before its own deadline; `sealed_leaf_timeout_both`
+  observes double elimination at exact equality. The contract phase table and
+  dated block evidence live in
   [`prt-timeout-alignment.md`](plans/prt-timeout-alignment.md).
 - (closed 2026-07-09) Port hygiene: the free-port assert (2026-07-02)
   plus TEST_INSTANCE isolation - set it to a free port and the run
@@ -296,15 +306,10 @@ tiers: per-PR CI (fast, always), nightly (full battery, chaos seed
 sweeps), manual (measurement regeneration). A suite not assigned to a
 tier should be treated as deleted.
 
-Runtime is what blocks "everything in CI": the full battery is about
-half a day, serial. Drivers, in order: disputes run at production
-constants (deep tournaments, hundreds of chain interactions); time
-advances by block-stepping and polling; scenarios are serial on fixed
-ports. The single biggest lever is the test-shape constants profile
-(workstream 8's stated goal): sling's Structure is already
-parameterized, the gap is contracts-side, and it would turn dispute
-scenarios from minutes into seconds. Second lever: parameterize the
-anvil port and state dir so scenarios run in parallel.
+Runtime remains the reason not everything belongs in per-PR CI. Parallel
+`TEST_INSTANCE` lanes retired the fixed-port bottleneck after this assessment;
+the current baseline, drivers, and remaining levers are in Suite economics
+below.
 
 Flakiness class to design against: since the 3.0 contracts, an epoch's
 input boundary is the InputBox count at the settle transaction's block,
@@ -315,12 +320,14 @@ construction: one input total).
 
 Known blind spots, by layer:
 
-- (closed 2026-07-24) The tournament reader now has focused tests for
-  finalized-prefix plus exact-hash-tail assembly, global log ordering,
-  dynamic child discovery, canonical-head rejection, watermark discipline,
-  and semantic-adapter rejection before persistence. Recorded folds still
-  cover `echo_simple`, `multilevel_stf`, and `multi_sybil` (concurrent matches
-  plus a real timeout deletion).
+- (closed 2026-07-24) The tournament reader now has focused tests for durable
+  finalized-prefix plus disposable number-range tail assembly, global log
+  ordering, dynamic child discovery, finalized-boundary validation, watermark
+  discipline, persistence despite latest sampling, live-tail fetch, or semantic
+  failures, and semantic reads pinned to a sampled hash without requiring
+  canonicality.
+  Recorded folds still cover `echo_simple`, `multilevel_stf`, and `multi_sybil`
+  (concurrent matches plus a real timeout deletion).
 - (closed 2026-07-24) Hero policy, context assembly, fulfillment, dispatch, and
   GC are separate unit surfaces. Table-driven planner tests cover terminal,
   join, timeout, phase, and recursive-child decisions; action tests cover
@@ -364,188 +371,65 @@ spec.rs-style oracles for each new authority (Position, ruler), and
 characterization before each move. E2e remains the outer net, not the
 primary one.
 
-## Suite economics (first measurements, 2026-07-09)
+## Suite economics
 
-Measured on one dev machine (debug node, local anvil) during the
-workstream 6 verification run; the first hard numbers behind the
-assessment above. Wall times include harness setup but not the
-workspace build.
+The dated measurement narrative and incident case studies behind this
+section are frozen in
+[`reviews/2026-07-09-e2e-suite-economics/`](reviews/2026-07-09-e2e-suite-economics/README.md);
+what follows is the living summary.
 
-Superseded 2026-07-10 by the full parallel battery (battery.sh: all
-21 scenarios, TEST_INSTANCE lanes, ff=128): green scenarios sum to
-~41 min of machine time, wall clock ~15 min at 5 lanes. Slowest:
-stf_all ~7 min per program, simple_no_input ~3.5 min; the whole kill
-family runs 33-129 s; gc_match 46 s. The racy-era "half a day,
-serial" figure is retired. That run also caught the second reader
-bug (the pruned-pin case study below): the only failures were both
-gc_tournament flavors hanging on a dead node until the scenario
-deadline failed them - the deadline and the battery each doing
-exactly their job.
+The baseline to beat (2026-07-10, retry-fixed binary, caffeinated):
+all-green battery, ~42 min of scenario time, ~11 min wall at 5 lanes,
+no leaked processes. The run to repeat before any handoff:
+`LANES=5 prt/tests/rollups/battery.sh`. Sweep the instance dirs once
+results are read (`just rollups-tests::sweep`): each lane leaves ~5 GB
+of forensic state, and a nearly-full disk quietly slows every machine
+store; `just doctor` warns when the litter passes 10 GB.
 
-The clean baseline, same day, after the retry fix and caffeinate:
-21/21 green, ~42 min of scenario time, ~11 min wall at 5 lanes, no
-leaked processes. gc_tournament runs 80 s on the retried node;
-slowest scenario is yield stf_all at ~7 min; the cheapest ten all
-finish under two minutes. This is the number to beat, and the run
-to repeat before any handoff: LANES=5 prt/tests/rollups/battery.sh.
+Where the wall time goes, by class, largest first: (1) protocol-timeout
+fast-forwarding throttled by the harness poll loop (dominates gc_*,
+bad_commitment); (2) per-scenario setup and inter-phase waits (anvil
+spawn, epoch-0 roll, oracle commitment builds, settlement polling).
+Node-side machine work and tick cadence are NOT drivers at current
+constants. Parallel `TEST_INSTANCE` lanes already remove serial
+fixed-port execution from the wall-time model.
 
-Sweep the instance dirs once results are read (`just
-rollups-tests::sweep`): each lane leaves ~5 GB of forensic state,
-two batteries filled a disk to 7 GB free on 2026-07-11, and a
-nearly-full disk quietly slowed every 128 MB machine store - the
-unit suite crawled from 2 s to 15 s with no code change. `just
-doctor` warns when the litter passes 10 GB.
+Levers: the fast-forward crank (ff=128), TEST_INSTANCE parallel
+isolation, and the loud scenario deadline are done and default. Still
+open: the test-shape constants profile (smaller clock allowances and
+shallower trees would shrink protocol-time fast-forwarding at the
+source; contracts-side gap, the engine's Structure is ready) - its
+urgency dropped once the pinned reader landed.
 
-Addendum, same day: the verification battery on the retry-fixed
-binary looked catastrophic - four new deadline failures, uniform
-~14x dispute slowdowns - and every symptom was the LAPTOP, not the
-code: the machine was on battery and cycling into Deep Idle, and
-pmset's log matched the lanes' freeze windows to the second (a
-608 s sleep = a 607 s simultaneous node+sybil+anvil silence). Zero
-retries had fired; the binary was innocent. Three lessons now
-encoded: battery.sh holds the machine awake (caffeinate) for the
-run; the scenario deadline counts wall clock through sleep, which
-is fine once the runner holds the box but must be remembered when
-reading unattended failures; and the diagnosis discipline - when
-independent processes freeze and resume in lockstep, check
-pmset -g log before blaming software. A side probe worth its
-numbers: anvil with --preserve-historical-states holds every state
-in memory - 8.5 GB at 30k blocks with a superlinear jump past
-~12k, vs 4 GB default - so the dump flag pair became opt-in
-(ANVIL_DUMP_PATH, unset by default; nothing consumed the dumps).
-Real scenarios mine under 1k blocks, where neither config strains.
-
-Second environment incident (2026-07-14): a fresh worktree carried a
-STALE devnet - a state.json and deployments deployed from older
-contract sources - and the echo e2e died on the node's scariest
-assert ("Winner commitment mismatch, notify all users!"), left and
-right both plausible hashes. The node, harness, and image were all
-innocent; observed on-chain, the stale deployment settled the empty
-epoch 0 with the initial machine hash as winner where the current
-contracts settle with the joined claim (the padded tree over it).
-Diagnosis needed a full bisect run at the
-pre-session commit (same failure = environment). Two lessons
-encoded: build-devnet now writes state.fingerprint (tree hashes of
-both contract packages plus dirty status - script/
-devnet-fingerprint.sh), and `just doctor` compares it, naming the
-rebuild command; and the diagnosis discipline - when an e2e fails
-on a consensus assert in a NEW environment, suspect the deployed
-state before the code, and check the sibling worktree's artifacts
-byte-for-byte. Copying a green worktree's state.json + deployments
-is as valid as copying its machine images (both are deterministic
-functions of the sources), and the fingerprint travels with them.
-
-- `echo simple` (full 3-level dispute): ~7 min. Bisection itself is
-  fast - advances land 1-2 s apart in bursts; the sybil-active
-  window is ~70 s.
-- `gc_match` (two lazy sybils, timeout eliminations): ~25 min, of
-  which sybil activity is ~1 min. The rest is protocol-time
-  fast-forwarding: `wait_until_epoch` advances 16 blocks per 4 s
-  poll (FAST_FORWARD_TIME), so every sequential ~300-block clock
-  expiry costs ~75 s of wall clock, and timeout-heavy scenarios
-  stack several.
-- `gc_tournament`: ~5 min (same mechanism, fewer expiries).
-- `kill_mid_match`: ~4 min of node-side dispute time with the
-  pinned reader (see the case study - the first run took >2 h and
-  crashed, and the hours turned out to be the bug, not the test).
-
-Where the wall time goes, by class, largest first: (1) protocol-
-timeout fast-forwarding throttled by the harness poll loop
-(dominates gc_*, bad_commitment); (2) per-scenario setup and
-inter-phase waits (anvil spawn, epoch-0 roll, oracle commitment
-builds, settlement polling); (3) serial scenario execution on fixed
-ports. Node-side machine work and tick cadence are NOT drivers at
-current constants (tests run --sleep-duration-seconds 1; bisection
-advances land 1-2 s apart; a full 3-level dispute with a mid-match
-kill and catch-up is ~4 min).
-
-Levers, in leverage order:
-
-1. Crank the fast-forward loop: 16 blocks per 4 s is arbitrary
-   caution; anvil can advance hundreds of blocks in one call and the
-   node at 1 s ticks keeps up. Cheap, harness-only, attacks class 1
-   today.
-2. Test-shape constants profile (workstream 8): smaller clock
-   allowances shrink class 1 at the source, shallower trees shrink
-   dispute depth. Contracts-side gap; sling's Structure is ready.
-   Note its urgency dropped with the pinned reader: stf_all measured
-   ~9 min on 2026-07-09 (all five epochs, four disputes, while
-   sharing the machine with a parallel scenario) against the 60 min
-   CI budget set in the racy-reader era.
-3. (done 2026-07-09) TEST_INSTANCE parallel isolation - wall clock
-   for a batch becomes the max of the set, not the sum. Battery
-   runners must pick distinct free ports per scenario; since
-   2026-07-10 (run-local snapshot scratch) even the same scenario
-   twice concurrently is safe, anvil dump paths aside.
-4. (done 2026-07-09) Scenario deadline: every wait in the harness and
-   Lua client sleeps through utils/time.lua, which now errors loudly
-   past SCENARIO_DEADLINE_SECS (default 3600, 0 disables) - a hung
-   run fails instead of burning hours. dave.log is archived one
-   generation (.prev) so the forensics survive the next run.
-
-Case study, 2026-07-09: the first kill_mid_match run under
-workstream 6 ran >2 h with 8-16 minute stalls between node moves,
-then crashed - an unpinned overlay read raced the advancing chain
-and a clock display underflowed. The stalls and the crash were the
-same bug: the tick sampled its block once but point-read at Latest,
-so under heavy block traffic the Hero kept seeing inconsistent
-fold-vs-position state and concluding "not my turn". Pinning every
-read at the tick's block (plus saturating clock arithmetic) fixed
-the crash AND cut the scenario to ~4 min. Lessons the numbers
-teach: the slow scenario earned its keep (it is the only net that
-holds a dispute open long enough, with enough block traffic, to
-hit tick-consistency races); when the slowest test is mysteriously
-slow, suspect the product before the test (the 2026-07-08
-"battery is about half a day" figure was measured on the racy
-reader - remeasure before optimizing anything); a dead node
-manifests as an infinite hang, not a failure (lever 4); and
-per-run log truncation destroyed the first run's evidence (worth
-teeing dave.log per run into a scratch dir before rm).
-
-Case study, 2026-07-24: the semantic Hero cutover initially made
-`kill_mid_match` finish the dispute without killing the node. The action still
-landed, but the new single-dispatch seam had dropped the stable `advance match`
-marker, so the harness never observed its protocol kill point. Restoring
-concise markers at that seam made the scenario kill, respawn, and win again
-without changing a timeout or assertion. The marker contract above is
-behavioral test infrastructure, not incidental log prose.
-
-Case study, 2026-07-10 (the pin's other edge): the first full
-parallel battery failed exactly two scenarios - both gc_tournament
-flavors - each hanging until the new scenario deadline killed it.
-The node logs held the cause: a pinned overlay read asked anvil for
-state at the tick's sampled block, anvil under aggressive
-fast-forward would not serve it (BlockOutOfRangeError), and the
-epoch manager's ?-operator turned that transient into node
-shutdown - a dead validator with its clocks still running, found
-only because the deadline converts hangs to failures. The fix is
-architectural, not harness-side: every tick is re-derived from
-storage and chain by design, so the epoch manager now logs and
-retries failed iterations instead of dying; real gateways prune
-historical state too, so this was a production bug wearing a
-harness costume. Consensus asserts stay fatal. Lesson: the pinned
-read trades tail freshness for consistency, and its price is that
-the provider must serve a seconds-old block - degrade to retry,
-never to death.
-
-What is NOT earning its keep, on current evidence: the yield-all
-tier duplicates honeypot-all's scenario list 1:1 minus
-deposit_withdrawal (simple_no_input, stf_all, big_input, gc_match,
-gc_tournament, bad_commitment) - the program differs but the
-protocol paths exercised are the same. Yield's unique value is the
-revert shape, and that lives in stf_revert - which, as discovered
-while writing this, was wired into NO suite target and no CI step
-(now in test-yield-all): the full-revert-restore net had been dark
-since it was written, the exact big_input rot pattern. A reasonable
+Open tiering recommendation, on current evidence: the yield-all tier
+duplicates honeypot-all's protocol paths 1:1 minus deposit_withdrawal;
+yield's unique value is the revert shape in stf_revert. A reasonable
 nightly tier keeps yield stf_revert and drops the duplicated yield
-scenarios to manual; verify the overlap claim per scenario before
+scenarios to manual - verify the overlap claim per scenario before
 acting.
 
-The unit-layer counterpart landed the same day (see the blind-spot
-list): the Hero is generic over the ruler factory, the toy grew
-proving verbs, and thirteen decision-table tests run the react loop
-chain-free in a fraction of a second. Still open from that recipe:
-the reader's overlay assembly against a mock provider.
+Diagnosis disciplines the incidents taught (details in the frozen
+record):
+
+- When independent processes freeze and resume in lockstep, check
+  `pmset -g log` before blaming software; battery.sh holds the machine
+  awake for exactly this reason.
+- A stale devnet once surfaced as a misleading consensus assert in a new
+  environment. The e2e preflight now verifies the recorded inputs, state,
+  and deployments before Lua or the node starts; `just doctor` reports the
+  same failure and names the rebuild command.
+- When the slowest test is mysteriously slow, suspect the product
+  before the test; remeasure before optimizing anything.
+- A dead node manifests as an infinite hang, not a failure; the
+  scenario deadline exists to convert hangs into failures. It counts
+  wall clock through sleep - remember that when reading unattended
+  failures.
+- Pinned reads trade tail freshness for consistency, and the price is
+  that the provider must serve a seconds-old block: degrade to retry,
+  never to death. Consensus asserts stay fatal.
+- The log-marker contract is behavioral test infrastructure, not
+  incidental prose: a refactor that drops a stable marker silently
+  disarms the kill-point scenarios that depend on it.
 
 ## Adding a scenario
 
@@ -556,3 +440,8 @@ the reader's overlay assembly against a mock provider.
    sybils with patch lists.
 3. Wire a justfile alias if it should run in a suite
    (`prt/tests/rollups/justfile`).
+4. Add it to `battery.sh`'s `SCENARIOS` array if it should run in the
+   full parallel battery - the array is independent of the justfile
+   aliases and does not inherit from them. If it is deliberately excluded,
+   add its bare script name to `EXCLUDED_SCENARIOS` and put the reason in an
+   adjacent comment.

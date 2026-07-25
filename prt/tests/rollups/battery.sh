@@ -44,6 +44,11 @@ SCENARIOS=(
     "echo kill_commitment_build"
     "echo kill_mid_match"
     "echo kill_join"
+    # Retained timeout-alignment boundary evidence. These scenarios
+    # drive block numbers through the sender, so parallel lanes cannot
+    # disturb them; measured ~2 min each (2026-07-25).
+    "echo sealed_leaf_timeout_winner"
+    "echo sealed_leaf_timeout_both"
     "honeypot deposit_withdrawal"
     "honeypot simple_no_input"
     "honeypot stf_all"
@@ -59,6 +64,25 @@ SCENARIOS=(
     "yield gc_tournament"
     "yield bad_commitment"
 )
+
+# Every test_cases/*.lua must be wired into SCENARIOS under some
+# program, or listed here with its reason: an unwired net rots in the
+# dark (stf_revert was dark from birth; docs/test-harness.md).
+EXCLUDED_SCENARIOS=(
+)
+for f in test_cases/*.lua; do
+    c=$(basename "$f" .lua)
+    wired=0
+    for s in "${SCENARIOS[@]}"; do
+        if [ "${s#* }" = "$c" ]; then wired=1; break; fi
+    done
+    if [ "$wired" -eq 0 ]; then
+        case " ${EXCLUDED_SCENARIOS[*]:-} " in
+            *" $c "*) ;;
+            *) echo "[battery] WARNING: test_cases/$c.lua is wired into no battery scenario (add it to SCENARIOS, or to EXCLUDED_SCENARIOS with its reason)" ;;
+        esac
+    fi
+done
 
 run_one() {
     local index=$1 program=$2 script=$3

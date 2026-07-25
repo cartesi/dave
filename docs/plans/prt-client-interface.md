@@ -81,8 +81,8 @@ Labels:
 
 ## Implemented Campaign 1 evidence
 
-The current campaign tree has crossed the intended semantic boundaries without
-closing the whole campaign:
+The implementation has crossed the intended semantic boundaries; deferred
+designs and one fail-closed empirical watch remain:
 
 - `ITournamentObserver` defines six total semantic reads: three phase
   projections, full-ID timeout status, immutable tournament descriptor, and
@@ -1250,7 +1250,7 @@ Campaign 1 deliberately leaves several serious designs on the table:
 
 They are not discarded. They are documented, compared, and given reopening
 conditions in the [decision log](prt-client-interface-decisions.md). Campaign 1
-should produce the domain model, planner, traces, and measurements needed to
+produced the domain model, planner, traces, and measurements now available to
 evaluate them empirically rather than speculatively.
 
 ## Campaign questions and closeout gates

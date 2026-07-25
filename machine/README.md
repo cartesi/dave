@@ -11,7 +11,7 @@ Everything that connects Dave to the Cartesi Machine.
   the uarch state transition (machine-solidity-step), consumed by
   `prt/contracts`. Its `EmulatorConstants.sol` must stay in sync with the
   emulator version; there is a guard test in
-  `cartesi-rollups/node/src/machine/constants.rs`.
+  `cartesi-rollups/node/src/engine/constants.rs`.
 - `rust-bindings/cartesi-machine-sys`: raw FFI bindings. Its `build.rs`
   links `libcartesi` with this precedence: the `external_cartesi`
   feature, else a `LIBCARTESI_PATH` in the environment (the nix devshell

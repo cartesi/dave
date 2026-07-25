@@ -23,6 +23,7 @@ docs/
 /deployments
 /state.json
 /state.fingerprint
+/state.fingerprint.pending
 
 # Forge coverage
 /coverage

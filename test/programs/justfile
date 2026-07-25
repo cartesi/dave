@@ -1,3 +1,5 @@
+set positional-arguments
+
 download-deps: clean-deps
   wget https://github.com/cartesi/image-kernel/releases/download/v0.20.0/linux-6.5.13-ctsi-1-v0.20.0.bin \
     -O ./linux.bin
@@ -11,15 +13,32 @@ clean-deps:
 # all programs
 build-programs: build-yield build-echo build-compute
 clean-programs: clean-yield clean-echo
+
+[private]
 clean-program prog:
-  rm -rf {{prog}}/machine-image
+  #!/usr/bin/env bash
+  set -euo pipefail
+  program=$1
+  case "$program" in
+    echo|yield|compute|stress|honeypot) ;;
+    *)
+      echo "error: unsupported test program: $program" >&2
+      exit 2
+      ;;
+  esac
+  rm -rf -- "$program/machine-image" \
+    "$program/machine-image.fingerprint" \
+    "$program/machine-image.fingerprint.pending"
+  rm -f -- "$program"/machine-image.fingerprint.tmp.*
 
 # yield
 build-yield: clean-yield
+  ../../script/machine-image-fingerprint.sh capture yield
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
     --no-rollback --store=./yield/machine-image \
     -- "while true; do yield manual rx-accepted; yield manual rx-rejected; done"
+  ../../script/machine-image-fingerprint.sh write yield
 clean-yield: (clean-program "yield")
 
 # stress: the compute-heavy workload (docs/plans/node-refactor.md,
@@ -27,24 +46,30 @@ clean-yield: (clean-program "yield")
 # (8 MB of zeros through sha256sum), so several level-0 leaf spans
 # per input are fully active - the worst-case replay shape the
 # measurement baseline needs.
+# build the synthetic instruction-heavy measurement sample
 build-stress: clean-stress
+  ../../script/machine-image-fingerprint.sh capture stress
   mkdir -p stress
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
     --no-rollback --store=./stress/machine-image \
     -- "while true; do yield manual rx-accepted; dd if=/dev/zero bs=1M count=8 2>/dev/null | sha256sum > /dev/null; done"
+  ../../script/machine-image-fingerprint.sh write stress
 clean-stress: (clean-program "stress")
 
 # echo
 build-echo: clean-echo
+  ../../script/machine-image-fingerprint.sh capture echo
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
     --no-rollback --store=./echo/machine-image \
     -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1 --reject=2"
+  ../../script/machine-image-fingerprint.sh write echo
 clean-echo: (clean-program "echo")
 
 # honeypot/honeypot (requires docker)
 build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
+  ../../script/machine-image-fingerprint.sh capture honeypot
   git clone https://github.com/cartesi/honeypot.git honeypot/project
   git -C honeypot/project reset --hard 589a9c1a26522904f79df4955caff69537d38b13 # v3.0.1
   sed -i 's/,filename:/,data_filename:/g' honeypot/project/Makefile
@@ -54,15 +79,18 @@ build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
   ./honeypot/generate-devnet-honeypot-config.sh > honeypot/project/config/devnet/honeypot-config.hpp
   make -C honeypot/project snapshot HONEYPOT_CONFIG=devnet
   cp -r honeypot/project/snapshot honeypot/machine-image
+  ../../script/machine-image-fingerprint.sh write honeypot
 clean-honeypot-snapshot: (clean-program "honeypot")
 clean-honeypot-project:
     rm -rf honeypot/project
 
 # compute
 build-compute: clean-compute
+  ../../script/machine-image-fingerprint.sh capture compute
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
     --no-rollback --store=./compute/machine-image \
     --max-mcycle=0 \
     -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"
+  ../../script/machine-image-fingerprint.sh write compute
 clean-compute: (clean-program "compute")
