@@ -42,44 +42,26 @@ library MatchClocks {
     ) internal pure returns (TimeoutStatus memory) {
         Time.Duration remainingOne = one.remainingAt(current);
         Time.Duration remainingTwo = two.remainingAt(current);
+        bool oneExpired = remainingOne.isZero();
+        bool twoExpired = remainingTwo.isZero();
 
-        if (remainingOne.isZero()) {
-            if (remainingTwo.isZero()) {
-                return TimeoutStatus({
-                    outcome: TimeoutOutcome.ELIMINATE_BOTH,
-                    deferredCharge: Time.ZERO_DURATION
-                });
-            }
-
-            Time.Duration deferredCharge = _deferredCharge(two, one, current);
-            if (remainingTwo.gt(deferredCharge)) {
-                return TimeoutStatus({
-                    outcome: TimeoutOutcome.TWO_WINS,
-                    deferredCharge: deferredCharge
-                });
-            } else {
-                return TimeoutStatus({
-                    outcome: TimeoutOutcome.ELIMINATE_BOTH,
-                    deferredCharge: Time.ZERO_DURATION
-                });
-            }
-        } else if (remainingTwo.isZero()) {
-            Time.Duration deferredCharge = _deferredCharge(one, two, current);
-            if (remainingOne.gt(deferredCharge)) {
-                return TimeoutStatus({
-                    outcome: TimeoutOutcome.ONE_WINS,
-                    deferredCharge: deferredCharge
-                });
-            } else {
-                return TimeoutStatus({
-                    outcome: TimeoutOutcome.ELIMINATE_BOTH,
-                    deferredCharge: Time.ZERO_DURATION
-                });
-            }
-        } else {
+        if (!oneExpired && !twoExpired) {
             return TimeoutStatus({
                 outcome: TimeoutOutcome.NONE, deferredCharge: Time.ZERO_DURATION
             });
+        } else if (oneExpired && twoExpired) {
+            return TimeoutStatus({
+                outcome: TimeoutOutcome.ELIMINATE_BOTH,
+                deferredCharge: Time.ZERO_DURATION
+            });
+        } else if (oneExpired) {
+            return _classifySoleSurvivorAt(
+                TimeoutOutcome.TWO_WINS, two, remainingTwo, one, current
+            );
+        } else {
+            return _classifySoleSurvivorAt(
+                TimeoutOutcome.ONE_WINS, one, remainingOne, two, current
+            );
         }
     }
 
@@ -161,20 +143,29 @@ library MatchClocks {
         assert(one.isRunning() != two.isRunning());
     }
 
-    /// @dev Charge only elapsed time not already reflected in the winner's
-    /// live remainder. During bisection the winner is paused, so the expired
-    /// responder's overdue interval is deferred to it. During a leaf race the
-    /// winner is already running, so transferring that interval would charge
-    /// the same censorship time twice.
-    function _deferredCharge(
-        Clock.State memory winner,
-        Clock.State memory loser,
+    /// @dev A paused bisection survivor has not paid for the expired responder's
+    /// overdue interval, while a running leaf-race survivor has already paid for
+    /// that interval through its live remainder.
+    function _classifySoleSurvivorAt(
+        TimeoutOutcome survivorOutcome,
+        Clock.State memory survivor,
+        Time.Duration survivorRemaining,
+        Clock.State memory expiredClock,
         Time.Instant current
-    ) private pure returns (Time.Duration) {
-        if (winner.isRunning()) {
-            return Time.ZERO_DURATION;
+    ) private pure returns (TimeoutStatus memory) {
+        Time.Duration deferredCharge = survivor.isRunning()
+            ? Time.ZERO_DURATION
+            : expiredClock.overdueByAt(current);
+
+        if (survivorRemaining.gt(deferredCharge)) {
+            return TimeoutStatus({
+                outcome: survivorOutcome, deferredCharge: deferredCharge
+            });
         } else {
-            return loser.overdueByAt(current);
+            return TimeoutStatus({
+                outcome: TimeoutOutcome.ELIMINATE_BOTH,
+                deferredCharge: Time.ZERO_DURATION
+            });
         }
     }
 }

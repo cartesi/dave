@@ -627,12 +627,12 @@ interface ITournament {
         returns (Clock.State memory clock, Machine.Hash finalState);
 
     /// @notice Get a match state by its ID hash.
-    /// @dev Returns the raw compatibility tuple without an existence check.
+    /// @dev Returns the raw state tuple without an existence check.
     /// `isInit == false` means absent or deleted. For a valid positive-height
     /// initialized state, the node fields describe the unresolved bisection
-    /// segment while `currentHeight > 0`. At `currentHeight == 0`, they hold the
-    /// agree state and branch-encoded divergent leaves; interpret them only with
-    /// the match phase and original commitment height.
+    /// segment while `currentHeight > 0`. At `currentHeight == 0`, `otherParent`
+    /// holds the agree state while `leftNode` and `rightNode` hold the final
+    /// states of commitments one and two respectively.
     /// @param matchIdHash The match ID hash
     function getMatch(Match.IdHash matchIdHash)
         external

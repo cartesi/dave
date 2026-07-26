@@ -41,9 +41,9 @@ library Match {
     // State
     //
     /// @dev Before sealing, the node fields identify the revealing parent and
-    /// waiting side's children. After sealing, they encode the agree state and
-    /// divergent leaves. The running position is even during bisection; after
-    /// sealing its low bit records the final branch.
+    /// waiting side's children. After sealing, `otherParent` stores the agree
+    /// state while `leftNode` and `rightNode` store the final states of
+    /// commitments one and two respectively.
     struct State {
         Tree.Node otherParent;
         Tree.Node leftNode;
@@ -60,27 +60,11 @@ library Match {
         SEALED
     }
 
-    enum Branch {
-        LEFT,
-        RIGHT
-    }
-
-    enum CommitmentSide {
-        ONE,
-        TWO
-    }
-
     struct SealedView {
         Machine.Hash agreeState;
         uint256 divergencePosition;
         Machine.Hash finalStateOne;
         Machine.Hash finalStateTwo;
-    }
-
-    struct Divergence {
-        Tree.Node revealingLeaf;
-        Tree.Node waitingLeaf;
-        uint256 position;
     }
 
     function create(
@@ -126,8 +110,8 @@ library Match {
         assert(state.currentHeight > 1);
         state.otherParent.requireChildren(revealingLeft, revealingRight);
 
-        Branch branch = _selectBranch(state.leftNode, revealingLeft);
-        if (branch == Branch.LEFT) {
+        // A left mismatch is necessarily the first divergent half.
+        if (!revealingLeft.eq(state.leftNode)) {
             revealingLeft.requireChildren(nextLeft, nextRight);
             state.otherParent = state.leftNode;
         } else {
@@ -155,30 +139,56 @@ library Match {
         assert(state.currentHeight == 1);
         state.otherParent.requireChildren(revealingLeft, revealingRight);
 
-        Branch branch = _selectBranch(state.leftNode, revealingLeft);
-        Divergence memory divergence;
-        if (branch == Branch.LEFT) {
-            divergence = Divergence({
-                revealingLeaf: revealingLeft,
-                waitingLeaf: state.leftNode,
-                position: state.runningLeafPosition
-            });
+        Tree.Node revealingFinalState;
+        Tree.Node waitingFinalState;
+        uint256 divergencePosition = state.runningLeafPosition;
+
+        // A left mismatch is the first divergence. If the left nodes agree, the
+        // commitments first diverge at the right leaf.
+        if (!revealingLeft.eq(state.leftNode)) {
+            revealingFinalState = revealingLeft;
+            waitingFinalState = state.leftNode;
         } else {
-            divergence = Divergence({
-                revealingLeaf: revealingRight,
-                waitingLeaf: state.rightNode,
-                position: state.runningLeafPosition + 1
-            });
+            revealingFinalState = revealingRight;
+            waitingFinalState = state.rightNode;
+            divergencePosition++;
         }
-        CommitmentSide revealingSide = _finalRevealingSide(args.height);
+
+        // Commitment one reveals first. After H - 1 advances it is also the
+        // final revealer exactly when the total height is odd.
+        Tree.Node revealingCommitment;
+        Tree.Node finalStateOneNode;
+        Tree.Node finalStateTwoNode;
+        if (args.height % 2 == 1) {
+            revealingCommitment = id.commitmentOne;
+            finalStateOneNode = revealingFinalState;
+            finalStateTwoNode = waitingFinalState;
+        } else {
+            revealingCommitment = id.commitmentTwo;
+            finalStateOneNode = waitingFinalState;
+            finalStateTwoNode = revealingFinalState;
+        }
 
         _requireAgreeState(
-            divergence, revealingSide, args, id, agreeState, agreeStateProof
+            divergencePosition,
+            revealingCommitment,
+            args,
+            agreeState,
+            agreeStateProof
         );
-        (finalStateOne, finalStateTwo) =
-            _finalStatesByCommitment(divergence, revealingSide);
 
-        _storeSealedDivergence(state, divergence, branch, agreeState);
+        // Sealed states use canonical commitment order, independent of the
+        // final revealing side or divergent branch.
+        // `otherParent` is phase-overloaded here: preserve the machine-state
+        // hash verbatim in its Tree.Node slot; no tree hash is performed.
+        state.otherParent = Tree.Node.wrap(Machine.Hash.unwrap(agreeState));
+        state.leftNode = finalStateOneNode;
+        state.rightNode = finalStateTwoNode;
+        state.runningLeafPosition = divergencePosition;
+        state.currentHeight = 0;
+
+        finalStateOne = finalStateOneNode.toMachineHash();
+        finalStateTwo = finalStateTwoNode.toMachineHash();
     }
 
     //
@@ -191,7 +201,7 @@ library Match {
         return _phase(state.isInit, state.currentHeight);
     }
 
-    function sealedView(State memory state, uint64 totalHeight)
+    function sealedView(State memory state)
         internal
         pure
         returns (SealedView memory view_)
@@ -202,16 +212,11 @@ library Match {
         );
         require(currentPhase == Phase.SEALED, ITournament.MatchIsNotSealed());
 
-        Divergence memory divergence = _decodeDivergence(state);
-        (Machine.Hash finalStateOne, Machine.Hash finalStateTwo) = _finalStatesByCommitment(
-            divergence, _finalRevealingSide(totalHeight)
-        );
-
         view_ = SealedView({
             agreeState: state.otherParent.toMachineHash(),
             divergencePosition: state.runningLeafPosition,
-            finalStateOne: finalStateOne,
-            finalStateTwo: finalStateTwo
+            finalStateOne: state.leftNode.toMachineHash(),
+            finalStateTwo: state.rightNode.toMachineHash()
         });
     }
 
@@ -261,34 +266,14 @@ library Match {
     //
     // Private
     //
-    function _selectBranch(Tree.Node waitingLeft, Tree.Node revealingLeft)
-        private
-        pure
-        returns (Branch)
-    {
-        // A left mismatch is necessarily the first divergent half.
-        return revealingLeft.eq(waitingLeft) ? Branch.RIGHT : Branch.LEFT;
-    }
-
-    function _finalRevealingSide(uint64 totalHeight)
-        private
-        pure
-        returns (CommitmentSide)
-    {
-        // Commitment one reveals first; H - 1 advances make it the final
-        // revealer exactly when the total height is odd.
-        return totalHeight % 2 == 1 ? CommitmentSide.ONE : CommitmentSide.TWO;
-    }
-
     function _requireAgreeState(
-        Divergence memory divergence,
-        CommitmentSide revealingSide,
+        uint256 divergencePosition,
+        Tree.Node revealingCommitment,
         Commitment.Arguments memory args,
-        Id calldata id,
         Machine.Hash agreeState,
         bytes32[] calldata agreeStateProof
     ) private pure {
-        if (divergence.position == 0) {
+        if (divergencePosition == 0) {
             require(
                 agreeState.eq(args.initialHash),
                 ITournament.IncorrectAgreeState(args.initialHash, agreeState)
@@ -296,72 +281,9 @@ library Match {
             return;
         }
 
-        Tree.Node commitment = revealingSide == CommitmentSide.ONE
-            ? id.commitmentOne
-            : id.commitmentTwo;
-        commitment.requireState(
-            args.height, divergence.position - 1, agreeState, agreeStateProof
+        revealingCommitment.requireState(
+            args.height, divergencePosition - 1, agreeState, agreeStateProof
         );
-    }
-
-    function _finalStatesByCommitment(
-        Divergence memory divergence,
-        CommitmentSide revealingSide
-    )
-        private
-        pure
-        returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
-    {
-        Machine.Hash revealingState = divergence.revealingLeaf.toMachineHash();
-        Machine.Hash waitingState = divergence.waitingLeaf.toMachineHash();
-        if (revealingSide == CommitmentSide.ONE) {
-            return (revealingState, waitingState);
-        }
-        return (waitingState, revealingState);
-    }
-
-    function _storeSealedDivergence(
-        State storage state,
-        Divergence memory divergence,
-        Branch branch,
-        Machine.Hash agreeState
-    ) private {
-        assert(state.currentHeight == 1);
-        // Preserve the external branch-dependent encoding: left stores
-        // waiting/revealing, while right stores revealing/waiting and an odd
-        // position.
-        if (branch == Branch.LEFT) {
-            state.rightNode = divergence.revealingLeaf;
-        } else {
-            state.leftNode = divergence.revealingLeaf;
-            state.runningLeafPosition = divergence.position;
-        }
-        state.otherParent = Tree.Node.wrap(Machine.Hash.unwrap(agreeState));
-        state.currentHeight = 0;
-    }
-
-    function _decodeDivergence(State memory state)
-        private
-        pure
-        returns (Divergence memory divergence)
-    {
-        // Interior right descents add even offsets. Only the final right seal
-        // makes the position odd, so its low bit recovers the sealed branch.
-        Branch branch =
-            state.runningLeafPosition % 2 == 0 ? Branch.LEFT : Branch.RIGHT;
-        if (branch == Branch.LEFT) {
-            divergence = Divergence({
-                revealingLeaf: state.rightNode,
-                waitingLeaf: state.leftNode,
-                position: state.runningLeafPosition
-            });
-        } else {
-            divergence = Divergence({
-                revealingLeaf: state.leftNode,
-                waitingLeaf: state.rightNode,
-                position: state.runningLeafPosition
-            });
-        }
     }
 
     function _phase(bool isInit, uint64 currentHeight)

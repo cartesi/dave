@@ -454,12 +454,14 @@ For a non-leaf tournament:
   allowance.
 - A child tournament is created and linked to the sealed parent match.
 
-After sealing, the current `Match.State` storage slots change meaning: fields
-that held bisection nodes hold the agree hash and contested final states. Code
-must check the match phase before interpreting those fields. The implementation
-derives uninitialized, bisecting, ready-to-seal, and sealed phases from the
-existing fields and exposes phase-specific internal views; it does not add a
-stored phase or change the externally visible tuple.
+After sealing, the current `Match.State` storage slots change meaning:
+`otherParent` holds the agree state, `leftNode` holds commitment one's final
+state, and `rightNode` holds commitment two's final state. Code must check the
+match phase before interpreting those fields. The implementation derives
+uninitialized, bisecting, ready-to-seal, and sealed phases from the existing
+fields and exposes phase-specific internal views; it does not add a stored
+phase or reshape the externally visible tuple. The canonical commitment order
+is an intentional change to the sealed tuple's semantics.
 
 ### Resolution and winner re-entry
 
@@ -669,7 +671,7 @@ Each progress function uses a fixed `gasAllocation`. After the action body, the
 
 ```text
 units = Gas.TX + gasBefore - gasAfter
-effectivePrice = min(tx.gasprice, block.basefee + Bond.PRIORITY_FEE_CAP)
+effectivePrice = min(tx.gasprice, block.basefee + Bond.REFUND_PRIORITY_FEE_CAP)
 requestedRefund = min(
     tournament balance before the callback,
     gasAllocation * Bond.WORK_PRICE_CAP,
