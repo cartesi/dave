@@ -27,3 +27,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-07-23-prt-leaf-proof-gas-calibration/`](2026-07-23-prt-leaf-proof-gas-calibration/)
   - full-stack leaf-proof subsidy calibration through the production InputBox,
   DaveConsensus provider, state transition, and Tournament entry point.
+- [`2026-07-26-prt-post-refactor-gas-calibration/`](2026-07-26-prt-post-refactor-gas-calibration/)
+  - accepted post-refactor calibration and reproducible dependency provenance
+    for the retained Tournament and full-stack leaf witnesses.
