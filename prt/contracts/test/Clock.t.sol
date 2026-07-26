@@ -230,7 +230,7 @@ contract ClockTest is Test {
             _duration(responseBudget), _instant(11 + elapsed)
         );
         Clock.State memory state = harness.state();
-        uint64 chargedElapsed = _monus(elapsed, responseBudget);
+        uint64 chargedElapsed = _saturatingSub(elapsed, responseBudget);
         uint64 expectedAllowance = allowance - chargedElapsed;
         assertEq(_unwrap(state.allowance), expectedAllowance);
         assertLe(expectedAllowance, allowance);
@@ -307,6 +307,14 @@ contract ClockTest is Test {
         harness.chargeAndPauseAt(_duration(15), _instant(16));
     }
 
+    function testChargeRejectsAnOvercharge() public {
+        harness.initialize(_instant(10), _duration(20), _instant(10));
+        harness.startAt(_instant(11));
+
+        vm.expectRevert(stdError.arithmeticError);
+        harness.chargeAndPauseAt(_duration(16), _instant(16));
+    }
+
     function testFuzzPausedCarryoverPreservesTheChargedRemainder(uint64 rawCharge)
         public
     {
@@ -373,12 +381,20 @@ contract ClockTest is Test {
         harness.deductSource(_duration(0));
     }
 
-    function testDeductPausedMayReturnZeroInMemory() public {
+    function testDeductPausedRejectsAZeroRemainder() public {
         harness.initializeSource(_instant(10), _duration(80), _instant(10));
 
-        Clock.State memory state = harness.deductSource(_duration(80));
-        assertEq(_unwrap(state.allowance), 0);
-        assertEq(Time.Instant.unwrap(state.startInstant), 0);
+        vm.expectRevert(
+            ITournament.InitializedClockCannotHaveZeroAllowance.selector
+        );
+        harness.deductSource(_duration(80));
+    }
+
+    function testDeductPausedRejectsAnOvercharge() public {
+        harness.initializeSource(_instant(10), _duration(80), _instant(10));
+
+        vm.expectRevert(stdError.arithmeticError);
+        harness.deductSource(_duration(81));
     }
 
     function testPausedAllowanceReturnsThePausedRemainder() public {
@@ -455,7 +471,11 @@ contract ClockTest is Test {
         return one < two ? one : two;
     }
 
-    function _monus(uint64 one, uint64 two) private pure returns (uint64) {
+    function _saturatingSub(uint64 one, uint64 two)
+        private
+        pure
+        returns (uint64)
+    {
         return one < two ? 0 : one - two;
     }
 }

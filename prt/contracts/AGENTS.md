@@ -86,6 +86,9 @@ configured level count; there are no production Top/Middle/Bottom contracts.
   Uninitialized and deleted matches must fail before phase-specific decoding.
 - Match phase is derived from the existing representation. Do not add storage or
   reshape the raw external tuple without an explicit compatibility change.
+- A sealed Match stores commitment one's final state in `leftNode` and
+  commitment two's final state in `rightNode`. Raw readers must still establish
+  the phase before interpreting those overloaded fields.
 - Active bisection has exactly one running clock. A sealed leaf has two clocks
   running from one instant. A sealed inner match has two paused clocks while its
   linked child resolves.

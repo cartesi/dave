@@ -8,7 +8,7 @@ import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
 /// @notice Configured work-reserve accounting for one join.
 library Bond {
     uint256 constant WORK_PRICE_CAP = 50 gwei;
-    uint256 constant PRIORITY_FEE_CAP = 10 gwei;
+    uint256 constant REFUND_PRIORITY_FEE_CAP = 10 gwei;
 
     /// @notice Maximum gas available to recipient code during an ETH payment.
     /// @dev EIP-150 may reduce this ceiling when the caller has too little gas.

@@ -59,7 +59,7 @@ The production refund request is:
 
 ```text
 units = Gas.TX + delta
-effectivePrice = min(tx.gasprice, block.basefee + PRIORITY_FEE_CAP)
+effectivePrice = min(tx.gasprice, block.basefee + REFUND_PRIORITY_FEE_CAP)
 requestedRefund = min(
     tournament balance before the callback,
     allocation * WORK_PRICE_CAP,
@@ -106,9 +106,9 @@ Also record the operating system and architecture. Use a fresh checkout or CI
 job for an accepted run and restore dependencies from the lockfile.
 
 The development shell may expose a development Forge build. Obtain the release
-named by `GAS_FOUNDRY_VERSION` and `PRT_GAS_FOUNDRY_VERSION`, verify its archive
-and binary hashes against the latest accepted calibration record, and prepend
-its directory inside `direnv exec`:
+pinned by both measurement entry points, verify its archive and binary hashes
+against the latest accepted calibration record, and prepend its directory
+inside `direnv exec`:
 
 ```bash
 direnv exec . bash -lc \
@@ -239,7 +239,7 @@ For one action family:
 Never select less than the maximum rounded recommendation. Retained headroom is
 a deliberate stability choice, not permission to skip remeasurement.
 
-Do not change `WORK_PRICE_CAP`, `PRIORITY_FEE_CAP`, or
+Do not change `WORK_PRICE_CAP`, `REFUND_PRIORITY_FEE_CAP`, or
 `PAYMENT_CALLBACK_GAS_LIMIT` merely because a witness changed. They are policy
 parameters and require independent rationale.
 

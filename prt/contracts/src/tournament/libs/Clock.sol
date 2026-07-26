@@ -8,9 +8,8 @@ import {ITournament} from "prt-contracts/ITournament.sol";
 import {Time} from "./Time.sol";
 
 /// @notice Arithmetic and phase transitions for one tournament clock.
-/// @dev The representation is part of the external ABI. A zero allowance is
-/// uninitialized; a positive allowance with zero start instant is paused; and
-/// a positive allowance with a positive start instant is running.
+/// @dev A zero allowance is uninitialized. With a positive allowance, a zero
+/// start instant is paused and a positive start instant is running.
 library Clock {
     using Time for Time.Instant;
     using Time for Time.Duration;
@@ -64,7 +63,7 @@ library Clock {
 
     /// @return Live remaining time at `current`, saturated at zero.
     /// @dev Reverts for an uninitialized clock and when `current` precedes its
-    /// start instant. At the exact deadline, the result is zero.
+    /// start instant. A running clock returns zero at and after its deadline.
     function remainingAt(State memory state, Time.Instant current)
         internal
         pure
@@ -75,7 +74,8 @@ library Clock {
             return state.allowance;
         }
 
-        return state.allowance.monus(current.timeSpan(state.startInstant));
+        return
+            state.allowance.saturatingSub(current.timeSpan(state.startInstant));
     }
 
     /// @return A paused clock's full remaining allowance.
@@ -90,9 +90,9 @@ library Clock {
         return state.allowance;
     }
 
-    /// @return Time elapsed after the deadline, saturated at zero.
-    /// @dev Reverts for an uninitialized or paused clock. At the exact
-    /// deadline, the result is zero even though `remainingAt` is also zero.
+    /// @return Time elapsed strictly beyond the deadline, saturated at zero.
+    /// @dev Reverts for an uninitialized or paused clock. A running clock is
+    /// already expired at its deadline, although its overdue duration is zero.
     function overdueByAt(State memory state, Time.Instant current)
         internal
         pure
@@ -102,7 +102,8 @@ library Clock {
         if (!state.isRunning()) {
             revert ITournament.PausedClockCannotTimeout();
         }
-        return current.timeSpan(state.startInstant).monus(state.allowance);
+        return
+            current.timeSpan(state.startInstant).saturatingSub(state.allowance);
     }
 
     //
@@ -120,7 +121,7 @@ library Clock {
     ) internal {
         state.requireUninitialized();
         Time.Duration allowance =
-            initialAllowance.monus(current.timeSpan(checkinInstant));
+            initialAllowance.saturatingSub(current.timeSpan(checkinInstant));
         _setPaused(state, allowance);
     }
 
@@ -147,8 +148,8 @@ library Clock {
             revert ITournament.CannotAdvanceTimedOutClock();
         }
 
-        Time.Duration chargedElapsed = elapsed.monus(responseBudget);
-        _setPaused(state, state.allowance.monus(chargedElapsed));
+        Time.Duration chargedElapsed = elapsed.saturatingSub(responseBudget);
+        _setPaused(state, state.allowance.checkedSub(chargedElapsed));
     }
 
     /// @notice Charge a clock's live remaining time and pause it.
@@ -159,7 +160,7 @@ library Clock {
         Time.Duration charge,
         Time.Instant current
     ) internal {
-        Time.Duration remaining = state.remainingAt(current).monus(charge);
+        Time.Duration remaining = state.remainingAt(current).checkedSub(charge);
         _setPaused(state, remaining);
     }
 
@@ -176,16 +177,17 @@ library Clock {
     }
 
     /// @notice Charge an already-paused in-memory clock.
-    /// @dev The returned allowance may be zero; a zero result cannot later be
-    /// stored as an initialized clock.
+    /// @dev The charge must leave a positive initialized allowance. Exact
+    /// depletion reverts with `InitializedClockCannotHaveZeroAllowance`;
+    /// overcharging reverts through checked arithmetic.
     function deductPaused(State memory state, Time.Duration charge)
         internal
         pure
         returns (State memory)
     {
         state.requirePaused();
-        Time.Duration remaining = state.allowance.monus(charge);
-        return State({allowance: remaining, startInstant: Time.ZERO_INSTANT});
+        Time.Duration remaining = state.allowance.checkedSub(charge);
+        return _pausedState(remaining);
     }
 
     //
@@ -193,11 +195,21 @@ library Clock {
     //
 
     function _setPaused(State storage state, Time.Duration allowance) private {
+        State memory paused = _pausedState(allowance);
+
+        state.allowance = paused.allowance;
+        state.startInstant = paused.startInstant;
+    }
+
+    function _pausedState(Time.Duration allowance)
+        private
+        pure
+        returns (State memory)
+    {
         if (allowance.isZero()) {
             revert ITournament.InitializedClockCannotHaveZeroAllowance();
         }
 
-        state.allowance = allowance;
-        state.startInstant = Time.ZERO_INSTANT;
+        return State({allowance: allowance, startInstant: Time.ZERO_INSTANT});
     }
 }

@@ -54,7 +54,20 @@ library Time {
         return d == 0;
     }
 
-    function monus(Duration left, Duration right)
+    /// @notice Subtract two durations using Solidity checked arithmetic.
+    /// @dev Reverts when `right` is greater than `left`.
+    function checkedSub(Duration left, Duration right)
+        internal
+        pure
+        returns (Duration)
+    {
+        uint64 l = Duration.unwrap(left);
+        uint64 r = Duration.unwrap(right);
+        return Duration.wrap(l - r);
+    }
+
+    /// @notice Subtract two durations, saturating at zero.
+    function saturatingSub(Duration left, Duration right)
         internal
         pure
         returns (Duration)

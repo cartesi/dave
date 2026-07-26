@@ -479,9 +479,8 @@ contract Tournament is ITournament {
         _clockOne.requireInitialized();
         _clockTwo.requireInitialized();
 
-        Match.SealedView memory divergence = Match.sealedView(
-            matches[_matchId.hashFromId()], args.commitmentArgs.height
-        );
+        Match.SealedView memory divergence =
+            Match.sealedView(matches[_matchId.hashFromId()]);
         Time.Instant current = Time.currentTime();
         MatchClocks.TimeoutStatus memory timeout =
             MatchClocks.classifyTimeoutAt(_clockOne, _clockTwo, current);
@@ -1017,7 +1016,7 @@ contract Tournament is ITournament {
             address(this).balance,
             Bond.actionRefundCap(gasEstimate),
             (Gas.TX + gasBefore - gasAfter)
-                * tx.gasprice.min(block.basefee + Bond.PRIORITY_FEE_CAP)
+                * tx.gasprice.min(block.basefee + Bond.REFUND_PRIORITY_FEE_CAP)
         );
 
         bool status = _tryPayment(msg.sender, refundValue);
@@ -1026,7 +1025,8 @@ contract Tournament is ITournament {
         _releaseLock();
     }
 
-    /// @dev Skips zero value and never copies recipient return data.
+    /// @dev Skips zero value. A rejected payment returns false instead of
+    /// reverting tournament progress.
     function _tryPayment(address recipient, uint256 value)
         private
         returns (bool success)
@@ -1036,6 +1036,8 @@ contract Tournament is ITournament {
         }
 
         uint256 callGas = Bond.PAYMENT_CALL_GAS;
+        // Empty input and output ranges send no calldata and copy no return
+        // data. A nonzero-value CALL adds a 2,300-gas stipend to `callGas`.
         assembly ("memory-safe") {
             success := call(callGas, recipient, value, 0, 0, 0, 0)
         }

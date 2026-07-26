@@ -31,12 +31,12 @@ contract MatchViewsHarness {
         stored.requireSealed();
     }
 
-    function sealedView(Match.State calldata state, uint64 totalHeight)
+    function sealedView(Match.State calldata state)
         external
         pure
         returns (Match.SealedView memory)
     {
-        return Match.sealedView(state, totalHeight);
+        return Match.sealedView(state);
     }
 }
 
@@ -113,43 +113,38 @@ contract MatchViewsTest is Test {
         HARNESS.requireSealed();
     }
 
-    function testSealedViewDecodesEveryHeightAndPositionParity() public pure {
-        for (uint64 totalHeight = 2; totalHeight <= 3; ++totalHeight) {
-            _assertSealedView(totalHeight, 0);
-            _assertSealedView(totalHeight, 1);
-        }
+    function testSealedViewReadsCanonicalCommitmentOrderAtBothPositionParities()
+        public
+        pure
+    {
+        _assertSealedView(0);
+        _assertSealedView(1);
     }
 
     function testSealedViewRejectsAbsentAndUnsealedStates() public {
         Match.State memory state;
         vm.expectRevert(ITournament.MatchDoesNotExist.selector);
-        HARNESS.sealedView(state, 2);
+        HARNESS.sealedView(state);
 
         state = _state(1, 0, true);
         vm.expectRevert(ITournament.MatchIsNotSealed.selector);
-        HARNESS.sealedView(state, 2);
+        HARNESS.sealedView(state);
     }
 
-    function _assertSealedView(uint64 totalHeight, uint256 position)
-        internal
-        pure
-    {
+    function _assertSealedView(uint256 position) internal pure {
         Machine.Hash agreeState = _hash(0xa0);
         Machine.Hash finalStateOne = _hash(0xb1);
         Machine.Hash finalStateTwo = _hash(0xb2);
-        bool leftStoresOne = uint256(totalHeight % 2) == position % 2;
-        Machine.Hash storedLeft = leftStoresOne ? finalStateOne : finalStateTwo;
-        Machine.Hash storedRight = leftStoresOne ? finalStateTwo : finalStateOne;
 
         Match.State memory state = Match.State({
             otherParent: Tree.Node.wrap(Machine.Hash.unwrap(agreeState)),
-            leftNode: Tree.Node.wrap(Machine.Hash.unwrap(storedLeft)),
-            rightNode: Tree.Node.wrap(Machine.Hash.unwrap(storedRight)),
+            leftNode: Tree.Node.wrap(Machine.Hash.unwrap(finalStateOne)),
+            rightNode: Tree.Node.wrap(Machine.Hash.unwrap(finalStateTwo)),
             runningLeafPosition: position,
             currentHeight: 0,
             isInit: true
         });
-        Match.SealedView memory view_ = state.sealedView(totalHeight);
+        Match.SealedView memory view_ = state.sealedView();
 
         assertEq(
             Machine.Hash.unwrap(view_.agreeState),

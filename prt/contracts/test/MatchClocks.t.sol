@@ -122,12 +122,16 @@ contract MatchClocksTest is Test {
         Clock.State memory two =
             _clockState(allowanceTwo, twoRunning, elapsedTwo, current);
 
-        uint64 remainingOne =
-            oneRunning ? _monus(allowanceOne, elapsedOne) : allowanceOne;
-        uint64 remainingTwo =
-            twoRunning ? _monus(allowanceTwo, elapsedTwo) : allowanceTwo;
-        uint64 overdueOne = oneRunning ? _monus(elapsedOne, allowanceOne) : 0;
-        uint64 overdueTwo = twoRunning ? _monus(elapsedTwo, allowanceTwo) : 0;
+        uint64 remainingOne = oneRunning
+            ? _saturatingSub(allowanceOne, elapsedOne)
+            : allowanceOne;
+        uint64 remainingTwo = twoRunning
+            ? _saturatingSub(allowanceTwo, elapsedTwo)
+            : allowanceTwo;
+        uint64 overdueOne =
+            oneRunning ? _saturatingSub(elapsedOne, allowanceOne) : 0;
+        uint64 overdueTwo =
+            twoRunning ? _saturatingSub(elapsedTwo, allowanceTwo) : 0;
         (
             MatchClocks.TimeoutOutcome expectedOutcome,
             uint64 expectedDeferredCharge
@@ -297,12 +301,13 @@ contract MatchClocksTest is Test {
 
         harness.startBisectionAt(_instant(11));
         uint64 leafStart = 11 + elapsedOne;
-        uint64 expectedOne = allowanceOne - _monus(elapsedOne, responseBudget);
+        uint64 expectedOne =
+            allowanceOne - _saturatingSub(elapsedOne, responseBudget);
         uint64 expectedTwo = allowanceTwo;
         if (switchBeforeLeaf) {
             harness.switchTurnAt(_duration(responseBudget), _instant(leafStart));
             leafStart += elapsedTwo;
-            expectedTwo -= _monus(elapsedTwo, responseBudget);
+            expectedTwo -= _saturatingSub(elapsedTwo, responseBudget);
         }
         harness.startLeafRace(_duration(responseBudget), _instant(leafStart));
 
@@ -338,8 +343,8 @@ contract MatchClocksTest is Test {
 
         Clock.State memory one = harness.oneState();
         Clock.State memory two = harness.twoState();
-        uint64 chargedOne = _monus(elapsedOne, responseBudget);
-        uint64 chargedTwo = _monus(elapsedTwo, responseBudget);
+        uint64 chargedOne = _saturatingSub(elapsedOne, responseBudget);
+        uint64 chargedTwo = _saturatingSub(elapsedTwo, responseBudget);
         assertEq(_unwrap(one.allowance), allowanceOne - chargedOne);
         assertEq(_unwrap(two.allowance), allowanceTwo - chargedTwo);
         assertEq(
@@ -378,14 +383,15 @@ contract MatchClocksTest is Test {
 
         harness.startBisectionAt(_instant(11));
         uint64 sealInstant = 11 + elapsedOne;
-        uint64 expectedOne = allowanceOne - _monus(elapsedOne, responseBudget);
+        uint64 expectedOne =
+            allowanceOne - _saturatingSub(elapsedOne, responseBudget);
         uint64 expectedTwo = allowanceTwo;
         if (switchBeforeSeal) {
             harness.switchTurnAt(
                 _duration(responseBudget), _instant(sealInstant)
             );
             sealInstant += elapsedTwo;
-            expectedTwo -= _monus(elapsedTwo, responseBudget);
+            expectedTwo -= _saturatingSub(elapsedTwo, responseBudget);
         }
         Time.Duration maximum = harness.pauseForInner(
             _duration(responseBudget), _instant(sealInstant)
@@ -605,7 +611,11 @@ contract MatchClocksTest is Test {
         return one > two ? one : two;
     }
 
-    function _monus(uint64 one, uint64 two) private pure returns (uint64) {
+    function _saturatingSub(uint64 one, uint64 two)
+        private
+        pure
+        returns (uint64)
+    {
         return one < two ? 0 : one - two;
     }
 }

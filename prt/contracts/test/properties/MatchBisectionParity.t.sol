@@ -194,7 +194,7 @@ contract MatchBisectionParityTest is Test {
             agreeProof
         );
 
-        Match.SealedView memory view_ = _state.sealedView(args.height);
+        Match.SealedView memory view_ = _state.sealedView();
         _assertHash(view_.agreeState, Machine.Hash.wrap(bytes32(0)));
         assertEq(view_.divergencePosition, 1);
         _assertHash(finalStateOne, Machine.Hash.wrap(bytes32(0)));
@@ -587,7 +587,7 @@ contract MatchBisectionParityTest is Test {
         _assertHash(sealedOne, expectedOne);
         _assertHash(sealedTwo, expectedTwo);
         _assertRawSealedState(trace, agreeState, expectedOne, expectedTwo);
-        _assertStoredDivergence(trace, agreeState, expectedOne, expectedTwo);
+        _assertSealedView(trace, agreeState, expectedOne, expectedTwo);
     }
 
     function _assertRawSealedState(
@@ -603,25 +603,21 @@ contract MatchBisectionParityTest is Test {
             _state.otherParent, Tree.Node.wrap(Machine.Hash.unwrap(agreeState))
         );
 
-        bool leftStoresOne =
-            uint256(trace.args.height % 2) == trace.position % 2;
-        Machine.Hash expectedLeft = leftStoresOne ? expectedOne : expectedTwo;
-        Machine.Hash expectedRight = leftStoresOne ? expectedTwo : expectedOne;
         _assertNode(
-            _state.leftNode, Tree.Node.wrap(Machine.Hash.unwrap(expectedLeft))
+            _state.leftNode, Tree.Node.wrap(Machine.Hash.unwrap(expectedOne))
         );
         _assertNode(
-            _state.rightNode, Tree.Node.wrap(Machine.Hash.unwrap(expectedRight))
+            _state.rightNode, Tree.Node.wrap(Machine.Hash.unwrap(expectedTwo))
         );
     }
 
-    function _assertStoredDivergence(
+    function _assertSealedView(
         Trace memory trace,
         Machine.Hash agreeState,
         Machine.Hash expectedOne,
         Machine.Hash expectedTwo
     ) internal view {
-        Match.SealedView memory view_ = _state.sealedView(trace.args.height);
+        Match.SealedView memory view_ = _state.sealedView();
         uint256 agreeCycle = trace.args.toCycle(view_.divergencePosition);
         _assertHash(view_.agreeState, agreeState);
         assertEq(

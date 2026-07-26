@@ -638,18 +638,12 @@ contract TournamentLifecycleHandler is Test {
                     : _tree(ghost.commitmentOne).leaf(firstDivergence - 1);
                 assertTrue(actual.otherParent.eq(expectedAgree));
 
-                // Height three leaves commitment one as the final responder.
-                // The selected leaf slot depends only on divergence parity.
                 Tree.Node oneLeaf =
                     _tree(ghost.commitmentOne).leaf(firstDivergence);
                 Tree.Node twoLeaf =
                     _tree(ghost.commitmentTwo).leaf(firstDivergence);
-                Tree.Node expectedLeft =
-                    firstDivergence % 2 == 0 ? twoLeaf : oneLeaf;
-                Tree.Node expectedRight =
-                    firstDivergence % 2 == 0 ? oneLeaf : twoLeaf;
-                assertTrue(actual.leftNode.eq(expectedLeft));
-                assertTrue(actual.rightNode.eq(expectedRight));
+                assertTrue(actual.leftNode.eq(oneLeaf));
+                assertTrue(actual.rightNode.eq(twoLeaf));
             } else {
                 uint256 expectedPosition = firstDivergence
                     >> ghost.currentHeight << ghost.currentHeight;

@@ -90,7 +90,7 @@ contract RefundReserveTest is Test {
 
     function testCurrentBondPolicyCheckpoint() public {
         assertEq(Bond.WORK_PRICE_CAP, 50 gwei);
-        assertEq(Bond.PRIORITY_FEE_CAP, 10 gwei);
+        assertEq(Bond.REFUND_PRIORITY_FEE_CAP, 10 gwei);
         uint256 terminal = Bond.terminalAllocation();
         assertEq(Gas.WIN_LEAF_MATCH, 4_296_000);
         assertEq(terminal, 4_401_000);

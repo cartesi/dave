@@ -228,7 +228,7 @@ contract RefundFormulaTest is Test {
         } else if (kind == Kink.PRIORITY) {
             scenario = Case({
                 baseFee: workPrice,
-                priorityFee: Bond.PRIORITY_FEE_CAP + 1,
+                priorityFee: Bond.REFUND_PRIORITY_FEE_CAP + 1,
                 tournamentBalance: 2 * actionCap,
                 rejects: false
             });
@@ -271,7 +271,9 @@ contract RefundFormulaTest is Test {
             assertLt(scenario.tournamentBalance, actionCap);
             assertEq(observed.value, scenario.tournamentBalance);
         } else if (kind == Kink.PRIORITY) {
-            assertEq(effectivePrice, scenario.baseFee + Bond.PRIORITY_FEE_CAP);
+            assertEq(
+                effectivePrice, scenario.baseFee + Bond.REFUND_PRIORITY_FEE_CAP
+            );
             assertLt(effectivePrice, scenario.baseFee + scenario.priorityFee);
             assertEq(observed.value, workCost);
         } else if (kind == Kink.ALLOCATION) {
@@ -491,7 +493,7 @@ contract RefundFormulaTest is Test {
         pure
         returns (uint256)
     {
-        uint256 priorityCappedPrice = baseFee + Bond.PRIORITY_FEE_CAP;
+        uint256 priorityCappedPrice = baseFee + Bond.REFUND_PRIORITY_FEE_CAP;
         return gasPrice < priorityCappedPrice ? gasPrice : priorityCappedPrice;
     }
 
