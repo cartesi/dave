@@ -794,9 +794,7 @@ contract AdvanceMatchGasTest is TournamentGasTest {
 
         Measurement memory result = _measure(callData, Gas.ADVANCE_MATCH);
         _logMeasurement("advance match", result);
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.ADVANCE_MATCH, 1_000
-        );
+        _assertCalibratedAllocation(result, Gas.ADVANCE_MATCH);
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
@@ -891,8 +889,8 @@ contract SealInnerMatchGasTest is TournamentGasTest {
             _sealCall(false), Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
         );
         _logMeasurement("seal inner match", result);
-        _assertCalibratedAllocation(
-            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 1_000
         );
 
         Match.Id memory id = matchId;
