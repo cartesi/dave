@@ -71,8 +71,8 @@ library MatchClocks {
         Clock.State storage two,
         Time.Instant current
     ) internal {
-        one.requirePaused();
-        two.requirePaused();
+        one.assertPaused();
+        two.assertPaused();
         one.startAt(current);
     }
 
@@ -124,7 +124,7 @@ library MatchClocks {
         Time.Duration responseBudget,
         Time.Instant current
     ) private returns (Clock.State storage idle) {
-        _requireBisection(one, two);
+        _assertBisection(one, two);
         if (one.isRunning()) {
             one.pauseAfterResponseAt(responseBudget, current);
             return two;
@@ -134,12 +134,12 @@ library MatchClocks {
         }
     }
 
-    function _requireBisection(Clock.State memory one, Clock.State memory two)
+    function _assertBisection(Clock.State memory one, Clock.State memory two)
         private
         pure
     {
-        one.requireInitialized();
-        two.requireInitialized();
+        one.assertInitialized();
+        two.assertInitialized();
         assert(one.isRunning() != two.isRunning());
     }
 

@@ -39,7 +39,7 @@ library Clock {
         return !state.startInstant.isZero();
     }
 
-    function requireInitialized(State memory state) internal pure {
+    function assertInitialized(State memory state) internal pure {
         assert(state.isInitialized());
     }
 
@@ -47,17 +47,17 @@ library Clock {
         require(!state.isInitialized(), ITournament.ClockAlreadyInitialized());
     }
 
-    /// @notice Require an initialized paused clock.
+    /// @notice Assert an initialized paused clock.
     /// @dev A violation after initialization is an internal phase-machine bug.
-    function requirePaused(State memory state) internal pure {
-        state.requireInitialized();
+    function assertPaused(State memory state) internal pure {
+        state.assertInitialized();
         assert(!state.isRunning());
     }
 
-    /// @notice Require an initialized running clock.
+    /// @notice Assert an initialized running clock.
     /// @dev A violation after initialization is an internal phase-machine bug.
-    function requireRunning(State memory state) internal pure {
-        state.requireInitialized();
+    function assertRunning(State memory state) internal pure {
+        state.assertInitialized();
         assert(state.isRunning());
     }
 
@@ -69,7 +69,7 @@ library Clock {
         pure
         returns (Time.Duration)
     {
-        state.requireInitialized();
+        state.assertInitialized();
         if (!state.isRunning()) {
             return state.allowance;
         }
@@ -86,7 +86,7 @@ library Clock {
         pure
         returns (Time.Duration)
     {
-        state.requirePaused();
+        state.assertPaused();
         return state.allowance;
     }
 
@@ -98,7 +98,7 @@ library Clock {
         pure
         returns (Time.Duration)
     {
-        state.requireInitialized();
+        state.assertInitialized();
         assert(state.isRunning());
         return
             current.timeSpan(state.startInstant).saturatingSub(state.allowance);
@@ -126,7 +126,7 @@ library Clock {
 
     /// @notice Start an initialized paused clock at `current`.
     function startAt(State storage state, Time.Instant current) internal {
-        state.requirePaused();
+        state.assertPaused();
         assert(!current.isZero());
         state.startInstant = current;
     }
@@ -141,7 +141,7 @@ library Clock {
         Time.Duration responseBudget,
         Time.Instant current
     ) internal {
-        state.requireRunning();
+        state.assertRunning();
         Time.Duration elapsed = current.timeSpan(state.startInstant);
         if (!state.allowance.gt(elapsed)) {
             revert ITournament.CannotAdvanceTimedOutClock();
@@ -170,7 +170,7 @@ library Clock {
     function replaceWithPaused(State storage state, State memory source)
         internal
     {
-        state.requirePaused();
+        state.assertPaused();
         assert(!source.isRunning());
         _setPaused(state, source.allowance);
     }
@@ -184,7 +184,7 @@ library Clock {
         pure
         returns (State memory)
     {
-        state.requirePaused();
+        state.assertPaused();
         Time.Duration remaining = state.allowance.checkedSub(charge);
         return _pausedState(remaining);
     }

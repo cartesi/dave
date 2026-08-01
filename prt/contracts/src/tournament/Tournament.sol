@@ -479,8 +479,8 @@ contract Tournament is ITournament {
             Match.sealedView(matches[_matchId.hashFromId()]);
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
-        _clockOne.requireInitialized();
-        _clockTwo.requireInitialized();
+        _clockOne.assertInitialized();
+        _clockTwo.assertInitialized();
         Time.Instant current = Time.currentTime();
         MatchClocks.TimeoutStatus memory timeout =
             MatchClocks.classifyTimeoutAt(_clockOne, _clockTwo, current);
@@ -654,7 +654,7 @@ contract Tournament is ITournament {
         );
 
         Clock.State storage _clock = clocks[_commitmentRoot];
-        _clock.requireInitialized();
+        _clock.assertInitialized();
         // A child carries the sealed pair's shared maximum. It may therefore
         // exceed this selected side's snapshot, but never the pair maximum or
         // the sealed pair's post-discount live clock mass.
