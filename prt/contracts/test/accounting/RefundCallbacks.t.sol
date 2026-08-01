@@ -34,7 +34,7 @@ contract CallbackParametersProvider is ITournamentParametersProvider {
             levels: 1,
             log2step: 0,
             height: 1,
-            matchEffort: Time.Duration.wrap(0),
+            responseBudget: Time.Duration.wrap(0),
             maxAllowance: Time.Duration.wrap(1)
         });
     }
@@ -258,7 +258,7 @@ contract RefundCallbacksTest is Test {
         assertLt(gasUsed, WHOLE_CALL_GAS_CEILING);
         assertEq(
             bytes4(secondRet),
-            ITournament.AtLeastOneClockHasNotTimedOut.selector
+            ITournament.MatchCannotBeEliminatedByTimeout.selector
         );
         assertGt(_refundEvent(tournament, receiver, false), 0);
     }
@@ -527,10 +527,7 @@ contract RefundCallbacksTest is Test {
                 entry.topics[1], bytes32(uint256(uint160(address(receiver))))
             );
             assertEq(entry.topics[2], bytes32(uint256(expectedSuccess ? 1 : 0)));
-            (uint256 value, bytes memory ret) =
-                abi.decode(entry.data, (uint256, bytes));
-            observedValue = value;
-            assertEq(ret, bytes(""));
+            observedValue = abi.decode(entry.data, (uint256));
         }
         assertEq(refundEvents, 1);
     }

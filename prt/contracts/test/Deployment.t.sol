@@ -9,15 +9,15 @@ import {DeploymentScript, Seconds} from "../script/Deployment.s.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 
 contract DeploymentHarness is DeploymentScript {
-    function matchEffortInSeconds() external pure returns (uint64) {
-        return Seconds.unwrap(_getMatchEffortInSeconds());
+    function responseBudgetInSeconds() external pure returns (uint64) {
+        return Seconds.unwrap(_getResponseBudgetInSeconds());
     }
 
     function registerAndGetTiming() external returns (uint64, uint64) {
         _registerChains();
         _registerChainKinds();
         return (
-            Time.Duration.unwrap(_getMatchEffort()),
+            Time.Duration.unwrap(_getResponseBudget()),
             Time.Duration.unwrap(_getMaxAllowance())
         );
     }
@@ -26,12 +26,12 @@ contract DeploymentHarness is DeploymentScript {
 contract DeploymentTest is Test {
     function testDevnetClockCalibration() public {
         DeploymentHarness harness = new DeploymentHarness();
-        assertEq(harness.matchEffortInSeconds(), 5 minutes);
+        assertEq(harness.responseBudgetInSeconds(), 5 minutes);
 
         vm.chainId(31337);
-        (uint64 matchEffort, uint64 maxAllowance) =
+        (uint64 responseBudget, uint64 maxAllowance) =
             harness.registerAndGetTiming();
-        assertEq(matchEffort, (5 minutes) / (12 seconds));
+        assertEq(responseBudget, (5 minutes) / (12 seconds));
         assertEq(maxAllowance, (1 hours) / (12 seconds));
     }
 
@@ -39,9 +39,9 @@ contract DeploymentTest is Test {
         DeploymentHarness harness = new DeploymentHarness();
         vm.chainId(1);
 
-        (uint64 matchEffort, uint64 maxAllowance) =
+        (uint64 responseBudget, uint64 maxAllowance) =
             harness.registerAndGetTiming();
-        assertEq(matchEffort, (5 minutes) / (12 seconds));
+        assertEq(responseBudget, (5 minutes) / (12 seconds));
         assertEq(maxAllowance, (1 weeks + 1 hours) / (12 seconds));
     }
 
@@ -49,9 +49,9 @@ contract DeploymentTest is Test {
         DeploymentHarness harness = new DeploymentHarness();
         vm.chainId(11155111);
 
-        (uint64 matchEffort, uint64 maxAllowance) =
+        (uint64 responseBudget, uint64 maxAllowance) =
             harness.registerAndGetTiming();
-        assertEq(matchEffort, (5 minutes) / (12 seconds));
+        assertEq(responseBudget, (5 minutes) / (12 seconds));
         assertEq(maxAllowance, (9 hours) / (12 seconds));
     }
 }

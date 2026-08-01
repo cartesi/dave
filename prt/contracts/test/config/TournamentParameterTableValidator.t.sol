@@ -54,10 +54,10 @@ contract TournamentParameterTableValidatorTest is Test {
         assertEq(totalLog2Span, 4);
     }
 
-    function testZeroMatchEffortAndUnequalTimingAreValid() public view {
+    function testZeroResponseBudgetAndUnequalTimingAreValid() public view {
         TournamentParameters[] memory table = _fourLevelTable();
         for (uint64 row; row < table.length; ++row) {
-            table[row].matchEffort = Time.Duration.wrap(row * 3);
+            table[row].responseBudget = Time.Duration.wrap(row * 3);
             table[row].maxAllowance = Time.Duration.wrap(row + 1);
         }
 
@@ -349,14 +349,14 @@ contract TournamentParameterTableValidatorTest is Test {
         uint64 levels,
         uint64 log2step,
         uint64 height,
-        uint64 matchEffort,
+        uint64 responseBudget,
         uint64 maxAllowance
     ) private pure returns (TournamentParameters memory) {
         return TournamentParameters({
             levels: levels,
             log2step: log2step,
             height: height,
-            matchEffort: Time.Duration.wrap(matchEffort),
+            responseBudget: Time.Duration.wrap(responseBudget),
             maxAllowance: Time.Duration.wrap(maxAllowance)
         });
     }

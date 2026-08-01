@@ -18,15 +18,15 @@ contract CanonicalTournamentParametersProvider is
     /// @notice The maximum allowance must span at least one block.
     error MaxAllowanceCannotBeZero();
 
-    Time.Duration immutable MATCH_EFFORT;
+    Time.Duration immutable RESPONSE_BUDGET;
     Time.Duration immutable MAX_ALLOWANCE;
 
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance) {
         if (Time.Duration.unwrap(maxAllowance) == 0) {
             revert MaxAllowanceCannotBeZero();
         }
 
-        MATCH_EFFORT = matchEffort;
+        RESPONSE_BUDGET = responseBudget;
         MAX_ALLOWANCE = maxAllowance;
     }
 
@@ -41,7 +41,7 @@ contract CanonicalTournamentParametersProvider is
             levels: ArbitrationConstants.LEVELS,
             log2step: ArbitrationConstants.log2step(level),
             height: ArbitrationConstants.height(level),
-            matchEffort: MATCH_EFFORT,
+            responseBudget: RESPONSE_BUDGET,
             maxAllowance: MAX_ALLOWANCE
         });
     }

@@ -30,7 +30,7 @@ contract SmallSingleLevelTournamentTest is Test {
 
     uint64 internal constant HEIGHT = 3;
     uint64 internal constant START_BLOCK = 100;
-    uint64 internal constant MATCH_EFFORT = 5;
+    uint64 internal constant RESPONSE_BUDGET = 5;
     uint64 internal constant MAX_ALLOWANCE = 1_000;
 
     address internal constant CLAIMER_ONE = address(0xa11ce);
@@ -42,7 +42,8 @@ contract SmallSingleLevelTournamentTest is Test {
 
     constructor() {
         FACTORY = new SmallSingleLevelTournamentFactory(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
 
@@ -71,8 +72,7 @@ contract SmallSingleLevelTournamentTest is Test {
         );
         assertEq(Time.Instant.unwrap(args.startInstant), START_BLOCK);
         assertEq(Time.Duration.unwrap(args.allowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.maxAllowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.matchEffort), MATCH_EFFORT);
+        assertEq(Time.Duration.unwrap(args.responseBudget), RESPONSE_BUDGET);
         assertEq(address(args.provider), address(0));
         assertEq(args.tournamentFactory, address(FACTORY));
         assertGt(address(args.stateTransition).code.length, 0);
@@ -147,7 +147,8 @@ contract SmallSingleLevelTournamentTest is Test {
 
     function testHarnessRejectsUnsupportedLevelAndPayload() public {
         SmallSingleLevelParametersProvider provider = new SmallSingleLevelParametersProvider(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
         vm.expectRevert(
             abi.encodeWithSelector(

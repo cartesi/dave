@@ -61,7 +61,7 @@ contract HistoricalThreeLevelGeometryTest is Test {
                 parameters.height, HistoricalThreeLevelGeometry.height(level)
             );
             assertEq(
-                Time.Duration.unwrap(parameters.matchEffort),
+                Time.Duration.unwrap(parameters.responseBudget),
                 Time.Duration.unwrap(responseBudget)
             );
             assertEq(

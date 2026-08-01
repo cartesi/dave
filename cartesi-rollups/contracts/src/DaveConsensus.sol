@@ -409,7 +409,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(IERC165, ERC165) returns (bool) {
-        return interfaceId == type(IDataProvider).interfaceId
+        return interfaceId == type(IDaveConsensus).interfaceId || interfaceId == type(IDataProvider).interfaceId
             || interfaceId == type(IOutputsMerkleRootValidator).interfaceId || super.supportsInterface(interfaceId);
     }
 

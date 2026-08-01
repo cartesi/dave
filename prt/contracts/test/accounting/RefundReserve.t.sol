@@ -41,7 +41,7 @@ contract MutableRefundParametersProvider is ITournamentParametersProvider {
             levels: 1,
             log2step: 0,
             height: height,
-            matchEffort: Time.Duration.wrap(0),
+            responseBudget: Time.Duration.wrap(0),
             maxAllowance: Time.Duration.wrap(1)
         });
     }

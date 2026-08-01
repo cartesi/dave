@@ -15,7 +15,6 @@ pragma solidity ^0.8.0;
 import {stdError} from "forge-std-1.9.6/src/StdError.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
-import {ITournament} from "src/ITournament.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {MatchClocks} from "src/tournament/libs/MatchClocks.sol";
 import {Time} from "src/tournament/libs/Time.sol";
@@ -409,11 +408,11 @@ contract MatchClocksTest is Test {
     function testStartBisectionRequiresBothClocksInitialized() public {
         MatchClocksHarness oneMissing = new MatchClocksHarness();
         oneMissing.initializeTwo(_instant(10), _duration(30), _instant(10));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         oneMissing.startBisectionAt(_instant(11));
 
         harness.initializeOne(_instant(10), _duration(20), _instant(10));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.startBisectionAt(_instant(11));
     }
 
@@ -438,19 +437,19 @@ contract MatchClocksTest is Test {
     function testBisectionTransitionsRequireBothClocksInitialized() public {
         MatchClocksHarness oneMissing = new MatchClocksHarness();
         oneMissing.initializeTwo(_instant(10), _duration(30), _instant(10));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         oneMissing.switchTurnAt(_duration(0), _instant(11));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         oneMissing.startLeafRace(_duration(0), _instant(11));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         oneMissing.pauseForInner(_duration(0), _instant(11));
 
         harness.initializeOne(_instant(10), _duration(20), _instant(10));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.switchTurnAt(_duration(0), _instant(11));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.startLeafRace(_duration(0), _instant(11));
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.pauseForInner(_duration(0), _instant(11));
     }
 

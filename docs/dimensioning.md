@@ -43,7 +43,7 @@ to the average case.
   executes the worst instruction (the sqrt / TLB-flush class, near
   the 2^20 bound - which is why the span is 2^20). One occurrence,
   ever, breaks soundness, so rarity does not discount anything.
-- Clocks (the inner tournament timeout, matchEffort, the root
+- Clocks (the inner tournament timeout, responseBudget, the root
   slowdown budget, and the strides derived from them): these price
   aggregates - sums of per-step costs over whole gaps. Rare heavy
   instructions vanish into a sum of millions of terms. The honest
@@ -230,7 +230,7 @@ commitment strides and the complete contract table must still be compared as a
 release gate.
 
 `G` is not commitment-construction time. The contracts store the per-response
-value, currently five minutes, in the legacy-named `matchEffort` field. A
+value, currently five minutes, in the `responseBudget` field. A
 height-`H` match earns at most `H` discounts: one for each of its `H - 1`
 successful advances and one for its final leaf or inner seal. If a response
 starts with balance `b` and arrives after elapsed time `e`, it requires `e < b`

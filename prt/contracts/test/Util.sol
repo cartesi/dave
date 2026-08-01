@@ -50,7 +50,7 @@ import {
 contract SingleLevelTournamentParametersProvider is
     ITournamentParametersProvider
 {
-    Time.Duration immutable MATCH_EFFORT;
+    Time.Duration immutable RESPONSE_BUDGET;
     Time.Duration immutable MAX_ALLOWANCE;
     uint64 immutable LOG2_STEP;
     uint64 immutable HEIGHT;
@@ -58,12 +58,12 @@ contract SingleLevelTournamentParametersProvider is
     constructor(
         uint64 log2step,
         uint64 height,
-        Time.Duration matchEffort,
+        Time.Duration responseBudget,
         Time.Duration maxAllowance
     ) {
         LOG2_STEP = log2step;
         HEIGHT = height;
-        MATCH_EFFORT = matchEffort;
+        RESPONSE_BUDGET = responseBudget;
         MAX_ALLOWANCE = maxAllowance;
     }
 
@@ -77,7 +77,7 @@ contract SingleLevelTournamentParametersProvider is
             levels: 1, // Single-level tournament
             log2step: LOG2_STEP,
             height: HEIGHT,
-            matchEffort: MATCH_EFFORT,
+            responseBudget: RESPONSE_BUDGET,
             maxAllowance: MAX_ALLOWANCE
         });
     }
@@ -98,7 +98,7 @@ contract Util is Test {
     Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
     Time.Duration constant CENSORSHIP_TOLERANCE =
         Time.Duration.wrap(5 * 60 * 8);
-    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5 * 5);
+    Time.Duration constant RESPONSE_BUDGET = Time.Duration.wrap(5 * 5);
     Time.Duration constant MAX_ALLOWANCE = Time.Duration
         .wrap(
             Time.Duration.unwrap(CENSORSHIP_TOLERANCE)
@@ -354,7 +354,7 @@ contract Util is Test {
         MultiLevelTournamentFactory singleLevelFactory = new MultiLevelTournamentFactory(
             new Tournament(),
             new SingleLevelTournamentParametersProvider(
-                log2step, height, MATCH_EFFORT, MAX_ALLOWANCE
+                log2step, height, RESPONSE_BUDGET, MAX_ALLOWANCE
             ),
             stateTransition
         );
@@ -373,7 +373,7 @@ contract Util is Test {
             new MultiLevelTournamentFactory(
                 new Tournament(),
                 new CanonicalTournamentParametersProvider(
-                    MATCH_EFFORT, MAX_ALLOWANCE
+                    RESPONSE_BUDGET, MAX_ALLOWANCE
                 ),
                 stateTransition
             ),
@@ -391,7 +391,7 @@ contract Util is Test {
             new MultiLevelTournamentFactory(
                 new Tournament(),
                 new HistoricalThreeLevelParametersProvider(
-                    MATCH_EFFORT, MAX_ALLOWANCE
+                    RESPONSE_BUDGET, MAX_ALLOWANCE
                 ),
                 stateTransition
             ),

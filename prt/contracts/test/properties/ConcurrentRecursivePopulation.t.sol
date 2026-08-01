@@ -36,7 +36,7 @@ contract ConcurrentRecursivePopulationTest is Test {
     using Tree for Tree.Node;
 
     uint64 internal constant START_BLOCK = 100;
-    uint64 internal constant MATCH_EFFORT = 5;
+    uint64 internal constant RESPONSE_BUDGET = 5;
     uint64 internal constant MAX_ALLOWANCE = 200;
     uint256 internal constant CONTESTED_SEGMENT = 2;
 
@@ -60,7 +60,8 @@ contract ConcurrentRecursivePopulationTest is Test {
 
     constructor() {
         FACTORY = new SmallTwoLevelTournamentFactory(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
 
@@ -220,8 +221,7 @@ contract ConcurrentRecursivePopulationTest is Test {
         );
         assertEq(Time.Instant.unwrap(args.startInstant), START_BLOCK);
         assertEq(Time.Duration.unwrap(args.allowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.maxAllowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.matchEffort), MATCH_EFFORT);
+        assertEq(Time.Duration.unwrap(args.responseBudget), RESPONSE_BUDGET);
         assertTrue(args.commitmentArgs.initialHash.eq(initialOne));
         assertTrue(initialOne.eq(initialTwo));
         _assertNodeEq(

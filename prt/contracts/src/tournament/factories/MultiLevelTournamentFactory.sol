@@ -86,8 +86,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
                 levels: params.levels,
                 startInstant: Time.currentTime(),
                 allowance: params.maxAllowance,
-                maxAllowance: params.maxAllowance,
-                matchEffort: params.matchEffort,
+                responseBudget: params.responseBudget,
                 provider: _provider,
                 nestedDispute: ITournament.NestedDispute({
                     contestedCommitmentOne: Tree.ZERO_NODE,
@@ -136,8 +135,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
                 levels: params.levels,
                 startInstant: Time.currentTime(),
                 allowance: _allowance,
-                maxAllowance: params.maxAllowance,
-                matchEffort: params.matchEffort,
+                responseBudget: params.responseBudget,
                 provider: _provider,
                 nestedDispute: ITournament.NestedDispute({
                     contestedCommitmentOne: _contestedCommitmentOne,

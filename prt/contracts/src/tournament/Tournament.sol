@@ -262,7 +262,7 @@ contract Tournament is ITournament {
             _leftNode, _rightNode, _newLeftNode, _newRightNode
         );
 
-        Time.Duration responseBudget = tournamentArguments().matchEffort;
+        Time.Duration responseBudget = tournamentArguments().responseBudget;
         MatchClocks.switchTurnAt(
             clocks[_matchId.commitmentOne],
             clocks[_matchId.commitmentTwo],
@@ -285,8 +285,7 @@ contract Tournament is ITournament {
     /// - The winner must retain positive time after any deferred charge;
     ///   otherwise both commitments must be eliminated through
     ///   `eliminateMatchByTimeout`.
-    /// - `NeitherClockHasTimedOut` is the legacy selector for every outcome in
-    ///   which no individual commitment can win, including double elimination.
+    /// - The call fails when the shared classifier selects no individual winner.
     function winMatchByTimeout(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
@@ -344,7 +343,7 @@ contract Tournament is ITournament {
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.TWO
             );
         } else {
-            revert NeitherClockHasTimedOut();
+            revert MatchCannotBeWonByTimeout();
         }
     }
 
@@ -369,7 +368,7 @@ contract Tournament is ITournament {
                 _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.NONE
             );
         } else {
-            revert AtLeastOneClockHasNotTimedOut();
+            revert MatchCannotBeEliminatedByTimeout();
         }
     }
 
@@ -448,7 +447,7 @@ contract Tournament is ITournament {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
             Clock.State storage _clock2 = clocks[_matchId.commitmentTwo];
             MatchClocks.startLeafRaceAt(
-                _clock1, _clock2, args.matchEffort, Time.currentTime()
+                _clock1, _clock2, args.responseBudget, Time.currentTime()
             );
         }
 
@@ -474,13 +473,12 @@ contract Tournament is ITournament {
             revert RequireLeafTournament();
         }
 
+        Match.SealedView memory divergence =
+            Match.sealedView(matches[_matchId.hashFromId()]);
         Clock.State storage _clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage _clockTwo = clocks[_matchId.commitmentTwo];
         _clockOne.requireInitialized();
         _clockTwo.requireInitialized();
-
-        Match.SealedView memory divergence =
-            Match.sealedView(matches[_matchId.hashFromId()]);
         Time.Instant current = Time.currentTime();
         MatchClocks.TimeoutStatus memory timeout =
             MatchClocks.classifyTimeoutAt(_clockOne, _clockTwo, current);
@@ -580,7 +578,7 @@ contract Tournament is ITournament {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
             Clock.State storage _clock2 = clocks[_matchId.commitmentTwo];
             _maxDuration = MatchClocks.pauseForInnerAt(
-                _clock1, _clock2, args.matchEffort, Time.currentTime()
+                _clock1, _clock2, args.responseBudget, Time.currentTime()
             );
         }
 
@@ -638,7 +636,14 @@ contract Tournament is ITournament {
         (bool finished, Tree.Node _winner,, Clock.State memory _innerClock) =
             _childTournament.innerTournamentWinner();
         require(finished, ChildTournamentNotFinished());
-        _winner.requireExist();
+
+        WinnerCommitment _winnerCommitment;
+        if (_winner.eq(_matchId.commitmentOne)) {
+            _winnerCommitment = WinnerCommitment.ONE;
+        } else {
+            assert(_winner.eq(_matchId.commitmentTwo));
+            _winnerCommitment = WinnerCommitment.TWO;
+        }
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
         require(
@@ -656,16 +661,6 @@ contract Tournament is ITournament {
         pairCommitment(
             _commitmentRoot, _clock, _leftNode, _rightNode, Time.currentTime()
         );
-
-        WinnerCommitment _winnerCommitment;
-
-        if (_winner.eq(_matchId.commitmentOne)) {
-            _winnerCommitment = WinnerCommitment.ONE;
-        } else if (_winner.eq(_matchId.commitmentTwo)) {
-            _winnerCommitment = WinnerCommitment.TWO;
-        } else {
-            revert InvalidTournamentWinner(_winner);
-        }
 
         deleteMatch(
             _matchId, MatchDeletionReason.CHILD_TOURNAMENT, _winnerCommitment
@@ -956,10 +951,9 @@ contract Tournament is ITournament {
             deleteClaimer(_matchId.commitmentTwo);
         } else if (_winnerCommitment == WinnerCommitment.ONE) {
             deleteClaimer(_matchId.commitmentTwo);
-        } else if (_winnerCommitment == WinnerCommitment.TWO) {
-            deleteClaimer(_matchId.commitmentOne);
         } else {
-            revert InvalidWinnerCommitment(_winnerCommitment);
+            assert(_winnerCommitment == WinnerCommitment.TWO);
+            deleteClaimer(_matchId.commitmentOne);
         }
         Match.IdHash _matchIdHash = _matchId.hashFromId();
         delete matches[_matchIdHash];
@@ -1020,7 +1014,7 @@ contract Tournament is ITournament {
         );
 
         bool status = _tryPayment(msg.sender, refundValue);
-        emit PartialBondRefund(msg.sender, refundValue, status, bytes(""));
+        emit PartialBondRefund(msg.sender, refundValue, status);
 
         _releaseLock();
     }

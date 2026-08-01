@@ -38,7 +38,7 @@ contract TournamentLifecycleHandler is Test {
 
     uint64 internal immutable HEIGHT;
     uint64 internal immutable START_BLOCK;
-    uint64 internal immutable MATCH_EFFORT;
+    uint64 internal immutable RESPONSE_BUDGET;
     uint64 internal immutable MAX_ALLOWANCE;
     Machine.Hash internal immutable INITIAL_STATE;
 
@@ -107,13 +107,9 @@ contract TournamentLifecycleHandler is Test {
         assertEq(args.levels, 1);
         assertEq(args.commitmentArgs.height, 3);
         assertEq(args.commitmentArgs.log2step, 0);
-        assertEq(
-            Time.Duration.unwrap(args.allowance),
-            Time.Duration.unwrap(args.maxAllowance)
-        );
         HEIGHT = args.commitmentArgs.height;
         START_BLOCK = Time.Instant.unwrap(args.startInstant);
-        MATCH_EFFORT = Time.Duration.unwrap(args.matchEffort);
+        RESPONSE_BUDGET = Time.Duration.unwrap(args.responseBudget);
         MAX_ALLOWANCE = Time.Duration.unwrap(args.allowance);
         INITIAL_STATE = args.commitmentArgs.initialHash;
 
@@ -426,7 +422,7 @@ contract TournamentLifecycleHandler is Test {
                 abi.encodeWithSelector(
                     ITournament.eliminateMatchByTimeout.selector, _id(ghost)
                 ),
-                ITournament.AtLeastOneClockHasNotTimedOut.selector
+                ITournament.MatchCannotBeEliminatedByTimeout.selector
             );
         } else {
             if (
@@ -440,7 +436,7 @@ contract TournamentLifecycleHandler is Test {
                     Tree.ZERO_NODE,
                     Tree.ZERO_NODE
                 ),
-                ITournament.NeitherClockHasTimedOut.selector
+                ITournament.MatchCannotBeWonByTimeout.selector
             );
         }
 
@@ -857,7 +853,8 @@ contract TournamentLifecycleHandler is Test {
         assertTrue(clock.startInstant != 0);
         uint64 elapsed = current - clock.startInstant;
         assertLt(elapsed, clock.allowance);
-        uint64 charge = elapsed > MATCH_EFFORT ? elapsed - MATCH_EFFORT : 0;
+        uint64 charge =
+            elapsed > RESPONSE_BUDGET ? elapsed - RESPONSE_BUDGET : 0;
         uint64 previous = clock.allowance;
         clock.allowance -= charge;
         clock.startInstant = 0;
@@ -1207,7 +1204,7 @@ contract TournamentLifecycleHandler is Test {
 
 abstract contract TournamentLifecycleTestBase is Test {
     uint64 internal constant START_BLOCK = 100;
-    uint64 internal constant MATCH_EFFORT = 5;
+    uint64 internal constant RESPONSE_BUDGET = 5;
     uint64 internal constant MAX_ALLOWANCE = 200;
 
     Machine.Hash internal constant INITIAL_STATE =
@@ -1219,7 +1216,8 @@ abstract contract TournamentLifecycleTestBase is Test {
     function _setUpLifecycle() internal {
         vm.roll(START_BLOCK);
         SmallSingleLevelTournamentFactory factory = new SmallSingleLevelTournamentFactory(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
         tournament = InspectableTournament(
             address(

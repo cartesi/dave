@@ -34,7 +34,7 @@ contract CanonicalTournamentGeometryTest is Util {
 
     constructor() {
         PROVIDER = new CanonicalTournamentParametersProvider(
-            MATCH_EFFORT, MAX_ALLOWANCE
+            RESPONSE_BUDGET, MAX_ALLOWANCE
         );
         (FACTORY,) = Util.instantiateCanonicalTournamentFactory();
     }
@@ -55,18 +55,18 @@ contract CanonicalTournamentGeometryTest is Util {
             .selector
         );
         new CanonicalTournamentParametersProvider(
-            MATCH_EFFORT, Time.ZERO_DURATION
+            RESPONSE_BUDGET, Time.ZERO_DURATION
         );
     }
 
-    function testCanonicalProviderAcceptsZeroMatchEffort() public {
+    function testCanonicalProviderAcceptsZeroResponseBudget() public {
         CanonicalTournamentParametersProvider provider = new CanonicalTournamentParametersProvider(
             Time.ZERO_DURATION, MAX_ALLOWANCE
         );
         TournamentParameters memory parameters =
             provider.tournamentParameters(0);
 
-        assertEq(Time.Duration.unwrap(parameters.matchEffort), 0);
+        assertEq(Time.Duration.unwrap(parameters.responseBudget), 0);
         assertEq(
             Time.Duration.unwrap(parameters.maxAllowance),
             Time.Duration.unwrap(MAX_ALLOWANCE)
@@ -86,8 +86,8 @@ contract CanonicalTournamentGeometryTest is Util {
             assertEq(parameters.log2step, ArbitrationConstants.log2step(level));
             assertEq(parameters.height, ArbitrationConstants.height(level));
             assertEq(
-                Time.Duration.unwrap(parameters.matchEffort),
-                Time.Duration.unwrap(MATCH_EFFORT)
+                Time.Duration.unwrap(parameters.responseBudget),
+                Time.Duration.unwrap(RESPONSE_BUDGET)
             );
             assertEq(
                 Time.Duration.unwrap(parameters.maxAllowance),

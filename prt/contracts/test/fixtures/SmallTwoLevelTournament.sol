@@ -28,11 +28,11 @@ library SmallTwoLevelGeometry {
 contract SmallTwoLevelParametersProvider is ITournamentParametersProvider {
     error InvalidLevel(uint64 level);
 
-    Time.Duration internal immutable MATCH_EFFORT;
+    Time.Duration internal immutable RESPONSE_BUDGET;
     Time.Duration internal immutable MAX_ALLOWANCE;
 
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
-        MATCH_EFFORT = matchEffort;
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance) {
+        RESPONSE_BUDGET = responseBudget;
         MAX_ALLOWANCE = maxAllowance;
     }
 
@@ -47,7 +47,7 @@ contract SmallTwoLevelParametersProvider is ITournamentParametersProvider {
                 levels: SmallTwoLevelGeometry.LEVELS,
                 log2step: SmallTwoLevelGeometry.ROOT_LOG2_STEP,
                 height: SmallTwoLevelGeometry.ROOT_HEIGHT,
-                matchEffort: MATCH_EFFORT,
+                responseBudget: RESPONSE_BUDGET,
                 maxAllowance: MAX_ALLOWANCE
             });
         }
@@ -56,7 +56,7 @@ contract SmallTwoLevelParametersProvider is ITournamentParametersProvider {
                 levels: SmallTwoLevelGeometry.LEVELS,
                 log2step: SmallTwoLevelGeometry.LEAF_LOG2_STEP,
                 height: SmallTwoLevelGeometry.LEAF_HEIGHT,
-                matchEffort: MATCH_EFFORT,
+                responseBudget: RESPONSE_BUDGET,
                 maxAllowance: MAX_ALLOWANCE
             });
         }
@@ -65,10 +65,10 @@ contract SmallTwoLevelParametersProvider is ITournamentParametersProvider {
 }
 
 contract SmallTwoLevelTournamentFactory is MultiLevelTournamentFactory {
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance)
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance)
         MultiLevelTournamentFactory(
             new InspectableTournament(),
-            new SmallTwoLevelParametersProvider(matchEffort, maxAllowance),
+            new SmallTwoLevelParametersProvider(responseBudget, maxAllowance),
             new ProofSelectedStateTransition()
         )
     {}

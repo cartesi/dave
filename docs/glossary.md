@@ -91,9 +91,9 @@ level. Terms marked (code) appear verbatim in identifiers.
   too late at equality; timeout resolution becomes eligible there.
 - censorship budget (`C`): one cumulative, non-rechargeable bound on delaying
   the correct participant across a root dispute and all linked descendants.
-- matchEffort: legacy external name for the non-bankable elapsed-time discount
-  applied after each successful bisection response, including sealing. It is
-  never deposited into a clock.
+- responseBudget: non-bankable elapsed-time discount applied after each
+  successful bisection response, including sealing. It is never deposited into
+  a clock.
 - maxAllowance: configured root allowance and structural upper bound for clocks
   in parent-linked tournaments. Inner sealing delegates the pair's greater
   remainder as a shared child envelope; no response operation raises a clock

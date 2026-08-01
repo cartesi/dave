@@ -93,11 +93,11 @@ library SmallFourLevelClaims {
 }
 
 contract SmallFourLevelParametersProvider is ITournamentParametersProvider {
-    Time.Duration internal immutable MATCH_EFFORT;
+    Time.Duration internal immutable RESPONSE_BUDGET;
     Time.Duration internal immutable MAX_ALLOWANCE;
 
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
-        MATCH_EFFORT = matchEffort;
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance) {
+        RESPONSE_BUDGET = responseBudget;
         MAX_ALLOWANCE = maxAllowance;
     }
 
@@ -111,17 +111,17 @@ contract SmallFourLevelParametersProvider is ITournamentParametersProvider {
             levels: SmallFourLevelGeometry.LEVELS,
             log2step: SmallFourLevelGeometry.log2step(level),
             height: SmallFourLevelGeometry.HEIGHT,
-            matchEffort: MATCH_EFFORT,
+            responseBudget: RESPONSE_BUDGET,
             maxAllowance: MAX_ALLOWANCE
         });
     }
 }
 
 contract SmallFourLevelTournamentFactory is MultiLevelTournamentFactory {
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance)
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance)
         MultiLevelTournamentFactory(
             new InspectableTournament(),
-            new SmallFourLevelParametersProvider(matchEffort, maxAllowance),
+            new SmallFourLevelParametersProvider(responseBudget, maxAllowance),
             new ProofSelectedStateTransition()
         )
     {}

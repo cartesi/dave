@@ -197,7 +197,7 @@ the left or right leaf. Together with the final revealer, that bit determines
 which contested state belongs to each original commitment.
 
 Let a response begin with clock balance `b`, arrive after elapsed time `e`, and
-have configured response budget `G` (the legacy-named `matchEffort` field). The
+have configured response budget `G` (the `responseBudget` field). The
 response is accepted only while `e < b`, and pauses the responder with
 
 ```text
@@ -641,7 +641,7 @@ plus one inner-tournament commitment budget, currently one hour. The historical
 maximum inner commitment-building time determine tournament strides and
 heights. These measured computation budgets are distinct from the
 per-response budget `G`. The deployment stores `G = 5 minutes` in the
-legacy-named `matchEffort` field; on Ethereum that is 25 blocks. One
+`responseBudget` field; on Ethereum that is 25 blocks. One
 root-to-leaf descent with one match at each level spans 92 tree heights and can
 earn at most 7 hours 40 minutes of discounts, one at each successful response.
 Repeated matches receive their own bounded response discounts.
@@ -717,9 +717,8 @@ or reentrant recipient behavior cannot change the requested value.
 `PartialBondRefund.value` records that request whether or not the transfer
 succeeds; `success` records whether a nonzero recipient call succeeded, or is
 `true` when a zero request skipped the call. Recipient code receives at most
-50,000 gas, and its return data is not copied. The
-ABI-compatible `PartialBondRefund.ret` field is therefore always empty. A zero
-refund skips recipient execution and reports success. A failed nonzero callback
+50,000 gas, and its return data is not copied. A zero refund skips recipient
+execution and reports success. A failed nonzero callback
 transfers nothing and does not revert the completed action; the requested value
 stays in the pooled balance and is not reserved for a later retry by that caller.
 

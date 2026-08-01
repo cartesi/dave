@@ -16,8 +16,8 @@ library Time {
     Instant constant ZERO_INSTANT = Instant.wrap(0);
     Duration constant ZERO_DURATION = Duration.wrap(0);
 
-    /// @notice Return the current EVM block-number coordinate.
-    /// @dev Deployment policy converts wall-clock durations into this coordinate.
+    /// @notice Return the current EVM block number.
+    /// @dev Deployment converts configured wall-clock durations into EVM block counts.
     function currentTime() internal view returns (Instant) {
         return Instant.wrap(uint64(block.number));
     }

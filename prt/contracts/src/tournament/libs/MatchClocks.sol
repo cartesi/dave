@@ -115,8 +115,8 @@ library MatchClocks {
     }
 
     /// @notice Pause the running responder, discounting its response.
-    /// @dev Every legal exit from active bisection discounts the responder
-    /// exactly once; the public verbs differ only in which clocks run next.
+    /// @dev Every successful bisection response discounts the responder exactly
+    /// once; advancing and sealing differ only in which clocks run next.
     /// @return idle The other, still-paused clock.
     function _pauseResponderAt(
         Clock.State storage one,

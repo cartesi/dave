@@ -279,7 +279,7 @@ contract HistoricalThreeLevelInnerTest is Util {
         _match = middleTournament.getMatch(_matchId.hashFromId());
         assertTrue(_match.exists(), "match should exist");
 
-        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
         middleTournament.winMatchByTimeout(
             _matchId,
             playerNodes[1][HistoricalGeometry.height(1) - 1],
@@ -520,7 +520,7 @@ contract HistoricalThreeLevelInnerTest is Util {
         assertNoElimination();
 
         Util.joinTournament(middleTournament, 0);
-        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT) + 3);
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(RESPONSE_BUDGET) + 3);
         Util.joinTournament(middleTournament, 1);
         (Clock.State memory lateClock,) = middleTournament.getCommitment(
             playerNodes[1][HistoricalGeometry.height(1)]
@@ -528,7 +528,7 @@ contract HistoricalThreeLevelInnerTest is Util {
         assertEq(
             Time.Duration.unwrap(lateClock.allowance),
             Time.Duration.unwrap(MAX_ALLOWANCE)
-                - Time.Duration.unwrap(MATCH_EFFORT) - 3
+                - Time.Duration.unwrap(RESPONSE_BUDGET) - 3
         );
         middleTournament.advanceMatch(
             Util.historicalMatchId(1, 1),
@@ -562,7 +562,7 @@ contract HistoricalThreeLevelInnerTest is Util {
         assertEq(
             Time.Duration.unwrap(winningClock.allowance),
             Time.Duration.unwrap(MAX_ALLOWANCE)
-                - Time.Duration.unwrap(MATCH_EFFORT)
+                - Time.Duration.unwrap(RESPONSE_BUDGET)
         );
         assertNoElimination();
 
@@ -611,7 +611,7 @@ contract HistoricalThreeLevelInnerTest is Util {
         Util.joinTournament(topTournament, 2);
 
         Match.Id memory _matchId = Util.historicalMatchId(1, 0);
-        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT) + 7);
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(RESPONSE_BUDGET) + 7);
         uint256 _playerToSeal = Util.advanceMatch(topTournament, _matchId, 1);
 
         // expect new inner created
@@ -650,7 +650,7 @@ contract HistoricalThreeLevelInnerTest is Util {
         assertFalse(hasWinner);
 
         vm.roll(vm.getBlockNumber() + delegatedAllowance - 1);
-        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
         middleTournament.winMatchByTimeout(
             Util.historicalMatchId(1, 1),
             playerNodes[0][HistoricalGeometry.height(1) - 1],
@@ -756,7 +756,7 @@ contract HistoricalThreeLevelInnerTest is Util {
                         )
                 )
         );
-        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
         topTournament.winMatchByTimeout(
             topMatch,
             playerNodes[0][HistoricalGeometry.height(0) - 1],

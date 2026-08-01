@@ -142,9 +142,7 @@ contract ClockTest is Test {
     }
 
     function testInitializationRejectsInvalidInputs() public {
-        vm.expectRevert(
-            ITournament.InitializedClockCannotHaveZeroAllowance.selector
-        );
+        vm.expectRevert(stdError.assertionError);
         harness.initialize(_instant(10), _duration(5), _instant(15));
 
         vm.expectRevert(stdError.arithmeticError);
@@ -195,7 +193,7 @@ contract ClockTest is Test {
     function testDeadlineAndInvalidQuerySemantics() public {
         harness.initialize(_instant(10), _duration(20), _instant(10));
 
-        vm.expectRevert(ITournament.PausedClockCannotTimeout.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.overdueByAt(_instant(100));
 
         harness.startAt(_instant(11));
@@ -207,7 +205,7 @@ contract ClockTest is Test {
         harness.remainingAt(_instant(10));
 
         ClockHarness empty = new ClockHarness();
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         empty.remainingAt(_instant(10));
     }
 
@@ -256,7 +254,7 @@ contract ClockTest is Test {
     }
 
     function testStartAndResponsePauseRejectInvalidTransitions() public {
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.startAt(_instant(10));
 
         harness.initialize(_instant(10), _duration(20), _instant(10));
@@ -301,9 +299,7 @@ contract ClockTest is Test {
         harness.initialize(_instant(10), _duration(20), _instant(10));
         harness.startAt(_instant(11));
 
-        vm.expectRevert(
-            ITournament.InitializedClockCannotHaveZeroAllowance.selector
-        );
+        vm.expectRevert(stdError.assertionError);
         harness.chargeAndPauseAt(_duration(15), _instant(16));
     }
 
@@ -332,16 +328,14 @@ contract ClockTest is Test {
         harness.initialize(_instant(10), _duration(100), _instant(10));
         harness.initializeSource(_instant(10), _duration(80), _instant(10));
 
-        vm.expectRevert(
-            ITournament.InitializedClockCannotHaveZeroAllowance.selector
-        );
+        vm.expectRevert(stdError.assertionError);
         harness.deductSourceAndReplace(_duration(80));
     }
 
     function testPausedReplacementRequiresInitializedPausedTarget() public {
         harness.initializeSource(_instant(10), _duration(80), _instant(10));
 
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.replaceFromSource();
 
         harness.initialize(_instant(10), _duration(100), _instant(10));
@@ -362,14 +356,12 @@ contract ClockTest is Test {
     function testPausedReplacementRejectsZeroAllowanceSource() public {
         harness.initialize(_instant(10), _duration(100), _instant(10));
 
-        vm.expectRevert(
-            ITournament.InitializedClockCannotHaveZeroAllowance.selector
-        );
+        vm.expectRevert(stdError.assertionError);
         harness.replaceFromSource();
     }
 
     function testDeductPausedRejectsUninitializedClock() public {
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.deductSource(_duration(0));
     }
 
@@ -384,9 +376,7 @@ contract ClockTest is Test {
     function testDeductPausedRejectsAZeroRemainder() public {
         harness.initializeSource(_instant(10), _duration(80), _instant(10));
 
-        vm.expectRevert(
-            ITournament.InitializedClockCannotHaveZeroAllowance.selector
-        );
+        vm.expectRevert(stdError.assertionError);
         harness.deductSource(_duration(80));
     }
 
@@ -408,7 +398,7 @@ contract ClockTest is Test {
     }
 
     function testPausedAllowanceRejectsUninitializedClock() public {
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         harness.pausedAllowance();
     }
 

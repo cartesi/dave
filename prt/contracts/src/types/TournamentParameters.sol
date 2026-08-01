@@ -9,6 +9,6 @@ struct TournamentParameters {
     uint64 levels;
     uint64 log2step;
     uint64 height;
-    Time.Duration matchEffort;
+    Time.Duration responseBudget;
     Time.Duration maxAllowance;
 }

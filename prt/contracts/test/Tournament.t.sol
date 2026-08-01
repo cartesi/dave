@@ -113,6 +113,26 @@ contract TournamentTest is Util {
         );
     }
 
+    function testJoinAtDeadlineRejectsBeforeClockInvariant() public {
+        ITournament tournament =
+            Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
+        ITournament.TournamentArguments memory args =
+            tournament.tournamentArguments();
+        uint64 height = args.commitmentArgs.height;
+        Tree.Node left = playerNodes[1][height - 1];
+        Tree.Node right = playerNodes[1][height - 1];
+        bytes32[] memory proof = generateFinalStateProof(1, height);
+        uint256 bond = tournament.bondValue();
+        vm.roll(
+            Time.Instant.unwrap(args.startInstant)
+                + Time.Duration.unwrap(args.allowance)
+        );
+
+        vm.prank(addrs[1]);
+        vm.expectRevert(ITournament.TournamentIsClosed.selector);
+        tournament.joinTournament{value: bond}(TWO_STATE, proof, left, right);
+    }
+
     function testAdvanceResponseBudgetDeadlineAndRollback() public {
         ITournament tournament =
             Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
@@ -143,7 +163,7 @@ contract TournamentTest is Util {
         Match.State memory matchAfter = tournament.getMatch(matchIdHash);
         assertEq(
             Time.Duration.unwrap(clockOneAfter.allowance),
-            Time.Duration.unwrap(MATCH_EFFORT) + 1
+            Time.Duration.unwrap(RESPONSE_BUDGET) + 1
         );
         assertTrue(clockOneAfter.startInstant.isZero());
         assertEq(matchAfter.currentHeight, matchBefore.currentHeight - 1);
@@ -196,7 +216,7 @@ contract TournamentTest is Util {
             tournament.getCommitment(responder);
         assertEq(
             Time.Duration.unwrap(responderAfter.allowance),
-            Time.Duration.unwrap(MATCH_EFFORT) + 1
+            Time.Duration.unwrap(RESPONSE_BUDGET) + 1
         );
         assertFalse(responderAfter.startInstant.isZero());
         Match.State memory sealedMatch = tournament.getMatch(matchIdHash);
@@ -248,7 +268,7 @@ contract TournamentTest is Util {
             tournament.getCommitment(responder);
         assertEq(
             Time.Duration.unwrap(responderAfter.allowance),
-            Time.Duration.unwrap(MATCH_EFFORT) + 1
+            Time.Duration.unwrap(RESPONSE_BUDGET) + 1
         );
         assertTrue(responderAfter.startInstant.isZero());
         Match.State memory sealedMatch = tournament.getMatch(matchIdHash);
@@ -282,7 +302,9 @@ contract TournamentTest is Util {
         );
     }
 
-    function testInnerResolutionRejectsUnlinkedTournament() public {
+    function testInnerResolutionRejectsUnlinkedTournamentBeforeWinnerInvariant()
+        public
+    {
         ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
         ITournament.TournamentArguments memory args =
             tournament.tournamentArguments();
@@ -642,7 +664,7 @@ contract TournamentTest is Util {
         topTournament.getMatchCycle(matchId.hashFromId());
     }
 
-    function testWinLeafMatchPreservesClockBeforeMatchErrorPrecedence() public {
+    function testWinLeafMatchRejectsInvalidIdsBeforeClockInvariants() public {
         ITournament tournament =
             Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
         uint256 opponent = 1;
@@ -661,7 +683,7 @@ contract TournamentTest is Util {
             commitmentTwo: Tree.Node.wrap(bytes32(uint256(0xbeef)))
         });
 
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
         tournament.winLeafMatch(
             unknownId, Tree.ZERO_NODE, Tree.ZERO_NODE, bytes("")
         );
@@ -713,12 +735,12 @@ contract TournamentTest is Util {
         // The running clock is overdue, but the paused side can survive the
         // charge by one block and therefore still wins by timeout.
         assertTrue(topTournament.canWinMatchByTimeout(_matchId));
-        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeEliminatedByTimeout.selector);
         topTournament.eliminateMatchByTimeout(_matchId);
 
         vm.roll(_rootTournamentFinish);
         assertFalse(topTournament.canWinMatchByTimeout(_matchId));
-        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
         topTournament.winMatchByTimeout(
             _matchId, Tree.Node.wrap(bytes32(0)), Tree.Node.wrap(bytes32(0))
         );
@@ -760,7 +782,7 @@ contract TournamentTest is Util {
             .unwrap(fixture.clockTwo.allowance) - resolutionElapsed;
         Tree.Node winnerChild = _winnerChild(fixture.tournament, true);
 
-        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeEliminatedByTimeout.selector);
         fixture.tournament.eliminateMatchByTimeout(fixture.matchId);
 
         Util.winMatchByTimeout(
@@ -793,7 +815,7 @@ contract TournamentTest is Util {
                 fixture.matchId, winnerChild, winnerChild, new bytes(0)
             );
         assertTrue(fixture.tournament.canWinMatchByTimeout(fixture.matchId));
-        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeEliminatedByTimeout.selector);
         fixture.tournament.eliminateMatchByTimeout(fixture.matchId);
         Util.winMatchByTimeout(
             fixture.tournament, fixture.matchId, winnerChild, winnerChild
@@ -809,7 +831,7 @@ contract TournamentTest is Util {
 
         winnerChild = _winnerChild(fixture.tournament, true);
         assertFalse(fixture.tournament.canWinMatchByTimeout(fixture.matchId));
-        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
         fixture.tournament
             .winMatchByTimeout(fixture.matchId, winnerChild, winnerChild);
         Util.eliminateMatchByTimeout(fixture.tournament, fixture.matchId);
@@ -825,7 +847,7 @@ contract TournamentTest is Util {
                 allowanceGap,
                 1,
                 Time.Duration.unwrap(MAX_ALLOWANCE)
-                    - Time.Duration.unwrap(MATCH_EFFORT) - 1
+                    - Time.Duration.unwrap(RESPONSE_BUDGET) - 1
             )
         );
         SealedLeafFixture memory fixture =
@@ -910,7 +932,7 @@ contract TournamentTest is Util {
                 allowanceGap,
                 1,
                 Time.Duration.unwrap(MAX_ALLOWANCE)
-                    - Time.Duration.unwrap(MATCH_EFFORT) - 1
+                    - Time.Duration.unwrap(RESPONSE_BUDGET) - 1
             )
         );
         SealedLeafFixture memory fixture =
@@ -938,7 +960,9 @@ contract TournamentTest is Util {
         );
 
         if (winnerRemaining > 0) {
-            vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+            vm.expectRevert(
+                ITournament.MatchCannotBeEliminatedByTimeout.selector
+            );
             fixture.tournament.eliminateMatchByTimeout(fixture.matchId);
 
             Util.winMatchByTimeout(
@@ -955,7 +979,7 @@ contract TournamentTest is Util {
                 Time.Duration.unwrap(winnerClock.allowance), winnerRemaining
             );
         } else {
-            vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+            vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
             fixture.tournament
                 .winMatchByTimeout(fixture.matchId, winnerChild, winnerChild);
             Util.eliminateMatchByTimeout(fixture.tournament, fixture.matchId);
@@ -970,7 +994,7 @@ contract TournamentTest is Util {
         ITournament.TournamentArguments memory args =
             tournament.tournamentArguments();
         uint64 maximumAllowance = Time.Duration.unwrap(args.allowance);
-        uint64 responseBudget = Time.Duration.unwrap(args.matchEffort);
+        uint64 responseBudget = Time.Duration.unwrap(args.responseBudget);
         uint64 sacrificialAllowance = responseBudget + 1;
 
         vm.roll(
@@ -1006,7 +1030,7 @@ contract TournamentTest is Util {
         );
 
         assertTrue(tournament.canWinMatchByTimeout(firstMatch));
-        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeEliminatedByTimeout.selector);
         tournament.eliminateMatchByTimeout(firstMatch);
 
         (,,, uint64 height) = tournament.tournamentLevelConstants();
@@ -1090,7 +1114,7 @@ contract TournamentTest is Util {
 
         if (commitmentOneIsShorter) {
             vm.roll(
-                vm.getBlockNumber() + Time.Duration.unwrap(MATCH_EFFORT)
+                vm.getBlockNumber() + Time.Duration.unwrap(RESPONSE_BUDGET)
                     + allowanceGap
             );
         }
