@@ -17,8 +17,12 @@ library Bond {
     /// @dev Nonzero-value CALL adds a 2,300-gas stipend to this gas operand.
     uint256 constant PAYMENT_CALL_GAS = PAYMENT_CALLBACK_GAS_LIMIT - 2_300;
 
-    /// @notice Largest configured terminal allocation shared by every level.
-    function terminalAllocation() internal pure returns (uint256) {
+    /// @notice Largest configured terminal allocation legal for one role.
+    function terminalAllocation(bool isLeafTournament)
+        internal
+        pure
+        returns (uint256)
+    {
         uint256 timeoutTerminal =
             _max(Gas.WIN_MATCH_BY_TIMEOUT, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
         uint256 leafTerminal =
@@ -26,12 +30,15 @@ library Bond {
         uint256 innerTerminal = Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
             + _max(Gas.WIN_INNER_TOURNAMENT, Gas.ELIMINATE_INNER_TOURNAMENT);
 
-        return _max(timeoutTerminal, _max(leafTerminal, innerTerminal));
+        return
+            _max(
+                timeoutTerminal, isLeafTournament ? leafTerminal : innerTerminal
+            );
     }
 
     /// @notice Configured refundable work for one height-`height` match.
     /// @dev A valid positive-height match advances at most `height - 1` times.
-    function matchWorkAllocation(uint64 height)
+    function matchWorkAllocation(uint64 height, bool isLeafTournament)
         internal
         pure
         returns (uint256)
@@ -39,12 +46,16 @@ library Bond {
         // Subtracting after the addition leaves invalid height zero defined
         // without weakening the positive-height path bound. Geometry
         // validation remains separate.
-        return uint256(height) * Gas.ADVANCE_MATCH + terminalAllocation()
-            - Gas.ADVANCE_MATCH;
+        return uint256(height) * Gas.ADVANCE_MATCH
+            + terminalAllocation(isLeafTournament) - Gas.ADVANCE_MATCH;
     }
 
-    function bondValue(uint64 height) internal pure returns (uint256) {
-        return matchWorkAllocation(height) * WORK_PRICE_CAP;
+    function bondValue(uint64 height, bool isLeafTournament)
+        internal
+        pure
+        returns (uint256)
+    {
+        return matchWorkAllocation(height, isLeafTournament) * WORK_PRICE_CAP;
     }
 
     function actionRefundCap(uint256 gasAllocation)

@@ -738,10 +738,11 @@ A commitment root can be joined only once, so copying the correct root first
 intentionally claims that capped recipient slot; all progress and defense
 operations remain permissionless. Eliminated claimers lose their terminal
 payment claim. `Bond` derives the minimum join bond from the configured
-match-work reserve: the manual gas table determines the terminal maximum,
-tournament height determines the advance count, and the work-price cap converts
-that allocation to Wei. Garbage collection advances matches and parent
-tournaments, but does not imply that every child balance is settled. A
+match-work reserve: the manual gas table and the leaf or non-leaf role determine
+the terminal maximum, tournament height determines the advance count, and the
+work-price cap converts that allocation to Wei. Garbage collection advances
+matches and parent tournaments, but does not imply that every child balance is
+settled. A
 no-winner child has neither a winning-claimer payment nor this residual-burn
 path, so its balance remains locked absent another mechanism.
 

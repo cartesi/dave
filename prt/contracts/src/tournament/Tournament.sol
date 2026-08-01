@@ -207,7 +207,9 @@ contract Tournament is ITournament {
     //
 
     function bondValue() public view override returns (uint256) {
-        return Bond.bondValue(tournamentArguments().commitmentArgs.height);
+        TournamentArguments memory args = tournamentArguments();
+        return
+            Bond.bondValue(args.commitmentArgs.height, _isLeafTournament(args));
     }
 
     /// @notice Join a tournament (root or inner) with a commitment.
