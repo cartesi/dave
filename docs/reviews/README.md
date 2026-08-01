@@ -30,3 +30,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-07-26-prt-post-refactor-gas-calibration/`](2026-07-26-prt-post-refactor-gas-calibration/)
   - accepted post-refactor calibration and reproducible dependency provenance
     for the retained Tournament and full-stack leaf witnesses.
+- [`2026-08-01-prt-role-specific-bond-calibration/`](2026-08-01-prt-role-specific-bond-calibration/)
+  - accepted role-specific leaf and non-leaf terminal maxima, work reserves,
+    and join bonds.

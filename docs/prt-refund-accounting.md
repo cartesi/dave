@@ -18,38 +18,42 @@ For one tournament instance, define:
 
 ```text
 A = Gas.ADVANCE_MATCH
-E = maximum configured allocation over every legal terminal sequence
+r = tournament role: leaf or non-leaf
+E_r = maximum configured allocation over terminal sequences legal for role r
 h = commitment tree height for the tournament
 P = Bond.WORK_PRICE_CAP
-W(h) = (h - 1) * A + E
-B(h) = W(h) * P
+W_r(h) = (h - 1) * A + E_r
+B_r(h) = W_r(h) * P
 ```
 
-`B(h)` is the minimum value accepted by `joinTournament`. For a refundable
+`B_r(h)` is the minimum value accepted by `joinTournament`. For a refundable
 action with configured allocation `g`:
 
 ```text
 actionRefundCap(g) = g * P
 ```
 
-A positive-height match advances at most `h - 1` times. `E` is the maximum of
-the legal direct, leaf, and inner terminal sequences:
+A positive-height match advances at most `h - 1` times. Direct timeout paths
+are legal for both roles. Sealed-leaf paths are legal only in leaf tournaments,
+and sealed-inner paths are legal only in non-leaf tournaments:
 
-| Terminal sequence | Allocation expression |
-| --- | --- |
-| Direct timeout win | `Gas.WIN_MATCH_BY_TIMEOUT` |
-| Direct timeout elimination | `Gas.ELIMINATE_MATCH_BY_TIMEOUT` |
-| Leaf proof | `Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH` |
-| Sealed-leaf timeout win | `Gas.SEAL_LEAF_MATCH + Gas.WIN_MATCH_BY_TIMEOUT` |
-| Sealed-leaf timeout elimination | `Gas.SEAL_LEAF_MATCH + Gas.ELIMINATE_MATCH_BY_TIMEOUT` |
-| Inner winner propagation | `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + Gas.WIN_INNER_TOURNAMENT` |
-| Inner elimination | `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + Gas.ELIMINATE_INNER_TOURNAMENT` |
+| Terminal sequence | Legal role | Allocation expression |
+| --- | --- | --- |
+| Direct timeout win | Both | `Gas.WIN_MATCH_BY_TIMEOUT` |
+| Direct timeout elimination | Both | `Gas.ELIMINATE_MATCH_BY_TIMEOUT` |
+| Leaf proof | Leaf | `Gas.SEAL_LEAF_MATCH + Gas.WIN_LEAF_MATCH` |
+| Sealed-leaf timeout win | Leaf | `Gas.SEAL_LEAF_MATCH + Gas.WIN_MATCH_BY_TIMEOUT` |
+| Sealed-leaf timeout elimination | Leaf | `Gas.SEAL_LEAF_MATCH + Gas.ELIMINATE_MATCH_BY_TIMEOUT` |
+| Inner winner propagation | Non-leaf | `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + Gas.WIN_INNER_TOURNAMENT` |
+| Inner elimination | Non-leaf | `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + Gas.ELIMINATE_INNER_TOURNAMENT` |
 
-`Bond.terminalAllocation()` factors these paths into direct timeout,
-sealed-leaf, and sealed-inner families. The independent accounting tests
-enumerate every path separately. A new successful terminal path must be added
-to both. Changing an existing allocation flows automatically through `E`,
-`W(h)`, and `B(h)` when that path becomes or remains the maximum.
+`Bond.terminalAllocation(isLeafTournament)` factors these paths into direct
+timeout and the selected sealed family. The current maxima are 4,401,000 gas
+units for leaf tournaments and 699,000 for non-leaf tournaments. The
+independent accounting tests enumerate every legal path for each role. A new
+successful terminal path must be added to both production and that role's
+model. Changing an existing allocation flows automatically through `E_r`,
+`W_r(h)`, and `B_r(h)` when that path becomes or remains the role maximum.
 
 The formula assumes valid positive geometry. Canonical and custom deployment
 tables must reject zero-height matches before deployment.
@@ -69,26 +73,27 @@ C <= J - 1
 ```
 
 Let `Q` be the total successful progress-refund outflow before terminal
-recovery. Each match has at most `W(h)` configured refundable gas units and
-therefore at most one bond of configured refund liability:
+recovery. Every match in one tournament has the same role and at most `W_r(h)`
+configured refundable gas units, therefore at most one bond of configured
+refund liability:
 
 ```text
-Q <= C * B(h)
-  <= (J - 1) * B(h)
+Q <= C * B_r(h)
+  <= (J - 1) * B_r(h)
 ```
 
-Since the joins contribute at least `J * B(h)`, a finished tournament with a
+Since the joins contribute at least `J * B_r(h)`, a finished tournament with a
 winner has, immediately before its first successful terminal recovery:
 
 ```text
-balance >= J * B(h) - C * B(h)
-        = (J - C) * B(h)
-        >= B(h)
+balance >= J * B_r(h) - C * B_r(h)
+        = (J - C) * B_r(h)
+        >= B_r(h)
 ```
 
 Under the configured action caps, one minimum join bond is therefore reserved
 for an accepting winning claimer. The implementation defensively pays
-`min(balance, B(h))`; the reserve proof explains why the balance term does not
+`min(balance, B_r(h))`; the reserve proof explains why the balance term does not
 bind for an ordinarily funded completed tournament.
 
 Failed refund callbacks, under-budget actions, excess join value, and forced
@@ -106,8 +111,8 @@ The executable population and reserve models live in
 With exact-value joins, no forced ETH, and a successful winner payment:
 
 ```text
-successful progress refunds + winner payment + residual burn = J * B(h)
-successful progress refunds + residual burn = (J - 1) * B(h)
+successful progress refunds + winner payment + residual burn = J * B_r(h)
+successful progress refunds + residual burn = (J - 1) * B_r(h)
 ```
 
 The winner receives one bond. The remaining losing reserves have two possible
@@ -156,8 +161,6 @@ should introduce and justify the independent component explicitly.
 
 The current design deliberately leaves these as separate decisions:
 
-- whether leaf and non-leaf tournaments should use role-specific terminal
-  maxima rather than one common maximum;
 - the finite state-transition proof and input envelope, if any, that a leaf
   subsidy promises to cover;
 - selection of the work-price and priority-fee caps from deployment policy;

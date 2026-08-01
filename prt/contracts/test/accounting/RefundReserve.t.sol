@@ -26,9 +26,14 @@ import {Tree} from "src/types/Tree.sol";
 
 contract MutableRefundParametersProvider is ITournamentParametersProvider {
     uint64 internal height = 1;
+    uint64 internal levels = 1;
 
     function setHeight(uint64 newHeight) external {
         height = newHeight;
+    }
+
+    function setLevels(uint64 newLevels) external {
+        levels = newLevels;
     }
 
     function tournamentParameters(uint64)
@@ -38,7 +43,7 @@ contract MutableRefundParametersProvider is ITournamentParametersProvider {
         returns (TournamentParameters memory)
     {
         return TournamentParameters({
-            levels: 1,
+            levels: levels,
             log2step: 0,
             height: height,
             responseBudget: Time.Duration.wrap(0),
@@ -88,55 +93,96 @@ contract RefundReserveTest is Test {
 
     receive() external payable {}
 
-    function testCurrentBondPolicyCheckpoint() public {
+    function testRoleSpecificBondPolicyCheckpoint() public {
         assertEq(Bond.WORK_PRICE_CAP, 50 gwei);
         assertEq(Bond.REFUND_PRIORITY_FEE_CAP, 10 gwei);
-        uint256 terminal = Bond.terminalAllocation();
+        uint256 leafTerminal = Bond.terminalAllocation(true);
+        uint256 nonLeafTerminal = Bond.terminalAllocation(false);
         assertEq(Gas.WIN_LEAF_MATCH, 4_296_000);
-        assertEq(terminal, 4_401_000);
+        assertEq(leafTerminal, 4_401_000);
+        assertEq(nonLeafTerminal, 699_000);
         assertEq(Bond.actionRefundCap(Gas.WIN_LEAF_MATCH), 0.2148 ether);
-        assertEq(Bond.matchWorkAllocation(48), 10_276_000);
-        assertEq(Bond.matchWorkAllocation(17), 6_401_000);
-        assertEq(Bond.matchWorkAllocation(27), 7_651_000);
-        assertEq(Bond.matchWorkAllocation(55), 11_151_000);
-        assertEq(Bond.matchWorkAllocation(37), 8_901_000);
-        assertEq(Bond.bondValue(48), 0.5138 ether);
-        assertEq(Bond.bondValue(17), 0.32005 ether);
-        assertEq(Bond.bondValue(27), 0.38255 ether);
-        assertEq(Bond.bondValue(55), 0.55755 ether);
-        assertEq(Bond.bondValue(37), 0.44505 ether);
-        uint256 invalidZeroWork = terminal - Gas.ADVANCE_MATCH;
-        uint256 invalidZeroBond = invalidZeroWork * Bond.WORK_PRICE_CAP;
+        assertEq(Bond.matchWorkAllocation(48, false), 6_574_000);
+        assertEq(Bond.matchWorkAllocation(17, false), 2_699_000);
+        assertEq(Bond.matchWorkAllocation(27, true), 7_651_000);
+        assertEq(Bond.matchWorkAllocation(55, false), 7_449_000);
+        assertEq(Bond.matchWorkAllocation(37, true), 8_901_000);
+        assertEq(Bond.bondValue(48, false), 0.3287 ether);
+        assertEq(Bond.bondValue(17, false), 0.13495 ether);
+        assertEq(Bond.bondValue(27, true), 0.38255 ether);
+        assertEq(Bond.bondValue(55, false), 0.37245 ether);
+        assertEq(Bond.bondValue(37, true), 0.44505 ether);
+
+        uint256 invalidZeroLeafWork = leafTerminal - Gas.ADVANCE_MATCH;
+        uint256 invalidZeroLeafBond = invalidZeroLeafWork * Bond.WORK_PRICE_CAP;
+        uint256 invalidZeroNonLeafWork = nonLeafTerminal - Gas.ADVANCE_MATCH;
+        uint256 invalidZeroNonLeafBond =
+            invalidZeroNonLeafWork * Bond.WORK_PRICE_CAP;
         assertEq(
-            Bond.bondValue(0),
-            invalidZeroBond,
-            "invalid height zero must follow the explicit formula"
+            Bond.bondValue(0, true),
+            invalidZeroLeafBond,
+            "invalid leaf height zero must follow the explicit formula"
+        );
+        assertEq(
+            Bond.bondValue(0, false),
+            invalidZeroNonLeafBond,
+            "invalid non-leaf height zero must follow the explicit formula"
         );
         provider.setHeight(0);
         ITournament zeroHeightTournament =
             factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
         assertEq(
             zeroHeightTournament.bondValue(),
-            invalidZeroBond,
+            invalidZeroLeafBond,
             "tournament must expose the explicit invalid-zero formula"
         );
         assertEq(
-            Bond.bondValue(1),
-            terminal * Bond.WORK_PRICE_CAP,
+            Bond.bondValue(1, true),
+            leafTerminal * Bond.WORK_PRICE_CAP,
             "height one minimum bond must equal its terminal work reserve"
         );
     }
 
-    function testFuzzBondFormulaAndActionCapAlgebra(uint64 height) public {
+    function testTournamentBondValueUsesTournamentRole() public {
+        provider.setHeight(27);
+
+        ITournament singleLevelRoot =
+            factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
+        assertEq(singleLevelRoot.bondValue(), Bond.bondValue(27, true));
+
+        provider.setLevels(2);
+        ITournament nonLeafRoot =
+            factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
+        assertEq(nonLeafRoot.bondValue(), Bond.bondValue(27, false));
+
+        ITournament leafChild = factory.instantiateInner(
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Time.Duration.wrap(1),
+            0,
+            1,
+            IDataProvider(address(0))
+        );
+        assertEq(leafChild.bondValue(), Bond.bondValue(27, true));
+    }
+
+    function testFuzzBondFormulaAndActionCapAlgebra(
+        uint64 height,
+        bool isLeafTournament
+    ) public {
         provider.setHeight(height);
+        provider.setLevels(isLeafTournament ? 1 : 2);
 
         ITournament tournament =
             factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
 
-        uint256 work = _matchWorkAllocation(height);
+        uint256 work = _matchWorkAllocation(height, isLeafTournament);
         uint256 bond = work * Bond.WORK_PRICE_CAP;
-        assertEq(Bond.matchWorkAllocation(height), work);
-        assertEq(Bond.bondValue(height), bond);
+        assertEq(Bond.matchWorkAllocation(height, isLeafTournament), work);
+        assertEq(Bond.bondValue(height, isLeafTournament), bond);
         assertEq(tournament.bondValue(), bond);
 
         uint256[8] memory allocations = [
@@ -159,20 +205,18 @@ contract RefundReserveTest is Test {
         }
     }
 
-    function testFuzzCurrentLegalPathsFitMatchWorkReserve(uint64 height)
-        public
-        pure
-    {
+    function testFuzzCurrentLegalPathsFitMatchWorkReserve(
+        uint64 height,
+        bool isLeafTournament
+    ) public pure {
         height = uint64(bound(height, 1, type(uint64).max));
-        uint256 workReserve = _matchWorkAllocation(height);
+        uint256 workReserve = _matchWorkAllocation(height, isLeafTournament);
         uint256 largestLegalPath;
+        uint256 pathCount = isLeafTournament ? 5 : 4;
 
-        for (
-            uint256 path;
-            path <= uint256(TerminalPath.INNER_ELIMINATION);
-            ++path
-        ) {
-            uint256 pathAllocation = _pathAllocation(height, TerminalPath(path));
+        for (uint256 path; path < pathCount; ++path) {
+            uint256 pathAllocation =
+                _pathAllocation(height, _terminalPath(isLeafTournament, path));
             assertLe(pathAllocation, workReserve);
             if (pathAllocation > largestLegalPath) {
                 largestLegalPath = pathAllocation;
@@ -188,12 +232,14 @@ contract RefundReserveTest is Test {
 
     function testFuzzPairingTopologyPreservesWinnerDeposit(
         uint64 height,
+        bool isLeafTournament,
         bytes calldata operations
     ) public pure {
         height = uint64(bound(height, 1, type(uint64).max));
 
-        uint256 bond = Bond.bondValue(height);
-        uint256 matchWork = _matchWorkAllocation(height) * Bond.WORK_PRICE_CAP;
+        uint256 bond = Bond.bondValue(height, isLeafTournament);
+        uint256 matchWork = _matchWorkAllocation(height, isLeafTournament)
+            * Bond.WORK_PRICE_CAP;
         assertEq(bond, matchWork);
 
         uint256 joins = 1;
@@ -223,10 +269,8 @@ contract RefundReserveTest is Test {
             } else if (activeMatches > 0) {
                 --activeMatches;
                 ++matchesResolved;
-                TerminalPath path = TerminalPath(
-                    (operation / 3)
-                        % (uint256(TerminalPath.INNER_ELIMINATION) + 1)
-                );
+                TerminalPath path =
+                    _terminalPath(isLeafTournament, operation / 3);
                 // Cost and survivor outcome are intentionally independent.
                 // This conservatively composes any current path cost with
                 // either population transition.
@@ -560,13 +604,26 @@ contract RefundReserveTest is Test {
         assertEq(refunds + bond + burned, joins * bond);
     }
 
-    function _matchWorkAllocation(uint64 height)
+    function _matchWorkAllocation(uint64 height, bool isLeafTournament)
         internal
         pure
         returns (uint256)
     {
-        return uint256(height) * Gas.ADVANCE_MATCH + Bond.terminalAllocation()
-            - Gas.ADVANCE_MATCH;
+        return uint256(height) * Gas.ADVANCE_MATCH
+            + Bond.terminalAllocation(isLeafTournament) - Gas.ADVANCE_MATCH;
+    }
+
+    function _terminalPath(bool isLeafTournament, uint256 selector)
+        internal
+        pure
+        returns (TerminalPath)
+    {
+        if (isLeafTournament) {
+            return TerminalPath(selector % 5);
+        }
+
+        uint256 path = selector % 4;
+        return path < 2 ? TerminalPath(path) : TerminalPath(path + 3);
     }
 
     function _pathAllocation(uint64 height, TerminalPath path)

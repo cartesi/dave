@@ -25,7 +25,7 @@ Paths in this table are relative to the repository root.
 | Concern | Source |
 | --- | --- |
 | Production action allocations | `prt/contracts/src/tournament/libs/Gas.sol` |
-| Price policy, terminal maximum, and bond formula | `prt/contracts/src/tournament/libs/Bond.sol` |
+| Price policy, role-specific terminal maxima, and bond formula | `prt/contracts/src/tournament/libs/Bond.sol` |
 | Retained Tournament-only witnesses | `prt/contracts/test/gas/TournamentGas.t.sol` |
 | Full-stack leaf-proof witnesses | `cartesi-rollups/contracts/test/gas/PrtLeafProofGasFfi.t.sol` |
 | Reserve algebra and population properties | `prt/contracts/test/accounting/RefundReserve.t.sol` |
@@ -231,7 +231,7 @@ For one action family:
 4. make the selected witness assert the exact recommendation plus any recorded
    headroom, while alternates retain their full margin;
 5. rerun the report on the candidate;
-6. recompute every legal terminal sequence;
+6. recompute every legal terminal sequence and each role-specific maximum;
 7. recompute work reserves and join bonds for supported heights; and
 8. record the accepted environment, measurements, derived values, tests, and
    deployment-artifact status.
@@ -249,16 +249,16 @@ parameters and require independent rationale.
 action allocation
     -> action refund cap
     -> legal terminal sequence totals
-    -> common terminal maximum
+    -> leaf and non-leaf terminal maxima
     -> height-dependent match reserve
     -> join bond
     -> creation/runtime bytecode and deployment addresses
 ```
 
 `ADVANCE_MATCH` changes every positive-height reserve directly. A terminal
-allocation changes every reserve only when its sequence changes the maximum.
-Adding a new action or legal sequence is structural: enumerate it in production
-and in the independent accounting tests.
+allocation changes the reserves for each role whose maximum it changes. Adding
+a new action or legal sequence is structural: enumerate it in production and in
+the independent accounting tests.
 
 There is no separately maintained bond value. A constants-only change should
 preserve ABI and storage but changes bytecode. Regenerate and review deployment
@@ -295,7 +295,7 @@ Record:
 - supported geometry and proof/input envelope;
 - every retained measurement, margin, selected allocation, and deliberately
   retained headroom;
-- old and new terminal maximum;
+- old and new role-specific terminal maxima;
 - work reserves and join bonds at supported heights;
 - the active per-transaction and block gas limits, plus the maximum retained
   whole-transaction diagnostic and its headroom against both;
