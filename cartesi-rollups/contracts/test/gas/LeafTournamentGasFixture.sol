@@ -33,7 +33,7 @@ library LeafGasGeometry {
     uint64 internal constant ROOT_HEIGHT = 1;
     uint64 internal constant LEAF_LOG2_STEP = 0;
     uint64 internal constant LEAF_HEIGHT = 1;
-    uint64 internal constant MATCH_EFFORT = 300;
+    uint64 internal constant RESPONSE_BUDGET = 300;
     uint64 internal constant MAX_ALLOWANCE = 1_000_000;
 }
 
@@ -44,7 +44,7 @@ contract LeafGasParametersProvider is ITournamentParametersProvider {
             levels: LeafGasGeometry.LEVELS,
             log2step: level == 0 ? LeafGasGeometry.ROOT_LOG2_STEP : LeafGasGeometry.LEAF_LOG2_STEP,
             height: level == 0 ? LeafGasGeometry.ROOT_HEIGHT : LeafGasGeometry.LEAF_HEIGHT,
-            matchEffort: Time.Duration.wrap(LeafGasGeometry.MATCH_EFFORT),
+            responseBudget: Time.Duration.wrap(LeafGasGeometry.RESPONSE_BUDGET),
             maxAllowance: Time.Duration.wrap(LeafGasGeometry.MAX_ALLOWANCE)
         });
     }
@@ -358,9 +358,7 @@ abstract contract LeafTournamentGasFixture is Test {
             ++refundEvents;
             assertEq(entry.topics[1], bytes32(uint256(uint160(address(this)))));
             assertEq(entry.topics[2], bytes32(uint256(1)));
-            bytes memory callbackRet;
-            (result.allocationUnits, callbackRet) = abi.decode(entry.data, (uint256, bytes));
-            assertEq(callbackRet, bytes(""));
+            result.allocationUnits = abi.decode(entry.data, (uint256));
         }
         assertEq(refundEvents, 1);
         assertGt(result.allocationUnits, Gas.TX);

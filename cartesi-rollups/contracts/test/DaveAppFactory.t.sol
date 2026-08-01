@@ -97,7 +97,7 @@ contract DaveAppFactoryTest is Test {
     ITournamentFactory _tournamentFactory;
     IDaveAppFactory _daveAppFactory;
 
-    Time.Duration constant MATCH_EFFORT = Time.Duration.wrap(5);
+    Time.Duration constant RESPONSE_BUDGET = Time.Duration.wrap(5);
     Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(120);
     uint256 constant STAGING_GAS_CEILING = 500_000;
 
@@ -106,7 +106,9 @@ contract DaveAppFactoryTest is Test {
         _appFactory = new ApplicationFactory();
         _stateTransition = new CartesiStateTransition(new RiscVStateTransition(), new CmioStateTransition());
         _tournamentFactory = new MultiLevelTournamentFactory(
-            new Tournament(), new CanonicalTournamentParametersProvider(MATCH_EFFORT, MAX_ALLOWANCE), _stateTransition
+            new Tournament(),
+            new CanonicalTournamentParametersProvider(RESPONSE_BUDGET, MAX_ALLOWANCE),
+            _stateTransition
         );
         _daveAppFactory = new DaveAppFactory(_inputBox, _appFactory, _tournamentFactory);
     }
@@ -1172,8 +1174,7 @@ contract DaveAppFactoryTest is Test {
             assertEq(tournamentArgs.level, 0);
             assertEq(Time.Instant.unwrap(tournamentArgs.startInstant), vm.getBlockNumber());
             assertEq(Time.Duration.unwrap(tournamentArgs.allowance), Time.Duration.unwrap(MAX_ALLOWANCE));
-            assertEq(Time.Duration.unwrap(tournamentArgs.maxAllowance), Time.Duration.unwrap(MAX_ALLOWANCE));
-            assertEq(Time.Duration.unwrap(tournamentArgs.matchEffort), Time.Duration.unwrap(MATCH_EFFORT));
+            assertEq(Time.Duration.unwrap(tournamentArgs.responseBudget), Time.Duration.unwrap(RESPONSE_BUDGET));
             assertEq(address(tournamentArgs.provider), address(daveConsensus));
             assertEq(address(tournamentArgs.stateTransition), address(_stateTransition));
             assertEq(tournamentArgs.tournamentFactory, address(_tournamentFactory));
@@ -1206,6 +1207,7 @@ contract DaveAppFactoryTest is Test {
         assertEq(_getSentries(daveConsensus), sentries);
         assertEq(daveConsensus.getDeploymentBlockNumber(), vm.getBlockNumber());
         assertTrue(daveConsensus.supportsInterface(type(IERC165).interfaceId));
+        assertTrue(daveConsensus.supportsInterface(type(IDaveConsensus).interfaceId));
         assertTrue(daveConsensus.supportsInterface(type(IOutputsMerkleRootValidator).interfaceId));
         assertTrue(daveConsensus.supportsInterface(type(IDataProvider).interfaceId));
         assertFalse(daveConsensus.supportsInterface(0xffffffff));
@@ -1226,6 +1228,7 @@ contract DaveAppFactoryTest is Test {
             unsupportedInterfaceId = vm.randomBytes4();
             if (
                 unsupportedInterfaceId != type(IERC165).interfaceId
+                    && unsupportedInterfaceId != type(IDaveConsensus).interfaceId
                     && unsupportedInterfaceId != type(IOutputsMerkleRootValidator).interfaceId
                     && unsupportedInterfaceId != type(IDataProvider).interfaceId
             ) {

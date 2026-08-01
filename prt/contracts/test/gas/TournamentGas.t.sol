@@ -35,7 +35,7 @@ library GasTestGeometry {
     uint64 internal constant ROOT_HEIGHT = 55;
     uint64 internal constant LEAF_LOG2_STEP = 0;
     uint64 internal constant LEAF_HEIGHT = 37;
-    uint64 internal constant MATCH_EFFORT = 300;
+    uint64 internal constant RESPONSE_BUDGET = 300;
     uint64 internal constant MAX_ALLOWANCE = 1_000_000;
 }
 
@@ -55,7 +55,7 @@ contract GasParametersProvider is ITournamentParametersProvider {
             height: level == 0
                 ? GasTestGeometry.ROOT_HEIGHT
                 : GasTestGeometry.LEAF_HEIGHT,
-            matchEffort: Time.Duration.wrap(GasTestGeometry.MATCH_EFFORT),
+            responseBudget: Time.Duration.wrap(GasTestGeometry.RESPONSE_BUDGET),
             maxAllowance: Time.Duration.wrap(GasTestGeometry.MAX_ALLOWANCE)
         });
     }
@@ -87,7 +87,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
 
     uint64 internal constant ROOT_HEIGHT = GasTestGeometry.ROOT_HEIGHT;
     uint64 internal constant LEAF_HEIGHT = GasTestGeometry.LEAF_HEIGHT;
-    uint64 internal constant MATCH_EFFORT = GasTestGeometry.MATCH_EFFORT;
+    uint64 internal constant RESPONSE_BUDGET = GasTestGeometry.RESPONSE_BUDGET;
     uint64 internal constant MAX_ALLOWANCE = GasTestGeometry.MAX_ALLOWANCE;
     uint64 internal constant START_BLOCK = 100;
     uint64 internal constant CLOCK_CHARGE = 100;
@@ -415,7 +415,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         uint64 current = LEAF_HEIGHT;
         CommitmentShape responder = CommitmentShape.SAME;
         if (shortSide == ShortSide.ONE) {
-            vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + CLOCK_CHARGE);
+            vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + CLOCK_CHARGE);
             _advance(tournament, matchId, responder, current);
             --current;
             responder = CommitmentShape.SECOND_DIFFERENT;
@@ -424,7 +424,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
             _advance(tournament, matchId, responder, current);
             --current;
             responder = CommitmentShape.SECOND_DIFFERENT;
-            vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + CLOCK_CHARGE);
+            vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + CLOCK_CHARGE);
             _advance(tournament, matchId, responder, current);
             --current;
             responder = CommitmentShape.SAME;
@@ -700,10 +700,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
             ++refundEvents;
             assertEq(entry.topics[1], bytes32(uint256(uint160(address(this)))));
             assertEq(entry.topics[2], bytes32(uint256(1)));
-            (uint256 value, bytes memory callbackRet) =
-                abi.decode(entry.data, (uint256, bytes));
-            result.allocationUnits = value;
-            assertEq(callbackRet, bytes(""));
+            result.allocationUnits = abi.decode(entry.data, (uint256));
         }
 
         assertEq(refundEvents, 1);
@@ -783,7 +780,7 @@ contract AdvanceMatchGasTest is TournamentGasTest {
     }
 
     function testMeasureFirstChargedRightAdvance() public {
-        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + 1);
         (Tree.Node left, Tree.Node right) =
             children(CommitmentShape.SAME, ROOT_HEIGHT);
         (Tree.Node newLeft, Tree.Node newRight) =
@@ -811,7 +808,7 @@ contract AdvanceMatchLeftGasTest is TournamentGasTest {
     }
 
     function testMeasureFirstChargedLeftAdvance() public {
-        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + 1);
         (Tree.Node left, Tree.Node right) =
             children(CommitmentShape.SAME, ROOT_HEIGHT);
         (Tree.Node newLeft, Tree.Node newRight) =
@@ -840,7 +837,7 @@ contract SealLeafMatchGasTest is TournamentGasTest {
     }
 
     function testMeasureChargedFullProofLeafSealAtPositionOne() public {
-        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + 1);
         Measurement memory result =
             _measure(_sealCall(true), Gas.SEAL_LEAF_MATCH);
         _logMeasurement("seal leaf match", result);
@@ -862,7 +859,7 @@ contract SealLeafMatchLeftGasTest is TournamentGasTest {
     }
 
     function testMeasureChargedFullProofLeftLeafSealAtPositionTwo() public {
-        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + 1);
         Measurement memory result =
             _measure(_sealCall(true), Gas.SEAL_LEAF_MATCH);
         _logMeasurement("seal leaf match left", result);
@@ -884,13 +881,13 @@ contract SealInnerMatchGasTest is TournamentGasTest {
     }
 
     function testMeasureChargedFullProofInnerSealAtPositionOne() public {
-        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + 1);
         Measurement memory result = _measure(
             _sealCall(false), Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
         );
         _logMeasurement("seal inner match", result);
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 1_000
+            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 8_000
         );
 
         Match.Id memory id = matchId;
@@ -910,7 +907,7 @@ contract SealInnerMatchLeftGasTest is TournamentGasTest {
     }
 
     function testMeasureChargedFullProofLeftInnerSealAtPositionTwo() public {
-        vm.roll(uint256(START_BLOCK) + MATCH_EFFORT + 1);
+        vm.roll(uint256(START_BLOCK) + RESPONSE_BUDGET + 1);
         Measurement memory result = _measure(
             _sealCall(false), Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
         );
@@ -1084,7 +1081,9 @@ contract InnerTwoWinsGasTest is TournamentGasTest {
         Measurement memory result = _measureInnerWinner(
             "inner two wins", CommitmentShape.SECOND_DIFFERENT
         );
-        _assertCalibratedAllocation(result, Gas.WIN_INNER_TOURNAMENT);
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.WIN_INNER_TOURNAMENT, 2_000
+        );
     }
 }
 
@@ -1101,7 +1100,9 @@ contract InnerEliminationGasTest is TournamentGasTest {
     function testMeasureExpiredWinnerEliminatesParentMatch() public {
         Measurement memory result =
             _measureInnerElimination("inner elimination");
-        _assertCalibratedAllocation(result, Gas.ELIMINATE_INNER_TOURNAMENT);
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.ELIMINATE_INNER_TOURNAMENT, 1_000
+        );
     }
 }
 

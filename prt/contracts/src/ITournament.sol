@@ -35,9 +35,7 @@ interface ITournament {
     /// @param levels The number of tournament levels
     /// @param startInstant The start instant of the tournament
     /// @param allowance The time during which the tournament is open
-    /// @param maxAllowance The configured root allowance; parent-linked child
-    /// clocks inherit no more than this value
-    /// @param matchEffort The maximum elapsed-time discount earned by each
+    /// @param responseBudget The maximum elapsed-time discount earned by each
     /// successful bisection response, including the final sealing response
     /// @param provider The contract that provides input Merkle roots
     /// @param nestedDispute Dispute information from parent match (zero for root tournaments)
@@ -54,8 +52,7 @@ interface ITournament {
         uint64 levels;
         Time.Instant startInstant;
         Time.Duration allowance;
-        Time.Duration maxAllowance;
-        Time.Duration matchEffort;
+        Time.Duration responseBudget;
         IDataProvider provider;
         NestedDispute nestedDispute;
         IStateTransition stateTransition;
@@ -155,7 +152,6 @@ interface ITournament {
     /// @param recipient The recipient
     /// @param value The computed refund, whether or not payment succeeded
     /// @param success Whether the requested payment succeeded or was zero
-    /// @param ret Retained for event ABI compatibility; always empty
     /// @dev `value` is the computed request, not necessarily the amount
     /// transferred. Recipient execution is gas-bounded and return data is not
     /// copied.
@@ -163,10 +159,7 @@ interface ITournament {
     /// forwarded gas; EOAs may also execute delegated code under EIP-7702. A
     /// zero-value refund skips the callback and reports success.
     event PartialBondRefund(
-        address indexed recipient,
-        uint256 value,
-        bool indexed success,
-        bytes ret
+        address indexed recipient, uint256 value, bool indexed success
     );
 
     /// @notice An inner tournament was created.
@@ -243,13 +236,13 @@ interface ITournament {
         Tree.Node right
     );
 
-    /// @notice Legacy selector used when no commitment can win by timeout.
-    /// @dev This includes both the no-timeout and double-elimination outcomes.
-    error NeitherClockHasTimedOut();
+    /// @notice A player tried to win a match whose timeout outcome has no
+    /// individual winner.
+    error MatchCannotBeWonByTimeout();
 
     /// @notice A player tried to eliminate a match whose timeout outcome is
     /// not double elimination.
-    error AtLeastOneClockHasNotTimedOut();
+    error MatchCannotBeEliminatedByTimeout();
 
     /// @notice A player tried to join the inner tournament with a commitment
     /// whose final state is not equal to neither of the two contested final states
@@ -262,11 +255,6 @@ interface ITournament {
         Machine.Hash contestedFinalStateTwo,
         Machine.Hash finalState
     );
-
-    /// @notice Internal error in which an invalid winner commitment value
-    /// is passed to an internal function that deletes a match.
-    /// @param winnerCommitment The invalid winner commitment value
-    error InvalidWinnerCommitment(WinnerCommitment winnerCommitment);
 
     /// @notice The tournament has finished but with no winners.
     /// This is unexpected to happen because we assume that at least
@@ -292,12 +280,6 @@ interface ITournament {
     /// @param commitmentRoot The commitment root provided by the player
     /// @param winner The child-tournament winning commitment root
     error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
-
-    /// @notice The child tournament winning commitment root is
-    /// different from the two commitment roots that were paired
-    /// against each other in this tournament.
-    /// @param winner The child-tournament winning commitment root
-    error InvalidTournamentWinner(Tree.Node winner);
 
     /// @notice The on-chain implementation of the state-transition
     /// function applied over an agreed-upon state has produced a
@@ -329,27 +311,14 @@ interface ITournament {
     /// called for non-root tournaments (in which `0 < level <= levels - 1`).
     error RequireNonRootTournament();
 
-    /// @notice A clock was expected to be initialized, but isn't.
-    error ClockNotInitialized();
-
     /// @notice A clock wasn't expected to be initialized, but is.
     error ClockAlreadyInitialized();
-
-    /// @notice The time until timeout of a paused clock is consulted,
-    /// but cannot be determined, since we cannot know if or when
-    /// the clock will be unpaused.
-    error PausedClockCannotTimeout();
 
     /// @notice A clock-dependent progress action cannot continue because a
     /// required clock cannot be preserved under the current timeout accounting.
     /// @dev This includes responding at or after a running clock's deadline and
     /// proving a leaf after the shared classifier selects a timeout outcome.
     error CannotAdvanceTimedOutClock();
-
-    /// @notice There is an attempt to initialize a clock with zero allowance,
-    /// but doing so would contradict the semantics of the action, because
-    /// zero allowance is used to indicate that such a clock is not initialized.
-    error InitializedClockCannotHaveZeroAllowance();
 
     /// @notice The match does not exist.
     /// @dev This happens when the stored match state is not initialized.
@@ -378,10 +347,6 @@ interface ITournament {
     error InvalidChildrenNodes(
         Tree.Node expectedParent, Tree.Node leftChild, Tree.Node rightChild
     );
-
-    /// @notice The node does not exist.
-    /// @dev This happens when the node is zero.
-    error NodeDoesNotExist();
 
     //
     // Functions

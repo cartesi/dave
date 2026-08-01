@@ -27,11 +27,11 @@ library HistoricalThreeLevelGeometry {
 contract HistoricalThreeLevelParametersProvider is
     ITournamentParametersProvider
 {
-    Time.Duration internal immutable MATCH_EFFORT;
+    Time.Duration internal immutable RESPONSE_BUDGET;
     Time.Duration internal immutable MAX_ALLOWANCE;
 
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
-        MATCH_EFFORT = matchEffort;
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance) {
+        RESPONSE_BUDGET = responseBudget;
         MAX_ALLOWANCE = maxAllowance;
     }
 
@@ -45,7 +45,7 @@ contract HistoricalThreeLevelParametersProvider is
             levels: HistoricalThreeLevelGeometry.LEVELS,
             log2step: HistoricalThreeLevelGeometry.log2step(level),
             height: HistoricalThreeLevelGeometry.height(level),
-            matchEffort: MATCH_EFFORT,
+            responseBudget: RESPONSE_BUDGET,
             maxAllowance: MAX_ALLOWANCE
         });
     }

@@ -20,7 +20,7 @@ import {
 
 contract SmallTwoLevelTournamentTest is Test {
     uint64 internal constant START_BLOCK = 100;
-    uint64 internal constant MATCH_EFFORT = 5;
+    uint64 internal constant RESPONSE_BUDGET = 5;
     uint64 internal constant MAX_ALLOWANCE = 200;
 
     Machine.Hash internal constant INITIAL_STATE =
@@ -31,7 +31,8 @@ contract SmallTwoLevelTournamentTest is Test {
     function setUp() public {
         vm.roll(START_BLOCK);
         factory = new SmallTwoLevelTournamentFactory(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
 
@@ -53,8 +54,7 @@ contract SmallTwoLevelTournamentTest is Test {
         assertEq(rootArgs.commitmentArgs.startCycle, 0);
         assertEq(Time.Instant.unwrap(rootArgs.startInstant), START_BLOCK);
         assertEq(Time.Duration.unwrap(rootArgs.allowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(rootArgs.maxAllowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(rootArgs.matchEffort), MATCH_EFFORT);
+        assertEq(Time.Duration.unwrap(rootArgs.responseBudget), RESPONSE_BUDGET);
         assertEq(rootArgs.tournamentFactory, address(factory));
 
         Tree.Node contestedOne = Tree.Node.wrap(bytes32(uint256(0x1001)));
@@ -88,8 +88,7 @@ contract SmallTwoLevelTournamentTest is Test {
         );
         assertEq(leafArgs.commitmentArgs.startCycle, startCycle);
         assertEq(Time.Duration.unwrap(leafArgs.allowance), delegatedAllowance);
-        assertEq(Time.Duration.unwrap(leafArgs.maxAllowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(leafArgs.matchEffort), MATCH_EFFORT);
+        assertEq(Time.Duration.unwrap(leafArgs.responseBudget), RESPONSE_BUDGET);
         assertEq(leafArgs.tournamentFactory, address(factory));
         assertEq(
             Tree.Node.unwrap(leafArgs.nestedDispute.contestedCommitmentOne),
@@ -116,7 +115,8 @@ contract SmallTwoLevelTournamentTest is Test {
 
     function testRejectsUnsupportedLevelAndWrongLevelOperations() public {
         SmallTwoLevelParametersProvider provider = new SmallTwoLevelParametersProvider(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
         vm.expectRevert(
             abi.encodeWithSelector(

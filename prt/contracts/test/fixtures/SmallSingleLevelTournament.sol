@@ -24,11 +24,11 @@ library SmallSingleLevelGeometry {
 contract SmallSingleLevelParametersProvider is ITournamentParametersProvider {
     error InvalidLevel(uint64 level);
 
-    Time.Duration internal immutable MATCH_EFFORT;
+    Time.Duration internal immutable RESPONSE_BUDGET;
     Time.Duration internal immutable MAX_ALLOWANCE;
 
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance) {
-        MATCH_EFFORT = matchEffort;
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance) {
+        RESPONSE_BUDGET = responseBudget;
         MAX_ALLOWANCE = maxAllowance;
     }
 
@@ -43,17 +43,19 @@ contract SmallSingleLevelParametersProvider is ITournamentParametersProvider {
             levels: SmallSingleLevelGeometry.LEVELS,
             log2step: SmallSingleLevelGeometry.LOG2_STEP,
             height: SmallSingleLevelGeometry.HEIGHT,
-            matchEffort: MATCH_EFFORT,
+            responseBudget: RESPONSE_BUDGET,
             maxAllowance: MAX_ALLOWANCE
         });
     }
 }
 
 contract SmallSingleLevelTournamentFactory is MultiLevelTournamentFactory {
-    constructor(Time.Duration matchEffort, Time.Duration maxAllowance)
+    constructor(Time.Duration responseBudget, Time.Duration maxAllowance)
         MultiLevelTournamentFactory(
             new InspectableTournament(),
-            new SmallSingleLevelParametersProvider(matchEffort, maxAllowance),
+            new SmallSingleLevelParametersProvider(
+                responseBudget, maxAllowance
+            ),
             new ProofSelectedStateTransition()
         )
     {}

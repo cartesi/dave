@@ -148,7 +148,7 @@ contract DeploymentScript is BaseDeploymentScript {
         _registerChains();
         _registerChainKinds();
 
-        Time.Duration matchEffort = _getMatchEffort();
+        Time.Duration responseBudget = _getResponseBudget();
         Time.Duration maxAllowance = _getMaxAllowance();
 
         vmSafe.startBroadcast();
@@ -180,7 +180,7 @@ contract DeploymentScript is BaseDeploymentScript {
             type(CanonicalTournamentParametersProvider).name,
             _create2(
                 type(CanonicalTournamentParametersProvider).creationCode,
-                abi.encode(matchEffort, maxAllowance)
+                abi.encode(responseBudget, maxAllowance)
             )
         );
 
@@ -276,23 +276,23 @@ contract DeploymentScript is BaseDeploymentScript {
 
     /// @notice Calculate the per-response budget in average blocks for the
     /// current chain.
-    /// @return matchEffort The per-response budget in average blocks
-    function _getMatchEffort()
+    /// @return responseBudget The per-response budget in average blocks
+    function _getResponseBudget()
         internal
         view
-        returns (Time.Duration matchEffort)
+        returns (Time.Duration responseBudget)
     {
         ChainInfo memory chainInfo = _getCurrentChainInfo();
         Milliseconds avgBlockTime = chainInfo.avgBlockTime;
-        return _getMatchEffortInSeconds().toTimeDuration(avgBlockTime);
+        return _getResponseBudgetInSeconds().toTimeDuration(avgBlockTime);
     }
 
     /// @notice Calculate the per-response budget in seconds.
-    /// @return matchEffortInSeconds The per-response budget in seconds
-    function _getMatchEffortInSeconds()
+    /// @return responseBudgetInSeconds The per-response budget in seconds
+    function _getResponseBudgetInSeconds()
         internal
         pure
-        returns (Seconds matchEffortInSeconds)
+        returns (Seconds responseBudgetInSeconds)
     {
         return Seconds.wrap(5 minutes);
     }

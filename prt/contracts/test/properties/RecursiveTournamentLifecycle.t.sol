@@ -36,7 +36,7 @@ contract RecursiveTournamentLifecycleTest is Test {
     using Tree for Tree.Node;
 
     uint64 internal constant START_BLOCK = 100;
-    uint64 internal constant MATCH_EFFORT = 5;
+    uint64 internal constant RESPONSE_BUDGET = 5;
     uint64 internal constant MAX_ALLOWANCE = 200;
     uint256 internal constant CONTESTED_SEGMENT = 2;
 
@@ -59,7 +59,8 @@ contract RecursiveTournamentLifecycleTest is Test {
 
     constructor() {
         FACTORY = new SmallTwoLevelTournamentFactory(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
 
@@ -118,6 +119,57 @@ contract RecursiveTournamentLifecycleTest is Test {
         Match.Id memory finalMatch =
             _propagateChildWinner(SmallTwoLevelClaims.CLAIM_TWO, MAX_ALLOWANCE);
         _resolveFinalRootTimeout(SmallTwoLevelClaims.CLAIM_TWO, finalMatch);
+    }
+
+    function testRegisteredUnfinishedChildRejectsWinBeforeWinnerInvariant()
+        public
+    {
+        _sealParent();
+        assertFalse(child.isFinished());
+        assertFalse(child.canBeEliminated());
+
+        SmallFullTree.Data memory winner =
+            _parentTree(SmallTwoLevelClaims.CLAIM_ONE);
+        (Tree.Node left, Tree.Node right) =
+            winner.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
+
+        vm.expectRevert(ITournament.ChildTournamentNotFinished.selector);
+        parent.winInnerTournament(child, left, right);
+
+        Match.State memory state = parent.getMatch(parentMatch.hashFromId());
+        assertTrue(state.exists());
+        assertTrue(state.isSealed());
+        _assertLiveOrigin();
+    }
+
+    function testInnerJoinRejectsUncontestedFinalState() public {
+        _sealParent();
+
+        SmallFullTree.Data memory invalid =
+            _childTree(SmallTwoLevelClaims.CLAIM_THREE);
+        (,,, uint64 height) = child.tournamentLevelConstants();
+        (Tree.Node left, Tree.Node right) = invalid.children(height, 0);
+        Machine.Hash invalidFinalState = invalid.finalState();
+        ITournament.TournamentArguments memory args =
+            child.tournamentArguments();
+        uint256 bond = child.bondValue();
+
+        vm.prank(CLAIMER_IMPOSTOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ITournament.InvalidContestedFinalState.selector,
+                args.nestedDispute.contestedFinalStateOne,
+                args.nestedDispute.contestedFinalStateTwo,
+                invalidFinalState
+            )
+        );
+        child.joinTournament{value: bond}(
+            invalidFinalState, invalid.finalProof(), left, right
+        );
+
+        (Clock.State memory clock,) = child.getCommitment(invalid.root());
+        assertFalse(clock.isInitialized());
+        assertEq(child.getCommitmentJoinedCount(), 0);
     }
 
     /// @dev A child winner selects the parent side by contested final state,
@@ -473,8 +525,7 @@ contract RecursiveTournamentLifecycleTest is Test {
         );
         assertEq(Time.Instant.unwrap(args.startInstant), 130);
         assertEq(Time.Duration.unwrap(args.allowance), 195);
-        assertEq(Time.Duration.unwrap(args.maxAllowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.matchEffort), MATCH_EFFORT);
+        assertEq(Time.Duration.unwrap(args.responseBudget), RESPONSE_BUDGET);
         assertEq(address(args.provider), address(parentArgs.provider));
         assertEq(
             address(args.stateTransition), address(parentArgs.stateTransition)
@@ -564,10 +615,10 @@ contract RecursiveTournamentLifecycleTest is Test {
         vm.roll(START_BLOCK + 2 * MAX_ALLOWANCE);
 
         assertFalse(parent.canWinMatchByTimeout(parentMatch));
-        vm.expectRevert(ITournament.NeitherClockHasTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
         parent.winMatchByTimeout(parentMatch, Tree.ZERO_NODE, Tree.ZERO_NODE);
 
-        vm.expectRevert(ITournament.AtLeastOneClockHasNotTimedOut.selector);
+        vm.expectRevert(ITournament.MatchCannotBeEliminatedByTimeout.selector);
         parent.eliminateMatchByTimeout(parentMatch);
         assertTrue(parent.getMatch(parentMatch.hashFromId()).exists());
     }

@@ -481,9 +481,7 @@ contract RefundFormulaTest is Test {
                     || entry.topics[2] == bytes32(uint256(1))
             );
             success = entry.topics[2] == bytes32(uint256(1));
-            bytes memory ret;
-            (value, ret) = abi.decode(entry.data, (uint256, bytes));
-            assertEq(ret, bytes(""));
+            value = abi.decode(entry.data, (uint256));
         }
         assertEq(count, 1);
     }

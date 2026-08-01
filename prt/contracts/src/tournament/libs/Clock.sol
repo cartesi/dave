@@ -40,7 +40,7 @@ library Clock {
     }
 
     function requireInitialized(State memory state) internal pure {
-        require(state.isInitialized(), ITournament.ClockNotInitialized());
+        assert(state.isInitialized());
     }
 
     function requireUninitialized(State memory state) internal pure {
@@ -62,8 +62,8 @@ library Clock {
     }
 
     /// @return Live remaining time at `current`, saturated at zero.
-    /// @dev Reverts for an uninitialized clock and when `current` precedes its
-    /// start instant. A running clock returns zero at and after its deadline.
+    /// @dev Requires an initialized clock and `current` at or after its start
+    /// instant. A running clock returns zero at and after its deadline.
     function remainingAt(State memory state, Time.Instant current)
         internal
         pure
@@ -91,17 +91,15 @@ library Clock {
     }
 
     /// @return Time elapsed strictly beyond the deadline, saturated at zero.
-    /// @dev Reverts for an uninitialized or paused clock. A running clock is
-    /// already expired at its deadline, although its overdue duration is zero.
+    /// @dev Requires an initialized running clock. A running clock is already
+    /// expired at its deadline, although its overdue duration is zero.
     function overdueByAt(State memory state, Time.Instant current)
         internal
         pure
         returns (Time.Duration)
     {
         state.requireInitialized();
-        if (!state.isRunning()) {
-            revert ITournament.PausedClockCannotTimeout();
-        }
+        assert(state.isRunning());
         return
             current.timeSpan(state.startInstant).saturatingSub(state.allowance);
     }
@@ -112,7 +110,8 @@ library Clock {
 
     /// @notice Initialize a clock once, paused at its live check-in allowance.
     /// @dev Stores `initialAllowance - (current - checkinInstant)`, saturating at
-    /// zero. A zero result reverts because zero allowance means uninitialized.
+    /// zero. The caller must preserve a positive result because zero allowance
+    /// means uninitialized.
     function initializePausedAt(
         State storage state,
         Time.Instant checkinInstant,
@@ -178,8 +177,8 @@ library Clock {
 
     /// @notice Charge an already-paused in-memory clock.
     /// @dev The charge must leave a positive initialized allowance. Exact
-    /// depletion reverts with `InitializedClockCannotHaveZeroAllowance`;
-    /// overcharging reverts through checked arithmetic.
+    /// depletion violates the clock invariant; overcharging fails through
+    /// checked arithmetic.
     function deductPaused(State memory state, Time.Duration charge)
         internal
         pure
@@ -206,9 +205,7 @@ library Clock {
         pure
         returns (State memory)
     {
-        if (allowance.isZero()) {
-            revert ITournament.InitializedClockCannotHaveZeroAllowance();
-        }
+        assert(!allowance.isZero());
 
         return State({allowance: allowance, startInstant: Time.ZERO_INSTANT});
     }

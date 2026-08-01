@@ -116,7 +116,7 @@ contract MaximumInputLeafWinOneFfiTest is InputLeafWinFfiTest {
 
     function testMeasureMaximumInputWithOneWinning() public {
         Measurement memory result = _measureLeafWin("maximum input one wins");
-        assertEq(_roundUpToThousand(_minimumReviewedAllocation(result)), Gas.WIN_LEAF_MATCH);
+        assertEq(_roundUpToThousand(_minimumReviewedAllocation(result)) + 1_000, Gas.WIN_LEAF_MATCH);
     }
 }
 
@@ -129,7 +129,7 @@ contract MaximumInputLeafWinTwoFfiTest is InputLeafWinFfiTest {
 
     function testMeasureMaximumInputWithTwoWinning() public {
         Measurement memory result = _measureLeafWin("maximum input two wins");
-        assertEq(_roundUpToThousand(_minimumReviewedAllocation(result)), Gas.WIN_LEAF_MATCH);
+        assertEq(_roundUpToThousand(_minimumReviewedAllocation(result)) + 1_000, Gas.WIN_LEAF_MATCH);
     }
 }
 

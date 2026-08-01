@@ -34,7 +34,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
     using Tree for Tree.Node;
 
     uint64 internal constant START_BLOCK = 100;
-    uint64 internal constant MATCH_EFFORT = 1;
+    uint64 internal constant RESPONSE_BUDGET = 1;
     uint64 internal constant MAX_ALLOWANCE = 100;
     uint64 internal constant LEAF_PROOF_DELAY = 5;
     uint64 internal constant CARRIED_ALLOWANCE =
@@ -54,7 +54,8 @@ contract FourLevelRecursiveLifecycleTest is Test {
 
     constructor() {
         FACTORY = new SmallFourLevelTournamentFactory(
-            Time.Duration.wrap(MATCH_EFFORT), Time.Duration.wrap(MAX_ALLOWANCE)
+            Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
 
@@ -116,8 +117,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
         );
         assertEq(Time.Instant.unwrap(args.startInstant), START_BLOCK);
         assertEq(Time.Duration.unwrap(args.allowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.maxAllowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.matchEffort), MATCH_EFFORT);
+        assertEq(Time.Duration.unwrap(args.responseBudget), RESPONSE_BUDGET);
         assertEq(address(args.provider), PROVIDER_ADDRESS);
         assertEq(address(args.stateTransition), expectedStateTransition);
         assertGt(expectedStateTransition.code.length, 0);
@@ -270,8 +270,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
         );
         assertEq(Time.Instant.unwrap(args.startInstant), START_BLOCK);
         assertEq(Time.Duration.unwrap(args.allowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.maxAllowance), MAX_ALLOWANCE);
-        assertEq(Time.Duration.unwrap(args.matchEffort), MATCH_EFFORT);
+        assertEq(Time.Duration.unwrap(args.responseBudget), RESPONSE_BUDGET);
         assertEq(address(args.provider), PROVIDER_ADDRESS);
         assertEq(address(args.stateTransition), expectedStateTransition);
         assertEq(args.tournamentFactory, address(FACTORY));

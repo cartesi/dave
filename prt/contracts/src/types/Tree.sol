@@ -50,10 +50,6 @@ library Tree {
         return n == 0x0;
     }
 
-    function requireExist(Node node) internal pure {
-        require(!node.isZero(), ITournament.NodeDoesNotExist());
-    }
-
     function toMachineHash(Node node) internal pure returns (Machine.Hash) {
         return Machine.Hash.wrap(Node.unwrap(node));
     }
