@@ -111,8 +111,9 @@ configured level count; there are no production Top/Middle/Bottom contracts.
 - Objective proof correctness does not erase a missed deadline. A leaf proof
   and timeout cleanup must never be simultaneously valid.
 - Each paid join contributes one height-derived match work reserve. Progress
-  refunds are bounded subsidies; terminal recovery pays at most one bond and
-  burns the residual only after successful payment.
+  refunds are bounded subsidies; terminal recovery pays one bond plus a tenth
+  of the residual above it and burns the rest only after successful payment.
+  Nothing invokes recovery from a progress or settlement path.
 - Refund and winner callbacks are bounded, copy no return data, and cannot make
   completed progress depend on recipient acceptance. A failed terminal payment
   preserves the full state for retry.

@@ -140,14 +140,15 @@ contract HistoricalThreeLevelRootTest is Util {
 
         uint256 winnerBalanceBefore = addrs[0].balance;
         uint256 burnedBalanceBefore = address(0).balance;
-        uint256 expectedWinnerPayment =
-            remainingBalance < bond ? remainingBalance : bond;
+        uint256 expectedWinnerPayment = remainingBalance <= bond
+            ? remainingBalance
+            : bond + (remainingBalance - bond) / 10;
 
         assertTrue(topTournament.tryRecoveringBond());
         assertEq(
             addrs[0].balance,
             winnerBalanceBefore + expectedWinnerPayment,
-            "winner payment should be capped at one bond"
+            "winner payment should be one bond plus a tenth of the residual"
         );
         assertEq(
             address(0).balance,
@@ -182,17 +183,18 @@ contract HistoricalThreeLevelRootTest is Util {
         assertEq(address(topTournament).balance, remainingBalance);
 
         receiver.acceptPayments();
+        uint256 payment = bond + (remainingBalance - bond) / 10;
         assertTrue(topTournament.tryRecoveringBond());
-        assertEq(address(receiver).balance, receiverBalanceBefore + bond);
+        assertEq(address(receiver).balance, receiverBalanceBefore + payment);
         assertEq(
-            address(0).balance, burnedBalanceBefore + remainingBalance - bond
+            address(0).balance, burnedBalanceBefore + remainingBalance - payment
         );
         assertEq(address(topTournament).balance, 0);
 
         assertTrue(topTournament.tryRecoveringBond());
-        assertEq(address(receiver).balance, receiverBalanceBefore + bond);
+        assertEq(address(receiver).balance, receiverBalanceBefore + payment);
         assertEq(
-            address(0).balance, burnedBalanceBefore + remainingBalance - bond
+            address(0).balance, burnedBalanceBefore + remainingBalance - payment
         );
     }
 

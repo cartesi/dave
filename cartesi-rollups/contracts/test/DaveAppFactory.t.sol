@@ -459,15 +459,18 @@ contract DaveAppFactoryTest is Test {
         uint256 stagingGasUsed = gasBefore - gasleft();
         assertLt(stagingGasUsed, STAGING_GAS_CEILING);
 
-        bool settlementPending = !recoverBeforeStaging && recoverThroughContract;
-        if (settlementPending) {
+        // Staging moves no value: whatever recovery state existed before it
+        // persists through it. Recovery pays one bond plus a tenth of the
+        // residual; the rest burns.
+        uint256 winnerPayment = bondValue + (callValue - bondValue) / 10;
+        if (recoverBeforeStaging) {
+            assertEq(address(tournament).balance, 0);
+            assertEq(submitter.balance, balanceBefore - callValue + winnerPayment);
+            assertEq(address(0).balance, burnedBalanceBefore + callValue - winnerPayment);
+        } else {
             assertEq(address(tournament).balance, callValue);
             assertEq(submitter.balance, balanceBefore - callValue);
             assertEq(address(0).balance, burnedBalanceBefore);
-        } else {
-            assertEq(address(tournament).balance, 0);
-            assertEq(submitter.balance, balanceBefore - callValue + bondValue);
-            assertEq(address(0).balance, burnedBalanceBefore + callValue - bondValue);
         }
 
         logs = vm.getRecordedLogs();
@@ -756,18 +759,23 @@ contract DaveAppFactoryTest is Test {
         assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), machineMerkleRoot);
         assertTrue(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
 
-        if (settlementPending) {
+        // Acceptance advanced the epoch without touching the retired
+        // tournament's balance; recovery is an explicit call afterward.
+        if (!recoverBeforeStaging) {
             assertEq(address(tournament).balance, callValue);
             assertEq(submitter.balance, balanceBefore - callValue);
             assertEq(address(0).balance, burnedBalanceBefore);
 
-            _settlementCallbackReceiver.acceptPayments();
+            if (recoverThroughContract) {
+                assertFalse(tournament.tryRecoveringBond());
+                _settlementCallbackReceiver.acceptPayments();
+            }
             assertTrue(tournament.tryRecoveringBond());
         }
 
         assertEq(address(tournament).balance, 0);
-        assertEq(submitter.balance, balanceBefore - callValue + bondValue);
-        assertEq(address(0).balance, burnedBalanceBefore + callValue - bondValue);
+        assertEq(submitter.balance, balanceBefore - callValue + winnerPayment);
+        assertEq(address(0).balance, burnedBalanceBefore + callValue - winnerPayment);
 
         for (uint256 i; i < inputs.length; ++i) {
             bytes memory input = inputs[i];

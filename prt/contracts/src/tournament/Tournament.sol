@@ -373,6 +373,9 @@ contract Tournament is ITournament {
     /// - Configured refund caps reserve one minimum join bond; the
     ///   defensive payment remains capped by the current balance.
     /// - A zero balance completes without calling the winner.
+    /// - The payment is one bond plus a tenth of the residual above it,
+    ///   rounded toward the burn; a balance at or below one bond is paid
+    ///   whole.
     /// - Any post-payment residual balance is burned.
     /// - A call after successful recovery returns true without another transfer.
     /// - A failed winner payment preserves the claimer and balance for retry.
@@ -391,7 +394,15 @@ contract Tournament is ITournament {
             return true;
         }
 
-        uint256 winnerPayment = address(this).balance.min(bondValue());
+        uint256 balance = address(this).balance;
+        uint256 winnerPayment = balance;
+        uint256 bond = bondValue();
+        if (balance > bond) {
+            // One bond back plus a tenth of the forfeited residual as a
+            // defender's bounty. The other nine tenths burn, so recycled
+            // Sybil reserves keep a real marginal cost.
+            winnerPayment = bond + (balance - bond) / 10;
+        }
         if (!_tryPayment(winnerClaimer, winnerPayment)) {
             return false;
         }

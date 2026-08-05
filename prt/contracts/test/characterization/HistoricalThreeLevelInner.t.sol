@@ -343,6 +343,8 @@ contract HistoricalThreeLevelInnerTest is Util {
         );
 
         assertTrue(middleTournament.tryRecoveringBond());
+        uint256 winnerPayment =
+            bondAmount + (tournamentBalanceBeforeRecovery - bondAmount) / 10;
         assertEq(
             player0.balance,
             player0BalanceBefore - bondAmount,
@@ -350,13 +352,14 @@ contract HistoricalThreeLevelInnerTest is Util {
         );
         assertEq(
             player1.balance,
-            player1BalanceBeforeRecovery + bondAmount,
-            "Player 1 should have recovered one bond"
+            player1BalanceBeforeRecovery + winnerPayment,
+            "Player 1 should have recovered one bond plus the bounty"
         );
         assertEq(
             address(0).balance,
-            burnedBalanceBefore + tournamentBalanceBeforeRecovery - bondAmount,
-            "Residual child balance should have been burned"
+            burnedBalanceBefore + tournamentBalanceBeforeRecovery
+                - winnerPayment,
+            "Nine tenths of the residual child balance should have burned"
         );
         assertEq(
             address(middleTournament).balance,

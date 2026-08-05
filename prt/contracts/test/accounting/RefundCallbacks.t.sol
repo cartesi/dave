@@ -362,11 +362,12 @@ contract RefundCallbacksTest is Test {
         receiver.setBehavior(PaymentCallbackReceiver.Behavior.ACCEPT);
         uint256 burnedBalanceBefore = address(0).balance;
         assertTrue(tournament.tryRecoveringBond());
-        assertEq(address(receiver).balance, bond);
+        // One bond plus a tenth of the extra funded bond; nine tenths burn.
+        assertEq(address(receiver).balance, bond + bond / 10);
         assertGt(receiver.entryGas(), 0);
         assertLe(receiver.entryGas(), Bond.PAYMENT_CALLBACK_GAS_LIMIT);
         assertEq(address(tournament).balance, 0);
-        assertEq(address(0).balance - burnedBalanceBefore, bond);
+        assertEq(address(0).balance - burnedBalanceBefore, bond - bond / 10);
         assertEq(_claimerOf(tournament, winner), address(0));
     }
 
@@ -386,14 +387,15 @@ contract RefundCallbacksTest is Test {
             receiver.recoveryCallResult(),
             ITournament.ReentrancyDetected.selector
         );
-        assertEq(address(receiver).balance, bond);
+        // One bond plus a tenth of the extra funded bond; nine tenths burn.
+        assertEq(address(receiver).balance, bond + bond / 10);
         assertEq(address(tournament).balance, 0);
-        assertEq(address(0).balance - burnedBalanceBefore, bond);
+        assertEq(address(0).balance - burnedBalanceBefore, bond - bond / 10);
         assertEq(_claimerOf(tournament, winner), address(0));
 
         assertTrue(tournament.tryRecoveringBond());
-        assertEq(address(receiver).balance, bond);
-        assertEq(address(0).balance - burnedBalanceBefore, bond);
+        assertEq(address(receiver).balance, bond + bond / 10);
+        assertEq(address(0).balance - burnedBalanceBefore, bond - bond / 10);
     }
 
     function testPaymentCallbackCanRecoverDifferentTournament() public {

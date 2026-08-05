@@ -116,19 +116,25 @@ With exact-value joins, no forced ETH, and a successful winner payment:
 
 ```text
 successful progress refunds + winner payment + residual burn = J * B_r(h)
-successful progress refunds + residual burn = (J - 1) * B_r(h)
+winner payment = B_r(h) + floor(pre-recovery residual / 10)
+pre-recovery residual = (J - 1) * B_r(h) - successful progress refunds
 ```
 
-The winner receives one bond. The remaining losing reserves have two possible
-destinations:
+The winner receives one bond plus a one-tenth bounty on the pre-recovery
+residual, rounded toward the burn. The remaining losing reserves have three
+possible destinations:
 
 ```text
-losing reserves = successful progress refunds + residual burn
+losing reserves = successful progress refunds
+    + winner bounty
+    + residual burn
 ```
 
-The residual can be zero when successful progress consumes every available
-configured match reserve. The protocol does not guarantee a positive burn per
-loser.
+with `residual burn >= 9 * winner bounty`, so at least nine tenths of the
+terminal residual is destroyed. In undisputed operation `J = 1`, the balance
+is exactly one bond, and the bounty is zero. The residual can be zero when
+successful progress consumes every available configured match reserve; the
+protocol does not guarantee a positive burn per loser.
 
 ## Economic interpretation
 

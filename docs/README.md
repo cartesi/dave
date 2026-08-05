@@ -71,6 +71,12 @@ not current knowledge. By status:
   non-reproduced same-head contradiction remains a fail-closed empirical
   watch, and [plans/stf-upgrade.md](plans/stf-upgrade.md) - the draft plan for
   the emulator bump and the state-transition halt/exception gap.
+- Recorded for a later node campaign:
+  [plans/self-healing-batch-submission.md](plans/self-healing-batch-submission.md) -
+  the batch-nonce transaction lane and its reasoning - and
+  [plans/bond-recovery-redesign.md](plans/bond-recovery-redesign.md), whose
+  contract side is implemented and whose node-side recovery action rides
+  that campaign.
 - Implemented, with closeout provenance retained:
   [plans/prt-client-interface.md](plans/prt-client-interface.md).
 - Complete: [plans/prt-timeout-alignment.md](plans/prt-timeout-alignment.md).
