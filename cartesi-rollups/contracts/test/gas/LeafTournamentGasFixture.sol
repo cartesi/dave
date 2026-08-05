@@ -27,6 +27,10 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 
 import {DaveConsensus} from "src/DaveConsensus.sol";
 
+import {TournamentInspector} from "prt-contracts-test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 library LeafGasGeometry {
     uint64 internal constant LEVELS = 2;
     uint64 internal constant ROOT_LOG2_STEP = 1;

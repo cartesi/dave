@@ -216,6 +216,15 @@ The deployed compatibility surface includes:
 - event and error selectors; and
 - metadata-free creation and runtime bytecode when exact code identity matters.
 
+The production ABI no longer exposes raw state getters. Tests reach raw
+Match, Clock, and topology state through
+`test/fixtures/TournamentInspector.sol`: `vm.load` reads against the pinned
+storage layout (which keeps those tests the raw-layout witnesses), clone-args
+decoding for the immutable arguments, and independent closure and finish
+derivations so assertions against them are oracle checks rather than echoes
+of the observer views. Its hard-coded slot indices must move together with
+any storage-layout change and are gated by the semantic layout hash above.
+
 Run:
 
 ```bash

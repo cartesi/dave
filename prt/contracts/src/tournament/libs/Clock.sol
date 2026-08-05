@@ -163,16 +163,15 @@ library Clock {
         _setPaused(state, remaining);
     }
 
-    /// @notice Replace an initialized paused clock with another paused state.
+    /// @notice Replace an initialized paused clock's allowance.
     /// @dev This primitive is not monotone relative to the target clock. The
     /// caller owns the source bound; recursive propagation uses a shared pair
     /// envelope that may exceed the target's current allowance.
-    function replaceWithPaused(State storage state, State memory source)
+    function replaceWithPaused(State storage state, Time.Duration allowance)
         internal
     {
         state.assertPaused();
-        assert(!source.isRunning());
-        _setPaused(state, source.allowance);
+        _setPaused(state, allowance);
     }
 
     /// @notice Charge an already-paused in-memory clock.

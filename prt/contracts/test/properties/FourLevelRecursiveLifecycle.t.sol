@@ -22,6 +22,11 @@ import {
 } from "../fixtures/SmallFourLevelTournament.sol";
 import {SmallFullTree} from "../fixtures/SmallFullTree.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
+
 /// @dev A strict production-path recursion trace over four injected levels.
 /// The fine state tables are commitment-plumbing witnesses, not an execution
 /// oracle; ProofSelectedStateTransition selects the final divergent state.

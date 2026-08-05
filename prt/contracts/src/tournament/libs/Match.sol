@@ -201,6 +201,23 @@ library Match {
         return _phase(state.isInit, state.currentHeight);
     }
 
+    /// @notice The side whose clock runs and who must reveal at this height.
+    /// @dev Commitment one reveals first and every advance swaps the revealer,
+    /// so the responder is determined by the advance-count parity alone.
+    function responder(uint64 totalHeight, uint64 currentHeight)
+        internal
+        pure
+        returns (ITournament.CommitmentSide)
+    {
+        assert(currentHeight > 0 && currentHeight <= totalHeight);
+        uint64 advances = totalHeight - currentHeight;
+        if (advances % 2 == 0) {
+            return ITournament.CommitmentSide.ONE;
+        } else {
+            return ITournament.CommitmentSide.TWO;
+        }
+    }
+
     function sealedView(State memory state)
         internal
         pure

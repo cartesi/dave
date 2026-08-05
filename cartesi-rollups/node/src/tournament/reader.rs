@@ -24,15 +24,10 @@
 //! the sampled hash. A transient miss rejects only this observation;
 //! the finalized prefix was already persisted and the next tick
 //! samples again.
-//!
-//! The superseded raw-getter overlay remains test-only differential
-//! scaffolding. It is not sampled on this deadline-sensitive path.
 
 use anyhow::{Result, anyhow, ensure};
 use std::collections::{HashMap, HashSet};
 
-#[cfg(test)]
-use ::log::error;
 #[cfg(test)]
 use alloy::primitives::U256;
 use alloy::{
@@ -46,8 +41,6 @@ use crate::tournament::{
     DisputeState, adapter,
     fold::{Fold, decode_event},
 };
-#[cfg(test)]
-use crate::tournament::{LegacyShadow, TournamentOverlay, adapter::ShadowReport};
 #[cfg(test)]
 use cartesi_prt_contracts::tournament;
 
@@ -320,50 +313,12 @@ fn replay_logs(prefix: &Fold, logs: &[Log]) -> Result<Fold> {
 }
 
 #[cfg(test)]
-fn capture_legacy_shadow(
-    attempt: Result<(
-        HashMap<Address, TournamentOverlay>,
-        HashMap<Address, ShadowReport>,
-    )>,
-) -> LegacyShadow {
-    match attempt {
-        Ok((overlay, reports)) => LegacyShadow::Accepted { overlay, reports },
-        Err(error) => {
-            let diagnostic = format!("{error:#}");
-            error!("legacy tournament shadow rejected: {diagnostic}");
-            LegacyShadow::rejected(diagnostic)
-        }
-    }
-}
-
-/// The overlay's reachability gate, pure: a tournament is reachable
-/// iff it is the root (base cycle zero) or its parent is overlaid
-/// with the sealing match still live, in which case the inner level
-/// arbitrates that match's leaf cycle. A settled parent match makes
-/// the inner history, exactly as the pre-fold recursive walk never
-/// descended into it.
-#[cfg(test)]
-fn reachable_base_cycle(
-    tf: &crate::tournament::fold::TournamentFold,
-    overlay: &HashMap<Address, TournamentOverlay>,
-) -> Option<U256> {
-    match tf.parent {
-        None => Some(U256::ZERO),
-        Some((parent_address, match_id_hash)) => {
-            let parent_overlay = overlay.get(&parent_address)?;
-            let parent_match = parent_overlay.live_matches.get(&match_id_hash)?;
-            Some(parent_match.leaf_cycle)
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::merkle::Digest;
     use crate::storage::Storage;
-    use crate::tournament::fold::{EventKind, TournamentEvent};
-    use crate::tournament::{MatchID, MatchLive};
+    use crate::tournament::MatchID;
+    use crate::tournament::fold::EventKind;
     use alloy::{
         primitives::{Bytes, Log as PrimitiveLog},
         providers::{Provider, ProviderBuilder},
@@ -492,141 +447,6 @@ mod tests {
         drop(connection);
         let storage = Storage::new(directory.path()).unwrap();
         (directory, storage)
-    }
-
-    fn apply(fold: &mut Fold, tournament: Address, kind: EventKind) {
-        fold.apply(&TournamentEvent {
-            tournament,
-            block: 1,
-            kind,
-        })
-        .unwrap();
-    }
-
-    /// Joins two commitments, matches them, seals the match into an
-    /// inner tournament; returns the sealing match's id hash.
-    fn seal_inner(fold: &mut Fold, at: Address, child: Address, seed: u8) -> Digest {
-        let (one, two) = (digest(seed), digest(seed + 1));
-        apply(
-            fold,
-            at,
-            EventKind::CommitmentJoined {
-                root: one,
-                final_state: digest(seed + 100),
-            },
-        );
-        apply(
-            fold,
-            at,
-            EventKind::CommitmentJoined {
-                root: two,
-                final_state: digest(seed + 101),
-            },
-        );
-        apply(
-            fold,
-            at,
-            EventKind::MatchCreated {
-                one,
-                two,
-                left_of_two: digest(seed + 102),
-            },
-        );
-        let id_hash = MatchID {
-            commitment_one: one,
-            commitment_two: two,
-        }
-        .hash();
-        apply(
-            fold,
-            at,
-            EventKind::NewInnerTournament {
-                match_id_hash: id_hash,
-                child,
-            },
-        );
-        id_hash
-    }
-
-    fn overlay_with_live(live: &[(Digest, U256)]) -> TournamentOverlay {
-        TournamentOverlay {
-            max_level: 3,
-            log2_stride: 44,
-            log2_stride_count: 48,
-            base_cycle: U256::ZERO,
-            winner: None,
-            can_be_eliminated: false,
-            clocks: HashMap::new(),
-            live_matches: live
-                .iter()
-                .map(|(id_hash, leaf_cycle)| {
-                    (
-                        *id_hash,
-                        MatchLive {
-                            other_parent: digest(0),
-                            left_node: digest(0),
-                            right_node: digest(0),
-                            running_leaf_position: U256::ZERO,
-                            current_height: 0,
-                            leaf_cycle: *leaf_cycle,
-                        },
-                    )
-                })
-                .collect(),
-        }
-    }
-
-    #[test]
-    fn root_is_always_reachable_at_cycle_zero() {
-        let fold = Fold::new(address(1));
-        let overlay = HashMap::new();
-        let root = fold.tournament(&address(1)).unwrap();
-        assert_eq!(reachable_base_cycle(root, &overlay), Some(U256::ZERO));
-    }
-
-    #[test]
-    fn inner_reads_its_base_cycle_off_the_parents_live_match() {
-        let (root, inner) = (address(1), address(2));
-        let mut fold = Fold::new(root);
-        let id_hash = seal_inner(&mut fold, root, inner, 10);
-
-        let mut overlay = HashMap::new();
-        overlay.insert(root, overlay_with_live(&[(id_hash, U256::from(0x4400))]));
-
-        let tf = fold.tournament(&inner).unwrap();
-        assert_eq!(reachable_base_cycle(tf, &overlay), Some(U256::from(0x4400)));
-    }
-
-    #[test]
-    fn inner_of_a_settled_match_is_history() {
-        let (root, inner) = (address(1), address(2));
-        let mut fold = Fold::new(root);
-        let _ = seal_inner(&mut fold, root, inner, 10);
-
-        // The parent is overlaid, but the sealing match is no longer
-        // among its live matches: the inner disappeared with it.
-        let mut overlay = HashMap::new();
-        overlay.insert(root, overlay_with_live(&[]));
-
-        let tf = fold.tournament(&inner).unwrap();
-        assert_eq!(reachable_base_cycle(tf, &overlay), None);
-    }
-
-    #[test]
-    fn grandchild_of_an_unreachable_parent_stays_unreachable() {
-        let (root, mid, leaf) = (address(1), address(2), address(3));
-        let mut fold = Fold::new(root);
-        let _ = seal_inner(&mut fold, root, mid, 10);
-        let leaf_id_hash = seal_inner(&mut fold, mid, leaf, 30);
-
-        // Root settled mid's match, so mid never got an overlay; the
-        // grandchild must not resurrect through its own (live) match.
-        let mut overlay = HashMap::new();
-        overlay.insert(root, overlay_with_live(&[]));
-        let _ = leaf_id_hash;
-
-        let tf = fold.tournament(&leaf).unwrap();
-        assert_eq!(reachable_base_cycle(tf, &overlay), None);
     }
 
     #[test]
@@ -1003,7 +823,7 @@ mod tests {
 
         push_call_response::<tournament::Tournament::tournamentDescriptorCall>(
             &asserter,
-            &tournament::ITournamentObserver::TournamentDescriptor {
+            &tournament::ITournament::TournamentDescriptor {
                 initialHash: digest(9).into(),
                 baseCycle: U256::ZERO,
                 log2step: 3,
@@ -1015,7 +835,7 @@ mod tests {
         );
         push_call_response::<tournament::Tournament::tournamentStandingCall>(
             &asserter,
-            &tournament::ITournamentObserver::TournamentStandingView {
+            &tournament::ITournament::TournamentStandingView {
                 standing: 0,
                 acceptsJoins: true,
                 hasCandidate: false,
@@ -1036,7 +856,7 @@ mod tests {
             &asserter,
             &tournament::Tournament::bisectingMatchReturn {
                 actualPhase: 1,
-                value: tournament::ITournamentObserver::BisectingMatchView {
+                value: tournament::ITournament::BisectingMatchView {
                     revealingParent: one.into(),
                     waitingLeft: waiting_left.into(),
                     waitingRight: digest(31).into(),
@@ -1123,17 +943,6 @@ mod tests {
         assert_eq!(log_requests[0]["params"][0]["toBlock"], "0x29");
         assert_eq!(log_requests[1]["params"][0]["fromBlock"], "0x2a");
         assert_eq!(log_requests[1]["params"][0]["toBlock"], "0x2a");
-    }
-
-    #[test]
-    fn legacy_overlay_failure_remains_a_test_diagnostic() {
-        let legacy = capture_legacy_shadow(Err(anyhow!("arbitrationResult reverted")));
-        match legacy {
-            LegacyShadow::Rejected { diagnostic } => {
-                assert!(diagnostic.contains("arbitrationResult reverted"));
-            }
-            LegacyShadow::Accepted { .. } => panic!("failed legacy overlay must be diagnostic"),
-        }
     }
 
     #[tokio::test]

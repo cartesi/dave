@@ -23,6 +23,10 @@ import {Machine} from "src/types/Machine.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
 import {Tree} from "src/types/Tree.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract CallbackParametersProvider is ITournamentParametersProvider {
     function tournamentParameters(uint64)
         external

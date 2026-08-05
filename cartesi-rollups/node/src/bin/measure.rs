@@ -20,8 +20,8 @@ use cartesi_rollups_prt_node::merkle::Digest;
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
 
 /// Five minutes of clock per tree height unit: the deployment's
-/// matchEffort formula (prt/contracts/script/Deployment.s.sol,
-/// _getMatchEffortInSeconds). Every replay a bisection move needs must
+/// responseBudget formula (prt/contracts/script/Deployment.s.sol,
+/// _getResponseBudgetInSeconds). Every replay a bisection move needs must
 /// fit well inside this.
 const PER_MOVE_BUDGET_SECS: u64 = 300;
 
@@ -540,7 +540,7 @@ fn budget(report: &mut String, quartets: &[(String, u64, u64, Duration)]) -> Res
     writeln!(report)?;
     writeln!(
         report,
-        "matchEffort grants five minutes of clock per height unit\n\
+        "responseBudget grants five minutes of clock per height unit\n\
          (Deployment.s.sol), so a bisection move budgets ~{PER_MOVE_BUDGET_SECS} s.\n\
          Total allowances: devnet 1 h, testnet 9 h, mainnet 1 week + 1 h.\n\
          Level 0 never replays (seed-served); levels 1 and 2 pay their\n\
@@ -982,7 +982,7 @@ fn constants_report(
     writeln!(report)?;
     writeln!(
         report,
-        "Heights always sum to 92, so matchEffort's five-minutes-per-\n\
+        "Heights always sum to 92, so responseBudget's five-minutes-per-\n\
          height-unit total is shape-invariant; level count changes only\n\
          the per-level join and nested-tournament overhead."
     )?;

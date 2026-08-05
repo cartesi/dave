@@ -382,10 +382,10 @@ same interval may instead arise from ordinary congestion. A
 Sybil-versus-Sybil match may remain overdue by choice, but that does not
 establish a delay bound for a correct participant.
 
-The two mutating timeout paths and `canWinMatchByTimeout` derive from the same
-pure four-way classification. The view is true only for a single-winner outcome
-and returns false for nonexistent or deleted matches. It does not validate the
-Merkle children needed to settle that winner.
+The two mutating timeout paths and the `matchTimeoutStatus` observer derive
+from the same pure four-way classification. The observer reports a nonexistent
+or deleted match as absent with outcome `NONE`. It does not validate the
+Merkle children needed to settle a winner.
 
 The survivor re-enters the same dangling/pairing mechanism. This repeated
 pairing is why total delay and total refunds are global properties rather than
@@ -399,15 +399,21 @@ finished when it is closed and has no live matches.
 If one commitment remains dangling, it is the tournament winner. The root result
 includes that commitment and its final state. An inner result additionally maps
 the winning inner commitment back to one of the two parent commitments and
-returns an adjusted paused clock.
+carries the winner's remaining carryover allowance, already deducted by the
+time elapsed since the child finished.
 
-`arbitrationResult()` is intended for root consumers, but the current contract
-does not enforce a root-only guard. Parents use `innerTournamentWinner()` rather
-than `arbitrationResult()`.
+Root consumers read the result through `tournamentStanding()`: `ROOT_WINNER`
+carries the candidate and its final state, and `ROOT_FAILED` marks a finished
+root without a winner. Parents read one typed `innerResult()` from their
+recorded child instead: `WINNER` maps the inner winner back to a contested
+parent commitment and carries its remaining carryover allowance as a typed
+duration, while `ELIMINABLE` covers both a no-winner child and an expired
+winner. Propagation requires `WINNER` and elimination requires `ELIMINABLE`,
+so the parent verbs partition exactly.
 
 If no commitment remains, the tournament has finished without a winner. A root
-cannot produce an arbitration result in that state. A parent may eventually
-eliminate a no-winner child.
+in that state settles nothing. A parent may eventually eliminate a no-winner
+child.
 
 ## Clock model
 

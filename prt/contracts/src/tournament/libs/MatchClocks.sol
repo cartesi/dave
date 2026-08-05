@@ -124,7 +124,7 @@ library MatchClocks {
         Time.Duration responseBudget,
         Time.Instant current
     ) private returns (Clock.State storage idle) {
-        _assertBisection(one, two);
+        assertBisection(one, two);
         if (one.isRunning()) {
             one.pauseAfterResponseAt(responseBudget, current);
             return two;
@@ -134,13 +134,40 @@ library MatchClocks {
         }
     }
 
-    function _assertBisection(Clock.State memory one, Clock.State memory two)
-        private
+    /// @notice Assert the active-bisection shape: exactly one running clock.
+    function assertBisection(Clock.State memory one, Clock.State memory two)
+        internal
         pure
     {
         one.assertInitialized();
         two.assertInitialized();
         assert(one.isRunning() != two.isRunning());
+    }
+
+    /// @notice Assert the sealed-leaf shape: both clocks running from one
+    /// shared start instant.
+    function assertLeafRace(Clock.State memory one, Clock.State memory two)
+        internal
+        pure
+    {
+        one.assertInitialized();
+        two.assertInitialized();
+        assert(one.isRunning() && two.isRunning());
+        assert(
+            Time.Instant.unwrap(one.startInstant)
+                == Time.Instant.unwrap(two.startInstant)
+        );
+    }
+
+    /// @notice Assert the sealed-inner shape: both clocks paused while the
+    /// linked child resolves.
+    function assertInnerSeal(Clock.State memory one, Clock.State memory two)
+        internal
+        pure
+    {
+        one.assertInitialized();
+        two.assertInitialized();
+        assert(!one.isRunning() && !two.isRunning());
     }
 
     /// @dev A paused bisection survivor has not paid for the expired responder's

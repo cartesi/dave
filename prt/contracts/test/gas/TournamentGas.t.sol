@@ -29,6 +29,10 @@ import {
     ConfigurableCommitmentFixture
 } from "../fixtures/ConfigurableCommitmentFixture.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 library GasTestGeometry {
     uint64 internal constant LEVELS = 2;
     uint64 internal constant ROOT_LOG2_STEP = 37;
@@ -791,7 +795,9 @@ contract AdvanceMatchGasTest is TournamentGasTest {
 
         Measurement memory result = _measure(callData, Gas.ADVANCE_MATCH);
         _logMeasurement("advance match", result);
-        _assertCalibratedAllocation(result, Gas.ADVANCE_MATCH);
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.ADVANCE_MATCH, 2_000
+        );
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
@@ -841,7 +847,9 @@ contract SealLeafMatchGasTest is TournamentGasTest {
         Measurement memory result =
             _measure(_sealCall(true), Gas.SEAL_LEAF_MATCH);
         _logMeasurement("seal leaf match", result);
-        _assertCalibratedAllocation(result, Gas.SEAL_LEAF_MATCH);
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.SEAL_LEAF_MATCH, 1_000
+        );
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
@@ -887,7 +895,7 @@ contract SealInnerMatchGasTest is TournamentGasTest {
         );
         _logMeasurement("seal inner match", result);
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 8_000
+            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 11_000
         );
 
         Match.Id memory id = matchId;
@@ -1004,7 +1012,9 @@ contract SealedLeafTwoWinsTimeoutGasTest is TournamentGasTest {
             LEAF_HEIGHT,
             CLOCK_CHARGE - TIMEOUT_OVERDUE
         );
-        _assertCalibratedAllocation(result, Gas.WIN_MATCH_BY_TIMEOUT);
+        _assertCalibratedAllocationWithHeadroom(
+            result, Gas.WIN_MATCH_BY_TIMEOUT, 1_000
+        );
     }
 }
 
@@ -1082,7 +1092,7 @@ contract InnerTwoWinsGasTest is TournamentGasTest {
             "inner two wins", CommitmentShape.SECOND_DIFFERENT
         );
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_INNER_TOURNAMENT, 2_000
+            result, Gas.WIN_INNER_TOURNAMENT, 39_000
         );
     }
 }
@@ -1101,7 +1111,7 @@ contract InnerEliminationGasTest is TournamentGasTest {
         Measurement memory result =
             _measureInnerElimination("inner elimination");
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.ELIMINATE_INNER_TOURNAMENT, 1_000
+            result, Gas.ELIMINATE_INNER_TOURNAMENT, 7_000
         );
     }
 }

@@ -22,6 +22,11 @@ import {
     SmallTwoLevelTournamentFactory
 } from "../fixtures/SmallTwoLevelTournament.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
+
 /// @dev Deterministic traces across the parent-child seam. The state-transition
 /// stub selects a supplied child leaf; these tests cover tournament plumbing,
 /// not the objective correctness of that transition.

@@ -21,6 +21,11 @@ import {
     SmallSingleLevelTournamentFactory
 } from "./SmallSingleLevelTournament.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
+
 contract SmallSingleLevelTournamentTest is Test {
     using Match for Match.Id;
     using Match for Match.State;

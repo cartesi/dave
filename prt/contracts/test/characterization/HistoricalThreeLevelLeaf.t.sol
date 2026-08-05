@@ -33,6 +33,10 @@ import {
     HistoricalThreeLevelGeometry as HistoricalGeometry
 } from "../fixtures/HistoricalThreeLevelGeometry.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract HistoricalThreeLevelLeafTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;

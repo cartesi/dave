@@ -20,6 +20,11 @@ import {
     SmallSingleLevelTournamentFactory
 } from "../fixtures/SmallSingleLevelTournament.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
+
 /// @dev Stateful model for one small root-and-leaf tournament. The model owns
 /// its population, pairing, bisection, clock, and terminal-result transitions;
 /// production storage is read only by the assertion functions.
@@ -757,37 +762,40 @@ contract TournamentLifecycleHandler is Test {
             assertEq(Time.Instant.unwrap(timeFinished), 0);
         }
 
-        (bool success, bytes memory result) = address(TOURNAMENT)
-            .staticcall(
-                abi.encodeWithSelector(ITournament.arbitrationResult.selector)
-            );
+        ITournament.TournamentStandingView memory standing =
+            TOURNAMENT.tournamentStanding();
         if (!expectedFinished) {
-            assertTrue(success);
-            (bool finished, Tree.Node winner, Machine.Hash finalState) =
-                abi.decode(result, (bool, Tree.Node, Machine.Hash));
-            assertFalse(finished);
-            assertTrue(winner.isZero());
-            assertEq(Machine.Hash.unwrap(finalState), bytes32(0));
+            assertTrue(
+                standing.standing
+                        == ITournament.TournamentStanding.MATCHES_ACTIVE
+                    || standing.standing
+                        == ITournament.TournamentStanding.AWAITING_CLOSURE
+            );
+            assertEq(standing.hasCandidate, _dangling != NO_COMMITMENT);
+            assertEq(Machine.Hash.unwrap(standing.finalState), bytes32(0));
         } else if (_dangling == NO_COMMITMENT) {
-            assertFalse(success);
-            assertGe(result.length, 4);
-            bytes4 selector;
-            assembly ("memory-safe") {
-                selector := mload(add(result, 32))
-            }
-            assertEq(selector, ITournament.TournamentFailedNoWinner.selector);
-        } else {
-            assertTrue(success);
-            (bool finished, Tree.Node winner, Machine.Hash finalState) =
-                abi.decode(result, (bool, Tree.Node, Machine.Hash));
-            SmallFullTree.Data memory tree = _tree(_dangling);
-            assertTrue(finished);
-            assertTrue(winner.eq(tree.root()));
             assertEq(
-                Machine.Hash.unwrap(finalState),
+                uint8(standing.standing),
+                uint8(ITournament.TournamentStanding.ROOT_FAILED)
+            );
+            assertFalse(standing.hasCandidate);
+            assertTrue(standing.candidate.isZero());
+        } else {
+            assertEq(
+                uint8(standing.standing),
+                uint8(ITournament.TournamentStanding.ROOT_WINNER)
+            );
+            SmallFullTree.Data memory tree = _tree(_dangling);
+            assertTrue(standing.hasCandidate);
+            assertTrue(standing.candidate.eq(tree.root()));
+            assertEq(
+                Machine.Hash.unwrap(standing.finalState),
                 Machine.Hash.unwrap(tree.finalState())
             );
-            assertEq(TOURNAMENT.observedClaimer(winner), _claimer(_dangling));
+            assertEq(
+                TOURNAMENT.observedClaimer(standing.candidate),
+                _claimer(_dangling)
+            );
         }
     }
 

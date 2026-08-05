@@ -29,6 +29,10 @@ import {
     HistoricalThreeLevelGeometry as HistoricalGeometry
 } from "./fixtures/HistoricalThreeLevelGeometry.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract TournamentTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
@@ -344,8 +348,10 @@ contract TournamentTest is Util {
         Match.IdHash nonexistent = Match.Id(ONE_NODE, TWO_NODE).hashFromId();
         assertFalse(inner.getMatch(nonexistent).exists());
 
-        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
-        inner.getMatchCycle(nonexistent);
+        // The observer is total: a nonexistent inner match reads as absent
+        // with a canonical zero payload rather than a plausible projection.
+        (Match.Phase phase,) = inner.bisectingMatch(nonexistent);
+        assertEq(uint8(phase), uint8(Match.Phase.UNINITIALIZED));
     }
 
     function testFuzzLateJoinAndWinnerRePairNeverGainAllowance(uint64 late)
@@ -660,8 +666,8 @@ contract TournamentTest is Util {
             playerNodes[opponent][HistoricalGeometry.height(0) - 1]
         );
         assertFalse(topTournament.canWinMatchByTimeout(matchId));
-        vm.expectRevert(ITournament.MatchDoesNotExist.selector);
-        topTournament.getMatchCycle(matchId.hashFromId());
+        (Match.Phase deletedPhase,,) = topTournament.matchTimeoutStatus(matchId);
+        assertEq(uint8(deletedPhase), uint8(Match.Phase.UNINITIALIZED));
     }
 
     function testWinLeafMatchRejectsInvalidIdsBeforeClockInvariants() public {

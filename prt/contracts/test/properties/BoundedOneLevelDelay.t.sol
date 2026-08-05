@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
+import {ITournament} from "src/ITournament.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
@@ -20,6 +21,11 @@ import {SmallFullTree} from "../fixtures/SmallFullTree.sol";
 import {
     SmallSingleLevelTournamentFactory
 } from "../fixtures/SmallSingleLevelTournament.sol";
+
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
 
 /// @dev Exhaustive finite-state evidence for the clock-only delay model.
 /// These exact maxima apply only to the stated discrete domain and its prompt

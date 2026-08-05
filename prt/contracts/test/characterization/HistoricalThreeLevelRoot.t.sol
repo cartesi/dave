@@ -27,6 +27,10 @@ import {
     HistoricalThreeLevelGeometry as HistoricalGeometry
 } from "../fixtures/HistoricalThreeLevelGeometry.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract ConfigurableBondReceiver {
     bool public rejectsPayment = true;
 
