@@ -848,7 +848,7 @@ contract SealLeafMatchGasTest is TournamentGasTest {
             _measure(_sealCall(true), Gas.SEAL_LEAF_MATCH);
         _logMeasurement("seal leaf match", result);
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.SEAL_LEAF_MATCH, 1_000
+            result, Gas.SEAL_LEAF_MATCH, 2_000
         );
 
         Match.Id memory id = matchId;

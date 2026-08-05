@@ -144,32 +144,6 @@ library MatchClocks {
         assert(one.isRunning() != two.isRunning());
     }
 
-    /// @notice Assert the sealed-leaf shape: both clocks running from one
-    /// shared start instant.
-    function assertLeafRace(Clock.State memory one, Clock.State memory two)
-        internal
-        pure
-    {
-        one.assertInitialized();
-        two.assertInitialized();
-        assert(one.isRunning() && two.isRunning());
-        assert(
-            Time.Instant.unwrap(one.startInstant)
-                == Time.Instant.unwrap(two.startInstant)
-        );
-    }
-
-    /// @notice Assert the sealed-inner shape: both clocks paused while the
-    /// linked child resolves.
-    function assertInnerSeal(Clock.State memory one, Clock.State memory two)
-        internal
-        pure
-    {
-        one.assertInitialized();
-        two.assertInitialized();
-        assert(!one.isRunning() && !two.isRunning());
-    }
-
     /// @dev A paused bisection survivor has not paid for the expired responder's
     /// overdue interval, while a running leaf-race survivor has already paid for
     /// that interval through its live remainder.

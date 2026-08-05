@@ -72,3 +72,19 @@ recommendations, which would propagate into bonds) to a single accepted
 `just measure-prt-gas` run when the interface work settles. Until then the
 witnesses pin the exact interim relationships so unintended gas drift stays
 visible.
+
+## Third re-pin: matchTimeoutStatus totality (2026-08-05)
+
+The branch then removed the observer-side clock-shape asserts from
+`matchTimeoutStatus` (the view now classifies stored clocks as they
+are; shape invariants stay enforced on the transition paths), deleting
+`_assertBisectionResponder` and the view-only `assertLeafRace`/
+`assertInnerSeal` library helpers. ABI and storage layout are
+unchanged; runtime bytecode shrank from 14,856 to 14,615 bytes, and
+the optimizer ripple cheapened the seal path across a rounding
+boundary: the seal-leaf rounded recommendation dropped from 104,000 to
+103,000, so `SEAL_LEAF_MATCH`'s interim retained headroom moves from
+1,000 to 2,000 against the unchanged allocation. All other witnesses
+held their pinned relationships. The deferred `just measure-prt-gas`
+acceptance run remains the single point where allocations get
+re-selected.

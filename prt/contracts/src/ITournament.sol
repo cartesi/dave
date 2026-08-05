@@ -691,7 +691,9 @@ interface ITournament {
     /// An absent or deleted match returns `(UNINITIALIZED, NONE, 0)`.
     /// `deferredCharge` is zero for `NONE`, `ELIMINATE_BOTH`, and a leaf-race
     /// winner; an active-match winner may carry the expired responder's overdue
-    /// duration. Existing matches with impossible phase/clock shapes revert.
+    /// duration. The view is total over stored state: it classifies the
+    /// clocks as they are, and shape invariants are enforced by the
+    /// transition paths that create the shapes, never at observation.
     function matchTimeoutStatus(Match.Id calldata matchId)
         external
         view

@@ -869,31 +869,30 @@ contract Tournament is ITournament {
         )
     {
         Match.State memory state = matches[_matchId.hashFromId()];
+        Clock.State memory one = clocks[_matchId.commitmentOne];
+        Clock.State memory two = clocks[_matchId.commitmentTwo];
         actualPhase = state.phase();
         outcome = MatchTimeoutOutcome.NONE;
         deferredCharge = Time.ZERO_DURATION;
 
+        // The view is total: it classifies the stored clocks as they
+        // are, and every unclassifiable arm observes the canonical
+        // zeros set above. Shape invariants are enforced by the
+        // transition paths that create the shapes, never at
+        // observation - a panicking view would blind every observer
+        // of every match over one corrupt entry.
         if (actualPhase == Match.Phase.UNINITIALIZED) {
-            // Absent or deleted matches observe canonical zeros.
-            return (actualPhase, outcome, deferredCharge);
-        }
-
-        TournamentArguments memory args = _tournamentArgs();
-        Clock.State memory one = clocks[_matchId.commitmentOne];
-        Clock.State memory two = clocks[_matchId.commitmentTwo];
-        if (actualPhase == Match.Phase.SEALED && !_isLeafTournament(args)) {
-            // A sealed inner match delegates its obligation to the linked
-            // child; there is no local timeout action.
-            MatchClocks.assertInnerSeal(one, two);
+            // Absent and deleted matches have no clocks to classify.
+        } else if (
+            actualPhase == Match.Phase.SEALED
+                && !_isLeafTournament(_tournamentArgs())
+        ) {
+            // A sealed inner match delegates its obligation to the
+            // linked child; there is no local timeout action.
+        } else if (!one.isInitialized() || !two.isInitialized()) {
+            // No transition path creates this shape; observing zeros
+            // beats classifying a zeroed clock.
         } else {
-            if (actualPhase == Match.Phase.SEALED) {
-                MatchClocks.assertLeafRace(one, two);
-            } else {
-                _assertBisectionResponder(
-                    one, two, state.currentHeight, args.commitmentArgs.height
-                );
-            }
-
             MatchClocks.TimeoutStatus memory status =
                 MatchClocks.classifyTimeoutAt(one, two, Time.currentTime());
             outcome = _observerTimeoutOutcome(status.outcome);
@@ -1024,25 +1023,6 @@ contract Tournament is ITournament {
         if (!_node.isZero()) {
             _h = true;
         }
-    }
-
-    /// @dev The running clock must belong to the responder side derived from
-    /// the match's turn parity; a disagreement is cross-view corruption.
-    function _assertBisectionResponder(
-        Clock.State memory one,
-        Clock.State memory two,
-        uint64 currentHeight,
-        uint64 totalHeight
-    ) private pure {
-        MatchClocks.assertBisection(one, two);
-
-        CommitmentSide clockResponder;
-        if (one.isRunning()) {
-            clockResponder = CommitmentSide.ONE;
-        } else {
-            clockResponder = CommitmentSide.TWO;
-        }
-        assert(clockResponder == Match.responder(totalHeight, currentHeight));
     }
 
     function _observerTimeoutOutcome(MatchClocks.TimeoutOutcome outcome)
