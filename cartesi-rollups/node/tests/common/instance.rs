@@ -254,8 +254,10 @@ impl MachineInstance {
 
         // we check if the request is accepted
         // if it is not, we revert the machine state to previous snapshot
+        // REJECTED only, matching production (machine_stf.rs) and the
+        // on-chain semantics: an exception yield keeps its state.
         if self.machine.receive_cmio_request()?.reason()
-            != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
+            == cartesi_machine::constants::cmio::tohost::manual::RX_REJECTED
         {
             trace!("Reject input,revert to previous snapshot");
             let runtime_config = RuntimeConfig::quiet_console();
@@ -400,7 +402,7 @@ impl MachineInstance {
             proof.append(&mut self.prove_read_word(to_host_address)?);
 
             if self.machine.receive_cmio_request()?.reason()
-                != cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED
+                == cartesi_machine::constants::cmio::tohost::manual::RX_REJECTED
             {
                 proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS)?);
             }

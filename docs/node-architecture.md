@@ -202,13 +202,18 @@ Structure:
     (`src/chain.rs`); there is no recursion depth left to bound.
 12. No graceful-shutdown story for in-flight work: a mid-epoch machine run
     or mid-dispute reaction is only interrupted at the next poll.
-13. (resolved 2026-07-24) Hero actions, cleanup, and epoch settlement share one
-    explicit transaction lane rather than a signer-bearing provider. The lane
-    reads the account nonce from `latest` mined state, rebroadcasts or replaces
-    that same nonce until inclusion advances it, signs fully specified EIP-1559
-    transactions, and returns after bounded raw RPC submission. Read and submit
-    endpoints are independently configurable; the submit endpoint defaults to
-    the read endpoint. The signer must remain exclusive to one node instance.
+13. (resolved 2026-07-24; reshaped 2026-08-05) Hero actions, cleanup,
+    settlement, and bond recovery share one explicit stateless transaction
+    lane rather than a signer-bearing provider. Each tick composes one
+    nonce-ordered wave (settlement step, hero action, cleanup, recovery)
+    from the mined count at `latest`, signs fully specified EIP-1559
+    transactions at the fresh market quote, submits them all without
+    waiting, and forgets; the mempool (or block builder) arbitrates
+    duplicates and replacements, and every tick rebuilds the wave from
+    fresh observation (docs/plans/self-healing-batch-submission.md). Read
+    and submit endpoints are independently configurable; the submit
+    endpoint defaults to the read endpoint. The signer must remain
+    exclusive to one node instance.
 
 Documented design assumptions (fine, but should stay explicit):
 

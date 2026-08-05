@@ -56,7 +56,8 @@ Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
 Reads use `--web3-rpc-url`. Raw signed transactions use
 `--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
 name a private relay with revert protection. The signer must be exclusive to
-one node process because the node owns its mined nonce and replacement slot.
+one node process because the node owns its nonce sequence: each tick submits
+a batch of consecutive nonces from the mined count.
 Here are its arguments:
 
 ```

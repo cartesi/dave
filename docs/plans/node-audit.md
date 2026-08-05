@@ -1,12 +1,10 @@
 # Node deep dive: oracle-anchored audit (2026-07-15)
 
-Status: ROUND 1 COMPLETE. Findings verified and dispositioned below;
-fixes landed the same session (battery-gated). Re-run the method
-after the contracts-side halt/exception rework lands and after any
-campaign that reshapes a module. (Trigger note, 2026-07-25: the
-one-engine landing through 2026-07-20 and the prt-client-interface
-campaign through 2026-07-24 both reshaped modules after Round 1; a
-Round 2 has not run yet.)
+Status: ROUND 2 COMPLETE (2026-08-05, recorded below Round 1).
+Round 1: findings verified and dispositioned below; fixes landed the
+same session (battery-gated). Re-run the method after the
+contracts-side halt/exception rework lands and after any campaign
+that reshapes a module.
 
 ## Method
 
@@ -223,3 +221,74 @@ load-bearing ones:
   separate from verification; require failure scenarios; ship the
   clean-check list, not just findings - it is what makes the next
   audit incremental.
+
+## Round 2 (2026-08-05): the interface-ossification reshape
+
+Trigger: the smart-contract-interface branch reshaped the lane
+(stateless wave submission), the composer (per-tick wave), the
+recovery planner (new), the revert-proving seam (post-state fix), and
+the consumed view surface (ossified ITournament + bondRecovery). Six
+oracle-anchored finders (one per dimension below), every finding
+adversarially re-verified by a separate agent instructed to refute,
+plus a completeness critic. 13 raw findings; after verification: 1
+confirmed, 5 downgraded-but-real, 5 refuted, plus 3 critic gaps. 74
+clean checks recorded across dimensions (the per-dimension lists live
+in the session's audit artifacts; load-bearing ones summarized below).
+
+Dimensions: (1) the wave lane vs mempool semantics and the mutators'
+revalidation gates; (2) the recovery planner vs tryRecoveringBond and
+its own spoof defense; (3) ossified view consumption incl. enum
+mirrors; (4) the revert-proving seam byte-for-byte; (5) settled docs
+vs code; (6) unpinned shapes. A seventh pass audited the Lua client's
+parallel mirror (the correlated-implementation risk).
+
+| # | raw sev | finding | verdict | disposition |
+|---|---------|---------|---------|-------------|
+| 1 | high | recovery scan cursor rode the reorg-able latest head; monotone cursor could drop a join until next boot rescan | DOWNGRADED (low; boot rescan bounds the loss) | FIXED: cursor advances on finalized, matching the reader convention |
+| 2 | high | verify_candidates discarded unprocessed candidates on a transient get_code_at error (std::mem::take before fallible loop) | DOWNGRADED (medium; rescan-at-boot bounds it) | FIXED: per-item removal, remainder survives the error |
+| 3 | med | docs still described the deleted one-write-per-tick lane (EpochWritePlan) as current | CONFIRMED, broader than reported | FIXED: epoch-lifecycle.md, node-architecture.md debt 13, node README |
+| 4 | med | BondDisposition numeric mirror had no drift guard (Round 1 finding-4 class) | DOWNGRADED (low) | FIXED: source-parse pin test beside the mirror |
+| 5 | med | wave SendVerdicts computed but never consumed; Failed only warned | DOWNGRADED (low; Failed was already the lane's only default-visible output) | FIXED: Failed logs at error level |
+| 6 | med | prototype oracle kept the pre-fix != RX_ACCEPTED revert predicate production abandoned | DOWNGRADED (low; unreachable with current images) | FIXED: aligned to == RX_REJECTED |
+| - | - | five findings (BondRecovered decode, nonce interaction, coverage observations, inner-recovery-not-exercised, fee-escalation claim) | REFUTED | none; refutations recorded in artifacts |
+
+Critic gaps (LEADS, not closed this round):
+
+1. FUNDING ENVELOPE (high lead). The pool admits a transaction only if
+   the balance covers gas_limit x fee cap CUMULATIVELY across pending
+   transactions. The flat 15M gas limit times a 2x-base quote times
+   the wave length demands orders of magnitude more balance than
+   actions consume; in a fee spike a realistically funded signer gets
+   its wave head rejected (insufficient funds -> Failed) while clocks
+   run. Direction: per-verb gas limits (Gas.sol knows the real costs)
+   and/or a fee-cap ceiling, plus a documented funding floor. Nothing
+   owns funding guidance today.
+2. POST-INCLUSION OBSERVABILITY (medium lead; Round 1 finding 3
+   reopened). Nothing in production observes a mined-but-reverting
+   transaction; the old decode-the-revert-at-the-sender direction died
+   with the lane rework (send_raw, no receipts). A self-authored
+   permanently-failing settlement step (InvalidOutputsMerkleRootProof)
+   would burn gas every tick while logging what reads as progress.
+   Direction fits the stateless model: an eth_call preflight per wave
+   entry classifying deterministic reverts, or stuck-step escalation
+   (same step planned N ticks -> error).
+3. LUA MIRROR PARITY (closed same session, CLEAN). A dedicated
+   oracle-anchored pass compared the Lua client's rewritten player
+   modules against ITournament.sol at the Rust side's granularity:
+   every enum mirror (phase, kind, side, timeout outcome, all seven
+   standings, deletion reason, winner), every view tuple's field
+   order and canonical-zero handling, all nine mutation signatures
+   and their argument routing, both GC triggers, and the three-way
+   revert/checkpoint agreement (Lua vs Rust vs the state-transition
+   contracts, byte layouts included) - zero findings, ~40 clean
+   checks. Residual note: Lua's span-constant copies match but lack
+   the source-parse guard the Rust side has (constants.lua vs the
+   guarded constants.rs); low, recorded for the next hygiene pass.
+
+Standing conclusions, updated: the reshape's consensus-critical seams
+(witness encodings, view decoding, wave ordering invariants, recovery
+gating) came out clean under adversarial verification; residual risk
+again concentrated in OPERATIONAL loudness (funding envelope,
+post-inclusion observability) - the same class Round 1 found, one
+layer further out. Both leads are pre-mainnet work, not protocol
+defects.
