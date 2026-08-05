@@ -510,6 +510,11 @@ impl ProvingStf for MachineStf {
                 proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS)?);
             }
         }
+        // Apply what was proven: the chain's closing transition ends on
+        // the restored checkpoint, so the post-state reported after
+        // proving must be the reverted state the builder emitted as
+        // this leaf, not the discarded rejected state.
+        self.revert_if_needed()?;
         Ok(proof)
     }
 }

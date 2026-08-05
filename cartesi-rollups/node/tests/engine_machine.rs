@@ -30,6 +30,12 @@ fn echo_image() -> Option<PathBuf> {
     path.exists().then(|| path.canonicalize().unwrap())
 }
 
+fn yield_image() -> Option<PathBuf> {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test/programs/yield/machine-image");
+    path.exists().then(|| path.canonicalize().unwrap())
+}
+
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/engine_echo.json")
 }
@@ -51,8 +57,8 @@ alloy::sol! {
     ) external;
 }
 
-fn echo_inputs() -> Vec<Vec<u8>> {
-    [&b"hello dave"[..], &b"hello again, dave"[..]]
+fn encode_inputs(payloads: &[&[u8]]) -> Vec<Vec<u8>> {
+    payloads
         .iter()
         .enumerate()
         .map(|(index, payload)| {
@@ -69,6 +75,16 @@ fn echo_inputs() -> Vec<Vec<u8>> {
             .abi_encode()
         })
         .collect()
+}
+
+fn echo_inputs() -> Vec<Vec<u8>> {
+    encode_inputs(&[&b"hello dave"[..], &b"hello again, dave"[..]])
+}
+
+/// The yield program rejects every input; one is enough to reach the
+/// revert-carrying closing slot.
+fn yield_inputs() -> Vec<Vec<u8>> {
+    encode_inputs(&[&b"hello dave"[..]])
 }
 
 /// Test scratch: under target/tmp (visible, swept by cargo clean) and
@@ -103,9 +119,13 @@ fn prototype_root(image: &Path, level: u64, log2_stride: u64, log2_stride_count:
 /// inputs table; feeders read them there). The guard rides along:
 /// the state dir must outlive the Storage.
 fn migrated_storage(image: &Path) -> (tempfile::TempDir, Storage) {
+    migrated_storage_with(image, echo_inputs())
+}
+
+fn migrated_storage_with(image: &Path, inputs: Vec<Vec<u8>>) -> (tempfile::TempDir, Storage) {
     let dir = scratch();
     let mut storage = Storage::migrate(dir.path(), image, 0, Address::ZERO).unwrap();
-    let rows: Vec<StorageInput> = echo_inputs()
+    let rows: Vec<StorageInput> = inputs
         .into_iter()
         .enumerate()
         .map(|(index, data)| StorageInput {
@@ -430,7 +450,8 @@ fn golden_fixtures_hold() {
 /// the transition shapes reachable on the echo epoch: the fed window
 /// start, a plain ustep, a closing slot, and an inputless window
 /// start (empty data availability). The revert-carrying closing slot
-/// is pinned on-chain by the stf_revert e2e scenario.
+/// is covered by revert_closing_slot_restores_the_checkpoint below and
+/// pinned on-chain by the stf_revert e2e scenario.
 #[test]
 fn prove_transition_matches_prototype_get_logs() {
     let Some(image) = echo_image() else {
@@ -473,4 +494,93 @@ fn prove_transition_matches_prototype_get_logs() {
         );
         println!("{label}: {} witness bytes agree", new_proof.len());
     }
+}
+
+/// The revert-carrying closing slot, on the yield machine (which
+/// rejects every input). Three agreements, in dependency order: the
+/// plain path's closing leaf must be the restored checkpoint (the
+/// pre-feed state - what the chain restores from the shadow slot);
+/// the proving path must report that same post-state (the hero's
+/// pre-send check compares it against the commitment, so a prover
+/// that reports the discarded rejected state instead can never send
+/// winLeafMatch and forfeits by clock); and the witness bytes must
+/// match the prototype proof path.
+#[test]
+fn revert_closing_slot_restores_the_checkpoint() {
+    let Some(image) = yield_image() else {
+        eprintln!("skipping: yield machine image not built (just setup-local)");
+        return;
+    };
+
+    let structure = Structure::PRODUCTION;
+    let big_span = U256::from(structure.big_span());
+    let inputs = yield_inputs();
+
+    let (_state_dir, storage) = migrated_storage_with(&image, inputs.clone());
+    let work = scratch();
+    let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+
+    // The agreed pre-state of the window: what the feed checkpoints
+    // and what the revert must restore.
+    let pre_feed = {
+        let mut ruler = source.machine_at(U256::ZERO).unwrap();
+        ruler.state_hash().unwrap()
+    };
+
+    // Find where the reject lands: feed window 0 and run the big
+    // machine until the guest yields. The closing slot of that big
+    // cycle carries the revert (mirrors stf_revert's oracle-reported
+    // processing_bigs).
+    let bigs = {
+        let ruler = source.machine_at(U256::ZERO).unwrap();
+        let mut stf = ruler.into_stf();
+        stf.feed(0).unwrap();
+        let ran = stf.run_big(u64::MAX).unwrap();
+        assert!(stf.yielded().unwrap(), "the yield program must yield");
+        assert!(ran > 0, "the guest must run before yielding");
+        ran
+    };
+    let boundary = U256::from(bigs) * big_span;
+    assert!(boundary < (U256::ONE << 44), "input overran a level-0 leaf");
+    let closing = boundary - U256::ONE;
+
+    // The built leaf, through the plain path.
+    let built = {
+        let mut ruler = source.machine_at(closing).unwrap();
+        let runs = ruler.collect(boundary, 0).unwrap();
+        runs.last().unwrap().hash
+    };
+    assert_eq!(
+        built, pre_feed,
+        "the revert must restore the pre-feed state"
+    );
+
+    // The proving path must report the post-state it just proved the
+    // chain would compute.
+    let mut ruler = source.machine_at(closing).unwrap();
+    let agree = ruler.state_hash().unwrap();
+    let (proof, post) = ruler.prove_transition().unwrap();
+    assert_eq!(
+        post, built,
+        "prove_transition post-state diverges from the built leaf at the revert closing slot"
+    );
+
+    // Differential: the prototype proof path agrees on bytes and
+    // post-state.
+    let dir = scratch();
+    let db = EpochData::new(inputs, dir.path().to_path_buf()).unwrap();
+    let (old_proof, old_post) =
+        MachineInstance::get_logs(image.to_str().unwrap(), 0, agree, closing, &db).unwrap();
+    assert_eq!(
+        proof, old_proof,
+        "revert witness bytes diverge from the prototype"
+    );
+    assert_eq!(
+        post, old_post,
+        "post-transition hash diverges from the prototype at the revert closing slot"
+    );
+    println!(
+        "revert closing slot at big cycle {bigs}: {} witness bytes agree",
+        proof.len()
+    );
 }

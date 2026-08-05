@@ -106,9 +106,11 @@ pub trait ProvingStf: Stf {
 
     /// The closing slot's revert witness: proves the yield flag, and
     /// on a yielded machine the outcome word plus - if the input was
-    /// rejected - the checkpoint the chain restores from. Pure reads:
-    /// the proving path never applies the revert, matching the
-    /// prototype (the machine is discarded after the proof).
+    /// rejected - the checkpoint the chain restores from. Then applies
+    /// the revert exactly as [`Stf::revert_if_needed`] does: the
+    /// chain's closing transition ends on the restored checkpoint, so
+    /// the post-state observed after proving must match the leaf the
+    /// plain path built there.
     fn log_revert_check(&mut self) -> Result<Vec<u8>>;
 }
 
@@ -354,7 +356,8 @@ impl ProvingStf for ToyStf {
     }
 
     fn log_revert_check(&mut self) -> Result<Vec<u8>> {
-        // Pure reads, like the real verb: prove without applying.
+        // Reads plus the same revert the plain verb applies.
+        self.revert_if_needed()?;
         Ok(b"toy-revert-check;".to_vec())
     }
 }
