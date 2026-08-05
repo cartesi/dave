@@ -528,6 +528,162 @@ contract RefundReserveTest is Test {
         );
     }
 
+    function testBondRecoveryViewMirrorsTerminalLifecycle() public {
+        provider.setHeight(1);
+        vm.roll(100);
+        vm.fee(Bond.WORK_PRICE_CAP);
+        vm.txGasPrice(Bond.WORK_PRICE_CAP);
+
+        ITournament tournament =
+            factory.instantiate(INITIAL_STATE, IDataProvider(address(0)));
+        uint256 bond = tournament.bondValue();
+
+        _assertBondRecovery(
+            tournament, ITournament.BondDisposition.TOURNAMENT_RUNNING
+        );
+        vm.expectRevert(ITournament.TournamentNotFinished.selector);
+        tournament.tryRecoveringBond();
+
+        Machine.Hash winnerState = INITIAL_STATE;
+        address winnerClaimer = vm.addr(100);
+        Tree.Node winner =
+            _joinHeightOne(tournament, winnerClaimer, winnerState, bond);
+        Machine.Hash opponentState = Machine.Hash.wrap(bytes32(uint256(1)));
+        Tree.Node opponent =
+            _joinHeightOne(tournament, vm.addr(1_000), opponentState, bond);
+
+        Match.Id memory matchId = Match.Id(winner, opponent);
+        _sealHeightOne(tournament, matchId, winnerState);
+        tournament.winLeafMatch(
+            matchId,
+            INITIAL_NODE,
+            Tree.Node.wrap(Machine.Hash.unwrap(winnerState)),
+            new bytes(0)
+        );
+
+        // The match is resolved but the global allowance has not elapsed:
+        // still the mutator's TournamentNotFinished arm.
+        _assertBondRecovery(
+            tournament, ITournament.BondDisposition.TOURNAMENT_RUNNING
+        );
+        vm.expectRevert(ITournament.TournamentNotFinished.selector);
+        tournament.tryRecoveringBond();
+
+        vm.roll(vm.getBlockNumber() + 1);
+        uint256 balance = address(tournament).balance;
+        uint256 expectedPayment = bond + (balance - bond) / 10;
+        (
+            ITournament.BondDisposition disposition,
+            address claimer,
+            uint256 payment
+        ) = tournament.bondRecovery();
+        assertEq(
+            uint8(disposition), uint8(ITournament.BondDisposition.RECOVERABLE)
+        );
+        assertEq(claimer, winnerClaimer);
+        assertEq(payment, expectedPayment);
+
+        vm.expectEmit(true, true, true, true, address(tournament));
+        emit ITournament.BondRecovered(
+            winner, winnerClaimer, expectedPayment, balance - expectedPayment
+        );
+        assertTrue(tournament.tryRecoveringBond());
+
+        _assertBondRecovery(tournament, ITournament.BondDisposition.RECOVERED);
+        assertEq(address(tournament).balance, 0);
+        assertTrue(tournament.tryRecoveringBond());
+    }
+
+    function testBondRecoveryViewNoWinnerAfterDoubleElimination() public {
+        provider.setHeight(1);
+        vm.roll(100);
+        vm.fee(Bond.WORK_PRICE_CAP);
+        vm.txGasPrice(Bond.WORK_PRICE_CAP);
+
+        ITournament tournament =
+            factory.instantiate(INITIAL_STATE, IDataProvider(address(0)));
+        uint256 bond = tournament.bondValue();
+
+        Machine.Hash stateOne = Machine.Hash.wrap(bytes32(uint256(1)));
+        Machine.Hash stateTwo = Machine.Hash.wrap(bytes32(uint256(2)));
+        Tree.Node one =
+            _joinHeightOne(tournament, vm.addr(2_001), stateOne, bond);
+        Tree.Node two =
+            _joinHeightOne(tournament, vm.addr(2_002), stateTwo, bond);
+
+        Match.Id memory matchId = Match.Id(one, two);
+        _sealHeightOne(tournament, matchId, stateOne);
+
+        (Clock.State memory clockOne,) = tournament.getCommitment(one);
+        vm.roll(
+            Time.Instant.unwrap(clockOne.startInstant)
+                + Time.Duration.unwrap(clockOne.allowance)
+        );
+        tournament.eliminateMatchByTimeout(matchId);
+        vm.roll(vm.getBlockNumber() + 1);
+
+        _assertBondRecovery(tournament, ITournament.BondDisposition.NO_WINNER);
+        vm.expectRevert(ITournament.NoWinner.selector);
+        tournament.tryRecoveringBond();
+    }
+
+    function testBondRecoveryRejectedPaymentKeepsRecoverable() public {
+        provider.setHeight(1);
+        vm.roll(100);
+        vm.fee(Bond.WORK_PRICE_CAP);
+        vm.txGasPrice(Bond.WORK_PRICE_CAP);
+
+        ITournament tournament =
+            factory.instantiate(INITIAL_STATE, IDataProvider(address(0)));
+        uint256 bond = tournament.bondValue();
+
+        Machine.Hash winnerState = INITIAL_STATE;
+        address winnerClaimer = vm.addr(100);
+        _joinHeightOne(tournament, winnerClaimer, winnerState, bond);
+        vm.roll(vm.getBlockNumber() + 1);
+
+        uint256 balance = address(tournament).balance;
+        (
+            ITournament.BondDisposition disposition,
+            address claimer,
+            uint256 payment
+        ) = tournament.bondRecovery();
+        assertEq(
+            uint8(disposition), uint8(ITournament.BondDisposition.RECOVERABLE)
+        );
+        assertEq(claimer, winnerClaimer);
+
+        // A recipient that aborts leaves the claimer and balance intact
+        // for retry: the view must keep reporting the same capability.
+        vm.etch(winnerClaimer, hex"fe");
+        assertFalse(tournament.tryRecoveringBond());
+        (disposition, claimer, payment) = tournament.bondRecovery();
+        assertEq(
+            uint8(disposition), uint8(ITournament.BondDisposition.RECOVERABLE)
+        );
+        assertEq(claimer, winnerClaimer);
+        assertEq(address(tournament).balance, balance);
+
+        vm.etch(winnerClaimer, new bytes(0));
+        assertTrue(tournament.tryRecoveringBond());
+        _assertBondRecovery(tournament, ITournament.BondDisposition.RECOVERED);
+    }
+
+    /// @notice Assert an arm whose claimer and payment are canonically zero.
+    function _assertBondRecovery(
+        ITournament tournament,
+        ITournament.BondDisposition expected
+    ) internal view {
+        (
+            ITournament.BondDisposition disposition,
+            address claimer,
+            uint256 payment
+        ) = tournament.bondRecovery();
+        assertEq(uint8(disposition), uint8(expected));
+        assertEq(claimer, address(0));
+        assertEq(payment, 0);
+    }
+
     function _joinHeightOne(
         ITournament tournament,
         address claimer,
