@@ -55,9 +55,13 @@ cleanup() {
     exit "$exit_code"
 }
 
+# The fingerprint is the bundle-completeness marker readers check
+# before touching any artifact: drop it first, so no reader can see a
+# valid marker next to a partially deleted bundle.
+rm -f state.fingerprint state.fingerprint.pending
 rm -rf deployments "$base_contracts/deployments" \
     ../../prt/contracts/deployments \
-    state.json state.fingerprint state.fingerprint.pending
+    state.json
 forge clean --root ../../prt/contracts
 forge clean --root "$base_contracts"
 forge clean --root .
