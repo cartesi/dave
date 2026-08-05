@@ -1,9 +1,9 @@
 # Self-healing batch transaction submission
 
-Status: RECORDED 2026-08-04 (design settled in discussion with Gabriel,
-not yet scheduled). A node-only campaign: no ABI coupling, so it does
-not ride the contract-interface branch. Question and re-evaluate
-everything here when it is picked up.
+Status: DESIGN SETTLED 2026-08-05 (reviewed with Gabriel over three
+rounds; this file records the resolutions). Implementation is next.
+The stf_revert prover fix and the bondRecovery capability view landed
+ahead of it on the interface branch.
 
 ## Motivation
 
@@ -40,15 +40,19 @@ node react at the tip.
 
 Each tick, from one accepted observation:
 
-1. Plan the hero decision and the complete deterministic
-   innermost-first GC intent list (both planners already produce this;
-   the executor today retains only the first GC intent).
-2. Assign nonces from the transaction count at the latest block: the
-   hero action takes the base nonce; GC intents take the following
-   nonces in planner order. Hero-first nonce order IS the
-   hero-before-GC invariant: a stuck cleanup can never sit ahead of a
-   defense action.
-3. Sign, submit all in order without waiting, and forget.
+1. Plan the complete wave: the hero decision (0 or 1 actions,
+   protocol-serial) followed by the deterministic innermost-first GC
+   intent list, followed by bond recovery intents (see
+   [bond-recovery-redesign.md](bond-recovery-redesign.md)). Position
+   in the list IS priority: hero-first nonce order is the
+   hero-before-cleanup invariant, and recovery rides the tail because
+   nothing in the protocol waits on it.
+2. Filter intra-wave dependencies: an innermost-first GC list can
+   invalidate its own suffix (eliminating a child deletes the parent
+   match a later intent targets). The filter is a pure function over
+   the composed list; reverts remain the safety net.
+3. Assign nonces from the transaction count at the latest block, sign,
+   submit all in order without waiting, and forget.
 
 The next tick re-derives everything from fresh state:
 
@@ -64,28 +68,68 @@ The next tick re-derives everything from fresh state:
 
 The sibling sequencer project uses the same approach.
 
-## Fee handling
+## Settlement stays off the wave
 
-Largely self-healing as well: rebuilding each tick with fresh
-market-rate estimates means replacements normally clear the mempool's
-+10% replacement rule whenever repricing matters (if the market moved
-enough that the pending transaction cannot be included, the fresh
-estimate exceeds it by more than the bump threshold). The one residual
-corner is a market drifting slowly upward inside the ~10% band above a
-pending transaction's cap: the pending transaction is unincludable and
-the resubmission is rejected as underpriced until the market moves out
-of the band. Deriving each nonce's fees as
-`max(market estimate, 1.1 * last sent)` removes that corner; the
-last-sent values are already in memory, and none of this needs to be
-durable across restart (the market-rate rebuild converges, the same
-stance as today's non-durable slot).
+Settlement actions (the sentry claim, result staging, acceptance) are
+in a different consistency class: a wrong vote computed from an
+observation that later reorgs SUCCEEDS wrongly - reverts cannot heal
+a semantic commitment - so their CONTENT must derive from finalized
+data (it already does: settlement_info comes from finalized
+ingestion), and nothing hurries them. The whether-still-needed check
+reads latest state - a reorg there only causes a harmless guarded
+resubmit - which is what stops resubmission within a block or two of
+inclusion rather than a finality lag later. No stored attempts:
+re-derive the step each tick, sign at the fresh quote, send. The
+calldata is deterministic, the nonce admits at most one inclusion,
+and the contracts' step guards make duplicates no-ops - exactly-once
+at the action level with zero lane state.
+
+Coexistence on one signer account: when the settlement module wants a
+step this tick, that step takes the base nonce and the wave fills
+strictly above it; otherwise the wave starts at the base. During
+settlement phases the wave carries only cleanup and recovery - the
+hero has nothing left to do.
+
+## Fees
+
+Stateless: every transaction bids the fresh market estimate, every
+tick. No retained floors, no bump-on-replacement ratchet, and no
+dedup memo either: the mempool (or builder) already holds the pending
+set and arbitrates duplicates and replacements, so the lane re-signs
+and resends the whole wave every tick and treats "already known" and
+"replacement underpriced" as trace-level no-ops. The lane carries
+zero mutable state - it is a function from the planned wave to sends.
+With a KMS signer the re-signing chatter is bounded by the wave
+length per tick; revisit only if metrics complain.
+
+The previously recorded `max(estimate, 1.1 * last-sent)` guard is
+dropped, for two reasons. Generalized per nonce it becomes a
+compounding hazard: wave rebuilds re-plan different actions onto
+still-pending nonces (every opponent inclusion can do this), and each
+swap must outbid the pending transaction by the mempool's
+at-least-10%-on-both-legs replacement rule - a ratchet paced by
+dispute events. And the corner it defended - a market drifting inside
+the band above a pending cap - cannot strand an includable
+transaction under the 2x-base-fee headroom the node's estimator
+quotes; the residual case (base more than doubles while tips stay
+flat) parks the pending transaction until the spike cools, which is
+allowance territory: genuine congestion is priced by the clock model
+(docs/dimensioning.md), not by lane heroics. Fee exposure is bounded
+by the fresh quote by construction, so no ceiling machinery is needed
+either.
+
+In production the wave is expected to submit through a block builder
+with revert protection (Flashbots-style): no public-mempool
+replacement rules, no stale-action revert fees, and races among
+several honest validators cost nothing. Builder trust affects
+performance only, never correctness; the public-mempool path with
+bounded revert fees remains the fallback and is what the e2e harness
+exercises. The submission backend is therefore a transport seam - the
+wave produces an ordered list of signed transactions - and builder
+integration is a recorded follow-up, not part of this campaign.
 
 ## Details for the implementation campaign
 
-- Intra-batch dependencies: an innermost-first GC list can invalidate
-  its own suffix (eliminating a child deletes the parent match a later
-  intent targets). Either filter the known dependencies at planning
-  time or accept the bounded revert fees.
 - Balance exposure: k in-flight transactions bound k * gas_limit of
   fees plus the reverts of raced stale actions; both are small and
   bounded by the list length per wave.
