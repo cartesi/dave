@@ -55,6 +55,15 @@ recovery a first-class observability signal.
   - Discovery: one `eth_getLogs` for `CommitmentJoined` filtered by
     the indexed submitter - every tournament we ever joined, root and
     inner; each log's address is the tournament.
+  - Discovery is permissionless and therefore spoofable: anyone can
+    emit a matching event naming our signer, and paying a spoofed
+    candidate a transaction would let attacker code burn the whole
+    gas limit every tick. Candidates are verified before any send:
+    a genuine tournament is a cloneWithImmutableArgs proxy whose
+    ERC-1167 prelude (delegate target included) is byte-identical to
+    a storage-known root tournament's, and on a genuine clone the
+    indexed submitter is `msg.sender` of a real join, which an
+    attacker cannot forge. View reads are free and skip verification.
   - Capability: `bondRecovery()`; plan exactly the
     `RECOVERABLE && claimer == us` hits.
   - Completion: `RECOVERED` retires the intent, whoever triggered the

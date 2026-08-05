@@ -156,6 +156,24 @@ assert(winner.commitment == commitment)
 assert(winner.final == commitment:last())
 print "Correct claim won against three sybils!"
 
+-- The node recovers its own bond after settlement, through the
+-- wave's recovery tail: one bond back plus a tenth of the forfeited
+-- sybil residuals, the other nine tenths burned, draining the root
+-- tournament's balance to zero (docs/plans/bond-recovery-redesign.md).
+-- Inner tournaments the node won drain through the same lane.
+local recovered = false
+for _ = 1, 120 do
+    if env.reader:balance(second_epoch.tournament):iszero() then
+        recovered = true
+        break
+    end
+    env.fast_forward(1)
+end
+assert(recovered, "the node did not recover its bond after settlement")
+assert(env.dave_node:find_log("plan bond recovery"),
+    "the node's recovery planner left no trace")
+print "node recovered its bond; forfeited sybil reserves burned"
+
 -- Raw chain recording for the tournament-fold oracle: the one
 -- fixture that carries concurrent matches and a real timeout-reason
 -- deletion (see cartesi-rollups/node/tests/tournament_fold.rs).
