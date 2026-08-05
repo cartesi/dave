@@ -14,12 +14,9 @@ use alloy::{
 };
 use alloy_chains::NamedChain;
 use alloy_transport::{TransportError, layers::RetryBackoffLayer};
-use anyhow::{Context, Result, anyhow, ensure};
-use log::{debug, trace};
-use std::{fs, str::FromStr, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
-
-const MAX_SEND_ATTEMPTS: usize = 3;
+use anyhow::{Context, Result, ensure};
+use log::{debug, trace, warn};
+use std::{fs, str::FromStr, time::Duration};
 
 pub(crate) async fn create_signer(
     chain_id: NamedChain,
@@ -138,13 +135,21 @@ pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> DynProv
     provider.erased()
 }
 
-/// The one replaceable transaction slot owned by the node signer.
+/// The node signer's stateless transaction lane.
 ///
-/// The slot never consults pending state. It reads the account nonce using the
-/// `latest` block tag, signs a fully specified transaction, and submits the raw
-/// bytes without waiting for a receipt. Until inclusion advances the mined
-/// nonce, every caller rebroadcasts or replaces that same nonce instead of
-/// creating a queue behind it.
+/// Nonces come from the account's mined count at the `latest` block,
+/// fees are the fresh market quote at every submission, and the
+/// mempool (or block builder) stays the sole authority on duplicates
+/// and replacements: "already known" and "replacement underpriced"
+/// are benign verdicts, and a stale nonce means inclusion advanced
+/// past the plan and the next tick replans. The lane holds no mutable
+/// state - callers re-derive and resubmit their complete intent every
+/// tick (docs/plans/self-healing-batch-submission.md), so anything a
+/// lost response could forget is rebuilt from observation.
+///
+/// Submissions flow from the epoch manager's serial loop; the lane
+/// has no internal serialization, and concurrent waves would only
+/// race nonces in the pool - harmless, but noisy.
 #[derive(Clone, Debug)]
 pub struct TransactionLane {
     read_provider: DynProvider,
@@ -152,7 +157,6 @@ pub struct TransactionLane {
     signer_address: Address,
     chain_id: u64,
     wallet: EthereumWallet,
-    slot: Arc<Mutex<SlotState>>,
 }
 
 impl TransactionLane {
@@ -170,7 +174,6 @@ impl TransactionLane {
             signer_address,
             chain_id,
             wallet,
-            slot: Arc::new(Mutex::new(SlotState::default())),
         }
     }
 
@@ -178,12 +181,98 @@ impl TransactionLane {
         self.signer_address
     }
 
-    /// Submit one fully specified call through the exclusive signer slot.
-    ///
-    /// Identical work at the same mined nonce rebroadcasts the exact signed
-    /// bytes unless a fresh market quote has risen. Changed work and explicit
-    /// underpriced responses replace at a monotonic fee floor.
-    pub async fn submit(&self, label: &str, request: TransactionRequest) -> Result<Submission> {
+    /// Submit one fully specified call at the base nonce, failing on
+    /// a transport or signing error. Pool verdicts short of failure
+    /// stay benign, as in a wave.
+    pub async fn submit(&self, label: &str, request: TransactionRequest) -> Result<SendReport> {
+        let mut reports = self.submit_wave(vec![(label.to_string(), request)]).await?;
+        let report = reports.pop().expect("one request yields one report");
+        ensure!(
+            report.verdict != SendVerdict::Failed,
+            "failed to submit {} transaction {} at nonce {}",
+            report.label,
+            report.tx_hash,
+            report.nonce
+        );
+        Ok(report)
+    }
+
+    /// Sign and submit an ordered wave of fully specified calls at
+    /// consecutive nonces from the mined count at latest. Position is
+    /// priority: nonce order means the head includes first or nothing
+    /// does. Pool verdicts are per transaction and never abort the
+    /// tail; the outer error covers only failing to observe the chain
+    /// or to sign.
+    pub async fn submit_wave(
+        &self,
+        wave: Vec<(String, TransactionRequest)>,
+    ) -> Result<Vec<SendReport>> {
+        for (label, request) in &wave {
+            self.validate(label, request)?;
+        }
+        let base = self.mined_nonce_at_latest().await?;
+        let fees = normalize_fees(
+            self.read_provider
+                .estimate_eip1559_fees()
+                .await
+                .context("failed to estimate fees for the wave")?,
+        );
+
+        let mut reports = Vec::with_capacity(wave.len());
+        for (offset, (label, request)) in wave.into_iter().enumerate() {
+            let nonce = base + offset as u64;
+            let (raw, tx_hash) = self
+                .sign(request, nonce, fees)
+                .await
+                .with_context(|| format!("failed to sign {label} transaction"))?;
+            let verdict = match self.submit_provider.send_raw_transaction(&raw).await {
+                Ok(_pending) => {
+                    debug!(
+                        "submitted {label} transaction {tx_hash} at nonce {nonce} \
+                         with max fee {} and priority fee {}",
+                        fees.max_fee_per_gas, fees.max_priority_fee_per_gas
+                    );
+                    SendVerdict::Submitted
+                }
+                Err(error) => match classify_submission_error(&error) {
+                    SubmissionErrorKind::AlreadyKnown => {
+                        trace!("{label} transaction {tx_hash} is already pending at nonce {nonce}");
+                        SendVerdict::AlreadyKnown
+                    }
+                    SubmissionErrorKind::ReplacementUnderpriced => {
+                        trace!(
+                            "{label} at nonce {nonce} waits: the pending transaction \
+                             is priced above the current quote"
+                        );
+                        SendVerdict::Underpriced
+                    }
+                    SubmissionErrorKind::NonceTooLow => {
+                        trace!(
+                            "{label} at nonce {nonce} is stale: inclusion advanced; \
+                             the next tick replans"
+                        );
+                        SendVerdict::Stale
+                    }
+                    SubmissionErrorKind::Other => {
+                        warn!(
+                            "failed to submit {label} transaction {tx_hash} \
+                             at nonce {nonce}: {error}"
+                        );
+                        SendVerdict::Failed
+                    }
+                },
+            };
+            reports.push(SendReport {
+                label,
+                nonce,
+                tx_hash,
+                verdict,
+            });
+        }
+        Ok(reports)
+    }
+
+    fn validate(&self, label: &str, request: &TransactionRequest) -> Result<()> {
         ensure!(
             request.gas.is_some(),
             "{label} transaction has no explicit gas limit"
@@ -205,108 +294,7 @@ impl TransactionLane {
                 self.signer_address
             );
         }
-
-        let fingerprint = request_fingerprint(&request)?;
-        let mut slot = self.slot.lock().await;
-        let nonce = self.mined_nonce_at_latest().await?;
-        let quoted_fees = self.read_provider.estimate_eip1559_fees().await;
-        let same_nonce = slot
-            .attempt
-            .as_ref()
-            .is_some_and(|attempt| attempt.nonce == nonce);
-        let reuse_exact = should_rebroadcast_exact(
-            slot.attempt.as_ref(),
-            nonce,
-            fingerprint,
-            quoted_fees.as_ref().ok().copied(),
-        );
-
-        if !reuse_exact {
-            let fees = match quoted_fees {
-                Ok(quoted) => next_fees(slot.attempt.as_ref(), nonce, quoted),
-                Err(error) if same_nonce => {
-                    trace!(
-                        "fee quote failed for {label}; replacing nonce {nonce} from retained floor: {error}"
-                    );
-                    bump_fees(
-                        slot.attempt
-                            .as_ref()
-                            .expect("same nonce has an attempt")
-                            .fees,
-                    )
-                }
-                Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("failed to estimate fees for {label}"));
-                }
-            };
-            slot.attempt = Some(
-                self.sign_attempt(request.clone(), nonce, fingerprint, fees)
-                    .await
-                    .with_context(|| format!("failed to sign {label} transaction"))?,
-            );
-        } else {
-            trace!("rebroadcast exact {label} transaction at nonce {nonce}");
-        }
-
-        for send_attempt in 0..MAX_SEND_ATTEMPTS {
-            let attempt = slot
-                .attempt
-                .as_ref()
-                .expect("the transaction attempt is initialized above");
-            let raw = attempt.raw.clone();
-            let submission = attempt.submission();
-
-            match self.submit_provider.send_raw_transaction(&raw).await {
-                Ok(_pending) => {
-                    debug!(
-                        "submitted {label} transaction {} at nonce {} with max fee {} and priority fee {}",
-                        submission.tx_hash,
-                        submission.nonce,
-                        submission.max_fee_per_gas,
-                        submission.max_priority_fee_per_gas
-                    );
-                    return Ok(submission);
-                }
-                Err(error) => match classify_submission_error(&error) {
-                    SubmissionErrorKind::AlreadyKnown => {
-                        trace!(
-                            "{label} transaction {} is already known at nonce {}",
-                            submission.tx_hash, submission.nonce
-                        );
-                        return Ok(submission);
-                    }
-                    SubmissionErrorKind::ReplacementUnderpriced
-                        if send_attempt + 1 < MAX_SEND_ATTEMPTS =>
-                    {
-                        let bumped = bump_fees(slot.attempt.as_ref().unwrap().fees);
-                        slot.attempt = Some(
-                            self.sign_attempt(request.clone(), nonce, fingerprint, bumped)
-                                .await
-                                .with_context(|| {
-                                    format!("failed to re-sign underpriced {label} replacement")
-                                })?,
-                        );
-                    }
-                    SubmissionErrorKind::NonceTooLow => {
-                        return Err(anyhow!(
-                            "{label} transaction nonce {nonce} is already mined; re-observe latest state: {error}"
-                        ));
-                    }
-                    _ => {
-                        // Keep the signed attempt. Even a deterministic
-                        // rejection is safe to retry, while a transport
-                        // failure may have reached the submit provider.
-                        return Err(anyhow!(
-                            "failed to submit {label} transaction {} at nonce {nonce}: {error}",
-                            submission.tx_hash
-                        ));
-                    }
-                },
-            }
-        }
-
-        unreachable!("bounded submission loop always returns")
+        Ok(())
     }
 
     async fn mined_nonce_at_latest(&self) -> Result<u64> {
@@ -317,13 +305,12 @@ impl TransactionLane {
             .context("failed to read signer nonce at latest mined state")
     }
 
-    async fn sign_attempt(
+    async fn sign(
         &self,
         mut request: TransactionRequest,
         nonce: u64,
-        fingerprint: B256,
         fees: Eip1559Estimation,
-    ) -> Result<SlotAttempt> {
+    ) -> Result<(Vec<u8>, B256)> {
         request.set_from(self.signer_address);
         request.set_chain_id(self.chain_id);
         request.set_nonce(nonce);
@@ -340,47 +327,32 @@ impl TransactionLane {
             .context("wallet could not sign transaction")?;
         let raw = envelope.encoded_2718();
         let tx_hash = keccak256(&raw);
-        Ok(SlotAttempt {
-            nonce,
-            fingerprint,
-            fees,
-            raw,
-            tx_hash,
-        })
+        Ok((raw, tx_hash))
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Submission {
+/// One wave slot's outcome: what was handed to the pool and what it
+/// said.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SendReport {
+    pub label: String,
     pub nonce: u64,
     pub tx_hash: B256,
-    pub max_fee_per_gas: u128,
-    pub max_priority_fee_per_gas: u128,
+    pub verdict: SendVerdict,
 }
 
-#[derive(Debug, Default)]
-struct SlotState {
-    attempt: Option<SlotAttempt>,
-}
-
-#[derive(Clone, Debug)]
-struct SlotAttempt {
-    nonce: u64,
-    fingerprint: B256,
-    fees: Eip1559Estimation,
-    raw: Vec<u8>,
-    tx_hash: B256,
-}
-
-impl SlotAttempt {
-    const fn submission(&self) -> Submission {
-        Submission {
-            nonce: self.nonce,
-            tx_hash: self.tx_hash,
-            max_fee_per_gas: self.fees.max_fee_per_gas,
-            max_priority_fee_per_gas: self.fees.max_priority_fee_per_gas,
-        }
-    }
+/// The pool's verdict on one send. Everything short of `Failed` is a
+/// healthy lane: submitted and pending, an identical transaction
+/// already pending, a higher-priced pending transaction worth waiting
+/// out, or a plan built on an observation inclusion already advanced
+/// past.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SendVerdict {
+    Submitted,
+    AlreadyKnown,
+    Underpriced,
+    Stale,
+    Failed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -389,64 +361,6 @@ enum SubmissionErrorKind {
     NonceTooLow,
     ReplacementUnderpriced,
     Other,
-}
-
-fn request_fingerprint(request: &TransactionRequest) -> Result<B256> {
-    let encoded =
-        serde_json::to_vec(request).context("failed to fingerprint transaction request")?;
-    Ok(keccak256(encoded))
-}
-
-fn next_fees(
-    previous: Option<&SlotAttempt>,
-    nonce: u64,
-    quoted: Eip1559Estimation,
-) -> Eip1559Estimation {
-    let quoted = normalize_fees(quoted);
-    match previous {
-        Some(previous) if previous.nonce == nonce => max_fees(quoted, bump_fees(previous.fees)),
-        _ => quoted,
-    }
-}
-
-fn should_rebroadcast_exact(
-    previous: Option<&SlotAttempt>,
-    nonce: u64,
-    fingerprint: B256,
-    quoted: Option<Eip1559Estimation>,
-) -> bool {
-    let Some(previous) =
-        previous.filter(|attempt| attempt.nonce == nonce && attempt.fingerprint == fingerprint)
-    else {
-        return false;
-    };
-    quoted.is_none_or(|quoted| !fees_exceed(quoted, previous.fees))
-}
-
-fn fees_exceed(quoted: Eip1559Estimation, current: Eip1559Estimation) -> bool {
-    let quoted = normalize_fees(quoted);
-    quoted.max_fee_per_gas > current.max_fee_per_gas
-        || quoted.max_priority_fee_per_gas > current.max_priority_fee_per_gas
-}
-
-fn bump_fees(fees: Eip1559Estimation) -> Eip1559Estimation {
-    normalize_fees(Eip1559Estimation {
-        max_fee_per_gas: bump_fee(fees.max_fee_per_gas),
-        max_priority_fee_per_gas: bump_fee(fees.max_priority_fee_per_gas),
-    })
-}
-
-fn bump_fee(fee: u128) -> u128 {
-    fee.saturating_add((fee / 8).max(1))
-}
-
-fn max_fees(left: Eip1559Estimation, right: Eip1559Estimation) -> Eip1559Estimation {
-    normalize_fees(Eip1559Estimation {
-        max_fee_per_gas: left.max_fee_per_gas.max(right.max_fee_per_gas),
-        max_priority_fee_per_gas: left
-            .max_priority_fee_per_gas
-            .max(right.max_priority_fee_per_gas),
-    })
 }
 
 fn normalize_fees(mut fees: Eip1559Estimation) -> Eip1559Estimation {
@@ -495,45 +409,13 @@ mod tests {
         signers::Signer,
     };
 
-    fn fees(max_fee_per_gas: u128, max_priority_fee_per_gas: u128) -> Eip1559Estimation {
-        Eip1559Estimation {
-            max_fee_per_gas,
-            max_priority_fee_per_gas,
-        }
-    }
-
     #[test]
-    fn fee_floor_only_resets_when_mined_nonce_changes() {
-        let previous = SlotAttempt {
-            nonce: 7,
-            fingerprint: B256::repeat_byte(0x11),
-            fees: fees(100, 8),
-            raw: Vec::new(),
-            tx_hash: B256::ZERO,
+    fn normalized_fees_never_price_priority_above_the_cap() {
+        let skewed = Eip1559Estimation {
+            max_fee_per_gas: 5,
+            max_priority_fee_per_gas: 9,
         };
-
-        assert_eq!(next_fees(Some(&previous), 7, fees(90, 7)), fees(112, 9));
-        assert_eq!(next_fees(Some(&previous), 7, fees(150, 20)), fees(150, 20));
-        assert_eq!(next_fees(Some(&previous), 8, fees(90, 7)), fees(90, 7));
-
-        assert!(should_rebroadcast_exact(
-            Some(&previous),
-            7,
-            previous.fingerprint,
-            None
-        ));
-        assert!(should_rebroadcast_exact(
-            Some(&previous),
-            7,
-            previous.fingerprint,
-            Some(fees(100, 8))
-        ));
-        assert!(!should_rebroadcast_exact(
-            Some(&previous),
-            7,
-            previous.fingerprint,
-            Some(fees(101, 8))
-        ));
+        assert_eq!(normalize_fees(skewed).max_fee_per_gas, 9);
     }
 
     #[test]
@@ -568,8 +450,25 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn disabled_automining_replaces_latest_nonce_without_queueing_next_nonce() -> Result<()> {
+    fn payment(to_byte: u8) -> TransactionRequest {
+        TransactionRequest::default()
+            .with_to(Address::repeat_byte(to_byte))
+            .with_gas_limit(21_000)
+    }
+
+    fn wave(entries: &[(&str, u8)]) -> Vec<(String, TransactionRequest)> {
+        entries
+            .iter()
+            .map(|(label, to_byte)| (label.to_string(), payment(*to_byte)))
+            .collect()
+    }
+
+    async fn spawn_lane() -> Result<(
+        alloy::node_bindings::AnvilInstance,
+        DynProvider,
+        TransactionLane,
+        Address,
+    )> {
         let anvil = Anvil::new().spawn();
         let read_provider = ProviderBuilder::new()
             .disable_recommended_fillers()
@@ -579,9 +478,7 @@ mod tests {
             .disable_recommended_fillers()
             .connect_http(anvil.endpoint_url())
             .erased();
-
         read_provider.anvil_set_auto_mine(false).await?;
-        let before_submissions = read_provider.anvil_snapshot().await?;
 
         let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
         signer.set_chain_id(Some(anvil.chain_id()));
@@ -592,193 +489,117 @@ mod tests {
             anvil.chain_id(),
             EthereumWallet::from(signer),
         );
+        Ok((anvil, read_provider, lane, signer_address))
+    }
+
+    async fn nonces(provider: &DynProvider, signer: Address) -> Result<(u64, u64)> {
+        let latest = provider.get_transaction_count(signer).latest().await?;
+        let pending = provider.get_transaction_count(signer).pending().await?;
+        Ok((latest, pending))
+    }
+
+    fn verdicts(reports: &[SendReport]) -> Vec<(u64, SendVerdict)> {
+        reports
+            .iter()
+            .map(|report| (report.nonce, report.verdict))
+            .collect()
+    }
+
+    /// The lane's whole observable contract on a public pool: waves
+    /// take consecutive nonces from the mined count, identical
+    /// rebuilds deduplicate in the pool, a changed intent at an
+    /// unmoved quote waits behind the pending transaction instead of
+    /// force-evicting it, inclusion shifts the base, and a rolled-back
+    /// nonce is reusable with no lane-side reconciliation - there is
+    /// no lane state to reconcile.
+    #[tokio::test]
+    async fn stateless_wave_defers_to_the_pool() -> Result<()> {
+        let (_anvil, provider, lane, signer) = spawn_lane().await?;
+        let before_submissions = provider.anvil_snapshot().await?;
 
         let first = lane
-            .submit(
-                "first",
-                TransactionRequest::default()
-                    .with_to(Address::repeat_byte(0x11))
-                    .with_gas_limit(21_000),
-            )
-            .await?;
-        assert_eq!(first.nonce, 0);
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .latest()
-                .await?,
-            0
-        );
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .pending()
-                .await?,
-            1
-        );
-
-        let rebroadcast = lane
-            .submit(
-                "first-again",
-                TransactionRequest::default()
-                    .with_to(Address::repeat_byte(0x11))
-                    .with_gas_limit(21_000),
-            )
-            .await?;
-        assert_eq!(rebroadcast, first);
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .pending()
-                .await?,
-            1,
-            "exact rebroadcast must not allocate another nonce"
-        );
-
-        let replacement = lane
-            .submit(
-                "replacement",
-                TransactionRequest::default()
-                    .with_to(Address::repeat_byte(0x22))
-                    .with_gas_limit(21_000),
-            )
-            .await?;
-        assert_eq!(replacement.nonce, 0);
-        assert_ne!(replacement.tx_hash, first.tx_hash);
-        assert!(replacement.max_fee_per_gas > first.max_fee_per_gas);
-        assert!(replacement.max_priority_fee_per_gas > first.max_priority_fee_per_gas);
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .pending()
-                .await?,
-            1,
-            "replacement must not allocate nonce 1 while latest nonce is 0"
-        );
-
-        read_provider.anvil_mine(Some(1), None).await?;
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .latest()
-                .await?,
-            1
-        );
-
-        let next = lane
-            .submit(
-                "next",
-                TransactionRequest::default()
-                    .with_to(Address::repeat_byte(0x33))
-                    .with_gas_limit(21_000),
-            )
-            .await?;
-        assert_eq!(next.nonce, 1);
-
-        assert!(read_provider.anvil_revert(before_submissions).await?);
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .latest()
-                .await?,
-            0
-        );
-
-        let after_reorg = lane
-            .submit(
-                "after-reorg",
-                TransactionRequest::default()
-                    .with_to(Address::repeat_byte(0x44))
-                    .with_gas_limit(21_000),
-            )
+            .submit_wave(wave(&[("first", 0x11), ("second", 0x22)]))
             .await?;
         assert_eq!(
-            after_reorg.nonce, 0,
-            "a rolled-back mined nonce must be reusable without lane reconciliation"
+            verdicts(&first),
+            vec![(0, SendVerdict::Submitted), (1, SendVerdict::Submitted)]
         );
+        assert_eq!(nonces(&provider, signer).await?, (0, 2));
+
+        // The same wave rebuilt: same quote, same bytes, pool dedup.
+        let rebuilt = lane
+            .submit_wave(wave(&[("first", 0x11), ("second", 0x22)]))
+            .await?;
+        assert_eq!(
+            verdicts(&rebuilt),
+            vec![
+                (0, SendVerdict::AlreadyKnown),
+                (1, SendVerdict::AlreadyKnown)
+            ]
+        );
+        assert_eq!(rebuilt[0].tx_hash, first[0].tx_hash);
+        assert_eq!(nonces(&provider, signer).await?, (0, 2));
+
+        // A changed head at an unmoved quote cannot outbid the pending
+        // transaction; it waits, and the pending set is untouched.
+        let changed = lane
+            .submit_wave(wave(&[("changed", 0x33), ("second", 0x22)]))
+            .await?;
+        assert_eq!(
+            verdicts(&changed),
+            vec![
+                (0, SendVerdict::Underpriced),
+                (1, SendVerdict::AlreadyKnown)
+            ]
+        );
+        assert_eq!(nonces(&provider, signer).await?, (0, 2));
+
+        // Inclusion is prefix shaped and shifts the next wave up.
+        provider.anvil_mine(Some(1), None).await?;
+        assert_eq!(nonces(&provider, signer).await?, (2, 2));
+        let next = lane.submit_wave(wave(&[("next", 0x44)])).await?;
+        assert_eq!(verdicts(&next), vec![(2, SendVerdict::Submitted)]);
+
+        // A reorg rolls the base back; the stateless lane just reads
+        // the rolled-back count and reuses the nonce.
+        assert!(provider.anvil_revert(before_submissions).await?);
+        let after_reorg = lane.submit("after-reorg", payment(0x55)).await?;
+        assert_eq!(after_reorg.nonce, 0);
+        assert_eq!(after_reorg.verdict, SendVerdict::Submitted);
 
         Ok(())
     }
 
+    /// A process restart is invisible to the pool: there is no lane
+    /// state to lose, so resubmission deduplicates and a changed
+    /// intent waits exactly as it would have without the restart.
     #[tokio::test]
-    async fn restart_recovers_from_underpriced_replacement_at_latest_nonce() -> Result<()> {
-        let anvil = Anvil::new().spawn();
-        let read_provider = ProviderBuilder::new()
-            .disable_recommended_fillers()
-            .connect_http(anvil.endpoint_url())
-            .erased();
-        let submit_provider = ProviderBuilder::new()
-            .disable_recommended_fillers()
-            .connect_http(anvil.endpoint_url())
-            .erased();
+    async fn restart_is_invisible_to_the_pool() -> Result<()> {
+        let (anvil, provider, lane, signer) = spawn_lane().await?;
 
-        read_provider.anvil_set_auto_mine(false).await?;
-
-        let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
-        signer.set_chain_id(Some(anvil.chain_id()));
-        let signer_address = signer.address();
-        let wallet = EthereumWallet::from(signer);
-        let lane = TransactionLane::new(
-            read_provider.clone(),
-            submit_provider.clone(),
-            anvil.chain_id(),
-            wallet.clone(),
-        );
-
-        let original = lane
-            .submit(
-                "before-restart",
-                TransactionRequest::default()
-                    .with_to(Address::repeat_byte(0x11))
-                    .with_gas_limit(21_000),
-            )
-            .await?;
+        let original = lane.submit("before-restart", payment(0x11)).await?;
+        assert_eq!(original.verdict, SendVerdict::Submitted);
         drop(lane);
 
-        // The fresh lane has lost the pending transaction's fee floor. Its
-        // first same-nonce send uses the unchanged block quote, so Anvil
-        // rejects it as underpriced and exercises the reactive retry path.
-        let restarted_lane = TransactionLane::new(
-            read_provider.clone(),
-            submit_provider,
+        let mut signer_key: PrivateKeySigner = anvil.keys()[0].clone().into();
+        signer_key.set_chain_id(Some(anvil.chain_id()));
+        let restarted = TransactionLane::new(
+            provider.clone(),
+            provider.clone(),
             anvil.chain_id(),
-            wallet,
+            EthereumWallet::from(signer_key),
         );
-        let replacement = restarted_lane
-            .submit(
-                "after-restart",
-                TransactionRequest::default()
-                    .with_to(Address::repeat_byte(0x22))
-                    .with_gas_limit(21_000),
-            )
-            .await?;
 
-        assert_eq!(replacement.nonce, original.nonce);
-        assert_ne!(replacement.tx_hash, original.tx_hash);
+        let resubmitted = restarted.submit("same-intent", payment(0x11)).await?;
+        assert_eq!(resubmitted.verdict, SendVerdict::AlreadyKnown);
+        assert_eq!(resubmitted.tx_hash, original.tx_hash);
+
+        let changed = restarted.submit("changed-intent", payment(0x22)).await?;
+        assert_eq!(changed.verdict, SendVerdict::Underpriced);
         assert_eq!(
-            fees(
-                replacement.max_fee_per_gas,
-                replacement.max_priority_fee_per_gas
-            ),
-            bump_fees(fees(
-                original.max_fee_per_gas,
-                original.max_priority_fee_per_gas
-            ))
-        );
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .latest()
-                .await?,
-            original.nonce
-        );
-        assert_eq!(
-            read_provider
-                .get_transaction_count(signer_address)
-                .pending()
-                .await?,
-            original.nonce + 1,
-            "replacement retry must not allocate a nonce after the pending slot"
+            nonces(&provider, signer).await?,
+            (0, 1),
+            "the changed intent must wait, not evict or queue"
         );
 
         Ok(())
