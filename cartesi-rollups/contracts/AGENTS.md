@@ -76,8 +76,9 @@ truth.
 - A sentry slot claims at most once per epoch (bitmap by slot ID).
   Rotation moves a slot to a new address but preserves an already-placed
   claim for the epoch.
-- Bond recovery at staging is isolated (`try/catch`); staging must never
-  depend on the tournament's payment path succeeding.
+- Staging moves no value. Bond recovery is a separate, explicit,
+  permissionless call on the retired tournament; no progress path may
+  depend on, or invoke, the tournament's payment path.
 - `provideMerkleRootOfInput` validates input content against the InputBox
   hash and returns the zero hash for out-of-range indices - the fixpoint
   padding rule the off-chain commitment builders mirror

@@ -454,12 +454,15 @@ interface ITournament {
     function bondValue() external view returns (uint256);
 
     /// @notice Settle the tournament balance after a winner is established.
-    /// @dev Attempts to pay the winning commitment's submitter at most one bond.
-    /// The configured refund accounting reserves one complete bond before
-    /// terminal recovery. A zero balance defensively completes without calling
-    /// the recipient. After a successful payment, any residual balance is
-    /// burned and later calls succeed as no-ops. A failed recipient call
-    /// preserves the claimer and full balance so recovery can be retried.
+    /// @dev Attempts to pay the winning commitment's submitter one bond plus
+    /// a tenth of the residual above it, rounded toward the burn; a balance
+    /// at or below one bond is paid whole. The configured refund accounting
+    /// reserves one complete bond before terminal recovery. A zero balance
+    /// defensively completes without calling the recipient. After a
+    /// successful payment, the remaining balance is burned and later calls
+    /// succeed as no-ops. A failed recipient call preserves the claimer and
+    /// full balance so recovery can be retried. Nothing calls this
+    /// automatically: recovery is an explicit, permissionless action.
     /// @return Whether settlement completed or had already completed
     function tryRecoveringBond() external returns (bool);
 

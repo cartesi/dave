@@ -177,14 +177,13 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
 
         // Stage tournament result, and store the current block number for
-        // later checking whether the claim staging period has elapsed
+        // later checking whether the claim staging period has elapsed.
+        // Staging moves no value: bond recovery is a separate, explicit,
+        // permissionless call on the retired tournament.
         _stagingBlockNumber = block.number;
         _stagedPostEpochMachineStateHash = finalMachineStateHash;
         _stagedPostEpochOutputsMerkleRoot = outputsMerkleRoot;
         _isTournamentResultStaged = true;
-
-        // Try recovering bond for tournament winner
-        try _tournament.tryRecoveringBond() {} catch {}
 
         emit EpochStaged(epochNumber, finalMachineStateHash, outputsMerkleRoot);
     }

@@ -595,17 +595,21 @@ contract RefundReserveTest is Test {
 
         assertTrue(tournament.tryRecoveringBond());
 
+        // One bond back plus a tenth of the residual; nine tenths burn.
+        uint256 bounty = (tournamentBalanceBefore - bond) / 10;
+        uint256 payment = bond + bounty;
         uint256 burned = address(0).balance - burnedBalanceBefore;
-        assertEq(winnerClaimer.balance - winnerBalanceBefore, bond);
-        assertEq(burned, tournamentBalanceBefore - bond);
+        assertEq(winnerClaimer.balance - winnerBalanceBefore, payment);
+        assertEq(burned, tournamentBalanceBefore - payment);
+        assertGe(burned, 9 * bounty);
         assertEq(address(tournament).balance, 0);
-        assertGe(burned, (joins - 1 - matchesCreated) * bond);
+        assertGe(payment + burned, (joins - 1 - matchesCreated) * bond);
         assertEq(
-            refunds + burned,
+            refunds + bounty + burned,
             (joins - 1) * bond,
-            "losing reserves must fund successful work or burn"
+            "losing reserves must fund successful work, the bounty, or burn"
         );
-        assertEq(refunds + bond + burned, joins * bond);
+        assertEq(refunds + payment + burned, joins * bond);
     }
 
     function _matchWorkAllocation(uint64 height, bool isLeafTournament)

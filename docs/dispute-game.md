@@ -595,17 +595,22 @@ execution and reports success. A failed nonzero callback
 transfers nothing and does not revert the completed action; the requested value
 stays in the pooled balance and is not reserved for a later retry by that caller.
 
-When a tournament finishes with a winner, `tryRecoveringBond` attempts to pay the
-address that first joined the winning commitment
-`min(current balance, bondValue())`. The configured refund caps reserve one
-minimum join bond, so an accepting winner receives that amount under
-the configured reserve invariant. A height-`h` match has at most `h - 1`
-advances, and `J` unique paid joins create at most `J - 1` matches. Before
-terminal recovery, the balance is therefore at least one minimum join bond. Only
-after a nonzero winner payment succeeds does the contract send the entire
-post-payment balance to the zero address. That residual may be zero when every
-possible match consumes its complete configured reserve. If the balance is
-zero, recovery skips the recipient call and completes defensively.
+When a tournament finishes with a winner, `tryRecoveringBond` attempts to pay
+the address that first joined the winning commitment one bond plus a tenth of
+the balance above it, rounded toward the burn; a balance at or below one bond
+is paid whole. The tenth is a defender's bounty funded entirely by forfeited
+adversarial reserves: in undisputed operation the balance is exactly one bond
+and the bounty is zero. The configured refund caps reserve one minimum join
+bond, so an accepting winner recovers at least its bond under the configured
+reserve invariant. A height-`h` match has at most `h - 1` advances, and `J`
+unique paid joins create at most `J - 1` matches. Before terminal recovery,
+the balance is therefore at least one minimum join bond. Only after a nonzero
+winner payment succeeds does the contract send the entire post-payment balance
+to the zero address. That residual may be zero when every possible match
+consumes its complete configured reserve. If the balance is zero, recovery
+skips the recipient call and completes defensively. Nothing invokes recovery
+automatically; it is an explicit, permissionless call, and no progress or
+settlement path depends on it.
 
 A commitment root can be joined only once, so copying the correct root first
 intentionally claims that capped recipient slot; all progress and defense
@@ -624,30 +629,28 @@ as no-ops. This also means ETH forcibly sent after recovery remains stranded;
 the burn rule covers the balance present during successful recovery. If a
 nonzero recipient payment is rejected, recovery returns `false`, burns nothing,
 and preserves both the claimer and the full balance for retry. This idempotence
-and retry behavior are required because recovery is permissionless and
-tournament-result staging invokes it as best-effort cleanup. Parent propagation
-deliberately does not settle the child balance: recovery is separate cleanup,
-so a winning claimer's callback cannot consume gas needed to propagate the
-child result.
+and retry behavior are required because recovery is permissionless. Parent
+propagation deliberately does not settle the child balance, and result staging
+performs no recovery at all: no value-moving call rides any progress or
+settlement path, so a winning claimer's callback cannot interfere with them.
 
 Terminal recipient code has the same 50,000-gas execution ceiling and no
-return-data copy. `DaveConsensus.stageTournamentResult` stores the result before
-attempting recovery. It ignores both a `false` result and a recovery revert, so
-recipient failure cannot undo staging or later acceptance; the old tournament
-remains permissionlessly recoverable. An EOA, delegated EOA, or smart-wallet
-receive path that cannot complete within the ceiling cannot receive through
-this interface. Fixed call overhead is outside the recipient ceiling, and
-EIP-150 may reduce forwarded gas in an under-gassed outer call.
+return-data copy. An EOA, delegated EOA, or smart-wallet receive path that
+cannot complete within the ceiling cannot receive through this interface.
+Fixed call overhead is outside the recipient ceiling, and EIP-150 may reduce
+forwarded gas in an under-gassed outer call.
 
 Bonds are intended to provide Sybil resistance, not an endogenous validator
 incentive. The model assumes validators defend applications they value. A full
 residual sweep would conflict with that model: an attacker could claim the
 deterministic correct root first, fund incorrect claims, let a correct validator
 perform permissionless defense, and recover the losers' residual pool through
-the winning claimer slot. The capped payment and residual burn prevent that
-recycling after legitimate partial refunds. The contract cannot identify an
-honest address; it can identify only the winning commitment and its first
-claimer.
+the winning claimer slot. The capped payment and the nine-tenths residual burn
+preserve that marginal cost: an attacker in the claimer slot recovers its own
+bond plus at most a tenth of the reserves it forfeited, so at least nine tenths
+of every recycled campaign's residual is destroyed after legitimate partial
+refunds. The contract cannot identify an honest address; it can identify only
+the winning commitment and its first claimer.
 
 There is no additional Sybil stake. For a tournament with an accepting winner,
 the aggregate losing reserves are either paid as bounded subsidies for
@@ -674,9 +677,11 @@ Required economic invariants:
   at most its configured work reserve.
 - Before successful winner recovery, configured refund caps preserve one
   minimum join bond.
-- With exact-value joins and an accepting winner, aggregate losing reserves are
-  either paid for successful dispute work or burned as terminal
-  residual. No positive residual burn is guaranteed.
+- With exact-value joins and an accepting winner, aggregate losing reserves
+  are paid for successful dispute work, paid as the winner's one-tenth
+  terminal bounty, or burned; the burn keeps at least nine tenths of the
+  terminal residual. No positive residual burn is guaranteed when successful
+  progress consumes the reserves first.
 - Aggregate refunds, terminal payout, and residual burn conserve the actual
   tournament balance and cannot pay or burn the same value twice.
 - Failed refund transfers do not corrupt tournament state. A failed terminal
