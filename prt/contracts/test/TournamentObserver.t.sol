@@ -4,7 +4,6 @@
 pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
-import {stdError} from "forge-std-1.9.6/src/StdError.sol";
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
@@ -241,7 +240,10 @@ contract TournamentObserverTest is Test {
         );
     }
 
-    function testTimeoutStatusRejectsActiveClockShapeContradiction() public {
+    /// The view is total: shapes the transition paths would never
+    /// create still classify from the stored clocks as they are, so
+    /// one odd match can never blind an observer of the others.
+    function testTimeoutStatusClassifiesBothRunningClocksInBisection() public {
         TournamentObserverHarness tournament =
             _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
         Match.Id memory matchId = _matchId();
@@ -249,12 +251,19 @@ contract TournamentObserverTest is Test {
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
         tournament.storeClock(matchId.commitmentTwo, _runningClock(20, 100));
 
-        vm.roll(101);
-        vm.expectRevert(stdError.assertionError);
-        tournament.matchTimeoutStatus(matchId);
+        _assertTimeout(
+            tournament,
+            matchId,
+            101,
+            Match.Phase.BISECTING,
+            ITournament.MatchTimeoutOutcome.NONE,
+            0
+        );
     }
 
-    function testTimeoutStatusRejectsWrongActiveResponder() public {
+    function testTimeoutStatusClassifiesClocksRegardlessOfResponderParity()
+        public
+    {
         TournamentObserverHarness tournament =
             _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
         Match.Id memory matchId = _matchId();
@@ -262,26 +271,34 @@ contract TournamentObserverTest is Test {
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
         tournament.storeClock(matchId.commitmentTwo, _pausedClock(20));
 
-        vm.roll(101);
-        vm.expectRevert(stdError.assertionError);
-        tournament.matchTimeoutStatus(matchId);
+        _assertTimeout(
+            tournament,
+            matchId,
+            101,
+            Match.Phase.BISECTING,
+            ITournament.MatchTimeoutOutcome.NONE,
+            0
+        );
     }
 
-    function testTimeoutStatusRejectsUninitializedClockForExistingMatch()
-        public
-    {
+    function testTimeoutStatusReportsNoneForUninitializedClock() public {
         TournamentObserverHarness tournament =
             _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _activeState(3, 0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
 
-        vm.roll(101);
-        vm.expectRevert(stdError.assertionError);
-        tournament.matchTimeoutStatus(matchId);
+        _assertTimeout(
+            tournament,
+            matchId,
+            101,
+            Match.Phase.BISECTING,
+            ITournament.MatchTimeoutOutcome.NONE,
+            0
+        );
     }
 
-    function testTimeoutStatusRejectsLeafClockStartContradiction() public {
+    function testTimeoutStatusClassifiesLeafClocksFromTheirOwnStarts() public {
         TournamentObserverHarness tournament =
             _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
         Match.Id memory matchId = _matchId();
@@ -289,12 +306,19 @@ contract TournamentObserverTest is Test {
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
         tournament.storeClock(matchId.commitmentTwo, _runningClock(20, 101));
 
-        vm.roll(102);
-        vm.expectRevert(stdError.assertionError);
-        tournament.matchTimeoutStatus(matchId);
+        _assertTimeout(
+            tournament,
+            matchId,
+            102,
+            Match.Phase.SEALED,
+            ITournament.MatchTimeoutOutcome.NONE,
+            0
+        );
     }
 
-    function testTimeoutStatusRejectsRunningClockForSealedNonLeaf() public {
+    function testTimeoutStatusReportsNoneForSealedNonLeafRegardlessOfClocks()
+        public
+    {
         TournamentObserverHarness tournament =
             _newTournament(0, 2, 0, 3, 0, _zeroNestedDispute());
         Match.Id memory matchId = _matchId();
@@ -302,9 +326,14 @@ contract TournamentObserverTest is Test {
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
         tournament.storeClock(matchId.commitmentTwo, _pausedClock(20));
 
-        vm.roll(101);
-        vm.expectRevert(stdError.assertionError);
-        tournament.matchTimeoutStatus(matchId);
+        _assertTimeout(
+            tournament,
+            matchId,
+            101,
+            Match.Phase.SEALED,
+            ITournament.MatchTimeoutOutcome.NONE,
+            0
+        );
     }
 
     function testDescriptorOwnsLevelGeometryAndBaseCycle() public {
