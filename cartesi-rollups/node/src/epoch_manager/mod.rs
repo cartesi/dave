@@ -354,12 +354,9 @@ impl<AS: ArenaSender> EpochManager<AS> {
     }
 
     async fn plan_bond_recovery(&mut self, chain: &Chain) -> Result<Vec<LaneRequest>> {
-        let trusted_root = self
-            .storage
-            .last_sealed_epoch()?
-            .map(|epoch| epoch.root_tournament);
+        let epochs = self.storage.sealed_epochs()?;
         self.bond_recovery
-            .plan(chain, trusted_root)
+            .plan(chain, &epochs)
             .await
             .map_err(crate::hero::error::ReactError::from)
             .map_err(Into::into)

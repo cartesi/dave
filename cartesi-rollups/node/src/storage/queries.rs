@@ -29,6 +29,32 @@ impl Storage {
         self.read(epoch_count_in)
     }
 
+    /// Every sealed epoch in order: the bond recovery planner's
+    /// candidate roots, each written from the trusted consensus
+    /// stream.
+    pub fn sealed_epochs(&mut self) -> Result<Vec<Epoch>> {
+        self.read(|tx| {
+            let mut stmt = tx
+                .prepare_cached(
+                    r#"
+                    SELECT epoch_number, input_index_boundary, root_tournament,
+                           block_created_number
+                    FROM epochs
+                    ORDER BY epoch_number ASC
+                    "#,
+                )
+                .map_err(anyhow::Error::from)?;
+
+            let rows = stmt
+                .query_map([], row_to_epoch)
+                .map_err(anyhow::Error::from)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(anyhow::Error::from)?
+                .into_iter()
+                .collect::<Result<Vec<_>>>()
+        })
+    }
+
     pub fn last_sealed_epoch(&mut self) -> Result<Option<Epoch>> {
         self.read(|tx| {
             let mut stmt = tx
