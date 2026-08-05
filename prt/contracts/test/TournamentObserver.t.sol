@@ -10,7 +10,6 @@ import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {IDataProvider} from "src/IDataProvider.sol";
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
-import {ITournamentObserver} from "src/ITournamentObserver.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Commitment} from "src/tournament/libs/Commitment.sol";
@@ -18,6 +17,7 @@ import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
 
 contract TournamentObserverHarness is Tournament {
     function storeMatch(Match.IdHash matchIdHash, Match.State calldata state)
@@ -116,7 +116,9 @@ contract TournamentObserverTest is Test {
         _assertResponderParity(3);
     }
 
-    function testSealedProjectionOrientsEveryHeightAndPositionParity() public {
+    function testSealedProjectionIsCanonicalForEveryHeightAndPositionParity()
+        public
+    {
         for (uint64 totalHeight = 2; totalHeight <= 3; ++totalHeight) {
             _assertSealedOrientation(totalHeight, 0);
             _assertSealedOrientation(totalHeight, 1);
@@ -140,7 +142,7 @@ contract TournamentObserverTest is Test {
             })
         );
 
-        (Match.Phase phase, ITournamentObserver.SealedMatchView memory value) =
+        (Match.Phase phase, ITournament.SealedMatchView memory value) =
             tournament.sealedMatch(matchIdHash);
         assertEq(uint8(phase), uint8(Match.Phase.SEALED));
         assertEq(value.divergencePosition, 1);
@@ -174,7 +176,7 @@ contract TournamentObserverTest is Test {
             matchId,
             105,
             Match.Phase.READY_TO_SEAL,
-            ITournamentObserver.MatchTimeoutOutcome.TWO_WINS,
+            ITournament.MatchTimeoutOutcome.TWO_WINS,
             0
         );
         _assertTimeout(
@@ -182,7 +184,7 @@ contract TournamentObserverTest is Test {
             matchId,
             106,
             Match.Phase.READY_TO_SEAL,
-            ITournamentObserver.MatchTimeoutOutcome.TWO_WINS,
+            ITournament.MatchTimeoutOutcome.TWO_WINS,
             1
         );
     }
@@ -208,7 +210,7 @@ contract TournamentObserverTest is Test {
             matchId,
             109,
             Match.Phase.SEALED,
-            ITournamentObserver.MatchTimeoutOutcome.NONE,
+            ITournament.MatchTimeoutOutcome.NONE,
             0
         );
         _assertTimeout(
@@ -216,7 +218,7 @@ contract TournamentObserverTest is Test {
             matchId,
             110,
             Match.Phase.SEALED,
-            ITournamentObserver.MatchTimeoutOutcome.ELIMINATE_BOTH,
+            ITournament.MatchTimeoutOutcome.ELIMINATE_BOTH,
             0
         );
     }
@@ -234,7 +236,7 @@ contract TournamentObserverTest is Test {
             matchId,
             100,
             Match.Phase.SEALED,
-            ITournamentObserver.MatchTimeoutOutcome.NONE,
+            ITournament.MatchTimeoutOutcome.NONE,
             0
         );
     }
@@ -275,7 +277,7 @@ contract TournamentObserverTest is Test {
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
 
         vm.roll(101);
-        vm.expectRevert(ITournament.ClockNotInitialized.selector);
+        vm.expectRevert(stdError.assertionError);
         tournament.matchTimeoutStatus(matchId);
     }
 
@@ -306,18 +308,10 @@ contract TournamentObserverTest is Test {
     }
 
     function testDescriptorOwnsLevelGeometryAndBaseCycle() public {
-        _assertDescriptor(
-            0, 1, 0, 3, 0, ITournamentObserver.TournamentKind.LEAF
-        );
-        _assertDescriptor(
-            0, 3, 4, 5, 100, ITournamentObserver.TournamentKind.NON_LEAF
-        );
-        _assertDescriptor(
-            1, 3, 2, 2, 300, ITournamentObserver.TournamentKind.NON_LEAF
-        );
-        _assertDescriptor(
-            2, 3, 0, 2, 312, ITournamentObserver.TournamentKind.LEAF
-        );
+        _assertDescriptor(0, 1, 0, 3, 0, ITournament.TournamentKind.LEAF);
+        _assertDescriptor(0, 3, 4, 5, 100, ITournament.TournamentKind.NON_LEAF);
+        _assertDescriptor(1, 3, 2, 2, 300, ITournament.TournamentKind.NON_LEAF);
+        _assertDescriptor(2, 3, 0, 2, 312, ITournament.TournamentKind.LEAF);
     }
 
     function testStandingMatchesActiveWhileOpen() public {
@@ -328,8 +322,8 @@ contract TournamentObserverTest is Test {
 
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding.MATCHES_ACTIVE,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.MATCHES_ACTIVE,
                 acceptsJoins: true,
                 hasCandidate: true,
                 candidate: candidate,
@@ -346,8 +340,8 @@ contract TournamentObserverTest is Test {
 
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding.MATCHES_ACTIVE,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.MATCHES_ACTIVE,
                 acceptsJoins: false,
                 hasCandidate: false,
                 candidate: Tree.ZERO_NODE,
@@ -365,9 +359,8 @@ contract TournamentObserverTest is Test {
 
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding
-                .AWAITING_CLOSURE,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.AWAITING_CLOSURE,
                 acceptsJoins: true,
                 hasCandidate: true,
                 candidate: candidate,
@@ -386,9 +379,8 @@ contract TournamentObserverTest is Test {
         Tree.Node first = _joinUniformCommitment(tournament, _hash(0xe1), bond);
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding
-                .AWAITING_CLOSURE,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.AWAITING_CLOSURE,
                 acceptsJoins: true,
                 hasCandidate: true,
                 candidate: first,
@@ -400,8 +392,8 @@ contract TournamentObserverTest is Test {
         _joinUniformCommitment(tournament, _hash(0xe2), bond);
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding.MATCHES_ACTIVE,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.MATCHES_ACTIVE,
                 acceptsJoins: true,
                 hasCandidate: false,
                 candidate: Tree.ZERO_NODE,
@@ -421,8 +413,8 @@ contract TournamentObserverTest is Test {
 
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding.ROOT_WINNER,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.ROOT_WINNER,
                 acceptsJoins: false,
                 hasCandidate: true,
                 candidate: candidate,
@@ -434,8 +426,8 @@ contract TournamentObserverTest is Test {
         tournament.storeTopology(Tree.ZERO_NODE, 0, _instant(105));
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding.ROOT_FAILED,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.ROOT_FAILED,
                 acceptsJoins: false,
                 hasCandidate: false,
                 candidate: Tree.ZERO_NODE,
@@ -486,9 +478,9 @@ contract TournamentObserverTest is Test {
 
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding
-                    .INNER_ELIMINABLE_WINNER_EXPIRED,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding
+                .INNER_ELIMINABLE_WINNER_EXPIRED,
                 acceptsJoins: false,
                 hasCandidate: true,
                 candidate: candidate,
@@ -506,8 +498,8 @@ contract TournamentObserverTest is Test {
 
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding
                 .INNER_ELIMINABLE_NO_WINNER,
                 acceptsJoins: false,
                 hasCandidate: false,
@@ -527,15 +519,15 @@ contract TournamentObserverTest is Test {
         tournament.storeMatch(matchIdHash, state);
         (
             Match.Phase bisectingPhase,
-            ITournamentObserver.BisectingMatchView memory bisecting
+            ITournament.BisectingMatchView memory bisecting
         ) = tournament.bisectingMatch(matchIdHash);
         (
             Match.Phase readyPhase,
-            ITournamentObserver.ReadyToSealMatchView memory ready
+            ITournament.ReadyToSealMatchView memory ready
         ) = tournament.readyToSealMatch(matchIdHash);
         (
             Match.Phase sealedPhase,
-            ITournamentObserver.SealedMatchView memory sealedView
+            ITournament.SealedMatchView memory sealedView
         ) = tournament.sealedMatch(matchIdHash);
 
         assertEq(uint8(bisectingPhase), uint8(expectedPhase));
@@ -565,20 +557,18 @@ contract TournamentObserverTest is Test {
     ) internal view {
         (
             Match.Phase phase,
-            ITournamentObserver.MatchTimeoutOutcome outcome,
+            ITournament.MatchTimeoutOutcome outcome,
             Time.Duration charge
         ) = tournament.matchTimeoutStatus(matchId);
         assertEq(uint8(phase), uint8(Match.Phase.UNINITIALIZED));
-        assertEq(
-            uint8(outcome), uint8(ITournamentObserver.MatchTimeoutOutcome.NONE)
-        );
+        assertEq(uint8(outcome), uint8(ITournament.MatchTimeoutOutcome.NONE));
         assertEq(Time.Duration.unwrap(charge), 0);
 
-        (, ITournamentObserver.BisectingMatchView memory bisecting) =
+        (, ITournament.BisectingMatchView memory bisecting) =
             tournament.bisectingMatch(matchIdHash);
-        (, ITournamentObserver.ReadyToSealMatchView memory ready) =
+        (, ITournament.ReadyToSealMatchView memory ready) =
             tournament.readyToSealMatch(matchIdHash);
-        (, ITournamentObserver.SealedMatchView memory sealedView) =
+        (, ITournament.SealedMatchView memory sealedView) =
             tournament.sealedMatch(matchIdHash);
         assertEq(_hashEncoded(bisecting), _zeroBisectingHash());
         assertEq(_hashEncoded(ready), _zeroReadyHash());
@@ -597,14 +587,14 @@ contract TournamentObserverTest is Test {
             tournament.storeMatch(
                 matchIdHash, _activeState(currentHeight, currentHeight * 2)
             );
-            Match.CommitmentSide expected = (totalHeight - currentHeight) % 2
-                == 0
-                ? Match.CommitmentSide.ONE
-                : Match.CommitmentSide.TWO;
+            ITournament.CommitmentSide expected = (totalHeight - currentHeight)
+                    % 2 == 0
+                ? ITournament.CommitmentSide.ONE
+                : ITournament.CommitmentSide.TWO;
             if (currentHeight == 1) {
                 (
                     Match.Phase phase,
-                    ITournamentObserver.ReadyToSealMatchView memory value
+                    ITournament.ReadyToSealMatchView memory value
                 ) = tournament.readyToSealMatch(matchIdHash);
                 assertEq(uint8(phase), uint8(Match.Phase.READY_TO_SEAL));
                 assertEq(
@@ -625,7 +615,7 @@ contract TournamentObserverTest is Test {
             } else {
                 (
                     Match.Phase phase,
-                    ITournamentObserver.BisectingMatchView memory value
+                    ITournament.BisectingMatchView memory value
                 ) = tournament.bisectingMatch(matchIdHash);
                 assertEq(uint8(phase), uint8(Match.Phase.BISECTING));
                 assertEq(
@@ -658,13 +648,13 @@ contract TournamentObserverTest is Test {
         );
         Machine.Hash finalStateOne = _hash(0xb1);
         Machine.Hash finalStateTwo = _hash(0xb2);
-        bool leftStoresOne = uint256(totalHeight % 2) == position % 2;
-        Machine.Hash storedLeft = leftStoresOne ? finalStateOne : finalStateTwo;
-        Machine.Hash storedRight = leftStoresOne ? finalStateTwo : finalStateOne;
+        // Sealed storage is canonical: leftNode always holds commitment one's
+        // final state and rightNode commitment two's. The projection must
+        // return them unchanged for every height and position parity.
         Match.State memory state = Match.State({
             otherParent: _node(0xa0),
-            leftNode: Tree.Node.wrap(Machine.Hash.unwrap(storedLeft)),
-            rightNode: Tree.Node.wrap(Machine.Hash.unwrap(storedRight)),
+            leftNode: Tree.Node.wrap(Machine.Hash.unwrap(finalStateOne)),
+            rightNode: Tree.Node.wrap(Machine.Hash.unwrap(finalStateTwo)),
             runningLeafPosition: position,
             currentHeight: 0,
             isInit: true
@@ -672,7 +662,7 @@ contract TournamentObserverTest is Test {
         Match.IdHash matchIdHash = _matchId().hashFromId();
         tournament.storeMatch(matchIdHash, state);
 
-        (Match.Phase phase, ITournamentObserver.SealedMatchView memory value) =
+        (Match.Phase phase, ITournament.SealedMatchView memory value) =
             tournament.sealedMatch(matchIdHash);
         assertEq(uint8(phase), uint8(Match.Phase.SEALED));
         assertEq(
@@ -703,16 +693,16 @@ contract TournamentObserverTest is Test {
         Clock.State memory paused = _pausedClock(10);
         tournament.storeClock(matchId.commitmentOne, oneRuns ? running : paused);
         tournament.storeClock(matchId.commitmentTwo, oneRuns ? paused : running);
-        ITournamentObserver.MatchTimeoutOutcome winner = oneRuns
-            ? ITournamentObserver.MatchTimeoutOutcome.TWO_WINS
-            : ITournamentObserver.MatchTimeoutOutcome.ONE_WINS;
+        ITournament.MatchTimeoutOutcome winner = oneRuns
+            ? ITournament.MatchTimeoutOutcome.TWO_WINS
+            : ITournament.MatchTimeoutOutcome.ONE_WINS;
 
         _assertTimeout(
             tournament,
             matchId,
             104,
             Match.Phase.BISECTING,
-            ITournamentObserver.MatchTimeoutOutcome.NONE,
+            ITournament.MatchTimeoutOutcome.NONE,
             0
         );
         _assertTimeout(
@@ -726,7 +716,7 @@ contract TournamentObserverTest is Test {
             matchId,
             115,
             Match.Phase.BISECTING,
-            ITournamentObserver.MatchTimeoutOutcome.ELIMINATE_BOTH,
+            ITournament.MatchTimeoutOutcome.ELIMINATE_BOTH,
             0
         );
     }
@@ -744,16 +734,16 @@ contract TournamentObserverTest is Test {
         tournament.storeClock(
             matchId.commitmentTwo, oneIsShorter ? longClock : shortClock
         );
-        ITournamentObserver.MatchTimeoutOutcome winner = oneIsShorter
-            ? ITournamentObserver.MatchTimeoutOutcome.TWO_WINS
-            : ITournamentObserver.MatchTimeoutOutcome.ONE_WINS;
+        ITournament.MatchTimeoutOutcome winner = oneIsShorter
+            ? ITournament.MatchTimeoutOutcome.TWO_WINS
+            : ITournament.MatchTimeoutOutcome.ONE_WINS;
 
         _assertTimeout(
             tournament,
             matchId,
             104,
             Match.Phase.SEALED,
-            ITournamentObserver.MatchTimeoutOutcome.NONE,
+            ITournament.MatchTimeoutOutcome.NONE,
             0
         );
         _assertTimeout(tournament, matchId, 105, Match.Phase.SEALED, winner, 0);
@@ -765,7 +755,7 @@ contract TournamentObserverTest is Test {
             matchId,
             111,
             Match.Phase.SEALED,
-            ITournamentObserver.MatchTimeoutOutcome.ELIMINATE_BOTH,
+            ITournament.MatchTimeoutOutcome.ELIMINATE_BOTH,
             0
         );
     }
@@ -775,13 +765,13 @@ contract TournamentObserverTest is Test {
         Match.Id memory matchId,
         uint64 current,
         Match.Phase expectedPhase,
-        ITournamentObserver.MatchTimeoutOutcome expectedOutcome,
+        ITournament.MatchTimeoutOutcome expectedOutcome,
         uint64 expectedCharge
     ) internal {
         vm.roll(current);
         (
             Match.Phase phase,
-            ITournamentObserver.MatchTimeoutOutcome outcome,
+            ITournament.MatchTimeoutOutcome outcome,
             Time.Duration charge
         ) = tournament.matchTimeoutStatus(matchId);
         assertEq(uint8(phase), uint8(expectedPhase));
@@ -795,14 +785,12 @@ contract TournamentObserverTest is Test {
         uint64 log2step,
         uint64 height,
         uint256 baseCycle,
-        ITournamentObserver.TournamentKind expectedKind
+        ITournament.TournamentKind expectedKind
     ) internal {
-        TournamentObserverHarness
-            tournament =
-            _newTournament(
-                level, levels, log2step, height, baseCycle, _zeroNestedDispute()
-            );
-        ITournamentObserver.TournamentDescriptor memory descriptor =
+        TournamentObserverHarness tournament = _newTournament(
+            level, levels, log2step, height, baseCycle, _zeroNestedDispute()
+        );
+        ITournament.TournamentDescriptor memory descriptor =
             tournament.tournamentDescriptor();
         assertEq(
             Machine.Hash.unwrap(descriptor.initialHash),
@@ -823,8 +811,8 @@ contract TournamentObserverTest is Test {
     ) internal view {
         _assertStanding(
             tournament,
-            ITournamentObserver.TournamentStandingView({
-                standing: ITournamentObserver.TournamentStanding.INNER_WINNER,
+            ITournament.TournamentStandingView({
+                standing: ITournament.TournamentStanding.INNER_WINNER,
                 acceptsJoins: false,
                 hasCandidate: true,
                 candidate: candidate,
@@ -836,12 +824,17 @@ contract TournamentObserverTest is Test {
 
     function _assertStanding(
         TournamentObserverHarness tournament,
-        ITournamentObserver.TournamentStandingView memory expected
+        ITournament.TournamentStandingView memory expected
     ) internal view {
-        ITournamentObserver.TournamentStandingView memory actual =
+        ITournament.TournamentStandingView memory actual =
             tournament.tournamentStanding();
         assertEq(keccak256(abi.encode(actual)), keccak256(abi.encode(expected)));
-        assertEq(actual.acceptsJoins, !tournament.isClosed());
+        // Independent closure derivation from the clone arguments, so this
+        // parity check is an oracle, not an echo of the observer.
+        assertEq(
+            actual.acceptsJoins,
+            !TournamentInspector.isClosed(ITournament(address(tournament)))
+        );
     }
 
     function _standingTournament(uint64 level, uint64 levels)
@@ -889,8 +882,7 @@ contract TournamentObserverTest is Test {
                 levels: levels,
                 startInstant: _instant(100),
                 allowance: _duration(20),
-                maxAllowance: _duration(40),
-                matchEffort: _duration(3),
+                responseBudget: _duration(3),
                 provider: IDataProvider(address(0x1001)),
                 nestedDispute: nestedDispute,
                 stateTransition: IStateTransition(address(0x1002)),
@@ -902,9 +894,9 @@ contract TournamentObserverTest is Test {
     }
 
     function _assertProjectionZeroes(
-        ITournamentObserver.BisectingMatchView memory bisecting,
-        ITournamentObserver.ReadyToSealMatchView memory ready,
-        ITournamentObserver.SealedMatchView memory sealedView
+        ITournament.BisectingMatchView memory bisecting,
+        ITournament.ReadyToSealMatchView memory ready,
+        ITournament.SealedMatchView memory sealedView
     ) internal pure {
         assert(_hashEncoded(bisecting) == _zeroBisectingHash());
         assert(_hashEncoded(ready) == _zeroReadyHash());
@@ -912,21 +904,21 @@ contract TournamentObserverTest is Test {
     }
 
     function _zeroBisectingHash() internal pure returns (bytes32) {
-        ITournamentObserver.BisectingMatchView memory value;
+        ITournament.BisectingMatchView memory value;
         return _hashEncoded(value);
     }
 
     function _zeroReadyHash() internal pure returns (bytes32) {
-        ITournamentObserver.ReadyToSealMatchView memory value;
+        ITournament.ReadyToSealMatchView memory value;
         return _hashEncoded(value);
     }
 
     function _zeroSealedHash() internal pure returns (bytes32) {
-        ITournamentObserver.SealedMatchView memory value;
+        ITournament.SealedMatchView memory value;
         return _hashEncoded(value);
     }
 
-    function _hashEncoded(ITournamentObserver.BisectingMatchView memory value)
+    function _hashEncoded(ITournament.BisectingMatchView memory value)
         internal
         pure
         returns (bytes32)
@@ -934,7 +926,7 @@ contract TournamentObserverTest is Test {
         return keccak256(abi.encode(value));
     }
 
-    function _hashEncoded(ITournamentObserver.ReadyToSealMatchView memory value)
+    function _hashEncoded(ITournament.ReadyToSealMatchView memory value)
         internal
         pure
         returns (bytes32)
@@ -942,7 +934,7 @@ contract TournamentObserverTest is Test {
         return keccak256(abi.encode(value));
     }
 
-    function _hashEncoded(ITournamentObserver.SealedMatchView memory value)
+    function _hashEncoded(ITournament.SealedMatchView memory value)
         internal
         pure
         returns (bytes32)

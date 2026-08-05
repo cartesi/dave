@@ -28,6 +28,10 @@ import {TournamentParameters} from "src/types/TournamentParameters.sol";
 
 import {Util} from "../Util.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract CanonicalTournamentGeometryTest is Util {
     CanonicalTournamentParametersProvider internal immutable PROVIDER;
     MultiLevelTournamentFactory internal immutable FACTORY;

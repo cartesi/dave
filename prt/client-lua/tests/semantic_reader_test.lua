@@ -36,10 +36,10 @@ local function event_commitment_joined(commitment, final_state, submitter)
     return {
         topics = {
             topics[1],
+            commitment:hex_string(),
             address_topic(submitter),
         },
         data = data {
-            word_hash(commitment),
             word_hash(final_state),
         },
     }

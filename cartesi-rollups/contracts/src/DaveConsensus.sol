@@ -155,7 +155,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     {
         epochNumber = _epochNumber;
         isTournamentResultStaged = _isTournamentResultStaged;
-        (isFinished, winnerCommitment, winnerPostEpochMachineStateHash) = _tournament.arbitrationResult();
+        (isFinished, winnerCommitment, winnerPostEpochMachineStateHash) = _tournamentResult(_tournament);
     }
 
     function stageTournamentResult(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof)
@@ -170,7 +170,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         require(!_isTournamentResultStaged, TournamentResultAlreadyStaged());
 
         // Check tournament finished
-        (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournament.arbitrationResult();
+        (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournamentResult(_tournament);
         require(isFinished, TournamentNotFinishedYet());
 
         // Check outputs Merkle root
@@ -415,6 +415,24 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
 
     function getDeploymentBlockNumber() external view override returns (uint256) {
         return _DEPLOYMENT_BLOCK_NUMBER;
+    }
+
+    /// @notice Read the root tournament's result through its typed standing.
+    /// @dev A failed root (finished without a winner) reverts, preserving the
+    /// staging posture: such an epoch cannot be settled from this tournament.
+    function _tournamentResult(ITournament tournament)
+        internal
+        view
+        returns (bool finished, Tree.Node winnerCommitment, Machine.Hash finalMachineStateHash)
+    {
+        ITournament.TournamentStandingView memory standing = tournament.tournamentStanding();
+        if (standing.standing == ITournament.TournamentStanding.ROOT_WINNER) {
+            return (true, standing.candidate, standing.finalState);
+        } else if (standing.standing == ITournament.TournamentStanding.ROOT_FAILED) {
+            revert ITournament.TournamentFailedNoWinner();
+        } else {
+            return (false, Tree.ZERO_NODE, Machine.ZERO_STATE);
+        }
     }
 
     function _validateOutputTree(

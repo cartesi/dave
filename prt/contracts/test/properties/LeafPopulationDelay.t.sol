@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
+import {ITournament} from "src/ITournament.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
@@ -17,6 +18,11 @@ import {SmallFullTree} from "../fixtures/SmallFullTree.sol";
 import {
     SmallSingleLevelTournamentFactory
 } from "../fixtures/SmallSingleLevelTournament.sol";
+
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
 
 /// @dev Production-path lower-bound traces for sequential leaf-level clock
 /// windows. These schedules characterize reachable delay; they do not prove

@@ -29,6 +29,10 @@ import {
     HistoricalThreeLevelGeometry as HistoricalGeometry
 } from "../fixtures/HistoricalThreeLevelGeometry.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract HistoricalThreeLevelInnerTest is Util {
     using Tree for Tree.Node;
     using Time for Time.Instant;
@@ -409,8 +413,12 @@ contract HistoricalThreeLevelInnerTest is Util {
         assertTrue(middleTournament.canBeEliminated(), "can't be eliminated");
         Util.eliminateInnerTournament(topTournament, middleTournament);
 
-        vm.expectRevert();
-        topTournament.arbitrationResult();
+        ITournament.TournamentStandingView memory standing =
+            topTournament.tournamentStanding();
+        assertEq(
+            uint8(standing.standing),
+            uint8(ITournament.TournamentStanding.ROOT_FAILED)
+        );
     }
 
     function testInnerNoWinner() public {

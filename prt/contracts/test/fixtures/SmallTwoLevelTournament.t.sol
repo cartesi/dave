@@ -18,6 +18,10 @@ import {
     SmallTwoLevelTournamentFactory
 } from "./SmallTwoLevelTournament.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract SmallTwoLevelTournamentTest is Test {
     uint64 internal constant START_BLOCK = 100;
     uint64 internal constant RESPONSE_BUDGET = 5;

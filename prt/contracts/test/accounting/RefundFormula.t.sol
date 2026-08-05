@@ -22,6 +22,11 @@ import {
     SmallSingleLevelTournamentFactory
 } from "../fixtures/SmallSingleLevelTournament.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
+
 contract FormulaRefundReceiver {
     error RefundRejected();
 

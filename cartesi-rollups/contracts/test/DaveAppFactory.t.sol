@@ -48,6 +48,10 @@ import {IDaveAppFactory} from "src/IDaveAppFactory.sol";
 import {IDaveConsensus} from "src/IDaveConsensus.sol";
 import {ISentryErrors} from "src/ISentryErrors.sol";
 
+import {TournamentInspector} from "prt-contracts-test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 library LibExternalBinaryKeccak256MerkleTree {
     using LibBinaryMerkleTree for bytes32[];
 
@@ -252,12 +256,10 @@ contract DaveAppFactoryTest is Test {
             if (log.emitter == address(tournament)) {
                 if (log.topics[0] == ITournament.CommitmentJoined.selector) {
                     ++numOfCommitmentJoinedEvents;
-                    assertEq(log.topics[1], bytes32(uint256(uint160(submitter))));
-                    bytes32 arg1;
-                    bytes32 arg2;
-                    (arg1, arg2) = abi.decode(log.data, (bytes32, bytes32));
-                    assertEq(arg1, commitment);
-                    assertEq(arg2, machineMerkleRoot);
+                    assertEq(log.topics[1], commitment);
+                    assertEq(log.topics[2], bytes32(uint256(uint160(submitter))));
+                    bytes32 finalStateHash = abi.decode(log.data, (bytes32));
+                    assertEq(finalStateHash, machineMerkleRoot);
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }

@@ -22,11 +22,11 @@ truth.
 ## Trust boundary and assumptions
 
 - Settlement safety derives from the tournament. The staged post-epoch
-  machine state hash comes only from `arbitrationResult()` of the
-  tournament this contract instantiated, and the staged outputs root is
-  bound to that state by a fixed-position Merkle replacement proof over
-  the machine's CMIO tx buffer region. No other write path to staged
-  values exists.
+  machine state hash comes only from the `ROOT_WINNER` standing of the
+  tournament this contract instantiated (`tournamentStanding()`), and the
+  staged outputs root is bound to that state by a fixed-position Merkle
+  replacement proof over the machine's CMIO tx buffer region. No other
+  write path to staged values exists.
 - Sentries are a delay-then-alarm mechanism, not a safety authority.
   Unanimous agreement (all N slots, N > 0) settles immediately; anything
   else waits out the claim staging period, after which settlement
@@ -65,10 +65,10 @@ truth.
 
 ## Invariants to protect
 
-- Staged values originate only from the current tournament's finished
-  `arbitrationResult()` plus a valid outputs proof. Sentry claims only
-  count agreement; nothing about the staged value is echoed back to or
-  from a claim.
+- Staged values originate only from the current tournament's
+  `ROOT_WINNER` standing plus a valid outputs proof; a failed root
+  reverts staging. Sentry claims only count agreement; nothing about the
+  staged value is echoed back to or from a claim.
 - One live tournament at a time - the current sealed epoch's. Acceptance
   settles, samples the next epoch's input bounds from the InputBox at
   that moment, records the outputs root in a write-once mapping, and

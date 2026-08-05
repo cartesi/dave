@@ -5,7 +5,6 @@ pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
-import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Match} from "prt-contracts/tournament/libs/Match.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
@@ -93,6 +92,102 @@ interface ITournament {
     }
 
     //
+    // Semantic observer types
+    //
+    // These DTOs are independent from the storage structs. A projection
+    // always returns the match's actual phase; payload fields are meaningful
+    // only when that phase matches the projection.
+    //
+
+    /// @notice Identifies one side of a match pair. Side one is the elder
+    /// commitment (dangling first); side two is the newcomer.
+    enum CommitmentSide {
+        ONE,
+        TWO
+    }
+
+    enum MatchTimeoutOutcome {
+        NONE,
+        ONE_WINS,
+        TWO_WINS,
+        ELIMINATE_BOTH
+    }
+
+    enum TournamentKind {
+        LEAF,
+        NON_LEAF
+    }
+
+    enum TournamentStanding {
+        MATCHES_ACTIVE,
+        AWAITING_CLOSURE,
+        ROOT_WINNER,
+        ROOT_FAILED,
+        INNER_WINNER,
+        INNER_ELIMINABLE_NO_WINNER,
+        INNER_ELIMINABLE_WINNER_EXPIRED
+    }
+
+    struct BisectingMatchView {
+        Tree.Node revealingParent;
+        Tree.Node waitingLeft;
+        Tree.Node waitingRight;
+        uint256 segmentStartPosition;
+        uint256 segmentStartCycle;
+        uint64 currentHeight;
+        CommitmentSide responder;
+    }
+
+    struct ReadyToSealMatchView {
+        Tree.Node revealingParent;
+        Tree.Node waitingLeft;
+        Tree.Node waitingRight;
+        uint256 segmentStartPosition;
+        uint256 segmentStartCycle;
+        CommitmentSide responder;
+    }
+
+    struct SealedMatchView {
+        Machine.Hash agreeState;
+        uint256 divergencePosition;
+        uint256 divergenceCycle;
+        Machine.Hash finalStateOne;
+        Machine.Hash finalStateTwo;
+    }
+
+    struct TournamentDescriptor {
+        Machine.Hash initialHash;
+        uint256 baseCycle;
+        uint64 log2step;
+        uint64 height;
+        uint64 level;
+        uint64 levels;
+        TournamentKind kind;
+    }
+
+    struct TournamentStandingView {
+        TournamentStanding standing;
+        bool acceptsJoins;
+        bool hasCandidate;
+        Tree.Node candidate;
+        Machine.Hash finalState;
+        Tree.Node parentCommitment;
+    }
+
+    /// @notice A child tournament's settlement disposition for its parent.
+    enum InnerTournamentDisposition {
+        UNSETTLED,
+        WINNER,
+        ELIMINABLE
+    }
+
+    struct InnerResultView {
+        InnerTournamentDisposition disposition;
+        Tree.Node parentCommitment;
+        Time.Duration pausedAllowance;
+    }
+
+    //
     // Events
     //
 
@@ -116,8 +211,9 @@ interface ITournament {
     /// otherwise the right half, then swaps revealing and waiting roles. The
     /// event exposes the post-advance revealing parent and waiting left child.
     /// The waiting right child is unnecessary for selecting the next branch,
-    /// which depends only on left-child equality; the full raw state remains
-    /// available through `getMatch`.
+    /// which depends only on left-child equality; the full live state remains
+    /// available through the phase projections (`bisectingMatch` and its
+    /// siblings).
     event MatchAdvanced(
         Match.IdHash indexed matchIdHash,
         Tree.Node otherParent,
@@ -143,7 +239,7 @@ interface ITournament {
     /// @param finalStateHash The final machine state hash
     /// @param submitter The commitment submitter
     event CommitmentJoined(
-        Tree.Node commitment,
+        Tree.Node indexed commitment,
         Machine.Hash finalStateHash,
         address indexed submitter
     );
@@ -367,21 +463,6 @@ interface ITournament {
     /// @return Whether settlement completed or had already completed
     function tryRecoveringBond() external returns (bool);
 
-    /// @notice Get the tournament's dangling winner and final state.
-    /// @dev Intended for root consumers. The current implementation does not
-    /// enforce a root-only guard; parents use `innerTournamentWinner` instead.
-    /// @return finished Whether the tournament has finished already
-    /// @return winnerCommitment The winner commitment (if finished)
-    /// @return finalState The winning final state (if finished)
-    function arbitrationResult()
-        external
-        view
-        returns (
-            bool finished,
-            Tree.Node winnerCommitment,
-            Machine.Hash finalState
-        );
-
     /// @notice Join the tournament with a commitment.
     /// @param finalState The last leaf of the commitment tree (final machine state hash)
     /// @param proof The bottom-up Merkle proof of the last leaf (final machine state hash) of the commitment tree
@@ -547,82 +628,101 @@ interface ITournament {
     ) external;
 
     //
-    // View functions
+    // Semantic observer
+    //
+    // Total, typed observations over one tournament clone. Ordinary absent
+    // and wrong-variant reads return the actual phase with a canonical
+    // all-zero payload; only internally impossible states revert.
     //
 
-    /// @notice returns whether this inner tournament can be safely eliminated.
-    /// @return (bool)
-    /// - if the tournament can be eliminated
-    function canBeEliminated() external view returns (bool);
-
-    /// @notice get the dangling commitment at current level and then retrieve the winner commitment
-    /// @return (bool, Tree.Node, Tree.Node, Clock.State)
-    /// - if the tournament is finished
-    /// - the contested parent commitment
-    /// - the winning inner commitment
-    /// - the paused clock of the winning inner commitment
-    function innerTournamentWinner()
+    /// @notice Project an active, non-terminal bisection by its storage key.
+    /// @dev Always returns the stored match's actual phase. `value` is
+    /// canonically all-zero unless that phase is `BISECTING`. `responder`
+    /// identifies the commitment side whose clock and opening turn are active.
+    function bisectingMatch(Match.IdHash matchIdHash)
         external
         view
-        returns (bool, Tree.Node, Tree.Node, Clock.State memory);
+        returns (Match.Phase actualPhase, BisectingMatchView memory value);
 
-    /// @notice Get the tournament arguments.
-    function tournamentArguments()
+    /// @notice Project the final bisection step by its storage key.
+    /// @dev Always returns the stored match's actual phase. `value` is
+    /// canonically all-zero unless that phase is `READY_TO_SEAL`. `responder`
+    /// identifies the commitment side whose clock and sealing turn are active.
+    function readyToSealMatch(Match.IdHash matchIdHash)
         external
         view
-        returns (TournamentArguments memory);
+        returns (Match.Phase actualPhase, ReadyToSealMatchView memory value);
 
-    /// @notice Check whether an existing match has one timeout winner.
-    /// @dev Returns false for a nonexistent match, when neither clock is
-    /// expired, and when the outcome is double elimination. This does not
-    /// validate the Merkle children required to settle the winning commitment.
-    /// @param matchId The match ID
-    function canWinMatchByTimeout(Match.Id calldata matchId)
+    /// @notice Project a sealed divergence by its storage key.
+    /// @dev Always returns the stored match's actual phase. `value` is
+    /// canonically all-zero unless that phase is `SEALED`. Final states are
+    /// oriented to commitment sides one and two, independent of reveal order.
+    function sealedMatch(Match.IdHash matchIdHash)
         external
         view
-        returns (bool);
+        returns (Match.Phase actualPhase, SealedMatchView memory value);
 
-    /// @notice Get the clock and final state of a commitment.
-    /// @param commitmentRoot The commitment
-    /// @return clock The commitment clock
-    /// @return finalState The committed final state
-    function getCommitment(Tree.Node commitmentRoot)
+    /// @notice Classify the timeout action available for one full match id now.
+    /// @dev Match existence is established before reading historical clocks.
+    /// An absent or deleted match returns `(UNINITIALIZED, NONE, 0)`.
+    /// `deferredCharge` is zero for `NONE`, `ELIMINATE_BOTH`, and a leaf-race
+    /// winner; an active-match winner may carry the expired responder's overdue
+    /// duration. Existing matches with impossible phase/clock shapes revert.
+    function matchTimeoutStatus(Match.Id calldata matchId)
         external
         view
-        returns (Clock.State memory clock, Machine.Hash finalState);
+        returns (
+            Match.Phase actualPhase,
+            MatchTimeoutOutcome outcome,
+            Time.Duration deferredCharge
+        );
 
-    /// @notice Get a match state by its ID hash.
-    /// @dev Returns the raw state tuple without an existence check.
-    /// `isInit == false` means absent or deleted. For a valid positive-height
-    /// initialized state, the node fields describe the unresolved bisection
-    /// segment while `currentHeight > 0`. At `currentHeight == 0`, `otherParent`
-    /// holds the agree state while `leftNode` and `rightNode` hold the final
-    /// states of commitments one and two respectively.
-    /// @param matchIdHash The match ID hash
-    function getMatch(Match.IdHash matchIdHash)
+    /// @notice Return immutable geometry and level identity for this clone.
+    /// @dev `kind` distinguishes leaf from non-leaf; root versus inner is
+    /// derived from `level`.
+    function tournamentDescriptor()
         external
         view
-        returns (Match.State memory);
+        returns (TournamentDescriptor memory);
 
-    /// @notice Get the running machine cycle of a match by its ID hash.
-    /// @dev Before sealing, returns the first cycle in the unresolved segment;
-    /// after sealing, returns the disputed transition cycle. Reverts if the
-    /// match does not exist or has already been deleted.
-    /// @param matchIdHash The match ID hash
-    function getMatchCycle(Match.IdHash matchIdHash)
+    /// @notice Return the tournament's current settlement disposition.
+    /// @dev Inactive fields are canonically zero. `acceptsJoins` is true
+    /// exactly while the tournament's global allowance has not elapsed, for
+    /// every standing, including closed tournaments that still have active
+    /// matches. `hasCandidate` disambiguates the zero node. `finalState` is
+    /// populated only for `ROOT_WINNER`, and `parentCommitment` only for
+    /// `INNER_WINNER`.
+    function tournamentStanding()
         external
         view
-        returns (uint256);
+        returns (TournamentStandingView memory);
 
-    /// @notice Get tournament-level constants.
-    /// @return maxLevel The total level count, despite the legacy return name
-    /// @return level The current tournament level
-    /// @return log2step The log2 number of steps between commitment leaves
-    /// @return height The height of the commitment tree
-    function tournamentLevelConstants()
-        external
-        view
-        returns (uint64 maxLevel, uint64 level, uint64 log2step, uint64 height);
+    //
+    // Protocol surface
+    //
+    // Called by a parent Tournament on a child clone it created and recorded.
+    // Contract-to-contract, not part of the client observer surface.
+    //
+
+    /// @notice The child's settlement disposition, typed for its parent.
+    /// @dev Reverts with `RequireNonRootTournament` on a root clone. Inactive
+    /// fields are canonically zero. `WINNER` maps the inner winner back to the
+    /// contested parent commitment and carries its remaining carryover
+    /// allowance: the winner's paused clock deducted by the time elapsed since
+    /// the child finished. `ELIMINABLE` covers a finished child without a
+    /// winner and a winner whose carryover window has expired.
+    function innerResult() external view returns (InnerResultView memory);
+
+    //
+    // Event counters
+    //
+    // Monotonic counts of each structural event since deployment, readable at
+    // a pinned block. They let a log-fetching client prune and verify its
+    // event fetch: counts equal to the client's local fold mean no new
+    // structural events exist, so the eth_getLogs round trip can be skipped;
+    // and a fetched range whose event count disagrees with the counter delta
+    // reveals a silently truncated or lossy provider response.
+    //
 
     /// @notice Get the number of `CommitmentJoined` events
     /// that have been emitted since the contract was deployed.
@@ -643,20 +743,4 @@ interface ITournament {
     /// @notice Get the number of `NewInnerTournament` events
     /// that have been emitted since the contract was deployed.
     function getNewInnerTournamentCount() external view returns (uint256);
-
-    //
-    // Time view functions
-    //
-
-    /// @return bool if the tournament is still open to join
-    function isClosed() external view returns (bool);
-
-    /// @return bool if the tournament is over
-    function isFinished() external view returns (bool);
-
-    /// @notice returns if and when tournament was finished.
-    /// @return (bool, Time.Instant)
-    /// - if the tournament can be eliminated
-    /// - the time when the tournament was finished
-    function timeFinished() external view returns (bool, Time.Instant);
 }

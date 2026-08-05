@@ -249,12 +249,13 @@ function SemanticReader.decode_event_log(log, topic_map)
 
     local event
     if kind == Fold.EventKind.COMMITMENT_JOINED then
-        require_topic_count(log, 2, "CommitmentJoined")
-        topic_address(log.topics[2], "CommitmentJoined.submitter")
-        local words = data_words(log.data, 2, "CommitmentJoined")
+        require_topic_count(log, 3, "CommitmentJoined")
+        local root = topic_hash(log.topics[2], "CommitmentJoined.commitment")
+        topic_address(log.topics[3], "CommitmentJoined.submitter")
+        local words = data_words(log.data, 1, "CommitmentJoined")
         event = Fold.Event.commitment_joined(
-            Hash:from_digest_hex("0x" .. words[1]),
-            Hash:from_digest_hex("0x" .. words[2])
+            root,
+            Hash:from_digest_hex("0x" .. words[1])
         )
     elseif kind == Fold.EventKind.MATCH_CREATED then
         require_topic_count(log, 4, "MatchCreated")

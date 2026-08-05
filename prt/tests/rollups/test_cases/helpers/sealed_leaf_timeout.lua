@@ -23,19 +23,19 @@ local TIMEOUT_ELIMINATE_BOTH = 3
 local TOURNAMENT_ARGUMENTS_SIGNATURE = table.concat {
     "tournamentArguments()(",
     "((bytes32,uint256,uint64,uint64),",
-    "uint64,uint64,uint64,uint64,uint64,uint64,address,",
+    "uint64,uint64,uint64,uint64,uint64,address,",
     "(bytes32,bytes32,bytes32,bytes32),address,address))",
 }
 
-local function match_effort(tournament)
+local function response_budget(tournament)
     -- This parameter controls the final response discount, so the fixture
-    -- reads it from the actual clone instead of mirroring deployment policy.
-    local values = env.reader.inner_reader:_call(
+    -- reads it from the actual clone's immutable arguments instead of
+    -- mirroring deployment policy.
+    local values = env.reader.inner_reader:read_clone_args(
         tournament,
-        TOURNAMENT_ARGUMENTS_SIGNATURE,
-        {}
+        TOURNAMENT_ARGUMENTS_SIGNATURE
     )
-    assert(#values == 1, "tournamentArguments returned an unexpected shape")
+    assert(#values == 1, "tournamentArguments decoded an unexpected shape")
 
     local compact = values[1]:gsub("%b[]", ""):gsub("%s+", "")
     local inner_end = assert(
@@ -43,10 +43,10 @@ local function match_effort(tournament)
         "tournamentArguments omitted commitment arguments"
     )
     local scalars = compact:sub(inner_end + 2)
-    local _, _, _, _, _, effort = scalars:match(
-        "^(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),"
+    local _, _, _, _, budget = scalars:match(
+        "^(%d+),(%d+),(%d+),(%d+),(%d+),"
     )
-    return assert(tonumber(effort), "could not decode matchEffort")
+    return assert(tonumber(budget), "could not decode responseBudget")
 end
 
 local function advance_to(block_number)
@@ -231,7 +231,7 @@ local function install_sender_hooks(sender, fixture)
         assert(before_one.clock.block_number == before_two.clock.block_number,
             "pre-seal clocks came from different blocks")
 
-        local effort = match_effort(tournament)
+        local effort = response_budget(tournament)
         local target_one_allowance =
             before_two.clock.allowance - DESIRED_DEADLINE_GAP
         assert(target_one_allowance > 0,
@@ -240,7 +240,7 @@ local function install_sender_hooks(sender, fixture)
         local required_charge =
             math.max(before_one.clock.allowance - target_one_allowance, 0)
         local minimum_inclusion = before_one.clock.block_number + 1
-        -- pauseAfterResponseAt charges max(elapsed - matchEffort, 0).
+        -- pauseAfterResponseAt charges max(elapsed - responseBudget, 0).
         -- Choose the seal block from that equation, then let cast send mine
         -- exactly the final block.
         local target_inclusion = math.max(

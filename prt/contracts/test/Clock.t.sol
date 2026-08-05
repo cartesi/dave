@@ -83,7 +83,7 @@ contract ClockHarness {
     }
 
     function replaceFromSource() external {
-        clock.replaceWithPaused(source);
+        clock.replaceWithPaused(source.allowance);
     }
 
     function pausedAllowance() external view returns (Time.Duration) {
@@ -100,7 +100,7 @@ contract ClockHarness {
 
     function deductSourceAndReplace(Time.Duration charge) external {
         Clock.State memory chargedSource = source.deductPaused(charge);
-        clock.replaceWithPaused(chargedSource);
+        clock.replaceWithPaused(chargedSource.allowance);
     }
 }
 
@@ -340,15 +340,6 @@ contract ClockTest is Test {
 
         harness.initialize(_instant(10), _duration(100), _instant(10));
         harness.startAt(_instant(11));
-        vm.expectRevert(stdError.assertionError);
-        harness.replaceFromSource();
-    }
-
-    function testPausedReplacementRejectsRunningSource() public {
-        harness.initialize(_instant(10), _duration(100), _instant(10));
-        harness.initializeSource(_instant(10), _duration(80), _instant(10));
-        harness.startSourceAt(_instant(11));
-
         vm.expectRevert(stdError.assertionError);
         harness.replaceFromSource();
     }

@@ -21,6 +21,25 @@ assert(first_epoch.input_upper_bound == 0) -- there's no input for epoch 0!
 -- Add 3 inputs to epoch 1
 env.sender:tx_add_inputs { env.sample_inputs[1], env.sample_inputs[1], env.sample_inputs[1] }
 
+-- Build the adversarial setup before the node exists: the sybils must join
+-- moments after epoch 1 seals, while the node's own commitment build starts
+-- from zero, so the two adversarial commitments deterministically pair with
+-- each other rather than with the honest claim.
+local inputs = {}
+for _, v in ipairs(env.reader:read_inputs_added(1)) do
+    table.insert(inputs, v.data)
+end
+
+-- Compute honest commitment
+-- 44 is the initial log2_stride currently configured in the smart contracts.
+local initial_state, commitment = Machine.root_rollup_commitment(env.template_machine, 44, inputs)
+
+local honest_commitment_builder = CommitmentBuilder:new(env.template_machine, inputs, commitment)
+local patched_commitment_builder1 = PatchedCommitmentBuilder:new({ { hash = Hash.zero, meta_cycle = 1 << 44 } },
+    honest_commitment_builder)
+local patched_commitment_builder2 = PatchedCommitmentBuilder:new({ { hash = Hash.zero, meta_cycle = 2 << 44 } },
+    honest_commitment_builder)
+
 -- Spawn Dave node
 env.spawn_node()
 
@@ -28,23 +47,8 @@ env.spawn_node()
 local second_epoch = env.roll_epoch()
 assert(second_epoch.epoch_number == 1)
 assert(second_epoch.input_upper_bound == 4) -- there are 4 inputs for epoch 1!
-
-local inputs = {}
-for _, v in ipairs(env.reader:read_inputs_added(second_epoch.epoch_number)) do
-    table.insert(inputs, v.data)
-end
-
--- Compute honest commitment
--- 44 is the initial log2_stride currently configured in the smart contracts.
-local initial_state, commitment = Machine.root_rollup_commitment(env.template_machine, 44, inputs)
 assert(Hash:from_digest_hex(second_epoch.initial_machine_state_hash) == initial_state,
     "chain-sealed initial machine state hash differs from the computed state")
-
-local honest_commitment_builder = CommitmentBuilder:new(env.template_machine, inputs, commitment)
-local patched_commitment_builder1 = PatchedCommitmentBuilder:new({ { hash = Hash.zero, meta_cycle = 1 << 44 } },
-    honest_commitment_builder)
-local patched_commitment_builder2 = PatchedCommitmentBuilder:new({ { hash = Hash.zero, meta_cycle = 2 << 44 } },
-    honest_commitment_builder)
 
 local player1 = start_sybil(patched_commitment_builder1, env.template_machine, second_epoch.tournament,
     inputs)

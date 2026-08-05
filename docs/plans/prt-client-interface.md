@@ -8,6 +8,14 @@ described below are implemented in the current campaign tree. Both exact
 sealed-leaf end-to-end boundaries pass. One non-reproduced Lua cross-view
 contradiction remains a fail-closed validation watch.
 
+Reconciled 2026-08-04 onto the merged contract review (PR #273): the observer
+side enum now lives in `ITournamentObserver` (the Match library dropped it),
+sealed projections read the canonical commitment-order storage without a
+parity argument, observer invariant guards follow the assert terminology, the
+Lua harness reads the renamed `responseBudget` argument shape, and the gas
+witnesses were re-pinned for the observer-bearing bytecode with unchanged
+allocations.
+
 The code remains the source of truth. The companion
 [decision log](prt-client-interface-decisions.md) preserves the reasoning,
 alternatives, scheduling experiments, and reopening conditions behind this

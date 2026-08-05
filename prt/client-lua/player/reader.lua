@@ -1,6 +1,5 @@
 local Hash = require "cryptography.hash"
 local eth_abi = require "utils.eth_abi"
-local helper = require "utils.helper"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -271,7 +270,7 @@ end
 
 function Reader:read_commitment_joined(tournament_address)
     local sig = "CommitmentJoined(bytes32,bytes32,address)"
-    local data_sig = "(bytes32,bytes32)"
+    local data_sig = "(bytes32)"
 
     local logs = self:_read_logs(tournament_address, sig, { false, false, false }, data_sig)
 
@@ -280,7 +279,7 @@ function Reader:read_commitment_joined(tournament_address)
         local log = {}
         log.tournament_address = tournament_address
         log.meta = v.meta
-        log.root = Hash:from_digest_hex(v.decoded_data[1])
+        log.root = Hash:from_digest_hex(v.emited_topics[2])
 
         ret[k] = log
     end
@@ -308,94 +307,176 @@ function Reader:read_tournament_created(tournament_address, match_id_hash)
     return ret
 end
 
+-- Pinned Tournament storage layout: clocks mapping at slot 8, finalStates
+-- at slot 9, matches at slot 11. The Solidity semantic storage-layout hash
+-- (just prt-contracts::compatibility-hashes) gates drift.
+local CLOCKS_SLOT = 8
+local FINAL_STATES_SLOT = 9
+local MATCHES_SLOT = 11
+
+local function slot_hash(index)
+    return Hash:from_digest_hex("0x" .. string.format("%064x", index))
+end
+
+-- keccak256(abi.encode(key, slot)): a mapping value's base storage slot.
+local function mapping_slot(key_hash, slot_index)
+    return key_hash:join(slot_hash(slot_index)):hex_string()
+end
+
+-- Add a small offset to a 32-byte hex slot. Restricted to the low 60 bits
+-- so the carry can never cross the Lua integer boundary.
+local function slot_offset(slot_hex, offset)
+    local prefix, low = slot_hex:sub(1, -16), slot_hex:sub(-15)
+    local value = tonumber(low, 16) + offset
+    assert(value < 16 ^ 15, "storage slot offset overflow")
+    return prefix .. string.format("%015x", value)
+end
+
+function Reader:_get_storage(address, slot_hex)
+    local cmd = string.format(
+        'cast storage --rpc-url "%s" "%s" "%s" 2>&1',
+        self.endpoint, address, slot_hex
+    )
+    local handle = io.popen(cmd)
+    assert(handle)
+    local str = handle:read "*a"
+    handle:close()
+    if str:find "Error" or str:find "error" then
+        error(string.format("Storage read `%s` failed:\n%s", slot_hex, str))
+    end
+    local word = str:match("(0x%x+)")
+    assert(word and #word == 66, "storage read returned no 32-byte word")
+    return word
+end
+
 function Reader:read_commitment(tournament_address, commitment_hash)
-    local sig = "getCommitment(bytes32)((uint64,uint64),bytes32)"
+    -- Clock.State packs allowance in the low 64 bits and startInstant in
+    -- the next 64 of one storage word.
+    local word = self:_get_storage(
+        tournament_address,
+        mapping_slot(commitment_hash, CLOCKS_SLOT)
+    )
+    local hex = word:sub(3)
+    local allowance = tonumber(hex:sub(-16), 16)
+    local last_resume = tonumber(hex:sub(-32, -17), 16)
 
-    local ret = self:_call(tournament_address, sig, { commitment_hash:hex_string() })
-    assert(#ret == 2)
-
-    -- ret[1] = (299, 0) or (419, 1700743849 [1.7e9])
-    local parsed_ret = sanitize_string(ret[1])
-    local allowance, last_resume = parsed_ret:match "%((%d+),(%d+)%)"
-    assert(allowance)
-    assert(last_resume)
-
+    local final_state = self:_get_storage(
+        tournament_address,
+        mapping_slot(commitment_hash, FINAL_STATES_SLOT)
+    )
     local block_number = self:_get_block_number("latest")
 
     local commitment = {
         clock = CommitmentClock:new(allowance, last_resume, block_number),
-        final_state = Hash:from_digest_hex(ret[2]),
+        final_state = Hash:from_digest_hex(final_state),
     }
 
     return commitment
 end
 
 function Reader:read_constants(tournament_address)
-    local sig = "tournamentLevelConstants()(uint64,uint64,uint64,uint64)"
+    local sig = "tournamentDescriptor()"
+        .. "((bytes32,uint256,uint64,uint64,uint64,uint64,uint8))"
 
     local ret = self:_call(tournament_address, sig, {})
-    assert(#ret == 4)
+    assert(#ret == 1)
+
+    local compact = sanitize_string(ret[1])
+    local log2_step, height, level, max_level = compact:match(
+        "^%(0x%x+,%d+,(%d+),(%d+),(%d+),(%d+),%d+%)$"
+    )
+    assert(max_level, "could not decode tournamentDescriptor")
 
     local constants = {
-        max_level = tonumber(ret[1]),
-        level = tonumber(ret[2]),
-        log2_step = tonumber(ret[3]),
-        height = tonumber(ret[4]),
+        max_level = tonumber(max_level),
+        level = tonumber(level),
+        log2_step = tonumber(log2_step),
+        height = tonumber(height),
     }
 
     return constants
 end
 
-function Reader:read_cycle(address, match_id_hash)
-    local sig = "getMatchCycle(bytes32)(uint256)"
-    local ret = self:_call(address, sig, { match_id_hash:hex_string() })
-
-    local parsed_ret = sanitize_string(ret[1])
-    local cycle = parsed_ret:match("(%d+)")
-
-    return cycle
-end
-
 function Reader:read_match(address, match_id_hash)
-    local sig = "getMatch(bytes32)(bytes32,bytes32,bytes32,uint256,uint64,uint64)"
-    local ret = self:_call(address, sig, { match_id_hash:hex_string() })
-    assert(#ret == 6)
+    -- Raw Match.State storage: otherParent, leftNode, rightNode,
+    -- runningLeafPosition, then currentHeight packed with isInit.
+    local base = mapping_slot(match_id_hash, MATCHES_SLOT)
 
-    ret[1] = Hash:from_digest_hex(ret[1])
-    ret[2] = Hash:from_digest_hex(ret[2])
-    ret[3] = Hash:from_digest_hex(ret[3])
-    -- ret[4] = 0 or 268435456 [2.684e8]
-    local parsed_ret = sanitize_string(ret[4])
-    ret[4] = parsed_ret:match("(%d+)")
+    local ret = {}
+    for i = 1, 3 do
+        ret[i] = Hash:from_digest_hex(
+            self:_get_storage(address, slot_offset(base, i - 1))
+        )
+    end
+    local position = self:_get_storage(address, slot_offset(base, 3))
+    ret[4] = string.format("%d", tonumber(position:sub(3), 16))
+    local packed = self:_get_storage(address, slot_offset(base, 4)):sub(3)
+    ret[5] = tonumber(packed:sub(-16), 16)
+    ret[6] = tonumber(packed:sub(-18, -17), 16)
 
     return ret
 end
 
-function Reader:inner_tournament_winner(address)
-    -- innerTournamentWinner() returns (bool, Tree.Node, Tree.Node, Clock.State)
-    -- Clock.State is (uint64, uint64) for (allowance, startInstant)
-    local sig = "innerTournamentWinner()(bool,bytes32,bytes32,(uint64,uint64))"
-    local ret = self:_call(address, sig, {})
-    assert(#ret >= 3, "innerTournamentWinner returned insufficient values")
+-- The ABI-encoded TournamentArguments ride the ERC-1167 clone as immutable
+-- arguments after the 45-byte proxy runtime; `decode_sig` names the shape.
+function Reader:read_clone_args(address, decode_sig)
+    local code_cmd = string.format(
+        'cast code --rpc-url "%s" "%s" 2>&1', self.endpoint, address
+    )
+    local handle = io.popen(code_cmd)
+    assert(handle)
+    local code = handle:read "*a"
+    handle:close()
+    if code:find "Error" or code:find "error" then
+        error(string.format("Code read for `%s` failed:\n%s", address, code))
+    end
+    code = assert(code:match("(0x%x+)"), "clone has no code")
+    assert(#code > 2 + 45 * 2, "clone code carries no immutable arguments")
+    local args = "0x" .. code:sub(3 + 45 * 2)
 
-    local winner = {
-        has_winner = helper.str_to_bool(ret[1]),
-        parent_commitment = Hash:from_digest_hex(ret[2]),
-        commitment = Hash:from_digest_hex(ret[3]),
-        -- ret[4] contains Clock.State struct (allowance, startInstant) if needed
-    }
+    local decode_cmd = string.format(
+        'cast abi-decode "%s" "%s" 2>&1', decode_sig, args
+    )
+    handle = io.popen(decode_cmd)
+    assert(handle)
 
-    return winner
+    local ret = {}
+    local str = handle:read()
+    while str do
+        if str:find "Error" or str:find "error" then
+            local err_str = handle:read "*a"
+            handle:close()
+            error(string.format(
+                "Clone args decode `%s` failed:\n%s%s", decode_sig, str, err_str
+            ))
+        end
+        table.insert(ret, str)
+        str = handle:read()
+    end
+    handle:close()
+
+    return ret
 end
 
 function Reader:root_tournament_winner(address)
-    local sig = "arbitrationResult()(bool,bytes32,bytes32)"
+    local sig =
+        "tournamentStanding()((uint8,bool,bool,bytes32,bytes32,bytes32))"
     local ret = self:_call(address, sig, {})
+    assert(#ret == 1)
+
+    local compact = sanitize_string(ret[1])
+    local standing, candidate, final_state = compact:match(
+        "^%((%d+),%a+,%a+,(0x%x+),(0x%x+),0x%x+%)$"
+    )
+    assert(standing, "could not decode tournamentStanding")
+    standing = tonumber(standing)
+    -- A finished root without a winner is a scenario failure, not a result.
+    assert(standing ~= 3, "root tournament failed with no winner")
 
     local winner = {
-        has_winner = helper.str_to_bool(ret[1]),
-        commitment = Hash:from_digest_hex(ret[2]),
-        final = Hash:from_digest_hex(ret[3]),
+        has_winner = standing == 2,
+        commitment = Hash:from_digest_hex(candidate),
+        final = Hash:from_digest_hex(final_state),
     }
 
     return winner

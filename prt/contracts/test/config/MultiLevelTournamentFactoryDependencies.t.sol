@@ -21,6 +21,10 @@ import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+
 contract FactoryDependencyParametersProvider is ITournamentParametersProvider {
     function tournamentParameters(uint64 level)
         external

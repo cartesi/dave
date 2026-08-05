@@ -8,7 +8,6 @@ import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
 
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
-import {ITournamentObserver} from "prt-contracts/ITournamentObserver.sol";
 import {
     IMultiLevelTournamentFactory
 } from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
@@ -35,8 +34,8 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// - Root tournaments (level == 0, arbitrary levels >= 1):
 ///   * Entry point via `joinTournament`.
 ///   * Never have a parent match or contested final states.
-///   * Cannot be eliminated (`canBeEliminated` reverts with `RequireNonRootTournament`).
-///   * Winner is obtained via `arbitrationResult`.
+///   * Never eliminated (`innerResult` reverts with `RequireNonRootTournament`).
+///   * Result is observed via `tournamentStanding`.
 ///
 /// - Inner, non-root tournaments (level > 0, arbitrary levels >= 2):
 ///   * A parent-linked instance is created by
@@ -45,7 +44,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 ///   * Have exactly two contested final states, stored in `NestedDispute`.
 ///   * Can be eliminated by the parent once the inner winner's allowance
 ///     window expires.
-///   * Winner is obtained via `innerTournamentWinner`.
+///   * The parent consumes the result via `innerResult`.
 ///
 /// - Leaf vs. non-leaf tournaments (by `level` vs `levels`):
 ///   * Leaf tournaments (level == levels - 1):
@@ -54,7 +53,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 ///   * Non-leaf tournaments (level < levels - 1):
 ///       - Use `sealInnerMatchAndCreateInnerTournament` and `winInnerTournament`.
 ///       - Can recursively create new inner tournaments via `instantiateInner`.
-contract Tournament is ITournament, ITournamentObserver {
+contract Tournament is ITournament {
     using Clones for address;
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
@@ -148,16 +147,6 @@ contract Tournament is ITournament, ITournamentObserver {
         return abi.decode(address(this).fetchCloneArgs(), (TournamentArguments));
     }
 
-    /// @inheritdoc ITournament
-    function tournamentArguments()
-        public
-        view
-        override
-        returns (TournamentArguments memory)
-    {
-        return _tournamentArgs();
-    }
-
     /// @notice Check if this tournament is a leaf tournament (level == levels - 1)
     function _isLeafTournament(TournamentArguments memory _args)
         internal
@@ -182,7 +171,7 @@ contract Tournament is ITournament, ITournamentObserver {
         view
         returns (bool, Machine.Hash, Machine.Hash)
     {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
 
         // ROOT CASE: level == 0
         // - Root tournaments are open to all participants, so any final state is valid.
@@ -208,7 +197,7 @@ contract Tournament is ITournament, ITournamentObserver {
     //
 
     function bondValue() public view override returns (uint256) {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
         return
             Bond.bondValue(args.commitmentArgs.height, _isLeafTournament(args));
     }
@@ -231,7 +220,7 @@ contract Tournament is ITournament, ITournamentObserver {
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
 
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
 
         _commitmentRoot.requireFinalState(
             args.commitmentArgs.height, _finalState, _proof
@@ -265,7 +254,7 @@ contract Tournament is ITournament, ITournamentObserver {
             _leftNode, _rightNode, _newLeftNode, _newRightNode
         );
 
-        Time.Duration responseBudget = tournamentArguments().responseBudget;
+        Time.Duration responseBudget = _tournamentArgs().responseBudget;
         MatchClocks.switchTurnAt(
             clocks[_matchId.commitmentOne],
             clocks[_matchId.commitmentTwo],
@@ -389,7 +378,7 @@ contract Tournament is ITournament, ITournamentObserver {
     /// - A failed winner payment preserves the claimer and balance for retry.
     /// - Recipient code runs within the configured payment callback gas limit.
     function tryRecoveringBond() public override withLock returns (bool) {
-        require(isFinished(), TournamentNotFinished());
+        require(_isFinished(), TournamentNotFinished());
 
         (bool hasDangling, Tree.Node winningCommitment) =
             hasDanglingCommitment();
@@ -438,7 +427,7 @@ contract Tournament is ITournament, ITournamentObserver {
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
     ) external override refundable(Gas.SEAL_LEAF_MATCH) tournamentNotFinished {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
         if (!_isLeafTournament(args)) {
             revert RequireLeafTournament();
         }
@@ -471,7 +460,7 @@ contract Tournament is ITournament, ITournamentObserver {
         Tree.Node _rightNode,
         bytes calldata proofs
     ) external override refundable(Gas.WIN_LEAF_MATCH) tournamentNotFinished {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
         if (!_isLeafTournament(args)) {
             revert RequireLeafTournament();
         }
@@ -568,7 +557,7 @@ contract Tournament is ITournament, ITournamentObserver {
         refundable(Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
         if (_isLeafTournament(args)) {
             revert RequireNonLeafTournament();
         }
@@ -620,7 +609,7 @@ contract Tournament is ITournament, ITournamentObserver {
         refundable(Gas.WIN_INNER_TOURNAMENT)
         tournamentNotFinished
     {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
         if (_isLeafTournament(args)) {
             revert RequireNonLeafTournament();
         }
@@ -631,15 +620,17 @@ contract Tournament is ITournament, ITournamentObserver {
         Match.State storage _matchState = matches[_matchIdHash];
         _matchState.requireSealed();
 
+        InnerResultView memory result = _childTournament.innerResult();
         require(
-            !_childTournament.canBeEliminated(),
+            result.disposition != InnerTournamentDisposition.ELIMINABLE,
             ChildTournamentMustBeEliminated()
         );
+        require(
+            result.disposition == InnerTournamentDisposition.WINNER,
+            ChildTournamentNotFinished()
+        );
 
-        (bool finished, Tree.Node _winner,, Clock.State memory _innerClock) =
-            _childTournament.innerTournamentWinner();
-        require(finished, ChildTournamentNotFinished());
-
+        Tree.Node _winner = result.parentCommitment;
         WinnerCommitment _winnerCommitment;
         if (_winner.eq(_matchId.commitmentOne)) {
             _winnerCommitment = WinnerCommitment.ONE;
@@ -659,7 +650,7 @@ contract Tournament is ITournament, ITournamentObserver {
         // A child carries the sealed pair's shared maximum. It may therefore
         // exceed this selected side's snapshot, but never the pair maximum or
         // the sealed pair's post-discount live clock mass.
-        _clock.replaceWithPaused(_innerClock);
+        _clock.replaceWithPaused(result.pausedAllowance);
 
         pairCommitment(
             _commitmentRoot, _clock, _leftNode, _rightNode, Time.currentTime()
@@ -678,7 +669,7 @@ contract Tournament is ITournament, ITournamentObserver {
         refundable(Gas.ELIMINATE_INNER_TOURNAMENT)
         tournamentNotFinished
     {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
         if (_isLeafTournament(args)) {
             revert RequireNonLeafTournament();
         }
@@ -690,7 +681,8 @@ contract Tournament is ITournament, ITournamentObserver {
         _matchState.requireSealed();
 
         require(
-            _childTournament.canBeEliminated(),
+            _childTournament.innerResult().disposition
+                == InnerTournamentDisposition.ELIMINABLE,
             ChildTournamentCannotBeEliminated()
         );
 
@@ -716,7 +708,7 @@ contract Tournament is ITournament, ITournamentObserver {
         uint256 _startCycle,
         uint64 _level
     ) private returns (ITournament) {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
 
         IMultiLevelTournamentFactory tournamentFactory =
             IMultiLevelTournamentFactory(_tournamentArgs().tournamentFactory);
@@ -741,85 +733,64 @@ contract Tournament is ITournament, ITournamentObserver {
         external
         view
         override
-        returns (
-            Match.Phase actualPhase,
-            ITournamentObserver.BisectingMatchView memory value
-        )
+        returns (Match.Phase actualPhase, BisectingMatchView memory value)
     {
         Match.State memory state = matches[_matchIdHash];
         actualPhase = state.phase();
-        if (actualPhase != Match.Phase.BISECTING) {
-            return (actualPhase, value);
+        if (actualPhase == Match.Phase.BISECTING) {
+            Commitment.Arguments memory args = _tournamentArgs().commitmentArgs;
+            value = BisectingMatchView({
+                revealingParent: state.otherParent,
+                waitingLeft: state.leftNode,
+                waitingRight: state.rightNode,
+                segmentStartPosition: state.runningLeafPosition,
+                segmentStartCycle: args.toCycle(state.runningLeafPosition),
+                currentHeight: state.currentHeight,
+                responder: Match.responder(args.height, state.currentHeight)
+            });
         }
-
-        Commitment.Arguments memory args = _tournamentArgs().commitmentArgs;
-        Match.CommitmentSide responder =
-            _responder(args.height, state.currentHeight);
-        value = ITournamentObserver.BisectingMatchView({
-            revealingParent: state.otherParent,
-            waitingLeft: state.leftNode,
-            waitingRight: state.rightNode,
-            segmentStartPosition: state.runningLeafPosition,
-            segmentStartCycle: args.toCycle(state.runningLeafPosition),
-            currentHeight: state.currentHeight,
-            responder: responder
-        });
     }
 
     function readyToSealMatch(Match.IdHash _matchIdHash)
         external
         view
         override
-        returns (
-            Match.Phase actualPhase,
-            ITournamentObserver.ReadyToSealMatchView memory value
-        )
+        returns (Match.Phase actualPhase, ReadyToSealMatchView memory value)
     {
         Match.State memory state = matches[_matchIdHash];
         actualPhase = state.phase();
-        if (actualPhase != Match.Phase.READY_TO_SEAL) {
-            return (actualPhase, value);
+        if (actualPhase == Match.Phase.READY_TO_SEAL) {
+            Commitment.Arguments memory args = _tournamentArgs().commitmentArgs;
+            value = ReadyToSealMatchView({
+                revealingParent: state.otherParent,
+                waitingLeft: state.leftNode,
+                waitingRight: state.rightNode,
+                segmentStartPosition: state.runningLeafPosition,
+                segmentStartCycle: args.toCycle(state.runningLeafPosition),
+                responder: Match.responder(args.height, state.currentHeight)
+            });
         }
-
-        Commitment.Arguments memory args = _tournamentArgs().commitmentArgs;
-        Match.CommitmentSide responder =
-            _responder(args.height, state.currentHeight);
-        value = ITournamentObserver.ReadyToSealMatchView({
-            revealingParent: state.otherParent,
-            waitingLeft: state.leftNode,
-            waitingRight: state.rightNode,
-            segmentStartPosition: state.runningLeafPosition,
-            segmentStartCycle: args.toCycle(state.runningLeafPosition),
-            responder: responder
-        });
     }
 
     function sealedMatch(Match.IdHash _matchIdHash)
         external
         view
         override
-        returns (
-            Match.Phase actualPhase,
-            ITournamentObserver.SealedMatchView memory value
-        )
+        returns (Match.Phase actualPhase, SealedMatchView memory value)
     {
         Match.State memory state = matches[_matchIdHash];
         actualPhase = state.phase();
-        if (actualPhase != Match.Phase.SEALED) {
-            return (actualPhase, value);
+        if (actualPhase == Match.Phase.SEALED) {
+            Commitment.Arguments memory args = _tournamentArgs().commitmentArgs;
+            Match.SealedView memory divergence = state.sealedView();
+            value = SealedMatchView({
+                agreeState: divergence.agreeState,
+                divergencePosition: divergence.divergencePosition,
+                divergenceCycle: args.toCycle(divergence.divergencePosition),
+                finalStateOne: divergence.finalStateOne,
+                finalStateTwo: divergence.finalStateTwo
+            });
         }
-
-        TournamentArguments memory tournamentArgs = _tournamentArgs();
-        Match.SealedView memory divergence =
-            state.sealedView(tournamentArgs.commitmentArgs.height);
-        value = ITournamentObserver.SealedMatchView({
-            agreeState: divergence.agreeState,
-            divergencePosition: divergence.divergencePosition,
-            divergenceCycle: tournamentArgs.commitmentArgs
-                .toCycle(divergence.divergencePosition),
-            finalStateOne: divergence.finalStateOne,
-            finalStateTwo: divergence.finalStateTwo
-        });
     }
 
     function matchTimeoutStatus(Match.Id calldata _matchId)
@@ -828,59 +799,52 @@ contract Tournament is ITournament, ITournamentObserver {
         override
         returns (
             Match.Phase actualPhase,
-            ITournamentObserver.MatchTimeoutOutcome outcome,
+            MatchTimeoutOutcome outcome,
             Time.Duration deferredCharge
         )
     {
         Match.State memory state = matches[_matchId.hashFromId()];
         actualPhase = state.phase();
+        outcome = MatchTimeoutOutcome.NONE;
+        deferredCharge = Time.ZERO_DURATION;
+
         if (actualPhase == Match.Phase.UNINITIALIZED) {
-            return (
-                actualPhase,
-                ITournamentObserver.MatchTimeoutOutcome.NONE,
-                Time.ZERO_DURATION
-            );
+            // Absent or deleted matches observe canonical zeros.
+            return (actualPhase, outcome, deferredCharge);
         }
 
         TournamentArguments memory args = _tournamentArgs();
+        Clock.State memory one = clocks[_matchId.commitmentOne];
+        Clock.State memory two = clocks[_matchId.commitmentTwo];
         if (actualPhase == Match.Phase.SEALED && !_isLeafTournament(args)) {
-            _requireSealedClockShape(_matchId, false);
-            return (
-                actualPhase,
-                ITournamentObserver.MatchTimeoutOutcome.NONE,
-                Time.ZERO_DURATION
-            );
-        }
-
-        if (actualPhase == Match.Phase.SEALED) {
-            _requireSealedClockShape(_matchId, true);
+            // A sealed inner match delegates its obligation to the linked
+            // child; there is no local timeout action.
+            MatchClocks.assertInnerSeal(one, two);
         } else {
-            _requireActiveClockShape(
-                _matchId, state, args.commitmentArgs.height
-            );
-        }
+            if (actualPhase == Match.Phase.SEALED) {
+                MatchClocks.assertLeafRace(one, two);
+            } else {
+                _assertBisectionResponder(
+                    one, two, state.currentHeight, args.commitmentArgs.height
+                );
+            }
 
-        MatchClocks.TimeoutStatus memory status = MatchClocks.classifyTimeoutAt(
-            clocks[_matchId.commitmentOne],
-            clocks[_matchId.commitmentTwo],
-            Time.currentTime()
-        );
-        return (
-            actualPhase,
-            _observerTimeoutOutcome(status.outcome),
-            status.deferredCharge
-        );
+            MatchClocks.TimeoutStatus memory status =
+                MatchClocks.classifyTimeoutAt(one, two, Time.currentTime());
+            outcome = _observerTimeoutOutcome(status.outcome);
+            deferredCharge = status.deferredCharge;
+        }
     }
 
     function tournamentDescriptor()
         external
         view
         override
-        returns (ITournamentObserver.TournamentDescriptor memory descriptor)
+        returns (TournamentDescriptor memory descriptor)
     {
         TournamentArguments memory args = _tournamentArgs();
         Commitment.Arguments memory commitmentArgs = args.commitmentArgs;
-        descriptor = ITournamentObserver.TournamentDescriptor({
+        descriptor = TournamentDescriptor({
             initialHash: commitmentArgs.initialHash,
             baseCycle: commitmentArgs.startCycle,
             log2step: commitmentArgs.log2step,
@@ -888,8 +852,8 @@ contract Tournament is ITournament, ITournamentObserver {
             level: args.level,
             levels: args.levels,
             kind: _isLeafTournament(args)
-                ? ITournamentObserver.TournamentKind.LEAF
-                : ITournamentObserver.TournamentKind.NON_LEAF
+                ? TournamentKind.LEAF
+                : TournamentKind.NON_LEAF
         });
     }
 
@@ -897,180 +861,65 @@ contract Tournament is ITournament, ITournamentObserver {
         external
         view
         override
-        returns (ITournamentObserver.TournamentStandingView memory standing)
+        returns (TournamentStandingView memory standing)
     {
         TournamentArguments memory args = _tournamentArgs();
         Tree.Node candidate = danglingCommitment;
         bool hasCandidate = !candidate.eq(Tree.ZERO_NODE);
-        Time.Instant current = Time.currentTime();
-        Time.Instant closedAt = args.startInstant.add(args.allowance);
-        standing.acceptsJoins = closedAt.gt(current);
-
-        if (matchCount != 0) {
-            standing.standing =
-            ITournamentObserver.TournamentStanding.MATCHES_ACTIVE;
-            standing.hasCandidate = hasCandidate;
-            standing.candidate = candidate;
-            return standing;
-        }
-
-        Time.Instant resultAt = closedAt.max(lastMatchDeleted);
-        if (resultAt.gt(current)) {
-            standing.standing =
-            ITournamentObserver.TournamentStanding.AWAITING_CLOSURE;
-            standing.hasCandidate = hasCandidate;
-            standing.candidate = candidate;
-            return standing;
-        }
-
-        if (_isRootTournament(args)) {
-            if (!hasCandidate) {
-                standing.standing =
-                ITournamentObserver.TournamentStanding.ROOT_FAILED;
-                return standing;
-            }
-
-            standing.standing =
-            ITournamentObserver.TournamentStanding.ROOT_WINNER;
-            standing.hasCandidate = true;
-            standing.candidate = candidate;
-            standing.finalState = finalStates[candidate];
-            return standing;
-        }
-
-        if (!hasCandidate) {
-            standing.standing =
-            ITournamentObserver.TournamentStanding.INNER_ELIMINABLE_NO_WINNER;
-            return standing;
-        }
-
-        Clock.State memory winnerClock = clocks[candidate];
-        winnerClock.requirePaused();
-        Time.Instant eliminationAt = resultAt.add(winnerClock.pausedAllowance());
-        standing.hasCandidate = true;
+        standing.acceptsJoins = !_isClosed();
+        standing.hasCandidate = hasCandidate;
         standing.candidate = candidate;
-        if (eliminationAt.gt(current)) {
+
+        (bool finished, Time.Instant resultAt) = _timeFinished();
+        if (matchCount != 0) {
+            standing.standing = TournamentStanding.MATCHES_ACTIVE;
+        } else if (!finished) {
+            standing.standing = TournamentStanding.AWAITING_CLOSURE;
+        } else if (_isRootTournament(args)) {
+            if (hasCandidate) {
+                standing.standing = TournamentStanding.ROOT_WINNER;
+                standing.finalState = finalStates[candidate];
+            } else {
+                standing.standing = TournamentStanding.ROOT_FAILED;
+            }
+        } else if (!hasCandidate) {
+            standing.standing = TournamentStanding.INNER_ELIMINABLE_NO_WINNER;
+        } else if (_winnerExpired(resultAt, clocks[candidate])) {
             standing.standing =
-            ITournamentObserver.TournamentStanding.INNER_WINNER;
+            TournamentStanding.INNER_ELIMINABLE_WINNER_EXPIRED;
+        } else {
+            standing.standing = TournamentStanding.INNER_WINNER;
             standing.parentCommitment =
                 _parentCommitment(args.nestedDispute, finalStates[candidate]);
-        } else {
-            standing.standing =
-            ITournamentObserver.TournamentStanding
-                .INNER_ELIMINABLE_WINNER_EXPIRED;
         }
     }
 
-    function canWinMatchByTimeout(Match.Id calldata _matchId)
-        external
-        view
-        override
-        returns (bool)
-    {
-        if (!matches[_matchId.hashFromId()].exists()) {
-            return false;
-        }
-
-        Clock.State memory _clockOne = clocks[_matchId.commitmentOne];
-        Clock.State memory _clockTwo = clocks[_matchId.commitmentTwo];
-        MatchClocks.TimeoutStatus memory timeout = MatchClocks.classifyTimeoutAt(
-            _clockOne, _clockTwo, Time.currentTime()
-        );
-
-        return timeout.outcome == MatchClocks.TimeoutOutcome.ONE_WINS
-            || timeout.outcome == MatchClocks.TimeoutOutcome.TWO_WINS;
-    }
-
-    function getCommitment(Tree.Node _commitmentRoot)
-        public
-        view
-        override
-        returns (Clock.State memory, Machine.Hash)
-    {
-        return (clocks[_commitmentRoot], finalStates[_commitmentRoot]);
-    }
-
-    function getMatch(Match.IdHash _matchIdHash)
-        public
-        view
-        override
-        returns (Match.State memory)
-    {
-        return matches[_matchIdHash];
-    }
-
-    function getMatchCycle(Match.IdHash _matchIdHash)
-        external
-        view
-        override
-        returns (uint256)
-    {
-        Match.State storage _matchState = matches[_matchIdHash];
-        _matchState.requireExists();
-        Commitment.Arguments memory args = tournamentArguments().commitmentArgs;
-
-        return args.toCycle(_matchState.runningLeafPosition);
-    }
-
-    /// @notice Return core tournament parameters derived from `TournamentArguments`.
-    /// @dev
-    /// - `maxLevel` (levels): total number of levels in the hierarchy.
-    /// - `level`: this tournament's level.
-    /// - `log2step` / `height`: leaf spacing and tree height for commitments.
-    function tournamentLevelConstants()
-        external
-        view
-        override
-        returns (
-            uint64 _maxLevel,
-            uint64 _level,
-            uint64 _log2step,
-            uint64 _height
-        )
-    {
-        TournamentArguments memory args;
-        args = tournamentArguments();
-        _maxLevel = args.levels;
-        _level = args.level;
-        _log2step = args.commitmentArgs.log2step;
-        _height = args.commitmentArgs.height;
-    }
-
     //
-    // Time view methods
+    // Time predicates
     //
 
-    /// @notice Returns true iff the tournament's global allowance has elapsed.
-    /// @dev
-    /// - ROOT and NON-ROOT:
-    ///     * Same behavior: closed if `now >= startInstant + allowance`.
-    function isClosed() public view override returns (bool) {
-        TournamentArguments memory args = tournamentArguments();
+    /// @notice True iff the tournament's global allowance has elapsed:
+    /// `now >= startInstant + allowance`, for root and non-root alike.
+    function _isClosed() internal view returns (bool) {
+        TournamentArguments memory args = _tournamentArgs();
         return args.startInstant.timeoutElapsed(args.allowance);
     }
 
-    /// @notice Returns true iff the tournament is closed and has no active matches.
-    /// @dev
-    /// - ROOT:
-    ///     * Finished when there are no more matches and the global timeout elapsed.
-    /// - NON-ROOT:
-    ///     * Same condition; used both for elimination and inner-winner computation.
-    function isFinished() public view override returns (bool) {
-        return isClosed() && matchCount == 0;
+    /// @notice True iff the tournament is closed and has no active matches.
+    function _isFinished() internal view returns (bool) {
+        return _isClosed() && matchCount == 0;
     }
 
-    /// @notice Returns the time at which this tournament became "safe to decide".
-    /// @dev
-    /// - ROOT:
-    ///     * Observable, but not consumed by root settlement.
-    /// - NON-ROOT:
-    ///     * Used by `canBeEliminated` and `innerTournamentWinner`.
-    function timeFinished() public view override returns (bool, Time.Instant) {
-        if (!isFinished()) {
+    /// @notice The instant this tournament became "safe to decide": the later
+    /// of the closure deadline and the last match deletion. This is the one
+    /// authority behind `tournamentStanding`, `canBeEliminated`, and
+    /// `innerTournamentWinner`.
+    function _timeFinished() internal view returns (bool, Time.Instant) {
+        if (!_isFinished()) {
             return (false, Time.ZERO_INSTANT);
         }
 
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
 
         Time.Instant tournamentClosed = args.startInstant.add(args.allowance);
         Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchDeleted);
@@ -1078,26 +927,14 @@ contract Tournament is ITournament, ITournamentObserver {
         return (true, winnerCouldWin);
     }
 
-    /// @notice Get this tournament's dangling winner and final state.
-    /// @dev
-    /// - Intended for root consumers, but no root-only guard is enforced.
-    /// - Parents use `innerTournamentWinner` for non-root tournaments.
-    function arbitrationResult()
-        external
-        view
-        override
-        returns (bool, Tree.Node, Machine.Hash)
-    {
-        if (!isFinished()) {
-            return (false, Tree.ZERO_NODE, Machine.ZERO_STATE);
-        }
-
-        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
-            hasDanglingCommitment();
-        require(_hasDanglingCommitment, TournamentFailedNoWinner());
-
-        Machine.Hash _finalState = finalStates[_danglingCommitment];
-        return (true, _danglingCommitment, _finalState);
+    /// @notice Whether an inner winner's carryover window has expired at now.
+    /// @dev Shared by `tournamentStanding` and `canBeEliminated` so the
+    /// elimination boundary has exactly one arithmetic authority.
+    function _winnerExpired(
+        Time.Instant resultAt,
+        Clock.State memory winnerClock
+    ) private view returns (bool) {
+        return resultAt.timeoutElapsed(winnerClock.pausedAllowance());
     }
 
     //
@@ -1124,69 +961,39 @@ contract Tournament is ITournament, ITournamentObserver {
         }
     }
 
-    function _responder(uint64 totalHeight, uint64 currentHeight)
-        private
-        pure
-        returns (Match.CommitmentSide)
-    {
-        assert(currentHeight > 0 && currentHeight <= totalHeight);
-        uint64 advances = totalHeight - currentHeight;
-        return
-            advances % 2 == 0
-                ? Match.CommitmentSide.ONE
-                : Match.CommitmentSide.TWO;
-    }
-
-    function _requireActiveClockShape(
-        Match.Id calldata matchId,
-        Match.State memory state,
+    /// @dev The running clock must belong to the responder side derived from
+    /// the match's turn parity; a disagreement is cross-view corruption.
+    function _assertBisectionResponder(
+        Clock.State memory one,
+        Clock.State memory two,
+        uint64 currentHeight,
         uint64 totalHeight
-    ) private view {
-        Clock.State memory one = clocks[matchId.commitmentOne];
-        Clock.State memory two = clocks[matchId.commitmentTwo];
-        one.requireInitialized();
-        two.requireInitialized();
-        assert(one.isRunning() != two.isRunning());
+    ) private pure {
+        MatchClocks.assertBisection(one, two);
 
-        Match.CommitmentSide clockResponder = one.isRunning()
-            ? Match.CommitmentSide.ONE
-            : Match.CommitmentSide.TWO;
-        assert(clockResponder == _responder(totalHeight, state.currentHeight));
-    }
-
-    function _requireSealedClockShape(Match.Id calldata matchId, bool leaf)
-        private
-        view
-    {
-        Clock.State memory one = clocks[matchId.commitmentOne];
-        Clock.State memory two = clocks[matchId.commitmentTwo];
-        one.requireInitialized();
-        two.requireInitialized();
-        if (leaf) {
-            assert(one.isRunning() && two.isRunning());
-            assert(
-                Time.Instant.unwrap(one.startInstant)
-                    == Time.Instant.unwrap(two.startInstant)
-            );
+        CommitmentSide clockResponder;
+        if (one.isRunning()) {
+            clockResponder = CommitmentSide.ONE;
         } else {
-            assert(!one.isRunning() && !two.isRunning());
+            clockResponder = CommitmentSide.TWO;
         }
+        assert(clockResponder == Match.responder(totalHeight, currentHeight));
     }
 
     function _observerTimeoutOutcome(MatchClocks.TimeoutOutcome outcome)
         private
         pure
-        returns (ITournamentObserver.MatchTimeoutOutcome)
+        returns (MatchTimeoutOutcome)
     {
         if (outcome == MatchClocks.TimeoutOutcome.NONE) {
-            return ITournamentObserver.MatchTimeoutOutcome.NONE;
+            return MatchTimeoutOutcome.NONE;
         } else if (outcome == MatchClocks.TimeoutOutcome.ONE_WINS) {
-            return ITournamentObserver.MatchTimeoutOutcome.ONE_WINS;
+            return MatchTimeoutOutcome.ONE_WINS;
         } else if (outcome == MatchClocks.TimeoutOutcome.TWO_WINS) {
-            return ITournamentObserver.MatchTimeoutOutcome.TWO_WINS;
+            return MatchTimeoutOutcome.TWO_WINS;
         } else {
             assert(outcome == MatchClocks.TimeoutOutcome.ELIMINATE_BOTH);
-            return ITournamentObserver.MatchTimeoutOutcome.ELIMINATE_BOTH;
+            return MatchTimeoutOutcome.ELIMINATE_BOTH;
         }
     }
 
@@ -1219,7 +1026,7 @@ contract Tournament is ITournament, ITournamentObserver {
             hasDanglingCommitment();
 
         if (_hasDanglingCommitment) {
-            TournamentArguments memory args = tournamentArguments();
+            TournamentArguments memory args = _tournamentArgs();
             (Match.IdHash _matchId, Match.State memory _matchState) = Match.create(
                 args.commitmentArgs.height,
                 _danglingCommitment,
@@ -1343,82 +1150,45 @@ contract Tournament is ITournament, ITournamentObserver {
     }
 
     /// @inheritdoc ITournament
-    /// @dev
-    /// - ROOT:
-    ///     * Reverts with `RequireNonRootTournament` - root tournaments are never eliminated.
-    /// - NON-ROOT:
-    ///     * Returns true iff:
-    ///         1. Tournament finished and has no winner, OR
-    ///         2. Tournament finished and enough time elapsed after the winning
-    ///            commitment could have won (winner's allowance window).
-    function canBeEliminated() public view override returns (bool) {
-        TournamentArguments memory args = tournamentArguments();
-
-        if (_isRootTournament(args)) {
-            revert RequireNonRootTournament();
-        }
-
-        (bool finished, Time.Instant winnerCouldHaveWon) = timeFinished();
-
-        if (!finished) {
-            return false;
-        }
-
-        (bool _hasDanglingCommitment, Tree.Node _danglingCommitment) =
-            hasDanglingCommitment();
-
-        if (!_hasDanglingCommitment) {
-            return true;
-        }
-
-        (Clock.State memory clock,) = getCommitment(_danglingCommitment);
-        return winnerCouldHaveWon.timeoutElapsed(clock.allowance);
-    }
-
-    /// @inheritdoc ITournament
-    /// @dev
-    /// - ROOT:
-    ///     * Reverts with `RequireNonRootTournament` - use `arbitrationResult` instead.
-    /// - NON-ROOT:
-    ///     * Returns:
-    ///         - contested parent commitment (from the parent match),
-    ///         - winning inner commitment (dangling commitment),
-    ///         - adjusted clock of the winner.
-    function innerTournamentWinner()
+    /// @dev Composes the same `_timeFinished` and `_winnerExpired` authorities
+    /// as `tournamentStanding`, so parent reads and client observations cannot
+    /// disagree on the elimination boundary.
+    function innerResult()
         external
         view
         override
-        returns (bool, Tree.Node, Tree.Node, Clock.State memory)
+        returns (InnerResultView memory value)
     {
-        TournamentArguments memory args = tournamentArguments();
+        TournamentArguments memory args = _tournamentArgs();
 
         if (_isRootTournament(args)) {
             revert RequireNonRootTournament();
         }
 
-        if (!isFinished() || canBeEliminated()) {
-            Clock.State memory zeroClock;
-            return (false, Tree.ZERO_NODE, Tree.ZERO_NODE, zeroClock);
+        (bool finished, Time.Instant resultAt) = _timeFinished();
+        if (!finished) {
+            // UNSETTLED with canonical zeros.
+            return value;
         }
 
-        (bool _hasDanglingCommitment, Tree.Node _winner) =
+        (bool _hasDanglingCommitment, Tree.Node candidate) =
             hasDanglingCommitment();
-        assert(_hasDanglingCommitment);
-
-        (bool finished, Time.Instant finishedTime) = timeFinished();
-        assert(finished);
-
-        Clock.State memory _clock = clocks[_winner];
-        _clock = _clock.deductPaused(Time.currentTime().timeSpan(finishedTime));
-
-        NestedDispute memory nestedDispute = args.nestedDispute;
-        Machine.Hash _finalState = finalStates[_winner];
-
-        if (_finalState.eq(nestedDispute.contestedFinalStateOne)) {
-            return (true, nestedDispute.contestedCommitmentOne, _winner, _clock);
+        if (
+            !_hasDanglingCommitment
+                || _winnerExpired(resultAt, clocks[candidate])
+        ) {
+            value.disposition = InnerTournamentDisposition.ELIMINABLE;
         } else {
-            assert(_finalState.eq(nestedDispute.contestedFinalStateTwo));
-            return (true, nestedDispute.contestedCommitmentTwo, _winner, _clock);
+            value.disposition = InnerTournamentDisposition.WINNER;
+            value.parentCommitment =
+                _parentCommitment(args.nestedDispute, finalStates[candidate]);
+            // The winner's paused clock, deducted by the interval since the
+            // child finished. `deductPaused` keeps the carryover positive.
+            value.pausedAllowance =
+            clocks[candidate].deductPaused(
+                Time.currentTime().timeSpan(resultAt)
+            )
+            .allowance;
         }
     }
 
@@ -1453,11 +1223,11 @@ contract Tournament is ITournament, ITournamentObserver {
     }
 
     function _ensureTournamentIsNotFinished() private view {
-        require(!isFinished(), TournamentIsFinished());
+        require(!_isFinished(), TournamentIsFinished());
     }
 
     function _ensureTournamentIsOpen() private view {
-        require(!isClosed(), TournamentIsClosed());
+        require(!_isClosed(), TournamentIsClosed());
     }
 
     function _emitCommitmentJoined(

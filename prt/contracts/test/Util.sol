@@ -40,6 +40,7 @@ import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
 import {Tree} from "src/types/Tree.sol";
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
 
 import {
     HistoricalThreeLevelGeometry,
@@ -88,6 +89,7 @@ contract Util is Test {
     using Machine for Machine.Hash;
     using Match for Match.Id;
     using Match for Match.State;
+    using TournamentInspector for ITournament;
 
     Tree.Node constant ONE_NODE = Tree.Node.wrap(bytes32(uint256(1)));
     Tree.Node constant TWO_NODE = Tree.Node.wrap(bytes32(uint256(2)));

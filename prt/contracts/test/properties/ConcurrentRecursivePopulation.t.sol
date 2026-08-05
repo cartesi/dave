@@ -22,6 +22,11 @@ import {
     SmallTwoLevelTournamentFactory
 } from "../fixtures/SmallTwoLevelTournament.sol";
 
+import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
+
+using TournamentInspector for ITournament;
+using TournamentInspector for InspectableTournament;
+
 /// @dev A production-path population trace with two concurrently active child
 /// tournaments. The synthetic commitments are timeout witnesses, not execution
 /// traces; state-transition correctness is outside this test's scope.

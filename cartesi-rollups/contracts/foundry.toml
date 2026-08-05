@@ -14,6 +14,7 @@ remappings = [
     "cartesi-rollups-contracts-3.0.0/=dependencies/cartesi-rollups-contracts-3.0.0-alpha.6/",
     "forge-std-1.9.6/=dependencies/forge-std-1.9.6/",
     "prt-contracts/=../../prt/contracts/src/",
+    "prt-contracts-test/=../../prt/contracts/test/",
     "step/=../../machine/step/",
 ]
 
