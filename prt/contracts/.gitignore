@@ -27,3 +27,8 @@ lcov.info.pruned
 # Forge deployment script
 /deployments
 /state.json
+
+# The FFI stf gate scribbles access-log sizes here; keep it out of
+# both the index and the devnet fingerprint (hash_contract_files
+# respects this file via git ls-files --exclude-standard).
+/logs

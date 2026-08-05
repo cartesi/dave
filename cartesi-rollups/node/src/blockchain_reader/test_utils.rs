@@ -32,12 +32,29 @@ pub fn program_path() -> PathBuf {
     PathBuf::from(PROGRAM).canonicalize().unwrap()
 }
 
+/// Resolve a devnet bundle artifact, checking the bundle-completeness
+/// marker first. The bundle is rebuilt in place by
+/// `just rollups-contracts::build-devnet`, which drops the fingerprint
+/// before touching artifacts and rewrites it last, so a missing marker
+/// means missing, torn, or mid-rebuild - name the fix instead of dying
+/// on a bare ENOENT (which is how a concurrent rebuild once presented).
+fn devnet_bundle(relative: &str) -> PathBuf {
+    const FIX: &str = "devnet bundle missing, torn, or mid-rebuild; \
+         run: just rollups-contracts::build-devnet \
+         (just doctor diagnoses the whole checkout)";
+    let marker = "../../cartesi-rollups/contracts/state.fingerprint";
+    assert!(PathBuf::from(marker).exists(), "{FIX}");
+    PathBuf::from(relative)
+        .canonicalize()
+        .unwrap_or_else(|error| panic!("{relative}: {error}; {FIX}"))
+}
+
 pub fn anvil_state_path() -> PathBuf {
-    PathBuf::from(ANVIL_STATE).canonicalize().unwrap()
+    devnet_bundle(ANVIL_STATE)
 }
 
 pub fn deployments_path() -> PathBuf {
-    PathBuf::from(DEPLOYMENTS).canonicalize().unwrap()
+    devnet_bundle(DEPLOYMENTS)
 }
 
 pub fn deployment_address(contract_id: &str) -> Address {
