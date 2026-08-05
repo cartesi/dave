@@ -84,13 +84,19 @@ impl BondRecovery {
         chain: &Chain,
         trusted_root: Option<Address>,
     ) -> Result<Vec<LaneRequest>> {
-        let latest = chain.latest_block_number().await?;
-        if latest >= self.scan_from {
+        // The cursor is monotone and never rewound, so it must only
+        // cross blocks that cannot reorg (the codebase's finalized
+        // convention, as in blockchain_reader): a join scanned off a
+        // reorged tip would otherwise be dropped until the next boot
+        // rescan. Recovery has no urgency; discovery lagging finality
+        // costs nothing.
+        let finalized = chain.finalized_block_number().await?;
+        if finalized >= self.scan_from {
             let joins = chain
                 .decoded_logs_by_topic2::<tournament::Tournament::CommitmentJoined>(
                     self.signer_address.into_word(),
                     self.scan_from,
-                    latest,
+                    finalized,
                 )
                 .await?;
             for (_, log) in joins {
@@ -99,7 +105,7 @@ impl BondRecovery {
                     self.unverified.insert(tournament);
                 }
             }
-            self.scan_from = latest + 1;
+            self.scan_from = finalized + 1;
         }
 
         self.verify_candidates(chain, trusted_root).await?;
@@ -150,8 +156,13 @@ impl BondRecovery {
         }
         let prelude = self.clone_prelude.as_ref().expect("initialized above");
 
-        for address in std::mem::take(&mut self.unverified) {
+        // Remove entries one by one as each verdict lands: a transient
+        // provider error mid-loop must leave the unprocessed remainder
+        // queued for the next tick, not silently discarded.
+        let pending: Vec<Address> = self.unverified.iter().copied().collect();
+        for address in pending {
             let code = chain.provider().get_code_at(address).await?;
+            self.unverified.remove(&address);
             if genuine_clone(prelude, &code) {
                 trace!("bond candidate verified: tournament {address}");
                 self.candidates.insert(address);
@@ -238,6 +249,34 @@ mod tests {
             CandidateAction::Keep,
             "undefined dispositions stay inert, never fatal"
         );
+    }
+
+    /// The Round-1 finding-4 class: a hand-maintained numeric mirror
+    /// of a Solidity enum needs a drift guard against its source.
+    #[test]
+    fn bond_disposition_mirror_matches_the_interface() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../prt/contracts/src/ITournament.sol"
+        ))
+        .expect("ITournament.sol must be readable from the workspace");
+        let body = source
+            .split("enum BondDisposition {")
+            .nth(1)
+            .expect("ITournament.sol declares BondDisposition")
+            .split('}')
+            .next()
+            .expect("enum body closes");
+        let variants: Vec<&str> = body
+            .split(',')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .collect();
+        assert_eq!(variants[TOURNAMENT_RUNNING as usize], "TOURNAMENT_RUNNING");
+        assert_eq!(variants[NO_WINNER as usize], "NO_WINNER");
+        assert_eq!(variants[RECOVERABLE as usize], "RECOVERABLE");
+        assert_eq!(variants[RECOVERED as usize], "RECOVERED");
+        assert_eq!(variants.len(), 4, "new arms need mirroring here");
     }
 
     #[test]

@@ -15,7 +15,7 @@ use alloy::{
 use alloy_chains::NamedChain;
 use alloy_transport::{TransportError, layers::RetryBackoffLayer};
 use anyhow::{Context, Result, ensure};
-use log::{debug, trace, warn};
+use log::{debug, error, trace};
 use std::{fs, str::FromStr, time::Duration};
 
 pub(crate) async fn create_signer(
@@ -255,7 +255,10 @@ impl TransactionLane {
                         SendVerdict::Stale
                     }
                     SubmissionErrorKind::Other => {
-                        warn!(
+                        // Loud on purpose: a persistent rejection here
+                        // (an underfunded signer above all) stalls the
+                        // whole nonce tail while dispute clocks run.
+                        error!(
                             "failed to submit {label} transaction {tx_hash} \
                              at nonce {nonce}: {error}"
                         );
