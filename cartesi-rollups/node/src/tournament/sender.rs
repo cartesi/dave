@@ -1,5 +1,7 @@
-//! This module defines the struct [EthArenaSender] that is responsible for the sending transactions
-//! to tournaments
+//! Arena request builders: each dispute verb yields a labeled, fully
+//! specified transaction request for the transaction lane. Building is
+//! pure; submission belongs to the epoch manager's wave
+//! (docs/plans/self-healing-batch-submission.md).
 
 use crate::hero::error::Result;
 use alloy::{
@@ -9,9 +11,8 @@ use alloy::{
 };
 use async_trait::async_trait;
 use log::trace;
-use std::sync::Arc;
 
-use crate::provider::TransactionLane;
+use crate::provider::LaneRequest;
 use crate::tournament::MatchID;
 
 /// A transition witness in chain encoding (Ruler::prove_transition's
@@ -35,40 +36,29 @@ pub(crate) fn gas_limit() -> u64 {
 #[derive(Clone, Debug)]
 pub struct EthArenaSender {
     read_provider: DynProvider,
-    transaction_lane: Arc<TransactionLane>,
 }
 
 impl EthArenaSender {
-    pub fn new(read_provider: DynProvider, transaction_lane: Arc<TransactionLane>) -> Self {
-        Self {
-            read_provider,
-            transaction_lane,
-        }
-    }
-
-    async fn submit_call(
-        &self,
-        label: &'static str,
-        request: alloy::rpc::types::TransactionRequest,
-    ) -> Result<()> {
-        self.transaction_lane.submit(label, request).await?;
-        Ok(())
+    pub fn new(read_provider: DynProvider) -> Self {
+        Self { read_provider }
     }
 }
 
-/// The [ArenaSender] trait defines the interface for the creation and management of tournaments.
+/// The [ArenaSender] trait names each tournament mutation and yields
+/// its lane-ready request. `bond_value` is the one read: the join
+/// deposit, pinned at the block of the intent being fulfilled.
 #[async_trait]
 pub trait ArenaSender: Send + Sync {
-    async fn join_tournament(
+    fn join_tournament(
         &self,
         tournament: Address,
         proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
         bond_value: U256,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
-    async fn advance_match(
+    fn advance_match(
         &self,
         tournament: Address,
         match_id: MatchID,
@@ -76,58 +66,58 @@ pub trait ArenaSender: Send + Sync {
         right_node: Digest,
         new_left_node: Digest,
         new_right_node: Digest,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
-    async fn seal_inner_match(
+    fn seal_inner_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
-    async fn win_inner_match(
+    fn win_inner_match(
         &self,
         tournament: Address,
         child_tournament: Address,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
-    async fn win_timeout_match(
+    fn win_timeout_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
-    async fn seal_leaf_match(
+    fn seal_leaf_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
-    async fn win_leaf_match(
+    fn win_leaf_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_node: Digest,
         right_node: Digest,
         proofs: MachineProof,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
-    async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()>;
+    fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> LaneRequest;
 
-    async fn eliminate_inner_tournament(
+    fn eliminate_inner_tournament(
         &self,
         tournament: Address,
         inner_tournament: Address,
-    ) -> Result<()>;
+    ) -> LaneRequest;
 
     /// Read the immutable join bond at the same accepted block as the intent
     /// being fulfilled.
@@ -136,14 +126,14 @@ pub trait ArenaSender: Send + Sync {
 
 #[async_trait]
 impl ArenaSender for EthArenaSender {
-    async fn join_tournament(
+    fn join_tournament(
         &self,
         tournament: Address,
         proof: &MerkleProof,
         left_child: Digest,
         right_child: Digest,
         bond_value: U256,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let siblings = proof
             .siblings
@@ -169,10 +159,10 @@ impl ArenaSender for EthArenaSender {
             .value(bond_value)
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("joinTournament", request).await
+        ("joinTournament".to_string(), request)
     }
 
-    async fn advance_match(
+    fn advance_match(
         &self,
         tournament: Address,
         match_id: MatchID,
@@ -180,7 +170,7 @@ impl ArenaSender for EthArenaSender {
         right_node: Digest,
         new_left_node: Digest,
         new_right_node: Digest,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .advanceMatch(
@@ -192,17 +182,17 @@ impl ArenaSender for EthArenaSender {
             )
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("advanceMatch", request).await
+        ("advanceMatch".to_string(), request)
     }
 
-    async fn seal_inner_match(
+    fn seal_inner_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let initial_hash_siblings = initial_hash_proof
             .siblings
@@ -219,48 +209,50 @@ impl ArenaSender for EthArenaSender {
             )
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("sealInnerMatchAndCreateInnerTournament", request)
-            .await
+        (
+            "sealInnerMatchAndCreateInnerTournament".to_string(),
+            request,
+        )
     }
 
-    async fn win_inner_match(
+    fn win_inner_match(
         &self,
         tournament: Address,
         child_tournament: Address,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .winInnerTournament(child_tournament, left_node.into(), right_node.into())
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("winInnerTournament", request).await
+        ("winInnerTournament".to_string(), request)
     }
 
-    async fn win_timeout_match(
+    fn win_timeout_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_node: Digest,
         right_node: Digest,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .winMatchByTimeout(match_id.into(), left_node.into(), right_node.into())
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("winMatchByTimeout", request).await
+        ("winMatchByTimeout".to_string(), request)
     }
 
-    async fn seal_leaf_match(
+    fn seal_leaf_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_leaf: Digest,
         right_leaf: Digest,
         initial_hash_proof: &MerkleProof,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let initial_hash_siblings = initial_hash_proof
             .siblings
@@ -277,17 +269,17 @@ impl ArenaSender for EthArenaSender {
             )
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("sealLeafMatch", request).await
+        ("sealLeafMatch".to_string(), request)
     }
 
-    async fn win_leaf_match(
+    fn win_leaf_match(
         &self,
         tournament: Address,
         match_id: MatchID,
         left_node: Digest,
         right_node: Digest,
         proofs: MachineProof,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .winLeafMatch(
@@ -298,29 +290,29 @@ impl ArenaSender for EthArenaSender {
             )
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("winLeafMatch", request).await
+        ("winLeafMatch".to_string(), request)
     }
 
-    async fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> Result<()> {
+    fn eliminate_match(&self, tournament: Address, match_id: MatchID) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .eliminateMatchByTimeout(match_id.into())
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("eliminateMatchByTimeout", request).await
+        ("eliminateMatchByTimeout".to_string(), request)
     }
 
-    async fn eliminate_inner_tournament(
+    fn eliminate_inner_tournament(
         &self,
         tournament: Address,
         inner_tournament: Address,
-    ) -> Result<()> {
+    ) -> LaneRequest {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .eliminateInnerTournament(inner_tournament)
             .gas(gas_limit())
             .into_transaction_request();
-        self.submit_call("eliminateInnerTournament", request).await
+        ("eliminateInnerTournament".to_string(), request)
     }
 
     async fn bond_value(&self, tournament: Address, at: BlockId) -> Result<U256> {

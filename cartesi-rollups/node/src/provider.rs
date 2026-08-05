@@ -135,6 +135,10 @@ pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> DynProv
     provider.erased()
 }
 
+/// A labeled, fully specified request bound for the lane; the label
+/// names the on-chain verb for logs and reports.
+pub type LaneRequest = (String, TransactionRequest);
+
 /// The node signer's stateless transaction lane.
 ///
 /// Nonces come from the account's mined count at the `latest` block,
@@ -203,10 +207,7 @@ impl TransactionLane {
     /// does. Pool verdicts are per transaction and never abort the
     /// tail; the outer error covers only failing to observe the chain
     /// or to sign.
-    pub async fn submit_wave(
-        &self,
-        wave: Vec<(String, TransactionRequest)>,
-    ) -> Result<Vec<SendReport>> {
+    pub async fn submit_wave(&self, wave: Vec<LaneRequest>) -> Result<Vec<SendReport>> {
         for (label, request) in &wave {
             self.validate(label, request)?;
         }
