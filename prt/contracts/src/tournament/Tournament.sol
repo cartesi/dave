@@ -381,28 +381,24 @@ contract Tournament is ITournament {
     /// - A failed winner payment preserves the claimer and balance for retry.
     /// - Recipient code runs within the configured payment callback gas limit.
     function tryRecoveringBond() public override withLock returns (bool) {
-        require(_isFinished(), TournamentNotFinished());
+        (
+            BondDisposition disposition,
+            Tree.Node winningCommitment,
+            address winnerClaimer,
+            uint256 winnerPayment
+        ) = _bondRecovery();
 
-        (bool hasDangling, Tree.Node winningCommitment) =
-            hasDanglingCommitment();
-        require(hasDangling, NoWinner());
-
-        address winnerClaimer = claimers[winningCommitment];
-        if (winnerClaimer == address(0)) {
+        require(
+            disposition != BondDisposition.TOURNAMENT_RUNNING,
+            TournamentNotFinished()
+        );
+        require(disposition != BondDisposition.NO_WINNER, NoWinner());
+        if (disposition == BondDisposition.RECOVERED) {
             // A successful recovery deletes the claimer. Treat later
             // permissionless recovery attempts as successful no-ops.
             return true;
         }
 
-        uint256 balance = address(this).balance;
-        uint256 winnerPayment = balance;
-        uint256 bond = bondValue();
-        if (balance > bond) {
-            // One bond back plus a tenth of the forfeited residual as a
-            // defender's bounty. The other nine tenths burn, so recycled
-            // Sybil reserves keep a real marginal cost.
-            winnerPayment = bond + (balance - bond) / 10;
-        }
         if (!_tryPayment(winnerClaimer, winnerPayment)) {
             return false;
         }
@@ -418,7 +414,65 @@ contract Tournament is ITournament {
         // retry. The instance-local transient lock prevents re-entering this
         // tournament during both transfers.
         deleteClaimer(winningCommitment);
+        emit BondRecovered(
+            winningCommitment, winnerClaimer, winnerPayment, residualBalance
+        );
         return true;
+    }
+
+    function bondRecovery()
+        external
+        view
+        override
+        returns (BondDisposition disposition, address claimer, uint256 payment)
+    {
+        (disposition,, claimer, payment) = _bondRecovery();
+    }
+
+    /// @notice The one recovery classification: the capability view and the
+    /// terminal mutation read the same arms in the same order.
+    /// @dev `claimer` and `payment` are populated only for `RECOVERABLE`.
+    /// The payment is one bond plus a tenth of the forfeited residual as a
+    /// defender's bounty, capped by the balance; the other nine tenths burn,
+    /// so recycled Sybil reserves keep a real marginal cost.
+    function _bondRecovery()
+        private
+        view
+        returns (BondDisposition, Tree.Node, address, uint256)
+    {
+        if (!_isFinished()) {
+            return
+                (
+                    BondDisposition.TOURNAMENT_RUNNING,
+                    Tree.ZERO_NODE,
+                    address(0),
+                    0
+                );
+        }
+
+        (bool hasDangling, Tree.Node winningCommitment) =
+            hasDanglingCommitment();
+        if (!hasDangling) {
+            return (BondDisposition.NO_WINNER, Tree.ZERO_NODE, address(0), 0);
+        }
+
+        address winnerClaimer = claimers[winningCommitment];
+        if (winnerClaimer == address(0)) {
+            return (BondDisposition.RECOVERED, winningCommitment, address(0), 0);
+        }
+
+        uint256 balance = address(this).balance;
+        uint256 winnerPayment = balance;
+        uint256 bond = bondValue();
+        if (balance > bond) {
+            winnerPayment = bond + (balance - bond) / 10;
+        }
+        return (
+            BondDisposition.RECOVERABLE,
+            winningCommitment,
+            winnerClaimer,
+            winnerPayment
+        );
     }
 
     //

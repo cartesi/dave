@@ -187,6 +187,14 @@ interface ITournament {
         Time.Duration pausedAllowance;
     }
 
+    /// @notice The tournament's terminal bond disposition.
+    enum BondDisposition {
+        TOURNAMENT_RUNNING,
+        NO_WINNER,
+        RECOVERABLE,
+        RECOVERED
+    }
+
     //
     // Events
     //
@@ -256,6 +264,19 @@ interface ITournament {
     /// zero-value refund skips the callback and reports success.
     event PartialBondRefund(
         address indexed recipient, uint256 value, bool indexed success
+    );
+
+    /// @notice Terminal recovery completed: the winning claimer was paid
+    /// and the residual burned.
+    /// @param commitment The winning commitment
+    /// @param claimer The paid winning claimer
+    /// @param payment The winner payment transferred
+    /// @param burned The residual balance burned after the payment
+    event BondRecovered(
+        Tree.Node indexed commitment,
+        address indexed claimer,
+        uint256 payment,
+        uint256 burned
     );
 
     /// @notice An inner tournament was created.
@@ -699,6 +720,18 @@ interface ITournament {
         external
         view
         returns (TournamentStandingView memory);
+
+    /// @notice Classify the terminal bond recovery available now.
+    /// @dev The same classification `tryRecoveringBond` acts on:
+    /// `TOURNAMENT_RUNNING` and `NO_WINNER` are its revert arms,
+    /// `RECOVERED` its no-op arm, and `RECOVERABLE` its payment arm.
+    /// `claimer` and `payment` are populated only for `RECOVERABLE`:
+    /// the winning claimer owed the payment, and the amount a successful
+    /// recovery would transfer from the current balance.
+    function bondRecovery()
+        external
+        view
+        returns (BondDisposition disposition, address claimer, uint256 payment);
 
     //
     // Protocol surface
