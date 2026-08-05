@@ -102,7 +102,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
                 read_provider.clone(),
                 params.long_block_range_error_codes.clone(),
             );
-            let arena_sender = EthArenaSender::new(read_provider, transaction_lane.clone());
+            let arena_sender = EthArenaSender::new(read_provider);
             let epoch_manager = EpochManager::new(
                 Arc::new(arena_sender),
                 transaction_lane,

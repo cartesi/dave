@@ -1,4 +1,5 @@
-//! Production Hero orchestration: observe, project, plan, prepare, submit once.
+//! Production Hero orchestration: observe, project, plan, prepare, and
+//! yield the tick's wave contribution for the epoch manager to submit.
 
 use std::sync::Arc;
 
@@ -15,6 +16,7 @@ use crate::{
         planner::{HeroDecision, HeroTerminal, plan_hero},
     },
     merkle::Digest,
+    provider::LaneRequest,
     storage::Storage,
     tournament::{ArenaSender, DisputeState, StateReader, domain::GcIntent},
 };
@@ -28,36 +30,27 @@ pub enum TournamentResult {
     FailedNoWinner,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// One dispute tick's outcome: the standing result plus the tick's
+/// wave contribution - the hero action first (when one is legal),
+/// then every currently legal cleanup, innermost-first. Position in
+/// the composed wave is nonce order, and nonce order is priority.
+#[derive(Clone, Debug)]
 pub struct HeroTick {
     result: TournamentResult,
-    action_attempted: bool,
-    gc_intent: Option<GcIntent>,
+    wave: Vec<LaneRequest>,
 }
 
 impl HeroTick {
-    pub(crate) const fn new(
-        result: TournamentResult,
-        action_attempted: bool,
-        gc_intent: Option<GcIntent>,
-    ) -> Self {
-        Self {
-            result,
-            action_attempted,
-            gc_intent,
-        }
+    pub(crate) fn new(result: TournamentResult, wave: Vec<LaneRequest>) -> Self {
+        Self { result, wave }
     }
 
-    pub const fn result(self) -> TournamentResult {
+    pub const fn result(&self) -> TournamentResult {
         self.result
     }
 
-    pub const fn action_attempted(self) -> bool {
-        self.action_attempted
-    }
-
-    pub const fn gc_intent(self) -> Option<GcIntent> {
-        self.gc_intent
+    pub fn into_wave(self) -> Vec<LaneRequest> {
+        self.wave
     }
 }
 
@@ -119,23 +112,21 @@ where
         .map_err(anyhow::Error::from)?;
         let decision = plan_hero(context.snapshot());
 
+        let mut result = TournamentResult::Running;
+        let mut wave = Vec::new();
         match decision {
             HeroDecision::Act(intent) => {
                 let action =
                     prepare(intent, &context, &mut self.source).map_err(anyhow::Error::from)?;
-                submit_prepared(self.arena_sender.as_ref(), action, dispute.head).await?;
-                Ok(HeroTick::new(TournamentResult::Running, true, None))
+                wave.push(
+                    request_prepared(self.arena_sender.as_ref(), action, dispute.head).await?,
+                );
             }
             HeroDecision::Wait(reason) => {
                 debug!("Hero waits: {reason:?}");
-                Ok(HeroTick::new(
-                    TournamentResult::Running,
-                    false,
-                    plan_one_gc(&dispute)?,
-                ))
             }
             HeroDecision::Terminal(terminal) => {
-                let result = match terminal {
+                result = match terminal {
                     HeroTerminal::Won => {
                         info!("Hero won tournament {}", self.root_tournament);
                         TournamentResult::Won
@@ -152,59 +143,58 @@ where
                         TournamentResult::FailedNoWinner
                     }
                 };
-                let gc_intent = (result == TournamentResult::Won)
-                    .then(|| plan_one_gc(&dispute))
-                    .transpose()?
-                    .flatten();
-                Ok(HeroTick::new(result, false, gc_intent))
             }
         }
-    }
 
-    /// Submit one cleanup that was planned only after Hero policy examined the
-    /// same accepted observation. The shared transaction lane preserves that
-    /// priority across ticks by replacing the same mined nonce.
-    pub(crate) async fn submit_gc(&mut self, intent: GcIntent) -> Result<()> {
-        info!("submit one bounded GC intent: {intent:?}");
-        match intent {
-            GcIntent::EliminateMatch {
-                tournament,
-                match_id,
-            } => {
-                self.arena_sender
-                    .eliminate_match(tournament, match_id)
-                    .await
-            }
-            GcIntent::EliminateChild {
-                parent_tournament,
-                child_tournament,
-            } => {
-                self.arena_sender
-                    .eliminate_inner_tournament(parent_tournament, child_tournament)
-                    .await
-            }
+        // Cleanup rides behind the hero action in the same wave. A
+        // lost or winnerless dispute plans nothing more: the node is
+        // done with this epoch's tournament.
+        if matches!(result, TournamentResult::Running | TournamentResult::Won) {
+            wave.extend(self.gc_requests(&dispute)?);
         }
+        Ok(HeroTick::new(result, wave))
     }
-}
 
-fn plan_one_gc(dispute: &DisputeState) -> Result<Option<GcIntent>> {
-    Ok(plan_gc(&dispute.fold, &dispute.observations)
-        .map_err(anyhow::Error::from)?
-        .into_iter()
-        .next())
+    /// Every currently legal cleanup, innermost-first, as lane
+    /// requests. One live match yields at most one intent, and an
+    /// eliminable child's tournament is never recursed into, so a
+    /// plan cannot invalidate its own suffix; follow-on cleanup that
+    /// an elimination unlocks arrives with the next observation.
+    fn gc_requests(&self, dispute: &DisputeState) -> Result<Vec<LaneRequest>> {
+        let intents = plan_gc(&dispute.fold, &dispute.observations).map_err(anyhow::Error::from)?;
+        Ok(intents
+            .into_iter()
+            .map(|intent| {
+                info!("plan cleanup intent: {intent:?}");
+                match intent {
+                    GcIntent::EliminateMatch {
+                        tournament,
+                        match_id,
+                    } => self.arena_sender.eliminate_match(tournament, match_id),
+                    GcIntent::EliminateChild {
+                        parent_tournament,
+                        child_tournament,
+                    } => self
+                        .arena_sender
+                        .eliminate_inner_tournament(parent_tournament, child_tournament),
+                }
+            })
+            .collect())
+    }
 }
 
 /// The only production dispatch seam for a prepared Hero action. Matching one
-/// enum value invokes exactly one mutation method; no error path selects a
+/// enum value yields exactly one mutation request; no error path selects a
 /// second verb from the same observation.
-async fn submit_prepared<AS: ArenaSender>(
+async fn request_prepared<AS: ArenaSender>(
     arena_sender: &AS,
     action: PreparedArenaAction,
     head: ChainHead,
-) -> Result<()> {
+) -> Result<LaneRequest> {
     // These concise action markers are also synchronization points for the
-    // crash-recovery e2e scenarios. Emit them immediately before submission.
-    match action {
+    // crash-recovery e2e scenarios. Emit them as the request enters the
+    // wave, immediately before the tick submits it.
+    Ok(match action {
         PreparedArenaAction::Join {
             tournament,
             proof_last,
@@ -213,9 +203,7 @@ async fn submit_prepared<AS: ArenaSender>(
         } => {
             info!("submit Hero action: join tournament {tournament}");
             let bond = arena_sender.bond_value(tournament, head.block_id()).await?;
-            arena_sender
-                .join_tournament(tournament, &proof_last, left_child, right_child, bond)
-                .await
+            arena_sender.join_tournament(tournament, &proof_last, left_child, right_child, bond)
         }
         PreparedArenaAction::ClaimTimeout {
             tournament,
@@ -227,9 +215,7 @@ async fn submit_prepared<AS: ArenaSender>(
                 "submit Hero action: claim timeout for match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender
-                .win_timeout_match(tournament, match_id, left_node, right_node)
-                .await
+            arena_sender.win_timeout_match(tournament, match_id, left_node, right_node)
         }
         PreparedArenaAction::Advance {
             tournament,
@@ -243,16 +229,14 @@ async fn submit_prepared<AS: ArenaSender>(
                 "submit Hero action: advance match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender
-                .advance_match(
-                    tournament,
-                    match_id,
-                    left_node,
-                    right_node,
-                    new_left_node,
-                    new_right_node,
-                )
-                .await
+            arena_sender.advance_match(
+                tournament,
+                match_id,
+                left_node,
+                right_node,
+                new_left_node,
+                new_right_node,
+            )
         }
         PreparedArenaAction::SealLeaf {
             tournament,
@@ -265,15 +249,13 @@ async fn submit_prepared<AS: ArenaSender>(
                 "submit Hero action: seal leaf match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender
-                .seal_leaf_match(
-                    tournament,
-                    match_id,
-                    left_leaf,
-                    right_leaf,
-                    &agree_state_proof,
-                )
-                .await
+            arena_sender.seal_leaf_match(
+                tournament,
+                match_id,
+                left_leaf,
+                right_leaf,
+                &agree_state_proof,
+            )
         }
         PreparedArenaAction::CreateChild {
             tournament,
@@ -286,15 +268,13 @@ async fn submit_prepared<AS: ArenaSender>(
                 "submit Hero action: create child for match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender
-                .seal_inner_match(
-                    tournament,
-                    match_id,
-                    left_leaf,
-                    right_leaf,
-                    &agree_state_proof,
-                )
-                .await
+            arena_sender.seal_inner_match(
+                tournament,
+                match_id,
+                left_leaf,
+                right_leaf,
+                &agree_state_proof,
+            )
         }
         PreparedArenaAction::ProveLeaf {
             tournament,
@@ -307,9 +287,7 @@ async fn submit_prepared<AS: ArenaSender>(
                 "submit Hero action: prove leaf match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender
-                .win_leaf_match(tournament, match_id, left_node, right_node, proof)
-                .await
+            arena_sender.win_leaf_match(tournament, match_id, left_node, right_node, proof)
         }
         PreparedArenaAction::PropagateChild {
             parent_tournament,
@@ -320,18 +298,16 @@ async fn submit_prepared<AS: ArenaSender>(
             info!(
                 "submit Hero action: propagate child {child_tournament} into tournament {parent_tournament}"
             );
-            arena_sender
-                .win_inner_match(parent_tournament, child_tournament, left_node, right_node)
-                .await
+            arena_sender.win_inner_match(parent_tournament, child_tournament, left_node, right_node)
         }
-    }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
 
-    use alloy::{eips::BlockId, primitives::U256};
+    use alloy::{eips::BlockId, primitives::U256, rpc::types::TransactionRequest};
     use async_trait::async_trait;
 
     use super::*;
@@ -340,39 +316,37 @@ mod tests {
         tournament::{MachineProof, MatchID},
     };
 
+    fn stub(label: &str) -> LaneRequest {
+        (label.to_string(), TransactionRequest::default())
+    }
+
+    /// Request stubs labeled like the production builders, plus a bond
+    /// read counter: only the join arm may pay for that read.
     #[derive(Default)]
     struct RecordingArena {
         bond_reads: Mutex<usize>,
-        mutations: Mutex<Vec<&'static str>>,
     }
 
     impl RecordingArena {
-        fn record(&self, mutation: &'static str) {
-            self.mutations.lock().unwrap().push(mutation);
-        }
-
-        fn take(&self) -> (usize, Vec<&'static str>) {
-            let reads = std::mem::take(&mut *self.bond_reads.lock().unwrap());
-            let mutations = std::mem::take(&mut *self.mutations.lock().unwrap());
-            (reads, mutations)
+        fn bond_reads(&self) -> usize {
+            std::mem::take(&mut *self.bond_reads.lock().unwrap())
         }
     }
 
     #[async_trait]
     impl ArenaSender for RecordingArena {
-        async fn join_tournament(
+        fn join_tournament(
             &self,
             _tournament: Address,
             _proof: &MerkleProof,
             _left_child: Digest,
             _right_child: Digest,
             _bond_value: U256,
-        ) -> Result<()> {
-            self.record("join");
-            Ok(())
+        ) -> LaneRequest {
+            stub("join")
         }
 
-        async fn advance_match(
+        fn advance_match(
             &self,
             _tournament: Address,
             _match_id: MatchID,
@@ -380,81 +354,73 @@ mod tests {
             _right_node: Digest,
             _new_left_node: Digest,
             _new_right_node: Digest,
-        ) -> Result<()> {
-            self.record("advance");
-            Ok(())
+        ) -> LaneRequest {
+            stub("advance")
         }
 
-        async fn seal_inner_match(
+        fn seal_inner_match(
             &self,
             _tournament: Address,
             _match_id: MatchID,
             _left_leaf: Digest,
             _right_leaf: Digest,
             _initial_hash_proof: &MerkleProof,
-        ) -> Result<()> {
-            self.record("create_child");
-            Ok(())
+        ) -> LaneRequest {
+            stub("create_child")
         }
 
-        async fn win_inner_match(
+        fn win_inner_match(
             &self,
             _tournament: Address,
             _child_tournament: Address,
             _left_node: Digest,
             _right_node: Digest,
-        ) -> Result<()> {
-            self.record("propagate_child");
-            Ok(())
+        ) -> LaneRequest {
+            stub("propagate_child")
         }
 
-        async fn win_timeout_match(
+        fn win_timeout_match(
             &self,
             _tournament: Address,
             _match_id: MatchID,
             _left_node: Digest,
             _right_node: Digest,
-        ) -> Result<()> {
-            self.record("claim_timeout");
-            Ok(())
+        ) -> LaneRequest {
+            stub("claim_timeout")
         }
 
-        async fn seal_leaf_match(
+        fn seal_leaf_match(
             &self,
             _tournament: Address,
             _match_id: MatchID,
             _left_leaf: Digest,
             _right_leaf: Digest,
             _initial_hash_proof: &MerkleProof,
-        ) -> Result<()> {
-            self.record("seal_leaf");
-            Ok(())
+        ) -> LaneRequest {
+            stub("seal_leaf")
         }
 
-        async fn win_leaf_match(
+        fn win_leaf_match(
             &self,
             _tournament: Address,
             _match_id: MatchID,
             _left_node: Digest,
             _right_node: Digest,
             _proofs: MachineProof,
-        ) -> Result<()> {
-            self.record("prove_leaf");
-            Ok(())
+        ) -> LaneRequest {
+            stub("prove_leaf")
         }
 
-        async fn eliminate_match(&self, _tournament: Address, _match_id: MatchID) -> Result<()> {
-            self.record("eliminate_match");
-            Ok(())
+        fn eliminate_match(&self, _tournament: Address, _match_id: MatchID) -> LaneRequest {
+            stub("eliminate_match")
         }
 
-        async fn eliminate_inner_tournament(
+        fn eliminate_inner_tournament(
             &self,
             _tournament: Address,
             _inner_tournament: Address,
-        ) -> Result<()> {
-            self.record("eliminate_child");
-            Ok(())
+        ) -> LaneRequest {
+            stub("eliminate_child")
         }
 
         async fn bond_value(&self, _tournament: Address, _at: BlockId) -> Result<U256> {
@@ -486,13 +452,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn each_prepared_variant_dispatches_exactly_one_mutation() {
+    async fn each_prepared_variant_yields_exactly_one_request() {
         let arena = RecordingArena::default();
         let tournament = address(1);
         let child = address(2);
         let proof = || MerkleProof::leaf(digest(3), U256::ZERO);
 
-        submit_prepared(
+        let (label, _) = request_prepared(
             &arena,
             PreparedArenaAction::Join {
                 tournament,
@@ -504,7 +470,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(arena.take(), (1, vec!["join"]));
+        assert_eq!((arena.bond_reads(), label.as_str()), (1, "join"));
 
         let actions = [
             (
@@ -569,8 +535,8 @@ mod tests {
         ];
 
         for (action, expected) in actions {
-            submit_prepared(&arena, action, head()).await.unwrap();
-            assert_eq!(arena.take(), (0, vec![expected]));
+            let (label, _) = request_prepared(&arena, action, head()).await.unwrap();
+            assert_eq!((arena.bond_reads(), label.as_str()), (0, expected));
         }
     }
 }
