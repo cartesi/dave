@@ -1,5 +1,12 @@
 # PRT contract-client interface decision log
 
+FROZEN 2026-08-04 as campaign provenance. The campaign closed on the
+interface-ossification branch: the deferred raw-getter retirement was
+executed, the aggregate-view question was declined by measurement, and the
+living specification is docs/dispute-game.md plus docs/node-architecture.md.
+The D023 same-head watch remains open and is tracked by the Lua actor's
+bounded observation retry.
+
 Status: ACTIVE DECISION RECORD (updated 2026-07-25). The
 [campaign plan](prt-client-interface.md) records the implemented Campaign 1
 slice. One non-reproduced same-head contradiction remains a fail-closed

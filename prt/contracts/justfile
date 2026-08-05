@@ -116,11 +116,13 @@ coverage:
         "(^|/)(test|script|dependencies)(/|$)|(^|/)machine/step(/|$)|(^|/)src/state-transition(/|$)" \
       --report summary
 
+# --threads 1: the FFI machine-snapshot helper is not safe for
+# concurrent writers sharing one _machine_scratch cache.
 test-stf:
-    forge test --match-contract ".*FfiTest" --no-match-test ".*Fuzzy" --ffi
+    forge test --match-contract ".*FfiTest" --no-match-test ".*Fuzzy" --ffi --threads 1
 
 test-stf-fuzzy:
-    forge test --match-contract ".*FfiTest" --match-test ".*Fuzzy" --ffi
+    forge test --match-contract ".*FfiTest" --match-test ".*Fuzzy" --ffi --threads 1
 
 clean-smart-contracts:
     forge clean

@@ -130,8 +130,9 @@ with the pinned views or make the resulting transaction stale. The adapter
 rejects semantic contradictions, contract mutators revalidate every submitted
 transition, and the next tick rebuilds the suffix. No unfinalized event becomes
 durable. Oversized suffix ranges use the same recursive binary partition as
-other log ingestion. The old raw-getter overlay remains only in focused
-differential tests; it performs no RPC on the deadline-sensitive action path.
+other log ingestion. The raw getters this reader once shadowed no longer
+exist: the contracts retired them, and the migration-era differential
+scaffolding is deleted with them.
 
 ## Known debts
 
