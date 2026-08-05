@@ -498,6 +498,12 @@ impl MachineInstance {
             let step_reset_proof = Self::encode_access_logs(logs);
             let revert_proof = machine.prove_revert_if_needed()?;
 
+            // The proven transition ends on the restored checkpoint;
+            // report that state, not the discarded rejected one.
+            if machine.is_yielded()? {
+                machine.revert_if_needed()?;
+            }
+
             Ok((
                 [step_reset_proof, revert_proof].concat(),
                 machine.state()?.root_hash,

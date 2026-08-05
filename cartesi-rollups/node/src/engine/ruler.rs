@@ -393,7 +393,9 @@ impl<S: ProvingStf> Ruler<S> {
     /// plus the post-transition state hash. The caller positions the
     /// ruler (a snapshot resume plus advance) and checks the machine
     /// against the on-chain agree hash first; the machine is spent
-    /// afterwards (the revert check proves without applying).
+    /// afterwards. Each proving verb applies the same state change as
+    /// its plain twin - including the closing slot's revert - so the
+    /// reported post-state is the leaf the builder emitted there.
     pub fn prove_transition(&mut self) -> Result<(Vec<u8>, Digest)> {
         let p = self.structure.decompose(self.position);
 
