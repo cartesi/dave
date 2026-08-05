@@ -1,9 +1,10 @@
 # Bond recovery redesign
 
-Status: CONTRACTS IMPLEMENTED 2026-08-04 on the interface branch; the
-node-side recovery action is deferred to the
+Status: CONTRACTS IMPLEMENTED 2026-08-04 on the interface branch, and
+COMPLETED 2026-08-05 with the `bondRecovery` capability view and
+`BondRecovered` event; the node-side recovery action rides the
 [self-healing batch submission](self-healing-batch-submission.md)
-campaign. Decisions recorded below.
+campaign, whose design is settled. Decisions recorded below.
 
 ## Motivation
 
@@ -32,13 +33,37 @@ progress paths.
    (docs/prt-refund-accounting.md restates conservation;
    docs/dispute-game.md restates the recycling bound).
 
-## Node-side work (deferred to the batch-submission campaign)
+## The recovery interface (added 2026-08-05)
 
-- Recovery becomes a planned cleanup intent through the ordinary lane,
-  emitted after settlement (and after child propagation for inner
-  tournaments), gated on the node being the winning claimer. No config
-  flag: recovering for a stranger pays their bounty with our gas, and
-  recovery stays permissionless for anyone who disagrees.
+`tryRecoveringBond` was the one mutator left without a capability-view
+twin, so its consumer would have re-derived the gate from three
+sources (standing arm, joined-commitment inference, balance) with the
+claimer unobservable. The `bondRecovery()` view closes that asymmetry
+under the established doctrine (one shared classification drives the
+view and the mutation, as with timeouts): it returns
+`(BondDisposition, claimer, payment)` where `TOURNAMENT_RUNNING` and
+`NO_WINNER` are the mutator's revert arms, `RECOVERED` its no-op arm,
+and `RECOVERABLE` its payment arm. The `BondRecovered` event completes
+the economics surface next to `PartialBondRefund`, giving terminal
+recovery a first-class observability signal.
+
+## Node-side work (settled; rides the batch-submission wave)
+
+- Recovery intents ride the wave's tail: lowest priority because
+  nothing in the protocol waits on them. The planner is stateless over
+  chain reads:
+  - Discovery: one `eth_getLogs` for `CommitmentJoined` filtered by
+    the indexed submitter - every tournament we ever joined, root and
+    inner; each log's address is the tournament.
+  - Capability: `bondRecovery()`; plan exactly the
+    `RECOVERABLE && claimer == us` hits.
+  - Completion: `RECOVERED` retires the intent, whoever triggered the
+    recovery. Self-healing throughout.
+  - Termination: an in-memory scan frontier plus a boot-time rescan;
+    promote to one persisted cursor only if boot sweeps ever get
+    heavy.
+- No config flag: recovering for a stranger pays their bounty with our
+  gas, and recovery stays permissionless for anyone who disagrees.
 - No gas-kickback subsidy for recovery, and no bond-math entry for it:
   the refund subsidy exists to motivate permissionless progress work,
   while recovery is self-interested by construction (the recovered bond
@@ -46,7 +71,8 @@ progress paths.
   circular accounting - the subsidy would be paid from the very balance
   recovery is settling.
 - Until the node lane lands, e2e scenarios that assert terminal
-  balances trigger recovery explicitly from the harness.
+  balances trigger recovery explicitly from the harness; once it
+  lands, they assert the node's own `BondRecovered` instead.
 
 ## Deliberately not done
 
