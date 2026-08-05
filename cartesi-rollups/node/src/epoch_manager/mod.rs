@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 mod error;
+mod recovery;
 
 use self::error::Result;
+use self::recovery::BondRecovery;
 use alloy::primitives::{Address, B256};
 use alloy::providers::DynProvider;
 use log::{debug, info, trace};
@@ -27,6 +29,7 @@ pub struct EpochManager<AS: ArenaSender> {
     sleep_duration: Duration,
     storage: Storage,
     epoch_hero: (Option<Hero<AS>>, u64),
+    bond_recovery: BondRecovery,
 }
 
 enum EpochReaction {
@@ -75,6 +78,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             sleep_duration,
             storage,
             epoch_hero: (None, 0),
+            bond_recovery: BondRecovery::new(signer_address),
         }
     }
 
@@ -90,7 +94,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
         // Consensus violations stay fatal: they are asserts, not
         // errors.
         loop {
-            let wave = match self.try_react_epoch(&chain).await {
+            let mut wave = match self.try_react_epoch(&chain).await {
                 Ok(reaction) => {
                     let settlement = if reaction.wants_settlement() {
                         match self.plan_settlement(&dave_consensus).await {
@@ -113,6 +117,17 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     Vec::new()
                 }
             };
+
+            // Bond recovery rides the tail of every wave: nothing in
+            // the protocol waits on it, and it spans epochs, so it
+            // plans independently of the dispute phases above. Any
+            // sealed epoch's root anchors clone verification.
+            match self.plan_bond_recovery(&chain).await {
+                Ok(recovery) => wave.extend(recovery),
+                Err(e) => {
+                    log::warn!("bond recovery planning failed, retrying next tick: {e}");
+                }
+            }
 
             if !wave.is_empty()
                 && let Err(e) = self.transaction_lane.submit_wave(wave).await
@@ -336,6 +351,18 @@ impl<AS: ArenaSender> EpochManager<AS> {
             }
         }
         Ok(None)
+    }
+
+    async fn plan_bond_recovery(&mut self, chain: &Chain) -> Result<Vec<LaneRequest>> {
+        let trusted_root = self
+            .storage
+            .last_sealed_epoch()?
+            .map(|epoch| epoch.root_tournament);
+        self.bond_recovery
+            .plan(chain, trusted_root)
+            .await
+            .map_err(crate::hero::error::ReactError::from)
+            .map_err(Into::into)
     }
 
     async fn try_react_epoch(&mut self, chain: &Chain) -> Result<EpochReaction> {
