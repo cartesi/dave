@@ -16,6 +16,19 @@ Lua harness reads the renamed `responseBudget` argument shape, and the gas
 witnesses were re-pinned for the observer-bearing bytecode with unchanged
 allocations.
 
+CLOSED AND FROZEN 2026-08-04. The same branch then executed the deferred
+ABI-retirement decision and went further: `ITournamentObserver` merged into
+`ITournament`, the ten legacy raw views were removed outright (tests migrated
+to a `vm.load` inspector fixture), `arbitrationResult` retired in favor of
+`tournamentStanding`, the parent protocol pair became one typed
+`innerResult`, and `CommitmentJoined` indexes its commitment. The deferred
+aggregate-view question was answered by measurement and declined: every view
+is total, so a client can batch one observation into a single multicall
+round without any contract aggregate. Step 10 is complete; the living
+specification is [dispute-game.md](../dispute-game.md) and
+[node-architecture.md](../node-architecture.md), and this plan plus its
+[decision log](prt-client-interface-decisions.md) are frozen provenance.
+
 The code remains the source of truth. The companion
 [decision log](prt-client-interface-decisions.md) preserves the reasoning,
 alternatives, scheduling experiments, and reopening conditions behind this
@@ -80,9 +93,9 @@ Labels:
 | SETTLED | Keep `plan_gc -> Vec<GcIntent>`, run it only after Hero policy on the same accepted observation, and consume at most one deterministic intent. |
 | SETTLED | Replace Alloy's cached nonce filler with one exclusive-signer slot at the `latest` mined account nonce; submission is fire-and-forget after bounded RPC acceptance, with no receipt or confirmation dependency. |
 | OPEN | Explain or explicitly disposition the one non-reproduced Lua same-head phase contradiction; its failure policy remains fail-closed. |
-| SETTLED | The implemented six-view observer raises Tournament runtime from 13,832 to 16,622 bytes and leaves 7,954 bytes of EIP-170 headroom. |
-| DEFERRED | Aggregate or batch views and any one-call-per-tournament target. |
-| DEFERRED | Removing raw getters after all consumers migrate. |
+| SETTLED | The implemented six-view observer raises Tournament runtime from 13,832 to 16,622 bytes and leaves 7,954 bytes of EIP-170 headroom. (2026-08-04: the retirement pass then shrank the runtime to 14,625 bytes, 9,951 of headroom.) |
+| DEFERRED | Aggregate or batch views and any one-call-per-tournament target. (Declined 2026-08-04: total views already batch into one multicall round; a contract aggregate would need on-chain active-set enumeration for no measured gain.) |
+| DEFERRED | Removing raw getters after all consumers migrate. (Executed 2026-08-04: the ten legacy views are removed outright; tests reach raw state through the vm.load inspector fixture.) |
 | DEFERRED | Event enrichment and provider topic-filter experiments. |
 | PARKED | Personalized latest-update schedules and storage pointers. |
 | DEFERRED | Dynamic keyed latest-state streams after Campaign 1 provides their oracle and evidence. |
@@ -96,7 +109,9 @@ designs and one fail-closed empirical watch remain:
   projections, full-ID timeout status, immutable tournament descriptor, and
   tagged tournament standing. `Tournament` implements that interface while the
   legacy raw getters remain available for harness assertions, differential
-  tests, and a separate ABI-retirement decision.
+  tests, and a separate ABI-retirement decision. (2026-08-04: that decision
+  executed; the observer interface merged into `ITournament` and the raw
+  getters are gone.)
 - The reader samples finalized `F`, extends and persists the structural fold
   through it, then samples latest `H`, rebuilds `F + 1..H` with recursively
   bisected number-range queries, and pins semantic point reads to `H`. The live
@@ -1194,20 +1209,20 @@ Keep each boundary reviewable and avoid a contract-and-node flag day.
    dispatcher, and actor retain Hero-before-GC ordering and validate the exact
    boundaries without sharing Rust expected tables.
 
-9. **IMPLEMENTED FOR ACTING CLIENTS: retire legacy interpretation after both
-   clients agree.**
+9. **IMPLEMENTED: retire legacy interpretation after both clients agree.**
 
    Raw getter use is absent from both acting strategy paths. The isolated old
-   Lua actor/state/strategy/GC cluster is removed; the low-level Lua reader
-   remains for harness assertions and differential inspection. Removing the
-   legacy ABI is a separate deferred compatibility decision. Measure actual
-   ergonomics and RPC behavior before reopening aggregate views or D009 event
-   streams.
+   Lua actor/state/strategy/GC cluster is removed. (2026-08-04: the deferred
+   ABI-retirement decision was then executed outright - the legacy views no
+   longer exist; the Lua harness reads raw state from storage slots and clone
+   arguments, mirroring the Solidity inspector fixture.)
 
-10. **PARTIAL: promote stable invariants and archive the campaign evidence.**
+10. **IMPLEMENTED: promote stable invariants and archive the campaign
+    evidence.**
 
-    Move implemented behavior into living docs and code comments; freeze this
-    plan and decision log with their differential and end-to-end evidence.
+    Implemented behavior lives in dispute-game.md, node-architecture.md, and
+    code comments; this plan and the decision log are frozen with their
+    differential and end-to-end evidence.
 
 ## Campaign 1 acceptance
 
