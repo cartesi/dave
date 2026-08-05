@@ -252,6 +252,19 @@ parallel mirror (the correlated-implementation risk).
 | 6 | med | prototype oracle kept the pre-fix != RX_ACCEPTED revert predicate production abandoned | DOWNGRADED (low; unreachable with current images) | FIXED: aligned to == RX_REJECTED |
 | - | - | five findings (BondRecovered decode, nonce interaction, coverage observations, inner-recovery-not-exercised, fee-escalation claim) | REFUTED | none; refutations recorded in artifacts |
 
+Post-round rework (2026-08-05, same session): the recovery
+planner's discovery was replaced at Gabriel's direction. The audited
+design scanned CommitmentJoined logs chain-wide by the indexed
+submitter and verified candidates as genuine clones before any send;
+findings 1 and 2 above and the clone-verification machinery belong to
+that design. The replacement derives candidates by provenance only -
+storage-known epoch roots, then each trusted tournament's own
+NewInnerTournament events - so the attacker-writable candidate set,
+the spoof surface, and the verification machinery no longer exist.
+The finalized-blocks stance from finding 1 carries over to the tree
+walk; the per-item error handling from finding 2 became moot with the
+unverified set's deletion.
+
 Critic gaps (LEADS, not closed this round):
 
 1. FUNDING ENVELOPE (high lead). The pool admits a transaction only if

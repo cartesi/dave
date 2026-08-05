@@ -4,33 +4,29 @@
 //! The bond recovery planner: stateless over chain reads, riding the
 //! wave's tail (docs/plans/bond-recovery-redesign.md).
 //!
-//! Discovery is one indexed log scan: every CommitmentJoined naming
-//! this signer as submitter points at a tournament it posted a bond
-//! in, root or inner. Capability is the bondRecovery() view - the
-//! same classification tryRecoveringBond acts on, so the planner
-//! never re-derives the gate. Termination is a block cursor plus
-//! candidates retiring on terminal dispositions; both in memory,
-//! rebuilt by a boot rescan, so losing them costs a rescan and never
-//! a wrong action.
+//! Candidates never come from attacker-writable input. Epoch roots are
+//! read from our own storage (written from the trusted DaveConsensus
+//! stream), and inner tournaments from each trusted tournament's own
+//! NewInnerTournament events - the same provenance-descended tree walk
+//! the dispute fold relies on, reusable here after the epoch's hero is
+//! gone. One bondRecovery() read per tree node then decides: the view
+//! reports the winning claimer from the contract's own classification,
+//! so "did we join and win" needs no join history at all.
 //!
-//! Discovery is permissionless and therefore spoofable: anyone can
-//! emit a matching event naming this signer. A spoofed candidate must
-//! never be paid a transaction (an attacker contract would burn the
-//! whole gas limit every tick), so candidates are verified before any
-//! send: a genuine tournament is a cloneWithImmutableArgs proxy whose
-//! ERC-1167 prelude - delegate target included - is byte-identical to
-//! a trusted root tournament's. View reads cost nothing and need no
-//! verification.
+//! Termination is the only state: an epoch retires when every
+//! tournament in its tree reports a terminal disposition. It is held
+//! in memory and rebuilt by a boot re-walk, so losing it costs a
+//! re-walk and never a wrong action.
 
 use std::collections::BTreeSet;
 
-use alloy::primitives::{Address, Bytes};
-use alloy::providers::Provider;
+use alloy::primitives::Address;
 use anyhow::Result;
-use log::{info, trace, warn};
+use log::{info, trace};
 
 use crate::chain::Chain;
 use crate::provider::LaneRequest;
+use crate::storage::Epoch;
 use crate::tournament::gas_limit;
 use cartesi_prt_contracts::tournament;
 
@@ -40,141 +36,92 @@ const NO_WINNER: u8 = 1;
 const RECOVERABLE: u8 = 2;
 const RECOVERED: u8 = 3;
 
-/// The ERC-1167 runtime prelude length. OpenZeppelin's
-/// cloneWithImmutableArgs appends the args after the standard minimal
-/// proxy runtime, so the first 45 bytes - which embed the delegate
-/// target - are identical across every clone of one implementation.
-const CLONE_PRELUDE_LEN: usize = 45;
-
 pub struct BondRecovery {
     signer_address: Address,
-    /// The next unscanned block. Starts at genesis: the boot rescan
-    /// re-derives the candidate set, and range bisection bounds the
-    /// one historical sweep.
-    scan_from: u64,
-    /// Verified tournaments this signer joined whose bond disposition
-    /// is not yet terminal for it.
-    candidates: BTreeSet<Address>,
-    /// Log hits awaiting provenance verification (none can be genuine
-    /// before a trusted root exists to compare against).
-    unverified: BTreeSet<Address>,
-    /// The trusted clone prelude, read once from a storage-known root.
-    clone_prelude: Option<Bytes>,
+    /// Epochs whose whole tournament tree reached terminal bond
+    /// dispositions; nothing there can ever need recovery again.
+    completed_epochs: BTreeSet<u64>,
 }
 
 impl BondRecovery {
     pub fn new(signer_address: Address) -> Self {
         Self {
             signer_address,
-            scan_from: 0,
-            candidates: BTreeSet::new(),
-            unverified: BTreeSet::new(),
-            clone_prelude: None,
+            completed_epochs: BTreeSet::new(),
         }
     }
 
-    /// Extend discovery to the latest block, verify new candidates
-    /// against `trusted_root`'s code, and plan one tryRecoveringBond
-    /// intent per tournament whose bond is recoverable to this
-    /// signer. Terminal dispositions retire candidates, whoever
-    /// triggered them; intents repeat every tick until the recovery
-    /// is observed, like all wave work.
-    pub async fn plan(
-        &mut self,
-        chain: &Chain,
-        trusted_root: Option<Address>,
-    ) -> Result<Vec<LaneRequest>> {
-        // The cursor is monotone and never rewound, so it must only
-        // cross blocks that cannot reorg (the codebase's finalized
-        // convention, as in blockchain_reader): a join scanned off a
-        // reorged tip would otherwise be dropped until the next boot
-        // rescan. Recovery has no urgency; discovery lagging finality
-        // costs nothing.
-        let finalized = chain.finalized_block_number().await?;
-        if finalized >= self.scan_from {
-            let joins = chain
-                .decoded_logs_by_topic2::<tournament::Tournament::CommitmentJoined>(
-                    self.signer_address.into_word(),
-                    self.scan_from,
-                    finalized,
-                )
-                .await?;
-            for (_, log) in joins {
-                let tournament = log.address();
-                if !self.candidates.contains(&tournament) {
-                    self.unverified.insert(tournament);
-                }
-            }
-            self.scan_from = finalized + 1;
-        }
-
-        self.verify_candidates(chain, trusted_root).await?;
-
+    /// Plan one tryRecoveringBond intent per tournament whose bond is
+    /// recoverable to this signer, across every sealed epoch not yet
+    /// retired. Terminal dispositions retire tournaments (whoever
+    /// triggered them), full trees retire epochs; intents repeat every
+    /// tick until the recovery is observed, like all wave work.
+    pub async fn plan(&mut self, chain: &Chain, epochs: &[Epoch]) -> Result<Vec<LaneRequest>> {
         let mut wave = Vec::new();
-        let mut retired = Vec::new();
-        for address in self.candidates.iter().copied() {
-            let contract = tournament::Tournament::new(address, chain.provider());
-            let recovery = contract.bondRecovery().call().await?;
-            match candidate_action(recovery.disposition, recovery.claimer, self.signer_address) {
-                CandidateAction::Recover => {
-                    info!("plan bond recovery for tournament {address}");
-                    let request = contract
-                        .tryRecoveringBond()
-                        .gas(gas_limit())
-                        .into_transaction_request();
-                    wave.push(("tryRecoveringBond".to_string(), request));
-                }
-                CandidateAction::Keep => {}
-                CandidateAction::Retire => retired.push(address),
+        let finalized = chain.finalized_block_number().await?;
+
+        for epoch in epochs {
+            if self.completed_epochs.contains(&epoch.epoch_number) {
+                continue;
             }
-        }
-        for address in retired {
-            trace!("bond candidate retired: tournament {address}");
-            self.candidates.remove(&address);
+            let tree = tournament_tree(
+                chain,
+                epoch.root_tournament,
+                epoch.block_created_number,
+                finalized,
+            )
+            .await?;
+
+            let mut all_terminal = true;
+            for tournament in tree {
+                let contract = tournament::Tournament::new(tournament, chain.provider());
+                let recovery = contract.bondRecovery().call().await?;
+                match candidate_action(recovery.disposition, recovery.claimer, self.signer_address)
+                {
+                    CandidateAction::Recover => {
+                        info!("plan bond recovery for tournament {tournament}");
+                        let request = contract
+                            .tryRecoveringBond()
+                            .gas(gas_limit())
+                            .into_transaction_request();
+                        wave.push(("tryRecoveringBond".to_string(), request));
+                        all_terminal = false;
+                    }
+                    CandidateAction::Keep => {
+                        all_terminal = false;
+                    }
+                    CandidateAction::Retire => {}
+                }
+            }
+            if all_terminal {
+                trace!(
+                    "epoch {} retired: every tournament bond is terminal",
+                    epoch.epoch_number
+                );
+                self.completed_epochs.insert(epoch.epoch_number);
+            }
         }
         Ok(wave)
     }
+}
 
-    /// Promote unverified log hits whose runtime code is a genuine
-    /// tournament clone; drop the rest loudly. Without a trusted root
-    /// yet, hits stay parked: nothing genuine can predate the first
-    /// sealed epoch.
-    async fn verify_candidates(
-        &mut self,
-        chain: &Chain,
-        trusted_root: Option<Address>,
-    ) -> Result<()> {
-        if self.unverified.is_empty() {
-            return Ok(());
+/// Enumerate one epoch's dispute tree root-down. Every address comes
+/// from a trusted parent's own NewInnerTournament events over
+/// finalized blocks, so the whole tree inherits the root's provenance.
+async fn tournament_tree(chain: &Chain, root: Address, from: u64, to: u64) -> Result<Vec<Address>> {
+    let mut tree = vec![root];
+    let mut cursor = 0;
+    while cursor < tree.len() {
+        let parent = tree[cursor];
+        cursor += 1;
+        let children = chain
+            .decoded_logs::<tournament::Tournament::NewInnerTournament>(parent, None, from, to)
+            .await?;
+        for (event, _) in children {
+            tree.push(event.childTournament);
         }
-        let Some(root) = trusted_root else {
-            return Ok(());
-        };
-        if self.clone_prelude.is_none() {
-            let code = chain.provider().get_code_at(root).await?;
-            self.clone_prelude = Some(code);
-        }
-        let prelude = self.clone_prelude.as_ref().expect("initialized above");
-
-        // Remove entries one by one as each verdict lands: a transient
-        // provider error mid-loop must leave the unprocessed remainder
-        // queued for the next tick, not silently discarded.
-        let pending: Vec<Address> = self.unverified.iter().copied().collect();
-        for address in pending {
-            let code = chain.provider().get_code_at(address).await?;
-            self.unverified.remove(&address);
-            if genuine_clone(prelude, &code) {
-                trace!("bond candidate verified: tournament {address}");
-                self.candidates.insert(address);
-            } else {
-                warn!(
-                    "dropping spoofed bond candidate {address}: \
-                     CommitmentJoined emitter is not a tournament clone"
-                );
-            }
-        }
-        Ok(())
     }
+    Ok(tree)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,28 +134,20 @@ enum CandidateAction {
 /// One candidate's fate from its on-chain disposition: recover what
 /// is ours, keep watching a running tournament, retire everything
 /// terminal - recovered (by anyone), locked without a winner, or a
-/// bond whose winning claimer is someone else (our commitment lost).
+/// bond whose winning claimer is someone else (our commitment lost,
+/// or we never joined this branch of the tree).
 fn candidate_action(disposition: u8, claimer: Address, us: Address) -> CandidateAction {
     match disposition {
         RECOVERABLE if claimer == us => CandidateAction::Recover,
         RECOVERABLE | RECOVERED | NO_WINNER => CandidateAction::Retire,
         TOURNAMENT_RUNNING => CandidateAction::Keep,
         other => {
-            // A verified clone cannot produce this; stay inert rather
-            // than fatal on chain data.
-            warn!("undefined bond disposition {other}; keeping candidate inert");
+            // A trusted tournament cannot produce this; stay inert
+            // rather than fatal on chain data.
+            log::warn!("undefined bond disposition {other}; keeping candidate inert");
             CandidateAction::Keep
         }
     }
-}
-
-/// A genuine tournament clone shares the trusted root's ERC-1167
-/// prelude byte for byte, delegate target included; the immutable
-/// args that follow differ per instance.
-fn genuine_clone(trusted_prelude: &Bytes, candidate_code: &Bytes) -> bool {
-    trusted_prelude.len() >= CLONE_PRELUDE_LEN
-        && candidate_code.len() >= CLONE_PRELUDE_LEN
-        && trusted_prelude[..CLONE_PRELUDE_LEN] == candidate_code[..CLONE_PRELUDE_LEN]
 }
 
 #[cfg(test)]
@@ -277,27 +216,5 @@ mod tests {
         assert_eq!(variants[RECOVERABLE as usize], "RECOVERABLE");
         assert_eq!(variants[RECOVERED as usize], "RECOVERED");
         assert_eq!(variants.len(), 4, "new arms need mirroring here");
-    }
-
-    #[test]
-    fn clone_verification_compares_the_prelude_only() {
-        let mut trusted = vec![0xAA; CLONE_PRELUDE_LEN];
-        trusted.extend_from_slice(b"root args");
-        let trusted = Bytes::from(trusted);
-
-        let mut sibling = vec![0xAA; CLONE_PRELUDE_LEN];
-        sibling.extend_from_slice(b"different inner args");
-        assert!(genuine_clone(&trusted, &Bytes::from(sibling)));
-
-        let mut impostor = vec![0xAA; CLONE_PRELUDE_LEN];
-        impostor[20] = 0xBB;
-        assert!(
-            !genuine_clone(&trusted, &Bytes::from(impostor)),
-            "a different delegate target must fail verification"
-        );
-        assert!(
-            !genuine_clone(&trusted, &Bytes::from(vec![0xAA; 10])),
-            "short code cannot be a clone"
-        );
     }
 }

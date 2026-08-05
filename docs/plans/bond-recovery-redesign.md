@@ -52,25 +52,31 @@ recovery a first-class observability signal.
 - Recovery intents ride the wave's tail: lowest priority because
   nothing in the protocol waits on them. The planner is stateless over
   chain reads:
-  - Discovery: one `eth_getLogs` for `CommitmentJoined` filtered by
-    the indexed submitter - every tournament we ever joined, root and
-    inner; each log's address is the tournament.
-  - Discovery is permissionless and therefore spoofable: anyone can
-    emit a matching event naming our signer, and paying a spoofed
-    candidate a transaction would let attacker code burn the whole
-    gas limit every tick. Candidates are verified before any send:
-    a genuine tournament is a cloneWithImmutableArgs proxy whose
-    ERC-1167 prelude (delegate target included) is byte-identical to
-    a storage-known root tournament's, and on a genuine clone the
-    indexed submitter is `msg.sender` of a real join, which an
-    attacker cannot forge. View reads are free and skip verification.
-  - Capability: `bondRecovery()`; plan exactly the
-    `RECOVERABLE && claimer == us` hits.
-  - Completion: `RECOVERED` retires the intent, whoever triggered the
-    recovery. Self-healing throughout.
-  - Termination: an in-memory scan frontier plus a boot-time rescan;
-    promote to one persisted cursor only if boot sweeps ever get
-    heavy.
+  - Candidates by provenance, never by search. The node can only hold
+    bonds in tournaments it participated in, and those all live inside
+    dispute trees rooted at epochs recorded in its own database (from
+    the trusted DaveConsensus stream). The planner walks each
+    unretired epoch's tree root-down through each trusted tournament's
+    own `NewInnerTournament` events over finalized blocks, so every
+    candidate address descends from trust by construction.
+  - Capability: one `bondRecovery()` read per tree node; plan exactly
+    the `RECOVERABLE && claimer == us` hits. The claimer answers "did
+    we join and win" from the contract's own records, so the planner
+    needs no join history.
+  - Completion: `RECOVERED` retires a tournament, whoever triggered
+    the recovery; an epoch retires when its whole tree is terminal.
+    The retired-epoch set is the planner's only state, in memory,
+    rebuilt by a boot re-walk. Self-healing throughout.
+  - REJECTED alternative, recorded for its lesson: a chain-wide
+    `CommitmentJoined` log scan filtered by the indexed submitter,
+    with candidates verified as genuine clones by ERC-1167 prelude
+    comparison before any send. The verification argument held under
+    audit, but the posture is wrong: it admits an attacker-writable
+    candidate set (anyone can emit a matching event naming our
+    signer, and paying a spoofed candidate would burn the gas limit
+    every tick) and then makes a filter's correctness load-bearing
+    forever. A candidate set derived from the node's own knowledge
+    needs no filter, and the whole verification machinery deletes.
 - No config flag: recovering for a stranger pays their bounty with our
   gas, and recovery stays permissionless for anyone who disagrees.
 - No gas-kickback subsidy for recovery, and no bond-math entry for it:

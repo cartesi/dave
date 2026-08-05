@@ -141,29 +141,6 @@ impl Chain {
             .collect()
     }
 
-    /// `E`-typed logs across every address in `[from, to]`, narrowed
-    /// by the second indexed argument. The recovery planner's
-    /// discovery read: CommitmentJoined filtered by the indexed
-    /// submitter, whichever tournament emitted it. The emitter is
-    /// untrusted - anyone can emit a matching event - so consumers
-    /// must verify provenance before acting on an address found here.
-    pub async fn decoded_logs_by_topic2<E: SolEvent>(
-        &self,
-        topic2: B256,
-        from: u64,
-        to: u64,
-    ) -> Result<Vec<(E, Log)>> {
-        let filter = Filter::new().event(E::SIGNATURE).topic2(topic2);
-        self.logs_bisecting(&filter, from, to)
-            .await?
-            .into_iter()
-            .map(|log| {
-                let decoded = E::decode_log(&log.inner)?;
-                Ok((decoded.data, log))
-            })
-            .collect()
-    }
-
     /// Fetches `filter` over `[from, to]`, splitting the range in two
     /// whenever the provider rejects it as too large (gateways cap
     /// get_logs spans; the rejection surfaces as one of the configured
