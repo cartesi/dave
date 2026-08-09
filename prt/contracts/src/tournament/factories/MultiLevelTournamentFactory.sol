@@ -66,8 +66,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     /// - Uses `address(this)` instead of `this` to avoid circular dependency:
     ///   ITournament imports IMultiLevelTournamentFactory, and IMultiLevelTournamentFactory imports ITournament.
     ///   Storing as `address` breaks the cycle; it's cast back to IMultiLevelTournamentFactory when needed.
-    /// - For single-level tournaments (levels == 1): factory is set but unused (leaf tournaments don't create inner tournaments).
-    /// - For multi-level tournaments (levels > 1): factory is used to create inner tournaments.
+    /// - For leaf roots: factory is set but unused.
+    /// - For non-leaf roots: factory is used to create inner tournaments.
     function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
         private
         returns (ITournament)
@@ -83,7 +83,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
                     height: params.height
                 }),
                 level: 0,
-                levels: params.levels,
+                kind: _kindFor(0, params.levels),
                 startInstant: Time.currentTime(),
                 allowance: params.maxAllowance,
                 responseBudget: params.responseBudget,
@@ -108,8 +108,8 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     /// - Uses `address(this)` instead of `this` to avoid circular dependency:
     ///   ITournament imports IMultiLevelTournamentFactory, and IMultiLevelTournamentFactory imports ITournament.
     ///   Storing as `address` breaks the cycle; it's cast back to IMultiLevelTournamentFactory when needed.
-    /// - For leaf tournaments (`_level == params.levels - 1`): factory is set but unused (can't create deeper tournaments).
-    /// - For non-leaf tournaments (`_level < params.levels - 1`): factory is used to create deeper tournaments.
+    /// - For leaf tournaments: factory is set but unused.
+    /// - For non-leaf tournaments: factory is used to create deeper tournaments.
     function instantiateInner(
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
@@ -132,7 +132,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
                     height: params.height
                 }),
                 level: _level,
-                levels: params.levels,
+                kind: _kindFor(_level, params.levels),
                 startInstant: Time.currentTime(),
                 allowance: _allowance,
                 responseBudget: params.responseBudget,
@@ -157,5 +157,15 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         returns (TournamentParameters memory)
     {
         return TOURNAMENT_PARAMETERS_PROVIDER.tournamentParameters(_level);
+    }
+
+    function _kindFor(uint64 _level, uint64 _levels)
+        private
+        pure
+        returns (ITournament.TournamentKind)
+    {
+        return _level == _levels - 1
+            ? ITournament.TournamentKind.LEAF
+            : ITournament.TournamentKind.NON_LEAF;
     }
 }

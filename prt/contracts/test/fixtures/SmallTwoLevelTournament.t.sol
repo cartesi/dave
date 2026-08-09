@@ -47,7 +47,9 @@ contract SmallTwoLevelTournamentTest is Test {
             root.tournamentArguments();
 
         assertEq(rootArgs.level, 0);
-        assertEq(rootArgs.levels, SmallTwoLevelGeometry.LEVELS);
+        assertEq(
+            uint8(rootArgs.kind), uint8(ITournament.TournamentKind.NON_LEAF)
+        );
         assertEq(
             rootArgs.commitmentArgs.height, SmallTwoLevelGeometry.ROOT_HEIGHT
         );
@@ -82,7 +84,7 @@ contract SmallTwoLevelTournamentTest is Test {
             leaf.tournamentArguments();
 
         assertEq(leafArgs.level, 1);
-        assertEq(leafArgs.levels, SmallTwoLevelGeometry.LEVELS);
+        assertEq(uint8(leafArgs.kind), uint8(ITournament.TournamentKind.LEAF));
         assertEq(
             leafArgs.commitmentArgs.height, SmallTwoLevelGeometry.LEAF_HEIGHT
         );

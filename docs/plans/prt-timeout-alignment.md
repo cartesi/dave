@@ -32,7 +32,7 @@ responder's overdue interval as a deferred charge to subtract.
 The client-interface campaign removed timeout classification from both acting
 clients instead of teaching each one a corrected clock algorithm:
 
-- `ITournamentObserver.matchTimeoutStatus` calls
+- `ITournament.classifyMatchTimeout` calls
   `MatchClocks.classifyTimeoutAt` for the pinned observation block;
 - the Rust and Lua adapters convert its tagged outcome into a semantic
   `TimeoutDisposition`;

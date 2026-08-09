@@ -97,7 +97,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
             // spawns opens its own writer
             let storage = params.storage_read_only()?;
             let read_provider = params.read_provider().await;
-            let transaction_lane = Arc::new(params.transaction_lane(read_provider.clone()).await);
+            let transaction_lane = params.transaction_lane(read_provider.clone()).await;
             let chain = Chain::new(
                 read_provider.clone(),
                 params.long_block_range_error_codes.clone(),

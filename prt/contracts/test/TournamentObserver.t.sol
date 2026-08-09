@@ -64,8 +64,9 @@ contract TournamentObserverTest is Test {
     }
 
     function testPhaseProjectionCrossProductAndCanonicalZeros() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 2, 3, 100, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newTournament(
+            0, ITournament.TournamentKind.LEAF, 2, 3, 100, _zeroNestedDispute()
+        );
         Match.Id memory matchId = _matchId();
         Match.IdHash matchIdHash = matchId.hashFromId();
 
@@ -97,8 +98,7 @@ contract TournamentObserverTest is Test {
     }
 
     function testAbsentAndDeletedMatchObservationsAreIdentical() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         Match.IdHash matchIdHash = matchId.hashFromId();
 
@@ -125,8 +125,9 @@ contract TournamentObserverTest is Test {
     }
 
     function testSealedProjectionUsesPositionWhenChildHashesAreEqual() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 2, 3, 100, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newTournament(
+            0, ITournament.TournamentKind.LEAF, 2, 3, 100, _zeroNestedDispute()
+        );
         Tree.Node child = _node(0xd1);
         Match.IdHash matchIdHash = _matchId().hashFromId();
         tournament.storeMatch(
@@ -163,8 +164,7 @@ contract TournamentObserverTest is Test {
     }
 
     function testReadyToSealTimeoutUsesSameClassifier() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _activeState(1, 0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(5, 100));
@@ -197,8 +197,7 @@ contract TournamentObserverTest is Test {
     }
 
     function testEqualLeafAllowancesEliminateAtExactCommonDeadline() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _sealedState(0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
@@ -223,8 +222,14 @@ contract TournamentObserverTest is Test {
     }
 
     function testSealedNonLeafTimeoutIsNoneWithPausedClocks() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 2, 0, 3, 0, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newTournament(
+            0,
+            ITournament.TournamentKind.NON_LEAF,
+            0,
+            3,
+            0,
+            _zeroNestedDispute()
+        );
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _sealedState(0));
         tournament.storeClock(matchId.commitmentOne, _pausedClock(10));
@@ -243,9 +248,10 @@ contract TournamentObserverTest is Test {
     /// The view is total: shapes the transition paths would never
     /// create still classify from the stored clocks as they are, so
     /// one odd match can never blind an observer of the others.
-    function testTimeoutStatusClassifiesBothRunningClocksInBisection() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+    function testClassifyMatchTimeoutHandlesBothRunningClocksInBisection()
+        public
+    {
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _activeState(3, 0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
@@ -261,11 +267,8 @@ contract TournamentObserverTest is Test {
         );
     }
 
-    function testTimeoutStatusClassifiesClocksRegardlessOfResponderParity()
-        public
-    {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+    function testClassifyMatchTimeoutIgnoresResponderParity() public {
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _activeState(2, 0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
@@ -281,9 +284,8 @@ contract TournamentObserverTest is Test {
         );
     }
 
-    function testTimeoutStatusReportsNoneForUninitializedClock() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+    function testClassifyMatchTimeoutReportsNoneForUninitializedClock() public {
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _activeState(3, 0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
@@ -298,9 +300,8 @@ contract TournamentObserverTest is Test {
         );
     }
 
-    function testTimeoutStatusClassifiesLeafClocksFromTheirOwnStarts() public {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+    function testClassifyMatchTimeoutUsesEachLeafClockStart() public {
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _sealedState(0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
@@ -316,11 +317,15 @@ contract TournamentObserverTest is Test {
         );
     }
 
-    function testTimeoutStatusReportsNoneForSealedNonLeafRegardlessOfClocks()
-        public
-    {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 2, 0, 3, 0, _zeroNestedDispute());
+    function testClassifyMatchTimeoutReportsNoneForSealedNonLeaf() public {
+        TournamentObserverHarness tournament = _newTournament(
+            0,
+            ITournament.TournamentKind.NON_LEAF,
+            0,
+            3,
+            0,
+            _zeroNestedDispute()
+        );
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _sealedState(0));
         tournament.storeClock(matchId.commitmentOne, _runningClock(10, 100));
@@ -329,7 +334,7 @@ contract TournamentObserverTest is Test {
         _assertTimeout(
             tournament,
             matchId,
-            101,
+            111,
             Match.Phase.SEALED,
             ITournament.MatchTimeoutOutcome.NONE,
             0
@@ -337,14 +342,14 @@ contract TournamentObserverTest is Test {
     }
 
     function testDescriptorOwnsLevelGeometryAndBaseCycle() public {
-        _assertDescriptor(0, 1, 0, 3, 0, ITournament.TournamentKind.LEAF);
-        _assertDescriptor(0, 3, 4, 5, 100, ITournament.TournamentKind.NON_LEAF);
-        _assertDescriptor(1, 3, 2, 2, 300, ITournament.TournamentKind.NON_LEAF);
-        _assertDescriptor(2, 3, 0, 2, 312, ITournament.TournamentKind.LEAF);
+        _assertDescriptor(0, ITournament.TournamentKind.LEAF, 0, 3, 0);
+        _assertDescriptor(0, ITournament.TournamentKind.NON_LEAF, 4, 5, 100);
+        _assertDescriptor(1, ITournament.TournamentKind.NON_LEAF, 2, 2, 300);
+        _assertDescriptor(2, ITournament.TournamentKind.LEAF, 0, 2, 312);
     }
 
     function testStandingMatchesActiveWhileOpen() public {
-        TournamentObserverHarness tournament = _standingTournament(0, 1);
+        TournamentObserverHarness tournament = _standingTournament();
         Tree.Node candidate = _node(0xc1);
         tournament.storeTopology(candidate, 2, _instant(0));
         vm.roll(110);
@@ -363,7 +368,7 @@ contract TournamentObserverTest is Test {
     }
 
     function testStandingMatchesActiveAfterClosureRejectsJoins() public {
-        TournamentObserverHarness tournament = _standingTournament(0, 1);
+        TournamentObserverHarness tournament = _standingTournament();
         tournament.storeTopology(Tree.ZERO_NODE, 1, _instant(0));
         vm.roll(120);
 
@@ -381,7 +386,7 @@ contract TournamentObserverTest is Test {
     }
 
     function testStandingAwaitsClosureWithCurrentCandidate() public {
-        TournamentObserverHarness tournament = _standingTournament(0, 1);
+        TournamentObserverHarness tournament = _standingTournament();
         Tree.Node candidate = _node(0xc2);
         tournament.storeTopology(candidate, 0, _instant(105));
         vm.roll(119);
@@ -400,7 +405,7 @@ contract TournamentObserverTest is Test {
     }
 
     function testRealJoinSupersedesAwaitingClosureWithActiveMatch() public {
-        TournamentObserverHarness tournament = _standingTournament(0, 1);
+        TournamentObserverHarness tournament = _standingTournament();
         uint256 bond = tournament.bondValue();
         vm.deal(address(this), bond * 2);
         vm.roll(110);
@@ -433,7 +438,7 @@ contract TournamentObserverTest is Test {
     }
 
     function testStandingReturnsRootWinnerAndFailure() public {
-        TournamentObserverHarness tournament = _standingTournament(0, 1);
+        TournamentObserverHarness tournament = _standingTournament();
         Tree.Node candidate = _node(0xc3);
         Machine.Hash finalState = _hash(0xf3);
         tournament.storeTopology(candidate, 0, _instant(105));
@@ -478,7 +483,7 @@ contract TournamentObserverTest is Test {
             contestedFinalStateTwo: finalTwo
         });
         TournamentObserverHarness tournament =
-            _newTournament(1, 2, 0, 3, 0, nested);
+            _newTournament(1, ITournament.TournamentKind.LEAF, 0, 3, 0, nested);
         Tree.Node candidate = _node(0xc4);
         tournament.storeTopology(candidate, 0, _instant(125));
         tournament.storeClock(candidate, _pausedClock(10));
@@ -498,7 +503,7 @@ contract TournamentObserverTest is Test {
             contestedFinalStateTwo: _hash(0xb2)
         });
         TournamentObserverHarness tournament =
-            _newTournament(1, 2, 0, 3, 0, nested);
+            _newTournament(1, ITournament.TournamentKind.LEAF, 0, 3, 0, nested);
         Tree.Node candidate = _node(0xc5);
         tournament.storeTopology(candidate, 0, _instant(125));
         tournament.storeFinalState(candidate, nested.contestedFinalStateOne);
@@ -520,8 +525,9 @@ contract TournamentObserverTest is Test {
     }
 
     function testStandingInnerWithoutWinnerIsImmediatelyEliminable() public {
-        TournamentObserverHarness tournament =
-            _newTournament(1, 2, 0, 3, 0, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newTournament(
+            1, ITournament.TournamentKind.LEAF, 0, 3, 0, _zeroNestedDispute()
+        );
         tournament.storeTopology(Tree.ZERO_NODE, 0, _instant(125));
         vm.roll(125);
 
@@ -536,6 +542,120 @@ contract TournamentObserverTest is Test {
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE
             })
+        );
+    }
+
+    function testInnerResultRejectsRootTournament() public {
+        TournamentObserverHarness tournament = _newLeafTournament();
+
+        vm.expectRevert(ITournament.RequireNonRootTournament.selector);
+        tournament.innerResult();
+    }
+
+    function testInnerResultIsUnsettledWithCanonicalZerosWhileUnfinished()
+        public
+    {
+        TournamentObserverHarness openTournament = _newTournament(
+            1, ITournament.TournamentKind.LEAF, 0, 3, 0, _nestedDispute()
+        );
+        Tree.Node openCandidate = _node(0xc6);
+        openTournament.storeTopology(openCandidate, 0, _instant(0));
+        openTournament.storeFinalState(openCandidate, _hash(0xb1));
+        openTournament.storeClock(openCandidate, _pausedClock(10));
+        vm.roll(110);
+
+        _assertInnerResult(
+            openTournament,
+            ITournament.InnerTournamentDisposition.UNSETTLED,
+            Tree.ZERO_NODE,
+            0
+        );
+
+        TournamentObserverHarness activeTournament = _newTournament(
+            1, ITournament.TournamentKind.LEAF, 0, 3, 0, _nestedDispute()
+        );
+        Tree.Node activeCandidate = _node(0xc7);
+        activeTournament.storeTopology(activeCandidate, 1, _instant(125));
+        activeTournament.storeFinalState(activeCandidate, _hash(0xb1));
+        activeTournament.storeClock(activeCandidate, _pausedClock(10));
+        vm.roll(130);
+
+        _assertInnerResult(
+            activeTournament,
+            ITournament.InnerTournamentDisposition.UNSETTLED,
+            Tree.ZERO_NODE,
+            0
+        );
+    }
+
+    function testInnerResultIsEliminableWithCanonicalZerosWithoutWinner()
+        public
+    {
+        TournamentObserverHarness tournament = _newTournament(
+            1, ITournament.TournamentKind.LEAF, 0, 3, 0, _nestedDispute()
+        );
+        tournament.storeTopology(Tree.ZERO_NODE, 0, _instant(125));
+        vm.roll(125);
+
+        _assertInnerResult(
+            tournament,
+            ITournament.InnerTournamentDisposition.ELIMINABLE,
+            Tree.ZERO_NODE,
+            0
+        );
+    }
+
+    function testInnerResultMapsBothParentOrientationsAndExactAllowance()
+        public
+    {
+        ITournament.NestedDispute memory nested = _nestedDispute();
+        TournamentObserverHarness tournament =
+            _newTournament(1, ITournament.TournamentKind.LEAF, 0, 3, 0, nested);
+        Tree.Node candidate = _node(0xc7);
+        tournament.storeTopology(candidate, 0, _instant(125));
+        tournament.storeClock(candidate, _pausedClock(10));
+        vm.roll(134);
+
+        tournament.storeFinalState(candidate, nested.contestedFinalStateOne);
+        _assertInnerResult(
+            tournament,
+            ITournament.InnerTournamentDisposition.WINNER,
+            nested.contestedCommitmentOne,
+            1
+        );
+
+        tournament.storeFinalState(candidate, nested.contestedFinalStateTwo);
+        _assertInnerResult(
+            tournament,
+            ITournament.InnerTournamentDisposition.WINNER,
+            nested.contestedCommitmentTwo,
+            1
+        );
+    }
+
+    function testInnerResultWinnerIsEliminableAtAndAfterExactExpiry() public {
+        ITournament.NestedDispute memory nested = _nestedDispute();
+        TournamentObserverHarness tournament =
+            _newTournament(1, ITournament.TournamentKind.LEAF, 0, 3, 0, nested);
+        Tree.Node candidate = _node(0xc8);
+        tournament.storeTopology(candidate, 0, _instant(125));
+        tournament.storeFinalState(candidate, nested.contestedFinalStateOne);
+        tournament.storeClock(candidate, _pausedClock(10));
+
+        vm.roll(135);
+        _assertInnerResult(
+            tournament,
+            ITournament.InnerTournamentDisposition.ELIMINABLE,
+            Tree.ZERO_NODE,
+            0
+        );
+
+        vm.roll(136);
+        _assertInnerResult(
+            tournament,
+            ITournament.InnerTournamentDisposition.ELIMINABLE,
+            Tree.ZERO_NODE,
+            0
         );
     }
 
@@ -588,7 +708,7 @@ contract TournamentObserverTest is Test {
             Match.Phase phase,
             ITournament.MatchTimeoutOutcome outcome,
             Time.Duration charge
-        ) = tournament.matchTimeoutStatus(matchId);
+        ) = tournament.classifyMatchTimeout(matchId);
         assertEq(uint8(phase), uint8(Match.Phase.UNINITIALIZED));
         assertEq(uint8(outcome), uint8(ITournament.MatchTimeoutOutcome.NONE));
         assertEq(Time.Duration.unwrap(charge), 0);
@@ -605,8 +725,14 @@ contract TournamentObserverTest is Test {
     }
 
     function _assertResponderParity(uint64 totalHeight) internal {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 2, totalHeight, 100, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newTournament(
+            0,
+            ITournament.TournamentKind.LEAF,
+            2,
+            totalHeight,
+            100,
+            _zeroNestedDispute()
+        );
         Match.IdHash matchIdHash = _matchId().hashFromId();
         for (
             uint64 currentHeight = totalHeight;
@@ -673,7 +799,12 @@ contract TournamentObserverTest is Test {
         uint64 log2step = 2;
         uint256 baseCycle = 100;
         TournamentObserverHarness tournament = _newTournament(
-            0, 1, log2step, totalHeight, baseCycle, _zeroNestedDispute()
+            0,
+            ITournament.TournamentKind.LEAF,
+            log2step,
+            totalHeight,
+            baseCycle,
+            _zeroNestedDispute()
         );
         Machine.Hash finalStateOne = _hash(0xb1);
         Machine.Hash finalStateTwo = _hash(0xb2);
@@ -711,8 +842,7 @@ contract TournamentObserverTest is Test {
     }
 
     function _assertBisectionTimeoutBoundaries(bool oneRuns) internal {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         uint64 currentHeight = oneRuns ? 3 : 2;
         tournament.storeMatch(
@@ -751,8 +881,7 @@ contract TournamentObserverTest is Test {
     }
 
     function _assertLeafTimeoutBoundaries(bool oneIsShorter) internal {
-        TournamentObserverHarness tournament =
-            _newTournament(0, 1, 0, 3, 0, _zeroNestedDispute());
+        TournamentObserverHarness tournament = _newLeafTournament();
         Match.Id memory matchId = _matchId();
         tournament.storeMatch(matchId.hashFromId(), _sealedState(0));
         Clock.State memory shortClock = _runningClock(5, 100);
@@ -802,7 +931,7 @@ contract TournamentObserverTest is Test {
             Match.Phase phase,
             ITournament.MatchTimeoutOutcome outcome,
             Time.Duration charge
-        ) = tournament.matchTimeoutStatus(matchId);
+        ) = tournament.classifyMatchTimeout(matchId);
         assertEq(uint8(phase), uint8(expectedPhase));
         assertEq(uint8(outcome), uint8(expectedOutcome));
         assertEq(Time.Duration.unwrap(charge), expectedCharge);
@@ -810,14 +939,13 @@ contract TournamentObserverTest is Test {
 
     function _assertDescriptor(
         uint64 level,
-        uint64 levels,
-        uint64 log2step,
+        ITournament.TournamentKind kind,
+        uint64 log2Stride,
         uint64 height,
-        uint256 baseCycle,
-        ITournament.TournamentKind expectedKind
+        uint256 baseCycle
     ) internal {
         TournamentObserverHarness tournament = _newTournament(
-            level, levels, log2step, height, baseCycle, _zeroNestedDispute()
+            level, kind, log2Stride, height, baseCycle, _zeroNestedDispute()
         );
         ITournament.TournamentDescriptor memory descriptor =
             tournament.tournamentDescriptor();
@@ -826,11 +954,10 @@ contract TournamentObserverTest is Test {
             Machine.Hash.unwrap(_hash(0xabc))
         );
         assertEq(descriptor.baseCycle, baseCycle);
-        assertEq(descriptor.log2step, log2step);
+        assertEq(descriptor.log2Stride, log2Stride);
         assertEq(descriptor.height, height);
         assertEq(descriptor.level, level);
-        assertEq(descriptor.levels, levels);
-        assertEq(uint8(descriptor.kind), uint8(expectedKind));
+        assertEq(uint8(descriptor.kind), uint8(kind));
     }
 
     function _assertInnerWinner(
@@ -851,6 +978,21 @@ contract TournamentObserverTest is Test {
         );
     }
 
+    function _assertInnerResult(
+        TournamentObserverHarness tournament,
+        ITournament.InnerTournamentDisposition disposition,
+        Tree.Node parentCommitment,
+        uint64 pausedAllowance
+    ) internal view {
+        ITournament.InnerResultView memory actual = tournament.innerResult();
+        ITournament.InnerResultView memory expected = ITournament.InnerResultView({
+            disposition: disposition,
+            parentCommitment: parentCommitment,
+            pausedAllowance: _duration(pausedAllowance)
+        });
+        assertEq(keccak256(abi.encode(actual)), keccak256(abi.encode(expected)));
+    }
+
     function _assertStanding(
         TournamentObserverHarness tournament,
         ITournament.TournamentStandingView memory expected
@@ -866,11 +1008,11 @@ contract TournamentObserverTest is Test {
         );
     }
 
-    function _standingTournament(uint64 level, uint64 levels)
+    function _standingTournament()
         internal
         returns (TournamentObserverHarness)
     {
-        return _newTournament(level, levels, 0, 3, 0, _zeroNestedDispute());
+        return _newLeafTournament();
     }
 
     function _joinUniformCommitment(
@@ -893,7 +1035,7 @@ contract TournamentObserverTest is Test {
 
     function _newTournament(
         uint64 level,
-        uint64 levels,
+        ITournament.TournamentKind kind,
         uint64 log2step,
         uint64 height,
         uint256 baseCycle,
@@ -908,7 +1050,7 @@ contract TournamentObserverTest is Test {
                     height: height
                 }),
                 level: level,
-                levels: levels,
+                kind: kind,
                 startInstant: _instant(100),
                 allowance: _duration(20),
                 responseBudget: _duration(3),
@@ -920,6 +1062,12 @@ contract TournamentObserverTest is Test {
         address clone =
             address(IMPLEMENTATION).cloneWithImmutableArgs(abi.encode(args));
         return TournamentObserverHarness(clone);
+    }
+
+    function _newLeafTournament() internal returns (TournamentObserverHarness) {
+        return _newTournament(
+            0, ITournament.TournamentKind.LEAF, 0, 3, 0, _zeroNestedDispute()
+        );
     }
 
     function _assertProjectionZeroes(
@@ -1036,6 +1184,19 @@ contract TournamentObserverTest is Test {
             contestedFinalStateOne: Machine.ZERO_STATE,
             contestedCommitmentTwo: Tree.ZERO_NODE,
             contestedFinalStateTwo: Machine.ZERO_STATE
+        });
+    }
+
+    function _nestedDispute()
+        internal
+        pure
+        returns (ITournament.NestedDispute memory)
+    {
+        return ITournament.NestedDispute({
+            contestedCommitmentOne: _node(0xa1),
+            contestedFinalStateOne: _hash(0xb1),
+            contestedCommitmentTwo: _node(0xa2),
+            contestedFinalStateTwo: _hash(0xb2)
         });
     }
 

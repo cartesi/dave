@@ -7,6 +7,9 @@ local MerkleBuilder = require "cryptography.merkle_builder"
 local Planner = require "player.planner"
 local Test = require "tests.testlib"
 
+local LEAF = Domain.TournamentKind.LEAF
+local NON_LEAF = Domain.TournamentKind.NON_LEAF
+
 local function digest(byte)
     return Hash:from_digest_hex(
         "0x" .. string.rep(string.format("%02x", byte), 32)
@@ -28,11 +31,11 @@ local function tree(initial_hash, first_leaf, height)
     return builder:build(initial_hash), leaves
 end
 
-local function descriptor(at, initial, level, levels)
+local function descriptor(at, initial, level, kind)
     return Domain.descriptor {
         address = at,
         level = level,
-        levels = levels,
+        kind = kind,
         initial_hash = initial,
         base_cycle = 0,
         log2_stride = 0,
@@ -74,7 +77,7 @@ local function engaged_context(args)
         root,
         initial,
         0,
-        args.non_leaf and 2 or 1
+        args.non_leaf and NON_LEAF or LEAF
     )
     local live = Domain.live(args.state, args.timeout or Domain.timeout_none())
     local observation = Domain.tournament_observation(
@@ -106,7 +109,7 @@ return {
         local root = address(1)
         local initial = digest(1)
         local local_tree, leaves = tree(initial, 10, 2)
-        local desc = descriptor(root, initial, 0, 1)
+        local desc = descriptor(root, initial, 0, LEAF)
         local context = Context.assemble {
             fold = Fold.new(root),
             observations = {
@@ -317,7 +320,7 @@ return {
             fold = fold,
             observations = {
                 [root] = Domain.tournament_observation(
-                    descriptor(root, root_initial, 0, 2),
+                    descriptor(root, root_initial, 0, NON_LEAF),
                     Domain.matches_active(
                         nil,
                         Domain.JoinDisposition.OPEN
@@ -337,7 +340,7 @@ return {
                     }
                 ),
                 [child] = Domain.tournament_observation(
-                    descriptor(child, child_initial, 1, 2),
+                    descriptor(child, child_initial, 1, LEAF),
                     Domain.inner_winner(
                         root_tree.root_hash,
                         child_tree.root_hash

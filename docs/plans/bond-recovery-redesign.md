@@ -2,9 +2,9 @@
 
 Status: CONTRACTS IMPLEMENTED 2026-08-04 on the interface branch, and
 COMPLETED 2026-08-05 with the `bondRecovery` capability view and
-`BondRecovered` event; the node-side recovery action rides the
-[self-healing batch submission](self-healing-batch-submission.md)
-campaign, whose design is settled. Decisions recorded below.
+`BondRecovered` event; the node-side recovery action is owned by the
+[self-healing transaction lane](self-healing-batch-submission.md). Its
+finalized-snapshot and low-priority cadence were tightened on 2026-08-08.
 
 ## Motivation
 
@@ -47,26 +47,37 @@ and `RECOVERABLE` its payment arm. The `BondRecovered` event completes
 the economics surface next to `PartialBondRefund`, giving terminal
 recovery a first-class observability signal.
 
-## Node-side work (settled; rides the batch-submission wave)
+## Node-side work (implemented; lowest-priority lane work)
 
-- Recovery intents ride the wave's tail: lowest priority because
-  nothing in the protocol waits on them. The planner is stateless over
-  chain reads:
+- Recovery uses the same exclusive signer lane, but never rides a dispute or
+  settlement wave's tail. A pending low-priority nonce cannot then become the
+  next tick's head and obstruct a newly urgent dispute action. The planner is
+  stateless over chain reads:
   - Candidates by provenance, never by search. The node can only hold
     bonds in tournaments it participated in, and those all live inside
     dispute trees rooted at epochs recorded in its own database (from
     the trusted DaveConsensus stream). The planner walks each
     unretired epoch's tree root-down through each trusted tournament's
-    own `NewInnerTournament` events over finalized blocks, so every
-    candidate address descends from trust by construction.
-  - Capability: one `bondRecovery()` read per tree node; plan exactly
-    the `RECOVERABLE && claimer == us` hits. The claimer answers "did
+    own `NewInnerTournament` events through one sampled finalized head, so
+    every candidate address descends from trust by construction.
+  - Capability and completion use that same finalized hash. One
+    `bondRecovery()` read per tree node identifies the first
+    `RECOVERABLE && claimer == us` candidate and whether the complete tree is
+    terminal. A single latest-pinned read of that candidate may suppress a
+    recovery already mined, but latest state never retires a tournament or
+    epoch. The claimer answers "did
     we join and win" from the contract's own records, so the planner
     needs no join history.
   - Completion: `RECOVERED` retires a tournament, whoever triggered
     the recovery; an epoch retires when its whole tree is terminal.
     The retired-epoch set is the planner's only state, in memory,
     rebuilt by a boot re-walk. Self-healing throughout.
+  - Cadence: scan only when higher-priority work is absent and the finalized
+    head has advanced; plan at most one recovery. If urgent work postpones a
+    due scan, the cadence remains due. A Latest epoch newer than finalized
+    storage is also a fence, reserving the lane for the next join. Every sealed
+    epoch remains discoverable after rotation, so no persistent recovery queue
+    is required.
   - REJECTED alternative, recorded for its lesson: a chain-wide
     `CommitmentJoined` log scan filtered by the indexed submitter,
     with candidates verified as genuine clones by ERC-1167 prelude
@@ -85,9 +96,9 @@ recovery a first-class observability signal.
   dwarfs its gas). Keeping it outside the `refundable` seam also avoids
   circular accounting - the subsidy would be paid from the very balance
   recovery is settling.
-- Until the node lane lands, e2e scenarios that assert terminal
-  balances trigger recovery explicitly from the harness; once it
-  lands, they assert the node's own `BondRecovered` instead.
+- The multi-sybil e2e waits for the node's own planner to drain the terminal
+  tournament, and asserts both the resulting zero balance and the planner's
+  trace. The harness does not recover the node's bond on its behalf.
 
 ## Deliberately not done
 

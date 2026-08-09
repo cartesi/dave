@@ -95,18 +95,25 @@ Immutable arguments determine its role:
   result is consumed by rollups consensus.
 - An inner tournament has `level > 0`. It inherits two contested commitments
   and final states from a parent match.
-- A leaf tournament has `level == levels - 1`. Its sealed matches are resolved
+- A leaf tournament carries `kind == LEAF`. Its sealed matches are resolved
   with the state-transition contract.
-- A non-leaf tournament has `level < levels - 1`. Its sealed matches create
+- A non-leaf tournament carries `kind == NON_LEAF`. Its sealed matches create
   child tournaments.
+
+The factory derives that kind from its configured parameter row before
+creating a clone. Each clone therefore carries the two facts its behavior
+needs: its root-based `level` and its leaf/non-leaf `kind`. The total level
+count remains configuration knowledge; it is not repeated in every deployed
+tournament or semantic descriptor.
 
 The checked-in canonical provider configures the historical three-level table
 `log2step = [44, 27, 0]`, `height = [48, 17, 27]`. The selected deployment
 layout is the two-level table `log2step = [37, 0]`, `height = [55, 37]`.
 That switch is not live. Generic and historical Solidity tests now inject their
 own geometry, leaving the coordinated node change from root stride 44 to 37 as
-an integration gate. The tournament lifecycle is intended to depend on
-`levels`, not on either number.
+an integration gate. The factory selects the immutable tournament kind from
+the configured row; runtime leaf behavior does not infer the kind again from
+the stride or height.
 
 A test-only table validator
 ([`TournamentParameterTableValidator.sol`](../prt/contracts/test/fixtures/TournamentParameterTableValidator.sol))
@@ -382,7 +389,7 @@ same interval may instead arise from ordinary congestion. A
 Sybil-versus-Sybil match may remain overdue by choice, but that does not
 establish a delay bound for a correct participant.
 
-The two mutating timeout paths and the `matchTimeoutStatus` observer derive
+The two mutating timeout paths and the `classifyMatchTimeout` observer derive
 from the same pure four-way classification. The observer reports a nonexistent
 or deleted match as absent with outcome `NONE`. It does not validate the
 Merkle children needed to settle a winner.

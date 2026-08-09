@@ -109,7 +109,7 @@ contract TournamentLifecycleHandler is Test {
         ITournament.TournamentArguments memory args =
             tournament.tournamentArguments();
         assertEq(args.level, 0);
-        assertEq(args.levels, 1);
+        assertEq(uint8(args.kind), uint8(ITournament.TournamentKind.LEAF));
         assertEq(args.commitmentArgs.height, 3);
         assertEq(args.commitmentArgs.log2step, 0);
         HEIGHT = args.commitmentArgs.height;

@@ -1,6 +1,7 @@
 local Adapter = require "player.adapter"
 local Domain = require "player.domain"
 local Fold = require "player.fold"
+local Reader = require "player.reader"
 local Hash = require "cryptography.hash"
 local Test = require "tests.testlib"
 
@@ -30,7 +31,6 @@ local function descriptor(fields)
         log2_stride = fields.log2_stride or 0,
         height = fields.height or 4,
         level = fields.level or 0,
-        levels = fields.levels or 1,
         kind = fields.kind or 0,
     }
 end
@@ -171,7 +171,7 @@ local function live_responses(root, descriptor_wire, phase, projection)
         [root] = {
             tournamentDescriptor = descriptor_wire,
             tournamentStanding = standing(0),
-            matchTimeoutStatus = timeout(phase),
+            classifyMatchTimeout = timeout(phase),
         },
     }
     if phase == 1 then
@@ -198,6 +198,11 @@ end
 
 return {
     Test.case("static ABI decoder preserves hashes, booleans, and integers", function()
+        Test.equal(Adapter.View.TIMEOUT.name, "classifyMatchTimeout")
+        Test.equal(
+            Adapter.View.TIMEOUT.signature,
+            "classifyMatchTimeout((bytes32,bytes32))"
+        )
         local standing_wire = Adapter.decode_result(
             Adapter.View.STANDING,
             encoded {
@@ -294,6 +299,36 @@ return {
         end)
     end),
 
+    Test.case("compatibility reader decodes authoritative kind", function()
+        local reader = Reader:new("unused")
+        function reader._call(_reader, _address, signature, arguments)
+            Test.equal(
+                signature,
+                "tournamentDescriptor()"
+                    .. "((bytes32,uint256,uint64,uint64,uint64,uint8))"
+            )
+            Test.equal(#arguments, 0)
+            return {
+                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,1)",
+            }
+        end
+
+        local constants = reader:read_constants(address(1))
+        Test.equal(constants.level, 2)
+        Test.equal(constants.kind, 1)
+        Test.equal(constants.log2_stride, 44)
+        Test.equal(constants.height, 48)
+
+        function reader._call()
+            return {
+                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,9)",
+            }
+        end
+        Test.error_like("unknown tournament kind", function()
+            reader:read_constants(address(1))
+        end)
+    end),
+
     Test.case("ABI descriptor rejects height or extent 256", function()
         local root = address(1)
         local base_words = {
@@ -302,7 +337,6 @@ return {
             uint_word(254),
             uint_word(1),
             uint_word(0),
-            uint_word(1),
             uint_word(0),
         }
         local accepted_wire = Adapter.decode_result(
@@ -394,7 +428,7 @@ return {
             },
             {
                 name = "nonleaf ready",
-                descriptor = descriptor { levels = 2, kind = 1 },
+                descriptor = descriptor { kind = 1 },
                 phase = 2,
                 projection = ready(2),
                 expected = Domain.LiveMatchState.READY_TO_DELEGATE,
@@ -464,7 +498,7 @@ return {
         local parent_projection = sealed(3)
         local responses = live_responses(
             root,
-            descriptor { levels = 2, kind = 1 },
+            descriptor { kind = 1 },
             3,
             parent_projection
         )
@@ -474,7 +508,6 @@ return {
                 base_cycle = parent_projection.divergence_cycle,
                 height = 2,
                 level = 1,
-                levels = 2,
                 kind = 0,
             },
             tournamentStanding = standing(5),
@@ -556,28 +589,28 @@ return {
             {
                 message = "unknown match phase",
                 mutate = function()
-                    responses[root].matchTimeoutStatus.actual_phase = 9
+                    responses[root].classifyMatchTimeout.actual_phase = 9
                 end,
                 restore = function()
-                    responses[root].matchTimeoutStatus.actual_phase = 1
+                    responses[root].classifyMatchTimeout.actual_phase = 1
                 end,
             },
             {
                 message = "unknown timeout outcome",
                 mutate = function()
-                    responses[root].matchTimeoutStatus.outcome = 9
+                    responses[root].classifyMatchTimeout.outcome = 9
                 end,
                 restore = function()
-                    responses[root].matchTimeoutStatus.outcome = 0
+                    responses[root].classifyMatchTimeout.outcome = 0
                 end,
             },
             {
                 message = "requires zero deferred charge",
                 mutate = function()
-                    responses[root].matchTimeoutStatus.deferred_charge = 1
+                    responses[root].classifyMatchTimeout.deferred_charge = 1
                 end,
                 restore = function()
-                    responses[root].matchTimeoutStatus.deferred_charge = 0
+                    responses[root].classifyMatchTimeout.deferred_charge = 0
                 end,
             },
             {
@@ -643,7 +676,7 @@ return {
         })
         local responses = live_responses(
             root,
-            descriptor { levels = 2, kind = 1 },
+            descriptor { kind = 1 },
             3,
             parent_projection
         )
@@ -653,7 +686,6 @@ return {
                 base_cycle = parent_projection.divergence_cycle,
                 height = 2,
                 level = 1,
-                levels = 2,
                 kind = 0,
             },
             tournamentStanding = standing(4, {

@@ -24,8 +24,8 @@ Adapter.View = {
         signature = "tournamentStanding()",
     },
     TIMEOUT = {
-        name = "matchTimeoutStatus",
-        signature = "matchTimeoutStatus((bytes32,bytes32))",
+        name = "classifyMatchTimeout",
+        signature = "classifyMatchTimeout((bytes32,bytes32))",
     },
     BISECTING = {
         name = "bisectingMatch",
@@ -163,15 +163,14 @@ function Adapter.decode_result(view, raw)
     required(view, "observer view")
     local name = required(view.name, "observer view name")
     if view == Adapter.View.DESCRIPTOR then
-        local words = abi_words(raw, 7, name)
+        local words = abi_words(raw, 6, name)
         return {
             initial_hash = word_hash(words[1]),
             base_cycle = word_uint(words[2]),
-            log2_stride = word_small(words[3], 64, name .. ".log2step"),
+            log2_stride = word_small(words[3], 64, name .. ".log2Stride"),
             height = word_small(words[4], 64, name .. ".height"),
             level = word_small(words[5], 64, name .. ".level"),
-            levels = word_small(words[6], 64, name .. ".levels"),
-            kind = word_small(words[7], 8, name .. ".kind"),
+            kind = word_small(words[6], 8, name .. ".kind"),
         }
     end
     if view == Adapter.View.STANDING then
@@ -244,14 +243,12 @@ local function decode_descriptor(tournament_fold, wire)
     local descriptor = Domain.descriptor {
         address = tournament_fold.address,
         level = wire.level,
-        levels = wire.levels,
+        kind = wire_kind,
         initial_hash = wire.initial_hash,
         base_cycle = wire.base_cycle,
         log2_stride = wire.log2_stride,
         height = wire.height,
     }
-    assert(wire_kind == descriptor.kind,
-        "descriptor kind disagrees with level-derived tournament kind")
     return descriptor
 end
 
@@ -785,7 +782,6 @@ local function validate_parent_topology(
     assert(awaiting._tag == Domain.LiveMatchState.AWAITING_CHILD
         and awaiting.child_tournament == tournament_fold.address
         and child.descriptor.level == parent.descriptor.level + 1
-        and child.descriptor.levels == parent.descriptor.levels
         and same(
             child.descriptor.initial_hash,
             awaiting.divergence.agree_state

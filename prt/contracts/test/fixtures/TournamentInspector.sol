@@ -20,8 +20,10 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// these tests remain the raw-layout compatibility witnesses. Closure and
 /// finish predicates are re-derived from the clone arguments and block
 /// number, independent of the observer ABI, so assertions against them are
-/// oracle checks rather than echoes. Only `arbitrationResult` reads through
-/// the production `tournamentStanding` surface, mirroring DaveConsensus.
+/// oracle checks rather than echoes. The semantic compatibility helpers
+/// `arbitrationResult`, `canBeEliminated`, and `innerTournamentWinner` delegate
+/// to production observers; they preserve historical test vocabulary, but are
+/// not independent semantic oracles.
 library TournamentInspector {
     using Time for Time.Instant;
     using Time for Time.Duration;
@@ -55,12 +57,17 @@ library TournamentInspector {
     function tournamentLevelConstants(ITournament tournament)
         internal
         view
-        returns (uint64 maxLevel, uint64 level, uint64 log2step, uint64 height)
+        returns (
+            ITournament.TournamentKind kind,
+            uint64 level,
+            uint64 log2step,
+            uint64 height
+        )
     {
         ITournament.TournamentArguments memory args =
             tournamentArguments(tournament);
         return (
-            args.levels,
+            args.kind,
             args.level,
             args.commitmentArgs.log2step,
             args.commitmentArgs.height

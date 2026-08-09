@@ -134,6 +134,13 @@ other log ingestion. The raw getters this reader once shadowed no longer
 exist: the contracts retired them, and the migration-era differential
 scaffolding is deleted with them.
 
+Point reads for one tournament share that pinned hash but not a serial RPC
+critical path. Descriptor and standing reads run together; match timeout reads
+run with a fixed concurrency bound; and the phase-specific projections form a
+second bounded round after the timeout phases are known. Transaction signing
+and submission remain strictly serial and are independent of this read-side
+parallelism.
+
 ## Known debts
 
 State and storage:
@@ -202,18 +209,21 @@ Structure:
     (`src/chain.rs`); there is no recursion depth left to bound.
 12. No graceful-shutdown story for in-flight work: a mid-epoch machine run
     or mid-dispute reaction is only interrupted at the next poll.
-13. (resolved 2026-07-24; reshaped 2026-08-05) Hero actions, cleanup,
+13. (resolved 2026-07-24; reshaped 2026-08-08) Hero actions, cleanup,
     settlement, and bond recovery share one explicit stateless transaction
-    lane rather than a signer-bearing provider. Each tick composes one
-    nonce-ordered wave (settlement step, hero action, cleanup, recovery)
-    from the mined count at `latest`, signs fully specified EIP-1559
-    transactions at the fresh market quote, submits them all without
-    waiting, and forgets; the mempool (or block builder) arbitrates
-    duplicates and replacements, and every tick rebuilds the wave from
-    fresh observation (docs/plans/self-healing-batch-submission.md). Read
-    and submit endpoints are independently configurable; the submit
-    endpoint defaults to the read endpoint. The signer must remain
-    exclusive to one node instance.
+    lane rather than a signer-bearing provider. The epoch manager owns the
+    non-cloneable lane directly, making it the one mutation submitter. Hero
+    and cleanup work forms a nonce-ordered wave from the mined count at
+    `latest`; one guarded settlement step may precede it. Bond recovery is
+    not a wave tail: it runs only when higher-priority work is absent, at
+    most once for a newly observed finalized head. Its tree and retirement
+    classification share that finalized snapshot; a latest read may suppress
+    an already-mined recovery but can never retire an epoch. Every send is
+    rebuilt from fresh observation and fees, while the mempool or block
+    builder arbitrates duplicates and replacements
+    (docs/plans/self-healing-batch-submission.md). Read and submit endpoints
+    remain independently configurable; the submit endpoint defaults to the
+    read endpoint. The signer must still be exclusive to one node instance.
 
 Documented design assumptions (fine, but should stay explicit):
 

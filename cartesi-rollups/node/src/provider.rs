@@ -151,10 +151,10 @@ pub type LaneRequest = (String, TransactionRequest);
 /// tick (docs/plans/self-healing-batch-submission.md), so anything a
 /// lost response could forget is rebuilt from observation.
 ///
-/// Submissions flow from the epoch manager's serial loop; the lane
-/// has no internal serialization, and concurrent waves would only
-/// race nonces in the pool - harmless, but noisy.
-#[derive(Clone, Debug)]
+/// Submissions flow from the epoch manager's serial loop. Mutable
+/// access makes that single-owner constraint explicit: two waves
+/// cannot race nonces through the same lane.
+#[derive(Debug)]
 pub struct TransactionLane {
     read_provider: DynProvider,
     submit_provider: DynProvider,
@@ -188,7 +188,7 @@ impl TransactionLane {
     /// Submit one fully specified call at the base nonce, failing on
     /// a transport or signing error. Pool verdicts short of failure
     /// stay benign, as in a wave.
-    pub async fn submit(&self, label: &str, request: TransactionRequest) -> Result<SendReport> {
+    pub async fn submit(&mut self, label: &str, request: TransactionRequest) -> Result<SendReport> {
         let mut reports = self.submit_wave(vec![(label.to_string(), request)]).await?;
         let report = reports.pop().expect("one request yields one report");
         ensure!(
@@ -207,7 +207,7 @@ impl TransactionLane {
     /// does. Pool verdicts are per transaction and never abort the
     /// tail; the outer error covers only failing to observe the chain
     /// or to sign.
-    pub async fn submit_wave(&self, wave: Vec<LaneRequest>) -> Result<Vec<SendReport>> {
+    pub async fn submit_wave(&mut self, wave: Vec<LaneRequest>) -> Result<Vec<SendReport>> {
         for (label, request) in &wave {
             self.validate(label, request)?;
         }
@@ -518,7 +518,7 @@ mod tests {
     /// no lane state to reconcile.
     #[tokio::test]
     async fn stateless_wave_defers_to_the_pool() -> Result<()> {
-        let (_anvil, provider, lane, signer) = spawn_lane().await?;
+        let (_anvil, provider, mut lane, signer) = spawn_lane().await?;
         let before_submissions = provider.anvil_snapshot().await?;
 
         let first = lane
@@ -579,7 +579,7 @@ mod tests {
     /// intent waits exactly as it would have without the restart.
     #[tokio::test]
     async fn restart_is_invisible_to_the_pool() -> Result<()> {
-        let (anvil, provider, lane, signer) = spawn_lane().await?;
+        let (anvil, provider, mut lane, signer) = spawn_lane().await?;
 
         let original = lane.submit("before-restart", payment(0x11)).await?;
         assert_eq!(original.verdict, SendVerdict::Submitted);
@@ -587,7 +587,7 @@ mod tests {
 
         let mut signer_key: PrivateKeySigner = anvil.keys()[0].clone().into();
         signer_key.set_chain_id(Some(anvil.chain_id()));
-        let restarted = TransactionLane::new(
+        let mut restarted = TransactionLane::new(
             provider.clone(),
             provider.clone(),
             anvil.chain_id(),

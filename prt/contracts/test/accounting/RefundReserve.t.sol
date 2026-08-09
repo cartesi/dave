@@ -759,7 +759,7 @@ contract RefundReserveTest is Test {
         assertEq(burned, tournamentBalanceBefore - payment);
         assertGe(burned, 9 * bounty);
         assertEq(address(tournament).balance, 0);
-        assertGe(payment + burned, (joins - 1 - matchesCreated) * bond);
+        assertGe(bounty + burned, (joins - 1 - matchesCreated) * bond);
         assertEq(
             refunds + bounty + burned,
             (joins - 1) * bond,

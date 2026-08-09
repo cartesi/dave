@@ -77,9 +77,11 @@ that seam require the Solidity, machine, and client implementations to agree.
 - `script/Deployment.s.sol` converts deployment policy into chain-specific
   parameters.
 
-Every tournament level uses the same `Tournament` implementation. Root versus
-inner and leaf versus non-leaf behavior derive from clone arguments and the
-configured level count; there are no production Top/Middle/Bottom contracts.
+Every tournament level uses the same `Tournament` implementation. The clone's
+root-based `level` distinguishes root from inner behavior, while its explicit
+`kind` distinguishes leaf from non-leaf behavior. The factory derives that
+kind from the configured parameter table; there are no production
+Top/Middle/Bottom contracts.
 
 ## Invariants to protect
 

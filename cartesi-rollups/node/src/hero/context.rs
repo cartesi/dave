@@ -418,7 +418,8 @@ mod tests {
             adapter::ObservedMatch,
             domain::{
                 AwaitingChildMatch, BisectingMatch, JoinDisposition, LiveMatch, MatchCoordinate,
-                SealedDivergence, TimeoutDisposition, TournamentStanding, WaitingChildren,
+                SealedDivergence, TimeoutDisposition, TournamentKind, TournamentStanding,
+                WaitingChildren,
             },
             fold::{EventKind, TournamentEvent},
         },
@@ -434,7 +435,7 @@ mod tests {
     fn descriptor(
         address: Address,
         level: u64,
-        levels: u64,
+        kind: TournamentKind,
         initial_hash: Digest,
         base_cycle: u64,
         log2_stride: u64,
@@ -443,7 +444,7 @@ mod tests {
         TournamentDescriptor::try_new(
             address,
             level,
-            levels,
+            kind,
             initial_hash,
             U256::from(base_cycle),
             log2_stride,
@@ -452,12 +453,12 @@ mod tests {
         .unwrap()
     }
 
-    fn root_descriptor(initial_hash: Digest, levels: u64) -> TournamentDescriptor {
-        descriptor(ROOT, 0, levels, initial_hash, 0, 3, 4)
+    fn root_descriptor(initial_hash: Digest, kind: TournamentKind) -> TournamentDescriptor {
+        descriptor(ROOT, 0, kind, initial_hash, 0, 3, 4)
     }
 
     fn child_descriptor(initial_hash: Digest) -> TournamentDescriptor {
-        descriptor(CHILD, 1, 2, initial_hash, 0, 0, 3)
+        descriptor(CHILD, 1, TournamentKind::Leaf, initial_hash, 0, 0, 3)
     }
 
     fn source() -> DisputeSource<crate::engine::ToyFactory> {
@@ -540,7 +541,7 @@ mod tests {
     #[test]
     fn projects_not_joined_and_candidate_with_level_material() {
         let initial_hash = digest(0x90);
-        let descriptor = root_descriptor(initial_hash, 1);
+        let descriptor = root_descriptor(initial_hash, TournamentKind::Leaf);
         let local = local_root(descriptor);
 
         let fold = Fold::new(ROOT);
@@ -573,7 +574,7 @@ mod tests {
     #[test]
     fn projects_live_engagement_in_both_match_orientations() {
         let initial_hash = digest(0x90);
-        let descriptor = root_descriptor(initial_hash, 1);
+        let descriptor = root_descriptor(initial_hash, TournamentKind::Leaf);
         let local = local_root(descriptor);
         let opponent = digest(0x51);
 
@@ -633,7 +634,7 @@ mod tests {
     #[test]
     fn projects_every_legal_deletion_outcome_in_both_orientations() {
         let initial_hash = digest(0x90);
-        let descriptor = root_descriptor(initial_hash, 1);
+        let descriptor = root_descriptor(initial_hash, TournamentKind::Leaf);
         let local = local_root(descriptor);
         let opponent = digest(0x51);
         let reasons = [
@@ -743,7 +744,7 @@ mod tests {
     #[test]
     fn latest_repair_replaces_survived_match_history() {
         let initial_hash = digest(0x90);
-        let descriptor = root_descriptor(initial_hash, 1);
+        let descriptor = root_descriptor(initial_hash, TournamentKind::Leaf);
         let local = local_root(descriptor);
         let first_opponent = digest(0x51);
         let second_opponent = digest(0x52);
@@ -816,7 +817,7 @@ mod tests {
     fn recursively_projects_only_the_local_child_path() {
         let root_initial = digest(0x90);
         let agree_state = digest(0x91);
-        let parent_descriptor = root_descriptor(root_initial, 2);
+        let parent_descriptor = root_descriptor(root_initial, TournamentKind::NonLeaf);
         let child_descriptor = child_descriptor(agree_state);
         let parent_local = local_root(parent_descriptor);
         let child_local = local_root(child_descriptor);
@@ -913,14 +914,14 @@ mod tests {
         let expected_initial = digest(0x90);
         let observed_initial = digest(0x91);
         let fold = Fold::new(ROOT);
-        let root = root_descriptor(observed_initial, 1);
+        let root = root_descriptor(observed_initial, TournamentKind::Leaf);
         let observations = HashMap::from([(ROOT, observation(root, standing(None), []))]);
         assert!(matches!(
             assemble(expected_initial, &fold, &observations),
             Err(ContextError::RootInitialHashMismatch { .. })
         ));
 
-        let misaligned = descriptor(ROOT, 0, 1, expected_initial, 1, 0, 3);
+        let misaligned = descriptor(ROOT, 0, TournamentKind::Leaf, expected_initial, 1, 0, 3);
         let observations = HashMap::from([(ROOT, observation(misaligned, standing(None), []))]);
         assert!(matches!(
             assemble(expected_initial, &fold, &observations),

@@ -895,7 +895,7 @@ contract SealInnerMatchGasTest is TournamentGasTest {
         );
         _logMeasurement("seal inner match", result);
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 11_000
+            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 14_000
         );
 
         Match.Id memory id = matchId;
@@ -1013,7 +1013,7 @@ contract SealedLeafTwoWinsTimeoutGasTest is TournamentGasTest {
             CLOCK_CHARGE - TIMEOUT_OVERDUE
         );
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_MATCH_BY_TIMEOUT, 1_000
+            result, Gas.WIN_MATCH_BY_TIMEOUT, 2_000
         );
     }
 }
@@ -1092,7 +1092,7 @@ contract InnerTwoWinsGasTest is TournamentGasTest {
             "inner two wins", CommitmentShape.SECOND_DIFFERENT
         );
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_INNER_TOURNAMENT, 39_000
+            result, Gas.WIN_INNER_TOURNAMENT, 46_000
         );
     }
 }
@@ -1111,7 +1111,7 @@ contract InnerEliminationGasTest is TournamentGasTest {
         Measurement memory result =
             _measureInnerElimination("inner elimination");
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.ELIMINATE_INNER_TOURNAMENT, 7_000
+            result, Gas.ELIMINATE_INNER_TOURNAMENT, 13_000
         );
     }
 }

@@ -5,6 +5,9 @@ local Hash = require "cryptography.hash"
 local MerkleBuilder = require "cryptography.merkle_builder"
 local Test = require "tests.testlib"
 
+local LEAF = Domain.TournamentKind.LEAF
+local NON_LEAF = Domain.TournamentKind.NON_LEAF
+
 local function digest(byte)
     return Hash:from_digest_hex(
         "0x" .. string.rep(string.format("%02x", byte), 32)
@@ -23,11 +26,11 @@ local function tree(initial_hash, first_leaf, height)
     return builder:build(initial_hash)
 end
 
-local function descriptor(at, initial_hash, level, levels, base_cycle)
+local function descriptor(at, initial_hash, level, kind, base_cycle)
     return Domain.descriptor {
         address = at,
         level = level,
-        levels = levels,
+        kind = kind,
         initial_hash = initial_hash,
         base_cycle = base_cycle or 0,
         log2_stride = 0,
@@ -59,7 +62,7 @@ local function root_fixture()
     local root = address(1)
     local initial = digest(1)
     local local_tree = tree(initial, 10, 2)
-    local desc = descriptor(root, initial, 0, 1)
+    local desc = descriptor(root, initial, 0, LEAF)
     return root, initial, local_tree, desc
 end
 
@@ -230,7 +233,7 @@ return {
             final_state_two = digest(41),
         }
         local root_observation = observation(
-            descriptor(root, root_initial, 0, 2),
+            descriptor(root, root_initial, 0, NON_LEAF),
             Domain.matches_active(nil, Domain.JoinDisposition.OPEN),
             {
                 Domain.observed_match(
@@ -244,7 +247,7 @@ return {
             }
         )
         local child_observation = observation(
-            descriptor(child, child_initial, 1, 2),
+            descriptor(child, child_initial, 1, LEAF),
             Domain.awaiting_closure(nil)
         )
         local commitment_builder = builder_for {

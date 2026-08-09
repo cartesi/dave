@@ -3,11 +3,14 @@ local Domain = require "player.domain"
 local Planner = require "player.planner"
 local Test = require "tests.testlib"
 
-local function descriptor(levels, address, level, initial_hash, base_cycle)
+local LEAF = Domain.TournamentKind.LEAF
+local NON_LEAF = Domain.TournamentKind.NON_LEAF
+
+local function descriptor(kind, address, level, initial_hash, base_cycle)
     return Domain.descriptor {
         address = address or "root",
         level = level or 0,
-        levels = levels or 1,
+        kind = kind or LEAF,
         initial_hash = initial_hash or "initial",
         base_cycle = base_cycle or 0,
         log2_stride = 0,
@@ -59,7 +62,7 @@ local function divergence()
     }
 end
 
-local function live_snapshot(state, timeout, local_side, levels)
+local function live_snapshot(state, timeout, local_side, kind)
     local id = match_id()
     local local_commitment =
         Domain.side_commitment(local_side, id)
@@ -69,7 +72,7 @@ local function live_snapshot(state, timeout, local_side, levels)
         Domain.live(state, timeout)
     )
     return Domain.snapshot {
-        descriptor = descriptor(levels),
+        descriptor = descriptor(kind),
         standing = Domain.matches_active(
             "dangling",
             Domain.JoinDisposition.CLOSED
@@ -81,7 +84,7 @@ end
 
 local function root_snapshot(standing, local_commitment, local_standing)
     return Domain.snapshot {
-        descriptor = descriptor(1),
+        descriptor = descriptor(),
         standing = standing,
         local_commitment = local_commitment,
         local_standing = local_standing,
@@ -204,49 +207,49 @@ return {
             {
                 state = bisecting(),
                 side = Domain.MatchSide.ONE,
-                levels = 1,
+                kind = LEAF,
                 expected = Domain.HeroIntent.ADVANCE,
             },
             {
                 state = bisecting(),
                 side = Domain.MatchSide.TWO,
-                levels = 1,
+                kind = LEAF,
                 expected = Domain.WaitReason.OPPONENT_TURN,
             },
             {
                 state = ready_leaf(),
                 side = Domain.MatchSide.TWO,
-                levels = 1,
+                kind = LEAF,
                 expected = Domain.HeroIntent.SEAL_LEAF,
             },
             {
                 state = ready_leaf(),
                 side = Domain.MatchSide.ONE,
-                levels = 1,
+                kind = LEAF,
                 expected = Domain.WaitReason.OPPONENT_TURN,
             },
             {
                 state = ready_child(),
                 side = Domain.MatchSide.TWO,
-                levels = 2,
+                kind = NON_LEAF,
                 expected = Domain.HeroIntent.CREATE_CHILD,
             },
             {
                 state = ready_child(),
                 side = Domain.MatchSide.ONE,
-                levels = 2,
+                kind = NON_LEAF,
                 expected = Domain.WaitReason.OPPONENT_TURN,
             },
             {
                 state = Domain.sealed_leaf(divergence()),
                 side = Domain.MatchSide.ONE,
-                levels = 1,
+                kind = LEAF,
                 expected = Domain.HeroIntent.PROVE_LEAF,
             },
             {
                 state = Domain.sealed_leaf(divergence()),
                 side = Domain.MatchSide.TWO,
-                levels = 1,
+                kind = LEAF,
                 expected = Domain.HeroIntent.PROVE_LEAF,
             },
         }
@@ -255,7 +258,7 @@ return {
                 row.state,
                 Domain.timeout_none(),
                 row.side,
-                row.levels
+                row.kind
             ))
             local actual = decision.intent
                 and decision.intent._tag
@@ -269,7 +272,7 @@ return {
             bisecting(),
             Domain.timeout_none(),
             Domain.MatchSide.ONE,
-            1
+            LEAF
         )
         local decision = Planner.plan(snapshot)
         local intent = decision.intent
@@ -292,28 +295,28 @@ return {
             {
                 state = bisecting(),
                 side = Domain.MatchSide.ONE,
-                levels = 1,
+                kind = LEAF,
                 intent = Domain.HeroIntent.ADVANCE,
                 state_tag = Domain.LiveMatchState.BISECTING,
             },
             {
                 state = ready_leaf(),
                 side = Domain.MatchSide.TWO,
-                levels = 1,
+                kind = LEAF,
                 intent = Domain.HeroIntent.SEAL_LEAF,
                 state_tag = Domain.LiveMatchState.READY_TO_SEAL_LEAF,
             },
             {
                 state = ready_child(),
                 side = Domain.MatchSide.TWO,
-                levels = 2,
+                kind = NON_LEAF,
                 intent = Domain.HeroIntent.CREATE_CHILD,
                 state_tag = Domain.LiveMatchState.READY_TO_DELEGATE,
             },
             {
                 state = Domain.sealed_leaf(divergence()),
                 side = Domain.MatchSide.ONE,
-                levels = 1,
+                kind = LEAF,
                 intent = Domain.HeroIntent.PROVE_LEAF,
                 state_tag = Domain.LiveMatchState.SEALED_LEAF,
             },
@@ -324,7 +327,7 @@ return {
                 row.state,
                 Domain.timeout_none(),
                 row.side,
-                row.levels
+                row.kind
             )).intent
             Test.equal(action._tag, row.intent)
             Test.equal(action.tournament, "root")
@@ -360,7 +363,7 @@ return {
             bisecting(),
             Domain.timeout_two_wins(7),
             Domain.MatchSide.TWO,
-            1
+            LEAF
         )).intent
         Test.equal(timeout._tag, Domain.HeroIntent.CLAIM_TIMEOUT)
         Test.equal(timeout.tournament, "root")
@@ -432,7 +435,7 @@ return {
         local phases = {
             {
                 state = bisecting(),
-                levels = 1,
+                kind = LEAF,
                 winner = Domain.MatchSide.TWO,
                 timeout = function()
                     return Domain.timeout_two_wins(7)
@@ -440,7 +443,7 @@ return {
             },
             {
                 state = ready_leaf(),
-                levels = 1,
+                kind = LEAF,
                 winner = Domain.MatchSide.ONE,
                 timeout = function()
                     return Domain.timeout_one_wins(7)
@@ -448,7 +451,7 @@ return {
             },
             {
                 state = ready_child(),
-                levels = 2,
+                kind = NON_LEAF,
                 winner = Domain.MatchSide.ONE,
                 timeout = function()
                     return Domain.timeout_one_wins(7)
@@ -456,7 +459,7 @@ return {
             },
             {
                 state = Domain.sealed_leaf(divergence()),
-                levels = 1,
+                kind = LEAF,
                 winner = Domain.MatchSide.ONE,
                 timeout = function()
                     return Domain.timeout_one_wins(0)
@@ -471,7 +474,7 @@ return {
                 phase.state,
                 phase.timeout(),
                 phase.winner,
-                phase.levels
+                phase.kind
             ))
             Test.equal(ours.intent._tag, Domain.HeroIntent.CLAIM_TIMEOUT)
 
@@ -479,7 +482,7 @@ return {
                 phase.state,
                 phase.timeout(),
                 opponent,
-                phase.levels
+                phase.kind
             ))
             Test.equal(
                 theirs.reason,
@@ -490,18 +493,18 @@ return {
                 phase.state,
                 Domain.timeout_eliminate_both(),
                 phase.winner,
-                phase.levels
+                phase.kind
             ))
             Test.equal(eliminate.reason, Domain.WaitReason.MATCH_ELIMINABLE)
         end
     end),
 
     Test.case("awaiting child returns exactly the child decision", function()
-        local parent_descriptor = descriptor(2)
+        local parent_descriptor = descriptor(NON_LEAF)
         local id = match_id()
         local parent_link = Domain.parent_link("root", id, "one")
         local child = Domain.snapshot {
-            descriptor = descriptor(2, "child", 1, "agree", 3),
+            descriptor = descriptor(LEAF, "child", 1, "agree", 3),
             standing = Domain.matches_active(
                 nil,
                 Domain.JoinDisposition.OPEN
@@ -540,7 +543,7 @@ return {
     Test.case("inner result propagation and elimination stay distinct", function()
         local id = match_id()
         local parent = Domain.parent_link("root", id, "one")
-        local child_descriptor = descriptor(2, "child", 1, "agree", 3)
+        local child_descriptor = descriptor(LEAF, "child", 1, "agree", 3)
         local winner = Domain.snapshot {
             descriptor = child_descriptor,
             standing = Domain.inner_winner("one", "child-local"),

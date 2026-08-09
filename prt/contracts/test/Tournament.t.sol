@@ -666,7 +666,8 @@ contract TournamentTest is Util {
             playerNodes[opponent][HistoricalGeometry.height(0) - 1]
         );
         assertFalse(topTournament.canWinMatchByTimeout(matchId));
-        (Match.Phase deletedPhase,,) = topTournament.matchTimeoutStatus(matchId);
+        (Match.Phase deletedPhase,,) =
+            topTournament.classifyMatchTimeout(matchId);
         assertEq(uint8(deletedPhase), uint8(Match.Phase.UNINITIALIZED));
     }
 

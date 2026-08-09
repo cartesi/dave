@@ -6,7 +6,7 @@ mod recovery;
 
 use self::error::Result;
 use self::recovery::BondRecovery;
-use alloy::primitives::{Address, B256};
+use alloy::primitives::{Address, B256, U256};
 use alloy::providers::DynProvider;
 use log::{debug, info, trace};
 use std::{sync::Arc, time::Duration};
@@ -23,7 +23,7 @@ use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 
 pub struct EpochManager<AS: ArenaSender> {
     arena_sender: Arc<AS>,
-    transaction_lane: Arc<TransactionLane>,
+    transaction_lane: TransactionLane,
     consensus: Address,
     signer_address: Address,
     sleep_duration: Duration,
@@ -53,6 +53,18 @@ impl EpochReaction {
         }
     }
 
+    /// Recovery is maintenance: it runs only when the current epoch
+    /// has no clock-bearing work and its state was observed without an
+    /// error. A non-empty settlement or hero wave adds a second fence
+    /// in the execution loop.
+    fn allows_recovery(&self) -> bool {
+        match self {
+            Self::Absent => true,
+            Self::Preparing => false,
+            Self::Ticked(tick) => tick.result() != TournamentResult::Running,
+        }
+    }
+
     fn into_wave(self) -> Vec<LaneRequest> {
         match self {
             Self::Ticked(tick) => tick.into_wave(),
@@ -64,7 +76,7 @@ impl EpochReaction {
 impl<AS: ArenaSender> EpochManager<AS> {
     pub fn new(
         arena_sender: Arc<AS>,
-        transaction_lane: Arc<TransactionLane>,
+        transaction_lane: TransactionLane,
         consensus_address: Address,
         signer_address: Address,
         storage: Storage,
@@ -94,12 +106,19 @@ impl<AS: ArenaSender> EpochManager<AS> {
         // Consensus violations stay fatal: they are asserts, not
         // errors.
         loop {
-            let mut wave = match self.try_react_epoch(&chain).await {
+            let (wave, recovery_allowed) = match self.try_react_epoch(&chain).await {
                 Ok(reaction) => {
+                    let mut recovery_allowed = reaction.allows_recovery();
                     let settlement = if reaction.wants_settlement() {
                         match self.plan_settlement(&dave_consensus).await {
-                            Ok(step) => step,
+                            Ok(step) => {
+                                if step.is_some() {
+                                    recovery_allowed = false;
+                                }
+                                step
+                            }
                             Err(e) => {
+                                recovery_allowed = false;
                                 log::warn!("settlement planning failed, retrying next tick: {e}");
                                 None
                             }
@@ -107,32 +126,47 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     } else {
                         None
                     };
-                    settlement
-                        .into_iter()
-                        .chain(reaction.into_wave())
-                        .collect::<Vec<_>>()
+                    (
+                        settlement
+                            .into_iter()
+                            .chain(reaction.into_wave())
+                            .collect::<Vec<_>>(),
+                        recovery_allowed,
+                    )
                 }
                 Err(e) => {
                     log::warn!("dispute tick failed, retrying next tick: {e}");
-                    Vec::new()
+                    (Vec::new(), false)
                 }
             };
 
-            // Bond recovery rides the tail of every wave: nothing in
-            // the protocol waits on it, and it spans epochs, so it
-            // plans independently of the dispute phases above. Any
-            // sealed epoch's root anchors clone verification.
-            match self.plan_bond_recovery(&chain).await {
-                Ok(recovery) => wave.extend(recovery),
-                Err(e) => {
-                    log::warn!("bond recovery planning failed, retrying next tick: {e}");
+            if !wave.is_empty() {
+                // Submit clock-bearing and settlement work before any
+                // recovery RPC scan can delay it.
+                if let Err(e) = self.transaction_lane.submit_wave(wave).await {
+                    log::warn!("wave submission failed, retrying next tick: {e}");
                 }
-            }
-
-            if !wave.is_empty()
-                && let Err(e) = self.transaction_lane.submit_wave(wave).await
-            {
-                log::warn!("wave submission failed, retrying next tick: {e}");
+            } else if recovery_allowed {
+                match self.latest_epoch_is_finalized(&dave_consensus).await {
+                    Ok(true) => match self.plan_bond_recovery(&chain).await {
+                        Ok(Some(recovery)) => {
+                            if let Err(e) = self.transaction_lane.submit_wave(vec![recovery]).await
+                            {
+                                log::warn!("bond recovery submission failed, retrying later: {e}");
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            log::warn!("bond recovery planning failed, retrying next tick: {e}");
+                        }
+                    },
+                    Ok(false) => {
+                        trace!("defer bond recovery until the latest sealed epoch is finalized");
+                    }
+                    Err(e) => {
+                        log::warn!("bond recovery epoch fence failed, retrying next tick: {e}");
+                    }
+                }
             }
 
             tokio::select! { biased;
@@ -353,13 +387,37 @@ impl<AS: ArenaSender> EpochManager<AS> {
         Ok(None)
     }
 
-    async fn plan_bond_recovery(&mut self, chain: &Chain) -> Result<Vec<LaneRequest>> {
+    async fn plan_bond_recovery(&mut self, chain: &Chain) -> Result<Option<LaneRequest>> {
         let epochs = self.storage.sealed_epochs()?;
         self.bond_recovery
-            .plan(chain, &epochs)
+            .plan_due(chain, &epochs)
             .await
             .map_err(crate::hero::error::ReactError::from)
             .map_err(Into::into)
+    }
+
+    /// Keep maintenance out of the nonce lane while a newly sealed
+    /// epoch is visible at Latest but not yet in the finalized DB.
+    async fn latest_epoch_is_finalized(
+        &mut self,
+        dave_consensus: &DaveConsensus::DaveConsensusInstance<
+            DynProvider,
+            alloy::network::Ethereum,
+        >,
+    ) -> Result<bool> {
+        let latest = dave_consensus
+            .getCurrentSealedEpoch()
+            .block(alloy::eips::BlockId::latest())
+            .call()
+            .await?;
+        let finalized = self
+            .storage
+            .last_sealed_epoch()?
+            .map(|epoch| epoch.epoch_number);
+        Ok(finalized_epoch_matches_latest(
+            finalized,
+            latest.epochNumber,
+        ))
     }
 
     async fn try_react_epoch(&mut self, chain: &Chain) -> Result<EpochReaction> {
@@ -456,6 +514,10 @@ fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
     B256::from_slice(&hash)
 }
 
+fn finalized_epoch_matches_latest(finalized: Option<u64>, latest: U256) -> bool {
+    finalized.is_some_and(|epoch| U256::from(epoch) == latest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,5 +566,31 @@ mod tests {
             vec!["heroAction", "eliminateMatchByTimeout"],
             "the tick's wave order is preserved"
         );
+    }
+
+    #[test]
+    fn recovery_runs_only_in_idle_or_terminal_phases() {
+        assert!(EpochReaction::Absent.allows_recovery());
+        assert!(!EpochReaction::Preparing.allows_recovery());
+        for (result, allows) in [
+            (TournamentResult::Running, false),
+            (TournamentResult::Won, true),
+            (TournamentResult::Lost, true),
+            (TournamentResult::FailedNoWinner, true),
+        ] {
+            assert_eq!(
+                ticked(result, &[]).allows_recovery(),
+                allows,
+                "recovery gating for {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_waits_for_the_latest_epoch_to_reach_finalized_storage() {
+        assert!(!finalized_epoch_matches_latest(None, U256::ZERO));
+        assert!(finalized_epoch_matches_latest(Some(7), U256::from(7)));
+        assert!(!finalized_epoch_matches_latest(Some(7), U256::from(8)));
+        assert!(!finalized_epoch_matches_latest(Some(8), U256::from(7)));
     }
 }

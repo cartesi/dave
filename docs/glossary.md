@@ -47,8 +47,9 @@ level. Terms marked (code) appear verbatim in identifiers.
   stands for (padding after halt/yield).
 - implicit hash (code: implicit_hash): the state before leaf 0; carried
   alongside the tree, not inside it.
-- stride / log2step (code): leaf granularity of a tournament level; a
-  level-k leaf covers 2^log2step[k] usteps.
+- stride / log2step (configuration code): leaf granularity of a tournament
+  level; a level-k leaf covers 2^log2step[k] usteps. The semantic tournament
+  descriptor exposes the same quantity as `log2Stride`.
 - height (code): tree height at a level; 2^height leaves per tree.
 - span vs mask naming: in engine/constants.rs, `LOG2_*_SPAN_*` are
   field widths and `*_MASK_TO_*` are the matching field masks
@@ -67,7 +68,8 @@ level. Terms marked (code) appear verbatim in identifiers.
   dave/docs/dave.pdf) improving PRT liveness - not yet what the contracts
   implement.
 - level: dispute granularity tier. Level 0 disputes the whole epoch at
-  coarse stride; level `levels - 1` disputes single usteps.
+  coarse stride; the final configured level disputes single usteps and its
+  clones carry `kind == LEAF`.
 - commitment (in a tournament): a joined claim, i.e. a Merkle root plus
   bond, paired into matches.
 - dangling commitment: the commitment currently waiting for an opponent in

@@ -132,7 +132,6 @@ local function descriptor(fields)
         log2_stride = fields.log2_stride or 0,
         height = fields.height or 4,
         level = fields.level or 0,
-        levels = fields.levels or 2,
         kind = fields.kind == nil and 1 or fields.kind,
     }
 end
@@ -264,7 +263,7 @@ local function semantic_fixture()
         [root] = {
             tournamentDescriptor = descriptor(),
             tournamentStanding = standing(0),
-            matchTimeoutStatus = {
+            classifyMatchTimeout = {
                 actual_phase = 3,
                 outcome = 0,
                 deferred_charge = 0,
@@ -277,7 +276,6 @@ local function semantic_fixture()
                 base_cycle = 3,
                 height = 2,
                 level = 1,
-                levels = 2,
                 kind = 0,
             },
             tournamentStanding = standing(1, {

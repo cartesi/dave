@@ -826,10 +826,9 @@ mod tests {
             &tournament::ITournament::TournamentDescriptor {
                 initialHash: digest(9).into(),
                 baseCycle: U256::ZERO,
-                log2step: 3,
+                log2Stride: 3,
                 height: 2,
                 level: 0,
-                levels: 1,
                 kind: 0,
             },
         );
@@ -844,9 +843,9 @@ mod tests {
                 parentCommitment: B256::ZERO,
             },
         );
-        push_call_response::<tournament::Tournament::matchTimeoutStatusCall>(
+        push_call_response::<tournament::Tournament::classifyMatchTimeoutCall>(
             &asserter,
-            &tournament::Tournament::matchTimeoutStatusReturn {
+            &tournament::Tournament::classifyMatchTimeoutReturn {
                 actualPhase: 1,
                 outcome: 0,
                 deferredCharge: 0,
@@ -907,7 +906,7 @@ mod tests {
         };
         let timeout_selector = format!(
             "0x{}",
-            hex::encode(<tournament::Tournament::matchTimeoutStatusCall as SolCall>::SELECTOR)
+            hex::encode(<tournament::Tournament::classifyMatchTimeoutCall as SolCall>::SELECTOR)
         );
         let phase_selector = format!(
             "0x{}",

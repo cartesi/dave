@@ -80,25 +80,29 @@ Three worker threads share one SQLite database (see
 - epoch-manager (`cartesi-rollups/node/src/epoch_manager`): each iteration
   runs the dispute tick first - for the last sealed epoch, instantiate a
   `Hero` with the epoch's inputs, leaves, and snapshot, and let it react
-  to the tournament - then composes one nonce-ordered wave for the
-  shared transaction lane and submits it whole
-  (docs/plans/self-healing-batch-submission.md): the pending settlement
-  step (when the tick reports Won, or when there is no sealed epoch to
-  defend) at the base nonce, then the Hero's dispute action, then every
-  currently legal cleanup intent innermost-first, then bond recovery
-  intents at the tail. Position is priority: a dispute action is never
-  queued behind settlement, and cleanup never sits ahead of defense.
+  to the tournament - then submits through the one transaction lane it
+  owns (docs/plans/self-healing-batch-submission.md). A dispute wave contains
+  the Hero's action followed by every currently legal cleanup intent,
+  innermost-first; one pending settlement step may take the base nonce when
+  the dispute is no longer contested. Position is priority: cleanup never
+  sits ahead of defense. Bond recovery is separate low-priority work: only
+  when no higher-priority mutation is ready, at most one recovery is planned
+  for a newly observed finalized head.
   While machine-runner has not yet written the sealed epoch's
-  settlement info, the tick reports Preparing and no dispute wave is
-  planned. Settlement plans at most one guarded, idempotent step per
+  settlement info, the tick reports Preparing and no mutation is submitted.
+  Settlement plans at most one guarded, idempotent step per
   tick: submit a sentry claim when the signer is a sentry (always the
   locally computed post-epoch hash, never the staged value - claims
   stay an independent check); stage the finished tournament's result
   after asserting the on-chain winner matches the local settlement
   (commitment root AND post-epoch state); accept the staged result once
-  every sentry agrees or the staging period elapses. The lane itself is
-  stateless: every wave rebuilds from fresh observation at fresh market
-  fees, and the mempool arbitrates duplicates and replacements.
+  every sentry agrees or the staging period elapses. Recovery walks every
+  unretired sealed epoch, so pending old bonds survive epoch rotation and
+  restart without a stored queue. If Latest already exposes the next epoch
+  while finalized ingestion still ends at the previous one, recovery waits;
+  maintenance cannot occupy the nonce needed by the next finalized join. The
+  lane itself is stateless: every send rebuilds from fresh observation at
+  fresh market fees, and the mempool arbitrates duplicates and replacements.
 
 ## The dispute loop (Hero)
 

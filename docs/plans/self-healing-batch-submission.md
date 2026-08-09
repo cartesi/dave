@@ -1,18 +1,17 @@
 # Self-healing batch transaction submission
 
-Status: DESIGN SETTLED 2026-08-05 (reviewed with Gabriel over three
-rounds; this file records the resolutions). Implementation is next.
-The stf_revert prover fix and the bondRecovery capability view landed
-ahead of it on the interface branch.
+Status: IMPLEMENTED 2026-08-05 and tightened 2026-08-08. Hero and cleanup
+retain nonce-ordered batch submission; settlement remains a stable-content
+step; recovery moved out of wave tails onto a finalized, idle cadence so
+maintenance cannot occupy a future urgent nonce.
 
 ## Motivation
 
-The node's transaction lane holds one in-memory replacement slot at the
-latest mined nonce and submits at most one mutation per tick. Because a
-mutation only changes observed state once it is included, the planner
-re-derives the same intent until inclusion, so cleanup throughput is
-fixed at the chain's inclusion rate: one action per included
-transaction.
+Before batching, the node's transaction lane held one in-memory replacement
+slot at the latest mined nonce and submitted at most one mutation per tick.
+Because a mutation only changes observed state once included, the planner
+re-derived the same intent until inclusion, fixing cleanup throughput at the
+chain's inclusion rate: one action per included transaction.
 
 Eliminations are not hygiene. `matchCount -> 0` gates tournament
 finish, so sybil-vs-sybil timeout cleanup sits on the critical path of
@@ -40,13 +39,10 @@ node react at the tip.
 
 Each tick, from one accepted observation:
 
-1. Plan the complete wave: the hero decision (0 or 1 actions,
+1. Plan the complete dispute wave: the hero decision (0 or 1 actions,
    protocol-serial) followed by the deterministic innermost-first GC
-   intent list, followed by bond recovery intents (see
-   [bond-recovery-redesign.md](bond-recovery-redesign.md)). Position
-   in the list IS priority: hero-first nonce order is the
-   hero-before-cleanup invariant, and recovery rides the tail because
-   nothing in the protocol waits on it.
+   intent list. Position in the list IS priority: hero-first nonce order is
+   the hero-before-cleanup invariant.
 2. Filter intra-wave dependencies: an innermost-first GC list can
    invalidate its own suffix (eliminating a child deletes the parent
    match a later intent targets). The filter is a pure function over
@@ -68,7 +64,7 @@ The next tick re-derives everything from fresh state:
 
 The sibling sequencer project uses the same approach.
 
-## Settlement stays off the wave
+## Settlement stays one guarded step
 
 Settlement actions (the sentry claim, result staging, acceptance) are
 in a different consistency class: a wrong vote computed from an
@@ -81,14 +77,31 @@ resubmit - which is what stops resubmission within a block or two of
 inclusion rather than a finality lag later. No stored attempts:
 re-derive the step each tick, sign at the fresh quote, send. The
 calldata is deterministic, the nonce admits at most one inclusion,
-and the contracts' step guards make duplicates no-ops - exactly-once
-at the action level with zero lane state.
+and the contracts' guards admit at most one successful effect - duplicate
+transactions are safely rejected. This gives exactly-once action effects with
+zero lane state.
 
 Coexistence on one signer account: when the settlement module wants a
-step this tick, that step takes the base nonce and the wave fills
-strictly above it; otherwise the wave starts at the base. During
-settlement phases the wave carries only cleanup and recovery - the
-hero has nothing left to do.
+step this tick, that step takes the base nonce and any same-observation
+cleanup fills strictly above it; otherwise the dispute wave starts at the
+base. Recovery is never appended behind either class.
+
+## Recovery uses idle finalized cadence
+
+Wave position cannot preserve low priority across ticks. Once an earlier nonce
+lands, a pending recovery tail becomes the account head and a new Hero action
+must replace or wait behind it. Recovery therefore runs only when no dispute
+or settlement mutation is ready, and at most once per newly observed finalized
+head.
+
+The recovery tree and every terminal classification are read at one finalized
+hash. This makes retirement coherent: a child absent from the finalized event
+tree cannot be hidden behind a root state observed from a newer block. A latest
+read may suppress the one recovery candidate if it has already been mined, but
+never contributes to retirement. All sealed epochs are re-walkable, so epoch
+rotation and restart preserve pending work without a durable queue. Recovery
+also waits while Latest exposes a newer sealed epoch than finalized storage;
+the next epoch's join therefore gets the lane before maintenance.
 
 ## Fees
 
@@ -133,8 +146,8 @@ integration is a recorded follow-up, not part of this campaign.
 - Balance exposure: k in-flight transactions bound k * gas_limit of
   fees plus the reverts of raced stale actions; both are small and
   bounded by the list length per wave.
-- Bond recovery rides this lane: recovery intents (see
-  [bond-recovery-redesign.md](bond-recovery-redesign.md)) are cleanup
-  like any other, gated on the node being the winning claimer.
+- Bond recovery uses this lane only while it is idle; see
+  [bond-recovery-redesign.md](bond-recovery-redesign.md). It is gated on the
+  node being the winning claimer and submits at most one candidate per cadence.
 - Reorg stance unchanged: finalized prefix persisted, tail disposable,
   mutators revalidate.
