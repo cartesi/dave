@@ -790,6 +790,37 @@ contract DaveAppFactoryTest is Test {
         }
     }
 
+    function testRootFailureCannotBeStaged(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external {
+        vm.assumeNoRevert();
+        (, IDaveConsensus daveConsensus) = _daveAppFactory.newDaveApp(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        );
+
+        (,,, ITournament tournament,,,,) = daveConsensus.getCurrentSealedEpoch();
+        ITournament.TournamentStandingView memory failedStanding = ITournament.TournamentStandingView({
+            standing: ITournament.TournamentStanding.ROOT_FAILED,
+            acceptsJoins: false,
+            hasCandidate: false,
+            candidate: Tree.ZERO_NODE,
+            finalState: Machine.ZERO_STATE,
+            parentCommitment: Tree.ZERO_NODE
+        });
+        vm.mockCall(address(tournament), abi.encodeCall(ITournament.tournamentStanding, ()), abi.encode(failedStanding));
+
+        vm.expectRevert(ITournament.TournamentFailedNoWinner.selector);
+        daveConsensus.canStageTournamentResult();
+
+        vm.expectRevert(ITournament.TournamentFailedNoWinner.selector);
+        daveConsensus.stageTournamentResult(0, bytes32(0), new bytes32[](0));
+    }
+
     function testRotateSentry(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
@@ -1141,10 +1172,10 @@ contract DaveAppFactoryTest is Test {
 
         // Tournament-level constants
         {
-            uint64 levels;
+            ITournament.TournamentKind kind;
             uint64 level;
-            (levels, level,,) = tournament.tournamentLevelConstants();
-            assertGe(levels, 1);
+            (kind, level,,) = tournament.tournamentLevelConstants();
+            assertEq(uint8(kind), uint8(ITournament.TournamentKind.NON_LEAF));
             assertEq(level, 0);
         }
 
@@ -1154,7 +1185,7 @@ contract DaveAppFactoryTest is Test {
             tournamentArgs = tournament.tournamentArguments();
             assertEq(Machine.Hash.unwrap(tournamentArgs.commitmentArgs.initialHash), templateHash);
             assertEq(tournamentArgs.commitmentArgs.startCycle, 0);
-            assertGe(tournamentArgs.levels, 1);
+            assertEq(uint8(tournamentArgs.kind), uint8(ITournament.TournamentKind.NON_LEAF));
             assertEq(tournamentArgs.level, 0);
             assertEq(Time.Instant.unwrap(tournamentArgs.startInstant), vm.getBlockNumber());
             assertEq(Time.Duration.unwrap(tournamentArgs.allowance), Time.Duration.unwrap(MAX_ALLOWANCE));

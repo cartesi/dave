@@ -240,9 +240,10 @@ function Domain.descriptor(args)
     local address = required(args.address, "tournament address")
     assert(not is_zero_address(address), "tournament address must be nonzero")
     local level = nonnegative_integer(args.level, "tournament level")
-    local levels = nonnegative_integer(args.levels, "tournament level count")
-    assert(levels > 0, "tournament level count must be nonzero")
-    assert(level < levels, "tournament level is outside level count")
+    local kind = required(args.kind, "tournament kind")
+    assert(kind == Domain.TournamentKind.LEAF
+        or kind == Domain.TournamentKind.NON_LEAF,
+        "unknown tournament kind " .. tostring(kind))
 
     local height = nonnegative_integer(args.height, "commitment height")
     local log2_stride = nonnegative_integer(args.log2_stride, "log2 stride")
@@ -259,11 +260,8 @@ function Domain.descriptor(args)
     return {
         _tag = "tournament_descriptor",
         address = address,
-        kind = level + 1 == levels
-            and Domain.TournamentKind.LEAF
-            or Domain.TournamentKind.NON_LEAF,
+        kind = kind,
         level = level,
-        levels = levels,
         initial_hash = required(args.initial_hash, "initial hash"),
         base_cycle = base_cycle,
         log2_stride = log2_stride,
@@ -727,8 +725,6 @@ function Domain.snapshot(args)
             "recursive child provenance disagrees with parent snapshot")
         assert(child.descriptor.level == descriptor.level + 1,
             "recursive child must be exactly one level deeper")
-        assert(child.descriptor.levels == descriptor.levels,
-            "recursive child and parent disagree on level count")
         assert(same(
             child.descriptor.initial_hash,
             awaiting.divergence.agree_state

@@ -122,7 +122,7 @@ mod tests {
             domain::{
                 AwaitingChildMatch, BisectingMatch, InnerEliminationReason, JoinDisposition,
                 LiveMatch, MatchCoordinate, MatchSide, ReadyToSealMatch, SealedDivergence,
-                SealedLeafMatch, TournamentDescriptor, WaitingChildren,
+                SealedLeafMatch, TournamentDescriptor, TournamentKind, WaitingChildren,
             },
             fold::{EventKind, TournamentEvent},
         },
@@ -176,11 +176,11 @@ mod tests {
         }
     }
 
-    fn descriptor(address: Address, level: u64, levels: u64) -> TournamentDescriptor {
+    fn descriptor(address: Address, level: u64, kind: TournamentKind) -> TournamentDescriptor {
         TournamentDescriptor::try_new(
             address,
             level,
-            levels,
+            kind,
             digest(90 + u8::try_from(level).unwrap()),
             U256::ZERO,
             0,
@@ -241,7 +241,7 @@ mod tests {
         let observations = HashMap::from([(
             root,
             observation(
-                descriptor(root, 0, 1),
+                descriptor(root, 0, TournamentKind::Leaf),
                 active_standing(),
                 [observed_first, observed_second],
             ),
@@ -292,7 +292,7 @@ mod tests {
         )
         .unwrap();
         let root_observation = observation(
-            descriptor(root, 0, 2),
+            descriptor(root, 0, TournamentKind::NonLeaf),
             active_standing(),
             [
                 ObservedMatch::from_parts(parent_match, awaiting),
@@ -303,7 +303,7 @@ mod tests {
             ],
         );
         let child_observation = observation(
-            descriptor(child, 1, 2),
+            descriptor(child, 1, TournamentKind::Leaf),
             active_standing(),
             [ObservedMatch::from_parts(
                 child_match,
@@ -360,7 +360,7 @@ mod tests {
             (
                 root,
                 observation(
-                    descriptor(root, 0, 2),
+                    descriptor(root, 0, TournamentKind::NonLeaf),
                     active_standing(),
                     [
                         ObservedMatch::from_parts(
@@ -374,7 +374,7 @@ mod tests {
             (
                 child,
                 observation(
-                    descriptor(child, 1, 2),
+                    descriptor(child, 1, TournamentKind::Leaf),
                     active_standing(),
                     [ObservedMatch::from_parts(
                         child_match,
@@ -430,7 +430,7 @@ mod tests {
             (
                 root,
                 observation(
-                    descriptor(root, 0, 2),
+                    descriptor(root, 0, TournamentKind::NonLeaf),
                     active_standing(),
                     [ObservedMatch::from_parts(parent_match, awaiting)],
                 ),
@@ -438,7 +438,7 @@ mod tests {
             (
                 child,
                 observation(
-                    descriptor(child, 1, 2),
+                    descriptor(child, 1, TournamentKind::Leaf),
                     TournamentStanding::InnerEliminable {
                         reason: InnerEliminationReason::NoCandidate,
                     },
@@ -497,7 +497,7 @@ mod tests {
             (
                 root,
                 observation(
-                    descriptor(root, 0, 2),
+                    descriptor(root, 0, TournamentKind::NonLeaf),
                     active_standing(),
                     [ObservedMatch::from_parts(parent_match, awaiting)],
                 ),
@@ -505,7 +505,7 @@ mod tests {
             (
                 child,
                 observation(
-                    descriptor(child, 1, 2),
+                    descriptor(child, 1, TournamentKind::Leaf),
                     TournamentStanding::InnerEliminable {
                         reason: InnerEliminationReason::WinnerExpired {
                             candidate: child_candidate,
@@ -533,7 +533,7 @@ mod tests {
         let observations = HashMap::from([(
             root,
             observation(
-                descriptor(root, 0, 1),
+                descriptor(root, 0, TournamentKind::Leaf),
                 active_standing(),
                 [ObservedMatch::from_parts(
                     match_id,
@@ -578,7 +578,7 @@ mod tests {
             let observations = HashMap::from([(
                 root,
                 observation(
-                    descriptor(root, 0, 1),
+                    descriptor(root, 0, TournamentKind::Leaf),
                     active_standing(),
                     [ObservedMatch::from_parts(match_id, live)],
                 ),

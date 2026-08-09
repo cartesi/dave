@@ -65,7 +65,6 @@ pub struct TournamentDescriptor {
     address: Address,
     kind: TournamentKind,
     level: u64,
-    levels: NonZeroU64,
     initial_hash: Digest,
     base_cycle: U256,
     log2_stride: u64,
@@ -77,19 +76,12 @@ impl TournamentDescriptor {
     pub fn try_new(
         address: Address,
         level: u64,
-        levels: u64,
+        kind: TournamentKind,
         initial_hash: Digest,
         base_cycle: U256,
         log2_stride: u64,
         height: u64,
     ) -> Result<Self, DomainError> {
-        let levels = NonZeroU64::new(levels).ok_or(DomainError::ZeroTournamentLevels)?;
-        if level >= levels.get() {
-            return Err(DomainError::TournamentLevelOutOfRange {
-                level,
-                levels: levels.get(),
-            });
-        }
         let height = NonZeroU64::new(height).ok_or(DomainError::ZeroCommitmentHeight)?;
         // The dispute engine represents the full row span as a U256 shift.
         // Extent 256 would wrap that span to zero even if its leaves fit.
@@ -106,17 +98,10 @@ impl TournamentDescriptor {
         if base_cycle.checked_add(maximum_leaf_offset).is_none() {
             return Err(DomainError::TournamentCycleRangeOverflow);
         }
-        let kind = if level + 1 == levels.get() {
-            TournamentKind::Leaf
-        } else {
-            TournamentKind::NonLeaf
-        };
-
         Ok(Self {
             address,
             kind,
             level,
-            levels,
             initial_hash,
             base_cycle,
             log2_stride,
@@ -134,10 +119,6 @@ impl TournamentDescriptor {
 
     pub const fn level(self) -> u64 {
         self.level
-    }
-
-    pub const fn levels(self) -> NonZeroU64 {
-        self.levels
     }
 
     pub const fn initial_hash(self) -> Digest {
@@ -874,10 +855,6 @@ pub enum GcIntent {
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum DomainError {
-    #[error("tournament level count must be nonzero")]
-    ZeroTournamentLevels,
-    #[error("tournament level {level} is outside level count {levels}")]
-    TournamentLevelOutOfRange { level: u64, levels: u64 },
     #[error("commitment height must be nonzero")]
     ZeroCommitmentHeight,
     #[error(
@@ -944,8 +921,6 @@ pub enum DomainError {
     ChildProvenanceMismatch,
     #[error("recursive child must be exactly one tournament level deeper")]
     ChildLevelMismatch,
-    #[error("recursive child and parent disagree on the tournament level count")]
-    ChildLevelCountMismatch,
     #[error("recursive child initial hash disagrees with the sealed agree state")]
     ChildInitialHashMismatch,
     #[error("recursive child base cycle disagrees with the sealed match cycle")]
@@ -1118,10 +1093,6 @@ fn validate_child(
     if child.descriptor.level() != descriptor.level() + 1 {
         return Err(DomainError::ChildLevelMismatch);
     }
-    if child.descriptor.levels() != descriptor.levels() {
-        return Err(DomainError::ChildLevelCountMismatch);
-    }
-
     let divergence = awaiting.divergence();
     if child.descriptor.initial_hash() != divergence.agree_state() {
         return Err(DomainError::ChildInitialHashMismatch);
@@ -1148,14 +1119,14 @@ mod tests {
     fn descriptor(
         address: Address,
         level: u64,
-        levels: u64,
+        kind: TournamentKind,
         initial_hash: Digest,
         base_cycle: u64,
     ) -> TournamentDescriptor {
         TournamentDescriptor::try_new(
             address,
             level,
-            levels,
+            kind,
             initial_hash,
             U256::from(base_cycle),
             3,
@@ -1200,50 +1171,79 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_derives_kind_and_rejects_invalid_geometry() {
-        let non_leaf = descriptor(address(1), 0, 2, digest(9), 0);
-        let leaf = descriptor(address(2), 1, 2, digest(10), 24);
+    fn descriptor_preserves_authoritative_kind_and_rejects_invalid_geometry() {
+        let non_leaf = descriptor(address(1), 0, TournamentKind::NonLeaf, digest(9), 0);
+        let leaf = descriptor(address(2), 0, TournamentKind::Leaf, digest(10), 24);
         assert_eq!(non_leaf.kind(), TournamentKind::NonLeaf);
         assert_eq!(leaf.kind(), TournamentKind::Leaf);
 
         assert_eq!(
-            TournamentDescriptor::try_new(address(1), 0, 0, digest(1), U256::ZERO, 0, 1,),
-            Err(DomainError::ZeroTournamentLevels)
-        );
-        assert_eq!(
-            TournamentDescriptor::try_new(address(1), 2, 2, digest(1), U256::ZERO, 0, 1,),
-            Err(DomainError::TournamentLevelOutOfRange {
-                level: 2,
-                levels: 2
-            })
-        );
-        assert_eq!(
-            TournamentDescriptor::try_new(address(1), 0, 1, digest(1), U256::ZERO, 0, 0,),
+            TournamentDescriptor::try_new(
+                address(1),
+                0,
+                TournamentKind::Leaf,
+                digest(1),
+                U256::ZERO,
+                0,
+                0,
+            ),
             Err(DomainError::ZeroCommitmentHeight)
         );
         assert_eq!(
-            TournamentDescriptor::try_new(address(1), 0, 1, digest(1), U256::ZERO, 253, 4,),
+            TournamentDescriptor::try_new(
+                address(1),
+                0,
+                TournamentKind::Leaf,
+                digest(1),
+                U256::ZERO,
+                253,
+                4,
+            ),
             Err(DomainError::CoordinateGeometryOutOfRange {
                 height: 4,
                 log2_stride: 253,
             })
         );
         assert_eq!(
-            TournamentDescriptor::try_new(address(1), 0, 1, digest(1), U256::ZERO, 0, 256,),
+            TournamentDescriptor::try_new(
+                address(1),
+                0,
+                TournamentKind::Leaf,
+                digest(1),
+                U256::ZERO,
+                0,
+                256,
+            ),
             Err(DomainError::CoordinateGeometryOutOfRange {
                 height: 256,
                 log2_stride: 0,
             })
         );
         assert_eq!(
-            TournamentDescriptor::try_new(address(1), 0, 1, digest(1), U256::ZERO, 255, 1,),
+            TournamentDescriptor::try_new(
+                address(1),
+                0,
+                TournamentKind::Leaf,
+                digest(1),
+                U256::ZERO,
+                255,
+                1,
+            ),
             Err(DomainError::CoordinateGeometryOutOfRange {
                 height: 1,
                 log2_stride: 255,
             })
         );
         assert_eq!(
-            TournamentDescriptor::try_new(address(1), 0, 1, digest(1), U256::MAX, 0, 1,),
+            TournamentDescriptor::try_new(
+                address(1),
+                0,
+                TournamentKind::Leaf,
+                digest(1),
+                U256::MAX,
+                0,
+                1,
+            ),
             Err(DomainError::TournamentCycleRangeOverflow)
         );
     }
@@ -1285,7 +1285,7 @@ mod tests {
 
     #[test]
     fn snapshot_validates_leaf_enrichment_and_candidate_identity() {
-        let root = descriptor(address(1), 0, 1, digest(9), 0);
+        let root = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
         let ready = ReadyToSealMatch::new(
             digest(3),
             WaitingChildren::new(digest(4), digest(5)),
@@ -1381,8 +1381,8 @@ mod tests {
 
     #[test]
     fn snapshot_validates_recursive_child_seam() {
-        let parent_descriptor = descriptor(address(1), 0, 2, digest(9), 0);
-        let child_descriptor = descriptor(address(2), 1, 2, digest(10), 24);
+        let parent_descriptor = descriptor(address(1), 0, TournamentKind::NonLeaf, digest(9), 0);
+        let child_descriptor = descriptor(address(2), 1, TournamentKind::Leaf, digest(10), 24);
         let parent_link =
             ParentLink::try_new(address(1), match_id(), digest(1)).expect("commitment one");
         let child = SemanticSnapshot::try_new(
@@ -1434,7 +1434,7 @@ mod tests {
             ParentLink::try_new(address(1), match_id(), digest(1)).expect("commitment one");
         assert_eq!(
             SemanticSnapshot::try_new(
-                descriptor(address(2), 1, 2, digest(10), 24),
+                descriptor(address(2), 1, TournamentKind::Leaf, digest(10), 24),
                 TournamentStanding::InnerWinner(InnerWinner::new(digest(99), digest(20))),
                 digest(20),
                 LocalCommitmentStanding::Candidate,
@@ -1529,7 +1529,7 @@ mod tests {
 
     #[test]
     fn snapshot_validates_match_height_responder_position_and_cycle() {
-        let leaf = descriptor(address(1), 0, 1, digest(9), 0);
+        let leaf = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
         let waiting = WaitingChildren::new(digest(4), digest(5));
 
         let too_tall = BisectingMatch::try_new(
@@ -1616,7 +1616,7 @@ mod tests {
 
     #[test]
     fn recursive_child_rejects_wrong_initial_hash_and_base_cycle() {
-        let parent_descriptor = descriptor(address(1), 0, 2, digest(9), 0);
+        let parent_descriptor = descriptor(address(1), 0, TournamentKind::NonLeaf, digest(9), 0);
         let parent_link =
             ParentLink::try_new(address(1), match_id(), digest(1)).expect("commitment one");
         let awaiting =
@@ -1631,11 +1631,11 @@ mod tests {
 
         for (child_descriptor, expected) in [
             (
-                descriptor(address(2), 1, 2, digest(77), 24),
+                descriptor(address(2), 1, TournamentKind::Leaf, digest(77), 24),
                 DomainError::ChildInitialHashMismatch,
             ),
             (
-                descriptor(address(2), 1, 2, digest(10), 25),
+                descriptor(address(2), 1, TournamentKind::Leaf, digest(10), 25),
                 DomainError::ChildBaseCycleMismatch,
             ),
         ] {

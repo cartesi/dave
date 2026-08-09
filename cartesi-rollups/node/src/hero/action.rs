@@ -740,7 +740,7 @@ mod tests {
             domain::{
                 AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
                 MatchCoordinate, ReadyToSealMatch, SealedDivergence, SealedLeafMatch,
-                TournamentDescriptor, WaitingChildren,
+                TournamentDescriptor, TournamentKind, WaitingChildren,
             },
             fold::{EventKind, Fold, TournamentEvent},
         },
@@ -751,6 +751,8 @@ mod tests {
 
     const ROOT: Address = Address::new([0x11; 20]);
     const CHILD: Address = Address::new([0x22; 20]);
+    const LEAF: TournamentKind = TournamentKind::Leaf;
+    const NON_LEAF: TournamentKind = TournamentKind::NonLeaf;
 
     #[derive(Clone, Copy)]
     enum Branch {
@@ -796,7 +798,7 @@ mod tests {
     fn descriptor(
         address: Address,
         level: u64,
-        levels: u64,
+        kind: TournamentKind,
         initial_hash: Digest,
         base_cycle: U256,
         log2_stride: u64,
@@ -805,7 +807,7 @@ mod tests {
         TournamentDescriptor::try_new(
             address,
             level,
-            levels,
+            kind,
             initial_hash,
             base_cycle,
             log2_stride,
@@ -863,7 +865,7 @@ mod tests {
     }
 
     fn engaged_fixture(
-        levels: u64,
+        kind: TournamentKind,
         log2_stride: u64,
         height: u64,
         side: MatchSide,
@@ -875,15 +877,7 @@ mod tests {
     ) -> Fixture {
         let mut source = source();
         let initial_hash = initial_hash(&mut source);
-        let descriptor = descriptor(
-            ROOT,
-            0,
-            levels,
-            initial_hash,
-            U256::ZERO,
-            log2_stride,
-            height,
-        );
+        let descriptor = descriptor(ROOT, 0, kind, initial_hash, U256::ZERO, log2_stride, height);
         let coords = LevelCoords::new(0, U256::ZERO, log2_stride, height);
         let commitment = source.node(&coords.root()).unwrap();
         let final_state = source.prove_last(&coords).unwrap().node;
@@ -960,7 +954,7 @@ mod tests {
         let descriptor = descriptor(
             ROOT,
             0,
-            1,
+            LEAF,
             initial_hash,
             U256::ZERO,
             0,
@@ -999,7 +993,7 @@ mod tests {
     }
 
     fn advance_fixture(side: MatchSide, branch: Branch) -> Fixture {
-        engaged_fixture(1, 0, 7, side, move |source, coords, descriptor| {
+        engaged_fixture(LEAF, 0, 7, side, move |source, coords, descriptor| {
             let remaining_height = match side {
                 MatchSide::One => 3,
                 MatchSide::Two => 2,
@@ -1028,16 +1022,16 @@ mod tests {
     }
 
     fn ready_fixture(side: MatchSide, branch: Branch, child: bool) -> Fixture {
-        let (levels, log2_stride, height) = if child {
-            (2, 3, 4)
+        let (kind, log2_stride, height) = if child {
+            (NON_LEAF, 3, 4)
         } else {
             match side {
-                MatchSide::One => (1, 0, 7),
-                MatchSide::Two => (1, 1, 6),
+                MatchSide::One => (LEAF, 0, 7),
+                MatchSide::Two => (LEAF, 1, 6),
             }
         };
         engaged_fixture(
-            levels,
+            kind,
             log2_stride,
             height,
             side,
@@ -1072,7 +1066,7 @@ mod tests {
     }
 
     fn timeout_fixture(side: MatchSide) -> Fixture {
-        engaged_fixture(1, 0, 7, side, move |source, coords, descriptor| {
+        engaged_fixture(LEAF, 0, 7, side, move |source, coords, descriptor| {
             let (remaining_height, responder) = match side {
                 MatchSide::One => (2, MatchSide::Two),
                 MatchSide::Two => (3, MatchSide::One),
@@ -1106,7 +1100,7 @@ mod tests {
     }
 
     fn proof_fixture(side: MatchSide, fault: ProofFault) -> Fixture {
-        engaged_fixture(1, 0, 7, side, move |source, _coords, descriptor| {
+        engaged_fixture(LEAF, 0, 7, side, move |source, _coords, descriptor| {
             let position = match side {
                 MatchSide::One => U256::ZERO,
                 MatchSide::Two => U256::ONE,
@@ -1144,7 +1138,7 @@ mod tests {
     fn propagation_fixture(side: MatchSide) -> Fixture {
         let mut source = source();
         let root_initial = initial_hash(&mut source);
-        let parent_descriptor = descriptor(ROOT, 0, 2, root_initial, U256::ZERO, 3, 4);
+        let parent_descriptor = descriptor(ROOT, 0, NON_LEAF, root_initial, U256::ZERO, 3, 4);
         let parent_coords = LevelCoords::new(0, U256::ZERO, 3, 4);
         let parent_commitment = source.node(&parent_coords.root()).unwrap();
         let opponent = digest(0xb0);
@@ -1172,7 +1166,7 @@ mod tests {
         .validate_in(parent_descriptor)
         .unwrap();
 
-        let child_descriptor = descriptor(CHILD, 1, 2, agree_state, U256::ZERO, 0, 3);
+        let child_descriptor = descriptor(CHILD, 1, LEAF, agree_state, U256::ZERO, 0, 3);
         let child_coords = LevelCoords::new(0, U256::ZERO, 0, 3);
         let child_winner = source.node(&child_coords.root()).unwrap();
 
@@ -1544,8 +1538,12 @@ mod tests {
             })
         ));
 
-        let mut wrong_parent =
-            engaged_fixture(1, 0, 7, MatchSide::One, |_source, _coords, descriptor| {
+        let mut wrong_parent = engaged_fixture(
+            LEAF,
+            0,
+            7,
+            MatchSide::One,
+            |_source, _coords, descriptor| {
                 LiveMatch::try_new(
                     LiveMatchState::Bisecting(
                         BisectingMatch::try_new(
@@ -1562,7 +1560,8 @@ mod tests {
                 .unwrap()
                 .validate_in(descriptor)
                 .unwrap()
-            });
+            },
+        );
         assert!(matches!(
             prepare(
                 planned(&wrong_parent.context),

@@ -111,7 +111,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
         ITournament.TournamentArguments memory args =
             tournaments[0].tournamentArguments();
         assertEq(args.level, 0);
-        assertEq(args.levels, SmallFourLevelGeometry.LEVELS);
+        assertEq(uint8(args.kind), uint8(ITournament.TournamentKind.NON_LEAF));
         assertEq(args.commitmentArgs.height, SmallFourLevelGeometry.HEIGHT);
         assertEq(
             args.commitmentArgs.log2step, SmallFourLevelGeometry.log2step(0)
@@ -256,7 +256,11 @@ contract FourLevelRecursiveLifecycleTest is Test {
         );
 
         assertEq(args.level, childLevel);
-        assertEq(args.levels, SmallFourLevelGeometry.LEVELS);
+        ITournament.TournamentKind expectedKind = childLevel + 1
+            == SmallFourLevelGeometry.LEVELS
+            ? ITournament.TournamentKind.LEAF
+            : ITournament.TournamentKind.NON_LEAF;
+        assertEq(uint8(args.kind), uint8(expectedKind));
         assertEq(args.commitmentArgs.height, SmallFourLevelGeometry.HEIGHT);
         assertEq(
             args.commitmentArgs.log2step,

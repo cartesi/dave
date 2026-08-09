@@ -20,10 +20,11 @@ local SEALED_PHASE = 3
 local TIMEOUT_NONE = 0
 local TIMEOUT_TWO_WINS = 2
 local TIMEOUT_ELIMINATE_BOTH = 3
+local TOURNAMENT_KIND_LEAF = 0
 local TOURNAMENT_ARGUMENTS_SIGNATURE = table.concat {
     "tournamentArguments()(",
     "((bytes32,uint256,uint64,uint64),",
-    "uint64,uint64,uint64,uint64,uint64,address,",
+    "uint64,uint8,uint64,uint64,uint64,address,",
     "(bytes32,bytes32,bytes32,bytes32),address,address))",
 }
 
@@ -202,7 +203,7 @@ local function install_sender_hooks(sender, fixture)
         assert(not fixture.sealed, "leaf match was sealed twice")
         local constants =
             env.reader.inner_reader:read_constants(tournament)
-        assert(constants.level == constants.max_level - 1,
+        assert(constants.kind == TOURNAMENT_KIND_LEAF,
             "seal hook reached a non-leaf tournament")
         assert(constants.height == 27,
             "canonical leaf tournament height changed")

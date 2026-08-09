@@ -250,7 +250,7 @@ impl Fold {
     /// Every discovered tournament, parents before children: the
     /// fetch set. A fetch round that discovers a new inner tournament
     /// must fetch its logs and fold again; depth is bounded by the
-    /// level count, so the loop closes in at most that many rounds.
+    /// factory configuration, so the loop eventually closes.
     pub fn addresses(&self) -> Vec<Address> {
         self.order.clone()
     }

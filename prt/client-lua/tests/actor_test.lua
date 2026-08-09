@@ -28,7 +28,7 @@ local function descriptor(root, initial)
     return Domain.descriptor {
         address = root,
         level = 0,
-        levels = 1,
+        kind = Domain.TournamentKind.LEAF,
         initial_hash = initial,
         base_cycle = 0,
         log2_stride = 0,

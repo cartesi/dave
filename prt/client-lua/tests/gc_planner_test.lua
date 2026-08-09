@@ -4,6 +4,8 @@ local GcPlanner = require "player.gc_planner"
 local Test = require "tests.testlib"
 
 local E = Fold.Event
+local LEAF = Domain.TournamentKind.LEAF
+local NON_LEAF = Domain.TournamentKind.NON_LEAF
 
 local function match_hash(match_id)
     return match_id.commitment_one .. ":" .. match_id.commitment_two
@@ -27,11 +29,11 @@ local function build_fold()
     return fold:apply_all(script)
 end
 
-local function descriptor(address, level, levels, initial_hash, base_cycle)
+local function descriptor(address, level, kind, initial_hash, base_cycle)
     return Domain.descriptor {
         address = address,
         level = level,
-        levels = levels,
+        kind = kind,
         initial_hash = initial_hash,
         base_cycle = base_cycle,
         log2_stride = 0,
@@ -81,17 +83,17 @@ local function single_match_fold()
     return fold
 end
 
-local function active_observation(address, level, levels, matches)
+local function active_observation(address, level, kind, matches)
     return Domain.tournament_observation(
-        descriptor(address, level, levels, "initial", 0),
+        descriptor(address, level, kind, "initial", 0),
         Domain.matches_active(nil, Domain.JoinDisposition.CLOSED),
         matches
     )
 end
 
 local function observations(child_standing)
-    local root_descriptor = descriptor("root", 0, 2, "initial", 0)
-    local child_descriptor = descriptor("child", 1, 2, "agree", 3)
+    local root_descriptor = descriptor("root", 0, NON_LEAF, "initial", 0)
+    local child_descriptor = descriptor("child", 1, LEAF, "agree", 3)
     local awaiting = Domain.observed_match(
         "a:b",
         Domain.match_id("a", "b"),
@@ -147,7 +149,7 @@ return {
             )
         end
         local values = {
-            root = active_observation("root", 0, 1, {
+            root = active_observation("root", 0, LEAF, {
                 eliminate("a:b", "a", "b"),
                 eliminate("c:d", "c", "d"),
             }),
@@ -231,7 +233,7 @@ return {
         }
 
         local root = Domain.tournament_observation(
-            descriptor("root", 0, 2, "initial", 0),
+            descriptor("root", 0, NON_LEAF, "initial", 0),
             Domain.matches_active(nil, Domain.JoinDisposition.CLOSED),
             {
                 Domain.observed_match(
@@ -253,7 +255,7 @@ return {
             }
         )
         local child = Domain.tournament_observation(
-            descriptor("child", 1, 2, "agree", 3),
+            descriptor("child", 1, LEAF, "agree", 3),
             Domain.matches_active(nil, Domain.JoinDisposition.CLOSED),
             {
                 Domain.observed_match(
@@ -333,7 +335,7 @@ return {
         }
         for _, live in ipairs(lives) do
             local values = {
-                root = active_observation("root", 0, 1, {
+                root = active_observation("root", 0, LEAF, {
                     Domain.observed_match(
                         "a:b",
                         Domain.match_id("a", "b"),
@@ -359,7 +361,7 @@ return {
         }
         for _, live in ipairs(lives) do
             local values = {
-                root = active_observation("root", 0, 1, {
+                root = active_observation("root", 0, LEAF, {
                     Domain.observed_match(
                         "a:b",
                         Domain.match_id("a", "b"),

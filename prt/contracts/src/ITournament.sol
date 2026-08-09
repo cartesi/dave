@@ -17,6 +17,11 @@ interface ITournament {
     // Types
     //
 
+    enum TournamentKind {
+        LEAF,
+        NON_LEAF
+    }
+
     /// @notice Dispute information from a parent match.
     /// @dev For non-root tournaments (level > 0), contains the two contested commitments
     ///      and final states from the parent match that created this tournament.
@@ -31,7 +36,7 @@ interface ITournament {
     /// @notice Tournament arguments
     /// @param commitmentArgs The commitment arguments
     /// @param level The tournament level
-    /// @param levels The number of tournament levels
+    /// @param kind Whether this tournament is a leaf or can create a child
     /// @param startInstant The start instant of the tournament
     /// @param allowance The time during which the tournament is open
     /// @param responseBudget The maximum elapsed-time discount earned by each
@@ -41,14 +46,12 @@ interface ITournament {
     /// @param stateTransition State transition contract, used by leaf-level operations
     /// @param tournamentFactory Multi-level factory address (cast to IMultiLevelTournamentFactory when needed), used by non-leaf operations when instantiating inner tournaments
     /// @dev A root tournament is at level 0.
-    /// A single-level tournament has 1 level.
-    /// A multi-level tournament has 2 or more levels.
     /// Time is measured by the contract time source, currently `block.number`.
     /// For root tournaments (level == 0), nestedDispute fields are zero.
     struct TournamentArguments {
         Commitment.Arguments commitmentArgs;
         uint64 level;
-        uint64 levels;
+        TournamentKind kind;
         Time.Instant startInstant;
         Time.Duration allowance;
         Time.Duration responseBudget;
@@ -63,7 +66,7 @@ interface ITournament {
     /// commitments was proven wrong through an on-chain
     /// state-transition or "step" function. This only
     /// happens when the match reaches a leaf commitment node
-    /// of a leaf tournament (when `level` is `levels - 1`).
+    /// of a leaf tournament.
     /// @param TIMEOUT The match was deleted because the clock
     /// of at least one of the commitments has timed out.
     /// Note that it is possible that both clocks time out,
@@ -113,11 +116,6 @@ interface ITournament {
         ELIMINATE_BOTH
     }
 
-    enum TournamentKind {
-        LEAF,
-        NON_LEAF
-    }
-
     enum TournamentStanding {
         MATCHES_ACTIVE,
         AWAITING_CLOSURE,
@@ -158,10 +156,9 @@ interface ITournament {
     struct TournamentDescriptor {
         Machine.Hash initialHash;
         uint256 baseCycle;
-        uint64 log2step;
+        uint64 log2Stride;
         uint64 height;
         uint64 level;
-        uint64 levels;
         TournamentKind kind;
     }
 
@@ -417,15 +414,15 @@ interface ITournament {
     error WrongNodesForStep();
 
     /// @notice A player has attempted to call a function that can only be
-    /// called for leaf tournaments (in which `level == levels - 1`).
+    /// called for leaf tournaments.
     error RequireLeafTournament();
 
     /// @notice A player has attempted to call a function that can only be
-    /// called for non-leaf tournaments (in which `0 <= level < levels - 1`).
+    /// called for non-leaf tournaments.
     error RequireNonLeafTournament();
 
     /// @notice A player has attempted to call a function that can only be
-    /// called for non-root tournaments (in which `0 < level <= levels - 1`).
+    /// called for non-root tournaments (in which `level > 0`).
     error RequireNonRootTournament();
 
     /// @notice A clock wasn't expected to be initialized, but is.
@@ -694,7 +691,7 @@ interface ITournament {
     /// duration. The view is total over stored state: it classifies the
     /// clocks as they are, and shape invariants are enforced by the
     /// transition paths that create the shapes, never at observation.
-    function matchTimeoutStatus(Match.Id calldata matchId)
+    function classifyMatchTimeout(Match.Id calldata matchId)
         external
         view
         returns (

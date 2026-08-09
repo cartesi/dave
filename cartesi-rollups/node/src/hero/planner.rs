@@ -332,14 +332,14 @@ mod tests {
     fn descriptor(
         address: Address,
         level: u64,
-        levels: u64,
+        kind: TournamentKind,
         initial_hash: Digest,
         base_cycle: u64,
     ) -> TournamentDescriptor {
         TournamentDescriptor::try_new(
             address,
             level,
-            levels,
+            kind,
             initial_hash,
             U256::from(base_cycle),
             3,
@@ -349,11 +349,7 @@ mod tests {
     }
 
     fn root_descriptor(kind: TournamentKind) -> TournamentDescriptor {
-        let levels = match kind {
-            TournamentKind::Leaf => 1,
-            TournamentKind::NonLeaf => 2,
-        };
-        descriptor(address(10), 0, levels, digest(9), 0)
+        descriptor(address(10), 0, kind, digest(9), 0)
     }
 
     fn coordinate(position: u64) -> MatchCoordinate {
@@ -807,7 +803,7 @@ mod tests {
         let parent_link =
             ParentLink::try_new(parent_descriptor.address(), parent_match, parent_commitment)
                 .unwrap();
-        let child_descriptor = descriptor(address(20), 1, 2, digest(20), 24);
+        let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
         let child = SemanticSnapshot::try_new(
             child_descriptor,
             TournamentStanding::MatchesActive {
@@ -860,7 +856,7 @@ mod tests {
         let parent_commitment = digest(1);
         let parent_link =
             ParentLink::try_new(address(10), parent_match, parent_commitment).unwrap();
-        let child_descriptor = descriptor(address(20), 1, 2, digest(20), 24);
+        let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
         let child_winner = digest(40);
 
         let ours = SemanticSnapshot::try_new(
@@ -915,7 +911,7 @@ mod tests {
             ),
         ] {
             let child = SemanticSnapshot::try_new(
-                descriptor(address(20), 1, 2, digest(20), 24),
+                descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24),
                 TournamentStanding::InnerEliminable { reason },
                 local,
                 local_standing,

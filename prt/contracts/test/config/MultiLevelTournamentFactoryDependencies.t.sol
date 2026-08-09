@@ -132,7 +132,7 @@ contract MultiLevelTournamentFactoryDependenciesTest is Test {
 
         ITournament.TournamentArguments memory args = root.tournamentArguments();
         assertEq(args.level, 0);
-        assertEq(args.levels, 1);
+        assertEq(uint8(args.kind), uint8(ITournament.TournamentKind.LEAF));
         assertEq(args.commitmentArgs.log2step, 0);
         assertEq(args.commitmentArgs.height, 1);
         assertEq(args.tournamentFactory, address(factory));

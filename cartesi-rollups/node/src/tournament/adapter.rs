@@ -23,6 +23,7 @@ use cartesi_prt_contracts::tournament::{
         TournamentStandingView as AbiTournamentStandingView,
     },
 };
+use futures::{StreamExt, TryStreamExt, stream};
 use thiserror::Error;
 
 use crate::{
@@ -41,6 +42,8 @@ use crate::{
 };
 
 type AdapterResult<T> = std::result::Result<T, AdapterError>;
+
+const POINT_READ_CONCURRENCY: usize = 16;
 
 /// One full-ID live match after strict ABI and geometry validation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,11 +152,6 @@ pub enum AdapterError {
         descriptor_level: u64,
         fold_level: u64,
     },
-    #[error("descriptor kind {wire:?} disagrees with level-derived tournament kind {derived:?}")]
-    DescriptorKindMismatch {
-        wire: TournamentKind,
-        derived: TournamentKind,
-    },
     #[error("tournament standing is not legal for this root/inner level")]
     StandingKindMismatch,
     #[error("standing {standing} has invalid acceptsJoins value {accepts_joins}")]
@@ -215,128 +213,154 @@ async fn observe_tournament(
 ) -> AnyResult<TournamentObservation> {
     let contract = tournament::Tournament::new(tournament_fold.address, chain.provider());
 
-    let descriptor_wire = contract
-        .tournamentDescriptor()
-        .block(at)
-        .call()
-        .await
-        .with_context(|| {
-            format!(
-                "observe descriptor for tournament {}",
-                tournament_fold.address
-            )
-        })?;
-    let descriptor = decode_descriptor(tournament_fold, descriptor_wire)?;
-
-    let standing_wire = contract
-        .tournamentStanding()
-        .block(at)
-        .call()
-        .await
-        .with_context(|| {
-            format!(
-                "observe standing for tournament {}",
-                tournament_fold.address
-            )
-        })?;
-    let standing = decode_standing(tournament_fold, descriptor, parent_match, standing_wire)?;
-
-    let mut matches = HashMap::new();
-    for match_fold in tournament_fold.live_matches() {
-        let timeout_wire = contract
-            .matchTimeoutStatus(match_fold.id.into())
+    let descriptor_call = async {
+        contract
+            .tournamentDescriptor()
             .block(at)
             .call()
             .await
             .with_context(|| {
                 format!(
-                    "observe timeout for match {} in tournament {}",
-                    match_fold.id.hash(),
+                    "observe descriptor for tournament {}",
                     tournament_fold.address
                 )
-            })?;
-        let timeout = decode_timeout(
-            timeout_wire.actualPhase,
-            timeout_wire.outcome,
-            timeout_wire.deferredCharge,
-        )?;
+            })
+    };
+    let standing_call = async {
+        contract
+            .tournamentStanding()
+            .block(at)
+            .call()
+            .await
+            .with_context(|| {
+                format!(
+                    "observe standing for tournament {}",
+                    tournament_fold.address
+                )
+            })
+    };
+    let (descriptor_wire, standing_wire) = tokio::try_join!(descriptor_call, standing_call)?;
+    let descriptor = decode_descriptor(tournament_fold, descriptor_wire)?;
+    let standing = decode_standing(tournament_fold, descriptor, parent_match, standing_wire)?;
 
-        let state = match timeout.phase {
-            MatchPhase::Absent => {
-                return Err(AdapterError::FoldLiveMatchAbsent {
-                    match_id_hash: match_fold.id.hash(),
+    // The two-stage schedule keeps every call at one pinned hash while
+    // bounding provider pressure. `buffered` preserves fold order, so
+    // simultaneous failures still surface deterministically.
+    let live_matches: Vec<MatchFold> = tournament_fold.live_matches().cloned().collect();
+    let timeout_reads = stream::iter(live_matches.into_iter().map(|match_fold| {
+        let contract = &contract;
+        async move {
+            let timeout_wire = contract
+                .classifyMatchTimeout(match_fold.id.into())
+                .block(at)
+                .call()
+                .await
+                .with_context(|| {
+                    format!(
+                        "observe timeout for match {} in tournament {}",
+                        match_fold.id.hash(),
+                        tournament_fold.address
+                    )
+                })?;
+            let timeout = decode_timeout(
+                timeout_wire.actualPhase,
+                timeout_wire.outcome,
+                timeout_wire.deferredCharge,
+            )?;
+            Ok::<_, anyhow::Error>((match_fold, timeout))
+        }
+    }))
+    .buffered(POINT_READ_CONCURRENCY)
+    .try_collect::<Vec<_>>()
+    .await?;
+
+    let observed = stream::iter(timeout_reads.into_iter().map(|(match_fold, timeout)| {
+        let contract = &contract;
+        async move {
+            let state = match timeout.phase {
+                MatchPhase::Absent => {
+                    return Err(AdapterError::FoldLiveMatchAbsent {
+                        match_id_hash: match_fold.id.hash(),
+                    }
+                    .into());
                 }
-                .into());
-            }
-            MatchPhase::Bisecting => {
-                let wire = contract
-                    .bisectingMatch(match_fold.id.hash().into())
-                    .block(at)
-                    .call()
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "observe bisection for match {} in tournament {}",
-                            match_fold.id.hash(),
-                            tournament_fold.address
-                        )
-                    })?;
-                decode_bisecting(timeout.phase, wire.actualPhase, wire.value)?
-            }
-            MatchPhase::ReadyToSeal => {
-                let wire = contract
-                    .readyToSealMatch(match_fold.id.hash().into())
-                    .block(at)
-                    .call()
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "observe ready-to-seal match {} in tournament {}",
-                            match_fold.id.hash(),
-                            tournament_fold.address
-                        )
-                    })?;
-                decode_ready(
-                    timeout.phase,
-                    wire.actualPhase,
-                    wire.value,
-                    descriptor.kind(),
-                )?
-            }
-            MatchPhase::Sealed => {
-                let wire = contract
-                    .sealedMatch(match_fold.id.hash().into())
-                    .block(at)
-                    .call()
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "observe sealed match {} in tournament {}",
-                            match_fold.id.hash(),
-                            tournament_fold.address
-                        )
-                    })?;
-                decode_sealed(
-                    match_fold.id.hash(),
-                    timeout.phase,
-                    wire.actualPhase,
-                    wire.value,
-                    descriptor.kind(),
-                    match_fold.inner_tournament,
-                )?
-            }
-        };
+                MatchPhase::Bisecting => {
+                    let wire = contract
+                        .bisectingMatch(match_fold.id.hash().into())
+                        .block(at)
+                        .call()
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "observe bisection for match {} in tournament {}",
+                                match_fold.id.hash(),
+                                tournament_fold.address
+                            )
+                        })?;
+                    decode_bisecting(timeout.phase, wire.actualPhase, wire.value)?
+                }
+                MatchPhase::ReadyToSeal => {
+                    let wire = contract
+                        .readyToSealMatch(match_fold.id.hash().into())
+                        .block(at)
+                        .call()
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "observe ready-to-seal match {} in tournament {}",
+                                match_fold.id.hash(),
+                                tournament_fold.address
+                            )
+                        })?;
+                    decode_ready(
+                        timeout.phase,
+                        wire.actualPhase,
+                        wire.value,
+                        descriptor.kind(),
+                    )?
+                }
+                MatchPhase::Sealed => {
+                    let wire = contract
+                        .sealedMatch(match_fold.id.hash().into())
+                        .block(at)
+                        .call()
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "observe sealed match {} in tournament {}",
+                                match_fold.id.hash(),
+                                tournament_fold.address
+                            )
+                        })?;
+                    decode_sealed(
+                        match_fold.id.hash(),
+                        timeout.phase,
+                        wire.actualPhase,
+                        wire.value,
+                        descriptor.kind(),
+                        match_fold.inner_tournament,
+                    )?
+                }
+            };
 
-        validate_match_child_topology(descriptor.kind(), match_fold, state)?;
-        let live = LiveMatch::try_new(state, timeout.disposition)?.validate_in(descriptor)?;
-        let id_hash = match_fold.id.hash();
-        let previous = matches.insert(
-            id_hash,
-            ObservedMatch {
-                id: match_fold.id,
-                live,
-            },
-        );
+            validate_match_child_topology(descriptor.kind(), &match_fold, state)?;
+            let live = LiveMatch::try_new(state, timeout.disposition)?.validate_in(descriptor)?;
+            Ok::<_, anyhow::Error>((
+                match_fold.id.hash(),
+                ObservedMatch {
+                    id: match_fold.id,
+                    live,
+                },
+            ))
+        }
+    }))
+    .buffered(POINT_READ_CONCURRENCY)
+    .try_collect::<Vec<_>>()
+    .await?;
+
+    let mut matches = HashMap::with_capacity(observed.len());
+    for (id_hash, observed) in observed {
+        let previous = matches.insert(id_hash, observed);
         debug_assert!(previous.is_none(), "fold guarantees unique live match IDs");
     }
 
@@ -347,7 +371,7 @@ fn decode_descriptor(
     tournament_fold: &TournamentFold,
     wire: AbiTournamentDescriptor,
 ) -> AdapterResult<TournamentDescriptor> {
-    let wire_kind = decode_tournament_kind(wire.kind)?;
+    let kind = decode_tournament_kind(wire.kind)?;
     if wire.level != tournament_fold.level {
         return Err(AdapterError::DescriptorLevelMismatch {
             descriptor_level: wire.level,
@@ -355,22 +379,16 @@ fn decode_descriptor(
         });
     }
 
-    let descriptor = TournamentDescriptor::try_new(
+    TournamentDescriptor::try_new(
         tournament_fold.address,
         wire.level,
-        wire.levels,
+        kind,
         wire.initialHash.into(),
         wire.baseCycle,
-        wire.log2step,
+        wire.log2Stride,
         wire.height,
-    )?;
-    if wire_kind != descriptor.kind() {
-        return Err(AdapterError::DescriptorKindMismatch {
-            wire: wire_kind,
-            derived: descriptor.kind(),
-        });
-    }
-    Ok(descriptor)
+    )
+    .map_err(Into::into)
 }
 
 fn decode_standing(
@@ -738,7 +756,6 @@ fn validate_parent_topology(
     };
     if awaiting.child_tournament() != tournament_fold.address
         || child.descriptor().level() != parent.descriptor().level() + 1
-        || child.descriptor().levels() != parent.descriptor().levels()
         || child.descriptor().initial_hash() != awaiting.divergence().agree_state()
         || child.descriptor().base_cycle() != awaiting.divergence().coordinate().cycle()
     {
@@ -956,14 +973,13 @@ mod tests {
         (fold, id)
     }
 
-    fn descriptor_wire(level: u64, levels: u64, kind: u8) -> AbiTournamentDescriptor {
+    fn descriptor_wire(level: u64, kind: u8) -> AbiTournamentDescriptor {
         AbiTournamentDescriptor {
             initialHash: hash(9),
             baseCycle: U256::ZERO,
-            log2step: 3,
+            log2Stride: 3,
             height: 4,
             level,
-            levels,
             kind,
         }
     }
@@ -971,20 +987,12 @@ mod tests {
     fn descriptor(
         at: Address,
         level: u64,
-        levels: u64,
+        kind: TournamentKind,
         initial_hash: Digest,
         base_cycle: u64,
     ) -> TournamentDescriptor {
-        TournamentDescriptor::try_new(
-            at,
-            level,
-            levels,
-            initial_hash,
-            U256::from(base_cycle),
-            3,
-            4,
-        )
-        .unwrap()
+        TournamentDescriptor::try_new(at, level, kind, initial_hash, U256::from(base_cycle), 3, 4)
+            .unwrap()
     }
 
     fn standing_wire(
@@ -1054,7 +1062,7 @@ mod tests {
         observed_child: Address,
     ) -> TournamentObservation {
         let root = fold.root();
-        let parent_descriptor = descriptor(root, 0, 2, digest(9), 0);
+        let parent_descriptor = descriptor(root, 0, TournamentKind::NonLeaf, digest(9), 0);
         let awaiting = AwaitingChildMatch::try_new(sealed_divergence(), observed_child).unwrap();
         let parent_live = live_match(
             LiveMatchState::AwaitingChild(awaiting),
@@ -1077,37 +1085,37 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_decode_rejects_discriminants_level_kind_and_geometry() {
+    fn descriptor_decode_accepts_authoritative_kind_and_rejects_bad_wire_values() {
         let fold = Fold::new(address(1));
         let root = fold.tournament(&address(1)).unwrap();
 
         assert_eq!(
-            decode_descriptor(root, descriptor_wire(0, 1, 2)),
+            decode_descriptor(root, descriptor_wire(0, 2)),
             Err(AdapterError::UnknownTournamentKind(2))
         );
         assert_eq!(
-            decode_descriptor(root, descriptor_wire(1, 2, 0)),
+            decode_descriptor(root, descriptor_wire(1, 0)),
             Err(AdapterError::DescriptorLevelMismatch {
                 descriptor_level: 1,
                 fold_level: 0,
             })
         );
         assert_eq!(
-            decode_descriptor(root, descriptor_wire(0, 1, 1)),
-            Err(AdapterError::DescriptorKindMismatch {
-                wire: TournamentKind::NonLeaf,
-                derived: TournamentKind::Leaf,
-            })
+            decode_descriptor(root, descriptor_wire(0, 1))
+                .unwrap()
+                .kind(),
+            TournamentKind::NonLeaf,
+            "kind is contract-authoritative, not derived from level"
         );
 
-        let mut zero_height = descriptor_wire(0, 1, 0);
+        let mut zero_height = descriptor_wire(0, 0);
         zero_height.height = 0;
         assert_eq!(
             decode_descriptor(root, zero_height),
             Err(AdapterError::Domain(DomainError::ZeroCommitmentHeight))
         );
 
-        let mut overflowing = descriptor_wire(0, 1, 0);
+        let mut overflowing = descriptor_wire(0, 0);
         overflowing.baseCycle = U256::MAX;
         assert_eq!(
             decode_descriptor(root, overflowing),
@@ -1123,7 +1131,7 @@ mod tests {
         let mut fold = Fold::new(root_address);
         join(&mut fold, root_address, 1, 11);
         let root = fold.tournament(&root_address).unwrap();
-        let descriptor = descriptor(root_address, 0, 1, digest(9), 0);
+        let descriptor = descriptor(root_address, 0, TournamentKind::Leaf, digest(9), 0);
 
         let unknown = standing_wire(7, false, Some(digest(1)));
         assert_eq!(
@@ -1193,7 +1201,7 @@ mod tests {
         join(&mut fold, root_address, 2, 12);
 
         let root = fold.tournament(&root_address).unwrap();
-        let descriptor = descriptor(root_address, 0, 1, digest(9), 0);
+        let descriptor = descriptor(root_address, 0, TournamentKind::Leaf, digest(9), 0);
         assert_eq!(
             decode_standing(
                 root,
@@ -1268,7 +1276,7 @@ mod tests {
             },
         );
 
-        let descriptor = descriptor(root_address, 0, 1, digest(9), 0);
+        let descriptor = descriptor(root_address, 0, TournamentKind::Leaf, digest(9), 0);
         let root = fold.tournament(&root_address).unwrap();
         assert_eq!(fold_candidate(root).unwrap(), None);
         assert_eq!(
@@ -1313,7 +1321,7 @@ mod tests {
         );
         join(&mut fold, child, 30, 40);
         let child_fold = fold.tournament(&child).unwrap();
-        let child_descriptor = descriptor(child, 1, 2, digest(20), 24);
+        let child_descriptor = descriptor(child, 1, TournamentKind::Leaf, digest(20), 24);
 
         let mut standing = standing_wire(4, false, Some(digest(30)));
         standing.parentCommitment = hash(99);
@@ -1512,7 +1520,7 @@ mod tests {
 
         let child_fold = fold.tournament(&child_address).unwrap();
         let child = assemble_observation(
-            descriptor(child_address, 1, 2, digest(20), 24),
+            descriptor(child_address, 1, TournamentKind::Leaf, digest(20), 24),
             TournamentStanding::AwaitingClosure { candidate: None },
             HashMap::new(),
         )
@@ -1524,10 +1532,9 @@ mod tests {
         assert!(validate_parent_topology(&fold, child_fold, &observations, &child,).is_ok());
 
         for wrong_descriptor in [
-            descriptor(child_address, 0, 2, digest(20), 24),
-            descriptor(child_address, 1, 3, digest(20), 24),
-            descriptor(child_address, 1, 2, digest(99), 24),
-            descriptor(child_address, 1, 2, digest(20), 25),
+            descriptor(child_address, 0, TournamentKind::Leaf, digest(20), 24),
+            descriptor(child_address, 1, TournamentKind::Leaf, digest(99), 24),
+            descriptor(child_address, 1, TournamentKind::Leaf, digest(20), 25),
         ] {
             let wrong_child = assemble_observation(
                 wrong_descriptor,
@@ -1584,7 +1591,7 @@ mod tests {
         let parent = awaiting_parent_observation(&fold, parent_id, child_address);
         let observations = HashMap::from([(root, parent)]);
         let child_fold = fold.tournament(&child_address).unwrap();
-        let child_descriptor = descriptor(child_address, 1, 2, digest(20), 24);
+        let child_descriptor = descriptor(child_address, 1, TournamentKind::Leaf, digest(20), 24);
 
         let mapped = assemble_observation(
             child_descriptor,
@@ -1639,7 +1646,7 @@ mod tests {
         let observations = HashMap::from([(root, parent)]);
         let child_fold = fold.tournament(&child_address).unwrap();
         let child = assemble_observation(
-            descriptor(child_address, 1, 2, digest(20), 24),
+            descriptor(child_address, 1, TournamentKind::Leaf, digest(20), 24),
             TournamentStanding::InnerWinner(InnerWinner::new(parent_id.commitment_two, digest(31))),
             HashMap::new(),
         )
@@ -1652,7 +1659,7 @@ mod tests {
     fn fold_view_join_rejects_active_standing_without_matches() {
         assert_eq!(
             assemble_observation(
-                descriptor(address(1), 0, 1, digest(9), 0),
+                descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0),
                 TournamentStanding::MatchesActive {
                     candidate: None,
                     joins: JoinDisposition::Open,

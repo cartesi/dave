@@ -37,7 +37,6 @@ local function compatibility_state(dispute)
             states[folded.address] = {
                 address = folded.address,
                 base_cycle = descriptor.base_cycle,
-                max_level = descriptor.levels,
                 level = descriptor.level,
                 log2_stride = descriptor.log2_stride,
                 log2_stride_count = descriptor.height,

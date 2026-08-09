@@ -118,9 +118,13 @@ contract CanonicalTournamentGeometryTest is Util {
         ITournament root =
             FACTORY.instantiate(ONE_STATE, IDataProvider(address(0)));
 
-        (uint64 levels, uint64 level, uint64 log2step, uint64 height) =
-            root.tournamentLevelConstants();
-        assertEq(levels, ArbitrationConstants.LEVELS);
+        (
+            ITournament.TournamentKind kind,
+            uint64 level,
+            uint64 log2step,
+            uint64 height
+        ) = root.tournamentLevelConstants();
+        assertEq(uint8(kind), uint8(ITournament.TournamentKind.NON_LEAF));
         assertEq(level, 0);
         assertEq(log2step, ArbitrationConstants.log2step(0));
         assertEq(height, ArbitrationConstants.height(0));

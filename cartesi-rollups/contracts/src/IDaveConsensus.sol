@@ -289,10 +289,9 @@ interface IDaveConsensus is
     /// @param epochNumber The current sealed epoch number (used to avoid race conditions)
     /// @param outputsMerkleRoot The post-epoch outputs Merkle root (used to validate outputs)
     /// @param proof The bottom-up Merkle proof of the outputs Merkle root in the final machine state
-    /// @dev On success, stores the staged result, attempts best-effort recovery
-    /// from the finished tournament, and emits an `EpochStaged` event. Neither
-    /// a false recovery result nor a recovery revert prevents staging; failed
-    /// recovery remains permissionlessly retryable on the tournament.
+    /// @dev On success, stores the staged result and emits an `EpochStaged`
+    /// event. Bond recovery is a separate permissionless action on the
+    /// tournament and cannot affect staging.
     function stageTournamentResult(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external;
 
     /// @notice As a sentry, claim the post-epoch machine state hash for the current sealed epoch.

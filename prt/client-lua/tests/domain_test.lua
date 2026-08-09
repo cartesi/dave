@@ -2,12 +2,15 @@ local bint = require "utils.bint" (256)
 local Domain = require "player.domain"
 local Test = require "tests.testlib"
 
+local LEAF = Domain.TournamentKind.LEAF
+local NON_LEAF = Domain.TournamentKind.NON_LEAF
+
 local function descriptor(args)
     args = args or {}
     return Domain.descriptor {
         address = args.address or "root",
         level = args.level or 0,
-        levels = args.levels or 1,
+        kind = args.kind or LEAF,
         initial_hash = args.initial_hash or "initial",
         base_cycle = args.base_cycle or 0,
         log2_stride = args.log2_stride or 0,
@@ -39,11 +42,12 @@ local function divergence()
 end
 
 return {
-    Test.case("descriptor derives kind and checks uint256 geometry", function()
+    Test.case("descriptor accepts kind and checks uint256 geometry", function()
         local rows = {
-            { level = 0, levels = 1, kind = Domain.TournamentKind.LEAF },
-            { level = 0, levels = 2, kind = Domain.TournamentKind.NON_LEAF },
-            { level = 1, levels = 2, kind = Domain.TournamentKind.LEAF },
+            { level = 0, kind = LEAF },
+            { level = 0, kind = NON_LEAF },
+            { level = 1, kind = LEAF },
+            { level = 1, kind = NON_LEAF },
         }
         for _, row in ipairs(rows) do
             local value = descriptor(row)
@@ -52,12 +56,8 @@ return {
 
         local invalid = {
             {
-                message = "level count must be nonzero",
-                args = { levels = 0 },
-            },
-            {
-                message = "level is outside level count",
-                args = { level = 2, levels = 2 },
+                message = "unknown tournament kind",
+                args = { kind = "branch" },
             },
             {
                 message = "height must be nonzero",
@@ -199,14 +199,15 @@ return {
     end),
 
     Test.case("recursive snapshot validates child provenance and geometry", function()
-        local parent_descriptor = descriptor { levels = 2 }
+        local parent_descriptor = descriptor {
+            kind = NON_LEAF,
+        }
         local parent_match = Domain.match_id("one", "two")
         local parent_link =
             Domain.parent_link("root", parent_match, "one")
         local child_descriptor = descriptor {
             address = "child",
             level = 1,
-            levels = 2,
             initial_hash = "agree",
             base_cycle = 3,
         }
@@ -241,7 +242,6 @@ return {
         local wrong_descriptor = descriptor {
             address = "child",
             level = 1,
-            levels = 2,
             initial_hash = "agree",
             base_cycle = 4,
         }

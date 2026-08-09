@@ -510,7 +510,7 @@ contract RecursiveTournamentLifecycleTest is Test {
             parent.tournamentArguments();
 
         assertEq(args.level, 1);
-        assertEq(args.levels, SmallTwoLevelGeometry.LEVELS);
+        assertEq(uint8(args.kind), uint8(ITournament.TournamentKind.LEAF));
         assertEq(args.commitmentArgs.height, SmallTwoLevelGeometry.LEAF_HEIGHT);
         assertEq(
             args.commitmentArgs.log2step, SmallTwoLevelGeometry.LEAF_LOG2_STEP

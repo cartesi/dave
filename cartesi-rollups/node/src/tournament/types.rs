@@ -74,7 +74,9 @@ impl DisputeState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tournament::domain::{JoinDisposition, TournamentDescriptor, TournamentStanding};
+    use crate::tournament::domain::{
+        JoinDisposition, TournamentDescriptor, TournamentKind, TournamentStanding,
+    };
     use crate::tournament::fold::{EventKind, TournamentEvent};
 
     fn digest(byte: u8) -> Digest {
@@ -85,9 +87,9 @@ mod tests {
         Address::from([byte; 20])
     }
 
-    fn observation(tournament: Address, level: u64, levels: u64) -> TournamentObservation {
+    fn observation(tournament: Address, level: u64, kind: TournamentKind) -> TournamentObservation {
         TournamentObservation::from_parts(
-            TournamentDescriptor::try_new(tournament, level, levels, digest(1), U256::ZERO, 0, 1)
+            TournamentDescriptor::try_new(tournament, level, kind, digest(1), U256::ZERO, 0, 1)
                 .unwrap(),
             TournamentStanding::MatchesActive {
                 candidate: None,
@@ -154,7 +156,7 @@ mod tests {
         .unwrap();
 
         // The semantic observation covers the root only: the inner is history.
-        let observations = HashMap::from([(root, observation(root, 0, 2))]);
+        let observations = HashMap::from([(root, observation(root, 0, TournamentKind::NonLeaf))]);
         let dispute = DisputeState {
             head: ChainHead {
                 number: 3,
