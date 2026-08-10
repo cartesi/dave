@@ -15,7 +15,7 @@ roles today:
    interface as the Rust node, but its domain adapter and planner are an
    independent implementation. The e2e tests cross-check the Rust node
    against it every epoch.
-2. Test actor: the sybil (dishonest) players in `prt/tests/` are this
+2. Test actor: the sybil (dishonest) players in `test/e2e/` are this
    client's honest strategy driven with a patched commitment builder.
 3. Executable documentation: when the Rust code is unclear, this is
    usually the fastest way to understand the intended behavior.
@@ -38,7 +38,7 @@ Layout:
   accepted dispute observation.
 - `player/reader.lua` - the structural log reader; production reads go
   through `semantic_reader.lua`, this one feeds the e2e harness's
-  introspection seam (`prt/tests/rollups/dave/reader.lua`).
+  introspection seam (`test/e2e/rollups/dave/reader.lua`).
 - `player/sender.lua` - transaction transport.
 - `cryptography/` - keccak hashing and incremental merkle builders.
 - `utils/` - process and time helpers used by the test harness.

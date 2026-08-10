@@ -30,9 +30,9 @@ The current nested boundaries are `prt/contracts/AGENTS.md`,
 ```
 prt/contracts/       Solidity dispute contracts - SECURITY-CRITICAL trust
                      boundary. Deep context in prt/contracts/AGENTS.md.
-prt/client-lua/      PRT client in Lua. Testing node, sybil actor, and
-                     executable reference for commitment construction.
-prt/tests/           Lua-orchestrated end-to-end tests. Spawns the real Rust
+prt/client-lua/      PRT reference client, sybil test actor, and executable
+                     oracle for commitment construction.
+test/e2e/            Lua-orchestrated end-to-end tests. Spawns the real Rust
                      node plus dishonest sybils against anvil.
 docs/papers/         The original PRT and Dave papers. Dave's successor
                      tournament algorithm is not implemented here; the current

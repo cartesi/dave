@@ -3,8 +3,8 @@
 Dave is a permissionless, interactive fraud-proof system. This repo contains the Dave software suite for rollups:
 
 * Solidity smart contracts;
-* off-chain testing node in Lua;
-* off-chain reference node in Rust;
+* validator node in Rust;
+* Lua reference client and adversarial test actors;
 * dispute algorithm specification.
 
 ---
@@ -146,10 +146,10 @@ available recipe, and `just check` is the pre-commit gate.
 
 ### Running Examples
 
-The repository includes an example for PRT Dave:
+The repository includes end-to-end tests for PRT Dave:
 
-- **PRT Rust Node (Rollups):**
-  Follow the instructions in the [PRT Rust node README](prt/tests/rollups/README.md).
+- **Rollups test harness:**
+  Follow the instructions in the [end-to-end test README](test/e2e/rollups/README.md).
 
 
 ---

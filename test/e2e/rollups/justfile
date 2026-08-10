@@ -9,7 +9,7 @@ set positional-arguments
 # checkout is missing an e2e prerequisite; `just doctor` at the repo
 # root diagnoses everything at once.
 [private]
-preflight PROGRAM SCRIPT:
+preflight PROGRAM SCENARIO:
     #!/usr/bin/env bash
     set -euo pipefail
     fail() {
@@ -18,10 +18,10 @@ preflight PROGRAM SCRIPT:
       exit 1
     }
     program=$1
-    script=$2
+    scenario=$2
     [[ "$program" =~ ^[A-Za-z0-9._-]+$ ]] || fail "unsafe program name"
-    [[ "$script" =~ ^[A-Za-z0-9._-]+$ ]] || fail "unsafe scenario name"
-    [ -f "test_cases/$script.lua" ] || fail "test_cases/$script.lua missing"
+    [[ "$scenario" =~ ^[A-Za-z0-9._-]+$ ]] || fail "unsafe scenario name"
+    [ -f "scenarios/$scenario.lua" ] || fail "scenarios/$scenario.lua missing"
     [ -f {{ANVIL_LOAD_PATH}} ] || fail "devnet state.json missing (just rollups-contracts::build-devnet)"
     [ -d {{DEPLOYMENTS_DIR}} ] || fail "devnet deployments missing (just rollups-contracts::build-devnet)"
     for tool in anvil cast lua5.4 cartesi-machine \
@@ -46,8 +46,8 @@ preflight PROGRAM SCRIPT:
 # makes anvil retain every historical state in memory, which under
 # tens of thousands of fast-forwarded blocks ballooned five parallel
 # lanes into swap (the 2026-07-10 battery freezes).
-# run one PRT rollups scenario: just test <program> <test_case>
-test PROGRAM SCRIPT: (preflight PROGRAM SCRIPT)
+# run one PRT rollups scenario: just test <program> <scenario>
+test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
   WEB3_PRIVATE_KEY={{WEB3_PRIVATE_KEY}} \
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
   TEMPLATE_MACHINE=`realpath ../../../test/programs/{{PROGRAM}}/machine-image` \
@@ -56,7 +56,7 @@ test PROGRAM SCRIPT: (preflight PROGRAM SCRIPT)
   INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/InputBox.json` \
   ERC20_PORTAL=`jq -r .address {{DEPLOYMENTS_DIR}}/ERC20Portal.json` \
   ERC20_TOKEN=`jq -r .address {{DEPLOYMENTS_DIR}}/TestFungibleToken.json` \
-  lua5.4 test_cases/{{SCRIPT}}.lua
+  lua5.4 scenarios/{{SCENARIO}}.lua
 
 # run PRT rollups echo test
 test-echo: \
@@ -139,9 +139,15 @@ read-node-logs:
 
 # Kept for forensics, but at ~5 GB per battery lane the litter can
 # quietly fill the disk, which slows every machine store system-wide.
-# remove state dirs, oracle dirs, and logs left by past e2e runs
+# remove current and legacy state dirs, oracle dirs, and logs left by e2e runs
 sweep:
   rm -rf _state* _oracle* _machine_scratch* _battery dave*.log* anvil*.log
+  rm -rf ../../../prt/tests/rollups/_state* \
+    ../../../prt/tests/rollups/_oracle* \
+    ../../../prt/tests/rollups/_machine_scratch* \
+    ../../../prt/tests/rollups/_battery \
+    ../../../prt/tests/rollups/dave*.log* \
+    ../../../prt/tests/rollups/anvil*.log
 
 # download the sepolia honeypot machine snapshot
 download-sepolia-honeypot: clean-sepolia-honeypot-snapshot

@@ -241,6 +241,6 @@ The same leaf sequence is computed independently by:
 
 Any divergence between (1)/(2) and (3) means an honest node loses a
 dispute it should have won. The e2e tests cross-check (1) against (2)
-every epoch (`prt/tests/rollups/test_env.lua`, `epoch_settlement`), and
+every epoch (`test/e2e/rollups/test_env.lua`, `epoch_settlement`), and
 the stf test cases exercise (3) against both. Preserve these cross-checks
 when refactoring; they are the executable specification of this document.

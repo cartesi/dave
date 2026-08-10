@@ -8,7 +8,7 @@
 
 mod? prt-contracts 'prt/contracts'
 mod? rollups-contracts 'cartesi-rollups/contracts'
-mod? rollups-tests 'prt/tests/rollups'
+mod? rollups-tests 'test/e2e/rollups'
 mod? programs 'test/programs'
 
 # Recipe lines with pipes fail honestly instead of reporting the
@@ -231,9 +231,9 @@ doctor:
     fi
     # Battery/e2e instance dirs are left for forensics and are BIG
     # (~5 GB each); a full disk quietly slows every machine store.
-    litter=$(du -sm prt/tests/rollups/_state* 2>/dev/null | awk '{sum+=$1} END {printf "%d", sum}')
+    litter=$(du -sm test/e2e/rollups/_state* prt/tests/rollups/_state* 2>/dev/null | awk '{sum+=$1} END {printf "%d", sum}')
     if [ "${litter:-0}" -gt 10000 ]; then
-      warn "e2e state dirs hold ${litter} MB (prt/tests/rollups/_state*)" \
+      warn "e2e state dirs hold ${litter} MB (including legacy locations)" \
         "forensic litter from past runs; sweep with: just rollups-tests::sweep"
     fi
     # Historic leak class (806 GB found 2026-07-11): tests that
@@ -314,7 +314,7 @@ check-fmt: check-fmt-rust-workspace
 
 # lint the Lua client and test harness
 lint-lua:
-    luacheck prt/client-lua prt/tests/rollups --exclude-files "**/dependencies/**"
+    luacheck prt/client-lua test/e2e --exclude-files "**/dependencies/**"
 
 # fast, provider-free semantic tests for the Lua PRT client
 test-lua-client:
@@ -497,9 +497,11 @@ worktrees-sweep:
       fi
       before=$(du -sm "$wt" 2>/dev/null | cut -f1)
       rm -rf "$wt/target"
-      (cd "$wt/prt/tests/rollups" 2>/dev/null \
-        && shopt -s nullglob \
-        && rm -rf _state* _oracle* _machine_scratch* _battery dave*.log* anvil*.log)
+      for e2e_dir in "$wt/test/e2e/rollups" "$wt/prt/tests/rollups"; do
+        (cd "$e2e_dir" 2>/dev/null \
+          && shopt -s nullglob \
+          && rm -rf _state* _oracle* _machine_scratch* _battery dave*.log* anvil*.log)
+      done
       after=$(du -sm "$wt" 2>/dev/null | cut -f1)
       echo "swept $(basename "$wt"): ${before:-?} MB -> ${after:-?} MB"
     done
