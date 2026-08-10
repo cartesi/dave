@@ -700,11 +700,12 @@ interface ITournament {
     /// @notice Classify the timeout action available for one full match id now.
     /// @dev Match existence is established before reading historical clocks.
     /// An absent or deleted match returns `(UNINITIALIZED, NONE, 0)`.
+    /// A sealed non-leaf match returns `NONE` because its linked child owns
+    /// progress.
     /// `deferredCharge` is zero for `NONE`, `ELIMINATE_BOTH`, and a leaf-race
     /// winner; an active-match winner may carry the expired responder's overdue
-    /// duration. The view is total over stored state: it classifies the
-    /// clocks as they are, and shape invariants are enforced by the
-    /// transition paths that create the shapes, never at observation.
+    /// duration. Existing matches rely on the clock shape established by their
+    /// transition path.
     function classifyMatchTimeout(Match.Id calldata matchId)
         external
         view
