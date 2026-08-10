@@ -74,7 +74,7 @@ end
 local Blockchain = {}
 Blockchain.__index = Blockchain
 
-function Blockchain:new(anvil_load_path, anvil_dump_path)
+function Blockchain.new(anvil_load_path, anvil_dump_path)
     local blockchain = {}
 
     local handle = start_blockchain(anvil_load_path, anvil_dump_path)

@@ -8,8 +8,8 @@
 #
 #   LANES=5 BASE_PORT=8601 ./battery.sh
 #
-# Results land in _battery/results.txt as "<program> <script> rc secs";
-# per-scenario stdout in _battery/<program>-<script>.log, node logs in
+# Results land in _battery/results.txt as "<program> <scenario> rc secs";
+# per-scenario stdout in _battery/<program>-<scenario>.log, node logs in
 # dave-<port>.log. Exit code is the number of failed scenarios.
 set -u
 cd "$(dirname "$0")"
@@ -65,12 +65,12 @@ SCENARIOS=(
     "yield bad_commitment"
 )
 
-# Every test_cases/*.lua must be wired into SCENARIOS under some
+# Every scenarios/*.lua must be wired into SCENARIOS under some
 # program, or listed here with its reason: an unwired net rots in the
 # dark (stf_revert was dark from birth; docs/test-harness.md).
 EXCLUDED_SCENARIOS=(
 )
-for f in test_cases/*.lua; do
+for f in scenarios/*.lua; do
     c=$(basename "$f" .lua)
     wired=0
     for s in "${SCENARIOS[@]}"; do
@@ -79,20 +79,20 @@ for f in test_cases/*.lua; do
     if [ "$wired" -eq 0 ]; then
         case " ${EXCLUDED_SCENARIOS[*]:-} " in
             *" $c "*) ;;
-            *) echo "[battery] WARNING: test_cases/$c.lua is wired into no battery scenario (add it to SCENARIOS, or to EXCLUDED_SCENARIOS with its reason)" ;;
+            *) echo "[battery] WARNING: scenarios/$c.lua is wired into no battery scenario (add it to SCENARIOS, or to EXCLUDED_SCENARIOS with its reason)" ;;
         esac
     fi
 done
 
 run_one() {
-    local index=$1 program=$2 script=$3
+    local index=$1 program=$2 scenario=$3
     local port=$((BASE_PORT + index))
     local start=$SECONDS
     TEST_INSTANCE=$port CHAOS_SEED=${CHAOS_SEED:-1} \
-        just test "$program" "$script" > "$OUT/$program-$script.log" 2>&1
+        just test "$program" "$scenario" > "$OUT/$program-$scenario.log" 2>&1
     local rc=$?
-    echo "$program $script $rc $((SECONDS - start)) $(date +%H:%M:%S)" >> "$OUT/results.txt"
-    echo "[battery] $program $script rc=$rc $((SECONDS - start))s"
+    echo "$program $scenario $rc $((SECONDS - start)) $(date +%H:%M:%S)" >> "$OUT/results.txt"
+    echo "[battery] $program $scenario rc=$rc $((SECONDS - start))s"
     return "$rc"
 }
 export -f run_one

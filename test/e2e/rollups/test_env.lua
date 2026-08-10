@@ -74,7 +74,7 @@ function Env.spawn_blockchain(inputs)
     -- leave a partial store the exists() gate would adopt).
     os.execute("rm -rf " .. Machine.default_snapshot_scratch)
 
-    local blockchain = Blockchain:new(ANVIL_LOAD_PATH, ANVIL_DUMP_PATH)
+    local blockchain = Blockchain.new(ANVIL_LOAD_PATH, ANVIL_DUMP_PATH)
     Env.blockchain = blockchain
     Env.sentries = { Dave.wallet_address }
     Env.reader = Reader:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, TEMPLATE_MACHINE_HASH, Env.sentries, SALT,

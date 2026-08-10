@@ -1,9 +1,9 @@
-# PRT rollups tests
+# End-to-end tests
 
 End-to-end tests for the rollups Rust node. A Lua orchestrator spawns an
 honest node in the background to advance the rollups state and defend the
 application, plus dishonest sybil players (built from the Lua client, see
-`prt/tests/common/runners/`) that tamper with commitments and must lose.
+`../support/runners/`) that tamper with commitments and must lose.
 
 How the harness works, what the scenarios cover, and how to add one:
 see [docs/test-harness.md](../../../docs/test-harness.md).
@@ -27,4 +27,4 @@ just view-rollups-logs             # tail the node's dave.log
 ```
 
 Machine programs live in [test/programs](../../../test/programs/); the
-scenario scripts live in [test_cases](./test_cases/).
+scenario scripts live in [scenarios](./scenarios/).

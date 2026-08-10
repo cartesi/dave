@@ -1,6 +1,6 @@
 # The e2e test harness
 
-The end-to-end tests live in `prt/tests/rollups/` and are orchestrated in
+The end-to-end tests live in `test/e2e/rollups/` and are orchestrated in
 Lua. They spawn the real Rust node binary against a local anvil chain and
 attack it with dishonest players. They are the acceptance oracle for any
 node refactoring: behavior is pinned at the on-chain-outcome level, not at
@@ -13,9 +13,9 @@ This is distinct from the Solidity and Foundry test architecture under
 ## Anatomy of a test run
 
 ```
-just rollups-tests::test <program> <script>
-  -> lua5.4 test_cases/<script>.lua        (env vars select machine image,
-                                            deployment addresses, keys)
+just rollups-tests::test <program> <scenario>
+  -> lua5.4 scenarios/<scenario>.lua       (env vars select machine image,
+                                             deployment addresses, keys)
 ```
 
 - `test_env.lua` is the shared fixture. `spawn_blockchain()` starts anvil
@@ -32,8 +32,8 @@ just rollups-tests::test <program> <script>
   structural fold, strict ABI decoding boundary, domain context, pure planner,
   fulfiller, and dispatcher exercise the same protocol decisions without
   sharing expected values. A `PatchedCommitmentBuilder` corrupts chosen leaf
-  hashes at chosen levels (`prt/tests/common/runners/`). The sybils play the protocol
-  perfectly while defending a wrong commitment - the strongest polite
+  hashes at chosen levels (`test/e2e/support/runners/`). The sybils play the
+  protocol perfectly while defending a wrong commitment - the strongest polite
   adversary. The honest Lua fulfiller rejects a machine post-state that differs
   from its claim by default. Only the sybil runner enables the explicit
   `allow_invalid_claims` harness mode: it submits the valid machine transition
@@ -115,7 +115,7 @@ harness itself. Each rule below closes a reproduced harness failure:
 The harness reads the node's internal state by shelling out to `sqlite3`
 against `_state/db.sqlite3`; the node no longer has per-epoch dispute
 databases. All such queries are
-centralized in `prt/tests/rollups/dave/node.lua` (`root_commitment`,
+centralized in `test/e2e/rollups/dave/node.lua` (`root_commitment`,
 `machine_path`, `inputs`). If the node's schema changes, this one file is
 the blast radius - treat it as the interface and keep it thin.
 
@@ -151,7 +151,7 @@ Machine programs (`test/programs/`): `echo` (accepts and rejects inputs),
 `compute` (no-input computation; buildable but not yet wired into any
 scenario).
 
-Test cases (`prt/tests/rollups/test_cases/`):
+Scenarios (`test/e2e/rollups/scenarios/`):
 
 - `simple` / `simple_no_input`: honest node settles epochs, with and
   without inputs.
@@ -249,8 +249,9 @@ else - echo, the full kill battery, chaos seed sweeps, honeypot-all, and
 yield-all - is manual, which makes it rot-prone (see the state of the
 nets below).
 
-There is also a Sepolia smoke setup (`prt/tests/rollups/sepolia/`) that
-runs the node against a testnet deployment of the honeypot.
+There is also a legacy Sepolia smoke setup (`test/e2e/rollups/sepolia/`).
+It is retained as a lead, but is not part of current CI and has not been
+revalidated by this harness maintenance.
 
 ## Known coverage gaps
 
@@ -389,7 +390,7 @@ what follows is the living summary.
 The baseline to beat (2026-07-10, retry-fixed binary, caffeinated):
 all-green battery, ~42 min of scenario time, ~11 min wall at 5 lanes,
 no leaked processes. The run to repeat before any handoff:
-`LANES=5 prt/tests/rollups/battery.sh`. Sweep the instance dirs once
+`LANES=5 test/e2e/rollups/battery.sh`. Sweep the instance dirs once
 results are read (`just rollups-tests::sweep`): each lane leaves ~5 GB
 of forensic state, and a nearly-full disk quietly slows every machine
 store; `just doctor` warns when the litter passes 10 GB.
@@ -443,11 +444,11 @@ record):
 
 1. Pick or build a machine program under `test/programs/` (see its
    justfile; images are built with the `cartesi-machine` CLI).
-2. Write `prt/tests/rollups/test_cases/<name>.lua`: require `test_env`,
+2. Write `test/e2e/rollups/scenarios/<name>.lua`: require `test_env`,
    spawn blockchain and node, drive epochs with `run_epoch` or hand-rolled
    sybils with patch lists.
 3. Wire a justfile alias if it should run in a suite
-   (`prt/tests/rollups/justfile`).
+   (`test/e2e/rollups/justfile`).
 4. Add it to `battery.sh`'s `SCENARIOS` array if it should run in the
    full parallel battery - the array is independent of the justfile
    aliases and does not inherit from them. If it is deliberately excluded,

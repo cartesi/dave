@@ -6,7 +6,11 @@
 
 **/target/
 
-**/_state/
+**/_state*/
+**/_oracle*/
+**/_battery/
+**/dave*.log*
+**/anvil*.log*
 **/snapshots/
 **/compute_data/
 **/rollups_data/
@@ -20,9 +24,6 @@ test/programs/**/machine-image/
 
 cartesi-rollups/contracts/bindings-rs/src/contract/
 prt/contracts/bindings-rs/src/contract/
-
-prt/tests/compute/outputs/
-prt/tests/compute/pixels/
 
 machine/emulator/**/*.o
 machine/emulator/**/*.swp

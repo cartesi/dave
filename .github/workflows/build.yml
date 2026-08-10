@@ -142,7 +142,7 @@ jobs:
         if: failure()
         run: |
           echo '▼▼▼ failing-step dave.log ▼▼▼'
-          cat ./prt/tests/rollups/dave.log
+          cat ./test/e2e/rollups/dave.log
           echo '▲▲▲ end log ▲▲▲'
 
 

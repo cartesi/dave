@@ -9,7 +9,8 @@ clients that play them.
   including the dispute actor and tournament synchronization code.
 - [client-lua/](client-lua/) - the Lua client: reference implementation
   and test actor.
-- [tests/](tests/) - the Lua-orchestrated end-to-end suites
+- [test/e2e/rollups/](../test/e2e/rollups/) - the Lua-orchestrated
+  end-to-end suites
   (see [docs/test-harness.md](../docs/test-harness.md)).
 - [The original PRT paper](../docs/papers/prt.pdf) - an architectural
   ancestor, not the contract specification; see the implemented-game
@@ -20,4 +21,5 @@ clients that play them.
 This project uses git submodules. Clone with `--recurse-submodules`, or
 run `git submodule update --recursive --init` after cloning.
 
-To run the end-to-end tests, follow [tests/rollups/README.md](tests/rollups/README.md).
+To run the end-to-end tests, follow the
+[rollups harness README](../test/e2e/rollups/README.md).
