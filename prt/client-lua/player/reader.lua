@@ -84,71 +84,6 @@ local function sanitize_string(s)
     return s:gsub("%s+", ""):gsub("%b[]", ""):gsub("\27%[[%d;]*m", "")
 end
 
-local CommitmentClock = {}
-CommitmentClock.__index = CommitmentClock
-
-function CommitmentClock:new(allowance, last_resume, block_number)
-    local clock = {
-        allowance = tonumber(allowance),
-        last_resume = tonumber(last_resume),
-        block_number = tonumber(block_number)
-    }
-
-    setmetatable(clock, self)
-    return clock
-end
-
-function CommitmentClock:__tostring()
-    local c = self
-    local b = c.block_number
-    local s
-    if c.last_resume == 0 then
-        local blocks_left = c.allowance
-        s = string.format("clock paused, %d blocks left", blocks_left)
-    else
-        local current = b
-        local blocks_left = c.allowance - (current - c.last_resume)
-        if blocks_left >= 0 then
-            s = string.format("clock ticking, %d blocks left", blocks_left)
-        else
-            s = string.format("clock ticking, %d blocks overdue", -blocks_left)
-        end
-    end
-    return s
-end
-
-function CommitmentClock:has_time()
-    local clock = self
-    if clock.last_resume == 0 then
-        return true
-    else
-        local current = clock.block_number
-        return (clock.last_resume + clock.allowance) > current
-    end
-end
-
-function CommitmentClock:time_since_timeout()
-    local clock = self
-    if clock.last_resume == 0 then
-        return
-    else
-        local current = clock.block_number
-        return current - (clock.last_resume + clock.allowance)
-    end
-end
-
--- Live remaining time: the full allowance while paused, the undrained
--- balance while ticking (Clock.sol's remainingAt).
-function CommitmentClock:remaining()
-    local clock = self
-    if clock.last_resume == 0 then
-        return clock.allowance
-    else
-        local remaining = clock.allowance - (clock.block_number - clock.last_resume)
-        return math.max(remaining, 0)
-    end
-end
-
 local Reader = {}
 Reader.__index = Reader
 
@@ -159,25 +94,6 @@ function Reader:new(endpoint)
 
     setmetatable(reader, self)
     return reader
-end
-
-function Reader:_get_block_number(block)
-    local cmd = string.format("cast block %s --rpc-url %s 2>&1", block, self.endpoint)
-
-    local handle = io.popen(cmd)
-    assert(handle)
-
-    local ret
-    local str = handle:read "*a"
-    if str:find "Error" or str:find "error" then
-        handle:close()
-        error(string.format("Cast block failed:\n%s", str))
-    end
-
-    ret = str:match("number%s+(%d+)")
-    handle:close()
-
-    return ret
 end
 
 local cast_logs_template = [==[
@@ -356,73 +272,6 @@ function Reader:read_tournament_created(tournament_address, match_id_hash)
     return ret
 end
 
--- Pinned Tournament storage layout: clocks mapping at slot 8, finalStates
--- at slot 9, matches at slot 11. The Solidity semantic storage-layout hash
--- (just prt-contracts::compatibility-hashes) gates drift.
-local CLOCKS_SLOT = 8
-local FINAL_STATES_SLOT = 9
-local MATCHES_SLOT = 11
-
-local function slot_hash(index)
-    return Hash:from_digest_hex("0x" .. string.format("%064x", index))
-end
-
--- keccak256(abi.encode(key, slot)): a mapping value's base storage slot.
-local function mapping_slot(key_hash, slot_index)
-    return key_hash:join(slot_hash(slot_index)):hex_string()
-end
-
--- Add a small offset to a 32-byte hex slot. Restricted to the low 60 bits
--- so the carry can never cross the Lua integer boundary.
-local function slot_offset(slot_hex, offset)
-    local prefix, low = slot_hex:sub(1, -16), slot_hex:sub(-15)
-    local value = tonumber(low, 16) + offset
-    assert(value < 16 ^ 15, "storage slot offset overflow")
-    return prefix .. string.format("%015x", value)
-end
-
-function Reader:_get_storage(address, slot_hex)
-    local cmd = string.format(
-        'cast storage --rpc-url "%s" "%s" "%s" 2>&1',
-        self.endpoint, address, slot_hex
-    )
-    local handle = io.popen(cmd)
-    assert(handle)
-    local str = handle:read "*a"
-    handle:close()
-    if str:find "Error" or str:find "error" then
-        error(string.format("Storage read `%s` failed:\n%s", slot_hex, str))
-    end
-    local word = str:match("(0x%x+)")
-    assert(word and #word == 66, "storage read returned no 32-byte word")
-    return word
-end
-
-function Reader:read_commitment(tournament_address, commitment_hash)
-    -- Clock.State packs allowance in the low 64 bits and startInstant in
-    -- the next 64 of one storage word.
-    local word = self:_get_storage(
-        tournament_address,
-        mapping_slot(commitment_hash, CLOCKS_SLOT)
-    )
-    local hex = word:sub(3)
-    local allowance = tonumber(hex:sub(-16), 16)
-    local last_resume = tonumber(hex:sub(-32, -17), 16)
-
-    local final_state = self:_get_storage(
-        tournament_address,
-        mapping_slot(commitment_hash, FINAL_STATES_SLOT)
-    )
-    local block_number = self:_get_block_number("latest")
-
-    local commitment = {
-        clock = CommitmentClock:new(allowance, last_resume, block_number),
-        final_state = Hash:from_digest_hex(final_state),
-    }
-
-    return commitment
-end
-
 function Reader:read_constants(tournament_address)
     local sig = "tournamentDescriptor()"
         .. "((bytes32,uint256,uint64,uint64,uint64,uint8))"
@@ -447,26 +296,6 @@ function Reader:read_constants(tournament_address)
     }
 
     return constants
-end
-
-function Reader:read_match(address, match_id_hash)
-    -- Raw Match.State storage: otherParent, leftNode, rightNode,
-    -- runningLeafPosition, then currentHeight packed with isInit.
-    local base = mapping_slot(match_id_hash, MATCHES_SLOT)
-
-    local ret = {}
-    for i = 1, 3 do
-        ret[i] = Hash:from_digest_hex(
-            self:_get_storage(address, slot_offset(base, i - 1))
-        )
-    end
-    local position = self:_get_storage(address, slot_offset(base, 3))
-    ret[4] = string.format("%d", tonumber(position:sub(3), 16))
-    local packed = self:_get_storage(address, slot_offset(base, 4)):sub(3)
-    ret[5] = tonumber(packed:sub(-16), 16)
-    ret[6] = tonumber(packed:sub(-18, -17), 16)
-
-    return ret
 end
 
 -- The ABI-encoded TournamentArguments ride the ERC-1167 clone as immutable

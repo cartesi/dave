@@ -29,13 +29,16 @@ After editing, before declaring done:
      `just rollups-contracts::test`.
 3. Match the change to its required extra evidence (from AGENTS.md):
    Clock changes need the one-clock tests, the MatchClocks matrix, and
-   Tournament composition; Match changes need raw compatibility tests
+   Tournament composition; Match changes need white-box representation tests
    and an independent oracle; gas-affecting changes need the
    gas-calibration skill; geometry changes need the whole-table
    validator plus coordinated cross-implementation work.
-4. If the ABI, events, errors, storage layout, or raw tuples changed:
-   stop and confirm the task explicitly authorizes a compatibility
-   break; regenerate bindings (`just bind`) and deployment artifacts.
+4. If the ABI, events, errors, or clone-argument encoding changed, stop and
+   confirm the task explicitly authorizes a new deployment generation;
+   regenerate bindings (`just bind`) and deployment artifacts. If storage or
+   raw Match or Clock encodings changed, inspect the impact and update
+   white-box probes without treating the old representation as a
+   wire-compatibility promise.
 5. Cross-implementation seams (state transition, commitment geometry,
    provider behavior): confirm the Rust node, the Lua client, and the
    docs were updated in the same change, or say explicitly why not.

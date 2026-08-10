@@ -87,10 +87,11 @@ Top/Middle/Bottom contracts.
 
 - Match existence comes from initialized mapped state, not from a hash sentinel.
   Uninitialized and deleted matches must fail before phase-specific decoding.
-- Match phase is derived from the existing representation. Do not add storage or
-  reshape the raw external tuple without an explicit compatibility change.
+- Match phase is derived from the existing representation. Intentional raw
+  representation changes require matching white-box probes and independent
+  semantic tests.
 - A sealed Match stores commitment one's final state in `leftNode` and
-  commitment two's final state in `rightNode`. Raw readers must still establish
+  commitment two's final state in `rightNode`. White-box probes must establish
   the phase before interpreting those overloaded fields.
 - Active bisection has exactly one running clock. A sealed leaf has two clocks
   running from one instant. A sealed inner match has two paused clocks while its
@@ -126,18 +127,24 @@ without coordinated node, Lua, deployment, and conformance work.
 
 ## Change guardrails
 
-- Preserve the deployed ABI, storage layout, clone arguments, raw Match and
-  Clock tuples, event signatures, and error selectors unless the task explicitly
-  authorizes a compatibility break.
+- Treat function, event, error, and clone-argument encodings as one deployment
+  generation's wire contract. An intentional break requires a fresh Tournament
+  implementation, factory, dependent Dave deployment, matching bindings,
+  clients, and artifacts, and a clean live-dispute boundary.
+- Storage layout and raw Match and Clock encodings are implementation details
+  in the current non-upgradeable design. White-box test probes must follow
+  intentional changes; do not preserve slots solely for those probes.
 - Use braces for every Solidity control-flow body, including a single
   statement.
 - Run `just prt-contracts::compatibility-hashes` before and after production
-  changes and inspect every unexpected difference. Hashes are comparison aids,
-  not approval to update a snapshot mechanically.
+  changes and inspect every unexpected difference. The ABI hash reports wire
+  compatibility; storage and bytecode hashes report implementation and
+  deployment impact, not a requirement that internal hashes remain equal.
 - A Clock change needs one-clock arithmetic tests, the full MatchClocks shape
   and orientation matrix, and public Tournament composition.
-- A Match change needs raw compatibility tests, an independent sparse-tree or
-  parity oracle, malformed-input tests, and public lifecycle composition.
+- A Match change needs white-box representation tests, an independent
+  sparse-tree or parity oracle, malformed-input tests, and public lifecycle
+  composition.
 - Behavioral tests must inject the geometry they require. Production constants
   belong only in conformance tests.
 - A gas-affecting change must follow the calibration runbook even when the
@@ -151,8 +158,8 @@ without coordinated node, Lua, deployment, and conformance work.
 - State-transition changes must retain cross-implementation proof vectors and
   define halt, exception, reset, and padding behavior before contracts rely on
   them.
-- Production bytecode changes require regenerated deployment artifacts and
-  CREATE2-derived addresses before release.
+- Production bytecode changes change deployment identity and require regenerated
+  deployment artifacts and CREATE2-derived addresses before release.
 
 ## Build and test
 

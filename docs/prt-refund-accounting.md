@@ -96,9 +96,11 @@ balance >= J * B_r(h) - C * B_r(h)
 ```
 
 Under the configured action caps, one minimum join bond is therefore reserved
-for an accepting winning claimer. The implementation defensively pays
-`min(balance, B_r(h))`; the reserve proof explains why the balance term does not
-bind for an ordinarily funded completed tournament.
+for an accepting winning claimer. On a successful recovery, the implementation
+pays the full balance when `balance <= B_r(h)`. Above one bond, it pays
+`B_r(h) + floor((balance - B_r(h)) / 10)` and burns the remainder. The reserve
+proof explains why an ordinarily funded completed tournament reaches recovery
+with at least one bond.
 
 Failed refund callbacks, under-budget actions, excess join value, and forced
 ETH can only increase the balance relative to the lower bound. A rejecting
@@ -147,8 +149,9 @@ endogenous incentive system and is not required for result-selection safety.
 If an honest validator performs successful dispute work, the pooled reserves
 subsidize that caller. If an adversary performs the work and receives the
 refund, the corresponding Ethereum execution and blockspace were still
-consumed. Capping the terminal winner payment prevents the winning claimer from
-recovering unused losing reserves directly.
+consumed. Limiting the terminal winner payment to one bond plus one tenth of
+the residual prevents the winning claimer from recovering all unused losing
+reserves directly.
 
 This is aggregate resource accounting, not an identity-level attacker-cost
 theorem:
