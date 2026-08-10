@@ -14,9 +14,7 @@ local CommitmentBuilder = require "computation.commitment"
 -- (honest + three sybils) form two concurrent matches; two sybils
 -- play actively (one pairing may be sybil-vs-sybil, also untested
 -- elsewhere), the third joins and goes silent, so its match resolves
--- through a REAL on-chain timeout - the deletion reason the fold has
--- only ever decoded from synthetic events. With RECORD_CHAIN_FIXTURE
--- set, the whole dispute is captured for the tournament-fold oracle.
+-- through a real on-chain timeout.
 
 -- Main Execution
 env.spawn_blockchain { env.sample_inputs[1] }
@@ -172,13 +170,3 @@ assert(recovered, "the node did not recover its bond after settlement")
 assert(env.dave_node:find_log("plan bond recovery"),
     "the node's recovery planner left no trace")
 print "node recovered its bond; forfeited sybil reserves burned"
-
--- Raw chain recording for the tournament-fold oracle: the one
--- fixture that carries concurrent matches and a real timeout-reason
--- deletion (see cartesi-rollups/node/tests/tournament_fold.rs).
-local fixture = os.getenv "RECORD_CHAIN_FIXTURE"
-if fixture then
-    local recorder = "../../../target/debug/record_chain"
-    local cmd = string.format("%s --out %s --note multi-sybil", recorder, fixture)
-    assert(os.execute(cmd), "chain recording failed")
-end

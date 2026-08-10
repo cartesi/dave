@@ -1,7 +1,7 @@
-//! Wire-independent tournament values for the semantic reader and pure planners.
+//! Wire-independent tournament values for the narrow observer and pure planners.
 //!
 //! These types deliberately contain no generated contract bindings and no raw
-//! clock representation. The strict adapter validates ABI values and assembles
+//! clock representation. The strict observer validates ABI values and assembles
 //! this domain before Hero or GC policy sees them.
 
 use std::num::NonZeroU64;
@@ -11,7 +11,27 @@ use thiserror::Error;
 
 use crate::merkle::Digest;
 
-use super::types::MatchID;
+/// The ordered pair that identifies one match.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MatchID {
+    pub commitment_one: Digest,
+    pub commitment_two: Digest,
+}
+
+impl MatchID {
+    pub fn hash(self) -> Digest {
+        self.commitment_one.join(&self.commitment_two)
+    }
+}
+
+impl From<MatchID> for cartesi_prt_contracts::tournament::Match::Id {
+    fn from(match_id: MatchID) -> Self {
+        Self {
+            commitmentOne: match_id.commitment_one.into(),
+            commitmentTwo: match_id.commitment_two.into(),
+        }
+    }
+}
 
 /// A duration in the tournament's block-number time coordinate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -630,59 +650,29 @@ pub enum InnerEliminationReason {
 /// Current-only tournament result and closure disposition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TournamentStanding {
-    MatchesActive {
-        candidate: Option<Digest>,
-        joins: JoinDisposition,
-    },
-    AwaitingClosure {
-        candidate: Option<Digest>,
-    },
+    MatchesActive { joins: JoinDisposition },
+    AwaitingClosure,
     RootWinner(RootWinner),
     RootFailed,
     InnerWinner(InnerWinner),
-    InnerEliminable {
-        reason: InnerEliminationReason,
-    },
+    InnerEliminable { reason: InnerEliminationReason },
 }
 
 impl TournamentStanding {
-    pub const fn candidate(self) -> Option<Digest> {
-        match self {
-            Self::MatchesActive { candidate, .. } | Self::AwaitingClosure { candidate } => {
-                candidate
-            }
-            Self::RootWinner(winner) => Some(winner.commitment()),
-            Self::RootFailed => None,
-            Self::InnerWinner(winner) => Some(winner.child_commitment()),
-            Self::InnerEliminable {
-                reason: InnerEliminationReason::NoCandidate,
-            } => None,
-            Self::InnerEliminable {
-                reason: InnerEliminationReason::WinnerExpired { candidate },
-            } => Some(candidate),
-        }
-    }
-
     pub const fn accepts_joins(self) -> bool {
         match self {
             Self::MatchesActive {
                 joins: JoinDisposition::Open,
-                ..
             }
-            | Self::AwaitingClosure { .. } => true,
+            | Self::AwaitingClosure => true,
             Self::MatchesActive {
                 joins: JoinDisposition::Closed,
-                ..
             }
             | Self::RootWinner(_)
             | Self::RootFailed
             | Self::InnerWinner(_)
             | Self::InnerEliminable { .. } => false,
         }
-    }
-
-    pub const fn has_active_matches(self) -> bool {
-        matches!(self, Self::MatchesActive { .. })
     }
 }
 
@@ -765,16 +755,6 @@ impl SemanticSnapshot {
             }
         }
 
-        let local_is_candidate = matches!(local_standing, LocalCommitmentStanding::Candidate);
-        if (standing.candidate() == Some(local_commitment)) != local_is_candidate {
-            return Err(DomainError::LocalCandidateMismatch);
-        }
-
-        if matches!(local_standing, LocalCommitmentStanding::Engaged(_))
-            && !standing.has_active_matches()
-        {
-            return Err(DomainError::EngagementWithoutActiveMatches);
-        }
         if let LocalCommitmentStanding::Eliminated(record) = local_standing
             && record.local_side().commitment(record.match_id()) != local_commitment
         {
@@ -891,10 +871,6 @@ pub enum DomainError {
     InnerStandingForRoot,
     #[error("inner winner does not map to either side of the recorded parent match")]
     InnerWinnerOutsideParentMatch,
-    #[error("local candidate identity disagrees with tournament standing")]
-    LocalCandidateMismatch,
-    #[error("a local engagement requires an active-match tournament standing")]
-    EngagementWithoutActiveMatches,
     #[error("local engagement identity disagrees with the snapshot commitment")]
     EngagementCommitmentMismatch,
     #[error("local elimination identity disagrees with the snapshot commitment")]
@@ -1160,7 +1136,6 @@ mod tests {
         SemanticSnapshot::try_new(
             descriptor,
             TournamentStanding::MatchesActive {
-                candidate: Some(digest(99)),
                 joins: JoinDisposition::Closed,
             },
             digest(1),
@@ -1254,7 +1229,7 @@ mod tests {
             digest(3),
             WaitingChildren::new(digest(4), digest(5)),
             MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            MatchSide::One,
+            MatchSide::Two,
         );
         assert_eq!(
             Engagement::try_new(
@@ -1284,13 +1259,13 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_validates_leaf_enrichment_and_candidate_identity() {
+    fn snapshot_validates_leaf_enrichment_and_local_identity() {
         let root = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
         let ready = ReadyToSealMatch::new(
             digest(3),
             WaitingChildren::new(digest(4), digest(5)),
             MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            MatchSide::One,
+            MatchSide::Two,
         );
         let engagement = Engagement::try_new(
             digest(1),
@@ -1303,7 +1278,6 @@ mod tests {
             SemanticSnapshot::try_new(
                 root,
                 TournamentStanding::MatchesActive {
-                    candidate: None,
                     joins: JoinDisposition::Open,
                 },
                 digest(1),
@@ -1314,25 +1288,24 @@ mod tests {
             Err(DomainError::MatchKindMismatch)
         );
 
-        assert_eq!(
+        assert!(
             SemanticSnapshot::try_new(
                 root,
-                TournamentStanding::AwaitingClosure {
-                    candidate: Some(digest(1)),
-                },
+                TournamentStanding::AwaitingClosure,
                 digest(1),
                 LocalCommitmentStanding::NotJoined,
                 None,
                 None,
-            ),
-            Err(DomainError::LocalCandidateMismatch)
+            )
+            .is_ok(),
+            "standing and event placement are independent production authorities"
         );
 
         let ready = ReadyToSealMatch::new(
             digest(3),
             WaitingChildren::new(digest(4), digest(5)),
             MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            MatchSide::One,
+            MatchSide::Two,
         );
         let engagement = Engagement::try_new(
             digest(1),
@@ -1341,11 +1314,22 @@ mod tests {
             TimeoutDisposition::None,
         )
         .unwrap();
+        assert!(
+            SemanticSnapshot::try_new(
+                root,
+                TournamentStanding::AwaitingClosure,
+                digest(1),
+                LocalCommitmentStanding::Engaged(engagement),
+                None,
+                None,
+            )
+            .is_ok(),
+            "aggregate standing is not reconciled with event engagement"
+        );
         assert_eq!(
             SemanticSnapshot::try_new(
                 root,
                 TournamentStanding::MatchesActive {
-                    candidate: None,
                     joins: JoinDisposition::Open,
                 },
                 digest(2),
@@ -1367,7 +1351,6 @@ mod tests {
             SemanticSnapshot::try_new(
                 root,
                 TournamentStanding::MatchesActive {
-                    candidate: None,
                     joins: JoinDisposition::Open,
                 },
                 digest(2),
@@ -1387,9 +1370,7 @@ mod tests {
             ParentLink::try_new(address(1), match_id(), digest(1)).expect("commitment one");
         let child = SemanticSnapshot::try_new(
             child_descriptor,
-            TournamentStanding::AwaitingClosure {
-                candidate: Some(digest(20)),
-            },
+            TournamentStanding::AwaitingClosure,
             digest(20),
             LocalCommitmentStanding::Candidate,
             Some(parent_link),
@@ -1408,7 +1389,6 @@ mod tests {
         let parent = SemanticSnapshot::try_new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
-                candidate: None,
                 joins: JoinDisposition::Closed,
             },
             digest(1),
@@ -1641,9 +1621,7 @@ mod tests {
         ] {
             let child = SemanticSnapshot::try_new(
                 child_descriptor,
-                TournamentStanding::AwaitingClosure {
-                    candidate: Some(digest(20)),
-                },
+                TournamentStanding::AwaitingClosure,
                 digest(20),
                 LocalCommitmentStanding::Candidate,
                 Some(parent_link),
@@ -1654,7 +1632,6 @@ mod tests {
                 SemanticSnapshot::try_new(
                     parent_descriptor,
                     TournamentStanding::MatchesActive {
-                        candidate: None,
                         joins: JoinDisposition::Closed,
                     },
                     digest(1),

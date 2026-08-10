@@ -1,5 +1,22 @@
 local Hash = require "cryptography.hash"
 local eth_abi = require "utils.eth_abi"
+local bint = require "utils.bint" (256)
+
+local MAX_U64 = (bint.one() << 64) - 1
+local MAX_U64_DECIMAL = "18446744073709551615"
+
+local function decoded_uint64(value, name)
+    assert(type(value) == "string" and value:match("^%d+$"),
+        name .. " is not an unsigned integer")
+    local normalized = value:gsub("^0+", "")
+    assert(#normalized < #MAX_U64_DECIMAL
+        or #normalized == #MAX_U64_DECIMAL
+        and normalized <= MAX_U64_DECIMAL,
+        name .. " exceeds uint64")
+    local parsed = bint(value)
+    assert(bint.ule(parsed, MAX_U64), name .. " exceeds uint64")
+    return parsed
+end
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -246,8 +263,8 @@ function Reader:_call(address, sig, args)
 end
 
 function Reader:read_match_created(tournament_address)
-    local sig = "MatchCreated(bytes32,bytes32,bytes32,bytes32)"
-    local data_sig = "(bytes32)"
+    local sig = "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64)"
+    local data_sig = "(bytes32,uint64)"
 
     local logs = self:_read_logs(tournament_address, sig, { false, false, false }, data_sig)
 
@@ -261,10 +278,42 @@ function Reader:read_match_created(tournament_address)
         log.commitment_one = Hash:from_digest_hex(v.emited_topics[3])
         log.commitment_two = Hash:from_digest_hex(v.emited_topics[4])
         log.left_hash = Hash:from_digest_hex(v.decoded_data[1])
+        log.eliminable_at = decoded_uint64(
+            v.decoded_data[2],
+            "MatchCreated.eliminableAt"
+        )
 
         ret[k] = log
     end
 
+    return ret
+end
+
+function Reader:read_leaf_match_sealed(tournament_address, match_id_hash)
+    local sig = "LeafMatchSealed(bytes32,uint64)"
+    local data_sig = "(uint64)"
+    local match_topic = match_id_hash and
+        match_id_hash:hex_string() or false
+    local logs = self:_read_logs(
+        tournament_address,
+        sig,
+        { match_topic, false, false },
+        data_sig
+    )
+
+    local ret = {}
+    for index, value in ipairs(logs) do
+        ret[index] = {
+            tournament_address = tournament_address,
+            meta = value.meta,
+            match_id_hash =
+                Hash:from_digest_hex(value.emited_topics[2]),
+            eliminable_at = decoded_uint64(
+                value.decoded_data[1],
+                "LeafMatchSealed.eliminableAt"
+            ),
+        }
+    end
     return ret
 end
 

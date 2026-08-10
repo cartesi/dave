@@ -95,6 +95,9 @@ contract Tournament is ITournament {
     /// @dev Used by nested (non-leaf) tournaments
     mapping(ITournament => Match.Id) matchIdFromInnerTournaments;
 
+    // Appended after every existing persistent slot for layout compatibility.
+    uint256 leafMatchSealedCount;
+
     //
     // Modifiers
     //
@@ -255,15 +258,16 @@ contract Tournament is ITournament {
         );
 
         Time.Duration responseBudget = _tournamentArgs().responseBudget;
-        MatchClocks.switchTurnAt(
-            clocks[_matchId.commitmentOne],
-            clocks[_matchId.commitmentTwo],
-            responseBudget,
-            Time.currentTime()
-        );
+        Clock.State storage clockOne = clocks[_matchId.commitmentOne];
+        Clock.State storage clockTwo = clocks[_matchId.commitmentTwo];
+        Time.Instant current = Time.currentTime();
+        MatchClocks.switchTurnAt(clockOne, clockTwo, responseBudget, current);
 
         _emitMatchAdvanced(
-            matchIdHash, _matchState.otherParent, _matchState.leftNode
+            matchIdHash,
+            _matchState.otherParent,
+            _matchState.leftNode,
+            MatchClocks.eliminableAt(clockOne, clockTwo)
         );
     }
 
@@ -498,15 +502,18 @@ contract Tournament is ITournament {
             revert RequireLeafTournament();
         }
 
-        Match.State storage _matchState = matches[_matchId.hashFromId()];
+        Match.IdHash matchIdHash = _matchId.hashFromId();
+        Match.State storage _matchState = matches[matchIdHash];
         _matchState.requireCanBeSealed();
 
+        Time.Instant eliminableAt;
         {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
             Clock.State storage _clock2 = clocks[_matchId.commitmentTwo];
             MatchClocks.startLeafRaceAt(
                 _clock1, _clock2, args.responseBudget, Time.currentTime()
             );
+            eliminableAt = MatchClocks.eliminableAt(_clock1, _clock2);
         }
 
         _matchState.sealDivergence(
@@ -517,6 +524,7 @@ contract Tournament is ITournament {
             _agreeHash,
             _agreeHashProof
         );
+        _emitLeafMatchSealed(matchIdHash, eliminableAt);
     }
 
     /// @inheritdoc ITournament
@@ -1096,12 +1104,18 @@ contract Tournament is ITournament {
 
             Clock.State storage _firstClock = clocks[_danglingCommitment];
             MatchClocks.startBisectionAt(_firstClock, _newClock, current);
+            Time.Instant eliminableAt =
+                MatchClocks.eliminableAt(_firstClock, _newClock);
 
             clearDanglingCommitment();
             matchCount++;
 
             _emitMatchCreated(
-                _matchId, _danglingCommitment, _rootHash, _leftNode
+                _matchId,
+                _danglingCommitment,
+                _rootHash,
+                _leftNode,
+                eliminableAt
             );
         } else {
             setDanglingCommitment(_rootHash);
@@ -1269,6 +1283,15 @@ contract Tournament is ITournament {
         return matchAdvancedCount;
     }
 
+    function getLeafMatchSealedCount()
+        external
+        view
+        override
+        returns (uint256)
+    {
+        return leafMatchSealedCount;
+    }
+
     function getMatchDeletedCount() external view override returns (uint256) {
         return matchDeletedCount;
     }
@@ -1305,19 +1328,29 @@ contract Tournament is ITournament {
         Match.IdHash matchIdHash,
         Tree.Node one,
         Tree.Node two,
-        Tree.Node leftOfTwo
+        Tree.Node leftOfTwo,
+        Time.Instant eliminableAt
     ) private {
-        emit MatchCreated(matchIdHash, one, two, leftOfTwo);
+        emit MatchCreated(matchIdHash, one, two, leftOfTwo, eliminableAt);
         ++matchCreatedCount;
     }
 
     function _emitMatchAdvanced(
         Match.IdHash matchIdHash,
         Tree.Node otherParent,
-        Tree.Node leftNode
+        Tree.Node leftNode,
+        Time.Instant eliminableAt
     ) private {
-        emit MatchAdvanced(matchIdHash, otherParent, leftNode);
+        emit MatchAdvanced(matchIdHash, otherParent, leftNode, eliminableAt);
         ++matchAdvancedCount;
+    }
+
+    function _emitLeafMatchSealed(
+        Match.IdHash matchIdHash,
+        Time.Instant eliminableAt
+    ) private {
+        emit LeafMatchSealed(matchIdHash, eliminableAt);
+        ++leafMatchSealedCount;
     }
 
     function _emitMatchDeleted(

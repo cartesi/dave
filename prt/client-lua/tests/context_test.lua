@@ -127,7 +127,8 @@ return {
                 local_tree.root_hash,
                 opponent,
                 digest(42),
-                local_tree.root_hash:join(opponent)
+                local_tree.root_hash:join(opponent),
+                100
             )
         ))
         local match = engaged_fold:live_matches(root)[1]
@@ -216,7 +217,8 @@ return {
                 root_tree.root_hash,
                 opponent,
                 digest(32),
-                root_tree.root_hash:join(opponent)
+                root_tree.root_hash:join(opponent),
+                100
             )
         ))
         local match = fold:live_matches(root)[1]

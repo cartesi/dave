@@ -48,9 +48,13 @@ PRT contract engineering:
   implemented Campaign 1 record for the typed views, event fold, domain models,
   planners, disposable live-tail reader, and transaction lane.
 - [plans/prt-client-interface-decisions.md](plans/prt-client-interface-decisions.md)
-  - the active decision record: reasoning, alternatives, parked event-stream
-  proposals, reopening conditions, and one retained fail-closed empirical
-  watch.
+  - the frozen Campaign 1 decision record: reasoning, alternatives, parked
+  event-stream proposals, reopening conditions, and one retained fail-closed
+  empirical watch.
+- [plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md) - the
+  implemented follow-up for a recursively owned dispute, event-derived match
+  cleanup, bounded point reads, one solid boundary, and disposable latest
+  quantum foam.
 - [runbooks/prt-refund-gas-calibration.md](runbooks/prt-refund-gas-calibration.md)
   - the maintained procedure for measuring action allocations and tracing their
   effects into bonds and deployment artifacts.
@@ -67,10 +71,10 @@ Plans: [plans/](plans/) contains dated design and implementation snapshots.
 Read each status header before relying on one. Plans are intent and history,
 not current knowledge. By status:
 
-- Active records: the prt-client-interface decision log, whose one
-  non-reproduced same-head contradiction remains a fail-closed empirical
-  watch, and [plans/stf-upgrade.md](plans/stf-upgrade.md) - the draft plan for
-  the emulator bump and the state-transition halt/exception gap.
+- Active records: [plans/stf-upgrade.md](plans/stf-upgrade.md), the draft plan
+  for the emulator bump and the state-transition halt/exception gap. The frozen
+  prt-client-interface decision log retains one non-reproduced same-head
+  contradiction as a fail-closed empirical watch.
 - Recorded for a later node campaign:
   [plans/self-healing-batch-submission.md](plans/self-healing-batch-submission.md) -
   the batch-nonce transaction lane and its reasoning - and
@@ -78,7 +82,8 @@ not current knowledge. By status:
   contract side is implemented and whose node-side recovery action rides
   that campaign.
 - Implemented, with closeout provenance retained:
-  [plans/prt-client-interface.md](plans/prt-client-interface.md).
+  [plans/prt-client-interface.md](plans/prt-client-interface.md) and
+  [plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md).
 - Complete: [plans/prt-timeout-alignment.md](plans/prt-timeout-alignment.md).
 - Seed material, no work order: [plans/simplification.md](plans/simplification.md),
   [plans/resource-model.md](plans/resource-model.md), and

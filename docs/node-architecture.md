@@ -117,29 +117,42 @@ rolled back. Oversized `eth_getLogs` ranges are handled by recursive binary
 partition, triggered by provider-specific error codes passed in as
 configuration (`--long-block-range-error-codes`).
 
-The deadline-sensitive tournament reader has a two-part observation. It
-replays its persisted prefix, samples finalized `F`, extends the prefix through
-`F` with bounded number-range queries, and persists that durable progress
-immediately. Only then does it sample latest `H`, clone the fold, and fetch
-`F + 1..H` as a disposable number-range suffix. Semantic point views are
-pinned to the sampled hash `H`, without requiring that hash to remain
-canonical.
+The deadline-sensitive tournament reader holds one recursive, event-derived
+`Dispute` through finalized `F`. On cold start it reconstructs that Solid value
+from the persisted raw events. Each tick recursively extends every tournament's
+local event stream through `F`, validates the completed tree, persists the
+recognized logs and watermark atomically, and only then replaces the in-memory
+Solid value.
 
-The suffix is deliberately optimistic. A reorg can make its events disagree
-with the pinned views or make the resulting transaction stale. The adapter
-rejects semantic contradictions, contract mutators revalidate every submitted
-transition, and the next tick rebuilds the suffix. No unfinalized event becomes
-durable. Oversized suffix ranges use the same recursive binary partition as
-other log ingestion. The raw getters this reader once shadowed no longer
-exist: the contracts retired them, and the migration-era differential
-scaffolding is deleted with them.
+After Solid advances, the reader samples latest `H`, deep-clones Solid, and
+recursively extends the clone over the numeric range `F + 1..H`. This latest
+quantum foam is used once and dropped. It is never promoted, reverse-applied,
+compared with the previous tick, or checked for ancestry against `H`. A reorg
+or mixed tail may reject the working tree, delay one action, or propose a stale
+mutation. Contract mutators revalidate every transition, and the next tick
+starts again from Solid. No unfinalized event becomes durable. Oversized ranges
+use the same recursive binary partition as other log ingestion.
 
-Point reads for one tournament share that pinned hash but not a serial RPC
-critical path. Descriptor and standing reads run together; match timeout reads
-run with a fixed concurrency bound; and the phase-specific projections form a
-second bounded round after the timeout phases are known. Transaction signing
-and submission remain strictly serial and are independent of this read-side
-parallelism.
+Events own tournament structure, commitment placement, match lifecycle, and
+the inclusive block at which a clock-bearing match can be eliminated. Point
+reads add only facts events do not carry: one immutable descriptor when a
+tournament is discovered, one current standing per reachable tournament, and
+the phase payload for each engaged match on the Hero's one recursive path.
+When a parent resolution becomes Solid, its retained child subtree is frozen:
+it remains available to recovery but no longer causes structural log fetches.
+Standing calls use bounded concurrency. A clock-bearing Hero match needs a
+timeout classification and one phase projection; a delegated parent needs only
+its sealed projection. These reads are pinned to `H`. The observer narrows ABI
+values into domain types; it does not reconcile a second whole-tree projection
+against events. Transaction signing and submission remain strictly serial.
+
+Joining is the one Hero decision that does not use Foam as its semantic source.
+The latest projection first acts as the negative and capability guard: if it
+already contains the local commitment or no longer permits a join, no join is
+sent. When it proposes a join, the node rebuilds that context from Solid and
+submits only if Solid independently proposes the same join. The commitment,
+opening proof, bond read, and target therefore come from finalized inputs and
+state; deadline-sensitive responses continue to use Foam.
 
 ## Known debts
 
@@ -172,7 +185,7 @@ Error handling and observability:
 5. Panics and asserts as control flow on hot paths: the settle-mismatch
    assertions in `src/epoch_manager/mod.rs` deliberately stop on a
    consensus-critical local/on-chain disagreement. The semantic Hero path now
-   returns adapter, context, and fulfillment errors for ordinary invalid
+   returns observer, context, and fulfillment errors for ordinary invalid
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
    (`MachineInstance` retired to test scaffolding at workstream 4; its
@@ -213,8 +226,9 @@ Structure:
     settlement, and bond recovery share one explicit stateless transaction
     lane rather than a signer-bearing provider. The epoch manager owns the
     non-cloneable lane directly, making it the one mutation submitter. Hero
-    and cleanup work forms a nonce-ordered wave from the mined count at
-    `latest`; one guarded settlement step may precede it. Bond recovery is
+    and cleanup never share a nonce tail: a Hero tick emits at most one action,
+    using cleanup only when no Hero action was selected. One guarded settlement
+    step may precede an otherwise empty terminal tick. Bond recovery is
     not a wave tail: it runs only when higher-priority work is absent, at
     most once for a newly observed finalized head. Its tree and retirement
     classification share that finalized snapshot; a latest read may suppress

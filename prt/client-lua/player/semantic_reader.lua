@@ -1,6 +1,7 @@
 local Adapter = require "player.adapter"
 local Fold = require "player.fold"
 local Hash = require "cryptography.hash"
+local bint = require "utils.bint" (256)
 
 -- Reorg-safe semantic observation boundary.
 --
@@ -146,12 +147,17 @@ local EVENT_SIGNATURES = {
         kind = Fold.EventKind.COMMITMENT_JOINED,
     },
     {
-        signature = "MatchCreated(bytes32,bytes32,bytes32,bytes32)",
+        signature =
+            "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64)",
         kind = Fold.EventKind.MATCH_CREATED,
     },
     {
-        signature = "MatchAdvanced(bytes32,bytes32,bytes32)",
+        signature = "MatchAdvanced(bytes32,bytes32,bytes32,uint64)",
         kind = Fold.EventKind.MATCH_ADVANCED,
+    },
+    {
+        signature = "LeafMatchSealed(bytes32,uint64)",
+        kind = Fold.EventKind.LEAF_MATCH_SEALED,
     },
     {
         signature = "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)",
@@ -216,6 +222,11 @@ local function word_tag(word, name)
     return tonumber(word:sub(63), 16)
 end
 
+local function word_uint64(word, name)
+    assert(word:sub(1, 48):match("^0*$"), name .. " exceeds uint64")
+    return bint("0x" .. word)
+end
+
 local function require_topic_count(log, count, event)
     assert(type(log.topics) == "table" and #log.topics == count,
         string.format(
@@ -226,7 +237,7 @@ local function require_topic_count(log, count, event)
         ))
 end
 
--- Decode exactly one of the five structural events. The caller intentionally
+-- Decode exactly one of the six structural events. The caller intentionally
 -- fails on an unknown topic because the RPC request filters this allowlist.
 function SemanticReader.decode_event_log(log, topic_map)
     assert(type(log) == "table", "structural log must be a table")
@@ -265,20 +276,29 @@ function SemanticReader.decode_event_log(log, topic_map)
         )
         local one = topic_hash(log.topics[3], "MatchCreated.one")
         local two = topic_hash(log.topics[4], "MatchCreated.two")
-        local words = data_words(log.data, 1, "MatchCreated")
+        local words = data_words(log.data, 2, "MatchCreated")
         event = Fold.Event.match_created(
             one,
             two,
             Hash:from_digest_hex("0x" .. words[1]),
-            emitted
+            emitted,
+            word_uint64(words[2], "MatchCreated.eliminableAt")
         )
     elseif kind == Fold.EventKind.MATCH_ADVANCED then
         require_topic_count(log, 2, "MatchAdvanced")
-        local words = data_words(log.data, 2, "MatchAdvanced")
+        local words = data_words(log.data, 3, "MatchAdvanced")
         event = Fold.Event.match_advanced(
             topic_hash(log.topics[2], "MatchAdvanced.matchIdHash"),
             Hash:from_digest_hex("0x" .. words[1]),
-            Hash:from_digest_hex("0x" .. words[2])
+            Hash:from_digest_hex("0x" .. words[2]),
+            word_uint64(words[3], "MatchAdvanced.eliminableAt")
+        )
+    elseif kind == Fold.EventKind.LEAF_MATCH_SEALED then
+        require_topic_count(log, 2, "LeafMatchSealed")
+        local words = data_words(log.data, 1, "LeafMatchSealed")
+        event = Fold.Event.leaf_match_sealed(
+            topic_hash(log.topics[2], "LeafMatchSealed.matchIdHash"),
+            word_uint64(words[1], "LeafMatchSealed.eliminableAt")
         )
     elseif kind == Fold.EventKind.MATCH_DELETED then
         require_topic_count(log, 4, "MatchDeleted")
@@ -315,7 +335,7 @@ function SemanticReader.decode_event_log(log, topic_map)
             reasons[reason_tag],
             winners[winner_tag]
         )
-    else
+    elseif kind == Fold.EventKind.NEW_INNER_TOURNAMENT then
         require_topic_count(log, 3, "NewInnerTournament")
         local child = topic_address(
             log.topics[3],
@@ -331,6 +351,8 @@ function SemanticReader.decode_event_log(log, topic_map)
             ),
             child
         )
+    else
+        error("unknown structural event kind", 2)
     end
     return Fold.event(tournament, block, event)
 end

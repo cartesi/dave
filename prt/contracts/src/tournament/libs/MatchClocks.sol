@@ -13,6 +13,7 @@ import {Time} from "./Time.sol";
 library MatchClocks {
     using Clock for Clock.State;
     using Time for Time.Duration;
+    using Time for Time.Instant;
 
     enum TimeoutOutcome {
         NONE,
@@ -24,6 +25,37 @@ library MatchClocks {
     struct TimeoutStatus {
         TimeoutOutcome outcome;
         Time.Duration deferredCharge;
+    }
+
+    /// @notice Return the first inclusive instant at which the current match
+    /// schedule classifies as `ELIMINATE_BOTH` if no transition intervenes.
+    /// @dev Supports the two timeout-bearing clock shapes: exactly one running
+    /// clock during bisection, or two clocks running from the same instant in a
+    /// sealed leaf race. A sealed inner match has no local timeout schedule.
+    function eliminableAt(Clock.State memory one, Clock.State memory two)
+        internal
+        pure
+        returns (Time.Instant)
+    {
+        one.assertInitialized();
+        two.assertInitialized();
+
+        bool oneRunning = one.isRunning();
+        bool twoRunning = two.isRunning();
+        if (oneRunning && twoRunning) {
+            assert(
+                Time.Instant.unwrap(one.startInstant)
+                    == Time.Instant.unwrap(two.startInstant)
+            );
+            return one.startInstant.add(one.allowance.max(two.allowance));
+        }
+
+        assert(oneRunning != twoRunning);
+        if (oneRunning) {
+            return one.startInstant.add(one.allowance).add(two.allowance);
+        } else {
+            return two.startInstant.add(two.allowance).add(one.allowance);
+        }
     }
 
     /// @notice Classify timeout resolution for a match at one instant.

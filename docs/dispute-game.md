@@ -394,6 +394,18 @@ from the same pure four-way classification. The observer reports a nonexistent
 or deleted match as absent with outcome `NONE`. It does not validate the
 Merkle children needed to settle a winner.
 
+The contract also publishes the first inclusive block at which an unchanged
+match reaches the `ELIMINATE_BOTH` arm. `MatchCreated` and every
+`MatchAdvanced` carry the current `eliminableAt`; `LeafMatchSealed` replaces
+the bisection schedule with the sealed-leaf schedule. Delegation to an inner
+tournament and match deletion cancel the local schedule. For one running and
+one paused clock, the boundary is the running start plus both allowances. For
+a sealed leaf, it is the common start plus the greater allowance. The same
+`MatchClocks` arithmetic that classifies timeouts computes these values, and a
+later transition always supersedes the earlier event value. Clients must fold
+to the current match state before comparing the schedule with a block number;
+filtering historical schedule events directly is incorrect.
+
 The survivor re-enters the same dangling/pairing mechanism. This repeated
 pairing is why total delay and total refunds are global properties rather than
 properties of one match.

@@ -129,7 +129,8 @@ local function apply_advances(
             Fold.Event.match_advanced(
                 match.id_hash,
                 index == count and final_other_parent or digest(50 + index),
-                index == count and final_left_node or digest(60 + index)
+                index == count and final_left_node or digest(60 + index),
+                100 + index
             )
         ))
     end
@@ -152,7 +153,13 @@ local function live_fold(root, child)
     fold:apply(Fold.event(
         root,
         2,
-        Fold.Event.match_created(one, two, digest(42), one:join(two))
+        Fold.Event.match_created(
+            one,
+            two,
+            digest(42),
+            one:join(two),
+            100
+        )
     ))
     local match = fold:live_matches(root)[1]
     if child then

@@ -111,7 +111,8 @@ local function create_match(fold, root, one, two, block)
             one,
             two,
             digest(80 + block),
-            one:join(two)
+            one:join(two),
+            block + 1
         )
     ))
     return fold:live_matches(root)[#fold:live_matches(root)]
@@ -248,10 +249,11 @@ return {
             inputs = {},
             sender = sender,
             gc_enabled = true,
-            plan_gc = function(observed_fold, observed)
+            plan_gc = function(observed_fold, observed, current_block)
                 gc_calls = gc_calls + 1
                 Test.equal(observed_fold, fold)
                 Test.equal(observed[root], observation)
+                Test.equal(current_block, 9)
                 return {
                     Domain.eliminate_match_intent(
                         root,

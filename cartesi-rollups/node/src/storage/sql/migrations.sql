@@ -92,10 +92,10 @@ CREATE TABLE IF NOT EXISTS sling_nodes (
 -- keyed for replay in chain order (block, then log index). The tail
 -- past the watermark is never stored - it is scratch, refetched each
 -- tick; persisted events are final by definition, which is the whole
--- reorg stance. Raw logs (JSON) rather than decoded events keep
--- tournament/fold.rs's decode_event the one decode authority, the
--- same shape the chain-recording fixtures use. Prunable derived
--- store: refetchable from the chain, deleted with the settled epoch.
+-- reorg stance. Raw logs (JSON) rather than decoded events keep the
+-- current contract ABI as the decode authority and let the fused reader
+-- reconstruct its recursive model after restart. Prunable derived store:
+-- refetchable from the chain, deleted with the settled epoch.
 CREATE TABLE IF NOT EXISTS tournament_events (
     root_tournament TEXT NOT NULL,  -- encode_hex, as epochs stores it
     block_number INTEGER NOT NULL,

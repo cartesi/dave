@@ -728,21 +728,15 @@ fn source_error(action: &'static str, tournament: Address, source: anyhow::Error
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use crate::{
         engine::{
             LevelCoords, ToyFactory, ToyInput, ToyOutcome,
             spec::{S_SMALL, toy_source},
         },
-        tournament::{
-            adapter::{ObservedMatch, TournamentObservation},
-            domain::{
-                AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
-                MatchCoordinate, ReadyToSealMatch, SealedDivergence, SealedLeafMatch,
-                TournamentDescriptor, TournamentKind, WaitingChildren,
-            },
-            fold::{EventKind, Fold, TournamentEvent},
+        tournament::domain::{
+            AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
+            MatchCoordinate, ParentLink, ReadyToSealMatch, SealedDivergence, SealedLeafMatch,
+            TournamentDescriptor, TournamentKind, WaitingChildren,
         },
     };
 
@@ -816,31 +810,24 @@ mod tests {
         .unwrap()
     }
 
-    fn event(tournament: Address, block: u64, kind: EventKind) -> TournamentEvent {
-        TournamentEvent {
-            tournament,
-            block,
-            kind,
-        }
-    }
-
-    fn observation(
+    fn single_level_context(
         descriptor: TournamentDescriptor,
+        coords: LevelCoords,
+        local_commitment: Digest,
         standing: TournamentStanding,
-        matches: impl IntoIterator<Item = (MatchID, LiveMatch)>,
-    ) -> TournamentObservation {
-        TournamentObservation::from_parts(
+        local_standing: LocalCommitmentStanding,
+    ) -> HeroContext {
+        let snapshot = SemanticSnapshot::try_new(
             descriptor,
             standing,
-            matches
-                .into_iter()
-                .map(|(id, live)| (id.hash(), ObservedMatch::from_parts(id, live)))
-                .collect(),
+            local_commitment,
+            local_standing,
+            None,
+            None,
         )
-    }
-
-    fn apply(fold: &mut Fold, tournament: Address, block: u64, kind: EventKind) {
-        fold.apply(&event(tournament, block, kind)).unwrap();
+        .unwrap();
+        let material = LevelMaterial::from_parts(descriptor, coords, local_commitment);
+        HeroContext::from_parts(snapshot, [material])
     }
 
     fn id_for(local: Digest, opponent: Digest, side: MatchSide) -> MatchID {
@@ -880,64 +867,21 @@ mod tests {
         let descriptor = descriptor(ROOT, 0, kind, initial_hash, U256::ZERO, log2_stride, height);
         let coords = LevelCoords::new(0, U256::ZERO, log2_stride, height);
         let commitment = source.node(&coords.root()).unwrap();
-        let final_state = source.prove_last(&coords).unwrap().node;
         let opponent = digest(0xd0);
         assert_ne!(commitment, opponent);
         let match_id = id_for(commitment, opponent, side);
         let live = build_live(&mut source, &coords, descriptor);
-
-        let final_state_one = if side == MatchSide::One {
-            final_state
-        } else {
-            digest(0xd1)
-        };
-        let final_state_two = if side == MatchSide::Two {
-            final_state
-        } else {
-            digest(0xd2)
-        };
-        let mut fold = Fold::new(ROOT);
-        apply(
-            &mut fold,
-            ROOT,
-            1,
-            EventKind::CommitmentJoined {
-                root: match_id.commitment_one,
-                final_state: final_state_one,
+        let engagement =
+            Engagement::try_new(commitment, match_id, live.state(), live.timeout()).unwrap();
+        let context = single_level_context(
+            descriptor,
+            coords,
+            commitment,
+            TournamentStanding::MatchesActive {
+                joins: JoinDisposition::Closed,
             },
+            LocalCommitmentStanding::Engaged(engagement),
         );
-        apply(
-            &mut fold,
-            ROOT,
-            2,
-            EventKind::CommitmentJoined {
-                root: match_id.commitment_two,
-                final_state: final_state_two,
-            },
-        );
-        apply(
-            &mut fold,
-            ROOT,
-            3,
-            EventKind::MatchCreated {
-                one: match_id.commitment_one,
-                two: match_id.commitment_two,
-                left_of_two: digest(0xd3),
-            },
-        );
-        let observations = HashMap::from([(
-            ROOT,
-            observation(
-                descriptor,
-                TournamentStanding::MatchesActive {
-                    candidate: None,
-                    joins: JoinDisposition::Closed,
-                },
-                [(match_id, live)],
-            ),
-        )]);
-        let context =
-            HeroContext::assemble(0, initial_hash, &fold, &observations, &mut source).unwrap();
 
         Fixture {
             source,
@@ -962,17 +906,13 @@ mod tests {
         );
         let coords = LevelCoords::new(0, U256::ZERO, 0, S_SMALL.log2_ruler_span());
         let commitment = source.node(&coords.root()).unwrap();
-        let fold = Fold::new(ROOT);
-        let observations = HashMap::from([(
-            ROOT,
-            observation(
-                descriptor,
-                TournamentStanding::AwaitingClosure { candidate: None },
-                [],
-            ),
-        )]);
-        let context =
-            HeroContext::assemble(0, initial_hash, &fold, &observations, &mut source).unwrap();
+        let context = single_level_context(
+            descriptor,
+            coords,
+            commitment,
+            TournamentStanding::AwaitingClosure,
+            LocalCommitmentStanding::NotJoined,
+        );
         Fixture {
             source,
             context,
@@ -1169,81 +1109,41 @@ mod tests {
         let child_descriptor = descriptor(CHILD, 1, LEAF, agree_state, U256::ZERO, 0, 3);
         let child_coords = LevelCoords::new(0, U256::ZERO, 0, 3);
         let child_winner = source.node(&child_coords.root()).unwrap();
-
-        let mut fold = Fold::new(ROOT);
-        apply(
-            &mut fold,
-            ROOT,
-            1,
-            EventKind::CommitmentJoined {
-                root: parent_match.commitment_one,
-                final_state: final_state_one,
+        let parent_link = ParentLink::try_new(ROOT, parent_match, parent_commitment).unwrap();
+        let child_snapshot = SemanticSnapshot::try_new(
+            child_descriptor,
+            TournamentStanding::InnerWinner(InnerWinner::new(parent_commitment, child_winner)),
+            child_winner,
+            LocalCommitmentStanding::Candidate,
+            Some(parent_link),
+            None,
+        )
+        .unwrap();
+        let parent_engagement = Engagement::try_new(
+            parent_commitment,
+            parent_match,
+            parent_live.state(),
+            parent_live.timeout(),
+        )
+        .unwrap();
+        let parent_snapshot = SemanticSnapshot::try_new(
+            parent_descriptor,
+            TournamentStanding::MatchesActive {
+                joins: JoinDisposition::Closed,
             },
+            parent_commitment,
+            LocalCommitmentStanding::Engaged(parent_engagement),
+            None,
+            Some(child_snapshot),
+        )
+        .unwrap();
+        let context = HeroContext::from_parts(
+            parent_snapshot,
+            [
+                LevelMaterial::from_parts(parent_descriptor, parent_coords, parent_commitment),
+                LevelMaterial::from_parts(child_descriptor, child_coords, child_winner),
+            ],
         );
-        apply(
-            &mut fold,
-            ROOT,
-            2,
-            EventKind::CommitmentJoined {
-                root: parent_match.commitment_two,
-                final_state: final_state_two,
-            },
-        );
-        apply(
-            &mut fold,
-            ROOT,
-            3,
-            EventKind::MatchCreated {
-                one: parent_match.commitment_one,
-                two: parent_match.commitment_two,
-                left_of_two: digest(0xb3),
-            },
-        );
-        apply(
-            &mut fold,
-            ROOT,
-            4,
-            EventKind::NewInnerTournament {
-                match_id_hash: parent_match.hash(),
-                child: CHILD,
-            },
-        );
-        apply(
-            &mut fold,
-            CHILD,
-            5,
-            EventKind::CommitmentJoined {
-                root: child_winner,
-                final_state: parent_final,
-            },
-        );
-
-        let observations = HashMap::from([
-            (
-                ROOT,
-                observation(
-                    parent_descriptor,
-                    TournamentStanding::MatchesActive {
-                        candidate: None,
-                        joins: JoinDisposition::Closed,
-                    },
-                    [(parent_match, parent_live)],
-                ),
-            ),
-            (
-                CHILD,
-                observation(
-                    child_descriptor,
-                    TournamentStanding::InnerWinner(InnerWinner::new(
-                        parent_commitment,
-                        child_winner,
-                    )),
-                    [],
-                ),
-            ),
-        ]);
-        let context =
-            HeroContext::assemble(0, root_initial, &fold, &observations, &mut source).unwrap();
 
         Fixture {
             source,

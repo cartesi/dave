@@ -114,7 +114,7 @@ contract MaximumInputLeafWinOneFfiTest is InputLeafWinFfiTest {
         _assertPayloadAboveMaximumRejected();
     }
 
-    // This orientation recommends 4,289,000 gas; the configured subsidy
+    // This orientation recommends 4,291,000 gas; the configured subsidy
     // retains 7,000 gas of recorded headroom.
     function testMeasureMaximumInputWithOneWinning() public {
         Measurement memory result = _measureLeafWin("maximum input one wins");
@@ -129,7 +129,7 @@ contract MaximumInputLeafWinTwoFfiTest is InputLeafWinFfiTest {
         _assertPayloadAboveMaximumRejected();
     }
 
-    // This orientation recommends 4,289,000 gas; the configured subsidy
+    // This orientation recommends 4,291,000 gas; the configured subsidy
     // retains 7,000 gas of recorded headroom.
     function testMeasureMaximumInputWithTwoWinning() public {
         Measurement memory result = _measureLeafWin("maximum input two wins");

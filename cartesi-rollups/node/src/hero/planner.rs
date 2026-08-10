@@ -152,7 +152,7 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
         TournamentStanding::InnerEliminable { reason } => {
             return HeroDecision::Wait(WaitReason::ChildEliminable { reason });
         }
-        TournamentStanding::MatchesActive { .. } | TournamentStanding::AwaitingClosure { .. } => {}
+        TournamentStanding::MatchesActive { .. } | TournamentStanding::AwaitingClosure => {}
     }
 
     match snapshot.local_standing() {
@@ -171,7 +171,7 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
                 TournamentStanding::MatchesActive { .. } => {
                     HeroDecision::Wait(WaitReason::CandidateBlockedByMatches)
                 }
-                TournamentStanding::AwaitingClosure { .. } => {
+                TournamentStanding::AwaitingClosure => {
                     HeroDecision::Wait(WaitReason::AwaitingTournamentClosure)
                 }
                 _ => unreachable!("terminal standings returned before local planning"),
@@ -396,9 +396,6 @@ mod tests {
         SemanticSnapshot::try_new(
             root_descriptor(kind),
             TournamentStanding::MatchesActive {
-                // An engaged local commitment may coexist with an unrelated
-                // dangling candidate.
-                candidate: Some(digest(99)),
                 joins: JoinDisposition::Closed,
             },
             local,
@@ -471,10 +468,7 @@ mod tests {
             ),
         ] {
             let snapshot = root_snapshot(
-                TournamentStanding::MatchesActive {
-                    candidate: None,
-                    joins,
-                },
+                TournamentStanding::MatchesActive { joins },
                 local,
                 LocalCommitmentStanding::NotJoined,
             );
@@ -482,7 +476,7 @@ mod tests {
         }
 
         let awaiting_closure = root_snapshot(
-            TournamentStanding::AwaitingClosure { candidate: None },
+            TournamentStanding::AwaitingClosure,
             local,
             LocalCommitmentStanding::NotJoined,
         );
@@ -497,7 +491,6 @@ mod tests {
         let local = digest(1);
         let blocked = root_snapshot(
             TournamentStanding::MatchesActive {
-                candidate: Some(local),
                 joins: JoinDisposition::Open,
             },
             local,
@@ -509,9 +502,7 @@ mod tests {
         );
 
         let closing = root_snapshot(
-            TournamentStanding::AwaitingClosure {
-                candidate: Some(local),
-            },
+            TournamentStanding::AwaitingClosure,
             local,
             LocalCommitmentStanding::Candidate,
         );
@@ -529,7 +520,6 @@ mod tests {
                 .unwrap();
         let snapshot = root_snapshot(
             TournamentStanding::MatchesActive {
-                candidate: Some(digest(99)),
                 joins: JoinDisposition::Closed,
             },
             local,
@@ -807,7 +797,6 @@ mod tests {
         let child = SemanticSnapshot::try_new(
             child_descriptor,
             TournamentStanding::MatchesActive {
-                candidate: None,
                 joins: JoinDisposition::Open,
             },
             digest(40),
@@ -829,7 +818,6 @@ mod tests {
         let parent = SemanticSnapshot::try_new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
-                candidate: None,
                 joins: JoinDisposition::Closed,
             },
             parent_commitment,

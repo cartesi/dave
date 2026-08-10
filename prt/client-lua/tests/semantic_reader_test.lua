@@ -45,7 +45,7 @@ local function event_commitment_joined(commitment, final_state, submitter)
     }
 end
 
-local function event_match_created(one, two, left)
+local function event_match_created(one, two, left, eliminable_at)
     return {
         topics = {
             topics[2],
@@ -53,11 +53,19 @@ local function event_match_created(one, two, left)
             one:hex_string(),
             two:hex_string(),
         },
-        data = data { word_hash(left) },
+        data = data {
+            word_hash(left),
+            word_uint(eliminable_at),
+        },
     }
 end
 
-local function event_match_advanced(id_hash, other_parent, left)
+local function event_match_advanced(
+    id_hash,
+    other_parent,
+    left,
+    eliminable_at
+)
     return {
         topics = {
             topics[3],
@@ -66,14 +74,25 @@ local function event_match_advanced(id_hash, other_parent, left)
         data = data {
             word_hash(other_parent),
             word_hash(left),
+            word_uint(eliminable_at),
         },
+    }
+end
+
+local function event_leaf_match_sealed(id_hash, eliminable_at)
+    return {
+        topics = {
+            topics[4],
+            id_hash:hex_string(),
+        },
+        data = data { word_uint(eliminable_at) },
     }
 end
 
 local function event_match_deleted(id_hash, one, two, reason, winner)
     return {
         topics = {
-            topics[4],
+            topics[5],
             id_hash:hex_string(),
             one:hex_string(),
             two:hex_string(),
@@ -88,7 +107,7 @@ end
 local function event_new_inner(id_hash, child)
     return {
         topics = {
-            topics[5],
+            topics[6],
             id_hash:hex_string(),
             address_topic(child),
         },
@@ -196,7 +215,7 @@ local function semantic_fixture()
                 block_hash = block11.hash,
                 transaction_index = 0,
                 log_index = 2,
-                event = event_match_created(one, two, left),
+                event = event_match_created(one, two, left, 20),
             },
             raw_log {
                 address = root,
@@ -204,7 +223,9 @@ local function semantic_fixture()
                 block_hash = block11.hash,
                 transaction_index = 0,
                 log_index = 3,
-                event = event_match_advanced(id_hash, digest(31), digest(32)),
+                event = event_match_advanced(
+                    id_hash, digest(31), digest(32), 21
+                ),
             },
             raw_log {
                 address = root,
@@ -212,7 +233,9 @@ local function semantic_fixture()
                 block_hash = block11.hash,
                 transaction_index = 0,
                 log_index = 4,
-                event = event_match_advanced(id_hash, digest(33), digest(34)),
+                event = event_match_advanced(
+                    id_hash, digest(33), digest(34), 22
+                ),
             },
             raw_log {
                 address = root,
@@ -220,7 +243,9 @@ local function semantic_fixture()
                 block_hash = block11.hash,
                 transaction_index = 0,
                 log_index = 5,
-                event = event_match_advanced(id_hash, digest(35), digest(36)),
+                event = event_match_advanced(
+                    id_hash, digest(35), digest(36), 23
+                ),
             },
         },
         root_12 = {
@@ -337,7 +362,7 @@ local function mock_transport(fixture)
 
     function transport.get_logs_range(_, at, from, to, requested_topics)
         table.insert(calls.ranges, { address = at, from = from, to = to })
-        Test.equal(#requested_topics, 5)
+        Test.equal(#requested_topics, 6)
         if at == fixture.root then
             return fixture.logs.root_range
         end
@@ -347,7 +372,7 @@ local function mock_transport(fixture)
 
     function transport.get_logs_at_block(_, at, block, requested_topics)
         table.insert(calls.exact, { address = at, block = block.number })
-        Test.equal(#requested_topics, 5)
+        Test.equal(#requested_topics, 6)
         if at == fixture.root and block.number == 11 then
             return fixture.logs.root_11
         end
@@ -378,7 +403,25 @@ local function mock_transport(fixture)
 end
 
 return {
-    Test.case("raw decoder covers all five structural event shapes", function()
+    Test.case("event topics match the structural ABI", function()
+        local signatures = {
+            "CommitmentJoined(bytes32,bytes32,address)",
+            "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64)",
+            "MatchAdvanced(bytes32,bytes32,bytes32,uint64)",
+            "LeafMatchSealed(bytes32,uint64)",
+            "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)",
+            "NewInnerTournament(bytes32,address)",
+        }
+        Test.equal(#topics, #signatures)
+        for index, signature in ipairs(signatures) do
+            Test.equal(
+                topics[index],
+                Hash:from_data(signature):hex_string():lower()
+            )
+        end
+    end),
+
+    Test.case("raw decoder covers all six structural event shapes", function()
         local tournament = address(1):upper():gsub("^0X", "0x")
         local submitter = address(2)
         local child = address(3)
@@ -393,12 +436,21 @@ return {
             },
             {
                 tag = Fold.EventKind.MATCH_CREATED,
-                event = event_match_created(one, two, digest(5)),
+                event = event_match_created(one, two, digest(5), 20),
+                eliminable_at = 20,
             },
             {
                 tag = Fold.EventKind.MATCH_ADVANCED,
                 event =
-                    event_match_advanced(id_hash, digest(6), digest(7)),
+                    event_match_advanced(
+                        id_hash, digest(6), digest(7), 21
+                    ),
+                eliminable_at = 21,
+            },
+            {
+                tag = Fold.EventKind.LEAF_MATCH_SEALED,
+                event = event_leaf_match_sealed(id_hash, 22),
+                eliminable_at = 22,
             },
             {
                 tag = Fold.EventKind.MATCH_DELETED,
@@ -423,6 +475,14 @@ return {
                 Test.truthy(Hash:is_of_type_hash(decoded.kind.root))
             elseif row.tag == Fold.EventKind.NEW_INNER_TOURNAMENT then
                 Test.equal(decoded.kind.child, child)
+            elseif row.tag == Fold.EventKind.MATCH_CREATED
+                or row.tag == Fold.EventKind.MATCH_ADVANCED
+                or row.tag == Fold.EventKind.LEAF_MATCH_SEALED
+            then
+                Test.equal(
+                    tostring(decoded.kind.eliminable_at),
+                    tostring(row.eliminable_at)
+                )
             end
         end
     end),
@@ -447,6 +507,31 @@ return {
                 block_number = 1,
                 topics = { digest(99):hex_string() },
                 data = "0x",
+            }
+        end)
+
+        local sealed = event_leaf_match_sealed(one:join(two), 1)
+        sealed.data = data {
+            string.rep("0", 48) .. string.rep("f", 16),
+        }
+        local maximum = SemanticReader.decode_event_log {
+            address = address(1),
+            block_number = 1,
+            topics = sealed.topics,
+            data = sealed.data,
+        }
+        Test.equal(
+            tostring(maximum.kind.eliminable_at),
+            "18446744073709551615"
+        )
+
+        sealed.data = data { "1" .. string.rep("0", 63) }
+        Test.error_like("exceeds uint64", function()
+            SemanticReader.decode_event_log {
+                address = address(1),
+                block_number = 1,
+                topics = sealed.topics,
+                data = sealed.data,
             }
         end)
 
@@ -479,6 +564,14 @@ return {
         Test.equal(
             result.fold:candidate(fixture.child),
             fixture.child_candidate
+        )
+        Test.equal(
+            result.fold:match_by_id_hash(
+                fixture.root,
+                fixture.one:join(fixture.two)
+            ).eliminable_at,
+            nil,
+            "inner tournament discovery must cancel the parent schedule"
         )
         Test.equal(
             result.observations[fixture.root].match_order[1].live.state._tag,
