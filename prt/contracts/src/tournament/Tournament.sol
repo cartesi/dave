@@ -880,39 +880,28 @@ contract Tournament is ITournament {
         Match.State memory state = matches[_matchId.hashFromId()];
         actualPhase = state.phase();
 
-        // Transition paths enforce match and clock shape invariants. The view
-        // stays total over persisted match entries: irrelevant or incomplete
-        // clock shapes return canonical zeros instead of letting one corrupt
-        // entry blind match observation.
         if (actualPhase == Match.Phase.UNINITIALIZED) {
             // Absent and deleted matches have no clocks to classify.
             return (actualPhase, MatchTimeoutOutcome.NONE, Time.ZERO_DURATION);
-        }
-
-        if (
+        } else if (
             actualPhase == Match.Phase.SEALED
                 && !_isLeafTournament(_tournamentArgs())
         ) {
             // A sealed inner match delegates its obligation to the
             // linked child; there is no local timeout action.
             return (actualPhase, MatchTimeoutOutcome.NONE, Time.ZERO_DURATION);
-        }
+        } else {
+            Clock.State memory one = clocks[_matchId.commitmentOne];
+            Clock.State memory two = clocks[_matchId.commitmentTwo];
 
-        Clock.State memory one = clocks[_matchId.commitmentOne];
-        Clock.State memory two = clocks[_matchId.commitmentTwo];
-        if (!one.isInitialized() || !two.isInitialized()) {
-            // No transition path creates this shape; observing zeros
-            // beats classifying a zeroed clock.
-            return (actualPhase, MatchTimeoutOutcome.NONE, Time.ZERO_DURATION);
+            MatchClocks.TimeoutStatus memory status =
+                MatchClocks.classifyTimeoutAt(one, two, Time.currentTime());
+            return (
+                actualPhase,
+                _observerTimeoutOutcome(status.outcome),
+                status.deferredCharge
+            );
         }
-
-        MatchClocks.TimeoutStatus memory status =
-            MatchClocks.classifyTimeoutAt(one, two, Time.currentTime());
-        return (
-            actualPhase,
-            _observerTimeoutOutcome(status.outcome),
-            status.deferredCharge
-        );
     }
 
     function tournamentDescriptor()
@@ -1068,10 +1057,10 @@ contract Tournament is ITournament {
     ) private pure returns (Tree.Node) {
         if (finalState.eq(nestedDispute.contestedFinalStateOne)) {
             return nestedDispute.contestedCommitmentOne;
+        } else {
+            assert(finalState.eq(nestedDispute.contestedFinalStateTwo));
+            return nestedDispute.contestedCommitmentTwo;
         }
-
-        assert(finalState.eq(nestedDispute.contestedFinalStateTwo));
-        return nestedDispute.contestedCommitmentTwo;
     }
 
     /// @notice Pair a new commitment into the tournament, creating a match if an
