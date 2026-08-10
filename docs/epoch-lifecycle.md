@@ -108,12 +108,16 @@ Three worker threads share one SQLite database (see
 
 `cartesi-rollups/node/src/hero`. Once per polling iteration (a tick):
 
-1. Fetch the full tournament tree state from chain (`StateReader`,
-   `tournament/reader.rs`): tournaments, commitments, matches, clocks.
+1. Advance one finalized, event-derived recursive `Dispute`, persist it, then
+   clone and extend it over the disposable latest tail. Events supply
+   tournaments, commitments, matches, child links, and match-elimination
+   schedules; the node does not fetch every clock or live match.
 2. React recursively from the root tournament:
    - Build (or load from the dispute db) the commitment for this
      tournament's level.
-   - Not joined yet: join with the commitment root and last-leaf proof.
+   - Not joined yet: use latest only to suppress an already-mined or no-longer
+     possible join, then derive the commitment root and last-leaf proof from
+     the finalized Solid dispute.
    - In a match at height > 1: bisect (`advanceMatch`) toward the first
      divergent leaf.
    - At height 1: seal (leaf match or inner match). Sealing a non-leaf
@@ -122,18 +126,20 @@ Three worker threads share one SQLite database (see
      meta-cycle (`Ruler::prove_transition`, `engine/ruler.rs`) and call
      `winLeafMatch`.
    - Opponent out of time: win by timeout.
-3. Plan cleanup as a byproduct: when the tick attempted no dispute action
-   (or the tournament is won), propose at most one garbage-collection
-   intent (`hero/gc_planner.rs`) - eliminating dead matches and inner
-   tournaments to free bonds - which epoch-manager executes only if the
-   write lane is free.
+3. When the tick selected no Hero action and the root is still running, propose
+   at most one garbage-collection intent (`hero/gc_planner.rs`). Match cleanup
+   compares event schedules with the sampled latest block number; child
+   cleanup consumes the tournament standing overlay. Deeper work wins, and no
+   cleanup transaction queues behind a Hero response.
 4. A won inner tournament propagates to the parent match; losing the root
    tournament is reported (and should page a human: it means our
    commitment is wrong or we were censored beyond the protocol's bound).
 
-The player is stateless between iterations apart from the quartet cache
-(`sling_nodes` in the node database) and machine snapshots; on restart it
-rebuilds its view from chain and disk.
+The reader retains one in-memory Solid dispute between iterations. Its raw
+recognized events and finalized watermark are persisted; on restart the node
+reconstructs Solid from chain and disk. Latest Foam never survives a tick. The
+quartet cache (`sling_nodes`) and machine snapshots remain the computation
+cache.
 
 ## Settlement invariant
 

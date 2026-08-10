@@ -330,19 +330,6 @@ function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     assert(winner.final == settlement.commitment:last())
     print("Correct claim won for epoch ", sealed_epoch.epoch_number)
 
-    -- Raw chain recording for the tournament-fold oracle
-    -- (docs/plans/node-refactor.md, workstream 2a). Recorded after
-    -- settlement so the fixture carries the whole dispute; when a
-    -- scenario settles several epochs, the last recording wins the
-    -- file and contains all of them.
-    local fixture = os.getenv "RECORD_CHAIN_FIXTURE"
-    if fixture then
-        local recorder = "../../../target/debug/record_chain"
-        local cmd = string.format("%s --out %s --note epoch-%d",
-            recorder, fixture, sealed_epoch.epoch_number)
-        assert(os.execute(cmd), "chain recording failed")
-    end
-
     return next_epoch
 end
 

@@ -271,6 +271,35 @@ contract MatchClocksTest is Test {
         );
     }
 
+    function testEliminableAtIsInclusiveWhenClockOneRuns() public pure {
+        Clock.State memory one =
+            Clock.State({allowance: _duration(11), startInstant: _instant(7)});
+        Clock.State memory two = Clock.State({
+            allowance: _duration(5), startInstant: Time.ZERO_INSTANT
+        });
+
+        _assertEliminableBoundary(one, two, 23);
+    }
+
+    function testEliminableAtIsInclusiveWhenClockTwoRuns() public pure {
+        Clock.State memory one = Clock.State({
+            allowance: _duration(9), startInstant: Time.ZERO_INSTANT
+        });
+        Clock.State memory two =
+            Clock.State({allowance: _duration(4), startInstant: _instant(19)});
+
+        _assertEliminableBoundary(one, two, 32);
+    }
+
+    function testEliminableAtIsInclusiveForUnequalLeafClocks() public pure {
+        Clock.State memory one =
+            Clock.State({allowance: _duration(4), startInstant: _instant(13)});
+        Clock.State memory two =
+            Clock.State({allowance: _duration(9), startInstant: _instant(13)});
+
+        _assertEliminableBoundary(one, two, 22);
+    }
+
     function testEqualLeafAllowancesEliminateAtTheCommonDeadline() public pure {
         Clock.State memory one =
             Clock.State({allowance: _duration(10), startInstant: _instant(5)});
@@ -571,6 +600,30 @@ contract MatchClocksTest is Test {
             : MatchClocks.classifyTimeoutAt(second, first, _instant(current));
         assertEq(uint8(status.outcome), uint8(expectedOutcome));
         assertEq(_unwrap(status.deferredCharge), expectedCharge);
+    }
+
+    function _assertEliminableBoundary(
+        Clock.State memory one,
+        Clock.State memory two,
+        uint64 expectedEliminableAt
+    ) private pure {
+        Time.Instant eliminableAt = MatchClocks.eliminableAt(one, two);
+        assertEq(Time.Instant.unwrap(eliminableAt), expectedEliminableAt);
+
+        MatchClocks.TimeoutStatus memory beforeBoundary =
+            MatchClocks.classifyTimeoutAt(
+                one, two, _instant(expectedEliminableAt - 1)
+            );
+        assertTrue(
+            beforeBoundary.outcome != MatchClocks.TimeoutOutcome.ELIMINATE_BOTH
+        );
+
+        MatchClocks.TimeoutStatus memory atBoundary =
+            MatchClocks.classifyTimeoutAt(one, two, eliminableAt);
+        assertEq(
+            uint8(atBoundary.outcome),
+            uint8(MatchClocks.TimeoutOutcome.ELIMINATE_BOTH)
+        );
     }
 
     function _boundU64(uint64 value, uint64 minimum, uint64 maximum)

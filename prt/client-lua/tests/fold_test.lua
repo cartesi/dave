@@ -30,29 +30,36 @@ local function matched_fold()
     fold:apply(event(
         "root",
         3,
-        E.match_created("a", "b", "left", "a:b")
+        E.match_created("a", "b", "left", "a:b", 30)
     ))
     return fold
 end
 
 return {
-    Test.case("five-event fold derives nested dispute structure", function()
+    Test.case("six-event fold derives nested dispute structure", function()
         local fold = new_fold()
         local script = {
             event("root", 1, E.commitment_joined("a", "a-final")),
             event("root", 2, E.commitment_joined("b", "b-final")),
-            event("root", 3, E.match_created("a", "b", "b-left", "a:b")),
-            event("root", 4, E.match_advanced("a:b", "other", "left")),
+            event("root", 3, E.match_created(
+                "a", "b", "b-left", "a:b", 30
+            )),
+            event("root", 4, E.match_advanced(
+                "a:b", "other", "left", 40
+            )),
             event("root", 5, E.new_inner_tournament("a:b", "child")),
             event("child", 6, E.commitment_joined("c", "c-final")),
             event("child", 7, E.commitment_joined("d", "d-final")),
-            event("child", 8, E.match_created("c", "d", "d-left", "c:d")),
-            event("child", 9, E.match_deleted(
+            event("child", 8, E.match_created(
+                "c", "d", "d-left", "c:d", 50
+            )),
+            event("child", 9, E.leaf_match_sealed("c:d", 60)),
+            event("child", 10, E.match_deleted(
                 "c:d",
                 Fold.MatchDeletionReason.STEP,
                 Fold.WinnerCommitment.ONE
             )),
-            event("root", 10, E.match_deleted(
+            event("root", 11, E.match_deleted(
                 "a:b",
                 Fold.MatchDeletionReason.CHILD_TOURNAMENT,
                 Fold.WinnerCommitment.ONE
@@ -70,6 +77,7 @@ return {
         Test.equal(root_match.last_other_parent, "other")
         Test.equal(root_match.last_left_node, "left")
         Test.equal(root_match.inner_tournament, "child")
+        Test.equal(root_match.eliminable_at, nil)
         Test.equal(
             root_match.deleted.reason,
             Fold.MatchDeletionReason.CHILD_TOURNAMENT
@@ -102,7 +110,7 @@ return {
                     fold:apply(event(
                         "root",
                         2,
-                        E.match_created("a", "b", "left", "a:b")
+                        E.match_created("a", "b", "left", "a:b", 30)
                     ))
                 end,
             },
@@ -115,7 +123,7 @@ return {
                     fold:apply(event(
                         "root",
                         3,
-                        E.match_created("a", "b", "left", "wrong")
+                        E.match_created("a", "b", "left", "wrong", 30)
                     ))
                 end,
             },
@@ -125,7 +133,7 @@ return {
                     new_fold():apply(event(
                         "root",
                         1,
-                        E.match_advanced("missing", "other", "left")
+                        E.match_advanced("missing", "other", "left", 30)
                     ))
                 end,
             },
@@ -138,7 +146,7 @@ return {
                     fold:apply(event(
                         "root",
                         3,
-                        E.match_created("a", "b", "left", "a:b")
+                        E.match_created("a", "b", "left", "a:b", 30)
                     ))
                     fold:apply(event("root", 4, E.match_deleted(
                         "a:b",
@@ -148,7 +156,7 @@ return {
                     fold:apply(event(
                         "root",
                         5,
-                        E.match_advanced("a:b", "other", "left")
+                        E.match_advanced("a:b", "other", "left", 30)
                     ))
                 end,
             },
@@ -182,6 +190,18 @@ return {
                             Fold.WinnerCommitment.NEITHER
                         )
                     ))
+                end,
+            },
+            {
+                message = "exceeds uint64",
+                run = function()
+                    E.match_created(
+                        "a",
+                        "b",
+                        "left",
+                        "a:b",
+                        "0x10000000000000000"
+                    )
                 end,
             },
         }
@@ -246,7 +266,7 @@ return {
         fold:apply(event(
             "root",
             3,
-            E.match_created("a", "b", "left", "a:b")
+            E.match_created("a", "b", "left", "a:b", 30)
         ))
         fold:apply(event("root", 4, E.match_deleted(
             "a:b",
@@ -263,7 +283,7 @@ return {
         fold:apply(event(
             "root",
             6,
-            E.match_created("a", "c", "left", "a:c")
+            E.match_created("a", "c", "left", "a:c", 30)
         ))
         Test.equal(fold:candidate("root"), nil)
         Test.equal(
@@ -284,6 +304,52 @@ return {
         Test.equal(
             fold:commitment_status("root", "c")._tag,
             Fold.CommitmentStatus.ELIMINATED
+        )
+    end),
+
+    Test.case("match schedule follows the latest structural event", function()
+        local fold = matched_fold()
+        Test.equal(tostring(
+            fold:match_by_id_hash("root", "a:b").eliminable_at
+        ), "30")
+
+        fold:apply(event(
+            "root",
+            4,
+            E.match_advanced("a:b", "other", "left", 40)
+        ))
+        Test.equal(tostring(
+            fold:match_by_id_hash("root", "a:b").eliminable_at
+        ), "40")
+
+        fold:apply(event(
+            "root",
+            5,
+            E.leaf_match_sealed("a:b", "18446744073709551615")
+        ))
+        Test.equal(tostring(
+            fold:match_by_id_hash("root", "a:b").eliminable_at
+        ), "18446744073709551615")
+
+        fold:apply(event("root", 6, E.match_deleted(
+            "a:b",
+            Fold.MatchDeletionReason.TIMEOUT,
+            Fold.WinnerCommitment.NEITHER
+        )))
+        Test.equal(
+            fold:match_by_id_hash("root", "a:b").eliminable_at,
+            nil
+        )
+
+        fold = matched_fold()
+        fold:apply(event(
+            "root",
+            4,
+            E.new_inner_tournament("a:b", "child")
+        ))
+        Test.equal(
+            fold:match_by_id_hash("root", "a:b").eliminable_at,
+            nil
         )
     end),
 

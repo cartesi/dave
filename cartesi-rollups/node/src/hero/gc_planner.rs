@@ -1,112 +1,120 @@
-//! Pure, actor-neutral cleanup planning over one accepted dispute observation.
+//! Pure, actor-neutral cleanup planning over the recursive dispute tree.
 //!
-//! The Hero snapshot follows only the local commitment path. Cleanup must see
-//! every reachable live match, so it plans directly from the structural fold
-//! and semantic tournament observations. The returned order is deterministic:
-//! fold creation order, with child cleanup before its parent match.
+//! Match eliminability comes entirely from contract-authored schedules in the
+//! event fold. Tournament eliminability remains the contract's current-state
+//! decision and therefore uses one standing observation per reachable
+//! tournament. The planner returns at most one action so maintenance never
+//! leaves a nonce tail in front of the next Hero response.
 
 use std::collections::HashMap;
 
 use alloy::primitives::Address;
 use thiserror::Error;
 
-use crate::{
-    merkle::Digest,
-    tournament::{
-        adapter::TournamentObservation,
-        domain::{GcIntent, LiveMatchState, TimeoutDisposition, TournamentStanding},
-        fold::Fold,
-    },
+use crate::tournament::{
+    dispute::{Dispute, MatchStatus, Tournament},
+    domain::{GcIntent, TournamentStanding},
 };
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum GcPlanError {
-    #[error("reachable tournament {0} has no semantic observation")]
+    #[error("reachable tournament {0} has no standing observation")]
     MissingTournament(Address),
-    #[error("live match {match_id_hash} in tournament {tournament} has no semantic observation")]
-    MissingMatch {
-        tournament: Address,
-        match_id_hash: Digest,
-    },
-    #[error("awaiting-child match names undiscovered tournament {0}")]
-    MissingChild(Address),
 }
 
-/// Return every currently legal cleanup intent in deterministic
-/// innermost-first order.
+/// Return the highest-priority cleanup currently known to be legal.
+///
+/// Deeper work wins globally; stable tree order breaks ties. When an inner
+/// tournament is itself eliminable, its parent action replaces all cleanup
+/// inside that subtree.
 pub fn plan_gc(
-    fold: &Fold,
-    observations: &HashMap<Address, TournamentObservation>,
-) -> Result<Vec<GcIntent>, GcPlanError> {
-    let mut planned = Vec::new();
-    plan_tournament(fold.root(), fold, observations, &mut planned)?;
-    // Stable depth ordering makes "innermost first" global across independent
-    // branches while preserving fold creation order within one level.
-    planned.sort_by_key(|entry| std::cmp::Reverse(entry.depth));
-    Ok(planned.into_iter().map(|entry| entry.intent).collect())
+    dispute: &Dispute,
+    standings: &HashMap<Address, TournamentStanding>,
+    at: u64,
+) -> Result<Option<GcIntent>, GcPlanError> {
+    let mut best = None;
+    let mut order = 0;
+    plan_tournament(dispute.root(), standings, at, &mut order, &mut best)?;
+    Ok(best.map(|planned: PlannedGc| planned.intent))
 }
 
 struct PlannedGc {
     depth: u64,
+    order: usize,
     intent: GcIntent,
 }
 
 fn plan_tournament(
-    tournament_address: Address,
-    fold: &Fold,
-    observations: &HashMap<Address, TournamentObservation>,
-    intents: &mut Vec<PlannedGc>,
+    tournament: &Tournament,
+    standings: &HashMap<Address, TournamentStanding>,
+    at: u64,
+    order: &mut usize,
+    best: &mut Option<PlannedGc>,
 ) -> Result<(), GcPlanError> {
-    let tournament = fold
-        .tournament(&tournament_address)
-        .ok_or(GcPlanError::MissingTournament(tournament_address))?;
-    let observation = observations
-        .get(&tournament_address)
-        .ok_or(GcPlanError::MissingTournament(tournament_address))?;
+    standings
+        .get(&tournament.address())
+        .ok_or(GcPlanError::MissingTournament(tournament.address()))?;
 
-    for match_fold in tournament.live_matches() {
-        let match_id_hash = match_fold.id.hash();
-        let observed =
-            observation
-                .match_by_id_hash(&match_id_hash)
-                .ok_or(GcPlanError::MissingMatch {
-                    tournament: tournament_address,
-                    match_id_hash,
-                })?;
-
-        if let LiveMatchState::AwaitingChild(awaiting) = observed.live().state() {
-            let child_address = awaiting.child_tournament();
-            let child_fold = fold
-                .tournament(&child_address)
-                .ok_or(GcPlanError::MissingChild(child_address))?;
-            let child = observations
-                .get(&child_address)
-                .ok_or(GcPlanError::MissingChild(child_address))?;
-            if matches!(child.standing(), TournamentStanding::InnerEliminable { .. }) {
-                intents.push(PlannedGc {
-                    depth: child_fold.level,
-                    intent: GcIntent::EliminateChild {
-                        parent_tournament: tournament_address,
-                        child_tournament: child_address,
+    for match_ in tournament.matches() {
+        match match_.status() {
+            MatchStatus::Clocked { eliminable_at } | MatchStatus::Leaf { eliminable_at }
+                if at >= *eliminable_at =>
+            {
+                consider(
+                    PlannedGc {
+                        depth: tournament.descriptor().level(),
+                        order: next_order(order),
+                        intent: GcIntent::EliminateMatch {
+                            tournament: tournament.address(),
+                            match_id: match_.id(),
+                        },
                     },
-                });
-            } else {
-                plan_tournament(child_address, fold, observations, intents)?;
+                    best,
+                );
             }
-        }
-
-        if observed.live().timeout() == TimeoutDisposition::EliminateBoth {
-            intents.push(PlannedGc {
-                depth: tournament.level,
-                intent: GcIntent::EliminateMatch {
-                    tournament: tournament_address,
-                    match_id: observed.id(),
-                },
-            });
+            MatchStatus::Inner { child } => {
+                let child_standing = standings
+                    .get(&child.address())
+                    .ok_or(GcPlanError::MissingTournament(child.address()))?;
+                if matches!(child_standing, TournamentStanding::InnerEliminable { .. }) {
+                    consider(
+                        PlannedGc {
+                            depth: child.descriptor().level(),
+                            order: next_order(order),
+                            intent: GcIntent::EliminateChild {
+                                parent_tournament: tournament.address(),
+                                child_tournament: child.address(),
+                            },
+                        },
+                        best,
+                    );
+                } else {
+                    plan_tournament(child, standings, at, order, best)?;
+                }
+            }
+            MatchStatus::Clocked { .. }
+            | MatchStatus::Leaf { .. }
+            | MatchStatus::Resolved { .. } => {}
         }
     }
 
     Ok(())
+}
+
+fn next_order(order: &mut usize) -> usize {
+    let current = *order;
+    *order += 1;
+    current
+}
+
+fn consider(candidate: PlannedGc, best: &mut Option<PlannedGc>) {
+    let replace = best.as_ref().is_none_or(|current| {
+        candidate.depth > current.depth
+            || (candidate.depth == current.depth && candidate.order < current.order)
+    });
+    if replace {
+        *best = Some(candidate);
+    }
 }
 
 #[cfg(test)]
@@ -118,13 +126,10 @@ mod tests {
         merkle::Digest,
         tournament::{
             MatchID,
-            adapter::ObservedMatch,
+            dispute::{Event, EventKind},
             domain::{
-                AwaitingChildMatch, BisectingMatch, InnerEliminationReason, JoinDisposition,
-                LiveMatch, MatchCoordinate, MatchSide, ReadyToSealMatch, SealedDivergence,
-                SealedLeafMatch, TournamentDescriptor, TournamentKind, WaitingChildren,
+                InnerEliminationReason, JoinDisposition, TournamentDescriptor, TournamentKind,
             },
-            fold::{EventKind, TournamentEvent},
         },
     };
 
@@ -136,49 +141,9 @@ mod tests {
         Digest::new([byte; 32])
     }
 
-    fn apply(fold: &mut Fold, tournament: Address, block: u64, kind: EventKind) {
-        fold.apply(&TournamentEvent {
-            tournament,
-            block,
-            kind,
-        })
-        .unwrap();
-    }
-
-    fn create_match(
-        fold: &mut Fold,
-        tournament: Address,
-        one: Digest,
-        two: Digest,
-        block: u64,
-    ) -> MatchID {
-        for (root, final_state) in [(one, digest(80)), (two, digest(81))] {
-            apply(
-                fold,
-                tournament,
-                block,
-                EventKind::CommitmentJoined { root, final_state },
-            );
-        }
-        apply(
-            fold,
-            tournament,
-            block,
-            EventKind::MatchCreated {
-                one,
-                two,
-                left_of_two: digest(82),
-            },
-        );
-        MatchID {
-            commitment_one: one,
-            commitment_two: two,
-        }
-    }
-
-    fn descriptor(address: Address, level: u64, kind: TournamentKind) -> TournamentDescriptor {
+    fn descriptor(byte: u8, level: u64, kind: TournamentKind) -> TournamentDescriptor {
         TournamentDescriptor::try_new(
-            address,
+            address(byte),
             level,
             kind,
             digest(90 + u8::try_from(level).unwrap()),
@@ -189,407 +154,163 @@ mod tests {
         .unwrap()
     }
 
-    fn bisecting(timeout: TimeoutDisposition) -> LiveMatch {
-        LiveMatch::try_new(
-            LiveMatchState::Bisecting(
-                BisectingMatch::try_new(
-                    digest(40),
-                    WaitingChildren::new(digest(41), digest(42)),
-                    MatchCoordinate::new(U256::ZERO, U256::ZERO),
-                    4,
-                    MatchSide::One,
-                )
-                .unwrap(),
+    fn event(tournament: Address, kind: EventKind) -> Event {
+        Event { tournament, kind }
+    }
+
+    fn join(tournament: Address, root: Digest) -> Event {
+        event(
+            tournament,
+            EventKind::CommitmentJoined {
+                root,
+                final_state: digest(root.data()[0].wrapping_add(100)),
+                submitter: address(root.data()[0]),
+            },
+        )
+    }
+
+    fn pair(tournament: Address, one: Digest, two: Digest, at: u64) -> [Event; 2] {
+        [
+            join(tournament, two),
+            event(
+                tournament,
+                EventKind::MatchCreated {
+                    id: MatchID {
+                        commitment_one: one,
+                        commitment_two: two,
+                    },
+                    eliminable_at: at,
+                },
             ),
-            timeout,
-        )
-        .unwrap()
+        ]
     }
 
-    fn observation(
-        descriptor: TournamentDescriptor,
-        standing: TournamentStanding,
-        matches: impl IntoIterator<Item = ObservedMatch>,
-    ) -> TournamentObservation {
-        TournamentObservation::from_parts(
-            descriptor,
-            standing,
-            matches
-                .into_iter()
-                .map(|observed| (observed.id().hash(), observed))
-                .collect(),
-        )
-    }
-
-    fn active_standing() -> TournamentStanding {
+    fn active() -> TournamentStanding {
         TournamentStanding::MatchesActive {
-            candidate: None,
             joins: JoinDisposition::Open,
         }
     }
 
     #[test]
-    fn plans_matches_in_fold_creation_order() {
+    fn inclusive_match_schedule_needs_no_point_read() {
         let root = address(1);
-        let mut fold = Fold::new(root);
-        let first = create_match(&mut fold, root, digest(1), digest(2), 1);
-        let second = create_match(&mut fold, root, digest(3), digest(4), 2);
-        let observed_first =
-            ObservedMatch::from_parts(first, bisecting(TimeoutDisposition::EliminateBoth));
-        let observed_second =
-            ObservedMatch::from_parts(second, bisecting(TimeoutDisposition::EliminateBoth));
-        let observations = HashMap::from([(
-            root,
-            observation(
-                descriptor(root, 0, TournamentKind::Leaf),
-                active_standing(),
-                [observed_first, observed_second],
-            ),
-        )]);
+        let one = digest(1);
+        let two = digest(2);
+        let match_id = MatchID {
+            commitment_one: one,
+            commitment_two: two,
+        };
+        let dispute = Dispute::try_new(descriptor(1, 0, TournamentKind::Leaf))
+            .unwrap()
+            .apply_block([join(root, one)])
+            .unwrap()
+            .apply_block(pair(root, one, two, 10))
+            .unwrap();
+        let standings = HashMap::from([(root, active())]);
 
+        assert_eq!(plan_gc(&dispute, &standings, 9).unwrap(), None);
         assert_eq!(
-            plan_gc(&fold, &observations).unwrap(),
-            vec![
-                GcIntent::EliminateMatch {
-                    tournament: root,
-                    match_id: first,
-                },
-                GcIntent::EliminateMatch {
-                    tournament: root,
-                    match_id: second,
-                },
-            ]
+            plan_gc(&dispute, &standings, 10).unwrap(),
+            Some(GcIntent::EliminateMatch {
+                tournament: root,
+                match_id,
+            })
         );
     }
 
     #[test]
-    fn plans_nested_cleanup_before_parent_sibling() {
+    fn deepest_due_work_wins_globally() {
         let root = address(1);
         let child = address(2);
-        let mut fold = Fold::new(root);
-        let parent_match = create_match(&mut fold, root, digest(1), digest(2), 1);
-        apply(
-            &mut fold,
-            root,
-            2,
-            EventKind::NewInnerTournament {
-                match_id_hash: parent_match.hash(),
-                child,
-            },
-        );
-        let root_sibling = create_match(&mut fold, root, digest(3), digest(4), 3);
-        let child_match = create_match(&mut fold, child, digest(5), digest(6), 4);
+        let shallow = MatchID {
+            commitment_one: digest(1),
+            commitment_two: digest(2),
+        };
+        let parent = MatchID {
+            commitment_one: digest(3),
+            commitment_two: digest(4),
+        };
+        let deep = MatchID {
+            commitment_one: digest(5),
+            commitment_two: digest(6),
+        };
 
-        let divergence = SealedDivergence::new(
-            digest(91),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            digest(21),
-            digest(22),
-        );
-        let awaiting = LiveMatch::try_new(
-            LiveMatchState::AwaitingChild(AwaitingChildMatch::try_new(divergence, child).unwrap()),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-        let root_observation = observation(
-            descriptor(root, 0, TournamentKind::NonLeaf),
-            active_standing(),
-            [
-                ObservedMatch::from_parts(parent_match, awaiting),
-                ObservedMatch::from_parts(
-                    root_sibling,
-                    bisecting(TimeoutDisposition::EliminateBoth),
-                ),
-            ],
-        );
-        let child_observation = observation(
-            descriptor(child, 1, TournamentKind::Leaf),
-            active_standing(),
-            [ObservedMatch::from_parts(
-                child_match,
-                bisecting(TimeoutDisposition::EliminateBoth),
-            )],
-        );
-        let observations = HashMap::from([(root, root_observation), (child, child_observation)]);
-
-        assert_eq!(
-            plan_gc(&fold, &observations).unwrap(),
-            vec![
-                GcIntent::EliminateMatch {
-                    tournament: child,
-                    match_id: child_match,
-                },
-                GcIntent::EliminateMatch {
-                    tournament: root,
-                    match_id: root_sibling,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn globally_prioritizes_deeper_later_branch() {
-        let root = address(1);
-        let child = address(2);
-        let mut fold = Fold::new(root);
-        let shallow = create_match(&mut fold, root, digest(1), digest(2), 1);
-        let parent_match = create_match(&mut fold, root, digest(3), digest(4), 2);
-        apply(
-            &mut fold,
-            root,
-            3,
-            EventKind::NewInnerTournament {
-                match_id_hash: parent_match.hash(),
-                child,
-            },
-        );
-        let child_match = create_match(&mut fold, child, digest(5), digest(6), 4);
-
-        let divergence = SealedDivergence::new(
-            digest(91),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            digest(21),
-            digest(22),
-        );
-        let awaiting = LiveMatch::try_new(
-            LiveMatchState::AwaitingChild(AwaitingChildMatch::try_new(divergence, child).unwrap()),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-        let observations = HashMap::from([
-            (
+        let dispute = Dispute::try_new(descriptor(1, 0, TournamentKind::NonLeaf))
+            .unwrap()
+            .apply_block([join(root, shallow.commitment_one)])
+            .unwrap()
+            .apply_block(pair(
                 root,
-                observation(
-                    descriptor(root, 0, TournamentKind::NonLeaf),
-                    active_standing(),
-                    [
-                        ObservedMatch::from_parts(
-                            shallow,
-                            bisecting(TimeoutDisposition::EliminateBoth),
-                        ),
-                        ObservedMatch::from_parts(parent_match, awaiting),
-                    ],
-                ),
-            ),
+                shallow.commitment_one,
+                shallow.commitment_two,
+                5,
+            ))
+            .unwrap()
+            .apply_block([join(root, parent.commitment_one)])
+            .unwrap()
+            .apply_block(pair(root, parent.commitment_one, parent.commitment_two, 5))
+            .unwrap()
+            .apply_block([event(
+                root,
+                EventKind::NewInnerTournament {
+                    match_id_hash: parent.hash(),
+                    child: descriptor(2, 1, TournamentKind::Leaf),
+                },
+            )])
+            .unwrap()
+            .apply_block([join(child, deep.commitment_one)])
+            .unwrap()
+            .apply_block(pair(child, deep.commitment_one, deep.commitment_two, 5))
+            .unwrap();
+        let standings = HashMap::from([(root, active()), (child, active())]);
+
+        assert_eq!(
+            plan_gc(&dispute, &standings, 5).unwrap(),
+            Some(GcIntent::EliminateMatch {
+                tournament: child,
+                match_id: deep,
+            })
+        );
+    }
+
+    #[test]
+    fn eliminable_child_replaces_its_subtree() {
+        let root = address(1);
+        let child = address(2);
+        let parent = MatchID {
+            commitment_one: digest(1),
+            commitment_two: digest(2),
+        };
+        let dispute = Dispute::try_new(descriptor(1, 0, TournamentKind::NonLeaf))
+            .unwrap()
+            .apply_block([join(root, parent.commitment_one)])
+            .unwrap()
+            .apply_block(pair(root, parent.commitment_one, parent.commitment_two, 5))
+            .unwrap()
+            .apply_block([event(
+                root,
+                EventKind::NewInnerTournament {
+                    match_id_hash: parent.hash(),
+                    child: descriptor(2, 1, TournamentKind::Leaf),
+                },
+            )])
+            .unwrap();
+        let standings = HashMap::from([
+            (root, active()),
             (
                 child,
-                observation(
-                    descriptor(child, 1, TournamentKind::Leaf),
-                    active_standing(),
-                    [ObservedMatch::from_parts(
-                        child_match,
-                        bisecting(TimeoutDisposition::EliminateBoth),
-                    )],
-                ),
+                TournamentStanding::InnerEliminable {
+                    reason: InnerEliminationReason::NoCandidate,
+                },
             ),
         ]);
 
         assert_eq!(
-            plan_gc(&fold, &observations).unwrap(),
-            vec![
-                GcIntent::EliminateMatch {
-                    tournament: child,
-                    match_id: child_match,
-                },
-                GcIntent::EliminateMatch {
-                    tournament: root,
-                    match_id: shallow,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn eliminable_child_replaces_recursive_cleanup() {
-        let root = address(1);
-        let child = address(2);
-        let mut fold = Fold::new(root);
-        let parent_match = create_match(&mut fold, root, digest(1), digest(2), 1);
-        apply(
-            &mut fold,
-            root,
-            2,
-            EventKind::NewInnerTournament {
-                match_id_hash: parent_match.hash(),
-                child,
-            },
-        );
-
-        let divergence = SealedDivergence::new(
-            digest(91),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            digest(21),
-            digest(22),
-        );
-        let awaiting = LiveMatch::try_new(
-            LiveMatchState::AwaitingChild(AwaitingChildMatch::try_new(divergence, child).unwrap()),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-        let observations = HashMap::from([
-            (
-                root,
-                observation(
-                    descriptor(root, 0, TournamentKind::NonLeaf),
-                    active_standing(),
-                    [ObservedMatch::from_parts(parent_match, awaiting)],
-                ),
-            ),
-            (
-                child,
-                observation(
-                    descriptor(child, 1, TournamentKind::Leaf),
-                    TournamentStanding::InnerEliminable {
-                        reason: InnerEliminationReason::NoCandidate,
-                    },
-                    [],
-                ),
-            ),
-        ]);
-
-        assert_eq!(
-            plan_gc(&fold, &observations).unwrap(),
-            vec![GcIntent::EliminateChild {
+            plan_gc(&dispute, &standings, 5).unwrap(),
+            Some(GcIntent::EliminateChild {
                 parent_tournament: root,
                 child_tournament: child,
-            }]
+            })
         );
-    }
-
-    #[test]
-    fn expired_child_candidate_is_directly_eliminable() {
-        let root = address(1);
-        let child = address(2);
-        let child_candidate = digest(9);
-        let mut fold = Fold::new(root);
-        let parent_match = create_match(&mut fold, root, digest(1), digest(2), 1);
-        apply(
-            &mut fold,
-            root,
-            2,
-            EventKind::NewInnerTournament {
-                match_id_hash: parent_match.hash(),
-                child,
-            },
-        );
-        apply(
-            &mut fold,
-            child,
-            3,
-            EventKind::CommitmentJoined {
-                root: child_candidate,
-                final_state: digest(10),
-            },
-        );
-
-        let divergence = SealedDivergence::new(
-            digest(91),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            digest(21),
-            digest(22),
-        );
-        let awaiting = LiveMatch::try_new(
-            LiveMatchState::AwaitingChild(AwaitingChildMatch::try_new(divergence, child).unwrap()),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-        let observations = HashMap::from([
-            (
-                root,
-                observation(
-                    descriptor(root, 0, TournamentKind::NonLeaf),
-                    active_standing(),
-                    [ObservedMatch::from_parts(parent_match, awaiting)],
-                ),
-            ),
-            (
-                child,
-                observation(
-                    descriptor(child, 1, TournamentKind::Leaf),
-                    TournamentStanding::InnerEliminable {
-                        reason: InnerEliminationReason::WinnerExpired {
-                            candidate: child_candidate,
-                        },
-                    },
-                    [],
-                ),
-            ),
-        ]);
-
-        assert_eq!(
-            plan_gc(&fold, &observations).unwrap(),
-            vec![GcIntent::EliminateChild {
-                parent_tournament: root,
-                child_tournament: child,
-            }]
-        );
-    }
-
-    #[test]
-    fn ignores_non_eliminable_timeouts() {
-        let root = address(1);
-        let mut fold = Fold::new(root);
-        let match_id = create_match(&mut fold, root, digest(1), digest(2), 1);
-        let observations = HashMap::from([(
-            root,
-            observation(
-                descriptor(root, 0, TournamentKind::Leaf),
-                active_standing(),
-                [ObservedMatch::from_parts(
-                    match_id,
-                    bisecting(TimeoutDisposition::TwoWins {
-                        deferred_charge: crate::tournament::domain::BlockDuration::from_blocks(3),
-                    }),
-                )],
-            ),
-        )]);
-
-        assert!(plan_gc(&fold, &observations).unwrap().is_empty());
-    }
-
-    #[test]
-    fn eliminate_both_is_cleanup_in_ready_and_sealed_leaf_phases() {
-        let root = address(1);
-        let mut fold = Fold::new(root);
-        let match_id = create_match(&mut fold, root, digest(1), digest(2), 1);
-        let coordinate = MatchCoordinate::new(U256::ZERO, U256::ZERO);
-        let ready = LiveMatch::try_new(
-            LiveMatchState::ReadyToSealLeaf(ReadyToSealMatch::new(
-                digest(40),
-                WaitingChildren::new(digest(41), digest(42)),
-                coordinate,
-                MatchSide::One,
-            )),
-            TimeoutDisposition::EliminateBoth,
-        )
-        .unwrap();
-        let sealed = LiveMatch::try_new(
-            LiveMatchState::SealedLeaf(SealedLeafMatch::new(SealedDivergence::new(
-                digest(43),
-                coordinate,
-                digest(44),
-                digest(45),
-            ))),
-            TimeoutDisposition::EliminateBoth,
-        )
-        .unwrap();
-
-        for live in [ready, sealed] {
-            let observations = HashMap::from([(
-                root,
-                observation(
-                    descriptor(root, 0, TournamentKind::Leaf),
-                    active_standing(),
-                    [ObservedMatch::from_parts(match_id, live)],
-                ),
-            )]);
-            assert_eq!(
-                plan_gc(&fold, &observations).unwrap(),
-                vec![GcIntent::EliminateMatch {
-                    tournament: root,
-                    match_id,
-                }]
-            );
-        }
     }
 }

@@ -1,9 +1,11 @@
 local Domain = require "player.domain"
+local bint = require "utils.bint" (256)
 
--- Pure structural index over the five tournament event types.
+-- Pure structural index over the six tournament event types.
 --
--- The fold owns enumeration and provenance only. It does not interpret raw
--- match slots, clocks, timeout eligibility, or tournament results.
+-- The fold owns enumeration, provenance, and the event-authoritative match
+-- elimination schedule. It does not interpret raw match slots, clocks, or
+-- tournament results.
 local Fold = {}
 Fold.__index = Fold
 
@@ -11,6 +13,7 @@ Fold.EventKind = {
     COMMITMENT_JOINED = "commitment_joined",
     MATCH_CREATED = "match_created",
     MATCH_ADVANCED = "match_advanced",
+    LEAF_MATCH_SEALED = "leaf_match_sealed",
     MATCH_DELETED = "match_deleted",
     NEW_INNER_TOURNAMENT = "new_inner_tournament",
 }
@@ -47,6 +50,37 @@ local function nonnegative_integer(value, name)
     return value
 end
 
+local MAX_U64 = (bint.one() << 64) - 1
+local MAX_U64_DECIMAL = "18446744073709551615"
+
+local function uint64(value, name)
+    required(value, name)
+    if type(value) == "number" then
+        nonnegative_integer(value, name)
+    elseif type(value) == "string" then
+        local decimal = value:match("^(%d+)$")
+        local hexadecimal = value:match("^0[xX]([%da-fA-F]+)$")
+        assert(decimal or hexadecimal,
+            name .. " must be an unsigned integer")
+        if hexadecimal then
+            hexadecimal = hexadecimal:gsub("^0+", "")
+            assert(#hexadecimal <= 16, name .. " exceeds uint64")
+        else
+            decimal = decimal:gsub("^0+", "")
+            assert(#decimal < #MAX_U64_DECIMAL
+                or #decimal == #MAX_U64_DECIMAL
+                and decimal <= MAX_U64_DECIMAL,
+                name .. " exceeds uint64")
+        end
+    else
+        assert(getmetatable(value) == bint,
+            name .. " must be an unsigned integer")
+    end
+    local parsed = bint(value)
+    assert(bint.ule(parsed, MAX_U64), name .. " exceeds uint64")
+    return parsed
+end
+
 local function same(left, right)
     return left == right
 end
@@ -75,6 +109,8 @@ local function copy_match(match)
         ),
         id_hash = match.id_hash,
         created_at_block = match.created_at_block,
+        eliminable_at = match.eliminable_at and
+            bint(match.eliminable_at) or nil,
         advances = match.advances,
         last_other_parent = match.last_other_parent,
         last_left_node = match.last_left_node,
@@ -146,21 +182,39 @@ function Fold.Event.match_created(
     commitment_one,
     commitment_two,
     left_of_two,
-    emitted_match_id_hash
+    emitted_match_id_hash,
+    eliminable_at
 )
     return event_kind(Fold.EventKind.MATCH_CREATED, {
         commitment_one = required(commitment_one, "commitment one"),
         commitment_two = required(commitment_two, "commitment two"),
         left_of_two = required(left_of_two, "left child of commitment two"),
-        emitted_match_id_hash = emitted_match_id_hash,
+        emitted_match_id_hash = required(
+            emitted_match_id_hash,
+            "emitted match id hash"
+        ),
+        eliminable_at = uint64(eliminable_at, "match elimination block"),
     })
 end
 
-function Fold.Event.match_advanced(match_id_hash, other_parent, left_node)
+function Fold.Event.match_advanced(
+    match_id_hash,
+    other_parent,
+    left_node,
+    eliminable_at
+)
     return event_kind(Fold.EventKind.MATCH_ADVANCED, {
         match_id_hash = required(match_id_hash, "match id hash"),
         other_parent = required(other_parent, "other parent"),
         left_node = required(left_node, "left node"),
+        eliminable_at = uint64(eliminable_at, "match elimination block"),
+    })
+end
+
+function Fold.Event.leaf_match_sealed(match_id_hash, eliminable_at)
+    return event_kind(Fold.EventKind.LEAF_MATCH_SEALED, {
+        match_id_hash = required(match_id_hash, "match id hash"),
+        eliminable_at = uint64(eliminable_at, "match elimination block"),
     })
 end
 
@@ -304,10 +358,8 @@ function Fold:apply(event)
         local match_id =
             Domain.match_id(kind.commitment_one, kind.commitment_two)
         local match_id_hash = self._match_id_hash(match_id)
-        if kind.emitted_match_id_hash ~= nil then
-            assert(same(kind.emitted_match_id_hash, match_id_hash),
-                "emitted match id hash disagrees with ordered commitments")
-        end
+        assert(same(kind.emitted_match_id_hash, match_id_hash),
+            "emitted match id hash disagrees with ordered commitments")
         assert(not tournament.match_index[match_id_hash],
             "match created twice")
 
@@ -321,6 +373,10 @@ function Fold:apply(event)
             id = match_id,
             id_hash = match_id_hash,
             created_at_block = event.block,
+            eliminable_at = uint64(
+                kind.eliminable_at,
+                "match elimination block"
+            ),
             advances = 0,
             last_other_parent = kind.commitment_one,
             last_left_node = kind.left_of_two,
@@ -337,6 +393,19 @@ function Fold:apply(event)
         match.advances = match.advances + 1
         match.last_other_parent = kind.other_parent
         match.last_left_node = kind.left_node
+        match.eliminable_at = uint64(
+            kind.eliminable_at,
+            "match elimination block"
+        )
+    elseif kind._tag == Fold.EventKind.LEAF_MATCH_SEALED then
+        local match = mutable_match(tournament, kind.match_id_hash)
+        assert(not match.deleted, "leaf seal on a deleted match")
+        assert(not match.inner_tournament,
+            "leaf seal on a match with an inner tournament")
+        match.eliminable_at = uint64(
+            kind.eliminable_at,
+            "match elimination block"
+        )
     elseif kind._tag == Fold.EventKind.MATCH_DELETED then
         validate_deletion(kind.reason, kind.winner)
         local match = mutable_match(tournament, kind.match_id_hash)
@@ -346,6 +415,7 @@ function Fold:apply(event)
             winner = kind.winner,
             deleted_at_block = event.block,
         }
+        match.eliminable_at = nil
     elseif kind._tag == Fold.EventKind.NEW_INNER_TOURNAMENT then
         local match = mutable_match(tournament, kind.match_id_hash)
         assert(not match.deleted,
@@ -356,6 +426,7 @@ function Fold:apply(event)
             "inner tournament discovered twice")
 
         match.inner_tournament = kind.child
+        match.eliminable_at = nil
         local parent = {
             tournament = tournament.address,
             match_id_hash = kind.match_id_hash,

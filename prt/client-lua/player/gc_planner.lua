@@ -1,6 +1,8 @@
 local Domain = require "player.domain"
+local bint = require "utils.bint" (256)
 
--- Pure, actor-neutral cleanup policy over one accepted dispute observation.
+-- Pure, actor-neutral cleanup policy over event-authoritative match schedules
+-- and the accepted standing of each discovered child tournament.
 --
 -- The returned list is complete and deterministic. Execution takes only a
 -- bounded prefix after Hero policy selects no arena action.
@@ -25,26 +27,19 @@ end
 local function plan_tournament(
     fold,
     observations,
+    current_block,
     tournament_address,
     planned,
     sequence
 )
     local tournament = assert(fold:tournament(tournament_address),
         "reachable tournament is missing from the fold")
-    local observation = observation_for(observations, tournament_address)
 
     for _, match in ipairs(fold:live_matches(tournament_address)) do
-        local observed = observation.matches[match.id_hash]
-        assert(observed,
-            "live folded match is missing its semantic observation")
-        assert(Domain.same_match_id(observed.id, match.id),
-            "fold and observer disagree on ordered match identity")
-
-        local state = observed.live.state
-        if state._tag == Domain.LiveMatchState.AWAITING_CHILD then
-            local child_address = state.child_tournament
+        if match.inner_tournament then
+            local child_address = match.inner_tournament
             local child_fold = assert(fold:tournament(child_address),
-                "awaiting-child match names an undiscovered tournament")
+                "inner match names an undiscovered tournament")
             local child = observation_for(observations, child_address)
             if child.standing._tag ==
                 Domain.TournamentStanding.INNER_ELIMINABLE
@@ -62,15 +57,19 @@ local function plan_tournament(
                 sequence = plan_tournament(
                     fold,
                     observations,
+                    current_block,
                     child_address,
                     planned,
                     sequence
                 )
             end
+        else
+            assert(match.eliminable_at,
+                "live match is missing its elimination schedule")
         end
 
-        if observed.live.timeout._tag ==
-            Domain.TimeoutDisposition.ELIMINATE_BOTH
+        if match.eliminable_at and
+            bint.ule(match.eliminable_at, current_block)
         then
             sequence = append(
                 planned,
@@ -78,7 +77,7 @@ local function plan_tournament(
                 tournament.level,
                 Domain.eliminate_match_intent(
                     tournament_address,
-                    observed.id
+                    match.id
                 )
             )
         end
@@ -87,14 +86,19 @@ local function plan_tournament(
     return sequence
 end
 
-function GcPlanner.plan(fold, observations)
+function GcPlanner.plan(fold, observations, current_block)
     assert(type(fold) == "table", "GC planner requires a structural fold")
     assert(type(observations) == "table",
         "GC planner requires semantic observations")
+    assert(type(current_block) == "number"
+        and math.type(current_block) == "integer"
+        and current_block >= 0,
+        "GC planner requires a nonnegative current block")
     local planned = {}
     plan_tournament(
         fold,
         observations,
+        bint(current_block),
         fold:root(),
         planned,
         1

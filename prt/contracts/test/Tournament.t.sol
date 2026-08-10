@@ -84,7 +84,8 @@ contract TournamentTest is Util {
             Util.historicalMatchId(_opponent, 0).hashFromId(),
             playerNodes[0][HistoricalGeometry.height(0)],
             playerNodes[1][HistoricalGeometry.height(0)],
-            playerNodes[1][HistoricalGeometry.height(0) - 1]
+            playerNodes[1][HistoricalGeometry.height(0) - 1],
+            Time.currentTime().add(MAX_ALLOWANCE).add(MAX_ALLOWANCE)
         );
 
         uint256 player1BalanceBefore = player1.balance;
@@ -171,6 +172,7 @@ contract TournamentTest is Util {
         );
         assertTrue(clockOneAfter.startInstant.isZero());
         assertEq(matchAfter.currentHeight, matchBefore.currentHeight - 1);
+        assertEq(tournament.getMatchAdvancedCount(), 1);
 
         vm.revertToState(snapshot);
         vm.roll(deadline);
@@ -185,6 +187,7 @@ contract TournamentTest is Util {
         _assertMatchUnchanged(tournament, matchIdHash, matchBefore);
         _assertClockUnchanged(tournament, matchId.commitmentOne, clockOneBefore);
         _assertClockUnchanged(tournament, matchId.commitmentTwo, clockTwoBefore);
+        assertEq(tournament.getMatchAdvancedCount(), 0);
     }
 
     function testLeafSealResponseBudgetDeadlineAndRollback() public {
@@ -226,6 +229,7 @@ contract TournamentTest is Util {
         Match.State memory sealedMatch = tournament.getMatch(matchIdHash);
         assertTrue(sealedMatch.exists());
         assertTrue(sealedMatch.isSealed());
+        assertEq(tournament.getLeafMatchSealedCount(), 1);
 
         vm.revertToState(snapshot);
         vm.roll(deadline);
@@ -236,6 +240,7 @@ contract TournamentTest is Util {
         _assertMatchUnchanged(tournament, matchIdHash, matchBefore);
         _assertClockUnchanged(tournament, matchId.commitmentOne, clockOneBefore);
         _assertClockUnchanged(tournament, matchId.commitmentTwo, clockTwoBefore);
+        assertEq(tournament.getLeafMatchSealedCount(), 0);
     }
 
     function testInnerSealResponseBudgetDeadlineAndRollback() public {

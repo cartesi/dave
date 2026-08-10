@@ -201,17 +201,22 @@ interface ITournament {
     /// @param one The match commitment #1
     /// @param two The match commitment #2
     /// @param leftOfTwo The left child of #2
+    /// @param eliminableAt The first inclusive instant at which both
+    /// commitments can be eliminated if the match does not advance
     event MatchCreated(
         Match.IdHash indexed matchIdHash,
         Tree.Node indexed one,
         Tree.Node indexed two,
-        Tree.Node leftOfTwo
+        Tree.Node leftOfTwo,
+        Time.Instant eliminableAt
     );
 
     /// @notice A match has advanced.
     /// @param matchIdHash The match ID hash
     /// @param otherParent The parent the next responder must reveal
     /// @param leftNode The waiting side's left child after the advance
+    /// @param eliminableAt The first inclusive instant at which both
+    /// commitments can be eliminated if the match does not advance again
     /// @dev Each advance selects the left half when the two left children differ,
     /// otherwise the right half, then swaps revealing and waiting roles. The
     /// event exposes the post-advance revealing parent and waiting left child.
@@ -222,7 +227,16 @@ interface ITournament {
     event MatchAdvanced(
         Match.IdHash indexed matchIdHash,
         Tree.Node otherParent,
-        Tree.Node leftNode
+        Tree.Node leftNode,
+        Time.Instant eliminableAt
+    );
+
+    /// @notice A leaf match was sealed and entered its two-clock race.
+    /// @param matchIdHash The match ID hash
+    /// @param eliminableAt The first inclusive instant at which both
+    /// commitments can be eliminated if the match remains unresolved
+    event LeafMatchSealed(
+        Match.IdHash indexed matchIdHash, Time.Instant eliminableAt
     );
 
     /// @notice A match was deleted.
@@ -770,6 +784,10 @@ interface ITournament {
     /// @notice Get the number of `MatchAdvanced` events
     /// that have been emitted since the contract was deployed.
     function getMatchAdvancedCount() external view returns (uint256);
+
+    /// @notice Get the number of `LeafMatchSealed` events
+    /// that have been emitted since the contract was deployed.
+    function getLeafMatchSealedCount() external view returns (uint256);
 
     /// @notice Get the number of `MatchDeleted` events
     /// that have been emitted since the contract was deployed.

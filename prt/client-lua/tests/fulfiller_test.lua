@@ -69,7 +69,8 @@ local function engaged_context(args)
             one,
             two,
             digest(32),
-            one:join(two)
+            one:join(two),
+            100
         )
     ))
     local match = fold:live_matches(root)[1]
@@ -293,7 +294,8 @@ return {
                 root_tree.root_hash,
                 opponent,
                 digest(32),
-                root_tree.root_hash:join(opponent)
+                root_tree.root_hash:join(opponent),
+                100
             )
         ))
         local match = fold:live_matches(root)[1]

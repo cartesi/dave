@@ -1,7 +1,7 @@
 //! Production Hero orchestration: observe, project, plan, prepare, and
 //! yield the tick's wave contribution for the epoch manager to submit.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use ::log::{debug, error, info};
 
@@ -13,12 +13,17 @@ use crate::{
         context::HeroContext,
         error::Result,
         gc_planner::plan_gc,
-        planner::{HeroDecision, HeroTerminal, plan_hero},
+        planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, plan_hero},
     },
     merkle::Digest,
     provider::LaneRequest,
     storage::Storage,
-    tournament::{ArenaSender, DisputeState, StateReader, domain::GcIntent},
+    tournament::{
+        ArenaSender, StateReader,
+        dispute::Dispute,
+        domain::{GcIntent, TournamentStanding},
+        observer::read_standings,
+    },
 };
 use alloy::primitives::Address;
 
@@ -30,10 +35,10 @@ pub enum TournamentResult {
     FailedNoWinner,
 }
 
-/// One dispute tick's outcome: the standing result plus the tick's
-/// wave contribution - the hero action first (when one is legal),
-/// then every currently legal cleanup, innermost-first. Position in
-/// the composed wave is nonce order, and nonce order is priority.
+/// One dispute tick's outcome and its optional lane request.
+///
+/// Hero work and cleanup never share a wave: at most one request leaves a
+/// tick, so maintenance cannot occupy the nonce needed by the next response.
 #[derive(Clone, Debug)]
 pub struct HeroTick {
     result: TournamentResult,
@@ -101,16 +106,56 @@ where
     F::S: ProvingStf,
 {
     pub async fn tick(&mut self) -> Result<HeroTick> {
-        let dispute = self.reader.fetch_from_root(self.root_tournament).await?;
-        let context = HeroContext::assemble(
+        let (latest_head, foam) = self.reader.fetch_from_root(self.root_tournament).await?;
+        let chain = self.reader.chain().clone();
+        let foam_standings = read_standings(&chain, &foam, latest_head).await?;
+        let foam_context = HeroContext::assemble(
+            &chain,
+            latest_head,
             self.epoch,
             self.epoch_initial_hash,
-            &dispute.fold,
-            &dispute.observations,
+            &foam,
+            &foam_standings,
             &mut self.source,
         )
+        .await
         .map_err(anyhow::Error::from)?;
-        let decision = plan_hero(context.snapshot());
+        let foam_decision = plan_hero(foam_context.snapshot());
+
+        // Joining commits to the epoch's computation. Latest may suppress a
+        // join that is already mined or no longer possible, but only Solid may
+        // supply its payload. All deadline-sensitive actions use Foam.
+        let (context, decision, action_head) = if let HeroDecision::Act(HeroIntent::Join(
+            foam_join,
+        )) = foam_decision
+        {
+            let (solid_head, solid) = self
+                .reader
+                .solid()
+                .expect("fetch_from_root initializes Solid");
+            let solid_standings = read_standings(&chain, solid, solid_head).await?;
+            let solid_context = HeroContext::assemble(
+                &chain,
+                solid_head,
+                self.epoch,
+                self.epoch_initial_hash,
+                solid,
+                &solid_standings,
+                &mut self.source,
+            )
+            .await
+            .map_err(anyhow::Error::from)?;
+            let solid_decision = plan_hero(solid_context.snapshot());
+            if !is_exact_join(solid_decision, foam_join) {
+                debug!(
+                    "latest proposed {foam_join:?}, which Solid does not support exactly; retry next tick"
+                );
+                return Ok(HeroTick::new(TournamentResult::Running, Vec::new()));
+            }
+            (solid_context, solid_decision, solid_head)
+        } else {
+            (foam_context, foam_decision, latest_head)
+        };
 
         let mut result = TournamentResult::Running;
         let mut wave = Vec::new();
@@ -118,9 +163,7 @@ where
             HeroDecision::Act(intent) => {
                 let action =
                     prepare(intent, &context, &mut self.source).map_err(anyhow::Error::from)?;
-                wave.push(
-                    request_prepared(self.arena_sender.as_ref(), action, dispute.head).await?,
-                );
+                wave.push(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
             }
             HeroDecision::Wait(reason) => {
                 debug!("Hero waits: {reason:?}");
@@ -146,41 +189,42 @@ where
             }
         }
 
-        // Cleanup rides behind the hero action in the same wave. A
-        // lost or winnerless dispute plans nothing more: the node is
-        // done with this epoch's tournament.
-        if matches!(result, TournamentResult::Running | TournamentResult::Won) {
-            wave.extend(self.gc_requests(&dispute)?);
+        if result == TournamentResult::Running
+            && wave.is_empty()
+            && let Some(request) = self.gc_request(&foam, &foam_standings, latest_head.number)?
+        {
+            wave.push(request);
         }
         Ok(HeroTick::new(result, wave))
     }
 
-    /// Every currently legal cleanup, innermost-first, as lane
-    /// requests. One live match yields at most one intent, and an
-    /// eliminable child's tournament is never recursed into, so a
-    /// plan cannot invalidate its own suffix; follow-on cleanup that
-    /// an elimination unlocks arrives with the next observation.
-    fn gc_requests(&self, dispute: &DisputeState) -> Result<Vec<LaneRequest>> {
-        let intents = plan_gc(&dispute.fold, &dispute.observations).map_err(anyhow::Error::from)?;
-        Ok(intents
-            .into_iter()
-            .map(|intent| {
-                info!("plan cleanup intent: {intent:?}");
-                match intent {
-                    GcIntent::EliminateMatch {
-                        tournament,
-                        match_id,
-                    } => self.arena_sender.eliminate_match(tournament, match_id),
-                    GcIntent::EliminateChild {
-                        parent_tournament,
-                        child_tournament,
-                    } => self
-                        .arena_sender
-                        .eliminate_inner_tournament(parent_tournament, child_tournament),
-                }
-            })
-            .collect())
+    fn gc_request(
+        &self,
+        dispute: &Dispute,
+        standings: &HashMap<Address, TournamentStanding>,
+        at: u64,
+    ) -> Result<Option<LaneRequest>> {
+        let Some(intent) = plan_gc(dispute, standings, at).map_err(anyhow::Error::from)? else {
+            return Ok(None);
+        };
+        info!("plan cleanup intent: {intent:?}");
+        Ok(Some(match intent {
+            GcIntent::EliminateMatch {
+                tournament,
+                match_id,
+            } => self.arena_sender.eliminate_match(tournament, match_id),
+            GcIntent::EliminateChild {
+                parent_tournament,
+                child_tournament,
+            } => self
+                .arena_sender
+                .eliminate_inner_tournament(parent_tournament, child_tournament),
+        }))
     }
+}
+
+fn is_exact_join(decision: HeroDecision, expected: JoinIntent) -> bool {
+    matches!(decision, HeroDecision::Act(HeroIntent::Join(actual)) if actual == expected)
 }
 
 /// The only production dispatch seam for a prepared Hero action. Matching one
@@ -449,6 +493,32 @@ mod tests {
             number: 9,
             hash: alloy::primitives::B256::repeat_byte(9),
         }
+    }
+
+    #[test]
+    fn solid_must_support_the_exact_foam_join() {
+        let expected = JoinIntent {
+            tournament: address(1),
+            commitment: digest(1),
+        };
+        assert!(is_exact_join(
+            HeroDecision::Act(HeroIntent::Join(expected)),
+            expected
+        ));
+        assert!(!is_exact_join(
+            HeroDecision::Act(HeroIntent::Join(JoinIntent {
+                tournament: address(2),
+                commitment: expected.commitment,
+            })),
+            expected
+        ));
+        assert!(!is_exact_join(
+            HeroDecision::Act(HeroIntent::Join(JoinIntent {
+                tournament: expected.tournament,
+                commitment: digest(2),
+            })),
+            expected
+        ));
     }
 
     #[tokio::test]

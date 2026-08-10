@@ -1,17 +1,14 @@
-//! Tournament integration boundary: a structural event fold, pinned semantic
-//! observations, wire-independent domain values, and the transaction sender
-//! used by the Hero executor.
+//! Tournament integration boundary: an event-derived dispute tree, narrow
+//! pinned point reads, wire-independent domain values, and the transaction
+//! sender used by the Hero executor.
 
-mod types;
-pub use types::*;
-
-pub mod adapter;
+pub mod dispute;
 pub mod domain;
+pub mod observer;
+pub use domain::MatchID;
 
 mod reader;
 pub use reader::*;
 
 mod sender;
 pub use sender::*;
-
-pub mod fold;

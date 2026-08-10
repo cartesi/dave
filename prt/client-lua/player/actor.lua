@@ -160,7 +160,8 @@ end
 local function dispatch_one_gc(actor, dispute)
     local intents = actor.plan_gc(
         dispute.fold,
-        dispute.observations
+        dispute.observations,
+        dispute.head.number
     )
     local intent = intents[1]
     if intent then

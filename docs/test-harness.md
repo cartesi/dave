@@ -28,11 +28,11 @@ just rollups-tests::test <program> <script>
   `TEST_INSTANCE=<id>`, the state and log become `_state-<id>/` and
   `dave-<id>.log`.
 - Dishonest players (sybils) drive the Lua semantic actor
-  (`prt/client-lua/player/actor.lua`) as a coroutine. Its independent fold,
-  strict observer adapter, domain context, pure planner, fulfiller, and
-  dispatcher mirror the Rust client's protocol boundaries without sharing
-  expected values. A `PatchedCommitmentBuilder` corrupts chosen leaf hashes at
-  chosen levels (`prt/tests/common/runners/`). The sybils play the protocol
+  (`prt/client-lua/player/actor.lua`) as a coroutine. Its independent
+  structural fold, strict ABI decoding boundary, domain context, pure planner,
+  fulfiller, and dispatcher exercise the same protocol decisions without
+  sharing expected values. A `PatchedCommitmentBuilder` corrupts chosen leaf
+  hashes at chosen levels (`prt/tests/common/runners/`). The sybils play the protocol
   perfectly while defending a wrong commitment - the strongest polite
   adversary. The honest Lua fulfiller rejects a machine post-state that differs
   from its claim by default. Only the sybil runner enables the explicit
@@ -185,9 +185,7 @@ Test cases (`prt/tests/rollups/test_cases/`):
 - `multi_sybil`: the permissionless shape (node-audit.md findings
   2/6/7) - honest plus three sybils, two matches live at once, two
   active sybils (one pairing may be sybil-vs-sybil), one silent sybil
-  whose match dies by a real on-chain timeout. Doubles as the
-  recording source for the concurrent-match/timeout fold fixture
-  (RECORD_CHAIN_FIXTURE, tournament_fold.rs).
+  whose match dies by a real on-chain timeout.
 - `kill_join`: SIGKILL at the hero's join decision (see the marker
   contract above).
 - `sealed_leaf_timeout_winner` / `sealed_leaf_timeout_both`: construct
@@ -320,13 +318,20 @@ construction: one input total).
 
 Known blind spots, by layer:
 
-- (closed 2026-07-24) The tournament reader now has focused tests for durable
-  finalized-prefix plus disposable number-range tail assembly, global log
-  ordering, dynamic child discovery, finalized-boundary validation, watermark
-  discipline, persistence despite latest sampling, live-tail fetch, or semantic
-  failures, and semantic reads pinned to a sampled hash without requiring
-  canonicality.
-  Recorded folds still cover `echo_simple`, `multilevel_stf`, and `multi_sybil`
+- (current 2026-08-09) The Rust tournament reader's focused suite covers the
+  recursively owned `Dispute`, block-grouped local transitions, dynamic child
+  discovery and descriptor enrichment, strict event decoding, finalized Solid
+  plus disposable Foam, and the one-way narrow observer boundary. The retired
+  Campaign 1 chain-recording oracle encoded the old event ABI and was removed
+  with the legacy Rust fold; current event parity belongs to the Solidity, Lua,
+  recursive-reader, and end-to-end suites.
+- (Campaign 1, closed 2026-07-24) The tournament reader had focused tests for
+  durable finalized-prefix plus disposable number-range tail assembly, global
+  log ordering, dynamic child discovery, finalized-boundary validation,
+  watermark discipline, persistence despite latest sampling, live-tail fetch,
+  or semantic failures, and semantic reads pinned to a sampled hash without
+  requiring canonicality.
+  Recorded folds covered `echo_simple`, `multilevel_stf`, and `multi_sybil`
   (concurrent matches plus a real timeout deletion).
 - (closed 2026-07-24) Hero policy, context assembly, fulfillment, dispatch, and
   GC are separate unit surfaces. Table-driven planner tests cover terminal,
@@ -334,10 +339,10 @@ Known blind spots, by layer:
   proof/opening preparation; the recording sender proves that each prepared
   variant invokes exactly one mutation. E2e remains the outer net that checks
   the contracts agree with those choices.
-- (closed 2026-07-24) The Lua sybil path uses the same semantic observer
-  boundary as the Rust node through an independent implementation. Its
-  provider-free suite covers domain invariants, the structural fold, strict
-  ABI adaptation, exact-head reading, context assembly, pure Hero and GC
+- (Campaign 1, closed 2026-07-24) The Lua sybil path used the same semantic
+  observation boundary as the Rust node through an independent implementation.
+  Its provider-free suite covered domain invariants, the structural fold,
+  strict ABI adaptation, exact-head reading, context assembly, pure Hero and GC
   planning, fulfillment, and one-action dispatch. The focused `gc_match`,
   `gc_tournament`, and `multi_sybil` scenarios are the cross-process evidence
   for match cleanup, recursive cleanup, and concurrent live matches.
@@ -365,11 +370,11 @@ Known blind spots, by layer:
   `computation/machine.lua`; test/programs/.gitignore keeps the old
   litter pattern shielded as a belt-and-suspenders.)
 
-Direction as the rewrite proceeds: shift correctness weight down the
-pyramid - fold-from-recordings instead of anvil where possible,
-spec.rs-style oracles for each new authority (Position, ruler), and
-characterization before each move. E2e remains the outer net, not the
-primary one.
+Direction after the recursive-reader rewrite: keep correctness weight down the
+pyramid. Prefer pure `Dispute` transition tests, strict observer DTO tests, and
+compact provider recordings for recursive block loads before reaching for
+anvil. Keep spec-style oracles for each new authority and characterize behavior
+before each move. E2e remains the outer net, not the primary one.
 
 ## Suite economics
 

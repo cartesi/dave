@@ -6,6 +6,7 @@ local Test = require "tests.testlib"
 local E = Fold.Event
 local LEAF = Domain.TournamentKind.LEAF
 local NON_LEAF = Domain.TournamentKind.NON_LEAF
+local CURRENT_BLOCK = 20
 
 local function match_hash(match_id)
     return match_id.commitment_one .. ":" .. match_id.commitment_two
@@ -22,9 +23,13 @@ local function build_fold()
         event("root", 2, E.commitment_joined("b", "b-final")),
         event("root", 3, E.commitment_joined("c", "c-final")),
         event("root", 4, E.commitment_joined("d", "d-final")),
-        event("root", 5, E.match_created("a", "b", "left", "a:b")),
+        event("root", 5, E.match_created(
+            "a", "b", "left", "a:b", CURRENT_BLOCK
+        )),
         event("root", 6, E.new_inner_tournament("a:b", "child")),
-        event("root", 7, E.match_created("c", "d", "left", "c:d")),
+        event("root", 7, E.match_created(
+            "c", "d", "left", "c:d", CURRENT_BLOCK
+        )),
     }
     return fold:apply_all(script)
 end
@@ -64,21 +69,14 @@ local function bisecting(base_cycle)
     }
 end
 
-local function ready_leaf()
-    return Domain.ready_to_seal_leaf {
-        revealing_parent = "revealing",
-        waiting_children = Domain.waiting_children("left", "right"),
-        coordinate = coordinate(0),
-        responder = Domain.MatchSide.TWO,
-    }
-end
-
 local function single_match_fold()
     local fold = Fold.new("root", { match_id_hash = match_hash })
     fold:apply_all {
         event("root", 1, E.commitment_joined("a", "a-final")),
         event("root", 2, E.commitment_joined("b", "b-final")),
-        event("root", 3, E.match_created("a", "b", "left", "a:b")),
+        event("root", 3, E.match_created(
+            "a", "b", "left", "a:b", CURRENT_BLOCK
+        )),
     }
     return fold
 end
@@ -135,8 +133,12 @@ return {
             event("root", 2, E.commitment_joined("b", "b-final")),
             event("root", 3, E.commitment_joined("c", "c-final")),
             event("root", 4, E.commitment_joined("d", "d-final")),
-            event("root", 5, E.match_created("a", "b", "left", "a:b")),
-            event("root", 6, E.match_created("c", "d", "left", "c:d")),
+            event("root", 5, E.match_created(
+                "a", "b", "left", "a:b", CURRENT_BLOCK
+            )),
+            event("root", 6, E.match_created(
+                "c", "d", "left", "c:d", CURRENT_BLOCK
+            )),
         }
         local eliminate = function(id_hash, one, two)
             return Domain.observed_match(
@@ -155,7 +157,7 @@ return {
             }),
         }
 
-        local intents = GcPlanner.plan(fold, values)
+        local intents = GcPlanner.plan(fold, values, CURRENT_BLOCK)
         Test.equal(#intents, 2)
         Test.equal(intents[1].match_id.commitment_one, "a")
         Test.equal(intents[1].match_id.commitment_two, "b")
@@ -167,7 +169,8 @@ return {
         local fold = build_fold()
         local intents = GcPlanner.plan(
             fold,
-            observations(Domain.inner_eliminable_no_candidate())
+            observations(Domain.inner_eliminable_no_candidate()),
+            CURRENT_BLOCK
         )
         Test.equal(#intents, 2)
         Test.equal(intents[1]._tag, Domain.GcIntent.ELIMINATE_CHILD)
@@ -184,7 +187,9 @@ return {
         fold:apply_all {
             event("child", 8, E.commitment_joined("e", "e-final")),
             event("child", 9, E.commitment_joined("f", "f-final")),
-            event("child", 10, E.match_created("e", "f", "left", "e:f")),
+            event("child", 10, E.match_created(
+                "e", "f", "left", "e:f", CURRENT_BLOCK
+            )),
         }
 
         local values = observations(
@@ -209,7 +214,7 @@ return {
             }
         )
 
-        local intents = GcPlanner.plan(fold, values)
+        local intents = GcPlanner.plan(fold, values, CURRENT_BLOCK)
         Test.equal(#intents, 2)
         Test.equal(intents[1]._tag, Domain.GcIntent.ELIMINATE_MATCH)
         Test.equal(intents[1].tournament, "child")
@@ -224,12 +229,18 @@ return {
             event("root", 2, E.commitment_joined("b", "b-final")),
             event("root", 3, E.commitment_joined("c", "c-final")),
             event("root", 4, E.commitment_joined("d", "d-final")),
-            event("root", 5, E.match_created("c", "d", "left", "c:d")),
-            event("root", 6, E.match_created("a", "b", "left", "a:b")),
+            event("root", 5, E.match_created(
+                "c", "d", "left", "c:d", CURRENT_BLOCK
+            )),
+            event("root", 6, E.match_created(
+                "a", "b", "left", "a:b", CURRENT_BLOCK
+            )),
             event("root", 7, E.new_inner_tournament("a:b", "child")),
             event("child", 8, E.commitment_joined("e", "e-final")),
             event("child", 9, E.commitment_joined("f", "f-final")),
-            event("child", 10, E.match_created("e", "f", "left", "e:f")),
+            event("child", 10, E.match_created(
+                "e", "f", "left", "e:f", CURRENT_BLOCK
+            )),
         }
 
         local root = Domain.tournament_observation(
@@ -272,7 +283,7 @@ return {
         local intents = GcPlanner.plan(fold, {
             root = root,
             child = child,
-        })
+        }, CURRENT_BLOCK)
         Test.equal(#intents, 2)
         Test.equal(intents[1].tournament, "child")
         Test.equal(intents[1].match_id.commitment_one, "e")
@@ -291,7 +302,8 @@ return {
             fold,
             observations(
                 Domain.inner_eliminable_winner_expired("expired")
-            )
+            ),
+            CURRENT_BLOCK
         )
         Test.equal(#intents, 2)
         Test.equal(intents[1]._tag, Domain.GcIntent.ELIMINATE_CHILD)
@@ -307,7 +319,8 @@ return {
         for _, standing in ipairs(standings) do
             local intents = GcPlanner.plan(
                 build_fold(),
-                observations(standing)
+                observations(standing),
+                CURRENT_BLOCK
             )
             Test.equal(#intents, 1)
             Test.equal(
@@ -319,82 +332,41 @@ return {
         end
     end),
 
-    Test.case("GC ignores non-eliminable timeout dispositions", function()
+    Test.case("GC match cleanup is due exactly at the event schedule", function()
         local fold = single_match_fold()
-        local responder_two = Domain.bisecting {
-            revealing_parent = "revealing",
-            waiting_children = Domain.waiting_children("left", "right"),
-            coordinate = coordinate(0),
-            remaining_height = 3,
-            responder = Domain.MatchSide.TWO,
-        }
-        local lives = {
-            Domain.live(bisecting(), Domain.timeout_none()),
-            Domain.live(responder_two, Domain.timeout_one_wins(3)),
-            Domain.live(bisecting(), Domain.timeout_two_wins(3)),
-        }
-        for _, live in ipairs(lives) do
-            local values = {
-                root = active_observation("root", 0, LEAF, {
-                    Domain.observed_match(
-                        "a:b",
-                        Domain.match_id("a", "b"),
-                        live
-                    ),
-                }),
-            }
-            Test.equal(#GcPlanner.plan(fold, values), 0)
-        end
+        Test.equal(#GcPlanner.plan(fold, {}, CURRENT_BLOCK - 1), 0)
+
+        local intents = GcPlanner.plan(fold, {}, CURRENT_BLOCK)
+        Test.equal(#intents, 1)
+        Test.equal(intents[1]._tag, Domain.GcIntent.ELIMINATE_MATCH)
+        Test.equal(intents[1].match_id.commitment_one, "a")
+        Test.equal(intents[1].match_id.commitment_two, "b")
     end),
 
-    Test.case("GC cleans ready and sealed EliminateBoth matches", function()
+    Test.case("GC follows the schedule overwritten at leaf seal", function()
         local fold = single_match_fold()
-        local lives = {
-            Domain.live(
-                ready_leaf(),
-                Domain.timeout_eliminate_both()
-            ),
-            Domain.live(
-                Domain.sealed_leaf(divergence()),
-                Domain.timeout_eliminate_both()
-            ),
-        }
-        for _, live in ipairs(lives) do
-            local values = {
-                root = active_observation("root", 0, LEAF, {
-                    Domain.observed_match(
-                        "a:b",
-                        Domain.match_id("a", "b"),
-                        live
-                    ),
-                }),
-            }
-            local intents = GcPlanner.plan(fold, values)
-            Test.equal(#intents, 1)
-            Test.equal(
-                intents[1]._tag,
-                Domain.GcIntent.ELIMINATE_MATCH
-            )
-            Test.equal(intents[1].tournament, "root")
-            Test.equal(intents[1].match_id.commitment_one, "a")
-            Test.equal(intents[1].match_id.commitment_two, "b")
-        end
+        fold:apply(event(
+            "root",
+            4,
+            E.leaf_match_sealed("a:b", CURRENT_BLOCK + 5)
+        ))
+
+        Test.equal(#GcPlanner.plan(fold, {}, CURRENT_BLOCK), 0)
+        Test.equal(#GcPlanner.plan(fold, {}, CURRENT_BLOCK + 5), 1)
     end),
 
-    Test.case("GC fails closed on incomplete semantic observations", function()
+    Test.case("GC requires observations only for child standings", function()
         local fold = build_fold()
         local values = observations(
             Domain.inner_eliminable_no_candidate()
         )
         values.child = nil
         Test.error_like("missing its semantic observation", function()
-            GcPlanner.plan(fold, values)
+            GcPlanner.plan(fold, values, CURRENT_BLOCK)
         end)
 
         values = observations(Domain.inner_eliminable_no_candidate())
-        values.root.matches["c:d"] = nil
-        Test.error_like("missing its semantic observation", function()
-            GcPlanner.plan(fold, values)
-        end)
+        values.root = nil
+        Test.equal(#GcPlanner.plan(fold, values, CURRENT_BLOCK), 2)
     end),
 }

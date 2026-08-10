@@ -108,6 +108,7 @@ contract SmallSingleLevelTournamentTest is Test {
         );
         assertEq(tournament.getCommitmentJoinedCount(), 1);
         assertEq(tournament.getMatchCreatedCount(), 0);
+        assertEq(tournament.getLeafMatchSealedCount(), 0);
 
         _join(tournament, two, CLAIMER_TWO, bond);
         (dangling, activeMatches, mostRecentDeletion) =
@@ -135,6 +136,7 @@ contract SmallSingleLevelTournamentTest is Test {
         assertEq(tournament.getCommitmentJoinedCount(), 2);
         assertEq(tournament.getMatchCreatedCount(), 1);
         assertEq(tournament.getMatchAdvancedCount(), 0);
+        assertEq(tournament.getLeafMatchSealedCount(), 0);
         assertEq(tournament.getMatchDeletedCount(), 0);
 
         bytes32 selected = bytes32(uint256(0xfeed));
@@ -174,7 +176,9 @@ contract SmallSingleLevelTournamentTest is Test {
         );
     }
 
-    function testMatchAdvancedEventMatchesStoredStateOnBothBranches() public {
+    function testMatchAdvancedEventSupersedesCreationScheduleOnBothBranches()
+        public
+    {
         _assertMatchAdvancedEvent(false);
         _assertMatchAdvancedEvent(true);
     }
@@ -191,6 +195,20 @@ contract SmallSingleLevelTournamentTest is Test {
         _join(tournament, one, CLAIMER_ONE, bond);
         _join(tournament, two, CLAIMER_TWO, bond);
 
+        Time.Instant createdEliminableAt = Time.Instant
+            .wrap(uint64(vm.getBlockNumber()))
+            .add(Time.Duration.wrap(MAX_ALLOWANCE))
+            .add(Time.Duration.wrap(MAX_ALLOWANCE));
+        vm.roll(vm.getBlockNumber() + RESPONSE_BUDGET + 2);
+        Time.Instant advancedEliminableAt = Time.Instant
+            .wrap(uint64(vm.getBlockNumber()))
+            .add(Time.Duration.wrap(MAX_ALLOWANCE))
+            .add(Time.Duration.wrap(MAX_ALLOWANCE - 2));
+        assertNotEq(
+            Time.Instant.unwrap(createdEliminableAt),
+            Time.Instant.unwrap(advancedEliminableAt)
+        );
+
         Match.Id memory id = Match.Id(one.root(), two.root());
         (Tree.Node oneLeft, Tree.Node oneRight) = one.children(HEIGHT, 0);
         (Tree.Node twoLeft, Tree.Node twoRight) = two.children(HEIGHT, 0);
@@ -201,7 +219,7 @@ contract SmallSingleLevelTournamentTest is Test {
 
         vm.expectEmit(true, false, false, true, address(tournament));
         emit ITournament.MatchAdvanced(
-            id.hashFromId(), expectedOtherParent, newLeft
+            id.hashFromId(), expectedOtherParent, newLeft, advancedEliminableAt
         );
         tournament.advanceMatch(id, oneLeft, oneRight, newLeft, newRight);
 
@@ -216,6 +234,59 @@ contract SmallSingleLevelTournamentTest is Test {
         assertTrue(state.leftNode.eq(newLeft));
         assertTrue(state.rightNode.eq(newRight));
         assertEq(tournament.getMatchAdvancedCount(), 1);
+    }
+
+    function testLeafSealEmitsScheduleAndIncrementsCounter() public {
+        InspectableTournament tournament = InspectableTournament(
+            address(
+                FACTORY.instantiate(INITIAL_STATE, IDataProvider(address(0)))
+            )
+        );
+        (SmallFullTree.Data memory one, SmallFullTree.Data memory two) =
+            _eventTrees(false);
+        uint256 bond = tournament.bondValue();
+        _join(tournament, one, CLAIMER_ONE, bond);
+        _join(tournament, two, CLAIMER_TWO, bond);
+        assertEq(tournament.getLeafMatchSealedCount(), 0);
+
+        vm.roll(vm.getBlockNumber() + RESPONSE_BUDGET + 2);
+        Match.Id memory id = Match.Id(one.root(), two.root());
+
+        (Tree.Node oneLeft, Tree.Node oneRight) = one.children(HEIGHT, 0);
+        (Tree.Node oneNextLeft, Tree.Node oneNextRight) =
+            one.children(HEIGHT - 1, 0);
+        tournament.advanceMatch(
+            id, oneLeft, oneRight, oneNextLeft, oneNextRight
+        );
+
+        (Tree.Node twoLeft, Tree.Node twoRight) = two.children(HEIGHT - 1, 0);
+        (Tree.Node twoNextLeft, Tree.Node twoNextRight) =
+            two.children(HEIGHT - 2, 0);
+        tournament.advanceMatch(
+            id, twoLeft, twoRight, twoNextLeft, twoNextRight
+        );
+
+        Time.Instant expectedEliminableAt = Time.Instant
+            .wrap(uint64(vm.getBlockNumber()))
+            .add(Time.Duration.wrap(MAX_ALLOWANCE));
+        (Tree.Node leftLeaf, Tree.Node rightLeaf) = one.children(HEIGHT - 2, 0);
+        vm.expectEmit(true, false, false, true, address(tournament));
+        emit ITournament.LeafMatchSealed(id.hashFromId(), expectedEliminableAt);
+        tournament.sealLeafMatch(
+            id, leftLeaf, rightLeaf, INITIAL_STATE, new bytes32[](0)
+        );
+
+        assertEq(tournament.getLeafMatchSealedCount(), 1);
+        (Clock.State memory clockOne,) = tournament.getCommitment(one.root());
+        (Clock.State memory clockTwo,) = tournament.getCommitment(two.root());
+        assertEq(
+            Time.Instant.unwrap(clockOne.startInstant), vm.getBlockNumber()
+        );
+        assertEq(
+            Time.Instant.unwrap(clockTwo.startInstant), vm.getBlockNumber()
+        );
+        assertEq(Time.Duration.unwrap(clockTwo.allowance), MAX_ALLOWANCE);
+        assertEq(Time.Duration.unwrap(clockOne.allowance), MAX_ALLOWANCE - 2);
     }
 
     function _eventTrees(bool rightHalfDiffers)
