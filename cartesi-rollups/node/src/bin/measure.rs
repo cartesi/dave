@@ -1,10 +1,10 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The measurement harness (docs/plans/node-refactor.md, workstream 1):
-//! times the operations dispute deadlines depend on and regenerates
-//! docs/measurements/measurements.md. Run through `just measure`; committing a
-//! regenerated table is a reviewed act, fixtures-style.
+//! The measurement harness times operations that must fit within dispute
+//! deadlines. It regenerates docs/measurements/measurements.md. Run through
+//! `just measure`; committing a regenerated table is a reviewed act,
+//! fixtures-style.
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
@@ -77,8 +77,7 @@ struct Args {
     #[arg(long)]
     full: bool,
 
-    /// Derive tournament level constants (workstream 8 of
-    /// docs/plans/node-refactor.md) instead of the baseline report.
+    /// Derive tournament level constants instead of the baseline report.
     /// Needs a compute-heavy workload (the stress image).
     #[arg(long)]
     constants: bool,
@@ -230,7 +229,7 @@ fn bench_snapshot(report: &mut String, image: &Path, scratch_root: &Path) -> Res
     Ok(())
 }
 
-/// The CoW clone loop (docs/plans/snapshots.md): the per-input cost
+/// The CoW clone loop: the per-input cost
 /// of clone -> load SHARING_ALL -> advance -> root_hash -> destroy,
 /// the physical cost of each kept boundary, and the mapping-mode A/B
 /// for the hash-hot sampling loop. Boundary cost is a free-space
@@ -247,7 +246,7 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     let boundary = |k: u64| chain_root.join(format!("boundary-{k}"));
     let (_, template_clone) = timed(|| Ok(Machine::clone_stored(image, &boundary(0))?))?;
 
-    writeln!(report, "## The clone loop (docs/plans/snapshots.md)")?;
+    writeln!(report, "## The boundary clone loop")?;
     writeln!(report)?;
     writeln!(
         report,
@@ -642,9 +641,8 @@ fn fmt_duration(d: Duration) -> String {
 }
 
 //
-// The constants pipeline (--constants): workstream 8 of
-// docs/plans/node-refactor.md. prt/measure_constants remains a
-// complementary emulator-level harness. Measurement invariants
+// prt/measure_constants remains a complementary emulator-level
+// harness. Measurement invariants
 // (docs/dimensioning.md): halt AND yield guarded on every timed
 // region, steady-state input-fed sampling instead of boot,
 // conservative floor rounding instead of floor+1.
@@ -1005,8 +1003,8 @@ fn constants_report(
          ArbitrationConstants.sol (LEVELS, log2step, height);\n\
          rollups_machine::LOG2_STRIDE (= log2step(0));\n\
          docs/computation-hash.md's level table; harness fixtures.\n\
-         Also wanted: a small test-shape profile so e2e disputes run in\n\
-         seconds (node-refactor.md, workstream 8)."
+         A small test-shape profile would also let e2e disputes run in\n\
+         seconds."
     )?;
     writeln!(report)?;
     writeln!(report, "## Caveats")?;

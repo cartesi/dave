@@ -2302,5 +2302,6 @@ The corrected policy is phase-aware:
 `testSacrificialLeafCannotAmplifyCensorshipIntoDanglingWinner` retain the
 contract-level regressions. The independent pair-clock oracle, stateful
 lifecycle model, recursive lifecycle, and bounded scheduler were updated to the
-same phase table. Off-chain Rust and Lua alignment is tracked separately in
-[`prt-timeout-alignment.md`](../../plans/prt-timeout-alignment.md).
+same phase table. At this revision, off-chain Rust and Lua alignment remained a
+separate client-integration concern; current coverage is maintained in
+[`test-harness.md`](../../test-harness.md).

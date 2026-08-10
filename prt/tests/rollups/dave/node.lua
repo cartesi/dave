@@ -174,9 +174,9 @@ end
 -- The node's claim for a rolled epoch: the settlement row's
 -- computation hash - the same value it defends in the tournament -
 -- plus the epoch's initial machine state. The node persists no
--- unfolded leaf runs anymore (the one-engine redraw: its level-0
--- artifact is one window-root row per input), so the harness reads
--- the claim itself; the oracle computes its own commitment
+-- unfolded leaf runs anymore; its only level-0 artifact is one
+-- window-root row per input. The harness therefore reads the claim
+-- itself; the oracle computes its own commitment
 -- independently and test_env cross-checks the two. The row appears
 -- when the epoch rolls, which is the barrier.
 local SETTLEMENT_ROOT_QUERY = SQLITE_DB .. [[ \

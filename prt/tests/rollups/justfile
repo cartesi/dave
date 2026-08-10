@@ -62,12 +62,10 @@ test PROGRAM SCRIPT: (preflight PROGRAM SCRIPT)
 test-echo: \
         (test "echo" "simple")
 
-# B1 chaos: dispute under SIGKILL/respawn fire; reproduce a run with CHAOS_SEED=<seed>
+# dispute under SIGKILL/respawn fire; reproduce a run with CHAOS_SEED=<seed>
 test-chaos: \
         (test "echo" "chaos")
 
-# B2-B5 in characterization.md, plus the batched-advance sibling of
-# B2 and the join-point kill.
 # run the targeted crash scenarios (SIGKILL at protocol points)
 test-kill-all: \
         (test "echo" "kill_catchup") \
@@ -77,12 +75,11 @@ test-kill-all: \
         (test "echo" "kill_mid_match") \
         (test "echo" "kill_join")
 
-# Motivated by node-audit.md findings 2/6/7.
 # multi-match scenario: four commitments, two concurrent matches, a real timeout elimination
 test-multi-sybil: \
         (test "echo" "multi_sybil")
 
-# exact sealed-leaf clock-boundary scenarios (retained by docs/plans/prt-timeout-alignment.md)
+# exact sealed-leaf clock-boundary scenarios
 test-sealed-leaf-timeouts: \
         (test "echo" "sealed_leaf_timeout_winner") \
         (test "echo" "sealed_leaf_timeout_both")

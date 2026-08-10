@@ -21,15 +21,15 @@ The dispute engine (formerly the `cartesi-prt-core` crate):
   cache and the ruler (`cache`, `ruler` - `Ruler::prove_transition`
   generates on-chain step proofs), and the dispute source serving every
   tree query a dispute needs (`dispute`). Read
-  `docs/computation-hash.md` first; this is the arcane part. Design
-  provenance: `docs/plans/sling-design.md` (frozen).
+  `docs/computation-hash.md` first; this is the arcane part.
 - `hero/` - the honest player: per tick it observes, plans, and
-  dispatches at most one dispute action - join, bisect, seal, prove,
-  win by timeout - and proposes bond-freeing cleanup (`gc_planner`).
-- `tournament/` - the semantic chain interface: `reader` and `fold`
-  (one finalized-prefix observation of the tournament tree), `domain`
-  and `adapter` (the typed semantic boundary), `sender` (transaction
-  dispatch).
+  dispatches either one dispute action - join, bisect, seal, prove, or
+  win by timeout - or one bond-freeing cleanup (`gc_planner`).
+- `tournament/` - the semantic chain interface: `dispute` owns the recursive,
+  event-derived tournament tree; `domain` defines wire-independent values;
+  `observer` performs the narrow pinned point reads; `reader` maintains the
+  finalized Solid prefix and builds a disposable Latest Foam; and `sender`
+  prepares contract mutation requests.
 - `merkle/` - the tree builders shared by commitment construction.
 
 The Rust node is the reference implementation. The Lua client
@@ -56,8 +56,12 @@ Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
 Reads use `--web3-rpc-url`. Raw signed transactions use
 `--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
 name a private relay with revert protection. The signer must be exclusive to
-one node process because the node owns its nonce sequence: each tick submits
-a batch of consecutive nonces from the mined count.
+one node process because the node owns its nonce sequence. Production submits
+at most one mutation per tick - a settlement step, a Hero action, one cleanup,
+or bond recovery - through the single serial transaction lane. With the
+default `GAS_LIMIT=15_000_000`, a pool may require balance for that full limit
+at the transaction's max fee, plus any join bond or other call value.
+
 Here are its arguments:
 
 ```

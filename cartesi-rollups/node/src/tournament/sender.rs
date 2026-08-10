@@ -1,7 +1,6 @@
 //! Arena request builders: each dispute verb yields a labeled, fully
 //! specified transaction request for the transaction lane. Building is
-//! pure; submission belongs to the epoch manager's wave
-//! (docs/plans/self-healing-batch-submission.md).
+//! pure; submission belongs to the epoch manager's transaction lane.
 
 use crate::hero::error::Result;
 use alloy::{

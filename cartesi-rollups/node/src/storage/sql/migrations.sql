@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS sling_nodes (
     PRIMARY KEY (epoch, log2_stride, height, shift)
 ) WITHOUT ROWID;
 
--- The dispute event log (workstream 5, phase 2): raw chain logs of
+-- The dispute event log: raw chain logs of
 -- every tournament the dispute discovered, persisted once FINALIZED,
 -- keyed for replay in chain order (block, then log index). The tail
 -- past the watermark is never stored - it is scratch, refetched each
@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS tournament_events_watermark (
     finalized_block INTEGER NOT NULL
 ) WITHOUT ROWID;
 
--- The invariant layer (docs/plans/node-refactor.md, workstream 3).
+-- The invariant layer.
 --
 -- Every write belongs to one of four classes: append-only log,
 -- write-once cell (equal rewrites absorbed, disagreements fatal),

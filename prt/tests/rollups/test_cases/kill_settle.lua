@@ -3,11 +3,11 @@ require "setup_path"
 local env = require "test_env"
 local time = require "utils.time"
 
--- B5 settle kill (docs/plans/characterization.md): SIGKILL the node
--- the moment it announces a settle transaction, respawn, and require
--- settlement to complete exactly once - whether the transaction
--- escaped before the kill (the respawned node must tolerate the
--- already-settled epoch) or not (it must retry). No sybil needed.
+-- SIGKILL the node the moment it announces a settle transaction,
+-- respawn, and require settlement to complete exactly once - whether
+-- the transaction escaped before the kill (the respawned node must
+-- tolerate the already-settled epoch) or not (it must retry). No
+-- sybil needed.
 
 -- Main Execution
 env.spawn_blockchain { env.sample_inputs[1] }

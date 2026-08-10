@@ -3,10 +3,9 @@ require "setup_path"
 local Hash = require "cryptography.hash"
 local env = require "test_env"
 
--- B4 mid-match kill (docs/plans/characterization.md): SIGKILL the node
--- right after it advances a match, keep it down while the sybil plays
--- on (ten sybil reactions of downtime, the honest clock ticking), then
--- respawn. The dispute must still be won and settle.
+-- SIGKILL the node right after it advances a match, keep it down while
+-- the sybil plays on (ten sybil reactions of downtime, the honest clock
+-- ticking), then respawn. The dispute must still be won and settle.
 
 -- Main Execution
 env.spawn_blockchain { env.sample_inputs[1] }

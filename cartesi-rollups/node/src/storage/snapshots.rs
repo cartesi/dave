@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 //! The boundary store: the one component every machine store, load,
-//! and clean in the node goes through (docs/plans/snapshots.md).
+//! and clean in the node goes through.
 //!
 //! Identity is the input boundary - "the machine before input k",
 //! yielded with a pristine uarch - because the window-opening
@@ -513,7 +513,7 @@ pub(super) fn insert_template_machine_in(tx: &Transaction, state_hash: &Hash) ->
 /// Garbage-collects the epoch's intermediate boundaries, keeping the
 /// epoch start, the anchor (the latest), and every snapshot_gap-th
 /// input boundary - the preemptive material dispute replays resume
-/// from (docs/plans/sling-design.md, increment D). A gap of 1 keeps
+/// from. A gap of 1 keeps
 /// everything. Returns the directories orphaned by the sweep; the
 /// caller removes them after the transaction commits.
 pub(super) fn gc_previous_advances_in(

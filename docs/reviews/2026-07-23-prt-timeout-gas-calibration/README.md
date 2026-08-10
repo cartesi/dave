@@ -179,5 +179,6 @@ to the preceding candidate. Deployment artifacts and derived CREATE2 addresses
 were not regenerated in this pass; they must be regenerated from the final
 rebased production tree before release.
 
-The Rust and Lua timeout strategies and end-to-end timeout scenarios remain
-owned by [`prt-timeout-alignment.md`](../../plans/prt-timeout-alignment.md).
+At this revision, the Rust and Lua timeout strategies and end-to-end scenarios
+were separate client-integration work. Their maintained coverage now lives in
+[`test-harness.md`](../../test-harness.md).

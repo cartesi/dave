@@ -123,8 +123,8 @@ fn descend(tree: Arc<MerkleTree>, depth: u64, index: U256) -> Arc<MerkleTree> {
     node
 }
 
-/// The frontier composition: the one thing level 0 keeps for itself
-/// (one-engine.md section 6, as amended). The open regime leaves a
+/// The frontier composition: the one thing level 0 keeps for itself.
+/// The open regime leaves a
 /// dense prefix of window-root rows; everything right of the
 /// frontier is the fixed point repeated. Nodes at or above window
 /// granularity have spans that cross the frontier, so neither rows

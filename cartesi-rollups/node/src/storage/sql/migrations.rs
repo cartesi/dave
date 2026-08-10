@@ -5,9 +5,8 @@ use rusqlite_migration::{M, Migrations};
 lazy_static! {
     pub static ref MIGRATIONS: Migrations<'static> = Migrations::new(vec![
         M::up(include_str!("migrations.sql")),
-        // One engine (one-engine.md section 6, amended): the runs
-        // table died - the window-root row is the runner's only
-        // level-0 artifact. v1's DDL no longer creates it, but a
+        // The runs table died: the window-root row is the runner's
+        // only level-0 artifact. v1's DDL no longer creates it, but a
         // store that ran the old v1 carries the table, its triggers,
         // and its never-GC'd rows forever (user_version gates by
         // number, not content); the explicit drop keeps every store

@@ -3,11 +3,11 @@ require "setup_path"
 local Hash = require "cryptography.hash"
 local env = require "test_env"
 
--- The join-point kill (node-audit.md finding 7): SIGKILL the node
--- right as it decides to join the tournament - the one lifecycle
--- moment no other kill scenario covers. The join transaction may or
--- may not have landed when the kill hits; the respawned node must
--- re-derive its claim from storage and end up joined exactly once
+-- SIGKILL the node right as it decides to join the tournament - the
+-- one lifecycle moment no other kill scenario covers. The join
+-- transaction may or may not have landed when the kill hits; the
+-- respawned node must re-derive its claim from storage and end up
+-- joined exactly once
 -- (a landed join absorbs, a lost one is resubmitted), then win the
 -- dispute as usual.
 

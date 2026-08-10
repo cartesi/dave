@@ -5,7 +5,7 @@
 //! plus the content-addressed snapshot store, behind domain
 //! operations that preserve the state invariants internally.
 //!
-//! Layout (docs/plans/node-refactor.md, workstream 3): `open` owns
+//! Layout: `open` owns
 //! the connection lifecycle and the transaction closure helpers;
 //! `ingest` is the blockchain reader's writer role, `advance` the
 //! machine runner's, `dispute` the hero's; `queries` is the

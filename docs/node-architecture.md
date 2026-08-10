@@ -1,10 +1,10 @@
 # Rollups node architecture
 
 The rollups node (`cartesi-rollups/node/`) is the single-crate implementation
-produced by the sling rewrite. This document records how it currently works and,
-just as importantly, an honest inventory of its remaining debts. Dated plans
-under `docs/plans/` preserve the rewrite history; they are not the current
-architecture specification.
+produced by the node rewrite. This document records how it currently works and,
+just as importantly, an honest inventory of its remaining debts. Completed
+campaign history belongs in Git and dated review evidence, not in the active
+plans directory.
 
 The core architecture is deliberate: a central SQLite database with independent
 worker threads that communicate and synchronize through its transaction
@@ -50,14 +50,13 @@ state_dir/
     engine/           engine machine work dirs
 ```
 
-The storage module follows the sequencer's shape (storage v2,
-docs/plans/node-refactor.md workstream 3): `open.rs` owns connections
+The storage module follows the sequencer's shape: `open.rs` owns connections
 (WAL, `foreign_keys=ON`, `synchronous=NORMAL`, busy timeout, a
 read-only opener) and the `read`/`write` closure helpers (Deferred vs
 Immediate); writer roles live in per-role files - `ingest.rs`
 (blockchain-reader), `advance.rs` (machine-runner), `dispute.rs`
 (player) - `snapshots.rs` is the boundary store (every machine
-store, load, and clean; docs/plans/snapshots.md), and `queries.rs`
+store, load, and clean), and `queries.rs`
 is the role-free read surface. Every public operation is one
 transaction closure. The advance path is batched and rides a chain
 of clones: the runner mutates a working clone of the latest
@@ -95,26 +94,23 @@ never dangle a row.
 
 One schema note to know about:
 
-- The sling dispute tables (`sling_config`, `sling_nodes`) live in the
-  main database since sling increment E; the quartet cache is the
-  dispute's restartable state, and the dispute `Hero` opens its own
+- The dispute tables (`sling_config`, `sling_nodes`) live in the main
+  database. The quartet cache is restartable state, and `Hero` opens its own
   connection to the same file (shared file, disjoint tables, private
   connections). The per-epoch directory holds only scratch: dispute-time
-  machine snapshots stored by root hash, and the sling machines' work
-  dirs. Hero construction materializes nothing: the facade
-  (`DisputeSource::on_store`) reads the input count, the window-root
-  quartet rows (prepaid by the machine runner as each window closes),
-  and the final boundary hash; below window granularity disputes
-  replay the machine like any nested level (no leaf runs are
-  persisted - one-engine.md section 6, amended). `gc_old_epochs`
-  deletes settled epochs' sling_nodes rows, window roots included.
+  machine snapshots stored by root hash and engine machine work directories.
+  Hero construction materializes nothing: `DisputeSource::on_store` reads the
+  input count, the window-root quartet rows prepaid by the machine runner, and
+  the final boundary hash. Below window granularity, disputes replay the
+  machine like any nested level; leaf runs are not persisted. `gc_old_epochs`
+  deletes settled epochs' `sling_nodes` rows, window roots included.
 
 ## Chain ingestion stance
 
 Epoch and input ingestion consumes logs only up to the chain's finalized block
 (`BlockNumberOrTag::Finalized`). Finality is trusted and those rows are never
-rolled back. Oversized `eth_getLogs` ranges are handled by recursive binary
-partition, triggered by provider-specific error codes passed in as
+rolled back. Oversized `eth_getLogs` ranges are handled by binary range
+partitioning, triggered by provider-specific error codes passed in as
 configuration (`--long-block-range-error-codes`).
 
 The deadline-sensitive tournament reader holds one recursive, event-derived
@@ -131,7 +127,7 @@ compared with the previous tick, or checked for ancestry against `H`. A reorg
 or mixed tail may reject the working tree, delay one action, or propose a stale
 mutation. Contract mutators revalidate every transition, and the next tick
 starts again from Solid. No unfinalized event becomes durable. Oversized ranges
-use the same recursive binary partition as other log ingestion.
+use the same binary range partitioning as other log ingestion.
 
 Events own tournament structure, commitment placement, match lifecycle, and
 the inclusive block at which a clock-bearing match can be eliminated. Point
@@ -146,6 +142,11 @@ its sealed projection. These reads are pinned to `H`. The observer narrows ABI
 values into domain types; it does not reconcile a second whole-tree projection
 against events. Transaction signing and submission remain strictly serial.
 
+The timeout classification and selected phase projection for one Hero match
+must agree at their pinned head; a contradiction rejects that observation
+rather than normalizing it. The empirical watch and diagnostic capture policy
+live in [test-harness.md](test-harness.md#known-blind-spots-by-layer).
+
 Joining is the one Hero decision that does not use Foam as its semantic source.
 The latest projection first acts as the negative and capability guard: if it
 already contains the local commitment or no longer permits a join, no join is
@@ -154,96 +155,84 @@ submits only if Solid independently proposes the same join. The commitment,
 opening proof, bond read, and target therefore come from finalized inputs and
 state; deadline-sensitive responses continue to use Foam.
 
+## Mutation scheduling and transaction submission
+
+The epoch manager directly owns the one non-cloneable transaction lane. Every
+tick submits at most one mutation: a Hero action, otherwise one cleanup action;
+one settlement step when the dispute is no longer contested; or one recovery
+action when all higher-priority work is absent. Recovery is sampled at most
+once for each newly observed finalized head. Nothing queues maintenance behind
+clock-bearing work.
+
+The lane is stateless. For every submission it reads the account's mined nonce
+at Latest, obtains a fresh EIP-1559 fee estimate, signs one fully specified
+request, and hands the raw transaction to the configured submission endpoint.
+It does not wait for a receipt. Already-known transactions, underpriced
+replacements, and stale nonces are ordinary retry states; every later tick
+rebuilds intent from fresh observation. The mempool or a separately configured
+revert-protecting endpoint arbitrates races and duplicates. The signer must be
+exclusive to one node instance.
+
 ## Known debts
 
 State and storage:
 
-1. (retired 2026-07-04, sling increment E; scratch GC closed
-   2026-07-11) Per-epoch dispute databases are gone; the sling schema
-   lives in the main database and the harness reads only
-   `_state/db.sqlite3`, still exclusively through
-   `prt/tests/rollups/dave/node.lua`. Settled epochs' scratch
-   directories are swept at every roll and at startup
-   (`sweep_settled_epoch_scratch`, the startup ritual's first step).
-2. (half retired 2026-07-08, storage v2) The `fs_delete_dir` trigger is
-   gone - GC returns orphaned paths and the runner removes them after
-   commit. Still open: a post-commit removal can in principle delete a
-   snapshot directory while another thread is loading it.
-3. (retired 2026-07-20, one-engine rewrite) The `inputs_and_leafs.json`
-   bootstrap side-channel and `DisputeStateAccess` are gone; Hero
-   construction reads everything from the main database through
-   `DisputeSource::on_store`.
-4. Snapshots are keyed by root hash but pruned by epoch bookkeeping;
+1. Snapshot garbage collection removes directories after the transaction that
+   unreferenced them commits. A concurrent reader can still begin loading one
+   in the interval before that post-commit removal.
+2. Snapshots are keyed by root hash but pruned by epoch bookkeeping;
    `stage_machine_store`'s exists() gate (`storage/snapshots.rs`) no-ops
    on hash collision across epochs, which couples correctness to GC
-   ordering. (The partial-store half of this debt is fixed: stores stage
-   and rename atomically, so the exists() gate can no longer adopt a
-   torn directory.)
+   ordering. Stores stage and rename atomically, so the gate cannot adopt a
+   torn directory.
+3. Finalized input and epoch ingestion accumulates the entire unprocessed
+   block range into in-memory vectors before one database transaction. Range
+   partitioning limits what each RPC request asks for, but not total backlog
+   memory or crash replay. A long cold-start backlog should eventually be
+   committed in bounded block or log chunks.
 
 Error handling and observability:
 
-5. Panics and asserts as control flow on hot paths: the settle-mismatch
+4. Panics and asserts remain on hot paths. The settle-mismatch
    assertions in `src/epoch_manager/mod.rs` deliberately stop on a
    consensus-critical local/on-chain disagreement. The semantic Hero path now
    returns observer, context, and fulfillment errors for ordinary invalid
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
-   (`MachineInstance` retired to test scaffolding at workstream 4; its
-   window-local cycle bookkeeping was fragile in the same spirit:
-   `advance_rollups`
-   used to poison it with `run(u64::MAX)`, crashing any commitment
-   build past window 0 (found by the increment-C differential and
-   fixed 2026-07-02; no e2e scenario had ever disputed past window 0,
-   which is the patch-position coverage gap in characterization.md.)
-6. Logging is unstructured and inconsistent between crates. (The
-   `print!("\r...")` progress output inside library code went away
-   with `machine/commitment.rs` at workstream 4.)
-7. (resolved 2026-07-11) Provider error codes were threaded as
-   `Vec<String>` through four layers of constructors; they now live
-   in the chain facade (`src/chain.rs`), built once per worker in
-   lib.rs.
+5. Logging is unstructured and inconsistent between crates.
+6. Every tournament and settlement request carries the configurable
+   `15_000_000` gas default. A pool may require balance for
+   `gas_limit * max_fee_per_gas + value`, not expected gas use; join value is
+   therefore additional to the fee envelope. Limiting production to one
+   request per tick removed cumulative wave funding, but a fee spike can still
+   reject an otherwise affordable action. Per-verb limits and a calibrated
+   operating funding floor remain pre-mainnet work.
+7. The lane does not observe receipts or mined revert reasons. Revert protection
+   at the submission endpoint may reject stale or racing transactions before
+   inclusion, but the node neither requires that service nor detects a
+   deterministic self-authored revert. Because reverted state remains
+   unchanged, the same intent may be rebuilt and paid for again each tick.
+   Preflight or repeated-intent escalation remains pre-mainnet work.
 
 Structure:
 
-8. (narrowed 2026-07-11; async_recursion itself removed 2026-07-24 with
-   the semantic interface) The three per-worker runtimes collapsed to
-   one, with the machine runner on the blocking lane. Remaining: the
-   Hero's dispute loop still runs async inside the epoch manager's
-   task and pins a runtime worker during machine work; moving it to
-   the blocking lane and de-asyncing the dispute path is the sync-core
-   phase of docs/plans/simplification.md.
+8. The reader uses async recursion for dynamic tournament discovery, and the
+   Hero's dispute loop runs inside the epoch manager task. Local machine and
+   proof preparation can therefore pin a runtime worker. Moving local dispute
+   work to the blocking lane remains open.
 9. `EpochManager.epoch_hero: (Option<Hero>, u64)` - anonymous
    tuple state machine; `Hero` construction takes a pile of positional
    arguments.
 10. Commented-out code blocks kept as reference (the test-scaffolding
     `instance.rs` snapshot logic) and disabled/empty tests.
-11. (retired 2026-07-20, one-engine rewrite) `get_events`'s recursive
-    binary partition became `logs_bisecting`'s iterative worklist
-    (`src/chain.rs`); there is no recursion depth left to bound.
-12. No graceful-shutdown story for in-flight work: a mid-epoch machine run
+11. No graceful-shutdown story for in-flight work: a mid-epoch machine run
     or mid-dispute reaction is only interrupted at the next poll.
-13. (resolved 2026-07-24; reshaped 2026-08-08) Hero actions, cleanup,
-    settlement, and bond recovery share one explicit stateless transaction
-    lane rather than a signer-bearing provider. The epoch manager owns the
-    non-cloneable lane directly, making it the one mutation submitter. Hero
-    and cleanup never share a nonce tail: a Hero tick emits at most one action,
-    using cleanup only when no Hero action was selected. One guarded settlement
-    step may precede an otherwise empty terminal tick. Bond recovery is
-    not a wave tail: it runs only when higher-priority work is absent, at
-    most once for a newly observed finalized head. Its tree and retirement
-    classification share that finalized snapshot; a latest read may suppress
-    an already-mined recovery but can never retire an epoch. Every send is
-    rebuilt from fresh observation and fees, while the mempool or block
-    builder arbitrates duplicates and replacements
-    (docs/plans/self-healing-batch-submission.md). Read and submit endpoints
-    remain independently configurable; the submit endpoint defaults to the
-    read endpoint. The signer must still be exclusive to one node instance.
 
-Documented design assumptions (fine, but should stay explicit):
+Design assumptions:
 
-14. Finalized-only persistence. The tournament reader additionally acts on a
+12. Finalized-only persistence. The tournament reader additionally acts on a
     disposable number-range tail and point views at one sampled hash. It does
     not prove the tail belongs to that hash's ancestry; stale work is safe
     because mutators revalidate it, and the next tick rebuilds the tail.
-15. One node instance per state dir; SQLite WAL is the only cross-thread
+13. One node instance per state dir; SQLite WAL is the only cross-thread
     coordination.

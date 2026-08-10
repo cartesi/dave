@@ -8,7 +8,6 @@ local env = require "test_env"
 local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local CommitmentBuilder = require "computation.commitment"
 
--- The audit's multi-match scenario (node-audit.md findings 2, 6, 7):
 -- Dave is permissionless, so a tournament can hold several live
 -- matches at once - a shape no other net exercises. Four commitments
 -- (honest + three sybils) form two concurrent matches; two sybils
@@ -156,8 +155,8 @@ print "Correct claim won against three sybils!"
 
 -- On its idle finalized cadence, the node recovers one bond plus a tenth of
 -- the forfeited sybil residuals. The other nine tenths burn, draining the root
--- tournament's balance to zero (docs/plans/bond-recovery-redesign.md). Inner
--- tournaments the node won drain through the same lane.
+-- tournament's balance to zero. Inner tournaments the node won drain
+-- through the same lane.
 local recovered = false
 for _ = 1, 120 do
     if env.reader:balance(second_epoch.tournament):iszero() then

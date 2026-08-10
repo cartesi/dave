@@ -22,17 +22,16 @@ use std::{
 
 /// SQLite `synchronous` pragma for every connection. NORMAL under WAL
 /// survives process crash but may lose the last commits on power
-/// loss. That is enough here (docs/plans/node-refactor.md): the node
-/// is replay-tolerant by design - every write is re-derivable from
-/// the chain and the machine - and it externalizes nothing keyed on a
-/// commit. Revisit if a commit ever gates an external effect.
+/// loss. That is enough here because the node is replay-tolerant by
+/// design: every write is re-derivable from the chain and the machine,
+/// and it externalizes nothing keyed on a commit. Revisit if a commit
+/// ever gates an external effect.
 const SYNCHRONOUS_PRAGMA: &str = "NORMAL";
 
 /// Snapshot boundaries kept per epoch beyond the start and the
-/// latest: every gap-th input. The disk-vs-replay knob for dispute
-/// positioning (docs/plans/sling-design.md, increment D); 1 keeps
-/// every boundary. Also the advance-batch size: one commit per gap
-/// worth of inputs (docs/plans/node-refactor.md, workstream 7).
+/// latest: every gap-th input. This is the disk-vs-replay knob for
+/// dispute positioning; 1 keeps every boundary. It is also the
+/// advance-batch size: one commit per gap worth of inputs.
 pub const DEFAULT_SNAPSHOT_GAP_INPUTS: u64 = 64;
 
 #[derive(Debug)]

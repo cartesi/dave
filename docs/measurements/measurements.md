@@ -32,7 +32,7 @@ Level-1 root replay skipped (run with --full).
 | resume from store | 3.9 ms |
 | stored size | 532.9 MB |
 
-## The clone loop (docs/plans/snapshots.md)
+## The boundary clone loop
 
 Chain of clones over echo inputs: clone the previous boundary,
 load SHARING_ALL, advance one input, root_hash (sidecars exact),

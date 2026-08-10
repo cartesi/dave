@@ -6,7 +6,7 @@
 // The prototype dialect (positioning by shift/mask, its own snapshot
 // bookkeeping): deliberately independent of the engine ruler, which is
 // exactly what makes it a differential oracle. Retired from
-// production by workstream 4; lives on here.
+// production; lives on here.
 pub mod epoch_data;
 pub mod instance;
 pub mod machine_error;

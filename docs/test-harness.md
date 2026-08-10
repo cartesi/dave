@@ -86,8 +86,7 @@ other side.
 ## Hardened primitives (2026-07-16)
 
 Operational traps that used to be folklore are now enforced by the
-harness itself (each was hard-earned; see node-audit.md finding 2's
-build notes for the discovery stories):
+harness itself. Each rule below closes a reproduced harness failure:
 
 - Every `drive_player_until` poll advances one block. Epoch discovery still
   progresses through finalized ingestion; once an epoch is discovered, its
@@ -114,8 +113,8 @@ build notes for the discovery stories):
 ## Node introspection seam
 
 The harness reads the node's internal state by shelling out to `sqlite3`
-against `_state/db.sqlite3` (the per-epoch dispute databases retired at
-sling increment E). All such queries are
+against `_state/db.sqlite3`; the node no longer has per-epoch dispute
+databases. All such queries are
 centralized in `prt/tests/rollups/dave/node.lua` (`root_commitment`,
 `machine_path`, `inputs`). If the node's schema changes, this one file is
 the blast radius - treat it as the interface and keep it thin.
@@ -162,15 +161,14 @@ Test cases (`prt/tests/rollups/test_cases/`):
 - `stf_revert`: the full revert restore, the one shape whose position
   must be computed from the oracle at runtime (matrix below).
 - `chaos`: the `simple` dispute with the node SIGKILLed and respawned
-  on a seeded random cadence throughout (B1 in characterization.md).
+  on a seeded random cadence throughout.
   Reproduce a run with `CHAOS_SEED=<seed>`; run it via
   `just test-rollups-chaos`. Qualified 2026-07-02 with five
   consecutive green runs (seeds 1-5, 6-8 kills each); runs in CI with
   a fixed seed.
 - `kill_catchup` / `kill_commitment_build` / `kill_mid_match` /
-  `kill_settle`: the targeted crash scenarios (B2-B5 in
-  characterization.md), each SIGKILLing the node at one log-marked
-  moment: mid-input-processing (resume must settle identically to the
+  `kill_settle`: the targeted crash scenarios, each SIGKILLing the node at one
+  log-marked moment: mid-input-processing (resume must settle identically to the
   oracle), mid-quartet-computation during a dispute, mid-bisection
   with ten sybil reactions of downtime, and at the settle
   transaction (exactly-once settlement). Run via
@@ -182,9 +180,9 @@ Test cases (`prt/tests/rollups/test_cases/`):
 - `bad_commitment`: adversary joins with a hand-built garbage commitment.
 - `gc_match` / `gc_tournament`: elimination and bond garbage-collection
   paths.
-- `multi_sybil`: the permissionless shape (node-audit.md findings
-  2/6/7) - honest plus three sybils, two matches live at once, two
-  active sybils (one pairing may be sybil-vs-sybil), one silent sybil
+- `multi_sybil`: the permissionless shape - honest plus three sybils, two
+  matches live at once, two active sybils (one pairing may be sybil-vs-sybil),
+  one silent sybil
   whose match dies by a real on-chain timeout.
 - `kill_join`: SIGKILL at the hero's join decision (see the marker
   contract above).
@@ -268,9 +266,9 @@ unverified claims - check before relying on them:
 - (closed 2026-07-25) Sealed-leaf timeout boundaries from the node's side:
   `sealed_leaf_timeout_winner` observes the longer clock winning after the
   retired midpoint and before its own deadline; `sealed_leaf_timeout_both`
-  observes double elimination at exact equality. The contract phase table and
-  dated block evidence live in
-  [`prt-timeout-alignment.md`](plans/prt-timeout-alignment.md).
+  observes double elimination at exact equality. The maintained contract phase
+  table lives in [`dispute-game.md`](dispute-game.md); these scenarios retain
+  the executable client boundary evidence.
 - (closed 2026-07-09) Port hygiene: the free-port assert (2026-07-02)
   plus TEST_INSTANCE isolation - set it to a free port and the run
   gets its own anvil port and suffixed working-dir singletons
@@ -346,6 +344,11 @@ Known blind spots, by layer:
   planning, fulfillment, and one-action dispatch. The focused `gc_match`,
   `gc_tournament`, and `multi_sybil` scenarios are the cross-process evidence
   for match cleanup, recursive cleanup, and concurrent live matches.
+- The fail-closed observation rule from that campaign remains applicable: if
+  timeout status and its phase projection disagree despite being pinned to the
+  same head, reject the whole observation. Retain the raw RPC responses,
+  address, arguments, calldata, and pinned head; never retry or normalize the
+  two reads into apparent coherence.
 - The e2e battery runs the node at snapshot gap 2 by default (since
   2026-07-13; it ran gap 1 before). At gap 1 three node paths were
   dark in every scenario: the non-boundary GC's modulo never fired,

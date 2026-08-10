@@ -33,9 +33,8 @@ pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
 
 /// The canonical quartet coordinate of a window's final level-0
 /// subtree root: one ordinary cache row per input, written by the
-/// open regime as the window closes. Final by the frontier rule -
-/// the window lies entirely left of the input frontier
-/// (docs/plans/sling-design.md, the increment-E note).
+/// open regime as the window closes. It is final by the frontier rule:
+/// the window lies entirely left of the input frontier.
 pub fn window_root_quartet(epoch: u64, window: u64) -> crate::engine::Quartet {
     crate::engine::Quartet {
         epoch,

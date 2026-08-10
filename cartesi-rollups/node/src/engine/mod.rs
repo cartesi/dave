@@ -1,22 +1,20 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The dispute engine core. As of increment C it is what the Hero
-//! runs on: the quartet cache in the node database is the
-//! restartable dispute state.
+//! The dispute engine core. The Hero uses the quartet cache in the
+//! node database as restartable dispute state.
 //!
 //! An epoch's computation is a ruler of state transitions indexed by
 //! meta-cycle. This module addresses merkle nodes over that ruler by
 //! quartet (epoch, log2_stride, height, shift), computes them through a
 //! geometry engine that is generic over the state-transition function,
-//! and caches them in SQLite. The design and its rationale live in
-//! docs/plans/sling-design.md; the ruler semantics in
+//! and caches them in SQLite. The ruler semantics live in
 //! docs/computation-hash.md.
 //!
 //! Layering, innermost first:
 //! - [`stf::Stf`]: machine verbs (ustep, ureset, feed, revert). Two
 //!   implementations: the toy (here, for spec tests) and the Cartesi
-//!   machine (increment B).
+//!   machine.
 //! - [`ruler::Ruler`]: the geometry engine. Owns every meta-cycle
 //!   convention (window boundaries, fused feed transition, big-cycle
 //!   closing ureset, fixed-point padding). Written once, exercised by

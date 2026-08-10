@@ -19,7 +19,7 @@ specialized living documents in addition, not instead:
 | Any dispute-game behavior | [`docs/dispute-game.md`](../../docs/dispute-game.md) |
 | Clocks, timeouts, allowances, geometry, or level constants | [`docs/dispute-game.md`](../../docs/dispute-game.md) and [`docs/dimensioning.md`](../../docs/dimensioning.md) |
 | Delay-bound arguments or population accounting | [`docs/prt-delay-bound.md`](../../docs/prt-delay-bound.md) (derivations; claim table stays in dispute-game.md) |
-| Timeout behavior or completed client-parity provenance | [`docs/plans/prt-timeout-alignment.md`](../../docs/plans/prt-timeout-alignment.md) |
+| Timeout behavior or client-parity evidence | [`docs/dispute-game.md`](../../docs/dispute-game.md) and [`docs/test-harness.md`](../../docs/test-harness.md) |
 | Bonds, refunds, terminal payments, or burns | [`docs/prt-refund-accounting.md`](../../docs/prt-refund-accounting.md) |
 | Gas allocation changes | [`docs/runbooks/prt-refund-gas-calibration.md`](../../docs/runbooks/prt-refund-gas-calibration.md) |
 | Foundry tests or fixtures | [`docs/prt-contract-testing.md`](../../docs/prt-contract-testing.md) |

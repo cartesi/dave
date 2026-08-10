@@ -134,7 +134,6 @@ level. Terms marked (code) appear verbatim in identifiers.
   through join handles; its retired predecessor (Watch) conflated the
   two.
 - sling node: working name for the productized rewrite of the prototype
-  node. The geometry module itself is named `engine` (renamed from
-  `sling` at one-engine step 5); "sling" survives as the codename in
-  the schema's table names (`sling_config`, `sling_nodes`) and the
-  historical plan documents - the tables were deliberately not renamed.
+  node. The geometry module itself is named `engine`; "sling" survives as the
+  codename in the schema's table names (`sling_config`, `sling_nodes`). The
+  tables were deliberately not renamed.
