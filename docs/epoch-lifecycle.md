@@ -54,15 +54,19 @@ Three worker threads share one SQLite database (see
 `docs/node-architecture.md` for the concurrency model):
 
 ```
-                    finalized logs                    txs
-  Ethereum  ------------------------>  blockchain-reader
-     ^                                       |
-     |  settle / dispute txs                 |  inputs, epochs
-     |                                       v
-  epoch-manager  <---- settlement,  ----  SQLite  <---- leaves, ----  machine-runner
-     |                 inputs, leaves                   snapshots         |
-     |                                                                    |
-     +-- Hero (src/hero) ------------- quartet cache + machine snaps -----+
+                 finalized input/epoch logs
+  Ethereum  ---------------------------------->  blockchain-reader
+     ^                                                  |
+     | one serial mutation                              | inputs, epochs
+     |                                                  v
+  epoch-manager  <-------- settlement data ---------  SQLite
+     |                                                  ^
+     +-- Hero <--- tournament logs + pinned views --- Ethereum
+     |       \--- Solid events + quartet queries ----> SQLite
+     |
+     +-- settlement / one GC / recovery
+
+  machine-runner  ---- leaves, snapshots, window quartets ----> SQLite
 ```
 
 - blockchain-reader (`cartesi-rollups/node/src/blockchain_reader`): polls
@@ -81,13 +85,13 @@ Three worker threads share one SQLite database (see
   runs the dispute tick first - for the last sealed epoch, instantiate a
   `Hero` with the epoch's inputs, leaves, and snapshot, and let it react
   to the tournament - then submits through the one transaction lane it
-  owns (docs/plans/self-healing-batch-submission.md). A dispute wave contains
-  the Hero's action followed by every currently legal cleanup intent,
-  innermost-first; one pending settlement step may take the base nonce when
-  the dispute is no longer contested. Position is priority: cleanup never
-  sits ahead of defense. Bond recovery is separate low-priority work: only
-  when no higher-priority mutation is ready, at most one recovery is planned
-  for a newly observed finalized head.
+  owns; see
+  [node architecture](node-architecture.md#mutation-scheduling-and-transaction-submission).
+  A running dispute tick chooses either the Hero's action or, only when the
+  Hero has none, one cleanup intent; it never submits both. Settlement runs
+  only when no dispute is being contested, and bond recovery runs only when no
+  higher-priority mutation is ready. Thus the production loop submits at most
+  one mutation per tick through one serial nonce owner.
   While machine-runner has not yet written the sealed epoch's
   settlement info, the tick reports Preparing and no mutation is submitted.
   Settlement plans at most one guarded, idempotent step per
@@ -98,11 +102,21 @@ Three worker threads share one SQLite database (see
   (commitment root AND post-epoch state); accept the staged result once
   every sentry agrees or the staging period elapses. Recovery walks every
   unretired sealed epoch, so pending old bonds survive epoch rotation and
-  restart without a stored queue. If Latest already exposes the next epoch
+  restart without a stored queue. Candidate discovery starts from epoch roots
+  recorded from finalized DaveConsensus events and follows only their
+  `NewInnerTournament` descendants; it never scans attacker-writable candidates
+  by submitter. If Latest already exposes the next epoch
   while finalized ingestion still ends at the previous one, recovery waits;
   maintenance cannot occupy the nonce needed by the next finalized join. The
   lane itself is stateless: every send rebuilds from fresh observation at
   fresh market fees, and the mempool arbitrates duplicates and replacements.
+
+Sentry-claim and settlement calldata are semantic commitments, so their
+contents come from finalized inputs and stored settlement data. Latest may
+only suppress a call that is already done or no longer needed. This is stricter
+than permissionless cleanup: an inapplicable cleanup reverts and any cleanup
+that still succeeds is a valid transition, while a stale vote or staged result
+could succeed and cannot be repaired by a later retry.
 
 ## The dispute loop (Hero)
 
@@ -111,10 +125,13 @@ Three worker threads share one SQLite database (see
 1. Advance one finalized, event-derived recursive `Dispute`, persist it, then
    clone and extend it over the disposable latest tail. Events supply
    tournaments, commitments, matches, child links, and match-elimination
-   schedules; the node does not fetch every clock or live match.
+   schedules. The tournament reader fetches these logs directly from the
+   chain, while the narrow observer reads only the pinned standing and live
+   match projections the Hero needs; the node does not fetch every clock or
+   every match.
 2. React recursively from the root tournament:
-   - Build (or load from the dispute db) the commitment for this
-     tournament's level.
+   - Build (or load from the main database's quartet cache) the commitment for
+     this tournament's level.
    - Not joined yet: use latest only to suppress an already-mined or no-longer
      possible join, then derive the commitment root and last-leaf proof from
      the finalized Solid dispute.
@@ -136,10 +153,10 @@ Three worker threads share one SQLite database (see
    commitment is wrong or we were censored beyond the protocol's bound).
 
 The reader retains one in-memory Solid dispute between iterations. Its raw
-recognized events and finalized watermark are persisted; on restart the node
-reconstructs Solid from chain and disk. Latest Foam never survives a tick. The
-quartet cache (`sling_nodes`) and machine snapshots remain the computation
-cache.
+recognized events and finalized watermark are persisted in the main database;
+on restart the node reconstructs Solid from chain and disk. Latest Foam never
+survives a tick. The main quartet cache (`sling_nodes`) and machine snapshots
+remain the computation cache.
 
 ## Settlement invariant
 

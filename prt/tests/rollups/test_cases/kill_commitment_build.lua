@@ -3,11 +3,10 @@ require "setup_path"
 local Hash = require "cryptography.hash"
 local env = require "test_env"
 
--- B3 commitment-build kill (docs/plans/characterization.md): during a
--- dispute, SIGKILL the node the moment it starts dispute-time machine
--- work ("computing quartet", the sling compute marker; level 0 is
--- seed-served, so the first occurrence is an inner level's build) and
--- respawn immediately. The quartet cache must resume the half-built
+-- During a dispute, SIGKILL the node the moment it starts dispute-time
+-- machine work ("computing quartet", the sling compute marker; level 0
+-- is seed-served, so the first occurrence is an inner level's build)
+-- and respawn immediately. The quartet cache must resume the half-built
 -- level and the dispute must still be won.
 
 -- Main Execution

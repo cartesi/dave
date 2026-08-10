@@ -55,8 +55,8 @@ the moment it exists.
      today for both parties - dimensioning.md).
    - the collection APIs' contract: span/stride granularity, yield
      and halt behavior at window edges, whether folded subtrees
-     come back (the one-engine amendment bet the runner's
-     window-root fold could someday move into the emulator).
+     come back, and whether the runner's local window-root fold can
+     move into the emulator.
    - the cartesi-machine.lua epoch-hash command's SCOPE: does it
      model our conventions (feeds, checkpoints, revert, padding)
      or only raw span collection? Its value as an oracle depends
@@ -64,8 +64,8 @@ the moment it exists.
      the new API either way.
    - where the span constants become authoritative: uarch-to-big,
      big-to-input, input-to-epoch are today a replicated
-     agreement across components, guarded by parse-the-source
-     drift tests (node-audit findings 4 and 9). The emulator and
+     agreement across components, guarded by tests that parse the
+     mirrored source constants. The emulator and
      solidity-step will now EXPORT them - re-source ours from the
      upstream artifacts and repoint (or retire) the hand-mirror
      guards; one authority, not a treaty.
@@ -102,33 +102,29 @@ the moment it exists.
    wedge); update the Lua oracle the same way, verified against
    the contracts, never against the node.
 
-3. New collection APIs (old increment F, deliberately last then,
-   ripe now). Swap the engine's machine stf onto cm_collect_*;
-   the spec oracle and differentials re-gate; re-verify the Lua
-   script match; measure (collection was the dispute-time cost
-   the resource model priced).
+3. New collection APIs. Swap the engine's machine stf onto
+   cm_collect_*; the spec oracle and differentials re-gate;
+   re-verify the Lua script match; measure because collection is a
+   core dispute-time cost.
 
 4. Two levels. Re-run the constants pipeline ON v0.21 and on
-   validator hardware (the WS8 numbers - log2step [37,0], heights
-   [55,37] at a 60-min inner timeout - were measured on 0.20 and
-   are stale the moment the machine changes); walk the adoption
-   gates of docs/measurements/constants.md. Level-0 stride moving 44 ->
-   37 moves the window-root quartet coordinate, the frontier
-   fold's geometry, the drift-guard pins, and every recording and
-   fold fixture (the echo fixture asserts THREE tournament
-   levels). Clocks and spans re-derive under the dimensioning
-   rule: coordinates worst-case, clocks average-case.
+   validator hardware (the previous numbers - log2step [37,0],
+   heights [55,37] at a 60-min inner timeout - were measured on
+   0.20 and are stale the moment the machine changes); walk the
+   adoption gates of docs/measurements/constants.md. Level-0
+   stride moving 44 -> 37 moves the window-root quartet
+   coordinate, the frontier fold's geometry, the drift-guard pins,
+   and every client and harness fixture that assumes three
+   tournament levels. Clocks and spans re-derive under the
+   dimensioning rule: coordinates worst-case, clocks average-case.
 
 ## Also in scope (from the standing ledger)
 
-- Audit round 2 items that open naturally: the settlement revert
-  taxonomy (node-audit finding 3; the revert surface changes
-  again in phase 2 - decode selectors at the sender, escalate
-  non-race classes through the loudness path); gc timeLeft vs
-  allowance (finding 8; the tournament module opens in phase 4);
-  the reader's overlay assembly vs a mock provider; capacity
-  boundary scenarios (last input slot, last stride - owed since
-  workstream 2).
+- Revisit transaction revert handling when the phase-2 revert surface
+  changes. The stateless lane does not inspect receipts, so decide whether an
+  operator-provided revert-protecting endpoint remains sufficient or the node
+  should preflight its one selected request or escalate a repeatedly identical
+  intent. Also cover the last input slot and last stride.
 - Test-shape constants profile (fast e2e disputes): contracts
   side, same territory as phase 4, the deepest e2e-latency lever
   on record. Candidate to land with the two-level change.

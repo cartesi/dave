@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 //! The bond recovery planner: low-priority maintenance over finalized
-//! chain state (docs/plans/bond-recovery-redesign.md).
+//! chain state.
 //!
 //! Candidates never come from attacker-writable input. Epoch roots are
 //! read from our own storage (written from the trusted DaveConsensus

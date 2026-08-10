@@ -112,8 +112,8 @@ jobs:
         timeout-minutes: 20
         run: |
           just test-rollups-honeypot-ci
-      # B2 batched sibling: SIGKILL mid advance batch, the resumed run
-      # must re-execute the batch and settle identically to the oracle.
+      # SIGKILL mid-advance-batch; the resumed run must re-execute the
+      # batch and settle identically to the oracle.
       # Cheap (no dispute), and the only e2e that puts a full
       # multi-record batch under the kill (the harness default is
       # gap 2, small batches).
@@ -121,8 +121,8 @@ jobs:
         timeout-minutes: 15
         run: |
           just test-rollups-kill-ci
-      # B1 chaos loop (docs/plans/characterization.md): the dispute must
-      # survive SIGKILL/respawn fire. Fixed seed: CI is the regression
+      # The chaos loop proves the dispute survives SIGKILL/respawn fire.
+      # Fixed seed: CI is the regression
       # net; seed exploration stays in local runs.
       - name: Test chaos
         timeout-minutes: 15
@@ -395,8 +395,10 @@ jobs:
         run: |
           just build-devnet
 
-      - name: Compress devnet artifacts
-        run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments/31337 state.json
+      - name: Compress complete devnet bundle
+        run: |
+          tar -czf "$FILEPATH" -C cartesi-rollups/contracts \
+            deployments/31337 state.json state.fingerprint
         env:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-anvil-${{ steps.setup.outputs.installed-foundry-version }}.tar.gz
 

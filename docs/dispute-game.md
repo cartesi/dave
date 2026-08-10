@@ -747,6 +747,6 @@ as that general theorem.
 
 Current Foundry evidence and its remaining gaps live in
 [`prt-contract-testing.md`](prt-contract-testing.md). Cross-client timeout
-alignment remains tracked in
-[`prt-timeout-alignment.md`](plans/prt-timeout-alignment.md). The review archive
-is historical evidence, not a hidden backlog.
+alignment and exact-boundary scenarios live in
+[`test-harness.md`](test-harness.md). The review archive is historical evidence,
+not a hidden backlog.

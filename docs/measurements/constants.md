@@ -53,8 +53,7 @@ Adopt a bump only with coordinated validation of:
 ArbitrationConstants.sol (LEVELS, log2step, height);
 rollups_machine::LOG2_STRIDE (= log2step(0));
 docs/computation-hash.md's level table; harness fixtures.
-Also wanted: a small test-shape profile so e2e disputes run in
-seconds (node-refactor.md, workstream 8).
+A small test-shape profile would also let e2e disputes run in seconds.
 
 ## Caveats
 

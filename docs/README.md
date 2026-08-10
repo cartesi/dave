@@ -44,60 +44,22 @@ PRT contract engineering:
   population, terminal-payment, and conservation argument.
 - [prt-contract-testing.md](prt-contract-testing.md) - Foundry test ownership,
   geometry independence, oracle design, and coverage discipline.
-- [plans/prt-client-interface.md](plans/prt-client-interface.md) - the
-  implemented Campaign 1 record for the typed views, event fold, domain models,
-  planners, disposable live-tail reader, and transaction lane.
-- [plans/prt-client-interface-decisions.md](plans/prt-client-interface-decisions.md)
-  - the frozen Campaign 1 decision record: reasoning, alternatives, parked
-  event-stream proposals, reopening conditions, and one retained fail-closed
-  empirical watch.
-- [plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md) - the
-  implemented follow-up for a recursively owned dispute, event-derived match
-  cleanup, bounded point reads, one solid boundary, and disposable latest
-  quantum foam.
 - [runbooks/prt-refund-gas-calibration.md](runbooks/prt-refund-gas-calibration.md)
   - the maintained procedure for measuring action allocations and tracing their
   effects into bonds and deployment artifacts.
-- [plans/prt-timeout-alignment.md](plans/prt-timeout-alignment.md) - the
-  completed cross-implementation record for the phase-aware timeout policy and
-  exact sealed-leaf boundary evidence.
 
 Historical internal reviews live under [reviews/](reviews/README.md). They preserve
 findings and evidence, but they are not current specifications or third-party
 assurance reports. The completed 2026-07 PRT campaign is archived at
 [reviews/2026-07-21-prt-dispute-game/](reviews/2026-07-21-prt-dispute-game/).
 
-Plans: [plans/](plans/) contains dated design and implementation snapshots.
-Read each status header before relying on one. Plans are intent and history,
-not current knowledge. By status:
-
-- Active records: [plans/stf-upgrade.md](plans/stf-upgrade.md), the draft plan
-  for the emulator bump and the state-transition halt/exception gap. The frozen
-  prt-client-interface decision log retains one non-reproduced same-head
-  contradiction as a fail-closed empirical watch.
-- Recorded for a later node campaign:
-  [plans/self-healing-batch-submission.md](plans/self-healing-batch-submission.md) -
-  the batch-nonce transaction lane and its reasoning - and
-  [plans/bond-recovery-redesign.md](plans/bond-recovery-redesign.md), whose
-  contract side is implemented and whose node-side recovery action rides
-  that campaign.
-- Implemented, with closeout provenance retained:
-  [plans/prt-client-interface.md](plans/prt-client-interface.md) and
-  [plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md).
-- Complete: [plans/prt-timeout-alignment.md](plans/prt-timeout-alignment.md).
-- Seed material, no work order: [plans/simplification.md](plans/simplification.md),
-  [plans/resource-model.md](plans/resource-model.md), and
-  [plans/node-audit.md](plans/node-audit.md) (Round 1 complete; re-run
-  triggers noted inline).
-- Completed and frozen: [plans/characterization.md](plans/characterization.md),
-  [plans/sling-design.md](plans/sling-design.md),
-  [plans/node-refactor.md](plans/node-refactor.md),
-  [plans/one-engine.md](plans/one-engine.md), and
-  [plans/snapshots.md](plans/snapshots.md) - the node-rewrite corpus. These
-  stay in place because code comments and living docs cite their sections as
-  design provenance; each header names its living successor. Only dated
-  errata may touch them. When nothing cites a frozen plan any longer,
-  delete it - git history is the archive.
+Plans: [plans/](plans/) is for active work, not completed campaign history.
+The active plan is [plans/stf-upgrade.md](plans/stf-upgrade.md).
+[plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md) is the one
+temporary exception while its implementation is under preliminary Rust review;
+its stable invariants will move into node-architecture.md before it is deleted.
+Completed plans are deleted after stable invariants move into living docs; Git
+and pull-request history preserve the exploration.
 
 Measurements: generated baselines live in [measurements/](measurements/) -
 `measurements.md` and `measurements-stress.md` (`just measure`,

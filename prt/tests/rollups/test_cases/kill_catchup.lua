@@ -2,11 +2,11 @@ require "setup_path"
 
 local env = require "test_env"
 
--- B2 catch-up kill (docs/plans/characterization.md): SIGKILL the node
--- while the machine-runner is processing the epoch's inputs, respawn,
--- and require the resumed run to produce the settlement the oracle
--- expects. No sybil: the subject is input-processing resume, WAL
--- recovery in the main database, and snapshot bookkeeping.
+-- SIGKILL the node while the machine-runner is processing the epoch's
+-- inputs, respawn, and require the resumed run to produce the
+-- settlement the oracle expects. No sybil: the subject is
+-- input-processing resume, WAL recovery in the main database, and
+-- snapshot bookkeeping.
 
 -- Main Execution
 env.spawn_blockchain { env.sample_inputs[1] }

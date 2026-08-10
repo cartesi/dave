@@ -73,9 +73,8 @@ impl Drop for AdvanceBatch {
 struct AdvanceRecord {
     input_number: u64,
     /// The window's level-0 subtree root, folded from the collect's
-    /// runs at record time: the runner's one level-0 artifact
-    /// (one-engine.md section 6, as amended). The unfolded runs are
-    /// never persisted.
+    /// runs at record time: the runner's only level-0 artifact. The
+    /// unfolded runs are never persisted.
     window_root: Digest,
     /// State after this input, keyed (epoch, input_number + 1). A
     /// reverted input shares its predecessor's snapshot.
@@ -118,11 +117,10 @@ impl AdvanceBatch {
 
 impl Storage {
     /// Opens a batch on a working clone of the newest boundary: the
-    /// machine mutates the clone in place (the chain of clones,
-    /// docs/plans/snapshots.md), so committed boundaries are never
-    /// touched. Restart and tick are the same code path: a crash
-    /// re-executes at most one batch of inputs from staging swept
-    /// clean.
+    /// machine mutates the clone in place, leaving committed
+    /// boundaries untouched. Restart and tick are the same code path:
+    /// a crash re-executes at most one batch of inputs from staging
+    /// swept clean.
     pub fn begin_advances(&mut self) -> Result<(RollupsMachine, AdvanceBatch)> {
         let (path, epoch, input, hash) = self.read(super::snapshots::latest_boundary_in)?;
         let working = self.checkout(&path).map_err(anyhow::Error::from)?;
@@ -244,10 +242,8 @@ impl Storage {
     /// boundary row, and the gap GC, in one transaction. Directories
     /// orphaned by the GC are removed after the commit.
     ///
-    /// The window roots flip increment E's "the open regime never
-    /// writes sling_nodes" under that note's own frontier rule: a
-    /// recorded window lies entirely left of the input frontier, so
-    /// its level-0 subtree root is final - one ordinary cache row per
+    /// A recorded window lies entirely left of the input frontier, so
+    /// its level-0 subtree root is final: one ordinary cache row per
     /// input, absorbed identically on crash replay like every other
     /// row here.
     pub fn commit_advances(&mut self, batch: AdvanceBatch) -> Result<()> {
@@ -394,9 +390,8 @@ impl Storage {
         )
     }
 
-    /// The disk baseline, logged at every roll (workstream 1 of
-    /// docs/plans/node-refactor.md): the snapshot store dominates and
-    /// its growth rate is what the COW analysis prices.
+    /// The disk baseline, logged at every roll: the snapshot store
+    /// dominates and its growth rate is what the COW analysis prices.
     fn log_disk_breakdown(&self, new_epoch_number: u64) {
         let snapshots = dir_size(&snapshots_path(&self.state_dir));
         let db_path = super::open::db_path(&self.state_dir);

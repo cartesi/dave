@@ -1,11 +1,16 @@
 # Recursive dispute reader
 
-Status: IMPLEMENTED, completed 2026-08-09. Contract-authored match schedules,
-the recursive event model, the fused reader, and the one-way narrow observer
-are implemented and validated. Current behavior is documented by
-[node-architecture.md](../node-architecture.md). The completed Campaign 1
-interface work remains frozen in
-[prt-client-interface.md](prt-client-interface.md).
+Status: IMPLEMENTED, locally validated 2026-08-09, and retained temporarily as
+a preliminary Rust-review aid. Contract-authored match schedules, the recursive
+event model, the fused reader, and the one-way narrow observer are implemented.
+Current behavior is documented by [node-architecture.md](../node-architecture.md).
+After preliminary review, move any remaining stable rationale there and delete
+this plan; Git preserves the campaign history.
+
+Review caveat: recovery passages below describe the intended shared-tree
+shape, not the current implementation. Production recovery independently walks
+finalized `NewInnerTournament` logs from storage-known epoch roots. Reconcile
+that seam when folding this plan after preliminary review.
 
 This document records the follow-up to Campaign 1: make the recursive
 dispute the node's authoritative event-derived model, derive match cleanup from
@@ -539,9 +544,9 @@ Foam canonical or establish a second global authority.
 3. Implemented: introduce the fused recursive loader and block-grouped local
    event transitions, then remove the superseded global Rust fold and its
    pre-ABI chain-recording oracle.
-4. In validation: differentially compare both projections for candidate
-   placement, live matches, recursive topology, timeout boundaries, and nested
-   cleanup.
+4. Implemented locally; preliminary Rust review remains: differentially compare
+   the retained event and view projections for candidate placement, live
+   matches, recursive topology, timeout boundaries, and nested cleanup.
 5. Implemented: use one Finalized-first Solid value and one freshly deep-cloned
    Foam value per tick.
 6. Implemented: switch match cleanup to event schedules and tournament cleanup

@@ -106,6 +106,9 @@ winner defers both payment and burn; the full balance remains available for a
 permissionless retry. A tournament that finishes without a winner has no
 terminal recovery path and retains its balance. Every recursive child is a
 separate tournament with its own joins, reserve, and terminal accounting.
+Recovery itself receives no progress refund: reclaiming the winner's own bond
+is already self-interested, and subsidizing that call from the balance being
+recovered would make the reserve argument circular.
 
 The executable population and reserve models live in
 [`RefundReserve.t.sol`](../prt/contracts/test/accounting/RefundReserve.t.sol).

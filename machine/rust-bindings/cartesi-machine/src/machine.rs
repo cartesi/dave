@@ -1157,8 +1157,7 @@ mod tests {
         Ok(())
     }
 
-    /// The CoW clone loop's foundational facts (docs/plans/snapshots.md):
-    /// a clone loaded with SharingMode::All advances on disk and remains
+    /// A clone loaded with SharingMode::All advances on disk and remains
     /// a valid stored machine after drop, with the hash sidecars exact
     /// when root_hash ran before the drop, and self-healing from the
     /// recorded dirty pages when it did not (the crash shape). Both

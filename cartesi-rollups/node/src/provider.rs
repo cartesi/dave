@@ -148,7 +148,7 @@ pub type LaneRequest = (String, TransactionRequest);
 /// are benign verdicts, and a stale nonce means inclusion advanced
 /// past the plan and the next tick replans. The lane holds no mutable
 /// state - callers re-derive and resubmit their complete intent every
-/// tick (docs/plans/self-healing-batch-submission.md), so anything a
+/// tick, so anything a
 /// lost response could forget is rebuilt from observation.
 ///
 /// Submissions flow from the epoch manager's serial loop. Mutable

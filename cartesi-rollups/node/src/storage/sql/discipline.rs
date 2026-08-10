@@ -1,9 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The storage discipline tests (docs/plans/node-refactor.md,
-//! workstream 2): every write belongs to one of four mutation classes,
-//! and the schema's trigger layer must refuse writes outside it even
+//! The storage discipline tests enforce four mutation classes. The
+//! schema's trigger layer must refuse writes outside them even
 //! when they arrive through a raw connection that bypasses the Rust
 //! checks. Each test drives one trigger to its RAISE(ABORT).
 

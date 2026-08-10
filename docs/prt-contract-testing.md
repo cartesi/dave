@@ -233,7 +233,9 @@ just prt-contracts::compatibility-hashes
 
 Hashes are comparison aids. Inspect every unexpected difference rather than
 updating a recorded value mechanically. Internal Solidity library helpers are
-not an external source-compatibility promise.
+not an external source-compatibility promise. Metadata-free hashes also do not
+enforce the EIP-170 runtime-size ceiling; every release-facing contract change
+must still pass the full `forge build --sizes` gate.
 
 ## When to add tests
 

@@ -43,8 +43,8 @@ meta-cycle, carved into three fields (`engine/constants.rs`):
 - Each big cycle is emulated by at most 2^20 uarch cycles (including the
   reset; see below).
 
-`Structure::decompose` (`engine/structure.rs`) is the decoder - the one
-authority for the field layout since workstream 4: input index =
+`Structure::decompose` (`engine/structure.rs`) is the one decoder and authority
+for the field layout: input index =
 `meta >> 68`, big cycle = `(meta >> 20) & (2^48 - 1)`, ucycle =
 `meta & (2^20 - 1)`. (The prototype's shift/mask decoder survives as a
 differential oracle in `cartesi-rollups/node/tests/common/`.)
@@ -222,8 +222,7 @@ the facade serves level 0 at or above window granularity from those
 rows plus fixed-point padding math; everything below window
 granularity - and every deeper level - is computed lazily by
 re-running the machine, and cached as merkle nodes in the quartet
-cache (`sling_nodes`, keyed by epoch, stride, height, shift;
-one-engine.md section 6, amended).
+cache (`sling_nodes`, keyed by epoch, stride, height, and shift).
 
 One subtlety (the ruler's fused feed transition): a machine snapshot
 taken at an input boundary sits yielded, mid-transition. Its state hash

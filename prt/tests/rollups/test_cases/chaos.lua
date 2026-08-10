@@ -3,9 +3,9 @@ require "setup_path"
 local Hash = require "cryptography.hash"
 local env = require "test_env"
 
--- B1 chaos loop (docs/plans/characterization.md): an ordinary dispute
--- epoch, but the node is SIGKILLed and respawned between sybil
--- reactions on a seeded random cadence. Always SIGKILL, never SIGTERM:
+-- An ordinary dispute epoch, but the node is SIGKILLed and respawned
+-- between sybil reactions on a seeded random cadence. Always SIGKILL,
+-- never SIGTERM:
 -- WAL recovery and half-written state are the subject. Process startup
 -- is the downtime - the sybil keeps acting while the node boots. The
 -- honest claim must still win the tournament and settle.

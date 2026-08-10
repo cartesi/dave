@@ -41,11 +41,10 @@ build-yield: clean-yield
   ../../script/machine-image-fingerprint.sh write yield
 clean-yield: (clean-program "yield")
 
-# stress: the compute-heavy workload (docs/plans/node-refactor.md,
-# workstream 2b). Each input burns a deterministic ~2^27 big cycles
-# (8 MB of zeros through sha256sum), so several level-0 leaf spans
-# per input are fully active - the worst-case replay shape the
-# measurement baseline needs.
+# stress: the compute-heavy workload. Each input burns a deterministic
+# ~2^27 big cycles by hashing 8 MB of zeros with sha256sum. Several
+# level-0 leaf spans per input are therefore fully active - the
+# worst-case replay shape the measurement baseline needs.
 # build the synthetic instruction-heavy measurement sample
 build-stress: clean-stress
   ../../script/machine-image-fingerprint.sh capture stress

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 //! The prototype commitment builder: the differential oracle the engine
-//! machine tests compare against (see docs/plans/sling-design.md). It
+//! machine tests compare against. It
 //! predates the quartet cache and computes commitments by driving the
 //! machine leaf by leaf; nothing here persists - leaf runs are cached
 //! in memory per builder, purely to mirror the old behavior.

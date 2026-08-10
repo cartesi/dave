@@ -2,9 +2,9 @@
 
 Who is allowed to be adversarial, and which case - worst or average -
 each protocol dimension must be sized for. Settled 2026-07 during the
-node-refactor campaign. The reasoning is the load-bearing part: new
-dimensioning questions will appear, and the rule must be re-derivable
-from it, not just remembered.
+node rewrite. The reasoning is the load-bearing part: new dimensioning
+questions will appear, and the rule must be re-derivable from it, not
+just remembered.
 
 ## The trust boundary
 
@@ -109,11 +109,10 @@ cannot claim the epoch at all (the runner refuses to advance past a
 halt), which forfeits settlement to any claimant. Either the
 contracts define the halted-feed transition (e.g. the feed branch
 checks the halt flag and degenerates to a plain step) or halting
-apps are declared out of scope explicitly. The missing halt and
-exception semantics are being addressed on the contracts side (in
-progress as of 2026-07-15); node-side scheduling of halted windows
-stays blocked on that work landing (the lead in one-engine.md step
-4), and the off-chain revert sites must be re-verified against it.
+apps are declared out of scope explicitly. The halt and exception gap remains
+open. Until the contracts define those semantics, the node must not schedule
+halted windows as though a valid on-chain transition exists; every off-chain
+revert site must be re-verified when the contract semantics change.
 
 ## Base-layer censorship model
 

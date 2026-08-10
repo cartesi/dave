@@ -563,21 +563,3 @@ run-dockered +CMD: build-docker-image
 
 exec-dockered +CMD:
     docker exec dave-node {{CMD}}
-
-# ------------------------------------------------------------------
-# KMS test harness
-# ------------------------------------------------------------------
-
-kms-test-start:
-    docker compose -f common-rs/kms/compose.yaml up --wait
-
-kms-test-stop:
-    docker compose -f common-rs/kms/compose.yaml down --volumes --remove-orphans
-
-kms-test-restart: kms-test-stop kms-test-start
-
-kms-test-logs:
-    docker compose -f common-rs/kms/compose.yaml logs -f
-
-kms-test-dave-logs:
-    docker compose -f common-rs/kms/compose.yaml exec dave-kms tail -f ./prt/tests/rollups/dave.log
