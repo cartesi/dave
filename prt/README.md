@@ -11,9 +11,9 @@ clients that play them.
   and test actor.
 - [tests/](tests/) - the Lua-orchestrated end-to-end suites
   (see [docs/test-harness.md](../docs/test-harness.md)).
-- [docs/](docs/) - the original PRT paper. It is an architectural ancestor,
-  not the contract specification; see the implemented-game description in
-  [docs/dispute-game.md](../docs/dispute-game.md).
+- [The original PRT paper](../docs/papers/prt.pdf) - an architectural
+  ancestor, not the contract specification; see the implemented-game
+  description in [docs/dispute-game.md](../docs/dispute-game.md).
 - [measure_constants/](measure_constants/) - tooling to measure the
   commitment-building constants that size tournament levels.
 

@@ -117,7 +117,7 @@ revert site must be re-verified when the contract semantics change.
 ## Base-layer censorship model
 
 The contracts adopt the base-layer adversary model from Section 3 of the
-[`Dave paper`](../dave/docs/dave.pdf), without adopting Dave's dispute
+[`Dave paper`](papers/dave.pdf), without adopting Dave's dispute
 algorithm or its delay bound. The adversary may delay any set of the correct
 participant's transactions, split that delay into intervals of arbitrary
 length, and reorder transactions. Across the chain timeline, the total duration
