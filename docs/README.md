@@ -31,8 +31,8 @@ Related, elsewhere in the repo:
 
 - `prt/contracts/AGENTS.md` - deep context on the dispute contracts (the
   security-critical core).
-- `prt/docs/prt.pdf`, `dave/docs/dave.pdf` - the papers. Beware: neither
-  matches the implemented variant exactly; see
+- The [original PRT paper](papers/prt.pdf) and [Dave paper](papers/dave.pdf).
+  Beware: neither matches the implemented variant exactly; see
   [dispute-game.md](dispute-game.md#relationship-to-the-papers).
 
 PRT contract engineering:

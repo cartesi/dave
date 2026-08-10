@@ -64,9 +64,9 @@ level. Terms marked (code) appear verbatim in identifiers.
 - PRT: Permissionless Refereed Tournaments, the dispute algorithm the
   current contracts implement (asynchronous, multi-level variant; neither
   paper matches the code exactly).
-- Dave: (a) this repo/system's name; (b) the successor algorithm (see
-  dave/docs/dave.pdf) improving PRT liveness - not yet what the contracts
-  implement.
+- Dave: (a) this repo/system's name; (b) the successor algorithm (see the
+  [Dave paper](papers/dave.pdf)) improving PRT liveness - not yet what the
+  contracts implement.
 - level: dispute granularity tier. Level 0 disputes the whole epoch at
   coarse stride; the final configured level disputes single usteps and its
   clones carry `kind == LEAF`.

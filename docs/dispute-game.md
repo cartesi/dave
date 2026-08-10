@@ -64,12 +64,12 @@ not evidence that the surviving computation was executed correctly.
 
 ## Relationship to the papers
 
-The original [`prt/docs/prt.pdf`](../prt/docs/prt.pdf) is an architectural
-ancestor, not a specification of these contracts. The
-[`Dave paper`](../dave/docs/dave.pdf) describes a successor liveness design
-that these contracts do not implement. These contracts do adopt its base-layer
-threat model: censorship can be split and reordered, but its duration is one
-cumulative, non-rechargeable budget. Importing that adversary model does not
+The [original PRT paper](papers/prt.pdf) is an architectural ancestor, not a
+specification of these contracts. The [Dave paper](papers/dave.pdf) describes
+a successor liveness design that these contracts do not implement. These
+contracts do adopt its base-layer threat model: censorship can be split and
+reordered, but its duration is one cumulative, non-rechargeable budget.
+Importing that adversary model does not
 import Dave's tournament algorithm or delay bound.
 
 | Subject | Original PRT paper | Current contracts |
