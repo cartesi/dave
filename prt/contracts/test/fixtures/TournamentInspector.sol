@@ -16,11 +16,11 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Test-only replacements for the retired raw ITournament views.
-/// @dev Raw state comes from `vm.load` against the pinned storage layout, so
-/// these tests remain the raw-layout compatibility witnesses. Closure and
+/// @dev Raw state comes from `vm.load` against the current storage layout.
+/// This white-box probe must follow intentional layout changes. Closure and
 /// finish predicates are re-derived from the clone arguments and block
 /// number, independent of the observer ABI, so assertions against them are
-/// oracle checks rather than echoes. The semantic compatibility helpers
+/// oracle checks rather than echoes. The legacy semantic helpers
 /// `arbitrationResult`, `canBeEliminated`, and `innerTournamentWinner` delegate
 /// to production observers; they preserve historical test vocabulary, but are
 /// not independent semantic oracles.
@@ -35,13 +35,13 @@ library TournamentInspector {
     Vm private constant VM =
         Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-    // Pinned Tournament storage layout (semantic layout hash is gated by
-    // compatibility-hashes; update together).
+    // Current Tournament storage layout. Update this white-box probe whenever
+    // the production layout changes.
     uint256 private constant MATCH_COUNT_SLOT = 1;
     uint256 private constant LAST_MATCH_DELETED_SLOT = 2;
-    uint256 private constant CLOCKS_SLOT = 8;
-    uint256 private constant FINAL_STATES_SLOT = 9;
-    uint256 private constant MATCHES_SLOT = 11;
+    uint256 private constant CLOCKS_SLOT = 9;
+    uint256 private constant FINAL_STATES_SLOT = 10;
+    uint256 private constant MATCHES_SLOT = 12;
 
     function tournamentArguments(ITournament tournament)
         internal

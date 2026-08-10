@@ -79,6 +79,7 @@ contract Tournament is ITournament {
     uint256 commitmentJoinedCount;
     uint256 matchCreatedCount;
     uint256 matchAdvancedCount;
+    uint256 leafMatchSealedCount;
     uint256 matchDeletedCount;
     uint256 newInnerTournamentCount;
 
@@ -94,9 +95,6 @@ contract Tournament is ITournament {
     /// @notice Mapping from inner tournament to its originating match id
     /// @dev Used by nested (non-leaf) tournaments
     mapping(ITournament => Match.Id) matchIdFromInnerTournaments;
-
-    // Appended after every existing persistent slot for layout compatibility.
-    uint256 leafMatchSealedCount;
 
     //
     // Modifiers
@@ -374,12 +372,11 @@ contract Tournament is ITournament {
     ///     * Winner is the root tournament winner.
     /// - NON-ROOT:
     ///     * Winner is the inner winner that will be used by the parent tournament.
-    /// - Configured refund caps reserve one minimum join bond; the
-    ///   defensive payment remains capped by the current balance.
+    /// - Configured refund caps reserve one minimum join bond.
     /// - A zero balance completes without calling the winner.
-    /// - The payment is one bond plus a tenth of the residual above it,
-    ///   rounded toward the burn; a balance at or below one bond is paid
-    ///   whole.
+    /// - At or below one bond, the winner receives the full balance.
+    /// - Above one bond, the winner receives
+    ///   `bond + floor((balance - bond) / 10)`.
     /// - Any post-payment residual balance is burned.
     /// - A call after successful recovery returns true without another transfer.
     /// - A failed winner payment preserves the claimer and balance for retry.
@@ -435,14 +432,20 @@ contract Tournament is ITournament {
 
     /// @notice The one recovery classification: the capability view and the
     /// terminal mutation read the same arms in the same order.
-    /// @dev `claimer` and `payment` are populated only for `RECOVERABLE`.
-    /// The payment is one bond plus a tenth of the forfeited residual as a
-    /// defender's bounty, capped by the balance; the other nine tenths burn,
-    /// so recycled Sybil reserves keep a real marginal cost.
+    /// @dev `winnerClaimer` and `winnerPayment` are populated only for
+    /// `RECOVERABLE`. At or below one bond, the payment is the full balance.
+    /// Above one bond, the payment is
+    /// `bond + floor((balance - bond) / 10)`; the remainder burns after
+    /// payment.
     function _bondRecovery()
         private
         view
-        returns (BondDisposition, Tree.Node, address, uint256)
+        returns (
+            BondDisposition disposition,
+            Tree.Node winningCommitment,
+            address winnerClaimer,
+            uint256 winnerPayment
+        )
     {
         TournamentArguments memory args = _tournamentArgs();
         if (!_isFinished(args)) {
@@ -455,19 +458,19 @@ contract Tournament is ITournament {
                 );
         }
 
-        (bool hasDangling, Tree.Node winningCommitment) =
-            hasDanglingCommitment();
+        bool hasDangling;
+        (hasDangling, winningCommitment) = hasDanglingCommitment();
         if (!hasDangling) {
             return (BondDisposition.NO_WINNER, Tree.ZERO_NODE, address(0), 0);
         }
 
-        address winnerClaimer = claimers[winningCommitment];
+        winnerClaimer = claimers[winningCommitment];
         if (winnerClaimer == address(0)) {
             return (BondDisposition.RECOVERED, winningCommitment, address(0), 0);
         }
 
         uint256 balance = address(this).balance;
-        uint256 winnerPayment = balance;
+        winnerPayment = balance;
         uint256 bond = bondValue();
         if (balance > bond) {
             winnerPayment = bond + (balance - bond) / 10;

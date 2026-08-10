@@ -241,18 +241,21 @@ transitions first derive the current live match state in Foam; cleanup then
 compares that state with the sampled latest block number for the tick.
 
 The leaf event has one indexed match ID and one data-word schedule.
-`getLeafMatchSealedCount()` extends the existing per-event count surface; its
-counter is appended after every prior persistent storage slot. The additional
-log data, leaf counter write, and winner re-pair emissions are part of the
-refund-gas calibration and bond propagation, not incidental overhead.
+`getLeafMatchSealedCount()` extends the existing per-event count surface. The
+additional log data, leaf counter write, and winner re-pair emissions are part
+of the refund-gas calibration and bond propagation, not incidental overhead.
 
-Changing an existing event payload also changes its `topic0`. This
-implementation chooses a coordinated version boundary, not dual decoding: the
-new contracts, Rust node, and Lua client deploy together, and no live dispute
-or persisted tournament-event stream from the prior ABI may cross that
-boundary. Release evidence must establish that precondition. Dual decoding
-would still lack the old events' cleanup schedules and would create a weaker
-second domain model.
+Adding `eliminableAt` changes the `MatchCreated` and `MatchAdvanced` event
+signatures and therefore their `topic0`. Indexing
+`CommitmentJoined.commitment` leaves that event's signature and `topic0`
+unchanged but changes its topics/data layout. Together with the clone-argument
+change, these require a coordinated deployment generation, not dual decoding:
+a fresh Tournament implementation, factory, and dependent Dave bundle deploy
+with matching Rust, Lua, bindings, and artifacts. No live dispute or persisted
+tournament-event stream from the prior generation may cross that boundary.
+Release evidence must establish that precondition. Dual decoding would still
+lack the old events' cleanup schedules and would create a weaker second domain
+model.
 
 ## Block-local logs and domain transitions
 

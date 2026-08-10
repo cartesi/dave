@@ -260,9 +260,9 @@ allocation changes the reserves for each role whose maximum it changes. Adding
 a new action or legal sequence is structural: enumerate it in production and in
 the independent accounting tests.
 
-There is no separately maintained bond value. A constants-only change should
-preserve ABI and storage but changes bytecode. Regenerate and review deployment
-artifacts and every CREATE2-derived address before release.
+There is no separately maintained bond value. A constants-only change leaves
+the ABI and storage layout unchanged but changes bytecode. Regenerate and
+review deployment artifacts and every CREATE2-derived address before release.
 
 ## 7. Validate compatibility and behavior
 
@@ -277,9 +277,13 @@ direnv exec . just prt-contracts::compatibility-hashes
 git diff --check
 ```
 
-The compatibility report covers ABI, semantic storage layout, and metadata-free
-creation and runtime bytecode. Hashes are comparison aids, not substitutes for
-inspecting an unexpected diff.
+The report covers the wire ABI and fingerprints the semantic storage layout and
+metadata-free creation and runtime bytecode. ABI drift is a compatibility issue
+within a deployment generation. Storage drift tells white-box probes to move;
+bytecode drift changes deployment identity and may change CREATE2-derived
+addresses. These hashes expose impact rather than promising that internal
+values remain equal, and they do not substitute for inspecting an unexpected
+diff.
 
 Do not modify the off-chain node in a gas-calibration commit. A proof-format or
 geometry change that requires client coordination belongs in its own review
@@ -302,7 +306,7 @@ Record:
 - whether economic policy constants changed;
 - focused, dispute, and downstream test results;
 - exact refund-formula and callback results;
-- ABI and storage comparison; and
+- ABI compatibility plus storage and bytecode impact; and
 - deployment-artifact regeneration status.
 
 Create a new dated review or calibration record. Do not rewrite an older

@@ -52,6 +52,25 @@ as a dependency of
 every cargo recipe, which forced binding-crate rebuilds on every build and
 made pure-Rust iteration needlessly slow; do not reintroduce that.
 
+## Deployment generations
+
+The public function, event, and error ABI and the ERC-1167 clone-argument
+encoding are stable within one deployment generation. An intentional wire
+break starts a new generation: deploy a fresh Tournament implementation,
+`MultiLevelTournamentFactory`, and dependent Dave bundle; regenerate bindings
+and deployment artifacts; and ship matching Rust and Lua clients. Existing
+clones remain bound to their old implementation. No live dispute or persisted
+event stream may cross this boundary, so the current line carries no dual
+decoder. Binding stamps prevent accidental local staleness, but they are not a
+protocol negotiation mechanism.
+
+Storage layout is internal while the contracts have no upgrade or state
+migration path and no supported raw-storage client. Test-only probes follow
+intentional layout changes. Storage and bytecode hashes report implementation
+and deployment impact rather than promising equality. Changed bytecode and
+CREATE2-derived addresses identify a new deployment bundle and must be
+regenerated together.
+
 ## Open design questions
 
 Recorded so we stop re-litigating from scratch; none of these are settled.
@@ -75,13 +94,6 @@ Considered alternatives:
   repo.
 
 The stamp approach forecloses none of these.
-
-An ABI- or event-breaking deployment is a coordinated version boundary. The
-Tournament implementation, generated bindings, Rust node, and Lua client must
-ship as one compatible set; the current deployment line assumes no live
-dispute crosses that boundary and therefore carries no dual decoder. Binding
-stamps prevent accidental local staleness, but they are not a protocol
-negotiation mechanism.
 
 ### The emulator dependency (largely resolved 2026-07)
 

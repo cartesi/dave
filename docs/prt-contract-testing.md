@@ -54,7 +54,8 @@ InputBox, DaveConsensus provider, Cartesi state transition, and PRT Tournament.
 Its height-one, position-one commitments are coordinate coherent and inject
 only the geometry needed by the measured entry point.
 
-Characterization is a compatibility fossil, not the preferred semantic oracle.
+Characterization is a historical behavior fossil, not the preferred semantic
+oracle.
 New behavior tests should use the smallest injected geometry that exposes the
 property under review.
 
@@ -69,7 +70,7 @@ Each layer has one job:
 | Stateful invariants | Legal and rejected operation sequences against an independent ghost model | Recursive adversarial scheduling unless modeled explicitly |
 | Finite exhaustive models | Every state in a stated small domain | An unbounded theorem |
 | Characterization | Historical observable behavior | The desired semantics of new code |
-| Compatibility witnesses | ABI, storage, encoding, events, selectors, and bytecode identity | Correctness of an unchanged interface |
+| Compatibility and impact checks | Wire ABI and clone encoding; storage and bytecode drift | Correctness, or a promise that internal layout and deployment identity remain unchanged |
 | Gas witnesses | Production refund-seam work for a declared execution envelope | Receipt gas or unbounded proof classes |
 | Downstream integration | Rollups factory and staged-consensus composition | Real validator or Lua conformance |
 | Coverage mapping | Production locations that deserve investigation | Semantic assurance or branch completeness |
@@ -138,8 +139,8 @@ censorship ledger `C`; that general recursive result remains open.
 
 Match tests deliberately triangulate four independent concerns:
 
-1. raw characterization pins the externally observable tuple, events, errors,
-   and sealed encoding;
+1. raw characterization records the historical tuple and sealed encoding while
+   pinning the externally observable events and errors;
 2. an independent sparse-Merkle model owns divergence, parity, agree-proof
    ownership, and fixed-side winner attribution;
 3. focused validation tests own malformed children, proof failures, and phase
@@ -206,24 +207,24 @@ Reported branch totals are directional and can disagree with demonstrably
 executing tests. Use uncovered lines and functions as investigation leads, not
 as a correctness score.
 
-## Compatibility checks
+## Compatibility and impact checks
 
-The deployed compatibility surface includes:
+Within one deployment generation, the supported wire surface includes the
+Tournament function, event, and error ABI plus the immutable clone-argument
+encoding. An intentional wire-format break starts a new generation: deploy a
+fresh Tournament implementation, factory, and dependent Dave bundle; ship
+matching bindings, clients, and artifacts; and do not carry a live dispute or
+persisted event stream across the boundary.
 
-- the Tournament ABI;
-- semantic storage layout;
-- raw Match encoding;
-- event and error selectors; and
-- metadata-free creation and runtime bytecode when exact code identity matters.
-
-The production ABI no longer exposes raw state getters. Tests reach raw
-Match, Clock, and topology state through
-`test/fixtures/TournamentInspector.sol`: `vm.load` reads against the pinned
-storage layout (which keeps those tests the raw-layout witnesses), clone-args
-decoding for the immutable arguments, and independent closure and finish
-derivations so assertions against them are oracle checks rather than echoes
-of the observer views. Its hard-coded slot indices must move together with
-any storage-layout change and are gated by the semantic layout hash above.
+Storage layout and raw Match and Clock encoding are internal in the current
+non-upgradeable design. There is no supported state migration or raw-storage
+client. Solidity tests reach raw Match, Clock, and topology state through the
+white-box probe in `test/fixtures/TournamentInspector.sol`; one clock-engineering
+E2E fixture has its own narrow raw Clock probe under `test/e2e/support/`. Their
+slot constants must follow intentional layout changes; they do not turn the
+current layout into a compatibility promise. Clone-argument decoding and the
+independently derived closure and finish predicates remain useful oracles
+rather than echoes of the observer views.
 
 Run:
 
@@ -231,11 +232,15 @@ Run:
 just prt-contracts::compatibility-hashes
 ```
 
-Hashes are comparison aids. Inspect every unexpected difference rather than
-updating a recorded value mechanically. Internal Solidity library helpers are
-not an external source-compatibility promise. Metadata-free hashes also do not
-enforce the EIP-170 runtime-size ceiling; every release-facing contract change
-must still pass the full `forge build --sizes` gate.
+The report separates wire compatibility from implementation and deployment
+impact. An ABI difference changes the supported wire surface. A storage-layout
+difference means white-box probes must be reviewed. A bytecode difference
+changes deployment identity and may change CREATE2-derived addresses. Inspect
+every unexpected difference rather than updating a recorded value
+mechanically, but do not require internal hashes to remain equal. Metadata-free
+hashes also do not enforce the EIP-170 runtime-size ceiling; every
+release-facing contract change must still pass the full `forge build --sizes`
+gate.
 
 ## When to add tests
 

@@ -6,6 +6,8 @@ local PatchedCommitmentBuilder =
 local PlayerSender = require "player.sender"
 local SemanticReader = require "player.semantic_reader"
 local start_sybil = require "runners.sybil_runner"
+local TournamentClockProbe =
+    require "test_utils.tournament_clock_probe"
 local time = require "utils.time"
 
 local env = require "test_env"
@@ -21,6 +23,7 @@ local TIMEOUT_NONE = 0
 local TIMEOUT_TWO_WINS = 2
 local TIMEOUT_ELIMINATE_BOTH = 3
 local TOURNAMENT_KIND_LEAF = 0
+local clock_probe
 local TOURNAMENT_ARGUMENTS_SIGNATURE = table.concat {
     "tournamentArguments()(",
     "((bytes32,uint256,uint64,uint64),",
@@ -51,9 +54,7 @@ local function response_budget(tournament)
 end
 
 local function advance_to(block_number)
-    local current = tonumber(
-        env.reader.inner_reader:_get_block_number("latest")
-    )
+    local current = clock_probe:latest_block_number()
     assert(block_number >= current, string.format(
         "cannot advance backward from block %d to %d",
         current,
@@ -220,40 +221,39 @@ local function install_sender_hooks(sender, fixture)
 
         env.dave_node:kill()
 
-        local reader = env.reader.inner_reader
-        local before_one =
-            reader:read_commitment(tournament, commitment_one)
-        local before_two =
-            reader:read_commitment(tournament, commitment_two)
-        assert(before_one.clock.last_resume > 0,
+        local before_one, before_two = clock_probe:read_clocks(
+            tournament,
+            { commitment_one, commitment_two }
+        )
+        assert(before_one.last_resume > 0,
             "commitment one is not the final running responder")
-        assert(before_two.clock.last_resume == 0,
+        assert(before_two.last_resume == 0,
             "commitment two must be paused before leaf sealing")
-        assert(before_one.clock.block_number == before_two.clock.block_number,
+        assert(before_one.block_number == before_two.block_number,
             "pre-seal clocks came from different blocks")
 
         local effort = response_budget(tournament)
         local target_one_allowance =
-            before_two.clock.allowance - DESIRED_DEADLINE_GAP
+            before_two.allowance - DESIRED_DEADLINE_GAP
         assert(target_one_allowance > 0,
             "honest allowance is too small for the requested deadline gap")
 
         local required_charge =
-            math.max(before_one.clock.allowance - target_one_allowance, 0)
-        local minimum_inclusion = before_one.clock.block_number + 1
+            math.max(before_one.allowance - target_one_allowance, 0)
+        local minimum_inclusion = before_one.block_number + 1
         -- pauseAfterResponseAt charges max(elapsed - responseBudget, 0).
         -- Choose the seal block from that equation, then let cast send mine
         -- exactly the final block.
         local target_inclusion = math.max(
             minimum_inclusion,
-            before_one.clock.last_resume + effort + required_charge
+            before_one.last_resume + effort + required_charge
         )
         local charged = math.max(
-            target_inclusion - before_one.clock.last_resume - effort,
+            target_inclusion - before_one.last_resume - effort,
             0
         )
         assert(target_inclusion
-            < before_one.clock.last_resume + before_one.clock.allowance,
+            < before_one.last_resume + before_one.allowance,
             "controlled sealing delay would expire the sybil")
 
         advance_to(target_inclusion - 1)
@@ -269,19 +269,18 @@ local function install_sender_hooks(sender, fixture)
         )
         assert(ok, "controlled leaf seal reverted: " .. tostring(result))
 
-        local after_one =
-            reader:read_commitment(tournament, commitment_one)
-        local after_two =
-            reader:read_commitment(tournament, commitment_two)
-        assert(after_one.clock.last_resume == target_inclusion
-            and after_two.clock.last_resume == target_inclusion,
+        local after_one, after_two = clock_probe:read_clocks(
+            tournament,
+            { commitment_one, commitment_two }
+        )
+        assert(after_one.last_resume == target_inclusion
+            and after_two.last_resume == target_inclusion,
             "sealed leaf clocks did not start at one common block")
-        assert(after_one.clock.allowance
-            == before_one.clock.allowance - charged,
+        assert(after_one.allowance == before_one.allowance - charged,
             "final responder charge differs from the computed delay")
-        assert(after_two.clock.allowance == before_two.clock.allowance,
+        assert(after_two.allowance == before_two.allowance,
             "paused commitment was charged by leaf sealing")
-        assert(after_two.clock.allowance - after_one.clock.allowance
+        assert(after_two.allowance - after_one.allowance
             >= DESIRED_DEADLINE_GAP,
             "controlled seal did not create the required deadline gap")
 
@@ -297,12 +296,12 @@ local function install_sender_hooks(sender, fixture)
             commitment_two = commitment_two,
         }
         fixture.seal_block = target_inclusion
-        fixture.short_allowance = after_one.clock.allowance
-        fixture.long_allowance = after_two.clock.allowance
+        fixture.short_allowance = after_one.allowance
+        fixture.long_allowance = after_two.allowance
         fixture.short_deadline =
-            target_inclusion + after_one.clock.allowance
+            target_inclusion + after_one.allowance
         fixture.long_deadline =
-            target_inclusion + after_two.clock.allowance
+            target_inclusion + after_two.allowance
 
         print(string.format(
             "[sealed_leaf_timeout] seal=%d short=%d long=%d gap=%d effort=%d",
@@ -318,6 +317,7 @@ end
 
 local function setup()
     env.spawn_blockchain { env.sample_inputs[1] }
+    clock_probe = TournamentClockProbe.new(env.blockchain.endpoint)
     local first_epoch = assert(env.reader:read_epochs_sealed()[1])
     assert(first_epoch.input_upper_bound == 0,
         "epoch zero must be empty")

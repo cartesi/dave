@@ -139,12 +139,7 @@ for _, deletion in ipairs(env.reader:read_match_deleted(second_epoch.tournament)
 end
 assert(silent_timeout, "silent commitment was not eliminated by a timeout deletion")
 
-local stored_match = env.reader.inner_reader:read_match(
-    second_epoch.tournament,
-    silent_timeout.match_id_hash
-)
-assert(stored_match[1]:is_zero() and stored_match[2]:is_zero() and stored_match[3]:is_zero(),
-    "silent commitment's deleted match still exists in tournament storage")
+env.assert_match_uninitialized(second_epoch.tournament, silent_timeout)
 
 -- validate winners
 local winner = env.reader:root_tournament_winner(second_epoch.tournament)

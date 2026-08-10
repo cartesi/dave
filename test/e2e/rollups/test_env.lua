@@ -1,7 +1,9 @@
 local Blockchain = require "blockchain.node"
+local Adapter = require "player.adapter"
 local Dave = require "dave.node"
 local Hash = require "cryptography.hash"
 local Machine = require "computation.machine"
+local SemanticReader = require "player.semantic_reader"
 local time = require "utils.time"
 local Reader = require "dave.reader"
 local Sender = require "dave.sender"
@@ -41,6 +43,7 @@ local FAST_FORWARD_TIME = tonumber(os.getenv("FAST_FORWARD_TIME")) or 128
 local ORACLE_DIR = "_oracle" .. (os.getenv("TEST_INSTANCE") and ("-" .. os.getenv("TEST_INSTANCE")) or "")
 
 local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
+local MATCH_PHASE_UNINITIALIZED = 0
 
 local Env = {
     anvil_load_path = ANVIL_LOAD_PATH,
@@ -126,9 +129,24 @@ function Env.wait_until_epoch(target_epoch, ff)
     return assert(epochs[total_epochs])
 end
 
+function Env.assert_match_uninitialized(tournament_address, match)
+    local transport = SemanticReader.CastTransport.new(
+        Env.blockchain.endpoint
+    )
+    local head = transport:get_head("latest")
+    local timeout = transport:observer_call(
+        tournament_address,
+        Adapter.View.TIMEOUT,
+        match,
+        head
+    )
+    assert(timeout.actual_phase == MATCH_PHASE_UNINITIALIZED,
+        "deleted match remains initialized in the tournament view")
+end
+
 -- Assert the durable cleanup evidence, not merely the eventual tournament
--- winner. MatchDeleted preserves the reason and participants after getMatch
--- has been cleared; the zero read confirms the parent consumed the match.
+-- winner. MatchDeleted preserves the reason and participants; the semantic
+-- phase confirms that the parent consumed the match.
 function Env.assert_match_deleted(tournament_address, match, reason, winner_commitment)
     local deletions = Env.reader:read_match_deleted(tournament_address, match.match_id_hash)
     assert(#deletions == 1, "expected exactly one MatchDeleted event for the match")
@@ -143,9 +161,7 @@ function Env.assert_match_deleted(tournament_address, match, reason, winner_comm
     assert(deletion.winner_commitment == winner_commitment,
         string.format("unexpected MatchDeleted winner: %s", deletion.winner_commitment))
 
-    local stored = Env.reader.inner_reader:read_match(tournament_address, match.match_id_hash)
-    assert(stored[1]:is_zero() and stored[2]:is_zero() and stored[3]:is_zero(),
-        "deleted match still exists in tournament storage")
+    Env.assert_match_uninitialized(tournament_address, match)
 
     return deletion
 end
