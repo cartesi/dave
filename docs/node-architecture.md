@@ -111,7 +111,9 @@ Epoch and input ingestion consumes logs only up to the chain's finalized block
 (`BlockNumberOrTag::Finalized`). Finality is trusted and those rows are never
 rolled back. Oversized `eth_getLogs` ranges are handled by binary range
 partitioning, triggered by provider-specific error codes passed in as
-configuration (`--long-block-range-error-codes`).
+configuration (`--long-block-range-error-codes`). A successful response is
+trusted to contain every matching log in its requested range; the node does not
+cross-check it against a second provider or an on-chain event count.
 
 The deadline-sensitive tournament reader holds one recursive, event-derived
 `Dispute` through finalized `F`. On cold start it reconstructs that Solid value
@@ -161,8 +163,8 @@ The epoch manager directly owns the one non-cloneable transaction lane. Every
 tick submits at most one mutation: a Hero action, otherwise one cleanup action;
 one settlement step when the dispute is no longer contested; or one recovery
 action when all higher-priority work is absent. Recovery is sampled at most
-once for each newly observed finalized head. Nothing queues maintenance behind
-clock-bearing work.
+once for each newly observed finalized head. Within one tick, clock-bearing
+work is selected before maintenance.
 
 The lane is stateless. For every submission it reads the account's mined nonce
 at Latest, obtains a fresh EIP-1559 fee estimate, signs one fully specified
@@ -212,6 +214,10 @@ Error handling and observability:
    inclusion, but the node neither requires that service nor detects a
    deterministic self-authored revert. Because reverted state remains
    unchanged, the same intent may be rebuilt and paid for again each tick.
+   The lane also does not remember a pending transaction's fees or priority: a
+   later, different intent at the same mined nonce may wait until the earlier
+   transaction mines, drops, or becomes replaceable at the fresh market quote.
+   Operation assumes that this happens within the dispute clock budget.
    Preflight or repeated-intent escalation remains pre-mainnet work.
 
 Structure:

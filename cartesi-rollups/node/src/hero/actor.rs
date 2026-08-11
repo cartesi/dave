@@ -38,7 +38,7 @@ pub enum TournamentResult {
 /// One dispute tick's outcome and its optional lane request.
 ///
 /// Hero work and cleanup never share a wave: at most one request leaves a
-/// tick, so maintenance cannot occupy the nonce needed by the next response.
+/// tick, and a cleanup is selected only when that tick has no Hero action.
 #[derive(Clone, Debug)]
 pub struct HeroTick {
     result: TournamentResult,
@@ -147,6 +147,8 @@ where
             .map_err(anyhow::Error::from)?;
             let solid_decision = plan_hero(solid_context.snapshot());
             if !is_exact_join(solid_decision, foam_join) {
+                // Keep the lane empty while Solid catches up. A Foam cleanup
+                // here could still be pending when the finalized join is due.
                 debug!(
                     "latest proposed {foam_join:?}, which Solid does not support exactly; retry next tick"
                 );

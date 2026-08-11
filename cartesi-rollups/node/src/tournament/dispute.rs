@@ -338,7 +338,7 @@ impl Tournament {
         Ok(self)
     }
 
-    /// Checks local invariants, child geometry, and recursive address identity.
+    /// Checks local invariants, child depth, and recursive address identity.
     pub fn validate(&self) -> Result<(), DisputeError> {
         self.validate_unique_addresses()?;
         self.validate_contents()

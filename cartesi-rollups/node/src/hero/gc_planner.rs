@@ -3,8 +3,8 @@
 //! Match eliminability comes entirely from contract-authored schedules in the
 //! event fold. Tournament eliminability remains the contract's current-state
 //! decision and therefore uses one standing observation per reachable
-//! tournament. The planner returns at most one action so maintenance never
-//! leaves a nonce tail in front of the next Hero response.
+//! tournament. The actor calls the planner only when the tick selected no Hero
+//! action, and takes at most one cleanup request.
 
 use std::collections::HashMap;
 
