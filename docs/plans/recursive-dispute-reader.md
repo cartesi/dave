@@ -86,10 +86,13 @@ views as migration evidence rather than a permanent second authority.
 | Whether a historical bond is recoverable | Pinned `bondRecovery()` at the solid boundary in the first slice | The recursive dispute supplies provenance and enumeration; event-derived recovery remains separate work. |
 | Whether a submitted action is still legal | Contract mutator | Other actors and reorgs may supersede any observation. |
 
-The configured RPC provider remains part of the read trust boundary. The reader
-must reject malformed responses and incomplete internal values. It does not
-attempt to prove receipt inclusion, detect latest-chain rollback, or compare
-two responses from the same provider as a substitute for such a proof.
+The configured RPC provider remains part of the read trust boundary. A
+successful `eth_getLogs` response is trusted to contain every matching log in
+the requested range; the Rust reader does not compare it with the event
+counters. The reader rejects malformed responses and incomplete internal
+values, but does not attempt to prove receipt inclusion, detect latest-chain
+rollback, or compare two responses from the same provider as a substitute for
+such a proof.
 
 ## Recursive domain
 
@@ -451,7 +454,7 @@ belongs to one proven latest branch.
 The first version uses mechanical limits rather than a generic cache or
 streaming framework:
 
-- persist only recognized Solid raw logs and its exact cursor;
+- persist only recognized Solid raw logs and its numeric watermark;
 - retain one hot in-memory Solid dispute for the active root;
 - deep-clone once and rebuild Foam every tick;
 - retain non-overlapping block-range bisection;
@@ -465,8 +468,8 @@ streaming framework:
 
 Do not impose an arbitrary maximum number of valid tournaments. An adversary
 may legitimately purchase a broad dispute. If an operational budget expires,
-the whole load fails and produces no action; a truncated dispute is not a
-weaker valid dispute.
+the whole load fails and produces no action; the reader never intentionally
+publishes a known prefix as a complete dispute.
 
 Old unretired epoch roots need only Solid state. Recovery may rebuild them from
 persisted logs on its low cadence or cache their exact Solid disputes while
@@ -519,7 +522,8 @@ Foam canonical or establish a second global authority.
 ## Core invariants
 
 1. Solid equals the event-derived state obtained from exactly the persisted
-   recognized logs through its stored `(number, hash)` cursor.
+   recognized logs through its stored numeric watermark. The hot in-memory
+   value pairs that watermark with the sampled finalized hash.
 2. Foam starts from a fresh clone of Solid and contains every recognized log
    returned for the requested numeric tail during this tick. It makes no
    ancestry claim about the separately sampled point-read hash.

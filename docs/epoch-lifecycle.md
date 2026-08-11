@@ -107,9 +107,9 @@ Three worker threads share one SQLite database (see
   `NewInnerTournament` descendants; it never scans attacker-writable candidates
   by submitter. If Latest already exposes the next epoch
   while finalized ingestion still ends at the previous one, recovery waits;
-  maintenance cannot occupy the nonce needed by the next finalized join. The
-  lane itself is stateless: every send rebuilds from fresh observation at
-  fresh market fees, and the mempool arbitrates duplicates and replacements.
+  the node submits no new maintenance into that observed rotation window. The
+  lane itself is stateless: every send rebuilds from fresh observation at fresh
+  market fees, and the mempool arbitrates duplicates and replacements.
 
 Sentry-claim and settlement calldata are semantic commitments, so their
 contents come from finalized inputs and stored settlement data. Latest may
@@ -146,8 +146,8 @@ could succeed and cannot be repaired by a later retry.
 3. When the tick selected no Hero action and the root is still running, propose
    at most one garbage-collection intent (`hero/gc_planner.rs`). Match cleanup
    compares event schedules with the sampled latest block number; child
-   cleanup consumes the tournament standing overlay. Deeper work wins, and no
-   cleanup transaction queues behind a Hero response.
+   cleanup consumes the tournament standing overlay. Deeper work wins, and a
+   cleanup is selected only when that tick has no Hero response.
 4. A won inner tournament propagates to the parent match; losing the root
    tournament is reported (and should page a human: it means our
    commitment is wrong or we were censored beyond the protocol's bound).
