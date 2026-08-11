@@ -67,15 +67,28 @@ Immediate); writer roles live in per-role files - `ingest.rs`
 (player) - `snapshots.rs` is the boundary store (every machine
 store, load, and clean), and `queries.rs`
 is the role-free read surface. Every public operation is one
-transaction closure. The advance path is batched and rides a chain
-of clones: the runner mutates a working clone of the latest
-boundary in place (SHARING_ALL), commits it into the
-content-addressed store per accepted input (atomic rename; clones
-are reflink-cheap where the filesystem cooperates), records up to
-`--snapshot-gap-inputs` inputs per batch, and commits all their
-rows in one transaction; a crash re-executes at most one batch, and
-a revert discards the poisoned clone and re-clones the batch
-boundary.
+transaction closure. One node process exclusively owns a state directory;
+SQLite coordinates its worker threads, not multiple node processes.
+
+Committed snapshots are immutable and load with explicit `SHARING_NONE`,
+which gives them private file-backed mappings and OS copy-on-write behavior.
+The advance path checks out one unique clone and opens only that clone with
+`SHARING_ALL`. Within a batch it owns at most one closed, immutable transient
+rollback checkpoint plus one mutable working clone. An accepted input rotates
+the working clone into the checkpoint and checks out a fresh clone; a rejected
+input discards the poisoned clone and checks out a fresh clone of the current
+checkpoint.
+
+While an epoch is open, a tail shorter than `--snapshot-gap-inputs` remains
+unexecuted until a full batch is available. Once the epoch is sealed, the
+runner executes and publishes its final shorter batch before rolling the
+epoch. Only the batch's final canonical boundary becomes durable: the runner
+closes it, verifies that its root matches the content-addressed key, syncs the
+stored machine, renames it without replacement, and then registers the
+boundary together with every window root in one database transaction. A crash
+can therefore orphan a durable directory but cannot leave a row pointing at
+an undurable machine; it may replay at most one full batch. Dispute-time
+snapshot densification is the deliberate exception to the normal gap cadence.
 
 Main schema (`storage/sql/migrations.sql`):
 
@@ -189,13 +202,16 @@ exclusive to one node instance.
 State and storage:
 
 1. Snapshot garbage collection removes directories after the transaction that
-   unreferenced them commits. A concurrent reader can still begin loading one
-   in the interval before that post-commit removal.
-2. Snapshots are keyed by root hash but pruned by epoch bookkeeping;
-   `stage_machine_store`'s exists() gate (`storage/snapshots.rs`) no-ops
-   on hash collision across epochs, which couples correctness to GC
-   ordering. Stores stage and rename atomically, so the gate cannot adopt a
-   torn directory.
+   unreferenced them commits. That removal is not serialized with concurrent
+   reads or content-addressed re-adoption. Current worker-role sequencing is
+   relied upon: if a publisher reused the path after GC unreferenced it but
+   before post-commit removal, it could register the path before GC deleted the
+   directory. Serializing removal with re-adoption is a separate follow-up.
+2. Snapshot publication reuses a pre-existing content-addressed destination
+   without rehashing that destination. The staged candidate is root-verified,
+   synced, and renamed without replacement, but correctness still relies on
+   exclusive state-directory ownership and no external mutation of committed
+   snapshots.
 3. Finalized input and epoch ingestion accumulates the entire unprocessed
    block range into in-memory vectors before one database transaction. Range
    partitioning limits what each RPC request asks for, but not total backlog
@@ -250,4 +266,5 @@ Design assumptions:
     not prove the tail belongs to that hash's ancestry; stale work is safe
     because mutators revalidate it, and the next tick rebuilds the tail.
 13. One node instance per state dir; SQLite WAL is the only cross-thread
-    coordination.
+    coordination. Shared state-directory operation is unsupported and has no
+    process lock or recovery protocol.

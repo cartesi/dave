@@ -23,12 +23,13 @@
 //! tripwire cross-checks resumed against replayed computation
 //! wherever they overlap.
 //!
-//! The write side is filesystem-first, database-second: machines
-//! land in the store via a staging directory and an atomic rename
-//! (the commit point - a crash can never leave a partial directory
-//! at a final path), rows commit after, and directories orphaned by
-//! GC are removed only after the transaction that unreferenced them.
-//! A crash can orphan a directory, never dangle a row.
+//! The write side is filesystem-first, database-second: staged
+//! machines are root-verified, synced, and renamed durably without
+//! replacement before their rows commit. A publication crash may
+//! orphan a complete directory but cannot leave a row naming an
+//! undurable machine. GC removes directories only after the
+//! transaction that unreferenced them; its concurrency assumption is
+//! documented in the node architecture.
 
 use super::convert::{blob_to_hash, i64_to_u64, u64_to_i64};
 use super::error::{Result, StorageError};
@@ -64,13 +65,9 @@ pub enum StoreError {
 //
 
 impl Storage {
-    /// Stores the machine into the content-addressed path via a
-    /// staging directory and an atomic rename. The rename is the
-    /// commit point: a crash mid-store can never leave a partial
-    /// directory at the final path, so the exists() gate stays
-    /// trustworthy on resume. Stale staging directories (crash
-    /// leftovers) are swept before reuse. Registration in the
-    /// (epoch, input) map is the caller's transaction's business.
+    /// Stores the machine into the durable content-addressed path.
+    /// Registration in the (epoch, input) map is the caller's
+    /// transaction's business.
     pub(super) fn store_boundary(
         &self,
         machine: &mut RollupsMachine,
@@ -95,6 +92,11 @@ impl Storage {
         state_hash: &Hash,
         machine: &mut Machine,
     ) -> Result<PathBuf> {
+        let actual_hash = machine.root_hash()?;
+        assert_eq!(
+            actual_hash, *state_hash,
+            "dispute boundary CAS key disagrees with the machine root"
+        );
         let dest = self
             .stage_machine_store(state_hash, |staging| machine.store(staging))
             .map_err(anyhow::Error::from)?;
@@ -102,15 +104,9 @@ impl Storage {
         Ok(dest)
     }
 
-    /// The staging discipline shared by every machine store: write
-    /// into a uniquely named staging directory, then atomically
-    /// rename to the content-addressed path. The rename is the
-    /// commit point: a crash mid-store can never leave a partial
-    /// directory at the final path, so the exists() gate stays
-    /// trustworthy on resume. Staging names are unique per store
-    /// (never keyed by hash: the hero and the roll can store an
-    /// identical state concurrently); crash leftovers die in the
-    /// startup sweep.
+    /// Serializes into a unique staging directory before durable CAS
+    /// publication. Staging names are never keyed by hash: the hero
+    /// and the roll may produce an identical state concurrently.
     fn stage_machine_store(
         &self,
         state_hash: &Hash,
@@ -141,14 +137,57 @@ impl Storage {
                 }
             }
 
-            if let Err(rename_err) = std::fs::rename(&staging, &dest) {
-                // Content addressing makes a lost race benign: an
-                // existing destination has identical content.
-                if dest.exists() {
-                    let _ = std::fs::remove_dir_all(&staging);
-                } else {
-                    return Err(StoreError::Staging(rename_err));
-                }
+            return self.publish_staged(staging, state_hash);
+        }
+
+        // A concurrent publisher may have made the directory visible
+        // before its own parent fsync completed. Adoption establishes
+        // durability independently before any caller registers a row.
+        Machine::sync_stored(&dest)?;
+        Ok(dest)
+    }
+
+    /// The one durable CAS publication boundary. The staged machine
+    /// is root-verified, synced, and renamed without replacement.
+    /// Only a destination that won the same CAS race makes a failed
+    /// rename benign. Database registration always follows this
+    /// function at its caller.
+    fn publish_staged(
+        &self,
+        staged: PathBuf,
+        expected_hash: &Hash,
+    ) -> std::result::Result<PathBuf, StoreError> {
+        let actual_hash = {
+            let mut verifier = Machine::load(
+                &staged,
+                &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
+            )?;
+            verifier.root_hash()?
+        };
+        assert_eq!(
+            actual_hash, *expected_hash,
+            "staged machine root disagrees with its CAS key"
+        );
+
+        Machine::sync_stored(&staged)?;
+        let dest = machine_store_path(&snapshots_path(self.state_dir()), expected_hash);
+
+        if dest.exists() {
+            Machine::sync_stored(&dest)?;
+            let _ = std::fs::remove_dir_all(&staged);
+            return Ok(dest);
+        }
+
+        if let Err(rename_err) = Machine::rename_stored(&staged, &dest) {
+            if dest.exists() {
+                // This may be a lost race, or our rename may have
+                // succeeded before its directory fsync failed. In
+                // either case, make the visible destination durable
+                // ourselves before treating it as adopted.
+                Machine::sync_stored(&dest)?;
+                let _ = std::fs::remove_dir_all(&staged);
+            } else {
+                return Err(rename_err.into());
             }
         }
 
@@ -170,24 +209,15 @@ impl Storage {
         Ok(working)
     }
 
-    /// Commits a working clone as the machine's content-addressed
-    /// directory: the atomic rename is the commit point, and an
-    /// already-existing destination has identical content (the CAS
-    /// dedup - rejected inputs, idle stretches), so the clone is
-    /// simply discarded against it. The caller must have closed the
-    /// machine first. Row registration is separate, as everywhere.
+    /// Durably publishes a closed working clone. The staged machine
+    /// derives and verifies its CAS key inside the shared publisher;
+    /// row registration remains separate, as everywhere.
     pub(super) fn commit_clone(
         &self,
         working: PathBuf,
         state_hash: &Hash,
     ) -> std::result::Result<PathBuf, StoreError> {
-        let dest = machine_store_path(&snapshots_path(self.state_dir()), state_hash);
-        if dest.exists() {
-            std::fs::remove_dir_all(&working).map_err(StoreError::Staging)?;
-        } else if let Err(rename_err) = std::fs::rename(&working, &dest) {
-            return Err(StoreError::Staging(rename_err));
-        }
-        Ok(dest)
+        self.publish_staged(working, state_hash)
     }
 
     /// Removes an abandoned working clone (a poisoned post-reject
@@ -698,10 +728,13 @@ mod tests {
         s.commit_boundary_machine(7, 3, &hash, &mut machine)
             .unwrap();
 
-        // A boundary whose state the CAS misses gets stored: a real
-        // machine store lands under the new key.
-        let mut other = hash;
-        other[0] ^= 0xFF;
+        // A boundary whose state the CAS misses gets stored under the
+        // root derived from the actual machine.
+        machine
+            .write_memory(cartesi_machine::constants::ar::RAM_START, &[0xA5])
+            .unwrap();
+        let other = machine.root_hash().unwrap();
+        assert_ne!(other, hash);
         let dest2 = s
             .commit_boundary_machine(7, 4, &other, &mut machine)
             .unwrap();
@@ -725,9 +758,28 @@ mod tests {
         s.commit_boundary_machine(7, 3, &hash, &mut machine)
             .unwrap();
 
-        let mut divergent = hash;
-        divergent[0] ^= 0xFF;
+        machine
+            .write_memory(cartesi_machine::constants::ar::RAM_START, &[0x5A])
+            .unwrap();
+        let divergent = machine.root_hash().unwrap();
+        assert_ne!(divergent, hash);
         let _ = s.commit_boundary_machine(7, 3, &divergent, &mut machine);
+    }
+
+    #[test]
+    #[should_panic(expected = "CAS key disagrees")]
+    fn commit_boundary_machine_refuses_a_supplied_wrong_root() {
+        let (_handle, mut s) = setup_storage();
+        let template = s.snapshot_dir(0, 0).unwrap().unwrap();
+        let mut machine = cartesi_machine::machine::Machine::load(
+            &template,
+            &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
+        )
+        .unwrap();
+        let mut wrong = machine.root_hash().unwrap();
+        wrong[0] ^= 0xFF;
+
+        let _ = s.commit_boundary_machine(7, 3, &wrong, &mut machine);
     }
 
     /// The floor query answers the nearest surviving boundary,

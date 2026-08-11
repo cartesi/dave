@@ -74,13 +74,15 @@ Three worker threads share one SQLite database (see
   each input to an epoch by comparing its global index against sealed
   boundaries, and writes both tables transactionally together with the
   last-processed block number.
-- machine-runner (`cartesi-rollups/node/src/machine_runner`): replays inputs
-  through the Cartesi Machine as they appear, producing level-0 commitment
-  leaves per input (accepted inputs advance state; rejected inputs revert
-  to the pre-input snapshot). When it learns an epoch was sealed, it rolls
-  the epoch: stores the settlement info (computation hash, post-epoch
-  machine state hash, output merkle, output proof) and the epoch-boundary
-  snapshot.
+- machine-runner (`cartesi-rollups/node/src/machine_runner`): executes complete
+  `--snapshot-gap-inputs` batches while an epoch is open, leaving a shorter
+  tail unexecuted. Once the epoch is sealed, it executes the remaining tail
+  before rolling. Each input produces one level-0 window-subtree root from its
+  stride leaves; accepted inputs advance state, while rejected inputs restore
+  the batch's current pre-input checkpoint. The batch publishes only its final
+  machine boundary and commits it together with all window roots. Rolling
+  stores the settlement info (computation hash, post-epoch machine state hash,
+  output merkle, output proof) and the next epoch's initial snapshot.
 - epoch-manager (`cartesi-rollups/node/src/epoch_manager`): each iteration
   runs the dispute tick first - for the last sealed epoch, instantiate a
   `Hero` with the epoch's inputs, leaves, and snapshot, and let it react

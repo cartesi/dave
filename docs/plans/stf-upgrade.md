@@ -218,37 +218,38 @@ follow-up change.
   generation intentionally when producer inputs change rather than confusing
   that expected invalidation with v0.20-to-v0.21 state-hash drift.
 
-### Stored-machine boundary
+### Stored-machine boundary (completed 2026-08-11)
 
-- Preserve the core model: committed snapshots load with explicit
-  `SHARING_NONE` (file-backed private mmap and OS CoW); only unique working
-  clones load with `SHARING_ALL`. Do not rely on stored per-range sharing flags
-  to make an immutable load private in practice.
-- The default retention and database batch cadence is 64 inputs. The current
-  implementation nevertheless promotes a working clone into the final CAS
-  after every accepted input so it can be the next input's rollback point. The
-  database transaction then prunes non-gap boundaries and removes their
-  directories. Therefore `sync_stored` must not simply be added to the current
-  per-input `commit_clone` hot path.
-- Distinguish a transient rollback checkpoint from a durable retained snapshot.
-  A candidate batch owns one immutable transient checkpoint plus one mutable
-  clone; it durably publishes only gap boundaries and the final batch anchor.
-  Validate the exact restart and rejection lifecycle before adopting this
-  shape.
-- Add thin `sync_stored`, `rename_stored`, and durable-remove bindings once the
-  publication boundary is settled. The durable order is close, sync the stored
-  files, no-replace rename, then database registration. `sync_stored` is a host
-  backing-store barrier, not a guest filesystem sync.
-- Make publication derive or verify its CAS key from the machine. Do not add a
-  full hash-tree verification to every normal runner load. A hot root comparison
-  is optional defense in depth and does not replace full corruption diagnosis.
-- Treat one node process as the owner of a state directory and document that
-  invariant. Do not add a multi-process locking or recovery subsystem unless
-  shared state-directory operation becomes a supported requirement.
-- Before implementation, benchmark v0.21 clone, private/shared load, root hash,
-  and `sync_stored`, and add crash-point tests around sync, rename, and database
-  registration. Existing SIGKILL tests establish process recovery, not
-  power-loss durability.
+- Committed snapshots now load with explicit `SHARING_NONE`, giving them
+  private file-backed mappings and OS CoW. Only a unique working clone loads
+  with `SHARING_ALL`; immutable loads no longer depend on stored per-range
+  sharing flags.
+- The runner reads its durable cursor, input count, seal state, and candidate
+  payloads from one database transaction. An open tail shorter than the
+  configured gap waits unexecuted. Full gaps and the sealed final remainder
+  run as publication batches, so a crash can replay at most one complete batch
+  (64 inputs by default).
+- A batch owns at most one closed, immutable transient rollback checkpoint plus
+  one mutable clone. Accepted inputs rotate the clone into that checkpoint;
+  rejected inputs discard the poisoned clone and resume from the checkpoint.
+  Only the final canonical boundary is retained.
+- Thin v0.21 bindings expose the static stored-machine operations. Final
+  publication closes and root-verifies the candidate, syncs its stored files,
+  renames it into the content-addressed store without replacement, and only
+  then registers its boundary and window roots in one database transaction.
+  `sync_stored` is a host backing-store barrier, not a guest filesystem sync.
+- The filesystem-first order permits an orphan after a crash or database
+  failure, but never a row that names an undurable machine. Content-addressed
+  publication lets deterministic replay reuse the orphan CAS artifact after
+  re-execution. Cleanup remains database-first, so an interrupted best-effort
+  removal leaves only an unreferenced directory.
+- Normal advance publication follows the configured gap cadence. Dispute-time
+  densification may still persist intermediate boundaries needed to construct
+  proofs; it uses the same durable publisher.
+- One node process exclusively owns a state directory. Multi-process locking,
+  hot-load root verification, and a broader recovery subsystem remain outside
+  the supported model. The lifecycle invariants and crash seams, rather than a
+  pre-implementation microbenchmark, determined this design.
 
 ## Verification doctrine for the whole campaign
 

@@ -29,6 +29,7 @@ mod snapshots;
 pub(crate) mod sql;
 
 pub use advance::AdvanceBatch;
+pub(crate) use advance::AdvancePlan;
 pub use open::{DEFAULT_SNAPSHOT_GAP_INPUTS, Storage};
 
 use self::error::Result;
@@ -267,9 +268,8 @@ mod tests {
             "latest block should match"
         );
 
-        // One batch: an accepted input, then a reverted one. The
-        // reverted input's boundary shares the accepted input's
-        // snapshot (the machine restores to it).
+        // One batch: an accepted input, then two reverted ones. The
+        // rejected inputs share the accepted input's final boundary.
         let (mut machine, mut batch) = access.begin_advances()?;
         assert_eq!(machine.epoch(), 0);
 
@@ -300,13 +300,17 @@ mod tests {
 
         machine.increment_input();
         access.record_reverted(&mut batch, &mut machine, &window_1)?;
+
+        machine.increment_input();
+        access.record_reverted(&mut batch, &mut machine, &window_1)?;
         assert_eq!(
             machine.next_input_index_in_epoch(),
-            2,
+            3,
             "the reverted machine resumes after the rejected input"
         );
 
-        assert_eq!(batch.len(), 2);
+        assert_eq!(batch.len(), 3);
+        drop(machine);
         access.commit_advances(batch)?;
 
         assert_eq!(
@@ -314,15 +318,15 @@ mod tests {
                 0,
                 rollups_machine::LOG2_STRIDE,
                 rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
-                2
+                3
             )?,
-            2,
-            "both windows landed their root rows"
+            3,
+            "all windows landed their root rows"
         );
 
         assert_eq!(
             access.next_input_id()?.input_index_in_epoch,
-            2,
+            3,
             "the committed batch is the resume point"
         );
 
