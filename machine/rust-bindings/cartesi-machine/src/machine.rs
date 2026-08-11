@@ -153,11 +153,11 @@ impl Machine {
         Ok(Self { machine })
     }
 
-    /// Loads a new machine instance from a previously stored directory,
-    /// with the config's own per-range sharing (fully private in
-    /// practice: mutations stay in memory).
+    /// Loads a new machine instance from a previously stored directory with
+    /// every backing file mapped privately. Mutations stay in memory and are
+    /// discarded when the machine is destroyed.
     pub fn load(dir: &Path, runtime_config: &RuntimeConfig) -> Result<Self> {
-        Self::load_with_sharing(dir, runtime_config, SharingMode::Config)
+        Self::load_with_sharing(dir, runtime_config, SharingMode::None)
     }
 
     /// Loads a stored machine with an explicit sharing mode.
@@ -202,40 +202,51 @@ impl Machine {
     pub fn clone_stored(from_dir: &Path, to_dir: &Path) -> Result<()> {
         let from_cstr = path_to_cstring(from_dir)?;
         let to_cstr = path_to_cstring(to_dir)?;
-        let empty = Self::new_empty()?;
         let err_code = unsafe {
-            cartesi_machine_sys::cm_clone_stored(
-                empty.machine,
-                from_cstr.as_ptr(),
-                to_cstr.as_ptr(),
-            )
+            cartesi_machine_sys::cm_clone_stored(ptr::null(), from_cstr.as_ptr(), to_cstr.as_ptr())
         };
         check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// Removes a stored machine directory. The directory must not be
-    /// in use; on failure some files may remain.
-    pub fn remove_stored(dir: &Path) -> Result<()> {
-        let dir_cstr = path_to_cstring(dir)?;
-        let empty = Self::new_empty()?;
-        let err_code =
-            unsafe { cartesi_machine_sys::cm_remove_stored(empty.machine, dir_cstr.as_ptr()) };
+    /// Renames a stored machine directory without replacing an existing
+    /// destination. The source must not be in use and both paths must be on
+    /// the same filesystem. On success, the rename and affected parent
+    /// directory entries are durable.
+    pub fn rename_stored(from_dir: &Path, to_dir: &Path) -> Result<()> {
+        let from_cstr = path_to_cstring(from_dir)?;
+        let to_cstr = path_to_cstring(to_dir)?;
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_rename_stored(ptr::null(), from_cstr.as_ptr(), to_cstr.as_ptr())
+        };
         check_err!(err_code)?;
 
         Ok(())
     }
 
-    /// An empty local machine object (`cm_new`): holds no instance,
-    /// exists only to dispatch stored-directory operations. The C API
-    /// rejects a NULL object despite its header's claim.
-    fn new_empty() -> Result<Self> {
-        let mut machine: *mut cartesi_machine_sys::cm_machine = ptr::null_mut();
-        let err_code = unsafe { cartesi_machine_sys::cm_new(&mut machine) };
+    /// Flushes every file and directory entry of a stored machine to
+    /// permanent storage. The expected use is after closing the machine that
+    /// was using the stored files.
+    pub fn sync_stored(dir: &Path) -> Result<()> {
+        let dir_cstr = path_to_cstring(dir)?;
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_sync_stored(ptr::null(), dir_cstr.as_ptr()) };
         check_err!(err_code)?;
 
-        Ok(Self { machine })
+        Ok(())
+    }
+
+    /// Removes a stored machine directory. The directory must not be in use;
+    /// on success, the removal of its parent directory entry is durable. On
+    /// failure, some files may remain.
+    pub fn remove_stored(dir: &Path) -> Result<()> {
+        let dir_cstr = path_to_cstring(dir)?;
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_remove_stored(ptr::null(), dir_cstr.as_ptr()) };
+        check_err!(err_code)?;
+
+        Ok(())
     }
 
     /// Stores a machine instance to a directory, serializing its entire state.
@@ -1114,6 +1125,40 @@ mod tests {
     }
 
     #[test]
+    fn test_load_keeps_stored_machine_private() -> Result<()> {
+        const STORED_MCYCLE: u64 = 1_000;
+        const PRIVATE_MCYCLE: u64 = 2_000;
+
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+        assert_eq!(
+            machine.run(STORED_MCYCLE)?,
+            constants::break_reason::REACHED_TARGET_MCYCLE
+        );
+        let stored_root = machine.root_hash()?;
+
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+        machine.store(&stored)?;
+        drop(machine);
+
+        {
+            let mut private = Machine::load(&stored, &RuntimeConfig::quiet_console())?;
+            assert_eq!(
+                private.run(PRIVATE_MCYCLE)?,
+                constants::break_reason::REACHED_TARGET_MCYCLE
+            );
+            assert_ne!(private.root_hash()?, stored_root);
+        }
+
+        let mut reloaded = Machine::load(&stored, &RuntimeConfig::quiet_console())?;
+        assert_eq!(reloaded.mcycle()?, STORED_MCYCLE);
+        assert_eq!(reloaded.root_hash()?, stored_root);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_memory_range() -> Result<()> {
         let config = make_basic_machine_config();
         let mut machine = create_machine(&config)?;
@@ -1236,6 +1281,80 @@ mod tests {
         assert_eq!(source.mcycle()?, PREFIX);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_sync_and_rename_stored_without_overwrite() -> Result<()> {
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+        let renamed = tmp.path().join("renamed");
+        let contender = tmp.path().join("contender");
+        let occupied = tmp.path().join("occupied");
+
+        let config = make_basic_machine_config();
+        let mut machine = create_machine(&config)?;
+        machine.run(1_000)?;
+        let expected_root = machine.root_hash()?;
+        machine.store(&stored)?;
+        drop(machine);
+
+        Machine::sync_stored(&stored)?;
+        Machine::rename_stored(&stored, &renamed)?;
+        assert!(!stored.exists());
+        assert!(renamed.exists());
+
+        {
+            let mut reloaded = Machine::load(&renamed, &RuntimeConfig::quiet_console())?;
+            assert_eq!(reloaded.root_hash()?, expected_root);
+        }
+
+        Machine::clone_stored(&renamed, &contender)?;
+        Machine::clone_stored(&renamed, &occupied)?;
+        let error = Machine::rename_stored(&contender, &occupied)
+            .expect_err("rename must not replace an existing destination");
+        assert_eq!(error.code, constants::error_code::RUNTIME_ERROR);
+        assert!(error.message.contains("destination exists"));
+
+        for dir in [&contender, &occupied] {
+            assert!(dir.exists());
+            let mut reloaded = Machine::load(dir, &RuntimeConfig::quiet_console())?;
+            assert_eq!(reloaded.root_hash()?, expected_root);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sync_and_rename_stored_reject_invalid_and_missing_paths() {
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let missing = tmp.path().join("missing");
+        let destination = tmp.path().join("destination");
+
+        let error = Machine::sync_stored(Path::new(""))
+            .expect_err("an empty stored-machine path must be invalid");
+        assert_eq!(error.code, constants::error_code::INVALID_ARGUMENT);
+        assert!(error.message.contains("directory name cannot be empty"));
+
+        let error = Machine::rename_stored(Path::new(""), &destination)
+            .expect_err("an empty rename source must be invalid");
+        assert_eq!(error.code, constants::error_code::INVALID_ARGUMENT);
+        assert!(error.message.contains("directory name cannot be empty"));
+
+        let error = Machine::rename_stored(&missing, Path::new(""))
+            .expect_err("an empty rename destination must be invalid");
+        assert_eq!(error.code, constants::error_code::INVALID_ARGUMENT);
+        assert!(error.message.contains("directory name cannot be empty"));
+
+        let error =
+            Machine::sync_stored(&missing).expect_err("syncing a missing stored machine must fail");
+        assert_eq!(error.code, constants::error_code::RUNTIME_ERROR);
+        assert!(error.message.contains("unable to read file"));
+
+        let error = Machine::rename_stored(&missing, &destination)
+            .expect_err("renaming a missing stored machine must fail");
+        assert_eq!(error.code, constants::error_code::RUNTIME_ERROR);
+        assert!(error.message.contains("unable to read file"));
+        assert!(!destination.exists());
     }
 
     /// A SharingMode::All load owns its directory for its lifetime (the
