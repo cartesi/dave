@@ -44,9 +44,10 @@ use std::path::{Path, PathBuf};
 /// dispute densification and the row insert as a cross-regime
 /// nondeterminism tripwire. Advance is the machine runner's mode:
 /// one window, its payload handed in (the runner already read the
-/// inputs table to schedule it), and the pre-feed snapshot IS the
-/// batch's committed boundary directory - never a store; a revert
-/// restores through the boundary store's own artifact.
+/// inputs table to schedule it), and the pre-feed snapshot is the
+/// batch's closed checkpoint. It may be transient until the batch's
+/// final boundary is published; a revert only needs it to be
+/// immutable for the current window.
 enum Feeder {
     Scratch {
         fed: usize,
@@ -125,9 +126,9 @@ impl MachineStf {
     /// The machine runner's stf: wraps the live working-clone machine
     /// the caller owns (SHARING_ALL, mutated in place, sitting at
     /// `window`'s boundary), feeds exactly that window, and restores
-    /// a revert from `boundary` - the batch's committed pre-input
-    /// directory. No filesystem effects of its own; the counterpart
-    /// of [`MachineStf::into_machine`].
+    /// a revert from `boundary` - the batch's closed pre-input
+    /// checkpoint, durable or transient. No filesystem effects of its
+    /// own; the counterpart of [`MachineStf::into_machine`].
     pub fn over_advancing(
         machine: Machine,
         window: u64,
@@ -312,8 +313,8 @@ impl Stf for MachineStf {
                 );
                 *reverted = false;
                 let payload = payload.take().expect("the advance stf feeds once");
-                // The pre-feed state is already committed: it is the
-                // boundary the working clone was checked out from.
+                // The pre-feed state is the batch's closed checkpoint,
+                // which may remain transient until batch publication.
                 (boundary.clone(), payload)
             }
         };
