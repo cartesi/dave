@@ -11,10 +11,6 @@ inputs:
     # Keep in step with the release container (rust:1.90-trixie in
     # build.yml); the workspace uses post-1.86 std APIs.
     default: '1.90'
-  foundry-version:
-    description: 'Foundry version to install'
-    required: false
-    default: 'v1.5.1'
   setup-qemu:
     description: 'Whether to setup QEMU for riscv support'
     required: false
@@ -44,22 +40,22 @@ runs:
         cache-on-failure: false
         cache-bin: false
 
+    - name: Install just
+      uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      with:
+        # Pinned like the other toolchain components: a floating "latest"
+        # upgrades CI's toolchain silently mid-week (1.56 -> 1.57
+        # landed between two runs of this workflow and muddied a
+        # two-day CI hunt). Bump deliberately.
+        just-version: "1.57.0"
+
     - name: Set Foundry version
       id: set-foundry-version
       shell: bash
       run: |
-        echo "version=${{ inputs.foundry-version }}" >> $GITHUB_OUTPUT
+        echo "version=$(just print-foundry-version)" >> "$GITHUB_OUTPUT"
 
     - name: Install Foundry
       uses: foundry-rs/foundry-toolchain@c7450ba673e133f5ee30098b3b54f444d3a2ca2d # v1.8.0
       with:
         version: ${{ steps.set-foundry-version.outputs.version }}
-
-    - name: Install just
-      uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-      with:
-        # Pinned like rust and foundry above: a floating "latest"
-        # upgrades CI's toolchain silently mid-week (1.56 -> 1.57
-        # landed between two runs of this workflow and muddied a
-        # two-day CI hunt). Bump deliberately.
-        just-version: "1.57.0"
