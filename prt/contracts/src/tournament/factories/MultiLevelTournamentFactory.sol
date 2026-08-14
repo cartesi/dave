@@ -22,6 +22,8 @@ import {
 } from "prt-contracts/types/TournamentParameters.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
+/// @dev The immutable provider is the sole authority for a parameter table
+/// trusted to remain coherent and stable for this factory's lifetime.
 contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     using Clones for address;
 
@@ -50,6 +52,21 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         STATE_TRANSITION = _stateTransition;
     }
 
+    /// @inheritdoc IMultiLevelTournamentFactory
+    function tournamentLevelCount() external view override returns (uint64) {
+        return tournamentParameters(0).levels;
+    }
+
+    /// @inheritdoc IMultiLevelTournamentFactory
+    function tournamentParameters(uint64 _level)
+        public
+        view
+        override
+        returns (TournamentParameters memory)
+    {
+        return TOURNAMENT_PARAMETERS_PROVIDER.tournamentParameters(_level);
+    }
+
     function instantiate(Machine.Hash _initialHash, IDataProvider _provider)
         external
         override
@@ -72,7 +89,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         private
         returns (ITournament)
     {
-        TournamentParameters memory params = _getTournamentParameters(0);
+        TournamentParameters memory params = tournamentParameters(0);
 
         ITournament.TournamentArguments memory args =
             ITournament.TournamentArguments({
@@ -121,7 +138,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         uint64 _level,
         IDataProvider _provider
     ) external override returns (ITournament) {
-        TournamentParameters memory params = _getTournamentParameters(_level);
+        TournamentParameters memory params = tournamentParameters(_level);
 
         ITournament.TournamentArguments memory args =
             ITournament.TournamentArguments({
@@ -149,14 +166,6 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
 
         address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
         return ITournament(clone);
-    }
-
-    function _getTournamentParameters(uint64 _level)
-        internal
-        view
-        returns (TournamentParameters memory)
-    {
-        return TOURNAMENT_PARAMETERS_PROVIDER.tournamentParameters(_level);
     }
 
     function _kindFor(uint64 _level, uint64 _levels)

@@ -233,7 +233,9 @@ recursive trace for the intended level count; the four-level miniature proves
 that the generic contract path can cross three child seams. These checks catch
 malformed Solidity geometry, but cannot prove cross-implementation agreement.
 The node's commitment strides and the complete contract table must still be
-compared as a release gate.
+compared as a release gate. Node startup additionally checks the deployed root
+row against its compiled level-zero sampling stride and 92-bit ruler span;
+deeper rows remain lazy, descriptor-driven geometry.
 
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the `responseBudget` field. A

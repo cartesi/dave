@@ -28,6 +28,9 @@ pub struct AddressBook {
     /// address of Dave consensus
     pub consensus: Address,
 
+    /// address of tournament factory
+    pub tournament_factory: Address,
+
     /// address of input box
     pub input_box: Address,
 
@@ -42,6 +45,7 @@ impl fmt::Display for AddressBook {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "App Address: {}", self.app)?;
         writeln!(f, "Consensus Address: {}", self.consensus)?;
+        writeln!(f, "Tournament Factory Address: {}", self.tournament_factory)?;
         writeln!(f, "Input Box Address: {}", self.input_box)?;
         writeln!(
             f,
@@ -73,6 +77,15 @@ impl AddressBook {
                 .expect("fail to query input box address")
         };
 
+        let tournament_factory = {
+            let consensus_contract = DaveConsensus::new(consensus, provider);
+            consensus_contract
+                .getTournamentFactory()
+                .call()
+                .await
+                .expect("fail to query tournament factory address")
+        };
+
         let initial_hash = Self::initial_hash(consensus, provider).await;
 
         let input_box_contract = InputBox::new(input_box, provider);
@@ -88,6 +101,7 @@ impl AddressBook {
         Self {
             app,
             consensus,
+            tournament_factory,
             input_box,
             genesis_block_number: input_box_created_block,
             initial_hash,
