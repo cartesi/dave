@@ -2,12 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::blockchain_reader::AddressBook;
+use crate::engine::Structure;
+use crate::storage::rollups_machine::LOG2_STRIDE;
 use crate::storage::{Storage, StorageError};
 use alloy::{
-    network::EthereumWallet, primitives::Address, providers::DynProvider,
+    network::EthereumWallet,
+    primitives::Address,
+    providers::{DynProvider, Provider},
     transports::http::reqwest::Url,
 };
 use alloy_chains::NamedChain;
+use anyhow::{Context, Result, anyhow, ensure};
+use cartesi_prt_contracts::multi_level_tournament_factory::MultiLevelTournamentFactory;
 use clap::{ArgGroup, Parser, Subcommand};
 use std::{fmt, path::PathBuf, time::Duration};
 
@@ -16,6 +22,41 @@ use crate::provider::{TransactionLane, create_rpc_provider, create_signer};
 const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const SLEEP_DURATION: u64 = 30;
+
+fn validate_root_tournament_geometry(log2step: u64, height: u64) -> Result<()> {
+    let deployed_span = log2step
+        .checked_add(height)
+        .ok_or_else(|| anyhow!("root tournament span overflows u64: {log2step} + {height}"))?;
+
+    ensure!(
+        log2step == LOG2_STRIDE,
+        "incompatible root tournament stride: deployed log2step {log2step}, node requires {LOG2_STRIDE}"
+    );
+
+    let expected_span = Structure::PRODUCTION.log2_ruler_span();
+    ensure!(
+        deployed_span == expected_span,
+        "incompatible root tournament span: deployed log2step + height is {deployed_span}, node requires {expected_span}"
+    );
+
+    Ok(())
+}
+
+async fn validate_deployed_root_tournament_geometry(
+    tournament_factory: Address,
+    provider: &impl Provider,
+) -> Result<()> {
+    let parameters = MultiLevelTournamentFactory::new(tournament_factory, provider)
+        .tournamentParameters(0)
+        .call()
+        .await
+        .with_context(|| {
+            format!("failed to query root parameters from tournament factory {tournament_factory}")
+        })?;
+
+    validate_root_tournament_geometry(parameters.log2step, parameters.height)
+        .with_context(|| format!("tournament factory {tournament_factory} is incompatible"))
+}
 
 #[derive(Clone, Parser)]
 #[command(name = "cartesi_prt_args")]
@@ -192,7 +233,7 @@ impl NodeConfig {
         lane
     }
 
-    pub async fn setup() -> (Self, Storage) {
+    pub async fn setup() -> Result<(Self, Storage)> {
         let args = PRTArgs::parse();
 
         let chain_id = args
@@ -203,6 +244,8 @@ impl NodeConfig {
         let provider = create_rpc_provider(&args.web3_rpc_url, chain_id).await;
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await;
         let address_book = AddressBook::new(args.app_address, &provider).await;
+        validate_deployed_root_tournament_geometry(address_book.tournament_factory, &provider)
+            .await?;
         let ethereum_submit_gateway = args
             .web3_submit_rpc_url
             .unwrap_or_else(|| args.web3_rpc_url.clone());
@@ -213,7 +256,7 @@ impl NodeConfig {
             address_book.genesis_block_number,
             address_book.app,
         )
-        .expect("could not create `storage`");
+        .context("could not create `storage`")?;
 
         let mut machine = storage
             .snapshot(0, 0)
@@ -225,7 +268,7 @@ impl NodeConfig {
             "local machine initial hash doesn't match on-chain"
         );
 
-        (
+        Ok((
             Self {
                 address_book,
                 state_dir: storage.state_dir().to_owned(),
@@ -240,6 +283,34 @@ impl NodeConfig {
                 snapshot_gap_inputs: args.snapshot_gap_inputs,
             },
             storage,
-        )
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_canonical_root_tournament_geometry() {
+        validate_root_tournament_geometry(44, 48).unwrap();
+    }
+
+    #[test]
+    fn rejects_wrong_root_tournament_stride() {
+        let error = validate_root_tournament_geometry(43, 49).unwrap_err();
+        assert!(error.to_string().contains("deployed log2step 43"));
+    }
+
+    #[test]
+    fn rejects_wrong_root_tournament_span() {
+        let error = validate_root_tournament_geometry(44, 47).unwrap_err();
+        assert!(error.to_string().contains("log2step + height is 91"));
+    }
+
+    #[test]
+    fn rejects_root_tournament_span_overflow() {
+        let error = validate_root_tournament_geometry(u64::MAX, 1).unwrap_err();
+        assert!(error.to_string().contains("span overflows u64"));
     }
 }

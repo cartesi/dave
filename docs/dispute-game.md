@@ -106,6 +106,20 @@ needs: its root-based `level` and its leaf/non-leaf `kind`. The total level
 count remains configuration knowledge; it is not repeated in every deployed
 tournament or semantic descriptor.
 
+The factory exposes that configuration through `tournamentLevelCount()` and
+`tournamentParameters(level)`. A parameter row deliberately repeats the same
+`levels` value returned by the count view: both are projections of the
+factory's one trusted parameters provider, not independently stored facts.
+Supported deployments require that provider to return one stable, coherent
+table for the factory's lifetime. Inner-tournament creation reads the selected
+row through the same factory view before baking its local geometry and kind
+into the new clone.
+
+This factory-wide introspection is for consumers that need prospective
+geometry. The acting clients do not copy the total count into every recursive
+tournament. They discover children from events and use each child's immutable
+descriptor when that child exists.
+
 The checked-in canonical provider configures the historical three-level table
 `log2step = [44, 27, 0]`, `height = [48, 17, 27]`. The selected deployment
 layout is the two-level table `log2step = [37, 0]`, `height = [55, 37]`.
@@ -516,7 +530,8 @@ Before that guard, a canonical root with zero allowance was already closed at
 its creation instant, so every join failed with `TournamentIsClosed` before
 clock initialization. A zero response budget remains valid and simply applies
 no discount. A generic parameters provider is not validated on every factory
-read; supported deployments must validate its complete table before use.
+read; supported deployments must validate its complete table before use and
+must treat it as stable for the lifetime of its factory.
 
 The intended mainnet allowance is dimensioned from two distinct budgets
 (derivation in [`dimensioning.md`](dimensioning.md)):

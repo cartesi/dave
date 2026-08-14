@@ -120,6 +120,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
 
     let input_box = deployment_address("InputBox");
     let dave_app_factory = deployment_address("DaveAppFactory");
+    let tournament_factory = deployment_address("MultiLevelTournamentFactory");
 
     // Load the stored machine through the emulator and ask it for the root
     // hash, rather than reading the internal `hash_tree.sht` file directly.
@@ -194,6 +195,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         AddressBook {
             app,
             consensus,
+            tournament_factory,
             input_box,
             genesis_block_number: 0,
             initial_hash,

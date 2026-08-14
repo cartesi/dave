@@ -224,6 +224,12 @@ granularity - and every deeper level - is computed lazily by
 re-running the machine, and cached as merkle nodes in the quartet
 cache (`sling_nodes`, keyed by epoch, stride, height, and shift).
 
+Before opening its database, the node reads row zero from the deployed
+tournament factory and refuses to start unless that row uses the compiled
+sampling stride and spans this 92-bit ruler. Deeper tournament geometry is
+read from each clone's immutable descriptor when the recursive dispute reaches
+it.
+
 One subtlety (the ruler's fused feed transition): a machine snapshot
 taken at an input boundary sits yielded, mid-transition. Its state hash
 at that point is not a leaf; the builder must feed the pending input

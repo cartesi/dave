@@ -142,10 +142,29 @@ compatibility-hashes:
     echo "Tournament semantic storage-layout fingerprint sha256:"
     forge inspect --json Tournament storageLayout \
       | jq -S -f script/storage-layout-semantic.jq | sha256sum
-    echo "Tournament creation-bytecode deployment fingerprint sha256:"
+    echo "Tournament metadata-free creation-bytecode fingerprint sha256:"
     forge inspect --no-metadata Tournament bytecode | sha256sum
-    echo "Tournament runtime-bytecode deployment fingerprint sha256:"
+    echo "Tournament metadata-free runtime-bytecode fingerprint sha256:"
     forge inspect --no-metadata Tournament deployedBytecode | sha256sum
+    # Metadata-included bytecode exposes source-only drift that changes CREATE2
+    # initcode. Deployment-specific constructor arguments remain separate.
+    echo "Tournament metadata-included creation-bytecode fingerprint sha256:"
+    forge inspect Tournament bytecode | sha256sum
+    echo "Tournament metadata-included runtime-bytecode fingerprint sha256:"
+    forge inspect Tournament deployedBytecode | sha256sum
+    echo "MultiLevelTournamentFactory wire ABI sha256:"
+    forge inspect --json MultiLevelTournamentFactory abi | jq -S . | sha256sum
+    echo "MultiLevelTournamentFactory semantic storage-layout fingerprint sha256:"
+    forge inspect --json MultiLevelTournamentFactory storageLayout \
+      | jq -S -f script/storage-layout-semantic.jq | sha256sum
+    echo "MultiLevelTournamentFactory metadata-free creation-bytecode fingerprint sha256:"
+    forge inspect --no-metadata MultiLevelTournamentFactory bytecode | sha256sum
+    echo "MultiLevelTournamentFactory metadata-free runtime-bytecode fingerprint sha256:"
+    forge inspect --no-metadata MultiLevelTournamentFactory deployedBytecode | sha256sum
+    echo "MultiLevelTournamentFactory metadata-included creation-bytecode fingerprint sha256:"
+    forge inspect MultiLevelTournamentFactory bytecode | sha256sum
+    echo "MultiLevelTournamentFactory metadata-included runtime-bytecode fingerprint sha256:"
+    forge inspect MultiLevelTournamentFactory deployedBytecode | sha256sum
 
 install-deps:
     forge soldeer install

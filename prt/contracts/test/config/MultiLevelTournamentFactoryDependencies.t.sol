@@ -20,23 +20,29 @@ import {
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
+import {Tree} from "src/types/Tree.sol";
 
 import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
 
 using TournamentInspector for ITournament;
 
 contract FactoryDependencyParametersProvider is ITournamentParametersProvider {
+    error InvalidLevel(uint64 level);
+
     function tournamentParameters(uint64 level)
         external
         pure
         override
         returns (TournamentParameters memory)
     {
-        require(level == 0);
+        if (level > 1) {
+            revert InvalidLevel(level);
+        }
+
         return TournamentParameters({
-            levels: 1,
-            log2step: 0,
-            height: 1,
+            levels: 2,
+            log2step: level == 0 ? 2 : 0,
+            height: level == 0 ? 3 : 2,
             responseBudget: Time.Duration.wrap(1),
             maxAllowance: Time.Duration.wrap(100)
         });
@@ -120,7 +126,35 @@ contract MultiLevelTournamentFactoryDependenciesTest is Test {
         );
     }
 
-    function testValidDependenciesProduceCallableRootClone() public {
+    function testForwardsParametersAndProjectsLevelCount() public {
+        MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
+            implementation, parametersProvider, stateTransition
+        );
+
+        uint64 levelCount = factory.tournamentLevelCount();
+        assertEq(levelCount, parametersProvider.tournamentParameters(0).levels);
+
+        for (uint64 level; level < levelCount; ++level) {
+            TournamentParameters memory expected =
+                parametersProvider.tournamentParameters(level);
+            TournamentParameters memory actual =
+                factory.tournamentParameters(level);
+
+            assertEq(
+                keccak256(abi.encode(actual)), keccak256(abi.encode(expected))
+            );
+            assertEq(actual.levels, levelCount);
+        }
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FactoryDependencyParametersProvider.InvalidLevel.selector, 2
+            )
+        );
+        factory.tournamentParameters(2);
+    }
+
+    function testValidDependenciesProduceClonesFromAdvertisedRows() public {
         vm.roll(100);
         MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
             implementation, parametersProvider, stateTransition
@@ -130,14 +164,51 @@ contract MultiLevelTournamentFactoryDependenciesTest is Test {
             factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
         assertGt(address(root).code.length, 0);
 
+        TournamentParameters memory parameters = factory.tournamentParameters(0);
         ITournament.TournamentArguments memory args = root.tournamentArguments();
         assertEq(args.level, 0);
-        assertEq(uint8(args.kind), uint8(ITournament.TournamentKind.LEAF));
-        assertEq(args.commitmentArgs.log2step, 0);
-        assertEq(args.commitmentArgs.height, 1);
+        assertEq(uint8(args.kind), uint8(ITournament.TournamentKind.NON_LEAF));
+        assertEq(args.commitmentArgs.log2step, parameters.log2step);
+        assertEq(args.commitmentArgs.height, parameters.height);
+        assertEq(
+            Time.Duration.unwrap(args.responseBudget),
+            Time.Duration.unwrap(parameters.responseBudget)
+        );
+        assertEq(
+            Time.Duration.unwrap(args.allowance),
+            Time.Duration.unwrap(parameters.maxAllowance)
+        );
         assertEq(args.tournamentFactory, address(factory));
         assertEq(address(args.stateTransition), address(stateTransition));
         assertFalse(root.isClosed());
         assertGt(root.bondValue(), 0);
+
+        ITournament inner = factory.instantiateInner(
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Time.Duration.wrap(80),
+            4,
+            1,
+            IDataProvider(address(0))
+        );
+        assertGt(address(inner).code.length, 0);
+
+        parameters = factory.tournamentParameters(1);
+        args = inner.tournamentArguments();
+        assertEq(args.level, 1);
+        assertEq(uint8(args.kind), uint8(ITournament.TournamentKind.LEAF));
+        assertEq(args.commitmentArgs.log2step, parameters.log2step);
+        assertEq(args.commitmentArgs.height, parameters.height);
+        assertEq(args.commitmentArgs.startCycle, 4);
+        assertEq(
+            Time.Duration.unwrap(args.responseBudget),
+            Time.Duration.unwrap(parameters.responseBudget)
+        );
+        assertEq(Time.Duration.unwrap(args.allowance), 80);
+        assertEq(args.tournamentFactory, address(factory));
+        assertEq(address(args.stateTransition), address(stateTransition));
     }
 }
