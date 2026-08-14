@@ -21,9 +21,15 @@ set shell := ["bash", "-o", "pipefail", "-cu"]
 # rejoining them with spaces (which destroys shell quoting).
 set positional-arguments
 
+FOUNDRY_VERSION := "v1.5.1"
+
 [private]
 default:
     @just --list
+
+# print the Foundry release used by CI and checked by doctor
+print-foundry-version:
+    @echo "{{FOUNDRY_VERSION}}"
 
 # Shell pipelines like `cmd | tail` report the LAST stage's status,
 # silently laundering failures - this recipe retires that trap for
@@ -159,16 +165,17 @@ doctor:
         "needed only to build the honeypot image (its project generates rootfs from a tarball with it)"; fi
     # Forge formatter heuristics drift across releases; a local/CI
     # version split fails CI fmt with no local reproduction. Compare
-    # against the setup-tools pin instead of documenting the advice.
+    # against the root pin that setup-tools also consumes.
     if command -v forge > /dev/null; then
-      ci_pin=$(sed -n "s/.*default: 'v\([0-9][0-9.]*\)'.*/\1/p" .github/actions/setup-tools/action.yml | head -1)
+      foundry_pin="{{FOUNDRY_VERSION}}"
+      expected_forge="${foundry_pin#v}"
       local_forge=$(forge --version 2>/dev/null | sed -n 's/.*Version: \([0-9][0-9.]*\).*/\1/p' | head -1)
-      if [ -n "$ci_pin" ] && [ -n "$local_forge" ]; then
-        if [ "$local_forge" = "$ci_pin" ]; then
+      if [ -n "$local_forge" ]; then
+        if [ "$local_forge" = "$expected_forge" ]; then
           ok "forge $local_forge matches the CI pin"
         else
-          warn "forge $local_forge != CI pin v$ci_pin" \
-            "formatter output will differ from CI; align the flake and .github/actions/setup-tools"
+          warn "forge $local_forge != CI pin $foundry_pin" \
+            "formatter output will differ from CI; align the devshell and FOUNDRY_VERSION in the root justfile"
         fi
       fi
     fi
@@ -305,7 +312,7 @@ fmt: fmt-rust-workspace
     just rollups-contracts::fmt
 
 # Forge's formatter changes wrapping heuristics across releases; when
-# this disagrees with CI, align the setup-tools foundry pin and the
+# this disagrees with CI, align the root FOUNDRY_VERSION pin and the
 # devshell forge rather than hand-formatting around either.
 # check formatting everywhere (rust workspace + both contract dirs)
 check-fmt: check-fmt-rust-workspace

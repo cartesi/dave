@@ -193,9 +193,10 @@ Lua error.
 Formatter versions matter: forge changes wrapping heuristics across
 releases (observed live: 1.4.3 and 1.5.1-dev disagree about an
 80-column function header in Match.sol). When local `check` and CI
-disagree about contract formatting, align the setup-tools foundry
-pin with the devshell forge instead of hand-formatting around
-either.
+disagree about contract formatting, align the root justfile's
+`FOUNDRY_VERSION` pin with the devshell forge instead of hand-formatting
+around either. The setup-tools action reads that pin through
+`just print-foundry-version`.
 
 ## CI
 
