@@ -21,7 +21,7 @@ set shell := ["bash", "-o", "pipefail", "-cu"]
 # rejoining them with spaces (which destroys shell quoting).
 set positional-arguments
 
-FOUNDRY_VERSION := "v1.5.1"
+FOUNDRY_VERSION := "1.5.1"
 
 [private]
 default:
@@ -167,14 +167,13 @@ doctor:
     # version split fails CI fmt with no local reproduction. Compare
     # against the root pin that setup-tools also consumes.
     if command -v forge > /dev/null; then
-      foundry_pin="{{FOUNDRY_VERSION}}"
-      expected_forge="${foundry_pin#v}"
+      expected_forge="{{FOUNDRY_VERSION}}"
       local_forge=$(forge --version 2>/dev/null | sed -n 's/.*Version: \([0-9][0-9.]*\).*/\1/p' | head -1)
       if [ -n "$local_forge" ]; then
         if [ "$local_forge" = "$expected_forge" ]; then
           ok "forge $local_forge matches the CI pin"
         else
-          warn "forge $local_forge != CI pin $foundry_pin" \
+          warn "forge $local_forge != CI pin $expected_forge" \
             "formatter output will differ from CI; align the devshell and FOUNDRY_VERSION in the root justfile"
         fi
       fi
