@@ -103,8 +103,9 @@ toolchain, Lua 5.4, Rust, and the Cartesi Machine. See the root `README.md`
 and `docs/build-system.md`.
 
 ```bash
-just doctor           # diagnose the checkout; every problem names its fix
-just setup            # one-time: submodules and selected machine provider
+just doctor           # diagnose build/check readiness
+just doctor-all       # include machine images, devnet, and E2E state
+just setup            # one-time: submodules, machine provider, contract deps
 just build            # contracts + bindings + rust workspace
 just check            # THE pre-commit gate: fmt, lints, clippy, unit tests
 just test-rust-workspace       # rust unit tests
@@ -113,9 +114,9 @@ just test-rollups-echo         # e2e: honest node, echo machine
 just test-rollups-honeypot     # e2e: full honeypot scenario suite
 ```
 
-When something fails mysteriously, run `just doctor` before debugging: it
-checks tools, submodules, bindings, machine images, and devnet artifacts,
-and prints the fixing command for anything missing.
+When a build or check fails mysteriously, run `just doctor` before debugging.
+For E2E failures use `just doctor-e2e`, or `just doctor-all` for both scopes.
+Every diagnosed problem prints its fixing command.
 
 For long commands, prefer `just logged <file> <cmd...>`: it writes the
 full output to the file and reports the TRUE exit code. Piping through

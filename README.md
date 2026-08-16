@@ -122,9 +122,8 @@ If you prefer running Dave natively on your machine, you'll need additional depe
   honeypot machine image (the honeypot project generates its rootfs from
   a tarball with it)
 
-The lists above are the big pieces; `just doctor` (below) checks the
-complete toolchain, including the smaller utilities the test harness
-expects.
+The lists above are the big pieces; the doctor commands below check the
+smaller build and test prerequisites as well.
 
 **Setup Steps:**
 
@@ -154,13 +153,14 @@ expects.
 
 At any point, run:
 ```bash
-just doctor
+just doctor       # build and pre-commit-check readiness
+just doctor-e2e   # machine images, devnet, and E2E state
+just doctor-all   # both scopes
 ```
-It diagnoses the whole checkout - toolchain, submodules, emulator
-linkage, contract dependencies, bindings, machine images, devnet
-artifacts - and prints the command that fixes anything missing. Run it
-before debugging any mysterious failure. `just --list` shows every
-available recipe, and `just check` is the pre-commit gate.
+Each command prints the fix for anything missing. Keeping E2E artifacts out of
+the base doctor prevents an otherwise build-ready checkout from appearing
+permanently unhealthy. `just --list` shows every available recipe, and
+`just check` is the pre-commit gate.
 
 ### Running Examples
 

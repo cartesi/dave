@@ -13,10 +13,18 @@ inputs:
     description: 'Architecture of Cartesi Machine to install'
     required: false
     default: 'amd64'
+  archive-sha256:
+    description: 'SHA-256 of the Cartesi Machine Debian package; override with version, suffix, or arch'
+    required: false
+    default: '5f13034f43454c340062c677146daabe77c587cee1bd60342c95b8ad8f1463a3'
   xgenext2fs-version:
     description: 'Version of xgenext2fs to install'
     required: false
     default: '1.5.6'
+  xgenext2fs-sha256:
+    description: 'SHA-256 of the xgenext2fs Debian package; override with version or arch'
+    required: false
+    default: '996e4e68a638b5dc5967d3410f92ecb8d2f41e32218bbe0f8b4c4474d7eebc59'
 runs:
   using: composite
   steps:
@@ -28,13 +36,14 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-            build-essential git wget \
+            build-essential curl git wget \
             libslirp-dev \
             libclang-dev \
             liblua5.4-dev lua5.4 \
             xxd jq sqlite3 libc6 clang libarchive13
 
           wget -O xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
+          echo "${{ inputs.xgenext2fs-sha256 }}  xgenext2fs.deb" | sha256sum --check
           sudo apt-get install -y ./xgenext2fs.deb
           rm ./xgenext2fs.deb
           xgenext2fs --version
@@ -43,6 +52,7 @@ runs:
       shell: bash
       run: |
         curl -fsSL https://github.com/cartesi/machine-emulator/releases/download/v${{ inputs.version }}${{ inputs.suffix-version }}/machine-emulator_${{ inputs.arch }}.deb -o /tmp/cartesi-machine.deb
+        echo "${{ inputs.archive-sha256 }}  /tmp/cartesi-machine.deb" | sha256sum --check
 
     - name: Install Cartesi Machine
       shell: bash

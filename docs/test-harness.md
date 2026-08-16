@@ -148,9 +148,8 @@ scenario that kills on it):
 
 Machine programs (`test/programs/`): `echo` (accepts and rejects inputs),
 `yield` (awaits each input with `RX_ACCEPTED`, then rejects it with
-`RX_REJECTED`), `honeypot` (real application),
-`compute` (no-input computation; buildable but not yet wired into any
-scenario).
+`RX_REJECTED`), and `honeypot` (real application). The explicit `stress`
+image belongs to the Rust measurement workflow, not to an E2E scenario.
 
 Scenarios (`test/e2e/rollups/scenarios/`):
 
@@ -241,14 +240,17 @@ aiming at the closing slot of the big cycle where the reject yielded.
 this. Not yet pinned: capacity boundaries (last input slot, last
 stride).
 
-CI (`.github/workflows/build.yml`): the contracts jobs run the forge
-suites (prt disputes + stf, consensus); the workspace job runs Rust fmt
-and check, Clippy, Lua lint and client unit tests, the Rust build, and
-`test-rust-workspace`; the e2e job runs honeypot `simple`, the batched
-catch-up kill, chaos at a fixed seed, and honeypot `stf_all`. Everything
-else - echo, the full kill battery, chaos seed sweeps, honeypot-all, and
-yield-all - is manual, which makes it rot-prone (see the state of the
-nets below).
+Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suites
+(PRT disputes, structured STF tests and fuzz, and consensus); the workspace job
+runs Rust fmt and check, Clippy, Lua lint and client unit tests, the Rust build
+and unit tests, and the explicit image-backed engine differentials; the e2e job
+runs honeypot `simple`, the batched catch-up kill, chaos at a fixed seed,
+honeypot `stf_all`, and yield `stf_revert`. Everything else - echo, the full
+kill battery, chaos seed sweeps, honeypot-all, and the duplicated yield
+scenarios - stays out of the pull-request critical path. The manual
+`.github/workflows/full-e2e.yml` workflow runs the complete battery
+and then explores chaos seeds 2 and 3; the battery itself retains seed 1. Its
+cost and scheduling promotion criteria live in `docs/build-system.md`.
 
 There is also a legacy Sepolia smoke setup (`test/e2e/rollups/sepolia/`).
 It is retained only as a historical lead: it is not part of current CI, has
@@ -302,9 +304,11 @@ least-run layer, and suites outside the loop rot. Case study:
 stayed broken until 2026-07-08, because honeypot-all runs in nobody's
 loop. The response was to move the two highest-value uncovered nets
 into CI (stf_all, the batched kill) - but the durable fix is explicit
-tiers: per-PR CI (fast, always), nightly (full battery, chaos seed
-sweeps), manual (measurement regeneration). A suite not assigned to a
-tier should be treated as deleted.
+tiers: per-PR CI (fast, always), a manually dispatched full battery while its
+cost and signal are calibrated, and manual measurement regeneration. A suite
+not assigned to a tier should be treated as deleted. The full battery should
+be scheduled only after it satisfies the promotion criteria in
+`docs/build-system.md`.
 
 Runtime remains the reason not everything belongs in per-PR CI. Parallel
 `TEST_INSTANCE` lanes retired the fixed-port bottleneck after this assessment;
@@ -394,9 +398,10 @@ The baseline to beat (2026-07-10, retry-fixed binary, caffeinated):
 all-green battery, ~42 min of scenario time, ~11 min wall at 5 lanes,
 no leaked processes. The run to repeat before any handoff:
 `LANES=5 test/e2e/rollups/battery.sh`. Sweep the instance dirs once
-results are read (`just rollups-tests::sweep`): each lane leaves ~5 GB
-of forensic state, and a nearly-full disk quietly slows every machine
-store; `just doctor` warns when the litter passes 10 GB.
+results are read (`just rollups-tests::sweep`): each retained scenario
+instance can leave ~5 GB of forensic state. A nearly-full disk quietly
+slows every machine store; `just doctor-e2e` warns when the litter passes
+10 GB.
 
 Where the wall time goes, by class, largest first: (1) protocol-timeout
 fast-forwarding throttled by the harness poll loop (dominates gc_*,
@@ -413,12 +418,11 @@ shallower trees would shrink protocol-time fast-forwarding at the
 source; contracts-side gap, the engine's Structure is ready) - its
 urgency dropped once the pinned reader landed.
 
-Open tiering recommendation, on current evidence: the yield-all tier
-duplicates honeypot-all's protocol paths 1:1 minus deposit_withdrawal;
-yield's unique value is the revert shape in stf_revert. A reasonable
-nightly tier keeps yield stf_revert and drops the duplicated yield
-scenarios to manual - verify the overlap claim per scenario before
-acting.
+Current tiering, on the available evidence: yield's unique per-PR value is the
+revert shape in `stf_revert`. The other yield scenarios duplicate
+honeypot-all's protocol paths 1:1 minus `deposit_withdrawal`; the manually
+dispatched full battery still runs them so every maintained scenario has one
+complete integration path. That tier also explores additional chaos seeds.
 
 Diagnosis disciplines the incidents taught (details in the frozen
 record):
@@ -428,7 +432,7 @@ record):
   awake for exactly this reason.
 - A stale devnet once surfaced as a misleading consensus assert in a new
   environment. The e2e preflight now verifies the recorded inputs, state,
-  and deployments before Lua or the node starts; `just doctor` reports the
+  and deployments before Lua or the node starts; `just doctor-e2e` reports the
   same failure and names the rebuild command.
 - When the slowest test is mysteriously slow, suspect the product
   before the test; remeasure before optimizing anything.

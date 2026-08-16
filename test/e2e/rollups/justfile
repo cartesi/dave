@@ -11,7 +11,7 @@ doctor:
     "{{ source_directory() / "script/doctor.sh" }}"
 
 # Fail fast with a pointer instead of a cryptic jq/lua error when the
-# checkout is missing an e2e prerequisite; `just doctor` at the repo
+# checkout is missing an e2e prerequisite; `just doctor-e2e` at the repo
 # root diagnoses everything at once.
 [private]
 preflight PROGRAM SCENARIO:
@@ -117,7 +117,7 @@ read-node-logs:
     cat "$log"
     tail -f "$log"
 
-# Kept for forensics, but at ~5 GB per battery lane the litter can
+# Kept for forensics, but at ~5 GB per retained scenario the litter can
 # quietly fill the disk, which slows every machine store system-wide.
 # remove current and legacy state dirs, oracle dirs, and logs left by e2e runs
 sweep:

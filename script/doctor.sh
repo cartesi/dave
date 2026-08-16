@@ -5,6 +5,19 @@ set -u
 repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 CDPATH= cd -- "$repo_root" || exit 2
 
+usage() {
+  echo "usage: script/doctor.sh [base|e2e|all]" >&2
+  exit 2
+}
+
+scope=${1:-base}
+[ "$#" -le 1 ] || usage
+case "$scope" in
+  base|e2e|all) ;;
+  *) usage ;;
+esac
+readonly scope
+
 fails=0; warns=0
 diagnosed_components=""
 checker_failures=""
@@ -15,12 +28,12 @@ warn() { printf '  warn    %s\n' "$1"; printf '          %s\n' "$2"; warns=$((wa
 run_component() {
   local label=$1
   local dir=$2
-  local script=$3
   local component_status
+  shift 2
 
   (
     CDPATH= cd -- "$dir" || exit 2
-    "$script"
+    "$@"
   )
   component_status=$?
 
@@ -43,7 +56,7 @@ run_component() {
 
 check_toolchain() {
 echo "toolchain (nix users: 'direnv allow' provides all of these)"
-for tool in git cargo forge anvil cast lua5.4 luacheck jq sqlite3 \
+for tool in git cargo forge lua5.4 luacheck jq sqlite3 \
     wget curl realpath sha256sum sort; do
   if command -v "$tool" > /dev/null; then ok "$tool"; else
     miss "$tool not on PATH" "install it (see README.md requirements)"; fi
@@ -67,11 +80,15 @@ if command -v sort >/dev/null; then
       "install GNU coreutils (the nix devshell provides it)" ;;
   esac
 fi
-if command -v docker > /dev/null; then ok "docker"; else
-  warn "docker not on PATH" "needed only for the honeypot image and dockerized workflows"; fi
-if command -v xgenext2fs > /dev/null; then ok "xgenext2fs"; else
-  warn "xgenext2fs not on PATH" \
-    "needed only to build the honeypot image (its project generates rootfs from a tarball with it)"; fi
+if command -v docker > /dev/null; then
+  if docker info >/dev/null 2>&1; then
+    ok "docker daemon"
+  else
+    miss "docker daemon is unavailable" "start Docker (Rust KMS tests use it)"
+  fi
+else
+  miss "docker not on PATH" "install and start Docker (Rust KMS tests use it)"
+fi
 # Forge formatter heuristics drift across releases; a local/CI
 # version split fails CI fmt with no local reproduction. Compare
 # against the root pin that CI also consumes.
@@ -87,17 +104,25 @@ if command -v forge > /dev/null; then
     fi
   fi
 fi
-for tool in cartesi-machine cartesi-machine-stored-hash; do
+}
+
+check_e2e_tools() {
+echo "e2e toolchain"
+for tool in anvil cast cartesi-machine cartesi-machine-stored-hash; do
   if command -v "$tool" > /dev/null; then ok "$tool"; else
-    miss "$tool not on PATH" "install the Cartesi Machine (nix devshell has it), needed to build/run test programs"; fi
+    miss "$tool not on PATH" "install it (the nix devshell provides the E2E toolchain)"; fi
 done
+if command -v xgenext2fs > /dev/null; then ok "xgenext2fs"; else
+  warn "xgenext2fs not on PATH" "needed to rebuild the Docker-heavy Honeypot image"; fi
 }
 
 check_rust_build_inputs() {
 echo "rust build inputs"
 run_component "machine" machine ./script/doctor.sh
-run_component "prt-contracts" prt/contracts ./script/doctor.sh
-run_component "rollups-contracts" cartesi-rollups/contracts ./script/doctor.sh
+run_component "prt-contracts" prt/contracts \
+  "$repo_root/script/contracts-doctor.sh" prt
+run_component "rollups-contracts" cartesi-rollups/contracts \
+  "$repo_root/script/contracts-doctor.sh" rollups
 }
 
 check_e2e_test_inputs() {
@@ -118,9 +143,22 @@ if command -v getconf > /dev/null; then
 fi
 }
 
-check_toolchain
-check_rust_build_inputs
-check_e2e_test_inputs
+case "$scope" in
+  base)
+    check_toolchain
+    check_rust_build_inputs
+    ;;
+  e2e)
+    check_e2e_tools
+    check_e2e_test_inputs
+    ;;
+  all)
+    check_toolchain
+    check_rust_build_inputs
+    check_e2e_tools
+    check_e2e_test_inputs
+    ;;
+esac
 
 echo
 doctor_status=0
@@ -132,9 +170,9 @@ if [ -n "$checker_failures" ]; then
 fi
 
 case "$doctor_status" in
-  0) echo "doctor: healthy ($warns root warning(s)). setup docs: docs/build-system.md" ;;
-  1) echo "doctor: setup required ($fails root problem(s), $warns root warning(s)). setup docs: docs/build-system.md" ;;
-  2) echo "doctor: checker failure ($fails root problem(s), $warns root warning(s)). setup docs: docs/build-system.md" ;;
+  0) echo "doctor ($scope): healthy ($warns root warning(s)). setup docs: docs/build-system.md" ;;
+  1) echo "doctor ($scope): setup required ($fails root problem(s), $warns root warning(s)). setup docs: docs/build-system.md" ;;
+  2) echo "doctor ($scope): checker failure ($fails root problem(s), $warns root warning(s)). setup docs: docs/build-system.md" ;;
 esac
 if [ -n "$diagnosed_components" ]; then
   echo "doctor: diagnosed component issue(s): $diagnosed_components"

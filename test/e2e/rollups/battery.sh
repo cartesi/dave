@@ -10,7 +10,9 @@
 #
 # Results land in _battery/results.txt as "<program> <scenario> rc secs";
 # per-scenario stdout in _battery/<program>-<scenario>.log, node logs in
-# dave-<port>.log. Exit code is the number of failed scenarios.
+# dave-<port>.log. Exit code is the number of failed scenarios. Set
+# DAVE_BATTERY_CLEAN_STATE=1 on storage-bounded CI runners to remove each
+# completed scenario's instance state while retaining those logs.
 set -u
 cd "$(dirname "$0")"
 
@@ -88,15 +90,26 @@ run_one() {
     local index=$1 program=$2 scenario=$3
     local port=$((BASE_PORT + index))
     local start=$SECONDS
+    local rc=0
     TEST_INSTANCE=$port CHAOS_SEED=${CHAOS_SEED:-1} \
         just test "$program" "$scenario" > "$OUT/$program-$scenario.log" 2>&1
-    local rc=$?
+    rc=$?
+    if [ "${DAVE_BATTERY_CLEAN_STATE:-0}" = 1 ]; then
+        if ! rm -rf -- \
+            "_state-$port" \
+            "_oracle-$port" \
+            "_machine_scratch-$port"; then
+            echo "[battery] failed to clean instance state for port $port" \
+                >> "$OUT/$program-$scenario.log"
+            rc=1
+        fi
+    fi
     echo "$program $scenario $rc $((SECONDS - start)) $(date +%H:%M:%S)" >> "$OUT/results.txt"
     echo "[battery] $program $scenario rc=$rc $((SECONDS - start))s"
     return "$rc"
 }
 export -f run_one
-export BASE_PORT OUT
+export BASE_PORT OUT DAVE_BATTERY_CLEAN_STATE
 
 # An unattended battery on a macOS laptop dies of idle sleep, not of
 # bugs: the 2026-07-10 verification run froze whole lanes for the

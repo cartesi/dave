@@ -2,10 +2,38 @@
 # Not set -e: dependency and binding checks must both run.
 set -u
 
-readonly script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly contracts_dir="$(CDPATH= cd -- "${script_dir}/.." && pwd -P)"
-readonly repo_dir="$(CDPATH= cd -- "${contracts_dir}/../.." && pwd -P)"
-readonly bindings_script="${repo_dir}/script/contract-bindings.sh"
+script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)" || {
+    printf 'contracts doctor: cannot resolve its script directory\n' >&2
+    exit 2
+}
+repo_dir="$(CDPATH= cd -- "${script_dir}/.." && pwd -P)" || {
+    printf 'contracts doctor: cannot resolve the repository root\n' >&2
+    exit 2
+}
+readonly script_dir repo_dir
+readonly bindings_script="${script_dir}/contract-bindings.sh"
+
+usage() {
+    printf 'usage: script/contracts-doctor.sh prt|rollups\n' >&2
+    exit 2
+}
+
+module=${1:-}
+[[ "$#" -eq 1 ]] || usage
+case "$module" in
+    prt)
+        readonly contracts_dir="${repo_dir}/prt/contracts"
+        readonly display_name="PRT"
+        readonly recipe_prefix="prt-contracts"
+        ;;
+    rollups)
+        readonly contracts_dir="${repo_dir}/cartesi-rollups/contracts"
+        readonly display_name="Rollups"
+        readonly recipe_prefix="rollups-contracts"
+        ;;
+    *) usage ;;
+esac
+readonly module
 
 status=0
 
@@ -27,7 +55,7 @@ checker_error() {
 }
 
 last_line() {
-    local value="$1"
+    local value=$1
 
     value="${value%$'\n'}"
     printf '%s\n' "${value##*$'\n'}"
@@ -65,7 +93,7 @@ check_dependencies() {
         target_count=$((target_count + 1))
         if [[ ! -d "${contracts_dir}/${target}" ]]; then
             missing "Soldeer dependency ${target} is missing" \
-                "just rollups-contracts::install-deps"
+                "just ${recipe_prefix}::install-deps"
             continue
         fi
         entry="$(find "${contracts_dir}/${target}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)"
@@ -74,7 +102,7 @@ check_dependencies() {
             checker_error "cannot inspect Soldeer dependency ${target}"
         elif [[ -z "$entry" ]]; then
             missing "Soldeer dependency ${target} is empty" \
-                "just rollups-contracts::install-deps"
+                "just ${recipe_prefix}::install-deps"
         else
             ok "Soldeer dependency ${target}"
         fi
@@ -88,27 +116,27 @@ check_dependencies() {
 check_bindings() {
     local output="" rc=0
 
-    output="$("$bindings_script" verify rollups 2>&1)"
+    output="$("$bindings_script" verify "$module" 2>&1)"
     rc=$?
     case "$rc" in
-        0) ok "Rollups Rust bindings match the current inputs" ;;
+        0) ok "${display_name} Rust bindings match the current inputs" ;;
         1)
-            missing "Rollups Rust bindings are missing or stale: $(last_line "$output")" \
-                "just rollups-contracts::bind"
+            missing "${display_name} Rust bindings are missing or stale: $(last_line "$output")" \
+                "just ${recipe_prefix}::bind"
             ;;
         *)
-            checker_error "cannot verify Rollups Rust bindings: $(last_line "$output")"
+            checker_error "cannot verify ${display_name} Rust bindings: $(last_line "$output")"
             ;;
     esac
 }
 
-printf 'Rollups contract build inputs\n'
+printf '%s contract build inputs\n' "$display_name"
 check_dependencies
 check_bindings
 printf '\n'
 case "$status" in
-    0) printf 'rollups-contracts doctor: healthy\n' ;;
-    1) printf 'rollups-contracts doctor: setup required\n' ;;
-    2) printf 'rollups-contracts doctor: checker failure\n' ;;
+    0) printf '%s contracts doctor: healthy\n' "$module" ;;
+    1) printf '%s contracts doctor: setup required\n' "$module" ;;
+    2) printf '%s contracts doctor: checker failure\n' "$module" ;;
 esac
 exit "$status"

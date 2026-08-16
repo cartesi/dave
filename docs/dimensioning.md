@@ -291,19 +291,20 @@ minutes of discounts and a leaf match at most 185 minutes. One descent through
 one match at each level totals 460 minutes. These are per-match cumulative
 ceilings, not values deposited into a clock or a whole-tournament maximum.
 
-The historical `prt/measure_constants/measure.lua` script exposes the two inputs
-that shape the level layout: maximum acceptable root slowdown and the time
-budget for constructing an inner commitment. It derives strides and heights
-bottom-up. The current generator is `just measure-constants`
-(`measure.rs --constants`), with results and caveats recorded in
-`docs/measurements/constants.md`. Generator output is evidence for a parameter set, not
-a permanent constant: measurements, hardware assumptions, rounding, and the
-intended level count must travel with the generated table. These tools take `T`
-and root slowdown as inputs and derive strides and heights; they do not derive
-`G`. The node-owned generator and its generated planning prose still use the
-historical grant wording. That documentation correction is intentionally
-coordinated with the separate node branch and tracked in
-[`constants.md`](measurements/constants.md).
+The independent `prt/measure_constants` emulator harness and the Rust
+`just measure-constants` generator expose the two inputs that shape the level
+layout: maximum acceptable root slowdown and the time budget for constructing
+an inner commitment. Both derive strides and heights bottom-up; the Rust
+generator owns the current checked-in result and caveats in
+`docs/measurements/constants.md`. The emulator harness supplies a second
+measurement method across explicitly selected stress-ng workloads. Generator
+output is evidence for a parameter set, not a permanent constant: workloads,
+hardware assumptions, rounding, and the intended level count must travel with
+the generated table. These tools take `T` and root slowdown as inputs and
+derive strides and heights; they do not derive `G`. The node-owned generator
+and its generated planning prose still use the historical grant wording. That
+documentation correction is intentionally coordinated with the separate node
+branch and tracked in [`constants.md`](measurements/constants.md).
 
 This timing and geometry process is separate from EVM refund calibration.
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md) owns
@@ -333,20 +334,17 @@ measured validly:
   (`just measure-constants`; `just measure` / `just measure-stress`;
   docs/measurements/constants.md; docs/measurements/measurements*.md).
 
-Known instances (measure.lua audited 2026-07-08): the script guards
-big-machine HALT correctly everywhere (its timing loops measure real
-work, no identity steps, padding never stepped), but it never checks
-YIELD - a manually-yielding machine (any rollups image) would be
-re-hashed frozen with the halt assert passing, inflating throughput
-or hanging; historical results are trustworthy only because the
-shipped compute targets halt rather than yield. Two further defects:
-uarch halt detection compares `run_uarch()`'s return against the
-BIG-machine break-reason enum and works only because both enums
-number HALTED = 1 (a reorder silently breaks it, measure.lua:91,118);
-and heights round upward (`floor(log2)+1`, measure.lua:144,222), so
-derived constants can demand up to ~2x the measured throughput -
-optimism to subtract from any observed slack. Any port must guard
-halt AND yield, use the correct enum, and round conservatively.
+The emulator reference harness starts each selected stress-ng worker, reaches a
+post-boot RX-accepted readiness marker, releases it through the v0.21 CMIO API,
+and runs a fixed untimed warmup before storing the active machine used by every
+timed phase. Linux boot, process startup, input injection, and warmup are
+excluded. Every timed span rejects halt, yield, early breaks, and non-pristine
+uarch state. Capacity is rounded down to a complete power-of-two commitment.
+Its cheap `check-fixtures` mode validates the warmed workload without running
+the multi-minute measurements. The
+curated nop, crypt, sorting, search, allocation, matrix, tree, TLB, and memory
+churn workloads reduce single-workload bias; they do not make the sample a
+protocol worst case or a representative application distribution.
 
 ## Pointers
 

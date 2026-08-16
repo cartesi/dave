@@ -7,6 +7,7 @@ cd "${BASH_SOURCE%/*}/.."
 
 readonly release_version="v0.21.0"
 readonly archive_sha256="2a452f69398f6b19132ca6b5f3862fbb809b18736ffbf891bc79ba7e89b8f7bc"
+readonly manifest_sha256="d859625242f6b4947c05c152352acb259bc81c84444573f204904bf3f93612e9"
 readonly release_url="https://github.com/cartesi/machine-emulator/releases/download/${release_version}/computation-hash-corpus.tar.gz"
 readonly cache_root="$(pwd -P)/target/computation-hash-corpus"
 readonly release_cache="${cache_root}/${release_version}-${archive_sha256}"
@@ -23,6 +24,8 @@ usage() {
     cat >&2 <<'EOF'
 usage:
   script/computation-hash-corpus.sh download
+  script/computation-hash-corpus.sh test-cli
+  script/computation-hash-corpus.sh test-dave
   script/computation-hash-corpus.sh test
 EOF
     exit 2
@@ -55,11 +58,13 @@ verify_archive() {
 }
 
 verify_corpus() {
-    local recorded_release
+    local recorded_release actual_manifest
 
     verify_archive || return 1
     [ -d "$corpus" ] || return 1
     [ -s "$corpus/manifest.json" ] || return 1
+    actual_manifest=$(sha256sum -- "$corpus/manifest.json" 2>/dev/null) || return 1
+    [ "${actual_manifest%% *}" = "$manifest_sha256" ] || return 1
     [ -f "$release_marker" ] || return 1
     recorded_release=$(cat -- "$release_marker")
     [ "$recorded_release" = "$release_version $archive_sha256" ]
@@ -185,9 +190,8 @@ download_corpus() {
     echo "computation-hash corpus is ready: $corpus"
 }
 
-test_corpus() {
+require_corpus() {
     require_tool cargo
-    require_tool cartesi-machine
     require_tool sha256sum
 
     if ! verify_corpus; then
@@ -195,13 +199,32 @@ test_corpus() {
         echo "fix: script/computation-hash-corpus.sh download" >&2
         exit 1
     fi
+}
+
+run_corpus_test() {
+    local test_name="$1"
 
     CARTESI_COMPUTATION_HASH_CORPUS_PATH="$corpus" \
-        CARTESI_MACHINE_CLI=cartesi-machine \
         cargo test --offline -p cartesi-rollups-prt-node \
             --test engine_machine \
-            computation_hash_corpus_matches_cli_and_engine \
+            "$test_name" \
             -- --ignored --exact --nocapture
+}
+
+test_cli() {
+    require_corpus
+    require_tool cartesi-machine
+    run_corpus_test computation_hash_corpus_cli_matches_release_manifest
+}
+
+test_dave() {
+    require_corpus
+    run_corpus_test computation_hash_corpus_dave_matches_release_manifest
+}
+
+test_corpus() {
+    test_cli
+    test_dave
 }
 
 [ "$#" -eq 1 ] || usage
@@ -209,6 +232,12 @@ test_corpus() {
 case "$1" in
     download)
         download_corpus
+        ;;
+    test-cli)
+        test_cli
+        ;;
+    test-dave)
+        test_dave
         ;;
     test)
         test_corpus

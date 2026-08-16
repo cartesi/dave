@@ -1,0 +1,84 @@
+name: Full E2E Battery
+run-name: Full E2E - ${{ github.ref_name }} @ ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: full-e2e-battery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  battery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+
+      - name: Setup tools and RISC-V container support
+        uses: ./.github/actions/setup-tools
+        with:
+          setup-qemu: true
+
+      - name: Install Cartesi Machine
+        uses: ./.github/actions/cartesi-machine
+
+      - name: Prepare contracts and devnet
+        run: |
+          just prt-contracts::install-deps
+          just rollups-contracts::install-deps
+          just rollups-contracts::build-devnet
+
+      - name: Prepare machine images
+        run: |
+          just programs::download-deps
+          just programs::build-programs
+          just programs::build-honeypot-snapshot
+
+      - name: Build validator node
+        run: just build-rust-workspace
+
+      - name: Run full E2E battery
+        working-directory: test/e2e/rollups
+        timeout-minutes: 120
+        # Each scenario can use about 5 GB of machine state, while a standard
+        # hosted runner has only 14 GB of SSD. Calibrate serially and clean each
+        # scenario before considering more concurrency or a larger runner.
+        env:
+          DAVE_BATTERY_CLEAN_STATE: "1"
+        run: ./battery.sh 1
+
+      - name: Explore additional chaos seeds
+        timeout-minutes: 30
+        run: |
+          status=0
+          for seed in 2 3; do
+            instance=$((8900 + seed))
+            TEST_INSTANCE="$instance" CHAOS_SEED="$seed" \
+              just test-rollups-chaos || status=1
+            rm -rf -- \
+              "test/e2e/rollups/_state-$instance" \
+              "test/e2e/rollups/_oracle-$instance" \
+              "test/e2e/rollups/_machine_scratch-$instance" || status=1
+          done
+          exit "$status"
+
+      - name: Upload E2E logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: full-e2e-logs
+          path: |
+            test/e2e/rollups/_battery/results.txt
+            test/e2e/rollups/_battery/power.txt
+            test/e2e/rollups/_battery/*.log
+            test/e2e/rollups/dave*.log*
+            test/e2e/rollups/anvil*.log*
+          if-no-files-found: warn
+          retention-days: 7
+          include-hidden-files: true

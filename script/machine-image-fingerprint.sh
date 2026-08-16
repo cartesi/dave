@@ -39,44 +39,14 @@ sha256_file() {
     fi
 }
 
-programs_justfile_hash() {
-    local justfile="test/programs/justfile"
-    local marker="# machine-image-producers-end"
-    local marker_count="" producer_hash=""
-    # Existing v1 manifests hashed the whole justfile. This exact producer
-    # prefix maps to that audited legacy value once; any producer edit falls
-    # through to its own hash and invalidates the images normally.
-    local baseline_producer_hash="cd9be3bf73bcd62d88bc582fe6f8724361d785e436e3a478b26a7be42634a884"
-    local legacy_justfile_hash="bdb30d900925ca5c855a9aee5a0968ea18d229a14750e0d5a90534322fbd07c3"
-
-    if [[ ! -f "$justfile" ]]; then
-        echo "error: missing machine-image input: $justfile" >&2
-        return 2
-    fi
-    if ! marker_count="$(awk -v marker="$marker" '$0 == marker { count++ } END { print count + 0 }' "$justfile")"; then
-        echo "error: cannot inspect the machine-image producer boundary" >&2
-        return 2
-    fi
-    if [[ "$marker_count" != "1" ]]; then
-        echo "error: expected exactly one machine-image producer boundary, found $marker_count" >&2
-        return 2
-    fi
-    if ! producer_hash="$({
-        awk -v marker="$marker" '$0 == marker { exit } { print }' "$justfile" || exit 2
-    } | sha256sum)"; then
-        echo "error: cannot hash the machine-image producer recipes" >&2
-        return 2
-    fi
-    producer_hash="${producer_hash%% *}"
-    if [[ ! "$producer_hash" =~ ^[0-9a-f]{64}$ ]]; then
-        echo "error: invalid machine-image producer hash: $producer_hash" >&2
-        return 2
-    fi
-    if [[ "$producer_hash" == "$baseline_producer_hash" ]]; then
-        printf '%s\n' "$legacy_justfile_hash"
-    else
-        printf '%s\n' "$producer_hash"
-    fi
+producer_script() {
+    case "$1" in
+        echo) printf '%s\n' test/programs/script/build-echo.sh ;;
+        yield) printf '%s\n' test/programs/script/build-yield.sh ;;
+        stress) printf '%s\n' test/programs/script/build-stress.sh ;;
+        honeypot) printf '%s\n' test/programs/script/build-honeypot.sh ;;
+        *) return 2 ;;
+    esac
 }
 
 deployment_address() {
@@ -97,18 +67,18 @@ deployment_address() {
 inputs_digest() {
     local program=$1
     local machine_version machine_path machine_hash emulator_pin git_emulator_pin
-    local provided_emulator_pin justfile_hash
+    local provided_emulator_pin producer producer_hash
     local generator_hash portal_address token_address linux_hash rootfs_hash
 
     case "$program" in
-        echo|yield|compute|stress|honeypot) ;;
+        echo|yield|stress|honeypot) ;;
         *)
             echo "error: unsupported test program: $program" >&2
             return 2
             ;;
     esac
 
-    for tool in cartesi-machine sha256sum awk; do
+    for tool in cartesi-machine sha256sum; do
         if ! command -v "$tool" >/dev/null; then
             echo "error: $tool is required to fingerprint machine images" >&2
             return 2
@@ -145,7 +115,15 @@ inputs_digest() {
         echo "error: cannot resolve the emulator gitlink from Git or the environment" >&2
         return 2
     fi
-    justfile_hash=$(programs_justfile_hash) || return $?
+    producer=$(producer_script "$program") || {
+        echo "error: no producer is registered for test program: $program" >&2
+        return 2
+    }
+    if [[ ! -f "$producer" || -L "$producer" ]]; then
+        echo "error: invalid machine-image producer: $producer" >&2
+        return 2
+    fi
+    producer_hash=$(sha256_file "$producer") || return $?
 
     if [ "$program" = honeypot ]; then
         if ! command -v jq >/dev/null; then
@@ -168,9 +146,10 @@ inputs_digest() {
     fi
 
     {
-        printf 'machine-image-inputs-v1\n'
+        printf 'machine-image-inputs-v2\n'
         printf 'program=%s\n' "$program"
-        printf 'programs-justfile=%s\n' "$justfile_hash"
+        printf 'producer=%s\n' "$producer"
+        printf 'producer-sha256=%s\n' "$producer_hash"
         printf 'cartesi-machine=%s\n' "$machine_version"
         printf 'cartesi-machine-binary=%s\n' "$machine_hash"
         printf 'emulator-gitlink=%s\n' "$emulator_pin"
@@ -195,7 +174,7 @@ read_manifest() {
         return 1
     fi
     record=$(cat -- "$manifest")
-    if [[ ! "$record" =~ ^v1[[:space:]]([A-Za-z0-9._-]+)[[:space:]]([0-9a-f]{64})[[:space:]]([0-9a-f]{64})$ ]]; then
+    if [[ ! "$record" =~ ^v2[[:space:]]([A-Za-z0-9._-]+)[[:space:]]([0-9a-f]{64})[[:space:]]([0-9a-f]{64})$ ]]; then
         echo "error: malformed machine-image fingerprint: $manifest" >&2
         return 1
     fi
@@ -264,7 +243,7 @@ case "$mode" in
         mkdir -p "$(dirname "$manifest")"
         temporary=$(mktemp "${manifest}.tmp.XXXXXX")
         trap 'rm -f -- "$temporary"' EXIT
-        printf 'v1 %s %s %s\n' "$program" "$inputs" "$root" > "$temporary"
+        printf 'v2 %s %s %s\n' "$program" "$inputs" "$root" > "$temporary"
         mv -- "$temporary" "$manifest"
         trap - EXIT
         rm -f -- "$pending"

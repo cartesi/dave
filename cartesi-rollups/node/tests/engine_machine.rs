@@ -5,10 +5,10 @@
 //! prototype's commitment builder, on the real echo machine, plus golden
 //! fixtures pinning the roots.
 //!
-//! These tests need the echo machine image (built by `just setup-local`)
-//! and skip with a notice when it is absent. The fixture file records
-//! the template hash: an emulator or image bump invalidates it loudly,
-//! and regeneration (UPDATE_FIXTURES=1) is a conscious, reviewable act.
+//! The image-backed tests are ignored by generic Cargo runs and exercised by
+//! the fail-loud `just test-engine-machine` gate. The fixture file records the
+//! template hash: an emulator or image bump invalidates it loudly, and
+//! regeneration (UPDATE_FIXTURES=1) is a conscious, reviewable act.
 
 use alloy::primitives::{Address, U256};
 use alloy::sol_types::SolCall;
@@ -23,18 +23,27 @@ use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
-fn echo_image() -> Option<PathBuf> {
-    let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test/programs/echo/machine-image");
-    path.exists().then(|| path.canonicalize().unwrap())
+fn required_image(program: &str) -> PathBuf {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../test/programs")
+        .join(program)
+        .join("machine-image");
+    path.canonicalize().unwrap_or_else(|error| {
+        panic!(
+            "{program} machine image is unavailable at {}: {error}; run `just programs::build-{program}`",
+            path.display()
+        )
+    })
 }
 
-fn yield_image() -> Option<PathBuf> {
-    let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test/programs/yield/machine-image");
-    path.exists().then(|| path.canonicalize().unwrap())
+fn echo_image() -> PathBuf {
+    required_image("echo")
+}
+
+fn yield_image() -> PathBuf {
+    required_image("yield")
 }
 
 fn fixture_path() -> PathBuf {
@@ -169,15 +178,7 @@ fn engine_root_with_inputs(
     root
 }
 
-/// The v0.21 release corpus is both an independent CLI oracle and a
-/// transition-shape matrix. Its mcycle computation hashes have the same
-/// epoch geometry as Dave: a CLI period of 2^p mcycles is a Dave stride
-/// of 2^(p + 20) uarch transitions. The explicit root recipe downloads
-/// the pinned corpus and sets this environment variable; ordinary test
-/// runs stay provider-free because this test is ignored by default.
-#[test]
-#[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
-fn computation_hash_corpus_matches_cli_and_engine() {
+fn computation_hash_corpus() -> (PathBuf, Vec<serde_json::Value>) {
     let corpus_path = std::env::var_os("CARTESI_COMPUTATION_HASH_CORPUS_PATH").expect(
         "CARTESI_COMPUTATION_HASH_CORPUS_PATH must name the extracted v0.21 corpus directory",
     );
@@ -203,10 +204,17 @@ fn computation_hash_corpus_matches_cli_and_engine() {
         });
     let cases = manifest
         .as_array()
-        .expect("corpus manifest must be an array");
-    let cli = std::env::var("CARTESI_MACHINE_CLI").unwrap_or_else(|_| "cartesi-machine".into());
+        .expect("corpus manifest must be an array")
+        .clone();
+    (corpus, cases)
+}
 
-    let version = Command::new(&cli).arg("--version").output().unwrap();
+fn corpus_cli() -> String {
+    std::env::var("CARTESI_MACHINE_CLI").unwrap_or_else(|_| "cartesi-machine".into())
+}
+
+fn assert_corpus_cli_version(cli: &str) {
+    let version = Command::new(cli).arg("--version").output().unwrap();
     assert!(version.status.success(), "failed to run {cli} --version");
     let version = String::from_utf8_lossy(&version.stdout);
     assert!(
@@ -216,56 +224,170 @@ fn computation_hash_corpus_matches_cli_and_engine() {
             .is_some_and(|line| line == "cartesi-machine 0.21.0"),
         "corpus requires cartesi-machine 0.21.0, found {version:?}"
     );
+}
 
-    let mut checked = 0;
-    for case in cases {
-        if case["level"] != "mcycle" {
-            continue;
-        }
+fn corpus_expected_string(value: &serde_json::Value) -> String {
+    value
+        .as_str()
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn run_corpus_cli_case(
+    corpus: &Path,
+    cli: &str,
+    case: &serde_json::Value,
+) -> (Output, Option<Vec<u8>>) {
+    let id = case["id"].as_str().unwrap();
+    let result = case["result"].as_str().unwrap();
+    let output_dir = scratch();
+    let output_path = output_dir.path().join(format!("{id}.bin"));
+    let argv = case["argv"].as_array().unwrap();
+    let mut args: Vec<String> = argv
+        .iter()
+        .skip(1)
+        .map(|arg| {
+            arg.as_str()
+                .unwrap()
+                .replace(result, output_path.to_str().unwrap())
+        })
+        .collect();
+    if args.iter().any(|arg| arg == "--remote-spawn") {
+        // The corpus process must own the remote server's lifetime.
+        // Otherwise it inherits these captured pipes and `output` waits
+        // forever after the CLI itself exits.
+        args.push("--remote-shutdown".into());
+    }
+
+    let output = Command::new(cli)
+        .args(&args)
+        .current_dir(corpus)
+        .output()
+        .unwrap_or_else(|error| panic!("{id}: failed to run CLI: {error}"));
+    let hash = output_path.exists().then(|| {
+        std::fs::read(&output_path)
+            .unwrap_or_else(|error| panic!("{id}: failed to read CLI computation hash: {error}"))
+    });
+    (output, hash)
+}
+
+/// Replays the complete release manifest through the installed CLI. This is
+/// release-package conformance, not a Dave differential: all mcycle and uarch
+/// cases, including nonzero exits and the no-hash failure, belong here.
+#[test]
+#[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
+fn computation_hash_corpus_cli_matches_release_manifest() {
+    let (corpus, cases) = computation_hash_corpus();
+    let cli = corpus_cli();
+    assert_corpus_cli_version(&cli);
+
+    let mut mcycle_count = 0;
+    let mut uarch_count = 0;
+    for case in &cases {
         let id = case["id"].as_str().unwrap();
-        let expected = case["expected"]["computation_hash"].as_str().unwrap();
+        let category = case["expected"]["category"].as_str().unwrap();
+        assert!(
+            matches!(category, "success-hash" | "nonzero-hash" | "error-no-hash"),
+            "{id}: unknown release category {category}"
+        );
         let expected_status = case["expected"]["exit_status"].as_i64().unwrap() as i32;
-        let result = case["result"].as_str().unwrap();
-        let output_dir = scratch();
-        let output_path = output_dir.path().join(format!("{id}.bin"));
-        let argv = case["argv"].as_array().unwrap();
-        let mut args: Vec<String> = argv
-            .iter()
-            .skip(1)
-            .map(|arg| {
-                arg.as_str()
-                    .unwrap()
-                    .replace(result, output_path.to_str().unwrap())
-            })
-            .collect();
-        if args.iter().any(|arg| arg == "--remote-spawn") {
-            // The corpus process must own the remote server's lifetime.
-            // Otherwise it inherits these captured pipes and `output` waits
-            // forever after the CLI itself exits.
-            args.push("--remote-shutdown".into());
-        }
-
-        let output = Command::new(&cli)
-            .args(&args)
-            .current_dir(&corpus)
-            .output()
-            .unwrap_or_else(|error| panic!("{id}: failed to run CLI: {error}"));
+        let (output, cli_hash) = run_corpus_cli_case(&corpus, &cli, case);
+        let stderr = String::from_utf8_lossy(&output.stderr);
         assert_eq!(
             output.status.code(),
             Some(expected_status),
             "{id}: CLI status; stderr:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+            stderr
         );
-        let cli_hash = std::fs::read(&output_path).unwrap_or_else(|error| {
-            panic!(
-                "{id}: missing CLI computation hash: {error}; stderr:\n{}",
-                String::from_utf8_lossy(&output.stderr)
-            )
-        });
-        assert_eq!(cli_hash.len(), 32, "{id}: CLI hash length");
-        let cli_hash = format!("0x{}", hex::encode(cli_hash));
-        assert_eq!(cli_hash, expected, "{id}: CLI vs release manifest");
+        assert_eq!(
+            output.status.success(),
+            category == "success-hash",
+            "{id}: category vs exit status"
+        );
 
+        let wants_hash = matches!(category, "success-hash" | "nonzero-hash");
+        assert_eq!(cli_hash.is_some(), wants_hash, "{id}: hash-file presence");
+        if let Some(cli_hash) = cli_hash {
+            assert_eq!(cli_hash.len(), 32, "{id}: CLI hash length");
+            let cli_hash_hex = format!("0x{}", hex::encode(&cli_hash));
+            let expected = case["expected"]["computation_hash"].as_str().unwrap();
+            assert_eq!(cli_hash_hex, expected, "{id}: CLI vs release manifest");
+            assert_eq!(
+                cli_hash,
+                std::fs::read(corpus.join(case["result"].as_str().unwrap())).unwrap(),
+                "{id}: CLI vs recorded result"
+            );
+            let label = if case["level"] == "mcycle" {
+                "Mcycle computation hash:"
+            } else {
+                "Uarch cycle computation hash:"
+            };
+            let printed = stderr.lines().find_map(|line| {
+                line.split_once(label)
+                    .and_then(|(_, value)| value.split_whitespace().next())
+            });
+            assert_eq!(
+                printed,
+                Some(expected),
+                "{id}: stored hash was not printed; stderr:\n{stderr}"
+            );
+        } else {
+            assert!(
+                case["expected"].get("computation_hash").is_none(),
+                "{id}: no-hash case has a manifest hash"
+            );
+            assert!(
+                !stderr.contains("computation hash:"),
+                "{id}: no-hash case printed a hash"
+            );
+        }
+
+        if let Some(expected) = case["expected"]["stderr_contains"].as_str() {
+            assert!(
+                stderr.contains(expected),
+                "{id}: missing diagnostic {expected:?}; stderr:\n{stderr}"
+            );
+        }
+        if !case["expected"]["terminal_mcycle"].is_null() {
+            let actual = stderr
+                .lines()
+                .filter_map(|line| {
+                    line.split_once("Cycles:")
+                        .and_then(|(_, value)| value.split_whitespace().next())
+                })
+                .next_back();
+            let expected = corpus_expected_string(&case["expected"]["terminal_mcycle"]);
+            assert_eq!(actual, Some(expected.as_str()), "{id}: terminal mcycle");
+        }
+
+        match case["level"].as_str().unwrap() {
+            "mcycle" => mcycle_count += 1,
+            "uarch" => uarch_count += 1,
+            level => panic!("{id}: unexpected corpus level {level}"),
+        }
+        println!("{id}: {category}");
+    }
+    assert_eq!(mcycle_count, 17, "unexpected v0.21 mcycle corpus size");
+    assert_eq!(uarch_count, 18, "unexpected v0.21 uarch corpus size");
+}
+
+/// Dave currently consumes the corpus's mcycle geometry only. Compare that
+/// supported surface directly with the released answers; the separate CLI
+/// conformance test owns replaying the release frontend and all uarch cases.
+#[test]
+#[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
+fn computation_hash_corpus_dave_matches_release_manifest() {
+    let (corpus, cases) = computation_hash_corpus();
+
+    let mut checked = 0;
+    for case in &cases {
+        if case["level"] != "mcycle" {
+            continue;
+        }
+        let id = case["id"].as_str().unwrap();
+        let expected = case["expected"]["computation_hash"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{id}: Dave-supported case has no computation hash"));
         let inputs = case["inputs"]
             .as_array()
             .unwrap()
@@ -281,7 +403,7 @@ fn computation_hash_corpus_matches_cli_and_engine() {
             log2_stride,
             height,
         );
-        assert_eq!(engine_hash, cli_hash, "{id}: Dave engine vs v0.21 CLI");
+        assert_eq!(engine_hash, expected, "{id}: Dave vs release manifest");
         checked += 1;
         println!("{id}: {engine_hash}");
     }
@@ -292,11 +414,9 @@ fn computation_hash_corpus_matches_cli_and_engine() {
 /// uarch span of the fused first big cycle, a mid-stride span, and a
 /// coarse span that crosses the first input's yield into padding.
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn reference_collector_matches_prototype() {
-    let Some(image) = echo_image() else {
-        eprintln!("skipping: echo machine image not built (just setup-local)");
-        return;
-    };
+    let image = echo_image();
 
     // (label, log2_stride, height): spans all start at position 0 and
     // fit inside window 0, which is all the prototype's machine-backed
@@ -350,11 +470,9 @@ fn machine_source(image: &Path) -> (Vec<tempfile::TempDir>, DisputeSource<Positi
 /// levels: a mid-stride level at the epoch start, and a uarch-stride
 /// level inside window 1, which crosses an input feed during replay.
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn dispute_source_matches_prototype_tree() {
-    let Some(image) = echo_image() else {
-        eprintln!("skipping: echo machine image not built (just setup-local)");
-        return;
-    };
+    let image = echo_image();
 
     let spans = [
         ("mid_stride_r27_h10", U256::ZERO, 27u64, 10u64),
@@ -409,11 +527,9 @@ fn dispute_source_matches_prototype_tree() {
 /// ruler crosses it and commits it into the store the resumed
 /// source reads.
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn snapshot_resumed_source_matches_template_replay() {
-    let Some(image) = echo_image() else {
-        eprintln!("skipping: echo machine image not built (just setup-local)");
-        return;
-    };
+    let image = echo_image();
 
     let (_replayed_scratch, mut replayed) = machine_source(&image);
     let (resumed_scratch, mut resumed) = machine_source(&image);
@@ -466,11 +582,9 @@ fn snapshot_resumed_source_matches_template_replay() {
 /// absorbs identically (the cross-regime tripwire staying silent on
 /// agreement).
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn positioning_writes_back_crossed_boundaries() {
-    let Some(image) = echo_image() else {
-        eprintln!("skipping: echo machine image not built (just setup-local)");
-        return;
-    };
+    let image = echo_image();
 
     let (guards, mut source) = machine_source(&image);
     let mut storage = Storage::new(guards[0].path()).unwrap();
@@ -499,11 +613,9 @@ fn positioning_writes_back_crossed_boundaries() {
 /// any of these, idle regions can no longer be replayed from one
 /// stepped span and the convention itself must be revisited.
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn idle_spans_are_periodic_and_ureset_restores_the_base() {
-    let Some(image) = echo_image() else {
-        eprintln!("skipping: echo machine image not built (just setup-local)");
-        return;
-    };
+    let image = echo_image();
 
     let work = scratch();
     let mut stf = MachineStf::load(&image, work.path().to_path_buf())
@@ -538,11 +650,9 @@ fn idle_spans_are_periodic_and_ureset_restores_the_base() {
 /// comparator (the prototype gets those leaves from the node); pin it
 /// as a golden fixture instead, along with the differential roots.
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn golden_fixtures_hold() {
-    let Some(image) = echo_image() else {
-        eprintln!("skipping: echo machine image not built (just setup-local)");
-        return;
-    };
+    let image = echo_image();
 
     let mut computed = BTreeMap::new();
     computed.insert("template_hash".to_string(), template_hash(&image));
@@ -590,11 +700,9 @@ fn golden_fixtures_hold() {
 /// is covered by revert_closing_slot_restores_the_checkpoint below and
 /// pinned on-chain by the stf_revert e2e scenario.
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn prove_transition_matches_prototype_get_logs() {
-    let Some(image) = echo_image() else {
-        eprintln!("skipping: echo machine image not built (just setup-local)");
-        return;
-    };
+    let image = echo_image();
 
     let structure = Structure::PRODUCTION;
     let inputs = echo_inputs();
@@ -643,11 +751,9 @@ fn prove_transition_matches_prototype_get_logs() {
 /// winLeafMatch and forfeits by clock); and the witness bytes must
 /// match the prototype proof path.
 #[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn revert_closing_slot_restores_the_checkpoint() {
-    let Some(image) = yield_image() else {
-        eprintln!("skipping: yield machine image not built (just setup-local)");
-        return;
-    };
+    let image = yield_image();
 
     let structure = Structure::PRODUCTION;
     let big_span = U256::from(structure.big_span());

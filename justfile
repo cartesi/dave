@@ -60,11 +60,11 @@ update-submodules:
 # Everything the Rust workspace needs to compile.
 setup:
     just machine::setup
+    just prt-contracts::install-deps
+    just rollups-contracts::install-deps
 
 # Setup plus everything the e2e tests need, running natively.
 setup-local: setup
-    just prt-contracts::install-deps
-    just rollups-contracts::install-deps
     just rollups-contracts::build-devnet
     just programs::download-deps
     just programs::build-programs
@@ -73,10 +73,20 @@ setup-local: setup
 # Setup the Docker build context without first building an unused host archive.
 setup-docker: build-docker-image
 
-# diagnose the checkout: reports what is missing and the command that fixes it
+# diagnose build/check readiness
 [script]
 doctor:
-    ./script/doctor.sh
+    ./script/doctor.sh base
+
+# diagnose machine images, devnet, and E2E forensic state
+[script]
+doctor-e2e:
+    ./script/doctor.sh e2e
+
+# aggregate build/check and E2E readiness
+[script]
+doctor-all:
+    ./script/doctor.sh all
 
 # ------------------------------------------------------------------
 # Contracts and Rust bindings
@@ -116,8 +126,15 @@ bind-force:
 # to commit, run `just check`.
 # ------------------------------------------------------------------
 
-# everything fast: formatting, lints, unit tests
-check: check-fmt lint-lua test-lua-client clippy-rust-workspace test-rust-workspace
+# everything fast: formatting, lints, bootstrap regressions, and unit tests
+check: \
+    check-fmt \
+    lint-lua \
+    test-build-tooling \
+    test-lua-client \
+    test-smart-contracts \
+    clippy-rust-workspace \
+    test-rust-workspace
 
 # format everything (rust workspace + both contract dirs)
 fmt: fmt-rust-workspace
@@ -134,7 +151,14 @@ check-fmt: check-fmt-rust-workspace
 
 # lint the Lua client and test harness
 lint-lua:
-    luacheck prt/client-lua test/e2e --exclude-files "**/dependencies/**"
+    luacheck prt/client-lua prt/measure_constants/measure.lua test/e2e \
+      --exclude-files "**/dependencies/**"
+
+# focused state-machine tests for receipt/checker shell code
+test-build-tooling:
+    ./script/tests/battery-cleanup.sh
+    ./script/tests/devnet-fingerprint.sh
+    ./script/tests/machine-image-fingerprint.sh
 
 # fast, provider-free semantic tests for the Lua PRT client
 test-lua-client:
@@ -160,18 +184,35 @@ check-rust-workspace: bind
 
 # ensure-docker: the kms tests spin testcontainers, and a sleeping
 # Docker Desktop fails them with noise that reads like a code bug.
-# rust workspace unit tests (the kms tests spin docker testcontainers)
+# rust workspace unit tests (the kms tests spin docker testcontainers;
+# external machine-image and release-corpus gates stay explicit below)
 test-rust-workspace: bind
     ./script/ensure-docker.sh
     cargo test
+
+# fail-loud real-machine differentials and golden fixtures
+test-engine-machine: bind
+    ./script/machine-image-fingerprint.sh verify echo
+    ./script/machine-image-fingerprint.sh verify yield
+    cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
+      --ignored --skip computation_hash_corpus
 
 # download and verify v0.21's released computation-hash corpus
 download-computation-hash-corpus:
     ./script/computation-hash-corpus.sh download
 
-# explicit release gate: cross-check the corpus against the CLI and Dave's collector
-test-computation-hash-corpus: bind download-computation-hash-corpus
-    ./script/computation-hash-corpus.sh test
+# replay every released mcycle and uarch case through the v0.21 CLI
+test-computation-hash-corpus-cli: bind download-computation-hash-corpus
+    ./script/computation-hash-corpus.sh test-cli
+
+# compare Dave's supported mcycle computation hashes with the released answers
+test-computation-hash-corpus-dave: bind download-computation-hash-corpus
+    ./script/computation-hash-corpus.sh test-dave
+
+# complete explicit release gate; intentionally outside setup and just check
+test-computation-hash-corpus: \
+    test-computation-hash-corpus-cli \
+    test-computation-hash-corpus-dave
 
 # regenerate the measurement baselines (docs/measurements/)
 measure *ARGS: bind
@@ -203,7 +244,7 @@ build: build-smart-contracts build-rust-workspace
 
 # ------------------------------------------------------------------
 # Worktree janitor. Session worktrees accumulate regenerable bulk
-# (target/ at 5-15 GB, e2e state at ~5 GB a lane) long after their
+# (target/ at 5-15 GB, e2e state at ~5 GB per retained scenario) long after their
 # sessions end; 2026-07-11 found ~90 GB of it. Run the report when
 # disk feels tight, the sweep at the end of a work session.
 # ------------------------------------------------------------------
