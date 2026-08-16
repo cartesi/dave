@@ -104,7 +104,7 @@ and `docs/build-system.md`.
 
 ```bash
 just doctor           # diagnose the checkout; every problem names its fix
-just setup            # one-time: submodules, deps, emulator build
+just setup            # one-time: submodules and selected machine provider
 just build            # contracts + bindings + rust workspace
 just check            # THE pre-commit gate: fmt, lints, clippy, unit tests
 just test-rust-workspace       # rust unit tests
@@ -129,9 +129,13 @@ their sessions by months. `just worktrees-report` shows the damage.
 
 The Rust workspace does not build with plain `cargo` from a fresh clone: the
 Solidity bindings are generated (not committed), so run `just bind` (or any
-just cargo recipe) at least once. The emulator is linked from
-`LIBCARTESI_PATH` when set (the nix devshell exports it); without it,
-`cartesi-machine-sys` builds the `machine/emulator` submodule from source.
+just cargo recipe) at least once. Any set `LIBCARTESI_PATH` selects an external
+Cartesi Machine library (the nix devshell exports one), and the path must be
+absolute. Its C API header comes from `INCLUDECARTESI_PATH`, which must also be
+absolute when set, or the conventional sibling include directory otherwise.
+With `LIBCARTESI_PATH` unset, run `just machine::setup` before Cargo: it
+prepares the pinned release sources and incrementally builds the
+`machine/emulator` submodule. The sys crate build script is network-free.
 
 ## Conventions
 

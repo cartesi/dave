@@ -3,10 +3,7 @@
 
 use std::path::Path;
 
-use crate::engine::constants::{
-    LOG2_BARCH_SPAN_TO_INPUT, LOG2_INPUT_SPAN_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
-};
-
+use crate::engine::constants::{LOG2_EPOCH_RULER_SPAN, LOG2_INPUT_WINDOW_SPAN};
 use crate::storage::Proof;
 use cartesi_machine::{
     config::runtime::RuntimeConfig,
@@ -22,14 +19,11 @@ pub const LOG2_STRIDE: u64 = 44;
 /// Level-0 leaves in one input window; also the height of a window's
 /// subtree, making (epoch, LOG2_STRIDE, this, window) the canonical
 /// quartet coordinate of a window root.
-pub const LOG2_STRIDE_COUNT_IN_INPUT: u64 =
-    LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH - LOG2_STRIDE;
+pub const LOG2_STRIDE_COUNT_IN_INPUT: u64 = LOG2_INPUT_WINDOW_SPAN - LOG2_STRIDE;
 
 pub const STRIDE_COUNT_IN_INPUT: u64 = 1 << LOG2_STRIDE_COUNT_IN_INPUT;
 
-pub const STRIDE_COUNT_IN_EPOCH: u64 = 1
-    << (LOG2_INPUT_SPAN_TO_EPOCH + LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH
-        - LOG2_STRIDE);
+pub const STRIDE_COUNT_IN_EPOCH: u64 = 1 << (LOG2_EPOCH_RULER_SPAN - LOG2_STRIDE);
 
 /// The canonical quartet coordinate of a window's final level-0
 /// subtree root: one ordinary cache row per input, written by the

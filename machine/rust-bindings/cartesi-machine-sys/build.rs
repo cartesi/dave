@@ -1,52 +1,69 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
-use std::{env, path::PathBuf, process::Command};
+use sha2::{Digest, Sha256};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
+const C_API_HEADER: &str = "cm.h";
+const SOURCE_PREPARATION_STATE: &str = "../../../target/machine-source/prepared-generated-sources";
+const GENERATED_SOURCE_INPUTS: [&str; 4] = [
+    "src/cm-version.h",
+    "src/interpret-jump-table.hpp",
+    "uarch/uarch-pristine-hash.c",
+    "uarch/uarch-pristine-ram.c",
+];
+const PREPARED_SOURCE_INPUTS: [&str; 6] = [
+    "uarch/uarch-pristine-hash.c",
+    "uarch/uarch-pristine-ram.c",
+    "src/cm-version.h",
+    "src/interpret-jump-table.hpp",
+    "third-party/downloads/boost/version.hpp",
+    "third-party/downloads/boost/.dave-archive-sha256",
+];
 
 fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let external_lib_dir = env::var_os("LIBCARTESI_PATH").map(PathBuf::from);
+    #[cfg(feature = "external_cartesi")]
+    assert!(
+        external_lib_dir.is_some(),
+        "the `external_cartesi` feature requires `LIBCARTESI_PATH` to point to a directory containing libcartesi.a"
+    );
 
-    // Directory where `libcartesi.a` is located after it's built.
-    let machine_dir_path = PathBuf::from("../../emulator")
-        // Canonicalize the path as `rustc-link-search` requires an absolute
-        // path.
-        .canonicalize()
-        .expect("cannot canonicalize path");
-
-    // Where libcartesi comes from, in order of precedence:
-    // 1. the `external_cartesi` feature (LIBCARTESI_PATH, or the submodule's
-    //    src/ if unset);
-    // 2. a LIBCARTESI_PATH in the environment (e.g. exported by the nix
-    //    devshell), even without the feature;
-    // 3. fallback: build the emulator from the `machine/emulator` submodule.
-    // The fallback is what lets these bindings track an arbitrary emulator
-    // commit: unset LIBCARTESI_PATH (or point it at the submodule's src/)
-    // and cargo builds whatever the submodule is checked out at.
-    let external_lib_dir = env::var("LIBCARTESI_PATH").ok().map(PathBuf::from);
-
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "external_cartesi")] {
-            let libpath = external_lib_dir
-                .clone()
-                .unwrap_or_else(|| machine_dir_path.join("src"));
-            link_external(&libpath, &out_path);
-        } else {
-            if let Some(libpath) = external_lib_dir.as_ref() {
-                link_external(libpath, &out_path);
-            } else {
-                build_cm::build(&machine_dir_path, &out_path);
-                println!("cargo:rustc-link-search={}", out_path.to_str().unwrap());
-            }
+    let include_path = if let Some(lib_dir) = external_lib_dir.as_ref() {
+        assert!(
+            lib_dir.is_absolute(),
+            "LIBCARTESI_PATH must be an absolute directory, found `{}`",
+            lib_dir.display()
+        );
+        link_external(lib_dir, &out_path);
+        external_include_path(lib_dir)
+    } else {
+        let machine_dir = source_checkout();
+        build_cm::build(&machine_dir, &out_path);
+        println!("cargo:rustc-link-search={}", out_path.display());
+        for input in PREPARED_SOURCE_INPUTS {
+            println!(
+                "cargo:rerun-if-changed={}",
+                machine_dir.join(input).display()
+            );
         }
-    }
-
-    // static link
-    println!("cargo:rustc-link-lib=slirp");
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "remote_machine")] {
-            println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
-        } else {
-            println!("cargo:rustc-link-lib=static=cartesi");
+        for path in submodule_git_watch_paths(&machine_dir) {
+            println!("cargo:rerun-if-changed={}", path.display());
         }
+        machine_dir.join("src")
+    };
+
+    // Static link. Source fallback is built with `slirp=no`. External
+    // providers may be the upstream release package, whose archive references
+    // libslirp; `link_external` adds that provider dependency.
+    if cfg!(feature = "remote_machine") {
+        println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
+    } else {
+        println!("cargo:rustc-link-lib=static=cartesi");
     }
 
     // OpenMP linker configuration (cross-platform)
@@ -71,27 +88,16 @@ fn main() {
         println!("cargo:rustc-link-lib=gomp");
     }
 
-    //
-    //  Generate bindings
-    //
+    let api_header = include_path.join(C_API_HEADER);
+    assert!(
+        api_header.is_file(),
+        "Cartesi Machine C API header not found at `{}`; set `INCLUDECARTESI_PATH` to the directory containing `{C_API_HEADER}`",
+        api_header.display()
+    );
+    println!("cargo:rerun-if-changed={}", api_header.display());
 
-    // Find headers, mirroring the library precedence: INCLUDECARTESI_PATH
-    // wins; an external lib dir implies its sibling include/cartesi-machine
-    // (the emulator's install layout); otherwise the submodule sources.
-    let include_path = env::var("INCLUDECARTESI_PATH")
-        .map(PathBuf::from)
-        .ok()
-        .or_else(|| {
-            external_lib_dir
-                .as_ref()
-                .and_then(|lib| lib.parent().map(|p| p.join("include/cartesi-machine")))
-                .filter(|p| p.join("machine-c-api.h").exists())
-        })
-        .unwrap_or_else(|| machine_dir_path.join("src"));
-
-    // generate machine api
     let machine_bindings = bindgen::Builder::default()
-        .header(include_path.join("machine-c-api.h").to_str().unwrap())
+        .header(api_header.to_str().unwrap())
         .allowlist_item("^cm_.*")
         .allowlist_item("^CM_.*")
         .merge_extern_blocks(true)
@@ -100,21 +106,167 @@ fn main() {
         .generate()
         .expect("Unable to generate machine bindings");
 
-    // Write the bindings to the `$OUT_DIR/bindings.rs` and `$OUT_DIR/htif.rs` files.
     machine_bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write machine bindings");
 
-    // Setup reruns
     println!("cargo:rerun-if-changed=build.rs");
-    println!(
-        "cargo:rerun-if-changed={}",
-        machine_dir_path.join(".git").display()
-    );
-    println!("cargo::rerun-if-env-changed=UARCH_PRISTINE_HASH_PATH");
-    println!("cargo::rerun-if-env-changed=UARCH_PRISTINE_RAM_PATH");
     println!("cargo::rerun-if-env-changed=LIBCARTESI_PATH");
     println!("cargo::rerun-if-env-changed=INCLUDECARTESI_PATH");
+}
+
+fn source_checkout() -> PathBuf {
+    let checkout = PathBuf::from("../../emulator");
+    let checkout = checkout.canonicalize().unwrap_or_else(|e| {
+        panic!(
+            "Cartesi Machine source checkout is unavailable at `{}`: {e}\nRun `just machine::setup` before building without `LIBCARTESI_PATH`.",
+            checkout.display()
+        )
+    });
+
+    let missing: Vec<_> = PREPARED_SOURCE_INPUTS
+        .iter()
+        .map(|path| checkout.join(path))
+        .filter(|path| !path.exists())
+        .collect();
+    if !missing.is_empty() {
+        let missing = missing
+            .iter()
+            .map(|path| format!("  - {}", path.display()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        panic!(
+            "Cartesi Machine source checkout is not prepared; missing inputs:\n{missing}\nRun `just machine::setup` before building without `LIBCARTESI_PATH`."
+        );
+    }
+
+    validate_source_preparation(&checkout);
+    checkout
+}
+
+fn validate_source_preparation(checkout: &Path) {
+    let state =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join(SOURCE_PREPARATION_STATE);
+    let contents = std::fs::read_to_string(&state).unwrap_or_else(|e| {
+        panic!(
+            "Cartesi Machine generated-source preparation state is unavailable at `{}`: {e}\nRun `just machine::setup` for the pinned release, or prepare the selected emulator commit explicitly.",
+            state.display()
+        )
+    });
+    println!("cargo:rerun-if-changed={}", state.display());
+
+    let lines: Vec<_> = contents.lines().collect();
+    assert_eq!(
+        lines.len(),
+        7,
+        "invalid Cartesi Machine generated-source preparation state at `{}`",
+        state.display()
+    );
+    assert_eq!(lines[0], "format 1", "unsupported preparation-state format");
+    let provider = lines[1]
+        .strip_prefix("provider ")
+        .expect("invalid generated-source provider field");
+    assert!(
+        provider == "generated" || provider.starts_with("release:v"),
+        "invalid generated-source provider in `{}`",
+        state.display()
+    );
+
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(checkout)
+        .args(["rev-parse", "--verify", "HEAD^{commit}"])
+        .output()
+        .unwrap_or_else(|e| panic!("failed to inspect Cartesi Machine HEAD: {e}"));
+    assert!(
+        output.status.success(),
+        "failed to inspect Cartesi Machine HEAD: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    let head = String::from_utf8(output.stdout).expect("Cartesi Machine HEAD is not UTF-8");
+    assert_eq!(
+        lines[2],
+        format!("emulator-head {}", head.trim()),
+        "prepared generated sources do not belong to the checked-out Cartesi Machine commit; run `just machine::prepare-release` for the pinned release or `just machine::generate-sources` for an intermediary commit"
+    );
+
+    for (line, input) in lines[3..].iter().zip(GENERATED_SOURCE_INPUTS) {
+        let path = checkout.join(input);
+        let bytes = std::fs::read(&path)
+            .unwrap_or_else(|e| panic!("failed to read prepared source `{}`: {e}", path.display()));
+        let actual = format!("{:x}", Sha256::digest(bytes));
+        assert_eq!(
+            *line,
+            format!("generated {actual} {input}"),
+            "prepared source `{}` does not match its preparation state; rerun the source-preparation command",
+            path.display()
+        );
+    }
+}
+
+fn external_include_path(lib_dir: &Path) -> PathBuf {
+    env::var_os("INCLUDECARTESI_PATH")
+        .map(PathBuf::from)
+        .inspect(|path| {
+            assert!(
+                path.is_absolute(),
+                "INCLUDECARTESI_PATH must be an absolute directory, found `{}`",
+                path.display()
+            );
+        })
+        .unwrap_or_else(|| {
+            lib_dir
+                .parent()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "cannot infer the Cartesi Machine include directory from `{}`; set `INCLUDECARTESI_PATH`",
+                        lib_dir.display()
+                    )
+                })
+                .join("include/cartesi-machine")
+        })
+}
+
+/// Returns the Git paths that change when the source checkout moves.
+///
+/// The gitfile selects the submodule repository, while its index tracks the
+/// checked-out tree across detached and attached checkouts. Every emitted path
+/// exists, so Cargo does not perpetually rerun the build script waiting for one.
+fn submodule_git_watch_paths(checkout: &Path) -> Vec<PathBuf> {
+    let dot_git = checkout.join(".git");
+    let mut paths = Vec::with_capacity(2);
+    let git_dir = if dot_git.is_dir() {
+        dot_git.clone()
+    } else {
+        let gitfile = std::fs::read_to_string(&dot_git).unwrap_or_else(|e| {
+            panic!(
+                "failed to read Cartesi Machine gitfile `{}`: {e}; run `just machine::prepare-release`",
+                dot_git.display()
+            )
+        });
+        let path = PathBuf::from(
+            gitfile
+                .strip_prefix("gitdir: ")
+                .map(str::trim)
+                .unwrap_or_else(|| panic!("invalid gitfile `{}`", dot_git.display())),
+        );
+        paths.push(dot_git);
+        if path.is_absolute() {
+            path
+        } else {
+            checkout.join(path)
+        }
+    };
+
+    let index = git_dir.join("index");
+    let index = index.canonicalize().unwrap_or_else(|e| {
+        panic!(
+            "Cartesi Machine Git index not found at `{}`: {e}; run `just machine::prepare-release`",
+            index.display()
+        )
+    });
+    paths.push(index);
+    paths
 }
 
 // Stage the external static archives into OUT_DIR and search only there.
@@ -122,20 +274,22 @@ fn main() {
 // contains libcartesi dylibs, and ld64 prefers a dylib over an archive
 // even under rustc's `static=` modifier, producing binaries that need an
 // rpath into the provider's tree at runtime.
-fn link_external(libdir: &std::path::Path, out_path: &std::path::Path) {
-    stage_archive(&libdir.join("libcartesi.a"), out_path);
+fn link_external(libdir: &Path, out_path: &Path) {
+    let cartesi = libdir.join("libcartesi.a");
+    println!("cargo:rerun-if-changed={}", cartesi.display());
+    stage_archive(&cartesi, out_path);
 
-    // Only present in installs built with the jsonrpc machine; required
-    // just for the `remote_machine` feature.
-    let jsonrpc = libdir.join("libcartesi_jsonrpc.a");
-    if jsonrpc.exists() {
+    if cfg!(feature = "remote_machine") {
+        let jsonrpc = libdir.join("libcartesi_jsonrpc.a");
+        println!("cargo:rerun-if-changed={}", jsonrpc.display());
         stage_archive(&jsonrpc, out_path);
     }
 
-    println!("cargo:rustc-link-search={}", out_path.to_str().unwrap());
+    println!("cargo:rustc-link-search={}", out_path.display());
+    println!("cargo:rustc-link-lib=slirp");
 }
 
-fn stage_archive(archive: &std::path::Path, out_path: &std::path::Path) {
+fn stage_archive(archive: &Path, out_path: &Path) {
     let staged = out_path.join(archive.file_name().unwrap());
     // fs::copy preserves the source mode; a nix-store source stages a
     // read-only copy that the next build-script run cannot overwrite.
@@ -147,226 +301,44 @@ fn stage_archive(archive: &std::path::Path, out_path: &std::path::Path) {
         .unwrap_or_else(|e| panic!("failed to copy `{}` to OUT_DIR: {e}", archive.display()));
 }
 
-#[cfg(not(feature = "external_cartesi"))]
 mod build_cm {
-    use std::{fs, path::Path, process::Command};
+    use std::{path::Path, process::Command};
 
-    pub fn build(machine_dir_path: &Path, out_path: &Path) {
-        // Get uarch
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "build_uarch")] {
-                // requires docker
-                ()
-            } else if #[cfg(feature = "copy_uarch")] {
-                let uarch_path = machine_dir_path.join("uarch");
-                copy_uarch::copy(&uarch_path)
-            } else if #[cfg(feature = "download_uarch")] {
-                download_uarch::download(machine_dir_path);
-            } else {
-                panic!("Internal error, no way specified to get uarch");
-            }
-        }
+    pub fn build(machine_dir: &Path, out_path: &Path) {
+        let libcartesi = machine_dir.join("src/libcartesi.a");
+        let libcartesi_jsonrpc = machine_dir.join("src/libcartesi_jsonrpc.a");
 
-        let libcartesi_path = machine_dir_path.join("src").join("libcartesi.a");
-        let libcartesi_dest_path = out_path.join("libcartesi.a");
+        // Preparation owns all downloads and generated sources. Make is
+        // incremental, so a changed Git index checks the selected targets,
+        // while an unchanged Cargo invocation does not run this script.
+        run_make(
+            machine_dir,
+            &[
+                "-C",
+                "src",
+                "release=yes",
+                "slirp=no",
+                "libcartesi.a",
+                "libcartesi_jsonrpc.a",
+            ],
+        );
 
-        let libcartesi_jsonrpc_path = machine_dir_path.join("src").join("libcartesi_jsonrpc.a");
-        let libcartesi_jsonrpc_dest_path = out_path.join("libcartesi_jsonrpc.a");
-
-        if libcartesi_path.exists() {
-            assert!(
-                libcartesi_jsonrpc_path.exists(),
-                "libcartesi.a exists, but libcartesi_jsonrpc.a does not"
-            );
-        } else {
-            //
-            // Build and link emulator
-            //
-
-            // build dependencies
-            Command::new("make")
-                .args(["submodules"])
-                .current_dir(machine_dir_path)
-                .status()
-                .expect("Failed to run setup `make submodules`");
-            Command::new("make")
-                .args(["bundle-boost"])
-                .current_dir(machine_dir_path)
-                .status()
-                .expect("Failed to run `make bundle-boost`");
-
-            // build `libcartesi.a` and `libcartesi_jsonrpc.a`, release, no `libslirp`
-            Command::new("make")
-                .args([
-                    "-C",
-                    "src",
-                    "release=yes",
-                    "slirp=no",
-                    "libcartesi.a",
-                    "libcartesi_jsonrpc.a",
-                ])
-                .current_dir(machine_dir_path)
-                .status()
-                .expect("Failed to build `libcartesi.a` and/or `libcartesi_jsonrpc.a`");
-        }
-
-        // copy `libcartesi.a` to OUT_DIR
-        fs::copy(&libcartesi_path, &libcartesi_dest_path).unwrap_or_else(|_| {
-            panic!(
-                "Failed to copy `libcartesi.a` {:?} to OUT_DIR {:?}",
-                libcartesi_path, libcartesi_dest_path
-            )
-        });
-
-        // copy `libcartesi_jsonrpc.a` to OUT_DIR
-        fs::copy(&libcartesi_jsonrpc_path, &libcartesi_jsonrpc_dest_path).unwrap_or_else(|_| {
-            panic!(
-                "Failed to copy `libcartesi_jsonrpc.a` {:?} to OUT_DIR {:?}",
-                libcartesi_jsonrpc_path, libcartesi_jsonrpc_dest_path
-            )
-        });
+        // Reuse the same staging path as external archives. In particular,
+        // this removes a read-only Nix-store copy left by a previous provider.
+        super::stage_archive(&libcartesi, out_path);
+        super::stage_archive(&libcartesi_jsonrpc, out_path);
     }
 
-    #[cfg(feature = "copy_uarch")]
-    mod copy_uarch {
-        use std::{env, fs, path::Path};
-
-        pub(crate) fn copy(uarch_path: &Path) {
-            let uarch_pristine_hash_path =
-                env::var("UARCH_PRISTINE_HASH_PATH").expect("`UARCH_PRISTINE_HASH_PATH` not set");
-            let uarch_pristine_ram_path =
-                env::var("UARCH_PRISTINE_RAM_PATH").expect("`UARCH_PRISTINE_RAM_PATH` not set");
-
-            fs::copy(
-                uarch_pristine_hash_path,
-                uarch_path.join("uarch-pristine-hash.c").to_str().unwrap(),
-            )
-            .expect("Failed to move `uarch-pristine-hash.c` to `uarch/`");
-
-            fs::copy(
-                uarch_pristine_ram_path,
-                uarch_path.join("uarch-pristine-ram.c").to_str().unwrap(),
-            )
-            .expect("Failed to move `uarch-pristine-ram.c` to `uarch/`");
-        }
+    fn run_make(machine_dir: &Path, args: &[&str]) {
+        let status = Command::new("make")
+            .args(args)
+            .current_dir(machine_dir)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run `make {}`: {e}", args.join(" ")));
+        assert!(
+            status.success(),
+            "`make {}` failed with {status}",
+            args.join(" ")
+        );
     }
-
-    #[cfg(feature = "download_uarch")]
-    mod download_uarch {
-        use bytes::Bytes;
-        use std::{
-            fs::{self, OpenOptions},
-            io::{self, Read, Write},
-            path::Path,
-            process::{Command, Stdio},
-        };
-
-        const VERSION_STRING: &str = "v0.20.0";
-
-        pub fn download(machine_dir_path: &Path) {
-            let patch_file = machine_dir_path.join("add-generated-files.diff");
-
-            download_git_patch(&patch_file, VERSION_STRING);
-            apply_git_patch(&patch_file, machine_dir_path);
-        }
-
-        fn download_git_patch(patch_file: &Path, target_tag: &str) {
-            let emulator_git_url = "https://github.com/cartesi/machine-emulator";
-
-            let patch_url = format!(
-                "{}/releases/download/{}/add-generated-files.diff",
-                emulator_git_url, target_tag,
-            );
-
-            // get
-            let diff_data = reqwest::blocking::get(patch_url)
-                .expect("error downloading diff of generated files")
-                .bytes()
-                .expect("error getting diff request body");
-
-            // write to file
-            write_bytes_to_file(patch_file.to_str().unwrap(), diff_data)
-                .expect("failed to write `add-generated-files.diff`");
-        }
-
-        fn apply_git_patch(patch_file: &Path, target_dir: &Path) {
-            // Open the patch file
-            let mut patch = fs::File::open(patch_file).expect("fail to open patch file");
-
-            // Create a command to run `patch -Np1`
-            let mut cmd = Command::new("patch")
-                .arg("-Np1")
-                .stdin(Stdio::piped())
-                .current_dir(target_dir)
-                .spawn()
-                .expect("fail to spawn patch command");
-
-            // Write the contents of the patch file to the command's stdin
-            if let Some(ref mut stdin) = cmd.stdin {
-                let mut buffer = Vec::new();
-                patch
-                    .read_to_end(&mut buffer)
-                    .expect("fail to read patch content");
-                stdin
-                    .write_all(&buffer)
-                    .expect("fail to write patch to pipe");
-            }
-
-            // Wait for the command to complete
-            let status = cmd.wait().expect("fail to wait for patch command");
-
-            if !status.success() {
-                eprintln!("Patch command failed with status: {:?}", status);
-            }
-        }
-
-        fn write_bytes_to_file(path: &str, data: Bytes) -> io::Result<()> {
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(path)
-                .unwrap_or_else(|_| panic!("failed to open file {}", path));
-
-            file.write_all(&data)?;
-            file.flush() // Ensure all data is written to disk
-        }
-    }
-}
-
-mod feature_checks {
-    #[cfg(all(feature = "build_uarch", feature = "copy_uarch",))]
-    compile_error!("Features `build_uarch` and `copy_uarch` are mutually exclusive");
-
-    #[cfg(all(feature = "build_uarch", feature = "download_uarch"))]
-    compile_error!("Features `build_uarch` and `download_uarch` are mutually exclusive");
-
-    #[cfg(all(feature = "copy_uarch", feature = "download_uarch"))]
-    compile_error!("Features `copy_uarch`, and `download_uarch` are mutually exclusive");
-
-    #[cfg(not(any(
-        feature = "copy_uarch",
-        feature = "download_uarch",
-        feature = "build_uarch",
-        feature = "external_cartesi",
-    )))]
-    compile_error!(
-        "At least one of `build_uarch`, `copy_uarch`, `download_uarch`, and `external_cartesi` must be set"
-    );
-}
-
-#[allow(unused)]
-fn clean(path: &PathBuf) {
-    // clean build artifacts
-    Command::new("make")
-        .args(["clean", "depclean ", "distclean"])
-        .current_dir(path)
-        .status()
-        .expect("Failed to run setup `make clean depclean distclean`");
-
-    Command::new("rm")
-        .args(["src/*o.tmp"])
-        .current_dir(path)
-        .status()
-        .expect("Failed to delete src/*.o.tmp files");
 }

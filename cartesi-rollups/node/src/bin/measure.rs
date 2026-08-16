@@ -15,7 +15,10 @@ use std::time::{Duration, Instant};
 
 use alloy::primitives::{Address, U256};
 use alloy::sol_types::SolCall;
-use cartesi_rollups_prt_node::engine::{DisputeSource, MachineStf, Quartet, Stf, fold_runs};
+use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
+use cartesi_rollups_prt_node::engine::{
+    DisputeSource, MachineStf, Quartet, Stf, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
+};
 use cartesi_rollups_prt_node::merkle::Digest;
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
 
@@ -337,17 +340,15 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
 }
 
 /// One input through a raw machine, the advance path's shape minus
-/// leaf collection: checkpoint write, cmio delivery, run to the next
-/// manual yield.
+/// leaf collection: CMIO delivery with the pre-input revert root, then
+/// run to the next manual yield.
 fn advance_one_input(machine: &mut cartesi_machine::machine::Machine, input: &[u8]) -> Result<()> {
     use cartesi_machine::constants::break_reason;
     use cartesi_machine::types::cmio::CmioResponseReason;
-    use cartesi_rollups_prt_node::engine::constants::CHECKPOINT_ADDRESS;
 
     anyhow::ensure!(machine.iflags_y()?, "machine must be awaiting input");
-    let checkpoint = machine.root_hash()?;
-    machine.write_memory(CHECKPOINT_ADDRESS, &checkpoint)?;
-    machine.send_cmio_response(CmioResponseReason::Advance, input)?;
+    let revert_root = machine.root_hash()?;
+    machine.send_cmio_response(CmioResponseReason::Advance, input, Some(&revert_root))?;
     loop {
         match machine.run(u64::MAX)? {
             break_reason::YIELDED_AUTOMATICALLY | break_reason::YIELDED_SOFTLY => continue,
@@ -470,7 +471,7 @@ fn bench_quartets(
     full: bool,
 ) -> Result<Vec<(String, u64, u64, Duration)>> {
     let mut spans: Vec<(&str, u64, u64)> = vec![
-        ("uarch span", 0, 20),
+        ("uarch span", 0, LOG2_MAX_UARCH_CYCLES_PER_MCYCLE),
         ("mid stride", 27, 10),
         ("coarse", 44, 4),
         ("level-2 root shape", 0, 27),
@@ -648,10 +649,12 @@ fn fmt_duration(d: Duration) -> String {
 // conservative floor rounding instead of floor+1.
 //
 
-const LOG2_UARCH: u64 = 20;
-const LOG2_RULER: u64 = 92;
 const CURRENT_LOG2STEP: [u64; 3] = [44, 27, 0];
-const CURRENT_HEIGHT: [u64; 3] = [48, 17, 27];
+const CURRENT_HEIGHT: [u64; 3] = [
+    LOG2_EPOCH_RULER_SPAN - CURRENT_LOG2STEP[0],
+    CURRENT_LOG2STEP[0] - CURRENT_LOG2STEP[1],
+    CURRENT_LOG2STEP[1] - CURRENT_LOG2STEP[2],
+];
 
 /// Steady-state rates plus the hash-cost curve, all measured
 /// mid-computation on a fed machine.
@@ -663,8 +666,8 @@ struct SteadyAtoms {
 }
 
 /// A machine kept in active computation: re-feeds inputs as the
-/// workload consumes them, and refuses to let any timed region see a
-/// yielded or halted state.
+/// workload consumes them, and refuses to let any timed region see an
+/// input boundary or terminal state.
 struct ActiveMachine {
     stf: MachineStf,
     inputs: Vec<Vec<u8>>,
@@ -691,8 +694,8 @@ impl ActiveMachine {
     /// input handler's prologue so sampling sees the workload proper.
     fn ensure_active(&mut self) -> Result<()> {
         anyhow::ensure!(
-            !self.stf.halted()?,
-            "machine halted; --constants needs a yielding compute workload"
+            !self.stf.terminal()?,
+            "machine became terminal; --constants needs a yielding compute workload"
         );
         if self.stf.yielded()? {
             anyhow::ensure!(
@@ -711,7 +714,7 @@ impl ActiveMachine {
 
     fn assert_active(&mut self, context: &str) -> Result<()> {
         anyhow::ensure!(
-            !self.stf.yielded()? && !self.stf.halted()?,
+            !self.stf.yielded()? && !self.stf.terminal()?,
             "machine left the active state during {context}; workload too light"
         );
         Ok(())
@@ -829,25 +832,25 @@ fn derive(
     let dense_bigs_per_sec = atoms.dense_pairs_per_sec / (atoms.avg_usteps_per_big + 1.0) / slack;
     let n_bigs = dense_bigs_per_sec * budget_secs;
     anyhow::ensure!(n_bigs >= 2.0, "timeout too small for any leaf level");
-    let h_leaf = LOG2_UARCH + n_bigs.log2().floor() as u64;
+    let h_leaf = LOG2_MAX_UARCH_CYCLES_PER_MCYCLE + n_bigs.log2().floor() as u64;
 
     let mut log2step = vec![0u64];
     let mut height = vec![h_leaf];
     let mut stride = h_leaf;
 
     let root_slowdown_at = |stride: u64| {
-        let d = 1u64 << (stride - LOG2_UARCH);
+        let d = 1u64 << (stride - LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
         let (run_s, hash_s) = interp_curve(&atoms.curve, d);
         (run_s + hash_s) / run_s
     };
 
     while root_slowdown_at(stride) > root_slowdown_budget {
         anyhow::ensure!(
-            stride < LOG2_RULER,
+            stride < LOG2_EPOCH_RULER_SPAN,
             "no stride within the ruler satisfies the slowdown budget"
         );
         anyhow::ensure!(log2step.len() < 8, "runaway level stack");
-        let d = 1u64 << (stride - LOG2_UARCH);
+        let d = 1u64 << (stride - LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
         let (run_s, hash_s) = interp_curve(&atoms.curve, d);
         let per_leaf = (run_s + hash_s) * slack;
         let n = budget_secs / per_leaf;
@@ -855,16 +858,19 @@ fn derive(
             n >= 2.0,
             "timeout too small for a level at stride 2^{stride}"
         );
-        let h = (n.log2().floor() as u64).min(LOG2_RULER - stride);
+        let h = (n.log2().floor() as u64).min(LOG2_EPOCH_RULER_SPAN - stride);
         log2step.push(stride);
         height.push(h);
         stride += h;
     }
-    anyhow::ensure!(stride < LOG2_RULER, "level stack consumed the whole ruler");
+    anyhow::ensure!(
+        stride < LOG2_EPOCH_RULER_SPAN,
+        "level stack consumed the whole ruler"
+    );
 
     let root_slowdown = root_slowdown_at(stride);
     log2step.push(stride);
-    height.push(LOG2_RULER - stride);
+    height.push(LOG2_EPOCH_RULER_SPAN - stride);
     log2step.reverse();
     height.reverse();
 
@@ -943,7 +949,7 @@ fn constants_report(
             report,
             "| 2^{} | 2^{} | {} | {} | {:.2}x |",
             delta.ilog2(),
-            delta.ilog2() as u64 + LOG2_UARCH,
+            delta.ilog2() as u64 + LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
             fmt_duration(*run),
             fmt_duration(*hash),
             slowdown,
@@ -980,7 +986,7 @@ fn constants_report(
     writeln!(report)?;
     writeln!(
         report,
-        "Heights always sum to 92, so responseBudget's five-minutes-per-\n\
+        "Heights always sum to {LOG2_EPOCH_RULER_SPAN}, so responseBudget's five-minutes-per-\n\
          height-unit total is shape-invariant; level count changes only\n\
          the per-level join and nested-tournament overhead."
     )?;
@@ -988,8 +994,9 @@ fn constants_report(
         writeln!(report)?;
         writeln!(
             report,
-            "A derived root height exceeds the current 48: verify contract-\n\
-             side assumptions before adopting (tree math, position widths)."
+            "A derived root height exceeds the current {}: verify contract-\n\
+             side assumptions before adopting (tree math, position widths).",
+            CURRENT_HEIGHT[0]
         )?;
     }
     writeln!(report)?;

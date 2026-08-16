@@ -23,5 +23,5 @@ library Gas {
     uint256 constant WIN_INNER_TOURNAMENT = 313000 + TX;
     uint256 constant ELIMINATE_INNER_TOURNAMENT = 147000 + TX;
     uint256 constant SEAL_LEAF_MATCH = 105000 + TX;
-    uint256 constant WIN_LEAF_MATCH = 4_298_000;
+    uint256 constant WIN_LEAF_MATCH = 4_420_000;
 }

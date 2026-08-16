@@ -23,6 +23,7 @@ use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn echo_image() -> Option<PathBuf> {
     let path =
@@ -149,6 +150,142 @@ fn engine_root(image: &Path, log2_stride: u64, height: u64) -> String {
     let root = source.node(&quartet).unwrap().to_hex();
     drop(guards);
     root
+}
+
+fn engine_root_with_inputs(
+    image: &Path,
+    inputs: Vec<Vec<u8>>,
+    log2_stride: u64,
+    height: u64,
+) -> String {
+    let (state_dir, storage) = migrated_storage_with(image, inputs);
+    let work = scratch();
+    let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+    let root = source
+        .node(&Quartet::level_root(0, log2_stride, height))
+        .unwrap()
+        .to_hex();
+    drop((state_dir, work));
+    root
+}
+
+/// The v0.21 release corpus is both an independent CLI oracle and a
+/// transition-shape matrix. Its mcycle computation hashes have the same
+/// epoch geometry as Dave: a CLI period of 2^p mcycles is a Dave stride
+/// of 2^(p + 20) uarch transitions. The explicit root recipe downloads
+/// the pinned corpus and sets this environment variable; ordinary test
+/// runs stay provider-free because this test is ignored by default.
+#[test]
+#[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
+fn computation_hash_corpus_matches_cli_and_engine() {
+    let corpus_path = std::env::var_os("CARTESI_COMPUTATION_HASH_CORPUS_PATH").expect(
+        "CARTESI_COMPUTATION_HASH_CORPUS_PATH must name the extracted v0.21 corpus directory",
+    );
+    let corpus = PathBuf::from(corpus_path);
+    assert!(
+        corpus.is_dir(),
+        "CARTESI_COMPUTATION_HASH_CORPUS_PATH is not a directory: {}",
+        corpus.display()
+    );
+    let manifest_path = corpus.join("manifest.json");
+    let manifest_bytes = std::fs::read(&manifest_path).unwrap_or_else(|error| {
+        panic!(
+            "failed to read corpus manifest {}: {error}",
+            manifest_path.display()
+        )
+    });
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&manifest_bytes).unwrap_or_else(|error| {
+            panic!(
+                "failed to parse corpus manifest {}: {error}",
+                manifest_path.display()
+            )
+        });
+    let cases = manifest
+        .as_array()
+        .expect("corpus manifest must be an array");
+    let cli = std::env::var("CARTESI_MACHINE_CLI").unwrap_or_else(|_| "cartesi-machine".into());
+
+    let version = Command::new(&cli).arg("--version").output().unwrap();
+    assert!(version.status.success(), "failed to run {cli} --version");
+    let version = String::from_utf8_lossy(&version.stdout);
+    assert!(
+        version
+            .lines()
+            .next()
+            .is_some_and(|line| line == "cartesi-machine 0.21.0"),
+        "corpus requires cartesi-machine 0.21.0, found {version:?}"
+    );
+
+    let mut checked = 0;
+    for case in cases {
+        if case["level"] != "mcycle" {
+            continue;
+        }
+        let id = case["id"].as_str().unwrap();
+        let expected = case["expected"]["computation_hash"].as_str().unwrap();
+        let expected_status = case["expected"]["exit_status"].as_i64().unwrap() as i32;
+        let result = case["result"].as_str().unwrap();
+        let output_dir = scratch();
+        let output_path = output_dir.path().join(format!("{id}.bin"));
+        let argv = case["argv"].as_array().unwrap();
+        let mut args: Vec<String> = argv
+            .iter()
+            .skip(1)
+            .map(|arg| {
+                arg.as_str()
+                    .unwrap()
+                    .replace(result, output_path.to_str().unwrap())
+            })
+            .collect();
+        if args.iter().any(|arg| arg == "--remote-spawn") {
+            // The corpus process must own the remote server's lifetime.
+            // Otherwise it inherits these captured pipes and `output` waits
+            // forever after the CLI itself exits.
+            args.push("--remote-shutdown".into());
+        }
+
+        let output = Command::new(&cli)
+            .args(&args)
+            .current_dir(&corpus)
+            .output()
+            .unwrap_or_else(|error| panic!("{id}: failed to run CLI: {error}"));
+        assert_eq!(
+            output.status.code(),
+            Some(expected_status),
+            "{id}: CLI status; stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let cli_hash = std::fs::read(&output_path).unwrap_or_else(|error| {
+            panic!(
+                "{id}: missing CLI computation hash: {error}; stderr:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
+        assert_eq!(cli_hash.len(), 32, "{id}: CLI hash length");
+        let cli_hash = format!("0x{}", hex::encode(cli_hash));
+        assert_eq!(cli_hash, expected, "{id}: CLI vs release manifest");
+
+        let inputs = case["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|path| std::fs::read(corpus.join(path.as_str().unwrap())).unwrap())
+            .collect();
+        let log2_mcycle_period = case["geometry"]["log2_mcycle_period"].as_u64().unwrap();
+        let log2_stride = log2_mcycle_period + Structure::PRODUCTION.log2_uarch_span;
+        let height = Structure::PRODUCTION.log2_ruler_span() - log2_stride;
+        let engine_hash = engine_root_with_inputs(
+            &corpus.join(case["template"].as_str().unwrap()),
+            inputs,
+            log2_stride,
+            height,
+        );
+        assert_eq!(engine_hash, cli_hash, "{id}: Dave engine vs v0.21 CLI");
+        checked += 1;
+        println!("{id}: {engine_hash}");
+    }
+    assert_eq!(checked, 17, "unexpected v0.21 mcycle corpus size");
 }
 
 /// Engine vs prototype on identical spans, at three granularities: the

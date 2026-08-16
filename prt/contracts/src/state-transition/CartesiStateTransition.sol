@@ -24,9 +24,9 @@ import {SafeCast} from "@openzeppelin-contracts-5.5.0/utils/math/SafeCast.sol";
 import {AccessLogs} from "step/src/AccessLogs.sol";
 import {Buffer} from "step/src/Buffer.sol";
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
+import {MetaStep} from "step/src/MetaStep.sol";
+import {SendCmioResponse} from "step/src/SendCmioResponse.sol";
 
-import {ICmioStateTransition} from "./ICmioStateTransition.sol";
-import {IRiscVStateTransition} from "./IRiscVStateTransition.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 
@@ -35,23 +35,11 @@ contract CartesiStateTransition is IStateTransition {
 
     using SafeCast for uint256;
 
-    uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
-    uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
+    uint64 constant LOG2_INPUT_WINDOW_SPAN =
+        EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
+            + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 
-    uint256 constant BIG_STEP_MASK = (1 << LOG2_UARCH_SPAN_TO_BARCH) - 1;
-    uint256 constant INPUT_MASK =
-        (1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH)) - 1;
-
-    IRiscVStateTransition immutable RISC_V_STATE_TRANSITION;
-    ICmioStateTransition immutable CMIO_STATE_TRANSITION;
-
-    constructor(
-        IRiscVStateTransition _riscVStateTransition,
-        ICmioStateTransition _cmioStateTransition
-    ) {
-        RISC_V_STATE_TRANSITION = _riscVStateTransition;
-        CMIO_STATE_TRANSITION = _cmioStateTransition;
-    }
+    uint256 constant INPUT_MASK = (1 << LOG2_INPUT_WINDOW_SPAN) - 1;
 
     function transitionState(
         bytes32 machineState,
@@ -59,10 +47,10 @@ contract CartesiStateTransition is IStateTransition {
         bytes calldata proofs,
         IDataProvider provider
     ) external view returns (bytes32) {
+        AccessLogs.Context memory accessLogs;
+
         // lower bits (uarch + big arch) are zero: add input.
         if (counter & INPUT_MASK == 0) {
-            // chekpoint + cmio + uarch step
-
             // proofs structure:
             // input_length <- proofs[:8] (big endian)
             // input <- proofs[8:8+input_length]
@@ -72,65 +60,39 @@ contract CartesiStateTransition is IStateTransition {
             // next `inputLength` bytes of the proof are the input itself.
             uint64 inputLength = uint64(bytes8(proofs[:8]));
             bytes calldata input = proofs[8:8 + inputLength];
-            uint256 inputIndexWithinEpoch = counter
-                >> (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
+            uint256 inputIndexWithinEpoch = counter >> LOG2_INPUT_WINDOW_SPAN;
             bytes32 inputMerkleRoot =
                 provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
 
             // the rest is the access log proofs, which has the concatenated proofs for:
-            // * checkpoint
             // * sendCmio
             // * step
-            AccessLogs.Context memory accessLogs = AccessLogs.Context(
+            accessLogs = AccessLogs.Context(
                 machineState, Buffer.Context(proofs[8 + inputLength:], 0)
             );
 
             // check if input is out-of-bounds of input box for this epoch
             if (inputMerkleRoot != bytes32(0x0)) {
-                // checkpoint
-                accessLogs =
-                    CMIO_STATE_TRANSITION.checkpoint(accessLogs, machineState);
-
-                // sendCmio
-                accessLogs = CMIO_STATE_TRANSITION.sendCmio(
+                // The primitive records the pre-input state for rollback.
+                // A machine that cannot accept this response produces a provable no-op.
+                SendCmioResponse.sendCmioResponse(
                     accessLogs,
-                    EmulatorConstants.CMIO_YIELD_REASON_ADVANCE_STATE,
+                    EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
                     inputMerkleRoot,
-                    uint256(inputLength).toUint32()
+                    uint256(inputLength).toUint32(),
+                    machineState
                 );
             }
-
-            // step
-            accessLogs = RISC_V_STATE_TRANSITION.step(accessLogs);
-
-            return accessLogs.currentRootHash;
-
-            // lower bits (uarch) are all 1s: reset uarch.
-        } else if ((counter + 1) & BIG_STEP_MASK == 0) {
-            // access log proofs has the concatenated proofs for:
-            // * step
-            // * reset
-            // * advanceStatus
-            // * getRevertRootHash (only if needed)
-            AccessLogs.Context memory accessLogs =
-                AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-
-            accessLogs = RISC_V_STATE_TRANSITION.step(accessLogs);
-            accessLogs = RISC_V_STATE_TRANSITION.reset(accessLogs);
-            accessLogs = CMIO_STATE_TRANSITION.revertIfNeeded(accessLogs);
-
-            return accessLogs.currentRootHash;
-
-            // else: step uarch.
         } else {
-            // access log proofs has proofs for:
-            // * step
-            AccessLogs.Context memory accessLogs =
+            accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
-
-            accessLogs = RISC_V_STATE_TRANSITION.step(accessLogs);
-
-            return accessLogs.currentRootHash;
         }
+
+        // MetaStep resets the uarch at the end of each uarch span. Dave's
+        // counter names the source state, while MetaStep's names the state
+        // produced by this transition.
+        MetaStep.step(counter + 1, accessLogs);
+
+        return accessLogs.currentRootHash;
     }
 }

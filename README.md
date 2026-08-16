@@ -83,8 +83,8 @@ Choose the setup that best fits your workflow.
 - git
 - Docker
 - just
-- GNU make
-- [foundry](https://github.com/foundry-rs/foundry)
+- curl
+- sha256sum
 
 **Setup Steps:**
 
@@ -92,7 +92,9 @@ Choose the setup that best fits your workflow.
    Ensure you have cloned the repository to your local machine.
 
 2. **Initialize the Docker Environment:**
-   Run the following command to set up the Docker environment (it will take a while):
+   Run the following command to prepare the pinned emulator sources and build
+   the Docker environment (it will take a while). This does not first build an
+   unused emulator library on the host.
    ```bash
    just setup-docker
    ```
@@ -110,7 +112,10 @@ If you prefer running Dave natively on your machine, you'll need additional depe
 **Additional Dependencies:**
 
 - A C++ compiler
-- A local installation of the [Cartesi Machine](https://github.com/cartesi/machine-emulator)
+- GNU make
+- [foundry](https://github.com/foundry-rs/foundry)
+- The [Cartesi Machine](https://github.com/cartesi/machine-emulator) CLI for
+  building and running test programs
 - Lua 5.4
 - Rust
 - [`xgenext2fs`](https://github.com/cartesi/genext2fs), only to build the
@@ -127,10 +132,23 @@ expects.
    Make sure the repository is cloned locally.
 
 2. **Initialize the Local Environment:**
-   Run the following command to set up the environment (it will take a while):
+   Choose the Cartesi Machine library provider, then run the setup command:
+
+   - A Nix or packaged provider sets `LIBCARTESI_PATH` to the absolute directory
+     containing `libcartesi.a`. Set `INCLUDECARTESI_PATH` to the absolute
+     directory containing `cm.h` when the headers are not in the conventional
+     sibling `include/cartesi-machine` directory.
+   - With `LIBCARTESI_PATH` unset, setup prepares the pinned v0.21 emulator
+     sources and Boost headers and builds the library natively with `slirp=no`.
+
    ```bash
    just setup-local
    ```
+
+   Any set `LIBCARTESI_PATH` selects the external provider; an empty or invalid
+   value is an error rather than a request to fall back to source. See the
+   [machine integration guide](machine/README.md) for the release and
+   intermediary-commit workflows.
 
 ### Checking your setup
 

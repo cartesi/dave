@@ -4,7 +4,7 @@ inputs:
   version:
     description: 'Version of Cartesi Machine to install'
     required: false
-    default: 0.20.0
+    default: 0.21.0
   suffix-version:
     description: 'Suffix of Cartesi Machine to install'
     required: false
@@ -50,3 +50,7 @@ runs:
         sudo apt-get install -y /tmp/cartesi-machine.deb
         rm -v /tmp/cartesi-machine.deb
         cartesi-machine --version
+        test -f /usr/lib/libcartesi.a
+        test -f /usr/include/cartesi-machine/cm.h
+        echo "LIBCARTESI_PATH=/usr/lib" >> "$GITHUB_ENV"
+        echo "INCLUDECARTESI_PATH=/usr/include/cartesi-machine" >> "$GITHUB_ENV"

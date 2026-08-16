@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 //! The reference collector: the [`Stf`] verbs implemented on the real
-//! Cartesi machine through the current (0.20) API, one step at a time.
+//! Cartesi machine through the current API, one step at a time.
 //!
 //! This is deliberately the slow, obviously-correct implementation. It
-//! exists to be validated against the prototype's commitment builder
-//! (the only oracle available today) and to serve, permanently, as the
-//! differential reference for the fast bulk collectors that arrive with
-//! emulator 0.21. Machine errors propagate as errors; geometry
+//! exists to be validated against the prototype and CLI commitment
+//! builders and to serve, permanently, as the differential reference
+//! for the fast bulk collectors. Machine errors propagate as errors; geometry
 //! violations remain panics (see the stf module doc).
 
 use super::dispute::DisputeSource;
@@ -16,19 +15,23 @@ use super::ruler::{Ruler, RulerFactory};
 use super::stf::{ProvingStf, Stf};
 use super::structure::Structure;
 use crate::arithmetic::add_and_clamp;
-use crate::engine::constants::CHECKPOINT_ADDRESS;
 use crate::merkle::Digest;
 use crate::storage::{InputId, Storage};
 use alloy::primitives::U256;
 use anyhow::{Context, Result, ensure};
 use cartesi_machine::{
-    cartesi_machine_sys,
     config::runtime::RuntimeConfig,
-    constants::cmio::tohost::manual::{RX_ACCEPTED, RX_REJECTED, TX_EXCEPTION},
-    constants::machine::HASH_TREE_LOG2_ROOT_SIZE,
+    constants::{
+        break_reason,
+        cmio::tohost::manual::{RX_ACCEPTED, RX_REJECTED},
+    },
     format_emulator_version,
     machine::Machine,
-    types::{LogType, access_proof::AccessLog, cmio::CmioResponseReason},
+    types::{
+        LogType,
+        access_proof::{AccessLog, AccessType},
+        cmio::CmioResponseReason,
+    },
 };
 use std::path::{Path, PathBuf};
 
@@ -79,7 +82,7 @@ impl MachineStf {
         // resume already validates the pristine uarch
         let mut stf = Self::resume(template_path, work_dir)?;
         ensure!(
-            stf.machine.iflags_y()?,
+            stf.yielded()?,
             "template machine must be yielded awaiting input"
         );
         Ok(stf)
@@ -179,8 +182,50 @@ impl MachineStf {
         Ok(())
     }
 
+    fn manual_yield_reason(&mut self) -> Result<Option<u16>> {
+        if !self.machine.iflags_y()? {
+            return Ok(None);
+        }
+        Ok(Some(self.machine.receive_cmio_request()?.reason()))
+    }
+
+    fn mcycle_overflow(&mut self) -> Result<bool> {
+        Ok(self.machine.mcycle()? >= self.machine.imcyclemax()?)
+    }
+
+    fn terminal_fixed(&mut self) -> Result<bool> {
+        if self.halted()? || self.mcycle_overflow()? {
+            return Ok(true);
+        }
+        Ok(matches!(
+            self.manual_yield_reason()?,
+            Some(reason) if reason != RX_ACCEPTED && reason != RX_REJECTED
+        ))
+    }
+
+    /// A logged reset substitutes the canonical root on rejection, but
+    /// the emulator deliberately leaves the physical machine reset in
+    /// place. Reload the pre-feed snapshot so subsequent plain execution
+    /// starts from that same canonical state.
+    fn restore_rejected(&mut self) -> Result<bool> {
+        if self.manual_yield_reason()? != Some(RX_REJECTED) {
+            return Ok(false);
+        }
+        let checkpoint = self
+            .checkpoint
+            .clone()
+            .expect("revert requires a fed checkpoint");
+        self.machine = Machine::load(&checkpoint, &RuntimeConfig::quiet_console())
+            .context("reload checkpoint")?;
+        self.ucycle = 0;
+        if let Feeder::Advance { reverted, .. } = &mut self.feeder {
+            *reverted = true;
+        }
+        Ok(true)
+    }
+
     fn fixed(&mut self) -> Result<bool> {
-        Ok(self.halted()? || self.yielded()?)
+        Ok(self.terminal()? || self.yielded()?)
     }
 }
 
@@ -194,7 +239,11 @@ impl Stf for MachineStf {
     }
 
     fn yielded(&mut self) -> Result<bool> {
-        Ok(self.machine.iflags_y()?)
+        Ok(self.manual_yield_reason()? == Some(RX_ACCEPTED))
+    }
+
+    fn terminal(&mut self) -> Result<bool> {
+        self.terminal_fixed()
     }
 
     fn uarch_halted(&mut self) -> Result<bool> {
@@ -202,12 +251,11 @@ impl Stf for MachineStf {
     }
 
     fn feed(&mut self, window: u64) -> Result<()> {
-        assert!(self.yielded()? && !self.halted()?, "feed requires yielded");
+        assert!(self.yielded()?, "feed requires a machine awaiting input");
 
-        // Snapshot the pre-feed state: the off-chain form of the
-        // checkpoint the on-chain revert reads from the shadow slot.
-        // The snapshot predates the slot write below, matching what
-        // the on-chain revert restores (the pre-checkpoint root).
+        // Snapshot the pre-feed state. send_cmio_response records this
+        // root in the shadow state, while the physical snapshot is what
+        // lets the mutable machine follow the same revert off-chain.
         let root = self.machine.root_hash()?;
         let (checkpoint, payload) = match &mut self.feeder {
             Feeder::Scratch { fed, inputs } => {
@@ -271,9 +319,8 @@ impl Stf for MachineStf {
         };
         self.checkpoint = Some(checkpoint);
 
-        self.machine.write_memory(CHECKPOINT_ADDRESS, &root)?;
         self.machine
-            .send_cmio_response(CmioResponseReason::Advance, &payload)?;
+            .send_cmio_response(CmioResponseReason::Advance, &payload, Some(&root))?;
         Ok(())
     }
 
@@ -289,45 +336,8 @@ impl Stf for MachineStf {
     fn ureset(&mut self) -> Result<()> {
         self.machine.reset_uarch()?;
         self.ucycle = 0;
+        self.restore_rejected()?;
         Ok(())
-    }
-
-    fn revert_if_needed(&mut self) -> Result<bool> {
-        if !self.yielded()? {
-            return Ok(false);
-        }
-        // The on-chain closing slot restores the checkpoint ONLY on
-        // RX_REJECTED (AdvanceStatus + CmioStateTransition
-        // .revertIfNeeded): an exception yield KEEPS the exception
-        // state, and any other manual reason has no defined
-        // transition on-chain (InvalidReason), so it is fatal here
-        // too. Solidity is the source of truth for these semantics;
-        // treating every non-accept as a revert was a consensus
-        // mismatch (found 2026-07-15).
-        let reason = self.machine.receive_cmio_request()?.reason();
-        match reason {
-            RX_ACCEPTED | TX_EXCEPTION => Ok(false),
-            RX_REJECTED => {
-                let checkpoint = self
-                    .checkpoint
-                    .as_ref()
-                    .expect("revert requires a fed checkpoint");
-                // Replacing the instance drops the old machine
-                // (flushing and unlocking a shared working clone);
-                // the poisoned directory is the caller's to discard.
-                self.machine = Machine::load(checkpoint, &RuntimeConfig::quiet_console())
-                    .context("reload checkpoint")?;
-                self.ucycle = 0;
-                if let Feeder::Advance { reverted, .. } = &mut self.feeder {
-                    *reverted = true;
-                }
-                Ok(true)
-            }
-            other => panic!(
-                "manual yield reason {other} has no defined state transition \
-                 (the on-chain advanceStatus rejects it)"
-            ),
-        }
     }
 
     fn run_big(&mut self, big_cycles: u64) -> Result<u64> {
@@ -338,15 +348,20 @@ impl Stf for MachineStf {
         let start = self.machine.mcycle()?;
         let target = add_and_clamp(start, big_cycles);
         loop {
-            self.machine.run(target)?;
-            if self.halted()? || self.yielded()? {
+            let reason = self.machine.run(target)?;
+            if self.machine.iflags_h()?
+                || self.machine.iflags_y()?
+                || reason == break_reason::MCYCLE_OVERFLOW
+            {
                 break;
             }
             if self.machine.mcycle()? == target {
                 break;
             }
         }
-        Ok(self.machine.mcycle()? - start)
+        let ran = self.machine.mcycle()? - start;
+        self.restore_rejected()?;
+        Ok(ran)
     }
 }
 
@@ -355,69 +370,24 @@ impl Stf for MachineStf {
 // replaces; the differential test in tests/engine_machine.rs pins the
 // bytes).
 impl MachineStf {
-    fn prove_read_word(&mut self, address: u64) -> Result<Vec<u8>> {
-        // always read aligned 32 bytes (one leaf)
-        let aligned_address = address & !0x1Fu64;
-        let mut read = self.machine.read_memory(aligned_address, 32)?;
-        let proof = self
-            .machine
-            .proof(aligned_address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
-
-        let mut encoded: Vec<u8> = Vec::new();
-        encoded.append(&mut read);
-        let mut decoded_siblings: Vec<u8> =
-            proof.sibling_hashes.iter().flatten().cloned().collect();
-        encoded.append(&mut decoded_siblings);
-
-        Ok(encoded)
-    }
-
-    fn prove_read_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
-        // always read aligned 32 bytes (one leaf)
-        let aligned_address = address & !0x1Fu64;
-        let mut read = self.machine.read_memory(aligned_address, 32)?;
-        let read_hash = Digest::from_data(&read);
-        let proof = self
-            .machine
-            .proof(aligned_address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
-
-        let mut encoded: Vec<u8> = Vec::new();
-        encoded.append(&mut read);
-        encoded.append(&mut read_hash.slice().to_vec());
-        let mut decoded_siblings: Vec<u8> =
-            proof.sibling_hashes.iter().flatten().cloned().collect();
-        encoded.append(&mut decoded_siblings);
-
-        Ok(encoded)
-    }
-
-    /// Proves the pre-write leaf value, then performs the checkpoint
-    /// write (the current root hash into the shadow slot).
-    fn prove_write_checkpoint(&mut self) -> Result<Vec<u8>> {
-        let address = CHECKPOINT_ADDRESS;
-        assert!(address & 0x1F == 0);
-        let read = self.machine.read_memory(address, 32)?;
-        let read_hash = Digest::from_data(&read);
-        let proof = self.machine.proof(address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
-
-        let mut encoded: Vec<u8> = Vec::new();
-        encoded.append(&mut read_hash.slice().to_vec());
-        let mut decoded_siblings: Vec<u8> =
-            proof.sibling_hashes.iter().flatten().cloned().collect();
-        encoded.append(&mut decoded_siblings);
-
-        let checkpoint = self.state_hash()?;
-        self.machine.write_memory(address, checkpoint.slice())?;
-
-        Ok(encoded)
-    }
-
     fn encode_access_log(log: &AccessLog) -> Vec<u8> {
         let mut encoded: Vec<Vec<u8>> = Vec::new();
 
         for a in log.accesses.iter() {
             if a.log2_size == 3 {
-                encoded.push(a.read.clone().unwrap());
+                encoded.push(
+                    a.read
+                        .clone()
+                        .expect("word access must carry its read value"),
+                );
+            } else if matches!(&a.r#type, AccessType::Read) {
+                let read = a
+                    .read
+                    .clone()
+                    .expect("region read must carry its raw value");
+                assert_eq!(read.len(), 32, "chain region reads are one bytes32 value");
+                encoded.push(read);
+                encoded.push(a.read_hash.to_vec());
             } else {
                 encoded.push(a.read_hash.to_vec());
             }
@@ -462,18 +432,14 @@ impl ProvingStf for MachineStf {
         };
         match payload {
             Some(input) => {
-                let checkpoint_proof = self.prove_write_checkpoint()?;
+                let revert_root = self.machine.root_hash()?;
                 let cmio_log = self.machine.log_send_cmio_response(
                     CmioResponseReason::Advance,
                     &input,
+                    &revert_root,
                     LogType::default(),
                 )?;
-                Ok([
-                    Self::encode_da(&input),
-                    checkpoint_proof,
-                    Self::encode_access_log(&cmio_log),
-                ]
-                .concat())
+                Ok([Self::encode_da(&input), Self::encode_access_log(&cmio_log)].concat())
             }
             None => Ok(Self::encode_da(&[])),
         }
@@ -488,33 +454,8 @@ impl ProvingStf for MachineStf {
     fn log_ureset(&mut self) -> Result<Vec<u8>> {
         let log = self.machine.log_reset_uarch(LogType::default())?;
         self.ucycle = 0;
-        Ok(Self::encode_access_log(&log))
-    }
-
-    fn log_revert_check(&mut self) -> Result<Vec<u8>> {
-        let mut proof = Vec::new();
-
-        let iflags_y_address =
-            cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_IFLAGS_Y)?;
-        proof.append(&mut self.prove_read_word(iflags_y_address)?);
-
-        if self.yielded()? {
-            let to_host_address =
-                cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_HTIF_TOHOST)?;
-            proof.append(&mut self.prove_read_word(to_host_address)?);
-
-            // The chain consumes the checkpoint leaf only on the
-            // REJECTED branch (getRevertRootHash); an exception yield
-            // keeps its state and reads nothing more.
-            if self.machine.receive_cmio_request()?.reason() == RX_REJECTED {
-                proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS)?);
-            }
-        }
-        // Apply what was proven: the chain's closing transition ends on
-        // the restored checkpoint, so the post-state reported after
-        // proving must be the reverted state the builder emitted as
-        // this leaf, not the discarded rejected state.
-        self.revert_if_needed()?;
+        let proof = Self::encode_access_log(&log);
+        self.restore_rejected()?;
         Ok(proof)
     }
 }
@@ -643,24 +584,116 @@ impl RulerFactory for Positioner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::constants;
+    use crate::engine::constants::UARCH_MASK_TO_BARCH;
+    use cartesi_machine::constants::rollup::{
+        LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+        LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
+    };
+    use cartesi_machine::types::access_proof::{Access, AccessLogType};
+
+    fn access(r#type: AccessType, log2_size: u64, read: Option<Vec<u8>>, byte: u8) -> Access {
+        Access {
+            r#type,
+            address: 0,
+            log2_size,
+            read_hash: [byte; 32],
+            read,
+            written_hash: None,
+            written: None,
+            sibling_hashes: Some(vec![]),
+        }
+    }
+
+    #[test]
+    fn chain_encoder_includes_region_read_value() {
+        let log = AccessLog {
+            log_type: AccessLogType::default(),
+            accesses: vec![
+                access(AccessType::Read, 3, Some(vec![1; 8]), 2),
+                access(AccessType::Read, 5, Some(vec![3; 32]), 4),
+                access(AccessType::Write, 5, None, 5),
+            ],
+            notes: None,
+            brackets: None,
+        };
+
+        assert_eq!(
+            MachineStf::encode_access_log(&log),
+            [vec![1; 8], vec![3; 32], vec![4; 32], vec![5; 32]].concat()
+        );
+    }
+
+    #[test]
+    fn cycle_overflow_closing_slot_proves_step_then_reset() -> Result<()> {
+        let mut pristine_config = Machine::default_config()?;
+        pristine_config.ram.length = 4096;
+        pristine_config.processor.registers.iflags.y = 1;
+        // HTIF_BUILD(yield device, manual command, RX_ACCEPTED, no data).
+        pristine_config.processor.registers.htif.tohost =
+            (2u64 << 56) | (1u64 << 48) | (u64::from(RX_ACCEPTED) << 32);
+
+        let mut pristine = Machine::create(&pristine_config, &RuntimeConfig::quiet_console())?;
+        let canonical_post: Digest = pristine.root_hash()?.into();
+
+        let mut overflow_config = pristine.initial_config()?;
+        overflow_config.uarch.processor.registers.cycle = UARCH_MASK_TO_BARCH;
+        overflow_config.uarch.processor.registers.halt = 0;
+
+        // This is the closing source state exercised by the v0.21
+        // uarch-overflow-tail case: the counter is maxed but halt is clear.
+        let mut oracle = Machine::create(&overflow_config, &RuntimeConfig::quiet_console())?;
+        assert_eq!(oracle.ucycle()?, UARCH_MASK_TO_BARCH);
+        assert!(!oracle.uarch_halt_flag()?);
+        let agree: Digest = oracle.root_hash()?.into();
+        assert_ne!(agree, canonical_post);
+
+        let step = oracle.log_step_uarch(LogType::default())?;
+        assert_eq!(Digest::from(oracle.root_hash()?), agree);
+        let reset = oracle.log_reset_uarch(LogType::default())?;
+        assert_eq!(Digest::from(oracle.root_hash()?), canonical_post);
+        let step_proof = MachineStf::encode_access_log(&step);
+        let reset_proof = MachineStf::encode_access_log(&reset);
+        assert_eq!(step_proof.len(), 1_920);
+        assert_eq!(reset_proof.len(), 5_216);
+        let expected_proof = [step_proof, reset_proof].concat();
+
+        let machine = Machine::create(&overflow_config, &RuntimeConfig::quiet_console())?;
+        let stf = MachineStf {
+            machine,
+            ucycle: UARCH_MASK_TO_BARCH,
+            work_dir: PathBuf::new(),
+            checkpoint: None,
+            feeder: Feeder::Scratch {
+                fed: 0,
+                inputs: vec![],
+            },
+        };
+        let mut ruler = Ruler::new_at(
+            stf,
+            Structure::PRODUCTION,
+            0,
+            U256::from(UARCH_MASK_TO_BARCH),
+        );
+        let (proof, post) = ruler.prove_transition()?;
+
+        assert_eq!(proof, expected_proof);
+        assert_eq!(post, canonical_post);
+        Ok(())
+    }
 
     /// Drift guard: the engine structure and the machine constants must
     /// describe the same ruler.
     #[test]
-    fn production_structure_matches_machine_constants() {
+    fn production_structure_maps_machine_fields() {
         let production = Structure::PRODUCTION;
-        assert_eq!(
-            production.log2_uarch_span,
-            constants::LOG2_UARCH_SPAN_TO_BARCH
-        );
+        assert_eq!(production.log2_uarch_span, LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
         assert_eq!(
             production.log2_barch_span,
-            constants::LOG2_BARCH_SPAN_TO_INPUT
+            LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
         );
         assert_eq!(
             production.log2_input_span,
-            constants::LOG2_INPUT_SPAN_TO_EPOCH
+            LOG2_MAX_ADVANCE_STATES_PER_EPOCH
         );
     }
 

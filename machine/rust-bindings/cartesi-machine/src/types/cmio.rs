@@ -87,8 +87,19 @@ impl CmioRequest {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CmioResponseReason {
-    Advance = cartesi_machine_sys::CM_CMIO_YIELD_REASON_ADVANCE_STATE as isize,
-    Inspect = cartesi_machine_sys::CM_CMIO_YIELD_REASON_INSPECT_STATE as isize,
+    Advance,
+    Inspect,
+    Gio(u16),
+}
+
+impl From<CmioResponseReason> for u16 {
+    fn from(reason: CmioResponseReason) -> Self {
+        match reason {
+            CmioResponseReason::Advance => constants::cmio::fromhost::ADVANCE_STATE,
+            CmioResponseReason::Inspect => constants::cmio::fromhost::INSPECT_STATE,
+            CmioResponseReason::Gio(domain) => domain,
+        }
+    }
 }
 
 #[cfg(test)]

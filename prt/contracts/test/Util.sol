@@ -25,12 +25,6 @@ import {
 import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
-import {
-    CmioStateTransition
-} from "src/state-transition/CmioStateTransition.sol";
-import {
-    RiscVStateTransition
-} from "src/state-transition/RiscVStateTransition.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
@@ -351,8 +345,7 @@ contract Util is Test {
         uint64 log2step,
         uint64 height
     ) internal returns (MultiLevelTournamentFactory) {
-        (CartesiStateTransition stateTransition,,) =
-            instantiateStateTransition();
+        CartesiStateTransition stateTransition = instantiateStateTransition();
         MultiLevelTournamentFactory singleLevelFactory = new MultiLevelTournamentFactory(
             new Tournament(),
             new SingleLevelTournamentParametersProvider(
@@ -369,8 +362,7 @@ contract Util is Test {
         internal
         returns (MultiLevelTournamentFactory, CartesiStateTransition)
     {
-        (CartesiStateTransition stateTransition,,) =
-            instantiateStateTransition();
+        CartesiStateTransition stateTransition = instantiateStateTransition();
         return (
             new MultiLevelTournamentFactory(
                 new Tournament(),
@@ -387,8 +379,7 @@ contract Util is Test {
         internal
         returns (MultiLevelTournamentFactory, CartesiStateTransition)
     {
-        (CartesiStateTransition stateTransition,,) =
-            instantiateStateTransition();
+        CartesiStateTransition stateTransition = instantiateStateTransition();
         return (
             new MultiLevelTournamentFactory(
                 new Tournament(),
@@ -404,18 +395,8 @@ contract Util is Test {
     // instantiates StateTransition
     function instantiateStateTransition()
         internal
-        returns (
-            CartesiStateTransition,
-            RiscVStateTransition,
-            CmioStateTransition
-        )
+        returns (CartesiStateTransition)
     {
-        RiscVStateTransition riscVStateTransition = new RiscVStateTransition();
-        CmioStateTransition cmioStateTransition = new CmioStateTransition();
-        CartesiStateTransition stateTransition = new CartesiStateTransition(
-            riscVStateTransition, cmioStateTransition
-        );
-
-        return (stateTransition, riscVStateTransition, cmioStateTransition);
+        return new CartesiStateTransition();
     }
 }

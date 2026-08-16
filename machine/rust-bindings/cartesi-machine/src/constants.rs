@@ -3,7 +3,7 @@
 
 //! Constants definitions from Cartesi Machine.
 //!
-//! The names in this module track the v0.20 emulator naming convention:
+//! The names in this module track the v0.21 emulator naming convention:
 //! `HASH_TREE_LOG2_*` for hash-tree sizes (previously `TREE_LOG2_*`) and the
 //! `ar` module for address ranges (previously `pma`). The numeric values are
 //! unchanged from v0.19.
@@ -17,6 +17,17 @@ pub mod machine {
     pub const HASH_TREE_LOG2_ROOT_SIZE: u32 = CM_HASH_TREE_LOG2_ROOT_SIZE;
 }
 
+pub mod rollup {
+    use cartesi_machine_sys::*;
+
+    pub const LOG2_MAX_MCYCLES_PER_ADVANCE_STATE: u64 =
+        CM_ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE as u64;
+    pub const LOG2_MAX_UARCH_CYCLES_PER_MCYCLE: u64 =
+        CM_ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE as u64;
+    pub const LOG2_MAX_ADVANCE_STATES_PER_EPOCH: u64 =
+        CM_ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH as u64;
+}
+
 pub mod ar {
     use cartesi_machine_sys::*;
     pub const RX_START: u64 = CM_AR_CMIO_RX_BUFFER_START as u64;
@@ -24,15 +35,15 @@ pub mod ar {
     pub const TX_START: u64 = CM_AR_CMIO_TX_BUFFER_START as u64;
     pub const TX_LOG2_SIZE: u64 = CM_AR_CMIO_TX_BUFFER_LOG2_SIZE as u64;
     pub const RAM_START: u64 = CM_AR_RAM_START as u64;
-    /// Dedicated memory slot the off-chain client writes the pre-input root
-    /// hash to before sending a CMIO input, so that on-chain
-    /// `revertIfNeeded` can read it back after a rejected input.
+    /// Dedicated memory slot where the send-CMIO primitive records the
+    /// pre-input root hash so the uarch-reset primitive can substitute it
+    /// after a rejected input.
     ///
     /// Canonical source is the emulator C++; the Solidity side mirrors it
     /// through the auto-generated
     /// `step/src/EmulatorConstants.sol::REVERT_ROOT_HASH_ADDRESS`, used
-    /// only from `EmulatorCompat.{set,get}RevertRootHash` wrappers — no
-    /// other Solidity file should reference the raw address.
+    /// from the send and reset primitives; no Dave Solidity file should
+    /// reference the raw address.
     pub const SHADOW_REVERT_ROOT_HASH_START: u64 = CM_AR_SHADOW_REVERT_ROOT_HASH_START as u64;
 }
 
@@ -44,11 +55,12 @@ pub mod break_reason {
     pub const YIELDED_AUTOMATICALLY: u32 = CM_BREAK_REASON_YIELDED_AUTOMATICALLY;
     pub const YIELDED_SOFTLY: u32 = CM_BREAK_REASON_YIELDED_SOFTLY;
     pub const REACHED_TARGET_MCYCLE: u32 = CM_BREAK_REASON_REACHED_TARGET_MCYCLE;
+    pub const MCYCLE_OVERFLOW: u32 = CM_BREAK_REASON_MCYCLE_OVERFLOW;
 }
 
 pub mod uarch_break_reason {
     use cartesi_machine_sys::*;
-    pub const REACHED_TARGET_CYCLE: u32 = CM_UARCH_BREAK_REASON_REACHED_TARGET_CYCLE;
+    pub const REACHED_TARGET_UARCH_CYCLE: u32 = CM_UARCH_BREAK_REASON_REACHED_TARGET_UARCH_CYCLE;
     pub const UARCH_HALTED: u32 = CM_UARCH_BREAK_REASON_UARCH_HALTED;
 }
 
@@ -62,32 +74,32 @@ pub mod cmio {
     /// CMIO commands
     pub mod commands {
         use cartesi_machine_sys::*;
-        pub const YIELD_AUTOMATIC: u8 = CM_CMIO_YIELD_COMMAND_AUTOMATIC as u8;
-        pub const YIELD_MANUAL: u8 = CM_CMIO_YIELD_COMMAND_MANUAL as u8;
+        pub const YIELD_AUTOMATIC: u8 = CM_HTIF_YIELD_CMD_AUTOMATIC as u8;
+        pub const YIELD_MANUAL: u8 = CM_HTIF_YIELD_CMD_MANUAL as u8;
     }
 
     /// CMIO request
     pub mod tohost {
         pub mod automatic {
             use cartesi_machine_sys::*;
-            pub const PROGRESS: u16 = CM_CMIO_YIELD_AUTOMATIC_REASON_PROGRESS as u16;
-            pub const TX_OUTPUT: u16 = CM_CMIO_YIELD_AUTOMATIC_REASON_TX_OUTPUT as u16;
-            pub const TX_REPORT: u16 = CM_CMIO_YIELD_AUTOMATIC_REASON_TX_REPORT as u16;
+            pub const PROGRESS: u16 = CM_HTIF_YIELD_AUTOMATIC_REASON_PROGRESS as u16;
+            pub const TX_OUTPUT: u16 = CM_HTIF_YIELD_AUTOMATIC_REASON_TX_OUTPUT as u16;
+            pub const TX_REPORT: u16 = CM_HTIF_YIELD_AUTOMATIC_REASON_TX_REPORT as u16;
         }
 
         pub mod manual {
             use cartesi_machine_sys::*;
-            pub const RX_ACCEPTED: u16 = CM_CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED as u16;
-            pub const RX_REJECTED: u16 = CM_CMIO_YIELD_MANUAL_REASON_RX_REJECTED as u16;
-            pub const TX_EXCEPTION: u16 = CM_CMIO_YIELD_MANUAL_REASON_TX_EXCEPTION as u16;
+            pub const RX_ACCEPTED: u16 = CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED as u16;
+            pub const RX_REJECTED: u16 = CM_HTIF_YIELD_MANUAL_REASON_RX_REJECTED as u16;
+            pub const TX_EXCEPTION: u16 = CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION as u16;
         }
     }
 
     /// CMIO response
     pub mod fromhost {
         use cartesi_machine_sys::*;
-        pub const ADVANCE_STATE: u16 = CM_CMIO_YIELD_REASON_ADVANCE_STATE as u16;
-        pub const INSPECT_STATE: u16 = CM_CMIO_YIELD_REASON_INSPECT_STATE as u16;
+        pub const ADVANCE_STATE: u16 = CM_HTIF_YIELD_REASON_ADVANCE_STATE as u16;
+        pub const INSPECT_STATE: u16 = CM_HTIF_YIELD_REASON_INSPECT_STATE as u16;
     }
 }
 
@@ -108,9 +120,6 @@ pub mod error_code {
     pub const RANGE_ERROR: i32 = CM_ERROR_RANGE_ERROR;
     pub const OVERFLOW_ERROR: i32 = CM_ERROR_OVERFLOW_ERROR;
     pub const UNDERFLOW_ERROR: i32 = CM_ERROR_UNDERFLOW_ERROR;
-    pub const REGEX_ERROR: i32 = CM_ERROR_REGEX_ERROR;
-    pub const SYSTEM_ERROR: i32 = CM_ERROR_SYSTEM_ERROR;
-
     // Other errors
     pub const BAD_TYPEID: i32 = CM_ERROR_BAD_TYPEID;
     pub const BAD_CAST: i32 = CM_ERROR_BAD_CAST;

@@ -15,16 +15,7 @@ repository = { workspace = true }
 # Links against `libcartesi_jsonrpc.a`
 remote_machine = ["cartesi-machine-sys/remote_machine"]
 
-# Downloads from emulator's GitHub release
-download_uarch = ["cartesi-machine-sys/download_uarch"]
-
-# requires docker daemon to be running
-build_uarch = ["cartesi-machine-sys/build_uarch"]
-
-# requires setting env vars UARCH_PRISTINE_HASH_PATH and UARCH_PRISTINE_RAM_PATH
-copy_uarch = ["cartesi-machine-sys/copy_uarch"]
-
-# requires setting env vars LIBCARTESI_PATH and INCLUDECARTESI_PATH
+# Requires LIBCARTESI_PATH; INCLUDECARTESI_PATH overrides the inferred include directory.
 external_cartesi = ["cartesi-machine-sys/external_cartesi"]
 
 

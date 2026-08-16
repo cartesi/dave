@@ -603,10 +603,10 @@ incentive. Seven action allocations have retained measured ceilings;
 `WIN_LEAF_MATCH` uses a documented provisional subsidy selected from the
 largest canonical InputBox reference witness. That full-stack witness covers
 the production provider and state transition, but it is not a universal
-proof-class or whole-transaction ceiling: arbitrary trailing proof bytes,
-unresolved halt and exception semantics, and transaction-intrinsic calldata
-remain outside the claim. Broader proof-class calibration is optional. PRT-003
-records the review decision and known limitations;
+proof-class or whole-transaction ceiling: future state-transition proof shapes
+and transaction-intrinsic calldata remain outside the claim. Broader
+proof-class calibration is optional. PRT-003 records the review decision and
+known limitations;
 [`prt-refund-accounting.md`](prt-refund-accounting.md) derives the living
 reserve and conservation boundary.
 

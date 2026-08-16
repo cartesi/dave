@@ -10,10 +10,10 @@
 use super::epoch_data::{EpochData, Leaf};
 use super::instance::MachineInstance;
 use super::machine_error::Result;
-use cartesi_rollups_prt_node::engine::constants;
-
 use alloy::primitives::U256;
+use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 use cartesi_rollups_prt_node::arithmetic::max_uint;
+use cartesi_rollups_prt_node::engine::constants::{LOG2_EPOCH_RULER_SPAN, UARCH_MASK_TO_BARCH};
 use cartesi_rollups_prt_node::merkle::{Digest, MerkleBuilder, MerkleTree};
 use log::{info, trace};
 use std::collections::HashMap;
@@ -75,8 +75,8 @@ fn digest_tree(hash: &[u8; 32]) -> Arc<MerkleTree> {
 
 fn leafs_with_uarch(leafs: Vec<Leaf>, log2_stride_count: u64) -> Vec<(Arc<MerkleTree>, u64)> {
     let mut main_tree = Vec::new();
-    let span_count = max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH) + 1;
-    let span_size = constants::UARCH_MASK_TO_BARCH + 1;
+    let span_count = max_uint(log2_stride_count - LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) + 1;
+    let span_size = UARCH_MASK_TO_BARCH + 1;
     let mut accumulated_repetitions = 0;
     let mut uarch_tree_builder = MerkleBuilder::default();
 
@@ -214,13 +214,8 @@ pub fn build_machine_commitment(
 
     let start = Instant::now();
 
-    if log2_stride >= constants::LOG2_UARCH_SPAN_TO_BARCH {
-        assert!(
-            log2_stride + log2_stride_count
-                <= constants::LOG2_INPUT_SPAN_TO_EPOCH
-                    + constants::LOG2_BARCH_SPAN_TO_INPUT
-                    + constants::LOG2_UARCH_SPAN_TO_BARCH
-        );
+    if log2_stride >= LOG2_MAX_UARCH_CYCLES_PER_MCYCLE {
+        assert!(log2_stride + log2_stride_count <= LOG2_EPOCH_RULER_SPAN);
         build_big_machine_commitment(
             machine,
             level,
@@ -253,7 +248,7 @@ fn build_big_machine_commitment(
 ) -> Result<()> {
     let mut leafs = Vec::new();
     let instruction_count = 1 << log2_stride_count;
-    let stride = 1 << (log2_stride - constants::LOG2_UARCH_SPAN_TO_BARCH);
+    let stride = 1 << (log2_stride - LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
 
     for instruction in 0..instruction_count {
         print_flush_same_line(&format!(
@@ -292,7 +287,7 @@ fn build_small_machine_commitment(
     log2_stride_count: u64,
     store: &LeafStore,
 ) -> Result<()> {
-    let span_count = max_uint(log2_stride_count - constants::LOG2_UARCH_SPAN_TO_BARCH);
+    let span_count = max_uint(log2_stride_count - LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
 
     let mut span = 0;
     while span <= span_count {
@@ -345,10 +340,10 @@ fn run_uarch_span(
     }
 
     // Add padding leaf to complete the span
-    if i < constants::UARCH_MASK_TO_BARCH {
+    if i < UARCH_MASK_TO_BARCH {
         leafs.push(Leaf {
             hash: machine_state.root_hash.into(),
-            repetitions: constants::UARCH_MASK_TO_BARCH - i,
+            repetitions: UARCH_MASK_TO_BARCH - i,
         });
     }
 
@@ -356,9 +351,6 @@ fn run_uarch_span(
     machine_state = machine.ureset()?;
     trace!("state after reset {}", machine_state.root_hash);
 
-    if machine.is_yielded()? {
-        machine.revert_if_needed()?;
-    }
     leafs.push(Leaf {
         hash: machine.root_hash()?.into(),
         repetitions: 1,

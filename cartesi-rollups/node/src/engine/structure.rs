@@ -8,8 +8,11 @@
 //! after transition m; the state before leaf 0 rides outside the tree
 //! (the commitment's implicit hash).
 
-use crate::engine::constants;
 use alloy::primitives::U256;
+use cartesi_machine::constants::rollup::{
+    LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+    LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
+};
 
 /// The structural shape of the state-transition function: the log2
 /// spans of the ruler's three fields. Fixed by the machine at
@@ -26,12 +29,11 @@ pub struct Structure {
 }
 
 impl Structure {
-    /// The production shape, derived from the one span authority
-    /// (engine/constants.rs).
+    /// The production shape, read directly from the emulator's rollup geometry.
     pub const PRODUCTION: Structure = Structure {
-        log2_input_span: constants::LOG2_INPUT_SPAN_TO_EPOCH,
-        log2_barch_span: constants::LOG2_BARCH_SPAN_TO_INPUT,
-        log2_uarch_span: constants::LOG2_UARCH_SPAN_TO_BARCH,
+        log2_input_span: LOG2_MAX_ADVANCE_STATES_PER_EPOCH,
+        log2_barch_span: LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+        log2_uarch_span: LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
     };
 
     pub fn log2_ruler_span(&self) -> u64 {
@@ -117,8 +119,9 @@ pub struct Position {
 }
 
 impl Position {
-    /// The window-opening slot: the fused transition (checkpoint plus
-    /// input delivery plus the first ustep) when the window feeds.
+    /// The window-opening slot: the fused transition (input delivery,
+    /// including recording its revert root, plus the first ustep) when
+    /// the window feeds.
     pub fn is_window_start(&self) -> bool {
         self.big == 0 && self.ustep == 0
     }
@@ -129,9 +132,10 @@ impl Position {
     }
 
     /// The big cycle's closing slot: the final (possibly identity)
-    /// ustep, the ureset, and the revert check. Kept as the span's
+    /// ustep and the ureset, including rejected-input substitution.
+    /// Kept as the span's
     /// last uarch index rather than an explicit Reset variant: the
-    /// slot always fuses the three operations, so a separate
+    /// slot always fuses the two operations, so a separate
     /// representation state would never change behavior (explored per
     /// the workstream-4 note; the spec tests hold either way).
     pub fn is_closing_slot(&self, structure: &Structure) -> bool {

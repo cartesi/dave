@@ -8,10 +8,10 @@ It is the single most arcane part of the codebase; read this before touching
 `cartesi-rollups/node/src/storage/rollups_machine.rs`.
 
 > Verify claims against the code. Primary sources:
-> `cartesi-rollups/node/src/engine/constants.rs`,
-> `cartesi-rollups/node/src/engine/{structure,ruler,stf}.rs`, and the
-> Solidity state-transition contracts under
-> `prt/contracts/src/state-transition/`.
+> `machine/rust-bindings/cartesi-machine/src/constants.rs`,
+> `machine/step/src/EmulatorConstants.sol`,
+> `cartesi-rollups/node/src/engine/{structure,ruler,stf}.rs`, and the Solidity
+> state-transition contracts under `prt/contracts/src/state-transition/`.
 
 ## Why micro-steps
 
@@ -27,15 +27,17 @@ few auxiliary state mutations described below).
 ## The meta-cycle coordinate system
 
 A position in an epoch's computation is a 92-bit integer called the
-meta-cycle, carved into three fields (`engine/constants.rs`):
+meta-cycle, carved into three fields. The primitive field widths come from the
+emulator's rollup constants; `Structure::PRODUCTION` composes them into Dave's
+coordinate system:
 
 ```
   bits 91..68            bits 67..20            bits 19..0
 +---------------------+----------------------+---------------------+
 | input index (24)    | big cycle (48)       | ucycle (20)         |
 +---------------------+----------------------+---------------------+
-  LOG2_INPUT_SPAN_      LOG2_BARCH_SPAN_       LOG2_UARCH_SPAN_
-  TO_EPOCH = 24         TO_INPUT = 48          TO_BARCH = 20
+  MAX_ADVANCE_STATES     MAX_MCYCLES_PER        MAX_UARCH_CYCLES
+  PER_EPOCH = 24         ADVANCE_STATE = 48     PER_MCYCLE = 20
 ```
 
 - An epoch processes at most 2^24 inputs.
@@ -49,9 +51,12 @@ for the field layout: input index =
 `meta & (2^20 - 1)`. (The prototype's shift/mask decoder survives as a
 differential oracle in `cartesi-rollups/node/tests/common/`.)
 
-Naming trap: the `*_SPAN_*` constants are defined with `max_uint`, so they
-are masks (2^k - 1), not spans (2^k). Code uses them both ways; do not
-"fix" one usage without auditing the others.
+Primitive widths are referenced directly through
+`cartesi_machine::constants::rollup`, Lua's `cartesi.ROLLUP_LOG2_MAX_*`, or
+the generated Solidity `EmulatorConstants`. Dave-owned constants are derived
+quantities such as the input-window width, ruler width, and field masks. A
+width is `k`, a span is `2^k`, and a mask is `2^k - 1`; keep those concepts
+distinct when changing the coordinate code.
 
 ## The leaf sequence
 
@@ -67,16 +72,23 @@ same `Position` predicates the ruler steps by):
 
 1. Input boundary (`ucycle == 0` and `big cycle == 0`): if the epoch has an
    input at this index, the transition atomically performs:
-   - write the current root hash into the checkpoint slot (see below),
-   - feed the input via a CMIO response,
+   - feed the input via a CMIO response, passing the current root as its
+     revert root (the send primitive records it in the shadow slot),
    - execute one uarch step.
    If there is no input, it is just the uarch step (with a proof that the
    data availability is empty).
-2. Big-step boundary (`(m + 1)` is a multiple of 2^20): the uarch must have
-   halted by now; the transition is a (no-op, halted) uarch step plus a
-   uarch reset, and, if the big machine yielded rejecting the input, a
-   revert (see below).
+2. Big-step boundary (`(m + 1)` is a multiple of 2^20): one uarch step plus a
+   uarch reset. The step is normally a halted no-op; an unhalted machine whose
+   uarch counter is already maximal instead reports cycle overflow and is also
+   unchanged. The reset itself substitutes the recorded revert root if the big
+   machine yielded rejecting the input (see below).
 3. Anywhere else: a single uarch step.
+
+On-chain, `CartesiStateTransition` optionally calls `SendCmioResponse` at the
+input boundary and then calls `MetaStep.step(m + 1, accessLogs)` for every
+shape. Dave's `m` names the transition by its source state, while `MetaStep`
+expects the produced-state index. `MetaStep` owns the closing reset and
+requires the access-log proof buffer to be consumed completely.
 
 Inside one big cycle, the uarch typically halts long before spending its
 2^20 budget. The remaining slots are padded by repeating the halted state
@@ -105,11 +117,12 @@ meta-cycle  0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
           +---- big 0 ----+---- big 1 ----+---- big 0 ----+---- big 1 ----+
           +------- input window 0 --------+------- input window 1 --------+
             ^                           ^   ^                           ^
-            checkpoint + add-input 0    |   checkpoint + add-input 1    |
-                              revert if rejected              revert if rejected
+            add-input 0 + revert root   |   add-input 1 + revert root   |
+                         reset substitutes on reject   reset substitutes on reject
 ```
 
-`u` = uarch step, `uR` = (halted) uarch step + uarch reset.
+`u` = uarch step, `uR` = final uarch step + uarch reset. The final step is
+normally halted; uarch-cycle overflow is also a valid identity step.
 
 ## Checkpoint and revert
 
@@ -121,33 +134,35 @@ the trick:
 - The emulator reserves a dedicated memory slot for the pre-input root hash
   (`CM_AR_SHADOW_REVERT_ROOT_HASH_START`, re-exported as
   `CHECKPOINT_ADDRESS` in `engine/constants.rs`).
-- At each input boundary, the transition writes the current root hash into
-  that slot before feeding the input (the "checkpoint").
+- At each input boundary, `send_cmio_response` receives the current root as
+  an argument and records it in that slot as part of the same logged
+  operation that delivers the input. There is no separate checkpoint write
+  or proof.
 - When the machine yields with reason REJECTED - and only then - the
-  big-step boundary transition reads the checkpoint hash out of the
-  rejected state and replaces the entire machine root with it. State
-  restored, provably. An EXCEPTION yield keeps the exception state (no
-  restore), and any other manual reason has no defined transition
-  on-chain (AdvanceStatus reverts with InvalidReason). Solidity is the
-  source of truth here: both off-chain clients treated every
-  non-accept as a revert until 2026-07-15, a consensus mismatch that
-  survived because the node and the Lua oracle were wrong the same
-  way and no test image emits exceptions. The halt/exception on-chain
-  semantics are being reworked (contracts side, in progress as of
-  2026-07-15); when that lands, re-verify all four off-chain sites
-  against it (revert_if_needed and log_revert_check in
-  engine/machine_stf.rs; revert_if_needed and prove_revert_if_needed
-  in prt/client-lua/computation/machine.lua) and only then pin the
-  exception shape end to end (an exception-emitting image plus an
-  stf scenario, like stf_revert pins rejection).
+  uarch reset reads the recorded hash and replaces the entire machine root
+  with it. State restored, provably, inside the reset log. An EXCEPTION or
+  unexpected manual yield keeps its terminal state; halt and mcycle overflow
+  are terminal as well. Sending a later advance response to any of those
+  states is a provable no-op, so every window-opening transition remains
+  defined.
+
+  The logged reset returns the canonical substituted root but leaves the
+  physical emulator with only its uarch reset. Both off-chain clients reload
+  the pre-input snapshot after logging or executing a rejected reset. Their
+  equivalent big-machine run shortcuts perform the same reload when they
+  observe `RX_REJECTED`, so subsequent execution begins at the canonical
+  state. Solidity remains the semantics authority; the release CLI and its
+  computation-hash corpus are independent cross-checks, not replacements for
+  contract tests.
 
 The Solidity side reads the slot address from step's auto-generated
 `EmulatorConstants.sol`. The unit test
 `test_emulator_and_step_agree_on_revert_address` (`engine/constants.rs`)
 guards the two against drifting apart across emulator/step bumps.
 
-Off-chain, `MachineStf` mirrors this with a pre-feed snapshot per fed
-input (`feed`, `revert_if_needed` in `engine/machine_stf.rs`).
+Off-chain, `MachineStf` mirrors this with a pre-feed snapshot per fed input;
+its reset, logged-reset, and big-run paths all apply the conditional physical
+reload.
 
 ## Tournament levels and strides
 
@@ -208,11 +223,12 @@ Two generation regimes exist off-chain (the sling ruler,
 and survives as a differential test oracle):
 
 - Coarse sampling (`log2_stride >= 20`): run the big machine
-  `stride / 2^20` big cycles at a time, one leaf per stop; on halt or yield,
-  pad the rest.
+  `stride / 2^20` big cycles at a time, one leaf per stop; when it reaches an
+  input boundary or terminal state, pad the rest.
 - Uarch sampling (`log2_stride == 0`): run uarch spans: one leaf
   per uarch step until uarch halt, pad to 2^20 - 1, append the post-reset
-  state as the span's last leaf, then check for revert.
+  state as the span's last leaf. Rejected-input substitution is already part
+  of that reset state.
 
 The rollups node computes level-0 leaves eagerly while processing
 inputs (`LOG2_STRIDE = 44`, so one leaf per 2^24 big cycles) and
@@ -230,10 +246,10 @@ sampling stride and spans this 92-bit ruler. Deeper tournament geometry is
 read from each clone's immutable descriptor when the recursive dispute reaches
 it.
 
-One subtlety (the ruler's fused feed transition): a machine snapshot
-taken at an input boundary sits yielded, mid-transition. Its state hash
-at that point is not a leaf; the builder must feed the pending input
-first ("unyield") before stepping.
+One subtlety (the ruler's fused feed transition): a machine snapshot taken at
+an input boundary sits awaiting input. That boundary state is the implicit
+hash for the next span, not its first leaf; the builder must feed the pending
+input before executing the first ustep.
 
 ## Where implementations must agree
 

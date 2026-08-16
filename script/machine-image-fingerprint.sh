@@ -37,7 +37,8 @@ deployment_address() {
 
 inputs_digest() {
     local program=$1
-    local machine_version machine_path machine_hash emulator_pin justfile_hash
+    local machine_version machine_path machine_hash emulator_pin git_emulator_pin
+    local provided_emulator_pin justfile_hash
     local generator_hash portal_address token_address linux_hash rootfs_hash
 
     case "$program" in
@@ -64,7 +65,29 @@ inputs_digest() {
     machine_version=$(cartesi-machine --version | sed -n '1p')
     machine_path=$(command -v cartesi-machine)
     machine_hash=$(sha256_file "$machine_path")
-    emulator_pin=$(git rev-parse :machine/emulator)
+    provided_emulator_pin=${DAVE_EMULATOR_GITLINK:-}
+    if [ -n "$provided_emulator_pin" ] \
+        && [[ ! "$provided_emulator_pin" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "error: invalid DAVE_EMULATOR_GITLINK: $provided_emulator_pin" >&2
+        return 1
+    fi
+    if git_emulator_pin=$(git rev-parse :machine/emulator 2>/dev/null); then
+        if [[ ! "$git_emulator_pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "error: invalid emulator gitlink in the Git index: $git_emulator_pin" >&2
+            return 1
+        fi
+        if [ -n "$provided_emulator_pin" ] \
+            && [ "$provided_emulator_pin" != "$git_emulator_pin" ]; then
+            echo "error: DAVE_EMULATOR_GITLINK does not match the Git index" >&2
+            return 1
+        fi
+        emulator_pin=$git_emulator_pin
+    elif [ -n "$provided_emulator_pin" ]; then
+        emulator_pin=$provided_emulator_pin
+    else
+        echo "error: cannot resolve the emulator gitlink from Git or the environment" >&2
+        return 1
+    fi
     justfile_hash=$(sha256_file test/programs/justfile)
 
     if [ "$program" = honeypot ]; then
@@ -172,6 +195,7 @@ case "$mode" in
             exit 1
         fi
         root=$(cartesi-machine-stored-hash "$image")
+        root=${root#0x}
         [[ "$root" =~ ^[0-9a-f]{64}$ ]] || {
             echo "error: invalid stored machine root for $image: $root" >&2
             exit 1
@@ -198,6 +222,7 @@ case "$mode" in
         read_manifest "$manifest"
         current_inputs=$(inputs_digest "$program")
         current_root=$(cartesi-machine-stored-hash "$image")
+        current_root=${current_root#0x}
         [[ "$current_root" =~ ^[0-9a-f]{64}$ ]] || {
             echo "error: invalid stored machine root for $image: $current_root" >&2
             exit 1

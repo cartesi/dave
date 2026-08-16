@@ -20,19 +20,22 @@ pub trait Stf {
     /// made of.
     fn state_hash(&mut self) -> Result<Digest>;
 
-    /// Machine halted: a fixed point forever.
+    /// Machine halted.
     fn halted(&mut self) -> Result<bool>;
 
-    /// Machine yielded awaiting input: a fixed point until the next fed
-    /// input.
+    /// Machine yielded with RX_ACCEPTED and is awaiting input.
     fn yielded(&mut self) -> Result<bool>;
+
+    /// A terminal fixed point: halt, exception, unexpected manual yield,
+    /// or mcycle overflow. No later input can resume execution.
+    fn terminal(&mut self) -> Result<bool>;
 
     /// The uarch finished emulating the current big instruction; usteps
     /// are identity until the closing ureset.
     fn uarch_halted(&mut self) -> Result<bool>;
 
-    /// Feed window `window`'s input: the checkpoint write plus the
-    /// input delivery. Valid only when yielded and not halted, and
+    /// Feed window `window`'s input, recording the pre-feed root as the
+    /// response's revert root. Valid only when awaiting input, and
     /// only for windows that feed (the geometry passes the window
     /// index; the implementation owns the payloads - the machine
     /// fetches from the input store, the toy consults its script -
@@ -48,14 +51,13 @@ pub trait Stf {
     /// until the uarch halts, without touching the big state.
     fn ustep(&mut self) -> Result<()>;
 
-    /// Reset the uarch, completing a big cycle. On an idle machine the
-    /// post-reset state equals the state before the span: idle churn is
-    /// uarch-local, which is what makes idle spans periodic.
+    /// Reset the uarch, completing a big cycle. A rejected input's
+    /// canonical post-state is its recorded revert root, so implementations
+    /// with a mutable physical machine restore their pre-feed snapshot here.
+    /// On an idle machine the post-reset state equals the state before the
+    /// span: idle churn is uarch-local, which is what makes idle spans
+    /// periodic.
     fn ureset(&mut self) -> Result<()>;
-
-    /// Restore the checkpoint if the machine yielded rejecting the last
-    /// fed input. Returns whether a revert happened.
-    fn revert_if_needed(&mut self) -> Result<bool>;
 
     /// The big-architecture shortcut: run up to `big_cycles` whole big
     /// cycles, stopping early at yield or halt, returning how many ran.
@@ -67,7 +69,7 @@ pub trait Stf {
     /// The default composes the uarch verbs.
     fn run_big(&mut self, big_cycles: u64) -> Result<u64> {
         let mut executed = 0;
-        while executed < big_cycles && !self.halted()? && !self.yielded()? {
+        while executed < big_cycles && !self.terminal()? && !self.yielded()? {
             while !self.uarch_halted()? {
                 self.ustep()?;
             }
@@ -92,8 +94,8 @@ pub trait Stf {
 pub trait ProvingStf: Stf {
     /// The window-opening witness: the data-availability encoding of
     /// window `window`'s input (empty when the window has none) and,
-    /// when it does, the checkpoint write proof and the input
-    /// delivery log, performing both. The implementation resolves
+    /// when it does, the input-delivery log that also records the
+    /// revert root. The implementation resolves
     /// the window to its payload, as with [`Stf::feed`]. The fused
     /// first ustep is logged separately by [`ProvingStf::log_ustep`].
     fn log_feed(&mut self, window: u64) -> Result<Vec<u8>>;
@@ -101,17 +103,9 @@ pub trait ProvingStf: Stf {
     /// One uarch cycle, with its access log.
     fn log_ustep(&mut self) -> Result<Vec<u8>>;
 
-    /// The uarch reset, with its access log.
+    /// The uarch reset, including rejected-input substitution, with its
+    /// access log.
     fn log_ureset(&mut self) -> Result<Vec<u8>>;
-
-    /// The closing slot's revert witness: proves the yield flag, and
-    /// on a yielded machine the outcome word plus - if the input was
-    /// rejected - the checkpoint the chain restores from. Then applies
-    /// the revert exactly as [`Stf::revert_if_needed`] does: the
-    /// chain's closing transition ends on the restored checkpoint, so
-    /// the post-state observed after proving must match the leaf the
-    /// plain path built there.
-    fn log_revert_check(&mut self) -> Result<Vec<u8>>;
 }
 
 /// How a toy input's processing ends.
@@ -167,7 +161,6 @@ pub struct ToyStf {
     big_cycles: Vec<u64>,
     current_big_cycle: usize,
     usteps_in_big_cycle: u64,
-    reverted: bool,
 }
 
 impl ToyStf {
@@ -205,7 +198,6 @@ impl ToyStf {
             big_cycles: vec![],
             current_big_cycle: 0,
             usteps_in_big_cycle: 0,
-            reverted: false,
         }
     }
 
@@ -245,6 +237,10 @@ impl Stf for ToyStf {
         Ok(self.yielded)
     }
 
+    fn terminal(&mut self) -> Result<bool> {
+        Ok(self.halted)
+    }
+
     fn uarch_halted(&mut self) -> Result<bool> {
         Ok(self.uarch_halted)
     }
@@ -271,7 +267,6 @@ impl Stf for ToyStf {
         self.usteps_in_big_cycle = 0;
         self.yielded = false;
         self.uarch_halted = false;
-        self.reverted = false;
         Ok(())
     }
 
@@ -315,21 +310,15 @@ impl Stf for ToyStf {
         if self.current_big_cycle == self.big_cycles.len() {
             // This big cycle was the yield (or halt) instruction.
             match self.outcome {
-                ToyOutcome::Accept | ToyOutcome::Reject => self.yielded = true,
+                ToyOutcome::Accept => self.yielded = true,
+                ToyOutcome::Reject => {
+                    self.counter = self.checkpoint;
+                    self.yielded = true;
+                }
                 ToyOutcome::Halt => self.halted = true,
             }
         }
         Ok(())
-    }
-
-    fn revert_if_needed(&mut self) -> Result<bool> {
-        if self.yielded && self.outcome == ToyOutcome::Reject && !self.reverted {
-            self.counter = self.checkpoint;
-            self.reverted = true;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
     }
 }
 
@@ -353,11 +342,5 @@ impl ProvingStf for ToyStf {
     fn log_ureset(&mut self) -> Result<Vec<u8>> {
         self.ureset()?;
         Ok(b"toy-ureset;".to_vec())
-    }
-
-    fn log_revert_check(&mut self) -> Result<Vec<u8>> {
-        // Reads plus the same revert the plain verb applies.
-        self.revert_if_needed()?;
-        Ok(b"toy-revert-check;".to_vec())
     }
 }

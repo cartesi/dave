@@ -9,8 +9,10 @@ would never load it, hence this file.
 
 - `emulator/` and `step/` are upstream submodules. Nothing under them is
   hand-edited in this repo; changes happen upstream and land here as pin
-  bumps. The emulator additionally needs generated sources fetched by
-  `just apply-generated-files-diff` (sha256-pinned; see the root justfile).
+  bumps. The emulator additionally needs generated sources and Boost headers
+  owned by the `machine` Just module. Use `just machine::setup` for the pinned
+  release or `just machine::generate-sources` for a clean intermediary commit;
+  do not hand-edit or copy generated files into the submodule.
 - A pin bump is not a version bump. Instruction semantics are owned by
   `machine/step`, and the Solidity adapters
   (`prt/contracts/src/state-transition/`), the emulator, and both
@@ -22,12 +24,13 @@ would never load it, hence this file.
 - `step/src/EmulatorConstants.sol` must stay in sync with the emulator
   version; the guard test is
   `cartesi-rollups/node/src/engine/constants.rs`.
-- Version pins are spread across the root justfile
-  (`apply-generated-files-diff`), CI (`.github/workflows/build.yml`, the
-  cartesi-machine action), `test/programs/`'s justfile, and the nix
-  devshell flake (outside this repo). Drift between them is a standing
-  hazard (docs/build-system.md); a bump must visit all of them, and the
-  machine images under `test/programs/` must be rebuilt.
-- `rust-bindings/cartesi-machine-sys` linking precedence
-  (`external_cartesi` feature, `LIBCARTESI_PATH`, submodule build) is
-  documented in `machine/README.md`.
+- Release acquisition and image-generation pins are spread across
+  `machine/script/cartesi-machine-source.sh`, CI, `test/programs/`'s justfile,
+  and the nix devshell flake outside this repo. Semantic version guards also
+  exist in the Rust wrapper and node tests. Drift between them is a standing
+  hazard (`docs/build-system.md`); search for the current version during a bump
+  and rebuild the machine images under `test/programs/`.
+- Any set `LIBCARTESI_PATH` selects an external static library, and the path
+  must be absolute. When it is unset, Cargo incrementally builds an explicitly
+  prepared source checkout. `build.rs` owns no downloads. The exact provider
+  and preparation contract is documented in `machine/README.md`.

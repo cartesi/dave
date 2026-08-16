@@ -27,7 +27,7 @@ jobs:
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
-          version: 0.20.0
+          version: 0.21.0
           suffix-version: ""
 
       - name: Setup env
@@ -80,7 +80,7 @@ jobs:
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
-          version: 0.20.0
+          version: 0.21.0
       - name: Download PRT contracts
         working-directory: ./prt/contracts
         run: |
@@ -162,7 +162,7 @@ jobs:
           ARCH: amd64
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends \
-            build-essential git wget \
+            build-essential git wget curl \
             libslirp-dev \
             libclang-dev \
             liblua5.4-dev lua5.4 lua-check \
@@ -173,30 +173,43 @@ jobs:
           rm ./xgenext2fs.deb
           xgenext2fs --version
 
-      # The from-source emulator build dominates this job. The tree is
-      # make-based and the diff apply detects an already-patched tree,
-      # so on a cache hit the same recipes below no-op; on an emulator
-      # bump the key changes and the from-source path runs for real.
+      # The from-source emulator build dominates this job. Cache both the
+      # prepared tree and its verified preparation state so a hit preserves
+      # Make's incremental inputs instead of republishing generated sources.
       - name: Emulator cache key
         id: emulator-key
-        run: echo "sha=$(git rev-parse HEAD:machine/emulator)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "emulator=$(git rev-parse HEAD:machine/emulator)" >> "$GITHUB_OUTPUT"
+          lifecycle=$(
+            git hash-object \
+              .github/workflows/build.yml \
+              machine/justfile \
+              machine/script/cartesi-machine-source.sh |
+              sha256sum | cut -d ' ' -f 1
+          )
+          echo "lifecycle=$lifecycle" >> "$GITHUB_OUTPUT"
 
       - name: Cache emulator build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: machine/emulator
-          key: emulator-build-${{ runner.os }}-${{ steps.emulator-key.outputs.sha }}
+          path: |
+            machine/emulator
+            target/machine-source/prepared-generated-sources
+          key: emulator-build-${{ runner.os }}-${{ steps.emulator-key.outputs.emulator }}-${{ steps.emulator-key.outputs.lifecycle }}
 
-      # The version and diff hash live in the justfile recipe; CI must
-      # not carry its own copy of either. Dependency form (`setup`)
-      # deliberately: chaining recipes on one CLI feeds the NEXT
-      # recipe name into a parameterized recipe's arguments (just's
-      # grammar) - `apply-generated-files-diff build-emulator` once
-      # downloaded release "build-emulator" and 404ed silently.
+      # Source acquisition and verification belong to the machine lifecycle;
+      # CI only installs the resulting native build. The upstream prefix is
+      # /usr, matching the paths shipped by the release package.
       - name: Install Cartesi Machine
         run: |
-          just setup
-          sudo make -C machine/emulator install
+          just machine::prepare-release
+          just machine::prepare-boost
+          make -C machine/emulator -j"$(nproc)" release=yes slirp=no
+          sudo make -C machine/emulator release=yes slirp=no install
+          test -f /usr/lib/libcartesi.a
+          test -f /usr/include/cartesi-machine/cm.h
+          echo "LIBCARTESI_PATH=/usr/lib" >> "$GITHUB_ENV"
+          echo "INCLUDECARTESI_PATH=/usr/include/cartesi-machine" >> "$GITHUB_ENV"
 
       - name: Setup env
         run: |
@@ -279,10 +292,15 @@ jobs:
           just build-smart-contracts
           just bind
 
+      - name: Prepare Cartesi Machine source
+        run: |
+          just machine::prepare-release
+          just machine::prepare-boost
+
       - name: Cartesi Machine Sys
         working-directory: machine/rust-bindings
         run: |
-          cargo build --release -p cartesi-machine-sys --features download_uarch --target ${{ matrix.target }}
+          cargo build --release -p cartesi-machine-sys --target ${{ matrix.target }}
 
       - name: Build release
         run: |

@@ -10,11 +10,12 @@
 //! - Position p counts applied transitions; the leaf at p is the
 //!   post-state of transition p.
 //! - Window starts (p multiple of the window span): the fused
-//!   transition, checkpoint write plus input delivery plus the first
-//!   ustep, when the epoch has an input for that window. Inputs are a
-//!   contiguous prefix; window w feeds input w.
+//!   transition, input delivery (which records the pre-input revert
+//!   root) plus the first ustep, when the epoch has an input for that
+//!   window. Inputs are a contiguous prefix; window w feeds input w.
 //! - Big-cycle closing slots (p one short of a big-span multiple): a
-//!   final (possibly identity) ustep, the ureset, and the revert check.
+//!   final (possibly identity) ustep and the ureset, which also applies
+//!   rejected-input substitution.
 //! - Everything else: one ustep.
 //! - Idle regions (halted forever, or yielded until the next fed
 //!   window): the machine's big state is a fixed point, but only at
@@ -172,12 +173,12 @@ impl<S: Stf> Ruler<S> {
             let feeds_now = p.is_window_start() && has_input;
 
             if p.is_big_start() {
-                let halted = self.stf.halted()?;
-                if halted || (self.stf.yielded()? && !feeds_now) {
+                let terminal = self.stf.terminal()?;
+                if terminal || (self.stf.yielded()? && !feeds_now) {
                     // Idle until the next fed window (never, when
-                    // halted). Whole cycles replay one captured span; a
+                    // terminal). Whole cycles replay one captured span; a
                     // trailing partial cycle steps plainly below.
-                    let idle_end = if halted {
+                    let idle_end = if terminal {
                         to
                     } else {
                         let next_window = p.input + 1;
@@ -212,12 +213,9 @@ impl<S: Stf> Ruler<S> {
 
             if p.is_closing_slot(&self.structure) {
                 // Closing slot: (identity when uarch already halted)
-                // ustep, ureset, then the revert check.
+                // ustep, then ureset (including rejected-input substitution).
                 self.stf.ustep()?;
                 self.stf.ureset()?;
-                if self.stf.yielded()? {
-                    self.stf.revert_if_needed()?;
-                }
                 emit(Leaf::Live(&mut self.stf), one)?;
                 self.position += one;
             } else if self.stf.uarch_halted()? {
@@ -260,8 +258,8 @@ impl<S: Stf> Ruler<S> {
     }
 
     /// One idle uarch span, stepped: churn usteps until the uarch
-    /// halts, arithmetic padding, and the closing ureset (with its
-    /// revert check) restoring the base state.
+    /// halts, arithmetic padding, and the closing ureset restoring the
+    /// base state (or the recorded pre-input state after rejection).
     fn collect_idle_span(&mut self) -> Result<Vec<Run>> {
         fn push(runs: &mut Vec<Run>, hash: Digest, count: u64) {
             match runs.last_mut() {
@@ -287,9 +285,6 @@ impl<S: Stf> Ruler<S> {
         // The closing slot.
         self.stf.ustep()?;
         self.stf.ureset()?;
-        if self.stf.yielded()? {
-            self.stf.revert_if_needed()?;
-        }
         push(&mut runs, self.stf.state_hash()?, 1);
         Ok(runs)
     }
@@ -327,7 +322,7 @@ impl<S: Stf> Ruler<S> {
             let p = structure.decompose(self.position);
             let has_input = p.input < self.fed_windows;
 
-            if self.stf.halted()? {
+            if self.stf.terminal()? {
                 let n = to - self.position;
                 emit(Leaf::Live(&mut self.stf), n)?;
                 self.position = to;
@@ -377,9 +372,6 @@ impl<S: Stf> Ruler<S> {
                     break;
                 }
             }
-            if self.stf.yielded()? {
-                self.stf.revert_if_needed()?;
-            }
             emit(Leaf::Live(&mut self.stf), chunk_end - self.position)?;
             self.position = chunk_end;
         }
@@ -394,30 +386,22 @@ impl<S: ProvingStf> Ruler<S> {
     /// ruler (a snapshot resume plus advance) and checks the machine
     /// against the on-chain agree hash first; the machine is spent
     /// afterwards. Each proving verb applies the same state change as
-    /// its plain twin - including the closing slot's revert - so the
+    /// its plain twin - including rejection inside the closing reset - so the
     /// reported post-state is the leaf the builder emitted there.
     pub fn prove_transition(&mut self) -> Result<(Vec<u8>, Digest)> {
         let p = self.structure.decompose(self.position);
 
         let proof = if p.is_window_start() {
             // The window-opening transition: data availability (plus
-            // checkpoint and delivery when the window feeds) and the
+            // delivery and revert-root recording when the window feeds) and the
             // fused first ustep.
             let feed_proof = self.stf.log_feed(p.input)?;
             [feed_proof, self.stf.log_ustep()?].concat()
         } else if p.is_closing_slot(&self.structure) {
-            // The closing slot: the (identity) ustep, the ureset, and
-            // the revert witness.
-            assert!(
-                self.stf.uarch_halted()?,
-                "the uarch must have halted before its closing slot"
-            );
-            [
-                self.stf.log_ustep()?,
-                self.stf.log_ureset()?,
-                self.stf.log_revert_check()?,
-            ]
-            .concat()
+            // The closing slot: the identity ustep (halted or at cycle
+            // overflow) and the ureset, whose log includes rejected-input
+            // substitution.
+            [self.stf.log_ustep()?, self.stf.log_ureset()?].concat()
         } else {
             self.stf.log_ustep()?
         };

@@ -32,9 +32,7 @@ repository = "https://github.com/cartesi/dave"
 ## Workspace crates
 
 # machine bindings
-cartesi-machine = { path = "machine/rust-bindings/cartesi-machine", features = [
-  "download_uarch",
-] }
+cartesi-machine = { path = "machine/rust-bindings/cartesi-machine" }
 
 # solidity bindings
 cartesi-dave-contracts = { path = "cartesi-rollups/contracts/bindings-rs" }

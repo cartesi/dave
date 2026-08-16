@@ -98,21 +98,20 @@ adversary will find it.
 | positioning through an input's prefix | aggregate | trusted app (per-input compute is an app design contract) | app profile |
 | which gap / which leaf gets disputed | - | dispute adversary | worst location |
 
-Open protocol gap, found 2026-07-15 while verifying halted/exception
-semantics against the contracts (for the audit): a HALTED machine at
-a window start whose input exists has no provable transition
-on-chain - SendCmioResponse.sol requires iflags.Y and throws, so
-neither party can produce a valid witness for any post-state at that
-leaf, and the match degenerates to clock order. A halting app is not
-adversary-authored (guest crash), but once it happens the node
-cannot claim the epoch at all (the runner refuses to advance past a
-halt), which forfeits settlement to any claimant. Either the
-contracts define the halted-feed transition (e.g. the feed branch
-checks the halt flag and degenerates to a plain step) or halting
-apps are declared out of scope explicitly. The halt and exception gap remains
-open. Until the contracts define those semantics, the node must not schedule
-halted windows as though a valid on-chain transition exists; every off-chain
-revert site must be re-verified when the contract semantics change.
+The halt/exception protocol gap found on 2026-07-15 is closed by the
+v0.21 emulator and v0.15 solidity-step boundary. SendCmioResponse is total:
+an advance response to a machine that is halted, at mcycle overflow, or at a
+manual yield other than RX_ACCEPTED is a provable no-op. Halt, exception,
+unexpected manual yield, and mcycle overflow are terminal fixed points at big
+cycle boundaries, so later input windows remain claimable. Rejection is the
+one nonterminal manual outcome: the closing uarch reset substitutes the
+recorded pre-input root, after which the next input can be fed normally.
+
+At uarch granularity, terminal fixed points still have the usual idle-churn
+span followed by reset; they are constant only at big-cycle boundaries and
+coarser samples. Keep contract transition tests for every terminal reason and
+the emulator computation-hash corpus in the release gate. In particular, do
+not infer leaf semantics only from the big-machine run break reason.
 
 ## Base-layer censorship model
 

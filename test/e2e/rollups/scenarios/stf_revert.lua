@@ -5,8 +5,8 @@ local env = require "test_env"
 
 -- The last state-transition shape stf_all cannot pin statically: the
 -- full revert restore. When an input is rejected, the closing slot of
--- the big cycle where it yielded reads the checkpoint out of the
--- rejected state and replaces the machine root with it; that slot's
+-- the big cycle where it yielded resets the uarch and substitutes the
+-- recorded revert root; that slot's
 -- position depends on how long the program ran, so the oracle reports
 -- each input's big-cycle count and the patch chain is computed from
 -- it. Meant for the yield program, which rejects every input.

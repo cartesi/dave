@@ -12,16 +12,12 @@
 
 pragma solidity ^0.8.0;
 
+import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
+
 import {IDataProvider} from "src/IDataProvider.sol";
 import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
-import {
-    CmioStateTransition
-} from "src/state-transition/CmioStateTransition.sol";
-import {
-    RiscVStateTransition
-} from "src/state-transition/RiscVStateTransition.sol";
 
 import {Util} from "./Util.sol";
 
@@ -87,20 +83,17 @@ contract Provider is IDataProvider {
 
 contract StateTransitionFfiTest is Util {
     CartesiStateTransition immutable STATE_TRANSITION;
-    RiscVStateTransition immutable RISC_V_STATE_TRANSITION;
-    CmioStateTransition immutable CMIO_STATE_TRANSITION;
 
-    uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
-    uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
-    uint64 constant LOG2_INPUT_SPAN_TO_EPOCH = 24;
-
-    uint64 constant LOG2_UARCH_SPAN_TO_EPOCH = LOG2_UARCH_SPAN_TO_BARCH
-        + LOG2_BARCH_SPAN_TO_INPUT + LOG2_INPUT_SPAN_TO_EPOCH;
-    uint256 constant UARCH_SPAN_TO_BARCH = 1 << LOG2_UARCH_SPAN_TO_BARCH;
+    uint64 constant LOG2_INPUT_WINDOW_SPAN =
+        EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
+            + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
+    uint64 constant LOG2_EPOCH_RULER_SPAN = LOG2_INPUT_WINDOW_SPAN
+        + EmulatorConstants.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH;
+    uint256 constant UARCH_SPAN_TO_BARCH =
+        1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 
     constructor() {
-        (STATE_TRANSITION, RISC_V_STATE_TRANSITION, CMIO_STATE_TRANSITION) =
-            Util.instantiateStateTransition();
+        STATE_TRANSITION = Util.instantiateStateTransition();
     }
 
     function runCmd(uint256 counter, uint256 inputs)
@@ -118,8 +111,22 @@ contract StateTransitionFfiTest is Util {
         return abi.decode(res, (bytes32, bytes32, bytes));
     }
 
+    function runClosingCmd(string memory mode)
+        private
+        returns (uint256, bytes32, bytes32, bytes memory)
+    {
+        string[] memory cmd = new string[](3);
+        cmd[0] = "lua";
+        cmd[1] = "test/step/proofs.lua";
+        cmd[2] = mode;
+
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        bytes memory res = vm.ffi(cmd);
+        return abi.decode(res, (uint256, bytes32, bytes32, bytes));
+    }
+
     function assertStf(uint256 counter, uint256 numInputs) private {
-        vm.assume((counter >> LOG2_UARCH_SPAN_TO_EPOCH) == 0);
+        vm.assume((counter >> LOG2_EPOCH_RULER_SPAN) == 0);
         IDataProvider provider = new Provider(numInputs);
 
         (bytes32 before, bytes32 next, bytes memory proof) =
@@ -149,19 +156,19 @@ contract StateTransitionFfiTest is Util {
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = 1 << (LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT);
+        counter = 1 << LOG2_INPUT_WINDOW_SPAN;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = 2 << (LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT);
+        counter = 2 << LOG2_INPUT_WINDOW_SPAN;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = 3 << (LOG2_UARCH_SPAN_TO_BARCH + LOG2_BARCH_SPAN_TO_INPUT);
+        counter = 3 << LOG2_INPUT_WINDOW_SPAN;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
@@ -169,7 +176,8 @@ contract StateTransitionFfiTest is Util {
     }
 
     function testTransitionReset() public {
-        uint256 mask = (1 << LOG2_UARCH_SPAN_TO_BARCH) - 1;
+        uint256 mask =
+            (1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) - 1;
         uint256 counter;
 
         counter = mask;
@@ -178,24 +186,61 @@ contract StateTransitionFfiTest is Util {
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = (1 << LOG2_UARCH_SPAN_TO_BARCH) + mask;
+        counter =
+            (1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE)
+                + mask;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = (2 << LOG2_UARCH_SPAN_TO_BARCH) + mask;
+        counter =
+            (2 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE)
+                + mask;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = ((1 << LOG2_BARCH_SPAN_TO_INPUT) << LOG2_UARCH_SPAN_TO_BARCH)
-            + mask;
+        counter = (1 << LOG2_INPUT_WINDOW_SPAN) + mask;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
+    }
+
+    function testTransitionFirstInputRejectionClosing() public {
+        (
+            uint256 counter,
+            bytes32 before,
+            bytes32 revertRoot,
+            bytes memory proof
+        ) = runClosingCmd("first-input-rejection-closing");
+        assertEq((counter + 1) & (UARCH_SPAN_TO_BARCH - 1), 0);
+        assertNotEq(before, revertRoot);
+
+        IDataProvider provider = new Provider(1);
+        bytes32 result =
+            STATE_TRANSITION.transitionState(before, counter, proof, provider);
+
+        assertEq(result, revertRoot);
+    }
+
+    function testTransitionUarchCycleOverflowClosing() public {
+        (
+            uint256 counter,
+            bytes32 before,
+            bytes32 canonicalPost,
+            bytes memory proof
+        ) = runClosingCmd("uarch-cycle-overflow-closing");
+        assertEq(counter + 1, UARCH_SPAN_TO_BARCH);
+        assertNotEq(before, canonicalPost);
+
+        bytes32 result = STATE_TRANSITION.transitionState(
+            before, counter, proof, new Provider(0)
+        );
+
+        assertEq(result, canonicalPost);
     }
 
     function testTransitionStep() public {
@@ -207,20 +252,21 @@ contract StateTransitionFfiTest is Util {
         assertStf(counter, 2);
         assertStf(counter, 37);
 
-        counter = (1 << LOG2_UARCH_SPAN_TO_BARCH) + 2;
-        assertStf(counter, 0);
-        assertStf(counter, 1);
-        assertStf(counter, 2);
-        assertStf(counter, 37);
-
-        counter = (2 << LOG2_UARCH_SPAN_TO_BARCH) + 3;
+        counter =
+            (1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) + 2;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);
         assertStf(counter, 37);
 
         counter =
-            ((1 << LOG2_BARCH_SPAN_TO_INPUT) << LOG2_UARCH_SPAN_TO_BARCH) + 1;
+            (2 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) + 3;
+        assertStf(counter, 0);
+        assertStf(counter, 1);
+        assertStf(counter, 2);
+        assertStf(counter, 37);
+
+        counter = (1 << LOG2_INPUT_WINDOW_SPAN) + 1;
         assertStf(counter, 0);
         assertStf(counter, 1);
         assertStf(counter, 2);

@@ -121,7 +121,7 @@ mod tests {
             structure,
             app: vec![0xaa; 20],
             template_hash: Digest::from_digest(&[1u8; 32])?,
-            emulator_version: "0.20.0".into(),
+            emulator_version: "0.21.0".into(),
         };
         pin(&Connection::open(&path)?, &config)?;
 
@@ -131,7 +131,7 @@ mod tests {
 
         // Any drift is refused.
         let mut drifted = config.clone();
-        drifted.emulator_version = "0.21.0".into();
+        drifted.emulator_version = "0.22.0".into();
         assert!(pin(&Connection::open(&path)?, &drifted).is_err());
         Ok(())
     }

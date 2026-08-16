@@ -10,6 +10,7 @@ mod? prt-contracts 'prt/contracts'
 mod? rollups-contracts 'cartesi-rollups/contracts'
 mod? rollups-tests 'test/e2e/rollups'
 mod? programs 'test/programs'
+mod? machine 'machine'
 
 # Recipe lines with pipes fail honestly instead of reporting the
 # last stage's status (no recipe here pipes to head/tail, where
@@ -56,60 +57,21 @@ logged log +cmd:
 update-submodules:
     git submodule update --recursive --init
 
-# The emulator needs generated sources that are not in its repo; they are
-# fetched from the matching release and sha256-checked.
-
-# fetch the emulator's generated sources (no-op if already applied)
-apply-generated-files-diff VERSION="v0.20.0" FILEHASH="d9c2afcefc2759e7cd37bbedc83d54c81515f0fddb671103b489b8789aee33bb":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Guard the arg-eating trap: `just <this-recipe> <another-recipe>`
-    # feeds the next recipe NAME into VERSION (just's CLI grammar; it
-    # cost two days of silent CI 404s, 2026-07-20). Chain via the
-    # `setup` recipe's dependency form instead.
-    if [[ ! "{{VERSION}}" =~ ^v[0-9] ]]; then
-      echo "error: VERSION '{{VERSION}}' does not look like a release tag." >&2
-      echo "hint: another CLI word was likely consumed as this recipe's argument;" >&2
-      echo "      invoke through 'just setup', or put this recipe last." >&2
-      exit 2
-    fi
-    cd machine/emulator
-    # curl over wget: wget -q swallowed the HTTP error entirely (two
-    # silent exit-8 CI failures, 2026-07-20, cause invisible). -fsSL
-    # is quiet on success and names the refusal on failure;
-    # --retry-all-errors also retries the 403s GitHub's asset rate
-    # limiter hands out. The sha256 gate below is the integrity
-    # check either way, and curl exists where wget does not (macOS).
-    curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
-      -o add-generated-files.diff \
-      https://github.com/cartesi/machine-emulator/releases/download/{{VERSION}}/add-generated-files.diff
-    trap 'rm -f add-generated-files.diff' EXIT
-    echo "{{FILEHASH}} add-generated-files.diff" | sha256sum -c -
-    if git apply --check add-generated-files.diff 2>/dev/null; then
-      git apply add-generated-files.diff
-    elif git apply --check --reverse add-generated-files.diff 2>/dev/null; then
-      echo "generated files already present; skipping"
-    else
-      echo "error: generated-files diff neither applies nor reverse-applies." >&2
-      echo "The emulator submodule has diverged; try 'just clean-emulator' first." >&2
-      exit 1
-    fi
+# Compatibility wrappers; the machine module owns source acquisition and build.
+apply-generated-files-diff:
+    just machine::prepare-release
 
 bundle-boost:
-    make -C machine/emulator bundle-boost
+    just machine::prepare-boost
 
-# build the emulator natively from the submodule (C++ toolchain, no docker); no-op under LIBCARTESI_PATH
+# build the prepared emulator source checkout; no-op for an external provider
 build-emulator:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -n "${LIBCARTESI_PATH:-}" ] && [ -e "$LIBCARTESI_PATH/libcartesi.a" ]; then
-      echo "build-emulator: LIBCARTESI_PATH provides libcartesi.a; skipping the submodule build"
-      exit 0
-    fi
-    make -C machine/emulator -j8
+    just machine::build
 
 # Everything the Rust workspace needs to compile.
-setup: update-submodules bundle-boost apply-generated-files-diff build-emulator
+setup:
+    git submodule update --init machine/step
+    just machine::setup
 
 # Setup plus everything the e2e tests need, running natively.
 setup-local: setup
@@ -120,8 +82,8 @@ setup-local: setup
     just programs::build-programs
     just programs::build-honeypot-snapshot  # requires docker
 
-# Setup for the dockerized workflow.
-setup-docker: setup build-docker-image
+# Setup the Docker build context without first building an unused host archive.
+setup-docker: build-docker-image
 
 # diagnose the checkout: reports what is missing and the command that fixes it
 doctor:
@@ -186,12 +148,20 @@ doctor:
     echo "rust build inputs"
     if [ -f machine/step/src/EmulatorConstants.sol ]; then ok "machine/step submodule"; else
       miss "machine/step submodule not initialized" "run: just update-submodules"; fi
-    if [ -n "${LIBCARTESI_PATH:-}" ] && [ -e "$LIBCARTESI_PATH/libcartesi.a" ]; then
-      ok "emulator library (external, LIBCARTESI_PATH)"
-    elif [ -e machine/emulator/src/libcartesi.a ]; then
-      ok "emulator library (submodule build)"
+    if machine_check=$(machine/script/cartesi-machine-source.sh check 2>&1); then
+      if [ "${LIBCARTESI_PATH+x}" = x ]; then
+        ok "Cartesi Machine external provider"
+      else
+        ok "Cartesi Machine prepared source provider"
+      fi
     else
-      miss "no emulator library" "nix: 'direnv allow' (exports LIBCARTESI_PATH); otherwise run: just setup"
+      machine_error=$(printf '%s\n' "$machine_check" | tail -n 1)
+      if [ "${LIBCARTESI_PATH+x}" = x ]; then
+        machine_fix="fix or unset LIBCARTESI_PATH, then run: just machine::check"
+      else
+        machine_fix="run: just machine::setup"
+      fi
+      miss "$machine_error" "$machine_fix"
     fi
     for dir in prt/contracts cartesi-rollups/contracts; do
       if [ -d "$dir/dependencies" ] && [ -n "$(ls -A "$dir/dependencies" 2>/dev/null)" ]; then
@@ -327,7 +297,7 @@ test-lua-client:
     lua5.4 prt/client-lua/tests/run.lua
 
 clippy-rust-workspace: bind
-    cargo clippy --workspace --all-targets --features download_uarch -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # ------------------------------------------------------------------
 # Rust workspace. All recipes depend on bind because the bindings
@@ -342,40 +312,48 @@ check-fmt-rust-workspace: bind
     cargo fmt --check
 
 check-rust-workspace: bind
-    cargo check --features download_uarch
+    cargo check
 
 # ensure-docker: the kms tests spin testcontainers, and a sleeping
 # Docker Desktop fails them with noise that reads like a code bug.
 # rust workspace unit tests (the kms tests spin docker testcontainers)
 test-rust-workspace: bind
     ./script/ensure-docker.sh
-    cargo test --features download_uarch
+    cargo test
+
+# download and verify v0.21's released computation-hash corpus
+download-computation-hash-corpus:
+    ./script/computation-hash-corpus.sh download
+
+# explicit release gate: cross-check the corpus against the CLI and Dave's collector
+test-computation-hash-corpus: bind download-computation-hash-corpus
+    ./script/computation-hash-corpus.sh test
 
 # regenerate the measurement baselines (docs/measurements/)
 measure *ARGS: bind
     ./script/machine-image-fingerprint.sh verify echo
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/echo/machine-image \
-      --out docs/measurements/measurements.md --profile echo {{ARGS}}
+      --out docs/measurements/measurements.md --profile echo "$@"
 
 measure-stress *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/stress/machine-image \
-      --out docs/measurements/measurements-stress.md --profile stress {{ARGS}}
+      --out docs/measurements/measurements-stress.md --profile stress "$@"
 
 # derive tournament level constants (docs/measurements/constants.md)
 measure-constants *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/stress/machine-image --constants \
-      --out docs/measurements/constants.md --profile stress {{ARGS}}
+      --out docs/measurements/constants.md --profile stress "$@"
 
 build-rust-workspace *ARGS: bind
-    cargo build {{ARGS}} --features download_uarch
+    cargo build "$@"
 
 build-release-rust-workspace *ARGS: bind
-    cargo build --release {{ARGS}} --features download_uarch
+    cargo build --release "$@"
 
 build: build-smart-contracts build-rust-workspace
 
@@ -423,7 +401,7 @@ bootstrap-worktree SOURCE="":
       fi
     fi
 
-    git submodule update --init machine/step
+    just setup
     just prt-contracts::install-deps
     just rollups-contracts::install-deps
     just bind
@@ -517,7 +495,7 @@ worktrees-sweep:
 # ------------------------------------------------------------------
 
 clean-emulator:
-    make -C machine/emulator clean depclean distclean
+    just machine::clean
 
 clean-contracts:
     just prt-contracts::clean
@@ -554,7 +532,7 @@ test-prt-timeout-boundaries: build-rust-workspace
     just rollups-tests::test-sealed-leaf-timeouts
 
 test-rollups-honeypot-case CASE: build-rust-workspace
-    just rollups-tests::test-honeypot-case {{CASE}}
+    just rollups-tests::test-honeypot-case "$1"
 
 view-rollups-logs:
     just rollups-tests::read-node-logs
@@ -563,11 +541,18 @@ view-rollups-logs:
 # Docker environment
 # ------------------------------------------------------------------
 
-build-docker-image TAG="dave:dev":
-    docker build -f test/Dockerfile -t {{TAG}} .
+[private]
+prepare-docker-context:
+    git submodule update --init machine/step machine/emulator
+    just machine::prepare-release
+
+build-docker-image TAG="dave:dev": prepare-docker-context
+    docker build \
+      --build-arg "DAVE_EMULATOR_GITLINK=$(git rev-parse :machine/emulator)" \
+      -f test/Dockerfile -t "$1" .
 
 run-dockered +CMD: build-docker-image
-    docker run -it --rm --name dave-node dave:dev {{CMD}}
+    docker run -it --rm --name dave-node dave:dev "$@"
 
 exec-dockered +CMD:
-    docker exec dave-node {{CMD}}
+    docker exec dave-node "$@"

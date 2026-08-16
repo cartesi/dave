@@ -46,16 +46,6 @@ local inner_tournament_timeout = 30
 local time_sample_to_extrapolate = 2
 assert(time_sample_to_extrapolate <= inner_tournament_timeout)
 
--- Log2 of the number of micro-instructions to emulate a big instruction.
--- Must match the configured emulator/metastep
-local log2_uarch_span_to_barch = 20
-
--- Log2 of maximum mcycle value
-local log2_barch_span_to_input = 48
-
--- Log2 of maximum inputs per echo
-local log2_input_span_to_epoch = 24
-
 -- Big Machine increment roughly 2^26 big instructions per second
 local default_log2_big_machine_span = 26
 local default_big_machine_span = 1 << default_log2_big_machine_span
@@ -151,7 +141,9 @@ local function run_uarch_until_timeout()
         local machine = initialize_uarch_machine()
         start_timer()
         for _ = 1, iterations do
-            local status = machine:run_uarch(1 << log2_uarch_span_to_barch)
+            local status = machine:run_uarch(
+                1 << cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+            )
             assert(status == halted, "error: uarch not halted")
             machine:reset_uarch()
         end
@@ -197,7 +189,8 @@ end
 local function run_big_machine_until_timeout(log2_stride)
     -- we pick the smaller value from (snapshot_frequency, default_big_machine_span)
     -- to increment the machine, so we don't overshoot the timeout too much but also run fast
-    local snapshot_frequency = 1 << (log2_stride - log2_uarch_span_to_barch)
+    local snapshot_frequency = 1
+        << (log2_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE)
     local big_machine_span = math.min(snapshot_frequency, default_big_machine_span)
 
     -- Run for `time_sample_to_extrapolate` with computation hash to know largest commitment
@@ -280,7 +273,8 @@ print(string.format("Average ucycles to run a big instruction: %d", uinstruction
 print(string.format("leaf slowdown: %.1f", uslowdown))
 
 levels = 1
-local leaf_height = log2_iterations + log2_uarch_span_to_barch
+local leaf_height = log2_iterations
+    + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
 table.insert(log2_strides, 1, 0)
 table.insert(heights, 1, leaf_height)
 output_results()
@@ -300,7 +294,10 @@ repeat
         print "parent slowdown too high -> CONTINUE\n"
     else
         table.insert(heights, 1,
-            log2_input_span_to_epoch + log2_barch_span_to_input + log2_uarch_span_to_barch - log2_strides[1])
+            cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
+                + cartesi.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
+                + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+                - log2_strides[1])
         output_results()
         print "root slowdown within target -> FINISHED\n"
         return

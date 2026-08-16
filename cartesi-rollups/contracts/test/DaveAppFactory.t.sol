@@ -34,8 +34,6 @@ import {
     CanonicalTournamentParametersProvider
 } from "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {CartesiStateTransition} from "prt-contracts/state-transition/CartesiStateTransition.sol";
-import {CmioStateTransition} from "prt-contracts/state-transition/CmioStateTransition.sol";
-import {RiscVStateTransition} from "prt-contracts/state-transition/RiscVStateTransition.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {MultiLevelTournamentFactory} from "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
@@ -102,7 +100,7 @@ contract DaveAppFactoryTest is Test {
     function setUp() external {
         _inputBox = new InputBox();
         _appFactory = new ApplicationFactory();
-        _stateTransition = new CartesiStateTransition(new RiscVStateTransition(), new CmioStateTransition());
+        _stateTransition = new CartesiStateTransition();
         _tournamentFactory = new MultiLevelTournamentFactory(
             new Tournament(),
             new CanonicalTournamentParametersProvider(RESPONSE_BUDGET, MAX_ALLOWANCE),

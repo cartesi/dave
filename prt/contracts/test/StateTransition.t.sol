@@ -14,159 +14,185 @@ pragma solidity ^0.8.0;
 
 import {AccessLogs} from "step/src/AccessLogs.sol";
 import {Buffer} from "step/src/Buffer.sol";
+import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
+import {Memory} from "step/src/Memory.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
 import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
-import {
-    CmioStateTransition
-} from "src/state-transition/CmioStateTransition.sol";
-import {
-    RiscVStateTransition
-} from "src/state-transition/RiscVStateTransition.sol";
 
 import {Util} from "./Util.sol";
 
 contract StateTransitionTest is Util {
-    CartesiStateTransition immutable STATE_TRANSITION;
-    RiscVStateTransition immutable RISC_V_STATE_TRANSITION;
-    CmioStateTransition immutable CMIO_STATE_TRANSITION;
+    using Buffer for Buffer.Context;
 
-    uint64 constant LOG2_UARCH_SPAN_TO_BARCH = 20;
-    uint64 constant LOG2_BARCH_SPAN_TO_INPUT = 48;
-    uint256 constant UARCH_SPAN_TO_BARCH = 1 << LOG2_UARCH_SPAN_TO_BARCH;
-    uint256 constant FULL_SPAN =
-        1 << (LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH);
+    CartesiStateTransition immutable STATE_TRANSITION;
+
+    uint256 constant UARCH_SPAN_TO_BARCH =
+        1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
+    uint256 constant INPUT_WINDOW_SPAN = 1
+        << (EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
+                + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
+    uint256 constant LAST_INPUT_INDEX =
+        (1 << EmulatorConstants.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH) - 1;
 
     constructor() {
-        (STATE_TRANSITION, RISC_V_STATE_TRANSITION, CMIO_STATE_TRANSITION) =
-            Util.instantiateStateTransition();
+        STATE_TRANSITION = Util.instantiateStateTransition();
     }
 
-    function testTransitionRollupsCmio(uint32 counterBase) public {
-        AccessLogs.Context memory accessLogs = AccessLogs.Context(
-            bytes32(uint256(0x321)), Buffer.Context(new bytes(0), 0)
-        );
-
-        vm.mockCall(
-            address(0x123),
-            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
-            abi.encode(bytes32(uint256(0x123)))
-        );
-        vm.mockCall(
-            address(CMIO_STATE_TRANSITION),
-            abi.encode(CMIO_STATE_TRANSITION.checkpoint.selector),
-            abi.encode(accessLogs)
-        );
-        vm.mockCall(
-            address(CMIO_STATE_TRANSITION),
-            abi.encode(CMIO_STATE_TRANSITION.sendCmio.selector),
-            abi.encode(accessLogs)
-        );
-        vm.mockCall(
-            address(RISC_V_STATE_TRANSITION),
-            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
-            abi.encode(accessLogs)
-        );
-
-        uint256 counter = counterBase * FULL_SPAN;
-        uint64 length = 20;
-        bytes32 mockState = STATE_TRANSITION.transitionState(
-            bytes32(0),
-            counter,
-            abi.encodePacked(abi.encodePacked(length), new bytes(length)),
-            IDataProvider(address(0x123))
-        );
-
-        assertEq(mockState, bytes32(uint256(0x321)));
-    }
-
-    function testTransitionRollupsCmioNoInput(uint32 counterBase) public {
-        AccessLogs.Context memory accessLogs = AccessLogs.Context(
-            bytes32(uint256(0x321)), Buffer.Context(new bytes(0), 0)
-        );
-
-        vm.mockCall(
-            address(0x123),
-            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
-            // No input
-            abi.encode(bytes32(uint256(0)))
-        );
-        vm.mockCall(
-            address(CMIO_STATE_TRANSITION),
-            abi.encode(CMIO_STATE_TRANSITION.checkpoint.selector),
-            abi.encode(accessLogs)
-        );
-        vm.mockCall(
-            address(RISC_V_STATE_TRANSITION),
-            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
-            abi.encode(accessLogs)
-        );
-
-        // input length = 0 (no input)
-        uint64 length = 0;
-        uint256 counter = counterBase * FULL_SPAN;
-        bytes32 mockState = STATE_TRANSITION.transitionState(
-            bytes32(0),
-            counter,
-            abi.encodePacked(abi.encodePacked(length), new bytes(length)),
-            IDataProvider(address(0x123))
-        );
-
-        assertEq(mockState, bytes32(uint256(0x321)));
-    }
-
-    function testTransitionRollupsStep(uint32 counterBase, uint16 offset)
+    function testTransitionInputBoundaryWithInputEntersCmioProof(uint24 inputIndex)
         public
+    {
+        (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
+        IDataProvider provider = IDataProvider(address(0x123));
+        bytes32 inputMerkleRoot = bytes32(uint256(0x123));
+        uint64 inputLength = 20;
+        bytes memory input = new bytes(inputLength);
+
+        vm.mockCall(
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(inputMerkleRoot)
+        );
+        vm.expectCall(
+            address(provider),
+            abi.encodeCall(
+                IDataProvider.provideMerkleRootOfInput,
+                (uint256(inputIndex), input)
+            )
+        );
+
+        // The proof contains only the following uarch step. A nonzero input
+        // root must first enter the CMIO proof, where this deliberately wrong
+        // first access fails.
+        vm.expectRevert("Read word root doesn't match");
+        STATE_TRANSITION.transitionState(
+            machineState,
+            uint256(inputIndex) * INPUT_WINDOW_SPAN,
+            abi.encodePacked(inputLength, input, stepProof),
+            provider
+        );
+    }
+
+    function testTransitionInputBoundaryWithoutInput(uint24 inputIndex) public {
+        assertTransitionInputBoundaryWithoutInput(inputIndex);
+    }
+
+    function testTransitionLastInputBoundary() public {
+        assertTransitionInputBoundaryWithoutInput(LAST_INPUT_INDEX);
+    }
+
+    function testTransitionPlainStep(uint32 counterBase, uint16 offset)
+        public
+        view
     {
         vm.assume(counterBase > 0);
         vm.assume(offset > 1);
-        AccessLogs.Context memory accessLogs = AccessLogs.Context(
-            bytes32(uint256(0x321)), Buffer.Context(new bytes(0), 0)
+        (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+        uint256 counter = (uint256(counterBase) * UARCH_SPAN_TO_BARCH) - offset;
+
+        bytes32 result = STATE_TRANSITION.transitionState(
+            machineState, counter, proof, IDataProvider(address(0x123))
         );
 
-        vm.mockCall(
-            address(RISC_V_STATE_TRANSITION),
-            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
-            abi.encode(accessLogs)
-        );
-
-        uint256 counter = (counterBase * UARCH_SPAN_TO_BARCH) - offset;
-        bytes32 mockState = STATE_TRANSITION.transitionState(
-            bytes32(0), counter, new bytes(0), IDataProvider(address(0x123))
-        );
-
-        assertEq(mockState, bytes32(uint256(0x321)));
+        assertEq(result, machineState);
     }
 
-    function testTransitionRollupsReset(uint32 counterBase) public {
-        vm.assume(counterBase > 0);
-        AccessLogs.Context memory accessLogs = AccessLogs.Context(
-            bytes32(uint256(0x123)), Buffer.Context(new bytes(0), 0)
+    function testTransitionFirstBigStepBoundaryRequiresResetProof() public {
+        (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
+        bytes memory invalidResetProof = new bytes(43 * 32);
+
+        vm.expectRevert("Write region root doesn't match");
+        STATE_TRANSITION.transitionState(
+            machineState,
+            UARCH_SPAN_TO_BARCH - 1,
+            bytes.concat(stepProof, invalidResetProof),
+            IDataProvider(address(0x123))
+        );
+    }
+
+    function testTransitionImmediatelyAfterBigStepBoundaryIsPlainStep()
+        public
+        view
+    {
+        (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+
+        bytes32 result = STATE_TRANSITION.transitionState(
+            machineState,
+            UARCH_SPAN_TO_BARCH,
+            proof,
+            IDataProvider(address(0x123))
         );
 
-        vm.mockCall(
-            address(RISC_V_STATE_TRANSITION),
-            abi.encode(RISC_V_STATE_TRANSITION.step.selector),
-            abi.encode(accessLogs)
+        assertEq(result, machineState);
+    }
+
+    function testTransitionRejectsTrailingProofBytes() public {
+        (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+
+        vm.expectRevert("buffer should be fully consumed");
+        STATE_TRANSITION.transitionState(
+            machineState,
+            1,
+            bytes.concat(proof, hex"00"),
+            IDataProvider(address(0x123))
         );
+    }
+
+    function assertTransitionInputBoundaryWithoutInput(uint256 inputIndex)
+        private
+    {
+        (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
+        IDataProvider provider = IDataProvider(address(0x123));
+        bytes memory input = new bytes(0);
+
         vm.mockCall(
-            address(RISC_V_STATE_TRANSITION),
-            abi.encode(RISC_V_STATE_TRANSITION.reset.selector),
-            abi.encode(accessLogs)
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(bytes32(0))
         );
-        vm.mockCall(
-            address(CMIO_STATE_TRANSITION),
-            abi.encode(CMIO_STATE_TRANSITION.revertIfNeeded.selector),
-            abi.encode(accessLogs)
+        vm.expectCall(
+            address(provider),
+            abi.encodeCall(
+                IDataProvider.provideMerkleRootOfInput, (inputIndex, input)
+            )
         );
 
-        uint256 counter = (counterBase * UARCH_SPAN_TO_BARCH) - 1;
-        bytes32 mockState = STATE_TRANSITION.transitionState(
-            bytes32(0), counter, new bytes(0), IDataProvider(address(0x123))
+        bytes32 result = STATE_TRANSITION.transitionState(
+            machineState,
+            inputIndex * INPUT_WINDOW_SPAN,
+            abi.encodePacked(uint64(0), stepProof),
+            provider
         );
 
-        assertEq(mockState, bytes32(uint256(0x123)));
+        assertEq(result, machineState);
+    }
+
+    function cycleOverflowProof()
+        private
+        pure
+        returns (bytes32 machineState, bytes memory proof)
+    {
+        Memory.PhysicalAddress cycleAddress =
+            Memory.toPhysicalAddress(EmulatorConstants.UARCH_CYCLE_ADDRESS);
+        (Memory.PhysicalAddress leafAddress, uint64 wordOffset) =
+            Memory.truncateToLeaf(cycleAddress);
+        bytes32 leaf = AccessLogs.setBytes8ToBytes32AtOffset(
+            AccessLogs.solidityUint64ToMachineWord(
+                EmulatorConstants.UARCH_CYCLE_MAX
+            ),
+            bytes32(0),
+            wordOffset
+        );
+
+        proof = abi.encodePacked(
+            leaf, new bytes(uint256(Memory.LOG2_MAX_SIZE) * 32)
+        );
+        Buffer.Context memory siblings = Buffer.Context(proof, 32);
+        machineState = siblings.getRoot(
+            Memory.regionFromLeafAddress(leafAddress),
+            keccak256(abi.encodePacked(leaf))
+        );
     }
 }

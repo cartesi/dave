@@ -5,6 +5,7 @@ print = function(...)
 end
 
 local Machine = require "computation.machine"
+local cartesi = require "cartesi"
 local uint256 = require "utils.bint" (256)
 local consts = require "computation.constants"
 local conversion = require "utils.conversion"
@@ -41,21 +42,19 @@ if mode == "revert" then
     probe:feed_input(conversion.bin_from_hex_n(inputs[1]))
     probe:run(arithmetic.max_uint64)
     local bigs = assert(probe._last_input_bigs)
-    -- get_logs builds the closing proof but does not expose the checkpoint
+    -- get_logs builds the closing proof but does not expose the revert
     -- root restored by this rejected input. Derive that expected state from
     -- the same emulator until the shared helper owns the complete outcome.
     revert_next_hash = probe:state().root_hash
-    meta_cycle = uint256.fromuinteger((bigs << 20) - 1)
+    meta_cycle = uint256.fromuinteger(
+        (bigs << cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) - 1
+    )
     include_counter = true
 else
     meta_cycle = uint256.parse(mode)
 end
 
-assert((meta_cycle >> (
-    consts.log2_uarch_span_to_barch
-    + consts.log2_barch_span_to_input
-    + consts.log2_input_span_to_epoch
-)):iszero())
+assert((meta_cycle >> consts.log2_ruler_span):iszero())
 
 local epoch_machine = Machine:new_from_path(path)
 local epoch_initial_hash = epoch_machine:state().root_hash
