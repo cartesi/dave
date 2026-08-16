@@ -97,6 +97,30 @@ follow-up change.
   dependent factories change. The regenerated devnet bundle contains no proxy
   records and passes its self-fingerprint check.
 
+### Solidity STF evidence (completed 2026-08-11)
+
+- FFI fuzzing now constructs the 24-bit input, 48-bit mcycle, and 20-bit
+  ucycle fields directly and selects input-opening, big-opening, interior, and
+  closing shapes explicitly. It no longer filters a raw 256-bit counter down
+  to 92 bits or relies on random values to hit 2^-20 and 2^-68 boundaries.
+- A deterministic emulator-backed matrix covers boundary-adjacent counters at
+  the first and last uarch spans, input-window transitions, and the epoch tail,
+  including the last valid counter `2^92 - 1`. Solidity-only routing tests
+  independently cover present and absent final-input openings.
+- A three-instruction RV64 fixture reaches zero and nonzero halt, TX exception,
+  and unexpected manual yield; a one-instruction loop reaches mcycle overflow.
+  Opening vectors cover both halt values and every terminal class; representative
+  closing vectors prove reset without rejected-input substitution. Only RX
+  rejection substitutes the recorded pre-input root.
+- Real combined witnesses are truncated at DA and step/reset seams, rebound to
+  a wrong before-root, given a corrupted authenticated payload, and replayed
+  across adjacent transition shapes. Each malformed composition fails while
+  the canonical witness succeeds. Low-level access-log mutation remains owned
+  by the upstream solidity-step suite rather than duplicated here.
+- The Lua fixture now proves from its already-positioned machine instead of
+  loading and advancing an identical second machine. Representative input,
+  ordinary, reset, and rejected-closing witnesses remain byte-identical.
+
 ### Computation-hash corpus harness
 
 - Split acquisition from execution. Keep a public
