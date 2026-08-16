@@ -136,8 +136,8 @@ expects.
 
    - A Nix or packaged provider sets `LIBCARTESI_PATH` to the absolute directory
      containing `libcartesi.a`. Set `INCLUDECARTESI_PATH` to the absolute
-     directory containing `cm.h` when the headers are not in the conventional
-     sibling `include/cartesi-machine` directory.
+     directory containing `cm.h` and `cm-version.h` when the headers are not in
+     the conventional sibling `include/cartesi-machine` directory.
    - With `LIBCARTESI_PATH` unset, setup prepares the pinned v0.21 emulator
      sources and Boost headers and builds the library natively with `slirp=no`.
 

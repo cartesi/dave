@@ -8,6 +8,7 @@ use std::{
 };
 
 const C_API_HEADER: &str = "cm.h";
+const C_API_VERSION_HEADER: &str = "cm-version.h";
 const SOURCE_PREPARATION_STATE: &str = "../../../target/machine-source/prepared-generated-sources";
 const GENERATED_SOURCE_INPUTS: [&str; 4] = [
     "src/cm-version.h",
@@ -89,12 +90,19 @@ fn main() {
     }
 
     let api_header = include_path.join(C_API_HEADER);
+    let api_version_header = include_path.join(C_API_VERSION_HEADER);
     assert!(
         api_header.is_file(),
         "Cartesi Machine C API header not found at `{}`; set `INCLUDECARTESI_PATH` to the directory containing `{C_API_HEADER}`",
         api_header.display()
     );
+    assert!(
+        api_version_header.is_file(),
+        "Cartesi Machine version header not found at `{}`; `{C_API_HEADER}` includes `{C_API_VERSION_HEADER}`",
+        api_version_header.display()
+    );
     println!("cargo:rerun-if-changed={}", api_header.display());
+    println!("cargo:rerun-if-changed={}", api_version_header.display());
 
     let machine_bindings = bindgen::Builder::default()
         .header(api_header.to_str().unwrap())

@@ -5,37 +5,17 @@ WEB3_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf
 
 set positional-arguments
 
+# diagnose shared integration inputs and retained E2E forensic state
+[script]
+doctor:
+    "{{ source_directory() / "script/doctor.sh" }}"
+
 # Fail fast with a pointer instead of a cryptic jq/lua error when the
 # checkout is missing an e2e prerequisite; `just doctor` at the repo
 # root diagnoses everything at once.
 [private]
 preflight PROGRAM SCENARIO:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    fail() {
-      echo "preflight: $1" >&2
-      echo "preflight: run 'just doctor' at the repo root for a full diagnosis" >&2
-      exit 1
-    }
-    program=$1
-    scenario=$2
-    [[ "$program" =~ ^[A-Za-z0-9._-]+$ ]] || fail "unsafe program name"
-    [[ "$scenario" =~ ^[A-Za-z0-9._-]+$ ]] || fail "unsafe scenario name"
-    [ -f "scenarios/$scenario.lua" ] || fail "scenarios/$scenario.lua missing"
-    [ -f {{ANVIL_LOAD_PATH}} ] || fail "devnet state.json missing (just rollups-contracts::build-devnet)"
-    [ -d {{DEPLOYMENTS_DIR}} ] || fail "devnet deployments missing (just rollups-contracts::build-devnet)"
-    for tool in anvil cast lua5.4 cartesi-machine \
-        cartesi-machine-stored-hash forge git jq realpath sha256sum \
-        sort sqlite3; do
-      command -v "$tool" > /dev/null || fail "$tool not on PATH"
-    done
-    ../../../script/devnet-fingerprint.sh verify >/dev/null 2>&1 \
-      || fail "devnet bundle is stale, mixed, or unverified (just rollups-contracts::build-devnet)"
-    ../../../script/machine-image-fingerprint.sh verify "$program" \
-      >/dev/null 2>&1 \
-      || fail "test/programs/$program/machine-image is stale or unverified (rebuild it under test/programs)"
-    [ -x ../../../target/debug/cartesi-rollups-prt-node ] \
-      || fail "node binary not built (just build-rust-workspace at the repo root)"
+    @"{{ source_directory() / "script/preflight.sh" }}" "$1" "$2"
 
 # run PRT rollups test. Set TEST_INSTANCE=<free port> for a fully
 # isolated parallel run (own anvil port, _state-<id>, dave-<id>.log,
@@ -148,15 +128,3 @@ sweep:
     ../../../prt/tests/rollups/_battery \
     ../../../prt/tests/rollups/dave*.log* \
     ../../../prt/tests/rollups/anvil*.log
-
-# download the sepolia honeypot machine snapshot
-download-sepolia-honeypot: clean-sepolia-honeypot-snapshot
-  mkdir -p sepolia/machine-image
-  curl -L \
-    https://github.com/cartesi/honeypot/releases/download/v3.0.0/honeypot-snapshot-sepolia.tar.gz | \
-    tar -xz -C sepolia/machine-image
-clean-sepolia-honeypot-snapshot:
-  rm -rf sepolia/machine-image
-
-run-sepolia SCRIPT:
-  ( set -a; source sepolia/.env; exec lua "sepolia/$1.lua")

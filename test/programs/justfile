@@ -1,15 +1,5 @@
 set positional-arguments
 
-download-deps: clean-deps
-  wget https://github.com/cartesi/image-kernel/releases/download/v0.21.0/linux-6.5.13-ctsi-2-v0.21.0.bin \
-    -O ./linux.bin
-  wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.18.0/rootfs-tools.ext2 \
-    -O ./rootfs.ext2
-
-clean-deps:
-  rm -f rootfs.ext2
-  rm -f linux.bin
-
 # all programs
 build-programs: build-yield build-echo build-compute
 clean-programs: clean-yield clean-echo
@@ -90,3 +80,22 @@ build-compute: clean-compute
     -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"
   ../../script/machine-image-fingerprint.sh write compute
 clean-compute: (clean-program "compute")
+
+# machine-image-producers-end
+# Image-producing recipes stay above this boundary; their exact prefix is part
+# of every machine-image fingerprint.
+
+# acquire both pinned release inputs without discarding valid cached copies
+[script]
+download-deps:
+  ./script/download-deps.sh download
+
+clean-deps:
+  rm -f rootfs.ext2
+  rm -f linux.bin
+  rm -f .linux.bin.tmp.* .rootfs.ext2.tmp.*
+
+# diagnose the downloaded inputs and required test machine images
+[script]
+doctor:
+  ./script/doctor.sh

@@ -1,5 +1,7 @@
 linux.bin
 rootfs.ext2
+.linux.bin.tmp.*
+.rootfs.ext2.tmp.*
 
 **/machine-image/
 **/machine-image.fingerprint

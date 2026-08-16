@@ -11,9 +11,9 @@ readonly boost_archive_name="boost_1_83_0.tar.gz"
 readonly boost_archive_sha256="c0685b68dd44cc46574cce86c4e17c0f611b15e195be9848dfd0769a0a207628"
 readonly boost_archive_url="https://archives.boost.io/release/${boost_version}/source/${boost_archive_name}"
 
-readonly script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly machine_dir="$(cd "${script_dir}/.." && pwd -P)"
-readonly repo_root="$(cd "${machine_dir}/.." && pwd -P)"
+readonly script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly machine_dir="$(CDPATH= cd -- "${script_dir}/.." && pwd -P)"
+readonly repo_root="$(CDPATH= cd -- "${machine_dir}/.." && pwd -P)"
 readonly emulator_dir="${machine_dir}/emulator"
 readonly cache_root="${repo_root}/target/machine-source"
 readonly source_state="${cache_root}/prepared-generated-sources"
@@ -465,6 +465,8 @@ validate_external_provider() {
     fi
     [[ -f "${include_dir}/cm.h" ]] ||
         die "external provider lacks ${include_dir}/cm.h"
+    [[ -f "${include_dir}/cm-version.h" ]] ||
+        die "external provider lacks ${include_dir}/cm-version.h"
     printf 'using external Cartesi Machine provider:\n  library: %s\n  headers: %s\n' \
         "$lib_dir" "$include_dir"
 }
