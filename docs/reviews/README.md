@@ -39,3 +39,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-08-11-prt-v021-stf-gas-calibration/`](2026-08-11-prt-v021-stf-gas-calibration/)
   - accepted Cartesi Machine v0.21 state-transition calibration, proof-growth
     evidence, propagated leaf reserves, and regenerated deployment identities.
+- [`2026-08-16-prt-v021-post-274-gas-calibration/`](2026-08-16-prt-v021-post-274-gas-calibration/)
+  - accepted post-#274 v0.21 recalibration, stable production allocations, and
+    final-candidate compatibility and admission evidence.
