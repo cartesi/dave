@@ -496,6 +496,30 @@ contract StateTransitionFfiTest is Util {
         );
     }
 
+    function testTransitionRealProofRejectsTrailingBytesAcrossShapes() public {
+        (bytes32 inputBefore,, bytes memory inputProof) = runCmd(0, 1);
+        (bytes32 absentBefore,, bytes memory absentProof) = runCmd(0, 0);
+        (bytes32 plainBefore,, bytes memory plainProof) = runCmd(1, 0);
+        (bytes32 closingBefore,, bytes memory closingProof) =
+            runCmd(UARCH_CYCLE_MASK, 0);
+
+        assertTransitionReverts(
+            inputBefore, 0, bytes.concat(inputProof, hex"00"), new Provider(1)
+        );
+        assertTransitionReverts(
+            absentBefore, 0, bytes.concat(absentProof, hex"00"), new Provider(0)
+        );
+        assertTransitionReverts(
+            plainBefore, 1, bytes.concat(plainProof, hex"00"), new Provider(0)
+        );
+        assertTransitionReverts(
+            closingBefore,
+            UARCH_CYCLE_MASK,
+            bytes.concat(closingProof, hex"00"),
+            new Provider(0)
+        );
+    }
+
     function testTransitionRealProofBindsBeforeState() public {
         (bytes32 before,, bytes memory proof) = runCmd(1, 0);
         bytes32 wrongBefore = before ^ bytes32(uint256(1));

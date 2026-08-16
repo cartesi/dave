@@ -72,26 +72,30 @@ validation boundaries: cleanup, deployment identity, and snapshot durability.
 ### Solidity composition (completed 2026-08-11)
 
 - `IStateTransition` remains the tournament-facing abstraction, implemented by
-  one concrete `CartesiStateTransition`. The adapter calls
-  `SendCmioResponse` at an input boundary and
-  `MetaStep.step(counter + 1, accessLogs)` for every leaf. The `+ 1` converts
-  Dave's source-state counter to MetaStep's produced-state counter.
+  one concrete `CartesiStateTransition`. The adapter explicitly selects input,
+  closing-reset, and plain-step leaves, then composes `SendCmioResponse`,
+  `UArchStep`, and `UArchReset` in the required order. This keeps Dave's
+  transition grammar central while leaving primitive machine semantics in
+  solidity-step.
 - The `RiscVStateTransition` and `CmioStateTransition` proxy contracts and
-  interfaces are removed. The production build is 13,713 bytes of runtime code
-  and 13,739 bytes of initcode, leaving 10,863 bytes below EIP-170 and 35,413
-  below EIP-3860. The old three contracts totalled 17,179 runtime bytes.
-- `MetaStep` now rejects trailing proof bytes at Dave's boundary. Focused tests
-  pin that tightening, all three transition shapes, real rejected-input
-  substitution, and the source-to-produced counter conversion.
+  interfaces are removed. The accepted MetaStep-backed build was 13,713 bytes
+  of runtime code and 13,739 bytes of initcode. Making the equivalent three
+  branches explicit produces 13,824 runtime bytes and 13,850 initcode bytes,
+  leaving 10,752 bytes below EIP-170 and 35,302 below EIP-3860. The old three
+  contracts totalled 17,179 runtime bytes.
+- Every branch now rejects trailing proof bytes at Dave's boundary. Focused
+  tests pin that tightening, all three transition shapes, and real
+  rejected-input substitution.
 - Closing proof producers accept both ordinary halted padding and an unhalted
   uarch-cycle-overflow state. The overflow regression emits a 1,920-byte
   identity step and a 5,216-byte reset, and replays the complete 7,136-byte
   witness through Solidity to the canonical reset root.
-- The v0.21 maximum-input proof is 93,964 bytes, 5,760 bytes larger than the
-  accepted v0.20 witness. Direct composition saves 95,044 reviewed gas units
-  over the v0.21 proxy split, but the release-driven growth still moves the
-  selected `WIN_LEAF_MATCH` subsidy from 4,298,000 to 4,420,000. The leaf
-  terminal reserve and role-specific bonds update mechanically.
+- The accepted v0.21 maximum-input proof is 93,964 bytes, 5,760 bytes larger
+  than the accepted v0.20 witness. The MetaStep-backed direct composition saved
+  95,044 reviewed gas units over the v0.21 proxy split, but the release-driven
+  growth still moved the selected `WIN_LEAF_MATCH` subsidy from 4,298,000 to
+  4,420,000. The explicit equivalent changes production bytecode but not the
+  transition semantics; this form-only refactor does not reopen calibration.
 - The `IStateTransition` ABI and Tournament storage layout remain stable. The
   concrete constructor, Cartesi bytecode, gas table, CREATE2 addresses, and
   dependent factories change. The regenerated devnet bundle contains no proxy

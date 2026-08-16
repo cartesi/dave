@@ -362,7 +362,8 @@ maximum is not necessarily the Tournament maximum.
 
 The current evidence still does not enumerate every honest instruction/access
 shape or retain a gas witness for every terminal halt or exception outcome.
-`MetaStep` requires the canonical access-log buffer to be consumed completely,
+`CartesiStateTransition` requires the canonical access-log buffer to be
+consumed completely,
 and the adapter retains a regression that rejects trailing proof bytes. The
 out-of-range input path can still return zero before validating the supplied
 input segment. The remaining open proof and input classes prevent a universal
