@@ -183,6 +183,32 @@ Settlement stubs select a claimed leaf outcome. They are not oracles for the
 real machine transition. Coordinate-coherent fixtures prove that tournament
 spans and contested states line up, not that either computation is correct.
 
+## State-transition boundary
+
+The state-transition suites separate cheap routing evidence from semantic
+oracles. Solidity-only tests exercise input and ordinary-step dispatch across
+the full 24-bit input, 48-bit mcycle, and 20-bit ucycle fields. Structured FFI
+fuzzing adds canonical closing proofs and all four transition shapes, generated
+with the v0.21 emulator and replayed through `CartesiStateTransition`.
+
+The deterministic FFI matrix pins boundary-adjacent counters at the first and
+last uarch spans, input-window transitions, and the epoch tail. A tiny RV64
+guest reaches zero and nonzero halt, TX exception, unexpected manual yield,
+and mcycle overflow.
+Opening vectors cover both halt values and every terminal class; representative
+closing vectors establish reset without rejected-input substitution. Separate
+vectors own rejected-input restoration and uarch-cycle overflow. Combined
+witness mutations cover exact DA header and payload boundaries, the CMIO-step
+and step-reset seams, before-root and provider-root binding, one representative
+byte in each composed primitive, and replay across adjacent transition shapes.
+A nonempty DA payload paired with the provider's zero out-of-range root
+intentionally skips CMIO and proves only the following machine step.
+
+This is bounded cross-implementation evidence for the v0.21 adapter. It is not
+an exhaustive enumeration of every RV64 instruction, access-log shape, proof
+byte, or gas envelope; those lower-level instruction and log semantics remain
+owned by `machine/step` and the emulator.
+
 ## Fuzz and stateful reproducibility
 
 The ordinary Foundry fuzz budget is pinned in `foundry.toml`. A deeper campaign
@@ -253,6 +279,6 @@ Add a test when it:
 
 Do not add fixed lifecycle traces or fuzz volume solely to improve headline
 counts. Current non-claims include a general recursive adversarial-arrival
-proof, node and Lua agreement with a future geometry, state-transition halt and
-exception semantics, a universal leaf-proof gas ceiling, and semantic meaning
-for IR branch percentages.
+proof, node and Lua agreement with a future geometry, exhaustive
+state-transition instruction and access-log coverage, a universal leaf-proof
+gas ceiling, and semantic meaning for IR branch percentages.

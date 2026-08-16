@@ -29,11 +29,14 @@ contract StateTransitionTest is Util {
 
     CartesiStateTransition immutable STATE_TRANSITION;
 
+    uint64 constant LOG2_INPUT_WINDOW_SPAN =
+        EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
+            + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
     uint256 constant UARCH_SPAN_TO_BARCH =
         1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
-    uint256 constant INPUT_WINDOW_SPAN = 1
-        << (EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
-                + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
+    uint256 constant MCYCLE_MASK =
+        (1 << EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE) - 1;
+    uint256 constant INPUT_WINDOW_SPAN = 1 << LOG2_INPUT_WINDOW_SPAN;
     uint256 constant LAST_INPUT_INDEX =
         (1 << EmulatorConstants.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH) - 1;
 
@@ -79,18 +82,45 @@ contract StateTransitionTest is Util {
         assertTransitionInputBoundaryWithoutInput(inputIndex);
     }
 
-    function testTransitionLastInputBoundary() public {
+    function testTransitionLastInputBoundaryWithoutInput() public {
         assertTransitionInputBoundaryWithoutInput(LAST_INPUT_INDEX);
     }
 
-    function testTransitionPlainStep(uint32 counterBase, uint16 offset)
-        public
-        view
-    {
-        vm.assume(counterBase > 0);
-        vm.assume(offset > 1);
+    function testTransitionLastInputBoundaryWithInput() public {
+        testTransitionInputBoundaryWithInputEntersCmioProof(
+            uint24(LAST_INPUT_INDEX)
+        );
+    }
+
+    function testTransitionPlainStep(
+        uint24 inputIndex,
+        uint48 mcycle,
+        uint32 ucycle
+    ) public view {
         (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
-        uint256 counter = (uint256(counterBase) * UARCH_SPAN_TO_BARCH) - offset;
+        uint256 interiorUcycle =
+            1 + (uint256(ucycle) % (UARCH_SPAN_TO_BARCH - 2));
+        uint256 counter = (uint256(inputIndex) << LOG2_INPUT_WINDOW_SPAN)
+            | (uint256(mcycle)
+                << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE)
+            | interiorUcycle;
+
+        bytes32 result = STATE_TRANSITION.transitionState(
+            machineState, counter, proof, IDataProvider(address(0x123))
+        );
+
+        assertEq(result, machineState);
+    }
+
+    function testTransitionBigCycleOpeningIsPlainStep(
+        uint24 inputIndex,
+        uint48 mcycle
+    ) public view {
+        (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+        uint256 nonzeroMcycle = 1 + (uint256(mcycle) % MCYCLE_MASK);
+        uint256 counter = (uint256(inputIndex) << LOG2_INPUT_WINDOW_SPAN)
+            | (nonzeroMcycle
+                << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
 
         bytes32 result = STATE_TRANSITION.transitionState(
             machineState, counter, proof, IDataProvider(address(0x123))
