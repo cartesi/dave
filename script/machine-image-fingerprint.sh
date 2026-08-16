@@ -3,7 +3,19 @@
 # Record and verify the inputs and semantic root of a test machine image.
 set -euo pipefail
 
-cd "${BASH_SOURCE%/*}/.."
+script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)" || {
+    echo "error: cannot resolve the machine-image fingerprint script directory" >&2
+    exit 2
+}
+repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd -P)" || {
+    echo "error: cannot resolve the repository root" >&2
+    exit 2
+}
+readonly script_dir repo_root
+CDPATH= cd -- "$repo_root" || {
+    echo "error: cannot enter the repository root: $repo_root" >&2
+    exit 2
+}
 
 usage() {
     cat >&2 <<'EOF'
@@ -17,7 +29,54 @@ EOF
 }
 
 sha256_file() {
-    sha256sum -- "$1" | cut -d' ' -f1
+    local output=""
+
+    if output="$(sha256sum -- "$1" 2>&1)"; then
+        printf '%s\n' "${output%% *}"
+    else
+        echo "error: cannot hash $1: ${output##*$'\n'}" >&2
+        return 2
+    fi
+}
+
+programs_justfile_hash() {
+    local justfile="test/programs/justfile"
+    local marker="# machine-image-producers-end"
+    local marker_count="" producer_hash=""
+    # Existing v1 manifests hashed the whole justfile. This exact producer
+    # prefix maps to that audited legacy value once; any producer edit falls
+    # through to its own hash and invalidates the images normally.
+    local baseline_producer_hash="cd9be3bf73bcd62d88bc582fe6f8724361d785e436e3a478b26a7be42634a884"
+    local legacy_justfile_hash="bdb30d900925ca5c855a9aee5a0968ea18d229a14750e0d5a90534322fbd07c3"
+
+    if [[ ! -f "$justfile" ]]; then
+        echo "error: missing machine-image input: $justfile" >&2
+        return 2
+    fi
+    if ! marker_count="$(awk -v marker="$marker" '$0 == marker { count++ } END { print count + 0 }' "$justfile")"; then
+        echo "error: cannot inspect the machine-image producer boundary" >&2
+        return 2
+    fi
+    if [[ "$marker_count" != "1" ]]; then
+        echo "error: expected exactly one machine-image producer boundary, found $marker_count" >&2
+        return 2
+    fi
+    if ! producer_hash="$({
+        awk -v marker="$marker" '$0 == marker { exit } { print }' "$justfile" || exit 2
+    } | sha256sum)"; then
+        echo "error: cannot hash the machine-image producer recipes" >&2
+        return 2
+    fi
+    producer_hash="${producer_hash%% *}"
+    if [[ ! "$producer_hash" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "error: invalid machine-image producer hash: $producer_hash" >&2
+        return 2
+    fi
+    if [[ "$producer_hash" == "$baseline_producer_hash" ]]; then
+        printf '%s\n' "$legacy_justfile_hash"
+    else
+        printf '%s\n' "$producer_hash"
+    fi
 }
 
 deployment_address() {
@@ -49,52 +108,54 @@ inputs_digest() {
             ;;
     esac
 
-    for input in test/programs/justfile; do
-        if [ ! -f "$input" ]; then
-            echo "error: missing machine-image input: $input" >&2
-            return 1
-        fi
-    done
-    for tool in cartesi-machine sha256sum; do
+    for tool in cartesi-machine sha256sum awk; do
         if ! command -v "$tool" >/dev/null; then
             echo "error: $tool is required to fingerprint machine images" >&2
-            return 1
+            return 2
         fi
     done
 
-    machine_version=$(cartesi-machine --version | sed -n '1p')
+    if ! machine_version=$(cartesi-machine --version 2>&1); then
+        echo "error: cannot inspect cartesi-machine: ${machine_version##*$'\n'}" >&2
+        return 2
+    fi
+    machine_version="${machine_version%%$'\n'*}"
     machine_path=$(command -v cartesi-machine)
-    machine_hash=$(sha256_file "$machine_path")
+    machine_hash=$(sha256_file "$machine_path") || return $?
     provided_emulator_pin=${DAVE_EMULATOR_GITLINK:-}
     if [ -n "$provided_emulator_pin" ] \
         && [[ ! "$provided_emulator_pin" =~ ^[0-9a-f]{40}$ ]]; then
         echo "error: invalid DAVE_EMULATOR_GITLINK: $provided_emulator_pin" >&2
-        return 1
+        return 2
     fi
     if git_emulator_pin=$(git rev-parse :machine/emulator 2>/dev/null); then
         if [[ ! "$git_emulator_pin" =~ ^[0-9a-f]{40}$ ]]; then
             echo "error: invalid emulator gitlink in the Git index: $git_emulator_pin" >&2
-            return 1
+            return 2
         fi
         if [ -n "$provided_emulator_pin" ] \
             && [ "$provided_emulator_pin" != "$git_emulator_pin" ]; then
             echo "error: DAVE_EMULATOR_GITLINK does not match the Git index" >&2
-            return 1
+            return 2
         fi
         emulator_pin=$git_emulator_pin
     elif [ -n "$provided_emulator_pin" ]; then
         emulator_pin=$provided_emulator_pin
     else
         echo "error: cannot resolve the emulator gitlink from Git or the environment" >&2
-        return 1
+        return 2
     fi
-    justfile_hash=$(sha256_file test/programs/justfile)
+    justfile_hash=$(programs_justfile_hash) || return $?
 
     if [ "$program" = honeypot ]; then
+        if ! command -v jq >/dev/null; then
+            echo "error: jq is required to fingerprint the Honeypot image" >&2
+            return 2
+        fi
         generator_hash=$(sha256_file \
-            test/programs/honeypot/generate-devnet-honeypot-config.sh)
-        portal_address=$(deployment_address ERC20Portal)
-        token_address=$(deployment_address TestFungibleToken)
+            test/programs/honeypot/generate-devnet-honeypot-config.sh) || return $?
+        portal_address=$(deployment_address ERC20Portal) || return 1
+        token_address=$(deployment_address TestFungibleToken) || return 1
     else
         for input in linux.bin rootfs.ext2; do
             if [ ! -f "test/programs/$input" ]; then
@@ -102,8 +163,8 @@ inputs_digest() {
                 return 1
             fi
         done
-        linux_hash=$(sha256_file test/programs/linux.bin)
-        rootfs_hash=$(sha256_file test/programs/rootfs.ext2)
+        linux_hash=$(sha256_file test/programs/linux.bin) || return $?
+        rootfs_hash=$(sha256_file test/programs/rootfs.ext2) || return $?
     fi
 
     {
@@ -217,11 +278,14 @@ case "$mode" in
         fi
         if ! command -v cartesi-machine-stored-hash >/dev/null; then
             echo "error: cartesi-machine-stored-hash is required to verify machine images" >&2
-            exit 1
+            exit 2
         fi
         read_manifest "$manifest"
         current_inputs=$(inputs_digest "$program")
-        current_root=$(cartesi-machine-stored-hash "$image")
+        current_root=$(cartesi-machine-stored-hash "$image") || {
+            echo "error: cannot calculate the stored machine root for $image" >&2
+            exit 1
+        }
         current_root=${current_root#0x}
         [[ "$current_root" =~ ^[0-9a-f]{64}$ ]] || {
             echo "error: invalid stored machine root for $image: $current_root" >&2

@@ -22,8 +22,14 @@ generate-sources:
 build:
     "{{ source_script }}" build
 
+# diagnose the machine inputs prepared by this module
+[script]
+doctor:
+    "{{ source_directory() / "script/doctor.sh" }}"
+
 # select and prepare the external or pinned source provider
 setup:
+    git -C "{{ source_directory() / ".." }}" submodule update --init -- machine/step
     "{{ source_script }}" setup
 
 # validate the selected provider without changing the checkout

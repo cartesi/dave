@@ -168,16 +168,18 @@ follow-up change.
 - Setup is provider-aware. Nix and packaged providers skip emulator source
   work; source lanes prepare explicitly; package-backed CI exports both paths;
   and Docker consumes its installed archive without first building an unused
-  host copy. Root recipe names remain compatibility wrappers around the machine
-  module.
+  host copy. The root setup recipes remain cross-subsystem entry points, while
+  caller-free machine lifecycle aliases are retired in favor of the machine
+  module's canonical recipes.
 
 ### Justfile boundary and cleanup
 
 - Keep Just as the public, discoverable dependency graph. Recipes that are a
   command or a short pipeline remain inline. Branching, loops, retries,
   checksums, temporary-file cleanup, and nontrivial destructive path selection
-  move into scripts beside the subsystem they serve. Preserve current public
-  recipe names as compatibility wrappers.
+  move into scripts beside the subsystem they serve. Preserve root recipes that
+  own cross-subsystem orchestration; do not retain pure subsystem aliases with
+  no repository callers.
 - Keep the five existing subsystem modules, including the machine lifecycle,
   but do not create a generic `test` module or a module merely to hide a
   one-line command.
@@ -201,11 +203,33 @@ follow-up change.
   E2E one subsystem at a time. Keep the focused E2E preflight separate from the
   exhaustive doctor, and extract shared helpers only after concrete repetition
   remains.
+- Root extraction and sectioning are complete. The machine component owns its
+  pinned step checkout and library-provider checks behind `machine::doctor`.
+  The PRT contracts component owns its effective Soldeer dependency roots and
+  binding-stamp freshness behind `prt-contracts::doctor`. The Rollups contracts
+  component owns its effective Soldeer dependency roots and completed binding
+  artifacts behind `rollups-contracts::doctor`; binding freshness waits for the
+  shared binding-generator cleanup below. The programs component owns its
+  checksum-pinned kernel and rootfs plus the required echo, yield, and Honeypot
+  image fingerprints behind `programs::doctor`. The doctor intentionally omits
+  compute and stress; their producer/default-set cleanup, including build/clean
+  symmetry, remains pending below. The Rollups E2E component owns the complete
+  devnet-bundle check, the default-port warning, and current plus legacy E2E
+  forensic litter behind `rollups-tests::doctor`; its focused per-test preflight
+  stays separate. The system-TMPDIR warning remains at root because it diagnoses
+  host-wide Rust-test litter that the E2E sweep does not own.
 - Move worktree report and sweep to `script/worktrees.sh`, and bootstrap to a
   focused script. Parse worktree records without truncating paths, recognize
   both Codex and legacy Claude session worktrees, preserve the current/dirty
   worktree refusals, and propagate cleanup failures instead of printing a
   successful sweep after a failed removal.
+- Worktree report and sweep extraction is complete. Both Codex and legacy
+  Claude session trees are recognized, NUL-delimited porcelain preserves paths,
+  current and dirty worktrees are refused, and measurement or cleanup failures
+  make the command fail without claiming a successful sweep. Bootstrap now
+  lives in `script/bootstrap-worktree.sh`: it resolves both worktree paths,
+  stages and verifies source artifacts before replacing fixed target paths, and
+  leaves generation and final diagnosis with the owning subsystem recipes.
 - Fix argument forwarding before broader extraction. Recipes already enable
   positional arguments, but several variadic and scalar wrappers interpolate
   `{{ARGS}}`, `{{CASE}}`, `{{TAG}}`, or `{{CMD}}` back into shell source. Pass
@@ -215,23 +239,35 @@ follow-up change.
 - Use one acquisition rule across corpora, program dependencies, emulator
   sources, and retained remote snapshots: reuse a valid cache; download to a
   unique temporary path; verify a pinned digest; atomically publish; and never
-  delete the last valid copy before a replacement succeeds. In particular,
-  `programs::download-deps` must stop depending on `clean-deps`, and the legacy
-  Sepolia `curl | tar` path must either gain this treatment or be quarantined as
-  unsupported historical tooling.
+  delete the last valid copy before a replacement succeeds. The program
+  dependency downloader now follows this rule. The unrevalidated legacy
+  Sepolia scripts remain as historical leads, but their unchecked download,
+  cleanup, and execution recipes have been removed from the public Just
+  surface. Re-enabling them requires semantic revalidation and verified staged
+  acquisition as one effort.
 - Keep program builds network-free and make the default build and clean sets
   symmetric. Keep Docker-heavy stress or honeypot fixtures explicit. When a
   program producer moves out of a justfile, add the new script or patch to the
   machine-image fingerprint inputs so the refactor does not weaken provenance.
-- Extract the PRT gas-calibration program to
-  `prt/contracts/script/measure-gas.sh`, matching the existing Rollups pattern.
-  Move the duplicated contract-binding program to one shared script and make
-  its stamp cover the generator plus actual Forge configuration, lockfiles,
-  filters, and sources rather than the whole surrounding justfile.
-- Preserve the readable E2E scenario dependency matrix in Just. Move only its
-  procedural preflight into a bootstrap-safe shell script. Quarantine or
-  checksum and stage the stale Sepolia helpers before treating them as runnable
-  tooling; do not build a general E2E cleanup framework.
+- The PRT gas-calibration program now lives in
+  `prt/contracts/script/measure-gas.sh`, with its reviewed Forge and dependency
+  pins passed from the thin Just recipe rather than duplicated. The duplicated
+  contract-binding program now lives in one shared script. Its
+  module-specific stamp covers the generator, exact Forge arguments and
+  effective configuration, Forge binary and version, lockfile, local sources,
+  configured dependency roots, and relevant imported PRT and step sources. It
+  excludes the surrounding justfiles, compiler caches and output, and its own
+  generated bindings. Its exact production filters exclude test contracts and
+  fixture factories from the Rust API. Fixed Foundry test and script overrides
+  also remove those roots from binding compilation and invalidation. The full
+  effective remapping strings remain hashed because they affect embedded
+  bytecode metadata, while the unused `prt-contracts-test` target content does
+  not.
+- The readable E2E scenario dependency matrix remains in Just, while its
+  procedural preflight now lives in a bootstrap-safe local shell script. The
+  stale Sepolia helpers are quarantined from the runnable Just surface; do not
+  restore an entry point without revalidating the full flow, and do not build a
+  general E2E cleanup framework.
 - Retain the compact `prt/measure_constants/justfile`, but fix its underlying
   Make dependency so `chronos.so` rebuilds after `chronos.c` changes, verify the
   compute image before measuring, and align its Lua ABI and geometry source with

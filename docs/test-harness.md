@@ -251,8 +251,10 @@ yield-all - is manual, which makes it rot-prone (see the state of the
 nets below).
 
 There is also a legacy Sepolia smoke setup (`test/e2e/rollups/sepolia/`).
-It is retained as a lead, but is not part of current CI and has not been
-revalidated by this harness maintenance.
+It is retained only as a historical lead: it is not part of current CI, has
+not been revalidated by this harness maintenance, and has no runnable Just
+entry point. Restoring it requires revalidating the scripts, contracts, and
+snapshot together, then adding checksum-pinned staged snapshot acquisition.
 
 ## Known coverage gaps
 

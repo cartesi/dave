@@ -19,9 +19,9 @@ Provider selection has one switch:
 - Any set `LIBCARTESI_PATH` selects an external provider. It must name an
   absolute directory containing `libcartesi.a`; an empty or invalid value is
   an error and never falls back to the submodule. `INCLUDECARTESI_PATH` may
-  explicitly name the absolute directory containing `cm.h`. When it is unset,
-  the build infers the conventional sibling `include/cartesi-machine`
-  directory.
+  explicitly name the absolute directory containing `cm.h` and
+  `cm-version.h`. When it is unset, the build infers the conventional sibling
+  `include/cartesi-machine` directory.
 - When `LIBCARTESI_PATH` is unset, Cargo uses the prepared `emulator/` checkout
   as the source provider and runs incremental Make with `slirp=no`.
 
@@ -36,10 +36,10 @@ generates source inputs.
 
 The `machine` Just module owns source preparation and build:
 
-- `just machine::setup` prepares the pinned v0.21 release, verifies and
-  publishes its generated files and Boost headers, then performs one native
-  incremental build. It only validates and skips this work when an external
-  provider is selected.
+- `just machine::setup` initializes the pinned step submodule and prepares the
+  pinned v0.21 emulator release, verifies and publishes its generated files and
+  Boost headers, then performs one native incremental build. It only validates
+  and skips emulator work when an external provider is selected.
 - `just machine::prepare-release` prepares only the four generated files from
   the pinned release artifact. It refuses an emulator revision other than the
   exact release commit.
@@ -50,6 +50,8 @@ The `machine` Just module owns source preparation and build:
   with `prepare-boost` and `build` when testing an intermediary commit.
 - `just machine::build` validates the selected provider and incrementally
   builds an already prepared source checkout when needed.
+- `just machine::doctor` checks that the step checkout matches its pinned
+  gitlink and diagnoses the selected provider without changing either one.
 - `just machine::check` validates the selected external provider or prepared
   source inputs without changing the checkout.
 - `just machine::clean` removes source-provider outputs while retaining the

@@ -5,8 +5,6 @@ DEPLOYMENTS_DIR := "./deployments"
 DEVNET_STATE := "state.json"
 DEVNET_FINGERPRINT := "state.fingerprint"
 DEVNET_FINGERPRINT_PENDING := "state.fingerprint.pending"
-SRC_DIR := "."
-BINDINGS_FILTER := "DaveConsensus|DaveAppFactory"
 
 default: build
 
@@ -21,6 +19,11 @@ check-fmt:
 
 install-deps:
     forge soldeer install
+
+# diagnose the Rollups contract inputs prepared by this module
+[script]
+doctor:
+    "{{ source_directory() / "script/doctor.sh" }}"
 
 # compile smart contracts
 build-smart-contracts:
@@ -56,27 +59,9 @@ clean-deployments:
     rm -rf {{DEPLOYMENTS_DIR}} {{DEVNET_STATE}} \
       {{DEVNET_FINGERPRINT}} {{DEVNET_FINGERPRINT_PENDING}}
 
-# The stamp hashes the contract sources, the config, and the forge
-# version; when it matches, the existing bindings are already correct.
-
 # regenerate Rust bindings only when their inputs changed
 bind:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    hash=$( (forge --version; \
-             cat foundry.toml soldeer.lock justfile; \
-             find src -name '*.sol' | LC_ALL=C sort | xargs cat) \
-           | sha256sum | cut -d' ' -f1 )
-    if [ -d "{{BINDINGS_DIR}}" ] && [ -f "{{BIND_STAMP}}" ] \
-       && [ "$(cat {{BIND_STAMP}})" = "$hash" ]; then
-      exit 0
-    fi
-    rm -rf {{BINDINGS_DIR}}
-    forge bind --alloy --select "{{BINDINGS_FILTER}}" \
-      --module --bindings-path {{BINDINGS_DIR}} \
-      --skip-extra-derives \
-      --root {{SRC_DIR}}
-    echo "$hash" > {{BIND_STAMP}}
+    "{{ source_directory() / "../../script/contract-bindings.sh" }}" generate rollups
 
 bind-force: clean-bindings bind
 
