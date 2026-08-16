@@ -44,6 +44,9 @@ remember_temporary_path() {
 
 cleanup_temporary_paths() {
     local path
+    if (( ${#temporary_paths[@]} == 0 )); then
+        return
+    fi
     for path in "${temporary_paths[@]}"; do
         case "$path" in
             "${cache_root}"/*)
