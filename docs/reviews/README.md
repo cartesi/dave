@@ -36,3 +36,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-08-01-prt-role-specific-bond-calibration/`](2026-08-01-prt-role-specific-bond-calibration/)
   - accepted role-specific leaf and non-leaf terminal maxima, work reserves,
     and join bonds.
+- [`2026-08-11-prt-v021-stf-gas-calibration/`](2026-08-11-prt-v021-stf-gas-calibration/)
+  - accepted Cartesi Machine v0.21 state-transition calibration, proof-growth
+    evidence, propagated leaf reserves, and regenerated deployment identities.
