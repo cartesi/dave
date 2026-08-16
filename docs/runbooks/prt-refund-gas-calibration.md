@@ -361,12 +361,12 @@ rejection tests rather than a successful gas witness. An isolated transition
 maximum is not necessarily the Tournament maximum.
 
 The current evidence still does not enumerate every honest instruction/access
-shape or settle halt and exception behavior. The implementation also permits
-successful proof encodings with trailing bytes because buffer consumption is
-not required to end exactly at the proof boundary. The out-of-range input path
-can return zero before validating the supplied input segment. These properties
-prevent a universal finite ceiling claim; canonical proof consumption or
-explicit size bounds may be prerequisites.
+shape or retain a gas witness for every terminal halt or exception outcome.
+`MetaStep` requires the canonical access-log buffer to be consumed completely,
+and the adapter retains a regression that rejects trailing proof bytes. The
+out-of-range input path can still return zero before validating the supplied
+input segment. The remaining open proof and input classes prevent a universal
+finite ceiling claim; explicit size bounds may be a prerequisite.
 
 The current InputBox path stores a hash, then resubmits the encoded input during
 a dispute so the provider can authenticate and Merkleize it before the state

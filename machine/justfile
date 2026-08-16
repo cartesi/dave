@@ -1,0 +1,35 @@
+# Cartesi Machine source-provider lifecycle.
+
+source_script := source_directory() / "script/cartesi-machine-source.sh"
+
+[private]
+default:
+    @just --list
+
+# publish the four generated sources from the pinned v0.21 release artifact
+prepare-release:
+    "{{ source_script }}" prepare-release
+
+# acquire and publish the pinned Boost headers used by the native Make build
+prepare-boost:
+    "{{ source_script }}" prepare-boost
+
+# regenerate the four sources for the current clean emulator commit
+generate-sources:
+    "{{ source_script }}" generate-sources
+
+# incrementally build the prepared source provider, or validate an external one
+build:
+    "{{ source_script }}" build
+
+# select and prepare the external or pinned source provider
+setup:
+    "{{ source_script }}" setup
+
+# validate the selected provider without changing the checkout
+check:
+    "{{ source_script }}" check
+
+# remove only source-provider outputs; verified download caches are retained
+clean:
+    "{{ source_script }}" clean

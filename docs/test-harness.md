@@ -147,7 +147,8 @@ scenario that kills on it):
 ## Scenario inventory
 
 Machine programs (`test/programs/`): `echo` (accepts and rejects inputs),
-`yield` (alternates accept/reject), `honeypot` (real application),
+`yield` (awaits each input with `RX_ACCEPTED`, then rejects it with
+`RX_REJECTED`), `honeypot` (real application),
 `compute` (no-input computation; buildable but not yet wired into any
 scenario).
 
@@ -219,7 +220,7 @@ Coverage matrix (`stf_all`, one dispute driven to the on-chain state
 transition per epoch):
 
 - Epoch 1, chain {2^44}: closing slot of an idle big cycle (final
-  ustep + ureset + revert check), reached through idle churn leaves.
+  ustep + ureset), reached through idle churn leaves.
 - Epoch 2, chain {2^44, 2^28, 3}: plain active ustep (transition 2 of
   input 0), with an interior agree-leaf seal proof.
 - Epoch 3, chain {2^48 + 2^44, 2^48 + 2^28, 2^48 + 1}: idle churn
@@ -227,7 +228,7 @@ transition per epoch):
   divergence-at-position-zero seal (agree state = the level's initial
   hash).
 - Epoch 4, chain {2^68 + 2^44, 2^68 + 2^28, 2^68 + 1}: the fused feed
-  of input 1 (checkpoint write + input delivery + first ustep) - the
+  of input 1 (input delivery with revert root + first ustep) - the
   only dispute past window 0, so replays cross a fed input boundary.
 
 The full revert restore is pinned by `stf_revert` (yield program,

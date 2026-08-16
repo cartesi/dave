@@ -102,20 +102,20 @@ contract RefundReserveTest is Test {
         assertEq(Bond.REFUND_PRIORITY_FEE_CAP, 10 gwei);
         uint256 leafTerminal = Bond.terminalAllocation(true);
         uint256 nonLeafTerminal = Bond.terminalAllocation(false);
-        assertEq(Gas.WIN_LEAF_MATCH, 4_298_000);
-        assertEq(leafTerminal, 4_428_000);
+        assertEq(Gas.WIN_LEAF_MATCH, 4_420_000);
+        assertEq(leafTerminal, 4_550_000);
         assertEq(nonLeafTerminal, 701_000);
-        assertEq(Bond.actionRefundCap(Gas.WIN_LEAF_MATCH), 0.2149 ether);
+        assertEq(Bond.actionRefundCap(Gas.WIN_LEAF_MATCH), 0.221 ether);
         assertEq(Bond.matchWorkAllocation(48, false), 6_670_000);
         assertEq(Bond.matchWorkAllocation(17, false), 2_733_000);
-        assertEq(Bond.matchWorkAllocation(27, true), 7_730_000);
+        assertEq(Bond.matchWorkAllocation(27, true), 7_852_000);
         assertEq(Bond.matchWorkAllocation(55, false), 7_559_000);
-        assertEq(Bond.matchWorkAllocation(37, true), 9_000_000);
+        assertEq(Bond.matchWorkAllocation(37, true), 9_122_000);
         assertEq(Bond.bondValue(48, false), 0.3335 ether);
         assertEq(Bond.bondValue(17, false), 0.13665 ether);
-        assertEq(Bond.bondValue(27, true), 0.3865 ether);
+        assertEq(Bond.bondValue(27, true), 0.3926 ether);
         assertEq(Bond.bondValue(55, false), 0.37795 ether);
-        assertEq(Bond.bondValue(37, true), 0.45 ether);
+        assertEq(Bond.bondValue(37, true), 0.4561 ether);
 
         uint256 invalidZeroLeafWork = leafTerminal - Gas.ADVANCE_MATCH;
         uint256 invalidZeroLeafBond = invalidZeroLeafWork * Bond.WORK_PRICE_CAP;

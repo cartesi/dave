@@ -10,12 +10,19 @@ local MerkleBuilder = require "cryptography.merkle_builder"
 local ComputationState = {}
 ComputationState.__index = ComputationState
 
-function ComputationState:new(root_hash, halted, yielded, uhalted)
+function ComputationState:new(root_hash, status, uhalted)
     local r = {
         root_hash = root_hash,
-        halted = halted,
-        yielded = yielded,
-        uhalted = uhalted
+        halted = status.halted,
+        manual_yielded = status.manual_yielded,
+        manual_yield_reason = status.manual_yield_reason,
+        awaiting_input = status.awaiting_input,
+        rejected = status.rejected,
+        uhalted = uhalted,
+        exception = status.exception,
+        unexpected_manual_yield = status.unexpected_manual_yield,
+        mcycle_overflow = status.mcycle_overflow,
+        terminal = status.terminal
     }
     setmetatable(r, self)
     return r
@@ -23,21 +30,24 @@ end
 
 function ComputationState.from_current_machine_state(machine)
     local hash = Hash:from_digest(machine.machine:get_root_hash())
-    return ComputationState:new(
-        hash,
-        machine:is_halted(),
-        machine:is_yielded(),
-        machine:is_uarch_halted()
-    )
+    return ComputationState:new(hash, machine:status(), machine:is_uarch_halted())
 end
 
 ComputationState.__tostring = function(x)
+    local format = "{root_hash = %s, halted = %s, manual_yielded = %s, "
+        .. "awaiting_input = %s, rejected = %s, uhalted = %s, exception = %s, "
+        .. "unexpected_manual_yield = %s, mcycle_overflow = %s}"
     return string.format(
-        "{root_hash = %s, halted = %s, yielded = %s, uhalted = %s}",
+        format,
         x.root_hash,
         x.halted,
-        x.yielded,
-        x.uhalted
+        x.manual_yielded,
+        x.awaiting_input,
+        x.rejected,
+        x.uhalted,
+        x.exception,
+        x.unexpected_manual_yield,
+        x.mcycle_overflow
     )
 end
 
@@ -51,7 +61,7 @@ Machine.__index = Machine
 
 local machine_settings = { htif = { no_console_putchar = true } }
 
--- Default home for revert snapshots (the hash-named machine stores
+-- Default home for rejection snapshots (the hash-named machine stores
 -- feed_input writes): a run-local scratch directory. The old default
 -- put them next to the source image, littering shared program
 -- directories (test/programs/) and risking collisions between
@@ -69,7 +79,7 @@ function Machine:new_from_path(path, snapshot_dir)
     -- Validators must verify this first
     assert(machine:read_reg("uarch_cycle") == 0)
 
-    -- Revert snapshots go to the run-local scratch unless the caller
+    -- Rejection snapshots go to the run-local scratch unless the caller
     -- provides a dedicated directory (callers own their dir's
     -- lifecycle; the default's parent is ensured here).
     if not snapshot_dir then
@@ -102,18 +112,21 @@ local function add_and_clamp(x, y)
 end
 
 local function advance_rollup(self, meta_cycle, inputs)
-    assert(self:is_yielded())
-    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):touinteger()
-    local cycle_mask = (uint256.one() << consts.log2_barch_span_to_input) - 1
-    local cycle = ((meta_cycle >> consts.log2_uarch_span_to_barch) & cycle_mask):touinteger()
-    local ucycle_mask = (uint256.one() << consts.log2_uarch_span_to_barch) - 1
+    assert(self:is_awaiting_input() or self:is_terminal())
+    local input_count = (meta_cycle >> consts.log2_window_span):touinteger()
+    local cycle_mask = (uint256.one()
+        << cartesi.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE) - 1
+    local cycle = ((meta_cycle
+        >> cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) & cycle_mask):touinteger()
+    local ucycle_mask = (uint256.one()
+        << cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) - 1
     local ucycle = (meta_cycle & ucycle_mask):touinteger()
-    assert(arithmetic.ulte(input_count, consts.input_span_to_epoch))
+    assert(arithmetic.ulte(input_count, consts.input_index_mask))
 
     while self.input_count < input_count do
         local input = inputs[self.input_count + 1]
 
-        if not input then
+        if not input or self:is_terminal() then
             self.input_count = input_count
             break
         end
@@ -123,10 +136,15 @@ local function advance_rollup(self, meta_cycle, inputs)
 
         repeat
             self.machine:run(arithmetic.max_uint64)
-        until self:is_halted() or self:is_yielded()
-        assert(not self:is_halted())
+        until self:is_halted() or self:is_manual_yielded() or self:is_mcycle_overflow()
+
+        self:restore_rejected()
 
         self.input_count = self.input_count + 1
+        if self:is_terminal() then
+            self.input_count = input_count
+            break
+        end
     end
     assert(self.input_count == input_count)
 
@@ -135,7 +153,7 @@ local function advance_rollup(self, meta_cycle, inputs)
     end
 
     local input = inputs[self.input_count + 1]
-    if input then
+    if input and not self:is_terminal() then
         local input_bin = conversion.bin_from_hex_n(input)
         self:feed_input(input_bin)
     end
@@ -151,50 +169,72 @@ function Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
 end
 
 local function process_input(machine, log2_stride)
-    local stride = 1 << (log2_stride - consts.log2_uarch_span_to_barch)
+    local stride = 1
+        << (log2_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE)
+    local total = 1 << (consts.log2_window_span - log2_stride)
 
     local iterations = 0
     local builder = MerkleBuilder:new()
-    while true do -- will loop forever if machine never yields
+    while true do
         machine:run(machine.cycle + stride)
         local state = machine:state()
-        assert(not state.halted)
 
-        if not state.yielded then
+        if not state.awaiting_input and not state.terminal then
             builder:add(state.root_hash)
             iterations = iterations + 1
         else
-            local total = 1 << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch - log2_stride)
             builder:add(state.root_hash, total - iterations)
-            return builder:build()
+            return builder:build(), state
         end
     end
+end
+
+local function fixed_input_commitment(root_hash, log2_stride)
+    local total = 1 << (consts.log2_window_span - log2_stride)
+    local builder = MerkleBuilder:new()
+    builder:add(root_hash, total)
+    return builder:build()
 end
 
 -- Computes one epoch's commitment from the machine's current state,
 -- advancing it through the epoch. A lineage can call this repeatedly,
 -- epoch after epoch, without ever touching foreign snapshots.
 function Machine:rollup_commitment(log2_stride, inputs)
-    assert(self:is_yielded())
-    assert(consts.log2_barch_span_to_input > (log2_stride - consts.log2_uarch_span_to_barch))
+    assert(self:is_awaiting_input() or self:is_terminal())
+    assert(cartesi.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
+        > (log2_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE))
 
-    local max_input_count = 1 << (consts.log2_input_span_to_epoch)
+    local max_input_count = 1 << cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
 
     local builder = MerkleBuilder:new()
     local initial_hash = self:state().root_hash
 
     local input_i = 0
     local processing_bigs = {}
+    if self:is_terminal() then
+        builder:add(fixed_input_commitment(initial_hash, log2_stride), max_input_count)
+        return initial_hash, builder:build(initial_hash), processing_bigs
+    end
+
     while input_i < max_input_count do
         if inputs[input_i + 1] then
             local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
             self:feed_input(input_bin);
-            local tree = process_input(self, log2_stride)
+            local tree, state = process_input(self, log2_stride)
             builder:add(tree)
             input_i = input_i + 1
             -- Big cycles input_i consumed; scenarios use it to aim
             -- patch chains at the revert closing slot.
             processing_bigs[input_i] = self._last_input_bigs
+            if state.terminal then
+                if input_i < max_input_count then
+                    builder:add(
+                        fixed_input_commitment(state.root_hash, log2_stride),
+                        max_input_count - input_i
+                    )
+                end
+                break
+            end
         else
             local tree = process_input(self, log2_stride)
             builder:add(tree, max_input_count - input_i)
@@ -223,12 +263,53 @@ function Machine:is_halted()
     return self.machine:read_reg("iflags_H") ~= 0
 end
 
-function Machine:is_yielded()
+function Machine:is_manual_yielded()
     return self.machine:read_reg("iflags_Y") ~= 0
 end
 
 function Machine:is_uarch_halted()
-    return self.machine:read_reg("uarch_halt_flag") ~= 0
+    return self.machine:read_reg("uarch_halt") ~= 0
+end
+
+function Machine:manual_yield_reason()
+    if not self:is_manual_yielded() then
+        return nil
+    end
+    local _, reason, _ = self.machine:receive_cmio_request()
+    return reason
+end
+
+function Machine:is_awaiting_input()
+    return self:manual_yield_reason() == cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED
+end
+
+function Machine:is_mcycle_overflow()
+    return arithmetic.ulte(self.machine:read_reg("imcyclemax"), self:physical_cycle())
+end
+
+function Machine:status()
+    local reason = self:manual_yield_reason()
+    local awaiting_input = reason == cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED
+    local rejected = reason == cartesi.HTIF_YIELD_MANUAL_REASON_RX_REJECTED
+    local exception = reason == cartesi.HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION
+    local unexpected_manual_yield = reason ~= nil and not awaiting_input and not rejected and not exception
+    local halted = self:is_halted()
+    local mcycle_overflow = self:is_mcycle_overflow()
+    return {
+        halted = halted,
+        manual_yielded = reason ~= nil,
+        manual_yield_reason = reason,
+        awaiting_input = awaiting_input,
+        rejected = rejected,
+        exception = exception,
+        unexpected_manual_yield = unexpected_manual_yield,
+        mcycle_overflow = mcycle_overflow,
+        terminal = halted or mcycle_overflow or exception or unexpected_manual_yield,
+    }
+end
+
+function Machine:is_terminal()
+    return self:status().terminal
 end
 
 function Machine:physical_cycle()
@@ -246,8 +327,10 @@ function Machine:run_uarch(ucycle)
 end
 
 function Machine:feed_input(input_bin)
-    -- before feeding input, the machine state is always valid and yielded, so we can store the snapshot
-    -- however if could have been reverted, so we need to check if the snapshot exists
+    assert(self:is_awaiting_input(), "feed requires a machine awaiting RX_ACCEPTED")
+
+    -- Before feeding input, the machine is awaiting input at a valid state, so
+    -- retain that state in case the advance is later rejected.
     local root_hash_string = Hash:from_digest(self.machine:get_root_hash()):hex_string()
     local new_snapshot_path = self.snapshot_dir .. "/" .. root_hash_string
     if not helper.exists(new_snapshot_path) then
@@ -264,8 +347,12 @@ function Machine:feed_input(input_bin)
     -- Marks the window start so the yield below can report how many
     -- big cycles the input consumed.
     self._input_start_cycle = self:physical_cycle()
-    self:write_checkpoint(self.machine:get_root_hash())
-    self.machine:send_cmio_response(cartesi.CMIO_YIELD_REASON_ADVANCE_STATE, input_bin);
+    local revert_root_hash = self.machine:get_root_hash()
+    self.machine:send_cmio_response(
+        cartesi.HTIF_YIELD_REASON_ADVANCE_STATE,
+        input_bin,
+        revert_root_hash
+    )
 end
 
 function Machine:run(cycle)
@@ -276,150 +363,36 @@ function Machine:run(cycle)
 
     repeat
         machine:run(target_physical_cycle)
-    until self:is_halted() or self:is_yielded() or
+    until self:is_halted() or self:is_manual_yielded() or self:is_mcycle_overflow() or
         self:physical_cycle() == target_physical_cycle
 
-    if self:is_yielded() then
-        -- Captured before the revert reloads the snapshot: the big
+    if self:is_halted() or self:is_manual_yielded() or self:is_mcycle_overflow() then
+        -- Captured before a rejection reloads the snapshot: the big
         -- cycle count the input consumed, yield instruction included.
-        -- The revert of a rejected input lands at the closing slot of
+        -- The restore of a rejected input lands at the closing slot of
         -- big cycle (this count - 1) of its window.
         if self._input_start_cycle then
             self._last_input_bigs = self:physical_cycle() - self._input_start_cycle
         end
-        self:revert_if_needed()
     end
+
+    self:restore_rejected()
     self.cycle = cycle
 
     return self:state()
 end
 
-function Machine:revert_if_needed()
-    -- revert if needed only when machine yields
-    assert(self:is_yielded())
-
-    -- The on-chain closing slot restores the checkpoint ONLY on
-    -- RX_REJECTED (AdvanceStatus + revertIfNeeded): an exception
-    -- yield keeps the exception state, and any other manual reason
-    -- has no defined transition on-chain. Solidity is the source of
-    -- truth; treating every non-accept as a revert was a consensus
-    -- mismatch shared with the node (found 2026-07-15).
-    local _, reason, _ = self.machine:receive_cmio_request()
-    if reason == cartesi.CMIO_YIELD_MANUAL_REASON_RX_REJECTED then
-        -- Revert to previous snapshot
-        print("revert to previous snapshot")
-        local machine = cartesi.machine(self.snapshot_path, machine_settings)
-        self.machine = machine
-    elseif
-        reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_RX_ACCEPTED
-        and reason ~= cartesi.CMIO_YIELD_MANUAL_REASON_TX_EXCEPTION
-    then
-        error(string.format("manual yield reason %d has no defined state transition", reason))
+function Machine:restore_rejected()
+    -- reset_uarch owns the canonical root substitution on-chain, but the
+    -- emulator deliberately leaves its physical machine reset. Reload the
+    -- pre-input snapshot so subsequent local execution follows that root.
+    if self:manual_yield_reason() ~= cartesi.HTIF_YIELD_MANUAL_REASON_RX_REJECTED then
+        return false
     end
-end
-
-function Machine:prove_revert_if_needed()
-    local iflags_y_address = self.machine:get_reg_address("iflags_Y")
-    local iflags_y_proof = self:prove_read_word(iflags_y_address)
-
-    local proof = iflags_y_proof
-
-    local iflags_y = self:is_yielded()
-    if iflags_y then
-        local to_host_address = self.machine:get_reg_address("htif_tohost")
-        local to_host_proof = self:prove_read_word(to_host_address)
-        proof = proof .. to_host_proof
-
-        -- The chain consumes the checkpoint leaf only on the REJECTED
-        -- branch (getRevertRootHash); an exception yield reads nothing
-        -- more.
-        local _, reason, _ = self.machine:receive_cmio_request()
-        if reason == cartesi.CMIO_YIELD_MANUAL_REASON_RX_REJECTED then
-            local checkpoint_proof = self:prove_read_leaf(consts.CHECKPOINT_ADDRESS)
-            proof = proof .. checkpoint_proof
-        end
-    end
-
-    return proof
-end
-
-function Machine:prove_read_word(address)
-    -- always read aligned 32 bytes (one leaf)
-    local aligned_address = address & ~0x1F
-    local merkle_proof = self.machine:get_proof(aligned_address, 5)
-
-    local proof = {}
-
-    local read = self.machine:read_memory(aligned_address, 32)
-    table.insert(proof, read)
-
-    -- Append sibling hashes from the merkle proof
-    for _, hash in ipairs(merkle_proof.sibling_hashes) do
-        table.insert(proof, hash)
-    end
-
-    local data = table.concat(proof)
-    return data
-end
-
-function Machine:prove_read_leaf(address)
-    -- always write aligned 32 bytes (one leaf)
-    assert(address & 0x1F == 0)
-
-    local aligned_address = address & ~0x1F
-    local read = self.machine:read_memory(aligned_address, 32)
-    local read_hash = Hash:from_data(read)
-    local merkle_proof = self.machine:get_proof(aligned_address, 5)
-
-    local proof = {}
-
-    -- Append the raw checkpoint, its leaf hash, and its siblings.
-    table.insert(proof, read)
-    table.insert(proof, read_hash.digest)
-
-    -- Append sibling hashes from the merkle proof
-    for _, hash in ipairs(merkle_proof.sibling_hashes) do
-        table.insert(proof, hash)
-    end
-
-    local data = table.concat(proof)
-    return data
-end
-
-local keccak = cartesi.keccak256
-
-function Machine:prove_write_leaf(address)
-    -- always write aligned 32 bytes (one leaf)
-    assert(address & 0x1F == 0)
-
-    -- Read the old leaf data BEFORE writing the checkpoint
-    local old_leaf_hash = keccak(self.machine:read_memory(address, 32))
-
-    -- Get proof of write address BEFORE writing the checkpoint
-    local merkle_proof = self.machine:get_proof(address, 5)
-
-    local proof = {}
-
-    -- Append the old leaf data (32 bytes) - this is what the Solidity contract expects
-    table.insert(proof, old_leaf_hash)
-
-    -- Append sibling hashes from the merkle proof
-    for _, hash in ipairs(merkle_proof.sibling_hashes) do
-        table.insert(proof, hash)
-    end
-
-    local data = table.concat(proof)
-
-
-    -- Now write the checkpoint
-    self:write_checkpoint(self.machine:get_root_hash())
-
-    return data
-end
-
-function Machine:write_checkpoint(root_hash)
-    -- Write the current machine state hash to the checkpoint address
-    self.machine:write_memory(consts.CHECKPOINT_ADDRESS, root_hash)
+    assert(self.snapshot_path, "rejected input has no pre-feed snapshot")
+    self.machine = cartesi.machine(self.snapshot_path, machine_settings)
+    self.ucycle = 0
+    return true
 end
 
 function Machine:increment_uarch()
@@ -433,6 +406,7 @@ function Machine:ureset()
     self.machine:reset_uarch()
     self.cycle = self.cycle + 1
     self.ucycle = 0
+    self:restore_rejected()
 
     return self:state()
 end
@@ -460,7 +434,13 @@ local function encode_access_logs(logs)
     for _, log in ipairs(logs) do
         for _, a in ipairs(log.accesses) do
             if a.log2_size == 3 then
-                table.insert(encoded, a.read)
+                local read = assert(a.read, "word access must carry its read value")
+                table.insert(encoded, read)
+            elseif a.type == "read" then
+                local read = assert(a.read, "region read must carry its raw value")
+                assert(#read == 32, "chain region reads are one bytes32 value")
+                table.insert(encoded, read)
+                table.insert(encoded, a.read_hash)
             else
                 table.insert(encoded, a.read_hash)
             end
@@ -481,63 +461,64 @@ local function encode_da(input_bin)
     return da_proof
 end
 
-local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
-    local input_mask = (uint256.one() << consts.log2_uarch_span_to_input) - 1
-    local big_step_mask = arithmetic.max_uint(consts.log2_uarch_span_to_barch)
+-- Produces the chain witness for one transition from an already-positioned
+-- machine. Positioning and proving are separate on the Rust path as well.
+function Machine:prove_transition(meta_cycle, inputs)
+    local input_mask = (uint256.one() << consts.log2_window_span) - 1
+    local big_step_mask = consts.uarch_cycle_mask
 
-    assert(((meta_cycle >> consts.log2_uarch_span_to_input) & (~input_mask)):iszero())
-    local input_count = (meta_cycle >> consts.log2_uarch_span_to_input):tointeger()
+    assert(((meta_cycle >> consts.log2_window_span) & (~input_mask)):iszero())
+    local input_count = (meta_cycle >> consts.log2_window_span):tointeger()
 
     local logs = {}
-
-    local machine = Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
-    local root_hash = machine:state().root_hash
-    assert(root_hash == agree_hash)
 
     if (meta_cycle & input_mask):iszero() then
         local input = inputs[input_count + 1]
         local da_proof
         if input then
             local input_bin = conversion.bin_from_hex_n(input)
-            local write_checkpoint_proof = machine:prove_write_leaf(consts.CHECKPOINT_ADDRESS)
-            local cmio_log = machine.machine:log_send_cmio_response(
-                cartesi.CMIO_YIELD_REASON_ADVANCE_STATE,
-                input_bin
+            local revert_root_hash = self.machine:get_root_hash()
+            local cmio_log = self.machine:log_send_cmio_response(
+                cartesi.HTIF_YIELD_REASON_ADVANCE_STATE,
+                input_bin,
+                revert_root_hash
             )
 
             table.insert(logs, cmio_log)
             da_proof = encode_da(input_bin)
-            da_proof = da_proof .. write_checkpoint_proof
         else
             da_proof = encode_da("")
         end
 
-        local uarch_step_log = machine.machine:log_step_uarch()
+        local uarch_step_log = self.machine:log_step_uarch()
         table.insert(logs, uarch_step_log)
 
         local cmio_step_proof = encode_access_logs(logs)
         local proof = da_proof .. cmio_step_proof
-        return proof, machine:state().root_hash
+        return proof, self:state().root_hash
     else
         if ((meta_cycle + 1) & big_step_mask):iszero() then
-            assert(machine:is_uarch_halted())
-
-            local uarch_step_log = machine.machine:log_step_uarch()
+            local uarch_step_log = self.machine:log_step_uarch()
             table.insert(logs, uarch_step_log)
-            local ureset_log = machine.machine:log_reset_uarch()
+            local ureset_log = self.machine:log_reset_uarch()
             table.insert(logs, ureset_log)
 
             local step_reset_proof = encode_access_logs(logs)
-            local revert_proof = machine:prove_revert_if_needed()
-
-            local combined_proof = step_reset_proof .. revert_proof
-            return combined_proof, machine:state().root_hash
+            self:restore_rejected()
+            return step_reset_proof, self:state().root_hash
         else
-            local uarch_step_log = machine.machine:log_step_uarch()
+            local uarch_step_log = self.machine:log_step_uarch()
             table.insert(logs, uarch_step_log)
-            return encode_access_logs(logs), machine:state().root_hash
+            return encode_access_logs(logs), self:state().root_hash
         end
     end
+end
+
+local function get_logs_rollups(path, agree_hash, meta_cycle, inputs)
+    local machine = Machine:new_rollup_advanced_until(path, meta_cycle, inputs)
+    local root_hash = machine:state().root_hash
+    assert(root_hash == agree_hash)
+    return machine:prove_transition(meta_cycle, inputs)
 end
 
 function Machine.get_logs(path, agree_hash, meta_cycle, inputs)

@@ -3,6 +3,7 @@ local Machine = require "computation.machine"
 
 local conversion = require "utils.conversion"
 local arithmetic = require "utils.arithmetic"
+local cartesi = require "cartesi"
 local consts = require "computation.constants"
 local uint256 = require "utils.bint" (256)
 
@@ -33,7 +34,7 @@ local function run_uarch_span(machine)
     until machine_state.uhalted
 
     -- Add all remaining fixed-point states, filling the tree up to the last leaf.
-    builder:add(machine_state.root_hash, consts.uarch_span_to_barch - i)
+    builder:add(machine_state.root_hash, consts.uarch_cycle_mask - i)
 
     -- At this point, we've added `2^a - 1` hashes to the inner merkle builder.
     -- Note that these states range from "meta" ucycle `1` to `2^a - 1`.
@@ -42,10 +43,6 @@ local function run_uarch_span(machine)
     -- closing in a power-of-two number of leaves (`2^a` leaves).
     machine:ureset()
 
-    -- Check if machine is yielded and handle revert if needed
-    if machine:is_yielded() then
-        machine:revert_if_needed()
-    end
     machine_state = machine:state()
     builder:add(machine_state.root_hash)
 
@@ -54,7 +51,9 @@ end
 
 local function build_small_machine_commitment(log2_stride_count, machine, initial_state)
     local builder = MerkleBuilder:new()
-    local instruction_count = arithmetic.max_uint(log2_stride_count - consts.log2_uarch_span_to_barch)
+    local instruction_count = arithmetic.max_uint(
+        log2_stride_count - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+    )
     local instruction = 0
     while ulte(instruction, instruction_count) do
         print_flush_same_line(string.format(
@@ -67,7 +66,7 @@ local function build_small_machine_commitment(log2_stride_count, machine, initia
         instruction = instruction + 1
 
         -- Optional optimization, just comment to remove.
-        if machine_state.halted or machine_state.yielded then
+        if machine_state.awaiting_input or machine_state.terminal then
             local last_span = run_uarch_span(machine)
             builder:add(last_span, instruction_count - instruction + 1)
             break
@@ -82,7 +81,8 @@ local function build_big_machine_commitment(log2_stride, log2_stride_count, mach
     local builder = MerkleBuilder:new()
     local instruction_count = 1 << log2_stride_count
 
-    local big_arch_stride = 1 << (log2_stride - consts.log2_uarch_span_to_barch)
+    local big_arch_stride = 1
+        << (log2_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE)
 
     local iterations = 0
     while math.ult(iterations, instruction_count) do
@@ -93,7 +93,7 @@ local function build_big_machine_commitment(log2_stride, log2_stride_count, mach
 
         local machine_state = machine:run(machine.cycle + big_arch_stride)
 
-        if not (machine_state.halted or machine_state.yielded) then
+        if not (machine_state.awaiting_input or machine_state.terminal) then
             builder:add(machine_state.root_hash)
             iterations = iterations + 1
         else
@@ -112,20 +112,21 @@ local function build_commitment(base_cycle, log2_stride, log2_stride_count, mach
 
     assert(inputs)
     machine = Machine:new_rollup_advanced_until(machine_path, base_cycle, inputs)
-    local mask = (uint256.one() << (consts.log2_barch_span_to_input + consts.log2_uarch_span_to_barch)) - 1
+    local mask = (uint256.one() << consts.log2_window_span) - 1
     local initial_state = machine:state().root_hash
 
     if (base_cycle & mask):iszero() then
-        assert(machine:state().yielded)
-        local input_i = (base_cycle >> consts.log2_uarch_span_to_input):touinteger()
-        if inputs[input_i + 1] then
+        local machine_state = machine:state()
+        assert(machine_state.awaiting_input or machine_state.terminal)
+        local input_i = (base_cycle >> consts.log2_window_span):touinteger()
+        if inputs[input_i + 1] and not machine_state.terminal then
             local input_bin = conversion.bin_from_hex_n(inputs[input_i + 1])
             machine:feed_input(input_bin)
         end
     end
 
-    if log2_stride >= consts.log2_uarch_span_to_barch then
-        assert(log2_stride + log2_stride_count <= consts.log2_uarch_span_to_epoch)
+    if log2_stride >= cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE then
+        assert(log2_stride + log2_stride_count <= consts.log2_ruler_span)
         return build_big_machine_commitment(log2_stride, log2_stride_count, machine, initial_state)
     else
         assert(log2_stride == 0)

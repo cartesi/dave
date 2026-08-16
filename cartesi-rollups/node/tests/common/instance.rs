@@ -1,17 +1,15 @@
 use super::epoch_data::EpochData;
 use super::machine_error::Result;
 use cartesi_machine::{
-    cartesi_machine_sys,
     config::runtime::RuntimeConfig,
-    constants::machine::HASH_TREE_LOG2_ROOT_SIZE,
+    constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
     machine::Machine,
-    types::access_proof::AccessLog,
+    types::access_proof::{AccessLog, AccessType},
     types::{LogType, cmio::CmioResponseReason},
 };
 use cartesi_rollups_prt_node::arithmetic;
 use cartesi_rollups_prt_node::engine::constants::{
-    BARCH_MASK_TO_INPUT, CHECKPOINT_ADDRESS, INPUT_MASK_TO_EPOCH, LOG2_UARCH_SPAN_TO_BARCH,
-    LOG2_UARCH_SPAN_TO_INPUT, UARCH_MASK_TO_BARCH,
+    BARCH_MASK_TO_INPUT, INPUT_MASK_TO_EPOCH, LOG2_INPUT_WINDOW_SPAN, UARCH_MASK_TO_BARCH,
 };
 use cartesi_rollups_prt_node::merkle::Digest;
 use log::trace;
@@ -85,7 +83,9 @@ impl MachineInstance {
 
     /*
         pub fn take_snapshot(&mut self, base_cycle: u64, db: &EpochData) -> Result<()> {
-            let mask = arithmetic::max_uint(constants::LOG2_BARCH_SPAN_TO_INPUT);
+            let mask = arithmetic::max_uint(
+                cartesi_machine::constants::rollup::LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+            );
             if db.handle_rollups && ((base_cycle & mask) == 0) && !self.is_yielded()? {
                 // don't snapshot a machine state that's freshly fed with input without advance
                 return Ok(());
@@ -122,10 +122,11 @@ impl MachineInstance {
     pub fn advance_rollups(&mut self, meta_cycle: U256, db: &EpochData) -> Result<()> {
         assert!(self.is_yielded()?);
 
-        let input_count = u64::try_from(meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT)
+        let input_count = u64::try_from(meta_cycle >> LOG2_INPUT_WINDOW_SPAN)
             .expect("input count too big to fit in u64");
         let cycle = {
-            let c = (meta_cycle >> LOG2_UARCH_SPAN_TO_BARCH) & U256::from(BARCH_MASK_TO_INPUT);
+            let c =
+                (meta_cycle >> LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) & U256::from(BARCH_MASK_TO_INPUT);
             u64::try_from(c).expect("cycle too big to fit in u64")
         };
         let ucycle = u64::try_from(meta_cycle & U256::from(UARCH_MASK_TO_BARCH))
@@ -190,7 +191,7 @@ impl MachineInstance {
         meta_cycle: U256,
         db: &EpochData,
     ) -> Result<MachineInstance> {
-        let input_count = u64::try_from(meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT).unwrap();
+        let input_count = u64::try_from(meta_cycle >> LOG2_INPUT_WINDOW_SPAN).unwrap();
         assert!(input_count <= INPUT_MASK_TO_EPOCH);
         assert!(start_input <= input_count, "snapshot past the target");
 
@@ -216,10 +217,12 @@ impl MachineInstance {
             }
 
             self.snapshot_path = new_snapshot_path;
-            self.machine
-                .write_memory(CHECKPOINT_ADDRESS, root_hash.slice())?;
-            self.machine
-                .send_cmio_response(CmioResponseReason::Advance, &input_bin)?;
+            let revert_root = root_hash.into();
+            self.machine.send_cmio_response(
+                CmioResponseReason::Advance,
+                &input_bin,
+                Some(&revert_root),
+            )?;
         }
         Ok(())
     }
@@ -248,14 +251,14 @@ impl MachineInstance {
         Ok(self.machine.mcycle()?)
     }
 
-    pub fn revert_if_needed(&mut self) -> Result<()> {
-        // revert if needed only when machine yields
+    pub fn restore_rejected(&mut self) -> Result<()> {
+        // A reset log substitutes the canonical root, but the physical
+        // machine must still be reloaded from its pre-input snapshot.
         assert!(self.is_yielded()?);
 
         // we check if the request is accepted
-        // if it is not, we revert the machine state to previous snapshot
-        // REJECTED only, matching production (machine_stf.rs) and the
-        // on-chain semantics: an exception yield keeps its state.
+        // REJECTED only: exceptions and other terminal yields keep their
+        // state.
         if self.machine.receive_cmio_request()?.reason()
             == cartesi_machine::constants::cmio::tohost::manual::RX_REJECTED
         {
@@ -298,7 +301,7 @@ impl MachineInstance {
             if self.is_yielded()? {
                 trace!("run break with yield");
                 // if it is not reverted, we store the new snapshot and remove the old one
-                self.revert_if_needed()?;
+                self.restore_rejected()?;
 
                 break;
             }
@@ -324,90 +327,10 @@ impl MachineInstance {
         self.machine.reset_uarch()?;
         self.cycle += 1;
         self.ucycle = 0;
-        self.state()
-    }
-
-    fn prove_read_word(&mut self, address: u64) -> Result<Vec<u8>> {
-        // always read aligned 32 bytes (one leaf)
-        let aligned_address = address & !0x1Fu64;
-        let mut read = self.machine.read_memory(aligned_address, 32)?;
-        let proof = self
-            .machine
-            .proof(aligned_address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
-
-        let mut encoded: Vec<u8> = Vec::new();
-
-        encoded.append(&mut read);
-
-        let mut decoded_siblings: Vec<u8> =
-            proof.sibling_hashes.iter().flatten().cloned().collect();
-        encoded.append(&mut decoded_siblings);
-
-        Ok(encoded)
-    }
-
-    fn prove_read_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
-        // always read aligned 32 bytes (one leaf)
-        let aligned_address = address & !0x1Fu64;
-        let mut read = self.machine.read_memory(aligned_address, 32)?;
-        let read_hash = Digest::from_data(&read);
-        let proof = self
-            .machine
-            .proof(aligned_address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
-
-        let mut encoded: Vec<u8> = Vec::new();
-
-        encoded.append(&mut read);
-        encoded.append(&mut read_hash.slice().to_vec());
-
-        let mut decoded_siblings: Vec<u8> =
-            proof.sibling_hashes.iter().flatten().cloned().collect();
-        encoded.append(&mut decoded_siblings);
-
-        Ok(encoded)
-    }
-
-    fn prove_write_leaf(&mut self, address: u64) -> Result<Vec<u8>> {
-        // always write aligned 32 bytes (one leaf)
-        assert!(address & 0x1F == 0);
-        let read = self.machine.read_memory(address, 32)?;
-        let read_hash = Digest::from_data(&read);
-        // Get proof of write address
-        let proof = self.machine.proof(address, 5, HASH_TREE_LOG2_ROOT_SIZE)?;
-
-        let mut encoded: Vec<u8> = Vec::new();
-
-        encoded.append(&mut read_hash.slice().to_vec());
-        let mut decoded_siblings: Vec<u8> =
-            proof.sibling_hashes.iter().flatten().cloned().collect();
-        encoded.append(&mut decoded_siblings);
-
-        let checkpoint = self.root_hash()?;
-        self.machine.write_memory(address, checkpoint.slice())?;
-
-        Ok(encoded)
-    }
-
-    fn prove_revert_if_needed(&mut self) -> Result<Vec<u8>> {
-        let mut proof = Vec::new();
-
-        let iflags_y_address =
-            cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_IFLAGS_Y)?;
-        proof.append(&mut self.prove_read_word(iflags_y_address)?);
-
-        let iflags_y = self.is_yielded()?;
-        if iflags_y {
-            let to_host_address =
-                cartesi_machine::Machine::reg_address(cartesi_machine_sys::CM_REG_HTIF_TOHOST)?;
-            proof.append(&mut self.prove_read_word(to_host_address)?);
-
-            if self.machine.receive_cmio_request()?.reason()
-                == cartesi_machine::constants::cmio::tohost::manual::RX_REJECTED
-            {
-                proof.append(&mut self.prove_read_leaf(CHECKPOINT_ADDRESS)?);
-            }
+        if self.is_yielded()? {
+            self.restore_rejected()?;
         }
-        Ok(proof)
+        self.state()
     }
 
     fn encode_access_logs(logs: Vec<&AccessLog>) -> Vec<u8> {
@@ -416,7 +339,19 @@ impl MachineInstance {
         for log in logs.into_iter() {
             for a in log.accesses.iter() {
                 if a.log2_size == 3 {
-                    encoded.push(a.read.clone().unwrap());
+                    encoded.push(
+                        a.read
+                            .clone()
+                            .expect("word access must carry its read value"),
+                    );
+                } else if matches!(&a.r#type, AccessType::Read) {
+                    let read = a
+                        .read
+                        .clone()
+                        .expect("region read must carry its raw value");
+                    assert_eq!(read.len(), 32, "chain region reads are one bytes32 value");
+                    encoded.push(read);
+                    encoded.push(a.read_hash.to_vec());
                 } else {
                     encoded.push(a.read_hash.to_vec());
                 }
@@ -449,14 +384,14 @@ impl MachineInstance {
         meta_cycle: U256,
         db: &EpochData,
     ) -> Result<(Vec<u8>, Digest)> {
-        let input_mask = (U256::ONE << LOG2_UARCH_SPAN_TO_INPUT) - U256::ONE;
+        let input_mask = (U256::ONE << LOG2_INPUT_WINDOW_SPAN) - U256::ONE;
         let big_step_mask = UARCH_MASK_TO_BARCH;
 
-        assert!(((meta_cycle >> LOG2_UARCH_SPAN_TO_INPUT) & !input_mask).is_zero());
+        assert!(((meta_cycle >> LOG2_INPUT_WINDOW_SPAN) & !input_mask).is_zero());
 
         let meta_cycle_u128 =
             u128::try_from(meta_cycle).expect("meta_cycle is too large to fit in u128");
-        let input_count = (meta_cycle_u128 >> LOG2_UARCH_SPAN_TO_INPUT) as u64;
+        let input_count = (meta_cycle_u128 >> LOG2_INPUT_WINDOW_SPAN) as u64;
 
         let mut logs = Vec::new();
 
@@ -466,20 +401,20 @@ impl MachineInstance {
 
         if (meta_cycle & input_mask).is_zero() {
             let input = db.input(input_count);
-            let mut da_proof;
+            let da_proof;
             let cmio_log;
 
             if let Some(input_bin) = input {
-                let write_checkpoint_proof = machine.prove_write_leaf(CHECKPOINT_ADDRESS)?;
+                let revert_root = machine.machine.root_hash()?;
                 cmio_log = machine.machine.log_send_cmio_response(
                     CmioResponseReason::Advance,
                     &input_bin,
+                    &revert_root,
                     LogType::default(),
                 )?;
 
                 logs.push(&cmio_log);
                 da_proof = Self::encode_da(&input_bin);
-                da_proof = [da_proof, write_checkpoint_proof].concat();
             } else {
                 da_proof = Self::encode_da(&[]);
             }
@@ -491,25 +426,19 @@ impl MachineInstance {
             let proof = [da_proof, cmio_step_proof].concat();
             Ok((proof, machine.state()?.root_hash))
         } else if ((meta_cycle_u128 + 1) & (big_step_mask as u128)) == 0 {
-            assert!(machine.is_uarch_halted()?);
-
             let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
             logs.push(&uarch_step_log);
             let ureset_log = machine.machine.log_reset_uarch(LogType::default())?;
             logs.push(&ureset_log);
             let step_reset_proof = Self::encode_access_logs(logs);
-            let revert_proof = machine.prove_revert_if_needed()?;
 
             // The proven transition ends on the restored checkpoint;
             // report that state, not the discarded rejected one.
             if machine.is_yielded()? {
-                machine.revert_if_needed()?;
+                machine.restore_rejected()?;
             }
 
-            Ok((
-                [step_reset_proof, revert_proof].concat(),
-                machine.state()?.root_hash,
-            ))
+            Ok((step_reset_proof, machine.state()?.root_hash))
         } else {
             let uarch_step_log = machine.machine.log_step_uarch(LogType::default())?;
             logs.push(&uarch_step_log);

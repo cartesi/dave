@@ -18,17 +18,20 @@ level. Terms marked (code) appear verbatim in identifiers.
   halt, padding, then the ureset.
 - machine swapping: the technique of implementing only the uarch state
   transition on-chain while the big machine provides the real ISA.
-- yield: the big machine pausing to await rollups I/O (next input). A
-  yielded machine is mid-transition; its hash is not a commitment leaf
-  until unyielded (fed).
+- manual yield: the raw `iflags_Y` state. `RX_ACCEPTED` means the machine is
+  awaiting the next input; `RX_REJECTED` is restored to its pre-input root at
+  reset; exception and unexpected manual reasons are terminal.
+- awaiting input: an `RX_ACCEPTED` manual yield. At an input boundary, the
+  fused transition feeds the pending input and executes the first ustep.
 - CMIO: the Cartesi Machine I/O mechanism used to feed inputs (advance)
   and read outputs.
-- checkpoint (code: CHECKPOINT_ADDRESS): dedicated machine memory slot
-  holding the pre-input root hash, written at each input boundary so a
-  rejected input can be provably reverted. Aliases the emulator's
+- revert-root slot (code alias: CHECKPOINT_ADDRESS): dedicated machine memory slot
+  holding the pre-input root hash. The send-CMIO primitive records it when
+  delivering an input, and the uarch-reset primitive consumes it when a
+  rejected input must be provably restored. Aliases the emulator's
   shadow-revert-root-hash slot.
-- revert-if-needed (code): the conditional state restore at a big-step
-  boundary when the machine yielded rejecting the input.
+- rejected-input substitution: the conditional root replacement performed
+  inside uarch reset when the machine yielded RX_REJECTED.
 - snapshot: an on-disk serialized machine, in this repo always stored in a
   directory named by the machine root hash.
 - template machine: the genesis snapshot of an application, from which all
@@ -44,20 +47,19 @@ level. Terms marked (code) appear verbatim in identifiers.
 - leaf: machine root hash after one meta-cycle transition. Stored
   run-length compressed as (hash, repetitions).
 - repetitions (code): how many consecutive identical leaves a stored row
-  stands for (padding after halt/yield).
+  stands for (padding after an input boundary or terminal state).
 - implicit hash (code: implicit_hash): the state before leaf 0; carried
   alongside the tree, not inside it.
 - stride / log2step (configuration code): leaf granularity of a tournament
   level; a level-k leaf covers 2^log2step[k] usteps. The semantic tournament
   descriptor exposes the same quantity as `log2Stride`.
 - height (code): tree height at a level; 2^height leaves per tree.
-- span vs mask naming: in engine/constants.rs, `LOG2_*_SPAN_*` are
-  field widths and `*_MASK_TO_*` are the matching field masks
-  (2^k - 1). The historical trap - masks named `*_SPAN_*`, colliding
-  with the Solidity tests' true-span constants of the same names - was
-  retired by renaming on 2026-07-25. Engine code is additionally
-  immune by construction: it speaks `Structure` log2 fields and
-  `Position` coordinates, never the masks.
+- span vs mask naming: the primitive field widths come directly from the
+  emulator's rollup constants. Dave derives its input-window and ruler widths
+  plus the field masks (2^k - 1) from them. The historical trap - masks named
+  `*_SPAN_*`, colliding with true-span constants - is retired. Engine code is
+  additionally protected by construction: it speaks `Structure` log2 fields
+  and `Position` coordinates, never the masks.
 
 ## Tournament (PRT)
 

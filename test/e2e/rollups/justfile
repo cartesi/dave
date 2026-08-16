@@ -50,13 +50,13 @@ preflight PROGRAM SCENARIO:
 test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
   WEB3_PRIVATE_KEY={{WEB3_PRIVATE_KEY}} \
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
-  TEMPLATE_MACHINE=`realpath ../../../test/programs/{{PROGRAM}}/machine-image` \
-  TEMPLATE_MACHINE_HASH=0x`cartesi-machine-stored-hash ../../../test/programs/{{PROGRAM}}/machine-image` \
+  TEMPLATE_MACHINE=`realpath "../../../test/programs/$1/machine-image"` \
+  TEMPLATE_MACHINE_HASH=`cartesi-machine-stored-hash "../../../test/programs/$1/machine-image"` \
   DAVE_APP_FACTORY=`jq -r .address {{DEPLOYMENTS_DIR}}/DaveAppFactory.json` \
   INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/InputBox.json` \
   ERC20_PORTAL=`jq -r .address {{DEPLOYMENTS_DIR}}/ERC20Portal.json` \
   ERC20_TOKEN=`jq -r .address {{DEPLOYMENTS_DIR}}/TestFungibleToken.json` \
-  lua5.4 scenarios/{{SCENARIO}}.lua
+  lua5.4 "scenarios/$2.lua"
 
 # run PRT rollups echo test
 test-echo: \
@@ -159,4 +159,4 @@ clean-sepolia-honeypot-snapshot:
   rm -rf sepolia/machine-image
 
 run-sepolia SCRIPT:
-  ( set -a; source sepolia/.env; exec lua sepolia/{{SCRIPT}}.lua)
+  ( set -a; source sepolia/.env; exec lua "sepolia/$1.lua")

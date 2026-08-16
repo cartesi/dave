@@ -15,14 +15,14 @@ pub use machine::Machine;
 pub use cartesi_machine_sys;
 
 /// Emulator semantic version these bindings were written against, encoded per
-/// the convention from `machine-c-api.h`:
+/// the convention from `cm.h`:
 /// `(major * 1000000) + (minor * 1000) + patch`.
 ///
 /// The `test_emulator_version_pin` test asserts at build time that the linked
 /// `libcartesi` reports this exact version. Bumping the emulator requires
 /// bumping this constant and re-running the config round-trip tests — any
 /// schema drift will surface there.
-pub const EXPECTED_EMULATOR_VERSION: u64 = 20_000; // 0.20.0
+pub const EXPECTED_EMULATOR_VERSION: u64 = 21_000; // 0.21.0
 
 /// Formats an emulator version u64 (as returned by `cm_get_version`) as
 /// `"major.minor.patch"`.

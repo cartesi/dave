@@ -499,6 +499,11 @@ impl Machine {
         self.read_reg(cartesi_machine_sys::CM_REG_MCYCLE)
     }
 
+    /// Returns the maximum mcycle for the current advance-state input.
+    pub fn imcyclemax(&mut self) -> Result<u64> {
+        self.read_reg(cartesi_machine_sys::CM_REG_IMCYCLEMAX)
+    }
+
     /// Returns machine CM_REG_IFLAGS_Y
     pub fn iflags_y(&mut self) -> Result<bool> {
         Ok(self.read_reg(cartesi_machine_sys::CM_REG_IFLAGS_Y)? != 0)
@@ -514,9 +519,9 @@ impl Machine {
         self.read_reg(cartesi_machine_sys::CM_REG_UARCH_CYCLE)
     }
 
-    /// Returns machine CM_REG_UARCH_HALT_FLAG
+    /// Returns machine CM_REG_UARCH_HALT.
     pub fn uarch_halt_flag(&mut self) -> Result<bool> {
-        Ok(self.read_reg(cartesi_machine_sys::CM_REG_UARCH_HALT_FLAG)? != 0)
+        Ok(self.read_reg(cartesi_machine_sys::CM_REG_UARCH_HALT)? != 0)
     }
 
     /// Runs the machine until CM_REG_MCYCLE reaches mcycle_end, machine yields, or halts.
@@ -556,7 +561,7 @@ impl Machine {
 
         // First call with a NULL data pointer: the C API just writes the
         // required length into `length` and returns, without reading any
-        // bytes. (See machine-c-api.h: "If NULL, length will still be set
+        // bytes. (See cm.h: "If NULL, length will still be set
         // without reading any data.")
         let err_code = unsafe {
             cartesi_machine_sys::cm_receive_cmio_request(
@@ -590,13 +595,19 @@ impl Machine {
     }
 
     /// Sends a cmio response.
-    pub fn send_cmio_response(&mut self, reason: CmioResponseReason, data: &[u8]) -> Result<()> {
+    pub fn send_cmio_response(
+        &mut self,
+        reason: CmioResponseReason,
+        data: &[u8],
+        revert_root_hash: Option<&Hash>,
+    ) -> Result<()> {
         let err_code = unsafe {
             cartesi_machine_sys::cm_send_cmio_response(
                 self.machine,
-                reason as u16,
+                reason.into(),
                 data.as_ptr(),
                 data.len() as u64,
+                optional_hash_ptr(revert_root_hash),
             )
         };
         check_err!(err_code)?;
@@ -665,15 +676,17 @@ impl Machine {
         &mut self,
         reason: CmioResponseReason,
         data: &[u8],
+        revert_root_hash: &Hash,
         log_type: LogType,
     ) -> Result<AccessLog> {
         let mut log_ptr: *const c_char = ptr::null();
         let err_code = unsafe {
             cartesi_machine_sys::cm_log_send_cmio_response(
                 self.machine,
-                reason as u16,
+                reason.into(),
                 data.as_ptr(),
                 data.len() as u64,
+                revert_root_hash,
                 log_type.to_bitflag(),
                 &mut log_ptr,
             )
@@ -694,69 +707,61 @@ impl Machine {
         root_hash_before: &Hash,
         log_filename: &Path,
         mcycle_count: u64,
-        root_hash_after: &Hash,
-    ) -> Result<BreakReason> {
+    ) -> Result<Hash> {
         let log_filename_c = path_to_cstring(log_filename)?;
 
-        let mut break_reason = BreakReason::default();
+        let mut obtained_root_hash = Hash::default();
         let err_code = unsafe {
             cartesi_machine_sys::cm_verify_step(
                 root_hash_before,
                 log_filename_c.as_ptr(),
                 mcycle_count,
-                root_hash_after,
-                &mut break_reason,
+                &mut obtained_root_hash,
             )
         };
         check_err!(err_code)?;
 
-        Ok(break_reason)
+        Ok(obtained_root_hash)
     }
 
     /// Checks the validity of a state transition produced by cm_log_step_uarch.
-    pub fn verify_step_uarch(
-        root_hash_before: &Hash,
-        log: &AccessLog,
-        root_hash_after: &Hash,
-    ) -> Result<()> {
+    pub fn verify_step_uarch(root_hash_before: &Hash, log: &AccessLog) -> Result<Hash> {
         let log_cstr = serialize_to_json!(&log);
+        let mut obtained_root_hash = Hash::default();
 
         let err_code = unsafe {
             cartesi_machine_sys::cm_verify_step_uarch(
                 // Optional `const cm_machine *m`; NULL means "local verification".
-                // See machine-c-api.h. (cm_verify_step itself doesn't take this
+                // See cm.h. (cm_verify_step itself doesn't take this
                 // argument — the asymmetry is intentional in the C API.)
                 ptr::null(),
                 root_hash_before,
                 log_cstr.as_ptr(),
-                root_hash_after,
+                &mut obtained_root_hash,
             )
         };
         check_err!(err_code)?;
 
-        Ok(())
+        Ok(obtained_root_hash)
     }
 
     /// Checks the validity of a state transition produced by cm_log_verify_reset_uarch.
-    pub fn verify_reset_uarch(
-        root_hash_before: &Hash,
-        log: &AccessLog,
-        root_hash_after: &Hash,
-    ) -> Result<()> {
+    pub fn verify_reset_uarch(root_hash_before: &Hash, log: &AccessLog) -> Result<Hash> {
         let log_cstr = serialize_to_json!(&log);
+        let mut obtained_root_hash = Hash::default();
         let err_code = unsafe {
             cartesi_machine_sys::cm_verify_reset_uarch(
                 // Optional `const cm_machine *m`; NULL means "local verification".
-                // See machine-c-api.h.
+                // See cm.h.
                 ptr::null(),
                 root_hash_before,
                 log_cstr.as_ptr(),
-                root_hash_after,
+                &mut obtained_root_hash,
             )
         };
         check_err!(err_code)?;
 
-        Ok(())
+        Ok(obtained_root_hash)
     }
 
     /// Checks the validity of a state transition produced by cm_log_send_cmio_response.
@@ -765,27 +770,33 @@ impl Machine {
         data: &[u8],
         root_hash_before: &Hash,
         log: &AccessLog,
-        root_hash_after: &Hash,
-    ) -> Result<()> {
+        revert_root_hash: &Hash,
+    ) -> Result<Hash> {
         let log_cstr = serialize_to_json!(&log);
+        let mut obtained_root_hash = Hash::default();
 
         let err_code = unsafe {
             cartesi_machine_sys::cm_verify_send_cmio_response(
                 // Optional `const cm_machine *m`; NULL means "local verification".
-                // See machine-c-api.h.
+                // See cm.h.
                 ptr::null(),
-                reason as u16,
+                reason.into(),
                 data.as_ptr(),
                 data.len() as u64,
                 root_hash_before,
                 log_cstr.as_ptr(),
-                root_hash_after,
+                revert_root_hash,
+                &mut obtained_root_hash,
             )
         };
         check_err!(err_code)?;
 
-        Ok(())
+        Ok(obtained_root_hash)
     }
+}
+
+fn optional_hash_ptr(hash: Option<&Hash>) -> *const Hash {
+    hash.map_or(ptr::null(), |hash| hash as *const Hash)
 }
 
 impl Machine {
@@ -982,9 +993,8 @@ mod tests {
         machine.log_step(50, &log_path)?;
         let root_hash_after = machine.root_hash()?;
 
-        let verified_break_reason =
-            Machine::verify_step(&root_hash_before, &log_path, 50, &root_hash_after)?;
-        assert_ne!(verified_break_reason, constants::break_reason::FAILED);
+        let verified_root_hash = Machine::verify_step(&root_hash_before, &log_path, 50)?;
+        assert_eq!(verified_root_hash, root_hash_after);
 
         Ok(())
     }
@@ -998,7 +1008,8 @@ mod tests {
         let access_log: AccessLog = machine.log_step_uarch(LogType::default().with_large_data())?;
         let root_hash_after = machine.root_hash()?;
 
-        Machine::verify_step_uarch(&root_hash_before, &access_log, &root_hash_after)?;
+        let verified_root_hash = Machine::verify_step_uarch(&root_hash_before, &access_log)?;
+        assert_eq!(verified_root_hash, root_hash_after);
 
         Ok(())
     }
@@ -1012,7 +1023,8 @@ mod tests {
         let reset_log = machine.log_reset_uarch(LogType::default().with_annotations())?;
         let root_hash_after = machine.root_hash()?;
 
-        Machine::verify_reset_uarch(&root_hash_before, &reset_log, &root_hash_after)?;
+        let verified_root_hash = Machine::verify_reset_uarch(&root_hash_before, &reset_log)?;
+        assert_eq!(verified_root_hash, root_hash_after);
 
         Ok(())
     }
@@ -1035,20 +1047,22 @@ mod tests {
         ));
         let response_data = b"Hello from outside!";
         let access_log: AccessLog = machine.log_send_cmio_response(
-            CmioResponseReason::Advance,
+            CmioResponseReason::Gio(16),
             response_data,
+            &root_hash_before,
             LogType::default().with_large_data(),
         )?;
 
         let root_hash_after = machine.root_hash()?;
 
-        Machine::verify_send_cmio_response(
-            CmioResponseReason::Advance,
+        let verified_root_hash = Machine::verify_send_cmio_response(
+            CmioResponseReason::Gio(16),
             response_data,
             &root_hash_before,
             &access_log,
-            &root_hash_after,
+            &root_hash_before,
         )?;
+        assert_eq!(verified_root_hash, root_hash_after);
 
         Ok(())
     }
@@ -1069,7 +1083,7 @@ mod tests {
         ));
 
         let response = b"Hello from outside!";
-        machine.send_cmio_response(CmioResponseReason::Advance, response)?;
+        machine.send_cmio_response(CmioResponseReason::Gio(16), response, None)?;
 
         let break_reason = machine.run(u64::MAX)?;
         assert_eq!(break_reason, constants::break_reason::HALTED);

@@ -6,7 +6,7 @@
 //!
 //! Identity is the input boundary - "the machine before input k",
 //! yielded with a pristine uarch - because the window-opening
-//! transition is fused (checkpoint + delivery + first ustep, one
+//! transition is fused (delivery with revert root + first ustep, one
 //! leaf): post-feed states have no meta-cycle coordinate and are
 //! never stored. Under the (epoch, input) map sits a content-
 //! addressed store (directories named by machine root hash), which

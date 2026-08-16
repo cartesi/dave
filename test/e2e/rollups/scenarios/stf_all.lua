@@ -28,7 +28,7 @@ env.spawn_node()
 -- advance such that epoch 0 is finished
 local sealed_epoch = env.roll_epoch()
 
--- epoch 1: the closing slot (final ustep + ureset + revert check) of
+-- epoch 1: the closing slot (final ustep + ureset) of
 -- an idle big cycle, reached through idle-churn territory: transition
 -- 2^44 - 1, long after input 0 finished. The single boundary patch is
 -- a degenerate chain (it is its own boundary at every level).
@@ -59,10 +59,10 @@ sealed_epoch = env.run_epoch(sealed_epoch, {
 }, { env.sample_inputs[1], env.sample_inputs[1], env.sample_inputs[1] })
 assert(sealed_epoch.input_upper_bound == 13)
 
--- epoch 4: the fused feed of input 1 (checkpoint write + input
--- delivery + first ustep): transition 2^68, the first dispute past
+-- epoch 4: the fused feed of input 1 (input delivery with its revert
+-- root + first ustep): transition 2^68, the first dispute past
 -- window 0. Replays cross a fed input boundary and the transition
--- proof carries the data-availability and checkpoint-write material.
+-- proof carries the data-availability and send-CMIO log material.
 env.run_epoch(sealed_epoch, {
     { hash = Hash.zero, meta_cycle = (1 << 68) + (1 << 44) },
     { hash = Hash.zero, meta_cycle = (1 << 68) + (1 << 28) },

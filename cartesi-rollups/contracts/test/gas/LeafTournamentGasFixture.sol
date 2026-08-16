@@ -13,8 +13,6 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentParametersProvider} from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
 import {CartesiStateTransition} from "prt-contracts/state-transition/CartesiStateTransition.sol";
-import {CmioStateTransition} from "prt-contracts/state-transition/CmioStateTransition.sol";
-import {RiscVStateTransition} from "prt-contracts/state-transition/RiscVStateTransition.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {MultiLevelTournamentFactory} from "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Bond} from "prt-contracts/tournament/libs/Bond.sol";
@@ -110,9 +108,7 @@ abstract contract LeafTournamentGasFixture is Test {
     uint256 internal fundedBalance;
 
     constructor() {
-        RiscVStateTransition riscV = new RiscVStateTransition();
-        CmioStateTransition cmio = new CmioStateTransition();
-        CartesiStateTransition stateTransition = new CartesiStateTransition(riscV, cmio);
+        CartesiStateTransition stateTransition = new CartesiStateTransition();
         FACTORY = new MultiLevelTournamentFactory(new Tournament(), new LeafGasParametersProvider(), stateTransition);
     }
 

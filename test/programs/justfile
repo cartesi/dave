@@ -1,9 +1,9 @@
 set positional-arguments
 
 download-deps: clean-deps
-  wget https://github.com/cartesi/image-kernel/releases/download/v0.20.0/linux-6.5.13-ctsi-1-v0.20.0.bin \
+  wget https://github.com/cartesi/image-kernel/releases/download/v0.21.0/linux-6.5.13-ctsi-2-v0.21.0.bin \
     -O ./linux.bin
-  wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.17.2/rootfs-tools.ext2 \
+  wget https://github.com/cartesi/machine-emulator-tools/releases/download/v0.18.0/rootfs-tools.ext2 \
     -O ./rootfs.ext2
 
 clean-deps:
@@ -36,7 +36,7 @@ build-yield: clean-yield
   ../../script/machine-image-fingerprint.sh capture yield
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --no-rollback --store=./yield/machine-image \
+    --revert-mode=none --store=./yield/machine-image \
     -- "while true; do yield manual rx-accepted; yield manual rx-rejected; done"
   ../../script/machine-image-fingerprint.sh write yield
 clean-yield: (clean-program "yield")
@@ -51,7 +51,7 @@ build-stress: clean-stress
   mkdir -p stress
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --no-rollback --store=./stress/machine-image \
+    --revert-mode=none --store=./stress/machine-image \
     -- "while true; do yield manual rx-accepted; dd if=/dev/zero bs=1M count=8 2>/dev/null | sha256sum > /dev/null; done"
   ../../script/machine-image-fingerprint.sh write stress
 clean-stress: (clean-program "stress")
@@ -61,7 +61,7 @@ build-echo: clean-echo
   ../../script/machine-image-fingerprint.sh capture echo
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --no-rollback --store=./echo/machine-image \
+    --revert-mode=none --store=./echo/machine-image \
     -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1 --reject=2"
   ../../script/machine-image-fingerprint.sh write echo
 clean-echo: (clean-program "echo")
@@ -70,10 +70,7 @@ clean-echo: (clean-program "echo")
 build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
   ../../script/machine-image-fingerprint.sh capture honeypot
   git clone https://github.com/cartesi/honeypot.git honeypot/project
-  git -C honeypot/project reset --hard 589a9c1a26522904f79df4955caff69537d38b13 # v3.0.1
-  sed -i 's/,filename:/,data_filename:/g' honeypot/project/Makefile
-  sed -i 's/--append-bootargs=ro/--append-bootargs=rw/g' honeypot/project/Makefile
-  sed -i 's/label:state,length:4096,user:dapp/label:state,length:4096,user:dapp,mke2fs:false,mount:false/g' honeypot/project/Makefile
+  git -C honeypot/project reset --hard 23b31c06f0537cbd33f996f4ecf1ef6bea8363b3 # cartesi/honeypot#37
   mkdir -p honeypot/project/config/devnet
   ./honeypot/generate-devnet-honeypot-config.sh > honeypot/project/config/devnet/honeypot-config.hpp
   make -C honeypot/project snapshot HONEYPOT_CONFIG=devnet
@@ -88,7 +85,7 @@ build-compute: clean-compute
   ../../script/machine-image-fingerprint.sh capture compute
   cartesi-machine --ram-image=./linux.bin --final-hash \
     --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --no-rollback --store=./compute/machine-image \
+    --revert-mode=none --store=./compute/machine-image \
     --max-mcycle=0 \
     -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"
   ../../script/machine-image-fingerprint.sh write compute

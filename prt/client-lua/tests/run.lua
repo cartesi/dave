@@ -3,6 +3,7 @@ local client_directory = assert(script_directory:match("^(.*)/tests$"))
 package.path = client_directory .. "/?.lua;" .. package.path
 
 local suites = {
+    "tests.computation_test",
     "tests.domain_test",
     "tests.fold_test",
     "tests.adapter_test",

@@ -106,8 +106,8 @@ impl MachineRunner {
                     batch.boundary_path().to_path_buf(),
                 );
                 assert!(
-                    stf.yielded()? && !stf.halted()?,
-                    "the working clone must be yielded awaiting the input"
+                    stf.yielded()? || stf.terminal()?,
+                    "the working clone must await input or be terminal"
                 );
                 let mut ruler = Ruler::new_at(
                     stf,

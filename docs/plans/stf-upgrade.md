@@ -1,14 +1,12 @@
 # STF upgrade: emulator v0.21, solidity-step, and two levels
 
-Status: DRAFT (2026-07-21) - Gabriel's outline plus the accumulated
-ledger, for his review. Decision points are marked. The standing
-instruction applies: question and re-evaluate everything here as it
-is reached.
+Status: ACTIVE (updated 2026-08-11). The original phase ledger remains below;
+the execution checkpoint records what changed after the stable releases.
 
 ## Goal
 
 Upgrade the state-transition stack end to end - emulator
-v0.21.0-test6, machine-solidity-step to latest, our
+v0.21.0, machine-solidity-step v0.15.0, our
 CartesiStateTransition rewritten on top of it - and ride the
 result to a two-level tournament. The solidity-step update is
 expected to considerably simplify CartesiStateTransition and fix
@@ -17,10 +15,240 @@ protocol gap of docs/dimensioning.md). The emulator update brings
 new hash collection APIs, and cartesi-machine.lua itself gains a
 command that computes a whole epoch's computation hash (built on
 the new API internally - reference material for our own usage,
-and a cross-check oracle). A FUTURE emulator tag (not test6) will
-ship a manifest of computations with their expected hashes - a
-vendored conformance fixture to adopt into the verification net
-the moment it exists.
+and a cross-check oracle). The stable release ships a 35-case
+computation-hash corpus with templates, inputs, expected hashes, and
+boundary cases for accept, reject, exception, halt, unexpected manual yield,
+mcycle overflow, uarch limits, padding, and bundling.
+
+## Execution checkpoint (2026-08-10)
+
+- Stable pins are emulator v0.21.0 (`bd095381...`) and solidity-step v0.15.0
+  (`23765c88...`). Do not chase unreleased binary-step-log work in this
+  upgrade.
+- Emulator, bindings, proof producers, solidity-step, and the adapter form one
+  green integration milestone. The v0.21 layout and API changes mean an
+  emulator-only intermediate state is not expected to stand alone.
+- Ordinary accepted and rejected input behavior is preserved. The opening
+  boundary is now one send-CMIO log carrying the pre-input revert root. The
+  closing boundary is step plus reset; rejected-input substitution lives
+  inside reset. Halt, exception, unexpected manual yield, and mcycle overflow
+  now have total terminal behavior.
+- Hash comparisons are same-version only. v0.20 and v0.21 machine roots are
+  expected to differ. The release gate compares Dave's existing collector and
+  the v0.21 CLI on identical v0.21 templates and inputs before regenerating
+  Dave's v0.21 goldens.
+- The new `cm_collect_*` APIs remain deferred. The exact
+  `RX_REJECTED`-at-`imcyclemax` boundary is now pinned: the released uarch
+  collector keeps the physical overflow state, while step/reset, log-step,
+  and the mcycle collector substitute the revert root. Dave's existing path
+  follows the deployed step/reset semantics. The mismatch blocks adopting the
+  uarch collector, not this old-collector update.
+- The release gate passes all 17 mcycle corpus cases against the v0.21 CLI and
+  Dave's existing collector. A deterministic FFI regression also derives the
+  yield program's real rejection-closing slot and replays its step/reset proof
+  through `CartesiStateTransition`.
+- Tournament reduction from three levels to two remains a later, separately
+  measured phase after the v0.21 update is green.
+
+## Post-integration review ledger (2026-08-11)
+
+The release bump is green. The following slices are recorded separately so
+cleanup, deployment identity, and snapshot durability do not become one large
+follow-up change.
+
+### Geometry authority (completed 2026-08-11)
+
+- Dave's one-for-one `LOG2_*_SPAN_TO_*` aliases are retired in Rust, Solidity,
+  and Lua. The three primitive widths now come directly from the emulator
+  bindings, Lua module, and generated `EmulatorConstants`.
+- `Structure` and genuinely derived Dave concepts remain: input-window width,
+  epoch-ruler width, and counter masks. Operational hardcoded `20`, `48`, and
+  `92` values were removed; explanatory values and frozen measurements remain.
+- The executable `CartesiStateTransition` bytecode is unchanged. Its full
+  bytecode differs only in Solidity's source-metadata digest, so deployment
+  artifacts are intentionally regenerated with the following composition
+  change rather than twice.
+
+### Solidity composition (completed 2026-08-11)
+
+- `IStateTransition` remains the tournament-facing abstraction, implemented by
+  one concrete `CartesiStateTransition`. The adapter calls
+  `SendCmioResponse` at an input boundary and
+  `MetaStep.step(counter + 1, accessLogs)` for every leaf. The `+ 1` converts
+  Dave's source-state counter to MetaStep's produced-state counter.
+- The `RiscVStateTransition` and `CmioStateTransition` proxy contracts and
+  interfaces are removed. The production build is 13,713 bytes of runtime code
+  and 13,739 bytes of initcode, leaving 10,863 bytes below EIP-170 and 35,413
+  below EIP-3860. The old three contracts totalled 17,179 runtime bytes.
+- `MetaStep` now rejects trailing proof bytes at Dave's boundary. Focused tests
+  pin that tightening, all three transition shapes, real rejected-input
+  substitution, and the source-to-produced counter conversion.
+- Closing proof producers accept both ordinary halted padding and an unhalted
+  uarch-cycle-overflow state. The overflow regression emits a 1,920-byte
+  identity step and a 5,216-byte reset, and replays the complete 7,136-byte
+  witness through Solidity to the canonical reset root.
+- The v0.21 maximum-input proof is 93,964 bytes, 5,760 bytes larger than the
+  accepted v0.20 witness. Direct composition saves 95,044 reviewed gas units
+  over the v0.21 proxy split, but the release-driven growth still moves the
+  selected `WIN_LEAF_MATCH` subsidy from 4,298,000 to 4,420,000. The leaf
+  terminal reserve and role-specific bonds update mechanically.
+- The `IStateTransition` ABI and Tournament storage layout remain stable. The
+  concrete constructor, Cartesi bytecode, gas table, CREATE2 addresses, and
+  dependent factories change. The regenerated devnet bundle contains no proxy
+  records and passes its self-fingerprint check.
+
+### Computation-hash corpus harness
+
+- Split acquisition from execution. Keep a public
+  `download-computation-hash-corpus` recipe and let
+  `test-computation-hash-corpus` depend on it as the convenient one-command
+  release gate. The lower-level test operation itself consumes an existing
+  verified corpus and performs no network access. The corpus is optional and
+  does not belong in ordinary `setup`.
+- Move the repository-wide release gate from the root justfile into the
+  existing `script/` directory as `script/computation-hash-corpus.sh`; keep both
+  root recipes as one-line public wrappers. Bash remains appropriate for curl,
+  checksum, tar, cache, and process orchestration. Two wrappers do not yet
+  justify a module or a generic `test` umbrella; promote this to a corpus module
+  only when it owns a broader download, test, clean, or multi-corpus lifecycle.
+- Pin v0.21.0 and its digest in the script. The Rust oracle also pins v0.21.0,
+  so recipe parameters suggesting arbitrary release compatibility are false
+  flexibility.
+- Use unique temporary download and extraction paths, bind the extracted cache
+  to the archive digest, and keep the SHA-256 gate.
+- Mark the Rust corpus test ignored in ordinary Cargo runs. The explicit script
+  invokes it with `--ignored --exact`; a missing corpus environment must fail,
+  not report a skipped body as a passing test.
+
+### Cartesi Machine preparation and source-build invalidation (completed 2026-08-11)
+
+- `machine/justfile` and `machine/script/cartesi-machine-source.sh` now own the
+  source-provider lifecycle. They cache and verify the pinned release patch and
+  Boost archive outside the submodule, validate all outputs before publication,
+  and retain verified downloads across `clean`.
+- Release preparation requires the exact v0.21 emulator commit. A separate
+  `generate-sources` path runs the upstream generator for any clean
+  intermediary commit, using its Docker toolchain unless a compatible native
+  toolchain is declared. Both paths feed the same native incremental build.
+- `cartesi-machine-sys/build.rs` is network-free. The download, build, and copy
+  uarch acquisition features and their environment inputs are retired. The
+  build script only selects the provider, generates bindings, invokes Make for
+  an already prepared source checkout, stages archives, and links them.
+- Any set `LIBCARTESI_PATH` selects an external provider and never falls back;
+  `INCLUDECARTESI_PATH` selects its header or the conventional sibling include
+  directory is inferred. With the library variable unset, source mode validates
+  the prepared inputs and incrementally builds the submodule with `slirp=no`.
+- Cargo watches mutable external archives and headers. Source mode watches its
+  prepared inputs plus the submodule gitfile and resolved Git index, so a moved
+  checkout rechecks Make while an unchanged invocation stays fresh.
+- Setup is provider-aware. Nix and packaged providers skip emulator source
+  work; source lanes prepare explicitly; package-backed CI exports both paths;
+  and Docker consumes its installed archive without first building an unused
+  host copy. Root recipe names remain compatibility wrappers around the machine
+  module.
+
+### Justfile boundary and cleanup
+
+- Keep Just as the public, discoverable dependency graph. Recipes that are a
+  command or a short pipeline remain inline. Branching, loops, retries,
+  checksums, temporary-file cleanup, and nontrivial destructive path selection
+  move into scripts beside the subsystem they serve. Preserve current public
+  recipe names as compatibility wrappers.
+- Keep the five existing subsystem modules, including the machine lifecycle,
+  but do not create a generic `test` module or a module merely to hide a
+  one-line command.
+- Make root `doctor` a one-line wrapper around `script/doctor.sh`, but distribute
+  owned checks across subsystem-local doctor scripts and one-line module
+  recipes. The root script checks cross-cutting host and repository state, runs
+  every component in a subshell, continues after failures, and reports which
+  components failed. A local doctor checks only state produced by its own setup
+  recipes and never invokes another doctor. Use only an exit contract - healthy,
+  diagnosed setup failure, or checker failure - rather than JSON, parsed output,
+  shared counters, or a shell framework.
+- Bash is intentional bootstrap tooling for every doctor: it must be able to
+  report a missing Lua, Python, Rust, or Docker environment rather than require
+  one of them to start. Align checks with real build selection: any set
+  `LIBCARTESI_PATH` selects the external provider, Docker is required by the
+  current full `just check`, and submodule, binding-stamp, header, library, and
+  version checks must diagnose the same inputs the build consumes.
+- Migrate doctor without a flag day. First extract the current behavior to the
+  root script, then refactor it into sections. Move the machine-owned checks
+  first now that its module has landed, followed by contracts, programs, and
+  E2E one subsystem at a time. Keep the focused E2E preflight separate from the
+  exhaustive doctor, and extract shared helpers only after concrete repetition
+  remains.
+- Move worktree report and sweep to `script/worktrees.sh`, and bootstrap to a
+  focused script. Parse worktree records without truncating paths, recognize
+  both Codex and legacy Claude session worktrees, preserve the current/dirty
+  worktree refusals, and propagate cleanup failures instead of printing a
+  successful sweep after a failed removal.
+- Fix argument forwarding before broader extraction. Recipes already enable
+  positional arguments, but several variadic and scalar wrappers interpolate
+  `{{ARGS}}`, `{{CASE}}`, `{{TAG}}`, or `{{CMD}}` back into shell source. Pass
+  them as `"$@"` or `"$1"` so spaces and shell punctuation remain data. This is
+  primarily developer-tool correctness, not an untrusted-input security
+  boundary.
+- Use one acquisition rule across corpora, program dependencies, emulator
+  sources, and retained remote snapshots: reuse a valid cache; download to a
+  unique temporary path; verify a pinned digest; atomically publish; and never
+  delete the last valid copy before a replacement succeeds. In particular,
+  `programs::download-deps` must stop depending on `clean-deps`, and the legacy
+  Sepolia `curl | tar` path must either gain this treatment or be quarantined as
+  unsupported historical tooling.
+- Keep program builds network-free and make the default build and clean sets
+  symmetric. Keep Docker-heavy stress or honeypot fixtures explicit. When a
+  program producer moves out of a justfile, add the new script or patch to the
+  machine-image fingerprint inputs so the refactor does not weaken provenance.
+- Extract the PRT gas-calibration program to
+  `prt/contracts/script/measure-gas.sh`, matching the existing Rollups pattern.
+  Move the duplicated contract-binding program to one shared script and make
+  its stamp cover the generator plus actual Forge configuration, lockfiles,
+  filters, and sources rather than the whole surrounding justfile.
+- Preserve the readable E2E scenario dependency matrix in Just. Move only its
+  procedural preflight into a bootstrap-safe shell script. Quarantine or
+  checksum and stage the stale Sepolia helpers before treating them as runnable
+  tooling; do not build a general E2E cleanup framework.
+- Retain the compact `prt/measure_constants/justfile`, but fix its underlying
+  Make dependency so `chronos.so` rebuilds after `chronos.c` changes, verify the
+  compute image before measuring, and align its Lua ABI and geometry source with
+  the rest of this campaign.
+- Land the cleanup in narrow slices: first argument forwarding and incorrect
+  diagnostics/downloads; then corpus and machine-source ownership; then root
+  script extraction; then binding, program, and E2E polish. Re-run fingerprint
+  generation intentionally when producer inputs change rather than confusing
+  that expected invalidation with v0.20-to-v0.21 state-hash drift.
+
+### Stored-machine boundary
+
+- Preserve the core model: committed snapshots load with explicit
+  `SHARING_NONE` (file-backed private mmap and OS CoW); only unique working
+  clones load with `SHARING_ALL`. Do not rely on stored per-range sharing flags
+  to make an immutable load private in practice.
+- The default retention and database batch cadence is 64 inputs. The current
+  implementation nevertheless promotes a working clone into the final CAS
+  after every accepted input so it can be the next input's rollback point. The
+  database transaction then prunes non-gap boundaries and removes their
+  directories. Therefore `sync_stored` must not simply be added to the current
+  per-input `commit_clone` hot path.
+- Distinguish a transient rollback checkpoint from a durable retained snapshot.
+  A candidate batch owns one immutable transient checkpoint plus one mutable
+  clone; it durably publishes only gap boundaries and the final batch anchor.
+  Validate the exact restart and rejection lifecycle before adopting this
+  shape.
+- Add thin `sync_stored`, `rename_stored`, and durable-remove bindings once the
+  publication boundary is settled. The durable order is close, sync the stored
+  files, no-replace rename, then database registration. `sync_stored` is a host
+  backing-store barrier, not a guest filesystem sync.
+- Make publication derive or verify its CAS key from the machine. Do not add a
+  full hash-tree verification to every normal runner load. A hot root comparison
+  is optional defense in depth and does not replace full corruption diagnosis.
+- Treat one node process as the owner of a state directory and document that
+  invariant. Do not add a multi-process locking or recovery subsystem unless
+  shared state-directory operation becomes a supported requirement.
+- Before implementation, benchmark v0.21 clone, private/shared load, root hash,
+  and `sync_stored`, and add crash-point tests around sync, rename, and database
+  registration. Existing SIGKILL tests establish process recovery, not
+  power-loss durability.
 
 ## Verification doctrine for the whole campaign
 
@@ -39,7 +267,13 @@ the moment it exists.
   reviewed act. The template-hash tripwire firing is the signal,
   not an obstacle.
 
-## Phases (proposal)
+## Original phase proposal (phases 0-2 superseded)
+
+This ledger is retained as planning provenance. The execution checkpoint
+above describes the current design: phases 0-2 landed as one integration
+milestone, so their separate intermediate gates and old checkpoint/halt
+terminology below are not current specifications. Phases 3 and 4 remain
+forward-looking work.
 
 0. RECON, before any bump. Read the v0.21 changelog and the new
    solidity-step; inventory every semantic delta. Specifically:
@@ -83,7 +317,7 @@ the moment it exists.
    Output: a recon section in this file, facts with citations.
 
 1. Emulator bump, old collection path. Submodule + bindings on
-   v0.21.0-test6, machine images rebuilt, devnet and store pins
+   v0.21.0, machine images rebuilt, devnet and store pins
    updated (stores wipe: config pins the emulator version).
    Gate: our engine's hashes (old API) match the Lua script's on
    identical machines and spans, across the transition-shape
@@ -166,7 +400,7 @@ the moment it exists.
   way is invisible to e2e; only the contracts arbitrate.
 - Fixture regeneration without a passing differential first
   launders bugs into goldens.
-- The dev environment moves with the emulator: LIBCARTESI_PATH
-  and the cartesi-dev flake need a v0.21 libcartesi; local just
-  (1.48) vs CI just (pinned 1.57) is existing skew worth closing
-  while the flake is open.
+- The dev environment moves with the emulator. The cartesi-dev flake now
+  provides the v0.21 external library; future pin bumps must keep that package,
+  `LIBCARTESI_PATH`, and the repository lifecycle aligned. Local just (1.48)
+  versus CI just (pinned 1.57) remains skew worth closing when the flake moves.

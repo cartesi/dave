@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! Rust mirror of `cartesi::machine_config` and friends from the v0.20
+//! Rust mirror of `cartesi::machine_config` and friends from the v0.21
 //! cartesi-machine C++ API. The field names and nesting match the JSON
 //! emitted by `cm_get_default_config` / `cm_get_initial_config` and consumed
 //! by `cm_create_new`.
@@ -196,6 +196,7 @@ pub struct RegistersConfig {
     pub iprv: u64,
     pub iflags: IFlagsConfig,
     pub iunrep: u64,
+    pub imcyclemax: u64,
     pub clint: CLINTConfig,
     pub plic: PLICConfig,
     pub htif: HTIFConfig,
@@ -256,6 +257,7 @@ impl Default for DTBConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryRangeConfig {
+    pub label: String,
     pub start: u64,
     pub length: u64,
     pub read_only: bool,
@@ -267,6 +269,7 @@ impl Default for MemoryRangeConfig {
     /// `start` and `length` are `UINT64_MAX` to mean "auto-detect".
     fn default() -> Self {
         Self {
+            label: String::new(),
             start: u64::MAX,
             length: u64::MAX,
             read_only: false,
@@ -276,6 +279,7 @@ impl Default for MemoryRangeConfig {
 }
 
 pub type FlashDriveConfigs = Vec<MemoryRangeConfig>;
+pub type NvramConfigs = Vec<MemoryRangeConfig>;
 
 // ---------------------------------------------------------------------------
 // CMIO
@@ -387,7 +391,7 @@ pub struct UarchRegistersConfig {
     /// `uint64_t` on the C++ side (shadow-uarch-state.h), not a C++ `bool`.
     /// Used as a boolean flag (0 = not halted, non-zero = halted), but the
     /// wire representation is an integer.
-    pub halt_flag: u64,
+    pub halt: u64,
 }
 
 /// Mirror of C++ `cartesi::uarch_processor_config`.
@@ -467,6 +471,7 @@ pub struct MachineConfig {
     pub ram: RAMConfig,
     pub dtb: DTBConfig,
     pub flash_drive: FlashDriveConfigs,
+    pub nvram: NvramConfigs,
     pub virtio: VirtIOConfigs,
     pub cmio: CmioConfig,
     pub pmas: PmasConfig,

@@ -28,7 +28,7 @@ use super::{Settlement, Storage, rollups_machine};
 use crate::engine::Run;
 
 use crate::merkle::Digest;
-use cartesi_machine::types::Hash;
+use cartesi_machine::{constants::rollup::LOG2_MAX_ADVANCE_STATES_PER_EPOCH, types::Hash};
 use rusqlite::{Transaction, params};
 use std::path::{Path, PathBuf};
 
@@ -375,7 +375,7 @@ impl Storage {
             .into_iter()
             .map(|root| (root, 1))
             .collect();
-        let max_windows = 1u64 << crate::engine::constants::LOG2_INPUT_SPAN_TO_EPOCH;
+        let max_windows = 1u64 << LOG2_MAX_ADVANCE_STATES_PER_EPOCH;
         if recorded < max_windows {
             let pad_root = crate::engine::fold_runs(
                 [(boundary, rollups_machine::STRIDE_COUNT_IN_INPUT)],
@@ -384,10 +384,7 @@ impl Storage {
             .root_hash();
             roots.push((pad_root, max_windows - recorded));
         }
-        Ok(
-            crate::engine::fold_runs(roots, crate::engine::constants::LOG2_INPUT_SPAN_TO_EPOCH)?
-                .root_hash(),
-        )
+        Ok(crate::engine::fold_runs(roots, LOG2_MAX_ADVANCE_STATES_PER_EPOCH)?.root_hash())
     }
 
     /// The disk baseline, logged at every roll: the snapshot store

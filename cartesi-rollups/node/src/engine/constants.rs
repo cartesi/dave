@@ -1,35 +1,33 @@
-//! The meta-cycle span constants shared with the contracts: the one
-//! numeric authority for the production machine's shape. Everything
-//! else derives from these - [`super::Structure::PRODUCTION`] and the
-//! stride constants in `storage/rollups_machine.rs` - so a span change
-//! happens here and nowhere else. Naming: `LOG2_*_SPAN_*` are field
-//! widths (matching the Solidity constants of the same names);
-//! `*_MASK_*` are the corresponding field masks (2^n - 1).
+//! Dave-derived values built from the emulator's canonical rollup geometry.
+//! The primitive field widths stay owned by `cartesi_machine::constants::rollup`;
+//! this module contains only masks and aggregate spans derived from that
+//! authority, plus the named checkpoint address used by Dave.
 
 use crate::arithmetic;
+use cartesi_machine::constants::rollup::{
+    LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+    LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
+};
 
-// log2 value of the maximal number of micro instructions that emulates a big instruction
-pub const LOG2_UARCH_SPAN_TO_BARCH: u64 = 20;
-pub const UARCH_MASK_TO_BARCH: u64 = arithmetic::max_uint(LOG2_UARCH_SPAN_TO_BARCH);
+pub const UARCH_MASK_TO_BARCH: u64 = arithmetic::max_uint(LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
 
-// log2 value of the maximal number of big instructions that executes an input
-pub const LOG2_BARCH_SPAN_TO_INPUT: u64 = 48;
-pub const BARCH_MASK_TO_INPUT: u64 = arithmetic::max_uint(LOG2_BARCH_SPAN_TO_INPUT);
+pub const BARCH_MASK_TO_INPUT: u64 = arithmetic::max_uint(LOG2_MAX_MCYCLES_PER_ADVANCE_STATE);
 
-// log2 value of the maximal number of inputs that allowed in an epoch
-pub const LOG2_INPUT_SPAN_TO_EPOCH: u64 = 24;
-pub const INPUT_MASK_TO_EPOCH: u64 = arithmetic::max_uint(LOG2_INPUT_SPAN_TO_EPOCH);
+pub const INPUT_MASK_TO_EPOCH: u64 = arithmetic::max_uint(LOG2_MAX_ADVANCE_STATES_PER_EPOCH);
 
-// log2 value of the maximal number of micro instructions that executes an input
-pub const LOG2_UARCH_SPAN_TO_INPUT: u64 = LOG2_BARCH_SPAN_TO_INPUT + LOG2_UARCH_SPAN_TO_BARCH;
+/// Meta-cycles in one input window: log2.
+pub const LOG2_INPUT_WINDOW_SPAN: u64 =
+    LOG2_MAX_MCYCLES_PER_ADVANCE_STATE + LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
+
+/// Meta-cycles in one epoch ruler: log2.
+pub const LOG2_EPOCH_RULER_SPAN: u64 = LOG2_MAX_ADVANCE_STATES_PER_EPOCH + LOG2_INPUT_WINDOW_SPAN;
 
 /// Re-export of the emulator's dedicated memory slot for the pre-input root
 /// hash (a.k.a. `CM_AR_SHADOW_REVERT_ROOT_HASH_START`, currently `0xfe0`).
 ///
-/// The off-chain client writes the current root hash to this address before
-/// sending a CMIO input, so that on-chain `revertIfNeeded` can read it back
-/// and restore the state after a rejected input. The Solidity side mirrors
-/// the emulator through step's auto-generated
+/// The emulator's send-CMIO primitive records the supplied pre-input root at
+/// this address, and the reset primitive substitutes it after a rejected
+/// input. The Solidity side mirrors the emulator through step's auto-generated
 /// `EmulatorConstants.REVERT_ROOT_HASH_ADDRESS`;
 /// `tests::test_emulator_and_step_agree_on_revert_address` asserts the two
 /// stay in sync after any emulator or step bump.
@@ -37,14 +35,18 @@ pub use cartesi_machine::constants::ar::SHADOW_REVERT_ROOT_HASH_START as CHECKPO
 
 #[cfg(test)]
 mod tests {
-    use super::CHECKPOINT_ADDRESS;
+    use super::{CHECKPOINT_ADDRESS, LOG2_EPOCH_RULER_SPAN};
+    use cartesi_machine::constants::rollup::{
+        LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+        LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
+    };
 
     /// Guardrail: step's `EmulatorConstants.sol` is auto-generated from the
     /// emulator C++ source, and `REVERT_ROOT_HASH_ADDRESS` must equal the
-    /// emulator's `CM_AR_SHADOW_REVERT_ROOT_HASH_START` — otherwise the
-    /// off-chain client writes to one address while on-chain
-    /// `revertIfNeeded` reads from another, and any rejected-input dispute
-    /// mis-restores state. If this test fails after an emulator or step
+    /// emulator's `CM_AR_SHADOW_REVERT_ROOT_HASH_START` - otherwise the
+    /// emulator send primitive records one leaf while the on-chain reset
+    /// reads another, and any rejected-input dispute mis-restores state.
+    /// If this test fails after an emulator or step
     /// bump, the step submodule is out of sync with the emulator version
     /// these bindings link against: regenerate step's `EmulatorConstants.sol`
     /// against the matching emulator and bump both submodule pointers
@@ -100,15 +102,15 @@ mod tests {
         digits.parse().expect("digits parse as u64")
     }
 
-    /// Guardrail: the node's run stride and meta-cycle field widths
-    /// are hand-maintained mirrors of the arbitration contracts. A
+    /// Guardrail: the node's run stride and the emulator's meta-cycle field widths
+    /// must match the arbitration contracts and solidity-step. A
     /// drift would make the frontier fold serve level-0 nodes at a
     /// stride the deployed tournament does not use - wrongness with
     /// no loud error, since the fold bypasses the machine-replay
     /// collision checks. (The tournament heights and deeper strides
-    /// are read live from chain; only these mirrors are static.)
+    /// are read live from chain; the emulator bindings remain static.)
     #[test]
-    fn node_constants_match_arbitration_contracts() {
+    fn node_geometry_matches_arbitration_contracts() {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let root = manifest_dir.join("../..");
 
@@ -131,26 +133,28 @@ mod tests {
             .expect("height in ArbitrationConstants.sol");
         let height_0 = first_number_after(&arbitration[height_fn..], "[uint64(");
         assert_eq!(
-            super::LOG2_INPUT_SPAN_TO_EPOCH
-                + super::LOG2_BARCH_SPAN_TO_INPUT
-                + super::LOG2_UARCH_SPAN_TO_BARCH,
+            LOG2_EPOCH_RULER_SPAN,
             log2step_0 + height_0,
             "the ruler span does not match the root tournament's span"
         );
 
-        let transition = std::fs::read_to_string(
-            root.join("prt/contracts/src/state-transition/CartesiStateTransition.sol"),
-        )
-        .expect("read CartesiStateTransition.sol");
+        let transition =
+            std::fs::read_to_string(root.join("machine/step/src/EmulatorConstants.sol"))
+                .expect("read EmulatorConstants.sol");
         assert_eq!(
-            super::LOG2_UARCH_SPAN_TO_BARCH,
-            first_number_after(&transition, "LOG2_UARCH_SPAN_TO_BARCH ="),
-            "uarch span width disagrees with CartesiStateTransition.sol"
+            LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
+            first_number_after(&transition, "ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE =",),
+            "uarch span width disagrees with EmulatorConstants.sol"
         );
         assert_eq!(
-            super::LOG2_BARCH_SPAN_TO_INPUT,
-            first_number_after(&transition, "LOG2_BARCH_SPAN_TO_INPUT ="),
-            "barch span width disagrees with CartesiStateTransition.sol"
+            LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+            first_number_after(&transition, "ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE =",),
+            "barch span width disagrees with EmulatorConstants.sol"
+        );
+        assert_eq!(
+            LOG2_MAX_ADVANCE_STATES_PER_EPOCH,
+            first_number_after(&transition, "ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH =",),
+            "input span width disagrees with EmulatorConstants.sol"
         );
     }
 }

@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly EXPECTED_FOUNDRY_VERSION="1.5.1-v1.5.1"
 readonly EXPECTED_DEPENDENCIES_SHA256="bf5c94f033883d49e851fe57111f5031bfbbc1969c6027aedc6ac607815d4234"
-readonly EXPECTED_MACHINE_HASH="d83e7921ab07b55e7e57217bd0f3427faea7474bf81b15866d8d4c1f873c51e0"
+readonly EXPECTED_MACHINE_HASH="9b358eac8ebd2aa2c7ab4c00d098da7fd90906dc571ec83ec16e889fd220e0fb"
 readonly EXPECTED_FOUNDRY_CONFIG='{"solc":"0.8.30","via_ir":true,"optimizer":true,"optimizer_runs":200,"evm_version":"prague"}'
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
@@ -93,6 +93,7 @@ done
 
 machine_hash=$( \
     cartesi-machine-stored-hash ../../test/programs/yield/machine-image)
+machine_hash=${machine_hash#0x}
 if [ "$machine_hash" != "$EXPECTED_MACHINE_HASH" ]; then
     if [ "$diagnostic" != "1" ]; then
         printf 'error: unexpected yield machine hash: %s\n' \

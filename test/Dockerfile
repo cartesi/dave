@@ -71,13 +71,14 @@ EOF
 FROM base AS machine-emulator
 
 WORKDIR /dave
+COPY machine/script/cartesi-machine-source.sh machine/script/cartesi-machine-source.sh
 COPY machine/emulator/ machine/emulator/
+RUN machine/script/cartesi-machine-source.sh prepare-boost
 WORKDIR /dave/machine/emulator
-RUN make bundle-boost
 ARG MAKEFLAGS="-j$(nproc)"
 RUN make -C src slirp=no release=yes
 ENV DESTDIR=/dave/machine/emulator/rootfs
-RUN mkdir -p ${DESTDIR} && make install
+RUN mkdir -p ${DESTDIR} && make release=yes slirp=no install
 
 ####
 # final stage
@@ -94,6 +95,8 @@ COPY --from=just /usr/local/bin/just /usr/local/bin/just
 
 # install machine-emulator
 COPY --from=machine-emulator /dave/machine/emulator/rootfs /
+ENV LIBCARTESI_PATH=/usr/lib
+ENV INCLUDECARTESI_PATH=/usr/include/cartesi-machine
 
 WORKDIR /dave
 COPY machine/emulator/ machine/emulator/
@@ -121,6 +124,8 @@ RUN \
 
 # builds test programs and create anvil state dump.
 # requires compiled smart contracts.
+COPY script/machine-image-fingerprint.sh script/machine-image-fingerprint.sh
+ARG DAVE_EMULATOR_GITLINK
 RUN \
   --mount=type=cache,target=cartesi-rollups/contracts/out,sharing=locked \
   --mount=type=cache,target=cartesi-rollups/contracts/cache,sharing=locked \
@@ -152,3 +157,7 @@ RUN \
 
 # because of `--mount`, we need to do this.
 RUN mkdir -p target/debug && mv cartesi-rollups-prt-node target/debug/
+
+# The build context omits Git metadata; retain the exact pin used by the image
+# fingerprints so runtime doctor and verification use the same provenance.
+ENV DAVE_EMULATOR_GITLINK=${DAVE_EMULATOR_GITLINK}

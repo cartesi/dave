@@ -11,12 +11,6 @@ import {
 import {
     CartesiStateTransition
 } from "src/state-transition/CartesiStateTransition.sol";
-import {
-    CmioStateTransition
-} from "src/state-transition/CmioStateTransition.sol";
-import {
-    RiscVStateTransition
-} from "src/state-transition/RiscVStateTransition.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
 import {
     MultiLevelTournamentFactory
@@ -153,22 +147,9 @@ contract DeploymentScript is BaseDeploymentScript {
 
         vmSafe.startBroadcast();
 
-        address riscVStateTransition = _storeDeployment(
-            type(RiscVStateTransition).name,
-            _create2(type(RiscVStateTransition).creationCode, abi.encode())
-        );
-
-        address cmioStateTransition = _storeDeployment(
-            type(CmioStateTransition).name,
-            _create2(type(CmioStateTransition).creationCode, abi.encode())
-        );
-
         address cartesiStateTransition = _storeDeployment(
             type(CartesiStateTransition).name,
-            _create2(
-                type(CartesiStateTransition).creationCode,
-                abi.encode(riscVStateTransition, cmioStateTransition)
-            )
+            _create2(type(CartesiStateTransition).creationCode, abi.encode())
         );
 
         address tournamentImpl = _storeDeployment(
