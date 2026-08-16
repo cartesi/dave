@@ -24,8 +24,9 @@ import {SafeCast} from "@openzeppelin-contracts-5.5.0/utils/math/SafeCast.sol";
 import {AccessLogs} from "step/src/AccessLogs.sol";
 import {Buffer} from "step/src/Buffer.sol";
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
-import {MetaStep} from "step/src/MetaStep.sol";
 import {SendCmioResponse} from "step/src/SendCmioResponse.sol";
+import {UArchReset} from "step/src/UArchReset.sol";
+import {UArchStep} from "step/src/UArchStep.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
@@ -39,6 +40,8 @@ contract CartesiStateTransition is IStateTransition {
         EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
             + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 
+    uint256 constant UARCH_CYCLE_MASK =
+        (1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) - 1;
     uint256 constant INPUT_MASK = (1 << LOG2_INPUT_WINDOW_SPAN) - 1;
 
     function transitionState(
@@ -47,8 +50,6 @@ contract CartesiStateTransition is IStateTransition {
         bytes calldata proofs,
         IDataProvider provider
     ) external view returns (bytes32) {
-        AccessLogs.Context memory accessLogs;
-
         // lower bits (uarch + big arch) are zero: add input.
         if (counter & INPUT_MASK == 0) {
             // proofs structure:
@@ -67,7 +68,7 @@ contract CartesiStateTransition is IStateTransition {
             // the rest is the access log proofs, which has the concatenated proofs for:
             // * sendCmio
             // * step
-            accessLogs = AccessLogs.Context(
+            AccessLogs.Context memory accessLogs = AccessLogs.Context(
                 machineState, Buffer.Context(proofs[8 + inputLength:], 0)
             );
 
@@ -83,16 +84,37 @@ contract CartesiStateTransition is IStateTransition {
                     machineState
                 );
             }
-        } else {
-            accessLogs =
+
+            UArchStep.step(accessLogs);
+            require(
+                accessLogs.buffer.data.length == accessLogs.buffer.offset,
+                "buffer should be fully consumed"
+            );
+            return accessLogs.currentRootHash;
+        } else if ((counter + 1) & UARCH_CYCLE_MASK == 0) {
+            // The last transition in each uarch span performs one uarch step
+            // and then resets the uarch. The reset substitutes the recorded
+            // pre-input root when the machine rejected the input.
+            AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
+
+            UArchStep.step(accessLogs);
+            UArchReset.reset(accessLogs);
+            require(
+                accessLogs.buffer.data.length == accessLogs.buffer.offset,
+                "buffer should be fully consumed"
+            );
+            return accessLogs.currentRootHash;
+        } else {
+            AccessLogs.Context memory accessLogs =
+                AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
+
+            UArchStep.step(accessLogs);
+            require(
+                accessLogs.buffer.data.length == accessLogs.buffer.offset,
+                "buffer should be fully consumed"
+            );
+            return accessLogs.currentRootHash;
         }
-
-        // MetaStep resets the uarch at the end of each uarch span. Dave's
-        // counter names the source state, while MetaStep's names the state
-        // produced by this transition.
-        MetaStep.step(counter + 1, accessLogs);
-
-        return accessLogs.currentRootHash;
     }
 }

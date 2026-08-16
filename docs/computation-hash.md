@@ -84,11 +84,11 @@ same `Position` predicates the ruler steps by):
    machine yielded rejecting the input (see below).
 3. Anywhere else: a single uarch step.
 
-On-chain, `CartesiStateTransition` optionally calls `SendCmioResponse` at the
-input boundary and then calls `MetaStep.step(m + 1, accessLogs)` for every
-shape. Dave's `m` names the transition by its source state, while `MetaStep`
-expects the produced-state index. `MetaStep` owns the closing reset and
-requires the access-log proof buffer to be consumed completely.
+On-chain, `CartesiStateTransition` selects these three shapes explicitly. An
+input boundary optionally calls `SendCmioResponse` and then `UArchStep`; a
+big-step boundary calls `UArchStep` and then `UArchReset`; every other position
+calls only `UArchStep`. Each branch requires the access-log proof buffer to be
+consumed completely before returning its root.
 
 Inside one big cycle, the uarch typically halts long before spending its
 2^20 budget. The remaining slots are padded by repeating the halted state
