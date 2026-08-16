@@ -1,9 +1,7 @@
-
-
-LUADIR=$(shell pkg-config --cflags-only-I lua)
+LUA_CFLAGS := $(shell pkg-config --cflags-only-I lua5.4)
 COPT = -O2 -DNDEBUG
 CWARNS = -Wall -Wextra -pedantic
-CFLAGS = $(CWARNS) $(COPT) $(LUADIR)
+CFLAGS = $(CWARNS) $(COPT) $(LUA_CFLAGS)
 CC = gcc
 
 TARGET_OS?=$(shell uname)
@@ -13,25 +11,7 @@ else
 DLLFLAGS=-shared -fPIC
 endif
 
-create-image:
-	@docker build -t cartesi/measure_script .
-
-measure-simple: create-image
-	@docker run --rm \
-		--env MACHINE_PATH=simple-program \
-		cartesi/measure_script:latest
-
-measure-stress: create-image
-	@docker run --rm \
-		--env MACHINE_PATH=debootstrap-machine-sparsed \
-		cartesi/measure_script:latest
-
-measure-doom: create-image
-	@docker run --rm \
-		--env MACHINE_PATH=doom-compute-machine \
-		cartesi/measure_script:latest
-
-chronos.so: $(FILES)
+chronos.so: chronos.c
 	env $(CC) $(DLLFLAGS) $(CFLAGS) chronos.c -o chronos.so
 
 clean:

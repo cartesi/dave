@@ -273,6 +273,7 @@ if [[ -n "$source_root" ]]; then
     for program in echo yield honeypot; do
         copy_machine_image "$program"
     done
+    just doctor-all
+else
+    just doctor
 fi
-
-just doctor

@@ -1,16 +1,12 @@
 set positional-arguments
 
-# all programs
-build-programs: build-yield build-echo build-compute
-clean-programs: clean-yield clean-echo
-
 [private]
 clean-program prog:
   #!/usr/bin/env bash
   set -euo pipefail
   program=$1
   case "$program" in
-    echo|yield|compute|stress|honeypot) ;;
+    echo|yield|stress|honeypot) ;;
     *)
       echo "error: unsupported test program: $program" >&2
       exit 2
@@ -23,12 +19,7 @@ clean-program prog:
 
 # yield
 build-yield: clean-yield
-  ../../script/machine-image-fingerprint.sh capture yield
-  cartesi-machine --ram-image=./linux.bin --final-hash \
-    --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --revert-mode=none --store=./yield/machine-image \
-    -- "while true; do yield manual rx-accepted; yield manual rx-rejected; done"
-  ../../script/machine-image-fingerprint.sh write yield
+  ./script/build-yield.sh
 clean-yield: (clean-program "yield")
 
 # stress: the compute-heavy workload. Each input burns a deterministic
@@ -37,53 +28,24 @@ clean-yield: (clean-program "yield")
 # worst-case replay shape the measurement baseline needs.
 # build the synthetic instruction-heavy measurement sample
 build-stress: clean-stress
-  ../../script/machine-image-fingerprint.sh capture stress
-  mkdir -p stress
-  cartesi-machine --ram-image=./linux.bin --final-hash \
-    --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --revert-mode=none --store=./stress/machine-image \
-    -- "while true; do yield manual rx-accepted; dd if=/dev/zero bs=1M count=8 2>/dev/null | sha256sum > /dev/null; done"
-  ../../script/machine-image-fingerprint.sh write stress
+  ./script/build-stress.sh
 clean-stress: (clean-program "stress")
 
 # echo
 build-echo: clean-echo
-  ../../script/machine-image-fingerprint.sh capture echo
-  cartesi-machine --ram-image=./linux.bin --final-hash \
-    --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --revert-mode=none --store=./echo/machine-image \
-    -- "ioctl-echo-loop --vouchers=1 --notices=1 --reports=1 --verbose=1 --reject=2"
-  ../../script/machine-image-fingerprint.sh write echo
+  ./script/build-echo.sh
 clean-echo: (clean-program "echo")
 
 # honeypot/honeypot (requires docker)
 build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
-  ../../script/machine-image-fingerprint.sh capture honeypot
-  git clone https://github.com/cartesi/honeypot.git honeypot/project
-  git -C honeypot/project reset --hard 23b31c06f0537cbd33f996f4ecf1ef6bea8363b3 # cartesi/honeypot#37
-  mkdir -p honeypot/project/config/devnet
-  ./honeypot/generate-devnet-honeypot-config.sh > honeypot/project/config/devnet/honeypot-config.hpp
-  make -C honeypot/project snapshot HONEYPOT_CONFIG=devnet
-  cp -r honeypot/project/snapshot honeypot/machine-image
-  ../../script/machine-image-fingerprint.sh write honeypot
+  ./script/build-honeypot.sh
 clean-honeypot-snapshot: (clean-program "honeypot")
 clean-honeypot-project:
     rm -rf honeypot/project
 
-# compute
-build-compute: clean-compute
-  ../../script/machine-image-fingerprint.sh capture compute
-  cartesi-machine --ram-image=./linux.bin --final-hash \
-    --flash-drive=label:root,data_filename:./rootfs.ext2 \
-    --revert-mode=none --store=./compute/machine-image \
-    --max-mcycle=0 \
-    -- "while dd if=/dev/zero bs=1M count=64 2>/dev/null | md5sum >/dev/null; do :; done"
-  ../../script/machine-image-fingerprint.sh write compute
-clean-compute: (clean-program "compute")
-
-# machine-image-producers-end
-# Image-producing recipes stay above this boundary; their exact prefix is part
-# of every machine-image fingerprint.
+# required lightweight fixtures
+build-programs: build-yield build-echo
+clean-programs: clean-yield clean-echo
 
 # acquire both pinned release inputs without discarding valid cached copies
 [script]

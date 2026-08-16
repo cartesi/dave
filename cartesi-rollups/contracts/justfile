@@ -23,7 +23,7 @@ install-deps:
 # diagnose the Rollups contract inputs prepared by this module
 [script]
 doctor:
-    "{{ source_directory() / "script/doctor.sh" }}"
+    "{{ source_directory() / "../../script/contracts-doctor.sh" }}" rollups
 
 # compile smart contracts
 build-smart-contracts:

@@ -54,7 +54,9 @@ assurance reports. The completed 2026-07 PRT campaign is archived at
 [reviews/2026-07-21-prt-dispute-game/](reviews/2026-07-21-prt-dispute-game/).
 
 Plans: [plans/](plans/) is for active work, not completed campaign history.
-The active plan is [plans/stf-upgrade.md](plans/stf-upgrade.md).
+The upgrade ledger is [plans/stf-upgrade.md](plans/stf-upgrade.md); the
+follow-up bulk-collector qualification is
+[plans/collect-hashes-migration.md](plans/collect-hashes-migration.md).
 [plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md) is the one
 temporary exception while its implementation is under preliminary Rust review;
 its stable invariants will move into node-architecture.md before it is deleted.

@@ -1,6 +1,6 @@
 # STF upgrade: emulator v0.21, solidity-step, and two levels
 
-Status: ACTIVE (updated 2026-08-11). The original phase ledger remains below;
+Status: ACTIVE (updated 2026-08-12). The original phase ledger remains below;
 the execution checkpoint records what changed after the stable releases.
 
 ## Goal
@@ -14,8 +14,8 @@ the flagged state-transition semantics issues (the halt/exception
 protocol gap of docs/dimensioning.md). The emulator update brings
 new hash collection APIs, and cartesi-machine.lua itself gains a
 command that computes a whole epoch's computation hash (built on
-the new API internally - reference material for our own usage,
-and a cross-check oracle). The stable release ships a 35-case
+the new API internally - reference material and a release-conformance
+frontend, not an independent oracle). The stable release ships a 35-case
 computation-hash corpus with templates, inputs, expected hashes, and
 boundary cases for accept, reject, exception, halt, unexpected manual yield,
 mcycle overflow, uarch limits, padding, and bundling.
@@ -43,8 +43,9 @@ mcycle overflow, uarch limits, padding, and bundling.
   and the mcycle collector substitute the revert root. Dave's existing path
   follows the deployed step/reset semantics. The mismatch blocks adopting the
   uarch collector, not this old-collector update.
-- The release gate passes all 17 mcycle corpus cases against the v0.21 CLI and
-  Dave's existing collector. A deterministic FFI regression also derives the
+- The release gate passes all 35 cases through the v0.21 CLI and compares
+  Dave's existing collector directly with the 17 released mcycle answers. A
+  deterministic FFI regression also derives the
   yield program's real rejection-closing slot and replays its step/reset proof
   through `CartesiStateTransition`.
 - Tournament reduction from three levels to two remains a later, separately
@@ -52,9 +53,8 @@ mcycle overflow, uarch limits, padding, and bundling.
 
 ## Post-integration review ledger (2026-08-11)
 
-The release bump is green. The following slices are recorded separately so
-cleanup, deployment identity, and snapshot durability do not become one large
-follow-up change.
+The release bump is green. The ledger distinguishes the following review and
+validation boundaries: cleanup, deployment identity, and snapshot durability.
 
 ### Geometry authority (completed 2026-08-11)
 
@@ -130,19 +130,19 @@ follow-up change.
   verified corpus and performs no network access. The corpus is optional and
   does not belong in ordinary `setup`.
 - Move the repository-wide release gate from the root justfile into the
-  existing `script/` directory as `script/computation-hash-corpus.sh`; keep both
-  root recipes as one-line public wrappers. Bash remains appropriate for curl,
-  checksum, tar, cache, and process orchestration. Two wrappers do not yet
-  justify a module or a generic `test` umbrella; promote this to a corpus module
-  only when it owns a broader download, test, clean, or multi-corpus lifecycle.
-- Pin v0.21.0 and its digest in the script. The Rust oracle also pins v0.21.0,
-  so recipe parameters suggesting arbitrary release compatibility are false
-  flexibility.
+  existing `script/` directory as `script/computation-hash-corpus.sh`. The root
+  exposes small download, CLI-conformance, Dave-conformance, and aggregate
+  recipes. Bash remains appropriate for curl, checksum, tar, cache, and process
+  orchestration; this single corpus still does not justify a generic module.
+- Pin v0.21.0 and its digest in the script. The two Rust tests pin their roles:
+  complete CLI replay of the release manifest, and Dave comparison with the
+  released mcycle answers. Recipe parameters suggesting arbitrary release
+  compatibility are false flexibility.
 - Use unique temporary download and extraction paths, bind the extracted cache
   to the archive digest, and keep the SHA-256 gate.
-- Mark the Rust corpus test ignored in ordinary Cargo runs. The explicit script
-  invokes it with `--ignored --exact`; a missing corpus environment must fail,
-  not report a skipped body as a passing test.
+- Mark both Rust corpus tests ignored in ordinary Cargo runs. The explicit
+  script invokes each with `--ignored --exact`; a missing corpus environment
+  must fail, not report a skipped body as a passing test.
 
 ### Cartesi Machine preparation and source-build invalidation (completed 2026-08-11)
 
@@ -184,13 +184,13 @@ follow-up change.
   but do not create a generic `test` module or a module merely to hide a
   one-line command.
 - Make root `doctor` a one-line wrapper around `script/doctor.sh`, but distribute
-  owned checks across subsystem-local doctor scripts and one-line module
-  recipes. The root script checks cross-cutting host and repository state, runs
-  every component in a subshell, continues after failures, and reports which
-  components failed. A local doctor checks only state produced by its own setup
-  recipes and never invokes another doctor. Use only an exit contract - healthy,
-  diagnosed setup failure, or checker failure - rather than JSON, parsed output,
-  shared counters, or a shell framework.
+  owned checks across focused checker scripts and one-line module recipes. The
+  root script checks cross-cutting host and repository state, runs every
+  component in a subshell, continues after failures, and reports which
+  components failed. A component checker inspects only state produced by its
+  setup recipes and never invokes another doctor. Use only an exit contract -
+  healthy, diagnosed setup failure, or checker failure - rather than JSON,
+  parsed output, shared counters, or a shell framework.
 - Bash is intentional bootstrap tooling for every doctor: it must be able to
   report a missing Lua, Python, Rust, or Docker environment rather than require
   one of them to start. Align checks with real build selection: any set
@@ -205,19 +205,23 @@ follow-up change.
   remains.
 - Root extraction and sectioning are complete. The machine component owns its
   pinned step checkout and library-provider checks behind `machine::doctor`.
-  The PRT contracts component owns its effective Soldeer dependency roots and
-  binding-stamp freshness behind `prt-contracts::doctor`. The Rollups contracts
-  component owns its effective Soldeer dependency roots and completed binding
-  artifacts behind `rollups-contracts::doctor`; binding freshness waits for the
-  shared binding-generator cleanup below. The programs component owns its
-  checksum-pinned kernel and rootfs plus the required echo, yield, and Honeypot
-  image fingerprints behind `programs::doctor`. The doctor intentionally omits
-  compute and stress; their producer/default-set cleanup, including build/clean
-  symmetry, remains pending below. The Rollups E2E component owns the complete
+  One parameterized contracts checker serves the one-line PRT and Rollups
+  module recipes; it verifies each module's effective Soldeer dependency roots
+  and binding-stamp freshness without duplicating the implementation. The
+  programs component owns its checksum-pinned kernel and rootfs plus the
+  required echo, yield, and Honeypot image fingerprints behind
+  `programs::doctor`. Each persistent image now has a separate producer script
+  and v2 receipt, so unrelated image recipes do not invalidate it. Stress stays
+  an explicit Rust measurement fixture outside doctor; the obsolete compute
+  image was removed with the Lua measurement redesign. The Rollups E2E
+  component owns the complete
   devnet-bundle check, the default-port warning, and current plus legacy E2E
   forensic litter behind `rollups-tests::doctor`; its focused per-test preflight
   stays separate. The system-TMPDIR warning remains at root because it diagnoses
-  host-wide Rust-test litter that the E2E sweep does not own.
+  host-wide Rust-test litter that the E2E sweep does not own. Root diagnosis is
+  tiered: `doctor` covers build/check readiness, `doctor-e2e` covers optional
+  integration state, and `doctor-all` aggregates both without making every
+  ordinary checkout construct expensive E2E fixtures.
 - Move worktree report and sweep to `script/worktrees.sh`, and bootstrap to a
   focused script. Parse worktree records without truncating paths, recognize
   both Codex and legacy Claude session worktrees, preserve the current/dirty
@@ -245,10 +249,11 @@ follow-up change.
   cleanup, and execution recipes have been removed from the public Just
   surface. Re-enabling them requires semantic revalidation and verified staged
   acquisition as one effort.
-- Keep program builds network-free and make the default build and clean sets
-  symmetric. Keep Docker-heavy stress or honeypot fixtures explicit. When a
-  program producer moves out of a justfile, add the new script or patch to the
-  machine-image fingerprint inputs so the refactor does not weaken provenance.
+- The default program build and clean sets are now symmetric and contain only
+  the required lightweight echo and yield fixtures. Stress and Docker-heavy
+  Honeypot builds remain explicit measurement and integration fixtures. The
+  Lua constants harness uses temporary post-boot stress-ng fixtures instead of
+  a persistent compute image.
 - The PRT gas-calibration program now lives in
   `prt/contracts/script/measure-gas.sh`, with its reviewed Forge and dependency
   pins passed from the thin Just recipe rather than duplicated. The duplicated
@@ -268,15 +273,18 @@ follow-up change.
   stale Sepolia helpers are quarantined from the runnable Just surface; do not
   restore an entry point without revalidating the full flow, and do not build a
   general E2E cleanup framework.
-- Retain the compact `prt/measure_constants/justfile`, but fix its underlying
-  Make dependency so `chronos.so` rebuilds after `chronos.c` changes, verify the
-  compute image before measuring, and align its Lua ABI and geometry source with
-  the rest of this campaign.
-- Land the cleanup in narrow slices: first argument forwarding and incorrect
-  diagnostics/downloads; then corpus and machine-source ownership; then root
-  script extraction; then binding, program, and E2E polish. Re-run fingerprint
-  generation intentionally when producer inputs change rather than confusing
-  that expected invalidation with v0.20-to-v0.21 state-hash drift.
+- The independent emulator constants harness now builds temporary stress-ng
+  fixtures after each worker exists and has completed a fixed untimed warmup.
+  Runs explicitly select from ten instruction and memory workloads; cheap
+  fixture checks validate every active state without starting the long
+  benchmark. The harness uses the v0.21 CMIO API, rejects halt and yield
+  throughout, and rounds measured capacity down. The obsolete persistent
+  compute image and unchecked release-candidate Docker acquisition are gone.
+- Review the cleanup by concern: argument forwarding and downloads; corpus and
+  machine-source ownership; root script extraction; and binding, program, and
+  E2E artifact rules. Re-run fingerprint generation intentionally when producer
+  inputs change rather than confusing that expected invalidation with
+  v0.20-to-v0.21 state-hash drift.
 
 ### Stored-machine boundary (completed 2026-08-11)
 
@@ -313,15 +321,16 @@ follow-up change.
 
 ## Verification doctrine for the whole campaign
 
-- The contracts (solidity-step) remain the ONLY semantics truth.
-  The emulator's Lua collection script is a cross-check oracle,
-  never a source: two implementations agreeing means little if
-  they share an assumption (the exception-revert lesson).
-- Hash-match gates, in Gabriel's sequencing: (1) bump the emulator,
-  keep the old collection path, verify our hashes match the Lua
-  script's on the same machine; (2) switch to the new collection
-  APIs; (3) re-verify the match. Every switch is
-  characterization-first.
+- The contracts (solidity-step) remain the semantics authority. The release
+  corpus is immutable evidence, while the release CLI is a frontend over the
+  collect APIs and must not be counted as an independent implementation.
+  Independent structure comes from the test-only prototype, Lua client, and
+  contract proof evidence where their lineages genuinely differ.
+- Collection changes remain characterization-first. The existing collector is
+  compared with the released mcycle answers before the switch; during the
+  migration it is a temporary differential against the collect-backed path and
+  the prototype. It is deleted once the replacement is qualified. The exact
+  evidence and removal criteria live in `collect-hashes-migration.md`.
 - Fixture regeneration is a mass event this time (template hashes
   change with the machine images): regenerate ONLY after the
   corresponding differential passes, one tier at a time, each a
@@ -380,8 +389,8 @@ forward-looking work.
 1. Emulator bump, old collection path. Submodule + bindings on
    v0.21.0, machine images rebuilt, devnet and store pins
    updated (stores wipe: config pins the emulator version).
-   Gate: our engine's hashes (old API) match the Lua script's on
-   identical machines and spans, across the transition-shape
+   Gate: our engine's hashes (old API) match the released answers and the
+   independently structured prototype on identical machines and spans, across the transition-shape
    matrix (active, idle, yield, revert, checkpoint windows).
    Then regenerate goldens tier by tier; battery green at the
    CURRENT three levels - contracts untouched in this phase.
@@ -397,10 +406,10 @@ forward-looking work.
    wedge); update the Lua oracle the same way, verified against
    the contracts, never against the node.
 
-3. New collection APIs. Swap the engine's machine stf onto
-   cm_collect_*; the spec oracle and differentials re-gate;
-   re-verify the Lua script match; measure because collection is a
-   core dispute-time cost.
+3. New collection APIs. Qualify and swap the engine's machine STF onto
+   `cm_collect_*` under the gates in `collect-hashes-migration.md`; measure
+   because collection is a core dispute-time cost, then remove the legacy
+   production collector and its migration-only differential.
 
 4. Two levels. Re-run the constants pipeline ON v0.21 and on
    validator hardware (the previous numbers - log2step [37,0],
@@ -423,24 +432,12 @@ forward-looking work.
 - Test-shape constants profile (fast e2e disputes): contracts
   side, same territory as phase 4, the deepest e2e-latency lever
   on record. Candidate to land with the two-level change.
-- Measurement methodology hardening (measure.lua STAYS - Gabriel,
-  2026-07-21). Coworker review brought three upgrades:
-  - Multi-workload benchmarking to kill single-workload bias (our
-    stress image is one sha256 burn; the density figure behind
-    the constants rests on it). stress-ng ships in the standard
-    rootfs; the studied set: nop, crypt, heapsort, tsearch,
-    memthrash (dirty pages), matrix-3d (fp + page traffic), tree,
-    tlb-shootdown, malloc, randlist (heaviest; tlb + dirty
-    pages). `cartesi-machine -- stress-ng --nop 1 --timeout 1m`.
-  - VERIFY the boot-skip: the flag is that our measurement may
-    not skip the first machine mcycles and thus measures Linux
-    boot, not workload. If true it taints the recorded density
-    (616 usteps/big) and everything derived from it - check
-    before re-deriving constants in phase 4, and sample from
-    first yield onward.
-  - The sparse-hash step-size study (which log2step tiers pay)
-    can ride these workloads - or wait for the final collect API;
-    Gabriel's call on timing.
+- Measurement methodology hardening is complete for the retained Lua
+  reference harness: it samples ten selectable stress-ng workloads from a
+  verified active post-warmup state, rejects terminal and yielded timing regions, and
+  rounds capacity conservatively. The sparse-hash step-size study can ride
+  these workloads after the final collect API lands, at Gabriel's call on
+  timing.
 - CI tranche 2 (build-once + per-scenario matrix, docker layer
   cache) - independent track, can ride between phases.
 

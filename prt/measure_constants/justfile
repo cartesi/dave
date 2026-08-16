@@ -1,3 +1,16 @@
-measure:
-  make chronos.so
-  MACHINE_PATH=../../test/programs/compute/machine-image lua measure.lua
+set positional-arguments
+
+# list the curated stress-ng benchmark workloads
+[script]
+list-workloads:
+  ./script/benchmark.sh list
+
+# prepare and probe each selected active workload state (defaults to all)
+[script]
+check-fixtures *WORKLOADS:
+  ./script/benchmark.sh check "$@"
+
+# derive emulator-level tournament geometry for explicitly selected workloads
+[script]
+benchmark *WORKLOADS:
+  ./script/benchmark.sh run "$@"

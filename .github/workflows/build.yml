@@ -13,6 +13,8 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: read
 jobs:
   prt-contracts:
     runs-on: ubuntu-24.04
@@ -30,9 +32,13 @@ jobs:
           version: 0.21.0
           suffix-version: ""
 
-      - name: Setup env
+      # This suite needs the PRT dependencies and the real yield image used by
+      # its Lua proof generator. Devnet, echo, and Honeypot are E2E inputs.
+      - name: Prepare PRT state-transition inputs
         run: |
-          just setup-local
+          just prt-contracts::install-deps
+          just programs::download-deps
+          just programs::build-yield
 
       - name: Build, format check and test prt contracts
         working-directory: ./prt/contracts
@@ -41,6 +47,7 @@ jobs:
           just build-smart-contracts
           just test-disputes
           just test-stf
+          just test-stf-fuzzy
 
   dave-contracts:
     runs-on: ubuntu-24.04
@@ -77,6 +84,8 @@ jobs:
           submodules: recursive
       - name: Setup tools
         uses: ./.github/actions/setup-tools
+        with:
+          setup-qemu: true
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
@@ -99,7 +108,11 @@ jobs:
           just download-deps
       - name: Rust build
         run: |
-          just build
+          just build-rust-workspace
+      - name: Test computation-hash release corpus
+        timeout-minutes: 10
+        run: |
+          just test-computation-hash-corpus
       - name: Build honeypot
         working-directory: ./test/programs/
         run: |
@@ -108,6 +121,10 @@ jobs:
         working-directory: ./test/programs/
         run: |
           just build-echo
+      - name: Build yield
+        working-directory: ./test/programs/
+        run: |
+          just build-yield
       - name: Test prt-rollups
         timeout-minutes: 20
         run: |
@@ -138,6 +155,12 @@ jobs:
         timeout-minutes: 60
         run: |
           just test-rollups-honeypot-stf
+      # stf_all cannot statically select the program-timing-dependent closing
+      # slot that substitutes the pre-input root after RX_REJECTED.
+      - name: Test rejected-input revert transition
+        timeout-minutes: 30
+        run: |
+          just rollups-tests::test-yield-case stf_revert
       - name: Show failing log
         if: failure()
         run: |
@@ -157,21 +180,13 @@ jobs:
         uses: ./.github/actions/setup-tools
 
       - name: Install dependencies
-        env:
-          XGENEXT2_VERSION: 1.5.6
-          ARCH: amd64
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends \
             build-essential git wget curl \
             libslirp-dev \
             libclang-dev \
             liblua5.4-dev lua5.4 lua-check \
-            xxd jq sqlite3 libc6 clang libarchive13
-
-          wget -O xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
-          sudo apt-get install -y ./xgenext2fs.deb
-          rm ./xgenext2fs.deb
-          xgenext2fs --version
+            xxd jq sqlite3 libc6 clang
 
       # The from-source emulator build dominates this job. Cache both the
       # prepared tree and its verified preparation state so a hit preserves
@@ -211,12 +226,18 @@ jobs:
           echo "LIBCARTESI_PATH=/usr/lib" >> "$GITHUB_ENV"
           echo "INCLUDECARTESI_PATH=/usr/include/cartesi-machine" >> "$GITHUB_ENV"
 
-      - name: Setup env
+      # Rust integration tests consume echo, yield, and the devnet bundle.
+      # Honeypot belongs only to the E2E lane above.
+      - name: Prepare Rust test inputs
         run: |
-          just setup-local
+          just prt-contracts::install-deps
+          just rollups-contracts::install-deps
+          just rollups-contracts::build-devnet
+          just programs::download-deps
+          just programs::build-programs
 
-      # The same targets `just check` runs locally, one step each so a
-      # failure is legible in the Actions UI.
+      # Keep Rust and Lua failures legible here. Contract and build-tooling
+      # portions of `just check` have their own jobs or focused scripts.
       - name: Rust fmt and check
         run: |
           just check-fmt-rust-workspace
@@ -234,13 +255,21 @@ jobs:
         run: |
           just test-lua-client
 
+      - name: Build tooling regressions
+        run: |
+          just test-build-tooling
+
       - name: Rust build
         run: |
-          just build
+          just build-rust-workspace
 
       - name: Rust test workspace
         run: |
           just test-rust-workspace
+
+      - name: Engine machine integration tests
+        run: |
+          just test-engine-machine
 
   build-release-node:
     strategy:
@@ -286,10 +315,8 @@ jobs:
 
       - name: Contracts
         run: |
-          just -f test/programs/justfile download-deps
           just -f prt/contracts/justfile install-deps
           just -f cartesi-rollups/contracts/justfile install-deps
-          just build-smart-contracts
           just bind
 
       - name: Prepare Cartesi Machine source
@@ -301,6 +328,13 @@ jobs:
         working-directory: machine/rust-bindings
         run: |
           cargo build --release -p cartesi-machine-sys --target ${{ matrix.target }}
+
+      - name: Exercise Cartesi Machine source provider
+        working-directory: machine/rust-bindings
+        run: |
+          cargo test --release -p cartesi-machine --target ${{ matrix.target }} \
+            machine::tests::test_sync_and_rename_stored_reject_invalid_and_missing_paths \
+            -- --exact
 
       - name: Build release
         run: |
@@ -317,7 +351,7 @@ jobs:
           retention-days: 1
 
   release-node:
-    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release-node]
+    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release-node, release-contracts]
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -325,6 +359,8 @@ jobs:
           - arch: amd64
           - arch: arm64
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -354,7 +390,6 @@ jobs:
           TAG: ${{ github.ref_name }}
 
   release-contracts:
-    needs: [prt-contracts, dave-contracts, prt-honeypot, build]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -420,8 +455,29 @@ jobs:
         env:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-anvil-${{ steps.setup.outputs.installed-foundry-version }}.tar.gz
 
-      - name: Upload assets to release on GitHub
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload packaged contract artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: contract-release-assets
+          path: upload/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-contracts:
+    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release-node, release-contracts]
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: contract-release-assets
+          path: upload
+
+      - name: Upload contract assets to release on GitHub
         run: gh release upload "$TAG" upload/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}

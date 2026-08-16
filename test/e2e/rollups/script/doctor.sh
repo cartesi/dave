@@ -53,64 +53,29 @@ last_line() {
 }
 
 check_devnet() {
-    local checker_ready=1 bundle_ready=1
-    local checker_output="" detail=""
-    local tool="" probe_output=""
+    local checker_output="" checker_status=0 detail=""
 
     if [[ ! -x "$fingerprint_checker" ]]; then
         checker_error "devnet fingerprint checker is missing or not executable: ${fingerprint_checker}"
-        checker_ready=0
-    fi
-    for tool in anvil forge git jq sha256sum sort; do
-        if ! command -v "$tool" >/dev/null; then
-            checker_error "cannot verify the devnet bundle: ${tool} is not on PATH"
-            checker_ready=0
-        fi
-    done
-
-    # command -v also accepts broken exported shell shims. Exercise each
-    # primitive so an operational checker failure is not reported as staleness.
-    if ((checker_ready)); then
-        for tool in anvil forge git jq sha256sum sort; do
-            case "$tool" in
-                anvil|forge|git|jq) probe_output="$("$tool" --version 2>&1)" ;;
-                sha256sum) probe_output="$(printf '' | sha256sum 2>&1)" ;;
-                sort) probe_output="$(printf 'b\na\n' | sort 2>&1)" ;;
-            esac
-            if [[ $? -ne 0 || -z "$probe_output" ]]; then
-                checker_error "cannot run ${tool} while verifying the devnet bundle"
-                checker_ready=0
-            fi
-        done
+        return
     fi
 
-    if [[ ! -s "${devnet_dir}/state.json" ]]; then
-        missing "devnet state.json is missing or empty" \
-            "just rollups-contracts::build-devnet"
-        bundle_ready=0
+    if checker_output="$("$fingerprint_checker" verify "$devnet_dir" 2>&1)"; then
+        ok "devnet state, deployments, and fingerprint"
+        return
+    else
+        checker_status=$?
     fi
-    if [[ ! -d "${devnet_dir}/deployments/31337" ]]; then
-        missing "devnet deployments/31337 is missing" \
-            "just rollups-contracts::build-devnet"
-        bundle_ready=0
-    fi
-    if [[ ! -s "${devnet_dir}/state.fingerprint" ]]; then
-        missing "devnet state.fingerprint is missing or empty" \
-            "just rollups-contracts::build-devnet"
-        bundle_ready=0
-    fi
-
-    if ((checker_ready && bundle_ready)); then
-        if checker_output="$("$fingerprint_checker" verify "$devnet_dir" 2>&1)"; then
-            ok "devnet state, deployments, and fingerprint"
-        else
-            detail="$(last_line "$checker_output")"
-            detail="${detail#error: }"
-            [[ -n "$detail" ]] || detail="fingerprint verification failed"
+    detail="$(last_line "$checker_output")"
+    detail="${detail#error: }"
+    [[ -n "$detail" ]] || detail="fingerprint verification produced no diagnostic"
+    case "$checker_status" in
+        1)
             missing "devnet bundle is stale, mixed, or unverified: ${detail}" \
                 "rebuild source, state, and deployments together: just rollups-contracts::build-devnet"
-        fi
-    fi
+            ;;
+        *) checker_error "cannot verify the devnet bundle (${checker_status}): ${detail}" ;;
+    esac
 }
 
 check_default_port() {

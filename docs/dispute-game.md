@@ -543,10 +543,11 @@ maxAllowance = censorshipBudget + (levels - 1) * innerCommitmentBudget
 For the selected two-level table (not yet enabled; see
 [Tournament roles and configuration](#tournament-roles-and-configuration))
 this is one week of censorship tolerance
-plus one inner-tournament commitment budget, currently one hour. The historical
-`prt/measure_constants/measure.lua` tool explains how root slowdown and the
-maximum inner commitment-building time determine tournament strides and
-heights. These measured computation budgets are distinct from the
+plus one inner-tournament commitment budget, currently one hour. The
+independent `prt/measure_constants` emulator benchmark and the Rust
+`just measure-constants` generator show how root slowdown and the maximum
+inner commitment-building time determine tournament strides and heights.
+These measured computation budgets are distinct from the
 per-response budget `G`. The deployment stores `G = 5 minutes` in the
 `responseBudget` field; on Ethereum that is 25 blocks. One
 root-to-leaf descent with one match at each level spans 92 tree heights and can

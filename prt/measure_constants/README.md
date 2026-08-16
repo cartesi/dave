@@ -1,33 +1,56 @@
-Run the following command to generate timing constants based on the program and user's machine performance:
+# Emulator constants benchmark
 
-```
-docker build -t cartesi/measure_script . && docker run --rm --env MACHINE_PATH="" cartesi/measure_script:latest
-```
+This is the independent emulator-level reference harness for exploring PRT
+tournament geometry. The Rust node's `just measure-constants` remains the
+current generator for `docs/measurements/constants.md`; use this harness as a
+second measurement method when changing the deployed geometry.
 
-Valid value for `MACHINE_PATH` can be:
+The harness uses the checksum-pinned `test/programs/linux.bin` and
+`rootfs.ext2`. For every selected workload it starts stress-ng, waits until its
+worker exists, and reaches a manual-yield readiness marker. It releases that
+marker, runs a fixed untimed warmup, and stores the active machine used by every
+timed phase. Linux boot, process startup, and the warmup are therefore excluded
+from the timings. Stress-ng deliberately has no guest timeout: every host-side
+sample is bounded, and an indefinitely live guest keeps later replayed phases
+on the same workload. The temporary fixtures are removed after each workload
+and are not part of the persistent test-program lifecycle.
 
--   `debootstrap-machine-sparsed`
--   `doom-compute-machine`
--   `simple-program`
+The curated workloads exercise different instruction and memory behavior:
 
-There are two values in the script that can be configured (WIP):
-
--   `root_tournament_slowdown`:
-    This is what the user (you) finds acceptable as slowdown for the root tournament. In other words, whichever stride the script chooses for the root tournament, calculating the commitment cannot slow the machine more than `root_tournament_slowdown` when compared with just calculating the final state. Default it to 2.5 slowdown with the reference machine. For rollups it can be 5.0.
--   `inner_tournament_timeout`:
-    This is the timeout for the computation effort. This value is chosen by the user. Set the timeout you want, and the script will adapt the other values as a function of this nested_tournament_timeout. If it's set too low, it's possible the script might not work, or that it will need a lot of levels.
-    Default it to 5 minutes, got ok results on the reference machine. For rollups, it could be set to one hour.
-
-After running the script one should get results like this:
-
-```
-level	3
-log2_stride	[uint64(41), uint64(26), uint64(0)]
-height	[uint64(27), uint64(15), uint64(26)]
+```text
+nop crypt heapsort tsearch memthrash matrix-3d tree tlb-shootdown malloc randlist
 ```
 
-Go to `prt/contracts` and modified the content of `src/ArbitrationConstants.sol`:
+List them or cheaply validate their active, warmed state without running the
+multi-minute benchmark:
 
--   replace `uint64 constant LEVELS` with the `level` value from the above result
--   replace `uint64[LEVELS] memory arr` from `log2step` function with the `log2_stride` values from the above result
--   replace `uint64[LEVELS] memory arr` from `height` function with the `height` values from the above result
+```bash
+just list-workloads
+just check-fixtures             # all workloads
+just check-fixtures nop malloc  # selected workloads
+```
+
+Benchmark runs require an explicit selection:
+
+```bash
+just benchmark nop
+just benchmark crypt heapsort
+just benchmark all
+```
+
+Run these commands from this directory, or pass its Justfile with
+`just -f prt/measure_constants/justfile ...` from the repository root. The
+default sample is 120 seconds per timed phase, the inner commitment budget is
+30 minutes, and the accepted root slowdown is 10. Override them explicitly
+when studying another policy:
+
+```bash
+DAVE_SAMPLE_SECONDS=300 \
+DAVE_INNER_TIMEOUT_MINUTES=60 \
+DAVE_ROOT_SLOWDOWN=5 \
+just benchmark matrix-3d
+```
+
+Results are evidence, not deployable constants by themselves. Record the
+workload selection, emulator version, hardware, timing policy, and complete
+output whenever a result informs `ArbitrationConstants`.

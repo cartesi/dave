@@ -14,7 +14,7 @@ inputs:
   setup-qemu:
     description: 'Whether to setup QEMU for riscv support'
     required: false
-    default: 'true'
+    default: 'false'
   setup-rust:
     description: 'Whether to setup Rust'
     required: false

@@ -151,9 +151,10 @@ the trick:
   the pre-input snapshot after logging or executing a rejected reset. Their
   equivalent big-machine run shortcuts perform the same reload when they
   observe `RX_REJECTED`, so subsequent execution begins at the canonical
-  state. Solidity remains the semantics authority; the release CLI and its
-  computation-hash corpus are independent cross-checks, not replacements for
-  contract tests.
+  state. Solidity remains the semantics authority. The released corpus is
+  immutable conformance evidence; the release CLI replays it through the
+  emulator collect APIs and is therefore not an independent implementation or
+  a replacement for contract tests.
 
 The Solidity side reads the slot address from step's auto-generated
 `EmulatorConstants.sol`. The unit test

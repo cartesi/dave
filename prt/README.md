@@ -15,8 +15,8 @@ clients that play them.
 - [The original PRT paper](../docs/papers/prt.pdf) - an architectural
   ancestor, not the contract specification; see the implemented-game
   description in [docs/dispute-game.md](../docs/dispute-game.md).
-- [measure_constants/](measure_constants/) - tooling to measure the
-  commitment-building constants that size tournament levels.
+- [measure_constants/](measure_constants/) - the independent emulator-level
+  stress-ng benchmark for commitment-building geometry.
 
 This project uses git submodules. Clone with `--recurse-submodules`, or
 run `git submodule update --recursive --init` after cloning.

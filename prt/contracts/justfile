@@ -50,9 +50,11 @@ coverage:
 # --threads 1: the FFI machine-snapshot helper is not safe for
 # concurrent writers sharing one _machine_scratch cache.
 test-stf:
+    ../../script/machine-image-fingerprint.sh verify yield
     forge test --match-contract ".*FfiTest" --no-match-test ".*Fuzzy" --ffi --threads 1
 
 test-stf-fuzzy:
+    ../../script/machine-image-fingerprint.sh verify yield
     forge test --match-contract ".*FfiTest" --match-test ".*Fuzzy" --ffi --threads 1
 
 clean-smart-contracts:
@@ -103,7 +105,7 @@ install-deps:
 # diagnose the PRT contract inputs prepared by this module
 [script]
 doctor:
-    "{{ source_directory() / "script/doctor.sh" }}"
+    "{{ source_directory() / "../../script/contracts-doctor.sh" }}" prt
 
 clean-bindings:
     rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}

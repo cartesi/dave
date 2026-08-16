@@ -3,7 +3,7 @@ set -euo pipefail
 
 fail() {
     printf 'preflight: %s\n' "$1" >&2
-    printf "preflight: run 'just doctor' at the repo root for a full diagnosis\n" >&2
+    printf "preflight: run 'just doctor-all' at the repo root for a full diagnosis\n" >&2
     exit 1
 }
 

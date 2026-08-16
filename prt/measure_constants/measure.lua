@@ -1,61 +1,123 @@
---[[
-measure.lua
-
-Benchmark helper for multi‑level PRT. The goal is to discover reasonable
-values for the two core commitment parameters at each tournament level:
-
-* log2_stride -> gap between each state hash in commitment;
-* height -> number of state hashes inside commitment.
-
-The script proceeds bottom‑up:
-
-1. Leaf level (micro‑architecture)
-   *Runs a fully dense commitment*: state hash is computed after every micro‑instruction
-   and micro‑architecture reset. We measure how many state hashes we can compute
-   within `inner_tournament_timeout` minutes. This fully dense commitment becomes
-   the *child* tournament of the next level; as such the next level has its stride fully
-   specified.
-
-2. **Parent levels (big‑architecture) –**
-   With the child stride and height fixed, we know what must be the stride of the
-   parent level. We again measure how many state hashes at this target we can compute
-   within `inner_tournament_timeout` minutes, and discover the height. The stop condition
-   is when the commitment can be built within the slowdown defined by `root_tournament_slowdown`.
-]]
-
+-- Measure the emulator-level cost of building PRT commitments.
 --
--- User configuration
---
+-- The runner starts stress-ng, waits until its worker exists, and stores a
+-- manual-yield readiness state. Prepare mode releases it, runs an untimed
+-- warmup, and stores the active machine used by every timed phase.
 
--- String containing path where machine was stored.
-local machine_path = assert(os.getenv("MACHINE_PATH"))
+local mode = assert(arg[1], "missing mode (prepare, check, or run)")
+local machine_path = assert(arg[2], "missing benchmark machine path")
+local workload = assert(arg[3], "missing workload name")
+local prepared_path = arg[4]
+assert(mode == "prepare" or mode == "check" or mode == "run", "mode must be prepare, check, or run")
+if mode == "prepare" then
+    assert(prepared_path, "prepare mode needs an output machine path")
+else
+    assert(not prepared_path, "check and run modes accept no output machine path")
+end
 
---- Maximum factor by which the **root** tournament is allowed to slow direct execution
-local root_tournament_slowdown = 10.0
-assert(root_tournament_slowdown > 1, "root_tournament_slowdown must be greater than 1")
+local cartesi = require "cartesi"
+assert(
+    cartesi.VERSION_MAJOR == 0 and cartesi.VERSION_MINOR == 21,
+    string.format(
+        "Cartesi Machine Lua module 0.21 required, got %d.%d.%d",
+        cartesi.VERSION_MAJOR,
+        cartesi.VERSION_MINOR,
+        cartesi.VERSION_PATCH
+    )
+)
 
---- Wall‑clock time budget (minutes) to build commitment for *every* inner tournament
-local inner_tournament_timeout = 30
+local function positive_number_from_env(name, default)
+    local raw = os.getenv(name)
+    local value = raw and tonumber(raw) or default
+    assert(value and value > 0, name .. " must be a positive number")
+    return value
+end
 
+local root_tournament_slowdown = positive_number_from_env("DAVE_ROOT_SLOWDOWN", 10)
+assert(root_tournament_slowdown > 1, "DAVE_ROOT_SLOWDOWN must be greater than 1")
+local inner_tournament_timeout_minutes =
+    positive_number_from_env("DAVE_INNER_TIMEOUT_MINUTES", 30)
+local sample_seconds = positive_number_from_env("DAVE_SAMPLE_SECONDS", 120)
 
---
--- Internal config
---
-
--- time to run machine in computation hash mode, which will be extrapolated to `inner_tournament_timeout`.
-local time_sample_to_extrapolate = 2
-assert(time_sample_to_extrapolate <= inner_tournament_timeout)
-
--- Big Machine increment roughly 2^26 big instructions per second
 local default_log2_big_machine_span = 26
-local default_big_machine_span = 1 << default_log2_big_machine_span
+local warmup_mcycles = 1 << 24
+local epoch_log2_span = cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
+    + cartesi.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
+    + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+local machine_runtime = { console = { output_destination = "to_null" } }
+local uarch_halted = cartesi.UARCH_BREAK_REASON_UARCH_HALTED
+local reached_target = cartesi.BREAK_REASON_REACHED_TARGET_MCYCLE
 
--- Machine constructor/load settings
-local machine_settings = { htif = { no_console_putchar = true } }
+local function assert_running(machine, context)
+    assert(machine:read_reg("iflags_H") == 0, context .. ": machine halted")
+    assert(machine:read_reg("iflags_Y") == 0, context .. ": machine yielded")
+    assert(machine:read_reg("uarch_cycle") == 0, context .. ": uarch is not pristine")
+end
 
---
--- Timer functions
---
+local function assert_workload_marker(machine)
+    assert(machine:read_reg("iflags_H") == 0, "benchmark template is halted")
+    assert(machine:read_reg("iflags_Y") == 1, "benchmark template is not at its manual-yield marker")
+    assert(machine:read_reg("htif_tohost_dev") == cartesi.HTIF_DEV_YIELD, "marker has wrong HTIF device")
+    assert(
+        machine:read_reg("htif_tohost_cmd") == cartesi.HTIF_YIELD_CMD_MANUAL,
+        "marker is not a manual yield"
+    )
+    assert(
+        machine:read_reg("htif_tohost_reason") == cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED,
+        "marker has wrong manual-yield reason"
+    )
+    assert(machine:read_reg("htif_tohost_data") == 0, "marker carries an unexpected CMIO payload length")
+    assert(machine:read_reg("uarch_cycle") == 0, "benchmark template uarch is not pristine")
+end
+
+local function release_workload_marker(machine)
+    local revert_root = machine:get_root_hash()
+    machine:send_cmio_response(cartesi.HTIF_YIELD_REASON_ADVANCE_STATE, workload, revert_root)
+    assert_running(machine, "after releasing workload marker")
+end
+
+local function load_workload_machine()
+    local machine = cartesi.machine(machine_path, machine_runtime)
+    assert_running(machine, "loaded active workload fixture")
+    return machine
+end
+
+local function prepare_fixture()
+    local machine <close> = cartesi.machine(machine_path, machine_runtime)
+    assert_workload_marker(machine)
+    release_workload_marker(machine)
+    local start = machine:read_reg("mcycle")
+    local target = start + warmup_mcycles
+    local break_reason = machine:run(target)
+    assert(break_reason == reached_target, "workload stopped during its untimed warmup")
+    assert(machine:read_reg("mcycle") == target, "workload warmup stopped at the wrong mcycle")
+    assert_running(machine, "after workload warmup")
+    machine:store(prepared_path)
+    print(string.format("fixture prepared: %s (active at mcycle %d)", workload, target))
+end
+
+if mode == "prepare" then
+    prepare_fixture()
+    return
+end
+
+local function check_fixture()
+    local machine <close> = load_workload_machine()
+    local before = machine:get_root_hash()
+    local start = machine:read_reg("mcycle")
+    local target = start + (1 << 24)
+    local break_reason = machine:run(target)
+    assert(break_reason == reached_target, "workload did not reach the positioning probe target")
+    assert(machine:read_reg("mcycle") == target, "positioning probe stopped at the wrong mcycle")
+    assert_running(machine, "positioning probe")
+    assert(machine:get_root_hash() ~= before, "active workload made no state progress")
+    print(string.format("fixture ok: %s (warmed mcycle %d)", workload, start))
+end
+
+if mode == "check" then
+    check_fixture()
+    return
+end
 
 local chronos = require "chronos"
 local base_timer = false
@@ -67,8 +129,7 @@ end
 
 local function check_timer()
     assert(base_timer, "timer not started")
-    local total = chronos.nanotime() - base_timer
-    return total
+    return chronos.nanotime() - base_timer
 end
 
 local function stop_timer()
@@ -77,106 +138,78 @@ local function stop_timer()
     return total
 end
 
-local cartesi = require "cartesi"
-local halted = cartesi.BREAK_REASON_HALTED
-
--- Helper functions for machine initialization
-local function initialize_uarch_machine()
-    local m = cartesi.machine(machine_path, machine_settings)
-    m:run(1024)
-    return m
+local function floor_log2_capacity(value, context)
+    assert(value >= 1, context .. ": measured capacity is below one")
+    return math.floor(math.log(value, 2))
 end
 
-local function initialize_big_machine()
-    return cartesi.machine(machine_path, machine_settings)
-end
-
-
---
---  Micro‑architecture benchmark
---
-
-local function run_big_instruction_in_uarch(machine)
-    local uarch_cycle = machine:read_reg("uarch_cycle")
-    assert(uarch_cycle == 0)
-
+local function run_big_instruction_in_uarch(machine, hash_states)
+    assert(machine:read_reg("uarch_cycle") == 0, "uarch did not start pristine")
+    local uarch_cycle = 0
     local status
     repeat
         uarch_cycle = uarch_cycle + 1
         status = machine:run_uarch(uarch_cycle)
-        machine:get_root_hash()
-    until status == halted
-
+        if hash_states then
+            machine:get_root_hash()
+        end
+    until status ~= cartesi.UARCH_BREAK_REASON_REACHED_TARGET_UARCH_CYCLE
+    assert(status == uarch_halted, "uarch stopped for a reason other than halt")
     machine:reset_uarch()
-    machine:get_root_hash()
+    if hash_states then
+        machine:get_root_hash()
+    end
+    assert_running(machine, "after one big instruction")
     return uarch_cycle
 end
 
 local function run_uarch_until_timeout()
-    local iterations, uinstructions, with_snapshot_time = 0, 0, nil
-
-    -- Run for `time_sample_to_extrapolate` with computation hash to know largest commitment at full density.
+    local iterations = 0
+    local uinstructions = 0
+    local with_hash_time
     do
         collectgarbage()
-        local machine = initialize_uarch_machine()
-
+        local machine <close> = load_workload_machine()
         start_timer()
         repeat
-            uinstructions = uinstructions + run_big_instruction_in_uarch(machine)
+            uinstructions = uinstructions + run_big_instruction_in_uarch(machine, true)
             iterations = iterations + 1
-        until check_timer() > time_sample_to_extrapolate * 60
-        with_snapshot_time = stop_timer()
-        assert(machine:read_reg("iflags_H") == 0, "big machine is halted, computation too small")
+        until check_timer() >= sample_seconds
+        with_hash_time = stop_timer()
     end
 
-    -- Extrapolate densest commitment to `inner_tournament_timeout`
-    local extrapolated_iterations = iterations * inner_tournament_timeout / time_sample_to_extrapolate
-    local log2_iterations = math.floor(math.log(extrapolated_iterations, 2) + 1)
+    local extrapolated = iterations * inner_tournament_timeout_minutes * 60 / with_hash_time
+    local log2_iterations = floor_log2_capacity(extrapolated, "leaf commitment")
 
-
-    -- Run same number of instructions achieved by the previous step but without computation hash.
-    local no_snapshot_time
+    local without_hash_time
     do
         collectgarbage()
-        local machine = initialize_uarch_machine()
+        local machine <close> = load_workload_machine()
         start_timer()
         for _ = 1, iterations do
-            local status = machine:run_uarch(
-                1 << cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
-            )
-            assert(status == halted, "error: uarch not halted")
-            machine:reset_uarch()
+            run_big_instruction_in_uarch(machine, false)
         end
-        no_snapshot_time = stop_timer()
+        without_hash_time = stop_timer()
     end
 
-    -- Compare running with computation hash and without computation hash (slowdown).
-    local slowdown = with_snapshot_time / no_snapshot_time
-
-    return log2_iterations, slowdown, uinstructions // iterations
+    return log2_iterations, with_hash_time / without_hash_time, uinstructions // iterations
 end
-
-
---
--- Big Machine
---
 
 local function run_big_machine_span(machine, machine_base_cycle, snapshot_frequency, big_machine_span)
     local final_mcycle = machine:read_reg("mcycle") + big_machine_span
     local iterations = 0
 
-    local current_mcycle = machine:read_reg("mcycle")
-    while final_mcycle > current_mcycle do
-        local i = current_mcycle - machine_base_cycle + 1
-        local remaining = snapshot_frequency - (i % snapshot_frequency)
-        assert(machine:read_reg("iflags_H") == 0, "big machine is halted, computation too small")
-
-        if current_mcycle + remaining > final_mcycle then
-            machine:run(final_mcycle)
-            break
-        else
-            machine:run(current_mcycle + remaining)
-            current_mcycle = machine:read_reg("mcycle")
+    while machine:read_reg("mcycle") < final_mcycle do
+        local current_mcycle = machine:read_reg("mcycle")
+        local relative_cycle = current_mcycle - machine_base_cycle
+        local remaining = snapshot_frequency - (relative_cycle % snapshot_frequency)
+        local target = math.min(current_mcycle + remaining, final_mcycle)
+        assert_running(machine, "before big-machine span")
+        local break_reason = machine:run(target)
+        assert(break_reason == reached_target, "big machine stopped before its target")
+        assert(machine:read_reg("mcycle") == target, "big machine stopped at the wrong mcycle")
+        assert_running(machine, "after big-machine span")
+        if (target - machine_base_cycle) % snapshot_frequency == 0 then
             machine:get_root_hash()
             iterations = iterations + 1
         end
@@ -185,123 +218,116 @@ local function run_big_machine_span(machine, machine_base_cycle, snapshot_freque
     return iterations
 end
 
--- TODO document
 local function run_big_machine_until_timeout(log2_stride)
-    -- we pick the smaller value from (snapshot_frequency, default_big_machine_span)
-    -- to increment the machine, so we don't overshoot the timeout too much but also run fast
-    local snapshot_frequency = 1
-        << (log2_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE)
-    local big_machine_span = math.min(snapshot_frequency, default_big_machine_span)
+    local log2_mcycle_stride =
+        log2_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+    assert(
+        log2_mcycle_stride >= 0
+            and log2_mcycle_stride <= 62
+            and log2_stride <= epoch_log2_span,
+        "big-machine stride is outside the supported integer geometry"
+    )
+    local snapshot_frequency = 1 << log2_mcycle_stride
+    local big_machine_span = math.min(
+        snapshot_frequency,
+        1 << math.min(default_log2_big_machine_span, log2_stride)
+    )
 
-    -- Run for `time_sample_to_extrapolate` with computation hash to know largest commitment
-    -- at target density (`log2_stride`).
-    local iterations, spans, with_snapshot_time = 0, 0, nil
+    local iterations = 0
+    local spans = 0
+    local with_hash_time
     do
         collectgarbage()
-        local machine = initialize_big_machine()
+        local machine <close> = load_workload_machine()
         local machine_base_cycle = machine:read_reg("mcycle")
-
         start_timer()
         repeat
-            iterations = iterations +
-                run_big_machine_span(machine, machine_base_cycle, snapshot_frequency, big_machine_span)
+            iterations = iterations
+                + run_big_machine_span(machine, machine_base_cycle, snapshot_frequency, big_machine_span)
             spans = spans + 1
-        until check_timer() > time_sample_to_extrapolate * 60
-        with_snapshot_time = stop_timer()
+        until check_timer() >= sample_seconds
+        with_hash_time = stop_timer()
     end
 
-    -- Extrapolate densest commitment to `inner_tournament_timeout`.
-    local extrapolated_iterations = iterations * inner_tournament_timeout / time_sample_to_extrapolate
-    local log2_iterations = math.floor(math.log(extrapolated_iterations + 1, 2)) + 1
+    local extrapolated = iterations * inner_tournament_timeout_minutes * 60 / with_hash_time
+    local log2_iterations = floor_log2_capacity(extrapolated, "big-machine commitment")
 
-
-    -- Run same number of instructions achieved by the previous step but without computation hash.
-    local cycles = spans * big_machine_span
-    local no_snapshot_time
+    local without_hash_time
     do
         collectgarbage()
-        local machine = initialize_big_machine()
+        local machine <close> = load_workload_machine()
+        local target = machine:read_reg("mcycle") + spans * big_machine_span
         start_timer()
-        machine:run(machine:read_reg("mcycle") + cycles)
-        no_snapshot_time = stop_timer()
+        local break_reason = machine:run(target)
+        without_hash_time = stop_timer()
+        assert(break_reason == reached_target, "baseline machine stopped before its target")
+        assert(machine:read_reg("mcycle") == target, "baseline machine stopped at the wrong mcycle")
+        assert_running(machine, "after baseline span")
     end
 
-    -- Compare running with computation hash and without computation hash (slowdown).
-    local slowdown = with_snapshot_time / no_snapshot_time
-
-    return log2_iterations, slowdown
+    return log2_iterations, with_hash_time / without_hash_time
 end
 
-
-
---
--- Measure
---
-
-collectgarbage('stop')
+collectgarbage("stop")
 
 print(string.format([[
-Starting measurements for %s...
+Starting emulator constants benchmark for stress-ng --%s...
 
-Target root slowdown is set to `%.1fx` slower.
-Inner tournament commitment time is set to `%d` minutes.
-]], machine_path, root_tournament_slowdown, inner_tournament_timeout))
+Linux boot, process startup, and the fixed warmup are excluded from timing.
+Sample duration is %.1f seconds per timed phase.
+Target root slowdown is %.1fx.
+Inner commitment budget is %.1f minutes.
+]], workload, sample_seconds, root_tournament_slowdown, inner_tournament_timeout_minutes))
 
-
--- Result variables
 local levels = 0
-local log2_strides = {} -- log2_gap or log2_step
+local log2_strides = {}
 local heights = {}
 
-local function add_uint64_brackets(src)
-    local dst = {}
-    for k, v in ipairs(src) do
-        dst[k] = "uint64(" .. tostring(v) .. ")"
+local function add_uint64_brackets(source)
+    local result = {}
+    for index, value in ipairs(source) do
+        result[index] = "uint64(" .. tostring(value) .. ")"
     end
-    return dst -- for convenience (chaining)
+    return result
 end
 
 local function output_results()
-    print("level", levels)
+    print("workload", workload)
+    print("levels", levels)
     print("log2_stride", "[" .. table.concat(add_uint64_brackets(log2_strides), ", ") .. "]")
     print("height", "[" .. table.concat(add_uint64_brackets(heights), ", ") .. "]")
 end
 
--- 1. Leaf (dense micro)
-local log2_iterations, uslowdown, uinstructions = run_uarch_until_timeout()
-print(string.format("Average ucycles to run a big instruction: %d", uinstructions))
-print(string.format("leaf slowdown: %.1f", uslowdown))
+local log2_iterations, leaf_slowdown, average_uinstructions = run_uarch_until_timeout()
+print(string.format("Average ucycles per big instruction: %d", average_uinstructions))
+print(string.format("Leaf slowdown: %.2fx", leaf_slowdown))
 
 levels = 1
-local leaf_height = log2_iterations
-    + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+local leaf_height = log2_iterations + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+assert(leaf_height > 0 and leaf_height <= epoch_log2_span, "invalid measured leaf height")
 table.insert(log2_strides, 1, 0)
 table.insert(heights, 1, leaf_height)
 output_results()
 print "uarch done -> CONTINUE\n"
 
--- 2. Build parent levels until root slowdown <= target
 repeat
     levels = levels + 1
     local height, slowdown = run_big_machine_until_timeout(heights[1] + log2_strides[1])
-    print(string.format("slowdown of level %d: %.1f", levels, slowdown))
+    print(string.format("Slowdown of level %d: %.2fx", levels, slowdown))
 
     table.insert(log2_strides, 1, heights[1] + log2_strides[1])
-
     if slowdown > root_tournament_slowdown then
+        assert(height > 0, "invalid measured inner height")
         table.insert(heights, 1, height)
         output_results()
         print "parent slowdown too high -> CONTINUE\n"
     else
-        table.insert(heights, 1,
-            cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
-                + cartesi.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
-                + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
-                - log2_strides[1])
+        local root_height = epoch_log2_span - log2_strides[1]
+        assert(root_height > 0, "measured geometry leaves no positive root height")
+        table.insert(heights, 1, root_height)
         output_results()
         print "root slowdown within target -> FINISHED\n"
         return
     end
-
-    assert(levels < 32, "safety guard: excessive recursion levels (>31)")
+    assert(levels < 32, "safety guard: excessive recursion levels")
 until false

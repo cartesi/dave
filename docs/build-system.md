@@ -34,10 +34,10 @@ modules (`just <module>::<recipe>`, see `just --list`).
    honeypot image additionally needs docker.
 7. Devnet bundle (`cartesi-rollups/contracts/{state.json,state.fingerprint}`
    plus `deployments/31337`): an anvil state dump with everything deployed,
-   its deployment records, and the marker that binds those outputs to their
-   inputs. `build-devnet` produces the complete bundle and the e2e harness
-   refuses an incomplete or mixed one. Release archives preserve the same
-   three-part unit.
+   its deployment records, and the marker that binds those outputs to the
+   production and deployment inputs that produced them. `build-devnet`
+   produces the complete bundle and the e2e harness refuses an incomplete,
+   stale, or mixed one. Release archives preserve the same three-part unit.
 
 Consequence of (1) and (4): raw Cargo works after the gitignored Solidity
 bindings exist and either a valid external machine provider is selected or the
@@ -74,6 +74,40 @@ The filters expose only production contract types: `Tournament` and
 `MultiLevelTournamentFactory` for PRT, and the concrete and interface forms of
 `DaveConsensus` and `DaveAppFactory` for Rollups. Test contracts and fixture
 factories are not part of the generated Rust API.
+
+## Doctor and artifact receipts
+
+Component doctors use one exit contract: `0` means healthy, `1` means a
+missing or stale setup artifact was diagnosed, and `2` means the checker could
+not determine the result. The root doctor invokes the component scripts
+directly and aggregates their statuses without parsing their output. This keeps
+`script/doctor.sh` usable even when Just itself is the suspected failure; the
+module recipes are discoverable aliases. The two contract modules share one
+parameterized dependency-and-binding checker because their checks are
+identical apart from paths and labels.
+
+`just doctor` covers build and pre-commit-check readiness. Optional machine
+images, the devnet bundle, and retained E2E state belong to
+`just doctor-e2e`; `just doctor-all` runs both scopes. A checkout can therefore
+be healthy for ordinary development without first constructing every expensive
+integration fixture.
+
+The devnet receipt is deliberately narrower than the contract worktrees. Its
+input digest covers production and deployment Solidity, installed production
+dependency Solidity and lockfiles, the production `machine/step` sources,
+effective Forge compiler and deployment configuration, the build and deploy
+drivers, and the Forge and Anvil versions. It excludes documentation, tests,
+measurements, compiler output, broadcasts, and prior deployments. Those files
+cannot change the deployed bundle, and treating them as inputs made doctor
+report false staleness. The receipt separately hashes `state.json` and every
+deployment record, so copying or interrupting a bundle still fails closed.
+
+Each persistent test image likewise records the inputs that produced it and
+its semantic stored-machine root. The input digest names one producer script
+for that image rather than the shared programs Justfile. Editing the Honeypot
+producer therefore does not invalidate echo, yield, or stress. The v2 receipt
+format intentionally makes the old shared-recipe receipts stale once; rebuild
+the image with the fix printed by `just doctor-e2e`.
 
 ## Deployment generations
 
@@ -167,17 +201,19 @@ prepares its build context without first building an unused host archive.
 
 Release acquisition and image-generation pins remain distributed across the
 external devshell flake, the machine preparation script, CI, and
-`test/programs/justfile`. Semantic version guards also live in the safe Rust
-wrapper, node configuration, and computation-corpus gate. An emulator bump
+the per-image producers under `test/programs/script/`. Semantic version guards
+also live in the safe Rust wrapper, node configuration, and computation-corpus gate. An emulator bump
 must update every matching guard and artifact together with both machine
 submodules and regenerated program images; search for the current version
 rather than treating the acquisition list as exhaustive.
 
 `just test-computation-hash-corpus` is the explicit emulator release gate. It
-downloads the pinned v0.21 corpus, checks its SHA-256, recomputes each mcycle
-case with the release CLI, and compares the same templates and inputs against
-Dave's existing collector. It deliberately stays outside `just check` and does
-not opt the node into the new bulk collection API.
+downloads the pinned v0.21 corpus and checks its SHA-256. One test replays the
+complete mcycle and uarch manifest through the release CLI; a separate test
+compares every mcycle case that Dave supports directly with the published
+answer. The split keeps CLI packaging conformance distinct from Dave's
+collector conformance. Acquisition stays outside both `setup` and `just check`,
+and this gate does not opt the node into the new bulk collection API.
 
 ## macOS + nix devshell note
 
@@ -208,13 +244,15 @@ A new git worktree starts without the gitignored artifacts. Run
 `just bootstrap-worktree [SOURCE]`: it runs the provider-aware machine setup,
 installs soldeer deps in both contract dirs, regenerates bindings,
 optionally copies machine images and devnet state from SOURCE (a green
-sibling worktree), and ends with `just doctor` for the verdict. A copied
+sibling worktree), and ends with `just doctor-all` when SOURCE was supplied or
+the base `just doctor` otherwise. A copied
 machine image is accepted only when its sidecar proves that the current
 inputs match and that the stored machine root is unchanged. Devnet state,
 deployments, and `state.fingerprint` move as one bundle; the marker binds
-the checked-out sources, installed dependencies, effective compiler
-configuration, state dump, and deployment files. Any mismatch forces a
-rebuild. Without a SOURCE, rebuild the artifacts with `just setup-local`.
+the production contract and deployment sources, installed production
+dependencies, effective compiler configuration and tool versions, state dump,
+and deployment files. Any mismatch forces a rebuild. Without a SOURCE, rebuild
+the artifacts with `just setup-local`.
 
 These checks prevent the 2026-07-14 failure mode: a devnet deployed from
 older contract sources fails e2e with a misleading consensus assert.
@@ -243,15 +281,16 @@ debugging the environment:
 
 ## Validation
 
-`just check` is the pre-commit gate: fmt checks (Rust workspace and
-both contract dirs), luacheck over the Lua client and harness,
-clippy with warnings denied, and the Rust and Lua unit suites. `just doctor`
-diagnoses a checkout - tools, the selected external archive and header or the
-prepared source inputs, soldeer deps, bindings, machine images, and devnet
-artifacts - and every failed check prints the command that fixes it. Run it
-before debugging any mysterious failure, especially in a fresh worktree. The
-e2e `test` recipe runs a preflight with the same spirit: missing artifacts fail
-with a named fix, not a cryptic jq or Lua error.
+`just check` is the pre-commit gate: fmt checks (Rust workspace and both
+contract dirs), luacheck over the Lua client and harness, clippy with warnings
+denied, the build-tooling regressions, the provider-free contract suites, and
+the Rust and Lua unit suites. `just doctor` diagnoses build/check inputs;
+`just doctor-e2e` diagnoses machine images, devnet artifacts, and E2E litter;
+`just doctor-all` aggregates both. Every failed check prints the command that
+fixes it. Run the relevant scope before debugging a mysterious failure,
+especially in a fresh worktree. The e2e `test` recipe runs a preflight
+with the same spirit: missing artifacts fail with a named fix, not a cryptic jq
+or Lua error.
 
 Formatter versions matter: forge changes wrapping heuristics across
 releases (observed live: 1.4.3 and 1.5.1-dev disagree about an
@@ -263,21 +302,51 @@ around either. The setup-tools action reads that pin through
 
 ## CI
 
-One workflow (`.github/workflows/build.yml`), jobs: prt contracts
-(disputes + stf tests), consensus contracts, the honeypot e2e smoke
-(`test-rollups-honeypot-ci`) plus batched-kill, chaos, and stf_all
-scenarios, a Rust workspace job (fmt, clippy, lua lint, check,
-test - the same targets `just check` runs, one step each), and the
-release pipeline (node binaries per arch, contract artifacts,
-deployment simulations, devnet state). Actions are pinned by digest.
+The per-PR and tag workflow (`.github/workflows/build.yml`) has jobs for PRT contracts (disputes,
+structured STF tests, and structured STF fuzz), consensus contracts, the
+honeypot e2e smoke (`test-rollups-honeypot-ci`) plus batched-kill, chaos,
+`stf_all`, and yield `stf_revert` scenarios, a Rust workspace job (fmt, check,
+clippy, Lua lint and unit tests, Rust tests, and explicit image-backed machine
+differentials), and the release pipeline (node binaries per arch, contract
+artifacts, deployment simulations, devnet state). The e2e lane also runs both
+halves of the computation-hash release corpus gate. Actions are pinned by
+digest.
 When renaming just recipes, grep the workflow first; CI calls them
 by name. Shared acquisition and provider policy belongs in actions or Just
 targets, not copied shell programs in the workflow. In particular, the
 emulator release commit and artifact digests live in the machine preparation
 script; CI only selects a lane and installs or consumes its result.
 
-Known CI gaps, deliberate: the forge fuzz suite
-(prt-contracts::test-stf-fuzzy) and the full battery
-(battery.sh) run locally only. Machine-provider coverage is intentional:
-package lanes exercise the external archive, while release-node builds prepare
-and exercise the source fallback.
+The manual `Full E2E Battery` workflow runs the complete E2E matrix plus two
+extra chaos seeds on a deliberately selected ref. Per-PR CI retains the smaller
+deterministic subset above. Its design goals are to exercise every maintained
+scenario in one isolated environment, explore a small reproducible seed set,
+retain useful failure logs, and bound hosted-runner storage by removing each
+scenario's machine state after it finishes. It is not a performance benchmark,
+a required pull-request gate, or currently a scheduled monitor.
+
+Manual-only is deliberate while its cost and signal have not been measured for
+the current 25-case suite on the selected hosted runner. One invocation also
+builds the devnet, three machine images, and the validator, then runs 25 battery
+scenarios and two additional chaos seeds. The battery is serial during this
+calibration phase: one scenario may use about 5 GB, while GitHub documents only
+14 GB of SSD on a standard `ubuntu-24.04` runner. State is removed after each
+scenario, logs are retained for seven days, and the job has a 150-minute cap.
+The older local 21-case battery measured about 42 aggregate scenario-minutes;
+it is useful context, not a hosted-runner forecast for the current suite.
+
+GitHub permits repeated dispatches of the same commit. The fixed concurrency
+group allows one running and one pending invocation; a newer dispatch replaces
+the older pending one. It prevents overlap but does not deduplicate completed
+runs. Promote the workflow to a schedule only after representative runs record
+wall time and establish a safe disk bound, failures prove actionable rather
+than flaky, an owner exists for triage, and the scheduled form avoids rerunning
+an unchanged default-branch commit. Until then, use it before a release or
+after changes to E2E orchestration, storage/recovery, machine images, or dispute
+wiring.
+
+Machine provider coverage is intentional: package lanes exercise the external
+archive, while release-node builds prepare and execute a wrapper test against
+the source fallback. The full corpus is explicit locally because it downloads
+release evidence, but CI owns one required execution so release conformance
+cannot silently rot.
