@@ -1,6 +1,6 @@
 # STF upgrade: emulator v0.21, solidity-step, and two levels
 
-Status: ACTIVE (updated 2026-08-16). The original phase ledger remains below;
+Status: ACTIVE (updated 2026-08-17). The original phase ledger remains below;
 the execution checkpoint records what changed after the stable releases.
 
 ## Goal
@@ -103,13 +103,12 @@ validation boundaries: cleanup, deployment identity, and snapshot durability.
   growth still moved the selected `WIN_LEAF_MATCH` subsidy from 4,298,000 to
   4,420,000. The explicit equivalent changes production bytecode but not the
   transition semantics. The epoch-domain guard adds one comparison on the
-  valid path. A release-pinned regression run after exact access-log framing
-  and input-envelope extraction measured reviewed minima of 4,418,481 and
-  4,418,579 for the two selected maximum-input witnesses. Both round to
-  4,419,000; the retained tests record exactly 1,000 units of deliberate
-  headroom below the configured 4,420,000, and the accepted allocation remains
-  unchanged. This was not a new clean-candidate calibration; the dated accepted
-  record remains evidence for its named historical commit.
+  valid path. The clean, release-pinned
+  [`2026-08-17 calibration`](../reviews/2026-08-17-prt-stf-composition-gas-calibration/)
+  measured reviewed minima of 4,418,481 and 4,418,579 for the two selected
+  maximum-input witnesses. Both round to 4,419,000; the retained tests record
+  exactly 1,000 units of deliberate headroom below the configured 4,420,000,
+  and the accepted allocation remains unchanged.
 - The `IStateTransition` ABI and Tournament storage layout remain stable. The
   concrete adapter exposes its locally pinned `CM_MARCHID`, and the factory
   exposes its generic state-transition dependency so clients can discover that

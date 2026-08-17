@@ -611,14 +611,14 @@ known limitations;
 [`prt-refund-accounting.md`](prt-refund-accounting.md) derives the living
 reserve and conservation boundary.
 
-The accepted 2026-08-16 post-#274 v0.21 calibration measured a 5,565,470-unit
+The accepted 2026-08-17 STF composition calibration measured a 5,564,753-unit
 whole-transaction diagnostic for the maximum retained canonical input. That
-was 33.172786% of Ethereum's 16,777,216-unit per-transaction cap and 9.284850%
-of the 59,941,408-unit block gas limit observed for the dated reference block.
+was 33.168513% of Ethereum's 16,777,216-unit per-transaction cap and 9.274588%
+of the 60,000,000-unit block gas limit observed for the dated reference block.
 This establishes material admission headroom for that retained witness, not a
 permanent limit over future forks, proof encodings, or state-transition
 behavior. The
-[`post-#274 v0.21 gas calibration`](reviews/2026-08-16-prt-v021-post-274-gas-calibration/)
+[`STF composition gas calibration`](reviews/2026-08-17-prt-stf-composition-gas-calibration/)
 records the comparison, and the runbook requires it to be repeated.
 
 The refund callback occurs after `gasAfter` is sampled, so accepting, rejecting,
