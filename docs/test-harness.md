@@ -322,6 +322,28 @@ timing. Assert on content, or control input timing relative to
 settlement explicitly (the `big_input` fix chose content-by-
 construction: one input total).
 
+The 2026-08-17 five-lane battery exposed two additional scheduling cases:
+
+- `gc_match` assumes its two adversarial commitments pair with each other, but
+  the honest node can join between them. The `yield` case failed under
+  contention and passed immediately in isolation. Precomputing both
+  commitments does not serialize their transactions. Make this topology
+  independent of arrival order by joining three distinct adversarial
+  commitments. Because the tournament consumes arrivals in consecutive pairs
+  through one dangling slot, three adversarial commitments and one honest
+  commitment force at least one adversary/adversary pair regardless of arrival
+  order. `gc_tournament` uses the same two-adversary assumption and has the
+  same latent race. Its fix must drive all three players round-robin or map the
+  discovered adversary/adversary roots back to their player coroutines; it must
+  not keep assuming players 1 and 2 form the delegated match.
+- `multi_sybil` reproducibly selected the correct winner but failed its final
+  bond-recovery assertion both in the battery and in isolation. Do not remove
+  the assertion or treat merely lengthening its block loop as a fix: the node's
+  blanket recovery veto for a running current tournament can starve older bonds
+  across continuous epoch rotation. The production scheduling debt and
+  required composition tests are tracked in
+  [node-architecture.md](node-architecture.md#known-debts).
+
 Known blind spots, by layer:
 
 - (current 2026-08-09) The Rust tournament reader's focused suite covers the
