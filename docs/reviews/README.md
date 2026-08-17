@@ -42,3 +42,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-08-16-prt-v021-post-274-gas-calibration/`](2026-08-16-prt-v021-post-274-gas-calibration/)
   - accepted post-#274 v0.21 recalibration, stable production allocations, and
     final-candidate compatibility and admission evidence.
+- [`2026-08-17-prt-stf-composition-gas-calibration/`](2026-08-17-prt-stf-composition-gas-calibration/)
+  - accepted explicit state-transition recalibration, retained allocations,
+    and current deployment and admission impact.
