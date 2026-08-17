@@ -13,7 +13,10 @@ use alloy::{
 };
 use alloy_chains::NamedChain;
 use anyhow::{Context, Result, anyhow, ensure};
-use cartesi_prt_contracts::multi_level_tournament_factory::MultiLevelTournamentFactory;
+use cartesi_prt_contracts::{
+    cartesi_state_transition::CartesiStateTransition,
+    multi_level_tournament_factory::MultiLevelTournamentFactory,
+};
 use clap::{ArgGroup, Parser, Subcommand};
 use std::{fmt, path::PathBuf, time::Duration};
 
@@ -42,11 +45,21 @@ fn validate_root_tournament_geometry(log2step: u64, height: u64) -> Result<()> {
     Ok(())
 }
 
-async fn validate_deployed_root_tournament_geometry(
+fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
+    let required_marchid = u64::from(cartesi_machine::cartesi_machine_sys::CM_MARCHID);
+    ensure!(
+        deployed_marchid == required_marchid,
+        "incompatible state transition MARCHID: deployed {deployed_marchid}, node requires {required_marchid}"
+    );
+    Ok(())
+}
+
+async fn validate_deployed_tournament_configuration(
     tournament_factory: Address,
     provider: &impl Provider,
 ) -> Result<()> {
-    let parameters = MultiLevelTournamentFactory::new(tournament_factory, provider)
+    let factory = MultiLevelTournamentFactory::new(tournament_factory, provider);
+    let parameters = factory
         .tournamentParameters(0)
         .call()
         .await
@@ -55,7 +68,26 @@ async fn validate_deployed_root_tournament_geometry(
         })?;
 
     validate_root_tournament_geometry(parameters.log2step, parameters.height)
-        .with_context(|| format!("tournament factory {tournament_factory} is incompatible"))
+        .with_context(|| format!("tournament factory {tournament_factory} is incompatible"))?;
+
+    let state_transition = factory.stateTransition().call().await.with_context(|| {
+        format!("failed to query state transition from tournament factory {tournament_factory}")
+    })?;
+    let deployed_marchid = CartesiStateTransition::new(state_transition, provider)
+        .CM_MARCHID()
+        .call()
+        .await
+        .with_context(|| {
+            format!(
+                "failed to query MARCHID from state transition {state_transition} configured by tournament factory {tournament_factory}"
+            )
+        })?;
+
+    validate_state_transition_marchid(deployed_marchid).with_context(|| {
+        format!(
+            "state transition {state_transition} configured by tournament factory {tournament_factory} is incompatible"
+        )
+    })
 }
 
 #[derive(Clone, Parser)]
@@ -244,7 +276,7 @@ impl NodeConfig {
         let provider = create_rpc_provider(&args.web3_rpc_url, chain_id).await;
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await;
         let address_book = AddressBook::new(args.app_address, &provider).await;
-        validate_deployed_root_tournament_geometry(address_book.tournament_factory, &provider)
+        validate_deployed_tournament_configuration(address_book.tournament_factory, &provider)
             .await?;
         let ethereum_submit_gateway = args
             .web3_submit_rpc_url
@@ -290,6 +322,10 @@ impl NodeConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::blockchain_reader::test_utils::{
+        anvil_state_path, deployment_address, rpc_client_with_timeout,
+    };
+    use alloy::{node_bindings::Anvil, providers::ProviderBuilder};
 
     #[test]
     fn accepts_canonical_root_tournament_geometry() {
@@ -312,5 +348,43 @@ mod tests {
     fn rejects_root_tournament_span_overflow() {
         let error = validate_root_tournament_geometry(u64::MAX, 1).unwrap_err();
         assert!(error.to_string().contains("span overflows u64"));
+    }
+
+    #[test]
+    fn accepts_linked_machine_marchid() {
+        validate_state_transition_marchid(u64::from(
+            cartesi_machine::cartesi_machine_sys::CM_MARCHID,
+        ))
+        .unwrap();
+    }
+
+    #[test]
+    fn rejects_wrong_machine_marchid() {
+        let required = u64::from(cartesi_machine::cartesi_machine_sys::CM_MARCHID);
+        let deployed = required ^ 1;
+        let error = validate_state_transition_marchid(deployed).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "incompatible state transition MARCHID: deployed {deployed}, node requires {required}"
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn accepts_deployed_factory_state_transition_and_machine() {
+        let state = anvil_state_path();
+        let anvil = Anvil::default()
+            .args(["--load-state", state.to_str().unwrap()])
+            .spawn();
+        let provider =
+            ProviderBuilder::new().connect_client(rpc_client_with_timeout(anvil.endpoint_url()));
+
+        validate_deployed_tournament_configuration(
+            deployment_address("MultiLevelTournamentFactory"),
+            &provider,
+        )
+        .await
+        .unwrap();
     }
 }

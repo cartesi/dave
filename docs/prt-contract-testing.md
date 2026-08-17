@@ -203,6 +203,10 @@ and step-reset seams, before-root and provider-root binding, one representative
 byte in each composed primitive, and replay across adjacent transition shapes.
 A nonempty DA payload paired with the provider's zero out-of-range root
 intentionally skips CMIO and proves only the following machine step.
+One PRT-side composition test carries a canonical input-opening vector through
+the real leaf Tournament and `CartesiStateTransition` with a standalone
+`IDataProvider`. This pins the generic dispute seam without depending on
+DaveConsensus or creating another expected-root implementation.
 
 This is bounded cross-implementation evidence for the v0.21 adapter. It is not
 an exhaustive enumeration of every RV64 instruction, access-log shape, proof

@@ -53,6 +53,16 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
     }
 
     /// @inheritdoc IMultiLevelTournamentFactory
+    function stateTransition()
+        external
+        view
+        override
+        returns (IStateTransition)
+    {
+        return STATE_TRANSITION;
+    }
+
+    /// @inheritdoc IMultiLevelTournamentFactory
     function tournamentLevelCount() external view override returns (uint64) {
         return tournamentParameters(0).levels;
     }

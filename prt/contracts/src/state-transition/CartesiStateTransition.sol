@@ -14,8 +14,8 @@
 // limitations under the License.
 //
 
-/// @title StateTransition
-/// @notice Transitions machine state from s to s+1
+/// @title Cartesi machine state transition
+/// @notice Verifies one epoch-local Cartesi machine transition.
 
 pragma solidity ^0.8.0;
 
@@ -32,17 +32,25 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 
 contract CartesiStateTransition is IStateTransition {
-    // TODO add CM_MARCHID
+    /// @notice Cartesi Machine architecture ID qualified by this transition.
+    /// @dev Pinned to v0.21.0 until a released solidity-step exposes it.
+    uint64 public constant CM_MARCHID = 21;
 
     using SafeCast for uint256;
+
+    error CounterOutsideEpoch(uint256 counter);
+    error InvalidAccessLogProofLength(uint256 consumed, uint256 provided);
 
     uint64 constant LOG2_INPUT_WINDOW_SPAN =
         EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
             + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
+    uint64 constant LOG2_EPOCH_RULER_SPAN = LOG2_INPUT_WINDOW_SPAN
+        + EmulatorConstants.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH;
 
     uint256 constant UARCH_CYCLE_MASK =
         (1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE) - 1;
     uint256 constant INPUT_MASK = (1 << LOG2_INPUT_WINDOW_SPAN) - 1;
+    uint256 constant EPOCH_RULER_SPAN = 1 << LOG2_EPOCH_RULER_SPAN;
 
     function transitionState(
         bytes32 machineState,
@@ -50,32 +58,32 @@ contract CartesiStateTransition is IStateTransition {
         bytes calldata proofs,
         IDataProvider provider
     ) external view returns (bytes32) {
-        // lower bits (uarch + big arch) are zero: add input.
-        if (counter & INPUT_MASK == 0) {
-            // proofs structure:
-            // input_length <- proofs[:8] (big endian)
-            // input <- proofs[8:8+input_length]
-            // access_logs <- proofs[8+input_length:]
+        // counter indexes the output leaf; machineState is its predecessor.
+        // At counter zero, that predecessor is the commitment's implicit hash.
+        if (counter >= EPOCH_RULER_SPAN) {
+            revert CounterOutsideEpoch(counter);
+        }
 
-            // first 8 bytes of the proof are the size of the input, big-endian.
-            // next `inputLength` bytes of the proof are the input itself.
-            uint64 inputLength = uint64(bytes8(proofs[:8]));
-            bytes calldata input = proofs[8:8 + inputLength];
+        // An input-window opening fuses optional CMIO delivery with its first
+        // uarch step.
+        if ((counter & INPUT_MASK) == 0) {
             uint256 inputIndexWithinEpoch = counter >> LOG2_INPUT_WINDOW_SPAN;
-            bytes32 inputMerkleRoot =
-                provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
+            (
+                bytes32 inputMerkleRoot,
+                uint64 inputLength,
+                uint256 accessLogsOffset
+            ) = _resolveInputWitness(proofs, inputIndexWithinEpoch, provider);
 
-            // the rest is the access log proofs, which has the concatenated proofs for:
-            // * sendCmio
-            // * step
             AccessLogs.Context memory accessLogs = AccessLogs.Context(
-                machineState, Buffer.Context(proofs[8 + inputLength:], 0)
+                machineState, Buffer.Context(proofs[accessLogsOffset:], 0)
             );
 
-            // check if input is out-of-bounds of input box for this epoch
+            // A nonzero root requires a CMIO proof before the uarch-step proof.
+            // Zero denotes no input; the uarch step still executes.
             if (inputMerkleRoot != bytes32(0x0)) {
-                // The primitive records the pre-input state for rollback.
-                // A machine that cannot accept this response produces a provable no-op.
+                // CMIO records machineState for rejected-input rollback.
+                // Inapplicable responses are provable no-ops.
+                // Reject rather than truncate lengths outside CMIO's uint32 domain.
                 SendCmioResponse.sendCmioResponse(
                     accessLogs,
                     EmulatorConstants.HTIF_YIELD_REASON_ADVANCE_STATE,
@@ -86,35 +94,60 @@ contract CartesiStateTransition is IStateTransition {
             }
 
             UArchStep.step(accessLogs);
-            require(
-                accessLogs.buffer.data.length == accessLogs.buffer.offset,
-                "buffer should be fully consumed"
-            );
+            _requireAccessLogProofFullyConsumed(accessLogs.buffer);
             return accessLogs.currentRootHash;
-        } else if ((counter + 1) & UARCH_CYCLE_MASK == 0) {
-            // The last transition in each uarch span performs one uarch step
-            // and then resets the uarch. The reset substitutes the recorded
-            // pre-input root when the machine rejected the input.
+        } else if ((counter & UARCH_CYCLE_MASK) == UARCH_CYCLE_MASK) {
+            // A uarch span's closing transition fuses its final step with reset.
+            // Only RX_REJECTED restores the root recorded at input delivery.
             AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
             UArchStep.step(accessLogs);
             UArchReset.reset(accessLogs);
-            require(
-                accessLogs.buffer.data.length == accessLogs.buffer.offset,
-                "buffer should be fully consumed"
-            );
+            _requireAccessLogProofFullyConsumed(accessLogs.buffer);
             return accessLogs.currentRootHash;
         } else {
             AccessLogs.Context memory accessLogs =
                 AccessLogs.Context(machineState, Buffer.Context(proofs, 0));
 
             UArchStep.step(accessLogs);
-            require(
-                accessLogs.buffer.data.length == accessLogs.buffer.offset,
-                "buffer should be fully consumed"
-            );
+            _requireAccessLogProofFullyConsumed(accessLogs.buffer);
             return accessLogs.currentRootHash;
+        }
+    }
+
+    function _resolveInputWitness(
+        bytes calldata proofs,
+        uint256 inputIndexWithinEpoch,
+        IDataProvider provider
+    )
+        internal
+        view
+        returns (
+            bytes32 inputMerkleRoot,
+            uint64 inputLength,
+            uint256 accessLogsOffset
+        )
+    {
+        // Prefix: an 8-byte big-endian length followed by that many input
+        // bytes. Calldata slicing rejects a truncated header or payload.
+        inputLength = uint64(bytes8(proofs[:8]));
+        accessLogsOffset = 8 + uint256(inputLength);
+        bytes calldata input = proofs[8:accessLogsOffset];
+        inputMerkleRoot =
+            provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
+    }
+
+    function _requireAccessLogProofFullyConsumed(Buffer.Context memory buffer)
+        private
+        pure
+    {
+        // Buffer reads are unchecked, so exact consumption rejects both
+        // trailing data and truncated proofs that read past data.length.
+        if (buffer.offset != buffer.data.length) {
+            revert InvalidAccessLogProofLength(
+                buffer.offset, buffer.data.length
+            );
         }
     }
 }

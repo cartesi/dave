@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
+import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
@@ -14,6 +15,9 @@ import {
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 interface IMultiLevelTournamentFactory is ITournamentFactory {
+    /// @notice Return the state transition configured for every tournament.
+    function stateTransition() external view returns (IStateTransition);
+
     /// @notice Return the number of configured tournament levels.
     function tournamentLevelCount() external view returns (uint64);
 

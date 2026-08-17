@@ -258,6 +258,10 @@ contract StateTransitionFfiTest is Util {
         }
     }
 
+    function testTransitionAcceptsLastCounterInEpoch() public {
+        assertStf(EPOCH_SPAN - 1, 0);
+    }
+
     function testTransitionInput() public {
         uint256 counter;
 

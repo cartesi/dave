@@ -52,7 +52,7 @@ configure_module() {
     case "$module_name" in
         prt)
             contracts_dir="${repo_dir}/prt/contracts"
-            bindings_filter='^(MultiLevelTournamentFactory|Tournament)$'
+            bindings_filter='^(CartesiStateTransition|MultiLevelTournamentFactory|Tournament)$'
             ;;
         rollups)
             contracts_dir="${repo_dir}/cartesi-rollups/contracts"
