@@ -154,6 +154,14 @@ contract MultiLevelTournamentFactoryDependenciesTest is Test {
         factory.tournamentParameters(2);
     }
 
+    function testReportsConfiguredStateTransition() public {
+        MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
+            implementation, parametersProvider, stateTransition
+        );
+
+        assertEq(address(factory.stateTransition()), address(stateTransition));
+    }
+
     function testValidDependenciesProduceClonesFromAdvertisedRows() public {
         vm.roll(100);
         MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(

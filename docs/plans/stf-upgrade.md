@@ -1,6 +1,6 @@
 # STF upgrade: emulator v0.21, solidity-step, and two levels
 
-Status: ACTIVE (updated 2026-08-12). The original phase ledger remains below;
+Status: ACTIVE (updated 2026-08-16). The original phase ledger remains below;
 the execution checkpoint records what changed after the stable releases.
 
 ## Goal
@@ -22,9 +22,11 @@ mcycle overflow, uarch limits, padding, and bundling.
 
 ## Execution checkpoint (2026-08-10)
 
-- Stable pins are emulator v0.21.0 (`bd095381...`) and solidity-step v0.15.0
-  (`23765c88...`). Do not chase unreleased binary-step-log work in this
-  upgrade.
+- The emulator pin is v0.21.0 (`bd095381...`) and solidity-step is the stable
+  v0.15.0 release. Dave temporarily pins `CM_MARCHID = 21` in the concrete
+  adapter; a future solidity-step release should replace that local literal
+  with its emulator-generated constant. No unreleased binary-step-log work is
+  adopted.
 - Emulator, bindings, proof producers, solidity-step, and the adapter form one
   green integration milestone. The v0.21 layout and API changes mean an
   emulator-only intermediate state is not expected to stand alone.
@@ -76,16 +78,21 @@ validation boundaries: cleanup, deployment identity, and snapshot durability.
   closing-reset, and plain-step leaves, then composes `SendCmioResponse`,
   `UArchStep`, and `UArchReset` in the required order. This keeps Dave's
   transition grammar central while leaving primitive machine semantics in
-  solidity-step.
+  solidity-step. It rejects counters outside the release-derived epoch span
+  before reading the proof or calling the data provider.
 - The `RiscVStateTransition` and `CmioStateTransition` proxy contracts and
   interfaces are removed. The accepted MetaStep-backed build was 13,713 bytes
-  of runtime code and 13,739 bytes of initcode. Making the equivalent three
-  branches explicit produces 13,824 runtime bytes and 13,850 initcode bytes,
-  leaving 10,752 bytes below EIP-170 and 35,302 below EIP-3860. The old three
+  of runtime code and 13,739 bytes of initcode. Making the three branches
+  explicit, guarding the epoch domain, and exposing the qualified machine ID
+  produces 13,708 runtime bytes and 13,734 initcode bytes, leaving 10,868 bytes
+  below EIP-170 and 35,418 below EIP-3860. The old three
   contracts totalled 17,179 runtime bytes.
-- Every branch now rejects trailing proof bytes at Dave's boundary. Focused
-  tests pin that tightening, all three transition shapes, and real
-  rejected-input substitution.
+- Every branch now requires the access-log proof to be consumed exactly at
+  Dave's boundary. A shared custom error distinguishes appended bytes from a
+  short proof whose unchecked buffer reads reached zero-padded memory. The
+  input envelope and provider call live behind one separately tested internal
+  resolver; CMIO delivery and machine execution remain in the explicit input
+  branch.
 - Closing proof producers accept both ordinary halted padding and an unhalted
   uarch-cycle-overflow state. The overflow regression emits a 1,920-byte
   identity step and a 5,216-byte reset, and replays the complete 7,136-byte
@@ -95,11 +102,21 @@ validation boundaries: cleanup, deployment identity, and snapshot durability.
   95,044 reviewed gas units over the v0.21 proxy split, but the release-driven
   growth still moved the selected `WIN_LEAF_MATCH` subsidy from 4,298,000 to
   4,420,000. The explicit equivalent changes production bytecode but not the
-  transition semantics; this form-only refactor does not reopen calibration.
+  transition semantics. The epoch-domain guard adds one comparison on the
+  valid path. A release-pinned regression run after exact access-log framing
+  and input-envelope extraction measured reviewed minima of 4,418,481 and
+  4,418,579 for the two selected maximum-input witnesses. Both round to
+  4,419,000; the retained tests record exactly 1,000 units of deliberate
+  headroom below the configured 4,420,000, and the accepted allocation remains
+  unchanged. This was not a new clean-candidate calibration; the dated accepted
+  record remains evidence for its named historical commit.
 - The `IStateTransition` ABI and Tournament storage layout remain stable. The
-  concrete constructor, Cartesi bytecode, gas table, CREATE2 addresses, and
-  dependent factories change. The regenerated devnet bundle contains no proxy
-  records and passes its self-fingerprint check.
+  concrete adapter exposes its locally pinned `CM_MARCHID`, and the factory
+  exposes its generic state-transition dependency so clients can discover that
+  value.
+  The concrete constructor, Cartesi bytecode, factory ABI, CREATE2 addresses,
+  and dependent deployments change. The regenerated devnet bundle contains no
+  proxy records and passes its self-fingerprint check.
 
 ### Solidity STF evidence (completed 2026-08-11)
 

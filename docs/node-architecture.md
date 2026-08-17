@@ -24,13 +24,17 @@ runtime (`lib.rs run()`), each owning its own SQLite connection:
   reactions
 
 Before opening or migrating the database, startup resolves the tournament
-factory from Dave consensus and reads its level-zero parameters. The binary
-refuses to start unless the deployed root stride equals the node's compiled
-window-root sampling stride and the root row spans the compiled 92-bit machine
-coordinate. This is a deployment-compatibility assertion over trusted factory
-configuration, not runtime validation of every tournament row. Deeper geometry
-continues to come from each tournament's immutable descriptor as the recursive
-dispute is discovered.
+factory from Dave consensus and reads its level-zero parameters plus its
+configured state transition. The binary refuses to start unless the deployed
+root stride equals the node's compiled window-root sampling stride, the root
+row spans the compiled 92-bit machine coordinate, and the concrete
+`CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
+linked Cartesi Machine library. These checks all run before database migration,
+so an incompatible deployment cannot create or alter local state. This is a
+deployment-compatibility assertion over trusted factory configuration, not
+runtime validation of every tournament row. Deeper geometry continues to come
+from each tournament's immutable descriptor as the recursive dispute is
+discovered.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker

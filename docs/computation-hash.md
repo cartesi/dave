@@ -58,6 +58,14 @@ quantities such as the input-window width, ruler width, and field masks. A
 width is `k`, a span is `2^k`, and a mask is `2^k - 1`; keep those concepts
 distinct when changing the coordinate code.
 
+`CartesiStateTransition` accepts only counters inside this 92-bit epoch span.
+It rejects a larger counter before parsing its proof or consulting the data
+provider. The concrete adapter also exposes the `CM_MARCHID` qualified for the
+pinned Cartesi Machine v0.21 release. Dave pins that value locally until a
+released solidity-step exports it. Node startup compares the deployed value
+with the linked Cartesi Machine library before opening or migrating local
+storage.
+
 ## The leaf sequence
 
 The commitment is a Merkle tree whose leaf at position `m` is the machine

@@ -70,10 +70,10 @@ even an unused remapping changes the metadata bytecode embedded by Forge. The
 Rollups-only `prt-contracts-test` target content is therefore excluded while
 its remapping remains part of the effective configuration.
 
-The filters expose only production contract types: `Tournament` and
-`MultiLevelTournamentFactory` for PRT, and the concrete and interface forms of
-`DaveConsensus` and `DaveAppFactory` for Rollups. Test contracts and fixture
-factories are not part of the generated Rust API.
+The filters expose only production contract types: `CartesiStateTransition`,
+`Tournament`, and `MultiLevelTournamentFactory` for PRT, and the concrete and
+interface forms of `DaveConsensus` and `DaveAppFactory` for Rollups. Test
+contracts and fixture factories are not part of the generated Rust API.
 
 ## Doctor and artifact receipts
 

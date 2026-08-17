@@ -24,24 +24,51 @@ import {
 
 import {Util} from "./Util.sol";
 
+contract CartesiStateTransitionHarness is CartesiStateTransition {
+    function resolveInputWitness(
+        bytes calldata proofs,
+        uint256 inputIndexWithinEpoch,
+        IDataProvider provider
+    )
+        external
+        view
+        returns (
+            bytes32 inputMerkleRoot,
+            uint64 inputLength,
+            uint256 accessLogsOffset
+        )
+    {
+        return _resolveInputWitness(proofs, inputIndexWithinEpoch, provider);
+    }
+}
+
 contract StateTransitionTest is Util {
     using Buffer for Buffer.Context;
 
     CartesiStateTransition immutable STATE_TRANSITION;
+    CartesiStateTransitionHarness immutable STATE_TRANSITION_HARNESS;
 
     uint64 constant LOG2_INPUT_WINDOW_SPAN =
         EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
             + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
+    uint64 constant LOG2_EPOCH_RULER_SPAN = LOG2_INPUT_WINDOW_SPAN
+        + EmulatorConstants.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH;
     uint256 constant UARCH_SPAN_TO_BARCH =
         1 << EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
     uint256 constant MCYCLE_MASK =
         (1 << EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE) - 1;
     uint256 constant INPUT_WINDOW_SPAN = 1 << LOG2_INPUT_WINDOW_SPAN;
+    uint256 constant EPOCH_RULER_SPAN = 1 << LOG2_EPOCH_RULER_SPAN;
     uint256 constant LAST_INPUT_INDEX =
         (1 << EmulatorConstants.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH) - 1;
 
     constructor() {
         STATE_TRANSITION = Util.instantiateStateTransition();
+        STATE_TRANSITION_HARNESS = new CartesiStateTransitionHarness();
+    }
+
+    function testCmMarchIdMatchesPinnedEmulator() public view {
+        assertEq(STATE_TRANSITION.CM_MARCHID(), 21);
     }
 
     function testTransitionInputBoundaryWithInputEntersCmioProof(uint24 inputIndex)
@@ -158,15 +185,163 @@ contract StateTransitionTest is Util {
         assertEq(result, machineState);
     }
 
+    function testTransitionRejectsFirstCounterAfterEpoch() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.CounterOutsideEpoch.selector,
+                EPOCH_RULER_SPAN
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            bytes32(0), EPOCH_RULER_SPAN, hex"", IDataProvider(address(0x123))
+        );
+    }
+
+    function testTransitionRejectsUint256MaxCounter() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.CounterOutsideEpoch.selector,
+                type(uint256).max
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            bytes32(0), type(uint256).max, hex"", IDataProvider(address(0x123))
+        );
+    }
+
     function testTransitionRejectsTrailingProofBytes() public {
         (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+        bytes memory proofWithTrailingByte = bytes.concat(proof, hex"00");
 
-        vm.expectRevert("buffer should be fully consumed");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.InvalidAccessLogProofLength.selector,
+                proof.length,
+                proofWithTrailingByte.length
+            )
+        );
         STATE_TRANSITION.transitionState(
             machineState,
             1,
-            bytes.concat(proof, hex"00"),
+            proofWithTrailingByte,
             IDataProvider(address(0x123))
+        );
+    }
+
+    function testTransitionRejectsTruncatedZeroPaddedProof() public {
+        (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+        bytes memory truncatedProof = new bytes(proof.length - 1);
+        for (uint256 i; i < truncatedProof.length; ++i) {
+            truncatedProof[i] = proof[i];
+        }
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.InvalidAccessLogProofLength.selector,
+                proof.length,
+                truncatedProof.length
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            machineState, 1, truncatedProof, IDataProvider(address(0x123))
+        );
+    }
+
+    function testResolveInputWitnessReturnsProviderRootAndOffset() public {
+        IDataProvider provider = IDataProvider(address(0x123));
+        uint256 inputIndexWithinEpoch = 17;
+        bytes memory input = hex"00a1b2ff";
+        bytes memory accessLogs = hex"deadbeef";
+        bytes32 expectedRoot = bytes32(uint256(0x456));
+        bytes memory providerCall = abi.encodeCall(
+            IDataProvider.provideMerkleRootOfInput,
+            (inputIndexWithinEpoch, input)
+        );
+
+        vm.mockCall(address(provider), providerCall, abi.encode(expectedRoot));
+        vm.expectCall(address(provider), providerCall, 1);
+
+        (bytes32 root, uint64 inputLength, uint256 accessLogsOffset) = STATE_TRANSITION_HARNESS.resolveInputWitness(
+            abi.encodePacked(uint64(input.length), input, accessLogs),
+            inputIndexWithinEpoch,
+            provider
+        );
+
+        assertEq(root, expectedRoot);
+        assertEq(inputLength, input.length);
+        assertEq(accessLogsOffset, 8 + input.length);
+    }
+
+    function testResolveInputWitnessAcceptsZeroLengthAndZeroRoot() public {
+        IDataProvider provider = IDataProvider(address(0x123));
+        uint256 inputIndexWithinEpoch = 9;
+        bytes memory input = new bytes(0);
+        bytes memory providerCall = abi.encodeCall(
+            IDataProvider.provideMerkleRootOfInput,
+            (inputIndexWithinEpoch, input)
+        );
+
+        vm.mockCall(address(provider), providerCall, abi.encode(bytes32(0)));
+        vm.expectCall(address(provider), providerCall, 1);
+
+        (bytes32 root, uint64 inputLength, uint256 accessLogsOffset) = STATE_TRANSITION_HARNESS.resolveInputWitness(
+            abi.encodePacked(uint64(0), hex"deadbeef"),
+            inputIndexWithinEpoch,
+            provider
+        );
+
+        assertEq(root, bytes32(0));
+        assertEq(inputLength, 0);
+        assertEq(accessLogsOffset, 8);
+    }
+
+    function testResolveInputWitnessRejectsShortHeader() public {
+        IDataProvider provider = IDataProvider(address(0x123));
+        vm.mockCall(
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(bytes32(0))
+        );
+
+        vm.expectRevert();
+        STATE_TRANSITION_HARNESS.resolveInputWitness(
+            hex"00010203040506", 0, provider
+        );
+    }
+
+    function testResolveInputWitnessRejectsDeclaredLengthBeyondPayload()
+        public
+    {
+        IDataProvider provider = IDataProvider(address(0x123));
+        vm.mockCall(
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(bytes32(0))
+        );
+
+        vm.expectRevert();
+        STATE_TRANSITION_HARNESS.resolveInputWitness(
+            abi.encodePacked(uint64(3), hex"aabb"), 0, provider
+        );
+    }
+
+    function testResolveInputWitnessBubblesProviderRevert() public {
+        IDataProvider provider = IDataProvider(address(0x123));
+        uint256 inputIndexWithinEpoch = 23;
+        bytes memory input = hex"010203";
+        bytes memory providerCall = abi.encodeCall(
+            IDataProvider.provideMerkleRootOfInput,
+            (inputIndexWithinEpoch, input)
+        );
+        bytes memory providerRevert =
+            abi.encodeWithSignature("ProviderFailure(uint256)", 7);
+
+        vm.mockCallRevert(address(provider), providerCall, providerRevert);
+        vm.expectRevert(providerRevert);
+        STATE_TRANSITION_HARNESS.resolveInputWitness(
+            abi.encodePacked(uint64(input.length), input),
+            inputIndexWithinEpoch,
+            provider
         );
     }
 

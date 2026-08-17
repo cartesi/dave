@@ -14,6 +14,7 @@ pragma solidity ^0.8.0;
 
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
+import {IDataProvider} from "src/IDataProvider.sol";
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
 import {
@@ -337,6 +338,8 @@ contract HistoricalThreeLevelLeafTest is Util {
                         << (HistoricalGeometry.height(0)
                                 + HistoricalGeometry.log2step(0)))
                 - (1 << HistoricalGeometry.log2step(2));
+        uint256 lastCounter = (1 << 92) - 1;
+        assertEq(cycle, lastCounter, "agree cycle should be the epoch tail");
         assertEq(
             bottomTournament.getMatchCycle(_matchId.hashFromId()),
             cycle,
@@ -347,6 +350,19 @@ contract HistoricalThreeLevelLeafTest is Util {
             address(STATE_TRANSITION),
             abi.encode(IStateTransition.transitionState.selector),
             abi.encode(Machine.Hash.unwrap(Util.TWO_STATE))
+        );
+        vm.expectCall(
+            address(STATE_TRANSITION),
+            abi.encodeCall(
+                IStateTransition.transitionState,
+                (
+                    Machine.Hash.unwrap(Util.ONE_STATE),
+                    lastCounter,
+                    new bytes(0),
+                    IDataProvider(address(0))
+                )
+            ),
+            1
         );
         Util.winLeafMatch(bottomTournament, _matchId, 2);
     }
