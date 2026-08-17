@@ -8,9 +8,7 @@ import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165
 
 import {DataAvailability} from "cartesi-rollups-contracts-3.0.0/src/common/DataAvailability.sol";
 import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/WithdrawalConfig.sol";
-import {
-    IOutputsMerkleRootValidator
-} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
+import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
 import {ApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/ApplicationFactory.sol";
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
 import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
@@ -30,9 +28,7 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
-import {
-    CanonicalTournamentParametersProvider
-} from "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import {CanonicalTournamentParametersProvider} from "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {CartesiStateTransition} from "prt-contracts/state-transition/CartesiStateTransition.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {MultiLevelTournamentFactory} from "prt-contracts/tournament/factories/MultiLevelTournamentFactory.sol";

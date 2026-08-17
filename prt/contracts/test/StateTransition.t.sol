@@ -18,9 +18,7 @@ import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
-import {
-    CartesiStateTransition
-} from "src/state-transition/CartesiStateTransition.sol";
+import {CartesiStateTransition} from "src/state-transition/CartesiStateTransition.sol";
 
 import {Util} from "./Util.sol";
 

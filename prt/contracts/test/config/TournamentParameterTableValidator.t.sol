@@ -5,13 +5,9 @@ pragma solidity ^0.8.17;
 
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
-import {
-    ArbitrationConstants
-} from "prt-contracts/arbitration-config/ArbitrationConstants.sol";
+import {ArbitrationConstants} from "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
-import {
-    TournamentParameters
-} from "prt-contracts/types/TournamentParameters.sol";
+import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
 
 import {
     TournamentParameterTableValidator,

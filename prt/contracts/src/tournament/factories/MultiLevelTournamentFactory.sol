@@ -10,16 +10,12 @@ import {IMultiLevelTournamentFactory} from "./IMultiLevelTournamentFactory.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
-import {
-    ITournamentParametersProvider
-} from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
+import {ITournamentParametersProvider} from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
-import {
-    TournamentParameters
-} from "prt-contracts/types/TournamentParameters.sol";
+import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @dev The immutable provider is the sole authority for a parameter table

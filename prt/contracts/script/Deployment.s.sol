@@ -5,16 +5,10 @@ pragma solidity ^0.8.8;
 
 import {BaseDeploymentScript} from "./BaseDeploymentScript.sol";
 
-import {
-    CanonicalTournamentParametersProvider
-} from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
-import {
-    CartesiStateTransition
-} from "src/state-transition/CartesiStateTransition.sol";
+import {CanonicalTournamentParametersProvider} from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import {CartesiStateTransition} from "src/state-transition/CartesiStateTransition.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
-import {
-    MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 
 type Milliseconds is uint64;

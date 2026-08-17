@@ -13,14 +13,10 @@ import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
 
-import {
-    BoundedOneLevelDelayModel
-} from "../fixtures/BoundedOneLevelDelayModel.sol";
+import {BoundedOneLevelDelayModel} from "../fixtures/BoundedOneLevelDelayModel.sol";
 import {InspectableTournament} from "../fixtures/InspectableTournament.sol";
 import {SmallFullTree} from "../fixtures/SmallFullTree.sol";
-import {
-    SmallSingleLevelTournamentFactory
-} from "../fixtures/SmallSingleLevelTournament.sol";
+import {SmallSingleLevelTournamentFactory} from "../fixtures/SmallSingleLevelTournament.sol";
 
 import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
 

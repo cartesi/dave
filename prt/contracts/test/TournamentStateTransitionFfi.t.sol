@@ -5,9 +5,7 @@ pragma solidity ^0.8.22;
 
 import {IDataProvider} from "src/IDataProvider.sol";
 import {ITournament} from "src/ITournament.sol";
-import {
-    MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";

@@ -10,13 +10,9 @@ import {Errors} from "@openzeppelin-contracts-5.5.0/utils/Errors.sol";
 import {IDataProvider} from "src/IDataProvider.sol";
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
-import {
-    ITournamentParametersProvider
-} from "src/arbitration-config/ITournamentParametersProvider.sol";
+import {ITournamentParametersProvider} from "src/arbitration-config/ITournamentParametersProvider.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
-import {
-    MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";

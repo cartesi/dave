@@ -9,9 +9,7 @@ import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
-import {
-    TournamentParameters
-} from "prt-contracts/types/TournamentParameters.sol";
+import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 interface IMultiLevelTournamentFactory is ITournamentFactory {

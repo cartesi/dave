@@ -8,9 +8,7 @@ import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
 
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
-import {
-    IMultiLevelTournamentFactory
-} from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
+import {IMultiLevelTournamentFactory} from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
 import {Bond} from "prt-contracts/tournament/libs/Bond.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
