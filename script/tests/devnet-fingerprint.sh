@@ -27,7 +27,7 @@ source_roots=(
 config_roots=(
     prt/contracts
     cartesi-rollups/contracts
-    cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-alpha.6
+    cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-alpha.9
 )
 
 for root in "${source_roots[@]}"; do
@@ -54,6 +54,8 @@ printf '#!/usr/bin/env bash\n' \
 mkdir -p "${fixture}/cartesi-rollups/contracts/deployments/31337"
 printf '{"state":"ready"}\n' \
     >"${fixture}/cartesi-rollups/contracts/state.json"
+printf '0x1' \
+    >"${fixture}/cartesi-rollups/contracts/deployments/31337/Contract.txt"
 printf '{"address":"0x1"}\n' \
     >"${fixture}/cartesi-rollups/contracts/deployments/31337/Contract.json"
 
@@ -171,9 +173,13 @@ expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
 printf '{"state":"ready"}\n' \
     >"${fixture}/cartesi-rollups/contracts/state.json"
 
+printf '0x2' \
+    >"${fixture}/cartesi-rollups/contracts/deployments/31337/Contract.txt"
 printf '{"address":"0x2"}\n' \
     >"${fixture}/cartesi-rollups/contracts/deployments/31337/Contract.json"
 expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
+printf '0x1' \
+    >"${fixture}/cartesi-rollups/contracts/deployments/31337/Contract.txt"
 printf '{"address":"0x1"}\n' \
     >"${fixture}/cartesi-rollups/contracts/deployments/31337/Contract.json"
 

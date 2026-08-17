@@ -77,7 +77,7 @@ assert(
 -- (This makes the portal send an input to the app)
 env.sender:_send_tx(
     ERC20_PORTAL_ADDRESS,
-    "depositERC20Tokens(address,address,uint256,bytes)",
+    "depositErc20Tokens(address,address,uint256,bytes)",
     {ERC20_TOKEN_ADDRESS, env.app_address, ERC20_AMOUNT, "0x"}
 )
 

@@ -9,11 +9,23 @@ import {Script} from "forge-std-1.9.6/src/Script.sol";
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
 /// @notice A base contract for deployment scripts.
-/// @dev Deployments are serialized to JSON files containing the
-/// contract name and address, and stored in chain-specific directories
-/// per project. They can be stored (requires read-write fs permission)
-/// and loaded from other projects (requires read fs permission).
+/// @dev Deployments are serialized to files named after the contract and
+/// stored in chain-specific directories per project. Every deployment is
+/// written in two formats: a plaintext (TXT) file containing only the
+/// address, and a JSON file containing the address and the contract name.
+/// The TXT format is the canonical one, and the only one read back by
+/// `_loadDeployment`. The JSON format is deprecated and kept only so that
+/// clients still reading it can migrate at their own pace; it will be
+/// removed once they have. They can be stored (requires read-write fs
+/// permission) and loaded from other projects (requires read fs permission).
 abstract contract BaseDeploymentScript is Script {
+    /// @notice The extension of plaintext deployment files.
+    string constant TXT_EXTENSION = ".txt";
+
+    /// @notice The extension of JSON deployment files.
+    /// @dev Deprecated. See the contract-level documentation.
+    string constant JSON_EXTENSION = ".json";
+
     /// @notice The set of deployed contract names of the current project.
     mapping(string => bool) private _wasContractDeployed;
 
@@ -54,7 +66,8 @@ abstract contract BaseDeploymentScript is Script {
     /// @notice Store a deployment in the current project.
     /// @param contractName The contract name
     /// @param deployment The deployment address
-    /// @return depoyment The deployment address
+    /// @return deployment The deployment address
+    /// @dev Writes the deployment in both the TXT and the JSON formats.
     function _storeDeployment(string memory contractName, address deployment)
         internal
         returns (address)
@@ -76,50 +89,129 @@ abstract contract BaseDeploymentScript is Script {
         _wasContractDeployed[contractName] = true;
         _deploymentByContractName[contractName] = deployment;
 
-        string memory deploymentStr = vm.toString(deployment);
-        string memory objectKey =
-            string.concat(contractName, "@", deploymentStr);
+        string memory dir = _getCurrentChainDeploymentsDir(".");
+        vm.createDir(dir, true);
+        _writeTxtDeployment(dir, contractName, deployment);
+        _writeJsonDeployment(dir, contractName, deployment);
+        return deployment;
+    }
+
+    /// @notice Write a deployment to a TXT file, which holds the
+    /// deployment address and nothing else.
+    /// @param dir The deployment directory
+    /// @param contractName The contract name
+    /// @param deployment The deployment address
+    function _writeTxtDeployment(
+        string memory dir,
+        string memory contractName,
+        address deployment
+    ) private {
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vmSafe.writeFile(
+            _getDeploymentFilePath(dir, contractName, TXT_EXTENSION),
+            vmSafe.toString(deployment)
+        );
+    }
+
+    /// @notice Write a deployment to a JSON file, which holds the
+    /// deployment address along with the contract name.
+    /// @param dir The deployment directory
+    /// @param contractName The contract name
+    /// @param deployment The deployment address
+    /// @dev Deprecated. See the contract-level documentation.
+    function _writeJsonDeployment(
+        string memory dir,
+        string memory contractName,
+        address deployment
+    ) private {
+        string memory objectKey = string.concat(
+            contractName, "@", vmSafe.toString(deployment)
+        );
         string memory json;
         json = vmSafe.serializeAddress(objectKey, "address", deployment);
         json = vmSafe.serializeString(objectKey, "contractName", contractName);
-        string memory dir = _getCurrentChainDeploymentsDir(".");
-        vm.createDir(dir, true);
-        string memory path = _getDeploymentFilePath(dir, contractName);
-        vmSafe.writeJson(json, path);
-        return deployment;
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vmSafe.writeFile(
+            _getDeploymentFilePath(dir, contractName, JSON_EXTENSION), json
+        );
     }
 
     /// @notice Load a deployment from a project.
     /// @param projectRoot The project root path
     /// @param contractName The contract name
     /// @return deployment The deployment address
+    /// @dev Reads the TXT file. The JSON file is deprecated and, even
+    /// though it is still written, it is no longer read back.
     function _loadDeployment(
         string memory projectRoot,
         string memory contractName
     ) internal view returns (address deployment) {
         string memory dir = _getCurrentChainDeploymentsDir(projectRoot);
-        string memory path = _getDeploymentFilePath(dir, contractName);
+        return _readTxtDeployment(
+            _getDeploymentFilePath(dir, contractName, TXT_EXTENSION)
+        );
+    }
+
+    /// @notice Read a deployment address from a TXT file.
+    /// @param path The TXT file path
+    /// @return deployment The deployment address
+    /// @dev The file is expected to hold the address and nothing else,
+    /// with no trailing newline, as written by `_writeTxtDeployment`.
+    function _readTxtDeployment(string memory path)
+        private
+        view
+        returns (address deployment)
+    {
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        return vmSafe.parseAddress(vmSafe.readFile(path));
+    }
+
+    /// @notice Read a deployment address from a JSON file.
+    /// @param path The JSON file path
+    /// @return contractName The contract name
+    /// @return deployment The deployment address
+    /// @dev Deprecated. See the contract-level documentation.
+    function _readJsonDeployment(string memory path)
+        private
+        view
+        returns (string memory contractName, address deployment)
+    {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         string memory json = vmSafe.readFile(path);
-        return vmSafe.parseJsonAddress(json, ".address");
+        contractName = vmSafe.parseJsonString(json, ".contractName");
+        deployment = vmSafe.parseJsonAddress(json, ".address");
     }
 
     /// @notice Import all deployments from a project.
     /// @param projectRoot The project root path
     /// @dev The traversal of the deployments directory is shallow (maxDepth = 1).
     /// Symbolic links are not followed to avoid unbounded recursion.
+    /// Both TXT and JSON files are imported, since a project may have
+    /// migrated to the TXT format already, or may not have yet. A contract
+    /// deployed in both formats is therefore imported twice; the second
+    /// import is a no-op if both files agree, and raises a
+    /// `ContractNameConflict` error if they do not. Files with any other
+    /// extension are not deployment artifacts, and are skipped.
     function _importDeployments(string memory projectRoot) internal {
         string memory dir = _getCurrentChainDeploymentsDir(projectRoot);
         Vm.DirEntry[] memory dirEntries = vm.readDir(dir, 1, false);
         for (uint256 i; i < dirEntries.length; ++i) {
             Vm.DirEntry memory dirEntry = dirEntries[i];
-            if (vm.isFile(dirEntry.path)) {
-                /// forge-lint: disable-next-line(unsafe-cheatcode)
-                string memory json = vmSafe.readFile(dirEntry.path);
+            if (!vm.isFile(dirEntry.path)) {
+                continue;
+            }
+            if (_hasSuffix(dirEntry.path, TXT_EXTENSION)) {
+                // A TXT file holds no contract name,
+                // so it is taken from the file name instead.
+                string memory contractName =
+                    _getContractNameFromFilePath(dirEntry.path, TXT_EXTENSION);
                 _storeDeployment(
-                    vmSafe.parseJsonString(json, ".contractName"),
-                    vmSafe.parseJsonAddress(json, ".address")
+                    contractName, _readTxtDeployment(dirEntry.path)
                 );
+            } else if (_hasSuffix(dirEntry.path, JSON_EXTENSION)) {
+                (string memory contractName, address deployment) =
+                    _readJsonDeployment(dirEntry.path);
+                _storeDeployment(contractName, deployment);
             }
         }
     }
@@ -137,15 +229,74 @@ abstract contract BaseDeploymentScript is Script {
         );
     }
 
-    /// @notice Get the path of a deployment file given the directory and contract name.
+    /// @notice Get the path of a deployment file given the directory,
+    /// the contract name and the file extension.
     /// @param dir The deployment directory (see `_getCurrentChainDeploymentsDir`)
     /// @param contractName The contract name
+    /// @param extension The file extension, including the leading dot
     /// @return path The deployment file path
     function _getDeploymentFilePath(
         string memory dir,
-        string memory contractName
+        string memory contractName,
+        string memory extension
     ) internal pure returns (string memory path) {
-        path = string.concat(dir, "/", contractName, ".json");
+        path = string.concat(dir, "/", contractName, extension);
+    }
+
+    /// @notice Get the contract name a deployment file is named after.
+    /// @param path The deployment file path
+    /// @param extension The file extension, including the leading dot
+    /// @return contractName The contract name
+    /// @dev Assumes `path` ends with `extension` (see `_hasSuffix`).
+    /// The result is not validated here: `_storeDeployment` rejects it
+    /// through `_isContractNameValid` if the file was named arbitrarily.
+    function _getContractNameFromFilePath(
+        string memory path,
+        string memory extension
+    ) internal pure returns (string memory contractName) {
+        bytes memory pathBytes = bytes(path);
+        uint256 end = pathBytes.length - bytes(extension).length;
+
+        // The name starts right after the last path separator, if any.
+        uint256 start;
+        for (uint256 i = end; i > 0; --i) {
+            if (pathBytes[i - 1] == "/") {
+                start = i;
+                break;
+            }
+        }
+
+        bytes memory nameBytes = new bytes(end - start);
+        for (uint256 i; i < nameBytes.length; ++i) {
+            nameBytes[i] = pathBytes[start + i];
+        }
+        contractName = string(nameBytes);
+    }
+
+    /// @notice Check whether a string ends with a given suffix.
+    /// @param str The string
+    /// @param suffix The suffix
+    /// @return True if `str` ends with `suffix`, false otherwise
+    function _hasSuffix(string memory str, string memory suffix)
+        internal
+        pure
+        returns (bool)
+    {
+        bytes memory strBytes = bytes(str);
+        bytes memory suffixBytes = bytes(suffix);
+
+        if (strBytes.length < suffixBytes.length) {
+            return false;
+        }
+
+        uint256 offset = strBytes.length - suffixBytes.length;
+        for (uint256 i; i < suffixBytes.length; ++i) {
+            if (strBytes[offset + i] != suffixBytes[i]) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// @notice Checks if a contract name is valid according to Solidity naming rules
@@ -166,23 +317,18 @@ abstract contract BaseDeploymentScript is Script {
 
         // Check first character: must be a-z, A-Z, _, or $
         bytes1 firstChar = nameBytes[0];
-        if (!((firstChar >= 0x41 && firstChar <= 0x5A) // A-Z
-                    || (firstChar >= 0x61 && firstChar <= 0x7A) // a-z
-                    || firstChar == 0x5F // _
-                    || firstChar == 0x24 // $
-            )) {
+        if (!((firstChar >= "A" && firstChar <= "Z")
+                    || (firstChar >= "a" && firstChar <= "z")
+                    || firstChar == "_" || firstChar == "$")) {
             return false;
         }
 
         // Check remaining characters: must be a-z, A-Z, 0-9, _, or $
         for (uint256 i = 1; i < nameBytes.length; i++) {
             bytes1 char = nameBytes[i];
-            if (!((char >= 0x41 && char <= 0x5A) // A-Z
-                        || (char >= 0x61 && char <= 0x7A) // a-z
-                        || (char >= 0x30 && char <= 0x39) // 0-9
-                        || char == 0x5F // _
-                        || char == 0x24 // $
-                )) {
+            if (!((char >= "A" && char <= "Z") || (char >= "a" && char <= "z")
+                        || (char >= "0" && char <= "9") || char == "_"
+                        || char == "$")) {
                 return false;
             }
         }

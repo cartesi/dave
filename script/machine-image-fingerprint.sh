@@ -51,17 +51,13 @@ producer_script() {
 
 deployment_address() {
     local contract_name=$1
-    local deployment="cartesi-rollups/contracts/deployments/31337/${contract_name}.json"
+    local deployment="cartesi-rollups/contracts/deployments/31337/${contract_name}.txt"
 
     if [ ! -f "$deployment" ]; then
         echo "error: missing devnet deployment: $deployment" >&2
         return 1
     fi
-    jq -er '
-        .address
-        | select(type == "string")
-        | select(test("^0x[0-9A-Fa-f]{40}$"))
-    ' "$deployment"
+    cat "$deployment"
 }
 
 inputs_digest() {
@@ -132,7 +128,7 @@ inputs_digest() {
         fi
         generator_hash=$(sha256_file \
             test/programs/honeypot/generate-devnet-honeypot-config.sh) || return $?
-        portal_address=$(deployment_address ERC20Portal) || return 1
+        portal_address=$(deployment_address Erc20Portal) || return 1
         token_address=$(deployment_address TestFungibleToken) || return 1
     else
         for input in linux.bin rootfs.ext2; do

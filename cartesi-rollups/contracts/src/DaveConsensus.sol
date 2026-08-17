@@ -405,6 +405,16 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         return Machine.Hash.unwrap(_lastFinalizedMachineStateHash);
     }
 
+    function wasInputFinalized(address appContract, uint256 inputIndex, uint256)
+        external
+        view
+        override
+        onlyValidAppContract(appContract)
+        returns (bool)
+    {
+        return inputIndex < _inputIndexLowerBound;
+    }
+
     function supportsInterface(bytes4 interfaceId) public view override(IERC165, ERC165) returns (bool) {
         return interfaceId == type(IDaveConsensus).interfaceId || interfaceId == type(IDataProvider).interfaceId
             || interfaceId == type(IOutputsMerkleRootValidator).interfaceId || super.supportsInterface(interfaceId);

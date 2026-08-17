@@ -1,25 +1,22 @@
 pragma solidity ^0.8.30;
 
-import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
 import {Ownable} from "@openzeppelin-contracts-5.2.0/access/Ownable.sol";
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 
-import {DataAvailability} from "cartesi-rollups-contracts-3.0.0/src/common/DataAvailability.sol";
 import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/WithdrawalConfig.sol";
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
-import {ApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/ApplicationFactory.sol";
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
 import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
 import {IApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactory.sol";
 import {IApplicationFactoryErrors} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactoryErrors.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
-import {InputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/InputBox.sol";
 import {LibBinaryMerkleTree} from "cartesi-rollups-contracts-3.0.0/src/library/LibBinaryMerkleTree.sol";
 import {LibBytes} from "cartesi-rollups-contracts-3.0.0/src/library/LibBytes.sol";
 import {LibKeccak256} from "cartesi-rollups-contracts-3.0.0/src/library/LibKeccak256.sol";
 import {LibWithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/library/LibWithdrawalConfig.sol";
+import {RollupsTest} from "cartesi-rollups-contracts-3.0.0/test/util/RollupsTest.sol";
 
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
@@ -74,7 +71,7 @@ contract SettlementCallbackReceiver {
     }
 }
 
-contract DaveAppFactoryTest is Test {
+contract DaveAppFactoryTest is RollupsTest {
     using LibExternalBinaryKeccak256MerkleTree for bytes32[];
     using LibWithdrawalConfig for WithdrawalConfig;
     using LibBytes for bytes;
@@ -82,8 +79,6 @@ contract DaveAppFactoryTest is Test {
     error UnexpectedLogEmitter(Vm.Log log);
     error UnexpectedLogTopic0(Vm.Log log);
 
-    IInputBox _inputBox;
-    IApplicationFactory _appFactory;
     IStateTransition _stateTransition;
     ITournamentFactory _tournamentFactory;
     IDaveAppFactory _daveAppFactory;
@@ -94,15 +89,14 @@ contract DaveAppFactoryTest is Test {
     uint256 constant STAGING_GAS_CEILING = 500_000;
 
     function setUp() external {
-        _inputBox = new InputBox();
-        _appFactory = new ApplicationFactory();
         _stateTransition = new CartesiStateTransition();
         _tournamentFactory = new MultiLevelTournamentFactory(
             new Tournament(),
             new CanonicalTournamentParametersProvider(RESPONSE_BUDGET, MAX_ALLOWANCE),
             _stateTransition
         );
-        _daveAppFactory = new DaveAppFactory(_inputBox, _appFactory, _tournamentFactory);
+        _daveAppFactory =
+            new DaveAppFactory(_contracts.core.inputBox, _contracts.core.applicationFactory, _tournamentFactory);
         _settlementCallbackReceiver = new SettlementCallbackReceiver();
     }
 
@@ -557,6 +551,7 @@ contract DaveAppFactoryTest is Test {
 
         assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
         assertFalse(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
+        assertFalse(daveConsensus.wasInputFinalized(address(appContract), vm.randomUint(), vm.randomUint()));
 
         // Try re-staging tournament result
         vm.expectRevert(IDaveConsensus.TournamentResultAlreadyStaged.selector);
@@ -646,6 +641,7 @@ contract DaveAppFactoryTest is Test {
 
         assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), bytes32(0));
         assertFalse(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
+        assertFalse(daveConsensus.wasInputFinalized(address(appContract), vm.randomUint(), vm.randomUint()));
 
         vm.expectRevert(_encodeApplicationForeclosed(address(appContract)));
         this.simulateForeclosureAndAcceptance(appContract, daveConsensus, 0);
@@ -753,6 +749,9 @@ contract DaveAppFactoryTest is Test {
         assertEq(daveConsensus.getLastFinalizedMachineMerkleRoot(address(appContract)), machineMerkleRoot);
         assertTrue(daveConsensus.isOutputsMerkleRootValid(address(appContract), outputsMerkleRoot));
 
+        // No input was finalized yet because the first epoch is always empty
+        assertFalse(daveConsensus.wasInputFinalized(address(appContract), vm.randomUint(), vm.randomUint()));
+
         // Acceptance advanced the epoch without touching the retired
         // tournament's balance; recovery is an explicit call afterward.
         if (!recoverBeforeStaging) {
@@ -782,6 +781,107 @@ contract DaveAppFactoryTest is Test {
             bytes memory input = vm.randomBytes(inputLength);
             assertEq(daveConsensus.provideMerkleRootOfInput(inputIndexOutOfBounds, input), bytes32(0));
         }
+
+        // See `testWasInputFinalized` for the behavior of `wasInputFinalized`
+        // once epoch #1 (the first non-empty epoch) is finalized as well.
+    }
+
+    /// @notice Test `wasInputFinalized` across epoch boundaries.
+    /// @dev Epoch #0 is sealed on construction and is always empty, so accepting
+    /// its tournament result finalizes no input at all. Only once epoch #1 is
+    /// finalized do the inputs it spans become finalized.
+    function testWasInputFinalized(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt,
+        bytes32 outputsMerkleRoot,
+        bytes[] calldata inputPayloadsOfEpoch1,
+        bytes[] calldata inputPayloadsOfEpoch2
+    ) external {
+        // This test settles two epochs, so it needs twice the block-number slack.
+        _randomizeBlockNumber(claimStagingPeriod, 2);
+
+        IApplication appContract;
+        IDaveConsensus daveConsensus;
+
+        vm.assumeNoRevert();
+        (appContract, daveConsensus) = _daveAppFactory.newDaveApp(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        );
+
+        uint256 numOfInputsOfEpoch1 = inputPayloadsOfEpoch1.length;
+        uint256 numOfInputsOfEpoch2 = inputPayloadsOfEpoch2.length;
+
+        // Epoch #0 was sealed on construction and is empty, so these inputs are spanned by epoch #1
+        for (uint256 i; i < numOfInputsOfEpoch1; ++i) {
+            _addInput(address(appContract), inputPayloadsOfEpoch1[i]);
+        }
+
+        // Settling epoch #0 seals epoch #1 over inputs [0, numOfInputsOfEpoch1)
+        _settleCurrentSealedEpoch(daveConsensus, 0, claimStagingPeriod, outputsMerkleRoot);
+
+        {
+            uint256 val1;
+            uint256 val2;
+            uint256 val3;
+
+            (val1, val2, val3,,,,,) = daveConsensus.getCurrentSealedEpoch();
+
+            assertEq(val1, 1); // epochNumber
+            assertEq(val2, 0); // inputIndexLowerBound
+            assertEq(val3, numOfInputsOfEpoch1); // inputIndexUpperBound
+        }
+
+        // Epoch #0 was empty, so no input was finalized by its acceptance
+        for (uint256 i; i < numOfInputsOfEpoch1; ++i) {
+            assertFalse(daveConsensus.wasInputFinalized(address(appContract), i, vm.randomUint()));
+        }
+        assertFalse(daveConsensus.wasInputFinalized(address(appContract), vm.randomUint(), vm.randomUint()));
+
+        // These inputs are spanned by epoch #2, which is still accumulating
+        for (uint256 i; i < numOfInputsOfEpoch2; ++i) {
+            _addInput(address(appContract), inputPayloadsOfEpoch2[i]);
+        }
+
+        // Settling epoch #1 seals epoch #2 over
+        // inputs [numOfInputsOfEpoch1, numOfInputsOfEpoch1 + numOfInputsOfEpoch2)
+        _settleCurrentSealedEpoch(daveConsensus, 1, claimStagingPeriod, outputsMerkleRoot);
+
+        {
+            uint256 val1;
+            uint256 val2;
+            uint256 val3;
+
+            (val1, val2, val3,,,,,) = daveConsensus.getCurrentSealedEpoch();
+
+            assertEq(val1, 2); // epochNumber
+            assertEq(val2, numOfInputsOfEpoch1); // inputIndexLowerBound
+            assertEq(val3, numOfInputsOfEpoch1 + numOfInputsOfEpoch2); // inputIndexUpperBound
+        }
+
+        // Every input spanned by epoch #1 is now finalized,
+        // regardless of the block number passed to the function
+        for (uint256 i; i < numOfInputsOfEpoch1; ++i) {
+            assertTrue(daveConsensus.wasInputFinalized(address(appContract), i, vm.randomUint()));
+        }
+
+        // No input spanned by epoch #2 is finalized, because epoch #2 is still accumulating
+        for (uint256 i = numOfInputsOfEpoch1; i < numOfInputsOfEpoch1 + numOfInputsOfEpoch2; ++i) {
+            assertFalse(daveConsensus.wasInputFinalized(address(appContract), i, vm.randomUint()));
+        }
+
+        // Any index at or past the lower bound is reported as not finalized,
+        // whether or not an input with such an index exists in the input box
+        uint256 randomInputIndex = vm.randomUint(numOfInputsOfEpoch1, type(uint256).max);
+        assertFalse(daveConsensus.wasInputFinalized(address(appContract), randomInputIndex, vm.randomUint()));
+
+        // The function still rejects any address other than the application contract
+        address notAppContract = _randomAddressNotEq(address(appContract));
+        vm.expectRevert(_encodeApplicationMismatch(address(appContract), notAppContract));
+        daveConsensus.wasInputFinalized(notAppContract, vm.randomUint(), vm.randomUint());
     }
 
     function testRootFailureCannotBeStaged(
@@ -1064,26 +1164,20 @@ contract DaveAppFactoryTest is Test {
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }
-            } else if (log.emitter == address(_appFactory)) {
+            } else if (log.emitter == address(_contracts.core.applicationFactory)) {
                 if (log.topics[0] == IApplicationFactory.ApplicationCreated.selector) {
                     ++numOfApplicationCreatedEvents;
                     assertEq(log.topics[1], bytes32(0)); // outputsMerkleRootValidator
                     address arg1;
                     bytes32 arg2;
-                    bytes memory arg3;
+                    address arg3;
                     WithdrawalConfig memory arg4;
                     address arg5;
                     (arg1, arg2, arg3, arg4, arg5) =
-                        abi.decode(log.data, (address, bytes32, bytes, WithdrawalConfig, address));
+                        abi.decode(log.data, (address, bytes32, address, WithdrawalConfig, address));
                     assertEq(arg1, address(_daveAppFactory)); // appOwner
                     assertEq(arg2, templateHash);
-                    {
-                        (bool isValid, bytes32 selector, bytes memory args) = arg3.consumeBytes4();
-                        assertTrue(isValid, "Expected data availability to be valid");
-                        assertEq(selector, DataAvailability.InputBox.selector);
-                        address inputBoxAddress = abi.decode(args, (address));
-                        assertEq(inputBoxAddress, address(_inputBox));
-                    }
+                    assertEq(arg3, address(_contracts.core.inputBox));
                     assertEq(abi.encode(arg4), abi.encode(withdrawalConfig));
                     assertEq(arg5, address(appContract));
                 } else {
@@ -1099,7 +1193,7 @@ contract DaveAppFactoryTest is Test {
 
                     (arg1, arg2, arg3) = abi.decode(log.data, (address, address, address));
 
-                    assertEq(arg1, address(_inputBox));
+                    assertEq(arg1, address(_contracts.core.inputBox));
                     assertEq(arg2, address(appContract));
                     assertEq(arg3, address(_tournamentFactory));
                 } else if (log.topics[0] == IDaveConsensus.EpochSealed.selector) {
@@ -1208,7 +1302,7 @@ contract DaveAppFactoryTest is Test {
             assertEq(val3, 0); // epochNumber
         }
 
-        assertEq(address(daveConsensus.getInputBox()), address(_inputBox));
+        assertEq(address(daveConsensus.getInputBox()), address(_contracts.core.inputBox));
         assertEq(address(daveConsensus.getApplicationContract()), address(appContract));
         assertEq(address(daveConsensus.getTournamentFactory()), address(_tournamentFactory));
         assertEq(daveConsensus.getClaimStagingPeriod(), claimStagingPeriod);
@@ -1230,6 +1324,9 @@ contract DaveAppFactoryTest is Test {
 
         vm.expectRevert(_encodeApplicationMismatch(address(appContract), notAppContract));
         daveConsensus.isOutputsMerkleRootValid(notAppContract, bytes32(vm.randomUint()));
+
+        vm.expectRevert(_encodeApplicationMismatch(address(appContract), notAppContract));
+        daveConsensus.wasInputFinalized(notAppContract, vm.randomUint(), vm.randomUint());
 
         bytes4 unsupportedInterfaceId;
 
@@ -1287,19 +1384,68 @@ contract DaveAppFactoryTest is Test {
     }
 
     function _randomizeBlockNumber(uint64 claimStagingPeriod) internal {
+        _randomizeBlockNumber(claimStagingPeriod, 1);
+    }
+
+    function _randomizeBlockNumber(uint64 claimStagingPeriod, uint256 numOfEpochsToSettle) internal {
         // We limit the block number by type(uint64).max because the PRT contracts
         // use block numbers for time-keeping, and stores them as uint64 values.
         // We assume there is some slack so we can fast-forward to a block in which
         // the tournament is closed, and we can stage the tournament result, and a
-        // block in which the staged tournament result can be accepted.
+        // block in which the staged tournament result can be accepted. Tests that
+        // settle more than one epoch need one such slack per epoch.
         // We type the claim staging period as uint64 because otherwise the fuzzer
         // would often pick values too high for these assumptions.
         uint256 blockNumber = vm.getBlockNumber();
-        uint64 maxAllowance = Time.Duration.unwrap(MAX_ALLOWANCE);
-        vm.assume(blockNumber <= type(uint256).max - maxAllowance);
-        vm.assume(blockNumber + maxAllowance <= type(uint256).max - claimStagingPeriod);
-        vm.assume(blockNumber + maxAllowance + claimStagingPeriod <= type(uint64).max);
-        vm.roll(blockNumber + vm.randomUint(0, type(uint64).max - maxAllowance - claimStagingPeriod));
+        uint256 maxAllowance = Time.Duration.unwrap(MAX_ALLOWANCE);
+        uint256 slack = numOfEpochsToSettle * (maxAllowance + uint256(claimStagingPeriod));
+        vm.assume(blockNumber + slack <= type(uint64).max);
+        vm.roll(vm.randomUint(blockNumber, type(uint64).max - slack));
+    }
+
+    /// @notice Join, close, stage and accept the tournament of the current sealed epoch.
+    /// @dev Assumes that the block number budget reserved by `_randomizeBlockNumber`
+    /// still has room for one epoch settlement.
+    function _settleCurrentSealedEpoch(
+        IDaveConsensus daveConsensus,
+        uint256 epochNumber,
+        uint64 claimStagingPeriod,
+        bytes32 outputsMerkleRoot
+    ) internal {
+        ITournament tournament;
+        (,,, tournament,,,,) = daveConsensus.getCurrentSealedEpoch();
+
+        bytes32[] memory outputsMerkleRootProof = _randomProof(Memory.LOG2_MAX_SIZE);
+        bytes32 machineMerkleRoot = outputsMerkleRootProof.merkleRootAfterReplacement(
+            EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.HASH_TREE_LOG2_WORD_SIZE,
+            keccak256(abi.encode(outputsMerkleRoot))
+        );
+
+        bytes32[] memory finalStateProof = _randomProof(tournament.tournamentArguments().commitmentArgs.height);
+        (bytes32 leftChild, bytes32 rightChild) = _getCommitmentChildren(machineMerkleRoot, finalStateProof);
+
+        address submitter = vm.randomAddress();
+        uint256 bondValue = tournament.bondValue();
+        vm.deal(submitter, bondValue);
+
+        vm.prank(submitter);
+        tournament.joinTournament{value: bondValue}(
+            Machine.Hash.wrap(machineMerkleRoot), finalStateProof, Tree.Node.wrap(leftChild), Tree.Node.wrap(rightChild)
+        );
+
+        // Fast-forward to a block in which the tournament is closed and finished
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+        assertTrue(tournament.isFinished());
+
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(epochNumber, outputsMerkleRoot, outputsMerkleRootProof);
+
+        // Fast-forward to a block in which the claim staging period is over. Since the
+        // application has no sentries, this is the only way of accepting the staged result.
+        vm.roll(vm.getBlockNumber() + claimStagingPeriod);
+
+        vm.prank(vm.randomAddress());
+        daveConsensus.acceptStagedTournamentResult(epochNumber);
     }
 
     function _randomProof(uint256 n) internal returns (bytes32[] memory proof) {
@@ -1323,11 +1469,11 @@ contract DaveAppFactoryTest is Test {
     }
 
     function _addInput(address appContract, bytes memory payload) internal returns (bytes memory input) {
-        uint256 index = _inputBox.getNumberOfInputs(appContract);
+        uint256 index = _contracts.core.inputBox.getNumberOfInputs(appContract);
 
         vm.recordLogs();
 
-        _inputBox.addInput(appContract, payload);
+        _contracts.core.inputBox.addInput(appContract, payload);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
@@ -1335,7 +1481,7 @@ contract DaveAppFactoryTest is Test {
 
         Vm.Log memory log = logs[0];
 
-        if (log.emitter == address(_inputBox)) {
+        if (log.emitter == address(_contracts.core.inputBox)) {
             if (log.topics[0] == IInputBox.InputAdded.selector) {
                 assertEq(log.topics[1], bytes32(uint256(uint160(appContract))));
                 assertEq(log.topics[2], bytes32(index));

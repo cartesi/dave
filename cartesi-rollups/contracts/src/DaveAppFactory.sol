@@ -5,7 +5,6 @@ pragma solidity ^0.8.30;
 
 import {Create2} from "@openzeppelin-contracts-5.5.0/utils/Create2.sol";
 
-import {DataAvailability} from "cartesi-rollups-contracts-3.0.0/src/common/DataAvailability.sol";
 import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/WithdrawalConfig.sol";
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
@@ -62,23 +61,14 @@ contract DaveAppFactory is IDaveAppFactory {
         );
     }
 
-    /// @notice Encode the data availability blob for applications that only use the input box as DA.
-    function _encodeInputBoxDataAvailability() internal view returns (bytes memory) {
-        return abi.encodeCall(DataAvailability.InputBox, (INPUT_BOX));
-    }
-
     /// @notice Instantiate a new application contract owned by the current contract,
     /// with no outputs Merkle root validator (the zero address), and with the input box
-    /// as the only data availability source.
+    /// as the data-availability source.
     function _newApplication(bytes32 templateHash, WithdrawalConfig calldata withdrawalConfig, bytes32 salt)
         internal
         returns (IApplication)
     {
-        bytes memory dataAvailability = _encodeInputBoxDataAvailability();
-        return
-            APP_FACTORY.newApplication(
-                NO_VALIDATOR, address(this), templateHash, dataAvailability, withdrawalConfig, salt
-            );
+        return APP_FACTORY.newApplication(NO_VALIDATOR, address(this), templateHash, INPUT_BOX, withdrawalConfig, salt);
     }
 
     /// @notice Instantiate a new `DaveConsensus` contract.
@@ -108,9 +98,8 @@ contract DaveAppFactory is IDaveAppFactory {
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) internal view returns (address) {
-        bytes memory dataAvailability = _encodeInputBoxDataAvailability();
         return APP_FACTORY.calculateApplicationAddress(
-            NO_VALIDATOR, address(this), templateHash, dataAvailability, withdrawalConfig, salt
+            NO_VALIDATOR, address(this), templateHash, INPUT_BOX, withdrawalConfig, salt
         );
     }
 
