@@ -15,9 +15,7 @@ pragma solidity ^0.8.0;
 import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
-import {
-    CartesiStateTransition
-} from "src/state-transition/CartesiStateTransition.sol";
+import {CartesiStateTransition} from "src/state-transition/CartesiStateTransition.sol";
 
 import {Util} from "./Util.sol";
 

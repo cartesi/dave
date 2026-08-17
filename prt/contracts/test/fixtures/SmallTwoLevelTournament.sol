@@ -3,12 +3,8 @@
 
 pragma solidity ^0.8.17;
 
-import {
-    ITournamentParametersProvider
-} from "src/arbitration-config/ITournamentParametersProvider.sol";
-import {
-    MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {ITournamentParametersProvider} from "src/arbitration-config/ITournamentParametersProvider.sol";
+import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
 

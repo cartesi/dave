@@ -8,13 +8,9 @@ import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {IDataProvider} from "src/IDataProvider.sol";
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
-import {
-    ITournamentParametersProvider
-} from "src/arbitration-config/ITournamentParametersProvider.sol";
+import {ITournamentParametersProvider} from "src/arbitration-config/ITournamentParametersProvider.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
-import {
-    MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Bond} from "src/tournament/libs/Bond.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Gas} from "src/tournament/libs/Gas.sol";

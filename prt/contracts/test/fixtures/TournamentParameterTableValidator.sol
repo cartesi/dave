@@ -4,9 +4,7 @@
 pragma solidity ^0.8.17;
 
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
-import {
-    TournamentParameters
-} from "prt-contracts/types/TournamentParameters.sol";
+import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
 
 /// @notice Test-only validation for an injected tournament parameter table.
 /// @dev Production keeps geometry static. This helper makes the generation

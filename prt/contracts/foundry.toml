@@ -32,6 +32,7 @@ exclude_lints = ["incorrect-shift"]
 line_length = 80
 tab_width = 4
 sort_imports = true
+single_line_imports = true
 
 [dependencies]
 forge-std = "1.9.6"

@@ -4,9 +4,7 @@
 pragma solidity ^0.8.30;
 
 import {BinaryMerkleTreeErrors} from "cartesi-rollups-contracts-3.0.0/src/common/BinaryMerkleTreeErrors.sol";
-import {
-    IOutputsMerkleRootValidator
-} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
+import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
 import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 

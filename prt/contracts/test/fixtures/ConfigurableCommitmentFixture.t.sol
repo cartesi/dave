@@ -9,9 +9,7 @@ import {Commitment} from "src/tournament/libs/Commitment.sol";
 import {Machine} from "src/types/Machine.sol";
 import {Tree} from "src/types/Tree.sol";
 
-import {
-    ConfigurableCommitmentFixture
-} from "./ConfigurableCommitmentFixture.sol";
+import {ConfigurableCommitmentFixture} from "./ConfigurableCommitmentFixture.sol";
 
 contract CommitmentProofVerifier {
     function rootAt(

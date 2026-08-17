@@ -14,15 +14,9 @@ pragma solidity ^0.8.17;
 
 import {IDataProvider} from "src/IDataProvider.sol";
 import {ITournament} from "src/ITournament.sol";
-import {
-    ArbitrationConstants
-} from "src/arbitration-config/ArbitrationConstants.sol";
-import {
-    CanonicalTournamentParametersProvider
-} from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
-import {
-    MultiLevelTournamentFactory
-} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
+import {ArbitrationConstants} from "src/arbitration-config/ArbitrationConstants.sol";
+import {CanonicalTournamentParametersProvider} from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
 

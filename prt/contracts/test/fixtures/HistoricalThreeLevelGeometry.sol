@@ -3,9 +3,7 @@
 
 pragma solidity ^0.8.17;
 
-import {
-    ITournamentParametersProvider
-} from "src/arbitration-config/ITournamentParametersProvider.sol";
+import {ITournamentParametersProvider} from "src/arbitration-config/ITournamentParametersProvider.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
 
