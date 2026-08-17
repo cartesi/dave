@@ -325,6 +325,13 @@ retain useful failure logs, and bound hosted-runner storage by removing each
 scenario's machine state after it finishes. It is not a performance benchmark,
 a required pull-request gate, or currently a scheduled monitor.
 
+GitHub exposes
+[manual dispatch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+only after the workflow file exists on the repository's default branch. Until
+this new workflow reaches that branch, its hosted dispatch is intentionally
+unavailable; use the per-PR subset or run the full battery locally. Once
+available, a dispatch may select another ref that contains the workflow.
+
 Manual-only is deliberate while its cost and signal have not been measured for
 the current 25-case suite on the selected hosted runner. One invocation also
 builds the devnet, three machine images, and the validator, then runs 25 battery
