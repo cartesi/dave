@@ -249,26 +249,48 @@ Error handling and observability:
    Operation assumes that this happens within the dispute clock budget.
    Preflight or repeated-intent escalation remains pre-mainnet work.
 
+Scheduling and economic liveness:
+
+8. Bond recovery can starve across continuous epoch rotation. Recovery is
+   currently vetoed whenever the current Hero reports a running tournament.
+   After winning and settling one epoch, an always-participating node can join
+   after the next sealed epoch is finalized and observed, then remain running
+   even when its Hero and GC wave is empty. An older winning bond may therefore
+   never reach the recovery planner. The full E2E battery reproduced this
+   through `multi_sybil`: the correct claim won the root tournament, but that
+   tournament retained its balance and the node never logged a recovery plan.
+   Recovery remains permissionless, so this is a node-automation and economic
+   liveness defect, not a result-selection failure or a permanent protocol
+   lock. A fix must guarantee eventual service without allowing maintenance to
+   delay clock-bearing or settlement work. No current Hero wait state has been
+   shown to be safe for that purpose: even a tournament awaiting closure still
+   accepts new joins. Candidate classification must derive from one coherent
+   finalized view, recovery submission must remain bounded, and pending-nonce
+   behavior on the shared signer must be explicit. Add a scheduler composition
+   test spanning recoverable epoch N, settlement and rotation, a running epoch
+   N+1, and eventual recovery, plus a case where urgent work appears while
+   maintenance is pending. Keep the `multi_sybil` bond-drain assertion.
+
 Structure:
 
-8. The reader uses async recursion for dynamic tournament discovery, and the
+9. The reader uses async recursion for dynamic tournament discovery, and the
    Hero's dispute loop runs inside the epoch manager task. Local machine and
    proof preparation can therefore pin a runtime worker. Moving local dispute
    work to the blocking lane remains open.
-9. `EpochManager.epoch_hero: (Option<Hero>, u64)` - anonymous
+10. `EpochManager.epoch_hero: (Option<Hero>, u64)` - anonymous
    tuple state machine; `Hero` construction takes a pile of positional
    arguments.
-10. Commented-out code blocks kept as reference (the test-scaffolding
+11. Commented-out code blocks kept as reference (the test-scaffolding
     `instance.rs` snapshot logic) and disabled/empty tests.
-11. No graceful-shutdown story for in-flight work: a mid-epoch machine run
+12. No graceful-shutdown story for in-flight work: a mid-epoch machine run
     or mid-dispute reaction is only interrupted at the next poll.
 
 Design assumptions:
 
-12. Finalized-only persistence. The tournament reader additionally acts on a
+13. Finalized-only persistence. The tournament reader additionally acts on a
     disposable number-range tail and point views at one sampled hash. It does
     not prove the tail belongs to that hash's ancestry; stale work is safe
     because mutators revalidate it, and the next tick rebuilds the tail.
-13. One node instance per state dir; SQLite WAL is the only cross-thread
+14. One node instance per state dir; SQLite WAL is the only cross-thread
     coordination. Shared state-directory operation is unsupported and has no
     process lock or recovery protocol.

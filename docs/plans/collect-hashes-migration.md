@@ -16,6 +16,24 @@ This is not a tournament-geometry change. Adopt the collect APIs under the
 current geometry first; re-dimensioning the tournament remains a separate
 decision backed by new measurements.
 
+## Related release acceptance
+
+The intended node follow-up is also expected to close the independent
+bond-recovery starvation recorded in
+[node-architecture.md](../node-architecture.md#known-debts). Recovery
+scheduling is neither an implementation dependency nor semantic evidence for
+the collect APIs; keep it in a separate reviewable commit. It is listed here so
+the shared release boundary is not declared ready after only the collection
+migration passes.
+
+Before that node follow-up is accepted, recovery candidates must still derive
+from one coherent finalized view, submission must remain bounded, maintenance
+must not delay clock-bearing or settlement work, and older recoverable bonds
+must eventually receive service. Keep `multi_sybil`'s root-balance and
+recovery-plan assertions, add the scheduler composition tests specified in the
+living node architecture, and rerun the settlement/crash scenarios plus the
+full battery.
+
 ## Authority and oracle roles
 
 The tests are valuable only if each comparison has a named role. Counting
