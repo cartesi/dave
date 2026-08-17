@@ -18,10 +18,10 @@ get_devnet_deployment_address() {
     [[ "$contract_name" =~ ^[a-zA-Z_$][a-zA-Z0-9_$]*$ ]] ||
         (>&2 echo "$contract_name is not a valid contract name." && exit 1)
 
-    jq -r .address "cartesi-rollups/contracts/deployments/31337/${contract_name}.json"
+    cat "cartesi-rollups/contracts/deployments/31337/${contract_name}.txt"
 }
 
-ERC20_PORTAL_ADDRESS=$(get_devnet_deployment_address ERC20Portal)
+ERC20_PORTAL_ADDRESS=$(get_devnet_deployment_address Erc20Portal)
 ERC20_WITHDRAWAL_ADDRESS='0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
 ERC20_TOKEN_ADDRESS=$(get_devnet_deployment_address TestFungibleToken)
 

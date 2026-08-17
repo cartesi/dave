@@ -32,10 +32,10 @@ test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
   TEMPLATE_MACHINE=`realpath "../../../test/programs/$1/machine-image"` \
   TEMPLATE_MACHINE_HASH=`cartesi-machine-stored-hash "../../../test/programs/$1/machine-image"` \
-  DAVE_APP_FACTORY=`jq -r .address {{DEPLOYMENTS_DIR}}/DaveAppFactory.json` \
-  INPUT_BOX=`jq -r .address {{DEPLOYMENTS_DIR}}/InputBox.json` \
-  ERC20_PORTAL=`jq -r .address {{DEPLOYMENTS_DIR}}/ERC20Portal.json` \
-  ERC20_TOKEN=`jq -r .address {{DEPLOYMENTS_DIR}}/TestFungibleToken.json` \
+  DAVE_APP_FACTORY=`cat {{DEPLOYMENTS_DIR}}/DaveAppFactory.txt` \
+  INPUT_BOX=`cat {{DEPLOYMENTS_DIR}}/InputBox.txt` \
+  ERC20_PORTAL=`cat {{DEPLOYMENTS_DIR}}/Erc20Portal.txt` \
+  ERC20_TOKEN=`cat {{DEPLOYMENTS_DIR}}/TestFungibleToken.txt` \
   lua5.4 "scenarios/$2.lua"
 
 # run PRT rollups echo test

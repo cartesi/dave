@@ -14,7 +14,6 @@ use alloy::{
 use cartesi_dave_contracts::i_dave_app_factory::IDaveAppFactory::{self, WithdrawalConfig};
 use cartesi_machine::{Machine, config::runtime::RuntimeConfig};
 use cartesi_rollups_contracts::i_input_box::IInputBox;
-use serde::Deserialize;
 use std::{fs, path::PathBuf};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -22,11 +21,6 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const PROGRAM: &str = "../../test/programs/echo/";
 const ANVIL_STATE: &str = "../../cartesi-rollups/contracts/state.json";
 const DEPLOYMENTS: &str = "../../cartesi-rollups/contracts/deployments/31337";
-
-#[derive(Deserialize)]
-struct Deployment {
-    address: String,
-}
 
 pub fn program_path() -> PathBuf {
     PathBuf::from(PROGRAM).canonicalize().unwrap()
@@ -58,10 +52,9 @@ pub fn deployments_path() -> PathBuf {
 }
 
 pub fn deployment_address(contract_id: &str) -> Address {
-    let deployment_path = deployments_path().join(format!("{}.json", contract_id));
-    let deployment_json = fs::read_to_string(deployment_path).unwrap();
-    let deployment: Deployment = serde_json::from_str(&deployment_json).unwrap();
-    Address::from_hex(deployment.address).unwrap()
+    let deployment_path = deployments_path().join(format!("{}.txt", contract_id));
+    let deployment = fs::read_to_string(deployment_path).unwrap();
+    Address::from_hex(deployment).unwrap()
 }
 
 /// A per-request timeout on every test provider: a wedged anvil must

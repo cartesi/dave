@@ -131,7 +131,9 @@ contract DeploymentScript is BaseDeploymentScript {
     error UnregisteredChainKind(ChainKind chainKind);
 
     /// @notice Deploy the PRT contracts.
-    /// @dev Serializes deployed contract addresses to `deployments.json`.
+    /// @dev Serializes deployed contract addresses to both
+    /// `deployments/<chain-id>/<contract-name>.txt` and
+    /// `deployments/<chain-id>/<contract-name>.json` (deprecated).
     function run() external {
         _registerChains();
         _registerChainKinds();
