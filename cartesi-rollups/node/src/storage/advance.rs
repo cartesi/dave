@@ -223,7 +223,7 @@ impl Storage {
     /// the roll.
     pub(crate) fn advance_plan(&mut self) -> Result<AdvancePlan> {
         let gap = self.snapshot_gap_inputs;
-        self.read(|tx| {
+        let plan = self.read(|tx| {
             let (boundary_path, epoch, boundary_input, boundary_hash) =
                 super::snapshots::latest_boundary_in(tx)?;
             let input_count = input_count_in(tx, epoch)?;
@@ -295,7 +295,16 @@ impl Storage {
                 boundary_path,
                 boundary_hash,
             })
-        })
+        })?;
+        // This runs before the caller considers readiness, so an
+        // idle open tail cannot hide a dangling durable cursor behind
+        // the runner's polling loop.
+        super::snapshots::assert_runner_boundary_dir(
+            &plan.boundary_path,
+            plan.epoch,
+            plan.boundary_input,
+        );
+        Ok(plan)
     }
 
     /// Opens a batch on a working clone of the newest boundary: the
@@ -330,21 +339,38 @@ impl Storage {
         input: u64,
         hash: Hash,
     ) -> Result<(RollupsMachine, AdvanceBatch)> {
-        let working = self.checkout(&path).map_err(anyhow::Error::from)?;
-        let machine = RollupsMachine::load_shared(&working, epoch, input)?;
+        super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
+        let working = match self.checkout(&path) {
+            Ok(working) => working,
+            Err(error) => {
+                // Promote a source that disappeared during checkout
+                // to the fatal invariant; other clone errors retry.
+                super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
+                return Err(anyhow::Error::from(error).into());
+            }
+        };
+        // Construct the cleanup guard before loading. On a load or
+        // root-verification failure, the machine drops before the
+        // batch removes its working clone.
+        let batch = AdvanceBatch {
+            epoch,
+            boundary_input: input,
+            boundary_hash: hash,
+            boundary_path: path.clone(),
+            boundary_ownership: CheckpointOwnership::Durable,
+            working,
+            records: Vec::new(),
+        };
+        let mut machine = match RollupsMachine::load_shared(&batch.working, epoch, input) {
+            Ok(machine) => machine,
+            Err(error) => {
+                super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
+                return Err(error.into());
+            }
+        };
+        super::snapshots::assert_runner_boundary_root(&mut machine, &hash, &path, epoch, input);
 
-        Ok((
-            machine,
-            AdvanceBatch {
-                epoch,
-                boundary_input: input,
-                boundary_hash: hash,
-                boundary_path: path,
-                boundary_ownership: CheckpointOwnership::Durable,
-                working,
-                records: Vec::new(),
-            },
-        ))
+        Ok((machine, batch))
     }
 
     /// Records an accepted input: close the mutated working clone,
@@ -835,6 +861,79 @@ mod tests {
             )
         });
         s.insert_quartet_nodes(&rows).unwrap();
+    }
+
+    /// Missing intermediate snapshots only lengthen dispute replay,
+    /// but the newest boundary is the runner's durable cursor. The
+    /// cursor is checked even when the open epoch has no publishable
+    /// tail and would otherwise idle.
+    #[test]
+    #[should_panic(expected = "durable runner boundary vanished: epoch 0, input 1")]
+    fn missing_latest_boundary_is_strict_while_dispute_floor_falls_back() {
+        let (_handle, mut s) = setup_storage();
+        let epoch_start = s.snapshot_dir(0, 0).unwrap().unwrap();
+        append_inputs(&mut s, 0, 1);
+
+        let latest = tempfile::tempdir().unwrap();
+        s.insert_boundary(0, 1, &[0xA5; 32], latest.path()).unwrap();
+        drop(latest);
+
+        assert_eq!(
+            s.nearest_boundary_at_or_before(0, 1).unwrap(),
+            (crate::engine::InputBoundary(0), epoch_start)
+        );
+
+        // Boundary equals input count in an open epoch: this plan
+        // would be idle if the durable cursor still existed.
+        let _ = s.advance_plan();
+    }
+
+    /// A plan only pins database identity. The loader checks the
+    /// referenced directory again before opening its working clone.
+    #[test]
+    #[should_panic(expected = "durable runner boundary vanished: epoch 0, input 0")]
+    fn planned_boundary_that_vanishes_before_load_is_fatal() {
+        let (_handle, mut s) = setup_storage();
+        let plan = s.advance_plan().unwrap();
+        assert!(plan.inputs.is_empty());
+        assert!(
+            plan.boundary_path
+                .starts_with(snapshots_path(s.state_dir()))
+        );
+
+        std::fs::remove_dir_all(&plan.boundary_path).unwrap();
+        let _ = s.begin_planned_advances(&plan);
+    }
+
+    /// A loadable directory under the wrong row hash is corruption,
+    /// not retryable machine work. The cleanup guard must also remove
+    /// the working clone created before verification.
+    #[test]
+    fn loaded_boundary_root_mismatch_is_fatal_and_cleans_working_clone() {
+        let (_handle, mut s) = setup_storage();
+        let path = s.snapshot_dir(0, 0).unwrap().unwrap();
+        let wrong = [0xA5; 32];
+        assert_ne!(s.snapshot_hash(0, 0).unwrap().unwrap(), wrong);
+        s.insert_boundary(42, 0, &wrong, &path).unwrap();
+        let plan = s.advance_plan().unwrap();
+
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = s.begin_planned_advances(&plan);
+        }))
+        .expect_err("row/root mismatch must panic");
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("non-string panic");
+        assert!(message.contains("durable runner boundary root mismatch: epoch 42, input 0"));
+        assert!(message.contains(&path.display().to_string()));
+
+        let leaked_working = std::fs::read_dir(snapshots_path(s.state_dir()))
+            .unwrap()
+            .flatten()
+            .any(|entry| entry.file_name().to_string_lossy().starts_with(".work-"));
+        assert!(!leaked_working, "working clone leaked after panic");
     }
 
     // Corruption panics rather than erroring: the tick loops retry

@@ -121,9 +121,15 @@ pub struct PRTArgs {
     #[arg(long, env, default_value_t = SLEEP_DURATION)]
     pub sleep_duration_seconds: u64,
 
-    /// keep every Nth input-boundary machine snapshot (1 keeps all);
-    /// the disk-vs-dispute-replay knob
-    #[arg(long, env, default_value_t = crate::storage::DEFAULT_SNAPSHOT_GAP_INPUTS)]
+    /// execute and durably publish open-epoch inputs in batches of N;
+    /// 1 processes each input immediately, and sealing flushes a
+    /// shorter final batch
+    #[arg(
+        long,
+        env,
+        default_value_t = crate::storage::DEFAULT_SNAPSHOT_GAP_INPUTS,
+        value_parser = clap::value_parser!(u64).range(1..)
+    )]
     pub snapshot_gap_inputs: u64,
 
     #[arg(long, env, default_value_os_t = std::env::temp_dir())]
@@ -326,6 +332,36 @@ mod tests {
         anvil_state_path, deployment_address, rpc_client_with_timeout,
     };
     use alloy::{node_bindings::Anvil, providers::ProviderBuilder};
+
+    fn args_with_snapshot_gap(gap: &str) -> Vec<&str> {
+        vec![
+            "cartesi-rollups-prt-node",
+            "--app-address",
+            "0x0000000000000000000000000000000000000000",
+            "--machine-path",
+            "/tmp/machine",
+            "--snapshot-gap-inputs",
+            gap,
+            "pk",
+            "--web3-private-key",
+            "unused-by-parser",
+        ]
+    }
+
+    #[test]
+    fn accepts_snapshot_gap_of_one() {
+        let args = PRTArgs::try_parse_from(args_with_snapshot_gap("1")).unwrap();
+        assert_eq!(args.snapshot_gap_inputs, 1);
+    }
+
+    #[test]
+    fn rejects_zero_snapshot_gap() {
+        let error = PRTArgs::try_parse_from(args_with_snapshot_gap("0"))
+            .err()
+            .expect("zero snapshot gap should fail argument parsing");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(error.to_string().contains("--snapshot-gap-inputs"));
+    }
 
     #[test]
     fn accepts_canonical_root_tournament_geometry() {

@@ -94,6 +94,17 @@ can therefore orphan a durable directory but cannot leave a row pointing at
 an undurable machine; it may replay at most one full batch. Dispute-time
 snapshot densification is the deliberate exception to the normal gap cadence.
 
+The runner's newest registered boundary - its durable cursor - is strict state,
+not a best-effort cache. If its path has vanished or cannot be inspected as a
+directory, or if its loaded root cannot be verified against the database row,
+the node panics instead of laundering the invariant violation through the
+polling retry loop. Normal filesystem-first publication cannot create that
+state; it indicates a node bug, external mutation, or an underlying storage
+failure.
+Dispute positioning remains different: an intermediate boundary only shortens
+replay, so an unavailable one may fall back to an earlier verified boundary
+within the epoch.
+
 Main schema (`storage/sql/migrations.sql`):
 
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`

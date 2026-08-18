@@ -109,7 +109,7 @@ impl Storage {
     }
 
     pub fn set_snapshot_gap_inputs(&mut self, gap: u64) {
-        assert!(gap >= 1, "the gap divides input numbers");
+        assert!(gap >= 1, "snapshot gap must be positive");
         self.snapshot_gap_inputs = gap;
     }
 
