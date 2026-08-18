@@ -15,13 +15,15 @@
 //! its row fails loudly (write-once cell semantics, enforced by the
 //! schema triggers).
 //!
-//! Reads are best-effort floors: any stored point at or before the
-//! target only shortens replays, so rows whose directories vanished
-//! are skipped, and the epoch start is the guaranteed answer of last
-//! resort. Provenance is the writer's contract: a row must name the
-//! boundary its machine truly sits at; the quartet cache's collision
-//! tripwire cross-checks resumed against replayed computation
-//! wherever they overlap.
+//! Dispute-positioning reads are best-effort floors: any stored point
+//! at or before the target only shortens replays, so an unavailable
+//! intermediate may be skipped. The runner's newest boundary is
+//! different: it is the durable cursor, so a row whose directory
+//! vanished is a fatal storage-invariant violation. Provenance is the
+//! writer's contract: a row must name the boundary its machine truly
+//! sits at; runner loads verify that root before mutation, while the
+//! quartet cache's collision tripwire cross-checks resumed against
+//! replayed computation wherever they overlap.
 //!
 //! The write side is filesystem-first, database-second: staged
 //! machines are root-verified, synced, and renamed durably without
@@ -63,6 +65,52 @@ pub enum StoreError {
 //
 // Stores
 //
+
+/// The runner's durable cursor must always have its stored machine.
+/// It does not silently roll that cursor back to an earlier checkpoint;
+/// replay and republication would be a separate recovery protocol. A
+/// missing path therefore means a storage bug or an underlying
+/// filesystem failure, not retryable work.
+pub(super) fn assert_runner_boundary_dir(path: &Path, epoch: u64, input: u64) {
+    match std::fs::metadata(path) {
+        Ok(metadata) => assert!(
+            metadata.is_dir(),
+            "durable runner boundary is not a directory: epoch {epoch}, input {input}, path `{}`; database and filesystem disagree",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => panic!(
+            "durable runner boundary vanished: epoch {epoch}, input {input}, path `{}`; database and filesystem disagree",
+            path.display()
+        ),
+        Err(error) => panic!(
+            "durable runner boundary is inaccessible: epoch {epoch}, input {input}, path `{}`: {error}; database and filesystem cannot be verified",
+            path.display()
+        ),
+    }
+}
+
+/// Verifies the database row against the machine loaded from its
+/// directory before the runner can mutate it.
+pub(super) fn assert_runner_boundary_root(
+    machine: &mut RollupsMachine,
+    expected: &Hash,
+    path: &Path,
+    epoch: u64,
+    input: u64,
+) {
+    let actual = machine.state_hash().unwrap_or_else(|error| {
+        panic!(
+            "durable runner boundary root could not be verified: epoch {epoch}, input {input}, path `{}`: {error}",
+            path.display()
+        )
+    });
+    assert_eq!(
+        actual,
+        *expected,
+        "durable runner boundary root mismatch: epoch {epoch}, input {input}, path `{}`; database row and stored machine disagree",
+        path.display()
+    );
+}
 
 impl Storage {
     /// Stores the machine into the durable content-addressed path.
@@ -396,8 +444,25 @@ impl Storage {
     }
 
     pub fn latest_snapshot(&mut self) -> Result<RollupsMachine> {
-        let (path, epoch_number, input_number, _) = self.read(latest_boundary_in)?;
-        Ok(RollupsMachine::new(&path, epoch_number, input_number)?)
+        let (path, epoch_number, input_number, expected_hash) = self.read(latest_boundary_in)?;
+        assert_runner_boundary_dir(&path, epoch_number, input_number);
+        let mut machine = match RollupsMachine::new(&path, epoch_number, input_number) {
+            Ok(machine) => machine,
+            Err(error) => {
+                // Promote a path that disappeared during the load to
+                // the fatal invariant; other load errors can retry.
+                assert_runner_boundary_dir(&path, epoch_number, input_number);
+                return Err(error.into());
+            }
+        };
+        assert_runner_boundary_root(
+            &mut machine,
+            &expected_hash,
+            &path,
+            epoch_number,
+            input_number,
+        );
+        Ok(machine)
     }
 
     /// All surviving snapshot boundaries of an epoch, ordered by

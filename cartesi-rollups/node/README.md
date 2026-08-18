@@ -88,7 +88,7 @@ Options:
       --sleep-duration-seconds <SLEEP_DURATION_SECONDS>
           polling sleep interval [env: SLEEP_DURATION_SECONDS=] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
-          keep every Nth input-boundary machine snapshot (1 keeps all); the disk-vs-dispute-replay knob [env: SNAPSHOT_GAP_INPUTS=] [default: 64]
+          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: SNAPSHOT_GAP_INPUTS=] [default: 64]
       --state-dir <STATE_DIR>
           [env: STATE_DIR=] [default: /var/folders/kf/1rg78mtx0c7f81_n7t6x6c6r0000gn/T/]
       --long-block-range-error-codes <LONG_BLOCK_RANGE_ERROR_CODES>
