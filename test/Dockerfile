@@ -114,13 +114,19 @@ RUN just -f cartesi-rollups/contracts/justfile install-deps
 COPY machine/step/ machine/step/
 COPY justfile justfile
 
-# builds smart contracts and generate Rust bindings for smart contracts.
+# builds smart contracts.
 RUN \
   --mount=type=cache,target=cartesi-rollups/contracts/out,sharing=locked \
   --mount=type=cache,target=cartesi-rollups/contracts/cache,sharing=locked \
   --mount=type=cache,target=prt/contracts/out,sharing=locked \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
-  just build-smart-contracts && just bind
+  just build-smart-contracts
+
+# generates Rust bindings for smart contracts.
+# no --mount here: `forge bind --force` clears out/ and cache/, which fails on a
+# mount point, and its src-only compile would evict the artifacts built above.
+COPY script/contract-bindings.sh script/contract-bindings.sh
+RUN just bind
 
 # builds test programs and create anvil state dump.
 # requires compiled smart contracts.
