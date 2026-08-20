@@ -30,12 +30,11 @@ Merkle root (zero at genesis), and the root tournament address.
    and a root tournament exists. Validators compute their commitment over
    the sealed inputs and join the tournament to defend it.
 3. Staged: the tournament finished and anyone called
-   `stageTournamentResult(epochNumber, outputsMerkleRoot, proof)` - the
-   outputs proof is validated here, and `EpochStaged` carries the staged
-   post-epoch machine state hash and outputs root. Sentries (0..N
-   addresses fixed at deployment, rotatable by the sentry manager) may
-   independently `submitSentryClaim` the post-epoch machine state hash
-   they computed themselves.
+   `stageTournamentResult(epochNumber, proof)` - the machine validity proof is
+   validated here, and `EpochStaged` carries the staged post-epoch machine
+   state hash and outputs root. Sentries (0..N addresses fixed at deployment,
+   rotatable by the sentry manager) may independently `submitSentryClaim` the
+   post-epoch machine state hash they computed themselves.
 4. Settled: anyone called `acceptStagedTournamentResult(epochNumber)`,
    allowed once the result is staged AND (every sentry claimed the staged
    hash OR the claim staging period elapsed - with zero sentries, only

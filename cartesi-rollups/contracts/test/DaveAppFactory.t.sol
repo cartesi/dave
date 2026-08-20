@@ -5,21 +5,18 @@ import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 import {Ownable} from "@openzeppelin-contracts-5.2.0/access/Ownable.sol";
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 
+import {MachineValidityProof} from "cartesi-rollups-contracts-3.0.0/src/common/MachineValidityProof.sol";
 import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/WithdrawalConfig.sol";
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
-import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
 import {IApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactory.sol";
 import {IApplicationFactoryErrors} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactoryErrors.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
-import {LibBinaryMerkleTree} from "cartesi-rollups-contracts-3.0.0/src/library/LibBinaryMerkleTree.sol";
 import {LibBytes} from "cartesi-rollups-contracts-3.0.0/src/library/LibBytes.sol";
 import {LibKeccak256} from "cartesi-rollups-contracts-3.0.0/src/library/LibKeccak256.sol";
 import {LibWithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/library/LibWithdrawalConfig.sol";
-import {RollupsTest} from "cartesi-rollups-contracts-3.0.0/test/util/RollupsTest.sol";
-
-import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
-import {Memory} from "step/src/Memory.sol";
+import {ConsensusTestUtils} from "cartesi-rollups-contracts-3.0.0/test/util/ConsensusTestUtils.sol";
+import {LibEmulator} from "cartesi-rollups-contracts-3.0.0/test/util/LibEmulator.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
@@ -43,18 +40,6 @@ import {TournamentInspector} from "prt-contracts-test/fixtures/TournamentInspect
 
 using TournamentInspector for ITournament;
 
-library LibExternalBinaryKeccak256MerkleTree {
-    using LibBinaryMerkleTree for bytes32[];
-
-    function merkleRootAfterReplacement(bytes32[] calldata sibs, uint256 nodeIndex, bytes32 node)
-        external
-        pure
-        returns (bytes32)
-    {
-        return sibs.merkleRootAfterReplacement(nodeIndex, node, LibKeccak256.hashPair);
-    }
-}
-
 contract SettlementCallbackReceiver {
     bool public exhaustsGas = true;
 
@@ -71,8 +56,8 @@ contract SettlementCallbackReceiver {
     }
 }
 
-contract DaveAppFactoryTest is RollupsTest {
-    using LibExternalBinaryKeccak256MerkleTree for bytes32[];
+contract DaveAppFactoryTest is ConsensusTestUtils {
+    using LibEmulator for LibEmulator.ProofComponents;
     using LibWithdrawalConfig for WithdrawalConfig;
     using LibBytes for bytes;
 
@@ -186,7 +171,6 @@ contract DaveAppFactoryTest is RollupsTest {
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt,
-        bytes32 outputsMerkleRoot,
         bytes[] calldata inputPayloads,
         bool recoverBeforeStaging,
         bool recoverThroughContract
@@ -209,11 +193,10 @@ contract DaveAppFactoryTest is RollupsTest {
 
         (,,, ITournament tournament,,,,) = daveConsensus.getCurrentSealedEpoch();
 
-        bytes32[] memory outputsMerkleRootProof = _randomProof(Memory.LOG2_MAX_SIZE);
-        bytes32 machineMerkleRoot = outputsMerkleRootProof.merkleRootAfterReplacement(
-            EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.HASH_TREE_LOG2_WORD_SIZE,
-            keccak256(abi.encode(outputsMerkleRoot))
-        );
+        LibEmulator.ProofComponents memory proofComponents = _newProofComponents(_initRandom);
+        MachineValidityProof memory proof = proofComponents.getMachineValidityProof();
+        bytes32 machineMerkleRoot = proofComponents.getMachineMerkleRoot();
+        bytes32 outputsMerkleRoot = proofComponents.outputsMerkleRoot;
 
         bytes32[] memory finalStateProof = _randomProof(tournament.tournamentArguments().commitmentArgs.height);
         (bytes32 leftChild, bytes32 rightChild) = _getCommitmentChildren(machineMerkleRoot, finalStateProof);
@@ -328,7 +311,7 @@ contract DaveAppFactoryTest is RollupsTest {
 
         vm.expectRevert(IDaveConsensus.TournamentNotFinishedYet.selector);
         vm.prank(vm.randomAddress());
-        daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
+        daveConsensus.stageTournamentResult(0, proof);
 
         uint64 maxBlockNumber = type(uint64).max - claimStagingPeriod;
         vm.roll(vm.randomUint(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE), maxBlockNumber));
@@ -398,34 +381,11 @@ contract DaveAppFactoryTest is RollupsTest {
             uint256 incorrectEpochNumber = vm.randomUint(1, type(uint256).max);
             vm.expectRevert(_encodeIncorrectEpochNumber(incorrectEpochNumber, 0));
             vm.prank(vm.randomAddress());
-            daveConsensus.stageTournamentResult(incorrectEpochNumber, outputsMerkleRoot, outputsMerkleRootProof);
-        }
-
-        // Try staging tournament result with invalid outputs Merkle root proof size
-        while (true) {
-            uint256 invalidProofSize = vm.randomUint(0, 2 * outputsMerkleRootProof.length + 1);
-            if (invalidProofSize != outputsMerkleRootProof.length) {
-                bytes32[] memory invalidOutputsMerkleRootProof = _randomProof(invalidProofSize);
-                vm.expectRevert(_encodeInvalidOutputsMerkleRootProofSize(invalidProofSize));
-                vm.prank(vm.randomAddress());
-                daveConsensus.stageTournamentResult(0, outputsMerkleRoot, invalidOutputsMerkleRootProof);
-                break;
-            }
-        }
-
-        // Try staging tournament result with invalid outputs Merkle root
-        while (true) {
-            bytes32 invalidOutputsMerkleRoot = bytes32(vm.randomUint());
-            if (invalidOutputsMerkleRoot != outputsMerkleRoot) {
-                vm.expectRevert(_encodeInvalidOutputsMerkleRootProof(machineMerkleRoot));
-                vm.prank(vm.randomAddress());
-                daveConsensus.stageTournamentResult(0, invalidOutputsMerkleRoot, outputsMerkleRootProof);
-                break;
-            }
+            daveConsensus.stageTournamentResult(incorrectEpochNumber, proof);
         }
 
         vm.expectRevert(_encodeApplicationForeclosed(address(appContract)));
-        this.simulateForeclosureAndStaging(appContract, daveConsensus, 0, outputsMerkleRoot, outputsMerkleRootProof);
+        this.simulateForeclosureAndStaging(appContract, daveConsensus, 0, proof);
 
         uint256 burnedBalanceBefore = address(0).balance;
 
@@ -443,7 +403,7 @@ contract DaveAppFactoryTest is RollupsTest {
 
         vm.prank(vm.randomAddress());
         uint256 gasBefore = gasleft();
-        daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
+        daveConsensus.stageTournamentResult(0, proof);
         uint256 stagingGasUsed = gasBefore - gasleft();
         assertLt(stagingGasUsed, STAGING_GAS_CEILING);
 
@@ -556,7 +516,7 @@ contract DaveAppFactoryTest is RollupsTest {
         // Try re-staging tournament result
         vm.expectRevert(IDaveConsensus.TournamentResultAlreadyStaged.selector);
         vm.prank(vm.randomAddress());
-        daveConsensus.stageTournamentResult(0, outputsMerkleRoot, outputsMerkleRootProof);
+        daveConsensus.stageTournamentResult(0, proof);
 
         // Try accepting tournament result before claim staging period is over
         if (claimStagingPeriod >= 1) {
@@ -797,7 +757,6 @@ contract DaveAppFactoryTest is RollupsTest {
         address[] calldata sentries,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt,
-        bytes32 outputsMerkleRoot,
         bytes[] calldata inputPayloadsOfEpoch1,
         bytes[] calldata inputPayloadsOfEpoch2
     ) external {
@@ -815,13 +774,17 @@ contract DaveAppFactoryTest is RollupsTest {
         uint256 numOfInputsOfEpoch1 = inputPayloadsOfEpoch1.length;
         uint256 numOfInputsOfEpoch2 = inputPayloadsOfEpoch2.length;
 
+        // Both epochs settle to the same post-epoch machine state, which is
+        // all this test needs: the input index bounds do not depend on it.
+        LibEmulator.ProofComponents memory proofComponents = _newProofComponents(_initRandom);
+
         // Epoch #0 was sealed on construction and is empty, so these inputs are spanned by epoch #1
         for (uint256 i; i < numOfInputsOfEpoch1; ++i) {
             _addInput(address(appContract), inputPayloadsOfEpoch1[i]);
         }
 
         // Settling epoch #0 seals epoch #1 over inputs [0, numOfInputsOfEpoch1)
-        _settleCurrentSealedEpoch(daveConsensus, 0, claimStagingPeriod, outputsMerkleRoot);
+        _settleCurrentSealedEpoch(daveConsensus, 0, claimStagingPeriod, proofComponents);
 
         {
             uint256 val1;
@@ -848,7 +811,7 @@ contract DaveAppFactoryTest is RollupsTest {
 
         // Settling epoch #1 seals epoch #2 over
         // inputs [numOfInputsOfEpoch1, numOfInputsOfEpoch1 + numOfInputsOfEpoch2)
-        _settleCurrentSealedEpoch(daveConsensus, 1, claimStagingPeriod, outputsMerkleRoot);
+        _settleCurrentSealedEpoch(daveConsensus, 1, claimStagingPeriod, proofComponents);
 
         {
             uint256 val1;
@@ -884,6 +847,90 @@ contract DaveAppFactoryTest is RollupsTest {
         daveConsensus.wasInputFinalized(notAppContract, vm.randomUint(), vm.randomUint());
     }
 
+    function testStageTournamentResultRevertInvalidSiblingsArrayLength(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external {
+        LibEmulator.ProofComponents memory proofComponents = _newProofComponents(_initRandom);
+
+        IDaveConsensus daveConsensus = _newAppWithFinishedTournament(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt, proofComponents
+        );
+
+        MachineValidityProof memory proof = proofComponents.getMachineValidityProof();
+        _invalidateSiblingsArray(_pickRandomLeafProofFrom(proof));
+
+        vm.expectRevert(_encodeInvalidSiblingsArrayLength());
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(0, proof);
+    }
+
+    function testStageTournamentResultRevertInvalidMachineMerkleProof(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external {
+        LibEmulator.ProofComponents memory proofComponents = _newProofComponents(_initRandom);
+
+        IDaveConsensus daveConsensus = _newAppWithFinishedTournament(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt, proofComponents
+        );
+
+        MachineValidityProof memory proof = proofComponents.getMachineValidityProof();
+        _alterDataBlock(_pickRandomLeafProofFrom(proof));
+
+        vm.expectRevert(_encodeInvalidMachineMerkleProof());
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(0, proof);
+    }
+
+    function testStageTournamentResultRevertInvalidPostEpochMachineIflagsYRegister(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external {
+        LibEmulator.ProofComponents memory proofComponents = _newProofComponents(_initBadIflagsY);
+
+        IDaveConsensus daveConsensus = _newAppWithFinishedTournament(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt, proofComponents
+        );
+
+        MachineValidityProof memory proof = proofComponents.getMachineValidityProof();
+        vm.expectRevert(_encodeInvalidPostEpochMachineIflagsYRegister());
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(0, proof);
+    }
+
+    function testStageTournamentResultRevertInvalidPostEpochMachineHtifTohostRegister(
+        bytes32 templateHash,
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external {
+        LibEmulator.ProofComponents memory proofComponents = _newProofComponents(_initBadHtifTohost);
+
+        IDaveConsensus daveConsensus = _newAppWithFinishedTournament(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt, proofComponents
+        );
+
+        MachineValidityProof memory proof = proofComponents.getMachineValidityProof();
+        vm.expectRevert(_encodeInvalidPostEpochMachineHtifTohostRegister());
+        vm.prank(vm.randomAddress());
+        daveConsensus.stageTournamentResult(0, proof);
+    }
+
     function testRootFailureCannotBeStaged(
         bytes32 templateHash,
         uint64 claimStagingPeriod,
@@ -911,8 +958,11 @@ contract DaveAppFactoryTest is RollupsTest {
         vm.expectRevert(ITournament.TournamentFailedNoWinner.selector);
         daveConsensus.canStageTournamentResult();
 
+        // The tournament standing is checked before the machine validity proof,
+        // so any proof can be provided as to reach the expected revert.
+        MachineValidityProof memory proof;
         vm.expectRevert(ITournament.TournamentFailedNoWinner.selector);
-        daveConsensus.stageTournamentResult(0, bytes32(0), new bytes32[](0));
+        daveConsensus.stageTournamentResult(0, proof);
     }
 
     function testRotateSentry(
@@ -1026,13 +1076,12 @@ contract DaveAppFactoryTest is RollupsTest {
         IApplication appContract,
         IDaveConsensus daveConsensus,
         uint256 epochNumber,
-        bytes32 outputsMerkleRoot,
-        bytes32[] calldata proof
+        MachineValidityProof calldata proof
     ) external {
         vm.prank(appContract.getGuardian());
         appContract.foreclose();
         vm.prank(vm.randomAddress());
-        daveConsensus.stageTournamentResult(epochNumber, outputsMerkleRoot, proof);
+        daveConsensus.stageTournamentResult(epochNumber, proof);
         revert("Successful staging");
     }
 
@@ -1098,7 +1147,6 @@ contract DaveAppFactoryTest is RollupsTest {
             sentries,
             withdrawalConfig,
             bytes32(uint256(2)),
-            bytes32(uint256(3)),
             inputPayloads,
             false,
             true
@@ -1403,24 +1451,42 @@ contract DaveAppFactoryTest is RollupsTest {
         vm.roll(vm.randomUint(blockNumber, type(uint64).max - slack));
     }
 
-    /// @notice Join, close, stage and accept the tournament of the current sealed epoch.
-    /// @dev Assumes that the block number budget reserved by `_randomizeBlockNumber`
-    /// still has room for one epoch settlement.
-    function _settleCurrentSealedEpoch(
-        IDaveConsensus daveConsensus,
-        uint256 epochNumber,
+    /// @notice Deploy an application, join the tournament of its first sealed epoch with
+    /// the given post-epoch machine state, and fast-forward until the tournament is finished.
+    /// @return daveConsensus The DaveConsensus contract, ready for epoch #0 to be staged
+    /// @dev Shared by the tests that exercise the rejection of an invalid machine validity
+    /// proof, none of which care about the application itself.
+    function _newAppWithFinishedTournament(
+        bytes32 templateHash,
         uint64 claimStagingPeriod,
-        bytes32 outputsMerkleRoot
-    ) internal {
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt,
+        LibEmulator.ProofComponents memory proofComponents
+    ) internal returns (IDaveConsensus daveConsensus) {
+        _randomizeBlockNumber(claimStagingPeriod);
+
+        vm.assumeNoRevert();
+        (, daveConsensus) = _daveAppFactory.newDaveApp(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        );
+
         ITournament tournament;
         (,,, tournament,,,,) = daveConsensus.getCurrentSealedEpoch();
 
-        bytes32[] memory outputsMerkleRootProof = _randomProof(Memory.LOG2_MAX_SIZE);
-        bytes32 machineMerkleRoot = outputsMerkleRootProof.merkleRootAfterReplacement(
-            EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.HASH_TREE_LOG2_WORD_SIZE,
-            keccak256(abi.encode(outputsMerkleRoot))
-        );
+        _joinTournament(tournament, proofComponents.getMachineMerkleRoot());
 
+        // Fast-forward to a block in which the tournament is closed and finished
+        vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
+        assertTrue(tournament.isFinished());
+    }
+
+    /// @notice Join the tournament of the current sealed epoch with a commitment
+    /// whose final state is the given post-epoch machine state.
+    /// @param tournament The tournament of the current sealed epoch
+    /// @param machineMerkleRoot The post-epoch machine Merkle root
+    function _joinTournament(ITournament tournament, bytes32 machineMerkleRoot) internal {
         bytes32[] memory finalStateProof = _randomProof(tournament.tournamentArguments().commitmentArgs.height);
         (bytes32 leftChild, bytes32 rightChild) = _getCommitmentChildren(machineMerkleRoot, finalStateProof);
 
@@ -1432,13 +1498,29 @@ contract DaveAppFactoryTest is RollupsTest {
         tournament.joinTournament{value: bondValue}(
             Machine.Hash.wrap(machineMerkleRoot), finalStateProof, Tree.Node.wrap(leftChild), Tree.Node.wrap(rightChild)
         );
+    }
+
+    /// @notice Join, close, stage and accept the tournament of the current sealed epoch.
+    /// @dev Assumes that the block number budget reserved by `_randomizeBlockNumber`
+    /// still has room for one epoch settlement.
+    function _settleCurrentSealedEpoch(
+        IDaveConsensus daveConsensus,
+        uint256 epochNumber,
+        uint64 claimStagingPeriod,
+        LibEmulator.ProofComponents memory proofComponents
+    ) internal {
+        ITournament tournament;
+        (,,, tournament,,,,) = daveConsensus.getCurrentSealedEpoch();
+
+        _joinTournament(tournament, proofComponents.getMachineMerkleRoot());
 
         // Fast-forward to a block in which the tournament is closed and finished
         vm.roll(vm.getBlockNumber() + Time.Duration.unwrap(MAX_ALLOWANCE));
         assertTrue(tournament.isFinished());
 
+        MachineValidityProof memory proof = proofComponents.getMachineValidityProof();
         vm.prank(vm.randomAddress());
-        daveConsensus.stageTournamentResult(epochNumber, outputsMerkleRoot, outputsMerkleRootProof);
+        daveConsensus.stageTournamentResult(epochNumber, proof);
 
         // Fast-forward to a block in which the claim staging period is over. Since the
         // application has no sentries, this is the only way of accepting the staged result.
@@ -1597,22 +1679,6 @@ contract DaveAppFactoryTest is RollupsTest {
         return abi.encodeWithSelector(IDaveConsensus.IncorrectEpochNumber.selector, received, actual);
     }
 
-    function _encodeInvalidOutputsMerkleRootProofSize(uint256 suppliedProofSize)
-        internal
-        pure
-        returns (bytes memory encodedError)
-    {
-        return abi.encodeWithSelector(IDaveConsensus.InvalidOutputsMerkleRootProofSize.selector, suppliedProofSize);
-    }
-
-    function _encodeInvalidOutputsMerkleRootProof(bytes32 machineMerkleRoot)
-        internal
-        pure
-        returns (bytes memory encodedError)
-    {
-        return abi.encodeWithSelector(IDaveConsensus.InvalidOutputsMerkleRootProof.selector, machineMerkleRoot);
-    }
-
     function _encodeClaimStagingPeriodNotOverYet(uint256 numberOfBlocksAfterStaging, uint256 claimStagingPeriod)
         internal
         pure
@@ -1621,10 +1687,6 @@ contract DaveAppFactoryTest is RollupsTest {
         return abi.encodeWithSelector(
             IDaveConsensus.ClaimStagingPeriodNotOverYet.selector, numberOfBlocksAfterStaging, claimStagingPeriod
         );
-    }
-
-    function _encodeApplicationForeclosed(address appContract) internal pure returns (bytes memory encodedError) {
-        return abi.encodeWithSelector(IApplicationChecker.ApplicationForeclosed.selector, appContract);
     }
 
     function _encodeSentryAlreadyClaimed(uint256 epochNumber, uint256 sentryId)

@@ -7,11 +7,13 @@ import {ERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/ERC165.s
 import {IERC165} from "@openzeppelin-contracts-5.2.0/utils/introspection/IERC165.sol";
 import {BitMaps} from "@openzeppelin-contracts-5.2.0/utils/structs/BitMaps.sol";
 
+import {MachineValidityProof} from "cartesi-rollups-contracts-3.0.0/src/common/MachineValidityProof.sol";
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
 import {ApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/ApplicationChecker.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 import {LibBinaryMerkleTree} from "cartesi-rollups-contracts-3.0.0/src/library/LibBinaryMerkleTree.sol";
 import {LibKeccak256} from "cartesi-rollups-contracts-3.0.0/src/library/LibKeccak256.sol";
+import {LibMachineValidityProof} from "cartesi-rollups-contracts-3.0.0/src/library/LibMachineValidityProof.sol";
 import {LibMath} from "cartesi-rollups-contracts-3.0.0/src/library/LibMath.sol";
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
@@ -21,7 +23,6 @@ import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
-import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
@@ -30,7 +31,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     using LibMath for uint256;
     using BitMaps for BitMaps.BitMap;
     using LibBinaryMerkleTree for bytes;
-    using LibBinaryMerkleTree for bytes32[];
+    using LibMachineValidityProof for MachineValidityProof;
 
     /// @notice The input box contract
     IInputBox immutable _INPUT_BOX;
@@ -156,7 +157,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         (isFinished, winnerCommitment, winnerPostEpochMachineStateHash) = _tournamentResult(_tournament);
     }
 
-    function stageTournamentResult(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof)
+    function stageTournamentResult(uint256 epochNumber, MachineValidityProof calldata proof)
         external
         override
         notForeclosed(_APP_CONTRACT)
@@ -171,8 +172,8 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournamentResult(_tournament);
         require(isFinished, TournamentNotFinishedYet());
 
-        // Check outputs Merkle root
-        _validateOutputTree(finalMachineStateHash, outputsMerkleRoot, proof);
+        // Validate post-epoch machine state and prove outputs Merkle root
+        bytes32 outputsMerkleRoot = _validateMachine(finalMachineStateHash, proof);
 
         // Stage tournament result, and store the current block number for
         // later checking whether the claim staging period has elapsed.
@@ -442,21 +443,16 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         }
     }
 
-    function _validateOutputTree(
-        Machine.Hash finalMachineStateHash,
-        bytes32 outputsMerkleRoot,
-        bytes32[] calldata proof
-    ) internal pure {
-        bytes32 machineStateHash = Machine.Hash.unwrap(finalMachineStateHash);
-
-        require(proof.length == Memory.LOG2_MAX_SIZE, InvalidOutputsMerkleRootProofSize(proof.length));
-        bytes32 allegedStateHash = proof.merkleRootAfterReplacement(
-            EmulatorConstants.AR_CMIO_TX_BUFFER_START >> EmulatorConstants.HASH_TREE_LOG2_WORD_SIZE,
-            keccak256(abi.encode(outputsMerkleRoot)),
-            LibKeccak256.hashPair
-        );
-
-        require(machineStateHash == allegedStateHash, InvalidOutputsMerkleRootProof(finalMachineStateHash));
+    /// @notice Validates a post-epoch machine given its state hash and a validity proof.
+    /// @param finalMachineStateHash The post-epoch machine state hash
+    /// @param proof The machine validity proof
+    /// @return outputsMerkleRoot The proven outputs Merkle root
+    function _validateMachine(Machine.Hash finalMachineStateHash, MachineValidityProof calldata proof)
+        internal
+        pure
+        returns (bytes32 outputsMerkleRoot)
+    {
+        return proof.validate(Machine.Hash.unwrap(finalMachineStateHash));
     }
 
     function _doAllSentriesAgreeWithStagedTournamentResult() internal view returns (bool) {
