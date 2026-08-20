@@ -4,6 +4,8 @@
 pragma solidity ^0.8.30;
 
 import {BinaryMerkleTreeErrors} from "cartesi-rollups-contracts-3.0.0/src/common/BinaryMerkleTreeErrors.sol";
+import {MachineValidationErrors} from "cartesi-rollups-contracts-3.0.0/src/common/MachineValidationErrors.sol";
+import {MachineValidityProof} from "cartesi-rollups-contracts-3.0.0/src/common/MachineValidityProof.sol";
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
 import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
@@ -53,6 +55,7 @@ interface IDaveConsensus is
     IOutputsMerkleRootValidator,
     IApplicationChecker,
     BinaryMerkleTreeErrors,
+    MachineValidationErrors,
     ISentryErrors
 {
     /// @notice Consensus contract was created
@@ -133,14 +136,6 @@ interface IDaveConsensus is
     /// @param fromReceivedInput Hash of received input blob
     /// @param fromInputBox Hash of input stored on the input box contract
     error InputHashMismatch(bytes32 fromReceivedInput, bytes32 fromInputBox);
-
-    /// @notice Supplied output tree proof not consistent with settled machine hash
-    /// @param settledState Settled machine state hash
-    error InvalidOutputsMerkleRootProof(Machine.Hash settledState);
-
-    /// @notice Supplied output tree proof size is incorrect
-    /// @param suppliedProofSize Supplied proof size
-    error InvalidOutputsMerkleRootProofSize(uint256 suppliedProofSize);
 
     /// @notice Application address does not match
     /// @param expected Expected application address
@@ -285,12 +280,11 @@ interface IDaveConsensus is
 
     /// @notice Stage the tournament result of the current sealed epoch.
     /// @param epochNumber The current sealed epoch number (used to avoid race conditions)
-    /// @param outputsMerkleRoot The post-epoch outputs Merkle root (used to validate outputs)
-    /// @param proof The bottom-up Merkle proof of the outputs Merkle root in the final machine state
+    /// @param proof The post-epoch machine validity proof
     /// @dev On success, stores the staged result and emits an `EpochStaged`
     /// event. Bond recovery is a separate permissionless action on the
     /// tournament and cannot affect staging.
-    function stageTournamentResult(uint256 epochNumber, bytes32 outputsMerkleRoot, bytes32[] calldata proof) external;
+    function stageTournamentResult(uint256 epochNumber, MachineValidityProof calldata proof) external;
 
     /// @notice As a sentry, claim the post-epoch machine state hash for the current sealed epoch.
     /// If all sentries claim the same post-epoch machine state hash as the staged tournament result,
