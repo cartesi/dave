@@ -153,14 +153,15 @@ smaller build and test prerequisites as well.
 
 At any point, run:
 ```bash
-just doctor       # build and pre-commit-check readiness
-just doctor-e2e   # machine images, devnet, and E2E state
+just doctor       # build/check readiness, including echo and yield images
+just doctor-e2e   # full E2E images, devnet, and E2E state
 just doctor-all   # both scopes
 ```
 Each command prints the fix for anything missing. Keeping E2E artifacts out of
-the base doctor prevents an otherwise build-ready checkout from appearing
-permanently unhealthy. `just --list` shows every available recipe, and
-`just check` is the pre-commit gate.
+the base doctor, except for the echo/yield images used by standard Rust tests,
+prevents an otherwise check-ready checkout from appearing permanently
+unhealthy. `just --list` shows every available recipe, and `just check` is the
+pre-commit gate.
 
 ### Running Examples
 

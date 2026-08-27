@@ -2,7 +2,7 @@
 -- node internals (its SQLite schemas and process lifecycle). Everything
 -- it reads serves synchronization or produces cross-check subjects; the
 -- oracle in test_env.lua never consumes node state. When the node's
--- schema changes, this file is the complete migration surface.
+-- schema changes, this file is the complete update surface.
 
 local Hash = require "cryptography.hash"
 local Machine = require "computation.machine"

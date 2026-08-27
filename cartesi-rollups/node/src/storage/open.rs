@@ -8,7 +8,7 @@
 
 use super::error::Result;
 use super::rollups_machine::RollupsMachine;
-use super::sql::migrations;
+use super::sql::schema;
 use crate::engine::{EngineConfig, Structure, config as sling_config};
 use crate::merkle::Digest;
 use alloy::primitives::Address;
@@ -42,12 +42,12 @@ pub struct Storage {
 }
 
 impl Storage {
-    /// Process setup: creates the state directory, runs the
-    /// migration, seeds the genesis watermark, stores and registers
+    /// Process setup: creates the state directory, initializes the
+    /// schema, seeds the genesis watermark, stores and registers
     /// the template machine, and pins the engine configuration (which
     /// fails loudly on app or emulator drift against an existing
     /// state dir).
-    pub fn migrate(
+    pub fn initialize(
         state_dir: &Path,
         initial_machine_path: &Path,
         genesis_block_number: u64,
@@ -56,8 +56,8 @@ impl Storage {
         create_directory_structure(state_dir)?;
         let state_dir = state_dir.canonicalize().map_err(anyhow::Error::from)?;
 
-        let mut connection = open_writer_connection(&db_path(&state_dir))?;
-        migrations::migrate_to_latest(&mut connection)?;
+        let connection = open_writer_connection(&db_path(&state_dir))?;
+        schema::initialize(&connection)?;
 
         let mut storage = Self {
             connection,
@@ -81,7 +81,7 @@ impl Storage {
         Ok(storage)
     }
 
-    /// A writer handle onto an already-migrated database. One
+    /// A writer handle onto an already-initialized database. One
     /// connection per worker thread; SQLite's WAL plus the busy
     /// timeout arbitrate between them.
     pub fn new(state_dir: &Path) -> Result<Self> {

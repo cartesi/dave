@@ -74,6 +74,9 @@ test, never a source):
 - Sybil machine material: oracle epoch snapshots.
 - Tournament winners and settlement: chain state, compared against the
   oracle commitment.
+- Settlement machine validity: `Env.roll_epoch` waits for the next
+  `EpochSealed`, which can follow only after DaveConsensus accepts the staged
+  final-state proof and its TX-buffer outputs root.
 - Node reads (`dave/node.lua`) serve synchronization (wait until the
   node has progressed) and produce the cross-check subjects.
 

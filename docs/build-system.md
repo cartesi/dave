@@ -86,11 +86,11 @@ module recipes are discoverable aliases. The two contract modules share one
 parameterized dependency-and-binding checker because their checks are
 identical apart from paths and labels.
 
-`just doctor` covers build and pre-commit-check readiness. Optional machine
-images, the devnet bundle, and retained E2E state belong to
-`just doctor-e2e`; `just doctor-all` runs both scopes. A checkout can therefore
-be healthy for ordinary development without first constructing every expensive
-integration fixture.
+`just doctor` covers build and pre-commit-check readiness, including the echo
+and yield images consumed by the standard Rust suite. The devnet bundle,
+Honeypot image, and retained E2E state belong to `just doctor-e2e`;
+`just doctor-all` runs both scopes. A checkout can therefore be healthy for
+ordinary development without constructing the expensive E2E fixtures.
 
 The devnet receipt is deliberately narrower than the contract worktrees. Its
 input digest covers production and deployment Solidity, installed production
@@ -107,7 +107,7 @@ its semantic stored-machine root. The input digest names one producer script
 for that image rather than the shared programs Justfile. Editing the Honeypot
 producer therefore does not invalidate echo, yield, or stress. The v2 receipt
 format intentionally makes the old shared-recipe receipts stale once; rebuild
-the image with the fix printed by `just doctor-e2e`.
+the image with the fix printed by the relevant doctor scope.
 
 ## Deployment generations
 
@@ -127,6 +127,14 @@ intentional layout changes. Storage and bytecode hashes report implementation
 and deployment impact rather than promising equality. Changed bytecode and
 CREATE2-derived addresses identify a new deployment bundle and must be
 regenerated together.
+
+The node database follows the same clean-slate policy: `storage/sql/schema.sql`
+is the only schema definition and has no upgrade steps. An empty database is
+created from that file and atomically stamped with the node package version and
+the Keccak hash of the exact schema bytes. An existing database is never given
+DDL at startup; its two identity values must match the running binary. A
+mismatch requires deleting the state directory and rebuilding it from the
+chain and machine image.
 
 ## Open design questions
 
@@ -284,13 +292,13 @@ debugging the environment:
 `just check` is the pre-commit gate: fmt checks (Rust workspace and both
 contract dirs), luacheck over the Lua client and harness, clippy with warnings
 denied, the build-tooling regressions, the provider-free contract suites, and
-the Rust and Lua unit suites. `just doctor` diagnoses build/check inputs;
-`just doctor-e2e` diagnoses machine images, devnet artifacts, and E2E litter;
-`just doctor-all` aggregates both. Every failed check prints the command that
-fixes it. Run the relevant scope before debugging a mysterious failure,
-especially in a fresh worktree. The e2e `test` recipe runs a preflight
-with the same spirit: missing artifacts fail with a named fix, not a cryptic jq
-or Lua error.
+the Rust and Lua unit suites. `just doctor` diagnoses build/check inputs,
+including the standard echo and yield images; `just doctor-e2e` diagnoses the
+E2E image set, devnet artifacts, and E2E litter; `just doctor-all` aggregates
+both. Every failed check prints the command that fixes it. Run the relevant
+scope before debugging a mysterious failure, especially in a fresh worktree.
+The e2e `test` recipe runs a preflight with the same spirit: missing artifacts
+fail with a named fix, not a cryptic jq or Lua error.
 
 Formatter versions matter: forge changes wrapping heuristics across
 releases (observed live: 1.4.3 and 1.5.1-dev disagree about an

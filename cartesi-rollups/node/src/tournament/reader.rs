@@ -961,11 +961,10 @@ mod tests {
         (Chain::new(provider, Vec::new()), asserter, requests)
     }
 
-    fn migrated_storage() -> (tempfile::TempDir, Storage) {
+    fn initialized_storage() -> (tempfile::TempDir, Storage) {
         let directory = tempfile::tempdir().unwrap();
-        let mut connection =
-            rusqlite::Connection::open(directory.path().join("db.sqlite3")).unwrap();
-        crate::storage::sql::migrations::migrate_to_latest(&mut connection).unwrap();
+        let connection = rusqlite::Connection::open(directory.path().join("db.sqlite3")).unwrap();
+        crate::storage::sql::schema::initialize(&connection).unwrap();
         drop(connection);
         let storage = Storage::new(directory.path()).unwrap();
         (directory, storage)
@@ -1214,7 +1213,7 @@ mod tests {
         let resolved = head(20, 0x20);
         let after_resolution = head(21, 0x21);
         let (chain, asserter, requests) = recording_chain();
-        let (_directory, storage) = migrated_storage();
+        let (_directory, storage) = initialized_storage();
         let state_dir = storage.state_dir().to_path_buf();
         let mut reader = StateReader::new(chain.clone(), created.number, storage).unwrap();
         let log_request_count = || {
@@ -1447,7 +1446,7 @@ mod tests {
         let finalized = head(41, 0x41);
         let commitment = digest(10);
         let (chain, asserter, _) = recording_chain();
-        let (_directory, storage) = migrated_storage();
+        let (_directory, storage) = initialized_storage();
         let mut reader = StateReader::new(chain, 40, storage).unwrap();
 
         asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
@@ -1500,7 +1499,7 @@ mod tests {
             match_created_log(root, second_latest, 1, second_id, 51),
         ];
         let (chain, asserter, requests) = recording_chain();
-        let (_directory, storage) = migrated_storage();
+        let (_directory, storage) = initialized_storage();
         let mut reader = StateReader::new(chain, 40, storage).unwrap();
 
         asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
@@ -1554,7 +1553,7 @@ mod tests {
             commitment_two: two,
         };
         let (chain, asserter, requests) = recording_chain();
-        let (_directory, storage) = migrated_storage();
+        let (_directory, storage) = initialized_storage();
         let mut reader = StateReader::new(chain, 40, storage).unwrap();
 
         asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
@@ -1647,7 +1646,7 @@ mod tests {
         let child_log = join_log(child, finalized, 4, child_commitment);
 
         let (chain, asserter, requests) = recording_chain();
-        let (_directory, mut storage) = migrated_storage();
+        let (_directory, mut storage) = initialized_storage();
         let stored = root_logs.iter().chain([&child_log]).collect::<Vec<_>>();
         storage
             .append_tournament_events(root, finalized.number, &stored)
@@ -1708,7 +1707,7 @@ mod tests {
         let orphan = address(2);
         let finalized = head(10, 0x10);
         let (chain, asserter, _) = recording_chain();
-        let (_directory, mut storage) = migrated_storage();
+        let (_directory, mut storage) = initialized_storage();
         let root_log = join_log(root, finalized, 0, digest(10));
         let orphan_log = join_log(orphan, finalized, 1, digest(20));
         storage
@@ -1736,7 +1735,7 @@ mod tests {
         let root = address(1);
         let finalized = head(41, 0x41);
         let (chain, asserter, _) = recording_chain();
-        let (_directory, storage) = migrated_storage();
+        let (_directory, storage) = initialized_storage();
         let mut reader = StateReader::new(chain, 40, storage).unwrap();
 
         asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));

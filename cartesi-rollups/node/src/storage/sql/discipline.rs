@@ -8,12 +8,12 @@
 
 use rusqlite::{Connection, params};
 
-/// A migrated schema on a raw connection - no machine image, no
-/// genesis seeding; the trigger layer is pure DDL.
-fn migrated_conn() -> (tempfile::TempDir, Connection) {
+/// An initialized schema on a raw connection - no machine image or
+/// deployment-specific genesis state.
+fn initialized_conn() -> (tempfile::TempDir, Connection) {
     let dir = tempfile::tempdir().unwrap();
-    let mut conn = Connection::open(dir.path().join("db.sqlite3")).unwrap();
-    super::migrations::migrate_to_latest(&mut conn).unwrap();
+    let conn = Connection::open(dir.path().join("db.sqlite3")).unwrap();
+    super::schema::initialize(&conn).unwrap();
     (dir, conn)
 }
 
@@ -27,12 +27,26 @@ fn expect_abort(result: rusqlite::Result<usize>, message_fragment: &str) {
 }
 
 //
+// node_metadata: permanent write-once identity
+//
+
+#[test]
+fn node_metadata_is_write_once() {
+    let (_dir, conn) = initialized_conn();
+    expect_abort(
+        conn.execute("UPDATE node_metadata SET node_version = 'other'", []),
+        "write-once",
+    );
+    expect_abort(conn.execute("DELETE FROM node_metadata", []), "write-once");
+}
+
+//
 // epochs: append-only, dense from 0
 //
 
 #[test]
 fn epochs_refuse_gaps_updates_and_deletes() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     let insert = "INSERT INTO epochs VALUES (?1, 0, '0x00', 0)";
 
     expect_abort(conn.execute(insert, params![1]), "densely from 0");
@@ -53,7 +67,7 @@ fn epochs_refuse_gaps_updates_and_deletes() {
 
 #[test]
 fn inputs_refuse_non_contiguous_coordinates() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     let insert = "INSERT INTO inputs VALUES (?1, ?2, x'00')";
 
     // the first input of the database must open an epoch
@@ -75,7 +89,7 @@ fn inputs_refuse_non_contiguous_coordinates() {
 
 #[test]
 fn inputs_refuse_updates_and_deletes() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     conn.execute("INSERT INTO inputs VALUES (0, 0, x'00')", [])
         .unwrap();
     expect_abort(
@@ -91,7 +105,7 @@ fn inputs_refuse_updates_and_deletes() {
 
 #[test]
 fn latest_processed_only_rises_and_never_disappears() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     let update = "UPDATE latest_processed SET block = ?1 WHERE id = 1";
 
     conn.execute(update, params![10]).unwrap();
@@ -110,9 +124,14 @@ fn latest_processed_only_rises_and_never_disappears() {
 
 #[test]
 fn settlement_info_is_write_once() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     conn.execute(
-        "INSERT INTO settlement_info VALUES (0, x'00', x'01', x'02', x'03')",
+        "INSERT INTO settlement_info VALUES (
+            0, zeroblob(32), zeroblob(32),
+            zeroblob(32), zeroblob(1888),
+            zeroblob(32), zeroblob(1888),
+            zeroblob(32), zeroblob(1888)
+        )",
         [],
     )
     .unwrap();
@@ -132,7 +151,7 @@ fn settlement_info_is_write_once() {
 
 #[test]
 fn sling_config_is_write_once() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     conn.execute(
         "INSERT INTO sling_config VALUES (0, 24, 27, 20, x'00', x'01', 'v')",
         [],
@@ -151,7 +170,7 @@ fn sling_config_is_write_once() {
 
 #[test]
 fn template_machine_absorbs_identical_and_refuses_drift() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     // satisfy the FK on machine_state_snapshots
     conn.execute(
         "INSERT INTO machine_state_snapshots VALUES (?1, '/a')",
@@ -192,7 +211,7 @@ fn template_machine_absorbs_identical_and_refuses_drift() {
 
 #[test]
 fn sling_nodes_collision_aborts_in_the_database_itself() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     let insert = "INSERT INTO sling_nodes VALUES (?1, ?2, ?3, ?4, ?5)
                   ON CONFLICT DO NOTHING";
 
@@ -222,7 +241,7 @@ fn sling_nodes_collision_aborts_in_the_database_itself() {
 
 #[test]
 fn snapshot_index_verifies_replays_and_refuses_updates() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     conn.execute(
         "INSERT INTO machine_state_snapshots VALUES (?1, '/a')",
         params![[1u8; 32]],
@@ -244,7 +263,7 @@ fn snapshot_index_verifies_replays_and_refuses_updates() {
 
 #[test]
 fn cas_rows_pin_their_path() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     let insert = "INSERT INTO machine_state_snapshots VALUES (?1, ?2)
                   ON CONFLICT DO NOTHING";
     conn.execute(insert, params![[1u8; 32], "/a"]).unwrap();
@@ -266,7 +285,7 @@ fn cas_rows_pin_their_path() {
 
 #[test]
 fn tournament_events_stay_behind_the_watermark_and_final() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     let insert = "INSERT INTO tournament_events VALUES ('aa', ?1, 0, x'00')";
 
     // No watermark row yet: nothing is finalized, nothing may land.
@@ -301,7 +320,7 @@ fn tournament_events_stay_behind_the_watermark_and_final() {
 
 #[test]
 fn tournament_events_watermark_only_rises() {
-    let (_dir, conn) = migrated_conn();
+    let (_dir, conn) = initialized_conn();
     conn.execute(
         "INSERT INTO tournament_events_watermark VALUES ('aa', 10)",
         [],
@@ -377,4 +396,44 @@ fn mutation_taxonomy_holds_at_source_level() {
          sling_nodes, and tournament-event prunes in advance.rs; the gap \
          prune and the unreferenced-snapshot sweep in the boundary store"
     );
+}
+
+#[test]
+fn schema_file_is_the_only_ddl_source() {
+    fn rust_sources(path: &std::path::Path, sources: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                rust_sources(&path, sources);
+            } else if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+                sources.push(path);
+            }
+        }
+    }
+
+    let storage_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/storage");
+    let markers = [
+        ["CREATE", "TABLE"].join(" "),
+        ["ALTER", "TABLE"].join(" "),
+        ["DROP", "TABLE"].join(" "),
+        ["CREATE", "TRIGGER"].join(" "),
+        ["DROP", "TRIGGER"].join(" "),
+        ["CREATE", "INDEX"].join(" "),
+        ["DROP", "INDEX"].join(" "),
+        ["CREATE", "VIEW"].join(" "),
+        ["DROP", "VIEW"].join(" "),
+    ];
+    let mut sources = Vec::new();
+    rust_sources(&storage_src, &mut sources);
+
+    for path in sources {
+        let source = std::fs::read_to_string(&path).unwrap();
+        for marker in &markers {
+            assert!(
+                !source.contains(marker),
+                "inline DDL `{marker}` found in {}; keep all DDL in storage/sql/schema.sql",
+                path.display()
+            );
+        }
+    }
 }

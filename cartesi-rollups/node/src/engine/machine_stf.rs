@@ -466,7 +466,7 @@ impl ProvingStf for MachineStf {
 /// from the boundary store's nearest stored machine and advancing
 /// the remainder. The store is live: boundaries recorded by any
 /// writer (the open regime's gap fill, a future dispute write-back)
-/// shorten the next positioning. On a freshly migrated store only
+/// shorten the next positioning. On a freshly initialized store only
 /// the epoch start exists, which is the full-replay behavior the
 /// prototype had. Constructed only by [`DisputeSource::on_store`];
 /// the type is public for signatures alone.
@@ -488,7 +488,7 @@ pub struct Positioner {
 /// engine pieces.
 impl DisputeSource<Positioner> {
     pub fn on_store(mut storage: Storage, epoch: u64, work_dir: PathBuf) -> Result<Self> {
-        // The migration pinned the config; assert engine
+        // Initialization pinned the config; assert engine
         // compatibility before serving any quartet.
         let structure = Structure::PRODUCTION;
         super::config::assert_compatible(

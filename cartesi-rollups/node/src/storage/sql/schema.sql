@@ -1,36 +1,61 @@
 -- (c) Cartesi and individual authors (see AUTHORS)
 -- SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-CREATE TABLE IF NOT EXISTS settlement_info (
+-- Create-only schema. schema.rs executes this file only for an empty database,
+-- then atomically stamps its raw Keccak fingerprint and the node version.
+
+CREATE TABLE node_metadata (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    node_version TEXT NOT NULL CHECK (node_version <> ''),
+    schema_fingerprint BLOB NOT NULL
+        CHECK (
+            typeof(schema_fingerprint) = 'blob'
+            AND length(schema_fingerprint) = 32
+        )
+) WITHOUT ROWID;
+
+CREATE TABLE settlement_info (
     epoch_number INTEGER NOT NULL PRIMARY KEY CHECK (epoch_number >= 0),
-    computation_hash BLOB NOT NULL,
-    outputs_merkle_root BLOB NOT NULL,
-    outputs_merkle_root_proof BLOB NOT NULL,
+    computation_hash BLOB NOT NULL
+        CHECK (typeof(computation_hash) = 'blob' AND length(computation_hash) = 32),
     final_state BLOB NOT NULL
+        CHECK (typeof(final_state) = 'blob' AND length(final_state) = 32),
+    iflags_y_data_block BLOB NOT NULL
+        CHECK (typeof(iflags_y_data_block) = 'blob' AND length(iflags_y_data_block) = 32),
+    iflags_y_siblings BLOB NOT NULL
+        CHECK (typeof(iflags_y_siblings) = 'blob' AND length(iflags_y_siblings) = 1888),
+    htif_tohost_data_block BLOB NOT NULL
+        CHECK (typeof(htif_tohost_data_block) = 'blob' AND length(htif_tohost_data_block) = 32),
+    htif_tohost_siblings BLOB NOT NULL
+        CHECK (typeof(htif_tohost_siblings) = 'blob' AND length(htif_tohost_siblings) = 1888),
+    tx_buffer_data_block BLOB NOT NULL
+        CHECK (typeof(tx_buffer_data_block) = 'blob' AND length(tx_buffer_data_block) = 32),
+    tx_buffer_siblings BLOB NOT NULL
+        CHECK (typeof(tx_buffer_siblings) = 'blob' AND length(tx_buffer_siblings) = 1888)
 );
 
-CREATE TABLE IF NOT EXISTS epochs (
+CREATE TABLE epochs (
     epoch_number INTEGER NOT NULL PRIMARY KEY CHECK (epoch_number >= 0),
     input_index_boundary INTEGER NOT NULL,
     root_tournament TEXT NOT NULL,
     block_created_number INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS inputs (
+CREATE TABLE inputs (
     epoch_number INTEGER NOT NULL CHECK (epoch_number >= 0),
     input_index_in_epoch INTEGER NOT NULL,
     input BLOB NOT NULL,
     PRIMARY KEY (epoch_number, input_index_in_epoch)
 );
 
-CREATE TABLE IF NOT EXISTS latest_processed (
+CREATE TABLE latest_processed (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
     block INTEGER NOT NULL CHECK (block >= 0)
 );
-INSERT OR IGNORE INTO latest_processed (id, block)
+INSERT INTO latest_processed (id, block)
     VALUES (1, 0);
 
-CREATE TABLE IF NOT EXISTS template_machine (
+CREATE TABLE template_machine (
     id         INTEGER PRIMARY KEY CHECK (id = 1),
     state_hash BLOB NOT NULL
         UNIQUE
@@ -38,12 +63,12 @@ CREATE TABLE IF NOT EXISTS template_machine (
         ON DELETE RESTRICT
 ) WITHOUT ROWID;
 
-CREATE TABLE IF NOT EXISTS machine_state_snapshots (
+CREATE TABLE machine_state_snapshots (
     state_hash  BLOB NOT NULL PRIMARY KEY,
     file_path   TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS epoch_snapshot_info (
+CREATE TABLE epoch_snapshot_info (
     epoch_number  INTEGER NOT NULL CHECK (epoch_number >= 0),
     input_number  INTEGER NOT NULL CHECK (input_number >= 0),
     state_hash    BLOB NOT NULL,
@@ -65,10 +90,10 @@ CREATE TABLE IF NOT EXISTS epoch_snapshot_info (
 -- row.
 
 -- The sling dispute schema: the quartet cache and its write-once
--- configuration (sling/config.rs). This migration is the only DDL
--- path; config::pin writes the row once after it runs.
+-- configuration (sling/config.rs). This file is the only DDL path;
+-- config::pin writes the row once after schema initialization.
 
-CREATE TABLE IF NOT EXISTS sling_config (
+CREATE TABLE sling_config (
     id INTEGER PRIMARY KEY CHECK (id = 0),
     log2_input_span INTEGER NOT NULL,
     log2_barch_span INTEGER NOT NULL,
@@ -78,7 +103,7 @@ CREATE TABLE IF NOT EXISTS sling_config (
     emulator_version TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS sling_nodes (
+CREATE TABLE sling_nodes (
     epoch INTEGER NOT NULL,
     log2_stride INTEGER NOT NULL,
     height INTEGER NOT NULL,
@@ -96,7 +121,7 @@ CREATE TABLE IF NOT EXISTS sling_nodes (
 -- current contract ABI as the decode authority and let the fused reader
 -- reconstruct its recursive model after restart. Prunable derived store:
 -- refetchable from the chain, deleted with the settled epoch.
-CREATE TABLE IF NOT EXISTS tournament_events (
+CREATE TABLE tournament_events (
     root_tournament TEXT NOT NULL,  -- encode_hex, as epochs stores it
     block_number INTEGER NOT NULL,
     log_index INTEGER NOT NULL,
@@ -107,7 +132,7 @@ CREATE TABLE IF NOT EXISTS tournament_events (
 -- Monotonic watermark: the highest finalized block whose events are
 -- fully persisted for this dispute. Advances every tick, events or
 -- not, so the live tail refetch stays bounded.
-CREATE TABLE IF NOT EXISTS tournament_events_watermark (
+CREATE TABLE tournament_events_watermark (
     root_tournament TEXT NOT NULL PRIMARY KEY,
     finalized_block INTEGER NOT NULL
 ) WITHOUT ROWID;
@@ -122,9 +147,24 @@ CREATE TABLE IF NOT EXISTS tournament_events_watermark (
 -- connection. The Rust writer keeps its own checks; these are
 -- defense-in-depth, not the primary line.
 
+-- node_metadata: the immutable identity of the node and schema that created
+-- this rebuildable store.
+
+CREATE TRIGGER trg_node_metadata_no_update
+BEFORE UPDATE ON node_metadata
+BEGIN
+    SELECT RAISE(ABORT, 'node_metadata is write-once');
+END;
+
+CREATE TRIGGER trg_node_metadata_no_delete
+BEFORE DELETE ON node_metadata
+BEGIN
+    SELECT RAISE(ABORT, 'node_metadata is write-once');
+END;
+
 -- epochs: append-only log, dense from 0 (mirrors insert_epochs).
 
-CREATE TRIGGER IF NOT EXISTS trg_epochs_dense
+CREATE TRIGGER trg_epochs_dense
 BEFORE INSERT ON epochs
 FOR EACH ROW
 WHEN NEW.epoch_number != (SELECT COALESCE(MAX(epoch_number) + 1, 0) FROM epochs)
@@ -132,13 +172,13 @@ BEGIN
     SELECT RAISE(ABORT, 'epochs must be inserted densely from 0');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_epochs_no_update
+CREATE TRIGGER trg_epochs_no_update
 BEFORE UPDATE ON epochs
 BEGIN
     SELECT RAISE(ABORT, 'epochs is an append-only log');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_epochs_no_delete
+CREATE TRIGGER trg_epochs_no_delete
 BEFORE DELETE ON epochs
 BEGIN
     SELECT RAISE(ABORT, 'epochs is an append-only log');
@@ -148,7 +188,7 @@ END;
 -- next index within the last epoch, or index 0 in any later epoch
 -- (epochs with no inputs are skipped, not padded).
 
-CREATE TRIGGER IF NOT EXISTS trg_inputs_contiguous
+CREATE TRIGGER trg_inputs_contiguous
 BEFORE INSERT ON inputs
 FOR EACH ROW
 WHEN NOT (
@@ -168,13 +208,13 @@ BEGIN
     SELECT RAISE(ABORT, 'inputs must advance per InputId::validate_next');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_inputs_no_update
+CREATE TRIGGER trg_inputs_no_update
 BEFORE UPDATE ON inputs
 BEGIN
     SELECT RAISE(ABORT, 'inputs is an append-only log');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_inputs_no_delete
+CREATE TRIGGER trg_inputs_no_delete
 BEFORE DELETE ON inputs
 BEGIN
     SELECT RAISE(ABORT, 'inputs is an append-only log');
@@ -182,7 +222,7 @@ END;
 
 -- latest_processed: monotonic watermark on a permanent singleton.
 
-CREATE TRIGGER IF NOT EXISTS trg_latest_processed_monotone
+CREATE TRIGGER trg_latest_processed_monotone
 BEFORE UPDATE OF block ON latest_processed
 FOR EACH ROW
 WHEN NEW.block < OLD.block
@@ -190,7 +230,7 @@ BEGIN
     SELECT RAISE(ABORT, 'latest_processed only rises');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_latest_processed_no_delete
+CREATE TRIGGER trg_latest_processed_no_delete
 BEFORE DELETE ON latest_processed
 BEGIN
     SELECT RAISE(ABORT, 'latest_processed is a permanent singleton');
@@ -198,13 +238,13 @@ END;
 
 -- settlement_info: write-once cell per epoch.
 
-CREATE TRIGGER IF NOT EXISTS trg_settlement_info_no_update
+CREATE TRIGGER trg_settlement_info_no_update
 BEFORE UPDATE ON settlement_info
 BEGIN
     SELECT RAISE(ABORT, 'settlement_info is write-once per epoch');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_settlement_info_no_delete
+CREATE TRIGGER trg_settlement_info_no_delete
 BEFORE DELETE ON settlement_info
 BEGIN
     SELECT RAISE(ABORT, 'settlement_info is write-once per epoch');
@@ -213,13 +253,13 @@ END;
 -- sling_config: write-once cell (config::pin absorbs an identical
 -- re-pin and refuses drift in Rust; the triggers close the raw path).
 
-CREATE TRIGGER IF NOT EXISTS trg_sling_config_no_update
+CREATE TRIGGER trg_sling_config_no_update
 BEFORE UPDATE ON sling_config
 BEGIN
     SELECT RAISE(ABORT, 'sling_config is write-once');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_sling_config_no_delete
+CREATE TRIGGER trg_sling_config_no_delete
 BEFORE DELETE ON sling_config
 BEGIN
     SELECT RAISE(ABORT, 'sling_config is write-once');
@@ -229,7 +269,7 @@ END;
 -- absorbed a DISAGREEING rewrite silently; the verify trigger closes
 -- that (equal rewrites still absorb via the conflict clause).
 
-CREATE TRIGGER IF NOT EXISTS trg_template_machine_write_once_verify
+CREATE TRIGGER trg_template_machine_write_once_verify
 BEFORE INSERT ON template_machine
 FOR EACH ROW
 WHEN EXISTS (
@@ -240,13 +280,13 @@ BEGIN
     SELECT RAISE(ABORT, 'template_machine disagrees with its stored row');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_template_machine_no_update
+CREATE TRIGGER trg_template_machine_no_update
 BEFORE UPDATE ON template_machine
 BEGIN
     SELECT RAISE(ABORT, 'template_machine is write-once');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_template_machine_no_delete
+CREATE TRIGGER trg_template_machine_no_delete
 BEFORE DELETE ON template_machine
 BEGIN
     SELECT RAISE(ABORT, 'template_machine is write-once');
@@ -258,7 +298,7 @@ END;
 -- behind the live dispute - DaveConsensus settles epoch N before
 -- sealing N + 1, so those tournaments are finished).
 
-CREATE TRIGGER IF NOT EXISTS trg_sling_nodes_collision
+CREATE TRIGGER trg_sling_nodes_collision
 BEFORE INSERT ON sling_nodes
 FOR EACH ROW
 WHEN EXISTS (
@@ -271,7 +311,7 @@ BEGIN
     SELECT RAISE(ABORT, 'node cache collision: nondeterminism or version drift');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_sling_nodes_no_update
+CREATE TRIGGER trg_sling_nodes_no_update
 BEFORE UPDATE ON sling_nodes
 BEGIN
     SELECT RAISE(ABORT, 'sling_nodes rows are write-once');
@@ -281,7 +321,7 @@ END;
 -- replay semantics on the boundary coordinate (a reprocessed boundary
 -- must reproduce the same machine state).
 
-CREATE TRIGGER IF NOT EXISTS trg_epoch_snapshot_info_write_once_verify
+CREATE TRIGGER trg_epoch_snapshot_info_write_once_verify
 BEFORE INSERT ON epoch_snapshot_info
 FOR EACH ROW
 WHEN EXISTS (
@@ -294,7 +334,7 @@ BEGIN
     SELECT RAISE(ABORT, 'snapshot boundary disagrees with its stored row: nondeterminism or corruption');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_epoch_snapshot_info_no_update
+CREATE TRIGGER trg_epoch_snapshot_info_no_update
 BEFORE UPDATE ON epoch_snapshot_info
 BEGIN
     SELECT RAISE(ABORT, 'epoch_snapshot_info rows are write-once (prune-only)');
@@ -304,7 +344,7 @@ END;
 -- pure function of the hash, so a re-registration at a different
 -- path is corruption.
 
-CREATE TRIGGER IF NOT EXISTS trg_snapshots_cas_immutable
+CREATE TRIGGER trg_snapshots_cas_immutable
 BEFORE INSERT ON machine_state_snapshots
 FOR EACH ROW
 WHEN EXISTS (
@@ -315,7 +355,7 @@ BEGIN
     SELECT RAISE(ABORT, 'content-addressed snapshot re-registered at a different path');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_snapshots_no_update
+CREATE TRIGGER trg_snapshots_no_update
 BEFORE UPDATE ON machine_state_snapshots
 BEGIN
     SELECT RAISE(ABORT, 'machine_state_snapshots rows are write-once (prune-only)');
@@ -326,13 +366,13 @@ END;
 -- nothing past a dispute's watermark may be stored - the tail is
 -- scratch by design.
 
-CREATE TRIGGER IF NOT EXISTS trg_tournament_events_no_update
+CREATE TRIGGER trg_tournament_events_no_update
 BEFORE UPDATE ON tournament_events
 BEGIN
     SELECT RAISE(ABORT, 'tournament_events rows are final (prune-only)');
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_tournament_events_finalized_only
+CREATE TRIGGER trg_tournament_events_finalized_only
 BEFORE INSERT ON tournament_events
 FOR EACH ROW
 WHEN NEW.block_number > COALESCE((
@@ -345,7 +385,7 @@ END;
 
 -- tournament_events_watermark: monotonic; pruned with its dispute.
 
-CREATE TRIGGER IF NOT EXISTS trg_tournament_events_watermark_monotone
+CREATE TRIGGER trg_tournament_events_watermark_monotone
 BEFORE UPDATE OF finalized_block ON tournament_events_watermark
 FOR EACH ROW
 WHEN NEW.finalized_block < OLD.finalized_block

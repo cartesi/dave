@@ -4,8 +4,8 @@
 //! The write-once configuration: everything contextual the cache rows
 //! deliberately do not carry.
 //!
-//! This is migration-time state: the node's migration owns the DDL
-//! (storage/sql/migrations.sql) and `pin` writes the row exactly once
+//! This is initialization-time state: the node's schema owns the DDL
+//! (storage/sql/schema.sql) and `pin` writes the row exactly once
 //! at database creation; the dispute module only reads and asserts
 //! (`assert_compatible`).
 
@@ -23,7 +23,7 @@ pub struct EngineConfig {
 }
 
 /// Pins the configuration, once per database; the schema comes from
-/// the node migration. Idempotent for an identical configuration; any
+/// node initialization. Idempotent for an identical configuration; any
 /// drift is refused.
 pub fn pin(connection: &Connection, config: &EngineConfig) -> Result<()> {
     config.structure.assert_valid();
@@ -111,7 +111,7 @@ mod tests {
     fn config_is_write_once() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("cache.db");
-        crate::storage::sql::migrations::migrate_to_latest(&mut Connection::open(&path)?)?;
+        crate::storage::sql::schema::initialize(&Connection::open(&path)?)?;
         let structure = Structure {
             log2_input_span: 1,
             log2_barch_span: 1,

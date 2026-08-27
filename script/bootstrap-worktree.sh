@@ -230,9 +230,15 @@ CDPATH= cd -- "$repo_root" || {
     exit 2
 }
 
-just setup
-just prt-contracts::install-deps
-just rollups-contracts::install-deps
+if [[ -n "$source_root" ]]; then
+    # Preserve the bootstrap fast path: copied standard images replace the
+    # image-building portion of root setup.
+    just machine::setup
+    just prt-contracts::install-deps
+    just rollups-contracts::install-deps
+else
+    just setup
+fi
 just bind
 
 if [[ -n "$source_root" ]]; then

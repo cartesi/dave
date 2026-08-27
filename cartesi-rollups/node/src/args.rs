@@ -288,7 +288,7 @@ impl NodeConfig {
             .web3_submit_rpc_url
             .unwrap_or_else(|| args.web3_rpc_url.clone());
 
-        let mut storage = Storage::migrate(
+        let mut storage = Storage::initialize(
             &args.state_dir,
             &args.machine_path,
             address_book.genesis_block_number,

@@ -2,6 +2,19 @@
 # Not set -e: dependency and image checks must all run.
 set -u
 
+usage() {
+    printf 'usage: test/programs/script/doctor.sh [standard|all]\n' >&2
+    exit 2
+}
+
+scope=${1:-all}
+[[ "$#" -le 1 ]] || usage
+case "$scope" in
+    standard|all) ;;
+    *) usage ;;
+esac
+readonly scope
+
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)" || {
     printf 'programs doctor: cannot resolve its script directory\n' >&2
     exit 2
@@ -101,8 +114,10 @@ if [[ ! -x "$fingerprint_checker" ]]; then
 else
     check_image echo "just programs::build-echo"
     check_image yield "just programs::build-yield"
-    check_image honeypot \
-        "ensure the devnet is current with just rollups-contracts::build-devnet, then run: just programs::build-honeypot-snapshot"
+    if [[ "$scope" == all ]]; then
+        check_image honeypot \
+            "ensure the devnet is current with just rollups-contracts::build-devnet, then run: just programs::build-honeypot-snapshot"
+    fi
 fi
 printf '\n'
 case "$status" in
