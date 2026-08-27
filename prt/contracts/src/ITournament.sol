@@ -12,6 +12,10 @@ import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @notice Tournament interface
+/// @dev Deployed Tournament implementations advertise
+/// `type(ITournament).interfaceId` through ERC-165 `supportsInterface`.
+/// Any interface change flips the id, so the answer doubles as an
+/// exact-generation gate for consumers.
 interface ITournament {
     //
     // Types
