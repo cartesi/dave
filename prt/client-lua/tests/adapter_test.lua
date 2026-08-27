@@ -237,6 +237,29 @@ return {
         Test.equal(standing_wire.final_state, digest(3))
         Test.equal(standing_wire.finished_at, 42)
 
+        Test.equal(Adapter.View.COMMITMENT.name, "commitmentStanding")
+        Test.equal(
+            Adapter.View.COMMITMENT.signature,
+            "commitmentStanding(bytes32)"
+        )
+        local commitment_wire = Adapter.decode_result(
+            Adapter.View.COMMITMENT,
+            encoded {
+                uint_word(1),
+                hash_word(digest(7)),
+                string.rep("0", 24) .. address(5):sub(3),
+                uint_word(0),
+                uint_word(0),
+                uint_word(900),
+            }
+        )
+        Test.equal(commitment_wire.joined, true)
+        Test.equal(commitment_wire.final_state, digest(7))
+        Test.equal(commitment_wire.claimer, address(5))
+        Test.equal(commitment_wire.clock_running, false)
+        Test.equal(commitment_wire.clock_deadline, 0)
+        Test.equal(commitment_wire.clock_allowance, 900)
+
         local timeout_wire = Adapter.decode_result(
             Adapter.View.TIMEOUT,
             encoded {

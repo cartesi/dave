@@ -41,6 +41,10 @@ contract TournamentObserverHarness is Tournament {
         finalStates[commitment] = finalState;
     }
 
+    function storeClaimer(Tree.Node commitment, address claimer) external {
+        claimers[commitment] = claimer;
+    }
+
     function storeTopology(
         Tree.Node candidate,
         uint256 activeMatchCount,
@@ -873,6 +877,43 @@ contract TournamentObserverTest is Test {
         assertEq(uint8(descriptor.kind), uint8(kind));
         assertEq(Time.Instant.unwrap(descriptor.startInstant), 100);
         assertEq(Time.Duration.unwrap(descriptor.allowance), 20);
+    }
+
+    function testCommitmentStandingProjectsJoinRecordAndClock() public {
+        TournamentObserverHarness tournament = _newLeafTournament();
+        Tree.Node commitment = _node(0xc1);
+
+        ITournament.CommitmentStandingView memory absent =
+            tournament.commitmentStanding(commitment);
+        assertFalse(absent.joined);
+        assertEq(Machine.Hash.unwrap(absent.finalState), bytes32(0));
+        assertEq(absent.claimer, address(0));
+        assertFalse(absent.clockRunning);
+        assertEq(Time.Instant.unwrap(absent.clockDeadline), 0);
+        assertEq(Time.Duration.unwrap(absent.clockAllowance), 0);
+
+        tournament.storeClock(commitment, _pausedClock(10));
+        tournament.storeFinalState(commitment, _hash(0xf1));
+        tournament.storeClaimer(commitment, address(0xdead));
+        ITournament.CommitmentStandingView memory paused =
+            tournament.commitmentStanding(commitment);
+        assertTrue(paused.joined);
+        assertEq(
+            Machine.Hash.unwrap(paused.finalState),
+            Machine.Hash.unwrap(_hash(0xf1))
+        );
+        assertEq(paused.claimer, address(0xdead));
+        assertFalse(paused.clockRunning);
+        assertEq(Time.Instant.unwrap(paused.clockDeadline), 0);
+        assertEq(Time.Duration.unwrap(paused.clockAllowance), 10);
+
+        tournament.storeClock(commitment, _runningClock(10, 120));
+        ITournament.CommitmentStandingView memory running =
+            tournament.commitmentStanding(commitment);
+        assertTrue(running.joined);
+        assertTrue(running.clockRunning);
+        assertEq(Time.Instant.unwrap(running.clockDeadline), 130);
+        assertEq(Time.Duration.unwrap(running.clockAllowance), 10);
     }
 
     function _assertInnerWinner(

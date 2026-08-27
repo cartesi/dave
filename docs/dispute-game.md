@@ -448,6 +448,11 @@ duration, while `ELIMINABLE` covers both a no-winner child and an expired
 winner. Propagation requires `WINNER` and elimination requires `ELIMINABLE`,
 so the parent verbs partition exactly.
 
+`commitmentStanding(root)` projects one commitment's raw join record and
+clock snapshot: claimed final state, claimer, and either the paused clock's
+frozen reserve or the running clock's fixed inclusive deadline. Eliminated
+commitments keep their last written clock; liveness stays topological.
+
 The standing also reports `finishedAt`, the block-number instant when the
 tournament became safe to decide: the later of its closure deadline and its
 last match deletion. It is canonically zero for `MATCHES_ACTIVE` and
