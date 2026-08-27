@@ -47,6 +47,26 @@ application freezes epoch progress entirely. Check foreclosure status
 before debugging an unexpected revert on any settlement call. Deeper
 contract context: `cartesi-rollups/contracts/AGENTS.md`.
 
+The staging period is not only a sentry window: it is the reaction
+interval in which the application-layer foreclosure switch can stop a
+decided-but-wrong result from ever finalizing. Foreclosure freezes the
+epoch exactly where it stands: a staged result is never accepted, the
+input-index lower bound never advances, and `wasInputFinalized` keeps
+reporting the frozen epoch's inputs as never finalized - the signal the
+application layer's deposit-refund path keys on, while withdrawals fall
+back to the last finalized state. The freeze is an intended terminal
+state, not a stranded-value bug.
+
+Settlement never touches the tournament's bond path: staging and
+acceptance move no value, and nothing on the consensus path calls
+`tryRecoveringBond`. The decoupling is deliberate - consensus liveness
+must not depend on the tournament payment path, and no recipient code
+runs inside a settlement transaction. Its cost is an obligation: every
+node implementation owns driving bond recovery for each retired
+tournament as a permanent background duty, or one bond per epoch stays
+locked with no error reported anywhere. The reference driver walks
+unretired sealed epochs; see the node data flow below.
+
 ## Node data flow
 
 Three worker threads share one SQLite database (see

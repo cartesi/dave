@@ -540,6 +540,10 @@ interface ITournament {
     /// This function must be called while passing a
     /// minimum amount of Wei, given by the `bondValue` view function.
     /// The contract will retain any extra amount.
+    /// The caller becomes the commitment's claimer: terminal bond recovery
+    /// pays this exact address through a gas-bounded call, with no recipient
+    /// re-designation, so the address must be able to receive ETH within the
+    /// recovery payment gas ceiling (see `tryRecoveringBond`).
     /// To better illustrate the parameters of this function,
     /// the diagram below displays an example commitment tree
     /// with a purposefully low depth for didatic reasons.
