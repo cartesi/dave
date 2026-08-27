@@ -40,6 +40,8 @@ local function descriptor(at, initial, level, kind)
         base_cycle = 0,
         log2_stride = 0,
         height = 2,
+        start_instant = 1,
+        allowance = 1000,
     }
 end
 

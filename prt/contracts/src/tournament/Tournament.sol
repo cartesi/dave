@@ -920,7 +920,9 @@ contract Tournament is ITournament {
             log2Stride: commitmentArgs.log2step,
             height: commitmentArgs.height,
             level: args.level,
-            kind: args.kind
+            kind: args.kind,
+            startInstant: args.startInstant,
+            allowance: args.allowance
         });
     }
 

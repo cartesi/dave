@@ -274,14 +274,14 @@ end
 
 function Reader:read_constants(tournament_address)
     local sig = "tournamentDescriptor()"
-        .. "((bytes32,uint256,uint64,uint64,uint64,uint8))"
+        .. "((bytes32,uint256,uint64,uint64,uint64,uint8,uint64,uint64))"
 
     local ret = self:_call(tournament_address, sig, {})
     assert(#ret == 1)
 
     local compact = sanitize_string(ret[1])
     local log2_stride, height, level, kind = compact:match(
-        "^%(0x%x+,%d+,(%d+),(%d+),(%d+),(%d+)%)$"
+        "^%(0x%x+,%d+,(%d+),(%d+),(%d+),(%d+),%d+,%d+%)$"
     )
     assert(kind, "could not decode tournamentDescriptor")
     kind = tonumber(kind)

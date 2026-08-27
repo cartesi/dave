@@ -32,6 +32,8 @@ local function descriptor(fields)
         height = fields.height or 4,
         level = fields.level or 0,
         kind = fields.kind or 0,
+        start_instant = fields.start_instant or 1,
+        allowance = fields.allowance or 1000,
     }
 end
 
@@ -350,11 +352,11 @@ return {
             Test.equal(
                 signature,
                 "tournamentDescriptor()"
-                    .. "((bytes32,uint256,uint64,uint64,uint64,uint8))"
+                    .. "((bytes32,uint256,uint64,uint64,uint64,uint8,uint64,uint64))"
             )
             Test.equal(#arguments, 0)
             return {
-                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,1)",
+                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,1,7,900)",
             }
         end
 
@@ -366,7 +368,7 @@ return {
 
         function reader._call()
             return {
-                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,9)",
+                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,9,7,900)",
             }
         end
         Test.error_like("unknown tournament kind", function()
@@ -383,6 +385,8 @@ return {
             uint_word(1),
             uint_word(0),
             uint_word(0),
+            uint_word(1),
+            uint_word(1000),
         }
         local accepted_wire = Adapter.decode_result(
             Adapter.View.DESCRIPTOR,

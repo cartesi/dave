@@ -160,6 +160,8 @@ interface ITournament {
         uint64 height;
         uint64 level;
         TournamentKind kind;
+        Time.Instant startInstant;
+        Time.Duration allowance;
     }
 
     struct TournamentStandingView {
@@ -720,9 +722,14 @@ interface ITournament {
             Time.Duration deferredCharge
         );
 
-    /// @notice Return immutable geometry and level identity for this clone.
+    /// @notice Return immutable geometry, level identity, and the instance
+    /// time envelope for this clone.
     /// @dev `kind` distinguishes leaf from non-leaf; root versus inner is
-    /// derived from `level`.
+    /// derived from `level`. `startInstant` and `allowance` are clone
+    /// creation arguments: an inner clone inherits its allowance from the
+    /// parent match clocks at seal time, not from the configured default.
+    /// Joins are accepted strictly before `startInstant + allowance`
+    /// (expiry is inclusive).
     function tournamentDescriptor()
         external
         view

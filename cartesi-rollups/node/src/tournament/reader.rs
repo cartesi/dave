@@ -757,6 +757,8 @@ mod tests {
                 TournamentKind::Leaf => 0,
                 TournamentKind::NonLeaf => 1,
             },
+            startInstant: 100,
+            allowance: 20,
         }
     }
 

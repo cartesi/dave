@@ -163,7 +163,7 @@ function Adapter.decode_result(view, raw)
     required(view, "observer view")
     local name = required(view.name, "observer view name")
     if view == Adapter.View.DESCRIPTOR then
-        local words = abi_words(raw, 6, name)
+        local words = abi_words(raw, 8, name)
         return {
             initial_hash = word_hash(words[1]),
             base_cycle = word_uint(words[2]),
@@ -171,6 +171,8 @@ function Adapter.decode_result(view, raw)
             height = word_small(words[4], 64, name .. ".height"),
             level = word_small(words[5], 64, name .. ".level"),
             kind = word_small(words[6], 8, name .. ".kind"),
+            start_instant = word_small(words[7], 64, name .. ".startInstant"),
+            allowance = word_small(words[8], 64, name .. ".allowance"),
         }
     end
     if view == Adapter.View.STANDING then
@@ -249,6 +251,8 @@ local function decode_descriptor(tournament_fold, wire)
         base_cycle = wire.base_cycle,
         log2_stride = wire.log2_stride,
         height = wire.height,
+        start_instant = wire.start_instant,
+        allowance = wire.allowance,
     }
     return descriptor
 end

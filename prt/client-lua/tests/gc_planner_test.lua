@@ -43,6 +43,8 @@ local function descriptor(address, level, kind, initial_hash, base_cycle)
         base_cycle = base_cycle,
         log2_stride = 0,
         height = 4,
+        start_instant = 1,
+        allowance = 1000,
     }
 end
 
