@@ -401,9 +401,9 @@ contract TournamentObserverTest is Test {
         vm.roll(134);
 
         tournament.storeFinalState(candidate, finalOne);
-        _assertInnerWinner(tournament, candidate, parentOne);
+        _assertInnerWinner(tournament, candidate, finalOne, parentOne);
         tournament.storeFinalState(candidate, finalTwo);
-        _assertInnerWinner(tournament, candidate, parentTwo);
+        _assertInnerWinner(tournament, candidate, finalTwo, parentTwo);
     }
 
     function testStandingInnerWinnerExpiresAtExactBoundary() public {
@@ -876,6 +876,7 @@ contract TournamentObserverTest is Test {
     function _assertInnerWinner(
         TournamentObserverHarness tournament,
         Tree.Node candidate,
+        Machine.Hash finalState,
         Tree.Node parentCommitment
     ) internal view {
         _assertStanding(
@@ -885,7 +886,7 @@ contract TournamentObserverTest is Test {
                 acceptsJoins: false,
                 hasCandidate: true,
                 candidate: candidate,
-                finalState: Machine.ZERO_STATE,
+                finalState: finalState,
                 parentCommitment: parentCommitment,
                 finishedAt: _instant(125)
             })

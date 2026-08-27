@@ -956,8 +956,10 @@ contract Tournament is ITournament {
             TournamentStanding.INNER_ELIMINABLE_WINNER_EXPIRED;
         } else {
             standing.standing = TournamentStanding.INNER_WINNER;
+            Machine.Hash finalState = finalStates[candidate];
+            standing.finalState = finalState;
             standing.parentCommitment =
-                _parentCommitment(args.nestedDispute, finalStates[candidate]);
+                _parentCommitment(args.nestedDispute, finalState);
         }
     }
 

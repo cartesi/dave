@@ -729,7 +729,8 @@ interface ITournament {
     /// exactly while the tournament's global allowance has not elapsed, for
     /// every standing, including closed tournaments that still have active
     /// matches. `hasCandidate` disambiguates the zero node. `finalState` is
-    /// populated only for `ROOT_WINNER`, and `parentCommitment` only for
+    /// populated for `ROOT_WINNER` and `INNER_WINNER` with the winner's
+    /// claimed final state, and `parentCommitment` only for
     /// `INNER_WINNER`. `finishedAt` is canonically zero while unfinished and
     /// otherwise reports the exact block-number instant the tournament became
     /// safe to decide.

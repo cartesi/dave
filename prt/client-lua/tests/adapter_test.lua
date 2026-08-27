@@ -784,10 +784,55 @@ return {
             tournamentStanding = standing(4, {
                 has_candidate = true,
                 candidate = child_candidate,
+                final_state = digest(99),
                 parent_commitment = one,
             }),
         }
         Test.error_like("final state disagrees", function()
+            Adapter.observe_fold(
+                mock_transport(responses),
+                fold,
+                head()
+            )
+        end)
+    end),
+
+    Test.case("inner-winner wire final state must agree with the fold", function()
+        local root = address(1)
+        local child = address(2)
+        local fold, _, one = live_fold(root, child)
+        local child_candidate = digest(80)
+        fold:apply(Fold.event(
+            child,
+            7,
+            Fold.Event.commitment_joined(child_candidate, digest(99))
+        ))
+        local parent_projection = sealed(3, {
+            final_state_one = digest(99),
+            final_state_two = digest(82),
+        })
+        local responses = live_responses(
+            root,
+            descriptor { kind = 1 },
+            3,
+            parent_projection
+        )
+        responses[child] = {
+            tournamentDescriptor = descriptor {
+                initial_hash = parent_projection.agree_state,
+                base_cycle = parent_projection.divergence_cycle,
+                height = 2,
+                level = 1,
+                kind = 0,
+            },
+            tournamentStanding = standing(4, {
+                has_candidate = true,
+                candidate = child_candidate,
+                final_state = digest(98),
+                parent_commitment = one,
+            }),
+        }
+        Test.error_like("disagrees with joined commitment record", function()
             Adapter.observe_fold(
                 mock_transport(responses),
                 fold,
