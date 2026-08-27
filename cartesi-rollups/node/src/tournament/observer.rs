@@ -102,6 +102,11 @@ pub enum ObserverError {
     StandingCandidateShape { standing: u8, has_candidate: bool },
     #[error("standing {standing} has invalid finishedAt value {finished_at}")]
     StandingFinishedAtShape { standing: u8, finished_at: u64 },
+    #[error("standing {standing} has invalid winnerExpiresAt value {winner_expires_at}")]
+    StandingWinnerExpiresAtShape {
+        standing: u8,
+        winner_expires_at: u64,
+    },
     #[error("inner winner does not map to either side of its recursive parent match")]
     InnerWinnerOutsideParentMatch,
     #[error("live match {match_id_hash} carries an impossible child relationship")]
@@ -135,8 +140,9 @@ pub async fn read_descriptor(
 /// event-derived tree supplies root/inner position and the exact parent match
 /// used to interpret an inner winner. It is not reconciled with redundant
 /// match-count, final-state, or topology projections. Nonterminal candidate
-/// payloads and finish instants are canonicality-checked and then discarded
-/// because events own commitment placement and Hero acts only on current state.
+/// payloads, finish instants, and winner-expiry instants are
+/// canonicality-checked and then discarded because events own commitment
+/// placement and Hero acts only on current state.
 pub async fn read_standings(
     chain: &Chain,
     dispute: &Dispute,
@@ -368,6 +374,7 @@ fn decode_standing(
     let candidate =
         decode_candidate_shape(standing_discriminant, wire.hasCandidate, wire.candidate)?;
     validate_finished_at_shape(standing_discriminant, wire.finishedAt)?;
+    validate_winner_expires_at_shape(standing_discriminant, wire.winnerExpiresAt)?;
 
     let standing = match standing_discriminant {
         0 => {
@@ -705,6 +712,22 @@ fn validate_finished_at_shape(standing: u8, finished_at: u64) -> ObserverResult<
     }
 }
 
+fn validate_winner_expires_at_shape(standing: u8, winner_expires_at: u64) -> ObserverResult<()> {
+    let valid = match standing {
+        4 => winner_expires_at != 0,
+        0..=3 | 5 | 6 => winner_expires_at == 0,
+        other => return Err(ObserverError::UnknownTournamentStanding(other)),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(ObserverError::StandingWinnerExpiresAtShape {
+            standing,
+            winner_expires_at,
+        })
+    }
+}
+
 fn require_terminal_shape(
     standing: u8,
     wire: &AbiTournamentStandingView,
@@ -794,6 +817,7 @@ mod tests {
             finalState: B256::ZERO,
             parentCommitment: B256::ZERO,
             finishedAt: u64::from(standing >= 2),
+            winnerExpiresAt: if standing == 4 { 130 } else { 0 },
         }
     }
 
@@ -957,6 +981,28 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn standing_winner_expires_at_shape_matches_inner_winner() {
+        for standing in [0, 1, 2, 3, 5, 6] {
+            assert_eq!(validate_winner_expires_at_shape(standing, 0), Ok(()));
+            assert_eq!(
+                validate_winner_expires_at_shape(standing, 42),
+                Err(ObserverError::StandingWinnerExpiresAtShape {
+                    standing,
+                    winner_expires_at: 42,
+                })
+            );
+        }
+        assert_eq!(validate_winner_expires_at_shape(4, 42), Ok(()));
+        assert_eq!(
+            validate_winner_expires_at_shape(4, 0),
+            Err(ObserverError::StandingWinnerExpiresAtShape {
+                standing: 4,
+                winner_expires_at: 0,
+            })
+        );
     }
 
     #[test]
