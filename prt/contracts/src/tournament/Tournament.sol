@@ -4,6 +4,7 @@
 pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
+import {ERC165} from "@openzeppelin-contracts-5.5.0/utils/introspection/ERC165.sol";
 import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
 
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
@@ -51,7 +52,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 ///   * Non-leaf tournaments:
 ///       - Use `sealInnerMatchAndCreateInnerTournament` and `winInnerTournament`.
 ///       - Can recursively create new inner tournaments via `instantiateInner`.
-contract Tournament is ITournament {
+contract Tournament is ITournament, ERC165 {
     using Clones for address;
     using Machine for Machine.Hash;
     using Tree for Tree.Node;
@@ -1321,6 +1322,20 @@ contract Tournament is ITournament {
         returns (uint256)
     {
         return newInnerTournamentCount;
+    }
+
+    /// @notice ERC-165 advertisement of this deployment generation's exact
+    /// tournament interface.
+    /// @dev Any `ITournament` change flips the id, so the answer doubles as
+    /// an exact-generation gate for consumers.
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override
+        returns (bool)
+    {
+        return interfaceId == type(ITournament).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     function _ensureTournamentIsNotFinished() private view {

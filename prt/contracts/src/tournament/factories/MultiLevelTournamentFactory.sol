@@ -5,11 +5,13 @@ pragma solidity ^0.8.17;
 
 import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 import {Errors} from "@openzeppelin-contracts-5.5.0/utils/Errors.sol";
+import {ERC165} from "@openzeppelin-contracts-5.5.0/utils/introspection/ERC165.sol";
 
 import {IMultiLevelTournamentFactory} from "./IMultiLevelTournamentFactory.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
+import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournamentParametersProvider} from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
@@ -20,7 +22,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @dev The immutable provider is the sole authority for a parameter table
 /// trusted to remain coherent and stable for this factory's lifetime.
-contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
+contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
     using Clones for address;
 
     Tournament immutable IMPL;
@@ -182,5 +184,20 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory {
         return _level == _levels - 1
             ? ITournament.TournamentKind.LEAF
             : ITournament.TournamentKind.NON_LEAF;
+    }
+
+    /// @notice ERC-165 advertisement of the exact factory interfaces.
+    /// @dev `type(I).interfaceId` excludes inherited functions, so the
+    /// multi-level id and the base `ITournamentFactory` id are advertised
+    /// separately.
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override
+        returns (bool)
+    {
+        return interfaceId == type(IMultiLevelTournamentFactory).interfaceId
+            || interfaceId == type(ITournamentFactory).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 }
