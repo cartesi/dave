@@ -23,6 +23,10 @@ Adapter.View = {
         name = "tournamentStanding",
         signature = "tournamentStanding()",
     },
+    COMMITMENT = {
+        name = "commitmentStanding",
+        signature = "commitmentStanding(bytes32)",
+    },
     TIMEOUT = {
         name = "classifyMatchTimeout",
         signature = "classifyMatchTimeout((bytes32,bytes32))",
@@ -158,6 +162,12 @@ local function word_bool(word, name)
     error(name .. " is not a canonical ABI boolean", 2)
 end
 
+local function word_address(word, name)
+    assert(word:sub(1, 24):match("^0*$"),
+        name .. " is not a canonical ABI address")
+    return normalize_address("0x" .. word:sub(25), name)
+end
+
 -- Provider-free decoding for the six static observer return shapes.
 function Adapter.decode_result(view, raw)
     required(view, "observer view")
@@ -185,6 +195,19 @@ function Adapter.decode_result(view, raw)
             final_state = word_hash(words[5]),
             parent_commitment = word_hash(words[6]),
             finished_at = word_small(words[7], 64, name .. ".finishedAt"),
+        }
+    end
+    if view == Adapter.View.COMMITMENT then
+        local words = abi_words(raw, 6, name)
+        return {
+            joined = word_bool(words[1], name .. ".joined"),
+            final_state = word_hash(words[2]),
+            claimer = word_address(words[3], name .. ".claimer"),
+            clock_running = word_bool(words[4], name .. ".clockRunning"),
+            clock_deadline =
+                word_small(words[5], 64, name .. ".clockDeadline"),
+            clock_allowance =
+                word_small(words[6], 64, name .. ".clockAllowance"),
         }
     end
     if view == Adapter.View.TIMEOUT then

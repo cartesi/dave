@@ -174,6 +174,25 @@ interface ITournament {
         Time.Instant finishedAt;
     }
 
+    /// @notice A commitment's raw join record and clock snapshot.
+    /// @dev A historical snapshot of commitment storage: eliminated
+    /// commitments intentionally keep their last written clock, and match
+    /// topology, not clock storage, determines liveness. `claimer` is zeroed
+    /// after a successful terminal bond recovery pays the winning claimer.
+    /// For a paused clock, `clockAllowance` is the frozen remaining reserve
+    /// and `clockDeadline` is canonically zero. For a running clock,
+    /// `clockDeadline` is the first inclusive instant at which the clock is
+    /// timed out (`startInstant + allowance`, fixed between clock writes)
+    /// and `clockAllowance` is the raw allowance behind that deadline.
+    struct CommitmentStandingView {
+        bool joined;
+        Machine.Hash finalState;
+        address claimer;
+        bool clockRunning;
+        Time.Instant clockDeadline;
+        Time.Duration clockAllowance;
+    }
+
     /// @notice A child tournament's settlement disposition for its parent.
     enum InnerTournamentDisposition {
         UNSETTLED,
@@ -749,6 +768,15 @@ interface ITournament {
         external
         view
         returns (TournamentStandingView memory);
+
+    /// @notice Project one commitment's join record and clock by its root.
+    /// @dev Total: an unjoined commitment root returns a canonical all-zero
+    /// view with `joined` false. See `CommitmentStandingView` for the
+    /// snapshot semantics and the staleness caveat.
+    function commitmentStanding(Tree.Node commitmentRoot)
+        external
+        view
+        returns (CommitmentStandingView memory);
 
     /// @notice Classify the terminal bond recovery available now.
     /// @dev The same classification `tryRecoveringBond` acts on:

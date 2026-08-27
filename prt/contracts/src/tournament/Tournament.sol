@@ -966,6 +966,26 @@ contract Tournament is ITournament {
         }
     }
 
+    function commitmentStanding(Tree.Node _commitmentRoot)
+        external
+        view
+        override
+        returns (CommitmentStandingView memory standing)
+    {
+        Clock.State memory clock = clocks[_commitmentRoot];
+        if (!clock.isInitialized()) {
+            return standing;
+        }
+        standing.joined = true;
+        standing.finalState = finalStates[_commitmentRoot];
+        standing.claimer = claimers[_commitmentRoot];
+        standing.clockAllowance = clock.allowance;
+        if (clock.isRunning()) {
+            standing.clockRunning = true;
+            standing.clockDeadline = clock.startInstant.add(clock.allowance);
+        }
+    }
+
     //
     // Time predicates
     //

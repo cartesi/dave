@@ -106,6 +106,20 @@ contract SmallSingleLevelTournamentTest is Test {
             Machine.Hash.unwrap(finalStateOne),
             Machine.Hash.unwrap(one.finalState())
         );
+        ITournament.CommitmentStandingView memory oneStanding =
+            tournament.commitmentStanding(one.root());
+        assertTrue(oneStanding.joined);
+        assertFalse(oneStanding.clockRunning);
+        assertEq(Time.Instant.unwrap(oneStanding.clockDeadline), 0);
+        assertEq(
+            Time.Duration.unwrap(oneStanding.clockAllowance), MAX_ALLOWANCE
+        );
+        assertEq(oneStanding.claimer, CLAIMER_ONE);
+        assertEq(
+            Machine.Hash.unwrap(oneStanding.finalState),
+            Machine.Hash.unwrap(one.finalState())
+        );
+        assertFalse(tournament.commitmentStanding(two.root()).joined);
         assertEq(tournament.getCommitmentJoinedCount(), 1);
         assertEq(tournament.getMatchCreatedCount(), 0);
         assertEq(tournament.getLeafMatchSealedCount(), 0);
@@ -133,6 +147,13 @@ contract SmallSingleLevelTournamentTest is Test {
         assertTrue(pairedTwo.startInstant.isZero());
         assertEq(Time.Duration.unwrap(pairedOne.allowance), MAX_ALLOWANCE);
         assertEq(Time.Duration.unwrap(pairedTwo.allowance), MAX_ALLOWANCE);
+        oneStanding = tournament.commitmentStanding(one.root());
+        assertTrue(oneStanding.clockRunning);
+        assertEq(
+            Time.Instant.unwrap(oneStanding.clockDeadline),
+            START_BLOCK + MAX_ALLOWANCE
+        );
+        assertFalse(tournament.commitmentStanding(two.root()).clockRunning);
         assertEq(tournament.getCommitmentJoinedCount(), 2);
         assertEq(tournament.getMatchCreatedCount(), 1);
         assertEq(tournament.getMatchAdvancedCount(), 0);
