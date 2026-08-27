@@ -262,16 +262,22 @@ interface IDaveConsensus is
 
     /// @notice Check whether the tournament result of the current sealed epoch can be staged.
     /// @return isFinished Whether the current sealed epoch tournament is finished
+    /// @return isTournamentFailed Whether the tournament finished without a winner,
+    /// in which case the epoch cannot be settled from this tournament
     /// @return isTournamentResultStaged Whether the tournament result (if there is one) is staged
     /// @return epochNumber The current sealed epoch number
-    /// @return winnerCommitment If the tournament has finished, the winner commitment
-    /// @return winnerPostEpochMachineStateHash If the tournament has finished, the winner post-epoch machine state hash
-    /// @dev Validators should only call `stageTournamentResult` if isFinished is true and isTournamentResultStaged is false.
+    /// @return winnerCommitment If the tournament has finished with a winner, the winner commitment
+    /// @return winnerPostEpochMachineStateHash If the tournament has finished with a winner, the winner post-epoch machine state hash
+    /// @dev Total over every terminal state: no standing makes this view
+    /// revert. Validators should only call `stageTournamentResult` if
+    /// isFinished is true, isTournamentFailed is false, and
+    /// isTournamentResultStaged is false.
     function canStageTournamentResult()
         external
         view
         returns (
             bool isFinished,
+            bool isTournamentFailed,
             bool isTournamentResultStaged,
             uint256 epochNumber,
             Tree.Node winnerCommitment,
