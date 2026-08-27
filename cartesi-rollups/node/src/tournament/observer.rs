@@ -426,7 +426,9 @@ fn decode_standing(
                 return Err(ObserverError::StandingKindMismatch);
             }
             require_terminal_shape(standing_discriminant, &wire, true)?;
-            require_zero_hash("tournamentStanding", "finalState", wire.finalState)?;
+            // finalState carries the winner's claimed final state, which
+            // events own; a zero claim is representable on-chain, so no
+            // shape check applies and the value is discarded.
             let parent_commitment: Digest = wire.parentCommitment.into();
             let parent_match = parent_match.expect("non-root position has a parent match");
             if parent_commitment != parent_match.commitment_one
@@ -981,6 +983,7 @@ mod tests {
         };
         let mut wire = standing_wire(4, false, Some(digest(30)));
         wire.parentCommitment = hash(2);
+        wire.finalState = hash(31);
 
         assert_eq!(
             decode_standing(child, Some(parent_match), wire.clone()).unwrap(),

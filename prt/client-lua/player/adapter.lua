@@ -387,7 +387,12 @@ local function decode_standing(
         standing = Domain.root_failed()
     elseif wire.standing == 4 then
         terminal_shape(wire, true)
-        require_zero_hash("tournamentStanding", "finalState", wire.final_state)
+        local commitment = assert(
+            tournament_fold.commitments[candidate],
+            "inner winner candidate is absent from fold"
+        )
+        assert(same(wire.final_state, commitment.final_state),
+            "inner winner final state disagrees with joined commitment record")
         assert(parent_match,
             "inner winner standing used without a folded parent match")
         assert(same(wire.parent_commitment, parent_match.commitment_one)
