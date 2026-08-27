@@ -69,7 +69,11 @@ contract RevertLeafWinTwoFfiTest is LeafTournamentGasFixture {
 
 abstract contract InputLeafWinFfiTest is LeafTournamentGasFixture {
     uint256 internal constant SECOND_INPUT_COUNTER = 1 << 68;
-    uint256 internal constant WIN_LEAF_MATCH_RETAINED_HEADROOM = 1_000;
+    // The selection adopts the maximum rounded recommendation exactly: the
+    // two-winning orientation. The one-winning orientation rounds 1,000
+    // units lower, so the alternate records that slack explicitly.
+    uint256 internal constant WIN_LEAF_MATCH_RETAINED_HEADROOM = 0;
+    uint256 internal constant WIN_LEAF_MATCH_ALTERNATE_HEADROOM = 1_000;
 
     function _payloads(uint256 targetPayloadSize) internal pure returns (uint256[] memory sizes) {
         sizes = new uint256[](2);
@@ -118,7 +122,7 @@ contract MaximumInputLeafWinOneFfiTest is InputLeafWinFfiTest {
     function testMeasureMaximumInputWithOneWinning() public {
         Measurement memory result = _measureLeafWin("maximum input one wins");
         assertEq(
-            _roundUpToThousand(_minimumReviewedAllocation(result)) + WIN_LEAF_MATCH_RETAINED_HEADROOM,
+            _roundUpToThousand(_minimumReviewedAllocation(result)) + WIN_LEAF_MATCH_ALTERNATE_HEADROOM,
             Gas.WIN_LEAF_MATCH
         );
     }
