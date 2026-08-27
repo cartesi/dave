@@ -63,7 +63,7 @@ It rejects a larger counter before parsing its proof or consulting the data
 provider. The concrete adapter also exposes the `CM_MARCHID` qualified for the
 pinned Cartesi Machine v0.21 release. Dave pins that value locally until a
 released solidity-step exports it. Node startup compares the deployed value
-with the linked Cartesi Machine library before opening or migrating local
+with the linked Cartesi Machine library before opening or initializing local
 storage.
 
 ## The leaf sequence

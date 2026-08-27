@@ -36,10 +36,37 @@ pub use cartesi_machine::constants::ar::SHADOW_REVERT_ROOT_HASH_START as CHECKPO
 #[cfg(test)]
 mod tests {
     use super::{CHECKPOINT_ADDRESS, LOG2_EPOCH_RULER_SPAN};
-    use cartesi_machine::constants::rollup::{
-        LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
-        LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
+    use cartesi_machine::{
+        Machine,
+        cartesi_machine_sys::{
+            CM_HTIF_CMD_MASK, CM_HTIF_CMD_SHIFT, CM_HTIF_DEV_MASK, CM_HTIF_DEV_SHIFT,
+            CM_HTIF_DEV_YIELD, CM_HTIF_REASON_MASK, CM_HTIF_REASON_SHIFT, CM_HTIF_YIELD_CMD_MANUAL,
+            CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED, CM_REG_HTIF_TOHOST, CM_REG_IFLAGS_Y,
+        },
+        constants::{
+            ar::TX_START,
+            machine::{HASH_TREE_LOG2_ROOT_SIZE, HASH_TREE_LOG2_WORD_SIZE},
+            rollup::{
+                LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
+                LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
+            },
+        },
     };
+
+    fn solidity_constant(source: &str, marker: &str) -> u64 {
+        let pos = source
+            .find(marker)
+            .unwrap_or_else(|| panic!("{marker} not found in contract source"));
+        let after = &source[pos + marker.len()..];
+        let eq = after.find('=').expect("expected `=` after constant name");
+        let semi = after.find(';').expect("expected `;` after constant value");
+        let value = after[eq + 1..semi].trim();
+        value
+            .strip_prefix("0x")
+            .map(|hex| u64::from_str_radix(hex, 16))
+            .unwrap_or_else(|| value.parse())
+            .unwrap_or_else(|_| panic!("{marker} is not a numeric Solidity constant"))
+    }
 
     /// Guardrail: step's `EmulatorConstants.sol` is auto-generated from the
     /// emulator C++ source, and `REVERT_ROOT_HASH_ADDRESS` must equal the
@@ -60,22 +87,7 @@ mod tests {
         let source = std::fs::read_to_string(&emulator_constants_sol)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", emulator_constants_sol.display()));
 
-        // Find: `uint64 constant REVERT_ROOT_HASH_ADDRESS = 0x<hex>;`
-        let marker = "REVERT_ROOT_HASH_ADDRESS";
-        let pos = source.find(marker).unwrap_or_else(|| {
-            panic!("{marker} not found in {}", emulator_constants_sol.display())
-        });
-        let after = &source[pos + marker.len()..];
-        let eq = after.find('=').expect("expected `=` after constant name");
-        let semi = after.find(';').expect("expected `;` after constant value");
-        let value_str = after[eq + 1..semi].trim();
-        let step_value = if let Some(hex) = value_str.strip_prefix("0x") {
-            u64::from_str_radix(hex, 16).expect("REVERT_ROOT_HASH_ADDRESS not valid hex")
-        } else {
-            value_str
-                .parse::<u64>()
-                .expect("REVERT_ROOT_HASH_ADDRESS not valid decimal")
-        };
+        let step_value = solidity_constant(&source, "REVERT_ROOT_HASH_ADDRESS");
 
         assert_eq!(
             CHECKPOINT_ADDRESS, step_value,
@@ -83,6 +95,70 @@ mod tests {
              does not match step's EmulatorConstants.REVERT_ROOT_HASH_ADDRESS ({step_value:#x}). \
              The off-chain client and on-chain verifier will disagree on the revert slot."
         );
+    }
+
+    #[test]
+    fn machine_validity_proof_geometry_matches_solidity() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root = manifest_dir.join("../..");
+        let emulator_constants = std::fs::read_to_string(root.join(
+            "cartesi-rollups/contracts/dependencies/\
+             cartesi-rollups-contracts-3.0.0-alpha.9/dependencies/\
+             cartesi-machine-solidity-step-0.15.0/src/EmulatorConstants.sol",
+        ))
+        .expect("read DaveConsensus's vendored EmulatorConstants.sol");
+        let memory = std::fs::read_to_string(root.join(
+            "cartesi-rollups/contracts/dependencies/\
+             cartesi-rollups-contracts-3.0.0-alpha.9/dependencies/\
+             cartesi-machine-solidity-step-0.15.0/src/Memory.sol",
+        ))
+        .expect("read DaveConsensus's vendored Memory.sol");
+        let canonical_machine = std::fs::read_to_string(root.join(
+            "cartesi-rollups/contracts/dependencies/\
+             cartesi-rollups-contracts-3.0.0-alpha.9/src/common/CanonicalMachine.sol",
+        ))
+        .expect("read CanonicalMachine.sol");
+
+        assert_eq!(
+            Machine::reg_address(CM_REG_IFLAGS_Y).unwrap(),
+            solidity_constant(&emulator_constants, "IFLAGS_Y_ADDRESS")
+        );
+        assert_eq!(
+            Machine::reg_address(CM_REG_HTIF_TOHOST).unwrap(),
+            solidity_constant(&emulator_constants, "HTIF_TOHOST_ADDRESS")
+        );
+        assert_eq!(
+            TX_START,
+            solidity_constant(&emulator_constants, "AR_CMIO_TX_BUFFER_START")
+        );
+        assert_eq!(
+            u64::from(HASH_TREE_LOG2_WORD_SIZE),
+            solidity_constant(&memory, "uint8 constant LOG2_LEAF")
+        );
+        assert_eq!(
+            u64::from(HASH_TREE_LOG2_ROOT_SIZE),
+            solidity_constant(&canonical_machine, "LOG2_MEMORY_SIZE")
+        );
+        for (marker, emulator_value) in [
+            ("HTIF_DEV_MASK", CM_HTIF_DEV_MASK),
+            ("HTIF_CMD_MASK", CM_HTIF_CMD_MASK),
+            ("HTIF_REASON_MASK", CM_HTIF_REASON_MASK),
+            ("HTIF_DEV_SHIFT", u64::from(CM_HTIF_DEV_SHIFT)),
+            ("HTIF_CMD_SHIFT", u64::from(CM_HTIF_CMD_SHIFT)),
+            ("HTIF_REASON_SHIFT", u64::from(CM_HTIF_REASON_SHIFT)),
+            ("HTIF_DEV_YIELD", u64::from(CM_HTIF_DEV_YIELD)),
+            ("HTIF_YIELD_CMD_MANUAL", u64::from(CM_HTIF_YIELD_CMD_MANUAL)),
+            (
+                "HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED",
+                u64::from(CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED),
+            ),
+        ] {
+            assert_eq!(
+                emulator_value,
+                solidity_constant(&emulator_constants, marker),
+                "Cartesi Machine and DaveConsensus disagree on {marker}"
+            );
+        }
     }
 
     /// The first number appearing after `marker` in `source` (digits

@@ -501,7 +501,7 @@ fn bench_quartets(
     let mut results = Vec::new();
     for (index, (label, log2_stride, height)) in spans.into_iter().enumerate() {
         let state_dir = scratch(scratch_root, &format!("quartet-{index}"))?;
-        let mut storage = Storage::migrate(&state_dir, image, 0, Address::ZERO)?;
+        let mut storage = Storage::initialize(&state_dir, image, 0, Address::ZERO)?;
         let rows: Vec<StorageInput> = inputs
             .iter()
             .enumerate()

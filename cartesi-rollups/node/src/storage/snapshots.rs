@@ -501,7 +501,7 @@ impl Storage {
 
 /// The newest snapshot boundary: (path, epoch, input, state_hash) -
 /// the machine runner's resume point. At least one exists from the
-/// migration's epoch-0 seed; its absence means a foreign or torn
+/// initialization's epoch-0 seed; its absence means a foreign or torn
 /// database.
 pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(PathBuf, u64, u64, Hash)> {
     let mut stmt = tx
@@ -530,7 +530,7 @@ pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(PathBuf, u64, u64,
         .map_err(anyhow::Error::from)?;
 
     let (path, epoch, input, hash) = row.ok_or_else(|| StorageError::DataNotFound {
-        description: "snapshot boundary (the migration seeds epoch 0)".into(),
+        description: "snapshot boundary (initialization seeds epoch 0)".into(),
     })?;
 
     Ok((

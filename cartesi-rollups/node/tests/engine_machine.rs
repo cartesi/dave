@@ -124,17 +124,17 @@ fn prototype_root(image: &Path, level: u64, log2_stride: u64, log2_stride_count:
     commitment.merkle.root_hash().to_hex()
 }
 
-/// A real migrated node database in a temp state dir, the echo
+/// A real initialized node database in a temp state dir, the echo
 /// inputs ingested through the production path (payloads live in the
 /// inputs table; feeders read them there). The guard rides along:
 /// the state dir must outlive the Storage.
-fn migrated_storage(image: &Path) -> (tempfile::TempDir, Storage) {
-    migrated_storage_with(image, echo_inputs())
+fn initialized_storage(image: &Path) -> (tempfile::TempDir, Storage) {
+    initialized_storage_with(image, echo_inputs())
 }
 
-fn migrated_storage_with(image: &Path, inputs: Vec<Vec<u8>>) -> (tempfile::TempDir, Storage) {
+fn initialized_storage_with(image: &Path, inputs: Vec<Vec<u8>>) -> (tempfile::TempDir, Storage) {
     let dir = scratch();
-    let mut storage = Storage::migrate(dir.path(), image, 0, Address::ZERO).unwrap();
+    let mut storage = Storage::initialize(dir.path(), image, 0, Address::ZERO).unwrap();
     let rows: Vec<StorageInput> = inputs
         .into_iter()
         .enumerate()
@@ -167,7 +167,7 @@ fn engine_root_with_inputs(
     log2_stride: u64,
     height: u64,
 ) -> String {
-    let (state_dir, storage) = migrated_storage_with(image, inputs);
+    let (state_dir, storage) = initialized_storage_with(image, inputs);
     let work = scratch();
     let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
     let root = source
@@ -454,11 +454,11 @@ fn prototype_commitment(
         .unwrap()
 }
 
-/// A dispute source over a freshly migrated state dir: the epoch
+/// A dispute source over a freshly initialized state dir: the epoch
 /// start is the only stored boundary, i.e. the template-replay
 /// behavior - until its own positioning densifies the store.
 fn machine_source(image: &Path) -> (Vec<tempfile::TempDir>, DisputeSource<Positioner>) {
-    let (state_dir, storage) = migrated_storage(image);
+    let (state_dir, storage) = initialized_storage(image);
     let work = scratch();
     let source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
     (vec![state_dir, work], source)
@@ -717,7 +717,7 @@ fn prove_transition_matches_prototype_get_logs() {
     for (label, meta_cycle) in shapes {
         // Both sides position independently from the template.
         // The state dir is a guard: storage lives inside it.
-        let (_state_dir, storage) = migrated_storage(&image);
+        let (_state_dir, storage) = initialized_storage(&image);
         let work = scratch();
         let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
         let mut ruler = source.machine_at(meta_cycle).unwrap();
@@ -759,7 +759,7 @@ fn revert_closing_slot_restores_the_checkpoint() {
     let big_span = U256::from(structure.big_span());
     let inputs = yield_inputs();
 
-    let (_state_dir, storage) = migrated_storage_with(&image, inputs.clone());
+    let (_state_dir, storage) = initialized_storage_with(&image, inputs.clone());
     let work = scratch();
     let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
 

@@ -4,6 +4,11 @@
 use crate::storage::Storage;
 use cartesi_machine::{
     Machine,
+    cartesi_machine_sys::{
+        CM_HTIF_CMD_SHIFT, CM_HTIF_DEV_SHIFT, CM_HTIF_DEV_YIELD, CM_HTIF_REASON_SHIFT,
+        CM_HTIF_YIELD_CMD_MANUAL, CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED, CM_REG_HTIF_TOHOST,
+        CM_REG_IFLAGS_Y,
+    },
     config::{
         machine::{MachineConfig, RAMConfig},
         runtime::RuntimeConfig,
@@ -11,7 +16,7 @@ use cartesi_machine::{
 };
 use tempfile::{TempDir, tempdir};
 
-/// A fully migrated Storage over a real (tiny) machine image: the
+/// A fully initialized Storage over a real (tiny) machine image: the
 /// production setup path, template snapshot and engine config
 /// included. Tests need `../../test/programs/linux.bin` present.
 pub fn setup_storage() -> (TempDir, Storage) {
@@ -30,9 +35,16 @@ pub fn setup_storage() -> (TempDir, Storage) {
         &RuntimeConfig::default(),
     )
     .unwrap();
+    // Storage tests exercise persistence, not guest execution. Start their
+    // template at the canonical awaiting-input boundary required at epoch roll.
+    let htif_tohost = (u64::from(CM_HTIF_DEV_YIELD) << CM_HTIF_DEV_SHIFT)
+        | (u64::from(CM_HTIF_YIELD_CMD_MANUAL) << CM_HTIF_CMD_SHIFT)
+        | (u64::from(CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED) << CM_HTIF_REASON_SHIFT);
+    machine.write_reg(CM_REG_IFLAGS_Y, 1).unwrap();
+    machine.write_reg(CM_REG_HTIF_TOHOST, htif_tohost).unwrap();
     machine.store(&machine_path).unwrap();
 
-    let storage = Storage::migrate(
+    let storage = Storage::initialize(
         state_dir,
         &machine_path,
         0,

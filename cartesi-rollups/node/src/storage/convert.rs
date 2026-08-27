@@ -4,8 +4,8 @@
 //! Conversions at the SQLite boundary. Integers saturate and blobs
 //! produce structured errors: the domain values we persist are always
 //! non-negative, well within i64, and exactly 32 bytes where hashes
-//! are concerned, so a violation means a corrupted or foreign row -
-//! which should degrade or error, never crash the process.
+//! are concerned. Callers decide whether a corrupted or foreign row is
+//! recoverable or a durable invariant that must fail loudly.
 
 use crate::merkle::Digest;
 use anyhow::anyhow;
