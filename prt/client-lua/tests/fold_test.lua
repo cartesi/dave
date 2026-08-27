@@ -45,7 +45,7 @@ return {
                 "a", "b", "b-left", "a:b", 30
             )),
             event("root", 4, E.match_advanced(
-                "a:b", "other", "left", 40
+                "a:b", "other", "left", 0, 40
             )),
             event("root", 5, E.new_inner_tournament("a:b", "child")),
             event("child", 6, E.commitment_joined("c", "c-final")),
@@ -133,7 +133,7 @@ return {
                     new_fold():apply(event(
                         "root",
                         1,
-                        E.match_advanced("missing", "other", "left", 30)
+                        E.match_advanced("missing", "other", "left", 0, 30)
                     ))
                 end,
             },
@@ -156,7 +156,7 @@ return {
                     fold:apply(event(
                         "root",
                         5,
-                        E.match_advanced("a:b", "other", "left", 30)
+                        E.match_advanced("a:b", "other", "left", 0, 30)
                     ))
                 end,
             },
@@ -316,7 +316,7 @@ return {
         fold:apply(event(
             "root",
             4,
-            E.match_advanced("a:b", "other", "left", 40)
+            E.match_advanced("a:b", "other", "left", 0, 40)
         ))
         Test.equal(tostring(
             fold:match_by_id_hash("root", "a:b").eliminable_at

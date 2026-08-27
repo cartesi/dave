@@ -135,6 +135,7 @@ local function apply_advances(
                 match.id_hash,
                 index == count and final_other_parent or digest(50 + index),
                 index == count and final_left_node or digest(60 + index),
+                0,
                 100 + index
             )
         ))
@@ -580,6 +581,12 @@ return {
 
         projection.revealing_parent = digest(99)
         Test.error_like("otherParent breadcrumb", function()
+            Adapter.observe_fold(transport, fold, head())
+        end)
+
+        projection.revealing_parent = digest(10)
+        projection.segment_start_position = 4
+        Test.error_like("segmentStartPosition breadcrumb", function()
             Adapter.observe_fold(transport, fold, head())
         end)
     end),

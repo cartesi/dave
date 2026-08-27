@@ -263,6 +263,7 @@ contract Tournament is ITournament {
             matchIdHash,
             _matchState.otherParent,
             _matchState.leftNode,
+            _matchState.runningLeafPosition,
             MatchClocks.eliminableAt(clockOne, clockTwo)
         );
     }
@@ -1332,9 +1333,16 @@ contract Tournament is ITournament {
         Match.IdHash matchIdHash,
         Tree.Node otherParent,
         Tree.Node leftNode,
+        uint256 segmentStartPosition,
         Time.Instant eliminableAt
     ) private {
-        emit MatchAdvanced(matchIdHash, otherParent, leftNode, eliminableAt);
+        emit MatchAdvanced(
+            matchIdHash,
+            otherParent,
+            leftNode,
+            segmentStartPosition,
+            eliminableAt
+        );
         ++matchAdvancedCount;
     }
 

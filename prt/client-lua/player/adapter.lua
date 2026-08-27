@@ -602,16 +602,19 @@ local function validate_match_event_history(descriptor, match_fold, state)
     local remaining_height
     local revealing_parent
     local waiting_left
+    local segment_start_position
     if state._tag == Domain.LiveMatchState.BISECTING then
         remaining_height = state.remaining_height
         revealing_parent = state.revealing_parent
         waiting_left = state.waiting_children.left
+        segment_start_position = state.coordinate.leaf_position
     elseif state._tag == Domain.LiveMatchState.READY_TO_SEAL_LEAF
         or state._tag == Domain.LiveMatchState.READY_TO_DELEGATE
     then
         remaining_height = 1
         revealing_parent = state.revealing_parent
         waiting_left = state.waiting_children.left
+        segment_start_position = state.coordinate.leaf_position
     else
         assert(state._tag == Domain.LiveMatchState.SEALED_LEAF
             or state._tag == Domain.LiveMatchState.AWAITING_CHILD,
@@ -634,6 +637,10 @@ local function validate_match_event_history(descriptor, match_fold, state)
             "folded otherParent breadcrumb disagrees with projection")
         assert(same(match_fold.last_left_node, waiting_left),
             "folded leftNode breadcrumb disagrees with projection")
+        assert(bint.eq(
+            match_fold.last_segment_start_position,
+            segment_start_position
+        ), "folded segmentStartPosition breadcrumb disagrees with projection")
     end
 end
 

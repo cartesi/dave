@@ -216,20 +216,22 @@ contract SmallSingleLevelTournamentTest is Test {
         (Tree.Node newLeft, Tree.Node newRight) =
             one.children(HEIGHT - 1, childIndex);
         Tree.Node expectedOtherParent = descendRight ? twoRight : twoLeft;
+        uint256 expectedPosition = descendRight ? uint256(1) << (HEIGHT - 1) : 0;
 
         vm.expectEmit(true, false, false, true, address(tournament));
         emit ITournament.MatchAdvanced(
-            id.hashFromId(), expectedOtherParent, newLeft, advancedEliminableAt
+            id.hashFromId(),
+            expectedOtherParent,
+            newLeft,
+            expectedPosition,
+            advancedEliminableAt
         );
         tournament.advanceMatch(id, oneLeft, oneRight, newLeft, newRight);
 
         Match.State memory state = tournament.getMatch(id.hashFromId());
         assertTrue(state.isInit);
         assertEq(state.currentHeight, HEIGHT - 1);
-        assertEq(
-            state.runningLeafPosition,
-            descendRight ? uint256(1) << (HEIGHT - 1) : 0
-        );
+        assertEq(state.runningLeafPosition, expectedPosition);
         assertTrue(state.otherParent.eq(expectedOtherParent));
         assertTrue(state.leftNode.eq(newLeft));
         assertTrue(state.rightNode.eq(newRight));
