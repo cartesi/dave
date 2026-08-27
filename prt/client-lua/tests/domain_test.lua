@@ -15,6 +15,8 @@ local function descriptor(args)
         base_cycle = args.base_cycle or 0,
         log2_stride = args.log2_stride or 0,
         height = args.height or 4,
+        start_instant = args.start_instant or 1,
+        allowance = args.allowance or 1000,
     }
 end
 

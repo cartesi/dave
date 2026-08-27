@@ -871,6 +871,8 @@ contract TournamentObserverTest is Test {
         assertEq(descriptor.height, height);
         assertEq(descriptor.level, level);
         assertEq(uint8(descriptor.kind), uint8(kind));
+        assertEq(Time.Instant.unwrap(descriptor.startInstant), 100);
+        assertEq(Time.Duration.unwrap(descriptor.allowance), 20);
     }
 
     function _assertInnerWinner(

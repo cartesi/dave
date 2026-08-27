@@ -154,6 +154,8 @@ local function descriptor(fields)
         height = fields.height or 4,
         level = fields.level or 0,
         kind = fields.kind == nil and 1 or fields.kind,
+        start_instant = fields.start_instant or 1,
+        allowance = fields.allowance or 1000,
     }
 end
 

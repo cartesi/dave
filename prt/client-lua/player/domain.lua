@@ -146,6 +146,12 @@ local function uint256(value, name)
     return bint(value)
 end
 
+local function instant(value)
+    local parsed = uint256(value, "block instant")
+    assert(bint.ule(parsed, MAX_U64), "block instant exceeds uint64")
+    return parsed
+end
+
 local function duration(value)
     local parsed = uint256(value, "block duration")
     assert(bint.ule(parsed, MAX_U64), "block duration exceeds uint64")
@@ -266,6 +272,8 @@ function Domain.descriptor(args)
         base_cycle = base_cycle,
         log2_stride = log2_stride,
         height = height,
+        start_instant = instant(args.start_instant),
+        allowance = duration(args.allowance),
     }
 end
 

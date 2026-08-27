@@ -341,6 +341,8 @@ fn decode_descriptor(
     address: Address,
     wire: AbiTournamentDescriptor,
 ) -> ObserverResult<TournamentDescriptor> {
+    // startInstant/allowance describe the join window for observers; Hero
+    // acts eagerly on current state, so they are not decoded here.
     TournamentDescriptor::try_new(
         address,
         wire.level,
@@ -774,6 +776,8 @@ mod tests {
             height: 4,
             level,
             kind,
+            startInstant: 100,
+            allowance: 20,
         }
     }
 
