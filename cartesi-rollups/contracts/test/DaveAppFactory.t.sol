@@ -289,13 +289,15 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         {
             bool val1;
             bool val2;
-            uint256 val3;
+            bool val3;
+            uint256 val4;
 
-            (val1, val2, val3,,) = daveConsensus.canStageTournamentResult();
+            (val1, val2, val3, val4,,) = daveConsensus.canStageTournamentResult();
 
             assertFalse(val1); // isFinished
-            assertFalse(val2); // isTournamentResultStaged
-            assertEq(val3, 0); // epochNumber
+            assertFalse(val2); // isTournamentFailed
+            assertFalse(val3); // isTournamentResultStaged
+            assertEq(val4, 0); // epochNumber
         }
 
         // Check epoch acceptance readiness
@@ -352,17 +354,19 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         {
             bool val1;
             bool val2;
-            uint256 val3;
-            Tree.Node val4;
-            Machine.Hash val5;
+            bool val3;
+            uint256 val4;
+            Tree.Node val5;
+            Machine.Hash val6;
 
-            (val1, val2, val3, val4, val5) = daveConsensus.canStageTournamentResult();
+            (val1, val2, val3, val4, val5, val6) = daveConsensus.canStageTournamentResult();
 
             assertTrue(val1); //  isFinished
-            assertFalse(val2); // isTournamentResultStaged
-            assertEq(val3, 0); // epochNumber
-            assertEq(Tree.Node.unwrap(val4), commitment);
-            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+            assertFalse(val2); // isTournamentFailed
+            assertFalse(val3); // isTournamentResultStaged
+            assertEq(val4, 0); // epochNumber
+            assertEq(Tree.Node.unwrap(val5), commitment);
+            assertEq(Machine.Hash.unwrap(val6), machineMerkleRoot);
         }
 
         // Check epoch acceptance readiness
@@ -477,17 +481,19 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         {
             bool val1;
             bool val2;
-            uint256 val3;
-            Tree.Node val4;
-            Machine.Hash val5;
+            bool val3;
+            uint256 val4;
+            Tree.Node val5;
+            Machine.Hash val6;
 
-            (val1, val2, val3, val4, val5) = daveConsensus.canStageTournamentResult();
+            (val1, val2, val3, val4, val5, val6) = daveConsensus.canStageTournamentResult();
 
             assertTrue(val1); //  isFinished
-            assertTrue(val2); // isTournamentResultStaged
-            assertEq(val3, 0); // epochNumber
-            assertEq(Tree.Node.unwrap(val4), commitment);
-            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+            assertFalse(val2); // isTournamentFailed
+            assertTrue(val3); // isTournamentResultStaged
+            assertEq(val4, 0); // epochNumber
+            assertEq(Tree.Node.unwrap(val5), commitment);
+            assertEq(Machine.Hash.unwrap(val6), machineMerkleRoot);
         }
 
         // Check epoch acceptance readiness
@@ -567,17 +573,19 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         {
             bool val1;
             bool val2;
-            uint256 val3;
-            Tree.Node val4;
-            Machine.Hash val5;
+            bool val3;
+            uint256 val4;
+            Tree.Node val5;
+            Machine.Hash val6;
 
-            (val1, val2, val3, val4, val5) = daveConsensus.canStageTournamentResult();
+            (val1, val2, val3, val4, val5, val6) = daveConsensus.canStageTournamentResult();
 
             assertTrue(val1); //  isFinished
-            assertTrue(val2); // isTournamentResultStaged
-            assertEq(val3, 0); // epochNumber
-            assertEq(Tree.Node.unwrap(val4), commitment);
-            assertEq(Machine.Hash.unwrap(val5), machineMerkleRoot);
+            assertFalse(val2); // isTournamentFailed
+            assertTrue(val3); // isTournamentResultStaged
+            assertEq(val4, 0); // epochNumber
+            assertEq(Tree.Node.unwrap(val5), commitment);
+            assertEq(Machine.Hash.unwrap(val6), machineMerkleRoot);
         }
 
         // Check epoch acceptance readiness
@@ -642,13 +650,15 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         {
             bool val1;
             bool val2;
-            uint256 val3;
+            bool val3;
+            uint256 val4;
 
-            (val1, val2, val3,,) = daveConsensus.canStageTournamentResult();
+            (val1, val2, val3, val4,,) = daveConsensus.canStageTournamentResult();
 
             assertFalse(val1); // isFinished
-            assertFalse(val2); // isTournamentResultStaged
-            assertEq(val3, 1); // epochNumber
+            assertFalse(val2); // isTournamentFailed
+            assertFalse(val3); // isTournamentResultStaged
+            assertEq(val4, 1); // epochNumber
         }
 
         // Check epoch acceptance readiness
@@ -956,8 +966,22 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         });
         vm.mockCall(address(tournament), abi.encodeCall(ITournament.tournamentStanding, ()), abi.encode(failedStanding));
 
-        vm.expectRevert(ITournament.TournamentFailedNoWinner.selector);
-        daveConsensus.canStageTournamentResult();
+        {
+            (
+                bool isFinished,
+                bool isTournamentFailed,
+                bool isTournamentResultStaged,
+                uint256 epochNumber,
+                Tree.Node winnerCommitment,
+                Machine.Hash winnerPostEpochMachineStateHash
+            ) = daveConsensus.canStageTournamentResult();
+            assertTrue(isFinished);
+            assertTrue(isTournamentFailed);
+            assertFalse(isTournamentResultStaged);
+            assertEq(epochNumber, 0);
+            assertEq(Tree.Node.unwrap(winnerCommitment), bytes32(0));
+            assertEq(Machine.Hash.unwrap(winnerPostEpochMachineStateHash), bytes32(0));
+        }
 
         // The tournament standing is checked before the machine validity proof,
         // so any proof can be provided as to reach the expected revert.
@@ -1342,13 +1366,15 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         {
             bool val1;
             bool val2;
-            uint256 val3;
+            bool val3;
+            uint256 val4;
 
-            (val1, val2, val3,,) = daveConsensus.canStageTournamentResult();
+            (val1, val2, val3, val4,,) = daveConsensus.canStageTournamentResult();
 
             assertFalse(val1); // isFinished
-            assertFalse(val2); // isTournamentResultStaged
-            assertEq(val3, 0); // epochNumber
+            assertFalse(val2); // isTournamentFailed
+            assertFalse(val3); // isTournamentResultStaged
+            assertEq(val4, 0); // epochNumber
         }
 
         assertEq(address(daveConsensus.getInputBox()), address(_contracts.core.inputBox));

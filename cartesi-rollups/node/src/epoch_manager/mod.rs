@@ -296,6 +296,11 @@ impl<AS: ArenaSender> EpochManager<AS> {
             .call()
             .await?;
 
+        assert!(
+            !can_stage.isTournamentFailed,
+            "Tournament finished without a winner, notify all users!"
+        );
+
         if !can_stage.isFinished || can_stage.isTournamentResultStaged {
             trace!("tournament result not ready to be staged");
             return Ok(None);

@@ -146,6 +146,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         override
         returns (
             bool isFinished,
+            bool isTournamentFailed,
             bool isTournamentResultStaged,
             uint256 epochNumber,
             Tree.Node winnerCommitment,
@@ -154,7 +155,8 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     {
         epochNumber = _epochNumber;
         isTournamentResultStaged = _isTournamentResultStaged;
-        (isFinished, winnerCommitment, winnerPostEpochMachineStateHash) = _tournamentResult(_tournament);
+        (isFinished, isTournamentFailed, winnerCommitment, winnerPostEpochMachineStateHash) =
+            _tournamentResult(_tournament);
     }
 
     function stageTournamentResult(uint256 epochNumber, MachineValidityProof calldata proof)
@@ -168,8 +170,9 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         // Check whether the tournament result is staged
         require(!_isTournamentResultStaged, TournamentResultAlreadyStaged());
 
-        // Check tournament finished
-        (bool isFinished,, Machine.Hash finalMachineStateHash) = _tournamentResult(_tournament);
+        // Check tournament finished with a winner
+        (bool isFinished, bool isTournamentFailed,, Machine.Hash finalMachineStateHash) = _tournamentResult(_tournament);
+        require(!isTournamentFailed, ITournament.TournamentFailedNoWinner());
         require(isFinished, TournamentNotFinishedYet());
 
         // Validate post-epoch machine state and prove outputs Merkle root
@@ -426,20 +429,23 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     }
 
     /// @notice Read the root tournament's result through its typed standing.
-    /// @dev A failed root (finished without a winner) reverts, preserving the
-    /// staging posture: such an epoch cannot be settled from this tournament.
+    /// @dev Total over the three root outcomes: a failed root (finished
+    /// without a winner) is reported, not reverted, so read paths never
+    /// revert on a normal terminal state. `stageTournamentResult` preserves
+    /// the revert posture: such an epoch cannot be settled from this
+    /// tournament.
     function _tournamentResult(ITournament tournament)
         internal
         view
-        returns (bool finished, Tree.Node winnerCommitment, Machine.Hash finalMachineStateHash)
+        returns (bool finished, bool tournamentFailed, Tree.Node winnerCommitment, Machine.Hash finalMachineStateHash)
     {
         ITournament.TournamentStandingView memory standing = tournament.tournamentStanding();
         if (standing.standing == ITournament.TournamentStanding.ROOT_WINNER) {
-            return (true, standing.candidate, standing.finalState);
+            return (true, false, standing.candidate, standing.finalState);
         } else if (standing.standing == ITournament.TournamentStanding.ROOT_FAILED) {
-            revert ITournament.TournamentFailedNoWinner();
+            return (true, true, Tree.ZERO_NODE, Machine.ZERO_STATE);
         } else {
-            return (false, Tree.ZERO_NODE, Machine.ZERO_STATE);
+            return (false, false, Tree.ZERO_NODE, Machine.ZERO_STATE);
         }
     }
 
