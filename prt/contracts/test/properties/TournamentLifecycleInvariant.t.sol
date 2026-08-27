@@ -751,10 +751,10 @@ contract TournamentLifecycleHandler is Test {
         (bool timeIsFinal, Time.Instant timeFinished) =
             TOURNAMENT.timeFinished();
         assertEq(timeIsFinal, expectedFinished);
+        uint64 expectedTime;
         if (expectedFinished) {
             uint64 closedAt = START_BLOCK + MAX_ALLOWANCE;
-            uint64 expectedTime =
-                _lastDeleted > closedAt ? _lastDeleted : closedAt;
+            expectedTime = _lastDeleted > closedAt ? _lastDeleted : closedAt;
             assertEq(Time.Instant.unwrap(timeFinished), expectedTime);
         } else {
             assertEq(Time.Instant.unwrap(timeFinished), 0);
@@ -762,6 +762,7 @@ contract TournamentLifecycleHandler is Test {
 
         ITournament.TournamentStandingView memory standing =
             TOURNAMENT.tournamentStanding();
+        assertEq(Time.Instant.unwrap(standing.finishedAt), expectedTime);
         if (!expectedFinished) {
             assertTrue(
                 standing.standing

@@ -169,6 +169,7 @@ interface ITournament {
         Tree.Node candidate;
         Machine.Hash finalState;
         Tree.Node parentCommitment;
+        Time.Instant finishedAt;
     }
 
     /// @notice A child tournament's settlement disposition for its parent.
@@ -729,7 +730,9 @@ interface ITournament {
     /// every standing, including closed tournaments that still have active
     /// matches. `hasCandidate` disambiguates the zero node. `finalState` is
     /// populated only for `ROOT_WINNER`, and `parentCommitment` only for
-    /// `INNER_WINNER`.
+    /// `INNER_WINNER`. `finishedAt` is canonically zero while unfinished and
+    /// otherwise reports the exact block-number instant the tournament became
+    /// safe to decide.
     function tournamentStanding()
         external
         view

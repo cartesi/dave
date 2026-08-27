@@ -937,6 +937,7 @@ contract Tournament is ITournament {
         standing.candidate = candidate;
 
         (bool finished, Time.Instant resultAt) = _timeFinished(args);
+        standing.finishedAt = resultAt;
         if (matchCount != 0) {
             standing.standing = TournamentStanding.MATCHES_ACTIVE;
         } else if (!finished) {

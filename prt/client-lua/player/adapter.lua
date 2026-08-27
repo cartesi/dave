@@ -174,7 +174,7 @@ function Adapter.decode_result(view, raw)
         }
     end
     if view == Adapter.View.STANDING then
-        local words = abi_words(raw, 6, name)
+        local words = abi_words(raw, 7, name)
         return {
             standing = word_small(words[1], 8, name .. ".standing"),
             accepts_joins = word_bool(words[2], name .. ".acceptsJoins"),
@@ -182,6 +182,7 @@ function Adapter.decode_result(view, raw)
             candidate = word_hash(words[4]),
             final_state = word_hash(words[5]),
             parent_commitment = word_hash(words[6]),
+            finished_at = word_small(words[7], 64, name .. ".finishedAt"),
         }
     end
     if view == Adapter.View.TIMEOUT then
@@ -311,6 +312,27 @@ local function terminal_shape(wire, expected_candidate)
     end
 end
 
+local function require_finished_at_shape(wire)
+    local finished_at = required(wire.finished_at, "standing finishedAt")
+    assert(type(finished_at) == "number"
+        and math.type(finished_at) == "integer"
+        and finished_at >= 0,
+        "standing finishedAt must be a nonnegative Lua integer")
+    if wire.standing <= 1 then
+        assert(finished_at == 0,
+            string.format(
+                "standing %d requires zero finishedAt",
+                wire.standing
+            ))
+    else
+        assert(finished_at ~= 0,
+            string.format(
+                "standing %d requires nonzero finishedAt",
+                wire.standing
+            ))
+    end
+end
+
 local function decode_standing(
     fold,
     tournament_fold,
@@ -319,6 +341,7 @@ local function decode_standing(
     wire
 )
     local candidate = candidate_shape(wire)
+    require_finished_at_shape(wire)
     local expected_candidate = fold:candidate(
         tournament_fold.address
     )

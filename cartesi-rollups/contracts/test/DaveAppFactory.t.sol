@@ -951,7 +951,8 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
             hasCandidate: false,
             candidate: Tree.ZERO_NODE,
             finalState: Machine.ZERO_STATE,
-            parentCommitment: Tree.ZERO_NODE
+            parentCommitment: Tree.ZERO_NODE,
+            finishedAt: Time.currentTime()
         });
         vm.mockCall(address(tournament), abi.encodeCall(ITournament.tournamentStanding, ()), abi.encode(failedStanding));
 
