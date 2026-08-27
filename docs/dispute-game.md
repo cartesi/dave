@@ -195,7 +195,9 @@ must reveal the next children. A valid `advanceMatch` moves the shared
 first-divergence frontier one tree level, then switches the turn. A height-`H`
 match has exactly `H` eligible responses: `H - 1` advances and one final leaf or
 inner seal. If both child subtrees differ, bisection selects the left child,
-preserving the first-divergence rule.
+preserving the first-divergence rule. Each `MatchAdvanced` event publishes the
+post-advance segment start position, so a finished match's bisection
+trajectory survives match deletion in the event history.
 
 The stored reveal is deliberately staggered. At the start of a turn, the
 waiting commitment's children are already cached. The current revealer opens

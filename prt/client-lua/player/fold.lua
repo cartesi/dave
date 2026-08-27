@@ -114,6 +114,7 @@ local function copy_match(match)
         advances = match.advances,
         last_other_parent = match.last_other_parent,
         last_left_node = match.last_left_node,
+        last_segment_start_position = match.last_segment_start_position,
         inner_tournament = match.inner_tournament,
         deleted = deleted,
     }
@@ -201,12 +202,15 @@ function Fold.Event.match_advanced(
     match_id_hash,
     other_parent,
     left_node,
+    segment_start_position,
     eliminable_at
 )
     return event_kind(Fold.EventKind.MATCH_ADVANCED, {
         match_id_hash = required(match_id_hash, "match id hash"),
         other_parent = required(other_parent, "other parent"),
         left_node = required(left_node, "left node"),
+        segment_start_position =
+            required(segment_start_position, "segment start position"),
         eliminable_at = uint64(eliminable_at, "match elimination block"),
     })
 end
@@ -380,6 +384,9 @@ function Fold:apply(event)
             advances = 0,
             last_other_parent = kind.commitment_one,
             last_left_node = kind.left_of_two,
+            -- Bisection starts at leaf position zero; advances replace this
+            -- with the emitted post-advance segment start position.
+            last_segment_start_position = 0,
             inner_tournament = nil,
             deleted = nil,
         }
@@ -393,6 +400,7 @@ function Fold:apply(event)
         match.advances = match.advances + 1
         match.last_other_parent = kind.other_parent
         match.last_left_node = kind.left_node
+        match.last_segment_start_position = kind.segment_start_position
         match.eliminable_at = uint64(
             kind.eliminable_at,
             "match elimination block"

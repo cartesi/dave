@@ -152,7 +152,7 @@ local EVENT_SIGNATURES = {
         kind = Fold.EventKind.MATCH_CREATED,
     },
     {
-        signature = "MatchAdvanced(bytes32,bytes32,bytes32,uint64)",
+        signature = "MatchAdvanced(bytes32,bytes32,bytes32,uint256,uint64)",
         kind = Fold.EventKind.MATCH_ADVANCED,
     },
     {
@@ -286,12 +286,13 @@ function SemanticReader.decode_event_log(log, topic_map)
         )
     elseif kind == Fold.EventKind.MATCH_ADVANCED then
         require_topic_count(log, 2, "MatchAdvanced")
-        local words = data_words(log.data, 3, "MatchAdvanced")
+        local words = data_words(log.data, 4, "MatchAdvanced")
         event = Fold.Event.match_advanced(
             topic_hash(log.topics[2], "MatchAdvanced.matchIdHash"),
             Hash:from_digest_hex("0x" .. words[1]),
             Hash:from_digest_hex("0x" .. words[2]),
-            word_uint64(words[3], "MatchAdvanced.eliminableAt")
+            bint("0x" .. words[3]),
+            word_uint64(words[4], "MatchAdvanced.eliminableAt")
         )
     elseif kind == Fold.EventKind.LEAF_MATCH_SEALED then
         require_topic_count(log, 2, "LeafMatchSealed")

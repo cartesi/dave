@@ -216,19 +216,23 @@ interface ITournament {
     /// @param matchIdHash The match ID hash
     /// @param otherParent The parent the next responder must reveal
     /// @param leftNode The waiting side's left child after the advance
+    /// @param segmentStartPosition The post-advance start position of the
+    /// disputed segment, as also reported by `BisectingMatchView`
     /// @param eliminableAt The first inclusive instant at which both
     /// commitments can be eliminated if the match does not advance again
     /// @dev Each advance selects the left half when the two left children differ,
     /// otherwise the right half, then swaps revealing and waiting roles. The
-    /// event exposes the post-advance revealing parent and waiting left child.
-    /// The waiting right child is unnecessary for selecting the next branch,
-    /// which depends only on left-child equality; the full live state remains
+    /// event exposes the post-advance revealing parent, waiting left child,
+    /// and segment start position; a right descent raises the position by two
+    /// to the pre-advance height minus one, a left descent keeps it, so the
+    /// position also encodes the selected branch. The full live state remains
     /// available through the phase projections (`bisectingMatch` and its
     /// siblings).
     event MatchAdvanced(
         Match.IdHash indexed matchIdHash,
         Tree.Node otherParent,
         Tree.Node leftNode,
+        uint256 segmentStartPosition,
         Time.Instant eliminableAt
     );
 

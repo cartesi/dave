@@ -64,6 +64,7 @@ local function event_match_advanced(
     id_hash,
     other_parent,
     left,
+    segment_start_position,
     eliminable_at
 )
     return {
@@ -74,6 +75,7 @@ local function event_match_advanced(
         data = data {
             word_hash(other_parent),
             word_hash(left),
+            word_uint(segment_start_position),
             word_uint(eliminable_at),
         },
     }
@@ -229,7 +231,7 @@ local function semantic_fixture()
                 transaction_index = 0,
                 log_index = 3,
                 event = event_match_advanced(
-                    id_hash, digest(31), digest(32), 21
+                    id_hash, digest(31), digest(32), 0, 21
                 ),
             },
             raw_log {
@@ -239,7 +241,7 @@ local function semantic_fixture()
                 transaction_index = 0,
                 log_index = 4,
                 event = event_match_advanced(
-                    id_hash, digest(33), digest(34), 22
+                    id_hash, digest(33), digest(34), 0, 22
                 ),
             },
             raw_log {
@@ -249,7 +251,7 @@ local function semantic_fixture()
                 transaction_index = 0,
                 log_index = 5,
                 event = event_match_advanced(
-                    id_hash, digest(35), digest(36), 23
+                    id_hash, digest(35), digest(36), 0, 23
                 ),
             },
         },
@@ -412,7 +414,7 @@ return {
         local signatures = {
             "CommitmentJoined(bytes32,bytes32,address)",
             "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64)",
-            "MatchAdvanced(bytes32,bytes32,bytes32,uint64)",
+            "MatchAdvanced(bytes32,bytes32,bytes32,uint256,uint64)",
             "LeafMatchSealed(bytes32,uint64)",
             "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)",
             "NewInnerTournament(bytes32,address)",
@@ -448,7 +450,7 @@ return {
                 tag = Fold.EventKind.MATCH_ADVANCED,
                 event =
                     event_match_advanced(
-                        id_hash, digest(6), digest(7), 21
+                        id_hash, digest(6), digest(7), 0, 21
                     ),
                 eliminable_at = 21,
             },
