@@ -341,13 +341,13 @@ end
 
 function Reader:root_tournament_winner(address)
     local sig =
-        "tournamentStanding()((uint8,bool,bool,bytes32,bytes32,bytes32))"
+        "tournamentStanding()((uint8,bool,bool,bytes32,bytes32,bytes32,uint64))"
     local ret = self:_call(address, sig, {})
     assert(#ret == 1)
 
     local compact = sanitize_string(ret[1])
     local standing, candidate, final_state = compact:match(
-        "^%((%d+),%a+,%a+,(0x%x+),(0x%x+),0x%x+%)$"
+        "^%((%d+),%a+,%a+,(0x%x+),(0x%x+),0x%x+,%d+%)$"
     )
     assert(standing, "could not decode tournamentStanding")
     standing = tonumber(standing)

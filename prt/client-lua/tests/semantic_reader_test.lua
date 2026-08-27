@@ -157,6 +157,10 @@ end
 
 local function standing(tag, fields)
     fields = fields or {}
+    local finished_at = fields.finished_at
+    if finished_at == nil then
+        finished_at = tag <= 1 and 0 or 12
+    end
     return {
         standing = tag,
         accepts_joins = fields.accepts_joins or false,
@@ -164,6 +168,7 @@ local function standing(tag, fields)
         candidate = fields.candidate or Hash.zero,
         final_state = fields.final_state or Hash.zero,
         parent_commitment = fields.parent_commitment or Hash.zero,
+        finished_at = finished_at,
     }
 end
 

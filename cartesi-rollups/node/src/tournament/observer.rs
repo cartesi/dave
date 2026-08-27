@@ -100,6 +100,8 @@ pub enum ObserverError {
     StandingJoinMismatch { standing: u8, accepts_joins: bool },
     #[error("standing {standing} has invalid hasCandidate value {has_candidate}")]
     StandingCandidateShape { standing: u8, has_candidate: bool },
+    #[error("standing {standing} has invalid finishedAt value {finished_at}")]
+    StandingFinishedAtShape { standing: u8, finished_at: u64 },
     #[error("inner winner does not map to either side of its recursive parent match")]
     InnerWinnerOutsideParentMatch,
     #[error("live match {match_id_hash} carries an impossible child relationship")]
@@ -133,8 +135,8 @@ pub async fn read_descriptor(
 /// event-derived tree supplies root/inner position and the exact parent match
 /// used to interpret an inner winner. It is not reconciled with redundant
 /// match-count, final-state, or topology projections. Nonterminal candidate
-/// payloads are canonicality-checked and then discarded because events own
-/// commitment placement.
+/// payloads and finish instants are canonicality-checked and then discarded
+/// because events own commitment placement and Hero acts only on current state.
 pub async fn read_standings(
     chain: &Chain,
     dispute: &Dispute,
@@ -363,6 +365,7 @@ fn decode_standing(
     let standing_discriminant = wire.standing;
     let candidate =
         decode_candidate_shape(standing_discriminant, wire.hasCandidate, wire.candidate)?;
+    validate_finished_at_shape(standing_discriminant, wire.finishedAt)?;
 
     let standing = match standing_discriminant {
         0 => {
@@ -682,6 +685,22 @@ fn decode_candidate_shape(
     }
 }
 
+fn validate_finished_at_shape(standing: u8, finished_at: u64) -> ObserverResult<()> {
+    let valid = match standing {
+        0 | 1 => finished_at == 0,
+        2..=6 => finished_at != 0,
+        other => return Err(ObserverError::UnknownTournamentStanding(other)),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(ObserverError::StandingFinishedAtShape {
+            standing,
+            finished_at,
+        })
+    }
+}
+
 fn require_terminal_shape(
     standing: u8,
     wire: &AbiTournamentStandingView,
@@ -768,6 +787,7 @@ mod tests {
             candidate: candidate.map_or(B256::ZERO, Into::into),
             finalState: B256::ZERO,
             parentCommitment: B256::ZERO,
+            finishedAt: u64::from(standing >= 2),
         }
     }
 
@@ -910,10 +930,35 @@ mod tests {
     }
 
     #[test]
+    fn standing_finished_at_shape_matches_terminality() {
+        for standing in [0, 1] {
+            assert_eq!(validate_finished_at_shape(standing, 0), Ok(()));
+            assert_eq!(
+                validate_finished_at_shape(standing, 42),
+                Err(ObserverError::StandingFinishedAtShape {
+                    standing,
+                    finished_at: 42,
+                })
+            );
+        }
+        for standing in 2..=6 {
+            assert_eq!(validate_finished_at_shape(standing, 42), Ok(()));
+            assert_eq!(
+                validate_finished_at_shape(standing, 0),
+                Err(ObserverError::StandingFinishedAtShape {
+                    standing,
+                    finished_at: 0,
+                })
+            );
+        }
+    }
+
+    #[test]
     fn standing_retains_only_fields_needed_for_actions() {
         let root = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
         let mut wire = standing_wire(2, false, Some(digest(77)));
         wire.finalState = hash(88);
+        wire.finishedAt = 42;
 
         assert_eq!(
             decode_standing(root, None, wire).unwrap(),

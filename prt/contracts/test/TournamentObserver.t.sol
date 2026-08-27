@@ -266,7 +266,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: true,
                 candidate: candidate,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -284,7 +285,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: false,
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -303,7 +305,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: true,
                 candidate: candidate,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -323,7 +326,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: true,
                 candidate: first,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: Time.ZERO_INSTANT
             })
         );
 
@@ -336,7 +340,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: false,
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -357,7 +362,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: true,
                 candidate: candidate,
                 finalState: finalState,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: _instant(120)
             })
         );
 
@@ -370,7 +376,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: false,
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: _instant(120)
             })
         );
     }
@@ -423,7 +430,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: true,
                 candidate: candidate,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: _instant(125)
             })
         );
     }
@@ -444,7 +452,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: false,
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: Tree.ZERO_NODE
+                parentCommitment: Tree.ZERO_NODE,
+                finishedAt: _instant(125)
             })
         );
     }
@@ -877,7 +886,8 @@ contract TournamentObserverTest is Test {
                 hasCandidate: true,
                 candidate: candidate,
                 finalState: Machine.ZERO_STATE,
-                parentCommitment: parentCommitment
+                parentCommitment: parentCommitment,
+                finishedAt: _instant(125)
             })
         );
     }

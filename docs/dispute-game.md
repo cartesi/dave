@@ -444,6 +444,12 @@ duration, while `ELIMINABLE` covers both a no-winner child and an expired
 winner. Propagation requires `WINNER` and elimination requires `ELIMINABLE`,
 so the parent verbs partition exactly.
 
+The standing also reports `finishedAt`, the block-number instant when the
+tournament became safe to decide: the later of its closure deadline and its
+last match deletion. It is canonically zero for `MATCHES_ACTIVE` and
+`AWAITING_CLOSURE`, and remains fixed at the exact finish instant for every
+terminal standing.
+
 If no commitment remains, the tournament has finished without a winner. A root
 in that state settles nothing. A parent may eventually eliminate a no-winner
 child.

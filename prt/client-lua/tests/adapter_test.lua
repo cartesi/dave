@@ -37,6 +37,10 @@ end
 
 local function standing(tag, fields)
     fields = fields or {}
+    local finished_at = fields.finished_at
+    if finished_at == nil then
+        finished_at = tag <= 1 and 0 or 12
+    end
     return {
         standing = tag,
         accepts_joins = fields.accepts_joins or false,
@@ -44,6 +48,7 @@ local function standing(tag, fields)
         candidate = fields.candidate or Hash.zero,
         final_state = fields.final_state or Hash.zero,
         parent_commitment = fields.parent_commitment or Hash.zero,
+        finished_at = finished_at,
     }
 end
 
@@ -219,6 +224,7 @@ return {
                 hash_word(digest(2)),
                 hash_word(digest(3)),
                 hash_word(Hash.zero),
+                uint_word(42),
             }
         )
         Test.equal(standing_wire.standing, 2)
@@ -226,6 +232,7 @@ return {
         Test.equal(standing_wire.has_candidate, true)
         Test.truthy(Hash:is_of_type_hash(standing_wire.candidate))
         Test.equal(standing_wire.final_state, digest(3))
+        Test.equal(standing_wire.finished_at, 42)
 
         local timeout_wire = Adapter.decode_result(
             Adapter.View.TIMEOUT,
@@ -301,6 +308,36 @@ return {
                     hash_word(Hash.zero),
                     hash_word(Hash.zero),
                     hash_word(Hash.zero),
+                    uint_word(0),
+                }
+            )
+        end)
+
+        Test.error_like("expected 7", function()
+            Adapter.decode_result(
+                Adapter.View.STANDING,
+                encoded {
+                    uint_word(0),
+                    uint_word(0),
+                    uint_word(0),
+                    hash_word(Hash.zero),
+                    hash_word(Hash.zero),
+                    hash_word(Hash.zero),
+                }
+            )
+        end)
+
+        Test.error_like("exceeds uint64", function()
+            Adapter.decode_result(
+                Adapter.View.STANDING,
+                encoded {
+                    uint_word(0),
+                    uint_word(0),
+                    uint_word(0),
+                    hash_word(Hash.zero),
+                    hash_word(Hash.zero),
+                    hash_word(Hash.zero),
+                    string.rep("0", 47) .. "1" .. string.rep("0", 16),
                 }
             )
         end)
@@ -405,6 +442,55 @@ return {
             Test.truthy(call.head == observation_head,
                 "every point read must use the caller's exact head token")
         end
+    end),
+
+    Test.case("standing finish instant matches lifecycle state", function()
+        local root = address(1)
+        local responses = {
+            [root] = {
+                tournamentDescriptor = descriptor(),
+                tournamentStanding = standing(0, { finished_at = 1 }),
+            },
+        }
+        local transport = mock_transport(responses)
+        Test.error_like("standing 0 requires zero finishedAt", function()
+            Adapter.observe_fold(transport, Fold.new(root), head())
+        end)
+
+        responses[root].tournamentStanding = standing(3, {
+            finished_at = 0,
+        })
+        Test.error_like("standing 3 requires nonzero finishedAt", function()
+            Adapter.observe_fold(transport, Fold.new(root), head())
+        end)
+    end),
+
+    Test.case("legacy winner reader accepts the seven-field standing", function()
+        local candidate = digest(90)
+        local final_state = digest(91)
+        local reader = Reader:new("unused")
+        function reader._call(_reader, _address, signature, arguments)
+            Test.equal(
+                signature,
+                "tournamentStanding()"
+                    .. "((uint8,bool,bool,bytes32,bytes32,bytes32,uint64))"
+            )
+            Test.equal(#arguments, 0)
+            return {
+                string.format(
+                    "(2, false, true, %s, %s, %s, 42)",
+                    candidate:hex_string(),
+                    final_state:hex_string(),
+                    Hash.zero:hex_string()
+                ),
+            }
+        end
+
+        local winner = reader:root_tournament_winner(address(1))
+        Test.equal(winner.has_winner, true)
+        Test.equal(winner.commitment, candidate)
+        Test.equal(winner.final, final_state)
+        Test.equal(winner.finished_at, nil)
     end),
 
     Test.case("phase and tournament-kind cross-product constructs domain variants", function()
