@@ -547,8 +547,7 @@ impl Storage {
         );
 
         let computation_hash = self.settlement_root(&mut machine)?;
-        let (outputs_merkle_root, outputs_merkle_root_proof) =
-            machine.outputs_merkle_root_with_proof()?;
+        let (proof_root, machine_validity_proof) = machine.machine_validity_proof()?;
 
         machine.finish_epoch();
 
@@ -559,13 +558,17 @@ impl Storage {
             .store_boundary(&mut machine)
             .map_err(anyhow::Error::from)?;
 
+        assert_eq!(
+            state_hash, proof_root,
+            "stored post-epoch boundary differs from the machine validity proof root"
+        );
+
         // The post-epoch state the settlement protocol claims and
         // stages is exactly the new epoch's initial boundary.
         let settlement = Settlement {
             computation_hash,
             final_state: state_hash,
-            outputs_merkle_root,
-            outputs_merkle_root_proof,
+            machine_validity_proof,
         };
 
         let orphans = self.write(|tx| {
@@ -676,24 +679,41 @@ pub(super) fn insert_settlement_in(
     settlement: &Settlement,
     epoch_number: u64,
 ) -> Result<()> {
+    super::rollups_machine::validate_machine_validity_proof(
+        settlement.final_state,
+        &settlement.machine_validity_proof,
+    )
+    .unwrap_or_else(|error| {
+        panic!("refusing invalid settlement proof for epoch {epoch_number}: {error:#}")
+    });
+
     let mut stmt = tx
         .prepare_cached(
             r#"
             INSERT INTO settlement_info
-            (epoch_number, computation_hash, outputs_merkle_root, outputs_merkle_root_proof, final_state)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            (epoch_number, computation_hash, final_state,
+             iflags_y_data_block, iflags_y_siblings,
+             htif_tohost_data_block, htif_tohost_siblings,
+             tx_buffer_data_block, tx_buffer_siblings)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             ON CONFLICT (epoch_number) DO NOTHING
             "#,
         )
         .map_err(anyhow::Error::from)?;
 
+    let proof = &settlement.machine_validity_proof;
+
     let count = stmt
         .execute(params![
             u64_to_i64(epoch_number),
             settlement.computation_hash.data(),
-            &settlement.outputs_merkle_root,
-            &settlement.outputs_merkle_root_proof.flatten(),
             &settlement.final_state,
+            &proof.iflags_y_proof.data_block,
+            &proof.iflags_y_proof.siblings.flatten(),
+            &proof.htif_tohost_proof.data_block,
+            &proof.htif_tohost_proof.siblings.flatten(),
+            &proof.tx_buffer_proof.data_block,
+            &proof.tx_buffer_proof.siblings.flatten(),
         ])
         .map_err(anyhow::Error::from)?;
 
@@ -770,10 +790,11 @@ fn dir_size(path: &Path) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use super::super::queries::{setup_settlement_storage, test_settlement};
     use super::super::sql::test_helper::setup_storage;
     use super::*;
     use crate::merkle::MerkleBuilder;
-    use crate::storage::{Epoch, Proof};
+    use crate::storage::Epoch;
     use alloy::primitives::Address;
 
     /// A window's runs for tests: arbitrary interior, tail carrying
@@ -967,15 +988,10 @@ mod tests {
 
     #[test]
     fn settlement_absorbs_identical_refuses_drift() {
-        let (_handle, mut s) = setup_storage();
+        let (_handle, mut s) = setup_settlement_storage();
         assert!(s.settlement_info(42).unwrap().is_none());
 
-        let settlement = Settlement {
-            computation_hash: [0xAA; 32].into(),
-            final_state: [0xDD; 32],
-            outputs_merkle_root: [0xBB; 32],
-            outputs_merkle_root_proof: Proof::new(vec![[0; 32]]),
-        };
+        let settlement = test_settlement();
         s.write(|tx| insert_settlement_in(tx, &settlement, 42))
             .unwrap();
         assert_eq!(s.settlement_info(42).unwrap().unwrap(), settlement);
@@ -988,19 +1004,36 @@ mod tests {
     #[test]
     #[should_panic(expected = "nondeterminism or corruption")]
     fn settlement_drift_panics() {
-        let (_handle, mut s) = setup_storage();
-        let settlement = Settlement {
-            computation_hash: [0xAA; 32].into(),
-            final_state: [0xDD; 32],
-            outputs_merkle_root: [0xBB; 32],
-            outputs_merkle_root_proof: Proof::new(vec![[0; 32]]),
-        };
+        let (_handle, mut s) = setup_settlement_storage();
+        let settlement = test_settlement();
         s.write(|tx| insert_settlement_in(tx, &settlement, 42))
             .unwrap();
 
         let mut drifted = settlement.clone();
-        drifted.outputs_merkle_root = [0xCC; 32];
+        drifted.computation_hash = [0xCC; 32].into();
         let _ = s.write(|tx| insert_settlement_in(tx, &drifted, 42));
+    }
+
+    #[test]
+    fn invalid_settlement_proof_is_not_persisted() {
+        let (_handle, mut s) = setup_settlement_storage();
+        let mut settlement = test_settlement();
+        settlement
+            .machine_validity_proof
+            .htif_tohost_proof
+            .data_block[0] ^= 1;
+
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = s.write(|tx| insert_settlement_in(tx, &settlement, 42));
+        }))
+        .expect_err("invalid settlement proof must panic");
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("non-string panic");
+        assert!(message.contains("refusing invalid settlement proof"));
+        assert!(s.settlement_info(42).unwrap().is_none());
     }
 
     #[test]
@@ -1309,11 +1342,9 @@ mod tests {
         append_inputs(&mut s, 0, 3);
 
         let raw = rusqlite::Connection::open(crate::storage::open::db_path(s.state_dir())).unwrap();
-        raw.execute_batch(
-            "CREATE TRIGGER fail_batch_boundary BEFORE INSERT ON epoch_snapshot_info
-             WHEN NEW.epoch_number = 0 AND NEW.input_number = 3
-             BEGIN SELECT RAISE(ABORT, 'injected boundary failure'); END;",
-        )
+        raw.execute_batch(include_str!(
+            "sql/testdata/inject_batch_boundary_failure.sql"
+        ))
         .unwrap();
 
         let (batch, final_hash) = record_mutated_batch(&mut s, 3);
@@ -1343,8 +1374,10 @@ mod tests {
             "the failed commit must not leave window-root rows"
         );
 
-        raw.execute_batch("DROP TRIGGER fail_batch_boundary")
-            .unwrap();
+        raw.execute_batch(include_str!(
+            "sql/testdata/remove_batch_boundary_failure.sql"
+        ))
+        .unwrap();
 
         let (batch, replay_hash) = record_mutated_batch(&mut s, 3);
         assert_eq!(replay_hash, final_hash);

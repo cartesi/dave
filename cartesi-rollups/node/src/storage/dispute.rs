@@ -23,12 +23,12 @@ use alloy::{
 use rusqlite::{OptionalExtension, params};
 
 impl Storage {
-    /// The pinned engine configuration; the migration writes it once.
+    /// The pinned engine configuration; initialization writes it once.
     pub fn sling_config(&self) -> Result<crate::engine::EngineConfig> {
         crate::engine::config::stored(&self.connection)
             .map_err(StorageError::InnerError)?
             .ok_or_else(|| StorageError::DataNotFound {
-                description: "engine config row (the migration pins it)".into(),
+                description: "engine config row (initialization pins it)".into(),
             })
     }
 

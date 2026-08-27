@@ -50,24 +50,24 @@ logged log +cmd:
     exit $status
 
 # ------------------------------------------------------------------
-# Setup: one-time preparation. Idempotent; safe to re-run. Does NOT
-# clean anything (see the clean recipes for that).
+# Setup: preparation. Safe to re-run; rebuild recipes may replace their own
+# regenerable artifacts, but setup does not wipe runtime state.
 # ------------------------------------------------------------------
 
 update-submodules:
     git submodule update --recursive --init
 
-# Everything the Rust workspace needs to compile.
+# Everything the Rust workspace needs to compile and run its standard tests.
 setup:
     just machine::setup
     just prt-contracts::install-deps
     just rollups-contracts::install-deps
+    just programs::download-deps
+    just programs::build-programs
 
 # Setup plus everything the e2e tests need, running natively.
 setup-local: setup
     just rollups-contracts::build-devnet
-    just programs::download-deps
-    just programs::build-programs
     just programs::build-honeypot-snapshot  # requires docker
 
 # Setup the Docker build context without first building an unused host archive.
@@ -184,9 +184,12 @@ check-rust-workspace: bind
 
 # ensure-docker: the kms tests spin testcontainers, and a sleeping
 # Docker Desktop fails them with noise that reads like a code bug.
-# rust workspace unit tests (the kms tests spin docker testcontainers;
-# external machine-image and release-corpus gates stay explicit below)
+# rust workspace tests (the kms tests spin docker testcontainers; CI and
+# setup prepare the echo/yield images used by ordinary tests;
+# expensive machine differentials and the release corpus stay explicit below)
 test-rust-workspace: bind
+    ./script/machine-image-fingerprint.sh verify echo
+    ./script/machine-image-fingerprint.sh verify yield
     ./script/ensure-docker.sh
     cargo test
 

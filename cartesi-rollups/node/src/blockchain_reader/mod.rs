@@ -426,7 +426,7 @@ mod blockchain_reader_tests {
         .unwrap();
         machine.store(&machine_path).unwrap();
 
-        let acc = Storage::migrate(state_dir, &machine_path, 0, Address::ZERO).unwrap();
+        let acc = Storage::initialize(state_dir, &machine_path, 0, Address::ZERO).unwrap();
 
         (state_dir_, acc)
     }

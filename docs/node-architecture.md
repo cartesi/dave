@@ -23,13 +23,14 @@ runtime (`lib.rs run()`), each owning its own SQLite connection:
 - epoch-manager (async task): db + chain -> settle txs and dispute
   reactions
 
-Before opening or migrating the database, startup resolves the tournament
+Before opening or initializing the database, startup resolves the tournament
 factory from Dave consensus and reads its level-zero parameters plus its
 configured state transition. The binary refuses to start unless the deployed
 root stride equals the node's compiled window-root sampling stride, the root
 row spans the compiled 92-bit machine coordinate, and the concrete
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
-linked Cartesi Machine library. These checks all run before database migration,
+linked Cartesi Machine library. These checks all run before database
+initialization,
 so an incompatible deployment cannot create or alter local state. This is a
 deployment-compatibility assertion over trusted factory configuration, not
 runtime validation of every tournament row. Deeper geometry continues to come
@@ -105,12 +106,25 @@ Dispute positioning remains different: an intermediate boundary only shortens
 replay, so an unavailable one may fall back to an earlier verified boundary
 within the epoch.
 
-Main schema (`storage/sql/migrations.sql`):
+Schema initialization owns one create-only `storage/sql/schema.sql`; there are
+no migrations or ordered schema versions. On an empty database, startup applies
+that file once and atomically records the node package version plus the Keccak
+hash of the exact schema file. On later launches it executes no DDL: both stored
+values must match the running binary, or startup refuses the state directory
+before applying schema changes. The raw file fingerprint catches schema changes
+between builds that share a package version. It attests which schema created
+this node-owned cache; manual database mutation remains unsupported rather than
+continuously audited.
 
+Main schema (`storage/sql/schema.sql`):
+
+- `node_metadata(node_version, schema_fingerprint)` - immutable cache identity
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`
 - `inputs(epoch_number, input_index_in_epoch, input)`
 - `latest_processed(block)` - singleton; last finalized block ingested
-- `settlement_info(epoch_number, computation_hash, outputs_merkle_root, outputs_merkle_root_proof, final_state)`
+- `settlement_info(epoch_number, computation_hash, final_state, data block and
+  sibling blobs for iflags_Y, HTIF tohost, and the TX buffer)` - the TX data
+  block is the outputs Merkle root
 - `machine_state_snapshots(state_hash, file_path)` + `epoch_snapshot_info`
   (which (epoch, input) has which snapshot) + `template_machine` (pins the
   genesis snapshot)
@@ -124,10 +138,18 @@ Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
 monotonic watermark, prunable derived store - and the schema's
 trigger layer enforces the taxonomy against any writer, including raw
-connections (`sql/migrations.sql`, tested by `sql/discipline.rs`).
+connections (`sql/schema.sql`, tested by `sql/discipline.rs`).
 Snapshot directories are removed only AFTER the transaction that
 unreferenced their rows commits: a crash may orphan a directory,
 never dangle a row.
+
+The runner captures all three settlement leaves from one final machine root,
+checks their emulator proof metadata, Keccak openings, nonzero `iflags_Y`, and
+manual `RX_ACCEPTED` HTIF reason, and verifies that root again when publishing
+the next epoch's initial boundary. It intentionally does not interpret the
+HTIF response-length field. The boundary row and complete settlement row then
+commit in the same SQLite transaction. Reads revalidate every persisted proof
+against its final state so corruption fails before transaction staging.
 
 One schema note to know about:
 

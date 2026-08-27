@@ -36,46 +36,85 @@ use self::error::Result;
 use crate::merkle::Digest;
 use alloy::primitives::Address;
 use cartesi_machine::types::Hash;
+use std::fmt;
 
 pub type Blob = Vec<u8>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Proof(Vec<[u8; 32]>);
+pub const MACHINE_MEMORY_PROOF_SIBLING_COUNT: usize = 59;
+const MACHINE_MEMORY_PROOF_BYTES: usize = MACHINE_MEMORY_PROOF_SIBLING_COUNT * 32;
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct Proof([Hash; MACHINE_MEMORY_PROOF_SIBLING_COUNT]);
 
 impl Proof {
-    pub fn new(siblings: Vec<[u8; 32]>) -> Self {
-        Self(siblings)
+    pub fn new(siblings: Vec<Hash>) -> Result<Self> {
+        let actual = siblings.len();
+        let siblings = siblings.try_into().map_err(|_| {
+            anyhow::anyhow!(
+                "machine memory proof has {actual} siblings, expected {MACHINE_MEMORY_PROOF_SIBLING_COUNT}"
+            )
+        })?;
+        Ok(Self(siblings))
     }
 
-    pub fn inner(&self) -> Vec<[u8; 32]> {
-        self.0.clone()
+    pub fn inner(&self) -> &[Hash] {
+        &self.0
     }
 
-    fn from_flattened(input: Vec<u8>) -> Result<Self> {
-        if !input.len().is_multiple_of(32) {
+    pub(crate) fn from_flattened(input: Vec<u8>) -> Result<Self> {
+        if input.len() != MACHINE_MEMORY_PROOF_BYTES {
             return Err(anyhow::anyhow!(
-                "stored proof has {} bytes, expected a multiple of 32",
-                input.len()
+                "stored machine memory proof has {} bytes, expected {MACHINE_MEMORY_PROOF_BYTES}",
+                input.len(),
             )
             .into());
         }
 
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(MACHINE_MEMORY_PROOF_SIBLING_COUNT);
         for chunk in input.chunks(32) {
             let mut array = [0u8; 32];
             array.copy_from_slice(chunk);
             result.push(array);
         }
 
-        Ok(Proof(result))
+        Self::new(result)
     }
 
-    fn flatten(&self) -> Vec<u8> {
+    pub(crate) fn flatten(&self) -> Vec<u8> {
         self.0
             .iter()
             .flat_map(|array| array.iter())
             .copied()
             .collect()
+    }
+}
+
+impl fmt::Debug for Proof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Proof")
+            .field("sibling_count", &self.0.len())
+            .field("first", &self.0.first())
+            .field("last", &self.0.last())
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafProof {
+    pub data_block: Hash,
+    pub siblings: Proof,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MachineValidityProof {
+    pub iflags_y_proof: LeafProof,
+    pub htif_tohost_proof: LeafProof,
+    pub tx_buffer_proof: LeafProof,
+}
+
+impl MachineValidityProof {
+    pub fn outputs_merkle_root(&self) -> Hash {
+        self.tx_buffer_proof.data_block
     }
 }
 
@@ -85,8 +124,13 @@ pub struct Settlement {
     /// The post-epoch machine state hash: the new epoch's initial
     /// boundary, claimed by sentries and staged on-chain.
     pub final_state: Hash,
-    pub outputs_merkle_root: Hash,
-    pub outputs_merkle_root_proof: Proof,
+    pub machine_validity_proof: MachineValidityProof,
+}
+
+impl Settlement {
+    pub fn outputs_merkle_root(&self) -> Hash {
+        self.machine_validity_proof.outputs_merkle_root()
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -335,15 +379,9 @@ mod tests {
             "computation_hash shouldn't exist"
         );
 
-        let (final_state, outputs_merkle_root, outputs_merkle_root_proof) = {
+        let (final_state, machine_validity_proof) = {
             let mut machine = access.latest_snapshot()?;
-            let (outputs_merkle_root, outputs_merkle_root_proof) =
-                machine.outputs_merkle_root_with_proof()?;
-            (
-                machine.state_hash()?,
-                outputs_merkle_root,
-                outputs_merkle_root_proof,
-            )
+            machine.machine_validity_proof()?
         };
         access.roll_epoch()?;
         assert_eq!(access.latest_snapshot()?.epoch(), 1);
@@ -362,8 +400,7 @@ mod tests {
             Settlement {
                 computation_hash: expected_root,
                 final_state,
-                outputs_merkle_root,
-                outputs_merkle_root_proof
+                machine_validity_proof
             },
             "settlement info of epoch 0 should match"
         );

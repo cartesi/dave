@@ -13,7 +13,10 @@ use std::{sync::Arc, time::Duration};
 
 use crate::chain::Chain;
 use crate::provider::{LaneRequest, TransactionLane};
-use crate::storage::{Epoch, Proof, Storage};
+use crate::storage::{
+    Epoch, LeafProof as StoredLeafProof, MachineValidityProof as StoredMachineValidityProof,
+    Storage,
+};
 use crate::sync::ShutdownSignal;
 use crate::{
     hero::{Hero, HeroTick, TournamentResult},
@@ -320,8 +323,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 let request = dave_consensus
                     .stageTournamentResult(
                         can_stage.epochNumber,
-                        vec_u8_to_bytes_32(settlement.outputs_merkle_root.into()),
-                        to_bytes_32_vec(settlement.outputs_merkle_root_proof),
+                        to_machine_validity_proof(settlement.machine_validity_proof),
                     )
                     .gas(gas_limit())
                     .into_transaction_request();
@@ -362,7 +364,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     "Staged final state mismatch, notify all users!"
                 );
                 assert_eq!(
-                    vec_u8_to_bytes_32(settlement.outputs_merkle_root.into()),
+                    vec_u8_to_bytes_32(settlement.outputs_merkle_root().into()),
                     can_accept.stagedPostEpochOutputsMerkleRoot,
                     "Staged outputs Merkle root mismatch, notify all users!"
                 );
@@ -506,8 +508,21 @@ impl<AS: ArenaSender> EpochManager<AS> {
     }
 }
 
-fn to_bytes_32_vec(proof: Proof) -> Vec<B256> {
-    proof.inner().iter().map(B256::from).collect()
+fn to_leaf_proof(proof: StoredLeafProof) -> DaveConsensus::LeafProof {
+    DaveConsensus::LeafProof {
+        dataBlock: B256::from(proof.data_block),
+        siblings: proof.siblings.inner().iter().map(B256::from).collect(),
+    }
+}
+
+fn to_machine_validity_proof(
+    proof: StoredMachineValidityProof,
+) -> DaveConsensus::MachineValidityProof {
+    DaveConsensus::MachineValidityProof {
+        iflagsYProof: to_leaf_proof(proof.iflags_y_proof),
+        htifTohostProof: to_leaf_proof(proof.htif_tohost_proof),
+        txBufferProof: to_leaf_proof(proof.tx_buffer_proof),
+    }
 }
 
 fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
@@ -521,7 +536,61 @@ fn finalized_epoch_matches_latest(finalized: Option<u64>, latest: U256) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::{
+        LeafProof, MACHINE_MEMORY_PROOF_SIBLING_COUNT, MachineValidityProof, Proof,
+    };
     use alloy::rpc::types::TransactionRequest;
+    use alloy::sol_types::SolCall;
+
+    fn proof_leaf(data_byte: u8, sibling_byte: u8) -> LeafProof {
+        LeafProof {
+            data_block: [data_byte; 32],
+            siblings: Proof::new(vec![[sibling_byte; 32]; MACHINE_MEMORY_PROOF_SIBLING_COUNT])
+                .unwrap(),
+        }
+    }
+
+    #[test]
+    fn stage_tournament_result_encodes_machine_validity_proof() {
+        let proof = MachineValidityProof {
+            iflags_y_proof: proof_leaf(0x11, 0xA1),
+            htif_tohost_proof: proof_leaf(0x22, 0xA2),
+            tx_buffer_proof: proof_leaf(0x33, 0xA3),
+        };
+        let call = DaveConsensus::stageTournamentResultCall {
+            epochNumber: U256::from(7),
+            proof: to_machine_validity_proof(proof),
+        };
+
+        let encoded = call.abi_encode();
+        let decoded = DaveConsensus::stageTournamentResultCall::abi_decode(&encoded).unwrap();
+
+        assert_eq!(decoded.epochNumber, U256::from(7));
+        assert_eq!(
+            decoded.proof.iflagsYProof.dataBlock,
+            B256::repeat_byte(0x11)
+        );
+        assert_eq!(
+            decoded.proof.htifTohostProof.dataBlock,
+            B256::repeat_byte(0x22)
+        );
+        assert_eq!(
+            decoded.proof.txBufferProof.dataBlock,
+            B256::repeat_byte(0x33)
+        );
+        assert_eq!(
+            decoded.proof.iflagsYProof.siblings,
+            vec![B256::repeat_byte(0xA1); MACHINE_MEMORY_PROOF_SIBLING_COUNT]
+        );
+        assert_eq!(
+            decoded.proof.htifTohostProof.siblings,
+            vec![B256::repeat_byte(0xA2); MACHINE_MEMORY_PROOF_SIBLING_COUNT]
+        );
+        assert_eq!(
+            decoded.proof.txBufferProof.siblings,
+            vec![B256::repeat_byte(0xA3); MACHINE_MEMORY_PROOF_SIBLING_COUNT]
+        );
+    }
 
     fn tick_wave(labels: &[&str]) -> Vec<LaneRequest> {
         labels

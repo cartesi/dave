@@ -81,7 +81,9 @@ Three worker threads share one SQLite database (see
   the batch's current pre-input checkpoint. The batch publishes only its final
   machine boundary and commits it together with all window roots. Rolling
   stores the settlement info (computation hash, post-epoch machine state hash,
-  output merkle, output proof) and the next epoch's initial snapshot.
+  and the three machine leaf proofs for `iflags_Y`, HTIF tohost, and the first
+  TX-buffer block) together with the next epoch's initial snapshot. The TX
+  block itself is the outputs Merkle root.
 - epoch-manager (`cartesi-rollups/node/src/epoch_manager`): each iteration
   runs the dispute tick first - for the last sealed epoch, instantiate a
   `Hero` with the epoch's inputs, leaves, and snapshot, and let it react

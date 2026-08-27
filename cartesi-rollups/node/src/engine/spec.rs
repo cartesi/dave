@@ -185,8 +185,8 @@ pub(crate) fn toy_storage(structure: Structure) -> Storage {
         emulator_version: "toy".into(),
     };
     let dir = tempfile::tempdir().unwrap().keep();
-    let mut connection = Connection::open(dir.join("db.sqlite3")).unwrap();
-    crate::storage::sql::migrations::migrate_to_latest(&mut connection).unwrap();
+    let connection = Connection::open(dir.join("db.sqlite3")).unwrap();
+    crate::storage::sql::schema::initialize(&connection).unwrap();
     super::config::pin(&connection, &config).unwrap();
     Storage::new(&dir).unwrap()
 }

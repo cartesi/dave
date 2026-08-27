@@ -184,7 +184,7 @@ impl<F: RulerFactory> DisputeSource<F> {
         // window's root stores its fanout there - and counting those
         // once bricked reconstruction after the hero's own join. A
         // store the runner never processed (the engine harnesses; a
-        // freshly migrated node) has an empty prefix and the machine
+        // freshly initialized node) has an empty prefix and the machine
         // serves everything - the pre-frontier full-replay behavior.
         // A nonzero prefix must match the closed epoch's input count
         // exactly; anything else is corruption. The padding value is

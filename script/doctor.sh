@@ -57,6 +57,7 @@ run_component() {
 check_toolchain() {
 echo "toolchain (nix users: 'direnv allow' provides all of these)"
 for tool in git cargo forge lua5.4 luacheck jq sqlite3 \
+    cartesi-machine cartesi-machine-stored-hash \
     wget curl realpath sha256sum sort; do
   if command -v "$tool" > /dev/null; then ok "$tool"; else
     miss "$tool not on PATH" "install it (see README.md requirements)"; fi
@@ -117,12 +118,13 @@ if command -v xgenext2fs > /dev/null; then ok "xgenext2fs"; else
 }
 
 check_rust_build_inputs() {
-echo "rust build inputs"
+echo "rust build and standard-test inputs"
 run_component "machine" machine ./script/doctor.sh
 run_component "prt-contracts" prt/contracts \
   "$repo_root/script/contracts-doctor.sh" prt
 run_component "rollups-contracts" cartesi-rollups/contracts \
   "$repo_root/script/contracts-doctor.sh" rollups
+run_component "programs" test/programs ./script/doctor.sh standard
 }
 
 check_e2e_test_inputs() {
