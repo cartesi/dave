@@ -271,7 +271,8 @@ contract TournamentObserverTest is Test {
                 candidate: candidate,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: Time.ZERO_INSTANT
+                finishedAt: Time.ZERO_INSTANT,
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -290,7 +291,8 @@ contract TournamentObserverTest is Test {
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: Time.ZERO_INSTANT
+                finishedAt: Time.ZERO_INSTANT,
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -310,7 +312,8 @@ contract TournamentObserverTest is Test {
                 candidate: candidate,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: Time.ZERO_INSTANT
+                finishedAt: Time.ZERO_INSTANT,
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -331,7 +334,8 @@ contract TournamentObserverTest is Test {
                 candidate: first,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: Time.ZERO_INSTANT
+                finishedAt: Time.ZERO_INSTANT,
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
 
@@ -345,7 +349,8 @@ contract TournamentObserverTest is Test {
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: Time.ZERO_INSTANT
+                finishedAt: Time.ZERO_INSTANT,
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -367,7 +372,8 @@ contract TournamentObserverTest is Test {
                 candidate: candidate,
                 finalState: finalState,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: _instant(120)
+                finishedAt: _instant(120),
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
 
@@ -381,7 +387,8 @@ contract TournamentObserverTest is Test {
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: _instant(120)
+                finishedAt: _instant(120),
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -423,8 +430,17 @@ contract TournamentObserverTest is Test {
         tournament.storeTopology(candidate, 0, _instant(125));
         tournament.storeFinalState(candidate, nested.contestedFinalStateOne);
         tournament.storeClock(candidate, _pausedClock(10));
-        vm.roll(135);
 
+        // One block before the reported expiry the winner still stands.
+        vm.roll(134);
+        _assertInnerWinner(
+            tournament,
+            candidate,
+            nested.contestedFinalStateOne,
+            nested.contestedCommitmentOne
+        );
+
+        vm.roll(135);
         _assertStanding(
             tournament,
             ITournament.TournamentStandingView({
@@ -435,7 +451,8 @@ contract TournamentObserverTest is Test {
                 candidate: candidate,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: _instant(125)
+                finishedAt: _instant(125),
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -457,7 +474,8 @@ contract TournamentObserverTest is Test {
                 candidate: Tree.ZERO_NODE,
                 finalState: Machine.ZERO_STATE,
                 parentCommitment: Tree.ZERO_NODE,
-                finishedAt: _instant(125)
+                finishedAt: _instant(125),
+                winnerExpiresAt: Time.ZERO_INSTANT
             })
         );
     }
@@ -931,7 +949,8 @@ contract TournamentObserverTest is Test {
                 candidate: candidate,
                 finalState: finalState,
                 parentCommitment: parentCommitment,
-                finishedAt: _instant(125)
+                finishedAt: _instant(125),
+                winnerExpiresAt: _instant(135)
             })
         );
     }

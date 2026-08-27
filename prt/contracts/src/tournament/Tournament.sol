@@ -963,6 +963,8 @@ contract Tournament is ITournament {
             standing.finalState = finalState;
             standing.parentCommitment =
                 _parentCommitment(args.nestedDispute, finalState);
+            standing.winnerExpiresAt =
+                resultAt.add(clocks[candidate].pausedAllowance());
         }
     }
 

@@ -165,6 +165,10 @@ local function standing(tag, fields)
     if finished_at == nil then
         finished_at = tag <= 1 and 0 or 12
     end
+    local winner_expires_at = fields.winner_expires_at
+    if winner_expires_at == nil then
+        winner_expires_at = tag == 4 and 20 or 0
+    end
     return {
         standing = tag,
         accepts_joins = fields.accepts_joins or false,
@@ -173,6 +177,7 @@ local function standing(tag, fields)
         final_state = fields.final_state or Hash.zero,
         parent_commitment = fields.parent_commitment or Hash.zero,
         finished_at = finished_at,
+        winner_expires_at = winner_expires_at,
     }
 end
 

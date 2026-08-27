@@ -172,6 +172,7 @@ interface ITournament {
         Machine.Hash finalState;
         Tree.Node parentCommitment;
         Time.Instant finishedAt;
+        Time.Instant winnerExpiresAt;
     }
 
     /// @notice A commitment's raw join record and clock snapshot.
@@ -763,7 +764,10 @@ interface ITournament {
     /// claimed final state, and `parentCommitment` only for
     /// `INNER_WINNER`. `finishedAt` is canonically zero while unfinished and
     /// otherwise reports the exact block-number instant the tournament became
-    /// safe to decide.
+    /// safe to decide. `winnerExpiresAt` is populated only for `INNER_WINNER`:
+    /// the first inclusive instant at which the winner becomes eliminable,
+    /// when the standing degrades to `INNER_ELIMINABLE_WINNER_EXPIRED`. It is
+    /// fixed once the tournament finishes.
     function tournamentStanding()
         external
         view

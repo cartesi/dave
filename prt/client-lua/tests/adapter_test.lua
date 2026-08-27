@@ -43,6 +43,10 @@ local function standing(tag, fields)
     if finished_at == nil then
         finished_at = tag <= 1 and 0 or 12
     end
+    local winner_expires_at = fields.winner_expires_at
+    if winner_expires_at == nil then
+        winner_expires_at = tag == 4 and 20 or 0
+    end
     return {
         standing = tag,
         accepts_joins = fields.accepts_joins or false,
@@ -51,6 +55,7 @@ local function standing(tag, fields)
         final_state = fields.final_state or Hash.zero,
         parent_commitment = fields.parent_commitment or Hash.zero,
         finished_at = finished_at,
+        winner_expires_at = winner_expires_at,
     }
 end
 
@@ -228,6 +233,7 @@ return {
                 hash_word(digest(3)),
                 hash_word(Hash.zero),
                 uint_word(42),
+                uint_word(0),
             }
         )
         Test.equal(standing_wire.standing, 2)
@@ -236,6 +242,7 @@ return {
         Test.truthy(Hash:is_of_type_hash(standing_wire.candidate))
         Test.equal(standing_wire.final_state, digest(3))
         Test.equal(standing_wire.finished_at, 42)
+        Test.equal(standing_wire.winner_expires_at, 0)
 
         Test.equal(Adapter.View.COMMITMENT.name, "commitmentStanding")
         Test.equal(
@@ -335,11 +342,12 @@ return {
                     hash_word(Hash.zero),
                     hash_word(Hash.zero),
                     uint_word(0),
+                    uint_word(0),
                 }
             )
         end)
 
-        Test.error_like("expected 7", function()
+        Test.error_like("expected 8", function()
             Adapter.decode_result(
                 Adapter.View.STANDING,
                 encoded {
@@ -364,6 +372,7 @@ return {
                     hash_word(Hash.zero),
                     hash_word(Hash.zero),
                     string.rep("0", 47) .. "1" .. string.rep("0", 16),
+                    uint_word(0),
                 }
             )
         end)
@@ -493,7 +502,7 @@ return {
         end)
     end),
 
-    Test.case("legacy winner reader accepts the seven-field standing", function()
+    Test.case("legacy winner reader accepts the eight-field standing", function()
         local candidate = digest(90)
         local final_state = digest(91)
         local reader = Reader:new("unused")
@@ -501,12 +510,12 @@ return {
             Test.equal(
                 signature,
                 "tournamentStanding()"
-                    .. "((uint8,bool,bool,bytes32,bytes32,bytes32,uint64))"
+                    .. "((uint8,bool,bool,bytes32,bytes32,bytes32,uint64,uint64))"
             )
             Test.equal(#arguments, 0)
             return {
                 string.format(
-                    "(2, false, true, %s, %s, %s, 42)",
+                    "(2, false, true, %s, %s, %s, 42, 0)",
                     candidate:hex_string(),
                     final_state:hex_string(),
                     Hash.zero:hex_string()
@@ -823,6 +832,51 @@ return {
             }),
         }
         Test.error_like("final state disagrees", function()
+            Adapter.observe_fold(
+                mock_transport(responses),
+                fold,
+                head()
+            )
+        end)
+    end),
+
+    Test.case("inner-winner standing requires a nonzero winner expiry", function()
+        local root = address(1)
+        local child = address(2)
+        local fold, _, one = live_fold(root, child)
+        local child_candidate = digest(80)
+        fold:apply(Fold.event(
+            child,
+            7,
+            Fold.Event.commitment_joined(child_candidate, digest(99))
+        ))
+        local parent_projection = sealed(3, {
+            final_state_one = digest(99),
+            final_state_two = digest(82),
+        })
+        local responses = live_responses(
+            root,
+            descriptor { kind = 1 },
+            3,
+            parent_projection
+        )
+        responses[child] = {
+            tournamentDescriptor = descriptor {
+                initial_hash = parent_projection.agree_state,
+                base_cycle = parent_projection.divergence_cycle,
+                height = 2,
+                level = 1,
+                kind = 0,
+            },
+            tournamentStanding = standing(4, {
+                has_candidate = true,
+                candidate = child_candidate,
+                final_state = digest(99),
+                parent_commitment = one,
+                winner_expires_at = 0,
+            }),
+        }
+        Test.error_like("requires nonzero winnerExpiresAt", function()
             Adapter.observe_fold(
                 mock_transport(responses),
                 fold,
