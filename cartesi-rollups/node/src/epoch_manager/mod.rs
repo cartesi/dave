@@ -296,10 +296,18 @@ impl<AS: ArenaSender> EpochManager<AS> {
             .call()
             .await?;
 
-        assert!(
-            !can_stage.isTournamentFailed,
-            "Tournament finished without a winner, notify all users!"
-        );
+        // A failed root is a documented terminal state, not a local
+        // contradiction: the ticked Hero path already logs and idles on
+        // FailedNoWinner, and this path also runs with no Hero (Absent),
+        // where crashing would loop on restart. stageTournamentResult's
+        // TournamentFailedNoWinner revert remains the write-side guard.
+        if can_stage.isTournamentFailed {
+            log::error!(
+                "dispute tournament for epoch {} finished without a winner; settlement is impossible, notify all users!",
+                can_stage.epochNumber
+            );
+            return Ok(None);
+        }
 
         if !can_stage.isFinished || can_stage.isTournamentResultStaged {
             trace!("tournament result not ready to be staged");
