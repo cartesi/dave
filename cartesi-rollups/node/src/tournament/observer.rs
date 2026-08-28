@@ -374,7 +374,7 @@ fn decode_standing(
     let candidate =
         decode_candidate_shape(standing_discriminant, wire.hasCandidate, wire.candidate)?;
     validate_finished_at_shape(standing_discriminant, wire.finishedAt)?;
-    validate_winner_expires_at_shape(standing_discriminant, wire.winnerExpiresAt)?;
+    validate_winner_expires_at_shape(standing_discriminant, wire.finishedAt, wire.winnerExpiresAt)?;
 
     let standing = match standing_discriminant {
         0 => {
@@ -712,9 +712,15 @@ fn validate_finished_at_shape(standing: u8, finished_at: u64) -> ObserverResult<
     }
 }
 
-fn validate_winner_expires_at_shape(standing: u8, winner_expires_at: u64) -> ObserverResult<()> {
+fn validate_winner_expires_at_shape(
+    standing: u8,
+    finished_at: u64,
+    winner_expires_at: u64,
+) -> ObserverResult<()> {
+    // The winner clock's allowance is positive, so a canonical expiry
+    // strictly follows the finish instant.
     let valid = match standing {
-        4 => winner_expires_at != 0,
+        4 => winner_expires_at != 0 && winner_expires_at > finished_at,
         0..=3 | 5 | 6 => winner_expires_at == 0,
         other => return Err(ObserverError::UnknownTournamentStanding(other)),
     };
@@ -986,23 +992,26 @@ mod tests {
     #[test]
     fn standing_winner_expires_at_shape_matches_inner_winner() {
         for standing in [0, 1, 2, 3, 5, 6] {
-            assert_eq!(validate_winner_expires_at_shape(standing, 0), Ok(()));
+            assert_eq!(validate_winner_expires_at_shape(standing, 12, 0), Ok(()));
             assert_eq!(
-                validate_winner_expires_at_shape(standing, 42),
+                validate_winner_expires_at_shape(standing, 12, 42),
                 Err(ObserverError::StandingWinnerExpiresAtShape {
                     standing,
                     winner_expires_at: 42,
                 })
             );
         }
-        assert_eq!(validate_winner_expires_at_shape(4, 42), Ok(()));
-        assert_eq!(
-            validate_winner_expires_at_shape(4, 0),
-            Err(ObserverError::StandingWinnerExpiresAtShape {
-                standing: 4,
-                winner_expires_at: 0,
-            })
-        );
+        assert_eq!(validate_winner_expires_at_shape(4, 12, 42), Ok(()));
+        for winner_expires_at in [0, 11, 12] {
+            assert_eq!(
+                validate_winner_expires_at_shape(4, 12, winner_expires_at),
+                Err(ObserverError::StandingWinnerExpiresAtShape {
+                    standing: 4,
+                    winner_expires_at,
+                }),
+                "expiry must strictly follow the finish instant"
+            );
+        }
     }
 
     #[test]
