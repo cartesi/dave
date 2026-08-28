@@ -6,13 +6,15 @@ predated the machine-yield check (53c4c424) and the alpha-9
 rollups-contracts bump (98f355f7), which together made the maximum-input
 leaf-proof path cheaper. The reproducible leaf gate's dependency-digest pin
 had also not been updated for alpha 9 and rejected every correctly restored
-checkout; it was re-pinned first (f3f49968) from a pristine `soldeer.lock`
+checkout; it was re-pinned first (6e49aac1) from a pristine `soldeer.lock`
 restore reproduced by wipe-and-reinstall.
 
 ## Environment
 
-- Accepted candidate: `021b5ae929f9bb7a23ede383d02afe53bd827c0e`, clean
-  worktree, `just measure-prt-gas` exit 0.
+- Accepted candidate: `37292672` (`fix!(prt): recalibrate WIN_LEAF_MATCH`),
+  clean worktree, `just measure-prt-gas` exit 0. The acceptance run executed
+  on this commit's exact tree under its pre-autosquash hash and was
+  independently reproduced at the PR head by external review.
 - Forge: official release `1.5.1-v1.5.1` (commit b0a9dd9c, maxperf), now
   provided by the development flake as the official release binaries; the
   previous nixpkgs source build reported `1.5.1-dev` and is rejected by the
@@ -67,11 +69,15 @@ family's recommendation stayed at or below its configured allocation
 
 ## Network admission headroom
 
-Largest retained whole-transaction diagnostic: 3,560,586 units (maximum
-input two wins), down from the 2026-07-23 record's 5,359,940. Against
-Ethereum Mainnet's EIP-7825 transaction cap of 16,777,216 units this is
-21.2%; against the observed 60,000,000 block gas limit, 5.9%. Dated
-evidence, not a permanent constant.
+Largest retained whole-transaction diagnostic: 5,078,866 units, the maximum
+input two wins Prague transaction estimate (intrinsic 21,000 plus calldata
+token pricing on top of the 3,560,586-unit complete call), down from the
+2026-07-23 record's 5,359,940. Against Ethereum Mainnet's EIP-7825
+transaction cap of 16,777,216 units this is 30.27%, leaving 11,698,350
+units of per-transaction space; against the observed 60,000,000 block gas
+limit, 8.46%, leaving 54,921,134 units. Calldata intrinsics sit outside the
+refundable seam, so this section compares network admission only, not the
+allocation. Dated evidence, not a permanent constant.
 
 ## Validation
 

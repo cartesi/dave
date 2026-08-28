@@ -442,7 +442,10 @@ carries the candidate and its final state, and `ROOT_FAILED` marks a finished
 root without a winner. Observers of an inner tournament read `INNER_WINNER`
 from the same view, which carries the winning candidate, its claimed final
 state, the mapped parent commitment, and the first inclusive instant at which
-the winner becomes eliminable, fixed once the tournament finishes. Parents read one typed `innerResult()` from their
+the winner becomes eliminable. That instant is reported only while the winner
+stands; once expired the field returns to canonical zero, and the instant
+remains recomputable as the finish instant plus the winner's frozen clock
+allowance. Parents read one typed `innerResult()` from their
 recorded child instead: `WINNER` maps the inner winner back to a contested
 parent commitment and carries its remaining carryover allowance as a typed
 duration, while `ELIMINABLE` covers both a no-winner child and an expired

@@ -1324,10 +1324,11 @@ contract Tournament is ITournament, ERC165 {
         return newInnerTournamentCount;
     }
 
-    /// @notice ERC-165 advertisement of this deployment generation's exact
-    /// tournament interface.
-    /// @dev Any `ITournament` change flips the id, so the answer doubles as
-    /// an exact-generation gate for consumers.
+    /// @notice ERC-165 advertisement of this deployment generation's
+    /// tournament function surface.
+    /// @dev The id covers declared function signatures only; return shapes,
+    /// struct layouts, and events are outside it. See the `ITournament`
+    /// docstring for the resulting gating semantics.
     function supportsInterface(bytes4 interfaceId)
         public
         view

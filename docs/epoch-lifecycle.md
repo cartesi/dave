@@ -63,9 +63,11 @@ acceptance move no value, and nothing on the consensus path calls
 must not depend on the tournament payment path, and no recipient code
 runs inside a settlement transaction. Its cost is an obligation: every
 node implementation owns driving bond recovery for each retired
-tournament as a permanent background duty, or one bond per epoch stays
+tournament as a permanent background duty, or every retired
+tournament's balance - the root's and each inner tournament's - stays
 locked with no error reported anywhere. The reference driver walks
-unretired sealed epochs; see the node data flow below.
+unretired sealed epochs and their inner descendants; see the node data
+flow below.
 
 ## Node data flow
 
