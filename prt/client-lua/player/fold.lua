@@ -114,7 +114,8 @@ local function copy_match(match)
         advances = match.advances,
         last_other_parent = match.last_other_parent,
         last_left_node = match.last_left_node,
-        last_segment_start_position = match.last_segment_start_position,
+        last_segment_start_position =
+            bint(match.last_segment_start_position),
         inner_tournament = match.inner_tournament,
         deleted = deleted,
     }
@@ -400,7 +401,8 @@ function Fold:apply(event)
         match.advances = match.advances + 1
         match.last_other_parent = kind.other_parent
         match.last_left_node = kind.left_node
-        match.last_segment_start_position = kind.segment_start_position
+        -- Clone: bint values are mutable, and the caller retains the event.
+        match.last_segment_start_position = bint(kind.segment_start_position)
         match.eliminable_at = uint64(
             kind.eliminable_at,
             "match elimination block"
