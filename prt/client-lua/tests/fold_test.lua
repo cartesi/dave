@@ -1,5 +1,6 @@
 local Fold = require "player.fold"
 local Test = require "tests.testlib"
+local bint = require "utils.bint" (256)
 
 local E = Fold.Event
 
@@ -90,6 +91,29 @@ return {
         Test.equal(fold:candidate("root"), "a")
         Test.equal(fold:candidate("child"), "c")
         Test.equal(#fold:live_matches("root"), 0)
+    end),
+
+    Test.case("fold clones the mutable position breadcrumb", function()
+        local fold = matched_fold()
+        local position = bint(7)
+        fold:apply(event(
+            "root",
+            4,
+            E.match_advanced("a:b", "other", "left", position, 40)
+        ))
+
+        -- Mutating the retained event value must not reach the fold.
+        position[1] = 99
+        local read = fold:match_by_id_hash("root", "a:b")
+        Test.truthy(bint.eq(read.last_segment_start_position, 7),
+            "ingestion must clone the event's position")
+
+        -- Mutating an accessor result must not reach the fold either.
+        read.last_segment_start_position[1] = 42
+        Test.truthy(bint.eq(
+            fold:match_by_id_hash("root", "a:b").last_segment_start_position,
+            7
+        ), "copies must not alias fold storage")
     end),
 
     Test.case("fold rejects malformed event streams", function()
