@@ -14,8 +14,11 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// @notice Tournament interface
 /// @dev Deployed Tournament implementations advertise
 /// `type(ITournament).interfaceId` through ERC-165 `supportsInterface`.
-/// Any interface change flips the id, so the answer doubles as an
-/// exact-generation gate for consumers.
+/// The id fingerprints only the declared function signatures (names and
+/// parameter types): return shapes, struct layouts, and events are outside
+/// it, so a changed id proves a new generation but an unchanged id does not
+/// prove compatibility. Pinning bindings to release artifacts remains the
+/// guard for the rest of the wire contract.
 interface ITournament {
     //
     // Types
@@ -774,8 +777,10 @@ interface ITournament {
     /// otherwise reports the exact block-number instant the tournament became
     /// safe to decide. `winnerExpiresAt` is populated only for `INNER_WINNER`:
     /// the first inclusive instant at which the winner becomes eliminable,
-    /// when the standing degrades to `INNER_ELIMINABLE_WINNER_EXPIRED`. It is
-    /// fixed once the tournament finishes.
+    /// when the standing degrades to `INNER_ELIMINABLE_WINNER_EXPIRED`. Its
+    /// value is stable while the `INNER_WINNER` standing lasts and returns to
+    /// canonical zero once it expires; the instant remains recomputable as
+    /// `finishedAt` plus the winner's frozen `clockAllowance`.
     function tournamentStanding()
         external
         view

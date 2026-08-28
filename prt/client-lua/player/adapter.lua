@@ -143,6 +143,11 @@ local function word_uint(word)
     return "0x" .. word
 end
 
+-- Deliberate envelope: a value whose Lua-integer representation would be
+-- negative (at or above 2^63 for 64-bit fields) is rejected loudly rather
+-- than decoded. Real block instants and configured durations sit orders of
+-- magnitude below; the semantic event decoder keeps the full range via bint
+-- where history demands it.
 local function word_small(word, bits, name)
     local prefix = word:sub(1, 64 - bits // 4)
     assert(prefix:match("^0*$"), name .. " exceeds uint" .. tostring(bits))
