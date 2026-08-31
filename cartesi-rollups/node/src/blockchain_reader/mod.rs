@@ -16,8 +16,8 @@ use std::{fmt, iter::Peekable, time::Duration};
 use crate::storage::{Epoch, Input, InputId, Storage};
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
 use cartesi_rollups_contracts::{
-    application::Application,
-    input_box::InputBox::{self, InputAdded},
+    i_application::IApplication,
+    i_input_box::IInputBox::{self, InputAdded},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -60,7 +60,7 @@ impl fmt::Display for AddressBook {
 impl AddressBook {
     // fetch other addresses from application
     pub async fn new(app: Address, provider: &impl Provider) -> Self {
-        let application_contract = Application::new(app, provider);
+        let application_contract = IApplication::new(app, provider);
 
         let consensus = application_contract
             .getOutputsMerkleRootValidator()
@@ -88,7 +88,7 @@ impl AddressBook {
 
         let initial_hash = Self::initial_hash(consensus, provider).await;
 
-        let input_box_contract = InputBox::new(input_box, provider);
+        let input_box_contract = IInputBox::new(input_box, provider);
 
         let input_box_created_block: u64 = input_box_contract
             .getDeploymentBlockNumber()
@@ -386,7 +386,7 @@ mod blockchain_reader_tests {
         },
     };
     use cartesi_rollups_contracts::{
-        input_box::InputBox::{self, InputAdded},
+        i_input_box::IInputBox::{self, InputAdded},
         inputs::Inputs::EvmAdvanceCall,
     };
 
@@ -432,7 +432,7 @@ mod blockchain_reader_tests {
     }
 
     async fn add_input(
-        inputbox: &InputBox::InputBoxInstance<impl Provider, Ethereum>,
+        inputbox: &IInputBox::IInputBoxInstance<impl Provider, Ethereum>,
         application_address: Address,
         input_payload: &'static str,
         count: usize,
@@ -528,7 +528,7 @@ mod blockchain_reader_tests {
     #[tokio::test]
     async fn test_input_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
-        let inputbox = InputBox::new(address_book.input_box, &provider);
+        let inputbox = IInputBox::new(address_book.input_box, &provider);
 
         let input_count_1 = 2;
         // Inputbox is deployed with 1 input already
@@ -589,7 +589,7 @@ mod blockchain_reader_tests {
     async fn test_blockchain_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
 
-        let inputbox = InputBox::new(address_book.input_box, provider.clone());
+        let inputbox = IInputBox::new(address_book.input_box, provider.clone());
 
         let (handle, mut storage) = state_access();
 

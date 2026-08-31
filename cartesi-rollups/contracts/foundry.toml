@@ -8,10 +8,10 @@ via_ir = true
 
 allow_paths = ["../../prt/contracts", "../../machine/step"]
 remappings = [
-    "@openzeppelin-contracts-5.2.0/=dependencies/cartesi-rollups-contracts-3.0.0-alpha.9/dependencies/@openzeppelin-contracts-5.2.0/",
+    "@openzeppelin-contracts-5.2.0/=dependencies/cartesi-rollups-contracts-3.0.0-alpha.10/dependencies/@openzeppelin-contracts-5.2.0/",
     "@openzeppelin-contracts-5.5.0/=dependencies/@openzeppelin-contracts-5.5.0/",
-    "cartesi-machine-solidity-step-0.15.0/=dependencies/cartesi-rollups-contracts-3.0.0-alpha.9/dependencies/cartesi-machine-solidity-step-0.15.0/",
-    "cartesi-rollups-contracts-3.0.0/=dependencies/cartesi-rollups-contracts-3.0.0-alpha.9/",
+    "cartesi-machine-solidity-step-0.15.0/=dependencies/cartesi-rollups-contracts-3.0.0-alpha.10/dependencies/cartesi-machine-solidity-step-0.15.0/",
+    "cartesi-rollups-contracts-3.0.0/=dependencies/cartesi-rollups-contracts-3.0.0-alpha.10/",
     "forge-std-1.9.6/=dependencies/forge-std-1.9.6/",
     "prt-contracts-test/=../../prt/contracts/test/",
     "prt-contracts/=../../prt/contracts/src/",
@@ -23,7 +23,7 @@ evm_version = "prague"
 always_use_create_2_factory = true
 fs_permissions = [
     { access = "read-write", path = "deployments" },
-    { access = "read", path = "dependencies/cartesi-rollups-contracts-3.0.0-alpha.9/deployments" },
+    { access = "read", path = "dependencies/cartesi-rollups-contracts-3.0.0-alpha.10/deployments" },
     { access = "read", path = "../../prt/contracts/deployments" },
 ]
 
@@ -41,4 +41,4 @@ exclude_lints = ["incorrect-shift"]
 [dependencies]
 "@openzeppelin-contracts" = "5.5.0"
 forge-std = "1.9.6"
-cartesi-rollups-contracts = "3.0.0-alpha.9"
+cartesi-rollups-contracts = "3.0.0-alpha.10"

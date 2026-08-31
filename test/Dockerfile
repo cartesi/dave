@@ -1,9 +1,8 @@
 # syntax=docker.io/docker/dockerfile:1
 
-ARG RUST_VERSION=1.90
+ARG RUST_VERSION=1.94
 ARG DEBIAN_VERSION=trixie
 ARG FOUNDRY_VERSION=1.5.1
-ARG PNPM_VERSION=10.7.0
 ARG JUST_VERSION=1.46.0
 
 #### base stage

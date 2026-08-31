@@ -70,6 +70,7 @@ configure_module() {
         bind
         --force
         --alloy
+        --alloy-version 2
         --select "$bindings_filter"
         --module
         --bindings-path "./bindings-rs/src/contract"
