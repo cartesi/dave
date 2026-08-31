@@ -6,7 +6,7 @@ cd "${BASH_SOURCE%/*}/.."
 
 deployment_complete=0
 build_fingerprint=$(../../script/devnet-fingerprint.sh inputs)
-base_contracts=dependencies/cartesi-rollups-contracts-3.0.0-alpha.9
+base_contracts=dependencies/cartesi-rollups-contracts-3.0.0-alpha.10
 
 cleanup() {
     exit_code=$?

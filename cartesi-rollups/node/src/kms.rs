@@ -104,7 +104,9 @@ mod tests {
 
     use alloy::{
         consensus::Transaction,
-        network::{Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder},
+        network::{
+            Ethereum, EthereumWallet, NetworkTransactionBuilder, NetworkWallet, TransactionBuilder,
+        },
         primitives::Address,
         rpc::types::TransactionRequest,
         signers::Signer,

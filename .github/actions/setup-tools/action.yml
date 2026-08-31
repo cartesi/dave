@@ -8,9 +8,9 @@ inputs:
   rust-version:
     description: 'Rust version to install (if Rust is setup)'
     required: false
-    # Keep in step with the release container (rust:1.90-trixie in
+    # Keep in step with the release container (rust:1.94-trixie in
     # build.yml); the workspace uses post-1.86 std APIs.
-    default: '1.90'
+    default: '1.94'
   setup-qemu:
     description: 'Whether to setup QEMU for riscv support'
     required: false

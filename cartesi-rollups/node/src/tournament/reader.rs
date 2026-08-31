@@ -1136,9 +1136,11 @@ mod tests {
             .iter()
             .find(|request| request["method"] == "eth_call")
             .unwrap();
+        // alloy 2 serializes a `BlockId::Hash` without `require_canonical` as a
+        // bare EIP-1898 hash string instead of a `{ "blockHash": ... }` object.
         assert_eq!(
             descriptor_call["params"][1],
-            serde_json::json!({ "blockHash": format!("{:#x}", at.hash) })
+            serde_json::json!(format!("{:#x}", at.hash))
         );
     }
 

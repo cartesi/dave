@@ -283,7 +283,7 @@ jobs:
             os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
     container:
-      image: rust:1.90-trixie
+      image: rust:1.94-trixie
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:

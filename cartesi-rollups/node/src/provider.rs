@@ -5,7 +5,9 @@ use crate::args::SignerArgs;
 use crate::kms::{CommonSignature, KmsSignerBuilder};
 use alloy::{
     eips::{eip1559::Eip1559Estimation, eip2718::Encodable2718},
-    network::{Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder},
+    network::{
+        Ethereum, EthereumWallet, NetworkTransactionBuilder, NetworkWallet, TransactionBuilder,
+    },
     primitives::{Address, B256, keccak256},
     providers::{DynProvider, Provider, ProviderBuilder},
     rpc::{client::RpcClient, types::TransactionRequest},
