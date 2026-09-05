@@ -304,7 +304,19 @@ impl Storage {
             plan.epoch,
             plan.boundary_input,
         );
+        self.gc_completed_epochs()?;
         Ok(plan)
+    }
+
+    /// The runner collects released epochs even when no inputs are ready.
+    /// Keeping directory removal here serializes it with runner publication.
+    fn gc_completed_epochs(&mut self) -> Result<()> {
+        if let Some(max_epoch) = self.read(collectable_epoch_in)? {
+            let orphans = self.write(|tx| gc_old_epochs_in(tx, max_epoch))?;
+            remove_orphan_dirs(&orphans);
+            sweep_scratch_dirs_at_or_below(&self.state_dir, max_epoch);
+        }
+        Ok(())
     }
 
     /// Opens a batch on a working clone of the newest boundary: the
@@ -571,24 +583,15 @@ impl Storage {
             machine_validity_proof,
         };
 
-        let orphans = self.write(|tx| {
+        self.write(|tx| {
             assert_eq!(
                 roll_ready_in(tx)?,
                 (previous_epoch_number, recorded),
                 "roll readiness changed before settlement commit"
             );
             insert_snapshot_in(tx, new_epoch_number, 0, &state_hash, &dest_dir)?;
-            insert_settlement_in(tx, &settlement, previous_epoch_number)?;
-            if previous_epoch_number >= 1 {
-                gc_old_epochs_in(tx, previous_epoch_number - 1)
-            } else {
-                Ok(Vec::new())
-            }
+            insert_settlement_in(tx, &settlement, previous_epoch_number)
         })?;
-        remove_orphan_dirs(&orphans);
-        if previous_epoch_number >= 1 {
-            sweep_scratch_dirs_at_or_below(&self.state_dir, previous_epoch_number - 1);
-        }
 
         self.log_disk_breakdown(new_epoch_number);
 
@@ -731,12 +734,17 @@ pub(super) fn insert_settlement_in(
     Ok(())
 }
 
-/// Prunes everything at or below `max_epoch`: boundary rows and the
-/// settled epochs' dispute caches. Safe on sling_nodes because
-/// DaveConsensus settles epoch N before sealing N + 1, so rows at or
-/// below max_epoch belong to finished tournaments. Returns orphaned
-/// directories for post-commit removal.
-pub(super) fn gc_old_epochs_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<PathBuf>> {
+/// Both cursors are monotonic. Their minimum protects the manager's current
+/// dispute material and the runner's newest durable boundary independently.
+pub(super) fn collectable_epoch_in(tx: &Transaction) -> Result<Option<u64>> {
+    let next_epoch = super::queries::unfinished_epoch_number_in(tx)?;
+    let (_, machine_epoch, _, _) = super::snapshots::latest_boundary_in(tx)?;
+    Ok(next_epoch.min(machine_epoch).checked_sub(1))
+}
+
+/// Prunes released epochs' boundaries and dispute caches, returning orphaned
+/// directories for post-commit removal. `max_epoch` comes from both cursors.
+fn gc_old_epochs_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<PathBuf>> {
     tx.execute(
         "DELETE FROM epoch_snapshot_info WHERE epoch_number <= ?1",
         params![u64_to_i64(max_epoch)],
@@ -1269,6 +1277,36 @@ mod tests {
             s.settlement_info(0).unwrap().unwrap().computation_hash,
             expected
         );
+    }
+
+    #[test]
+    fn rolling_ahead_does_not_release_the_managers_unfinished_epoch() {
+        let (_handle, mut storage) = setup_storage();
+        storage.pin_epoch_claimant(Address::ZERO).unwrap();
+        let epochs: Vec<_> = (0..3)
+            .map(|epoch_number| Epoch {
+                epoch_number,
+                input_index_boundary: 0,
+                root_tournament: Address::repeat_byte(epoch_number as u8),
+                block_created_number: 1,
+            })
+            .collect();
+        storage
+            .insert_consensus_data(1, [].iter(), epochs.iter())
+            .unwrap();
+        let scratch = storage.epoch_directory(0).unwrap();
+        for _ in 0..3 {
+            storage.roll_epoch().unwrap();
+        }
+        assert_eq!(storage.next_input_id().unwrap().epoch_number, 3);
+        assert!(storage.snapshot_hash(0, 0).unwrap().is_some());
+        assert!(scratch.is_dir());
+
+        storage.complete_epoch(0).unwrap();
+        storage.advance_plan().unwrap();
+        assert!(storage.snapshot_hash(0, 0).unwrap().is_none());
+        assert!(storage.snapshot_hash(1, 0).unwrap().is_some());
+        assert!(!scratch.exists());
     }
 
     #[test]

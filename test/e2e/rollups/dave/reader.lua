@@ -302,6 +302,24 @@ function Reader:root_tournament_winner(address)
     return self.inner_reader:root_tournament_winner(address)
 end
 
+function Reader:read_bond_recovered(tournament_address)
+    local logs = self.inner_reader:_read_logs(
+        tournament_address,
+        "BondRecovered(bytes32,address,uint256,uint256)",
+        { false, false, false },
+        "(uint256,uint256)"
+    )
+    local recovered = {}
+    for index, log in ipairs(logs) do
+        recovered[index] = {
+            meta = log.meta,
+            commitment = Hash:from_digest_hex(log.emited_topics[2]),
+            claimer = "0x" .. log.emited_topics[3]:sub(-40),
+        }
+    end
+    return recovered
+end
+
 function Reader:commitment_exists(tournament, commitment)
     local commitments = self.inner_reader:read_commitment_joined(tournament)
 

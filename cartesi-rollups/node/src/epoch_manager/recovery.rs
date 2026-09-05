@@ -1,8 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The bond recovery planner: low-priority maintenance over finalized
-//! chain state.
+//! Recover one epoch's bonds before its local lifecycle completes.
 //!
 //! Candidates never come from attacker-writable input. Epoch roots are
 //! read from our own storage (written from the trusted DaveConsensus
@@ -13,13 +12,11 @@
 //! reports the winning claimer from the contract's own classification,
 //! so "did we join and win" needs no join history at all.
 //!
-//! Retirement uses one coherent finalized snapshot: both the event
-//! tree and every bond classification are pinned to its hash. Latest
+//! Completion uses one coherent finalized snapshot: the event tree
+//! ends at that block and every bond classification uses its hash. Latest
 //! is consulted only to suppress a transaction already observed as
 //! mined. It can never retire an epoch, so a reorg cannot turn a
 //! volatile observation into permanent process state.
-
-use std::collections::BTreeSet;
 
 use alloy::primitives::Address;
 use anyhow::Result;
@@ -37,123 +34,85 @@ const NO_WINNER: u8 = 1;
 const RECOVERABLE: u8 = 2;
 const RECOVERED: u8 = 3;
 
-pub struct BondRecovery {
-    signer_address: Address,
-    /// Epochs whose whole tournament tree reached terminal bond
-    /// dispositions; nothing there can ever need recovery again.
-    completed_epochs: BTreeSet<u64>,
-    /// Recovery is maintenance, not clock-bearing work. Scan at most
-    /// once per finalized head after a successful complete attempt.
-    last_scanned_finalized: Option<ChainHead>,
+pub struct RecoveryTick {
+    pub wave: Vec<LaneRequest>,
+    pub complete: bool,
 }
 
-impl BondRecovery {
-    pub fn new(signer_address: Address) -> Self {
-        Self {
-            signer_address,
-            completed_epochs: BTreeSet::new(),
-            last_scanned_finalized: None,
-        }
+/// Rebuild every outstanding recovery from chain state. Only finalized
+/// classifications may complete an epoch; mined payments suppress retries.
+pub async fn plan_recovery(
+    chain: &Chain,
+    epoch: &Epoch,
+    claimant: Address,
+    finalized: ChainHead,
+) -> Result<RecoveryTick> {
+    if epoch.block_created_number > finalized.number {
+        return Ok(RecoveryTick {
+            wave: Vec::new(),
+            complete: false,
+        });
     }
 
-    /// Plan at most one recovery for this finalized-head slot. All
-    /// sealed epochs participate, so epoch rotation and restart do not
-    /// strand an older root.
-    pub async fn plan_due(
-        &mut self,
-        chain: &Chain,
-        epochs: &[Epoch],
-    ) -> Result<Option<LaneRequest>> {
-        let finalized = chain.finalized_head().await?;
-        if self.last_scanned_finalized == Some(finalized) {
-            return Ok(None);
-        }
-
-        let recovery = self.plan_at(chain, epochs, finalized).await?;
-        self.last_scanned_finalized = Some(finalized);
-        Ok(recovery)
-    }
-
-    async fn plan_at(
-        &mut self,
-        chain: &Chain,
-        epochs: &[Epoch],
-        finalized: ChainHead,
-    ) -> Result<Option<LaneRequest>> {
-        let mut candidates = Vec::new();
-
-        for epoch in epochs {
-            if self.completed_epochs.contains(&epoch.epoch_number) {
-                continue;
-            }
-            let tree = tournament_tree(
-                chain,
-                epoch.root_tournament,
-                epoch.block_created_number,
-                finalized.number,
-            )
+    let tree = tournament_tree(
+        chain,
+        epoch.root_tournament,
+        epoch.block_created_number,
+        finalized.number,
+    )
+    .await?;
+    let mut candidates = Vec::new();
+    let mut tick = RecoveryTick {
+        wave: Vec::new(),
+        complete: true,
+    };
+    for tournament in tree {
+        let contract = tournament::Tournament::new(tournament, chain.provider());
+        let recovery = contract
+            .bondRecovery()
+            .block(finalized.block_id())
+            .call()
             .await?;
-
-            let mut all_terminal = true;
-            for tournament in tree {
-                let contract = tournament::Tournament::new(tournament, chain.provider());
-                let recovery = contract
-                    .bondRecovery()
-                    .block(finalized.block_id())
-                    .call()
-                    .await?;
-                match candidate_action(recovery.disposition, recovery.claimer, self.signer_address)
-                {
-                    CandidateAction::Recover => {
-                        candidates.push(tournament);
-                        all_terminal = false;
-                    }
-                    CandidateAction::Keep => {
-                        all_terminal = false;
-                    }
-                    CandidateAction::Retire => {}
-                }
+        match recovery.disposition {
+            RECOVERABLE if recovery.claimer == claimant => {
+                candidates.push(tournament);
+                tick.complete = false;
             }
-            if all_terminal {
-                trace!(
-                    "epoch {} retired: every tournament bond is terminal",
-                    epoch.epoch_number
-                );
-                self.completed_epochs.insert(epoch.epoch_number);
+            RECOVERABLE | RECOVERED | NO_WINNER => {}
+            TOURNAMENT_RUNNING => tick.complete = false,
+            other => {
+                log::warn!("undefined bond disposition {other}; keeping candidate inert");
+                tick.complete = false;
             }
         }
-
-        if candidates.is_empty() {
-            return Ok(None);
-        }
-
-        // A mined recovery need not be resubmitted while it waits for
-        // finality. This observation is deliberately not memoized: a
-        // reorg merely makes the candidate eligible at the next
-        // finalized-head slot.
-        let latest = chain.latest_head().await?;
-        for tournament in candidates {
-            let contract = tournament::Tournament::new(tournament, chain.provider());
-            let recovery = contract
-                .bondRecovery()
-                .block(latest.block_id())
-                .call()
-                .await?;
-            if recovery.disposition == RECOVERED {
-                trace!("bond recovery for tournament {tournament} is already mined");
-                continue;
-            }
-
-            info!("plan bond recovery for tournament {tournament}");
-            let request = contract
-                .tryRecoveringBond()
-                .gas(gas_limit())
-                .into_transaction_request();
-            return Ok(Some(("tryRecoveringBond".to_string(), request)));
-        }
-
-        Ok(None)
     }
+
+    if candidates.is_empty() {
+        return Ok(tick);
+    }
+
+    let latest = chain.latest_head().await?;
+    for tournament in candidates {
+        let contract = tournament::Tournament::new(tournament, chain.provider());
+        let recovery = contract
+            .bondRecovery()
+            .block(latest.block_id())
+            .call()
+            .await?;
+        if recovery.disposition == RECOVERED {
+            trace!("bond recovery for tournament {tournament} is already mined");
+            continue;
+        }
+
+        info!("plan bond recovery for tournament {tournament}");
+        let request = contract
+            .tryRecoveringBond()
+            .gas(gas_limit())
+            .into_transaction_request();
+        tick.wave.push(("tryRecoveringBond".to_string(), request));
+    }
+
+    Ok(tick)
 }
 
 /// Enumerate one epoch's dispute tree root-down. Every address comes
@@ -173,32 +132,6 @@ async fn tournament_tree(chain: &Chain, root: Address, from: u64, to: u64) -> Re
         }
     }
     Ok(tree)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CandidateAction {
-    Recover,
-    Keep,
-    Retire,
-}
-
-/// One candidate's fate from its on-chain disposition: recover what
-/// is ours, keep watching a running tournament, retire everything
-/// terminal - recovered (by anyone), locked without a winner, or a
-/// bond whose winning claimer is someone else (our commitment lost,
-/// or we never joined this branch of the tree).
-fn candidate_action(disposition: u8, claimer: Address, us: Address) -> CandidateAction {
-    match disposition {
-        RECOVERABLE if claimer == us => CandidateAction::Recover,
-        RECOVERABLE | RECOVERED | NO_WINNER => CandidateAction::Retire,
-        TOURNAMENT_RUNNING => CandidateAction::Keep,
-        other => {
-            // A trusted tournament cannot produce this; stay inert
-            // rather than fatal on chain data.
-            log::warn!("undefined bond disposition {other}; keeping candidate inert");
-            CandidateAction::Keep
-        }
-    }
 }
 
 #[cfg(test)]
@@ -287,40 +220,7 @@ mod tests {
         assert_eq!(request.1.to, Some(TxKind::Call(tournament)));
     }
 
-    #[test]
-    fn candidate_fate_follows_the_disposition_arms() {
-        let us = address(1);
-        let them = address(2);
-        assert_eq!(
-            candidate_action(RECOVERABLE, us, us),
-            CandidateAction::Recover
-        );
-        assert_eq!(
-            candidate_action(RECOVERABLE, them, us),
-            CandidateAction::Retire,
-            "someone else's recoverable bond is not our work"
-        );
-        assert_eq!(
-            candidate_action(RECOVERED, Address::ZERO, us),
-            CandidateAction::Retire
-        );
-        assert_eq!(
-            candidate_action(NO_WINNER, Address::ZERO, us),
-            CandidateAction::Retire
-        );
-        assert_eq!(
-            candidate_action(TOURNAMENT_RUNNING, Address::ZERO, us),
-            CandidateAction::Keep
-        );
-        assert_eq!(
-            candidate_action(9, Address::ZERO, us),
-            CandidateAction::Keep,
-            "undefined dispositions stay inert, never fatal"
-        );
-    }
-
-    /// The Round-1 finding-4 class: a hand-maintained numeric mirror
-    /// of a Solidity enum needs a drift guard against its source.
+    /// The generated bindings expose this Solidity enum as a number.
     #[test]
     fn bond_disposition_mirror_matches_the_interface() {
         let source = std::fs::read_to_string(concat!(
@@ -356,21 +256,19 @@ mod tests {
         let f2 = head(11, 0x11);
         let latest = head(12, 0x12);
         let (chain, asserter) = mocked_chain();
-        let mut recovery = BondRecovery::new(us);
-        let epochs = [epoch(7, root, 5)];
+        let epoch = epoch(7, root, 5);
 
         // At F1 the child does not exist yet and the root is still
         // running. A latest view could already report the root as
         // recovered, but it is intentionally never queried here.
-        asserter.push_success(&Some(block(f1)));
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, TOURNAMENT_RUNNING, Address::ZERO);
-        assert!(recovery.plan_due(&chain, &epochs).await.unwrap().is_none());
-        assert!(!recovery.completed_epochs.contains(&7));
+        let tick = plan_recovery(&chain, &epoch, us, f1).await.unwrap();
+        assert!(tick.wave.is_empty());
+        assert!(!tick.complete);
 
         // Once F2 includes the child, the same pinned snapshot sees
         // the terminal root and our recoverable child together.
-        asserter.push_success(&Some(block(f2)));
         asserter.push_success(&vec![child_log(root, child, f2)]);
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERED, Address::ZERO);
@@ -378,18 +276,15 @@ mod tests {
         asserter.push_success(&Some(block(latest)));
         push_bond(&asserter, RECOVERABLE, us);
 
-        let request = recovery
-            .plan_due(&chain, &epochs)
-            .await
-            .unwrap()
-            .expect("the finalized child remains recoverable");
-        assert_recovers(&request, child);
-        assert!(!recovery.completed_epochs.contains(&7));
+        let tick = plan_recovery(&chain, &epoch, us, f2).await.unwrap();
+        assert_eq!(tick.wave.len(), 1);
+        assert_recovers(&tick.wave[0], child);
+        assert!(!tick.complete);
         assert!(asserter.read_q().is_empty());
     }
 
     #[tokio::test]
-    async fn latest_suppression_is_not_retirement_and_recovers_after_a_reorg() {
+    async fn latest_suppression_is_not_completion_and_recovers_after_a_reorg() {
         let us = address(1);
         let root = address(2);
         let f1 = head(20, 0x20);
@@ -397,65 +292,114 @@ mod tests {
         let h1 = head(22, 0x22);
         let h2 = head(22, 0x32);
         let (chain, asserter) = mocked_chain();
-        let mut recovery = BondRecovery::new(us);
-        let epochs = [epoch(8, root, 5)];
+        let epoch = epoch(8, root, 5);
 
-        asserter.push_success(&Some(block(f1)));
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERABLE, us);
         asserter.push_success(&Some(block(h1)));
         push_bond(&asserter, RECOVERED, Address::ZERO);
-        assert!(recovery.plan_due(&chain, &epochs).await.unwrap().is_none());
-        assert!(!recovery.completed_epochs.contains(&8));
+        let tick = plan_recovery(&chain, &epoch, us, f1).await.unwrap();
+        assert!(tick.wave.is_empty());
+        assert!(!tick.complete);
 
-        // The same finalized slot performs no tree or point-read scan.
-        asserter.push_success(&Some(block(f1)));
-        assert!(recovery.plan_due(&chain, &epochs).await.unwrap().is_none());
-
-        // The unfinalized recovery disappears. A new finalized slot
-        // recomputes from durable state and makes the bond actionable.
-        asserter.push_success(&Some(block(f2)));
+        // Retry immediately when the payment disappears, even while the
+        // finalized head has not advanced.
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERABLE, us);
         asserter.push_success(&Some(block(h2)));
         push_bond(&asserter, RECOVERABLE, us);
 
-        let request = recovery
-            .plan_due(&chain, &epochs)
-            .await
-            .unwrap()
-            .expect("latest suppression must not survive a later finalized slot");
-        assert_recovers(&request, root);
+        let tick = plan_recovery(&chain, &epoch, us, f1).await.unwrap();
+        assert_eq!(tick.wave.len(), 1);
+        assert_recovers(&tick.wave[0], root);
+        assert!(!tick.complete);
+
+        asserter.push_success(&Vec::<Log>::new());
+        push_bond(&asserter, RECOVERED, Address::ZERO);
+        let tick = plan_recovery(&chain, &epoch, us, f2).await.unwrap();
+        assert!(tick.wave.is_empty());
+        assert!(tick.complete);
         assert!(asserter.read_q().is_empty());
     }
 
     #[tokio::test]
-    async fn epoch_rotation_keeps_older_roots_and_plans_only_one_recovery() {
+    async fn every_owned_bond_is_rebuilt_on_the_same_finalized_head() {
         let us = address(1);
-        let old_root = address(2);
-        let new_root = address(3);
+        let root = address(2);
+        let child = address(3);
         let finalized = head(30, 0x30);
         let latest = head(31, 0x31);
         let (chain, asserter) = mocked_chain();
-        let mut recovery = BondRecovery::new(us);
-        let epochs = [epoch(8, old_root, 5), epoch(9, new_root, 25)];
+        let epoch = epoch(9, root, 5);
 
-        asserter.push_success(&Some(block(finalized)));
+        for _ in 0..2 {
+            asserter.push_success(&vec![child_log(root, child, finalized)]);
+            asserter.push_success(&Vec::<Log>::new());
+            push_bond(&asserter, RECOVERABLE, us);
+            push_bond(&asserter, RECOVERABLE, us);
+            asserter.push_success(&Some(block(latest)));
+            push_bond(&asserter, RECOVERABLE, us);
+            push_bond(&asserter, RECOVERABLE, us);
+
+            let tick = plan_recovery(&chain, &epoch, us, finalized).await.unwrap();
+            assert_eq!(tick.wave.len(), 2);
+            assert_recovers(&tick.wave[0], root);
+            assert_recovers(&tick.wave[1], child);
+            assert!(!tick.complete);
+        }
+        assert!(asserter.read_q().is_empty());
+    }
+
+    #[tokio::test]
+    async fn recovered_foreign_and_no_winner_bonds_complete_the_epoch() {
+        let us = address(1);
+        let root = address(2);
+        let child = address(3);
+        let grandchild = address(4);
+        let finalized = head(30, 0x30);
+        let (chain, asserter) = mocked_chain();
+        let epoch = epoch(9, root, 5);
+
+        asserter.push_success(&vec![child_log(root, child, head(10, 0x10))]);
+        asserter.push_success(&vec![child_log(child, grandchild, head(11, 0x11))]);
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERED, Address::ZERO);
-        asserter.push_success(&Vec::<Log>::new());
-        push_bond(&asserter, RECOVERABLE, us);
-        asserter.push_success(&Some(block(latest)));
-        push_bond(&asserter, RECOVERABLE, us);
+        push_bond(&asserter, RECOVERABLE, address(5));
+        push_bond(&asserter, NO_WINNER, Address::ZERO);
 
-        let request = recovery
-            .plan_due(&chain, &epochs)
+        let tick = plan_recovery(&chain, &epoch, us, finalized).await.unwrap();
+        assert!(tick.wave.is_empty());
+        assert!(tick.complete);
+        assert!(asserter.read_q().is_empty());
+    }
+
+    #[tokio::test]
+    async fn running_and_undefined_dispositions_keep_the_epoch_incomplete() {
+        let (chain, asserter) = mocked_chain();
+        let epoch = epoch(9, address(2), 5);
+
+        for disposition in [TOURNAMENT_RUNNING, 9] {
+            asserter.push_success(&Vec::<Log>::new());
+            push_bond(&asserter, disposition, Address::ZERO);
+            let tick = plan_recovery(&chain, &epoch, address(1), head(30, 0x30))
+                .await
+                .unwrap();
+            assert!(tick.wave.is_empty());
+            assert!(!tick.complete);
+        }
+        assert!(asserter.read_q().is_empty());
+    }
+
+    #[tokio::test]
+    async fn epoch_created_after_the_snapshot_waits_without_reading_its_tree() {
+        let (chain, asserter) = mocked_chain();
+        let epoch = epoch(9, address(2), 31);
+
+        let tick = plan_recovery(&chain, &epoch, address(1), head(30, 0x30))
             .await
-            .unwrap()
-            .expect("the newer epoch is still scanned after the older one retires");
-        assert_recovers(&request, new_root);
-        assert!(recovery.completed_epochs.contains(&8));
-        assert!(!recovery.completed_epochs.contains(&9));
+            .unwrap();
+        assert!(tick.wave.is_empty());
+        assert!(!tick.complete);
         assert!(asserter.read_q().is_empty());
     }
 }
