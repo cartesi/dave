@@ -122,7 +122,12 @@ print "both active sybils have lost"
 
 -- The silent sybil's match resolves by timeout (the honest node's
 -- win or GC sweep) on the way to settlement.
-env.wait_until_epoch(2)
+local third_epoch = env.wait_until_epoch(2)
+
+-- Resume from durable state after settlement. Recovery may already have
+-- mined; event ordering below covers both sides of that race.
+env.dave_node:kill()
+env.dave_node:respawn()
 
 -- Pin the real chain deletion that contains the silent commitment. It may
 -- award the other side or eliminate both, but the silent side cannot win.
@@ -148,7 +153,7 @@ assert(winner.commitment == commitment)
 assert(winner.final == commitment:last())
 print "Correct claim won against three sybils!"
 
--- On its idle finalized cadence, the node recovers one bond plus a tenth of
+-- Before joining the next root, the node recovers one bond plus a tenth of
 -- the forfeited sybil residuals. The other nine tenths burn, draining the root
 -- tournament's balance to zero. Inner tournaments the node won drain
 -- through the same lane.
@@ -164,3 +169,27 @@ assert(recovered, "the node did not recover its bond after settlement")
 assert(env.dave_node:find_log("plan bond recovery"),
     "the node's recovery planner left no trace")
 print "node recovered its bond; forfeited sybil reserves burned"
+
+local next_join
+for _ = 1, 120 do
+    local joins = env.reader.inner_reader:read_commitment_joined(third_epoch.tournament)
+    if #joins > 0 then
+        assert(#joins == 1, "the node joined the next root more than once")
+        next_join = joins[1]
+        break
+    end
+    env.fast_forward(1)
+end
+assert(next_join, "the node did not join the next root after recovery and restart")
+
+local recoveries = env.reader:read_bond_recovered(second_epoch.tournament)
+assert(#recoveries == 1, "the settled root must emit exactly one bond recovery")
+local recovery = recoveries[1]
+assert(recovery.commitment == commitment.root_hash, "recovery paid the wrong commitment")
+assert(recovery.claimer:lower() == env.dave_node.wallet_address:lower(),
+    "recovery did not pay the node")
+assert(recovery.meta.block_number < next_join.meta.block_number
+    or (recovery.meta.block_number == next_join.meta.block_number
+        and recovery.meta.log_index < next_join.meta.log_index),
+    "the node joined the next root before recovering its settled root bond")
+print "root bond recovery preceded the next join across restart"

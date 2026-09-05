@@ -93,9 +93,8 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         let params = config.clone();
         let shutdown = shutdown.clone();
         tokio::spawn(async move {
-            // the epoch manager's own handle only reads; the Hero it
-            // spawns opens its own writer
-            let storage = params.storage_read_only()?;
+            // The manager owns the durable epoch-completion cursor.
+            let storage = params.storage()?;
             let read_provider = params.read_provider().await;
             let transaction_lane = params.transaction_lane(read_provider.clone()).await;
             let chain = Chain::new(
@@ -110,7 +109,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
                 params.signer_address,
                 storage,
                 params.sleep_duration,
-            );
+            )?;
             epoch_manager.execution_loop(shutdown, chain).await?;
             Ok(())
         })

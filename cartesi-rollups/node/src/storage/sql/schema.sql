@@ -55,6 +55,15 @@ CREATE TABLE latest_processed (
 INSERT INTO latest_processed (id, block)
     VALUES (1, 0);
 
+CREATE TABLE epoch_completion (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    next_epoch INTEGER NOT NULL
+        CHECK (typeof(next_epoch) = 'integer' AND next_epoch >= 0),
+    claimant BLOB
+        CHECK (claimant IS NULL OR (typeof(claimant) = 'blob' AND length(claimant) = 20))
+) WITHOUT ROWID;
+INSERT INTO epoch_completion (id, next_epoch) VALUES (1, 0);
+
 CREATE TABLE template_machine (
     id         INTEGER PRIMARY KEY CHECK (id = 1),
     state_hash BLOB NOT NULL
@@ -236,6 +245,40 @@ BEGIN
     SELECT RAISE(ABORT, 'latest_processed is a permanent singleton');
 END;
 
+-- The manager finishes epochs in order, only after finalized settlement and
+-- bond recovery for its pinned claimant. The cursor may point just beyond the
+-- ingested epoch prefix; changing signers requires a different state directory.
+
+CREATE TRIGGER trg_epoch_completion_dense
+BEFORE UPDATE OF next_epoch ON epoch_completion
+FOR EACH ROW
+WHEN NEW.id != OLD.id OR NEW.next_epoch != OLD.next_epoch + 1
+    OR OLD.claimant IS NULL
+    OR NOT EXISTS (SELECT 1 FROM epochs WHERE epoch_number = OLD.next_epoch)
+BEGIN
+    SELECT RAISE(ABORT, 'epoch_completion must advance by one ingested epoch with a pinned claimant');
+END;
+
+CREATE TRIGGER trg_epoch_completion_claimant
+BEFORE UPDATE OF claimant ON epoch_completion
+FOR EACH ROW
+WHEN OLD.claimant IS NOT NULL AND NEW.claimant IS NOT OLD.claimant
+BEGIN
+    SELECT RAISE(ABORT, 'epoch_completion claimant is write-once');
+END;
+
+CREATE TRIGGER trg_epoch_completion_no_insert
+BEFORE INSERT ON epoch_completion
+BEGIN
+    SELECT RAISE(ABORT, 'epoch_completion is a permanent singleton');
+END;
+
+CREATE TRIGGER trg_epoch_completion_no_delete
+BEFORE DELETE ON epoch_completion
+BEGIN
+    SELECT RAISE(ABORT, 'epoch_completion is a permanent singleton');
+END;
+
 -- settlement_info: write-once cell per epoch.
 
 CREATE TRIGGER trg_settlement_info_no_update
@@ -294,9 +337,8 @@ END;
 
 -- sling_nodes: append-only write-once-verify (the nondeterminism
 -- tripwire; message and semantics mirror Storage::insert_quartet_nodes)
--- plus settled-epoch prune (gc_old_epochs deletes epochs at least two
--- behind the live dispute - DaveConsensus settles epoch N before
--- sealing N + 1, so those tournaments are finished).
+-- plus completed-epoch prune: the manager's cursor releases the dispute
+-- material, and GC always retains the machine runner's newest epoch.
 
 CREATE TRIGGER trg_sling_nodes_collision
 BEFORE INSERT ON sling_nodes

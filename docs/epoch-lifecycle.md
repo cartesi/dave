@@ -40,6 +40,10 @@ Merkle root (zero at genesis), and the root tournament address.
    hash OR the claim staging period elapsed - with zero sentries, only
    the period path exists). Accepting settles the epoch and seals the
    next one; `EpochSealed` fires here.
+5. Locally complete: settlement and every remaining bond payment owed to this
+   node are resolved in finalized state. Only then does its durable completion
+   cursor advance to the next epoch. Other participants may already be working
+   on that epoch while this node finishes its refunds.
 
 All four mutating entry points (stage, sentry claim, accept, sentry
 rotation) are gated by `notForeclosed(appContract)`: a foreclosed
@@ -59,15 +63,11 @@ state, not a stranded-value bug.
 
 Settlement never touches the tournament's bond path: staging and
 acceptance move no value, and nothing on the consensus path calls
-`tryRecoveringBond`. The decoupling is deliberate - consensus liveness
-must not depend on the tournament payment path, and no recipient code
-runs inside a settlement transaction. Its cost is an obligation: every
-node implementation owns driving bond recovery for each retired
-tournament as a permanent background duty, or every retired
-tournament's balance - the root's and each inner tournament's - stays
-locked with no error reported anywhere. The reference driver walks
-unretired sealed epochs and their inner descendants; see the node data
-flow below.
+`tryRecoveringBond`. No recipient code runs inside a settlement transaction.
+The node explicitly recovers its winning bonds from the root and linked inner
+tournaments. Its local epoch lifecycle includes those refunds; the contract's
+settlement lifecycle remains independent. A foreign claimant's payment and a
+no-winner tournament's retained balance do not prevent local completion.
 
 ## Node data flow
 
@@ -78,14 +78,14 @@ Three worker threads share one SQLite database (see
                  finalized input/epoch logs
   Ethereum  ---------------------------------->  blockchain-reader
      ^                                                  |
-     | one serial mutation                              | inputs, epochs
+     | consecutive-nonce batch                          | inputs, epochs
      |                                                  v
   epoch-manager  <-------- settlement data ---------  SQLite
      |                                                  ^
      +-- Hero <--- tournament logs + pinned views --- Ethereum
      |       \--- Solid events + quartet queries ----> SQLite
      |
-     +-- settlement / one GC / recovery
+     +-- settlement + recoveries + completion cursor
 
   machine-runner  ---- leaves, snapshots, window quartets ----> SQLite
 ```
@@ -106,35 +106,35 @@ Three worker threads share one SQLite database (see
   and the three machine leaf proofs for `iflags_Y`, HTIF tohost, and the first
   TX-buffer block) together with the next epoch's initial snapshot. The TX
   block itself is the outputs Merkle root.
-- epoch-manager (`cartesi-rollups/node/src/epoch_manager`): each iteration
-  runs the dispute tick first - for the last sealed epoch, instantiate a
-  `Hero` with the epoch's inputs, leaves, and snapshot, and let it react
-  to the tournament - then submits through the one transaction lane it
-  owns; see
-  [node architecture](node-architecture.md#mutation-scheduling-and-transaction-submission).
-  A running dispute tick chooses either the Hero's action or, only when the
-  Hero has none, one cleanup intent; it never submits both. Settlement runs
-  only when no dispute is being contested, and bond recovery runs only when no
-  higher-priority mutation is ready. Thus the production loop submits at most
-  one mutation per tick through one serial nonce owner.
-  While machine-runner has not yet written the sealed epoch's
-  settlement info, the tick reports Preparing and no mutation is submitted.
-  Settlement plans at most one guarded, idempotent step per
-  tick: submit a sentry claim when the signer is a sentry (always the
-  locally computed post-epoch hash, never the staged value - claims
-  stay an independent check); stage the finished tournament's result
-  after asserting the on-chain winner matches the local settlement
-  (commitment root AND post-epoch state); accept the staged result once
-  every sentry agrees or the staging period elapses. Recovery walks every
-  unretired sealed epoch, so pending old bonds survive epoch rotation and
-  restart without a stored queue. Candidate discovery starts from epoch roots
-  recorded from finalized DaveConsensus events and follows only their
-  `NewInnerTournament` descendants; it never scans attacker-writable candidates
-  by submitter. If Latest already exposes the next epoch
-  while finalized ingestion still ends at the previous one, recovery waits;
-  the node submits no new maintenance into that observed rotation window. The
-  lane itself is stateless: every send rebuilds from fresh observation at fresh
-  market fees, and the mempool arbitrates duplicates and replacements.
+- epoch-manager (`cartesi-rollups/node/src/epoch_manager`): follows the durable
+  `epoch_completion` cursor rather than the latest sealed epoch. Until that
+  epoch settles, its Hero uses the locally computed settlement material to
+  choose a dispute action or one cleanup. A won root permits the next
+  settlement step: claim as a sentry, stage the verified result, or accept it
+  after agreement or the staging period. These calls target only the cursor's
+  epoch. Every available refund joins the same batch, even while the root is
+  running. Settled historical epochs need no Hero or local execution before
+  the manager can finish their refund obligations and advance.
+
+Recovery starts from the ingested epoch root and follows that tournament's
+`NewInnerTournament` descendants. It reads their bond dispositions at one
+finalized hash: our recoverable bonds produce calls; recovered, foreign, and
+no-winner dispositions need no further payment; running or unknown dispositions
+prevent completion. Latest only suppresses already-mined payments. Restart
+resumes the durable cursor, which is bound to the configured claimant.
+
+The lane rebuilds each batch from current observations and assigns consecutive
+nonces from the signer's latest mined count, with fresh market fees. The node
+accepts ordinary races, retries, and modest participation delay while finishing
+the previous epoch. The account must fund the entire batch's fee envelopes and
+call values, including nested tournament bonds. See
+[node architecture](node-architecture.md#mutation-scheduling-and-transaction-submission).
+
+Completion releases the old Hero before advancing the cursor. The machine
+runner then collects older snapshots and dispute scratch during its next plan,
+even when idle. It collects only epochs below both the completion cursor and
+its newest machine epoch. A different claimant or incompatible schema needs a
+fresh state directory under the node's rebuild policy.
 
 Sentry-claim and settlement calldata are semantic commitments, so their
 contents come from finalized inputs and stored settlement data. Latest may
@@ -185,7 +185,7 @@ remain the computation cache.
 
 ## Settlement invariant
 
-`EpochManager::try_settle_epoch` asserts that the tournament winner's
+`EpochManager::plan_stage_tournament_result` asserts that the tournament winner's
 commitment equals the locally computed computation hash. Today a mismatch
 panics the node (see the debts list in `docs/node-architecture.md`); the
 intended semantics is "this is a critical incident: either our node is

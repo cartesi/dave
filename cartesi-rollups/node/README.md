@@ -24,7 +24,7 @@ The dispute engine (formerly the `cartesi-prt-core` crate):
   `docs/computation-hash.md` first; this is the arcane part.
 - `hero/` - the honest player: per tick it observes, plans, and
   dispatches either one dispute action - join, bisect, seal, prove, or
-  win by timeout - or one bond-freeing cleanup (`gc_planner`).
+  win by timeout - or one timeout/child cleanup (`gc_planner`).
 - `tournament/` - the semantic chain interface: `dispute` owns the recursive,
   event-derived tournament tree; `domain` defines wire-independent values;
   `observer` performs the narrow pinned point reads; `reader` maintains the
@@ -56,11 +56,23 @@ Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
 Reads use `--web3-rpc-url`. Raw signed transactions use
 `--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
 name a private relay with revert protection. The signer must be exclusive to
-one node process because the node owns its nonce sequence. Production submits
-at most one mutation per tick - a settlement step, a Hero action, one cleanup,
-or bond recovery - through the single serial transaction lane. With the
-default `GAS_LIMIT=15_000_000`, a pool may require balance for that full limit
-at the transaction's max fee, plus any join bond or other call value.
+one node process because the node owns its nonce sequence. Each tick batches
+the applicable dispute or cleanup action, settlement step, and all available
+bond recoveries at consecutive nonces from the latest mined count. The next
+tick rebuilds the batch from chain state without waiting for receipts.
+
+The node completes epochs in order: it waits for finalized settlement and its
+winning bond recoveries before participating in the next epoch. It resumes the
+same unfinished epoch after restart. Other participants may advance meanwhile;
+the operating timing assumption allows a modest delay while refunds finish.
+The completion cursor is bound to one claimant, so changing signer requires a
+fresh state directory. A changed node version or schema also requires a fresh
+directory under the node's rebuild policy.
+
+Fund the whole pending batch. With the default `GAS_LIMIT=15_000_000`, a pool
+may require each transaction's full gas limit at its max fee, plus its call
+value. These requirements accumulate across the batch, and nested tournaments
+each require their own join bond.
 
 Here are its arguments:
 

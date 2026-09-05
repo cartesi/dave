@@ -666,16 +666,10 @@ pub(super) fn sweep_unreferenced_snapshots_in(tx: &Transaction) -> Result<Vec<Pa
 }
 
 impl Storage {
-    /// Removes settled epochs' scratch directories (dispute work
-    /// under `state_dir/<epoch>/`), the filesystem sibling of
-    /// gc_old_epochs_in and safe by the same argument: with the
-    /// machine at epoch M, epochs at or below M - 2 belong to
-    /// settled disputes. The roll path sweeps as epochs settle; this
-    /// entry point is the startup ritual's, catching dirs a crash or
-    /// an older node version left behind.
+    /// Startup cleanup uses the same manager and runner cursors as live GC;
+    /// chain progress alone does not release an unfinished epoch's scratch.
     pub fn sweep_settled_epoch_scratch(&mut self) -> Result<()> {
-        let machine_epoch = self.next_input_id()?.epoch_number;
-        if let Some(max_settled) = machine_epoch.checked_sub(2) {
+        if let Some(max_settled) = self.read(super::advance::collectable_epoch_in)? {
             sweep_scratch_dirs_at_or_below(self.state_dir(), max_settled);
         }
         Ok(())

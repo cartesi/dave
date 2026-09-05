@@ -243,13 +243,6 @@ impl NodeConfig {
         Ok(access)
     }
 
-    /// For workers that only read through their own handle (the
-    /// epoch manager; the dispute Hero opens its own read-write
-    /// Storage). Fails fast under write pressure instead of stalling.
-    pub fn storage_read_only(&self) -> Result<Storage, StorageError> {
-        Storage::open_read_only(&self.state_dir)
-    }
-
     pub async fn read_provider(&self) -> DynProvider {
         create_rpc_provider(&self.ethereum_gateway, self.chain_id).await
     }

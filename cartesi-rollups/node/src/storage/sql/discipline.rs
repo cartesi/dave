@@ -118,6 +118,49 @@ fn latest_processed_only_rises_and_never_disappears() {
     );
 }
 
+#[test]
+fn epoch_completion_is_a_dense_permanent_cursor() {
+    let (_dir, conn) = initialized_conn();
+    let update = "UPDATE epoch_completion SET next_epoch = ?1 WHERE id = 1";
+
+    // Completion cannot invent an epoch which ingestion has not observed.
+    expect_abort(conn.execute(update, [1]), "one ingested epoch");
+    conn.execute("INSERT INTO epochs VALUES (0, 0, '0x00', 0)", [])
+        .unwrap();
+    conn.execute("INSERT INTO epochs VALUES (1, 0, '0x01', 0)", [])
+        .unwrap();
+    expect_abort(conn.execute(update, [1]), "pinned claimant");
+    conn.execute("UPDATE epoch_completion SET claimant = zeroblob(20)", [])
+        .unwrap();
+    conn.execute("UPDATE epoch_completion SET claimant = zeroblob(20)", [])
+        .unwrap();
+    expect_abort(
+        conn.execute("UPDATE epoch_completion SET claimant = NULL", []),
+        "write-once",
+    );
+    expect_abort(
+        conn.execute("UPDATE epoch_completion SET claimant = ?1", [[1u8; 20]]),
+        "write-once",
+    );
+    expect_abort(conn.execute(update, [2]), "one ingested epoch");
+    conn.execute(update, [1]).unwrap();
+    expect_abort(conn.execute(update, [0]), "one ingested epoch");
+    expect_abort(conn.execute(update, [1]), "one ingested epoch");
+    conn.execute(update, [2]).unwrap();
+
+    expect_abort(
+        conn.execute("DELETE FROM epoch_completion", []),
+        "permanent singleton",
+    );
+    expect_abort(
+        conn.execute(
+            "INSERT OR REPLACE INTO epoch_completion (id, next_epoch) VALUES (1, 0)",
+            [],
+        ),
+        "permanent singleton",
+    );
+}
+
 //
 // settlement_info: write-once cell per epoch
 //
@@ -350,7 +393,7 @@ fn tournament_events_watermark_only_rises() {
 
 /// The grep-level half of the taxonomy check (the plan accepts it as
 /// such): across the storage module's Rust sources, the only SQL
-/// UPDATEs are the two watermark raises, and the only DELETEs are the
+/// UPDATEs advance watermarks and the completion cursor; DELETEs are the
 /// GC statements. New mutations must either fit an existing class or
 /// change this test alongside a schema trigger.
 #[test]
@@ -382,9 +425,12 @@ fn mutation_taxonomy_holds_at_source_level() {
     delete_hits.sort();
     assert_eq!(
         update_hits,
-        vec![("dispute.rs".to_string(), 1), ("ingest.rs".to_string(), 1)],
-        "the two watermark upserts (tournament events; latest processed block) \
-         are the only UPDATEs in the storage module"
+        vec![
+            ("completion.rs".to_string(), 2),
+            ("dispute.rs".to_string(), 1),
+            ("ingest.rs".to_string(), 1)
+        ],
+        "only claimant pinning, completion, and the two watermarks write in place"
     );
     assert_eq!(
         delete_hits,

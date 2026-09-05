@@ -8,7 +8,8 @@
 //! Layout: `open` owns
 //! the connection lifecycle and the transaction closure helpers;
 //! `ingest` is the blockchain reader's writer role, `advance` the
-//! machine runner's, `dispute` the hero's; `queries` is the
+//! machine runner's, `dispute` the hero's, `completion` the epoch manager's;
+//! `queries` is the
 //! role-free read surface; `sql` holds the DDL and its discipline
 //! tests. Every table belongs to one of four mutation classes -
 //! append-only log, write-once cell, monotonic watermark, prunable
@@ -20,6 +21,7 @@ pub mod rollups_machine;
 pub use error::StorageError;
 
 mod advance;
+mod completion;
 mod convert;
 mod dispute;
 mod ingest;

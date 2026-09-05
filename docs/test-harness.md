@@ -185,8 +185,9 @@ Scenarios (`test/e2e/rollups/scenarios/`):
   paths.
 - `multi_sybil`: the permissionless shape - honest plus three sybils, two
   matches live at once, two active sybils (one pairing may be sybil-vs-sybil),
-  one silent sybil
-  whose match dies by a real on-chain timeout.
+  one silent sybil whose match dies by a real on-chain timeout. It also
+  restarts the node around settlement, requires the root bond to drain, and
+  checks that its `BondRecovered` event precedes the node's next-root join.
 - `kill_join`: SIGKILL at the hero's join decision (see the marker
   contract above).
 - `sealed_leaf_timeout_winner` / `sealed_leaf_timeout_both`: construct
@@ -340,12 +341,14 @@ The 2026-08-17 five-lane battery exposed two additional scheduling cases:
   discovered adversary/adversary roots back to their player coroutines; it must
   not keep assuming players 1 and 2 form the delegated match.
 - `multi_sybil` reproducibly selected the correct winner but failed its final
-  bond-recovery assertion both in the battery and in isolation. Do not remove
-  the assertion or treat merely lengthening its block loop as a fix: the node's
-  blanket recovery veto for a running current tournament can starve older bonds
-  across continuous epoch rotation. The production scheduling debt and
-  required composition tests are tracked in
-  [node-architecture.md](node-architecture.md#known-debts).
+  bond-recovery assertion both in the battery and in isolation. At that
+  revision, the recovery veto for a running current tournament stranded older
+  bonds across continuous epoch rotation. The current serial completion
+  lifecycle is described in
+  [node-architecture.md](node-architecture.md#mutation-scheduling-and-transaction-submission);
+  the scenario retains the balance assertion and adds recovery-before-join
+  ordering across restart. The historical battery result does not validate
+  the revised implementation.
 
 Known blind spots, by layer:
 

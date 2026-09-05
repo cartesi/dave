@@ -29,29 +29,19 @@ impl Storage {
         self.read(epoch_count_in)
     }
 
-    /// Every sealed epoch in order: the bond recovery planner's
-    /// candidate roots, each written from the trusted consensus
-    /// stream.
-    pub fn sealed_epochs(&mut self) -> Result<Vec<Epoch>> {
+    /// The manager's next epoch, once its seal has reached finalized ingestion.
+    pub fn unfinished_epoch(&mut self) -> Result<Option<Epoch>> {
         self.read(|tx| {
-            let mut stmt = tx
-                .prepare_cached(
-                    r#"
-                    SELECT epoch_number, input_index_boundary, root_tournament,
-                           block_created_number
-                    FROM epochs
-                    ORDER BY epoch_number ASC
-                    "#,
-                )
-                .map_err(anyhow::Error::from)?;
-
-            let rows = stmt
-                .query_map([], row_to_epoch)
-                .map_err(anyhow::Error::from)?;
-            rows.collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(anyhow::Error::from)?
-                .into_iter()
-                .collect::<Result<Vec<_>>>()
+            let epoch = unfinished_epoch_number_in(tx)?;
+            tx.query_row(
+                "SELECT epoch_number, input_index_boundary, root_tournament,
+                        block_created_number FROM epochs WHERE epoch_number = ?1",
+                [u64_to_i64(epoch)],
+                row_to_epoch,
+            )
+            .optional()
+            .map_err(anyhow::Error::from)?
+            .transpose()
         })
     }
 
@@ -345,6 +335,17 @@ fn settlement_value<T>(epoch_number: u64, field: &str, value: Result<T>) -> T {
              (corruption or incompatible state dir)"
         )
     })
+}
+
+pub(super) fn unfinished_epoch_number_in(tx: &Transaction) -> Result<u64> {
+    let epoch: i64 = tx
+        .query_row(
+            "SELECT next_epoch FROM epoch_completion WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(anyhow::Error::from)?;
+    Ok(i64_to_u64(epoch))
 }
 
 fn row_to_epoch(row: &rusqlite::Row) -> rusqlite::Result<Result<Epoch>> {

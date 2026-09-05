@@ -5,7 +5,7 @@ mod error;
 mod recovery;
 
 use self::error::Result;
-use self::recovery::BondRecovery;
+use self::recovery::plan_recovery;
 use alloy::primitives::{Address, B256, U256};
 use alloy::providers::DynProvider;
 use log::{debug, info, trace};
@@ -31,49 +31,13 @@ pub struct EpochManager<AS: ArenaSender> {
     signer_address: Address,
     sleep_duration: Duration,
     storage: Storage,
-    epoch_hero: (Option<Hero<AS>>, u64),
-    bond_recovery: BondRecovery,
+    epoch_hero: Option<Hero<AS>>,
 }
 
-enum EpochReaction {
-    Absent,
-    Preparing,
-    Ticked(HeroTick),
-}
-
-impl EpochReaction {
-    /// Settlement steps run only while no dispute is being contested:
-    /// before this epoch has local material (an earlier epoch may
-    /// still be settling) or once the tournament is won. The step, if
-    /// any, takes the wave's base nonce; the tick's own wave fills
-    /// strictly above it, so settlement never queues behind dispute
-    /// work.
-    fn wants_settlement(&self) -> bool {
-        match self {
-            Self::Absent => true,
-            Self::Preparing => false,
-            Self::Ticked(tick) => tick.result() == TournamentResult::Won,
-        }
-    }
-
-    /// Recovery is maintenance: it runs only when the current epoch
-    /// has no clock-bearing work and its state was observed without an
-    /// error. A non-empty settlement or hero wave adds a second fence
-    /// in the execution loop.
-    fn allows_recovery(&self) -> bool {
-        match self {
-            Self::Absent => true,
-            Self::Preparing => false,
-            Self::Ticked(tick) => tick.result() != TournamentResult::Running,
-        }
-    }
-
-    fn into_wave(self) -> Vec<LaneRequest> {
-        match self {
-            Self::Ticked(tick) => tick.into_wave(),
-            Self::Absent | Self::Preparing => Vec::new(),
-        }
-    }
+struct EpochTick {
+    epoch: u64,
+    wave: Vec<LaneRequest>,
+    done: bool,
 }
 
 impl<AS: ArenaSender> EpochManager<AS> {
@@ -82,101 +46,121 @@ impl<AS: ArenaSender> EpochManager<AS> {
         transaction_lane: TransactionLane,
         consensus_address: Address,
         signer_address: Address,
-        storage: Storage,
+        mut storage: Storage,
         sleep_duration: Duration,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        storage.pin_epoch_claimant(signer_address)?;
+        Ok(Self {
             arena_sender,
             transaction_lane,
             consensus: consensus_address,
             signer_address,
             sleep_duration,
             storage,
-            epoch_hero: (None, 0),
-            bond_recovery: BondRecovery::new(signer_address),
-        }
+            epoch_hero: None,
+        })
     }
 
     pub async fn execution_loop(mut self, shutdown: ShutdownSignal, chain: Chain) -> Result<()> {
-        let dave_consensus = DaveConsensus::new(self.consensus, chain.provider().clone());
-
-        // A failed iteration is retried, not fatal: every tick is
-        // re-derived from storage and chain, so transient provider
-        // errors (an RPC hiccup, a pinned read landing on a block the
-        // gateway no longer serves) cost one polling interval, never
-        // the validator. A BlockOutOfRangeError here killed the node
-        // mid-dispute on 2026-07-10 and its clocks kept running.
-        // Consensus violations stay fatal: they are asserts, not
-        // errors.
-        loop {
-            let (wave, recovery_allowed) = match self.try_react_epoch(&chain).await {
-                Ok(reaction) => {
-                    let mut recovery_allowed = reaction.allows_recovery();
-                    let settlement = if reaction.wants_settlement() {
-                        match self.plan_settlement(&dave_consensus).await {
-                            Ok(step) => {
-                                if step.is_some() {
-                                    recovery_allowed = false;
-                                }
-                                step
-                            }
-                            Err(e) => {
-                                recovery_allowed = false;
-                                log::warn!("settlement planning failed, retrying next tick: {e}");
-                                None
-                            }
-                        }
-                    } else {
-                        None
-                    };
-                    (
-                        settlement
-                            .into_iter()
-                            .chain(reaction.into_wave())
-                            .collect::<Vec<_>>(),
-                        recovery_allowed,
-                    )
-                }
-                Err(e) => {
-                    log::warn!("dispute tick failed, retrying next tick: {e}");
-                    (Vec::new(), false)
-                }
-            };
-
-            if !wave.is_empty() {
-                // Submit clock-bearing and settlement work before any
-                // recovery RPC scan can delay it.
-                if let Err(e) = self.transaction_lane.submit_wave(wave).await {
-                    log::warn!("wave submission failed, retrying next tick: {e}");
-                }
-            } else if recovery_allowed {
-                match self.latest_epoch_is_finalized(&dave_consensus).await {
-                    Ok(true) => match self.plan_bond_recovery(&chain).await {
-                        Ok(Some(recovery)) => {
-                            if let Err(e) = self.transaction_lane.submit_wave(vec![recovery]).await
-                            {
-                                log::warn!("bond recovery submission failed, retrying later: {e}");
-                            }
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            log::warn!("bond recovery planning failed, retrying next tick: {e}");
-                        }
-                    },
-                    Ok(false) => {
-                        trace!("defer bond recovery until the latest sealed epoch is finalized");
-                    }
-                    Err(e) => {
-                        log::warn!("bond recovery epoch fence failed, retrying next tick: {e}");
-                    }
-                }
+        while !shutdown.is_requested() {
+            match self.tick(&chain).await {
+                // Catch up completed historical epochs without a polling sleep.
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(e) => log::warn!("epoch tick failed, retrying next tick: {e}"),
             }
-
             tokio::select! { biased;
-                _ = shutdown.requested() => break Ok(()),
+                _ = shutdown.requested() => break,
                 _ = tokio::time::sleep(self.sleep_duration) => {}
             }
         }
+        Ok(())
+    }
+
+    async fn tick(&mut self, chain: &Chain) -> Result<bool> {
+        let Some(tick) = self.plan_tick(chain).await? else {
+            return Ok(false);
+        };
+        if tick.done {
+            assert!(
+                tick.wave.is_empty(),
+                "a completed epoch has no pending actions"
+            );
+            // Release the old dispute before advancing the runner's GC boundary.
+            self.epoch_hero = None;
+            self.storage.complete_epoch(tick.epoch)?;
+            info!(
+                "epoch {} complete: settlement and bonds finalized",
+                tick.epoch
+            );
+        } else if !tick.wave.is_empty() {
+            self.transaction_lane
+                .submit_wave(tick.wave)
+                .await
+                .map_err(crate::hero::error::ReactError::from)?;
+        }
+        Ok(tick.done)
+    }
+
+    async fn plan_tick(&mut self, chain: &Chain) -> Result<Option<EpochTick>> {
+        let Some(epoch) = self.storage.unfinished_epoch()? else {
+            return Ok(None);
+        };
+        let finalized = chain
+            .finalized_head()
+            .await
+            .map_err(crate::hero::error::ReactError::from)?;
+        // Ingestion is finalized-only. A later sealed epoch proves this one's
+        // settlement, but it must not outrun the refund observation's head.
+        let settled = self.storage.last_sealed_epoch()?.is_some_and(|last| {
+            last.epoch_number > epoch.epoch_number && last.block_created_number <= finalized.number
+        });
+        let mut wave = Vec::new();
+        if !settled {
+            if self.storage.settlement_info(epoch.epoch_number)?.is_some() {
+                match self.react_dispute(chain, &epoch).await {
+                    Ok(tick) => {
+                        let won = tick.result() == TournamentResult::Won;
+                        wave.extend(tick.into_wave());
+                        if won {
+                            let consensus =
+                                DaveConsensus::new(self.consensus, chain.provider().clone());
+                            match self.plan_settlement(&consensus, epoch.epoch_number).await {
+                                Ok(step) => wave.extend(step),
+                                Err(e) => log::warn!(
+                                    "settlement planning failed, retrying next tick: {e}"
+                                ),
+                            }
+                        }
+                    }
+                    Err(e) => log::warn!("dispute planning failed, retrying next tick: {e}"),
+                }
+            } else {
+                debug!(
+                    "wait for machine-runner to prepare epoch {}",
+                    epoch.epoch_number
+                );
+            }
+        }
+
+        // Every applicable refund joins the same batch, including while the
+        // root is running. A failed scan cannot discard already prepared work.
+        let refunds_complete =
+            match plan_recovery(chain, &epoch, self.signer_address, finalized).await {
+                Ok(recovery) => {
+                    wave.extend(recovery.wave);
+                    recovery.complete
+                }
+                Err(e) => {
+                    log::warn!("bond recovery planning failed, retrying next tick: {e}");
+                    false
+                }
+            };
+        Ok(Some(EpochTick {
+            epoch: epoch.epoch_number,
+            wave,
+            done: settled && refunds_complete,
+        }))
     }
 
     /// Plans the next staged-settlement step: a sentry claim when
@@ -188,20 +172,25 @@ impl<AS: ArenaSender> EpochManager<AS> {
     /// which is what stops resubmission within a block of inclusion.
     /// At most one step is planned so a later settlement step never
     /// queues behind an earlier step from stale state.
-    pub async fn plan_settlement(
+    async fn plan_settlement(
         &mut self,
         dave_consensus: &DaveConsensus::DaveConsensusInstance<
             DynProvider,
             alloy::network::Ethereum,
         >,
+        epoch_number: u64,
     ) -> Result<Option<LaneRequest>> {
-        if let Some(step) = self.plan_sentry_claim(dave_consensus).await? {
+        if let Some(step) = self.plan_sentry_claim(dave_consensus, epoch_number).await? {
             return Ok(Some(step));
         }
-        if let Some(step) = self.plan_stage_tournament_result(dave_consensus).await? {
+        if let Some(step) = self
+            .plan_stage_tournament_result(dave_consensus, epoch_number)
+            .await?
+        {
             return Ok(Some(step));
         }
-        self.plan_accept_tournament_result(dave_consensus).await
+        self.plan_accept_tournament_result(dave_consensus, epoch_number)
+            .await
     }
 
     /// A sentry claims the post-epoch state it computed itself -
@@ -213,6 +202,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             DynProvider,
             alloy::network::Ethereum,
         >,
+        epoch_number: u64,
     ) -> Result<Option<LaneRequest>> {
         let sentry_id = dave_consensus
             .getSentryId(self.signer_address)
@@ -234,6 +224,9 @@ impl<AS: ArenaSender> EpochManager<AS> {
             .block(alloy::eips::BlockId::latest())
             .call()
             .await?;
+        if current_sealed_epoch.epochNumber != U256::from(epoch_number) {
+            return Ok(None);
+        }
         let epoch_number = current_sealed_epoch.epochNumber;
 
         let has_claimed = dave_consensus
@@ -289,6 +282,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             DynProvider,
             alloy::network::Ethereum,
         >,
+        epoch_number: u64,
     ) -> Result<Option<LaneRequest>> {
         let can_stage = dave_consensus
             .canStageTournamentResult()
@@ -296,11 +290,12 @@ impl<AS: ArenaSender> EpochManager<AS> {
             .call()
             .await?;
 
-        // A failed root is a documented terminal state, not a local
-        // contradiction: the ticked Hero path already logs and idles on
-        // FailedNoWinner, and this path also runs with no Hero (Absent),
-        // where crashing would loop on restart. stageTournamentResult's
-        // TournamentFailedNoWinner revert remains the write-side guard.
+        if can_stage.epochNumber != U256::from(epoch_number) {
+            return Ok(None);
+        }
+
+        // A no-winner result cannot settle. Keep the epoch open for operator
+        // attention; repeated observation of this state is not a contradiction.
         if can_stage.isTournamentFailed {
             log::error!(
                 "dispute tournament for epoch {} finished without a winner; settlement is impossible, notify all users!",
@@ -355,6 +350,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             DynProvider,
             alloy::network::Ethereum,
         >,
+        epoch_number: u64,
     ) -> Result<Option<LaneRequest>> {
         let can_accept = dave_consensus
             .canAcceptStagedTournamentResult()
@@ -362,6 +358,9 @@ impl<AS: ArenaSender> EpochManager<AS> {
             .call()
             .await?;
 
+        if can_accept.epochNumber != U256::from(epoch_number) {
+            return Ok(None);
+        }
         if !can_accept.isTournamentResultStaged {
             trace!("staged tournament result not ready to be accepted");
             return Ok(None);
@@ -402,122 +401,40 @@ impl<AS: ArenaSender> EpochManager<AS> {
         Ok(None)
     }
 
-    async fn plan_bond_recovery(&mut self, chain: &Chain) -> Result<Option<LaneRequest>> {
-        let epochs = self.storage.sealed_epochs()?;
-        self.bond_recovery
-            .plan_due(chain, &epochs)
-            .await
-            .map_err(crate::hero::error::ReactError::from)
-            .map_err(Into::into)
-    }
-
-    /// Keep maintenance out of the nonce lane while a newly sealed
-    /// epoch is visible at Latest but not yet in the finalized DB.
-    async fn latest_epoch_is_finalized(
-        &mut self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<
-            DynProvider,
-            alloy::network::Ethereum,
-        >,
-    ) -> Result<bool> {
-        let latest = dave_consensus
-            .getCurrentSealedEpoch()
-            .block(alloy::eips::BlockId::latest())
-            .call()
-            .await?;
-        let finalized = self
-            .storage
-            .last_sealed_epoch()?
-            .map(|epoch| epoch.epoch_number);
-        Ok(finalized_epoch_matches_latest(
-            finalized,
-            latest.epochNumber,
-        ))
-    }
-
-    async fn try_react_epoch(&mut self, chain: &Chain) -> Result<EpochReaction> {
-        // participate in last sealed epoch tournament
-        if let Some(last_sealed_epoch) = self.storage.last_sealed_epoch()? {
-            match self
-                .storage
-                .settlement_info(last_sealed_epoch.epoch_number)?
-            {
-                Some(_) => {
-                    trace!(
-                        "dispute tournaments for epoch {}",
-                        last_sealed_epoch.epoch_number
-                    );
-                    return self
-                        .react_dispute(chain, &last_sealed_epoch)
-                        .await
-                        .map(EpochReaction::Ticked);
-                }
-                None => {
-                    debug!(
-                        "wait for `machine-runner` to insert settlement values for epoch {}",
-                        last_sealed_epoch.epoch_number
-                    );
-                    return Ok(EpochReaction::Preparing);
-                }
-            }
+    async fn react_dispute(&mut self, chain: &Chain, epoch: &Epoch) -> Result<HeroTick> {
+        if self.epoch_hero.is_none() {
+            let storage = Storage::new(self.storage.state_dir())?;
+            self.epoch_hero = Some(Hero::new(
+                self.arena_sender.clone(),
+                chain.clone(),
+                epoch.root_tournament,
+                epoch.block_created_number,
+                storage,
+                epoch.epoch_number,
+            )?);
         }
-        Ok(EpochReaction::Absent)
-    }
-
-    async fn react_dispute(
-        &mut self,
-        chain: &Chain,
-        last_sealed_epoch: &Epoch,
-    ) -> Result<HeroTick> {
-        self.get_latest_hero(last_sealed_epoch, chain)?;
         let tick = self
             .epoch_hero
-            .0
             .as_mut()
-            .expect("hero should be instantiated")
+            .expect("hero initialized above")
             .tick()
             .await?;
-
         match tick.result() {
             TournamentResult::Running => {}
             TournamentResult::Won => info!(
                 "local commitment won dispute tournament for epoch {}",
-                last_sealed_epoch.epoch_number
+                epoch.epoch_number
             ),
             TournamentResult::Lost => log::error!(
                 "local commitment lost dispute tournament for epoch {}",
-                last_sealed_epoch.epoch_number
+                epoch.epoch_number
             ),
             TournamentResult::FailedNoWinner => log::error!(
                 "dispute tournament for epoch {} finished without a winner",
-                last_sealed_epoch.epoch_number
+                epoch.epoch_number
             ),
         }
-
         Ok(tick)
-    }
-
-    fn get_latest_hero(&mut self, last_sealed_epoch: &Epoch, chain: &Chain) -> Result<()> {
-        // either the hero has never been instantiated, or the sealed epoch has advanced
-        // we need to instantiate new epoch hero with appropriate data
-        if self.epoch_hero.0.is_none() || self.epoch_hero.1 != last_sealed_epoch.epoch_number {
-            // The hero reads the closed epoch's working set through
-            // its own storage handle (one connection per thread).
-            let storage = Storage::new(self.storage.state_dir())?;
-
-            let hero = Hero::new(
-                self.arena_sender.clone(),
-                chain.clone(),
-                last_sealed_epoch.root_tournament,
-                last_sealed_epoch.block_created_number,
-                storage,
-                last_sealed_epoch.epoch_number,
-            )?;
-
-            self.epoch_hero = (Some(hero), last_sealed_epoch.epoch_number);
-        }
-
-        Ok(())
     }
 }
 
@@ -542,18 +459,24 @@ fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
     B256::from_slice(&hash)
 }
 
-fn finalized_epoch_matches_latest(finalized: Option<u64>, latest: U256) -> bool {
-    finalized.is_some_and(|epoch| U256::from(epoch) == latest)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::storage::{
         LeafProof, MACHINE_MEMORY_PROOF_SIBLING_COUNT, MachineValidityProof, Proof,
     };
-    use alloy::rpc::types::TransactionRequest;
-    use alloy::sol_types::SolCall;
+    use crate::tournament::EthArenaSender;
+    use alloy::{
+        network::EthereumWallet,
+        primitives::{Bytes, TxKind},
+        providers::{Provider, ProviderBuilder},
+        rpc::types::{Block, Log},
+        signers::local::PrivateKeySigner,
+        sol_types::SolCall,
+        transports::mock::Asserter,
+    };
+    use cartesi_prt_contracts::tournament::Tournament;
+    use std::path::Path;
 
     fn proof_leaf(data_byte: u8, sibling_byte: u8) -> LeafProof {
         LeafProof {
@@ -605,74 +528,238 @@ mod tests {
         );
     }
 
-    fn tick_wave(labels: &[&str]) -> Vec<LaneRequest> {
-        labels
-            .iter()
-            .map(|label| (label.to_string(), TransactionRequest::default()))
-            .collect()
+    fn setup_epochs() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rusqlite::Connection::open(dir.path().join("db.sqlite3")).unwrap();
+        crate::storage::sql::schema::initialize(&conn).unwrap();
+        drop(conn);
+        let mut storage = Storage::new(dir.path()).unwrap();
+        let epochs = [
+            Epoch {
+                epoch_number: 0,
+                input_index_boundary: 0,
+                root_tournament: Address::repeat_byte(0x10),
+                block_created_number: 1,
+            },
+            Epoch {
+                epoch_number: 1,
+                input_index_boundary: 0,
+                root_tournament: Address::repeat_byte(0x20),
+                block_created_number: 20,
+            },
+        ];
+        storage
+            .insert_consensus_data(20, [].iter(), epochs.iter())
+            .unwrap();
+        dir
     }
 
-    fn ticked(result: TournamentResult, labels: &[&str]) -> EpochReaction {
-        EpochReaction::Ticked(HeroTick::new(result, tick_wave(labels)))
-    }
-
-    #[test]
-    fn settlement_rides_only_undisputed_phases_and_tick_waves_pass_through() {
-        assert!(EpochReaction::Absent.wants_settlement());
-        assert!(!EpochReaction::Preparing.wants_settlement());
-        for (result, wants) in [
-            (TournamentResult::Running, false),
-            (TournamentResult::Won, true),
-            (TournamentResult::Lost, false),
-            (TournamentResult::FailedNoWinner, false),
-        ] {
-            assert_eq!(
-                ticked(result, &["heroAction", "eliminateMatchByTimeout"]).wants_settlement(),
-                wants,
-                "settlement gating for {result:?}"
-            );
-        }
-
-        assert!(EpochReaction::Absent.into_wave().is_empty());
-        assert!(EpochReaction::Preparing.into_wave().is_empty());
-        let labels: Vec<String> = ticked(
-            TournamentResult::Running,
-            &["heroAction", "eliminateMatchByTimeout"],
+    fn manager(path: &Path) -> (EpochManager<EthArenaSender>, Chain, Asserter) {
+        let asserter = Asserter::new();
+        let provider = ProviderBuilder::new()
+            .connect_mocked_client(asserter.clone())
+            .erased();
+        let signer = PrivateKeySigner::from_bytes(&B256::repeat_byte(0x11)).unwrap();
+        let address = signer.address();
+        let lane = TransactionLane::new(
+            provider.clone(),
+            provider.clone(),
+            31337,
+            EthereumWallet::from(signer),
+        );
+        let manager = EpochManager::new(
+            Arc::new(EthArenaSender::new(provider.clone())),
+            lane,
+            Address::repeat_byte(0xCC),
+            address,
+            Storage::new(path).unwrap(),
+            Duration::ZERO,
         )
-        .into_wave()
-        .into_iter()
-        .map(|(label, _)| label)
-        .collect();
-        assert_eq!(
-            labels,
-            vec!["heroAction", "eliminateMatchByTimeout"],
-            "the tick's wave order is preserved"
+        .unwrap();
+        (manager, Chain::new(provider, Vec::new()), asserter)
+    }
+
+    fn push_head(asserter: &Asserter, number: u64) {
+        let mut block: Block = Block::default();
+        block.header.inner.number = number;
+        block.header.hash = B256::repeat_byte(number as u8);
+        asserter.push_success(&Some(block));
+    }
+
+    fn push_call<C: SolCall>(asserter: &Asserter, value: &C::Return) {
+        asserter.push_success(&Bytes::from(C::abi_encode_returns(value)));
+    }
+
+    fn push_bond(asserter: &Asserter, disposition: u8, claimer: Address) {
+        push_call::<Tournament::bondRecoveryCall>(
+            asserter,
+            &Tournament::bondRecoveryReturn {
+                disposition,
+                claimer,
+                payment: U256::ZERO,
+            },
         );
     }
 
-    #[test]
-    fn recovery_runs_only_in_idle_or_terminal_phases() {
-        assert!(EpochReaction::Absent.allows_recovery());
-        assert!(!EpochReaction::Preparing.allows_recovery());
-        for (result, allows) in [
-            (TournamentResult::Running, false),
-            (TournamentResult::Won, true),
-            (TournamentResult::Lost, true),
-            (TournamentResult::FailedNoWinner, true),
-        ] {
-            assert_eq!(
-                ticked(result, &[]).allows_recovery(),
-                allows,
-                "recovery gating for {result:?}"
-            );
-        }
+    fn push_refund_tick(asserter: &Asserter, finalized: u64, disposition: u8, claimer: Address) {
+        push_head(asserter, finalized);
+        asserter.push_success(&Vec::<Log>::new());
+        push_bond(asserter, disposition, claimer);
     }
 
-    #[test]
-    fn recovery_waits_for_the_latest_epoch_to_reach_finalized_storage() {
-        assert!(!finalized_epoch_matches_latest(None, U256::ZERO));
-        assert!(finalized_epoch_matches_latest(Some(7), U256::from(7)));
-        assert!(!finalized_epoch_matches_latest(Some(7), U256::from(8)));
-        assert!(!finalized_epoch_matches_latest(Some(8), U256::from(7)));
+    #[tokio::test]
+    async fn rotation_and_restart_finish_old_refunds_before_following_the_next_epoch() {
+        let dir = setup_epochs();
+        let (mut first, chain, rpc) = manager(dir.path());
+        let us = first.signer_address;
+
+        // Epoch 1 already exists on the finalized chain, but epoch 0 owns the
+        // cursor. Its refund does not need any machine snapshots or Hero.
+        push_refund_tick(&rpc, 30, 2, us);
+        push_head(&rpc, 31);
+        push_bond(&rpc, 2, us);
+        let planned = first.plan_tick(&chain).await.unwrap().unwrap();
+        assert_eq!(planned.epoch, 0);
+        assert!(!planned.done);
+        assert_eq!(planned.wave.len(), 1);
+        assert_eq!(
+            planned.wave[0].1.to,
+            Some(TxKind::Call(Address::repeat_byte(0x10)))
+        );
+        assert!(first.epoch_hero.is_none());
+        drop(first);
+
+        // Losing a submission or restarting cannot skip that epoch.
+        let (mut restarted, chain, rpc) = manager(dir.path());
+        push_refund_tick(&rpc, 30, 2, us);
+        push_head(&rpc, 31);
+        push_bond(&rpc, 2, us);
+        let retried = restarted.plan_tick(&chain).await.unwrap().unwrap();
+        assert_eq!(retried.epoch, 0);
+        assert_eq!(retried.wave, planned.wave);
+
+        // Mined but unfinalized recovery suppresses the call, not the epoch.
+        push_refund_tick(&rpc, 30, 2, us);
+        push_head(&rpc, 31);
+        push_bond(&rpc, 3, Address::ZERO);
+        assert!(!restarted.tick(&chain).await.unwrap());
+        assert_eq!(
+            restarted
+                .storage
+                .unfinished_epoch()
+                .unwrap()
+                .unwrap()
+                .epoch_number,
+            0
+        );
+
+        // Once the payment is final the real tick advances the durable cursor.
+        push_refund_tick(&rpc, 32, 3, Address::ZERO);
+        assert!(restarted.tick(&chain).await.unwrap());
+        drop(restarted);
+        let (mut next, chain, rpc) = manager(dir.path());
+        assert_eq!(
+            next.storage
+                .unfinished_epoch()
+                .unwrap()
+                .unwrap()
+                .epoch_number,
+            1
+        );
+        push_refund_tick(&rpc, 32, 0, Address::ZERO);
+        let next_tick = next.plan_tick(&chain).await.unwrap().unwrap();
+        assert_eq!(next_tick.epoch, 1);
+        assert!(!next_tick.done);
+        assert!(rpc.read_q().is_empty());
+    }
+
+    #[tokio::test]
+    async fn refund_completion_cannot_outrun_finalized_settlement() {
+        let dir = setup_epochs();
+        let (mut manager, chain, rpc) = manager(dir.path());
+        // Ingestion can be ahead of the head sampled by this tick. Even a final
+        // refund cannot retire the epoch before this observation sees settlement.
+        push_refund_tick(&rpc, 19, 3, Address::ZERO);
+        assert!(!manager.tick(&chain).await.unwrap());
+        assert_eq!(
+            manager
+                .storage
+                .unfinished_epoch()
+                .unwrap()
+                .unwrap()
+                .epoch_number,
+            0
+        );
+        push_refund_tick(&rpc, 20, 3, Address::ZERO);
+        assert!(manager.tick(&chain).await.unwrap());
+        assert_eq!(
+            manager
+                .storage
+                .unfinished_epoch()
+                .unwrap()
+                .unwrap()
+                .epoch_number,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn settlement_views_for_a_newer_epoch_do_not_stage_or_accept_it() {
+        let (dir, mut storage) = crate::storage::sql::test_helper::setup_storage();
+        let epochs: Vec<_> = (0..2)
+            .map(|epoch_number| Epoch {
+                epoch_number,
+                input_index_boundary: 0,
+                root_tournament: Address::repeat_byte(epoch_number as u8 + 1),
+                block_created_number: 1,
+            })
+            .collect();
+        storage
+            .insert_consensus_data(1, [].iter(), epochs.iter())
+            .unwrap();
+        storage.roll_epoch().unwrap();
+        storage.roll_epoch().unwrap();
+        // The newer epoch has valid, fully prepared settlement material. Only
+        // ownership of epoch zero prevents these otherwise applicable actions.
+        let newer = storage.settlement_info(1).unwrap().unwrap();
+        let (mut manager, chain, rpc) = manager(dir.path());
+        let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+        push_call::<DaveConsensus::canStageTournamentResultCall>(
+            &rpc,
+            &DaveConsensus::canStageTournamentResultReturn {
+                isFinished: true,
+                isTournamentFailed: false,
+                isTournamentResultStaged: false,
+                epochNumber: U256::from(1),
+                winnerCommitment: B256::from(newer.computation_hash.data()),
+                winnerPostEpochMachineStateHash: B256::from(newer.final_state),
+            },
+        );
+        assert!(
+            manager
+                .plan_stage_tournament_result(&consensus, 0)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(
+            &rpc,
+            &DaveConsensus::canAcceptStagedTournamentResultReturn {
+                isTournamentResultStaged: true,
+                doAllSentriesAgreeWithStagedTournamentResult: true,
+                isClaimStagingPeriodOver: true,
+                epochNumber: U256::from(1),
+                stagedPostEpochMachineStateHash: B256::from(newer.final_state),
+                stagedPostEpochOutputsMerkleRoot: B256::from(newer.outputs_merkle_root()),
+            },
+        );
+        assert!(
+            manager
+                .plan_accept_tournament_result(&consensus, 0)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(rpc.read_q().is_empty());
     }
 }

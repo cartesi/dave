@@ -576,6 +576,46 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn rebuilding_a_wave_fills_a_dropped_prefix_and_resumes_partial_inclusion() -> Result<()>
+    {
+        let (_anvil, provider, mut lane, signer) = spawn_lane().await?;
+        // Exactly one of these transfers fits in each block.
+        provider.anvil_set_block_gas_limit(21_000).await?;
+        let initial = lane
+            .submit_wave(wave(&[("first", 0x11), ("second", 0x22)]))
+            .await?;
+        assert_eq!(initial[0].verdict, SendVerdict::Submitted);
+        assert_eq!(initial[1].verdict, SendVerdict::Submitted);
+        assert_eq!(
+            provider.anvil_drop_transaction(initial[0].tx_hash).await?,
+            Some(initial[0].tx_hash)
+        );
+        provider.anvil_mine(Some(1), None).await?;
+        assert_eq!(
+            nonces(&provider, signer).await?.0,
+            0,
+            "the tail cannot fill the missing prefix"
+        );
+
+        let retry = lane
+            .submit_wave(wave(&[("first", 0x11), ("second", 0x22)]))
+            .await?;
+        assert_eq!(retry[0].nonce, 0);
+        assert_eq!(retry[0].verdict, SendVerdict::Submitted);
+        provider.anvil_mine(Some(1), None).await?;
+        assert_eq!(nonces(&provider, signer).await?.0, 1);
+
+        // The next observation removes the completed action. No local nonce
+        // queue or receipt journal is needed to put the remainder at nonce 1.
+        let remainder = lane.submit_wave(wave(&[("second", 0x22)])).await?;
+        assert_eq!(remainder[0].nonce, 1);
+        assert_ne!(remainder[0].verdict, SendVerdict::Failed);
+        provider.anvil_mine(Some(1), None).await?;
+        assert_eq!(nonces(&provider, signer).await?, (2, 2));
+        Ok(())
+    }
+
     /// A process restart is invisible to the pool: there is no lane
     /// state to lose, so resubmission deduplicates and a changed
     /// intent waits exactly as it would have without the restart.
