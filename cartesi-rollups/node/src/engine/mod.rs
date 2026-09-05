@@ -12,23 +12,22 @@
 //! docs/computation-hash.md.
 //!
 //! Layering, innermost first:
-//! - [`stf::Stf`]: machine verbs (ustep, ureset, feed, revert). Two
-//!   implementations: the toy (here, for spec tests) and the Cartesi
-//!   machine.
+//! - [`stf::Stf`]: the machine operations the ruler needs. Production
+//!   uses the Cartesi machine; unit tests use a small scripted machine.
 //! - [`ruler::Ruler`]: the geometry engine. Owns every meta-cycle
 //!   convention (window boundaries, fused feed transition, big-cycle
 //!   closing ureset, fixed-point padding). Written once, exercised by
 //!   the toy, reused by the production machine.
-//! - [`cache::NodeCache`] and [`cache::get_or_compute`]: the quartet
-//!   cache with its amortizing fanout.
+//! - [`cache::get_or_compute`]: quartet computation and fanout over
+//!   the node's storage.
 //! - [`dispute::DisputeSource`]: the hero-facing face. Tournament
 //!   coordinates map onto quartets ([`dispute::LevelCoords`]), level 0
 //!   is served from the persisted regime-1 material (window-root rows
 //!   plus lazy interior folds), and proofs are sibling descents.
 //!
-//! The spec tests in `spec.rs` compare all of this against an
-//! independent brute-force oracle; they are the executable form of the
-//! leaf-convention specification.
+//! The spec tests compare stepping and sampling against a literal
+//! leaf sequence. Cache and proof tests also use trees built from those
+//! runs; real-machine differentials live in `tests/engine_machine.rs`.
 
 pub mod cache;
 pub mod config;
@@ -41,10 +40,12 @@ pub mod structure;
 
 #[cfg(test)]
 pub(crate) mod spec;
+#[cfg(test)]
+pub(crate) mod toy;
 
 pub use config::EngineConfig;
 pub use dispute::{DisputeSource, LevelCoords, fold_runs};
 pub use machine_stf::{MachineStf, Positioner};
-pub use ruler::{Ruler, RulerFactory, Run, ToyFactory};
-pub use stf::{ProvingStf, Stf, ToyInput, ToyOutcome, ToyStf};
+pub use ruler::{Ruler, RulerFactory, Run};
+pub use stf::{ProvingStf, Stf};
 pub use structure::{InputBoundary, Position, Quartet, Structure};

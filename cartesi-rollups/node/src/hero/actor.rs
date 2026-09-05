@@ -7,7 +7,7 @@ use ::log::{debug, error, info};
 
 use crate::{
     chain::{Chain, ChainHead},
-    engine::{DisputeSource, Positioner, RulerFactory, stf::ProvingStf},
+    engine::{DisputeSource, Positioner},
     hero::{
         action::{PreparedArenaAction, prepare},
         context::HeroContext,
@@ -59,11 +59,10 @@ impl HeroTick {
     }
 }
 
-/// Generic over the ruler factory so action preparation runs against the toy
-/// source in unit tests while production uses [`Positioner`].
-pub struct Hero<AS: ArenaSender, F: RulerFactory = Positioner> {
+/// The production actor owns one epoch's real machine source.
+pub struct Hero<AS: ArenaSender> {
     arena_sender: Arc<AS>,
-    source: DisputeSource<F>,
+    source: DisputeSource<Positioner>,
     epoch: u64,
     epoch_initial_hash: Digest,
     root_tournament: Address,
@@ -99,12 +98,7 @@ impl<AS: ArenaSender> Hero<AS> {
             reader,
         })
     }
-}
 
-impl<AS: ArenaSender, F: RulerFactory + Send> Hero<AS, F>
-where
-    F::S: ProvingStf,
-{
     pub async fn tick(&mut self) -> Result<HeroTick> {
         let (latest_head, foam) = self.reader.fetch_from_root(self.root_tournament).await?;
         let chain = self.reader.chain().clone();

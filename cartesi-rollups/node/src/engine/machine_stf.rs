@@ -195,7 +195,7 @@ impl MachineStf {
     }
 
     fn terminal_fixed(&mut self) -> Result<bool> {
-        if self.halted()? || self.mcycle_overflow()? {
+        if self.machine.iflags_h()? || self.mcycle_overflow()? {
             return Ok(true);
         }
         Ok(matches!(
@@ -233,10 +233,6 @@ impl MachineStf {
 impl Stf for MachineStf {
     fn state_hash(&mut self) -> Result<Digest> {
         Ok(self.machine.root_hash()?.into())
-    }
-
-    fn halted(&mut self) -> Result<bool> {
-        Ok(self.machine.iflags_h()?)
     }
 
     fn yielded(&mut self) -> Result<bool> {

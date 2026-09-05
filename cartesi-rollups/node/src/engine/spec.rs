@@ -3,19 +3,17 @@
 
 //! The executable leaf-convention specification.
 //!
-//! `oracle_counters` enumerates the whole ruler by brute force, written
-//! directly from the documented conventions with none of the engine's
-//! machinery. Every test compares engine and cache outputs against it.
-//! If the engine and the oracle ever disagree, the conventions are
-//! ambiguous or one of them is wrong; either way the spec is doing its
-//! job.
+//! `oracle_digests` enumerates tiny epochs with literal window, cycle,
+//! and slot loops, independently of the ruler's scheduling. The geometry
+//! tests compare against that sequence; later cache and proof tests also
+//! use reference trees built from the ruler's already-checked runs.
 
 use super::cache::{PRECOMPUTE_LEVELS, get_or_compute};
 use super::config::EngineConfig;
 use super::dispute::{DisputeSource, LevelCoords, fold_runs};
-use super::ruler::{RulerFactory, Run, ToyFactory};
-use super::stf::{IDLE_CHURN_TICKS, ToyInput, ToyOutcome, ToyStf};
+use super::ruler::{RulerFactory, Run};
 use super::structure::{Quartet, Structure};
+use super::toy::{IDLE_CHURN_TICKS, ToyFactory, ToyInput, ToyOutcome, ToyStf};
 use crate::merkle::{Digest, MerkleBuilder, MerkleTree};
 use crate::storage::Storage;
 use alloy::primitives::U256;
@@ -252,22 +250,34 @@ fn fully_active_state_is_position_plus_one() {
 }
 
 #[test]
-fn mid_span_positioning_matches_oracle() {
-    // A ruler positioned mid-epoch by replay must continue exactly
-    // where the oracle says it should.
+fn positioning_at_each_slot_matches_oracle() {
+    // Cover partial uarch spans as well as window and big-cycle boundaries.
     let structure = S_SMALL;
     for (name, script) in scripts_for(&structure) {
         let oracle = oracle_digests(&structure, &script);
-        let quarter = structure.ruler_span() >> 2;
         let mut factory = ToyFactory {
             structure,
             script: script.clone(),
         };
-        let mut ruler = factory.ruler_at(quarter).unwrap();
-        let runs = ruler.collect(quarter * U256::from(3), 0).unwrap();
-        let lo = u64::try_from(quarter).unwrap() as usize;
-        let hi = lo * 3;
-        assert_eq!(expand(&runs), oracle[lo..hi], "script {name}");
+        for start in 0..oracle.len() {
+            let mut ruler = factory.ruler_at(U256::from(start)).unwrap();
+            let expected = if start == 0 {
+                ToyStf::hash_of(0)
+            } else {
+                oracle[start - 1]
+            };
+            assert_eq!(
+                ruler.state_hash().unwrap(),
+                expected,
+                "script {name}, position {start}"
+            );
+            let runs = ruler.collect(structure.ruler_span(), 0).unwrap();
+            assert_eq!(
+                expand(&runs),
+                oracle[start..],
+                "script {name}, from {start}"
+            );
+        }
     }
 }
 
