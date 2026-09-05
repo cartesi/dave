@@ -34,7 +34,7 @@
 //! start means a broken machine or broken assumptions, and the engine
 //! panics rather than inventing a transition shape for it.
 
-use super::stf::{ProvingStf, Stf, ToyInput, ToyStf};
+use super::stf::{ProvingStf, Stf};
 use super::structure::Structure;
 use crate::merkle::Digest;
 use alloy::primitives::U256;
@@ -460,22 +460,4 @@ impl StrideSampler {
 pub trait RulerFactory {
     type S: Stf;
     fn ruler_at(&mut self, position: U256) -> Result<Ruler<Self::S>>;
-}
-
-/// Toy factory: each scripted input is one epoch input (payloads are
-/// irrelevant to the toy).
-pub struct ToyFactory {
-    pub structure: Structure,
-    pub script: Vec<ToyInput>,
-}
-
-impl RulerFactory for ToyFactory {
-    type S = ToyStf;
-
-    fn ruler_at(&mut self, position: U256) -> Result<Ruler<ToyStf>> {
-        let stf = ToyStf::new(self.structure, self.script.clone());
-        let mut ruler = Ruler::new(stf, self.structure, self.script.len() as u64);
-        ruler.advance(position)?;
-        Ok(ruler)
-    }
 }

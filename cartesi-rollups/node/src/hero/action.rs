@@ -730,8 +730,9 @@ fn source_error(action: &'static str, tournament: Address, source: anyhow::Error
 mod tests {
     use crate::{
         engine::{
-            LevelCoords, ToyFactory, ToyInput, ToyOutcome,
+            LevelCoords,
             spec::{S_SMALL, toy_source},
+            toy::{ToyFactory, ToyInput, ToyOutcome},
         },
         tournament::domain::{
             AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,

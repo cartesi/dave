@@ -275,3 +275,11 @@ dispute it should have won. The e2e tests cross-check (1) against (2)
 every epoch (`test/e2e/rollups/test_env.lua`, `epoch_settlement`), and
 the stf test cases exercise (3) against both. Preserve these cross-checks
 when refactoring; they are the executable specification of this document.
+
+The ruler's unit tests use a small scripted machine to enumerate complete
+epochs. A literal window/cycle/slot oracle checks stepping and sampling;
+cache and proof tests also use trees built from those checked runs. This
+separates geometry errors from machine behavior, but does not establish that
+the script models Cartesi correctly. The real-machine differentials and
+on-chain state-transition tests provide that separate evidence. The scripted
+machine and its proof markers are compiled only for unit tests.

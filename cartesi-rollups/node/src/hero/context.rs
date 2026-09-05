@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::{
     chain::{Chain, ChainHead},
-    engine::{DisputeSource, LevelCoords, RulerFactory},
+    engine::{DisputeSource, LevelCoords, Positioner},
     merkle::Digest,
     tournament::{
         dispute::{
@@ -87,14 +87,14 @@ impl HeroContext {
 
     /// Project the Hero's one local path at a caller-supplied chain head.
     #[allow(clippy::too_many_arguments)]
-    pub async fn assemble<F: RulerFactory>(
+    pub async fn assemble(
         chain: &Chain,
         head: ChainHead,
         epoch: u64,
         epoch_initial_hash: Digest,
         dispute: &Dispute,
         standings: &HashMap<Address, TournamentStanding>,
-        source: &mut DisputeSource<F>,
+        source: &mut DisputeSource<Positioner>,
     ) -> Result<Self, ContextError> {
         let root_descriptor = dispute.root().descriptor();
         if root_descriptor.initial_hash() != epoch_initial_hash {
@@ -287,10 +287,10 @@ fn assemble_snapshots(path: Vec<PathLevel>) -> Result<SemanticSnapshot, ContextE
     Ok(child.expect("every Dispute has a root tournament"))
 }
 
-fn level_material<F: RulerFactory>(
+fn level_material(
     epoch: u64,
     descriptor: TournamentDescriptor,
-    source: &mut DisputeSource<F>,
+    source: &mut DisputeSource<Positioner>,
 ) -> Result<LevelMaterial, ContextError> {
     let tournament = descriptor.address();
     let coords = level_coords(epoch, descriptor)?;
