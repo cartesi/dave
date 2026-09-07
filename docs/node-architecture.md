@@ -278,29 +278,24 @@ State and storage:
    synced, and renamed without replacement, but correctness still relies on
    exclusive state-directory ownership and no external mutation of committed
    snapshots.
-3. Finalized input and epoch ingestion accumulates the entire unprocessed
-   block range into in-memory vectors before one database transaction. Range
-   partitioning limits what each RPC request asks for, but not total backlog
-   memory or crash replay. A long cold-start backlog should eventually be
-   committed in bounded block or log chunks.
 
 Error handling and observability:
 
-4. Panics and asserts remain on hot paths. The settle-mismatch
+3. Panics and asserts remain on hot paths. The settle-mismatch
    assertions in `src/epoch_manager/mod.rs` deliberately stop on a
    consensus-critical local/on-chain disagreement. The semantic Hero path now
    returns observer, context, and fulfillment errors for ordinary invalid
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
-5. Logging is unstructured and inconsistent between crates.
-6. Every tournament and settlement request carries the configurable
+4. Logging is unstructured and inconsistent between crates.
+5. Every tournament and settlement request carries the configurable
    `15_000_000` gas default. A pool may require balance for
    `gas_limit * max_fee_per_gas + value`, not expected gas use; join value is
    therefore additional to the fee envelope. A batch needs enough balance for
    its cumulative fee envelopes and values, including nested join bonds.
    Per-verb limits and a calibrated operating funding floor remain pre-mainnet
    work.
-7. The lane does not observe receipts or mined revert reasons. Revert protection
+6. The lane does not observe receipts or mined revert reasons. Revert protection
    at the submission endpoint may reject stale or racing transactions before
    inclusion, but the node neither requires that service nor detects a
    deterministic self-authored revert. Because reverted state remains
@@ -313,21 +308,28 @@ Error handling and observability:
 
 Structure:
 
-8. The reader uses async recursion for dynamic tournament discovery, and the
+7. The reader uses async recursion for dynamic tournament discovery, and the
    Hero's dispute loop runs inside the epoch manager task. Local machine and
    proof preparation can therefore pin a runtime worker. Moving local dispute
    work to the blocking lane remains open.
-9. Commented-out code blocks kept as reference (the test-scaffolding
+8. Commented-out code blocks kept as reference (the test-scaffolding
    `instance.rs` snapshot logic) and disabled/empty tests.
-10. No graceful-shutdown story for in-flight work: a mid-epoch machine run
-    or mid-dispute reaction is only interrupted at the next poll.
+9. No graceful-shutdown story for in-flight work: a mid-epoch machine run
+   or mid-dispute reaction is only interrupted at the next poll.
 
 Design assumptions:
 
-11. Finalized-only persistence. The tournament reader additionally acts on a
+10. Finalized-only persistence. The tournament reader additionally acts on a
     disposable number-range tail and point views at one sampled hash. It does
     not prove the tail belongs to that hash's ancestry; stale work is safe
     because mutators revalidate it, and the next tick rebuilds the tail.
-12. One node instance per state dir; SQLite WAL is the only cross-thread
+11. One node instance per state dir; SQLite WAL is the only cross-thread
     coordination. Shared state-directory operation is unsupported and has no
     process lock or recovery protocol.
+12. Ingestion holds the application's unprocessed input payloads and epoch
+    events in memory, including temporary conversion copies, before committing
+    them with the ingestion watermark. RPC range partitioning does not bound
+    that total. Operation assumes this backlog fits available RAM and accepts
+    cold-start and retry costs. A same-state restart resumes from the last
+    commit; a fresh state directory ingests the application's history again.
+    Bounded ingestion is warranted only if measured history sizes require it.
