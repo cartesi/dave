@@ -12,9 +12,9 @@ use crate::{
     tournament::{
         MatchID,
         domain::{
-            BisectingMatch, BlockDuration, Engagement, InnerEliminationReason, LiveMatchState,
-            MatchSide, ParentLink, ReadyToSealMatch, SealedLeafMatch, SemanticSnapshot,
-            TimeoutDisposition, TournamentStanding,
+            BlockDuration, Engagement, InnerEliminationReason, LiveMatchState, MatchSide,
+            ParentLink, ReadyToSealMatch, SealedLeafMatch, SemanticSnapshot, TimeoutDisposition,
+            TournamentStanding,
         },
     },
 };
@@ -77,10 +77,6 @@ pub struct TimeoutIntent {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AdvanceIntent {
     pub tournament: Address,
-    pub match_id: MatchID,
-    pub commitment: Digest,
-    pub side: MatchSide,
-    pub match_state: BisectingMatch,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -223,13 +219,7 @@ fn plan_engagement(snapshot: &SemanticSnapshot, engagement: Engagement) -> HeroD
     match engagement.live().state() {
         LiveMatchState::Bisecting(match_state) => {
             plan_responder(match_state.responder(), side, || {
-                HeroIntent::Advance(AdvanceIntent {
-                    tournament,
-                    match_id,
-                    commitment,
-                    side,
-                    match_state,
-                })
+                HeroIntent::Advance(AdvanceIntent { tournament })
             })
         }
         LiveMatchState::ReadyToSealLeaf(match_state) => {
@@ -309,9 +299,9 @@ mod tests {
 
     use super::*;
     use crate::tournament::domain::{
-        AwaitingChildMatch, EliminationReason, EliminationRecord, InnerWinner, JoinDisposition,
-        LocalCommitmentStanding, MatchCoordinate, ReadyToSealMatch, RootWinner, SealedDivergence,
-        TournamentDescriptor, TournamentKind, WaitingChildren,
+        AwaitingChildMatch, BisectingMatch, EliminationReason, EliminationRecord, InnerWinner,
+        JoinDisposition, LocalCommitmentStanding, MatchCoordinate, ReadyToSealMatch, RootWinner,
+        SealedDivergence, TournamentDescriptor, TournamentKind, WaitingChildren,
     };
 
     fn digest(byte: u8) -> Digest {
@@ -650,10 +640,6 @@ mod tests {
             )),
             HeroDecision::Act(HeroIntent::Advance(AdvanceIntent {
                 tournament: address(10),
-                match_id: match_id(),
-                commitment: digest(1),
-                side: MatchSide::One,
-                match_state: bisecting,
             }))
         );
 
