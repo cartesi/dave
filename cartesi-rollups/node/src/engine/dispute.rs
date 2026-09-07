@@ -1,8 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The dispute-facing node source: every merkle node a tournament
-//! hero needs, answered by quartet.
+//! The dispute-facing computation source: Merkle nodes answered by
+//! quartet and transition witnesses checked against both state hashes.
 //!
 //! A tournament level's commitment tree lives at a [`LevelCoords`]:
 //! its root, the node a match contests, bisection children, and
@@ -231,18 +231,34 @@ impl<F: RulerFactory> DisputeSource<F> {
         })
     }
 
-    pub fn factory(&self) -> &F {
+    #[cfg(test)]
+    pub(crate) fn factory(&self) -> &F {
         &self.factory
     }
 
-    /// A ruler positioned at `position`: the machine verb of the
-    /// facade. This is what proof positioning uses (the disputed
-    /// leaf's transition witness) and what entering a nested
-    /// tournament uses to start producing the nested computation
-    /// hash. Positioning resumes from the boundary store's nearest
-    /// answer and densifies as it advances.
-    pub fn machine_at(&mut self, position: U256) -> Result<super::ruler::Ruler<F::S>> {
-        self.factory.ruler_at(position)
+    /// A transition witness is usable only if replay reaches the agreed
+    /// state and proving reaches the claimed post-state. Keep both checks
+    /// with the positioned machine, before returning any witness bytes.
+    pub fn prove_transition(
+        &mut self,
+        position: U256,
+        expected_pre_state: Digest,
+        expected_post_state: Digest,
+    ) -> Result<Vec<u8>> {
+        let mut ruler = self.factory.ruler_at(position)?;
+        let pre_state = ruler.state_hash()?;
+        ensure!(
+            pre_state == expected_pre_state,
+            "epoch {} transition {position}: pre-state {pre_state} differs from expected {expected_pre_state}",
+            self.epoch
+        );
+        let (proof, post_state) = ruler.prove_transition()?;
+        ensure!(
+            post_state == expected_post_state,
+            "epoch {} transition {position}: post-state {post_state} differs from expected {expected_post_state}",
+            self.epoch
+        );
+        Ok(proof)
     }
 
     /// Frontier coverage: the quartet sits at or above window

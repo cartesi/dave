@@ -16,7 +16,7 @@ mod common;
 use common::prototype::{MachineCommitment, MachineCommitmentBuilder};
 
 use cartesi_rollups_prt_node::engine::{
-    DisputeSource, LevelCoords, MachineStf, Positioner, Quartet, Stf, Structure,
+    DisputeSource, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf, Structure,
 };
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
 use common::epoch_data::EpochData;
@@ -691,9 +691,8 @@ fn golden_fixtures_hold() {
     );
 }
 
-/// The workstream-4 differential: the ruler-guided proof path
-/// (DisputeSource::machine_at + Ruler::prove_transition) must produce
-/// byte-identical chain witnesses to the prototype's get_logs, across
+/// The checked proof facade must produce byte-identical chain
+/// witnesses to the prototype's get_logs, across
 /// the transition shapes reachable on the echo epoch: the fed window
 /// start, a plain ustep, a closing slot, and an inputless window
 /// start (empty data availability). The revert-carrying closing slot
@@ -720,22 +719,22 @@ fn prove_transition_matches_prototype_get_logs() {
         let (_state_dir, storage) = initialized_storage(&image);
         let work = scratch();
         let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
-        let mut ruler = source.machine_at(meta_cycle).unwrap();
-        let agree = ruler.state_hash().unwrap();
-        let (new_proof, new_next) = ruler.prove_transition().unwrap();
-
         let dir = scratch();
         let db = EpochData::new(inputs.clone(), dir.path().to_path_buf()).unwrap();
+        let agree =
+            MachineInstance::new_rollups_advanced_until(image.to_str().unwrap(), meta_cycle, &db)
+                .unwrap()
+                .root_hash()
+                .unwrap();
         let (old_proof, old_next) =
             MachineInstance::get_logs(image.to_str().unwrap(), 0, agree, meta_cycle, &db).unwrap();
+        let new_proof = source
+            .prove_transition(meta_cycle, agree, old_next)
+            .unwrap();
 
         assert_eq!(
             new_proof, old_proof,
             "proof bytes diverge at {label} (position {meta_cycle})"
-        );
-        assert_eq!(
-            new_next, old_next,
-            "post-transition hash diverges at {label} (position {meta_cycle})"
         );
         println!("{label}: {} witness bytes agree", new_proof.len());
     }
@@ -745,11 +744,10 @@ fn prove_transition_matches_prototype_get_logs() {
 /// rejects every input). Three agreements, in dependency order: the
 /// plain path's closing leaf must be the restored checkpoint (the
 /// pre-feed state - what the chain restores from the shadow slot);
-/// the proving path must report that same post-state (the hero's
-/// pre-send check compares it against the commitment, so a prover
-/// that reports the discarded rejected state instead can never send
-/// winLeafMatch and forfeits by clock); and the witness bytes must
-/// match the prototype proof path.
+/// the proof facade must validate that same post-state (reporting the
+/// discarded rejected state would prevent winLeafMatch and forfeit
+/// the dispute by clock); and the witness bytes must match the
+/// prototype proof path.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn revert_closing_slot_restores_the_checkpoint() {
@@ -763,25 +761,22 @@ fn revert_closing_slot_restores_the_checkpoint() {
     let work = scratch();
     let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
 
-    // The agreed pre-state of the window: what the feed checkpoints
-    // and what the revert must restore.
-    let pre_feed = {
-        let mut ruler = source.machine_at(U256::ZERO).unwrap();
-        ruler.state_hash().unwrap()
-    };
-
-    // Find where the reject lands: feed window 0 and run the big
-    // machine until the guest yields. The closing slot of that big
+    // Record what feed checkpoints, then find where the reject lands:
+    // feed window 0 and run the big machine until the guest yields.
+    // The closing slot of that big
     // cycle carries the revert (mirrors stf_revert's oracle-reported
     // processing_bigs).
-    let bigs = {
-        let ruler = source.machine_at(U256::ZERO).unwrap();
-        let mut stf = ruler.into_stf();
+    let (pre_feed, bigs) = {
+        let work = scratch();
+        let mut stf = MachineStf::load(&image, work.path().to_path_buf())
+            .unwrap()
+            .with_inputs(inputs.clone());
+        let pre_feed = stf.state_hash().unwrap();
         stf.feed(0).unwrap();
         let ran = stf.run_big(u64::MAX).unwrap();
         assert!(stf.yielded().unwrap(), "the yield program must yield");
         assert!(ran > 0, "the guest must run before yielding");
-        ran
+        (pre_feed, ran)
     };
     let boundary = U256::from(bigs) * big_span;
     assert!(boundary < (U256::ONE << 44), "input overran a level-0 leaf");
@@ -789,7 +784,12 @@ fn revert_closing_slot_restores_the_checkpoint() {
 
     // The built leaf, through the plain path.
     let built = {
-        let mut ruler = source.machine_at(closing).unwrap();
+        let work = scratch();
+        let stf = MachineStf::load(&image, work.path().to_path_buf())
+            .unwrap()
+            .with_inputs(inputs.clone());
+        let mut ruler = Ruler::new(stf, structure, inputs.len() as u64);
+        ruler.advance(closing).unwrap();
         let runs = ruler.collect(boundary, 0).unwrap();
         runs.last().unwrap().hash
     };
@@ -798,28 +798,23 @@ fn revert_closing_slot_restores_the_checkpoint() {
         "the revert must restore the pre-feed state"
     );
 
-    // The proving path must report the post-state it just proved the
-    // chain would compute.
-    let mut ruler = source.machine_at(closing).unwrap();
-    let agree = ruler.state_hash().unwrap();
-    let (proof, post) = ruler.prove_transition().unwrap();
-    assert_eq!(
-        post, built,
-        "prove_transition post-state diverges from the built leaf at the revert closing slot"
-    );
-
-    // Differential: the prototype proof path agrees on bytes and
-    // post-state.
+    // Derive the agreed pre-state independently, then require the
+    // facade to prove the plain path's restored leaf.
     let dir = scratch();
     let db = EpochData::new(inputs, dir.path().to_path_buf()).unwrap();
+    let agree = MachineInstance::new_rollups_advanced_until(image.to_str().unwrap(), closing, &db)
+        .unwrap()
+        .root_hash()
+        .unwrap();
     let (old_proof, old_post) =
         MachineInstance::get_logs(image.to_str().unwrap(), 0, agree, closing, &db).unwrap();
+    let proof = source.prove_transition(closing, agree, built).unwrap();
     assert_eq!(
         proof, old_proof,
         "revert witness bytes diverge from the prototype"
     );
     assert_eq!(
-        post, old_post,
+        built, old_post,
         "post-transition hash diverges from the prototype at the revert closing slot"
     );
     println!(

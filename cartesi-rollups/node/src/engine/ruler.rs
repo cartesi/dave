@@ -34,7 +34,7 @@
 //! start means a broken machine or broken assumptions, and the engine
 //! panics rather than inventing a transition shape for it.
 
-use super::stf::{ProvingStf, Stf};
+use super::stf::Stf;
 use super::structure::Structure;
 use crate::merkle::Digest;
 use alloy::primitives::U256;
@@ -379,7 +379,7 @@ impl<S: Stf> Ruler<S> {
     }
 }
 
-impl<S: ProvingStf> Ruler<S> {
+impl<S: Stf> Ruler<S> {
     /// Proves the transition at the current position: the chain
     /// witness for exactly one of the three shapes the ruler names,
     /// plus the post-transition state hash. The caller positions the

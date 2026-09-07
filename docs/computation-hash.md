@@ -98,6 +98,12 @@ big-step boundary calls `UArchStep` and then `UArchReset`; every other position
 calls only `UArchStep`. Each branch requires the access-log proof buffer to be
 consumed completely before returning its root.
 
+The node's computation source owns transition-proof preparation: it replays
+to the disputed position, checks the sealed agree-state hash, generates the
+witness, and checks the claimed post-state hash before returning bytes. Hero
+selects the position and its side's claimed state from the match. A mismatch
+is a local preparation error; no proof action is submitted.
+
 Inside one big cycle, the uarch typically halts long before spending its
 2^20 budget. The remaining slots are padded by repeating the halted state
 hash (`repetitions` in leaf storage), so every big cycle contributes exactly

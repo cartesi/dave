@@ -282,6 +282,53 @@ fn positioning_at_each_slot_matches_oracle() {
 }
 
 #[test]
+fn checked_transition_proofs_match_oracle_at_each_slot() {
+    for (name, script) in scripts_for(&S_SMALL) {
+        let oracle = oracle_digests(&S_SMALL, &script);
+        let mut source = toy_source(S_SMALL, &script);
+        let mut pre_state = ToyStf::hash_of(0);
+        for (position, &post_state) in oracle.iter().enumerate() {
+            let proof = source
+                .prove_transition(U256::from(position), pre_state, post_state)
+                .unwrap_or_else(|error| panic!("script {name}, position {position}: {error}"));
+            assert!(!proof.is_empty());
+            pre_state = post_state;
+        }
+    }
+}
+
+#[test]
+fn transition_proof_rejects_wrong_expected_states() {
+    let script = vec![accept(&[2, 1])];
+    let oracle = oracle_digests(&S_SMALL, &script);
+    let mut source = toy_source(S_SMALL, &script);
+    let position = U256::ONE;
+    let wrong = Digest::new([0xff; 32]);
+
+    // A bad pre-state takes precedence when both supplied hashes are wrong.
+    for (pre_state, observed, label) in [
+        (wrong, oracle[0], "pre-state"),
+        (oracle[0], oracle[1], "post-state"),
+    ] {
+        let error = source
+            .prove_transition(position, pre_state, wrong)
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("epoch 0 transition 1"));
+        assert!(message.contains(label));
+        assert!(message.contains(&wrong.to_string()));
+        assert!(message.contains(&observed.to_string()));
+    }
+    // A failed preparation does not poison the next attempt.
+    assert!(
+        !source
+            .prove_transition(position, oracle[0], oracle[1])
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn cache_root_matches_oracle_tree() -> Result<()> {
     for structure in [S_DIAGRAM, S_SMALL] {
         for (name, script) in scripts_for(&structure) {

@@ -23,7 +23,8 @@
 //! - [`dispute::DisputeSource`]: the hero-facing face. Tournament
 //!   coordinates map onto quartets ([`dispute::LevelCoords`]), level 0
 //!   is served from the persisted regime-1 material (window-root rows
-//!   plus lazy interior folds), and proofs are sibling descents.
+//!   plus lazy interior folds). It supplies Merkle proofs by sibling
+//!   descent and transition witnesses checked against pre/post states.
 //!
 //! The spec tests compare stepping and sampling against a literal
 //! leaf sequence. Cache and proof tests also use trees built from those
@@ -47,5 +48,5 @@ pub use config::EngineConfig;
 pub use dispute::{DisputeSource, LevelCoords, fold_runs};
 pub use machine_stf::{MachineStf, Positioner};
 pub use ruler::{Ruler, RulerFactory, Run};
-pub use stf::{ProvingStf, Stf};
+pub use stf::Stf;
 pub use structure::{InputBoundary, Position, Quartet, Structure};

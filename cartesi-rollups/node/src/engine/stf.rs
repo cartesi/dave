@@ -63,26 +63,17 @@ pub trait Stf {
     /// does not advance while yielded or halted (idle uarch spans are
     /// state-preserving, so skipping them is exact at big boundaries).
     fn run_big(&mut self, big_cycles: u64) -> Result<u64>;
-}
 
-/// The proving verbs: each mirrors a plain verb, performing the same
-/// state change while emitting the chain-encoded witness the on-chain
-/// state transition consumes. The byte layout is consensus-critical -
-/// it must match what prt/contracts' state-transition decodes - and is
-/// pinned by a differential test against the prototype proof path plus
-/// the stf e2e scenarios, which drive every shape through the chain.
-///
-/// Only the real machine's witnesses mean anything to the chain. The
-/// toy implements these verbs with inert marker bytes so the proof
-/// PATH (positioning, the agree-state check, shape selection) can run
-/// under the toy in unit tests; nothing consumes toy bytes.
-pub trait ProvingStf: Stf {
+    // Logged operations apply the same transitions and emit the witness
+    // encoding consumed by the on-chain state transition. Machine
+    // differentials and STF e2e tests check that separate contract.
+
     /// The window-opening witness: the data-availability encoding of
     /// window `window`'s input (empty when the window has none) and,
     /// when it does, the input-delivery log that also records the
     /// revert root. The implementation resolves
     /// the window to its payload, as with [`Stf::feed`]. The fused
-    /// first ustep is logged separately by [`ProvingStf::log_ustep`].
+    /// first ustep is logged separately by [`Stf::log_ustep`].
     fn log_feed(&mut self, window: u64) -> Result<Vec<u8>>;
 
     /// One uarch cycle, with its access log.
