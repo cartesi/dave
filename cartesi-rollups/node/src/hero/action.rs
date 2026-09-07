@@ -1,10 +1,9 @@
 //! Fallible local fulfillment of one pure Hero intent.
 //!
-//! Preparation revalidates the intent against the accepted semantic context,
-//! derives every Merkle opening or machine witness, and returns one owned arena
-//! action. It performs no provider reads and sends no transaction. In
-//! particular, the join bond is resolved only when the prepared join is
-//! submitted.
+//! Preparation fulfills a decision against the same immutable context that
+//! produced it, derives every Merkle opening or machine witness, and returns
+//! one owned arena action. It performs no provider reads and sends no
+//! transaction. The join bond is resolved when the prepared join is submitted.
 
 use alloy::primitives::{Address, U256};
 use thiserror::Error;
@@ -94,7 +93,7 @@ pub enum PrepareError {
     #[error("semantic and local-material descriptors disagree for tournament {tournament}")]
     LevelDescriptorMismatch { tournament: Address },
     #[error(
-        "intent commitment {observed} disagrees with local commitment {expected} in tournament {tournament}"
+        "commitment {observed} disagrees with local commitment {expected} in tournament {tournament}"
     )]
     CommitmentMismatch {
         tournament: Address,
@@ -163,7 +162,7 @@ pub enum PrepareError {
 
 type PrepareResult<T> = std::result::Result<T, PrepareError>;
 
-/// Fulfill exactly one intent from one accepted Hero context.
+/// Fulfill an intent using the same immutable context that produced it.
 pub fn prepare<F: RulerFactory>(
     intent: HeroIntent,
     context: &HeroContext,
@@ -253,32 +252,22 @@ fn prepare_advance<F: RulerFactory>(
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "advance";
-    let (snapshot, material) = local_level(context, intent.tournament, intent.commitment)?;
-    let engagement = validate_engagement(
-        ACTION,
-        intent.tournament,
-        snapshot,
-        intent.match_id,
-        intent.commitment,
-        intent.side,
-    )?;
-    if engagement.live().timeout() != TimeoutDisposition::None
-        || engagement.live().state() != LiveMatchState::Bisecting(intent.match_state)
-        || intent.match_state.responder() != intent.side
-    {
+    let (snapshot, material) = context_level(context, intent.tournament)?;
+    let LocalCommitmentStanding::Engaged(engagement) = snapshot.local_standing() else {
         return Err(PrepareError::IntentStateMismatch {
             action: ACTION,
             tournament: intent.tournament,
         });
-    }
+    };
+    let LiveMatchState::Bisecting(state) = engagement.live().state() else {
+        return Err(PrepareError::IntentStateMismatch {
+            action: ACTION,
+            tournament: intent.tournament,
+        });
+    };
 
-    let (left_node, right_node, selected) = unresolved_opening(
-        ACTION,
-        intent.tournament,
-        material,
-        intent.match_state,
-        source,
-    )?;
+    let (left_node, right_node, selected) =
+        unresolved_opening(ACTION, intent.tournament, material, state, source)?;
     let (new_left_node, new_right_node) = source
         .children(&selected)
         .map_err(|source| source_error(ACTION, intent.tournament, source))?;
@@ -294,7 +283,7 @@ fn prepare_advance<F: RulerFactory>(
 
     Ok(PreparedArenaAction::Advance {
         tournament: intent.tournament,
-        match_id: intent.match_id,
+        match_id: engagement.match_id(),
         left_node,
         right_node,
         new_left_node,
@@ -550,6 +539,22 @@ fn local_level(
     tournament: Address,
     commitment: Digest,
 ) -> PrepareResult<(&SemanticSnapshot, &LevelMaterial)> {
+    let (snapshot, material) = context_level(context, tournament)?;
+    let expected = snapshot.local_commitment();
+    if commitment != expected {
+        return Err(PrepareError::CommitmentMismatch {
+            tournament,
+            expected,
+            observed: commitment,
+        });
+    }
+    Ok((snapshot, material))
+}
+
+fn context_level(
+    context: &HeroContext,
+    tournament: Address,
+) -> PrepareResult<(&SemanticSnapshot, &LevelMaterial)> {
     let snapshot = context
         .snapshot_at(tournament)
         .ok_or(PrepareError::MissingSnapshot { tournament })?;
@@ -562,11 +567,11 @@ fn local_level(
         return Err(PrepareError::LevelDescriptorMismatch { tournament });
     }
     let expected = snapshot.local_commitment();
-    if material.root() != expected || commitment != expected {
+    if material.root() != expected {
         return Err(PrepareError::CommitmentMismatch {
             tournament,
             expected,
-            observed: commitment,
+            observed: material.root(),
         });
     }
     Ok((snapshot, material))
@@ -1174,7 +1179,14 @@ mod tests {
                 let HeroIntent::Advance(intent) = planned(&fixture.context) else {
                     panic!("advance fixture must plan an advance");
                 };
-                let state = intent.match_state;
+                let LocalCommitmentStanding::Engaged(engagement) =
+                    fixture.context.snapshot().local_standing()
+                else {
+                    panic!("advance fixture must be engaged");
+                };
+                let LiveMatchState::Bisecting(state) = engagement.live().state() else {
+                    panic!("advance fixture must be bisecting");
+                };
                 let waiting = state.waiting_children();
                 let PreparedArenaAction::Advance {
                     tournament,
