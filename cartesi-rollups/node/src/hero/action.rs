@@ -10,7 +10,7 @@ use alloy::primitives::{Address, U256};
 use thiserror::Error;
 
 use crate::{
-    engine::{DisputeSource, RulerFactory, stf::ProvingStf},
+    engine::{DisputeSource, RulerFactory},
     merkle::{Digest, MerkleProof},
     tournament::{
         MatchID,
@@ -152,23 +152,6 @@ pub enum PrepareError {
         action: &'static str,
         tournament: Address,
     },
-    #[error(
-        "positioned machine state {observed} disagrees with sealed agree state {expected} in tournament {tournament}"
-    )]
-    AgreeStateMismatch {
-        tournament: Address,
-        expected: Digest,
-        observed: Digest,
-    },
-    #[error(
-        "proved post-state {observed} disagrees with side {side:?} final state {expected} in tournament {tournament}"
-    )]
-    PostStateMismatch {
-        tournament: Address,
-        side: MatchSide,
-        expected: Digest,
-        observed: Digest,
-    },
     #[error("local source failed while preparing {action} in tournament {tournament}: {source}")]
     Source {
         action: &'static str,
@@ -181,15 +164,11 @@ pub enum PrepareError {
 type PrepareResult<T> = std::result::Result<T, PrepareError>;
 
 /// Fulfill exactly one intent from one accepted Hero context.
-pub fn prepare<F>(
+pub fn prepare<F: RulerFactory>(
     intent: HeroIntent,
     context: &HeroContext,
     source: &mut DisputeSource<F>,
-) -> PrepareResult<PreparedArenaAction>
-where
-    F: RulerFactory,
-    F::S: ProvingStf,
-{
+) -> PrepareResult<PreparedArenaAction> {
     match intent {
         HeroIntent::Join(intent) => prepare_join(intent, context, source),
         HeroIntent::ClaimTimeout(intent) => prepare_timeout(intent, context, source),
@@ -464,15 +443,11 @@ fn prepare_seal_material<F: RulerFactory>(
     Ok((left_leaf, right_leaf, agree_state_proof))
 }
 
-fn prepare_leaf_proof<F>(
+fn prepare_leaf_proof<F: RulerFactory>(
     intent: ProofIntent,
     context: &HeroContext,
     source: &mut DisputeSource<F>,
-) -> PrepareResult<PreparedArenaAction>
-where
-    F: RulerFactory,
-    F::S: ProvingStf,
-{
+) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "prove leaf";
     let (snapshot, material) = local_level(context, intent.tournament, intent.commitment)?;
     let engagement = validate_engagement(
@@ -494,32 +469,13 @@ where
 
     let (left_node, right_node) = root_children(ACTION, intent.tournament, material, source)?;
     let divergence = intent.match_state.divergence();
-    let mut ruler = source
-        .machine_at(divergence.coordinate().cycle())
+    let proof = source
+        .prove_transition(
+            divergence.coordinate().cycle(),
+            divergence.agree_state(),
+            divergence.final_state(intent.side),
+        )
         .map_err(|source| source_error(ACTION, intent.tournament, source))?;
-    let agree_state = ruler
-        .state_hash()
-        .map_err(|source| source_error(ACTION, intent.tournament, source))?;
-    if agree_state != divergence.agree_state() {
-        return Err(PrepareError::AgreeStateMismatch {
-            tournament: intent.tournament,
-            expected: divergence.agree_state(),
-            observed: agree_state,
-        });
-    }
-
-    let (proof, post_state) = ruler
-        .prove_transition()
-        .map_err(|source| source_error(ACTION, intent.tournament, source))?;
-    let expected_post_state = divergence.final_state(intent.side);
-    if post_state != expected_post_state {
-        return Err(PrepareError::PostStateMismatch {
-            tournament: intent.tournament,
-            side: intent.side,
-            expected: expected_post_state,
-            observed: post_state,
-        });
-    }
 
     Ok(PreparedArenaAction::ProveLeaf {
         tournament: intent.tournament,
@@ -732,7 +688,7 @@ mod tests {
         engine::{
             LevelCoords,
             spec::{S_SMALL, toy_source},
-            toy::{ToyFactory, ToyInput, ToyOutcome},
+            toy::{ToyFactory, ToyInput, ToyOutcome, ToyStf},
         },
         tournament::domain::{
             AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
@@ -784,10 +740,6 @@ mod tests {
 
     fn source() -> DisputeSource<ToyFactory> {
         toy_source(S_SMALL, &script())
-    }
-
-    fn initial_hash(source: &mut DisputeSource<ToyFactory>) -> Digest {
-        source.machine_at(U256::ZERO).unwrap().state_hash().unwrap()
     }
 
     fn descriptor(
@@ -864,7 +816,7 @@ mod tests {
         ) -> LiveMatch,
     ) -> Fixture {
         let mut source = source();
-        let initial_hash = initial_hash(&mut source);
+        let initial_hash = ToyStf::hash_of(0);
         let descriptor = descriptor(ROOT, 0, kind, initial_hash, U256::ZERO, log2_stride, height);
         let coords = LevelCoords::new(0, U256::ZERO, log2_stride, height);
         let commitment = source.node(&coords.root()).unwrap();
@@ -895,7 +847,7 @@ mod tests {
 
     fn join_fixture() -> Fixture {
         let mut source = source();
-        let initial_hash = initial_hash(&mut source);
+        let initial_hash = ToyStf::hash_of(0);
         let descriptor = descriptor(
             ROOT,
             0,
@@ -1041,14 +993,15 @@ mod tests {
     }
 
     fn proof_fixture(side: MatchSide, fault: ProofFault) -> Fixture {
-        engaged_fixture(LEAF, 0, 7, side, move |source, _coords, descriptor| {
+        engaged_fixture(LEAF, 0, 7, side, move |_source, _coords, descriptor| {
             let position = match side {
                 MatchSide::One => U256::ZERO,
                 MatchSide::Two => U256::ONE,
             };
-            let mut ruler = source.machine_at(position).unwrap();
-            let actual_agree = ruler.state_hash().unwrap();
-            let (_, actual_post) = ruler.prove_transition().unwrap();
+            // The script starts with two active usteps, each adding one.
+            let before = u64::try_from(position).unwrap();
+            let actual_agree = ToyStf::hash_of(before);
+            let actual_post = ToyStf::hash_of(before + 1);
             let agree_state = if matches!(fault, ProofFault::Agree) {
                 digest(0xc1)
             } else {
@@ -1078,15 +1031,14 @@ mod tests {
 
     fn propagation_fixture(side: MatchSide) -> Fixture {
         let mut source = source();
-        let root_initial = initial_hash(&mut source);
+        let root_initial = ToyStf::hash_of(0);
         let parent_descriptor = descriptor(ROOT, 0, NON_LEAF, root_initial, U256::ZERO, 3, 4);
         let parent_coords = LevelCoords::new(0, U256::ZERO, 3, 4);
         let parent_commitment = source.node(&parent_coords.root()).unwrap();
         let opponent = digest(0xb0);
         let parent_match = id_for(parent_commitment, opponent, side);
 
-        let mut ruler = source.machine_at(U256::ZERO).unwrap();
-        let agree_state = ruler.state_hash().unwrap();
+        let agree_state = root_initial;
         let parent_final = digest(0xb1);
         let opponent_final = digest(0xb2);
         let (final_state_one, final_state_two) = match side {
@@ -1341,7 +1293,7 @@ mod tests {
     }
 
     #[test]
-    fn leaf_proof_checks_agree_and_post_state_in_both_orientations() {
+    fn leaf_proof_selects_local_state_and_propagates_source_errors() {
         for side in [MatchSide::One, MatchSide::Two] {
             let mut fixture = proof_fixture(side, ProofFault::None);
             let intent = planned(&fixture.context);
@@ -1360,30 +1312,28 @@ mod tests {
             assert_eq!(match_id, fixture.match_id);
             assert_eq!(left_node.join(&right_node), fixture.commitment);
             assert!(!proof.is_empty());
+            for (fault, state) in [
+                (ProofFault::Agree, "pre-state"),
+                (ProofFault::Post, "post-state"),
+            ] {
+                let mut invalid = proof_fixture(side, fault);
+                let Err(PrepareError::Source {
+                    action,
+                    tournament,
+                    source,
+                }) = prepare(
+                    planned(&invalid.context),
+                    &invalid.context,
+                    &mut invalid.source,
+                )
+                else {
+                    panic!("invalid {state} must fail proof preparation for {side:?}");
+                };
+                assert_eq!(action, "prove leaf");
+                assert_eq!(tournament, ROOT);
+                assert!(source.to_string().contains(state));
+            }
         }
-
-        let mut wrong_agree = proof_fixture(MatchSide::One, ProofFault::Agree);
-        assert!(matches!(
-            prepare(
-                planned(&wrong_agree.context),
-                &wrong_agree.context,
-                &mut wrong_agree.source
-            ),
-            Err(PrepareError::AgreeStateMismatch { .. })
-        ));
-
-        let mut wrong_post = proof_fixture(MatchSide::Two, ProofFault::Post);
-        assert!(matches!(
-            prepare(
-                planned(&wrong_post.context),
-                &wrong_post.context,
-                &mut wrong_post.source
-            ),
-            Err(PrepareError::PostStateMismatch {
-                side: MatchSide::Two,
-                ..
-            })
-        ));
     }
 
     #[test]

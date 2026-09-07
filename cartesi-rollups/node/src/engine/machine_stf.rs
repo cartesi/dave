@@ -12,7 +12,7 @@
 
 use super::dispute::DisputeSource;
 use super::ruler::{Ruler, RulerFactory};
-use super::stf::{ProvingStf, Stf};
+use super::stf::Stf;
 use super::structure::Structure;
 use crate::arithmetic::add_and_clamp;
 use crate::merkle::Digest;
@@ -360,6 +360,51 @@ impl Stf for MachineStf {
         self.restore_rejected()?;
         Ok(ran)
     }
+
+    fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {
+        // The proving path resolves the payload without touching the
+        // feed cursor or the checkpoint: the machine is spent after
+        // the proof.
+        let payload = match &mut self.feeder {
+            Feeder::Scratch { inputs, .. } => inputs.get(window as usize).cloned(),
+            Feeder::Store { storage, epoch, .. } => storage
+                .input(&InputId {
+                    epoch_number: *epoch,
+                    input_index_in_epoch: window,
+                })?
+                .map(|input| input.data),
+            Feeder::Advance { .. } => {
+                unreachable!("the advance stf collects forward; proving rides the dispute path")
+            }
+        };
+        match payload {
+            Some(input) => {
+                let revert_root = self.machine.root_hash()?;
+                let cmio_log = self.machine.log_send_cmio_response(
+                    CmioResponseReason::Advance,
+                    &input,
+                    &revert_root,
+                    LogType::default(),
+                )?;
+                Ok([Self::encode_da(&input), Self::encode_access_log(&cmio_log)].concat())
+            }
+            None => Ok(Self::encode_da(&[])),
+        }
+    }
+
+    fn log_ustep(&mut self) -> Result<Vec<u8>> {
+        let log = self.machine.log_step_uarch(LogType::default())?;
+        self.ucycle += 1;
+        Ok(Self::encode_access_log(&log))
+    }
+
+    fn log_ureset(&mut self) -> Result<Vec<u8>> {
+        let log = self.machine.log_reset_uarch(LogType::default())?;
+        self.ucycle = 0;
+        let proof = Self::encode_access_log(&log);
+        self.restore_rejected()?;
+        Ok(proof)
+    }
 }
 
 // The chain witness encoding, byte-compatible with what the on-chain
@@ -407,53 +452,6 @@ impl MachineStf {
         let mut da_proof = input_size_be;
         da_proof.extend_from_slice(input);
         da_proof
-    }
-}
-
-impl ProvingStf for MachineStf {
-    fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {
-        // The proving path resolves the payload without touching the
-        // feed cursor or the checkpoint: the machine is spent after
-        // the proof.
-        let payload = match &mut self.feeder {
-            Feeder::Scratch { inputs, .. } => inputs.get(window as usize).cloned(),
-            Feeder::Store { storage, epoch, .. } => storage
-                .input(&InputId {
-                    epoch_number: *epoch,
-                    input_index_in_epoch: window,
-                })?
-                .map(|input| input.data),
-            Feeder::Advance { .. } => {
-                unreachable!("the advance stf collects forward; proving rides the dispute path")
-            }
-        };
-        match payload {
-            Some(input) => {
-                let revert_root = self.machine.root_hash()?;
-                let cmio_log = self.machine.log_send_cmio_response(
-                    CmioResponseReason::Advance,
-                    &input,
-                    &revert_root,
-                    LogType::default(),
-                )?;
-                Ok([Self::encode_da(&input), Self::encode_access_log(&cmio_log)].concat())
-            }
-            None => Ok(Self::encode_da(&[])),
-        }
-    }
-
-    fn log_ustep(&mut self) -> Result<Vec<u8>> {
-        let log = self.machine.log_step_uarch(LogType::default())?;
-        self.ucycle += 1;
-        Ok(Self::encode_access_log(&log))
-    }
-
-    fn log_ureset(&mut self) -> Result<Vec<u8>> {
-        let log = self.machine.log_reset_uarch(LogType::default())?;
-        self.ucycle = 0;
-        let proof = Self::encode_access_log(&log);
-        self.restore_rejected()?;
-        Ok(proof)
     }
 }
 

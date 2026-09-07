@@ -5,7 +5,7 @@
 //! Inert proof markers allow preparation without real machine witnesses.
 
 use super::ruler::{Ruler, RulerFactory};
-use super::stf::{ProvingStf, Stf};
+use super::stf::Stf;
 use super::structure::Structure;
 use crate::merkle::Digest;
 use alloy::primitives::U256;
@@ -227,11 +227,7 @@ impl Stf for ToyStf {
         }
         Ok(executed)
     }
-}
 
-/// Inert witness bytes over the plain-verb state changes let action
-/// preparation tests exercise positioning and agree/post-state checks.
-impl ProvingStf for ToyStf {
     fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {
         if (window as usize) < self.script.len() {
             self.feed(window)?;
