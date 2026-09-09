@@ -81,7 +81,10 @@ pub async fn plan_recovery(
             RECOVERABLE | RECOVERED | NO_WINNER => {}
             TOURNAMENT_RUNNING => tick.complete = false,
             other => {
-                log::warn!("undefined bond disposition {other}; keeping candidate inert");
+                log::warn!(
+                    "unknown bond disposition {other} for tournament {tournament}; \
+                     keeping epoch incomplete"
+                );
                 tick.complete = false;
             }
         }

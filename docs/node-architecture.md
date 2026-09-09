@@ -240,6 +240,12 @@ complete; running and unknown dispositions are not. Restart resumes that
 cursor. The manager handles settled historical epochs using recovery reads
 and calls alone, without constructing a Hero or waiting for local execution.
 
+Root settlement implies every linked descendant has finished. Creating a child
+pauses the parent match's clocks, and resolving that match requires the child
+to finish; the same constraint applies recursively regardless of bond
+ownership. The `TOURNAMENT_RUNNING` check therefore adds no separate wait after
+finalized settlement.
+
 For the current epoch, each tick combines the Hero's action or one cleanup,
 an applicable settlement step, and every available bond recovery in one batch.
 Recovery runs even while the root is contested and retries on the same
