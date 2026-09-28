@@ -34,6 +34,7 @@
 //! start means a broken machine or broken assumptions, and the engine
 //! panics rather than inventing a transition shape for it.
 
+use super::dispute::fold_runs;
 use super::stf::Stf;
 use super::structure::Structure;
 use crate::merkle::Digest;
@@ -178,17 +179,7 @@ impl<S: Stf> Ruler<S> {
                     // Idle until the next fed window (never, when
                     // terminal). Whole cycles replay one captured span; a
                     // trailing partial cycle steps plainly below.
-                    let idle_end = if terminal {
-                        to
-                    } else {
-                        let next_window = p.input + 1;
-                        let next_feed = if next_window < self.fed_windows {
-                            self.structure.window_start(next_window)
-                        } else {
-                            to
-                        };
-                        next_feed.min(to)
-                    };
+                    let idle_end = self.idle_end(p.input, terminal, to);
                     let cycles = (idle_end - self.position) / big_span;
                     if !cycles.is_zero() {
                         self.replay_idle_cycles(cycles, emit)?;
@@ -231,6 +222,76 @@ impl<S: Stf> Ruler<S> {
             }
         }
         Ok(())
+    }
+
+    /// Where an idle stretch starting in window `input` ends: never
+    /// before `to` when terminal, else at the next fed window.
+    fn idle_end(&self, input: u64, terminal: bool, to: U256) -> U256 {
+        if terminal {
+            return to;
+        }
+        let next_window = input + 1;
+        let next_feed = if next_window < self.fed_windows {
+            self.structure.window_start(next_window)
+        } else {
+            to
+        };
+        next_feed.min(to)
+    }
+
+    /// Advances to `to`, folding each big cycle's transitions into the
+    /// root of its subtree: runs of equal consecutive roots, which are the
+    /// leaves of the same tree `2^c` levels up. Position and `to` must be
+    /// big-cycle aligned. An idle stretch folds one captured cycle and
+    /// repeats its root, so its cost does not grow with its length, and an
+    /// active cycle's leaves are dropped once folded, so memory stays one
+    /// cycle's runs however long the span.
+    pub fn collect_big_cycle_roots(&mut self, to: U256) -> Result<Vec<Run>> {
+        let big_span = U256::from(self.structure.big_span());
+        let c = self.structure.log2_uarch_span;
+        assert!((self.position % big_span).is_zero(), "unaligned start");
+        assert!((to % big_span).is_zero(), "unaligned end");
+        assert!(to <= self.structure.ruler_span(), "past the epoch's end");
+
+        fn push(roots: &mut Vec<Run>, hash: Digest, cycles: U256) {
+            match roots.last_mut() {
+                Some(last) if last.hash == hash => last.repetitions += cycles,
+                _ => roots.push(Run {
+                    hash,
+                    repetitions: cycles,
+                }),
+            }
+        }
+        let fold = |runs: &[Run]| -> Result<Digest> {
+            Ok(fold_runs(
+                runs.iter().map(|run| {
+                    let count = u64::try_from(run.repetitions).expect("one cycle fits u64");
+                    (run.hash, count)
+                }),
+                c,
+            )?
+            .root_hash())
+        };
+
+        let mut roots = vec![];
+        while self.position < to {
+            let p = self.structure.decompose(self.position);
+            let feeds_now = p.is_window_start() && p.input < self.fed_windows;
+            let terminal = self.stf.terminal()?;
+            if terminal || (self.stf.yielded()? && !feeds_now) {
+                // Aligned by construction: both ends are big boundaries.
+                let cycles = (self.idle_end(p.input, terminal, to) - self.position) / big_span;
+                let root = fold(&self.collect_idle_span()?)?;
+                push(&mut roots, root, cycles);
+                self.position += cycles * big_span;
+                continue;
+            }
+            let mut sampler = StrideSampler::new(self.position, 0);
+            let cycle_end = self.position + big_span;
+            self.step_until(cycle_end, &mut |leaf, count| sampler.feed(leaf, count))?;
+            push(&mut roots, fold(&sampler.finish())?, U256::from(1));
+        }
+        Ok(roots)
     }
 
     /// Emits `cycles` whole idle big cycles from a big-aligned

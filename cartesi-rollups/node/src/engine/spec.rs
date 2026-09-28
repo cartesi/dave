@@ -40,6 +40,14 @@ const S_MEDIUM: Structure = Structure {
     log2_uarch_span: 4,
 }; // 512 positions
 
+// Tall enough that stride-0 quartets take the cache's big-cycle-root path
+// (height >= c + PRECOMPUTE_LEVELS), at the root and one level below it.
+const S_TALL: Structure = Structure {
+    log2_input_span: 2,
+    log2_barch_span: 7,
+    log2_uarch_span: 2,
+}; // 2048 positions
+
 fn accept(big_cycles: &[u64]) -> ToyInput {
     ToyInput {
         big_cycles: big_cycles.to_vec(),
@@ -401,6 +409,149 @@ fn coarse_root_equals_sampled_oracle_tree() -> Result<()> {
     }
     assert_eq!(computed, builder.build().root_hash());
     Ok(())
+}
+
+#[test]
+fn big_cycle_roots_fold_to_the_transition_tree() {
+    // Every big-aligned span, from a fresh or a resumed ruler: the
+    // per-cycle roots, folded c levels up, give the tree over the
+    // transitions themselves.
+    for structure in [S_DIAGRAM, S_SMALL, S_MEDIUM, S_TALL] {
+        let c = structure.log2_uarch_span;
+        let total = structure.log2_ruler_span();
+        for (name, script) in scripts_for(&structure) {
+            let oracle = oracle_digests(&structure, &script);
+            for height in c..=total {
+                let span = 1usize << height;
+                for start in (0..oracle.len()).step_by(span) {
+                    let mut expected = MerkleBuilder::default();
+                    for digest in &oracle[start..start + span] {
+                        expected.append(*digest);
+                    }
+
+                    let mut factory = ToyFactory {
+                        structure,
+                        script: script.clone(),
+                    };
+                    let mut ruler = factory.ruler_at(U256::from(start)).unwrap();
+                    let end = U256::from(start + span);
+                    let roots = ruler.collect_big_cycle_roots(end).unwrap();
+                    assert_eq!(ruler.position(), end);
+                    let mut folded = MerkleBuilder::default();
+                    for run in &roots {
+                        folded.append_repeated(run.hash, run.repetitions);
+                    }
+                    let folded = folded.build();
+                    let context = format!("script {name}, [{start}, +2^{height}) on {structure:?}");
+                    assert_eq!(u64::from(folded.height()), height - c, "{context}");
+                    assert_eq!(
+                        folded.root_hash(),
+                        expected.build().root_hash(),
+                        "{context}"
+                    );
+                    if name == "empty" {
+                        // An idle stretch is one root, however long.
+                        assert_eq!(roots.len(), 1, "{context}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn tall_leaf_quartets_build_from_big_cycle_roots() -> Result<()> {
+    // The cache path for tall stride-0 quartets: every stored fanout row,
+    // and every node the descent computes below that stratum, matches the
+    // transition-level tree.
+    let structure = S_TALL;
+    let total = structure.log2_ruler_span();
+    assert!(total > structure.log2_uarch_span + PRECOMPUTE_LEVELS);
+    for (name, script) in scripts_for(&structure) {
+        let mut reference = MerkleBuilder::default();
+        for digest in oracle_digests(&structure, &script) {
+            reference.append(digest);
+        }
+        let reference = reference.build();
+
+        let mut cache = toy_storage(structure);
+        let mut factory = Counting {
+            inner: ToyFactory {
+                structure,
+                script: script.clone(),
+            },
+            calls: 0,
+        };
+        // Every row one build stored, `depth` levels below the level root.
+        let assert_fanout = |cache: &Storage, top: &Quartet, depth: u64| -> Result<()> {
+            let mut stratum = vec![(top.clone(), depth)];
+            while let Some((quartet, depth)) = stratum.pop() {
+                let expected = reference_node(&reference, depth, quartet.shift).root_hash();
+                assert_eq!(
+                    cache.quartet_node(&quartet)?,
+                    Some(expected),
+                    "script {name}, stored row {quartet:?}"
+                );
+                if quartet.height > top.height - PRECOMPUTE_LEVELS {
+                    let (left, right) = quartet.children().unwrap();
+                    stratum.push((left, depth + 1));
+                    stratum.push((right, depth + 1));
+                }
+            }
+            Ok(())
+        };
+
+        let root = Quartet::level_root(0, 0, total);
+        get_or_compute(&mut cache, &structure, &mut factory, &root)?;
+        assert_eq!(factory.calls, 1);
+        assert_fanout(&cache, &root, 0)?;
+        assert_eq!(factory.calls, 1, "the fanout rows came from one build");
+
+        // Below the stratum, down both edges to single transitions.
+        for rightmost in [false, true] {
+            let mut quartet = root.clone();
+            let mut depth = 0;
+            while let Some((left, right)) = quartet.children() {
+                quartet = if rightmost { right } else { left };
+                depth += 1;
+                let expected = reference_node(&reference, depth, quartet.shift).root_hash();
+                assert_eq!(
+                    get_or_compute(&mut cache, &structure, &mut factory, &quartet)?,
+                    expected,
+                    "script {name}, descent at {quartet:?}"
+                );
+            }
+        }
+
+        // A quartet away from the epoch's start, exactly at the threshold
+        // height: its fanout reaches the reduced tree's leaves.
+        let (_, right) = root.children().unwrap();
+        assert_eq!(right.height, structure.log2_uarch_span + PRECOMPUTE_LEVELS);
+        let mut fresh = toy_storage(structure);
+        get_or_compute(&mut fresh, &structure, &mut factory, &right)?;
+        assert_fanout(&fresh, &right, 1)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn idle_stretches_cost_one_captured_cycle() {
+    // An idle stretch steps one big cycle however long it is; replaying
+    // every idle cycle would fold to the same roots, so only the step
+    // count tells the two apart.
+    let structure = S_TALL;
+    for (name, script, stepped) in [
+        ("empty", vec![], 1),
+        // One active cycle, then idle to the epoch's end.
+        ("one_short", vec![accept(&[1])], 2),
+    ] {
+        let mut factory = ToyFactory { structure, script };
+        let mut ruler = factory.ruler_at(U256::ZERO).unwrap();
+        ruler
+            .collect_big_cycle_roots(structure.ruler_span())
+            .unwrap();
+        assert_eq!(ruler.into_stf().uresets(), stepped, "script {name}");
+    }
 }
 
 #[test]

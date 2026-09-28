@@ -580,6 +580,7 @@ mod tests {
     use crate::engine::TournamentGeometry;
     use crate::engine::constants::UARCH_MASK_TO_BARCH;
     use crate::engine::ruler::Run;
+    use crate::merkle::MerkleBuilder;
     use cartesi_machine::constants::ar::RAM_START;
     use cartesi_machine::constants::cmio::tohost::manual::TX_EXCEPTION;
     use cartesi_machine::constants::rollup::{
@@ -908,18 +909,40 @@ mod tests {
             scratch_stf(
                 budget_seam_machine()?,
                 fine_dir.path().to_path_buf(),
-                vec![payload],
+                vec![payload.clone()],
             ),
             structure,
             1,
         )
         .collect(to, 0)?;
+        // The tall-quartet path: an active cycle and an idle one, each
+        // folded to its root.
+        let roots_dir = tempfile::tempdir()?;
+        let roots = Ruler::new(
+            scratch_stf(
+                budget_seam_machine()?,
+                roots_dir.path().to_path_buf(),
+                vec![payload],
+            ),
+            structure,
+            1,
+        )
+        .collect_big_cycle_roots(to)?;
 
         for sample in 0..2u64 {
             let position = (U256::from(sample + 1) << c) - U256::from(1);
             assert_eq!(leaf_at(&coarse, U256::from(sample)), delivered);
             assert_eq!(leaf_at(&fine, position), delivered);
         }
+        let fold = |runs: &[Run]| {
+            let mut builder = MerkleBuilder::default();
+            for run in runs {
+                builder.append_repeated(run.hash, run.repetitions);
+            }
+            builder.build().root_hash()
+        };
+        assert_eq!(roots.len(), 2);
+        assert_eq!(fold(&roots), fold(&fine));
         Ok(())
     }
 

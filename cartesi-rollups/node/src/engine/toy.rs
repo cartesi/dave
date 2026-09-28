@@ -64,6 +64,10 @@ pub struct ToyStf {
     big_cycles: Vec<u64>,
     current_big_cycle: usize,
     usteps_in_big_cycle: u64,
+
+    /// Closing uresets executed: one per big cycle actually stepped, for
+    /// cost assertions.
+    uresets: u64,
 }
 
 impl ToyStf {
@@ -101,7 +105,12 @@ impl ToyStf {
             big_cycles: vec![],
             current_big_cycle: 0,
             usteps_in_big_cycle: 0,
+            uresets: 0,
         }
+    }
+
+    pub fn uresets(&self) -> u64 {
+        self.uresets
     }
 
     /// The hash of a base state (no idle churn in flight).
@@ -186,6 +195,7 @@ impl Stf for ToyStf {
     }
 
     fn ureset(&mut self) -> Result<()> {
+        self.uresets += 1;
         if self.fixed() {
             // An idle span closes: the churn unwinds, the base state
             // returns, and the script does not progress.

@@ -335,9 +335,13 @@ under [44, 27, 0].
 3. (S) M3: resolve stride-37 root-level cost. By measure.rs's definition it
    is 1.81x, but the same table implies up to 6.3x lower absolute throughput
    than stride 44; the hash-cost curve has an unexplained hump at 2^16-2^18.
-4. (M) Bounded-memory commitment build: fold per depth-8 sub-span, keep only
-   the fanout hashes, and insert sub-span roots as they complete. The
-   materialized builder stays as a test oracle.
+4. (M) Bounded-memory commitment build. As built: a stride-0 quartet tall
+   enough that its stored fanout stays above big-cycle granularity folds
+   each big cycle to its subtree root as it completes, and an idle stretch
+   costs one captured cycle whatever its length. Memory is one cycle's runs
+   and their fold plus a tree over one root per active cycle. The
+   leaf-by-leaf builder serves shorter quartets and is the differential
+   oracle.
 5. (M) Move dispute machine work off the epoch-manager task (debt 7).
 6. (M, optional) Sub-window positioning and a parallel sub-span leaf build:
    margin on the current API without the collect path.

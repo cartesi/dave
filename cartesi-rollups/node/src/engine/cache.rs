@@ -65,7 +65,24 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
     );
 
     let mut ruler = factory.ruler_at(quartet.span_start())?;
-    let runs = ruler.collect(quartet.span_end(), quartet.log2_stride)?;
+    // A single-transition quartet whose fanout stays above big-cycle
+    // granularity is built from big-cycle roots: the stored levels never
+    // reach inside a cycle, idle stretches cost one cycle however long, and
+    // memory stays one cycle's runs. That is what makes a whole leaf-level
+    // commitment (2^37 transitions under two levels) buildable.
+    let c = structure.log2_uarch_span;
+    let (runs, tree_height) = if quartet.log2_stride == 0 && quartet.height >= c + PRECOMPUTE_LEVELS
+    {
+        (
+            ruler.collect_big_cycle_roots(quartet.span_end())?,
+            quartet.height - c,
+        )
+    } else {
+        (
+            ruler.collect(quartet.span_end(), quartet.log2_stride)?,
+            quartet.height,
+        )
+    };
 
     let mut builder = MerkleBuilder::default();
     for run in &runs {
@@ -73,8 +90,8 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
     }
     let tree = builder.build();
     ensure!(
-        u64::from(tree.height()) == quartet.height,
-        "span tree height {} does not match quartet height {}",
+        u64::from(tree.height()) == tree_height,
+        "span tree height {} does not match the expected {tree_height} for quartet height {}",
         tree.height(),
         quartet.height
     );

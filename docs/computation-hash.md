@@ -250,6 +250,14 @@ and survives as a differential test oracle):
   state as the span's last leaf. Rejected-input substitution is already part
   of that reset state.
 
+A stride-0 quartet tall enough that its 8 stored levels stay above big-cycle
+granularity (a two-level leaf commitment is 2^37 transitions) folds each
+uarch span into its subtree root as the span completes, and an idle stretch
+steps one captured span and repeats its root. The tree is the same. Memory
+is one span's runs and their fold (up to 2^20 leaves, briefly) plus a tree
+over one root per active big cycle, and an idle stretch costs one span
+however long it is.
+
 The rollups node computes level-0 leaves eagerly while processing
 inputs, at the root stride of the deployed tournament table (pinned at
 initialization; 2^44 in the checked-in canonical table, one leaf per 2^24
