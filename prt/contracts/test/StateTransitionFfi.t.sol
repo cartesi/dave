@@ -357,6 +357,84 @@ contract StateTransitionFfiTest is Util {
         assertEq(result, canonicalPost);
     }
 
+    // An input yield on the budget's last cycle (mcycle == imcyclemax) still
+    // takes the next input: SendCmioResponse checks only the yield.
+    function testTransitionAcceptedYieldOnLastBudgetCycleTakesInput() public {
+        (uint256 counter, bytes32 before, bytes32 fed, bytes memory proof) =
+            runVectorCmd("budget-seam-accepted-opening");
+        (
+            uint256 idleCounter,
+            bytes32 idleBefore,
+            bytes32 idle,
+            bytes memory idleProof
+        ) = runVectorCmd("budget-seam-accepted-opening-without-input");
+        assertEq(counter, 0);
+        assertEq(idleCounter, 0);
+        assertEq(before, idleBefore);
+        assertNotEq(fed, idle);
+
+        assertEq(
+            STATE_TRANSITION.transitionState(
+                before, counter, proof, new Provider(1)
+            ),
+            fed
+        );
+        assertEq(
+            STATE_TRANSITION.transitionState(
+                idleBefore, idleCounter, idleProof, new Provider(0)
+            ),
+            idle
+        );
+    }
+
+    function testTransitionAcceptedYieldAtMaximumMcycleTakesInput() public {
+        (uint256 counter, bytes32 before, bytes32 fed, bytes memory proof) =
+            runVectorCmd("budget-seam-accepted-opening-saturated");
+        assertEq(counter, 0);
+        assertNotEq(before, fed);
+
+        assertEq(
+            STATE_TRANSITION.transitionState(
+                before, counter, proof, new Provider(1)
+            ),
+            fed
+        );
+    }
+
+    // SendCmioResponse never reads the halt flag either: a template preset
+    // halted with an RX_ACCEPTED yield pending still takes the next input.
+    function testTransitionAcceptedYieldOnHaltedMachineTakesInput() public {
+        (uint256 counter, bytes32 before, bytes32 fed, bytes memory proof) =
+            runVectorCmd("halted-accepted-opening");
+        assertEq(counter, 0);
+        assertNotEq(before, fed);
+
+        assertEq(
+            STATE_TRANSITION.transitionState(
+                before, counter, proof, new Provider(1)
+            ),
+            fed
+        );
+    }
+
+    function testTransitionRejectedYieldOnLastBudgetCycleReverts() public {
+        (
+            uint256 counter,
+            bytes32 before,
+            bytes32 revertRoot,
+            bytes memory proof
+        ) = runVectorCmd("budget-seam-rejected-closing");
+        assertEq(counter, UARCH_SPAN_TO_BARCH - 1);
+        assertNotEq(before, revertRoot);
+
+        assertEq(
+            STATE_TRANSITION.transitionState(
+                before, counter, proof, new Provider(0)
+            ),
+            revertRoot
+        );
+    }
+
     function testTransitionHaltWithZeroExitOpening() public {
         assertTerminalVector("terminal-halt-zero-opening", 0, 1);
     }

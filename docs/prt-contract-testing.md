@@ -197,7 +197,13 @@ guest reaches zero and nonzero halt, TX exception, unexpected manual yield,
 and mcycle overflow.
 Opening vectors cover both halt values and every terminal class; representative
 closing vectors establish reset without rejected-input substitution. Separate
-vectors own rejected-input restoration and uarch-cycle overflow. Combined
+vectors own rejected-input restoration and uarch-cycle overflow. Pending-yield
+vectors, logged from a bare emulator so client terminal classification cannot
+shape them, own a manual yield that outranks halt and the input budget: an
+RX_ACCEPTED opening on the budget's last cycle (also at the maximum mcycle) or
+on a preset halted machine takes the input, unlike the idle opening, and an
+RX_REJECTED closing on the budget's last cycle still restores the revert root.
+Combined
 witness mutations cover exact DA header and payload boundaries, the CMIO-step
 and step-reset seams, before-root and provider-root binding, one representative
 byte in each composed primitive, and replay across adjacent transition shapes.

@@ -478,6 +478,169 @@ if args[1] == "first-input-rejection-closing" then
     return
 end
 
+-- Clears fromhost, yields x19, then yields x20 each time it resumes. With
+-- imcyclemax at the x19 yield's mcycle, that yield executes on the input
+-- budget's last cycle. These vectors log the emulator directly, so the
+-- client's terminal classification cannot shape their expected values.
+local budget_seam_program = string.pack(
+    "<I4I4I4I4I4",
+    0x400082b7, -- lui t0, 0x40008 (HTIF base)
+    0x0002b423, -- sd zero, 8(t0) (fromhost)
+    0x0132b023, -- sd x19, 0(t0) (tohost)
+    0x0142b023, -- sd x20, 0(t0) (tohost)
+    0xffdff06f  -- j -4
+)
+
+local function new_budget_seam_machine(mcycle_start, x20_reason)
+    local physical = cartesi.machine({
+        processor = {
+            registers = {
+                pc = cartesi.AR_RAM_START,
+                mcycle = mcycle_start,
+                imcyclemax = mcycle_start + 3,
+            },
+        },
+        ram = { length = 4096 },
+    }, {})
+    physical:write_memory(cartesi.AR_RAM_START, budget_seam_program)
+    physical:write_reg(
+        "x19",
+        manual_yield_request(cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED, 0)
+    )
+    physical:write_reg("x20", manual_yield_request(x20_reason, 0))
+    physical:run(arithmetic.max_uint64)
+    assert(physical:read_reg("iflags_Y") ~= 0, "guest did not yield")
+    assert(
+        physical:read_reg("htif_tohost_reason")
+            == cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED
+    )
+    assert(physical:read_reg("mcycle") == physical:read_reg("imcyclemax"))
+    return physical
+end
+
+-- Halted with an RX_ACCEPTED yield pending: unreachable by execution, but a
+-- template can preset it, and SendCmioResponse never reads the halt flag.
+local function new_halted_yield_machine()
+    local physical = cartesi.machine({ ram = { length = 4096 } }, {})
+    physical:write_reg("iflags_H", 1)
+    physical:write_reg("iflags_Y", 1)
+    physical:write_reg("htif_tohost_dev", cartesi.HTIF_DEV_YIELD)
+    physical:write_reg("htif_tohost_cmd", cartesi.HTIF_YIELD_CMD_MANUAL)
+    physical:write_reg(
+        "htif_tohost_reason",
+        cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED
+    )
+    return physical
+end
+
+local function seam_at(mcycle_start)
+    return function()
+        return new_budget_seam_machine(
+            mcycle_start,
+            cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED
+        )
+    end
+end
+
+local pending_yield_openings = {
+    ["budget-seam-accepted-opening"] = { new = seam_at(0), input = true },
+    ["budget-seam-accepted-opening-without-input"] = {
+        new = seam_at(0),
+        input = false,
+    },
+    ["budget-seam-accepted-opening-saturated"] = {
+        new = seam_at(arithmetic.max_uint64 - 3),
+        input = true,
+    },
+    ["halted-accepted-opening"] = {
+        new = new_halted_yield_machine,
+        input = true,
+    },
+}
+
+local seam_opening = pending_yield_openings[args[1]]
+if seam_opening then
+    local physical <close> = seam_opening.new()
+    local idle <close> = seam_opening.new()
+    local agree_hash = physical:get_root_hash()
+
+    local proof_bin
+    if seam_opening.input then
+        local input_bin = input_at(0)
+        local cmio_log = physical:log_send_cmio_response(
+            cartesi.HTIF_YIELD_REASON_ADVANCE_STATE,
+            input_bin,
+            agree_hash
+        )
+        local step_log = physical:log_step_uarch()
+        proof_bin = encode_da(input_bin)
+            .. encode_access_logs_for_layout({ cmio_log, step_log })
+
+        idle:log_step_uarch()
+        assert(
+            idle:get_root_hash() ~= physical:get_root_hash(),
+            "delivery must change the opening post-state"
+        )
+    else
+        local step_log = physical:log_step_uarch()
+        proof_bin = encode_da("") .. encode_access_logs_for_layout({ step_log })
+    end
+
+    write_abi(
+        { uint256.zero():tobe(false), agree_hash, physical:get_root_hash() },
+        proof_bin
+    )
+    return
+end
+
+if args[1] == "budget-seam-rejected-closing" then
+    local physical <close> = new_budget_seam_machine(
+        0,
+        cartesi.HTIF_YIELD_MANUAL_REASON_RX_REJECTED
+    )
+    local revert_root_hash = physical:get_root_hash()
+    physical:send_cmio_response(
+        cartesi.HTIF_YIELD_REASON_ADVANCE_STATE,
+        input_at(0),
+        revert_root_hash
+    )
+    -- Delivery renewed the budget; shrink it so the x20 rejection also
+    -- executes on the budget's last cycle.
+    physical:write_reg("imcyclemax", physical:read_reg("mcycle") + 1)
+    assert(
+        physical:run_uarch(cartesi.UARCH_CYCLE_MAX)
+            == cartesi.UARCH_BREAK_REASON_UARCH_HALTED,
+        "the rejecting instruction did not halt the uarch"
+    )
+    assert(
+        physical:read_reg("htif_tohost_reason")
+            == cartesi.HTIF_YIELD_MANUAL_REASON_RX_REJECTED
+    )
+    assert(physical:read_reg("mcycle") == physical:read_reg("imcyclemax"))
+
+    local agree_hash = physical:get_root_hash()
+    local step_log = physical:log_step_uarch()
+    local stepped_hash = physical:verify_step_uarch(agree_hash, step_log)
+    assert(stepped_hash == agree_hash, "a halted uarch steps as identity")
+    -- The substitution is canonical only: the physical machine keeps its
+    -- reset state, so read the post-state back from the logged reset.
+    local reset_log = physical:log_reset_uarch()
+    assert(
+        physical:verify_reset_uarch(stepped_hash, reset_log) == revert_root_hash,
+        "the logged reset must substitute the revert root"
+    )
+
+    write_abi(
+        {
+            uint256.fromuinteger(cartesi.UARCH_CYCLE_MAX):tobe(false),
+            agree_hash,
+            revert_root_hash,
+        },
+        encode_access_logs_for_layout({ step_log, reset_log })
+    )
+    return
+end
+
 assert(type(assert(args[2])) == "string")
 local meta_cycle = uint256.parse(assert(args[1]))
 local input_size = assert(tonumber(args[2]))
