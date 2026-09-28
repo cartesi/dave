@@ -304,7 +304,12 @@ function Machine:status()
         exception = exception,
         unexpected_manual_yield = unexpected_manual_yield,
         mcycle_overflow = mcycle_overflow,
-        terminal = halted or mcycle_overflow or exception or unexpected_manual_yield,
+        -- The step reads only the pending yield, never the halt flag or the
+        -- input budget: an RX_ACCEPTED yield takes the next input (on the
+        -- budget's last cycle, or even halted) and an RX_REJECTED one
+        -- reverts. Halt and overflow are terminal only with no yield pending.
+        terminal = exception or unexpected_manual_yield
+            or (reason == nil and (halted or mcycle_overflow)),
     }
 end
 

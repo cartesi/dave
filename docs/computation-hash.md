@@ -156,9 +156,14 @@ the trick:
   uarch reset reads the recorded hash and replaces the entire machine root
   with it. State restored, provably, inside the reset log. An EXCEPTION or
   unexpected manual yield keeps its terminal state; halt and mcycle overflow
-  are terminal as well. Sending a later advance response to any of those
-  states is a provable no-op, so every window-opening transition remains
-  defined.
+  with no manual yield pending are terminal as well. Sending a later advance
+  response to any of those states is a provable no-op, so every
+  window-opening transition remains defined. The step reads only the pending
+  yield, never the halt flag or the input budget: an RX_ACCEPTED yield on the
+  budget's last cycle (mcycle == imcyclemax), or on a template preset halted,
+  is not terminal - the next advance response is delivered - and an
+  RX_REJECTED one still reverts. Delivery renews the budget unless it is
+  saturated at 2^64 - 1, where the fed machine is an overflow fixed point.
 
   The logged reset returns the canonical substituted root but leaves the
   physical emulator with only its uarch reset. Both off-chain clients reload

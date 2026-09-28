@@ -100,12 +100,17 @@ adversary will find it.
 
 The halt/exception protocol gap found on 2026-07-15 is closed by the
 v0.21 emulator and v0.15 solidity-step boundary. SendCmioResponse is total:
-an advance response to a machine that is halted, at mcycle overflow, or at a
-manual yield other than RX_ACCEPTED is a provable no-op. Halt, exception,
-unexpected manual yield, and mcycle overflow are terminal fixed points at big
-cycle boundaries, so later input windows remain claimable. Rejection is the
-one nonterminal manual outcome: the closing uarch reset substitutes the
-recorded pre-input root, after which the next input can be fed normally.
+an advance response to a machine that is not waiting on an RX_ACCEPTED manual
+yield is a provable no-op. The step reads only the pending yield, never the
+halt flag or the input budget, so exception and unexpected manual yields are
+terminal fixed points at big cycle boundaries, and so are halt and mcycle
+overflow when no manual yield is pending; later input windows remain
+claimable. An RX_ACCEPTED yield takes the next input even on the budget's last
+cycle (mcycle == imcyclemax), which renews the budget unless it is already
+saturated at 2^64 - 1, where the fed machine is an overflow fixed point at
+once. Rejection is the one nonterminal manual outcome: the closing uarch reset
+substitutes the recorded pre-input root, even on the budget's last cycle,
+after which the next input can be fed normally.
 
 At uarch granularity, terminal fixed points still have the usual idle-churn
 span followed by reset; they are constant only at big-cycle boundaries and

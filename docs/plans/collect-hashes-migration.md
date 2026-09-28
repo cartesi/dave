@@ -74,6 +74,12 @@ that substitution. The v0.21 uarch bulk collector can instead retain the
 physical mcycle-overflow root because its overflow handling suppresses the
 rejected-state substitution.
 
+The boundary has an accepted twin: in the step, an RX_ACCEPTED yield on the
+budget's last cycle still takes the next input. Dave's clients follow the step
+at both boundaries; the v0.21 CLI's epoch driver instead ends the epoch at
+either one whenever later inputs exist. Unreleased upstream commit c1280ed4
+fixes both in the emulator (see two-level-sling.md for the exclusions).
+
 The migration needs one explicit resolution, preferably in the emulator:
 
 1. Specify the result at simultaneous rejection and mcycle overflow.

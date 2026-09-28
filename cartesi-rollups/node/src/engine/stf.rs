@@ -25,8 +25,10 @@ pub trait Stf {
     /// Machine yielded with RX_ACCEPTED and is awaiting input.
     fn yielded(&mut self) -> Result<bool>;
 
-    /// A terminal fixed point: halt, exception, unexpected manual yield,
-    /// or mcycle overflow. No later input can resume execution.
+    /// A terminal fixed point: an exception or unexpected manual yield, or
+    /// halt or mcycle overflow with no manual yield pending. No later input
+    /// can resume execution. A pending input yield is never terminal: the
+    /// step delivers the next input even on the budget's last cycle.
     fn terminal(&mut self) -> Result<bool>;
 
     /// The uarch finished emulating the current big instruction; usteps

@@ -40,7 +40,9 @@ mcycle overflow, uarch limits, padding, and bundling.
   boundary is now one send-CMIO log carrying the pre-input revert root. The
   closing boundary is step plus reset; rejected-input substitution lives
   inside reset. Halt, exception, unexpected manual yield, and mcycle overflow
-  now have total terminal behavior.
+  now have total terminal behavior. Correction (2026-09-28): halt and
+  overflow are terminal only with no manual yield pending; an input yield on
+  the budget's last cycle still takes the next input (two-level-sling.md, W1).
 - Hash comparisons are same-version only. v0.20 and v0.21 machine roots are
   expected to differ. The release gate compares Dave's existing collector and
   the v0.21 CLI on identical v0.21 templates and inputs before regenerating

@@ -194,14 +194,16 @@ impl MachineStf {
         Ok(self.machine.mcycle()? >= self.machine.imcyclemax()?)
     }
 
+    /// The step reads only the pending yield, never the halt flag or the
+    /// input budget: SendCmioResponse delivers the next input to any
+    /// RX_ACCEPTED yield (on the budget's last cycle, or even halted), and
+    /// UArchReset reverts any RX_REJECTED one. So halt and overflow are
+    /// terminal only with no manual yield pending.
     fn terminal_fixed(&mut self) -> Result<bool> {
-        if self.machine.iflags_h()? || self.mcycle_overflow()? {
-            return Ok(true);
+        match self.manual_yield_reason()? {
+            Some(reason) => Ok(reason != RX_ACCEPTED && reason != RX_REJECTED),
+            None => Ok(self.machine.iflags_h()? || self.mcycle_overflow()?),
         }
-        Ok(matches!(
-            self.manual_yield_reason()?,
-            Some(reason) if reason != RX_ACCEPTED && reason != RX_REJECTED
-        ))
     }
 
     /// A logged reset substitutes the canonical root on rejection, but
@@ -580,6 +582,10 @@ impl RulerFactory for Positioner {
 mod tests {
     use super::*;
     use crate::engine::constants::UARCH_MASK_TO_BARCH;
+    use crate::engine::ruler::Run;
+    use crate::storage::rollups_machine::LOG2_STRIDE;
+    use cartesi_machine::constants::ar::RAM_START;
+    use cartesi_machine::constants::cmio::tohost::manual::TX_EXCEPTION;
     use cartesi_machine::constants::rollup::{
         LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
         LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
@@ -673,6 +679,287 @@ mod tests {
 
         assert_eq!(proof, expected_proof);
         assert_eq!(post, canonical_post);
+        Ok(())
+    }
+
+    /// Clears fromhost, yields x19, then yields x20 each time it resumes.
+    /// With imcyclemax = 3 the x19 yield executes on the input budget's
+    /// last cycle.
+    const BUDGET_SEAM_PROGRAM: [u32; 5] = [
+        0x4000_82b7, // lui t0, 0x40008 (HTIF base)
+        0x0002_b423, // sd zero, 8(t0) (fromhost)
+        0x0132_b023, // sd x19, 0(t0) (tohost)
+        0x0142_b023, // sd x20, 0(t0) (tohost)
+        0xffdf_f06f, // j -4
+    ];
+
+    fn manual_yield(reason: u16) -> u64 {
+        // HTIF_BUILD(yield device, manual command, reason, no data).
+        (2u64 << 56) | (1u64 << 48) | (u64::from(reason) << 32)
+    }
+
+    /// Runs the guest until its budget or its x19 yield stops it. With
+    /// imcyclemax = 3 the x19 yield executes on the budget's last cycle;
+    /// with imcyclemax = 2 the budget runs out before the yield.
+    fn seam_guest(imcyclemax: u64, x19_reason: u16) -> Result<Machine> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.pc = RAM_START;
+        config.processor.registers.imcyclemax = imcyclemax;
+        config.processor.registers.x19 = manual_yield(x19_reason);
+        config.processor.registers.x20 = manual_yield(RX_ACCEPTED);
+        let mut machine = Machine::create(&config, &RuntimeConfig::quiet_console())?;
+        let program: Vec<u8> = BUDGET_SEAM_PROGRAM
+            .iter()
+            .flat_map(|instruction| instruction.to_le_bytes())
+            .collect();
+        machine.write_memory(RAM_START, &program)?;
+        machine.run(u64::MAX)?;
+        assert_eq!(machine.mcycle()?, imcyclemax);
+        Ok(machine)
+    }
+
+    /// An RX_ACCEPTED yield executed on the last cycle of the input budget
+    /// (mcycle == imcyclemax): the step still delivers the next input.
+    fn budget_seam_machine() -> Result<Machine> {
+        let mut machine = seam_guest(3, RX_ACCEPTED)?;
+        assert!(machine.iflags_y()?);
+        assert_eq!(machine.receive_cmio_request()?.reason(), RX_ACCEPTED);
+        assert_eq!(machine.imcyclemax()?, 3);
+        Ok(machine)
+    }
+
+    /// Halted with an RX_ACCEPTED yield pending: unreachable by execution,
+    /// but a template can preset it, and the step still delivers the input.
+    fn halted_yield_machine() -> Result<Machine> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.iflags.h = 1;
+        config.processor.registers.iflags.y = 1;
+        config.processor.registers.htif.tohost = manual_yield(RX_ACCEPTED);
+        Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
+    }
+
+    fn scratch_stf(machine: Machine, work_dir: PathBuf, inputs: Vec<Vec<u8>>) -> MachineStf {
+        MachineStf {
+            machine,
+            ucycle: 0,
+            work_dir,
+            checkpoint: None,
+            feeder: Feeder::Scratch { fed: 0, inputs },
+        }
+    }
+
+    /// The leaf at `index` of a per-transition or per-sample run list.
+    fn leaf_at(runs: &[Run], index: U256) -> Digest {
+        let mut remaining = index;
+        for run in runs {
+            if remaining < run.repetitions {
+                return run.hash;
+            }
+            remaining -= run.repetitions;
+        }
+        panic!("leaf {index} lies past the collected runs");
+    }
+
+    /// Only a pending input yield (accepted or rejected) outranks halt and
+    /// the exhausted budget; every other class stays terminal.
+    #[test]
+    fn pending_input_yield_outranks_halt_and_budget() -> Result<()> {
+        // (machine, terminal, yielded)
+        let cases = [
+            (
+                "budget out before the yield",
+                seam_guest(2, RX_ACCEPTED)?,
+                true,
+                false,
+            ),
+            (
+                "exception on the last cycle",
+                seam_guest(3, TX_EXCEPTION)?,
+                true,
+                false,
+            ),
+            (
+                "unexpected yield on the last cycle",
+                seam_guest(3, 0x7f)?,
+                true,
+                false,
+            ),
+            (
+                "rejection on the last cycle",
+                seam_guest(3, RX_REJECTED)?,
+                false,
+                false,
+            ),
+            (
+                "acceptance on the last cycle",
+                budget_seam_machine()?,
+                false,
+                true,
+            ),
+            (
+                "acceptance while halted",
+                halted_yield_machine()?,
+                false,
+                true,
+            ),
+        ];
+        for (name, machine, terminal, yielded) in cases {
+            let mut stf = scratch_stf(machine, PathBuf::new(), vec![]);
+            assert_eq!(stf.terminal()?, terminal, "{name}: terminal");
+            assert_eq!(stf.yielded()?, yielded, "{name}: yielded");
+        }
+
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.iflags.h = 1;
+        let halted = Machine::create(&config, &RuntimeConfig::quiet_console())?;
+        assert!(scratch_stf(halted, PathBuf::new(), vec![]).terminal()?);
+        Ok(())
+    }
+
+    /// The step's opening delivers the input, so the collected leaf, the
+    /// proof, and an independent send-then-step replay agree, and the leaf
+    /// differs from an undelivered (idle) opening.
+    fn assert_opening_delivers(make: fn() -> Result<Machine>) -> Result<()> {
+        let payload = b"seam".to_vec();
+
+        let mut oracle = make()?;
+        let revert_root = oracle.root_hash()?;
+        let cmio = oracle.log_send_cmio_response(
+            CmioResponseReason::Advance,
+            &payload,
+            &revert_root,
+            LogType::default(),
+        )?;
+        let step = oracle.log_step_uarch(LogType::default())?;
+        let fed: Digest = oracle.root_hash()?.into();
+        let expected_proof = [
+            MachineStf::encode_da(&payload),
+            MachineStf::encode_access_log(&cmio),
+            MachineStf::encode_access_log(&step),
+        ]
+        .concat();
+
+        let mut idle = make()?;
+        idle.log_step_uarch(LogType::default())?;
+        assert_ne!(Digest::from(idle.root_hash()?), fed);
+
+        let work_dir = tempfile::tempdir()?;
+        let stf = scratch_stf(
+            make()?,
+            work_dir.path().to_path_buf(),
+            vec![payload.clone()],
+        );
+        let runs = Ruler::new(stf, Structure::PRODUCTION, 1).collect(U256::from(1), 0)?;
+        assert_eq!(
+            runs,
+            vec![Run {
+                hash: fed,
+                repetitions: U256::from(1)
+            }]
+        );
+
+        let stf = scratch_stf(make()?, PathBuf::new(), vec![payload]);
+        let (proof, post) = Ruler::new(stf, Structure::PRODUCTION, 1).prove_transition()?;
+        assert_eq!(proof, expected_proof);
+        assert_eq!(post, fed);
+        Ok(())
+    }
+
+    #[test]
+    fn opening_on_the_last_budget_cycle_delivers_the_input() -> Result<()> {
+        assert_opening_delivers(budget_seam_machine)
+    }
+
+    #[test]
+    fn opening_on_a_halted_machine_with_a_pending_yield_delivers_the_input() -> Result<()> {
+        assert_opening_delivers(halted_yield_machine)
+    }
+
+    /// Big-stride sampling (the runner and root levels) and uarch stepping
+    /// (the leaf level) both land on the delivered input's x20 yield.
+    #[test]
+    fn seam_window_collects_alike_at_big_and_uarch_strides() -> Result<()> {
+        let structure = Structure::PRODUCTION;
+        let payload = b"seam".to_vec();
+        let c = structure.log2_uarch_span;
+        let to = U256::from(2) << c;
+
+        let mut oracle = budget_seam_machine()?;
+        let seam = oracle.root_hash()?;
+        oracle.send_cmio_response(CmioResponseReason::Advance, &payload, Some(&seam))?;
+        oracle.run(u64::MAX)?;
+        assert!(oracle.iflags_y()?);
+        assert_eq!(oracle.mcycle()?, 4);
+        let delivered: Digest = oracle.root_hash()?.into();
+        assert_ne!(delivered, Digest::from(seam));
+
+        let coarse_dir = tempfile::tempdir()?;
+        let coarse = Ruler::new(
+            scratch_stf(
+                budget_seam_machine()?,
+                coarse_dir.path().to_path_buf(),
+                vec![payload.clone()],
+            ),
+            structure,
+            1,
+        )
+        .collect(to, c)?;
+        let fine_dir = tempfile::tempdir()?;
+        let fine = Ruler::new(
+            scratch_stf(
+                budget_seam_machine()?,
+                fine_dir.path().to_path_buf(),
+                vec![payload],
+            ),
+            structure,
+            1,
+        )
+        .collect(to, 0)?;
+
+        for sample in 0..2u64 {
+            let position = (U256::from(sample + 1) << c) - U256::from(1);
+            assert_eq!(leaf_at(&coarse, U256::from(sample)), delivered);
+            assert_eq!(leaf_at(&fine, position), delivered);
+        }
+        Ok(())
+    }
+
+    /// The runner's own collect (advance feeder, run stride) feeds a
+    /// machine that yielded on its budget's last cycle, and keeps feeding
+    /// once the delivery renews the budget.
+    #[test]
+    fn runner_feeds_windows_after_a_yield_on_the_last_budget_cycle() -> Result<()> {
+        let structure = Structure::PRODUCTION;
+        let mut machine = budget_seam_machine()?;
+        let template: Digest = machine.root_hash()?.into();
+        let samples_per_window = U256::from(1) << (structure.log2_window_span() - LOG2_STRIDE);
+
+        let mut mcycles = vec![];
+        for window in 0..2u64 {
+            let stf = MachineStf::over_advancing(machine, window, vec![0xd0], PathBuf::new());
+            let mut ruler =
+                Ruler::new_at(stf, structure, window + 1, structure.window_start(window));
+            let runs = ruler.collect(structure.window_start(window + 1), LOG2_STRIDE)?;
+            let stf = ruler.into_stf();
+            assert!(!stf.took_revert());
+            machine = stf.into_machine();
+
+            let processed: Digest = machine.root_hash()?.into();
+            assert_ne!(processed, template);
+            assert_eq!(
+                runs,
+                vec![Run {
+                    hash: processed,
+                    repetitions: samples_per_window
+                }]
+            );
+            mcycles.push(machine.mcycle()?);
+        }
+        // Window 0 runs the x20 yield; window 1 jumps back and yields again.
+        assert_eq!(mcycles, vec![4, 6]);
         Ok(())
     }
 

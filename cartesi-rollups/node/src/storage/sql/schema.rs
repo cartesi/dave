@@ -15,7 +15,7 @@ const NODE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// the crate version is frozen, and a later schema revert or backport can
 /// restore an old fingerprint, so only this stamp reliably refuses stores
 /// built under older rules.
-const COMMITMENT_SEMANTICS: u32 = 1;
+const COMMITMENT_SEMANTICS: u32 = 2;
 const WIPE_GUIDANCE: &str = "wipe the state dir and let the node rebuild";
 
 fn schema_fingerprint() -> B256 {

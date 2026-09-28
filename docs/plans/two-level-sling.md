@@ -20,8 +20,9 @@ that goal.
   CLI computation-hash mode is the reference implementation. The sling node is
   the subject. The triage procedure below makes this order operational.
 - D2. Seam 2 follows Solidity. An RX_ACCEPTED yield on the last cycle of the
-  input budget (mcycle == imcyclemax) receives the next input and renews the
-  budget. Overflow is terminal only when no manual yield is pending.
+  input budget (mcycle == imcyclemax) receives the next input. The step reads
+  only the pending yield, so halt and overflow are terminal only when no
+  manual yield is pending.
 - D3. The reference CLI is the released v0.21.0 CLI. Where it disagrees with
   Solidity, the case becomes a named exclusion adjudicated by a Solidity
   vector, until a tagged release carries the fix.
@@ -204,8 +205,8 @@ likely W3, then W3.7, then W4.8, then W5.1.
    opening with an input (fed state), the same without an input (idle), and
    rejected-at-imcyclemax closing (revert root). Add the saturation variant
    from the corpus `mcycle-boundary` template.
-2. (S) Node: terminal means halted, or a manual yield other than
-   RX_ACCEPTED/RX_REJECTED, or overflow with no manual yield pending. Fix the
+2. (S) Node: terminal means a manual yield other than RX_ACCEPTED/RX_REJECTED,
+   or halt or overflow with no manual yield pending. Fix the
    `Stf::terminal` doc and the ruler comments. Test on a machine with preset
    imcyclemax: the window-start leaf equals the FFI post-state and
    `prove_transition` agrees with the collected leaf.
@@ -219,7 +220,8 @@ likely W3, then W3.7, then W4.8, then W5.1.
 6. (S) Docs: dimensioning.md (an advance response at mcycle overflow is a
    no-op only when no RX_ACCEPTED yield is pending, and overflow is terminal
    only when no manual yield is pending), computation-hash.md, and the seam
-   text in collect-hashes-migration.md and stf-upgrade.md.
+   text in collect-hashes-migration.md and stf-upgrade.md, and the vector
+   ledger in prt-contract-testing.md.
 7. (S) Cut a three-level release from main after W1 lands and before W5.1
    lands, so existing deployments get the fix and the semantics stamp.
 
