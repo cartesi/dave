@@ -10,6 +10,8 @@ local Sender = require "dave.sender"
 local start_sybil = require "runners.sybil_runner"
 local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local CommitmentBuilder = require "computation.commitment"
+local conversion = require "utils.conversion"
+local cartesi = require "cartesi"
 local uint256 = require "utils.bint" (256)
 
 -- anvil deployment state dump; the dump is opt-in (see the justfile:
@@ -179,6 +181,63 @@ local function oracle_get()
     return Env.oracle
 end
 
+-- The reference implementation (docs/plans/two-level-sling.md, D1 and D3):
+-- the released v0.21.0 CLI's epoch mcycle computation hash. Its named
+-- exclusions (seam 1) need an input running 2^48 cycles, so no scenario
+-- program reaches them.
+local REFERENCE_CLI = "cartesi-machine"
+local REFERENCE_CLI_VERSION = "cartesi-machine 0.21.0"
+
+local function shell_quote(s)
+    return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
+-- The epoch's computation hash per the reference CLI, sampled every
+-- 2^(root stride - 20) mcycles from the epoch-start snapshot. The CLI runs
+-- a clone (stored revert mode needs a writable machine, and its default
+-- fork mode a machine server); inputs and the exact command stay in the
+-- returned directory for a repro.
+local function reference_commitment(epoch_number, snapshot_path, inputs, root_stride)
+    local version_pipe = assert(io.popen(REFERENCE_CLI .. " --version 2>&1"))
+    local version = version_pipe:read("l")
+    version_pipe:close()
+    assert(version == REFERENCE_CLI_VERSION, string.format(
+        "the root CLI gate needs %q on PATH, found %q", REFERENCE_CLI_VERSION, version))
+
+    local dir = string.format("%s/cli-epoch-%d", ORACLE_DIR, epoch_number)
+    os.execute(string.format("rm -rf %s && mkdir -p %s", dir, dir))
+    for i, input in ipairs(inputs) do
+        local file = assert(io.open(string.format("%s/input-%d.bin", dir, i - 1), "wb"))
+        file:write(conversion.bin_from_hex_n(input))
+        file:close()
+    end
+
+    local period = root_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
+    local hash_path = dir .. "/computation-hash.bin"
+    -- Outputs are not under test; only the hash file is written.
+    local work = dir .. "/machine"
+    local command = string.format(
+        "rm -rf %s %s.revert && %s --revert-mode=stored --load=%s,clone:%s,sharing:all "
+        .. "--cmio-advance-state=input:%s,input_index_begin:0,input_index_end:%d,"
+        .. "mcycle_computation_hash:%s,log2_mcycle_computation_hash_period:%d,"
+        .. "output:,rejected_output:,output_proof:,report:,outputs_merkle_root:,"
+        .. "outputs_merkle_root_proof:,check_outputs_merkle_root:false",
+        shell_quote(work), shell_quote(work), REFERENCE_CLI, shell_quote(work), shell_quote(snapshot_path),
+        shell_quote(dir .. "/input-%i.bin"), #inputs,
+        shell_quote(hash_path), period)
+    local repro = assert(io.open(dir .. "/repro.sh", "w"))
+    repro:write(command, "\n")
+    repro:close()
+
+    local ok = os.execute(command .. string.format(" > %s/cli.log 2>&1", dir))
+    assert(ok, string.format("reference CLI failed on epoch %d; see %s", epoch_number, dir))
+    local file = assert(io.open(hash_path, "rb"), "reference CLI wrote no computation hash; see " .. dir)
+    local digest = file:read("a")
+    file:close()
+    assert(#digest == 32, "malformed reference computation hash; see " .. dir)
+    return Hash:from_digest(digest), dir, work
+end
+
 -- Chain inputs of a sealed epoch, straight from InputAdded events.
 local function chain_inputs(sealed_epoch)
     local all_inputs = Env.reader:read_inputs_added(sealed_epoch.epoch_number)
@@ -209,6 +268,13 @@ local function oracle_advance(sealed_epoch, inputs)
     local root_stride = Env.reader:read_tournament_levels()[1].log2_stride
     local _, commitment, processing_bigs = oracle.machine:rollup_commitment(root_stride, inputs)
     oracle.epoch = oracle.epoch + 1
+
+    local reference, repro_dir, work = reference_commitment(sealed_epoch.epoch_number, snapshot_path,
+        inputs, root_stride)
+    assert(commitment == reference, string.format(
+        "epoch %d: oracle commitment %s differs from the reference CLI's %s; repro in %s",
+        sealed_epoch.epoch_number, commitment:hex_string(), reference:hex_string(), repro_dir))
+    os.execute(string.format("rm -rf %s %s.revert", shell_quote(work), shell_quote(work)))
 
     return initial_state, commitment, snapshot_path, processing_bigs
 end

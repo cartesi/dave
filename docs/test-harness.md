@@ -64,6 +64,15 @@ oracle-owned epoch snapshots. Node output is never an input to the
 oracle, only a subject of comparison. Keep this property through any
 rewrite; it is what makes the e2e suite fit to judge one.
 
+The oracle's own commitment is gated by the reference implementation: the
+released v0.21.0 `cartesi-machine` CLI (it must be on `PATH`) recomputes
+every epoch from the oracle's snapshot and chain inputs, as its mcycle
+computation hash at period `root stride - 20` read from chain, and the two
+must agree. On a mismatch, `_oracle/cli-epoch-<n>/` keeps the inputs, the
+CLI log, and `repro.sh` (run it from `test/e2e/rollups`). The CLI's named
+exclusions (docs/plans/two-level-sling.md) need inputs of 2^48 cycles, so
+no scenario reaches them.
+
 ## Trust bases of the assertions
 
 What each assertion family ultimately trusts (chain = anvil events and
@@ -73,8 +82,8 @@ test, never a source):
 - Epoch inputs: chain events; node database inputs are cross-checked.
 - Epoch initial state: oracle lineage, anchored to the EpochSealed
   event; the node's snapshot is loaded and cross-checked against it.
-- Epoch commitment: oracle lineage; the node's commitment (read from
-  its database) is cross-checked against it.
+- Epoch commitment: oracle lineage, gated by the reference CLI; the
+  node's commitment (read from its database) is cross-checked against it.
 - Sybil machine material: oracle epoch snapshots.
 - Tournament winners and settlement: chain state, compared against the
   oracle commitment.
@@ -84,11 +93,13 @@ test, never a source):
 - Node reads (`dave/node.lua`) serve synchronization (wait until the
   node has progressed) and produce the cross-check subjects.
 
-Residual risk, by design: a conceptual bug shared by the Lua oracle and
-the Rust node is invisible to these checks except where a dispute
-reaches the on-chain state transition. The sling differential chain
-(toy spec, reference collector, prototype fixtures) mitigates from the
-other side.
+Residual risk, by design: a conceptual bug shared by the Lua oracle, the
+Rust node, and the CLI is invisible to these checks except where a dispute
+reaches the on-chain state transition. The CLI gate covers root commitments
+only, and at the canonical root stride those sample only window ends, where
+a rejected input has already reverted; leaf commitments are not CLI-checked
+yet. The sling differential chain (toy spec, reference collector, prototype
+fixtures) mitigates from the other side.
 
 ## Hardened primitives (2026-07-16)
 
