@@ -101,8 +101,10 @@ because they rot; each claim names the code that carries it.
   collector and reorders break-reason precedence (halt, manual yield,
   overflow). It changes no state-transition source and no marchid. It also
   narrows the `cm_send_cmio_response` length to uint32 (a C API break). No
-  release after v0.21.0 exists; `v0.21.1-test1` carries two unrelated
-  commits. Open PR #390 changes the uarch pristine hash and the proof format
+  release after v0.21.0 exists; `v0.21.1-test1` carries two commits unrelated
+  to the collectors: a CI change and 642703cfb, which adds O_CLOEXEC to the
+  file paths that flock (the lock leak behind the node's flaky unit tests).
+  Open PR #390 changes the uarch pristine hash and the proof format
   and is a separate future upgrade.
 
 ## Seam 2 (soundness, geometry-independent)
@@ -416,6 +418,87 @@ format change).
 - Doc drift: the `MachineStf` module doc versus D7, the level-0 location
   in computation-hash.md, the future tense in the `RulerFactory` doc, and the
   closed bond-recovery item in collect-hashes-migration.md.
+
+## Robustness review (2026-09-28)
+
+After the stack above landed (main..5ecd86b3), five independent reviewers,
+each checked by an adversarial verifier, examined it against the question:
+can this commit defend a two-level deployment? They found no bug in the
+two-level logic: nothing assumes three levels, the pinned stride reaches every
+consumer, the W1 terminal rule agrees across Rust, Lua and Solidity, and
+canonical behavior is unchanged. At the root, node, Lua and the v0.21.0 CLI
+agree at period 17 on echo inputs of about 17 samples per window, a rejected
+input included. The real-image differentials and the release corpus pass on
+the tip. What stands between this commit and a trusted two-level deployment:
+
+Protocol.
+
+- R1. Inner construction drains the correct clock. Each sealed root match
+  forces a cold build of a fresh child commitment, and join lateness charges
+  that build to the correct party's clock, which is never refilled. With C
+  spent, T = 60 covers only 2 to 4 dense two-level builds; each Sybil costs a
+  bond. Canonical inner builds take seconds, so the flaw was benign there.
+  Confirmed by the owner as a bug and now the top priority; the recharge
+  design is in progress.
+
+Scale and liveness (unmeasured, not wrong).
+
+- R2. Dense height-37 leaf build time and RSS on v0.21, on the shipped path
+  (W4.1, W4.2). A two-level leaf fits T only while the densest 2^17-big-cycle
+  window of honest execution stays below about 1,200 usteps per big cycle at
+  slack 2 (about twice the stress workload); FP-heavy code under softfloat is
+  an unmeasured lead.
+- R3. Stride-37 root work runs about 6.3x slower per transition than stride
+  44 (M3). For inputs of 2^35 big cycles and more, root responses may overrun
+  G at slack 2.
+- R4. The join budget beyond the build is unmeasured: `prove_last`
+  re-positions from the window boundary for each of four strata, the Solid
+  observation slips one tick after a long build, and on a pruned RPC the
+  post-build reads at the old Solid head fail once.
+- R5. A leaf build is neither resumable nor cancellable: a restart mid-build
+  starts over, and SIGTERM has no handler (debts 7 and 9).
+- R6. The devnet cannot host a dense leaf dispute: its clock allows about 300
+  blocks, while test inputs run 10^5 to 10^6 big cycles. Dense two-level e2e
+  needs a devnet profile with a larger allowance, and the e2e node is a debug
+  build (dense leaves about 2.4x slower than release).
+
+Correctness and robustness beyond scale.
+
+- R7. D5 (W8): an epoch with more than 2^24 inputs panics the runner into a
+  crash loop; anyone can trigger it.
+- R8. The W3 tripwires (`GeometryMismatch`, `RootCommitmentMismatch`) fail
+  soft: the manager logs a warning and retries forever, so the node stops
+  defending without alarm. They should be loud; `RootCommitmentMismatch` has
+  no test.
+- R9. Yield classification goes through `receive_cmio_request`, which reads
+  different tohost fields than the step: an oversized data field throws
+  (the runner cannot advance), a preset non-manual tohost with iflags_Y set
+  is misclassified, and `CmioRequest::new` panics on an unknown command.
+  Classify from registers as `isYieldedManualWith` does. Pre-existing; lead:
+  whether the guest driver bounds a yield's data field.
+- R10. Startup writes the store (ingestion watermark, template clone) before
+  the drift checks refuse, and a wrong `--machine-path` is pinned before the
+  image is checked against chain. Validate before writing.
+- R11. The geometry validator accepts tables the node cannot build in time
+  (non-leaf strides below a big cycle, tall leaves), and the capacity warning
+  cannot fire for [37, 0]. If R1 puts T on chain, compare the measured build
+  rate against it at startup.
+
+Evidence gaps.
+
+- R12. The active branch of the big-cycle-root builder has toy differentials
+  and a one-cycle real-machine test only. Add an active span at or above
+  height 28 to `dispute_source_matches_prototype_tree`, then a steered
+  two-level dispute on active computation (needs R6).
+- R13. Only echo `simple` has run on two levels. The honeypot image has not
+  run on any commit of this stack, and the CLI gate has run only on APFS
+  (on ext4 each epoch copies the writable machine per input); CI is their
+  first exposure.
+- R14. The CLI gate identifies the CLI by version string only (W2.3), and does
+  not assert the snapshot preconditions the triage procedure lists.
+- R15. Seam-2 agreement is transitive (no single vector across node, Lua and
+  FFI), and the two-level table literal is duplicated between
+  `TournamentGeometry::two_level` and the devnet script.
 
 ## Open decisions
 
