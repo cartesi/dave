@@ -31,9 +31,15 @@ that goal.
   critical path waits for an upstream release.
 - D5. Epochs with more than 2^24 inputs are out of model. The node must fail
   with a clear error instead of an assert panic or crash loop.
-- D6. The two-level node is a new deployment generation. It does not serve
-  existing three-level deployments; after the switch, CI covers two levels
-  only.
+- D6. The two-level node is a new deployment generation. The system is not
+  deployed yet, so there is no legacy to serve and no intermediate release.
+  The node discovers the geometry and accepts any valid table: it must run the
+  current three-level canonical devnet and a two-level deployment alike.
+- D10. Two levels are delivered before the canonical switch (2026-09-28). This
+  stack makes the node handle a two-level deployment, including the
+  height-37 hardening (W4.4, W4.5); a later PR changes the canonical
+  constants (W5.1). Until then, a devnet geometry profile provides the
+  two-level deployment (W3.8), and a per-PR smoke subset runs e2e on it.
 - D7. The leaf-by-leaf collector (`Ruler::collect` over `MachineStf`) stays
   permanently as a test-only oracle. This replaces the deletion rules in
   collect-hashes-migration.md and in stf-upgrade.md's verification doctrine.
@@ -188,14 +194,15 @@ Initial v0.21.0 CLI exclusions:
 Sizes are S/M/L. W1, W2, W3 and W4.1-W4.5 have no mutual dependencies and
 start now.
 
-Before the contract switch (W5.1) lands on main: all of W3, W2.1, the root
-CLI gate (W2.11) green at the current geometry, W4.1 (M1 confirms the table),
-W4.8 (the e2e dry run fits CI budgets), and the three-level release of W1.7.
+This stack (D10), in order: W2.1; W3 including the devnet geometry profile
+(W3.8) and the two-level e2e smoke; W4.4 and W4.5; the root CLI gate (W2.11).
+It ends with a node that handles a two-level deployment.
 
-Before a two-level release is tagged, additionally: W1, W4.2, W4.4, W4.5,
-W4.7, the D5 guard (W8), W5.2-W5.4, a tagged emulator (D4), and the open
-decisions on generation contents and audit timing. The longest chain is
-likely W3, then W3.7, then W4.8, then W5.1.
+Before the canonical switch (W5.1) lands: the stack above, W4.1 (M1
+confirms the table), and W4.8 (the full e2e matrix fits CI budgets on two
+levels). Before a two-level release is tagged, additionally: W4.2, W4.7, the
+D5 guard (W8), W5.2-W5.4, a tagged emulator (D4), and the open decisions on
+generation contents and audit timing.
 
 ### W1. Seam 2 fix (standalone, now)
 
@@ -222,8 +229,6 @@ likely W3, then W3.7, then W4.8, then W5.1.
    only when no manual yield is pending), computation-hash.md, and the seam
    text in collect-hashes-migration.md and stf-upgrade.md, and the vector
    ledger in prt-contract-testing.md.
-7. (S) Cut a three-level release from main after W1 lands and before W5.1
-   lands, so existing deployments get the fix and the semantics stamp.
 
 Exit: vectors pass through `CartesiStateTransition`; node and Lua match them;
 the v0.21.0 CLI seam cases are recorded as exclusions.
@@ -291,10 +296,8 @@ under [44, 27, 0].
    a leaf span the node cannot build within T.
 2. (S) Startup discovery: an ERC-165 check, `tournamentLevelCount()`, every
    `tournamentParameters(level)` row, then validation. This replaces the
-   compiled-stride equality check. In production the validator accepts only
-   the level count the release supports: three until W5 lands, two after
-   (D6). A refused table names the last release that serves it. Other valid
-   shapes are accepted only in tests.
+   compiled-stride equality check. Any valid table is accepted (D6); the
+   feasibility bound is the only extra refusal.
 3. (M) Pin the discovered table, the consensus address and the factory
    address in `sling_config`, and refuse drift with a store-wipe error.
    Stability is a trust assumption of the parameters provider, not an
@@ -313,6 +316,11 @@ under [44, 27, 0].
    that takes the geometry and a target transition; rework
    `sealed_leaf_timeout` (root height parity flips from 48 to 55); drop
    `CURRENT_LOG2STEP` from measure.rs.
+8. (M) Devnet geometry profile. A test-only table provider (outside src/)
+   and a devnet-only deploy path, so `build-devnet` can produce a bundle
+   whose factory serves [37, 0] / [55, 37] while production scripts keep the
+   canonical provider. A per-PR CI job runs an e2e smoke subset on it (the
+   happy path and one leaf-reaching dispute).
 
 ### W4. Height-37 readiness on the current API
 
@@ -356,9 +364,7 @@ under [44, 27, 0].
    dispute-game.md, node-architecture.md, test-harness.md, constants.md,
    prt/contracts/AGENTS.md, and dimensioning.md (the "remains planned"
    two-level paragraph and the three-level allowance note).
-4. (S) Release notes: a new generation, new addresses and geometry;
-   three-level apps stay on the last three-level release, which carries W1
-   (W1.7, D6).
+4. (S) Release notes: a new generation, new addresses and geometry.
 
 Exit: the e2e battery is green on two levels within CI budgets, and the CLI
 gates are green.
