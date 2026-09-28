@@ -124,8 +124,11 @@ The checked-in canonical provider configures the historical three-level table
 `log2step = [44, 27, 0]`, `height = [48, 17, 27]`. The selected deployment
 layout is the two-level table `log2step = [37, 0]`, `height = [55, 37]`.
 That switch is not live. Generic and historical Solidity tests now inject their
-own geometry, leaving the coordinated node change from root stride 44 to 37 as
-an integration gate. The factory selects the immutable tournament kind from
+own geometry, and the node compiles in no tournament geometry: it discovers,
+validates, and pins whatever table the factory serves. What gates the switch
+is two-level evidence (e2e against the devnet two-level profile, the height-37
+leaf-build hardening, and leaf-level cross-implementation checks), not a node
+geometry change. The factory selects the immutable tournament kind from
 the configured row; runtime leaf behavior does not infer the kind again from
 the stride or height.
 

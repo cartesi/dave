@@ -9,7 +9,7 @@
 use super::error::Result;
 use super::rollups_machine::RollupsMachine;
 use super::sql::schema;
-use crate::engine::{EngineConfig, Structure, config as sling_config};
+use crate::engine::{EngineConfig, Structure, TournamentGeometry, config as sling_config};
 use crate::merkle::Digest;
 use alloy::primitives::Address;
 use anyhow::Context;
@@ -45,13 +45,15 @@ impl Storage {
     /// Process setup: creates the state directory, initializes the
     /// schema, seeds the genesis watermark, stores and registers
     /// the template machine, and pins the engine configuration (which
-    /// fails loudly on app or emulator drift against an existing
-    /// state dir).
+    /// fails loudly on app, consensus, geometry, or emulator drift
+    /// against an existing state dir).
     pub fn initialize(
         state_dir: &Path,
         initial_machine_path: &Path,
         genesis_block_number: u64,
         app_address: Address,
+        consensus_address: Address,
+        geometry: &TournamentGeometry,
     ) -> Result<Self> {
         create_directory_structure(state_dir)?;
         let state_dir = state_dir.canonicalize().map_err(anyhow::Error::from)?;
@@ -73,10 +75,13 @@ impl Storage {
             &EngineConfig {
                 structure: Structure::PRODUCTION,
                 app: app_address.as_slice().to_vec(),
+                consensus: consensus_address.as_slice().to_vec(),
                 template_hash: Digest::from_digest(&template_hash).map_err(anyhow::Error::from)?,
                 emulator_version: format_emulator_version(Machine::version()),
+                geometry: geometry.clone(),
             },
-        )?;
+        )
+        .map_err(|error| anyhow::anyhow!("{error:#}; {}", schema::WIPE_GUIDANCE))?;
 
         Ok(storage)
     }

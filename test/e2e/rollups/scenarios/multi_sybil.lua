@@ -35,8 +35,10 @@ for _, v in ipairs(env.reader:read_inputs_added(second_epoch.epoch_number)) do
     table.insert(inputs, v.data)
 end
 
--- Compute honest commitment (44 is the contracts' level-0 log2_stride).
-local initial_state, commitment = Machine.root_rollup_commitment(env.template_machine, 44, inputs)
+-- Compute honest commitment at the deployed root stride.
+local root = env.reader:read_tournament_levels()[1]
+local initial_state, commitment =
+    Machine.root_rollup_commitment(env.template_machine, root.log2_stride, inputs)
 assert(Hash:from_digest_hex(second_epoch.initial_machine_state_hash) == initial_state,
     "chain-sealed initial machine state hash differs from the computed state")
 

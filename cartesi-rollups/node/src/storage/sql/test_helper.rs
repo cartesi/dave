@@ -1,6 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
+use crate::engine::TournamentGeometry;
 use crate::storage::Storage;
 use cartesi_machine::{
     Machine,
@@ -18,8 +19,14 @@ use tempfile::{TempDir, tempdir};
 
 /// A fully initialized Storage over a real (tiny) machine image: the
 /// production setup path, template snapshot and engine config
-/// included. Tests need `../../test/programs/linux.bin` present.
+/// included, pinned to the canonical table. Tests need
+/// `../../test/programs/linux.bin` present.
 pub fn setup_storage() -> (TempDir, Storage) {
+    setup_storage_with(&TournamentGeometry::canonical())
+}
+
+/// [`setup_storage`] pinned to `geometry`.
+pub fn setup_storage_with(geometry: &TournamentGeometry) -> (TempDir, Storage) {
     let state_dir_ = tempdir().unwrap();
     let state_dir = state_dir_.path();
 
@@ -49,6 +56,8 @@ pub fn setup_storage() -> (TempDir, Storage) {
         &machine_path,
         0,
         alloy::primitives::Address::ZERO,
+        alloy::primitives::Address::ZERO,
+        geometry,
     )
     .unwrap();
     (state_dir_, storage)

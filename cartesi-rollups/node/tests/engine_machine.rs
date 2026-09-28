@@ -16,7 +16,8 @@ mod common;
 use common::prototype::{MachineCommitment, MachineCommitmentBuilder};
 
 use cartesi_rollups_prt_node::engine::{
-    DisputeSource, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf, Structure,
+    DisputeSource, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf, Structure,
+    TournamentGeometry,
 };
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
 use common::epoch_data::EpochData;
@@ -134,7 +135,28 @@ fn initialized_storage(image: &Path) -> (tempfile::TempDir, Storage) {
 
 fn initialized_storage_with(image: &Path, inputs: Vec<Vec<u8>>) -> (tempfile::TempDir, Storage) {
     let dir = scratch();
-    let mut storage = Storage::initialize(dir.path(), image, 0, Address::ZERO).unwrap();
+    // The checked-in canonical table; these differentials sample the
+    // machine path, so the pinned run stride only needs to be valid.
+    let geometry = TournamentGeometry::new(
+        [(44, 48), (27, 17), (0, 27)]
+            .into_iter()
+            .map(|(log2_stride, height)| Level {
+                log2_stride,
+                height,
+            })
+            .collect(),
+        &Structure::PRODUCTION,
+    )
+    .unwrap();
+    let mut storage = Storage::initialize(
+        dir.path(),
+        image,
+        0,
+        Address::ZERO,
+        Address::ZERO,
+        &geometry,
+    )
+    .unwrap();
     let rows: Vec<StorageInput> = inputs
         .into_iter()
         .enumerate()

@@ -51,8 +51,8 @@ side assumptions before adopting (tree math, position widths).
 Constants changes cross the contract-client compatibility boundary.
 Adopt a bump only with coordinated validation of:
 ArbitrationConstants.sol (LEVELS, log2step, height);
-rollups_machine::LOG2_STRIDE (= log2step(0));
-docs/computation-hash.md's level table; harness fixtures.
+docs/computation-hash.md's level table; harness fixtures. The node
+discovers and pins the deployed table, so it carries no stride constant.
 A small test-shape profile would also let e2e disputes run in seconds.
 
 ## Caveats

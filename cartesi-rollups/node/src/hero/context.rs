@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::{
     chain::{Chain, ChainHead},
-    engine::{DisputeSource, LevelCoords, Positioner},
+    engine::{DisputeSource, Level, LevelCoords, Positioner, TournamentGeometry},
     merkle::Digest,
     tournament::{
         dispute::{
@@ -26,6 +26,17 @@ use crate::{
         observer::read_match,
     },
 };
+
+/// What this node already committed to for the epoch, checked against the
+/// chain before any action: a disagreement means the store or the
+/// deployment is not the one the node settled, and acting would defend
+/// the wrong computation.
+#[derive(Clone, Debug)]
+pub struct EpochAnchors {
+    pub initial_hash: Digest,
+    pub computation_hash: Digest,
+    pub geometry: TournamentGeometry,
+}
 
 /// Local engine material for one tournament level.
 ///
@@ -91,16 +102,16 @@ impl HeroContext {
         chain: &Chain,
         head: ChainHead,
         epoch: u64,
-        epoch_initial_hash: Digest,
+        anchors: &EpochAnchors,
         dispute: &Dispute,
         standings: &HashMap<Address, TournamentStanding>,
         source: &mut DisputeSource<Positioner>,
     ) -> Result<Self, ContextError> {
         let root_descriptor = dispute.root().descriptor();
-        if root_descriptor.initial_hash() != epoch_initial_hash {
+        if root_descriptor.initial_hash() != anchors.initial_hash {
             return Err(ContextError::RootInitialHashMismatch {
                 tournament: root_descriptor.address(),
-                expected: epoch_initial_hash,
+                expected: anchors.initial_hash,
                 observed: root_descriptor.initial_hash(),
             });
         }
@@ -118,8 +129,16 @@ impl HeroContext {
                 .ok_or(ContextError::MissingStanding {
                     tournament: address,
                 })?;
+            check_pinned_level(descriptor, &anchors.geometry)?;
             let material = level_material(epoch, descriptor, source)?;
             let local_commitment = material.root();
+            if parent.is_none() && local_commitment != anchors.computation_hash {
+                return Err(ContextError::RootCommitmentMismatch {
+                    tournament: address,
+                    settled: anchors.computation_hash,
+                    computed: local_commitment,
+                });
+            }
 
             let (local_standing, next) = match tournament.position(&local_commitment) {
                 CommitmentPosition::NotJoined => (LocalCommitmentStanding::NotJoined, None),
@@ -232,6 +251,24 @@ pub enum ContextError {
         expected: Digest,
         observed: Digest,
     },
+    #[error(
+        "tournament {tournament} runs level {level} as stride 2^{log2_stride}, height {height}, \
+         which the pinned tournament table does not"
+    )]
+    GeometryMismatch {
+        tournament: Address,
+        level: u64,
+        log2_stride: u64,
+        height: u64,
+    },
+    #[error(
+        "root tournament {tournament} commitment {computed} differs from the settled computation hash {settled}"
+    )]
+    RootCommitmentMismatch {
+        tournament: Address,
+        settled: Digest,
+        computed: Digest,
+    },
     #[error("tournament {tournament} base cycle {base_cycle} is not aligned to level span {span}")]
     MisalignedBaseCycle {
         tournament: Address,
@@ -302,6 +339,30 @@ fn level_material(
         coords,
         root,
     })
+}
+
+/// Every tournament must run its level exactly as the pinned table says:
+/// the stored window roots and settlement hash were built for that table.
+fn check_pinned_level(
+    descriptor: TournamentDescriptor,
+    geometry: &TournamentGeometry,
+) -> Result<(), ContextError> {
+    let observed = Level {
+        log2_stride: descriptor.log2_stride(),
+        height: descriptor.height().get(),
+    };
+    let pinned = usize::try_from(descriptor.level())
+        .ok()
+        .and_then(|level| geometry.levels().get(level));
+    if pinned != Some(&observed) {
+        return Err(ContextError::GeometryMismatch {
+            tournament: descriptor.address(),
+            level: descriptor.level(),
+            log2_stride: observed.log2_stride,
+            height: observed.height,
+        });
+    }
+    Ok(())
 }
 
 fn level_coords(epoch: u64, descriptor: TournamentDescriptor) -> Result<LevelCoords, ContextError> {
@@ -401,6 +462,33 @@ mod tests {
             height,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn levels_must_run_as_the_pinned_table_says() {
+        let pinned = TournamentGeometry::two_level();
+        let root = descriptor(ROOT, 0, TournamentKind::NonLeaf, digest(1), 0, 37, 55);
+        let leaf = descriptor(CHILD, 1, TournamentKind::Leaf, digest(2), 0, 0, 37);
+        check_pinned_level(root, &pinned).unwrap();
+        check_pinned_level(leaf, &pinned).unwrap();
+
+        // The canonical three-level root is not the pinned two-level one.
+        let other_root = descriptor(ROOT, 0, TournamentKind::NonLeaf, digest(1), 0, 44, 48);
+        assert!(matches!(
+            check_pinned_level(other_root, &pinned),
+            Err(ContextError::GeometryMismatch {
+                level: 0,
+                log2_stride: 44,
+                height: 48,
+                ..
+            })
+        ));
+        // A level the table does not have.
+        let deeper = descriptor(CHILD, 2, TournamentKind::Leaf, digest(2), 0, 0, 37);
+        assert!(matches!(
+            check_pinned_level(deeper, &pinned),
+            Err(ContextError::GeometryMismatch { level: 2, .. })
+        ));
     }
 
     #[test]

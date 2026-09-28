@@ -10,7 +10,7 @@ use crate::{
     engine::{DisputeSource, Positioner},
     hero::{
         action::{PreparedArenaAction, prepare},
-        context::HeroContext,
+        context::{EpochAnchors, HeroContext},
         error::Result,
         gc_planner::plan_gc,
         planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, plan_hero},
@@ -64,7 +64,7 @@ pub struct Hero<AS: ArenaSender> {
     arena_sender: Arc<AS>,
     source: DisputeSource<Positioner>,
     epoch: u64,
-    epoch_initial_hash: Digest,
+    anchors: EpochAnchors,
     root_tournament: Address,
     reader: StateReader,
 }
@@ -79,12 +79,21 @@ impl<AS: ArenaSender> Hero<AS> {
         epoch_number: u64,
     ) -> Result<Self> {
         let work_dir = storage.epoch_directory(epoch_number)?;
-        let epoch_initial_hash = Digest::from_digest(
+        let initial_hash = Digest::from_digest(
             &storage
                 .snapshot_hash(epoch_number, 0)?
                 .expect("snapshot is inserted atomically with settlement info"),
         )
         .map_err(anyhow::Error::from)?;
+        let computation_hash = storage
+            .settlement_info(epoch_number)?
+            .expect("the node settles an epoch locally before disputing it")
+            .computation_hash;
+        let anchors = EpochAnchors {
+            initial_hash,
+            computation_hash,
+            geometry: storage.sling_config()?.geometry,
+        };
         let reader_storage = Storage::new(storage.state_dir())?;
         let source = DisputeSource::on_store(storage, epoch_number, work_dir.join("engine"))?;
         let reader = StateReader::new(chain, block_created_number, reader_storage)?;
@@ -93,7 +102,7 @@ impl<AS: ArenaSender> Hero<AS> {
             arena_sender,
             source,
             epoch: epoch_number,
-            epoch_initial_hash,
+            anchors,
             root_tournament,
             reader,
         })
@@ -107,7 +116,7 @@ impl<AS: ArenaSender> Hero<AS> {
             &chain,
             latest_head,
             self.epoch,
-            self.epoch_initial_hash,
+            &self.anchors,
             &foam,
             &foam_standings,
             &mut self.source,
@@ -132,7 +141,7 @@ impl<AS: ArenaSender> Hero<AS> {
                 &chain,
                 solid_head,
                 self.epoch,
-                self.epoch_initial_hash,
+                &self.anchors,
                 solid,
                 &solid_standings,
                 &mut self.source,

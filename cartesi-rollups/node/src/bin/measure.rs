@@ -17,7 +17,8 @@ use alloy::primitives::{Address, U256};
 use alloy::sol_types::SolCall;
 use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 use cartesi_rollups_prt_node::engine::{
-    DisputeSource, MachineStf, Quartet, Stf, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
+    DisputeSource, Level, MachineStf, Quartet, Stf, Structure, TournamentGeometry,
+    constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
 };
 use cartesi_rollups_prt_node::merkle::Digest;
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
@@ -501,7 +502,14 @@ fn bench_quartets(
     let mut results = Vec::new();
     for (index, (label, log2_stride, height)) in spans.into_iter().enumerate() {
         let state_dir = scratch(scratch_root, &format!("quartet-{index}"))?;
-        let mut storage = Storage::initialize(&state_dir, image, 0, Address::ZERO)?;
+        let mut storage = Storage::initialize(
+            &state_dir,
+            image,
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            &current_geometry()?,
+        )?;
         let rows: Vec<StorageInput> = inputs
             .iter()
             .enumerate()
@@ -655,6 +663,20 @@ const CURRENT_HEIGHT: [u64; 3] = [
     CURRENT_LOG2STEP[0] - CURRENT_LOG2STEP[1],
     CURRENT_LOG2STEP[1] - CURRENT_LOG2STEP[2],
 ];
+
+/// The table the span replays pin; they never touch window roots, so
+/// only its validity matters.
+fn current_geometry() -> Result<TournamentGeometry> {
+    let levels = CURRENT_LOG2STEP
+        .iter()
+        .zip(CURRENT_HEIGHT)
+        .map(|(&log2_stride, height)| Level {
+            log2_stride,
+            height,
+        })
+        .collect();
+    TournamentGeometry::new(levels, &Structure::PRODUCTION)
+}
 
 /// Steady-state rates plus the hash-cost curve, all measured
 /// mid-computation on a fed machine.
@@ -1008,8 +1030,8 @@ fn constants_report(
         "Constants changes cross the contract-client compatibility boundary.\n\
          Adopt a bump only with coordinated validation of:\n\
          ArbitrationConstants.sol (LEVELS, log2step, height);\n\
-         rollups_machine::LOG2_STRIDE (= log2step(0));\n\
-         docs/computation-hash.md's level table; harness fixtures.\n\
+         docs/computation-hash.md's level table; harness fixtures. The node\n\
+         discovers and pins the deployed table, so it carries no stride constant.\n\
          A small test-shape profile would also let e2e disputes run in\n\
          seconds."
     )?;

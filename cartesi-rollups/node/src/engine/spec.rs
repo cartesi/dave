@@ -176,11 +176,29 @@ fn expand(runs: &[Run]) -> Vec<Digest> {
 }
 
 pub(crate) fn toy_storage(structure: Structure) -> Storage {
+    // Toy tests hand DisputeSource their run stride; the pin only has
+    // to be a valid table for the structure.
+    let geometry = super::TournamentGeometry::new(
+        vec![
+            super::Level {
+                log2_stride: structure.log2_uarch_span,
+                height: structure.log2_ruler_span() - structure.log2_uarch_span,
+            },
+            super::Level {
+                log2_stride: 0,
+                height: structure.log2_uarch_span,
+            },
+        ],
+        &structure,
+    )
+    .unwrap();
     let config = EngineConfig {
         structure,
         app: vec![0xda; 20],
+        consensus: vec![0xdc; 20],
         template_hash: ToyStf::hash_of(0),
         emulator_version: "toy".into(),
+        geometry,
     };
     let dir = tempfile::tempdir().unwrap().keep();
     let connection = Connection::open(dir.join("db.sqlite3")).unwrap();
@@ -868,6 +886,50 @@ fn full_capacity_frontier_serves_without_padding() -> Result<()> {
 
     let last = counting.prove_last(&level)?;
     assert!(last.verify_root(reference.root_hash()));
+    Ok(())
+}
+
+#[test]
+fn coarser_strides_bypass_the_frontier_fold() -> Result<()> {
+    // The fold's leaves are run-stride samples; a coarser tree over the
+    // same span samples other states, so it is the machine's at every
+    // height (a `>=` dispatch would serve fold nodes there instead).
+    let structure = S_MEDIUM;
+    let script = vec![accept(&[2, 1]), reject(&[1]), accept(&[3]), accept(&[1, 1])];
+    let run_stride = structure.log2_uarch_span;
+    let coarse = run_stride + 1;
+    assert!(coarse <= structure.log2_window_span());
+    let level = LevelCoords::new(0, U256::ZERO, coarse, structure.log2_ruler_span() - coarse);
+
+    let mut storage = toy_storage(structure);
+    record_toy_material(&mut storage, &structure, &script, run_stride)?;
+    let reference = reference_tree(structure, &script, &level);
+    let mut counting = DisputeSource::new(
+        storage,
+        Counting {
+            inner: ToyFactory {
+                structure,
+                script: script.clone(),
+            },
+            calls: 0,
+        },
+        0,
+        run_stride,
+    )?;
+
+    for height in (0..=level.height).rev() {
+        let quartet = level.node(height, U256::ZERO);
+        let expected = reference_node(&reference, level.height - height, U256::ZERO);
+        assert_eq!(
+            counting.node(&quartet)?,
+            expected.root_hash(),
+            "height {height}"
+        );
+    }
+    assert!(
+        counting.factory().calls > 0,
+        "the machine served the coarser tree"
+    );
     Ok(())
 }
 

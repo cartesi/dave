@@ -24,18 +24,24 @@ runtime (`lib.rs run()`), each owning its own SQLite connection:
   reactions
 
 Before opening or initializing the database, startup resolves the tournament
-factory from Dave consensus and reads its level-zero parameters plus its
-configured state transition. The binary refuses to start unless the deployed
-root stride equals the node's compiled window-root sampling stride, the root
-row spans the compiled 92-bit machine coordinate, and the concrete
+factory from Dave consensus, reads its whole level table
+(`tournamentLevelCount()` and every `tournamentParameters(level)` row) and its
+configured state transition. The node compiles in no tournament geometry: it
+accepts any table that passes `engine::TournamentGeometry`'s validator (the
+root spans the 92-bit machine coordinate, each level tiles one leaf of its
+parent, the leaf level steps single transitions, and the root stride lies
+between one big cycle and one input window), and it refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
-linked Cartesi Machine library. These checks all run before database
-initialization,
-so an incompatible deployment cannot create or alter local state. This is a
-deployment-compatibility assertion over trusted factory configuration, not
-runtime validation of every tournament row. Deeper geometry continues to come
-from each tournament's immutable descriptor as the recursive dispute is
-discovered.
+linked Cartesi Machine library. These checks run before database
+initialization, so an incompatible deployment cannot create or alter local
+state. Initialization then pins the table and the consensus address in
+`sling_config`; the runner samples each window at the pinned root stride, and
+a later start against another table or consensus is refused. Table stability
+is a trust assumption of the parameters provider, so before planning any
+action the Hero checks the descriptor of every tournament on its own path
+against the pinned row for its level, and the root commitment it would join
+with against the settled computation hash. Cleanup of other branches takes no
+local commitment and skips these checks.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker

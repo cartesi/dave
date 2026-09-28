@@ -30,9 +30,11 @@ for _, v in ipairs(env.reader:read_inputs_added(1)) do
     table.insert(inputs, v.data)
 end
 
--- Compute honest commitment
--- 44 is the initial log2_stride currently configured in the smart contracts.
-local initial_state, commitment = Machine.root_rollup_commitment(env.template_machine, 44, inputs)
+-- Compute honest commitment at the deployed root stride. The k << 44
+-- patches below are aligned to it under either table.
+local root = env.reader:read_tournament_levels()[1]
+local initial_state, commitment =
+    Machine.root_rollup_commitment(env.template_machine, root.log2_stride, inputs)
 
 local honest_commitment_builder = CommitmentBuilder:new(env.template_machine, inputs, commitment)
 local patched_commitment_builder1 = PatchedCommitmentBuilder:new({ { hash = Hash.zero, meta_cycle = 1 << 44 } },

@@ -22,13 +22,15 @@ end)
 
 print("Node commitment: ", commitment_node)
 
+-- A join proof spans the root commitment's height.
+local root = env.reader:read_tournament_levels()[1]
 local bad_commitment_proof = {}
 local final_state = Hash.zero
 
 local bad_commitment_left = Hash.zero
 local bad_commitment_right = final_state
 
-for _ = 1, 47 do
+for _ = 1, root.height - 1 do
     bad_commitment_right = Hash.zero:join(bad_commitment_right)
     table.insert(bad_commitment_proof, Hash.zero)
 end
@@ -46,7 +48,7 @@ print("Bad commitment sent")
 env.wait_until_epoch(1)
 
 -- validate winners
-local _, commitment = Machine.root_rollup_commitment(env.template_machine, 44, {})
+local _, commitment = Machine.root_rollup_commitment(env.template_machine, root.log2_stride, {})
 local winner = env.reader:root_tournament_winner(first_epoch.tournament)
 assert(winner.has_winner)
 assert(winner.commitment == commitment)

@@ -205,8 +205,9 @@ local function oracle_advance(sealed_epoch, inputs)
     local snapshot_path = ORACLE_DIR .. "/epoch-" .. sealed_epoch.epoch_number
     oracle.machine:store_to(snapshot_path)
 
-    -- 44 is the initial log2_stride currently configured in the smart contracts.
-    local _, commitment, processing_bigs = oracle.machine:rollup_commitment(44, inputs)
+    -- The root stride of the deployed table, like the node's pinned one.
+    local root_stride = Env.reader:read_tournament_levels()[1].log2_stride
+    local _, commitment, processing_bigs = oracle.machine:rollup_commitment(root_stride, inputs)
     oracle.epoch = oracle.epoch + 1
 
     return initial_state, commitment, snapshot_path, processing_bigs

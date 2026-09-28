@@ -9,6 +9,7 @@
 //! at database creation; the dispute module only reads and asserts
 //! (`assert_compatible`).
 
+use super::geometry::TournamentGeometry;
 use super::structure::Structure;
 use crate::merkle::Digest;
 use anyhow::{Result, ensure};
@@ -18,8 +19,14 @@ use rusqlite::{Connection, OptionalExtension, params};
 pub struct EngineConfig {
     pub structure: Structure,
     pub app: Vec<u8>,
+    /// The consensus the app answered with at initialization: the source
+    /// of this store's epochs, inputs, and tournament factory.
+    pub consensus: Vec<u8>,
     pub template_hash: Digest,
     pub emulator_version: String,
+    /// The deployed level table. Its root stride shapes every stored
+    /// window root and settlement hash.
+    pub geometry: TournamentGeometry,
 }
 
 /// Pins the configuration, once per database; the schema comes from
@@ -37,14 +44,16 @@ pub fn pin(connection: &Connection, config: &EngineConfig) -> Result<()> {
         ),
         None => {
             connection.execute(
-                "INSERT INTO sling_config VALUES (0, ?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO sling_config VALUES (0, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     config.structure.log2_input_span,
                     config.structure.log2_barch_span,
                     config.structure.log2_uarch_span,
                     config.app,
+                    config.consensus,
                     config.template_hash.slice(),
                     config.emulator_version,
+                    config.geometry.encode(),
                 ],
             )?;
         }
@@ -82,30 +91,47 @@ pub fn stored(connection: &Connection) -> Result<Option<EngineConfig>> {
     let config = connection
         .query_row(
             "SELECT log2_input_span, log2_barch_span, log2_uarch_span,
-                    app, template_hash, emulator_version
+                    app, consensus, template_hash, emulator_version, tournament_levels
              FROM sling_config WHERE id = 0",
             [],
             |row| {
-                Ok(EngineConfig {
-                    structure: Structure {
-                        log2_input_span: row.get(0)?,
-                        log2_barch_span: row.get(1)?,
-                        log2_uarch_span: row.get(2)?,
-                    },
-                    app: row.get(3)?,
-                    template_hash: Digest::from_digest(&row.get::<_, Vec<u8>>(4)?)
-                        .expect("stored hashes are 32 bytes"),
-                    emulator_version: row.get(5)?,
-                })
+                let structure = Structure {
+                    log2_input_span: row.get(0)?,
+                    log2_barch_span: row.get(1)?,
+                    log2_uarch_span: row.get(2)?,
+                };
+                Ok((
+                    structure,
+                    row.get::<_, Vec<u8>>(3)?,
+                    row.get::<_, Vec<u8>>(4)?,
+                    row.get::<_, Vec<u8>>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
             },
         )
         .optional()?;
-    Ok(config)
+    config
+        .map(
+            |(structure, app, consensus, template_hash, emulator_version, levels)| {
+                Ok(EngineConfig {
+                    structure,
+                    app,
+                    consensus,
+                    template_hash: Digest::from_digest(&template_hash)
+                        .expect("stored hashes are 32 bytes"),
+                    emulator_version,
+                    geometry: TournamentGeometry::decode(&levels, &structure)?,
+                })
+            },
+        )
+        .transpose()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::geometry::Level;
 
     #[test]
     fn config_is_write_once() -> Result<()> {
@@ -117,11 +143,23 @@ mod tests {
             log2_barch_span: 1,
             log2_uarch_span: 2,
         };
+        let toy_table = |pairs: &[(u64, u64)]| {
+            let levels = pairs
+                .iter()
+                .map(|&(log2_stride, height)| Level {
+                    log2_stride,
+                    height,
+                })
+                .collect();
+            TournamentGeometry::new(levels, &structure)
+        };
         let config = EngineConfig {
             structure,
             app: vec![0xaa; 20],
+            consensus: vec![0xcc; 20],
             template_hash: Digest::from_digest(&[1u8; 32])?,
             emulator_version: "0.21.0".into(),
+            geometry: toy_table(&[(2, 2), (0, 2)])?,
         };
         pin(&Connection::open(&path)?, &config)?;
 
@@ -132,6 +170,12 @@ mod tests {
         // Any drift is refused.
         let mut drifted = config.clone();
         drifted.emulator_version = "0.22.0".into();
+        assert!(pin(&Connection::open(&path)?, &drifted).is_err());
+        let mut drifted = config.clone();
+        drifted.consensus = vec![0xdd; 20];
+        assert!(pin(&Connection::open(&path)?, &drifted).is_err());
+        let mut drifted = config.clone();
+        drifted.geometry = toy_table(&[(3, 1), (0, 3)])?;
         assert!(pin(&Connection::open(&path)?, &drifted).is_err());
         Ok(())
     }

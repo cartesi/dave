@@ -110,8 +110,10 @@ CREATE TABLE sling_config (
     log2_barch_span INTEGER NOT NULL,
     log2_uarch_span INTEGER NOT NULL,
     app BLOB NOT NULL,
+    consensus BLOB NOT NULL,
     template_hash BLOB NOT NULL,
-    emulator_version TEXT NOT NULL
+    emulator_version TEXT NOT NULL,
+    tournament_levels TEXT NOT NULL
 );
 
 CREATE TABLE sling_nodes (

@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use crate::engine::constants::{LOG2_EPOCH_RULER_SPAN, LOG2_INPUT_WINDOW_SPAN};
+use crate::engine::constants::LOG2_INPUT_WINDOW_SPAN;
 use crate::merkle::Digest;
 use crate::storage::{LeafProof, MACHINE_MEMORY_PROOF_SIBLING_COUNT, MachineValidityProof, Proof};
 use anyhow::ensure;
@@ -202,29 +202,33 @@ fn capture_machine_memory_proof(
     ))
 }
 
-// gap of each leaf in the commitment tree, should use the same value as ArbitrationConstants.sol:log2step(0)
-pub const LOG2_STRIDE: u64 = 44;
-
-/// Level-0 leaves in one input window; also the height of a window's
-/// subtree, making (epoch, LOG2_STRIDE, this, window) the canonical
-/// quartet coordinate of a window root.
-pub const LOG2_STRIDE_COUNT_IN_INPUT: u64 = LOG2_INPUT_WINDOW_SPAN - LOG2_STRIDE;
-
-pub const STRIDE_COUNT_IN_INPUT: u64 = 1 << LOG2_STRIDE_COUNT_IN_INPUT;
-
-pub const STRIDE_COUNT_IN_EPOCH: u64 = 1 << (LOG2_EPOCH_RULER_SPAN - LOG2_STRIDE);
+/// Level-0 leaves in one input window at the run stride (the pinned
+/// geometry's root stride); also the height of a window's subtree.
+pub fn window_height(log2_run_stride: u64) -> u64 {
+    LOG2_INPUT_WINDOW_SPAN - log2_run_stride
+}
 
 /// The canonical quartet coordinate of a window's final level-0
 /// subtree root: one ordinary cache row per input, written by the
 /// open regime as the window closes. It is final by the frontier rule:
 /// the window lies entirely left of the input frontier.
-pub fn window_root_quartet(epoch: u64, window: u64) -> crate::engine::Quartet {
+pub fn window_root_quartet(
+    log2_run_stride: u64,
+    epoch: u64,
+    window: u64,
+) -> crate::engine::Quartet {
     crate::engine::Quartet {
         epoch,
-        log2_stride: LOG2_STRIDE,
-        height: LOG2_STRIDE_COUNT_IN_INPUT,
+        log2_stride: log2_run_stride,
+        height: window_height(log2_run_stride),
         shift: alloy::primitives::U256::from(window),
     }
+}
+
+/// The root stride of the table storage tests pin through `setup_storage`.
+#[cfg(test)]
+pub fn test_run_stride() -> u64 {
+    crate::engine::TournamentGeometry::canonical().root_stride()
 }
 
 pub struct RollupsMachine {

@@ -34,6 +34,7 @@ pub mod cache;
 pub mod config;
 pub mod constants;
 pub mod dispute;
+pub mod geometry;
 pub mod machine_stf;
 pub mod ruler;
 pub mod stf;
@@ -46,6 +47,7 @@ pub(crate) mod toy;
 
 pub use config::EngineConfig;
 pub use dispute::{DisputeSource, LevelCoords, fold_runs};
+pub use geometry::{Level, TournamentGeometry};
 pub use machine_stf::{MachineStf, Positioner};
 pub use ruler::{Ruler, RulerFactory, Run};
 pub use stf::Stf;

@@ -7,7 +7,6 @@ use self::error::Result;
 use std::time::Duration;
 
 use crate::engine::{MachineStf, Ruler, Stf, Structure};
-use crate::storage::rollups_machine::LOG2_STRIDE;
 use crate::storage::{AdvancePlan, Storage};
 use crate::sync::ShutdownSignal;
 
@@ -53,15 +52,19 @@ pub struct MachineRunner {
     storage: Storage,
     sleep_duration: Duration,
     structure: Structure,
+    /// The pinned root stride: each window is sampled at the level-0
+    /// leaf spacing of the deployed tournament.
+    log2_run_stride: u64,
 }
 
 impl MachineRunner {
     pub fn new(storage: Storage, sleep_duration: Duration) -> Result<Self> {
-        let structure = storage.sling_config()?.structure;
+        let config = storage.sling_config()?;
         Ok(Self {
             storage,
             sleep_duration,
-            structure,
+            structure: config.structure,
+            log2_run_stride: config.geometry.root_stride(),
         })
     }
 
@@ -139,7 +142,10 @@ impl MachineRunner {
                 window + 1,
                 self.structure.window_start(window),
             );
-            let runs = ruler.collect(self.structure.window_start(window + 1), LOG2_STRIDE)?;
+            let runs = ruler.collect(
+                self.structure.window_start(window + 1),
+                self.log2_run_stride,
+            )?;
             let stf = ruler.into_stf();
             let reverted = stf.took_revert();
             machine.put_machine(stf.into_machine());

@@ -487,8 +487,9 @@ impl DisputeSource<Positioner> {
         // Initialization pinned the config; assert engine
         // compatibility before serving any quartet.
         let structure = Structure::PRODUCTION;
+        let config = storage.sling_config()?;
         super::config::assert_compatible(
-            &storage.sling_config()?,
+            &config,
             &structure,
             &format_emulator_version(Machine::version()),
         )?;
@@ -505,15 +506,10 @@ impl DisputeSource<Positioner> {
             epoch,
             spawned: 0,
         };
-        // The level-0 material was recorded at the rollups stride;
+        // The level-0 material was recorded at the pinned root stride;
         // the source reads it (window-root rows, interior runs) from
         // storage on demand.
-        DisputeSource::new(
-            storage,
-            positioner,
-            epoch,
-            crate::storage::rollups_machine::LOG2_STRIDE,
-        )
+        DisputeSource::new(storage, positioner, epoch, config.geometry.root_stride())
     }
 }
 
@@ -581,9 +577,9 @@ impl RulerFactory for Positioner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::TournamentGeometry;
     use crate::engine::constants::UARCH_MASK_TO_BARCH;
     use crate::engine::ruler::Run;
-    use crate::storage::rollups_machine::LOG2_STRIDE;
     use cartesi_machine::constants::ar::RAM_START;
     use cartesi_machine::constants::cmio::tohost::manual::TX_EXCEPTION;
     use cartesi_machine::constants::rollup::{
@@ -929,37 +925,44 @@ mod tests {
 
     /// The runner's own collect (advance feeder, run stride) feeds a
     /// machine that yielded on its budget's last cycle, and keeps feeding
-    /// once the delivery renews the budget.
+    /// once the delivery renews the budget, at either root stride.
     #[test]
     fn runner_feeds_windows_after_a_yield_on_the_last_budget_cycle() -> Result<()> {
         let structure = Structure::PRODUCTION;
-        let mut machine = budget_seam_machine()?;
-        let template: Digest = machine.root_hash()?.into();
-        let samples_per_window = U256::from(1) << (structure.log2_window_span() - LOG2_STRIDE);
+        for geometry in [
+            TournamentGeometry::canonical(),
+            TournamentGeometry::two_level(),
+        ] {
+            let log2_run_stride = geometry.root_stride();
+            let mut machine = budget_seam_machine()?;
+            let template: Digest = machine.root_hash()?.into();
+            let samples_per_window =
+                U256::from(1) << (structure.log2_window_span() - log2_run_stride);
 
-        let mut mcycles = vec![];
-        for window in 0..2u64 {
-            let stf = MachineStf::over_advancing(machine, window, vec![0xd0], PathBuf::new());
-            let mut ruler =
-                Ruler::new_at(stf, structure, window + 1, structure.window_start(window));
-            let runs = ruler.collect(structure.window_start(window + 1), LOG2_STRIDE)?;
-            let stf = ruler.into_stf();
-            assert!(!stf.took_revert());
-            machine = stf.into_machine();
+            let mut mcycles = vec![];
+            for window in 0..2u64 {
+                let stf = MachineStf::over_advancing(machine, window, vec![0xd0], PathBuf::new());
+                let mut ruler =
+                    Ruler::new_at(stf, structure, window + 1, structure.window_start(window));
+                let runs = ruler.collect(structure.window_start(window + 1), log2_run_stride)?;
+                let stf = ruler.into_stf();
+                assert!(!stf.took_revert());
+                machine = stf.into_machine();
 
-            let processed: Digest = machine.root_hash()?.into();
-            assert_ne!(processed, template);
-            assert_eq!(
-                runs,
-                vec![Run {
-                    hash: processed,
-                    repetitions: samples_per_window
-                }]
-            );
-            mcycles.push(machine.mcycle()?);
+                let processed: Digest = machine.root_hash()?.into();
+                assert_ne!(processed, template);
+                assert_eq!(
+                    runs,
+                    vec![Run {
+                        hash: processed,
+                        repetitions: samples_per_window
+                    }]
+                );
+                mcycles.push(machine.mcycle()?);
+            }
+            // Window 0 runs the x20 yield; window 1 jumps back and yields again.
+            assert_eq!(mcycles, vec![4, 6]);
         }
-        // Window 0 runs the x20 yield; window 1 jumps back and yields again.
-        assert_eq!(mcycles, vec![4, 6]);
         Ok(())
     }
 
@@ -977,23 +980,5 @@ mod tests {
             production.log2_input_span,
             LOG2_MAX_ADVANCE_STATES_PER_EPOCH
         );
-    }
-
-    /// Drift guard: the coordinate the runner prepays (window-root
-    /// quartet rows at commit) must be the one the facade's top tier
-    /// looks up - the source reads rows at (run stride, window
-    /// height, shift = window) under its production run stride.
-    #[test]
-    fn runner_and_facade_agree_on_window_root_coordinates() {
-        use crate::storage::rollups_machine;
-        let structure = Structure::PRODUCTION;
-        let quartet = rollups_machine::window_root_quartet(3, 7);
-        assert_eq!(quartet.log2_stride, rollups_machine::LOG2_STRIDE);
-        assert_eq!(
-            quartet.height,
-            structure.log2_window_span() - rollups_machine::LOG2_STRIDE
-        );
-        assert_eq!(quartet.shift, U256::from(7));
-        assert_eq!(quartet.epoch, 3);
     }
 }

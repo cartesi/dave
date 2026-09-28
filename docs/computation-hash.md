@@ -251,7 +251,9 @@ and survives as a differential test oracle):
   of that reset state.
 
 The rollups node computes level-0 leaves eagerly while processing
-inputs (`LOG2_STRIDE = 44`, so one leaf per 2^24 big cycles) and
+inputs, at the root stride of the deployed tournament table (pinned at
+initialization; 2^44 in the checked-in canonical table, one leaf per 2^24
+big cycles) and
 folds each closed window's runs into its window-root quartet row as
 it commits - the unfolded runs are never persisted. At dispute time
 the facade serves level 0 at or above window granularity from those
@@ -260,11 +262,13 @@ granularity - and every deeper level - is computed lazily by
 re-running the machine, and cached as merkle nodes in the quartet
 cache (`sling_nodes`, keyed by epoch, stride, height, and shift).
 
-Before opening its database, the node reads row zero from the deployed
-tournament factory and refuses to start unless that row uses the compiled
-sampling stride and spans this 92-bit ruler. Deeper tournament geometry is
-read from each clone's immutable descriptor when the recursive dispute reaches
-it.
+Before opening its database, the node reads the deployed tournament
+factory's whole level table and refuses to start unless it passes the
+geometry validator (the root spans this 92-bit ruler, levels tile, the leaf
+stride is zero); it compiles in no stride. Initialization pins the table, and
+level-0 sampling uses the pinned root stride. Each clone's immutable
+descriptor is checked against its pinned row when the recursive dispute
+reaches it (docs/node-architecture.md has the startup detail).
 
 One subtlety (the ruler's fused feed transition): a machine snapshot taken at
 an input boundary sits awaiting input. That boundary state is the implicit

@@ -157,10 +157,10 @@ pub struct DisputeSource<F: RulerFactory> {
     structure: Structure,
     factory: F,
     epoch: u64,
-    /// The stride the level-0 window roots were recorded at
-    /// (production: the rollups LOG2_STRIDE). The frontier fold
-    /// serves quartets at or above window granularity on it; below
-    /// that is the machine's domain.
+    /// The stride the level-0 window roots were recorded at (the
+    /// pinned root stride). The frontier fold serves quartets at or
+    /// above window granularity on it; below that is the machine's
+    /// domain.
     log2_run_stride: u64,
     frontier: Frontier,
 }
@@ -261,31 +261,23 @@ impl<F: RulerFactory> DisputeSource<F> {
         Ok(proof)
     }
 
-    /// Frontier coverage: the quartet sits at or above window
-    /// granularity on the run stride, and the epoch recorded material
-    /// to serve it from. Below window granularity every quartet -
-    /// real or padding window alike - is the machine's domain, like
-    /// any nested level (a padding-window replay is one snapshot load
-    /// plus idle arithmetic).
-    ///
-    /// Coverage caveat (inherited from the SeedTree, unreachable
-    /// today): a covered height-0 quartet at a stride strictly above
-    /// the run stride names one sampled state, which is not the fold
-    /// this serves; the two agree only when the leaf stride equals
-    /// the run stride. No reachable geometry asks for one (production
-    /// level strides are 44/27/0 and levels never coarsen), but
-    /// revisit this dispatch if a level stride ever lands strictly
-    /// above the run stride.
+    /// Frontier coverage: the quartet sits on the run stride at or above
+    /// window granularity, and the epoch recorded material to serve it
+    /// from. Below window granularity every quartet - real or padding
+    /// window alike - is the machine's domain, like any nested level (a
+    /// padding-window replay is one snapshot load plus idle arithmetic).
+    /// So is any other stride: the fold's leaves are samples at the run
+    /// stride, and a coarser tree samples different states, so serving
+    /// it from the fold would be wrong at every height.
     fn covered(&self, quartet: &Quartet) -> bool {
         assert_eq!(quartet.epoch, self.epoch, "quartet from another epoch");
         self.frontier.recorded > 0
-            && quartet.log2_stride >= self.log2_run_stride
-            && quartet.height + (quartet.log2_stride - self.log2_run_stride)
-                >= self.interior_height()
+            && quartet.log2_stride == self.log2_run_stride
+            && quartet.height >= self.interior_height()
     }
 
     /// Leaves of one window's level-0 subtree: log2_window_span less
-    /// the run stride (production: height 24 over stride 44).
+    /// the run stride (height 24 over stride 44, 31 over stride 37).
     fn interior_height(&self) -> u64 {
         self.structure.log2_window_span() - self.log2_run_stride
     }
@@ -324,8 +316,7 @@ impl<F: RulerFactory> DisputeSource<F> {
     /// tree. Covered quartets consume exactly their shift bits.
     fn level0_subtree(&mut self, quartet: &Quartet) -> Result<Arc<MerkleTree>> {
         debug_assert!(self.covered(quartet));
-        let height_in_level0 = quartet.height + (quartet.log2_stride - self.log2_run_stride);
-        let depth = self.structure.log2_input_span - (height_in_level0 - self.interior_height());
+        let depth = self.structure.log2_input_span - (quartet.height - self.interior_height());
         Ok(descend(self.top_tree()?, depth, quartet.shift))
     }
 

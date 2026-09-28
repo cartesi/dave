@@ -236,10 +236,12 @@ does not fit the clients' 256-bit coordinate type. Then run a production-path
 recursive trace for the intended level count; the four-level miniature proves
 that the generic contract path can cross three child seams. These checks catch
 malformed Solidity geometry, but cannot prove cross-implementation agreement.
-The node's commitment strides and the complete contract table must still be
-compared as a release gate. Node startup additionally checks the deployed root
-row against its compiled level-zero sampling stride and 92-bit ruler span;
-deeper rows remain lazy, descriptor-driven geometry.
+The node compiles in no tournament geometry: startup reads the whole deployed
+table, validates it (the root spans the 92-bit ruler, rows tile, the leaf
+stride is zero, and the root stride lies between one big cycle and one input
+window), and pins it; the Hero checks each tournament descriptor on its path
+against the pinned row for its level. Cross-implementation commitment
+agreement at the deployed strides remains a release gate.
 
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the `responseBudget` field. A
