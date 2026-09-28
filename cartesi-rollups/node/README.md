@@ -66,8 +66,8 @@ winning bond recoveries before participating in the next epoch. It resumes the
 same unfinished epoch after restart. Other participants may advance meanwhile;
 the operating timing assumption allows a modest delay while refunds finish.
 The completion cursor is bound to one claimant, so changing signer requires a
-fresh state directory. A changed node version or schema also requires a fresh
-directory under the node's rebuild policy.
+fresh state directory. A changed node version, schema, or commitment semantics
+also requires a fresh directory under the node's rebuild policy.
 
 Fund the whole pending batch. With the default `GAS_LIMIT=15_000_000`, a pool
 may require each transaction's full gas limit at its max fee, plus its call

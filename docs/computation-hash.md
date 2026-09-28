@@ -282,6 +282,11 @@ every epoch (`test/e2e/rollups/test_env.lua`, `epoch_settlement`), and
 the stf test cases exercise (3) against both. Preserve these cross-checks
 when refactoring; they are the executable specification of this document.
 
+A change to leaf values or transition shapes (terminal rule, feed and revert,
+sampling, strides) must bump `COMMITMENT_SEMANTICS` in
+`cartesi-rollups/node/src/storage/sql/schema.rs`, so stores built under the
+old rules are refused instead of reused.
+
 The ruler's unit tests use a small scripted machine to enumerate complete
 epochs. A literal window/cycle/slot oracle checks stepping and sampling;
 cache and proof tests also use trees built from those checked runs. This

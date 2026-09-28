@@ -108,11 +108,13 @@ within the epoch.
 
 Schema initialization owns one create-only `storage/sql/schema.sql`; there are
 no migrations or ordered schema versions. On an empty database, startup applies
-that file once and atomically records the node package version plus the Keccak
-hash of the exact schema file. On later launches it executes no DDL: both stored
-values must match the running binary, or startup refuses the state directory
-before applying schema changes. The raw file fingerprint catches schema changes
-between builds that share a package version. It attests which schema created
+that file once and atomically records the node package version, the Keccak
+hash of the exact schema file, and the commitment semantics version. On later
+launches it executes no DDL: all three stored values must match the running
+binary, or startup refuses the state directory before applying schema changes.
+The raw file fingerprint catches schema changes between builds that share a
+package version; the semantics version catches commitment changes that alter
+neither. It attests which schema created
 this node-owned cache; manual database mutation remains unsupported rather than
 continuously audited.
 
@@ -120,11 +122,14 @@ The epoch-completion cursor is bound to one claimant address. A different
 configured signer requires a fresh state directory: epochs completed for one
 claimant may still hold another claimant's bonds. Incompatible schema or node
 versions also require rebuilding a fresh state directory from the chain and
-template machine.
+template machine, as does a change of commitment semantics: a change to leaf
+values or transition shapes bumps `COMMITMENT_SEMANTICS` in
+`storage/sql/schema.rs`, because the frozen crate version would not.
 
 Main schema (`storage/sql/schema.sql`):
 
-- `node_metadata(node_version, schema_fingerprint)` - immutable cache identity
+- `node_metadata(node_version, schema_fingerprint, commitment_semantics)` -
+  immutable cache identity
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`
 - `inputs(epoch_number, input_index_in_epoch, input)`
 - `latest_processed(block)` - singleton; last finalized block ingested

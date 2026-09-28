@@ -10,6 +10,9 @@
 //! fallible: machine errors propagate as errors, while geometry
 //! violations (a feed on a running machine, a ureset off-boundary)
 //! remain panics - those are engine bugs, not machine conditions.
+//!
+//! Changing what these verbs produce changes stored commitments: bump
+//! `COMMITMENT_SEMANTICS` (storage/sql/schema.rs).
 
 use crate::merkle::Digest;
 use anyhow::Result;

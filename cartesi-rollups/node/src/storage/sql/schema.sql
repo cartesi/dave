@@ -2,7 +2,8 @@
 -- SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 -- Create-only schema. schema.rs executes this file only for an empty database,
--- then atomically stamps its raw Keccak fingerprint and the node version.
+-- then atomically stamps its raw Keccak fingerprint, the node version, and the
+-- commitment semantics version.
 
 CREATE TABLE node_metadata (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
@@ -11,7 +12,8 @@ CREATE TABLE node_metadata (
         CHECK (
             typeof(schema_fingerprint) = 'blob'
             AND length(schema_fingerprint) = 32
-        )
+        ),
+    commitment_semantics INTEGER NOT NULL CHECK (commitment_semantics > 0)
 ) WITHOUT ROWID;
 
 CREATE TABLE settlement_info (
@@ -156,8 +158,8 @@ CREATE TABLE tournament_events_watermark (
 -- connection. The Rust writer keeps its own checks; these are
 -- defense-in-depth, not the primary line.
 
--- node_metadata: the immutable identity of the node and schema that created
--- this rebuildable store.
+-- node_metadata: the immutable identity of the node, schema, and commitment
+-- semantics that created this rebuildable store.
 
 CREATE TRIGGER trg_node_metadata_no_update
 BEFORE UPDATE ON node_metadata
