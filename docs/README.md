@@ -55,7 +55,9 @@ assurance reports. The completed 2026-07 PRT campaign is archived at
 
 Plans: [plans/](plans/) is for active work, not completed campaign history.
 The upgrade ledger is [plans/stf-upgrade.md](plans/stf-upgrade.md); the
-follow-up bulk-collector qualification is
+two-level campaign that now orders its remaining phases is
+[plans/two-level-sling.md](plans/two-level-sling.md); the bulk-collector
+qualification evidence is
 [plans/collect-hashes-migration.md](plans/collect-hashes-migration.md).
 [plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md) is the one
 temporary exception while its implementation is under preliminary Rust review;

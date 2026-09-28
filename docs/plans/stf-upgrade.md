@@ -2,6 +2,12 @@
 
 Status: ACTIVE (updated 2026-08-17). The original phase ledger remains below;
 the execution checkpoint records what changed after the stable releases.
+Phases 3 and 4 are superseded by [two-level-sling.md](two-level-sling.md)
+(2026-09-28), which re-orders them: two levels on the current machine API
+first, bulk collection afterwards. That plan also supersedes the corpus
+harness rule below (the corpus moves into setup, tests run un-ignored; D9)
+and the verification doctrine's deletion of the existing collector (it stays
+as a test-only oracle; D7).
 
 ## Goal
 

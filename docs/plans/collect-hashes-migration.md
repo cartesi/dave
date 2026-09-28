@@ -5,6 +5,13 @@ Dave's existing production collector. This plan defines the evidence required
 before `cm_collect_mcycle_root_hashes` and
 `cm_collect_uarch_cycle_root_hashes` replace it.
 
+Sequencing and two decisions here are superseded by
+[two-level-sling.md](two-level-sling.md) (2026-09-28): the migration now
+follows the two-level switch as margin, the leaf-by-leaf collector is kept
+permanently as a test-only oracle instead of being deleted (D7), and the
+corpus moves into ordinary setup with un-ignored tests (D9). The remaining
+evidence requirements below still apply.
+
 ## Goal
 
 Use the emulator's bulk collection primitives for commitment construction
