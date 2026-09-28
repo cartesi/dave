@@ -98,12 +98,31 @@ wait_for_anvil
 rpc_url='http://127.0.0.1:8545'
 private_key='0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
-./script/deploy.sh \
-    --broadcast \
-    --non-interactive \
-    --private-key "$private_key" \
-    --rpc-url "$rpc_url" \
+deploy_args=(
+    --broadcast
+    --non-interactive
+    --private-key "$private_key"
+    --rpc-url "$rpc_url"
     --slow
+)
+case "${DEVNET_GEOMETRY:-canonical}" in
+    canonical)
+        ./script/deploy.sh "${deploy_args[@]}"
+        ;;
+    two-level)
+        # The devnet-only PRT script stores every contract under its
+        # production name, so the rollups deployment below wires itself to
+        # the two-level factory unchanged.
+        # Forge resolves the script path from the working directory.
+        forge script --root ../../prt/contracts \
+            ../../prt/contracts/test/devnet/DevnetGeometryDeployment.s.sol:DevnetGeometryDeploymentScript \
+            --sig 'runTwoLevel()' "${deploy_args[@]}"
+        for root in "$base_contracts" '.'
+        do
+            forge script --root "$root" DeploymentScript "${deploy_args[@]}"
+        done
+        ;;
+esac
 
 # The EXIT trap stops Anvil first, which makes it dump state.json, then
 # publishes the source fingerprint. Interrupted builds leave no marker.

@@ -304,6 +304,11 @@ test-rollups-honeypot-stf: build-rust-workspace
 test-rollups-kill-ci: build-rust-workspace
     just rollups-tests::test-kill-ci
 
+# two levels ahead of the canonical switch: needs a devnet built with
+# DEVNET_GEOMETRY=two-level (the preflight refuses any other bundle)
+test-rollups-two-level-smoke: build-rust-workspace
+    DEVNET_GEOMETRY=two-level just rollups-tests::test echo simple
+
 test-prt-timeout-boundaries: build-rust-workspace
     just rollups-tests::test-sealed-leaf-timeouts
 

@@ -18,8 +18,13 @@ CDPATH= cd -- "$repo_root" || {
 }
 
 readonly base_contracts="cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-alpha.10"
-readonly input_format="devnet-inputs-v5"
-readonly manifest_format="v4"
+readonly input_format="devnet-inputs-v6"
+readonly manifest_format="v5"
+
+# The tournament geometry the bundle deploys: the checked-in canonical table,
+# or a devnet-only profile served by a test provider. Every bundle consumer
+# verifies against the geometry it expects, so profiles never mix silently.
+readonly devnet_geometry="${DEVNET_GEOMETRY:-canonical}"
 
 source_roots=(
     prt/contracts/src
@@ -42,10 +47,25 @@ deployment_files=(
     cartesi-rollups/contracts/script/build-devnet.sh
     cartesi-rollups/contracts/script/deploy.sh
 )
+case "$devnet_geometry" in
+    canonical) geometry_files=() ;;
+    two-level)
+        geometry_files=(
+            prt/contracts/test/devnet/DevnetGeometryDeployment.s.sol
+            prt/contracts/test/fixtures/TableTournamentParametersProvider.sol
+            prt/contracts/test/fixtures/TournamentParameterTableValidator.sol
+        )
+        ;;
+    *)
+        printf 'error: unknown DEVNET_GEOMETRY %s (canonical or two-level)\n' \
+            "$devnet_geometry" >&2
+        exit 2
+        ;;
+esac
 
 usage() {
     cat >&2 <<'EOF'
-usage:
+usage (DEVNET_GEOMETRY selects the bundle's geometry: canonical or two-level):
   script/devnet-fingerprint.sh
   script/devnet-fingerprint.sh inputs
   script/devnet-fingerprint.sh write EXPECTED_INPUTS [BUNDLE_DIR]
@@ -174,7 +194,7 @@ inputs_digest() (
             return 1
         fi
     done
-    for path in "${deployment_files[@]}"; do
+    for path in "${deployment_files[@]}" ${geometry_files[@]+"${geometry_files[@]}"}; do
         if [[ ! -f "$path" || -L "$path" ]]; then
             stale "missing regular devnet input: ${path}"
             return 1
@@ -186,12 +206,13 @@ inputs_digest() (
         return 2
     fi
     trap 'rm -f -- "$manifest"' EXIT
-    if ! printf '%s\0' "$input_format" >"$manifest"; then
+    if ! printf '%s\0geometry\0%s\0' "$input_format" "$devnet_geometry" \
+        >"$manifest"; then
         checker_error "cannot initialize the devnet input manifest"
         return 2
     fi
 
-    for path in "${deployment_files[@]}"; do
+    for path in "${deployment_files[@]}" ${geometry_files[@]+"${geometry_files[@]}"}; do
         digest="$(sha256_file "$path")" || return $?
         printf 'file\0%s\0%s\0' "$path" "$digest" >>"$manifest" || {
             checker_error "cannot write the devnet input manifest"
@@ -316,14 +337,15 @@ read_manifest() {
         checker_error "cannot read devnet fingerprint ${manifest}: ${record##*$'\n'}"
         return 2
     fi
-    if [[ ! "$record" =~ ^${manifest_format}[[:space:]]([0-9a-f]{64})[[:space:]]([0-9a-f]{64})[[:space:]]([0-9a-f]{64})$ ]]; then
+    if [[ ! "$record" =~ ^${manifest_format}[[:space:]]([a-z-]+)[[:space:]]([0-9a-f]{64})[[:space:]]([0-9a-f]{64})[[:space:]]([0-9a-f]{64})$ ]]; then
         stale "malformed or obsolete devnet fingerprint: ${manifest}"
         return 1
     fi
 
-    recorded_inputs=${BASH_REMATCH[1]}
-    recorded_state=${BASH_REMATCH[2]}
-    recorded_deployments=${BASH_REMATCH[3]}
+    recorded_geometry=${BASH_REMATCH[1]}
+    recorded_inputs=${BASH_REMATCH[2]}
+    recorded_state=${BASH_REMATCH[3]}
+    recorded_deployments=${BASH_REMATCH[4]}
 }
 
 require_state() {
@@ -359,8 +381,8 @@ case "$mode" in
             || exit $?
         pending="$bundle/state.fingerprint.pending"
         manifest="$bundle/state.fingerprint"
-        if ! printf '%s %s %s %s\n' "$manifest_format" "$current_inputs" \
-            "$state_hash" "$deployment_hash" >"$pending"; then
+        if ! printf '%s %s %s %s %s\n' "$manifest_format" "$devnet_geometry" \
+            "$current_inputs" "$state_hash" "$deployment_hash" >"$pending"; then
             checker_error "cannot write pending devnet fingerprint: ${pending}"
             exit 2
         fi
@@ -374,6 +396,10 @@ case "$mode" in
         [[ "$#" -le 2 ]] || usage
         bundle=${2:-cartesi-rollups/contracts}
         read_manifest "$bundle/state.fingerprint" || exit $?
+        if [[ "$recorded_geometry" != "$devnet_geometry" ]]; then
+            stale "the devnet bundle deploys the ${recorded_geometry} geometry, not the expected ${devnet_geometry}; run: DEVNET_GEOMETRY=${devnet_geometry} just rollups-contracts::build-devnet"
+            exit 1
+        fi
         current_inputs="$(inputs_digest)" || exit $?
         require_state "$bundle/state.json" || exit $?
         current_state="$(sha256_file "$bundle/state.json")" || exit $?

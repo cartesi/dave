@@ -38,6 +38,12 @@ modules (`just <module>::<recipe>`, see `just --list`).
    production and deployment inputs that produced them. `build-devnet`
    produces the complete bundle and the e2e harness refuses an incomplete,
    stale, or mixed one. Release archives preserve the same three-part unit.
+   `DEVNET_GEOMETRY` selects the tournament table the bundle deploys: the
+   checked-in canonical one (default) or `two-level`, which serves the
+   selected two-level table through a test-only provider and a devnet-only
+   PRT script, leaving production scripts untouched. The marker records the
+   geometry, and every consumer verifies against the `DEVNET_GEOMETRY` it
+   runs with, so a bundle of one geometry never passes for another.
 
 Consequence of (1) and (4): raw Cargo works after the gitignored Solidity
 bindings exist and either a valid external machine provider is selected or the
@@ -96,7 +102,8 @@ The devnet receipt is deliberately narrower than the contract worktrees. Its
 input digest covers production and deployment Solidity, installed production
 dependency Solidity and lockfiles, the production `machine/step` sources,
 effective Forge compiler and deployment configuration, the build and deploy
-drivers, and the Forge and Anvil versions. It excludes documentation, tests,
+drivers, the selected geometry and its devnet-only provider and script, and
+the Forge and Anvil versions. It excludes documentation, other tests,
 measurements, compiler output, broadcasts, and prior deployments. Those files
 cannot change the deployed bundle, and treating them as inputs made doctor
 report false staleness. The receipt separately hashes `state.json` and every
