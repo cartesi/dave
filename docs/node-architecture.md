@@ -325,10 +325,16 @@ Error handling and observability:
 
 Structure:
 
-7. The reader uses async recursion for dynamic tournament discovery, and the
-   Hero's dispute loop runs inside the epoch manager task. Local machine and
-   proof preparation can therefore pin a runtime worker. Moving local dispute
-   work to the blocking lane remains open.
+7. The reader uses async recursion for dynamic tournament discovery. The
+   Hero's machine work (commitment builds, proofs) runs inside the epoch
+   manager task. It hands its runtime worker off first, so the other tasks
+   keep running, but the manager itself waits: a long leaf build delays that
+   epoch's refund and cleanup planning, wave submission (the only path that
+   resubmits or reprices pending transactions), and shutdown (debt 9). The
+   action that follows rests on an observation as old as the build; that a
+   stale action can only revert is a lead resting on the contracts' state
+   checks, not a verified claim. A background builder the Hero polls would
+   remove both; it remains open.
 8. Commented-out code blocks kept as reference (the test-scaffolding
    `instance.rs` snapshot logic) and disabled/empty tests.
 9. No graceful-shutdown story for in-flight work: a mid-epoch machine run

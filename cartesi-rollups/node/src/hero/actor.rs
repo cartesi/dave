@@ -166,8 +166,8 @@ impl<AS: ArenaSender> Hero<AS> {
         let mut wave = Vec::new();
         match decision {
             HeroDecision::Act(intent) => {
-                let action =
-                    prepare(intent, &context, &mut self.source).map_err(anyhow::Error::from)?;
+                let action = super::machine_work(|| prepare(intent, &context, &mut self.source))
+                    .map_err(anyhow::Error::from)?;
                 wave.push(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
             }
             HeroDecision::Wait(reason) => {

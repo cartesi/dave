@@ -130,7 +130,7 @@ impl HeroContext {
                     tournament: address,
                 })?;
             check_pinned_level(descriptor, &anchors.geometry)?;
-            let material = level_material(epoch, descriptor, source)?;
+            let material = super::machine_work(|| level_material(epoch, descriptor, source))?;
             let local_commitment = material.root();
             if parent.is_none() && local_commitment != anchors.computation_hash {
                 return Err(ContextError::RootCommitmentMismatch {

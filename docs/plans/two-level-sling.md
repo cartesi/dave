@@ -68,6 +68,7 @@ because they rot; each claim names the code that carries it.
   20-30 GB at stress density for ~81M runs; not measured). The build runs
   inside the epoch-manager task through the hero's `level_material`, so the
   whole manager stalls for the duration (node-architecture.md debt 7).
+  W4.4 and W4.5 below address both, as far as each says.
 - Hard-coded geometry is narrow. `rollups_machine::LOG2_STRIDE` and its
   derived constants feed five run-time production sites (the runner collect,
   the window-root fold and quartet, the roll prefix check, `settlement_root`,
@@ -342,7 +343,10 @@ under [44, 27, 0].
    and their fold plus a tree over one root per active cycle. The
    leaf-by-leaf builder serves shorter quartets and is the differential
    oracle.
-5. (M) Move dispute machine work off the epoch-manager task (debt 7).
+5. (M) Move dispute machine work off the epoch-manager task (debt 7). As
+   built: the work hands its runtime worker off, so other tasks keep
+   running; the manager itself still waits. A background builder the Hero
+   polls stays open under debt 7.
 6. (M, optional) Sub-window positioning and a parallel sub-span leaf build:
    margin on the current API without the collect path.
 7. (S) Declare the per-input compute contract implied by stride 37 in

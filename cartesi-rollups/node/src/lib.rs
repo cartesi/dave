@@ -59,10 +59,10 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
 
     // The machine runner is the blocking lane (machine execution +
     // SQLite): plain sync code on a blocking thread. The chain-facing
-    // workers are async tasks. (The Hero's dispute loop still runs
-    // inside the epoch manager's task and pins a runtime worker
-    // during machine work; moving it to the blocking lane remains
-    // future work.)
+    // workers are async tasks. The Hero's dispute loop runs inside the
+    // epoch manager's task and hands its runtime worker off before
+    // machine work (hero::machine_work), so a long commitment build
+    // stalls only the manager itself.
     let mut machine_runner: JoinHandle<Result<()>> = {
         let params = config.clone();
         let shutdown = shutdown.clone();
