@@ -259,10 +259,16 @@ Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suit
 runs Rust fmt and check, Clippy, Lua lint and client unit tests, the Rust build
 and unit tests, and the explicit image-backed engine differentials; the e2e job
 runs honeypot `simple`, the batched catch-up kill, chaos at a fixed seed,
-honeypot `stf_all`, and yield `stf_revert`. Everything else - echo, the full
-kill battery, chaos seed sweeps, honeypot-all, and the duplicated yield
-scenarios - stays out of the pull-request critical path. The manual
-`.github/workflows/full-e2e.yml` workflow runs the complete battery
+honeypot `stf_all`, and yield `stf_revert`, then rebuilds the devnet with
+`DEVNET_GEOMETRY=two-level` and runs echo `simple` against it
+(`just test-rollups-two-level-smoke`). The node, the oracle, the steering
+helper, and the scenarios read the level table from chain, so they run on
+either table, except `sealed_leaf_timeout_*`: its kill and respawn
+choreography depends on each level's height parity (the root flips from 48
+to 55) and still asserts the canonical 48/17/27 levels. Everything else - the
+rest of echo, the full kill battery, chaos seed sweeps, honeypot-all, and the
+duplicated yield scenarios - stays out of the pull-request critical path. The
+manual `.github/workflows/full-e2e.yml` workflow runs the complete battery
 and then explores chaos seeds 2 and 3; the battery itself retains seed 1. Its
 cost and scheduling promotion criteria live in `docs/build-system.md`.
 
