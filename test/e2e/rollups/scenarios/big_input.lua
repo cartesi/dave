@@ -1,9 +1,5 @@
 require "setup_path"
 
-local Hash = require "cryptography.hash"
-local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
-local CommitmentBuilder = require "computation.commitment"
-local start_sybil = require "runners.sybil_runner"
 local env = require "test_env"
 local conversion = require "utils.conversion"
 
@@ -32,36 +28,11 @@ env.spawn_node()
 
 -- advance such that epoch 0 is finished
 local sealed_epoch = env.roll_epoch()
-local settlement = env.epoch_settlement(sealed_epoch)
-assert(#settlement.inputs == 1)
 
--- Setup player till completion
-print("Setting up Sybil")
-
--- Makes sure disputes end on the very first state transition, which adds an input!
-local patches = {
-    { hash = Hash.zero, meta_cycle = 1 << 44 },
-    { hash = Hash.zero, meta_cycle = 1 << 27 },
-    { hash = Hash.zero, meta_cycle = 1 },
-}
-
-local honest_commitment_builder = CommitmentBuilder:new(settlement.machine_path, settlement.inputs,
-    settlement.commitment)
-local patched_commitment_builder = PatchedCommitmentBuilder:new(patches, honest_commitment_builder)
-
-local player = start_sybil(patched_commitment_builder, settlement.machine_path, sealed_epoch.tournament,
-    settlement.inputs)
-
--- Run player till completion
-print("Run Sybil")
-assert(env.drive_player(player) == "lost")
-
--- Wait for node's claim to finally settle
-env.wait_until_epoch(2)
-
--- validate winners
-local winner = env.reader:root_tournament_winner(sealed_epoch.tournament)
-assert(winner.has_winner)
-assert(winner.commitment == settlement.commitment)
-assert(winner.final == settlement.commitment:last())
+-- The dispute must end on the very first state transition, which feeds
+-- the big input through the on-chain STF.
+env.run_steered_epoch(sealed_epoch, function(settlement)
+    assert(#settlement.inputs == 1)
+    return 0
+end)
 print("Correct claim won!")

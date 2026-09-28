@@ -8,8 +8,12 @@ local function validate_patch(patch)
     assert(patch.hash)
     assert(patch.log2size == 0)
     assert(patch.meta_cycle)
-    assert(patch.meta_cycle > 0)
-    patch.meta_cycle = bint256.fromuinteger(patch.meta_cycle)
+    -- Lua integers stop at 64 bits, and window 1 alone starts at 2^68:
+    -- positions past window 0 must arrive as bints.
+    if not bint256.isbint(patch.meta_cycle) then
+        patch.meta_cycle = bint256.fromuinteger(patch.meta_cycle)
+    end
+    assert(not patch.meta_cycle:iszero())
 
     -- first log2size bits must be zero
     local mask = (bint256.one() << patch.log2size) - 1

@@ -45,7 +45,11 @@ just rollups-tests::test <program> <scenario>
 - `Env.run_epoch(sealed_epoch, patches, next_inputs)` is the main driver:
   compute the honest settlement independently in Lua, spawn a patched
   sybil, drive it until it loses, wait for settlement, assert the honest
-  commitment won.
+  commitment won. It returns the next sealed epoch and the transitions the
+  dispute's leaf matches sealed on.
+- `Env.run_steered_epoch(sealed_epoch, transition, next_inputs)` steers the
+  dispute onto one transition (see "Steering disputes") and asserts the
+  leaf match sealed exactly there.
 
 ## The self-anchored oracle
 
@@ -208,41 +212,47 @@ Two rules govern where it bites (`patched_commitment.lua`):
   level, so only the smallest effective patch of each level's span
   shapes the descent.
 
-Steering a dispute onto transition M - 1 therefore takes a chain of
-three patches: the enclosing level-0 leaf boundary, the enclosing
-level-1 leaf boundary, and M itself. The rules make chains
-self-consistent: each boundary patch is also the last leaf of the
-level below, so the sybil's levels stay mutually coherent. A boundary
-M is its own (degenerate) chain. Beware the historical trap this
-paragraph replaces: pre-rewrite `stf_all` carried unaligned extra
-patches that never applied, so all its epochs actually verified the
-same closing-slot shape in window 0 - which is how both increment-C
-bugs (idle churn, window-1 counter overflow) stayed invisible to e2e.
+Steering a dispute onto a transition therefore takes a chain: every
+non-leaf level gets M rounded up to its stride (the leaf enclosing M) and
+the leaf level gets M itself. Each rounded patch is also the last leaf of
+the level below, so the sybil's levels stay mutually coherent.
+`Env.steering_patches` builds the chain from the deployed level table, in
+256-bit arithmetic (window 1 alone starts at 2^68, past a Lua integer),
+and `Env.run_steered_epoch` asserts that the dispute's leaf match sealed
+on exactly the steered transition: it reads each leaf match's divergence
+cycle from `sealedMatch`, pinned at its `LeafMatchSealed` block.
+
+That assertion exists because hand-written chains drifted twice without
+a trace. Pre-rewrite `stf_all` carried unaligned patches that never
+applied. Then the 2026-07 chains used 2^28 links against a level-1 stride
+of 27, and epoch 4's `1 << 68` overflowed to 0. A 2026-09-28 run showed
+epochs 2 and 4 sealing on transition 2^28 - 1 (a closing slot while input 0
+still ran), epoch 3 on 2^48 + 2^28 - 1 (an idle closing slot), and
+`stf_revert` on an idle closing slot 162 big cycles past the revert; only
+epoch 1 proved its intended transition.
 
 Coverage matrix (`stf_all`, one dispute driven to the on-chain state
-transition per epoch):
+transition per epoch, each asserted):
 
-- Epoch 1, chain {2^44}: closing slot of an idle big cycle (final
-  ustep + ureset), reached through idle churn leaves.
-- Epoch 2, chain {2^44, 2^28, 3}: plain active ustep (transition 2 of
-  input 0), with an interior agree-leaf seal proof.
-- Epoch 3, chain {2^48 + 2^44, 2^48 + 2^28, 2^48 + 1}: idle churn
-  ustep (the interpreter noticing the machine is yielded), plus the
-  divergence-at-position-zero seal (agree state = the level's initial
-  hash).
-- Epoch 4, chain {2^68 + 2^44, 2^68 + 2^28, 2^68 + 1}: the fused feed
-  of input 1 (input delivery with revert root + first ustep) - the
-  only dispute past window 0, so replays cross a fed input boundary.
+- Epoch 1, transition 2^44 - 1: closing slot of an idle big cycle
+  (final ustep + ureset), reached through idle churn leaves.
+- Epoch 2, transition 2: plain active ustep of input 0, with an
+  interior agree-leaf seal proof.
+- Epoch 3, transition 2^48: idle churn ustep (the interpreter noticing
+  the machine is yielded), plus the divergence-at-position-zero seal
+  (agree state = the level's initial hash).
+- Epoch 4, transition 2^68: the fused feed of input 1 (input delivery
+  with revert root + first ustep) - the only dispute past window 0, so
+  replays cross a fed input boundary.
 
 The full revert restore is pinned by `stf_revert` (yield program,
 which rejects every input): its position is program-timing-dependent,
 so the oracle reports each input's big-cycle count
 (`settlement.processing_bigs`, captured at the yield before the revert
-reloads the snapshot) and the scenario computes the chain at runtime,
-aiming at the closing slot of the big cycle where the reject yielded.
-`run_epoch` accepts a function in place of a patch list for exactly
-this. Not yet pinned: capacity boundaries (last input slot, last
-stride).
+reloads the snapshot) and the scenario steers onto the closing slot of
+the big cycle where the reject yielded. `big_input` steers onto
+transition 0, the feed of its 64 KiB input. Not yet pinned: capacity
+boundaries (last input slot, last stride).
 
 Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suites
 (PRT disputes, structured STF tests and fuzz, and consensus); the workspace job
@@ -480,8 +490,11 @@ record):
 1. Pick or build a machine program under `test/programs/` (see its
    justfile; images are built with the `cartesi-machine` CLI).
 2. Write `test/e2e/rollups/scenarios/<name>.lua`: require `test_env`,
-   spawn blockchain and node, drive epochs with `run_epoch` or hand-rolled
-   sybils with patch lists.
+   spawn blockchain and node, drive epochs with `run_steered_epoch` when the
+   dispute must reach a specific transition, and with `run_epoch` or
+   hand-rolled sybils when it does not matter where it lands. Take strides and
+   heights from `env.reader:read_tournament_levels()`, never literals, so the
+   scenario runs on either table.
 3. Wire a justfile alias if it should run in a suite
    (`test/e2e/rollups/justfile`).
 4. Add it to `battery.sh`'s `SCENARIOS` array if it should run in the

@@ -10,6 +10,7 @@ local Sender = require "dave.sender"
 local start_sybil = require "runners.sybil_runner"
 local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local CommitmentBuilder = require "computation.commitment"
+local uint256 = require "utils.bint" (256)
 
 -- anvil deployment state dump; the dump is opt-in (see the justfile:
 -- its flag pair makes anvil retain all historical states in memory)
@@ -310,8 +311,41 @@ function Env.drive_player(player_coroutine, on_step)
     end, on_step)
 end
 
+local function as_uint256(value)
+    if uint256.isbint(value) then
+        return value
+    end
+    return uint256.fromuinteger(value)
+end
+
+-- Patches that steer a dispute onto `transition`. A patch at meta-cycle M
+-- garbles the leaf whose post-state sits at M, i.e. transition M - 1, but a
+-- level only sees patches aligned to its stride, and the descent follows
+-- each level's EARLIEST divergent leaf. So every non-leaf level gets M
+-- rounded up to its stride (the leaf enclosing M) and the leaf level gets M
+-- itself; each rounded patch is also the last leaf of the level below. The
+-- strides come from the deployed table, so the chain holds for any geometry.
+function Env.steering_patches(transition)
+    local target = as_uint256(transition) + 1
+    local metas = { [tostring(target)] = target }
+    for _, level in ipairs(Env.reader:read_tournament_levels()) do
+        if level.log2_stride > 0 then
+            local rounded = ((target + (uint256.one() << level.log2_stride) - 1)
+                >> level.log2_stride) << level.log2_stride
+            metas[tostring(rounded)] = rounded
+        end
+    end
+
+    local patches = {}
+    for _, meta in pairs(metas) do
+        table.insert(patches, { hash = Hash.zero, meta_cycle = meta })
+    end
+    return patches
+end
+
 -- `patches` is a list, or a function of the settlement (for patch
--- positions only the oracle can compute, like revert slots).
+-- positions only the oracle can compute, like revert slots). Returns the
+-- next sealed epoch and the transitions the dispute's leaf matches sealed on.
 function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     next_inputs = next_inputs or {}
     local settlement = Env.epoch_settlement(sealed_epoch)
@@ -328,10 +362,39 @@ function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     local player = start_sybil(patched_commitment_builder, settlement.machine_path, sealed_epoch.tournament,
         settlement.inputs)
 
-    -- Run player till completion
+    -- Run player till completion, noting the leaf tournaments it reached.
     print("Run Sybil")
-    assert(Env.drive_player(player, on_step) == "lost")
+    local leaf_tournaments = {}
+    local function note_leaf_tournaments(state)
+        if state.log2_stride == 0 then
+            leaf_tournaments[state.address] = true
+        end
+        for _, match in pairs(state.matches) do
+            if match and match.inner_tournament then
+                note_leaf_tournaments(match.inner_tournament)
+            end
+        end
+    end
+    local outcome = Env.drive_player_until(player, function(status, log)
+        if log and log.state then
+            note_leaf_tournaments(log.state)
+        end
+        if log and log.has_lost then
+            return "lost"
+        elseif status == "dead" then
+            return "dead"
+        end
+    end, on_step)
+    assert(outcome == "lost")
     print "Sybil has lost"
+
+    local proven = {}
+    for address in pairs(leaf_tournaments) do
+        for _, cycle in ipairs(Env.reader:read_sealed_leaf_cycles(address)) do
+            table.insert(proven, cycle)
+            print(string.format("[run_epoch] leaf match sealed on transition %s", cycle))
+        end
+    end
 
     -- add inputs for next epoch (in case it happens!)
     Env.sender:tx_add_inputs(next_inputs)
@@ -346,6 +409,27 @@ function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     assert(winner.final == settlement.commitment:last())
     print("Correct claim won for epoch ", sealed_epoch.epoch_number)
 
+    return next_epoch, proven
+end
+
+-- Runs one epoch whose dispute must be decided on `transition` (a number,
+-- a bint, or a function of the settlement returning one), and asserts that
+-- the leaf match sealed exactly there.
+function Env.run_steered_epoch(sealed_epoch, transition, next_inputs, on_step)
+    local target
+    local next_epoch, proven = Env.run_epoch(sealed_epoch, function(settlement)
+        if type(transition) == "function" then
+            target = as_uint256(transition(settlement))
+        else
+            target = as_uint256(transition)
+        end
+        print(string.format("[run_steered_epoch] steering onto transition %s", target))
+        return Env.steering_patches(target)
+    end, next_inputs, on_step)
+
+    assert(#proven == 1, string.format("expected one sealed leaf match, saw %d", #proven))
+    assert(proven[1] == target, string.format(
+        "the dispute sealed on transition %s, not the steered %s", proven[1], target))
     return next_epoch
 end
 
