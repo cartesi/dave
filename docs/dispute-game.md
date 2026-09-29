@@ -234,9 +234,11 @@ b' = b - max(e - G, 0)
 ```
 
 Thus a valid response discounts at most `G` of that action's elapsed time but
-never increases the balance or revives an expired clock. Joining, pairing,
-proof resolution, timeout cleanup, child propagation, elimination, and bond
-recovery do not earn this discount. The one other time grant is the child
+never increases the balance or revives an expired clock. A win (a leaf proof or
+a winning timeout claim) is an honest action too and earns the same discount:
+the winner is charged its live cost, the time it ran plus any deferred charge,
+beyond one `G`. Joining, pairing, eliminating both sides, child propagation,
+and bond recovery earn no discount. The one other time grant is the child
 return: a parent refills the winner its child returns by up to `T + 2G`
 (`commitmentBudget` plus two `responseBudget`s) for building the child's
 commitment, joining, and propagating back, within the sealed pair's envelope (see the delay invariants
@@ -282,8 +284,9 @@ adversarial traces, and the finite-state model are recorded in
   the propagation, so the number of delegations a correct commitment faces
   does not drain its clock as long as each takes at most `T + G` to join and
   `G` to propagate. The shared maximum is a worst-case pair
-  envelope, not side-specific conservation. Ordinary same-tournament
-  settlement and pairing never grant time.
+  envelope, not side-specific conservation. Pairing never grants time, and
+  ordinary same-tournament settlement forgives at most one `G` of the
+  winner's own cost without raising its stored balance.
 - From any observation instant, a match with live balances `b1` and `b2`
   and `h` eligible responses left reaches resolution (leaf) or local
   seal or timeout deletion (non-leaf) within
@@ -299,7 +302,7 @@ adversarial traces, and the finite-state model are recorded in
 - The timeout argument charges each elapsed interval at most once: a
   paused bisection winner inherits the responder's overdue interval,
   while a running leaf winner has already paid for it through its live
-  remainder.
+  remainder. The win then forgives at most one `G` of that cost.
 
 The executable
 [`ConcurrentRecursivePopulation.t.sol`](../prt/contracts/test/properties/ConcurrentRecursivePopulation.t.sol)
@@ -367,8 +370,8 @@ is an intentional change to the sealed tuple's semantics.
 
 A leaf proof is available only while neither clock has expired. `winLeafMatch`
 checks that timeout status before invoking the state-transition contract. A
-successful proof snapshots and pauses the proven side's live remainder, then
-returns it to asynchronous pairing. Once either clock expires, proof resolution
+successful proof pauses the proven side, charging its leaf-race time beyond one
+`G`, then returns it to asynchronous pairing. Once either clock expires, proof resolution
 reverts with `CannotAdvanceTimedOutClock`; callers must use the timeout verb
 selected by the shared classifier.
 
@@ -399,7 +402,9 @@ deferred interval in which timeout cleanup could itself have been censored. The
 paused winner survives only when its stored remainder is strictly greater than
 that charge; equality eliminates both commitments. During a sealed leaf both
 clocks are already running, so the survivor's live remainder has paid for the
-elapsed interval and the deferred charge is zero. When the allowances differ,
+elapsed interval and the deferred charge is zero. Survival is decided on this
+full cost; the survivor's stored clock is then charged only the cost beyond one
+`G`, since the claim is an honest action. When the allowances differ,
 the shorter clock's deadline begins a single-winner window that lasts through
 the block before the longer clock's deadline; at the longer deadline both are
 eliminated.
@@ -529,15 +534,19 @@ Required clock invariants:
 - A sealed leaf has two running clocks with the same start instant.
 - A sealed inner match has two paused clocks.
 - A dangling commitment and a surviving winner are paused.
-- Pausing snapshots live remaining time.
-- Charging a clock starts from live remaining time, never stale stored
-  allowance.
+- A pause charges the time the clock ran plus any deferred charge; a
+  response or a win forgives at most one `G` of that cost. No other pause
+  forgives time, and none raises a clock above its stored balance.
 - Timeout accounting subtracts one elapsed interval from a correct
   commitment's clock at most once.
 - A running timeout winner is assigned no deferred charge because its live
-  remainder already reflects elapsed time. A paused timeout winner is charged
-  the expired responder's overdue duration.
-- Pairing and ordinary same-tournament winner re-entry never grant time.
+  remainder already reflects elapsed time. A paused timeout winner carries
+  the expired responder's overdue duration as its deferred charge.
+- A winner survives only if it outlives its full cost. Its stored clock is then
+  charged the cost beyond one `G`, never raised above its prior stored
+  balance.
+- Pairing never grants time; winner re-entry grants nothing beyond the win's
+  discount.
 - Recursive child return may increase the selected side only within the shared
   sealed-pair envelope, by at most `T + 2G` over the carried remainder; it
   remains bounded by `max(r1, r2)` and by the pair's
@@ -552,8 +561,8 @@ The principal time intervals are accounted for as follows:
 | --- | --- |
 | Tournament creation to join | Deducted during initialization; for an inner join, refunded by the refill when the child returns the winner |
 | Active turn to successful response | Charged to the responder except for at most `G` |
-| Responder deadline to active-match cleanup | Deferred to the paused survivor |
-| Leaf seal to proof or timeout | Reflected in both live remainders |
+| Responder deadline to active-match cleanup | Deferred to the paused survivor; survival uses the full interval, and the win forgives at most `G` of it |
+| Leaf seal to proof or timeout | Reflected in both live remainders; the win forgives at most `G` of the winner's |
 | Parent seal through child resolution | Parent clocks pause; the child owns the shared bounded obligation |
 | Child finish to parent propagation | Deducted from the carried remainder, then refunded by the refill (up to `T + 2G` for the whole delegation) |
 | Dangling wait | Clock remains paused; closure stops new joins, but existing matches and children may delay finish; one slot bounds only the unpaired population |
@@ -589,12 +598,13 @@ would give one week plus 75 minutes. The independent
 generator show how root slowdown and the commitment budget determine
 tournament strides and heights. On Ethereum `G` is 25 blocks. One
 root-to-leaf descent with one match at each level spans 92 tree heights and can
-earn at most 7 hours 40 minutes of discounts, one at each successful response.
+earn at most 7 hours 45 minutes of discounts, one at each successful response
+plus one for the leaf match's win.
 Repeated matches receive their own bounded response discounts.
 
 `Clock.pauseAfterResponseAt()` implements the non-bankable response formula.
-`Clock.chargeAndPauseAt()` snapshots live remaining time before subtracting a
-caller-supplied deferred charge and pausing the winner. Single-clock operations
+`Clock.pauseWinnerAt()` charges a winner its live elapsed time plus a
+caller-supplied deferred charge, less one response budget, and pauses it. Single-clock operations
 that observe elapsed time take an explicit instant, and `MatchClocks` owns the
 legal bisection, leaf-race, and inner-seal phase transitions plus the shared
 timeout classification. PRT-002 records the original sealed-leaf restoration

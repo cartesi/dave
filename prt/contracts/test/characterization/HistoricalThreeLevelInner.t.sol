@@ -566,10 +566,11 @@ contract HistoricalThreeLevelInnerTest is Util {
         Clock.State memory winningClock;
         (hasWinner,,, winningClock) = middleTournament.innerTournamentWinner();
         assertTrue(hasWinner);
+        // The loser is exactly one response budget overdue, which the claim
+        // earns back, so the paused winner keeps its whole clock.
         assertEq(
             Time.Duration.unwrap(winningClock.allowance),
             Time.Duration.unwrap(MAX_ALLOWANCE)
-                - Time.Duration.unwrap(RESPONSE_BUDGET)
         );
         assertNoElimination();
 

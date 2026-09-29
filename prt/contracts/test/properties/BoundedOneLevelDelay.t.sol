@@ -42,7 +42,7 @@ contract BoundedOneLevelDelayTest is Test, BoundedOneLevelDelayModel {
     using Tree for Tree.Node;
 
     uint64 internal constant START_BLOCK = 100;
-    uint64 internal constant PRODUCTION_TRACE_COMPLETION = 19;
+    uint64 internal constant PRODUCTION_TRACE_COMPLETION = 20;
     Machine.Hash internal constant INITIAL_STATE =
         Machine.Hash.wrap(bytes32(uint256(0x1234)));
 
@@ -87,15 +87,16 @@ contract BoundedOneLevelDelayTest is Test, BoundedOneLevelDelayModel {
         assertGt(statesVisited, 0);
 
         BoundedOneLevelDelayModel.Witness memory schedule = witness(config);
-        uint8[10] memory expectedTimes =
-            [uint8(0), 0, 0, 2, 4, 8, 10, 13, 16, 19];
-        BoundedOneLevelDelayModel.ActionKind[10] memory expectedKinds = [
+        uint8[11] memory expectedTimes =
+            [uint8(0), 0, 0, 2, 4, 7, 9, 11, 14, 17, 20];
+        BoundedOneLevelDelayModel.ActionKind[11] memory expectedKinds = [
             BoundedOneLevelDelayModel.ActionKind.JOIN,
             BoundedOneLevelDelayModel.ActionKind.JOIN,
             BoundedOneLevelDelayModel.ActionKind.JOIN,
             BoundedOneLevelDelayModel.ActionKind.RESPOND,
             BoundedOneLevelDelayModel.ActionKind.RESPOND,
-            BoundedOneLevelDelayModel.ActionKind.TIMEOUT,
+            BoundedOneLevelDelayModel.ActionKind.RESPOND,
+            BoundedOneLevelDelayModel.ActionKind.PROVE_HIGH,
             BoundedOneLevelDelayModel.ActionKind.RESPOND,
             BoundedOneLevelDelayModel.ActionKind.RESPOND,
             BoundedOneLevelDelayModel.ActionKind.RESPOND,
@@ -123,8 +124,10 @@ contract BoundedOneLevelDelayTest is Test, BoundedOneLevelDelayModel {
         assertEq(final_.danglingAllowance, 0);
         assertEq(final_.matchCount, 0);
 
-        // The final response starts an equal three-block leaf race. The last
-        // timeout therefore eliminates both commitments at relative block 19.
+        // The first pair ends with a proof inside one response budget, so its
+        // survivor re-pairs with a full clock. The final response starts an
+        // equal three-block leaf race, and the last timeout eliminates both
+        // commitments at relative block 20.
         uint256 finalResponse;
         for (uint256 i; i < schedule.actions.length; ++i) {
             if (
@@ -136,14 +139,14 @@ contract BoundedOneLevelDelayTest is Test, BoundedOneLevelDelayModel {
         }
         BoundedOneLevelDelayModel.StateView memory sealedState =
             inspectState(schedule.states[finalResponse + 1]);
-        assertEq(sealedState.current, 16);
+        assertEq(sealedState.current, 17);
         assertEq(sealedState.matchCount, 1);
         BoundedOneLevelDelayModel.MatchView memory sealedMatch =
             inspectMatch(schedule.states[finalResponse + 1], 0);
         assertEq(sealedMatch.responsesRemaining, 0);
         assertEq(sealedMatch.allowanceOne, 3);
         assertEq(sealedMatch.allowanceTwo, 3);
-        assertEq(sealedMatch.startInstant, 16);
+        assertEq(sealedMatch.startInstant, 17);
     }
 
     function testMaximumWitnessUsesPreTimeoutProof() public {
@@ -217,25 +220,36 @@ contract BoundedOneLevelDelayTest is Test, BoundedOneLevelDelayModel {
         vm.roll(START_BLOCK + 4);
         _advance(tournament, first, two, 2);
 
-        vm.roll(START_BLOCK + 8);
-        assertTrue(tournament.canWinMatchByTimeout(first));
+        vm.roll(START_BLOCK + 7);
+        (Tree.Node sealLeft, Tree.Node sealRight) = one.children(1, 0);
+        tournament.sealLeafMatch(
+            first, sealLeft, sealRight, INITIAL_STATE, new bytes32[](0)
+        );
+        _assertClock(tournament, one.root(), true, 3, START_BLOCK + 7);
+        _assertClock(tournament, two.root(), true, 4, START_BLOCK + 7);
+
+        // The proof lands within one response budget, so it costs nothing.
+        vm.roll(START_BLOCK + 9);
         (Tree.Node twoLeft, Tree.Node twoRight) = two.children(3, 0);
-        tournament.winMatchByTimeout(first, twoLeft, twoRight);
+        tournament.winLeafMatch(
+            first, twoLeft, twoRight, abi.encode(Tree.Node.unwrap(two.leaf(0)))
+        );
+        _assertClock(tournament, two.root(), false, 4, 0);
 
         Match.Id memory repaired = Match.Id(three.root(), two.root());
         assertTrue(tournament.getMatch(repaired.hashFromId()).exists());
-        vm.roll(START_BLOCK + 10);
+        vm.roll(START_BLOCK + 11);
         _advance(tournament, repaired, three, 3);
-        vm.roll(START_BLOCK + 13);
+        vm.roll(START_BLOCK + 14);
         _advance(tournament, repaired, two, 2);
 
-        vm.roll(START_BLOCK + 16);
+        vm.roll(START_BLOCK + 17);
         (Tree.Node finalLeft, Tree.Node finalRight) = three.children(1, 0);
         tournament.sealLeafMatch(
             repaired, finalLeft, finalRight, INITIAL_STATE, new bytes32[](0)
         );
-        _assertClock(tournament, three.root(), true, 3, START_BLOCK + 16);
-        _assertClock(tournament, two.root(), true, 3, START_BLOCK + 16);
+        _assertClock(tournament, three.root(), true, 3, START_BLOCK + 17);
+        _assertClock(tournament, two.root(), true, 3, START_BLOCK + 17);
 
         vm.roll(START_BLOCK + PRODUCTION_TRACE_COMPLETION);
         assertFalse(tournament.canWinMatchByTimeout(repaired));
@@ -294,7 +308,11 @@ contract BoundedOneLevelDelayTest is Test, BoundedOneLevelDelayModel {
             responseBudget < allowance ? responseBudget : allowance - 1;
         uint8 discounts = (height - 1) * cappedBudget;
         uint8 firstPair = 2 * allowance - 1 + discounts;
-        uint8 additionalPair = allowance + discounts;
+        // A later pair waits for an earlier survivor that keeps a full clock:
+        // either its opponent times out after the discounted responses, or
+        // the pair reaches the leaf and the survivor proves within one budget.
+        uint8 leafProofExtra = cappedBudget > 1 ? cappedBudget - 1 : 0;
+        uint8 additionalPair = allowance + discounts + leafProofExtra;
         uint8 sequentialPairs = (claims + 1) / 2;
         return firstPair + (sequentialPairs - 1) * additionalPair;
     }
@@ -315,14 +333,14 @@ contract BoundedOneLevelDelayTest is Test, BoundedOneLevelDelayModel {
             [uint8(4), 7, 8, 11, 12, 12],
             // Response budget 1, allowances 1 through 4.
             [uint8(1), 1, 2, 2, 3, 3],
-            [uint8(2), 3, 5, 5, 7, 7],
-            [uint8(3), 5, 7, 8, 10, 10],
-            [uint8(4), 7, 10, 11, 14, 14],
+            [uint8(2), 3, 5, 6, 7, 7],
+            [uint8(3), 5, 8, 9, 11, 11],
+            [uint8(4), 7, 10, 12, 14, 15],
             // Response budget 2, allowances 1 through 4.
             [uint8(1), 1, 2, 2, 3, 3],
-            [uint8(2), 3, 5, 5, 7, 7],
-            [uint8(3), 5, 8, 9, 11, 11],
-            [uint8(4), 7, 10, 12, 14, 14]
+            [uint8(2), 3, 5, 6, 7, 7],
+            [uint8(3), 5, 9, 10, 13, 13],
+            [uint8(4), 7, 12, 13, 17, 17]
         ];
         uint256 row = uint256(responseBudget) * 4 + allowance - 1;
         return maxima[row][claims - 1];

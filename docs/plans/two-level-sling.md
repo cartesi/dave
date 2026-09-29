@@ -445,10 +445,12 @@ Protocol.
   `max(r1, r2)`, so no clock mass is created. `T` joined the geometry
   (`ArbitrationConstants.COMMITMENT_BUDGET`), and `ClockBudgets` derives every
   block budget, including `maxAllowance = C + G + (L - 1)(T + 2G)`, from
-  wall-clock inputs. The rule extends to the two remaining honest actions
-  whose count the adversary chooses inside one child: the leaf proof and a
-  winning timeout claim each get `G` like a response (eliminating both earns
-  nothing, since nobody survives it).
+  wall-clock inputs. A follow-up extended the rule to the two remaining
+  honest actions whose count the adversary chooses inside one child: the leaf
+  proof and a winning timeout claim each forgive `G` of the winner's cost, like
+  a response (eliminating both earns nothing, since nobody survives it).
+  Survival is still decided on the full cost, so timeout classification and
+  the clients are unchanged.
 
 Scale and liveness (unmeasured, not wrong).
 

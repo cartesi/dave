@@ -348,9 +348,9 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         (Clock.State memory storedWinnerClock,) =
             childTournament.getCommitment(childWinnerRoot);
         assertFalse(Clock.isRunning(storedWinnerClock));
+        // The claim earns one response budget, which covers the overdue block.
         assertEq(
-            Time.Duration.unwrap(storedWinnerClock.allowance),
-            MAX_ALLOWANCE - TIMEOUT_OVERDUE
+            Time.Duration.unwrap(storedWinnerClock.allowance), MAX_ALLOWANCE
         );
 
         (bool finished, Time.Instant childFinished) =
@@ -967,7 +967,7 @@ contract ActiveOneWinsTimeoutGasTest is TournamentGasTest {
             "active one wins timeout",
             CommitmentShape.SAME,
             ROOT_HEIGHT,
-            MAX_ALLOWANCE - TIMEOUT_OVERDUE
+            MAX_ALLOWANCE
         );
     }
 }
@@ -993,7 +993,7 @@ contract ActiveTwoWinsTimeoutGasTest is TournamentGasTest {
             "active two wins timeout",
             CommitmentShape.RIGHTMOST_DIFFERENT,
             ROOT_HEIGHT,
-            MAX_ALLOWANCE - TIMEOUT_OVERDUE
+            MAX_ALLOWANCE
         );
     }
 }
@@ -1010,7 +1010,7 @@ contract SealedLeafOneWinsTimeoutGasTest is TournamentGasTest {
             "sealed leaf one wins timeout",
             CommitmentShape.SAME,
             LEAF_HEIGHT,
-            CLOCK_CHARGE - TIMEOUT_OVERDUE
+            CLOCK_CHARGE - TIMEOUT_OVERDUE + RESPONSE_BUDGET
         );
     }
 }
@@ -1026,10 +1026,10 @@ contract SealedLeafTwoWinsTimeoutGasTest is TournamentGasTest {
             "sealed leaf two wins timeout",
             CommitmentShape.SECOND_DIFFERENT,
             LEAF_HEIGHT,
-            CLOCK_CHARGE - TIMEOUT_OVERDUE
+            CLOCK_CHARGE - TIMEOUT_OVERDUE + RESPONSE_BUDGET
         );
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_MATCH_BY_TIMEOUT, 2_000
+            result, Gas.WIN_MATCH_BY_TIMEOUT, 1000
         );
     }
 }

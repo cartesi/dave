@@ -44,9 +44,10 @@ contract FourLevelRecursiveLifecycleTest is Test {
     // enough that the next level's refill reaches it.
     uint64 internal constant COMMITMENT_BUDGET = 2;
     uint64 internal constant MAX_ALLOWANCE = 100;
-    uint64 internal constant LEAF_PROOF_DELAY = 5;
+    uint64 internal constant LEAF_PROOF_DELAY = 6;
+    // The leaf proof is an honest action and earns one response budget.
     uint64 internal constant CARRIED_ALLOWANCE =
-        MAX_ALLOWANCE - LEAF_PROOF_DELAY;
+        MAX_ALLOWANCE - (LEAF_PROOF_DELAY - RESPONSE_BUDGET);
     // What each parent refills, at most, when its child returns the winner:
     // the build plus one inclusion each for the join and the propagation.
     uint64 internal constant REFILL = COMMITMENT_BUDGET + 2 * RESPONSE_BUDGET;
@@ -92,6 +93,11 @@ contract FourLevelRecursiveLifecycleTest is Test {
     }
 
     function testFourLevelWinnerPropagatesToRoot() public {
+        // The first refill must stay below the envelope, or the trace cannot
+        // tell the refill from an envelope restore; the next one reaches it.
+        assertLt(_carried(SmallFourLevelGeometry.LEVELS - 2), MAX_ALLOWANCE);
+        assertEq(_carried(SmallFourLevelGeometry.LEVELS - 3), MAX_ALLOWANCE);
+
         _assertRootArguments();
         _joinPair(0);
 

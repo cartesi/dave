@@ -96,12 +96,15 @@ paused, exactly one running, and two running. Each transition needs both
 orientations and a rejection matrix. The shared timeout classifier must remain
 exhaustive and disjoint, with equality assigned explicitly. Its independent
 oracle must distinguish a paused winner's deferred overdue charge from a running
-winner's zero deferred charge. Tournament tests own the strict verb partition:
+winner's zero deferred charge. Winner tests must show that survival is decided
+on the full cost while the stored clock forgives at most one response budget
+of it (`min(cost, G)`). Tournament tests own the strict verb partition:
 a leaf proof is valid only under `NONE`, single-winner statuses select timeout
 victory, and `ELIMINATE_BOTH` selects elimination. Response-budget tests must
 prove that a successful response discounts elapsed time once without increasing
-the prior balance; pairing and ordinary same-tournament survivor re-entry must
-not grant time. Recursive integration separately owns the shared pair envelope:
+the prior balance; pairing must not grant time, and same-tournament survivor
+re-entry must not raise the stored balance or forgive more than one response
+budget. Recursive integration separately owns the shared pair envelope:
 a child return may exceed the selected side's snapshotted remainder, but not
 `max(r1, r2)` or the post-discount live pair mass, and it owns the refill
 property: a commitment joining each child within `T + G` and propagating

@@ -96,9 +96,9 @@ Top/Middle/Bottom contracts.
 - Active bisection has exactly one running clock. A sealed leaf has two clocks
   running from one instant. A sealed inner match has two paused clocks while its
   linked child resolves.
-- Pairing and ordinary same-tournament survivor re-entry never grant time. Each
-  successful advance or final seal applies the response discount exactly once
-  and cannot revive an expired clock.
+- Pairing never grants time, and survivor re-entry grants nothing beyond the
+  win discount below. Each successful advance or final seal applies the
+  response discount exactly once and cannot revive an expired clock.
 - Inner sealing delegates `max(r1, r2)` as one shared pair envelope. A returned
   child winner may exceed the selected side's snapshotted remainder, but cannot
   exceed the sealed pair maximum or its post-discount live pair mass. Its
@@ -110,10 +110,14 @@ Top/Middle/Bottom contracts.
 - One shared timeout classification drives the capability view and both
   timeout mutations. Leaf proofs are valid only while that classification is
   `NONE`; once a timeout begins, callers must use the selected timeout verb.
-- A running timeout winner receives no extra overdue charge because its live
-  remainder already reflects elapsed time. A paused winner may receive a
-  deferred charge to subtract for the expired responder's overdue interval.
-  Never charge one censorship interval twice.
+- A running timeout winner carries no deferred charge because its live
+  remainder already reflects elapsed time. A paused winner may carry a
+  deferred charge for the expired responder's overdue interval. Never charge
+  one censorship interval twice.
+- Survival is decided on a winner's full cost (time run plus deferred charge).
+  A win, leaf proof or timeout claim, is an honest action: the stored clock is
+  charged only the cost beyond one `responseBudget` and never rises above its
+  prior stored balance. Eliminating both sides earns nothing.
 - A parent consumes only a child it recorded from its own sealed match.
   Permissionless orphan child creation does not establish parent legitimacy.
 - Objective proof correctness does not erase a missed deadline. A leaf proof

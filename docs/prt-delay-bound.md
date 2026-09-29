@@ -68,8 +68,9 @@ The fixed-budget, fixed-metric qualification and its non-claims are documented
 in [`dimensioning.md`](dimensioning.md).
 Thus recursive propagation may transfer live clock mass within the sealed pair,
 but does not create live pair-level clock mass. The eliminated side's historical
-clock storage may remain. Ordinary same-tournament settlement and pairing never
-grant time.
+clock storage may remain. Pairing never grants time, and ordinary
+same-tournament settlement forgives at most one `G` of the winner's own cost
+without raising its stored balance.
 
 That active-pair invariant, rather than the visual shape of the asynchronous
 bracket, gives a structural population reduction. It does not say that one
@@ -144,17 +145,21 @@ same-block ordering. For heights two and three, its finite maxima match
 ```text
 N = 1: A
 N >= 2: 2A - 1 + (H - 1)g
-          + (ceil(N / 2) - 1) * (A + (H - 1)g)
+          + (ceil(N / 2) - 1) * (A + (H - 1)g + max(g - 1, 0))
 where g = min(G, A - 1)
 ```
+
+The last term appears because a win earns one `G`: an earlier pair can reach
+its leaf and end with a proof inside one `G`, so its survivor re-pairs with a
+full clock later than a timeout path would allow.
 
 Height one has a distinct leaf-race table. The model deliberately lets either
 side be provable independently at each leaf, forgetting cross-match correctness
 correlation, and it does not impose an honest-validator strategy. Its values are
 therefore a conservative clock-only envelope for that finite box, not the
 general adversarial theorem. The executable maximum witness for
-`N = 3, A = 4, G = 2, H = 3` completes at relative block 19 and is replayed
-against `Tournament`.
+`N = 3, A = 4, G = 2, H = 3` completes at relative block 20, through exactly
+such a proof, and is replayed against `Tournament`.
 
 Progressively late joins have their initial clocks reduced by their lateness,
 and ordinary re-pairing never refills a survivor; only a child return refills
@@ -167,7 +172,7 @@ corresponding live claim reservoir, but that structural fact must not be
 substituted for a finite wall-time proof. The timeout argument also depends on
 charging each elapsed interval at most once: a paused bisection winner inherits
 the responder's overdue interval, while a running leaf winner has already paid
-for it through its live remainder.
+for it through its live remainder. The win then forgives at most one `G` of it.
 
 For the intended two-level deployment, let `A_i` denote the allowance-scale
 term available at level `i`. An attack with `R` root claims and `S` claims in

@@ -100,7 +100,8 @@ level. Terms marked (code) appear verbatim in identifiers.
   the correct participant across a root dispute and all linked descendants.
 - responseBudget (G): the inclusion budget of one honest action. As a response
   discount it is non-bankable: applied after each successful bisection
-  response, including sealing, it never increases the balance. A child return
+  response, including sealing, it never increases the balance. A winning leaf
+  proof or timeout claim earns the same discount on its live cost. A child return
   separately refills its winner by up to `T + 2G`, within the pair envelope.
 - maxAllowance: root allowance and structural upper bound for clocks in
   parent-linked tournaments, derived as `C + G + (levels - 1) * (T + 2G)`.

@@ -256,8 +256,9 @@ agreement at the deployed strides remains a release gate.
 
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the `responseBudget` field. A
-height-`H` match earns at most `H` discounts: one for each of its `H - 1`
-successful advances and one for its final leaf or inner seal. If a response
+height-`H` match earns at most `H + 1` discounts: one for each of its `H - 1`
+successful advances, one for its final leaf or inner seal, and one for a
+winning leaf proof or timeout claim. If a response
 starts with balance `b` and arrives after elapsed time `e`, it requires `e < b`
 and leaves
 
@@ -266,13 +267,14 @@ b' = b - max(e - G, 0)
 ```
 
 The response never increases its starting balance, pairing earns no time, and
-an expired clock cannot be revived. Joining, proof resolution, timeout cleanup,
-child propagation, elimination, and bond recovery are not eligible responses.
-Across `q` responses and `j` child returns, the total elapsed time plus the
-remaining clock mass is bounded by the starting mass plus `q * G + j * (T + 2G)`;
+an expired clock cannot be revived. A win is charged the same way on its live
+cost (time run plus any deferred charge). Joining, eliminating both sides,
+child propagation, and bond recovery earn no discount. Across `q` responses,
+`w` wins, and `j` child returns, the total elapsed time plus the remaining
+clock mass is bounded by the starting mass plus `(q + w) * G + j * (T + 2G)`;
 each child return stays within its pair's envelope. One root-to-leaf descent with one
-match at each level spans 92 heights and may therefore earn at most 7 hours
-40 minutes, but only action by action. Re-pairing creates a new match with new
+match at each level spans 92 heights and ends in one leaf win, so it may earn at
+most 7 hours 45 minutes, but only action by action. Re-pairing creates a new match with new
 response discounts. The configured scalar remains five minutes, or 25 blocks
 on Ethereum.
 
@@ -296,8 +298,11 @@ completion time `A` for `N = 1`; for `N >= 2`, with
 
 ```text
 2A - 1 + (H - 1)g
-    + (ceil(N / 2) - 1) * (A + (H - 1)g)
+    + (ceil(N / 2) - 1) * (A + (H - 1)g + max(g - 1, 0))
 ```
+
+The last term is the winner's discount: an earlier pair can reach its leaf and
+end with a proof inside one `G`, so its survivor re-pairs with a full clock.
 
 Height one has a different two-running-clock leaf-race table. These are finite
 results, not an induction step. The model independently permits either side to
@@ -306,8 +311,10 @@ clock-only upper envelope. A general attacker-versus-honest upper bound still
 needs an unbounded proof or counterexample.
 
 For the two-level target heights `[55, 37]`, a root match can earn at most 275
-minutes of discounts and a leaf match at most 185 minutes. One descent through
-one match at each level totals 460 minutes. These are per-match cumulative
+minutes of discounts (a timeout win replaces its seal, since a sealed inner
+match resolves through its child) and a leaf match at most 190 minutes,
+including its win. One descent through one match at each level totals 465
+minutes. These are per-match cumulative
 ceilings, not values deposited into a clock or a whole-tournament maximum.
 
 The independent `prt/measure_constants` emulator harness and the Rust

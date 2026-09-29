@@ -460,9 +460,15 @@ contract RecursiveTournamentLifecycleTest is Test {
             _childTree(SmallTwoLevelClaims.CLAIM_ONE);
         (Tree.Node left, Tree.Node right) =
             winner.children(SmallTwoLevelGeometry.LEAF_HEIGHT, 0);
+        // The sealed leaf's survivor is running: the win charges its elapsed
+        // time beyond one response budget.
+        assertTrue(clockOne.isRunning());
+        uint64 cost =
+            uint64(block.number) - Time.Instant.unwrap(clockOne.startInstant);
+        uint64 carried = Time.Duration.unwrap(clockOne.allowance)
+            - (cost > RESPONSE_BUDGET ? cost - RESPONSE_BUDGET : 0);
         child.winMatchByTimeout(childMatch, left, right);
         Tree.Node winningChild = winner.root();
-        uint64 carried = joinLate - resolveLate;
         assertTrue(child.isFinished());
         assertFalse(child.canBeEliminated());
         (bool timeKnown, Time.Instant finishedAt) = child.timeFinished();

@@ -65,8 +65,9 @@ library MatchClocks {
     /// charged the expired side's overdue duration, which represents the
     /// deferred interval in which timeout cleanup could be censored. A winner
     /// must retain positive time after any deferred charge; equality eliminates
-    /// both. Leaf transitions establish the common start instant expected when
-    /// both clocks are running.
+    /// both. Survival is decided on this full cost; `Clock.pauseWinnerAt` then
+    /// forgives at most one response budget of it. Leaf transitions establish the
+    /// common start instant expected when both clocks are running.
     function classifyTimeoutAt(
         Clock.State memory one,
         Clock.State memory two,
