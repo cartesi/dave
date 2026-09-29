@@ -447,10 +447,8 @@ Protocol.
   block budget, including `maxAllowance = C + G + (L - 1)(T + 2G)`, from
   wall-clock inputs. The rule extends to the two remaining honest actions
   whose count the adversary chooses inside one child: the leaf proof and a
-  paused winner's timeout cleanup should each get `G` like a response
-  (follow-up, to be red-teamed against the sealed-leaf rules). Inner joins from the latest block would remove the
-  finality wait from every inner join (node follow-up); the root join keeps
-  one finality delay, charged against `C`.
+  winning timeout claim each get `G` like a response (eliminating both earns
+  nothing, since nobody survives it).
 
 Scale and liveness (unmeasured, not wrong).
 
@@ -490,10 +488,14 @@ Correctness and robustness beyond scale.
 - R10. Startup writes the store (ingestion watermark, template clone) before
   the drift checks refuse, and a wrong `--machine-path` is pinned before the
   image is checked against chain. Validate before writing.
-- R11. The geometry validator accepts tables the node cannot build in time
-  (non-leaf strides below a big cycle, tall leaves), and the capacity warning
-  cannot fire for [37, 0]. If R1 puts T on chain, compare the measured build
-  rate against it at startup.
+- R11. The node accepts any table the validator accepts, including tables it
+  cannot build in time (non-leaf strides below a big cycle, tall leaves).
+  Decided 2026-09-29: the node does not judge geometry or timeouts, and does
+  not pin or check `T`; operators validate apps against the canonical
+  recommendations, or run others at their own risk. The contract-side table
+  validator (test-only) now enforces uniform budgets and a root allowance
+  that holds the pending delegations. The node's warn-only leaf-height
+  message is the one judgment left.
 
 Evidence gaps.
 
@@ -501,15 +503,43 @@ Evidence gaps.
   and a one-cycle real-machine test only. Add an active span at or above
   height 28 to `dispute_source_matches_prototype_tree`, then a steered
   two-level dispute on active computation (needs R6).
-- R13. Only echo `simple` has run on two levels. The honeypot image has not
-  run on any commit of this stack, and the CLI gate has run only on APFS
-  (on ext4 each epoch copies the writable machine per input); CI is their
-  first exposure.
+- R13. Only echo `simple` has run on two levels. Honeypot `simple` and the
+  CLI gate on the honeypot image now pass (2026-09-29), but the gate has run
+  only on APFS (on ext4 each epoch copies the writable machine per input), so
+  CI is its first exposure there.
 - R14. The CLI gate identifies the CLI by version string only (W2.3), and does
   not assert the snapshot preconditions the triage procedure lists.
 - R15. Seam-2 agreement is transitive (no single vector across node, Lua and
   FFI), and the two-level table literal is duplicated between
   `TournamentGeometry::two_level` and the devnet script.
+
+Found while fixing R1 (2026-09-29).
+
+- R16. Honest action latency. The clock rule assumes every honest action
+  lands within `G` and that producing a proof is instant. The Hero polls
+  every 30 s and submits one action per tick. A leaf proof calls
+  `prove_transition`, whose `ruler_at` reloads the nearest window boundary
+  and replays to the divergence, so proof time grows with how deep into an
+  input the adversary places it; the same replay slows `prove_last` (R4).
+  Take snapshots so positioning at the disagreement is effectively instant,
+  and keep the tick well inside `G`.
+- R17. The node never propagates a Sybil-versus-Sybil child's winner: GC plans
+  only eliminations. Such a winner may linger until its carryover window
+  ends, and the refill now leaves it up to `T + 2G` more per child. Bounded,
+  one bond per child; a lead, not a defect.
+
+Decided 2026-09-29.
+
+- Joins stay finality-gated; there is no reorg handling for in-flight builds.
+  The Hero already builds a child commitment from the latest view and only
+  the join waits for finality, so join lateness is about
+  `max(build, finality) + inclusion`: `T + G` covers it while finality stays
+  within `T` (13 to 19 minutes on Ethereum today, and falling). A finality
+  stall behaves like censorship and draws on `C`. The root join's single
+  finality delay is charged against `C` too. Chains with slower finality
+  (L2 batch finality can take 20 to 40 minutes or more) must not reuse
+  Ethereum's `T` without checking it.
+- The node does not pin or check `T` (R11).
 
 ## Open decisions
 
