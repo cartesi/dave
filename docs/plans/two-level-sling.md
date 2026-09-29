@@ -437,9 +437,20 @@ Protocol.
   forces a cold build of a fresh child commitment, and join lateness charges
   that build to the correct party's clock, which is never refilled. With C
   spent, T = 60 covers only 2 to 4 dense two-level builds; each Sybil costs a
-  bond. Canonical inner builds take seconds, so the flaw was benign there.
-  Confirmed by the owner as a bug and now the top priority; the recharge
-  design is in progress.
+  bond. Canonical inner builds take seconds, but the node's finality-gated
+  joins cost minutes each, so the checked-in table was exposed too. Fixed by a
+  capped backload under one rule, every honest action gets `G` and a child
+  join also gets `T`: a parent refills the winner its child returns by up to
+  `T + 2G` (build, join, propagation), within the sealed pair's envelope
+  `max(r1, r2)`, so no clock mass is created. `T` joined the geometry
+  (`ArbitrationConstants.COMMITMENT_BUDGET`), and `ClockBudgets` derives every
+  block budget, including `maxAllowance = C + G + (L - 1)(T + 2G)`, from
+  wall-clock inputs. The rule extends to the two remaining honest actions
+  whose count the adversary chooses inside one child: the leaf proof and a
+  paused winner's timeout cleanup should each get `G` like a response
+  (follow-up, to be red-teamed against the sealed-leaf rules). Inner joins from the latest block would remove the
+  finality wait from every inner join (node follow-up); the root join keeps
+  one finality delay, charged against `C`.
 
 Scale and liveness (unmeasured, not wrong).
 
@@ -457,7 +468,7 @@ Scale and liveness (unmeasured, not wrong).
   post-build reads at the old Solid head fail once.
 - R5. A leaf build is neither resumable nor cancellable: a restart mid-build
   starts over, and SIGTERM has no handler (debts 7 and 9).
-- R6. The devnet cannot host a dense leaf dispute: its clock allows about 300
+- R6. The devnet cannot host a dense leaf dispute: its clock allows about 375
   blocks, while test inputs run 10^5 to 10^6 big cycles. Dense two-level e2e
   needs a devnet profile with a larger allowance, and the e2e node is a debug
   build (dense leaves about 2.4x slower than release).

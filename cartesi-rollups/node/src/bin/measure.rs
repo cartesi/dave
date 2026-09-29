@@ -23,10 +23,10 @@ use cartesi_rollups_prt_node::engine::{
 use cartesi_rollups_prt_node::merkle::Digest;
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
 
-/// Five minutes of clock per tree height unit: the deployment's
-/// responseBudget formula (prt/contracts/script/Deployment.s.sol,
-/// _getResponseBudgetInSeconds). Every replay a bisection move needs must
-/// fit well inside this.
+/// Five minutes of clock per tree height unit: the inclusion budget each
+/// response is discounted by (ClockBudgets; Deployment.s.sol
+/// `_getInclusionBudget`). Every replay a bisection move needs must fit well
+/// inside this.
 const PER_MOVE_BUDGET_SECS: u64 = 300;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -549,8 +549,9 @@ fn budget(report: &mut String, quartets: &[(String, u64, u64, Duration)]) -> Res
     writeln!(
         report,
         "responseBudget grants five minutes of clock per height unit\n\
-         (Deployment.s.sol), so a bisection move budgets ~{PER_MOVE_BUDGET_SECS} s.\n\
-         Total allowances: devnet 1 h, testnet 9 h, mainnet 1 week + 1 h.\n\
+         (ClockBudgets), so a bisection move budgets ~{PER_MOVE_BUDGET_SECS} s.\n\
+         Total allowances, C + G + (L - 1)(T + 2G) at T = 30 min: devnet 85 min,\n\
+         testnet 9 h 25 min, mainnet 1 week + 85 min.\n\
          Level 0 never replays (seed-served); levels 1 and 2 pay their\n\
          root-shape replay on the first cold descent."
     )?;

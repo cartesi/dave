@@ -276,7 +276,7 @@ honeypot `stf_all`, and yield `stf_revert`, then rebuilds the devnet with
 helper read the level table from chain, but only echo `simple` has run on two
 levels. Unsteered scenarios patch at `1 << 44`, an idle leaf under either
 table. Steered STF scenarios aim at active computation, whose two-level leaf
-needs a dense build the devnet clock (about 300 blocks) cannot host.
+needs a dense build the devnet clock (about 375 blocks) cannot host.
 `sealed_leaf_timeout_*` asserts the canonical 48/17/27 levels, and its kill
 and respawn choreography depends on each level's height parity. Everything
 else - the
