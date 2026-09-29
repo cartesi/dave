@@ -27,7 +27,7 @@ local clock_probe
 local TOURNAMENT_ARGUMENTS_SIGNATURE = table.concat {
     "tournamentArguments()(",
     "((bytes32,uint256,uint64,uint64),",
-    "uint64,uint8,uint64,uint64,uint64,address,",
+    "uint64,uint8,uint64,uint64,uint64,uint64,address,",
     "(bytes32,bytes32,bytes32,bytes32),address,address))",
 }
 

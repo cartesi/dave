@@ -225,10 +225,11 @@ function Reader:read_tournament_levels()
     for level = 0, count - 1 do
         local row = plain_numbers(self:_call(
             factory,
-            "tournamentParameters(uint64)((uint64,uint64,uint64,uint64,uint64))",
+            "tournamentParameters(uint64)((uint64,uint64,uint64,uint64,uint64,uint64))",
             { tostring(level) }
         )[1])
-        -- (levels, log2step, height, responseBudget, maxAllowance)
+        -- (levels, log2step, height, responseBudget, commitmentBudget,
+        -- maxAllowance)
         local rows, log2step, height =
             row:match("^%((%d+),%s*(%d+),%s*(%d+),")
         assert(tonumber(rows) == count, "inconsistent tournament level count")

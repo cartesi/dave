@@ -23,6 +23,7 @@ contract TableTournamentParametersProvider is ITournamentParametersProvider {
         uint64[] memory log2steps,
         uint64[] memory heights,
         Time.Duration responseBudget,
+        Time.Duration commitmentBudget,
         Time.Duration maxAllowance,
         uint64 expectedTotalLog2Span
     ) {
@@ -38,6 +39,7 @@ contract TableTournamentParametersProvider is ITournamentParametersProvider {
                 log2step: log2steps[i],
                 height: heights[i],
                 responseBudget: responseBudget,
+                commitmentBudget: commitmentBudget,
                 maxAllowance: maxAllowance
             });
         }

@@ -48,6 +48,9 @@ interface ITournament {
     /// @param allowance The time during which the tournament is open
     /// @param responseBudget The maximum elapsed-time discount earned by each
     /// successful bisection response, including the final sealing response
+    /// @param commitmentBudget The time granted to build one inner tournament's
+    /// commitment; a parent refills the winner its child returns by up to
+    /// `commitmentBudget + 2 * responseBudget` (build, join, propagation)
     /// @param provider The contract that provides input Merkle roots
     /// @param nestedDispute Dispute information from parent match (zero for root tournaments)
     /// @param stateTransition State transition contract, used by leaf-level operations
@@ -62,6 +65,7 @@ interface ITournament {
         Time.Instant startInstant;
         Time.Duration allowance;
         Time.Duration responseBudget;
+        Time.Duration commitmentBudget;
         IDataProvider provider;
         NestedDispute nestedDispute;
         IStateTransition stateTransition;
@@ -644,10 +648,12 @@ interface ITournament {
     ) external;
 
     /// @notice Propagate an inner tournament winner into its parent match.
-    /// @dev The returned clock replaces the selected parent side. Because the
-    /// child used the sealed pair's shared maximum, it may exceed that side's
-    /// snapshotted remainder but cannot exceed the pair maximum. Child balance
-    /// recovery is a separate permissionless operation.
+    /// @dev The returned clock replaces the selected parent side: the child
+    /// winner's carried remainder, refilled by up to `commitmentBudget +
+    /// 2 * responseBudget` for building the child commitment, joining, and
+    /// propagating, within the sealed pair's shared maximum. It may exceed that side's snapshotted remainder
+    /// but cannot exceed the pair maximum. Child balance recovery is a
+    /// separate permissionless operation.
     /// @param childTournament The inner/child tournament
     /// @param leftNode        Left child of the winning commitment.
     /// @param rightNode       Right child of the winning commitment.

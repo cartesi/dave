@@ -29,8 +29,8 @@ contract TournamentParameterTableValidatorTest is Test {
                 levels,
                 ArbitrationConstants.log2step(row),
                 ArbitrationConstants.height(row),
-                row,
-                row + 1
+                25,
+                50_825
             );
         }
 
@@ -50,13 +50,75 @@ contract TournamentParameterTableValidatorTest is Test {
         assertEq(totalLog2Span, 4);
     }
 
-    function testZeroResponseBudgetAndUnequalTimingAreValid() public view {
+    function testZeroBudgetsAndUnreadInnerAllowancesAreValid() public view {
         TournamentParameters[] memory table = _fourLevelTable();
         for (uint64 row; row < table.length; ++row) {
-            table[row].responseBudget = Time.Duration.wrap(row * 3);
             table[row].maxAllowance = Time.Duration.wrap(row + 1);
         }
 
+        VALIDATOR.validate(table, 4);
+    }
+
+    function testRejectsNonUniformResponseBudget() public {
+        TournamentParameters[] memory table = _budgetedFourLevelTable(3, 7);
+        table[2].responseBudget = Time.Duration.wrap(4);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TournamentParameterTableValidator.BudgetsNotUniform.selector, 2
+            )
+        );
+        VALIDATOR.validate(table, 4);
+    }
+
+    function testRejectsNonUniformCommitmentBudget() public {
+        TournamentParameters[] memory table = _budgetedFourLevelTable(3, 7);
+        table[3].commitmentBudget = Time.Duration.wrap(8);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TournamentParameterTableValidator.BudgetsNotUniform.selector, 3
+            )
+        );
+        VALIDATOR.validate(table, 4);
+    }
+
+    function testRootAllowanceMustHoldTheRootJoinAndOneRefillPerInnerLevel()
+        public
+    {
+        // One inclusion (3) plus three refills of 7 + 2 * 3.
+        uint64 pending = 3 + 3 * 13;
+        TournamentParameters[] memory table = _budgetedFourLevelTable(3, 7);
+        table[0].maxAllowance = Time.Duration.wrap(pending);
+        VALIDATOR.validate(table, 4);
+
+        table[0].maxAllowance = Time.Duration.wrap(pending - 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TournamentParameterTableValidator.RootAllowanceBelowPendingDelegations
+                    .selector,
+                pending - 1,
+                pending
+            )
+        );
+        VALIDATOR.validate(table, 4);
+    }
+
+    function testRejectsARefillBeyondTheDurationType() public {
+        TournamentParameters[] memory table = _fourLevelTable();
+        for (uint64 row; row < table.length; ++row) {
+            table[row].responseBudget = Time.Duration.wrap(type(uint64).max / 2);
+            table[row].commitmentBudget = Time.Duration.wrap(2);
+        }
+        table[0].maxAllowance = Time.Duration.wrap(type(uint64).max);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TournamentParameterTableValidator.RefillExceedsDuration
+                .selector,
+                uint256(2) + 2 * uint256(type(uint64).max / 2)
+            )
+        );
         VALIDATOR.validate(table, 4);
     }
 
@@ -356,6 +418,20 @@ contract TournamentParameterTableValidatorTest is Test {
         table[3] = _row(4, 0, 1, 0, 1);
     }
 
+    function _budgetedFourLevelTable(uint64 inclusion, uint64 commitment)
+        private
+        pure
+        returns (TournamentParameters[] memory table)
+    {
+        table = _fourLevelTable();
+        for (uint64 row; row < table.length; ++row) {
+            table[row].responseBudget = Time.Duration.wrap(inclusion);
+            table[row].commitmentBudget = Time.Duration.wrap(commitment);
+        }
+        table[0].maxAllowance =
+            Time.Duration.wrap(inclusion + 3 * (commitment + 2 * inclusion));
+    }
+
     function _oneLevelTable(uint64 height, uint64 log2step, uint64 maxAllowance)
         private
         pure
@@ -385,6 +461,7 @@ contract TournamentParameterTableValidatorTest is Test {
             log2step: log2step,
             height: height,
             responseBudget: Time.Duration.wrap(responseBudget),
+            commitmentBudget: Time.ZERO_DURATION,
             maxAllowance: Time.Duration.wrap(maxAllowance)
         });
     }

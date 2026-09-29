@@ -65,6 +65,7 @@ contract SingleLevelTournamentParametersProvider is
             log2step: LOG2_STEP,
             height: HEIGHT,
             responseBudget: RESPONSE_BUDGET,
+            commitmentBudget: Time.ZERO_DURATION,
             maxAllowance: MAX_ALLOWANCE
         });
     }
@@ -83,14 +84,19 @@ contract Util is Test {
     Machine.Hash constant TWO_STATE = Machine.Hash.wrap(bytes32(uint256(2)));
     uint64 public constant LOG2_MAX_HEIGHT = 67;
 
-    Time.Duration constant COMMITMENT_EFFORT = Time.Duration.wrap(5 * 60);
+    Time.Duration constant COMMITMENT_BUDGET = Time.Duration.wrap(5 * 60);
     Time.Duration constant CENSORSHIP_TOLERANCE =
         Time.Duration.wrap(5 * 60 * 8);
     Time.Duration constant RESPONSE_BUDGET = Time.Duration.wrap(5 * 5);
+
+    // The canonical provider derives its budgets from these wall-clock inputs.
+    uint64 constant CANONICAL_BLOCK_MILLISECONDS = 12_000;
+    uint64 constant CANONICAL_CENSORSHIP_SECONDS = 8 hours;
+    uint64 constant CANONICAL_INCLUSION_SECONDS = 5 minutes;
     Time.Duration constant MAX_ALLOWANCE = Time.Duration
         .wrap(
             Time.Duration.unwrap(CENSORSHIP_TOLERANCE)
-                + Time.Duration.unwrap(COMMITMENT_EFFORT)
+                + Time.Duration.unwrap(COMMITMENT_BUDGET)
         );
 
     // players' commitment node at different height
@@ -359,7 +365,9 @@ contract Util is Test {
             new MultiLevelTournamentFactory(
                 new Tournament(),
                 new CanonicalTournamentParametersProvider(
-                    RESPONSE_BUDGET, MAX_ALLOWANCE
+                    CANONICAL_BLOCK_MILLISECONDS,
+                    CANONICAL_CENSORSHIP_SECONDS,
+                    CANONICAL_INCLUSION_SECONDS
                 ),
                 stateTransition
             ),
@@ -376,7 +384,7 @@ contract Util is Test {
             new MultiLevelTournamentFactory(
                 new Tournament(),
                 new HistoricalThreeLevelParametersProvider(
-                    RESPONSE_BUDGET, MAX_ALLOWANCE
+                    RESPONSE_BUDGET, COMMITMENT_BUDGET, MAX_ALLOWANCE
                 ),
                 stateTransition
             ),

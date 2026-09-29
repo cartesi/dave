@@ -6,52 +6,77 @@ pragma solidity ^0.8.17;
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {DeploymentScript, Seconds} from "../script/Deployment.s.sol";
+import {ArbitrationConstants} from "src/arbitration-config/ArbitrationConstants.sol";
+import {CanonicalTournamentParametersProvider} from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {Time} from "src/tournament/libs/Time.sol";
+import {TournamentParameters} from "src/types/TournamentParameters.sol";
 
 contract DeploymentHarness is DeploymentScript {
-    function responseBudgetInSeconds() external pure returns (uint64) {
-        return Seconds.unwrap(_getResponseBudgetInSeconds());
+    function inclusionBudgetInSeconds() external pure returns (uint64) {
+        return Seconds.unwrap(_getInclusionBudget());
     }
 
-    function registerAndGetTiming() external returns (uint64, uint64) {
+    /// @notice Deploy the provider exactly as `run` encodes it.
+    function deployCanonicalProvider()
+        external
+        returns (CanonicalTournamentParametersProvider provider)
+    {
         _registerChains();
         _registerChainKinds();
-        return (
-            Time.Duration.unwrap(_getResponseBudget()),
-            Time.Duration.unwrap(_getMaxAllowance())
+        bytes memory code = abi.encodePacked(
+            type(CanonicalTournamentParametersProvider).creationCode,
+            _canonicalProviderArguments()
         );
+        assembly ("memory-safe") {
+            provider := create(0, add(code, 32), mload(code))
+        }
+        require(address(provider) != address(0), "provider deployment failed");
     }
 }
 
 contract DeploymentTest is Test {
-    function testDevnetClockCalibration() public {
-        DeploymentHarness harness = new DeploymentHarness();
-        assertEq(harness.responseBudgetInSeconds(), 5 minutes);
+    uint64 constant RESPONSE_BLOCKS = (5 minutes) / (12 seconds);
+    uint64 constant COMMITMENT_BLOCKS = (30 minutes) / (12 seconds);
+    // One inclusion for the root join, and one refill (the build plus two
+    // inclusions) per inner level of the three-level table.
+    uint64 constant PENDING =
+        RESPONSE_BLOCKS + 2 * (COMMITMENT_BLOCKS + 2 * RESPONSE_BLOCKS);
 
-        vm.chainId(31337);
-        (uint64 responseBudget, uint64 maxAllowance) =
-            harness.registerAndGetTiming();
-        assertEq(responseBudget, (5 minutes) / (12 seconds));
-        assertEq(maxAllowance, (1 hours) / (12 seconds));
+    function _rowZero(uint256 chainId)
+        internal
+        returns (TournamentParameters memory)
+    {
+        DeploymentHarness harness = new DeploymentHarness();
+        vm.chainId(chainId);
+        return harness.deployCanonicalProvider().tournamentParameters(0);
+    }
+
+    function _assertBudgets(
+        TournamentParameters memory row,
+        uint64 censorshipBlocks
+    ) internal pure {
+        assertEq(ArbitrationConstants.LEVELS, 3);
+        assertEq(Time.Duration.unwrap(row.responseBudget), RESPONSE_BLOCKS);
+        assertEq(Time.Duration.unwrap(row.commitmentBudget), COMMITMENT_BLOCKS);
+        assertEq(
+            Time.Duration.unwrap(row.maxAllowance), censorshipBlocks + PENDING
+        );
+    }
+
+    function testInclusionBudget() public {
+        assertEq(new DeploymentHarness().inclusionBudgetInSeconds(), 5 minutes);
+    }
+
+    function testDevnetClockCalibration() public {
+        // Devnets tolerate no censorship.
+        _assertBudgets(_rowZero(31337), 0);
     }
 
     function testEthereumMainnetClockCalibration() public {
-        DeploymentHarness harness = new DeploymentHarness();
-        vm.chainId(1);
-
-        (uint64 responseBudget, uint64 maxAllowance) =
-            harness.registerAndGetTiming();
-        assertEq(responseBudget, (5 minutes) / (12 seconds));
-        assertEq(maxAllowance, (1 weeks + 1 hours) / (12 seconds));
+        _assertBudgets(_rowZero(1), (1 weeks) / (12 seconds));
     }
 
     function testEthereumSepoliaClockCalibration() public {
-        DeploymentHarness harness = new DeploymentHarness();
-        vm.chainId(11155111);
-
-        (uint64 responseBudget, uint64 maxAllowance) =
-            harness.registerAndGetTiming();
-        assertEq(responseBudget, (5 minutes) / (12 seconds));
-        assertEq(maxAllowance, (9 hours) / (12 seconds));
+        _assertBudgets(_rowZero(11155111), (8 hours) / (12 seconds));
     }
 }

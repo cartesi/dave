@@ -724,10 +724,17 @@ contract Tournament is ITournament, ERC165 {
 
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.assertInitialized();
-        // A child carries the sealed pair's shared maximum. It may therefore
-        // exceed this selected side's snapshot, but never the pair maximum or
-        // the sealed pair's post-discount live clock mass.
-        _clock.replaceWithPaused(result.pausedAllowance);
+        _clock.replaceWithPaused(
+            MatchClocks.childReturnAllowance(
+                clocks[_matchId.commitmentOne],
+                clocks[_matchId.commitmentTwo],
+                result.pausedAllowance,
+                // The child's build, one inclusion for the join, and one for
+                // this propagation.
+                args.commitmentBudget.add(args.responseBudget)
+                    .add(args.responseBudget)
+            )
+        );
 
         pairCommitment(
             _commitmentRoot, _clock, _leftNode, _rightNode, Time.currentTime()

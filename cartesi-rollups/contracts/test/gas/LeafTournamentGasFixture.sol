@@ -47,6 +47,7 @@ contract LeafGasParametersProvider is ITournamentParametersProvider {
             log2step: level == 0 ? LeafGasGeometry.ROOT_LOG2_STEP : LeafGasGeometry.LEAF_LOG2_STEP,
             height: level == 0 ? LeafGasGeometry.ROOT_HEIGHT : LeafGasGeometry.LEAF_HEIGHT,
             responseBudget: Time.Duration.wrap(LeafGasGeometry.RESPONSE_BUDGET),
+            commitmentBudget: Time.ZERO_DURATION,
             maxAllowance: Time.Duration.wrap(LeafGasGeometry.MAX_ALLOWANCE)
         });
     }

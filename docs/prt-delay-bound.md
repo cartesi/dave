@@ -46,8 +46,9 @@ seals are immediate, allowances are equal, and cleanup occurs promptly at exact
 deadlines.
 
 On successful propagation, the returned child-winner clock replaces the
-corresponding parent clock after post-finish deduction; it is not added to the
-parent balance. The maximum is a shared pair envelope, not side-specific
+corresponding parent clock: its carried remainder after post-finish deduction,
+refilled by up to `T + 2G` for building the child commitment, joining, and
+propagating, and capped by the pair's `max(r1, r2)`. It is not added to the parent balance. The maximum is a shared pair envelope, not side-specific
 carryover. If the child winner maps to the side with the smaller post-discount
 snapshot, that side may return with more than its own `r_i`. The other parent is
 eliminated, and the returned survivor still satisfies
@@ -156,7 +157,8 @@ general adversarial theorem. The executable maximum witness for
 against `Tournament`.
 
 Progressively late joins have their initial clocks reduced by their lateness,
-and ordinary re-pairing never refills a survivor. Still, the asynchronous
+and ordinary re-pairing never refills a survivor; only a child return refills
+its winner, by at most `T + 2G` and within the sealed pair's envelope. Still, the asynchronous
 bracket can look like a list and a same-time dangling claim can retain a full
 paused clock.
 Only one unmatched commitment per tournament can wait without an opposing

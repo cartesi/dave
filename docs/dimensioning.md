@@ -172,7 +172,9 @@ Keep three wall-clock quantities separate:
 - `C`: the global cumulative censorship budget across one root dispute and its
   linked descendants.
 - `T`: the supported time to construct the commitment needed for one inner
-  tournament.
+  tournament, the same at every inner level. It belongs with the geometry
+  (`ArbitrationConstants.COMMITMENT_BUDGET`): a generated geometry is only
+  valid for the `T` it was generated against.
 - `G`: the small per-response inclusion and execution budget for a tournament
   transaction.
 
@@ -183,15 +185,25 @@ below the configured duration. Timeout resolution becomes eligible at equality.
 If a wall-clock policy states an inclusive maximum, its conversion must add
 boundary slack rather than map equality to equality.
 
-For `L` tournament levels, the intended root allowance and structural clock
-bound are
+For `L` tournament levels, the root allowance and structural clock bound are
 
 ```text
-maxAllowance = C + (L - 1) * T
+maxAllowance = C + G + (L - 1) * (T + 2G)
 ```
 
-The root claim starts with the censorship budget and may later have to construct
-one new commitment at each inner level. A child tournament does not necessarily
+The rule behind it: every honest action gets one inclusion `G`, and joining a
+child also gets the build `T`. Responses are discounted by `G` as they land. A
+delegation costs the build and the join, charged at the join as lateness, and
+the propagation back, deducted from the carried remainder; when the child
+returns its winner, the parent refills it by up to `T + 2G`, within the sealed
+pair's envelope, so each delegation is paid back. The root allowance holds the
+censorship budget, one inclusion for the root join, and one refill per inner
+level: the delegations a correct commitment may have pending on its path.
+`ClockBudgets` derives it, `responseBudget = G` and `commitmentBudget = T` from
+the wall-clock inputs and the deployment's block time. The number of children
+a correct commitment passes through is chosen by the adversary, one Sybil bond
+each; without the refill, `C + (L - 1) * T` covered only one build per level
+and a few Sybils could exhaust it once `C` was spent. A child tournament does not necessarily
 receive this maximum: sealing delegates the greater live remainder of the two
 parent clocks as a shared pair envelope, and that value becomes the child's
 tournament allowance. On return, the selected parent side may therefore receive
@@ -217,14 +229,13 @@ balances, but would not remove the preserved-clock strategy that
 or a formal recursive delay theorem. Any corresponding leniency toward a
 correct participant is incidental, not the security rationale.
 
-The checked-in mainnet value, one week plus one hour, is consistent with the
-historical three-level model at `T = 30 minutes` - consistent in total
-allowance only, not per-level shape: a fresh `T = 30` derivation produces a
-different geometry (docs/measurements/constants.md), and the checked-in table
-predates the current measurement tooling. The selected two-level
-replacement uses `T = 60 minutes`, `log2step = [37, 0]`, and
-`height = [55, 37]`, reaching the same numerical allowance. It remains planned
-and must land with the separate node branch rather than changing the contract
+The checked-in three-level table predates the current measurement tooling and
+is not a `T = 30` derivation (a fresh one produces a different geometry,
+docs/measurements/constants.md); `T = 30 minutes` is the conservative policy
+value it runs with, and on Ethereum it gives one week plus 85 minutes. The
+selected two-level replacement uses `T = 60 minutes`, `log2step = [37, 0]`, and
+`height = [55, 37]`, and gives one week plus 75 minutes. It remains planned and
+must land with the separate node branch rather than changing the contract
 constants in isolation.
 
 Before adopting any generated table, run the test-only whole-table validator
@@ -257,8 +268,9 @@ b' = b - max(e - G, 0)
 The response never increases its starting balance, pairing earns no time, and
 an expired clock cannot be revived. Joining, proof resolution, timeout cleanup,
 child propagation, elimination, and bond recovery are not eligible responses.
-Across `q` responses, the total elapsed time plus the remaining clock mass is
-bounded by the starting mass plus `q * G`. One root-to-leaf descent with one
+Across `q` responses and `j` child returns, the total elapsed time plus the
+remaining clock mass is bounded by the starting mass plus `q * G + j * (T + 2G)`;
+each child return stays within its pair's envelope. One root-to-leaf descent with one
 match at each level spans 92 heights and may therefore earn at most 7 hours
 40 minutes, but only action by action. Re-pairing creates a new match with new
 response discounts. The configured scalar remains five minutes, or 25 blocks

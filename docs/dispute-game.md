@@ -236,7 +236,11 @@ b' = b - max(e - G, 0)
 Thus a valid response discounts at most `G` of that action's elapsed time but
 never increases the balance or revives an expired clock. Joining, pairing,
 proof resolution, timeout cleanup, child propagation, elimination, and bond
-recovery do not earn this discount.
+recovery do not earn this discount. The one other time grant is the child
+return: a parent refills the winner its child returns by up to `T + 2G`
+(`commitmentBudget` plus two `responseBudget`s) for building the child's
+commitment, joining, and propagating back, within the sealed pair's envelope (see the delay invariants
+below).
 
 Important invariants:
 
@@ -270,9 +274,14 @@ adversarial traces, and the finite-state model are recorded in
   linked child carrying the bounded resolution obligation.
 - Recursive propagation may transfer live clock mass within the sealed
   pair but never creates it: the returned child winner replaces the
-  selected parent clock after post-finish deduction, with
+  selected parent clock with its carried remainder (after post-finish
+  deduction) refilled by up to `T + 2G`, capped by the pair envelope,
+  `returned = min(carried + T + 2G, max(r1, r2))`, so
   `0 < returned <= max(r1, r2) <= r1 + r2` and
-  `returned <= maxAllowance`. The shared maximum is a worst-case pair
+  `returned <= maxAllowance`. The refill pays back the build, the join, and
+  the propagation, so the number of delegations a correct commitment faces
+  does not drain its clock as long as each takes at most `T + G` to join and
+  `G` to propagate. The shared maximum is a worst-case pair
   envelope, not side-specific conservation. Ordinary same-tournament
   settlement and pairing never grant time.
 - From any observation instant, a match with live balances `b1` and `b2`
@@ -318,8 +327,9 @@ The status of the delay claims is:
 Clock-induced delay and transaction work are different properties. A skewed
 arrival schedule can force a correct survivor through a linear number of
 matches, with work proportional to the number of claims times the commitment
-height. Clock conservation prevents arbitrary refill, but does not make that
-work logarithmic. Finite blockspace can turn the linear transaction workload
+height. Clock conservation prevents arbitrary refill (a child return refills
+at most `T + 2G`, within its pair's envelope), but does not make that work
+logarithmic. Finite blockspace can turn the linear transaction workload
 into additional wall-clock delay. Bond dimensioning and operational capacity
 must cover this resource attack separately from the chess-clock bound.
 
@@ -529,7 +539,8 @@ Required clock invariants:
   the expired responder's overdue duration.
 - Pairing and ordinary same-tournament winner re-entry never grant time.
 - Recursive child return may increase the selected side only within the shared
-  sealed-pair envelope; it remains bounded by `max(r1, r2)` and by the pair's
+  sealed-pair envelope, by at most `T + 2G` over the carried remainder; it
+  remains bounded by `max(r1, r2)` and by the pair's
   post-discount live clock mass.
 - A response discount applies only before the responder's original deadline
   and never increases its starting balance.
@@ -539,12 +550,12 @@ The principal time intervals are accounted for as follows:
 
 | Interval | Clock accounting |
 | --- | --- |
-| Tournament creation to join | Deducted during initialization |
+| Tournament creation to join | Deducted during initialization; for an inner join, refunded by the refill when the child returns the winner |
 | Active turn to successful response | Charged to the responder except for at most `G` |
 | Responder deadline to active-match cleanup | Deferred to the paused survivor |
 | Leaf seal to proof or timeout | Reflected in both live remainders |
 | Parent seal through child resolution | Parent clocks pause; the child owns the shared bounded obligation |
-| Child finish to parent propagation | Deducted from the returned child winner |
+| Child finish to parent propagation | Deducted from the carried remainder, then refunded by the refill (up to `T + 2G` for the whole delegation) |
 | Dangling wait | Clock remains paused; closure stops new joins, but existing matches and children may delay finish; one slot bounds only the unpaired population |
 
 The canonical parameters provider rejects `maxAllowance == 0` at deployment.
@@ -555,23 +566,28 @@ no discount. A generic parameters provider is not validated on every factory
 read; supported deployments must validate its complete table before use and
 must treat it as stable for the lifetime of its factory.
 
-The intended mainnet allowance is dimensioned from two distinct budgets
-(derivation in [`dimensioning.md`](dimensioning.md)):
+The allowance is derived, never configured directly (derivation in
+[`dimensioning.md`](dimensioning.md)):
 
 ```text
-maxAllowance = censorshipBudget + (levels - 1) * innerCommitmentBudget
+maxAllowance = C + G + (levels - 1) * (T + 2G)
 ```
 
-For the selected two-level table (not yet enabled; see
-[Tournament roles and configuration](#tournament-roles-and-configuration))
-this is one week of censorship tolerance
-plus one inner-tournament commitment budget, currently one hour. The
-independent `prt/measure_constants` emulator benchmark and the Rust
-`just measure-constants` generator show how root slowdown and the maximum
-inner commitment-building time determine tournament strides and heights.
-These measured computation budgets are distinct from the
-per-response budget `G`. The deployment stores `G = 5 minutes` in the
-`responseBudget` field; on Ethereum that is 25 blocks. One
+Every honest action gets one inclusion `G`, and joining a child also gets the
+build `T`. `ClockBudgets` computes the allowance, with `responseBudget = G` and
+`commitmentBudget = T`, from wall-clock inputs: the deployment's block time and
+censorship budget `C`, `G = 5 minutes`, and `T`, which belongs with the
+tournament geometry (`ArbitrationConstants.COMMITMENT_BUDGET`, 30 minutes for
+the checked-in table), since a generated geometry is only valid for the `T` it
+was generated against. The root allowance holds the root join's inclusion and
+one delegation per inner level on a correct commitment's active path; each
+child return refunds its delegation. On Ethereum mainnet the checked-in table
+gives one week plus 85 minutes; the selected two-level table (not yet enabled;
+see [Tournament roles and configuration](#tournament-roles-and-configuration))
+would give one week plus 75 minutes. The independent
+`prt/measure_constants` emulator benchmark and the Rust `just measure-constants`
+generator show how root slowdown and the commitment budget determine
+tournament strides and heights. On Ethereum `G` is 25 blocks. One
 root-to-leaf descent with one match at each level spans 92 tree heights and can
 earn at most 7 hours 40 minutes of discounts, one at each successful response.
 Repeated matches receive their own bounded response discounts.

@@ -98,13 +98,20 @@ level. Terms marked (code) appear verbatim in identifiers.
   too late at equality; timeout resolution becomes eligible there.
 - censorship budget (`C`): one cumulative, non-rechargeable bound on delaying
   the correct participant across a root dispute and all linked descendants.
-- responseBudget: non-bankable elapsed-time discount applied after each
-  successful bisection response, including sealing. It is never deposited into
-  a clock.
-- maxAllowance: configured root allowance and structural upper bound for clocks
-  in parent-linked tournaments. Inner sealing delegates the pair's greater
-  remainder as a shared child envelope; no response operation raises a clock
-  toward this bound.
+- responseBudget (G): the inclusion budget of one honest action. As a response
+  discount it is non-bankable: applied after each successful bisection
+  response, including sealing, it never increases the balance. A child return
+  separately refills its winner by up to `T + 2G`, within the pair envelope.
+- maxAllowance: root allowance and structural upper bound for clocks in
+  parent-linked tournaments, derived as `C + G + (levels - 1) * (T + 2G)`.
+  Inner sealing delegates the pair's greater remainder as a shared child
+  envelope; no response operation raises a clock toward this bound, and a
+  child return refills its winner only within that envelope.
+- commitmentBudget (T): time granted to build one inner tournament's
+  commitment, the same at every inner level. It belongs with the tournament
+  geometry, which is only valid for the `T` it was generated against; a parent
+  refills the winner its child returns by up to `T + 2G` (build, join,
+  propagation).
 - win by timeout / eliminate by timeout: resolving a match when one (or
   both) clocks run out.
 - garbage collection (gc): permissionlessly eliminating finished or

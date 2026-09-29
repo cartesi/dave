@@ -69,6 +69,13 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
     IDaveAppFactory _daveAppFactory;
     SettlementCallbackReceiver _settlementCallbackReceiver;
 
+    // The canonical provider derives block budgets from wall-clock inputs. At
+    // one-minute blocks, 35 minutes of censorship, 5 of inclusion and the
+    // canonical 30-minute commitment budget give a response budget of 5 and
+    // an allowance of 35 + 5 + 2 * (30 + 2 * 5).
+    uint64 constant BLOCK_MILLISECONDS = 60_000;
+    uint64 constant CENSORSHIP_SECONDS = 35 minutes;
+    uint64 constant INCLUSION_SECONDS = 5 minutes;
     Time.Duration constant RESPONSE_BUDGET = Time.Duration.wrap(5);
     Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(120);
     uint256 constant STAGING_GAS_CEILING = 500_000;
@@ -77,7 +84,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         _stateTransition = new CartesiStateTransition();
         _tournamentFactory = new MultiLevelTournamentFactory(
             new Tournament(),
-            new CanonicalTournamentParametersProvider(RESPONSE_BUDGET, MAX_ALLOWANCE),
+            new CanonicalTournamentParametersProvider(BLOCK_MILLISECONDS, CENSORSHIP_SECONDS, INCLUSION_SECONDS),
             _stateTransition
         );
         _daveAppFactory =
@@ -1352,6 +1359,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
             assertEq(Time.Instant.unwrap(tournamentArgs.startInstant), vm.getBlockNumber());
             assertEq(Time.Duration.unwrap(tournamentArgs.allowance), Time.Duration.unwrap(MAX_ALLOWANCE));
             assertEq(Time.Duration.unwrap(tournamentArgs.responseBudget), Time.Duration.unwrap(RESPONSE_BUDGET));
+            assertEq(Time.Duration.unwrap(tournamentArgs.commitmentBudget), 30);
             assertEq(address(tournamentArgs.provider), address(daveConsensus));
             assertEq(address(tournamentArgs.stateTransition), address(_stateTransition));
             assertEq(tournamentArgs.tournamentFactory, address(_tournamentFactory));

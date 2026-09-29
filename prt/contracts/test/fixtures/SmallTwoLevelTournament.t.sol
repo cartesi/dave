@@ -25,6 +25,7 @@ using TournamentInspector for ITournament;
 contract SmallTwoLevelTournamentTest is Test {
     uint64 internal constant START_BLOCK = 100;
     uint64 internal constant RESPONSE_BUDGET = 5;
+    uint64 internal constant COMMITMENT_BUDGET = 0;
     uint64 internal constant MAX_ALLOWANCE = 200;
 
     Machine.Hash internal constant INITIAL_STATE =
@@ -36,6 +37,7 @@ contract SmallTwoLevelTournamentTest is Test {
         vm.roll(START_BLOCK);
         factory = new SmallTwoLevelTournamentFactory(
             Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(COMMITMENT_BUDGET),
             Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
@@ -122,6 +124,7 @@ contract SmallTwoLevelTournamentTest is Test {
     function testRejectsUnsupportedLevelAndWrongLevelOperations() public {
         SmallTwoLevelParametersProvider provider = new SmallTwoLevelParametersProvider(
             Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(COMMITMENT_BUDGET),
             Time.Duration.wrap(MAX_ALLOWANCE)
         );
         vm.expectRevert(

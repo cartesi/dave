@@ -14,6 +14,7 @@ import {TournamentParameterTableValidator} from "./TournamentParameterTableValid
 contract TableTournamentParametersProviderTest is Test {
     uint64 internal constant EPOCH_LOG2_SPAN = 92;
     Time.Duration internal constant RESPONSE_BUDGET = Time.Duration.wrap(25);
+    Time.Duration internal constant COMMITMENT_BUDGET = Time.Duration.wrap(150);
     Time.Duration internal constant MAX_ALLOWANCE = Time.Duration.wrap(300);
 
     function _table(uint64[2] memory log2steps, uint64[2] memory heights)
@@ -33,7 +34,12 @@ contract TableTournamentParametersProviderTest is Test {
         (uint64[] memory steps, uint64[] memory hs) =
             _table([uint64(37), 0], [uint64(55), 37]);
         TableTournamentParametersProvider provider = new TableTournamentParametersProvider(
-            steps, hs, RESPONSE_BUDGET, MAX_ALLOWANCE, EPOCH_LOG2_SPAN
+            steps,
+            hs,
+            RESPONSE_BUDGET,
+            COMMITMENT_BUDGET,
+            MAX_ALLOWANCE,
+            EPOCH_LOG2_SPAN
         );
 
         TournamentParameters memory root = provider.tournamentParameters(0);
@@ -41,6 +47,7 @@ contract TableTournamentParametersProviderTest is Test {
         assertEq(root.log2step, 37);
         assertEq(root.height, 55);
         assertEq(Time.Duration.unwrap(root.responseBudget), 25);
+        assertEq(Time.Duration.unwrap(root.commitmentBudget), 150);
         assertEq(Time.Duration.unwrap(root.maxAllowance), 300);
 
         TournamentParameters memory leaf = provider.tournamentParameters(1);
@@ -68,7 +75,12 @@ contract TableTournamentParametersProviderTest is Test {
             )
         );
         new TableTournamentParametersProvider(
-            steps, hs, RESPONSE_BUDGET, MAX_ALLOWANCE, EPOCH_LOG2_SPAN
+            steps,
+            hs,
+            RESPONSE_BUDGET,
+            COMMITMENT_BUDGET,
+            MAX_ALLOWANCE,
+            EPOCH_LOG2_SPAN
         );
     }
 
@@ -81,7 +93,12 @@ contract TableTournamentParametersProviderTest is Test {
             )
         );
         new TableTournamentParametersProvider(
-            steps, hs, RESPONSE_BUDGET, MAX_ALLOWANCE, EPOCH_LOG2_SPAN
+            steps,
+            hs,
+            RESPONSE_BUDGET,
+            COMMITMENT_BUDGET,
+            MAX_ALLOWANCE,
+            EPOCH_LOG2_SPAN
         );
     }
 }

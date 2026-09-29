@@ -40,6 +40,7 @@ contract FactoryDependencyParametersProvider is ITournamentParametersProvider {
             log2step: level == 0 ? 2 : 0,
             height: level == 0 ? 3 : 2,
             responseBudget: Time.Duration.wrap(1),
+            commitmentBudget: Time.ZERO_DURATION,
             maxAllowance: Time.Duration.wrap(100)
         });
     }

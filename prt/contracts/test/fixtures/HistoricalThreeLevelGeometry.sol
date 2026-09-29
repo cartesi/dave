@@ -26,10 +26,16 @@ contract HistoricalThreeLevelParametersProvider is
     ITournamentParametersProvider
 {
     Time.Duration internal immutable RESPONSE_BUDGET;
+    Time.Duration internal immutable COMMITMENT_BUDGET;
     Time.Duration internal immutable MAX_ALLOWANCE;
 
-    constructor(Time.Duration responseBudget, Time.Duration maxAllowance) {
+    constructor(
+        Time.Duration responseBudget,
+        Time.Duration commitmentBudget,
+        Time.Duration maxAllowance
+    ) {
         RESPONSE_BUDGET = responseBudget;
+        COMMITMENT_BUDGET = commitmentBudget;
         MAX_ALLOWANCE = maxAllowance;
     }
 
@@ -44,6 +50,7 @@ contract HistoricalThreeLevelParametersProvider is
             log2step: HistoricalThreeLevelGeometry.log2step(level),
             height: HistoricalThreeLevelGeometry.height(level),
             responseBudget: RESPONSE_BUDGET,
+            commitmentBudget: COMMITMENT_BUDGET,
             maxAllowance: MAX_ALLOWANCE
         });
     }

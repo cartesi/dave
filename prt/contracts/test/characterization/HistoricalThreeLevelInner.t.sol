@@ -707,11 +707,16 @@ contract HistoricalThreeLevelInnerTest is Util {
             playerNodes[1][HistoricalGeometry.height(0) - 1],
             playerNodes[1][HistoricalGeometry.height(0) - 1]
         );
+        // The parent refills the carried block by up to the build plus two
+        // inclusions, within the delegated envelope.
         (Clock.State memory propagatedClock,) =
             topTournament.getCommitment(_matchId.commitmentTwo);
+        uint64 refilled = Time.Duration.unwrap(returnedClock.allowance)
+            + Time.Duration.unwrap(COMMITMENT_BUDGET) + 2
+            * Time.Duration.unwrap(RESPONSE_BUDGET);
         assertEq(
             Time.Duration.unwrap(propagatedClock.allowance),
-            Time.Duration.unwrap(returnedClock.allowance)
+            refilled < delegatedAllowance ? refilled : delegatedAllowance
         );
         assertTrue(propagatedClock.startInstant.isZero());
 

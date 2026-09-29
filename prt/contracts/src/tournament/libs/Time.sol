@@ -107,12 +107,31 @@ library Time {
         return timestamp.timeoutElapsedSince(duration, currentTime());
     }
 
+    /// @notice Add two durations using Solidity checked arithmetic.
+    function add(Duration left, Duration right)
+        internal
+        pure
+        returns (Duration)
+    {
+        uint64 l = Duration.unwrap(left);
+        uint64 r = Duration.unwrap(right);
+        return Duration.wrap(l + r);
+    }
+
     function max(Duration left, Duration right)
         internal
         pure
         returns (Duration)
     {
         return left.gt(right) ? left : right;
+    }
+
+    function min(Duration left, Duration right)
+        internal
+        pure
+        returns (Duration)
+    {
+        return left.gt(right) ? right : left;
     }
 
     function max(Instant left, Instant right) internal pure returns (Instant) {

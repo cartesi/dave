@@ -101,7 +101,12 @@ Top/Middle/Bottom contracts.
   and cannot revive an expired clock.
 - Inner sealing delegates `max(r1, r2)` as one shared pair envelope. A returned
   child winner may exceed the selected side's snapshotted remainder, but cannot
-  exceed the sealed pair maximum or its post-discount live pair mass.
+  exceed the sealed pair maximum or its post-discount live pair mass. Its
+  refill over the carried remainder is at most `commitmentBudget + 2 *
+  responseBudget`, which pays back the build, the join, and the propagation;
+  without it, repeated delegations drain a correct commitment. Every row serves
+  the same budgets, and the root allowance holds the root join's inclusion plus
+  one refill per inner level (`ClockBudgets`).
 - One shared timeout classification drives the capability view and both
   timeout mutations. Leaf proofs are valid only while that classification is
   `NONE`; once a timeout begins, callers must use the selected timeout verb.
