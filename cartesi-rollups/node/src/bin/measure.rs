@@ -92,9 +92,10 @@ struct Args {
     #[arg(long, default_value_t = 2.0)]
     root_slowdown: f64,
 
-    /// Inner tournament timeouts (minutes) to derive for.
+    /// Commitment budgets T (minutes) to derive for: the time every inner
+    /// tournament's commitment must build within.
     #[arg(long, value_delimiter = ',', default_values_t = vec![60u64, 30])]
-    inner_timeout_minutes: Vec<u64>,
+    commitment_budget_minutes: Vec<u64>,
 
     /// Pragmatic stand-in for a reference machine: measured throughput
     /// is divided by this before any derivation, and the factor is
@@ -835,7 +836,7 @@ fn interp_curve(curve: &[(u64, Duration, Duration)], delta: u64) -> (f64, f64) {
 }
 
 struct Derived {
-    timeout_minutes: u64,
+    commitment_budget_minutes: u64,
     /// Top-down, ArbitrationConstants order.
     log2step: Vec<u64>,
     height: Vec<u64>,
@@ -845,16 +846,19 @@ struct Derived {
 fn derive(
     atoms: &SteadyAtoms,
     root_slowdown_budget: f64,
-    timeout_minutes: u64,
+    commitment_budget_minutes: u64,
     slack: f64,
 ) -> Result<Derived> {
-    let budget_secs = (timeout_minutes * 60) as f64;
+    let budget_secs = (commitment_budget_minutes * 60) as f64;
 
-    // Leaf level: the tallest dense build that fits the timeout at the
+    // Leaf level: the tallest dense build that fits the budget at the
     // measured average density, hardware slack applied, floor rounded.
     let dense_bigs_per_sec = atoms.dense_pairs_per_sec / (atoms.avg_usteps_per_big + 1.0) / slack;
     let n_bigs = dense_bigs_per_sec * budget_secs;
-    anyhow::ensure!(n_bigs >= 2.0, "timeout too small for any leaf level");
+    anyhow::ensure!(
+        n_bigs >= 2.0,
+        "commitment budget too small for any leaf level"
+    );
     let h_leaf = LOG2_MAX_UARCH_CYCLES_PER_MCYCLE + n_bigs.log2().floor() as u64;
 
     let mut log2step = vec![0u64];
@@ -879,7 +883,7 @@ fn derive(
         let n = budget_secs / per_leaf;
         anyhow::ensure!(
             n >= 2.0,
-            "timeout too small for a level at stride 2^{stride}"
+            "commitment budget too small for a level at stride 2^{stride}"
         );
         let h = (n.log2().floor() as u64).min(LOG2_EPOCH_RULER_SPAN - stride);
         log2step.push(stride);
@@ -898,7 +902,7 @@ fn derive(
     height.reverse();
 
     Ok(Derived {
-        timeout_minutes,
+        commitment_budget_minutes,
         log2step,
         height,
         root_slowdown,
@@ -984,17 +988,17 @@ fn constants_report(
     writeln!(report)?;
     writeln!(
         report,
-        "| inner timeout | levels | log2step | height | root slowdown |"
+        "| commitment budget | levels | log2step | height | root slowdown |"
     )?;
     writeln!(report, "|---|---|---|---|---:|")?;
     let mut any_tall_root = false;
-    for &timeout in &args.inner_timeout_minutes {
-        let d = derive(&atoms, args.root_slowdown, timeout, args.hardware_slack)?;
+    for &budget in &args.commitment_budget_minutes {
+        let d = derive(&atoms, args.root_slowdown, budget, args.hardware_slack)?;
         any_tall_root |= d.height[0] > CURRENT_HEIGHT[0];
         writeln!(
             report,
             "| {} min | {} | {:?} | {:?} | {:.2}x |",
-            d.timeout_minutes,
+            d.commitment_budget_minutes,
             d.log2step.len(),
             d.log2step,
             d.height,

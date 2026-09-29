@@ -40,13 +40,13 @@ just benchmark all
 
 Run these commands from this directory, or pass its Justfile with
 `just -f prt/measure_constants/justfile ...` from the repository root. The
-default sample is 120 seconds per timed phase, the inner commitment budget is
+default sample is 120 seconds per timed phase, the commitment budget is
 30 minutes, and the accepted root slowdown is 10. Override them explicitly
 when studying another policy:
 
 ```bash
 DAVE_SAMPLE_SECONDS=300 \
-DAVE_INNER_TIMEOUT_MINUTES=60 \
+DAVE_COMMITMENT_BUDGET_MINUTES=60 \
 DAVE_ROOT_SLOWDOWN=5 \
 just benchmark matrix-3d
 ```

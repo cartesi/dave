@@ -33,7 +33,7 @@ measured-throughput stand-in for a reference machine).
 
 ## Derivations
 
-| inner timeout | levels | log2step | height | root slowdown |
+| commitment budget | levels | log2step | height | root slowdown |
 |---|---|---|---|---:|
 | 60 min | 2 | [37, 0] | [55, 37] | 1.81x |
 | 30 min | 3 | [56, 36, 0] | [36, 20, 36] | 1.01x |

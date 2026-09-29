@@ -35,8 +35,8 @@ end
 
 local root_tournament_slowdown = positive_number_from_env("DAVE_ROOT_SLOWDOWN", 10)
 assert(root_tournament_slowdown > 1, "DAVE_ROOT_SLOWDOWN must be greater than 1")
-local inner_tournament_timeout_minutes =
-    positive_number_from_env("DAVE_INNER_TIMEOUT_MINUTES", 30)
+local commitment_budget_minutes =
+    positive_number_from_env("DAVE_COMMITMENT_BUDGET_MINUTES", 30)
 local sample_seconds = positive_number_from_env("DAVE_SAMPLE_SECONDS", 120)
 
 local default_log2_big_machine_span = 26
@@ -178,7 +178,7 @@ local function run_uarch_until_timeout()
         with_hash_time = stop_timer()
     end
 
-    local extrapolated = iterations * inner_tournament_timeout_minutes * 60 / with_hash_time
+    local extrapolated = iterations * commitment_budget_minutes * 60 / with_hash_time
     local log2_iterations = floor_log2_capacity(extrapolated, "leaf commitment")
 
     local without_hash_time
@@ -249,7 +249,7 @@ local function run_big_machine_until_timeout(log2_stride)
         with_hash_time = stop_timer()
     end
 
-    local extrapolated = iterations * inner_tournament_timeout_minutes * 60 / with_hash_time
+    local extrapolated = iterations * commitment_budget_minutes * 60 / with_hash_time
     local log2_iterations = floor_log2_capacity(extrapolated, "big-machine commitment")
 
     local without_hash_time
@@ -276,8 +276,8 @@ Starting emulator constants benchmark for stress-ng --%s...
 Linux boot, process startup, and the fixed warmup are excluded from timing.
 Sample duration is %.1f seconds per timed phase.
 Target root slowdown is %.1fx.
-Inner commitment budget is %.1f minutes.
-]], workload, sample_seconds, root_tournament_slowdown, inner_tournament_timeout_minutes))
+Commitment budget is %.1f minutes.
+]], workload, sample_seconds, root_tournament_slowdown, commitment_budget_minutes))
 
 local levels = 0
 local log2_strides = {}

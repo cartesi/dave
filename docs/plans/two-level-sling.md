@@ -9,7 +9,7 @@ decisions below.
 ## Goal
 
 A working, sound rollup whose disputes run in two levels: log2step [37, 0],
-height [55, 37], inner timeout T = 60 min (today: [44, 27, 0] / [48, 17, 27]).
+height [55, 37], commitment budget T = 60 min (today: [44, 27, 0] / [48, 17, 27]).
 Everything may change - contracts, node, schema, deployments - in service of
 that goal.
 

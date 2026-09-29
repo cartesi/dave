@@ -441,7 +441,7 @@ forward-looking work.
 
 4. Two levels. Re-run the constants pipeline ON v0.21 and on
    validator hardware (the previous numbers - log2step [37,0],
-   heights [55,37] at a 60-min inner timeout - were measured on
+   heights [55,37] at a 60-min commitment budget - were measured on
    0.20 and are stale the moment the machine changes); walk the
    adoption gates of docs/measurements/constants.md. Level-0
    stride moving 44 -> 37 moves the window-root quartet

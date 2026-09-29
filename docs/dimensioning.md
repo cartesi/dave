@@ -43,7 +43,7 @@ to the average case.
   executes the worst instruction (the sqrt / TLB-flush class, near
   the 2^20 bound - which is why the span is 2^20). One occurrence,
   ever, breaks soundness, so rarity does not discount anything.
-- Clocks (the inner tournament timeout, responseBudget, the root
+- Clocks (the commitment budget `T`, responseBudget, the root
   slowdown budget, and the strides derived from them): these price
   aggregates - sums of per-step costs over whole gaps. Rare heavy
   instructions vanish into a sum of millions of terms. The honest
@@ -93,7 +93,7 @@ adversary will find it.
 | uarch span (2^20 usteps)  | single event | any - honest code hits it | worst case |
 | barch span per input (2^48) | single event | app + input | worst case |
 | input span per epoch (2^24) | single event | chain | worst case |
-| leaf-level dense build within the inner timeout | aggregate | trusted app | average density |
+| leaf-level dense build within the commitment budget | aggregate | trusted app | average density |
 | root slowdown (level-0 sampling overhead) | aggregate | trusted app | average |
 | positioning through an input's prefix | aggregate | trusted app (per-input compute is an app design contract) | app profile |
 | which gap / which leaf gets disputed | - | dispute adversary | worst location |
@@ -371,7 +371,7 @@ protocol worst case or a representative application distribution.
   ever cheapen a nested join - lives in computation-hash.md with its
   trap diagnosis. Read it before reasoning about dispute costs.
 - The level constants chain from two free knobs. The leaf-level dense build
-  fitting the inner timeout at average density determines
+  fitting the commitment budget at average density determines
   `height[L - 1]`, with `log2step[L - 1] = 0`. Parent strides follow
   recursively from
   `log2step[i] = log2step[i + 1] + height[i + 1]`; the root slowdown budget

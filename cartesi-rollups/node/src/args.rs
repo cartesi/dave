@@ -26,7 +26,7 @@ const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const SLEEP_DURATION: u64 = 30;
 
 /// The deepest leaf level the measured dense rate builds within the
-/// selected inner timeout (docs/measurements/constants.md). A deeper one
+/// selected commitment budget (docs/measurements/constants.md). A deeper one
 /// may not be defensible in time, so the node says so at startup.
 const MEASURED_LEAF_HEIGHT_CAPACITY: u64 = 37;
 
@@ -102,7 +102,7 @@ async fn discover_deployed_tournament(
     if geometry.leaf_height() > MEASURED_LEAF_HEIGHT_CAPACITY {
         log::warn!(
             "leaf level height {} exceeds the measured capacity {MEASURED_LEAF_HEIGHT_CAPACITY}: \
-             leaf commitments may not build within the inner timeout",
+             leaf commitments may not build within the commitment budget",
             geometry.leaf_height()
         );
     }
