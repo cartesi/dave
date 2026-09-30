@@ -502,8 +502,9 @@ Scale and liveness (unmeasured, not wrong).
   slack 2 (about twice the stress workload); FP-heavy code under softfloat is
   an unmeasured lead. M2 (W4.2) met the target, and its window is not denser
   than steady state (572 usteps per big cycle; the densest window sampled is
-  612). Density is not the only dimension: each root hash rehashes every page
-  in the write TLB, so the serial rate falls with the pages per hash (84k
+  612). Density is not the only dimension: each root hash rescans every page
+  in the write TLB (plus eight shadow pages), hashing only changed words, so
+  the serial rate falls with the pages per hash (84k
   pairs/s at about 10 pages, 63k at 35, 51k at 57). A workload that keeps
   the write TLB full would build several times slower (a lead, unmeasured).
   `--constants` samples an early window (big cycles 10,000 to 10,500), so its
