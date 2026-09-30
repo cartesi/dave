@@ -411,7 +411,29 @@ everything else already reads the deployed table or covers both.
 Exit: the e2e battery is green on two levels within CI budgets, and the CLI
 gates are green.
 
-### W6. Collection speed (margin; decide after M2)
+### W6. Collection speed (not needed for the switch; recommended before release)
+
+Decided 2026-09-30, after M2. The legacy per-step path (`get_root_hash` after
+every uarch step) is sufficient for what was measured: with serial hash-tree
+updates it builds the dense height-37 leaf in 18 min. The collect API is
+still worth adopting, for worst-case robustness more than speed:
+
+- Speed: on the same dense big cycles the uarch collector costs about 12 us
+  per uarch cycle, against 12 to 17 us for the serial per-step path and
+  131 us for the per-step path under the emulator's default concurrency.
+- Robustness: the per-step path rescans every write-TLB page on each hash,
+  so its cost grows with the app's write-TLB occupancy (R2), an unmeasured
+  worst case that could put a dense leaf past `T`. The uarch collector
+  updates only the words each cycle wrote (`update_words`), so it has
+  neither that slope nor the parallelism cliff, and needs no concurrency
+  setting.
+
+First, measure the per-step path's worst case with a workload that keeps the
+write TLB full; that decides the urgency. The move can be narrow: only the
+leaf builder hashes per step at scale, and the collector's bundling can
+return one root per big cycle, which is what the builder folds (a lead:
+check the bundle boundaries against the leaf layout, including the reset).
+Items 1 to 3 below are the broad version.
 
 1. (M) Safe Rust wrappers for both collect calls, keeping hashes, offsets,
    partial bundles, break reasons and error context; wrapper tests.
@@ -507,6 +529,7 @@ Scale and liveness (unmeasured, not wrong).
   the serial rate falls with the pages per hash (84k
   pairs/s at about 10 pages, 63k at 35, 51k at 57). A workload that keeps
   the write TLB full would build several times slower (a lead, unmeasured).
+  The collect API has no such slope (W6).
   `--constants` samples an early window (big cycles 10,000 to 10,500), so its
   rate is optimistic for later ones.
 - R3. Stride-37 root work runs about 6.3x slower per transition than stride
