@@ -241,7 +241,9 @@ the v0.21.0 CLI seam cases are recorded as exclusions.
 1. (S) E2E steering. `stf_all` and `stf_revert` use 2^28 level-1 links where
    the stride is 27 (since 2025-06), so they likely prove the wrong
    transitions; this is a hand trace, so log the proven transition first. Fix
-   the links and make `run_epoch` assert which transition was proven.
+   the links and make `run_epoch` assert which transition was proven. It
+   asserts the sealed transition; that a proof, not a timeout, resolved it
+   is R18.
 2. (S) Un-ignore the real-image `engine_machine` differentials (about 26 s in
    CI). Move the digest-pinned corpus download (912 KB) into setup and
    un-ignore the corpus tests, failing loudly when the corpus is missing
@@ -363,9 +365,10 @@ under [44, 27, 0].
 ### W5. The switch (new deployment generation)
 
 1. (S) ArbitrationConstants to LEVELS = 2, [37, 0] / [55, 37], through the
-   contract-change gate. Gas fixtures are already calibrated at [55, 37]
-   (2026-08-27), so run a validation pass, not a recalibration. Regenerate
-   the devnet bundle.
+   contract-change gate. Gas fixtures were calibrated at [55, 37]
+   (2026-08-27), but 2c502f63 and 935dc133 changed refunded-path gas since;
+   the witnesses pass with reduced headroom, and the accepted calibration is
+   still owed, so this pass records one. Regenerate the devnet bundle.
 2. (M) Leaf CLI gate: in leaf-reaching scenarios, the leaf commitment equals
    the CLI uarch hash for the disputed period. The root gate (W2.11) moves to
    period 17 on its own. Exclusions apply; full-period leaf checks may run
@@ -524,7 +527,9 @@ Found while fixing R1 (2026-09-29).
   and replays to the divergence, so proof time grows with how deep into an
   input the adversary places it; the same replay slows `prove_last` (R4).
   Take snapshots so positioning at the disagreement is effectively instant,
-  and keep the tick well inside `G`.
+  and keep the tick well inside `G`. Target: a leaf proof, and the fallback
+  timeout claim when the opponent's expiry overtakes it (CF-01), land within
+  one `G` of the seal.
 - R17. The node never propagates a Sybil-versus-Sybil child's winner: GC plans
   only eliminations. Such a winner may linger until its carryover window
   ends, and the refill now leaves it up to `T + 2G` more per child. Bounded,
@@ -542,6 +547,42 @@ Decided 2026-09-29.
   (L2 batch finality can take 20 to 40 minutes or more) must not reuse
   Ethereum's `T` without checking it.
 - The node does not pin or check `T` (R11).
+
+## Clock refill review follow-up (2026-09-29)
+
+The [Solidity review](../reviews/2026-09-29-prt-clock-refill/REVIEW.md)
+supports the capped `T + 2G` repayment and terminal-win discounts at
+`935dc133`. The following entries own its remaining work; the dated review
+preserves the reasoning and evidence.
+
+- Accepted limitation (CF-01), decided 2026-09-29. A leaf proof in flight
+  when the opponent's shorter leaf clock expires reverts, since proofs are
+  valid only under `NONE`, and the survivor needs a separate timeout claim.
+  With `d1` and `d2` the proof's and the claim's latencies from the seal, the
+  survivor is charged `max(0, d1 + d2 - G)` and must outlive `d1 + d2`. The
+  adversary chooses how often this happens (once per Sybil leaf match, one
+  bond each), so the review's one-occurrence pricing understates the count,
+  but it does not choose the latencies: with real inclusion times both land
+  well inside `G` and the handover costs nothing, and stretching them is
+  censorship, which `C` already budgets. Without censorship only a slow
+  proof makes it bite, which R16 owns. A `C = 0` devnet can lose to it
+  outright. Letting `winLeafMatch` settle as the timeout win the classifier
+  already selects for the prover would remove it, but was judged not worth
+  revising the disjoint proof and timeout verbs.
+- R18 (CF-02, P2; W2.1). `run_steered_epoch` currently checks the sealed
+  transition and correct settlement, which a timeout win can also satisfy.
+  Retain each sealed match ID and require its `MatchDeleted` reason to be
+  `STEP` before counting it as proved. Add timeout-only and proof-success
+  controls. The review's stub transcript proves the assertion gap, not that
+  current real-chain runs use the timeout path. The gap matters because the
+  node retries a rejected proof and checks timeouts first, so a broken
+  on-chain transition can end as a timeout win.
+- R19 (assurance; contract testing). Build an independent honest-survival
+  model with an identified correct commitment, eager honest strategy, and one
+  cumulative `C` across repeated and nested disputes. Cover both orientations,
+  tight reserves, and joins, responses, wins, and propagation. State whether
+  CF-01 is excluded or its retry cost is charged. This is additional evidence,
+  not a demonstrated implementation defect or an unbounded delay theorem.
 
 ## Open decisions
 

@@ -45,3 +45,10 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-08-17-prt-stf-composition-gas-calibration/`](2026-08-17-prt-stf-composition-gas-calibration/)
   - accepted explicit state-transition recalibration, retained allocations,
     and current deployment and admission impact.
+- [`2026-08-27-prt-leaf-gas-recalibration/`](2026-08-27-prt-leaf-gas-recalibration/)
+  - accepted `WIN_LEAF_MATCH` recalibration after the machine-yield check and
+    the alpha-9 rollups-contracts bump, with the re-pinned leaf-gate
+    dependency digest.
+- [`2026-09-29-prt-clock-refill/REVIEW.md`](2026-09-29-prt-clock-refill/REVIEW.md)
+  - child-return refill and terminal-win discount review, accepted inclusion
+    handover limitation, STF evidence-gate finding, and remaining assurance work.
