@@ -503,6 +503,9 @@ fn dispute_source_matches_prototype_tree() {
         // level over pure idle padding (echo yielded long before
         // 2^44), where the leaf material is the idle churn pattern.
         ("idle_padding_r0_h28", U256::from(1) << 44, 0, 28),
+        // The big-cycle-root builder's active branch: the first 2^8 big
+        // cycles of window 1 run the input, so every cycle executes.
+        ("window1_active_r0_h28", U256::from(1) << 68, 0, 28),
     ];
 
     for (index, (label, base, log2_stride, height)) in spans.into_iter().enumerate() {
