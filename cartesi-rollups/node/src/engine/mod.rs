@@ -49,6 +49,6 @@ pub use config::EngineConfig;
 pub use dispute::{DisputeSource, LevelCoords, fold_runs};
 pub use geometry::{Level, TournamentGeometry};
 pub use machine_stf::{MachineStf, Positioner};
-pub use ruler::{Ruler, RulerFactory, Run};
+pub use ruler::{Hashing, Ruler, RulerFactory, Run};
 pub use stf::Stf;
 pub use structure::{InputBoundary, Position, Quartet, Structure};

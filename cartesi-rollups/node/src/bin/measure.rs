@@ -17,8 +17,8 @@ use alloy::primitives::{Address, U256};
 use alloy::sol_types::SolCall;
 use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 use cartesi_rollups_prt_node::engine::{
-    DisputeSource, Level, MachineStf, Quartet, Stf, Structure, TournamentGeometry,
-    constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
+    DisputeSource, Hashing, Level, MachineStf, Positioner, Quartet, Stf, Structure,
+    TournamentGeometry, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
 };
 use cartesi_rollups_prt_node::merkle::Digest;
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
@@ -102,6 +102,12 @@ struct Args {
     /// printed into the output so results carry their caveat.
     #[arg(long, default_value_t = 2.0)]
     hardware_slack: f64,
+
+    /// Time only the two-level leaf build (stride 0, height 37) over the
+    /// first input, with the process's peak RSS. A mode of its own keeps
+    /// that figure the build's rather than the other benches'.
+    #[arg(long)]
+    two_level_leaf: bool,
 }
 
 fn main() -> Result<()> {
@@ -114,14 +120,14 @@ fn main() -> Result<()> {
         let mut report = String::new();
         constants_report(&mut report, &args, &image, &scratch_root)?;
         let _ = fs::remove_dir_all(&scratch_root);
-        match args.out {
-            Some(path) => {
-                fs::write(&path, &report)?;
-                eprintln!("wrote {}", path.display());
-            }
-            None => print!("{report}"),
-        }
-        return Ok(());
+        return emit(&report, args.out.as_deref());
+    }
+
+    if args.two_level_leaf {
+        let mut report = String::new();
+        two_level_leaf_report(&mut report, &args, &image, &scratch_root)?;
+        let _ = fs::remove_dir_all(&scratch_root);
+        return emit(&report, args.out.as_deref());
     }
 
     let mut report = String::new();
@@ -136,9 +142,13 @@ fn main() -> Result<()> {
     budget(&mut report, &quartets)?;
 
     let _ = fs::remove_dir_all(&scratch_root);
-    match args.out {
+    emit(&report, args.out.as_deref())
+}
+
+fn emit(report: &str, out: Option<&Path>) -> Result<()> {
+    match out {
         Some(path) => {
-            fs::write(&path, &report)?;
+            fs::write(path, report)?;
             eprintln!("wrote {}", path.display());
         }
         None => print!("{report}"),
@@ -211,11 +221,16 @@ fn bench_level0_fold(report: &mut String) -> Result<()> {
 
 fn bench_snapshot(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     let (mut stf, load_template) =
-        timed(|| MachineStf::load(image, scratch(scratch_root, "snap-load")?))?;
+        timed(|| MachineStf::load(image, scratch(scratch_root, "snap-load")?, Hashing::Sampled))?;
     let store_path = scratch_root.join("stored-machine");
     let (_, store) = timed(|| stf.store(&store_path))?;
-    let (_, resume) =
-        timed(|| MachineStf::resume(&store_path, scratch(scratch_root, "snap-resume")?))?;
+    let (_, resume) = timed(|| {
+        MachineStf::resume(
+            &store_path,
+            scratch(scratch_root, "snap-resume")?,
+            Hashing::Sampled,
+        )
+    })?;
     let size_mb = dir_size(&store_path)? as f64 / (1024.0 * 1024.0);
 
     writeln!(report, "## Snapshot store and load")?;
@@ -385,8 +400,8 @@ fn free_space_kb(path: &Path) -> Result<u64> {
 /// the ustep+state_hash pair that level-2 sampling pays per leaf.
 fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     let input = evm_advance_input(0, b"measure");
-    let mut stf =
-        MachineStf::load(image, scratch(scratch_root, "atoms")?)?.with_inputs(vec![input]);
+    let mut stf = MachineStf::load(image, scratch(scratch_root, "atoms")?, Hashing::PerStep)?
+        .with_inputs(vec![input]);
 
     // Idle churn on the pristine yielded machine. Counts real usteps
     // (ustep is identity once the uarch halts, so drive whole cycles).
@@ -482,11 +497,6 @@ fn bench_quartets(
         spans.push(("level-1 root shape", 27, 17));
     }
 
-    let inputs = [
-        evm_advance_input(0, b"hello dave"),
-        evm_advance_input(1, b"hello again, dave"),
-    ];
-
     let workload = image
         .parent()
         .and_then(|p| p.file_name())
@@ -502,32 +512,7 @@ fn bench_quartets(
 
     let mut results = Vec::new();
     for (index, (label, log2_stride, height)) in spans.into_iter().enumerate() {
-        let state_dir = scratch(scratch_root, &format!("quartet-{index}"))?;
-        let mut storage = Storage::initialize(
-            &state_dir,
-            image,
-            0,
-            Address::ZERO,
-            Address::ZERO,
-            &current_geometry()?,
-        )?;
-        let rows: Vec<StorageInput> = inputs
-            .iter()
-            .enumerate()
-            .map(|(i, data)| StorageInput {
-                id: InputId {
-                    epoch_number: 0,
-                    input_index_in_epoch: i as u64,
-                },
-                data: data.clone(),
-            })
-            .collect();
-        storage.insert_consensus_data(0, rows.iter(), std::iter::empty())?;
-        let mut source = DisputeSource::on_store(
-            storage,
-            0,
-            scratch(scratch_root, &format!("quartet-{index}-work"))?,
-        )?;
+        let mut source = two_input_epoch(image, scratch_root, &format!("quartet-{index}"))?;
         let quartet = Quartet::level_root(0, log2_stride, height);
 
         let (_, miss) = timed(|| source.node(&quartet))?;
@@ -542,6 +527,96 @@ fn bench_quartets(
     }
     writeln!(report)?;
     Ok(results)
+}
+
+/// A dispute source over a two-input epoch 0 of the workload.
+fn two_input_epoch(
+    image: &Path,
+    scratch_root: &Path,
+    tag: &str,
+) -> Result<DisputeSource<Positioner>> {
+    let inputs = [
+        evm_advance_input(0, b"hello dave"),
+        evm_advance_input(1, b"hello again, dave"),
+    ];
+    let mut storage = Storage::initialize(
+        &scratch(scratch_root, tag)?,
+        image,
+        0,
+        Address::ZERO,
+        Address::ZERO,
+        &current_geometry()?,
+    )?;
+    let rows: Vec<StorageInput> = inputs
+        .iter()
+        .enumerate()
+        .map(|(i, data)| StorageInput {
+            id: InputId {
+                epoch_number: 0,
+                input_index_in_epoch: i as u64,
+            },
+            data: data.clone(),
+        })
+        .collect();
+    storage.insert_consensus_data(0, rows.iter(), std::iter::empty())?;
+    DisputeSource::on_store(storage, 0, scratch(scratch_root, &format!("{tag}-work"))?)
+}
+
+/// The two-level leaf a party builds before joining, within the
+/// commitment budget T. On the stress workload each input burns about
+/// 2^27 dense big cycles, so all 2^17 big cycles of the span execute.
+fn two_level_leaf_report(
+    report: &mut String,
+    args: &Args,
+    image: &Path,
+    scratch_root: &Path,
+) -> Result<()> {
+    const T_SECS: f64 = 60.0 * 60.0;
+    let mut source = two_input_epoch(image, scratch_root, "two-level-leaf")?;
+    let (_, build) = timed(|| source.node(&Quartet::level_root(0, 0, 37)))?;
+    let target = T_SECS / args.hardware_slack;
+
+    writeln!(report, "# Two-level leaf build (M2)")?;
+    writeln!(report)?;
+    writeln!(
+        report,
+        "Generated by `just measure-two-level-leaf` (measure.rs --two-level-leaf).\n\
+         One sample. Workload `{}`, first input.",
+        args.machine.display(),
+    )?;
+    writeln!(report)?;
+    writeln!(
+        report,
+        "| quartet | build | peak RSS | target (T / slack {}) |",
+        args.hardware_slack
+    )?;
+    writeln!(report, "|---|---:|---:|---:|")?;
+    writeln!(
+        report,
+        "| r0 h37 | {} | {:.0} MiB | {:.0} min |",
+        fmt_duration(build),
+        peak_rss_bytes() as f64 / (1u64 << 20) as f64,
+        target / 60.0,
+    )?;
+    writeln!(report)?;
+    Ok(())
+}
+
+/// Peak resident set size of this process so far.
+fn peak_rss_bytes() -> u64 {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::zeroed();
+    // SAFETY: getrusage only writes the struct it is handed.
+    let usage = unsafe {
+        libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr());
+        usage.assume_init()
+    };
+    let max = u64::try_from(usage.ru_maxrss).unwrap_or(0);
+    // macOS reports bytes, Linux kibibytes.
+    if cfg!(target_os = "macos") {
+        max
+    } else {
+        max * 1024
+    }
 }
 
 fn budget(report: &mut String, quartets: &[(String, u64, u64, Duration)]) -> Result<()> {
@@ -703,7 +778,8 @@ impl ActiveMachine {
         let inputs: Vec<Vec<u8>> = (0..16)
             .map(|i| evm_advance_input(i, b"constants"))
             .collect();
-        let stf = MachineStf::load(image, scratch(scratch_root, "constants")?)?
+        // Leaf-level pairs, loaded as the dispute loads a leaf build.
+        let stf = MachineStf::load(image, scratch(scratch_root, "constants")?, Hashing::PerStep)?
             .with_inputs(inputs.clone());
         let mut this = Self {
             stf,

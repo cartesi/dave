@@ -4,7 +4,7 @@
 //! A scripted machine for geometry and action-preparation unit tests.
 //! Inert proof markers allow preparation without real machine witnesses.
 
-use super::ruler::{Ruler, RulerFactory};
+use super::ruler::{Hashing, Ruler, RulerFactory};
 use super::stf::Stf;
 use super::structure::Structure;
 use crate::merkle::Digest;
@@ -266,7 +266,7 @@ pub struct ToyFactory {
 impl RulerFactory for ToyFactory {
     type S = ToyStf;
 
-    fn ruler_at(&mut self, position: U256) -> Result<Ruler<ToyStf>> {
+    fn ruler_at(&mut self, position: U256, _hashing: Hashing) -> Result<Ruler<ToyStf>> {
         let stf = ToyStf::new(self.structure, self.script.clone());
         let mut ruler = Ruler::new(stf, self.structure, self.script.len() as u64);
         ruler.advance(position)?;

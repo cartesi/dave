@@ -59,7 +59,14 @@ end
 local Machine = {}
 Machine.__index = Machine
 
-local machine_settings = { htif = { no_console_putchar = true } }
+-- Serial hash-tree updates: commitments hash after every ustep over a few
+-- dirty pages, where the emulator's parallel path (taken once the dirty
+-- pages outnumber the host's cores) costs several times the hashing. The
+-- node loads its leaf builds the same way (engine/machine_stf.rs).
+local machine_settings = {
+    htif = { no_console_putchar = true },
+    concurrency = { update_hash_tree = 1 },
+}
 
 -- Default home for rejection snapshots (the hash-named machine stores
 -- feed_input writes): a run-local scratch directory. The old default

@@ -516,10 +516,29 @@ impl StrideSampler {
     }
 }
 
+/// How a positioned ruler will hash: after every ustep (a leaf-level
+/// build) or at sampled boundaries. Machine rulers derive the emulator's
+/// hash-tree concurrency from it; others ignore it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hashing {
+    PerStep,
+    Sampled,
+}
+
+impl Hashing {
+    pub fn for_stride(log2_stride: u64) -> Self {
+        if log2_stride == 0 {
+            Self::PerStep
+        } else {
+            Self::Sampled
+        }
+    }
+}
+
 /// Provides rulers positioned anywhere on the epoch. Implementations
 /// own the positioning strategy: the toy replays from the start, the
-/// machine implementation will resume from the nearest snapshot.
+/// machine implementation resumes from the nearest snapshot.
 pub trait RulerFactory {
     type S: Stf;
-    fn ruler_at(&mut self, position: U256) -> Result<Ruler<Self::S>>;
+    fn ruler_at(&mut self, position: U256, hashing: Hashing) -> Result<Ruler<Self::S>>;
 }

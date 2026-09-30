@@ -14,7 +14,7 @@
 //! (write-once positional keys, collision tripwire); this module owns
 //! only what to compute and when.
 
-use super::ruler::RulerFactory;
+use super::ruler::{Hashing, RulerFactory};
 use super::structure::{Quartet, Structure};
 use crate::merkle::{Digest, MerkleBuilder, MerkleTree};
 use crate::storage::Storage;
@@ -64,7 +64,10 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
         quartet.epoch
     );
 
-    let mut ruler = factory.ruler_at(quartet.span_start())?;
+    let mut ruler = factory.ruler_at(
+        quartet.span_start(),
+        Hashing::for_stride(quartet.log2_stride),
+    )?;
     // A single-transition quartet whose fanout stays above big-cycle
     // granularity is built from big-cycle roots: the stored levels never
     // reach inside a cycle, idle stretches cost one cycle however long, and

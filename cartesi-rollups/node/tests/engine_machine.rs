@@ -16,8 +16,8 @@ mod common;
 use common::prototype::{MachineCommitment, MachineCommitmentBuilder};
 
 use cartesi_rollups_prt_node::engine::{
-    DisputeSource, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf, Structure,
-    TournamentGeometry,
+    DisputeSource, Hashing, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf,
+    Structure, TournamentGeometry,
 };
 use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
 use common::epoch_data::EpochData;
@@ -109,7 +109,7 @@ fn scratch() -> tempfile::TempDir {
 
 fn template_hash(image: &Path) -> String {
     let work = scratch();
-    let mut stf = MachineStf::load(image, work.path().to_path_buf()).unwrap();
+    let mut stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::Sampled).unwrap();
     stf.state_hash().unwrap().to_hex()
 }
 
@@ -561,7 +561,7 @@ fn snapshot_resumed_source_matches_template_replay() {
     // boundary 1. The post-feed machine is discarded scratch.
     {
         let work = scratch();
-        let stf = MachineStf::load(&image, work.path().to_path_buf()).unwrap();
+        let stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled).unwrap();
         let mut stf = stf.with_write_back(Storage::new(resumed_scratch[0].path()).unwrap(), 0, 0);
         stf.feed(0).unwrap();
         while stf.run_big(u64::MAX).unwrap() > 0 {}
@@ -640,7 +640,7 @@ fn idle_spans_are_periodic_and_ureset_restores_the_base() {
     let image = echo_image();
 
     let work = scratch();
-    let mut stf = MachineStf::load(&image, work.path().to_path_buf())
+    let mut stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled)
         .unwrap()
         .with_inputs(echo_inputs());
     stf.feed(0).unwrap();
@@ -790,7 +790,7 @@ fn revert_closing_slot_restores_the_checkpoint() {
     // processing_bigs).
     let (pre_feed, bigs) = {
         let work = scratch();
-        let mut stf = MachineStf::load(&image, work.path().to_path_buf())
+        let mut stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled)
             .unwrap()
             .with_inputs(inputs.clone());
         let pre_feed = stf.state_hash().unwrap();
@@ -807,7 +807,7 @@ fn revert_closing_slot_restores_the_checkpoint() {
     // The built leaf, through the plain path.
     let built = {
         let work = scratch();
-        let stf = MachineStf::load(&image, work.path().to_path_buf())
+        let stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled)
             .unwrap()
             .with_inputs(inputs.clone());
         let mut ruler = Ruler::new(stf, structure, inputs.len() as u64);

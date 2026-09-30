@@ -11,7 +11,7 @@
 use super::cache::{PRECOMPUTE_LEVELS, get_or_compute};
 use super::config::EngineConfig;
 use super::dispute::{DisputeSource, LevelCoords, fold_runs};
-use super::ruler::{RulerFactory, Run};
+use super::ruler::{Hashing, RulerFactory, Run};
 use super::structure::{Quartet, Structure};
 use super::toy::{IDLE_CHURN_TICKS, ToyFactory, ToyInput, ToyOutcome, ToyStf};
 use crate::merkle::{Digest, MerkleBuilder, MerkleTree};
@@ -224,7 +224,7 @@ fn full_ruler_matches_oracle() {
                 structure,
                 script: script.clone(),
             };
-            let mut ruler = factory.ruler_at(U256::ZERO).unwrap();
+            let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled).unwrap();
             let runs = ruler.collect(structure.ruler_span(), 0).unwrap();
             assert_eq!(expand(&runs), expected, "script {name} on {structure:?}");
         }
@@ -249,7 +249,7 @@ fn stride_sampling_matches_oracle() {
                     structure,
                     script: script.clone(),
                 };
-                let mut ruler = factory.ruler_at(U256::ZERO).unwrap();
+                let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled).unwrap();
                 let runs = ruler.collect(structure.ruler_span(), log2_stride).unwrap();
                 assert_eq!(
                     expand(&runs),
@@ -286,7 +286,9 @@ fn positioning_at_each_slot_matches_oracle() {
             script: script.clone(),
         };
         for start in 0..oracle.len() {
-            let mut ruler = factory.ruler_at(U256::from(start)).unwrap();
+            let mut ruler = factory
+                .ruler_at(U256::from(start), Hashing::Sampled)
+                .unwrap();
             let expected = if start == 0 {
                 ToyStf::hash_of(0)
             } else {
@@ -433,7 +435,9 @@ fn big_cycle_roots_fold_to_the_transition_tree() {
                         structure,
                         script: script.clone(),
                     };
-                    let mut ruler = factory.ruler_at(U256::from(start)).unwrap();
+                    let mut ruler = factory
+                        .ruler_at(U256::from(start), Hashing::Sampled)
+                        .unwrap();
                     let end = U256::from(start + span);
                     let roots = ruler.collect_big_cycle_roots(end).unwrap();
                     assert_eq!(ruler.position(), end);
@@ -546,7 +550,7 @@ fn idle_stretches_cost_one_captured_cycle() {
         ("one_short", vec![accept(&[1])], 2),
     ] {
         let mut factory = ToyFactory { structure, script };
-        let mut ruler = factory.ruler_at(U256::ZERO).unwrap();
+        let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled).unwrap();
         ruler
             .collect_big_cycle_roots(structure.ruler_span())
             .unwrap();
@@ -581,9 +585,13 @@ struct Counting {
 
 impl RulerFactory for Counting {
     type S = ToyStf;
-    fn ruler_at(&mut self, position: U256) -> Result<super::ruler::Ruler<ToyStf>> {
+    fn ruler_at(
+        &mut self,
+        position: U256,
+        hashing: Hashing,
+    ) -> Result<super::ruler::Ruler<ToyStf>> {
         self.calls += 1;
-        self.inner.ruler_at(position)
+        self.inner.ruler_at(position, hashing)
     }
 }
 
@@ -697,7 +705,9 @@ fn reference_tree(
         structure,
         script: script.to_vec(),
     };
-    let mut ruler = factory.ruler_at(level.base_cycle).unwrap();
+    let mut ruler = factory
+        .ruler_at(level.base_cycle, Hashing::Sampled)
+        .unwrap();
     let span = U256::from(1) << (level.log2_stride + level.height);
     let runs = ruler
         .collect(level.base_cycle + span, level.log2_stride)
@@ -786,7 +796,7 @@ fn record_toy_material(
         structure: *structure,
         script: script.to_vec(),
     };
-    let mut ruler = factory.ruler_at(U256::ZERO)?;
+    let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled)?;
     for window in 0..count {
         let runs = ruler.collect(structure.window_start(window + 1), log2_stride)?;
         let root = fold_runs(

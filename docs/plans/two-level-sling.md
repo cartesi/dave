@@ -340,7 +340,13 @@ under [44, 27, 0].
    the conservative direction.
 2. (S) M2: an end-to-end stride-0, height-37 quartet in `bench_quartets`,
    run with peak-RSS capture. Decision: build time within 30 min on dev
-   hardware, and the RSS figure that confirms item 4.
+   hardware, and the RSS figure that confirms item 4. Done 2026-09-30
+   (`just measure-two-level-leaf`, docs/measurements/two-level-leaf.md):
+   1,100 s and 103 MiB peak RSS over the stress workload's first input, on
+   an 18-core M5 Max. It first took 8,405 s: the emulator hashes in parallel
+   once a hash's dirty pages outnumber the host's cores, and at one hash per
+   ustep the fork and join cost about 110 us against 12 us of hashing. Leaf
+   builds now load with serial hash-tree updates in both clients.
 3. (S) M3: resolve stride-37 root-level cost. By measure.rs's definition it
    is 1.81x, but the same table implies up to 6.3x lower absolute throughput
    than stride 44; the hash-cost curve has an unexplained hump at 2^16-2^18.
@@ -425,7 +431,10 @@ Ask for a v0.21.1 carrying c1280ed4's collector, precedence and host-send
 no-op hunks (without the length-width break) and the 22b4431 CLI
 boundary-capture fix, so every exclusion above has a removal path; corpus
 vectors at both seams with later
-inputs; a collector assert (or full reset) for a pristine uarch; and
+inputs; a collector assert (or full reset) for a pristine uarch; a hash-tree
+parallelism threshold based on work rather than the core count (v0.21.0 goes
+parallel once a batch exceeds the cores, and fork and join then dominate the
+few-page hashes a leaf build takes per ustep); and
 reconciliation of the cmio length width between `feature/prt` and PR #390.
 Track PR #390 as its own coordinated upgrade (every state hash and the proof
 format change).
@@ -477,7 +486,14 @@ Scale and liveness (unmeasured, not wrong).
   (W4.1, W4.2). A two-level leaf fits T only while the densest 2^17-big-cycle
   window of honest execution stays below about 1,200 usteps per big cycle at
   slack 2 (about twice the stress workload); FP-heavy code under softfloat is
-  an unmeasured lead.
+  an unmeasured lead. M2 (W4.2) met the target, and its window is not denser
+  than steady state (572 usteps per big cycle; the densest window sampled is
+  612). Density is not the only dimension: each root hash rehashes every page
+  in the write TLB, so the serial rate falls with the pages per hash (84k
+  pairs/s at about 10 pages, 63k at 35, 51k at 57). A workload that keeps
+  the write TLB full would build several times slower (a lead, unmeasured).
+  `--constants` samples an early window (big cycles 10,000 to 10,500), so its
+  rate is optimistic for later ones.
 - R3. Stride-37 root work runs about 6.3x slower per transition than stride
   44 (M3). For inputs of 2^35 big cycles and more, root responses may overrun
   G at slack 2.

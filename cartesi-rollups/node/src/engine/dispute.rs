@@ -21,7 +21,7 @@
 //! descent).
 
 use super::cache::{compute_and_store, get_or_compute};
-use super::ruler::RulerFactory;
+use super::ruler::{Hashing, RulerFactory};
 use super::structure::{Quartet, Structure};
 use crate::merkle::{Digest, MerkleBuilder, MerkleProof, MerkleTree};
 use crate::storage::Storage;
@@ -245,7 +245,7 @@ impl<F: RulerFactory> DisputeSource<F> {
         expected_pre_state: Digest,
         expected_post_state: Digest,
     ) -> Result<Vec<u8>> {
-        let mut ruler = self.factory.ruler_at(position)?;
+        let mut ruler = self.factory.ruler_at(position, Hashing::Sampled)?;
         let pre_state = ruler.state_hash()?;
         ensure!(
             pre_state == expected_pre_state,

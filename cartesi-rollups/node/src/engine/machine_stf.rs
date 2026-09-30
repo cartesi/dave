@@ -11,7 +11,7 @@
 //! violations remain panics (see the stf module doc).
 
 use super::dispute::DisputeSource;
-use super::ruler::{Ruler, RulerFactory};
+use super::ruler::{Hashing, Ruler, RulerFactory};
 use super::stf::Stf;
 use super::structure::Structure;
 use crate::arithmetic::add_and_clamp;
@@ -68,6 +68,8 @@ enum Feeder {
 
 pub struct MachineStf {
     machine: Machine,
+    /// Reloads (a rejected input's revert) keep the load's concurrency.
+    hashing: Hashing,
     /// Uarch cycles since the last reset; run_uarch takes absolutes.
     ucycle: u64,
     /// Scratch-mode checkpoints live here; one at a time.
@@ -76,12 +78,27 @@ pub struct MachineStf {
     feeder: Feeder,
 }
 
+/// The emulator fixes its hash-tree concurrency at load. It hashes in
+/// parallel once a hash's dirty pages outnumber the host's cores, and at
+/// one root hash per ustep the thread pool's fork and join then costs
+/// several times the hashing itself (about 110 us against 12 us per hash
+/// on 18 cores, nine times slower overall). A leaf build hashes every
+/// ustep over a few dirty pages, so it hashes serially; sampled strides
+/// hash large dirty sets, where the parallel path wins.
+fn runtime_config(hashing: Hashing) -> RuntimeConfig {
+    let mut config = RuntimeConfig::quiet_console();
+    if hashing == Hashing::PerStep {
+        config.concurrency.update_hash_tree = 1;
+    }
+    config
+}
+
 impl MachineStf {
     /// Loads a template machine (the epoch's initial state). It must be
     /// yielded awaiting the first input, with a pristine uarch.
-    pub fn load(template_path: &Path, work_dir: PathBuf) -> Result<Self> {
+    pub fn load(template_path: &Path, work_dir: PathBuf, hashing: Hashing) -> Result<Self> {
         // resume already validates the pristine uarch
-        let mut stf = Self::resume(template_path, work_dir)?;
+        let mut stf = Self::resume(template_path, work_dir, hashing)?;
         ensure!(
             stf.yielded()?,
             "template machine must be yielded awaiting input"
@@ -92,8 +109,8 @@ impl MachineStf {
     /// Resumes a stored machine mid-epoch (a boundary-store answer).
     /// Positions are big-cycle boundaries, so the uarch must be
     /// pristine, but the machine may be in any big state.
-    pub fn resume(path: &Path, work_dir: PathBuf) -> Result<Self> {
-        let mut machine = Machine::load(path, &RuntimeConfig::quiet_console())
+    pub fn resume(path: &Path, work_dir: PathBuf, hashing: Hashing) -> Result<Self> {
+        let mut machine = Machine::load(path, &runtime_config(hashing))
             .context("failed to load stored machine")?;
         ensure!(
             machine.ucycle()? == 0,
@@ -102,6 +119,7 @@ impl MachineStf {
         std::fs::create_dir_all(&work_dir).context("work dir")?;
         Ok(MachineStf {
             machine,
+            hashing,
             ucycle: 0,
             work_dir,
             checkpoint: None,
@@ -137,6 +155,8 @@ impl MachineStf {
     ) -> Self {
         MachineStf {
             machine,
+            // The runner hashes once per stride sample.
+            hashing: Hashing::Sampled,
             ucycle: 0,
             // Advance mode never writes scratch checkpoints; an empty
             // path fails loudly if a bug ever routes there.
@@ -218,7 +238,7 @@ impl MachineStf {
             .checkpoint
             .clone()
             .expect("revert requires a fed checkpoint");
-        self.machine = Machine::load(&checkpoint, &RuntimeConfig::quiet_console())
+        self.machine = Machine::load(&checkpoint, &runtime_config(self.hashing))
             .context("reload checkpoint")?;
         self.ucycle = 0;
         if let Feeder::Advance { reverted, .. } = &mut self.feeder {
@@ -516,7 +536,7 @@ impl DisputeSource<Positioner> {
 impl RulerFactory for Positioner {
     type S = MachineStf;
 
-    fn ruler_at(&mut self, position: U256) -> Result<Ruler<MachineStf>> {
+    fn ruler_at(&mut self, position: U256, hashing: Hashing) -> Result<Ruler<MachineStf>> {
         let mut target = self.structure.decompose(position).input;
         let (boundary, stf) = loop {
             let (boundary, path) = self
@@ -529,9 +549,9 @@ impl RulerFactory for Positioner {
             // the machine refuses to store over an existing directory.
             std::fs::remove_dir_all(&dir).ok();
             let mut stf = if boundary.0 == 0 {
-                MachineStf::load(&path, dir)?
+                MachineStf::load(&path, dir, hashing)?
             } else {
-                MachineStf::resume(&path, dir)?
+                MachineStf::resume(&path, dir, hashing)?
             };
 
             // Assert-on-load: the emulator validates nothing, so the
@@ -658,6 +678,7 @@ mod tests {
         let machine = Machine::create(&overflow_config, &RuntimeConfig::quiet_console())?;
         let stf = MachineStf {
             machine,
+            hashing: Hashing::Sampled,
             ucycle: UARCH_MASK_TO_BARCH,
             work_dir: PathBuf::new(),
             checkpoint: None,
@@ -740,6 +761,7 @@ mod tests {
     fn scratch_stf(machine: Machine, work_dir: PathBuf, inputs: Vec<Vec<u8>>) -> MachineStf {
         MachineStf {
             machine,
+            hashing: Hashing::Sampled,
             ucycle: 0,
             work_dir,
             checkpoint: None,
