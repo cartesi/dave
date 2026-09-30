@@ -19,10 +19,10 @@ use tempfile::{TempDir, tempdir};
 
 /// A fully initialized Storage over a real (tiny) machine image: the
 /// production setup path, template snapshot and engine config
-/// included, pinned to the canonical table. Tests need
+/// included, pinned to the two-level table. Tests need
 /// `../../test/programs/linux.bin` present.
 pub fn setup_storage() -> (TempDir, Storage) {
-    setup_storage_with(&TournamentGeometry::canonical())
+    setup_storage_with(&TournamentGeometry::two_level())
 }
 
 /// [`setup_storage`] pinned to `geometry`.

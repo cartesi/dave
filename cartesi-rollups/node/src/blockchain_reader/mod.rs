@@ -432,7 +432,7 @@ mod blockchain_reader_tests {
             0,
             Address::ZERO,
             Address::ZERO,
-            &crate::engine::TournamentGeometry::canonical(),
+            &crate::engine::TournamentGeometry::two_level(),
         )
         .unwrap();
 

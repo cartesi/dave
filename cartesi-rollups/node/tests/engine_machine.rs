@@ -135,8 +135,8 @@ fn initialized_storage(image: &Path) -> (tempfile::TempDir, Storage) {
 
 fn initialized_storage_with(image: &Path, inputs: Vec<Vec<u8>>) -> (tempfile::TempDir, Storage) {
     let dir = scratch();
-    // The checked-in canonical table; these differentials sample the
-    // machine path, so the pinned run stride only needs to be valid.
+    // A valid three-level table; these differentials sample the machine
+    // path, so the pinned run stride only needs to be valid.
     let geometry = TournamentGeometry::new(
         [(44, 48), (27, 17), (0, 27)]
             .into_iter()

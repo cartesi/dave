@@ -953,7 +953,7 @@ mod tests {
     fn runner_feeds_windows_after_a_yield_on_the_last_budget_cycle() -> Result<()> {
         let structure = Structure::PRODUCTION;
         for geometry in [
-            TournamentGeometry::canonical(),
+            TournamentGeometry::three_level(),
             TournamentGeometry::two_level(),
         ] {
             let log2_run_stride = geometry.root_stride();

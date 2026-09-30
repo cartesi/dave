@@ -187,49 +187,8 @@ mod tests {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let root = manifest_dir.join("../..");
 
-        let arbitration = std::fs::read_to_string(
-            root.join("prt/contracts/src/arbitration-config/ArbitrationConstants.sol"),
-        )
-        .expect("read ArbitrationConstants.sol");
-        // Each function's array literal lists its levels, top first.
-        let array_after = |marker: &str| -> Vec<u64> {
-            let from = arbitration
-                .find(marker)
-                .expect("function in ArbitrationConstants.sol");
-            let open = from + arbitration[from..].find("= [").expect("array literal");
-            let close = open + arbitration[open..].find(']').expect("array literal end");
-            arbitration[open..close]
-                .split("uint64(")
-                .skip(1)
-                .map(|item| {
-                    item.split(')')
-                        .next()
-                        .unwrap()
-                        .trim()
-                        .parse()
-                        .expect("uint64 literal")
-                })
-                .collect()
-        };
-        let log2steps = array_after("function log2step");
-        let heights = array_after("function height");
-        assert_eq!(log2steps.len(), heights.len());
-        let levels = log2steps
-            .into_iter()
-            .zip(heights)
-            .map(|(log2_stride, height)| crate::engine::Level {
-                log2_stride,
-                height,
-            })
-            .collect();
-        let checked_in =
-            crate::engine::TournamentGeometry::new(levels, &crate::engine::Structure::PRODUCTION)
-                .expect("the checked-in table must satisfy the node's validator");
-        assert_eq!(
-            checked_in,
-            crate::engine::TournamentGeometry::canonical(),
-            "TournamentGeometry::canonical() does not match ArbitrationConstants.sol"
-        );
+        // Parsing builds the table through the validator.
+        crate::engine::TournamentGeometry::checked_in();
 
         let transition =
             std::fs::read_to_string(root.join("machine/step/src/EmulatorConstants.sol"))

@@ -399,8 +399,8 @@ mod tests {
 
     #[test]
     fn accepts_any_valid_factory_table() {
-        let canonical = tournament_geometry_from_rows(3, &[(3, 44, 48), (3, 27, 17), (3, 0, 27)]);
-        assert_eq!(canonical.unwrap(), TournamentGeometry::canonical());
+        let three_level = tournament_geometry_from_rows(3, &[(3, 44, 48), (3, 27, 17), (3, 0, 27)]);
+        assert_eq!(three_level.unwrap(), TournamentGeometry::three_level());
         let two_level = tournament_geometry_from_rows(2, &[(2, 37, 55), (2, 0, 37)]);
         assert_eq!(two_level.unwrap(), TournamentGeometry::two_level());
     }
@@ -459,7 +459,7 @@ mod tests {
         // built with (DEVNET_GEOMETRY, canonical by default).
         let expected = match std::env::var("DEVNET_GEOMETRY").as_deref() {
             Ok("two-level") => TournamentGeometry::two_level(),
-            _ => TournamentGeometry::canonical(),
+            _ => TournamentGeometry::checked_in(),
         };
         assert_eq!(
             geometry, expected,

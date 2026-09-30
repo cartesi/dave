@@ -125,13 +125,48 @@ impl fmt::Display for TournamentGeometry {
 
 #[cfg(test)]
 impl TournamentGeometry {
-    /// The table checked into ArbitrationConstants.sol; the drift guard in
-    /// `engine::constants` keeps the two equal.
-    pub fn canonical() -> Self {
+    /// The table checked into ArbitrationConstants.sol, whichever it is.
+    /// Tests that need a particular geometry name it instead.
+    pub fn checked_in() -> Self {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let arbitration = std::fs::read_to_string(
+            manifest_dir
+                .join("../../prt/contracts/src/arbitration-config/ArbitrationConstants.sol"),
+        )
+        .expect("read ArbitrationConstants.sol");
+        // Each function's array literal lists its levels, top first.
+        let array_after = |marker: &str| -> Vec<u64> {
+            let from = arbitration
+                .find(marker)
+                .expect("function in ArbitrationConstants.sol");
+            let open = from + arbitration[from..].find("= [").expect("array literal");
+            let close = open + arbitration[open..].find(']').expect("array literal end");
+            arbitration[open..close]
+                .split("uint64(")
+                .skip(1)
+                .map(|item| {
+                    item.split(')')
+                        .next()
+                        .unwrap()
+                        .trim()
+                        .parse()
+                        .expect("uint64 literal")
+                })
+                .collect()
+        };
+        let log2steps = array_after("function log2step");
+        let heights = array_after("function height");
+        assert_eq!(log2steps.len(), heights.len());
+        let pairs: Vec<_> = log2steps.into_iter().zip(heights).collect();
+        Self::from_pairs(&pairs)
+    }
+
+    /// The three-level table [44, 27, 0] / [48, 17, 27].
+    pub fn three_level() -> Self {
         Self::from_pairs(&[(44, 48), (27, 17), (0, 27)])
     }
 
-    /// The selected two-level table (docs/dimensioning.md).
+    /// The two-level table [37, 0] / [55, 37] (docs/dimensioning.md).
     pub fn two_level() -> Self {
         Self::from_pairs(&[(37, 55), (0, 37)])
     }
@@ -168,10 +203,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_the_canonical_and_the_selected_tables() {
-        let canonical = TournamentGeometry::canonical();
-        assert_eq!(canonical.root_stride(), 44);
-        assert_eq!(canonical.leaf_height(), 27);
+    fn accepts_the_three_and_two_level_tables() {
+        let three_level = TournamentGeometry::three_level();
+        assert_eq!(three_level.root_stride(), 44);
+        assert_eq!(three_level.leaf_height(), 27);
         let two_level = TournamentGeometry::two_level();
         assert_eq!(two_level.root_stride(), 37);
         assert_eq!(two_level.leaf_height(), 37);
@@ -201,7 +236,7 @@ mod tests {
     #[test]
     fn text_form_round_trips() {
         for geometry in [
-            TournamentGeometry::canonical(),
+            TournamentGeometry::three_level(),
             TournamentGeometry::two_level(),
         ] {
             let encoded = geometry.encode();
@@ -210,7 +245,10 @@ mod tests {
                 geometry
             );
         }
-        assert_eq!(TournamentGeometry::canonical().encode(), "44/48,27/17,0/27");
+        assert_eq!(
+            TournamentGeometry::three_level().encode(),
+            "44/48,27/17,0/27"
+        );
         assert!(TournamentGeometry::decode("44-48", &Structure::PRODUCTION).is_err());
     }
 }

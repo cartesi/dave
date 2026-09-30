@@ -228,7 +228,7 @@ pub fn window_root_quartet(
 /// The root stride of the table storage tests pin through `setup_storage`.
 #[cfg(test)]
 pub fn test_run_stride() -> u64 {
-    crate::engine::TournamentGeometry::canonical().root_stride()
+    crate::engine::TournamentGeometry::two_level().root_stride()
 }
 
 pub struct RollupsMachine {

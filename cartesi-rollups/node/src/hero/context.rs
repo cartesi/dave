@@ -442,7 +442,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "runs level 0 as stride 2^44, height 48")]
     fn a_level_off_the_pinned_table_is_fatal() {
-        // The canonical three-level root is not the pinned two-level one.
+        // A three-level root is not the pinned two-level one.
         let root = descriptor(ROOT, 0, TournamentKind::NonLeaf, digest(1), 0, 44, 48);
         check_pinned_level(root, &TournamentGeometry::two_level());
     }

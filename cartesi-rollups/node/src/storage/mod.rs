@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn test_state_access() -> Result<()> {
         for geometry in [
-            TournamentGeometry::canonical(),
+            TournamentGeometry::three_level(),
             TournamentGeometry::two_level(),
         ] {
             state_access_under(&geometry)?;
@@ -399,7 +399,7 @@ mod tests {
         assert_eq!(access.latest_snapshot()?.epoch(), 1);
 
         // The independent expectation is the naive flat fold of the
-        // whole epoch (every run, tail-padded to 2^48 leaves) - the
+        // whole epoch (every run, tail-padded to 2^(92 - stride) leaves) - the
         // roll's window-root composition must equal it exactly.
         let expected_root = {
             let mut builder = MerkleBuilder::default();

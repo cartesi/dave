@@ -1243,7 +1243,7 @@ mod tests {
     #[test]
     fn commit_advances_writes_final_window_roots() {
         for geometry in [
-            TournamentGeometry::canonical(),
+            TournamentGeometry::three_level(),
             TournamentGeometry::two_level(),
         ] {
             let stride = geometry.root_stride();
@@ -1283,7 +1283,7 @@ mod tests {
     #[test]
     fn roll_of_an_empty_epoch_settles_on_the_initial_state() {
         for geometry in [
-            TournamentGeometry::canonical(),
+            TournamentGeometry::three_level(),
             TournamentGeometry::two_level(),
         ] {
             let (_handle, mut s) = setup_storage_with(&geometry);
