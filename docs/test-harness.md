@@ -102,9 +102,10 @@ test, never a source):
 Residual risk, by design: a conceptual bug shared by the Lua oracle, the
 Rust node, and the CLI is invisible to these checks except where a dispute
 reaches the on-chain state transition. The CLI gate covers root commitments
-only, and at the canonical root stride those sample only window ends, where
-a rejected input has already reverted; leaf commitments are not CLI-checked
-yet. The sling differential chain (toy spec, reference collector, prototype
+only. It samples every 2^(stride - 20) big cycles (2^24 at stride 44, 2^17 at
+stride 37); at 2^24 no test program's rejected input spans a sample point, so
+the revert stays invisible to it, while at 2^17 some may (a lead). Leaf
+commitments are not CLI-checked yet. The sling differential chain (toy spec, reference collector, prototype
 fixtures) mitigates from the other side.
 
 ## Hardened primitives (2026-07-16)
@@ -294,12 +295,13 @@ runs honeypot `simple`, the batched catch-up kill, chaos at a fixed seed,
 honeypot `stf_all`, and yield `stf_revert`, then rebuilds the devnet with
 `DEVNET_GEOMETRY=two-level` and runs echo `simple` against it
 (`just test-rollups-two-level-smoke`). The node, the oracle, and the steering
-helper read the level table from chain, but only echo `simple` has run on two
-levels. Unsteered scenarios patch at `1 << 44`, an idle leaf under either
-table. Steered STF scenarios aim at active computation, whose two-level leaf
-needs a dense build the devnet clock (about 375 blocks) cannot host.
-`sealed_leaf_timeout_*` asserts the canonical 48/17/27 levels, and its kill
-and respawn choreography depends on each level's height parity. Everything
+helper read the level table from chain. Unsteered scenarios patch at
+`1 << 44`, an idle leaf under either table. On the two-level devnet, honeypot
+`stf_all`, yield `stf_revert`, the batched catch-up kill and
+`sealed_leaf_timeout_*` have also passed (2026-09-30). `sealed_leaf_timeout_*`
+reads the level table and follows each level's height parity: the sybil seals
+an even-height root itself, the node seals an odd one, and the node is stopped
+around each child creation so the sybil joins the child first. Everything
 else - the
 rest of echo, the full kill battery, chaos seed sweeps, honeypot-all, and the
 duplicated yield scenarios - stays out of the pull-request critical path. The

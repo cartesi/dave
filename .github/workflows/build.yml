@@ -161,9 +161,8 @@ jobs:
         timeout-minutes: 30
         run: |
           just rollups-tests::test-yield-case stf_revert
-      # Two levels ahead of the canonical switch: the same node against a
-      # devnet whose factory serves the selected two-level table
-      # (docs/plans/two-level-sling.md). Runs last: it replaces the bundle.
+      # The same node against a devnet whose factory serves the two-level
+      # table (DEVNET_GEOMETRY=two-level). Runs last: it replaces the bundle.
       - name: Build two-level devnet
         working-directory: ./cartesi-rollups/contracts
         env:

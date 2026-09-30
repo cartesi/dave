@@ -376,23 +376,37 @@ under [44, 27, 0].
    per-scenario step timeouts. Levers: a collect-based inner builder for the
    Lua sybil only (the oracle stays leaf-by-leaf), patch chains aimed at
    light spans, and moving full-period leaf gates to the nightly battery.
+   In part 2026-09-30: on the two-level devnet, honeypot `stf_all` (20 min
+   of a 60 min step), yield `stf_revert` (16 of 30) and the batched
+   catch-up kill pass, each steered leaf ending in a STEP proof. Their
+   active leaves are small enough that no lever is needed; the full battery
+   remains.
 
 ### W5. The switch (new deployment generation)
 
-1. (S) ArbitrationConstants to LEVELS = 2, [37, 0] / [55, 37], through the
-   contract-change gate. Gas fixtures were calibrated at [55, 37]
-   (2026-08-27), but 2c502f63 and 935dc133 changed refunded-path gas since;
-   the witnesses pass with reduced headroom, and the accepted calibration is
-   still owed, so this pass records one. Regenerate the devnet bundle.
+The switch is a follow-up PR of small Solidity changes (decided 2026-09-30);
+everything else already reads the deployed table or covers both.
+
+1. (S) ArbitrationConstants to LEVELS = 2, [37, 0] / [55, 37] and
+   `COMMITMENT_BUDGET = 60 minutes`, plus `testCheckedInCanonicalTable`, the
+   one deliberate pin of the table, through the contract-change gate. Only
+   the canonical provider imports the constants, so the Tournament and
+   factory compatibility hashes hold; the provider's initcode changes the
+   deployment addresses. Regenerate the untracked artifacts (bindings,
+   devnet bundle). The gas witnesses inject their own tables, so the switch
+   moves no gas; the accepted calibration owed since 2c502f63 and 935dc133
+   is its own item, through the gas-calibration runbook.
 2. (M) Leaf CLI gate: in leaf-reaching scenarios, the leaf commitment equals
    the CLI uarch hash for the disputed period. The root gate (W2.11) moves to
    period 17 on its own. Exclusions apply; full-period leaf checks may run
-   nightly if W4.8 says per-PR budgets break.
-3. (S) Docs: the level tables and stride notes in computation-hash.md,
-   dispute-game.md, node-architecture.md, test-harness.md, constants.md,
-   prt/contracts/AGENTS.md, and dimensioning.md (the "remains planned"
-   two-level paragraph and the three-level allowance note).
+   nightly if W4.8 says per-PR budgets break. Test infrastructure, not a
+   switch-time item: it runs on the two-level profile.
+3. (S) Docs: done 2026-09-30. They name both tables and point at
+   ArbitrationConstants for the deployed one, so the switch edits none.
 4. (S) Release notes: a new generation, new addresses and geometry.
+5. After the switch, retire the two-level devnet profile, its CI smoke lane
+   and the three-level branch of the sealed-leaf timeout choreography, which
+   become redundant.
 
 Exit: the e2e battery is green on two levels within CI budgets, and the CLI
 gates are green.
@@ -506,7 +520,9 @@ Scale and liveness (unmeasured, not wrong).
 - R6. The devnet cannot host a dense leaf dispute: its clock allows about 375
   blocks, while test inputs run 10^5 to 10^6 big cycles. Dense two-level e2e
   needs a devnet profile with a larger allowance, and the e2e node is a debug
-  build (dense leaves about 2.4x slower than release).
+  build (dense leaves about 2.4x slower than release). Not needed
+  (2026-09-30): the steered scenarios' active leaves fit (W4.8), and dense
+  leaf performance is M2's (W4.2), a benchmark rather than an e2e run.
 
 Correctness and robustness beyond scale.
 
@@ -546,11 +562,15 @@ Evidence gaps.
 - R12. The active branch of the big-cycle-root builder has toy differentials
   and a one-cycle real-machine test only. Add an active span at or above
   height 28 to `dispute_source_matches_prototype_tree`, then a steered
-  two-level dispute on active computation (needs R6).
+  two-level dispute on active computation (needs R6). Both done 2026-09-30:
+  the `window1_active_r0_h28` span, and `stf_all` steered onto active
+  computation on the two-level devnet.
 - R13. Only echo `simple` has run on two levels. Honeypot `simple` and the
   CLI gate on the honeypot image now pass (2026-09-29), but the gate has run
   only on APFS (on ext4 each epoch copies the writable machine per input), so
-  CI is its first exposure there.
+  CI is its first exposure there. On 2026-09-30 honeypot `stf_all`, yield
+  `stf_revert`, the batched catch-up kill and both sealed-leaf timeout
+  scenarios also passed on two levels; the rest of the battery has not.
 - R14. The CLI gate identifies the CLI by version string only (W2.3), and does
   not assert the snapshot preconditions the triage procedure lists.
 - R15. Seam-2 agreement is transitive (no single vector across node, Lua and

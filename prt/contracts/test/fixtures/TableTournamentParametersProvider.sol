@@ -11,7 +11,7 @@ import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol
 /// @notice Test-only provider serving a table fixed at construction.
 /// @dev Production deploys the compile-time canonical table. Devnet geometry
 /// profiles deploy this instead, so clients can be exercised against another
-/// geometry before the canonical constants change. The constructor runs the
+/// geometry than the canonical one. The constructor runs the
 /// generation validator, so a profile cannot deploy an invalid table.
 contract TableTournamentParametersProvider is ITournamentParametersProvider {
     error RaggedTable(uint256 log2steps, uint256 heights);

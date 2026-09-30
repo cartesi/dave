@@ -14,8 +14,8 @@ import {Tournament} from "src/tournament/Tournament.sol";
 import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 
 /// @notice Devnet-only PRT deployment serving a non-canonical tournament
-/// table, so clients can run against another geometry before the canonical
-/// constants change. Everything but the parameters provider matches
+/// table, so clients can run against another geometry than the canonical
+/// one. Everything but the parameters provider matches
 /// `DeploymentScript.run`, and each contract is stored under the same name, so
 /// downstream deployments wire themselves to this factory unchanged.
 contract DevnetGeometryDeploymentScript is DeploymentScript {

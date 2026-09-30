@@ -233,14 +233,13 @@ balances, but would not remove the preserved-clock strategy that
 or a formal recursive delay theorem. Any corresponding leniency toward a
 correct participant is incidental, not the security rationale.
 
-The checked-in three-level table predates the current measurement tooling and
-is not a `T = 30` derivation (a fresh one produces a different geometry,
+The three-level table predates the current measurement tooling and is not a
+`T = 30` derivation (a fresh one produces a different geometry,
 docs/measurements/constants.md); `T = 30 minutes` is the conservative policy
 value it runs with, and on Ethereum it gives one week plus 85 minutes. The
-selected two-level replacement uses `T = 60 minutes`, `log2step = [37, 0]`, and
-`height = [55, 37]`, and gives one week plus 75 minutes. It remains planned and
-must land with the separate node branch rather than changing the contract
-constants in isolation.
+two-level table uses `T = 60 minutes`, `log2step = [37, 0]`, and
+`height = [55, 37]`, and gives one week plus 75 minutes. `ArbitrationConstants`
+holds the deployed table together with its `T`.
 
 Before adopting any generated table, run the test-only whole-table validator
 under `prt/contracts/test/config/`. It checks the declared level count, positive

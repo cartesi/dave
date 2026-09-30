@@ -186,20 +186,26 @@ reload.
 
 ## Tournament levels and strides
 
-Nobody can build (or store) 2^92 leaves. The dispute is split into levels
-(`prt/contracts/src/arbitration-config/ArbitrationConstants.sol`, currently
-L = 3):
+Nobody can build (or store) 2^92 leaves. The dispute is split into levels;
+`prt/contracts/src/arbitration-config/ArbitrationConstants.sol` holds the
+deployed table. The two tables in use are three levels and two:
 
 ```
+three levels
 level  log2step  height   leaf =                       tree covers
 0      44        48       one hash per 2^44 usteps     whole epoch (2^92)
 1      27        17       one hash per 2^27 usteps     one level-0 stride
 2      0         27       one hash per ustep           one level-1 stride
+
+two levels
+level  log2step  height   leaf =                       tree covers
+0      37        55       one hash per 2^37 usteps     whole epoch (2^92)
+1      0         37       one hash per ustep           one level-0 stride
 ```
 
 Invariants: `log2step[i] == log2step[i+1] + height[i+1]`, and
 `log2step[0] + height[0] == 92`. A level's tree refines exactly one leaf
-stride of its parent. Only level 2 (the leaf level) reaches individual
+stride of its parent. Only the leaf level (stride 0) reaches individual
 uarch steps, where the on-chain state transition can verify one transition.
 
 ## Nested leaves are novel
@@ -260,8 +266,8 @@ however long it is.
 
 The rollups node computes level-0 leaves eagerly while processing
 inputs, at the root stride of the deployed tournament table (pinned at
-initialization; 2^44 in the checked-in canonical table, one leaf per 2^24
-big cycles) and
+initialization; 2^44 under three levels, one leaf per 2^24 big cycles, and
+2^37 under two, one per 2^17) and
 folds each closed window's runs into its window-root quartet row as
 it commits - the unfolded runs are never persisted. At dispute time
 the facade serves level 0 at or above window granularity from those

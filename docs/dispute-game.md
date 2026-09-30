@@ -120,15 +120,12 @@ geometry. The acting clients do not copy the total count into every recursive
 tournament. They discover children from events and use each child's immutable
 descriptor when that child exists.
 
-The checked-in canonical provider configures the historical three-level table
-`log2step = [44, 27, 0]`, `height = [48, 17, 27]`. The selected deployment
-layout is the two-level table `log2step = [37, 0]`, `height = [55, 37]`.
-That switch is not live. Generic and historical Solidity tests now inject their
-own geometry, and the node compiles in no tournament geometry: it discovers,
-validates, and pins whatever table the factory serves. What gates the switch
-is two-level evidence (e2e against the devnet two-level profile, the height-37
-leaf-build hardening, and leaf-level cross-implementation checks), not a node
-geometry change. The factory selects the immutable tournament kind from
+The canonical provider configures the table in `ArbitrationConstants`: the
+three-level `log2step = [44, 27, 0]`, `height = [48, 17, 27]` or the two-level
+`log2step = [37, 0]`, `height = [55, 37]`. Generic and historical Solidity
+tests inject their own geometry, and the node compiles in no tournament
+geometry: it discovers, validates, and pins whatever table the factory serves.
+The factory selects the immutable tournament kind from
 the configured row; runtime leaf behavior does not infer the kind again from
 the stride or height.
 
@@ -141,8 +138,8 @@ must span the expected coordinate width, and the leaf stride must be zero. It
 also rejects a zero root allowance while deliberately accepting a zero response
 budget. This is deployment evidence, not runtime validation. In particular, a
 well-formed Solidity table does not prove that an off-chain node constructs the
-same commitments. The selected two-level table therefore remains gated on
-contract, node, and documentation conformance.
+same commitments. Adopting a table therefore needs node and Lua conformance
+at its strides.
 
 The generic recursion path is also exercised with a strict test-owned
 four-level table
@@ -586,14 +583,13 @@ Every honest action gets one inclusion `G`, and joining a child also gets the
 build `T`. `ClockBudgets` computes the allowance, with `responseBudget = G` and
 `commitmentBudget = T`, from wall-clock inputs: the deployment's block time and
 censorship budget `C`, `G = 5 minutes`, and `T`, which belongs with the
-tournament geometry (`ArbitrationConstants.COMMITMENT_BUDGET`, 30 minutes for
-the checked-in table), since a generated geometry is only valid for the `T` it
-was generated against. The root allowance holds the root join's inclusion and
+tournament geometry (`ArbitrationConstants.COMMITMENT_BUDGET`: 30 minutes for
+the three-level table, 60 for the two-level one), since a generated geometry is
+only valid for the `T` it was generated against. The root allowance holds the root join's inclusion and
 one delegation per inner level on a correct commitment's active path; each
-child return refunds its delegation. On Ethereum mainnet the checked-in table
-gives one week plus 85 minutes; the selected two-level table (not yet enabled;
-see [Tournament roles and configuration](#tournament-roles-and-configuration))
-would give one week plus 75 minutes. The independent
+child return refunds its delegation. On Ethereum mainnet the three-level table
+gives one week plus 85 minutes and the two-level table one week plus 75
+minutes. The independent
 `prt/measure_constants` emulator benchmark and the Rust `just measure-constants`
 generator show how root slowdown and the commitment budget determine
 tournament strides and heights. On Ethereum `G` is 25 blocks. One

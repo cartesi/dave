@@ -130,10 +130,6 @@ Top/Middle/Bottom contracts.
   completed progress depend on recipient acceptance. A failed terminal payment
   preserves the full state for retry.
 
-The checked-in canonical table remains the historical three-level geometry.
-The selected two-level table is integration-gated and must not be enabled here
-without coordinated node, Lua, deployment, and conformance work.
-
 ## Change guardrails
 
 - Treat function, event, error, and clone-argument encodings as one deployment
@@ -209,7 +205,7 @@ Do not claim more than the maintained evidence establishes:
 - there is no general recursive adversarial-arrival liveness proof;
 - the exact `floor(K / 2)` running-clock invariant is single-level; sealed
   inner matches pause both parent clocks and delegate their obligation;
-- selected two-level geometry is not enabled by these contracts alone;
+- a well-formed table does not prove that clients build the same commitments;
 - non-Ethereum time and fee conformance is not established;
 - state-transition halt and exception semantics are owned by separate work;
 - the leaf-proof refund is not a universal proof-class gas ceiling; and
