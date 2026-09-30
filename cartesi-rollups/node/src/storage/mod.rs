@@ -421,7 +421,8 @@ mod tests {
         );
 
         // The dispute facade serves the same root from the runner's rows at
-        // the pinned stride: the equality the Hero checks before joining.
+        // the pinned stride: the Hero joins with one, staging asserts the
+        // other.
         let state_dir = access.state_dir().to_owned();
         let mut source = crate::engine::DisputeSource::on_store(
             Storage::new(&state_dir)?,

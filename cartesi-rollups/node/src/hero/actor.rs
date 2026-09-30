@@ -85,13 +85,8 @@ impl<AS: ArenaSender> Hero<AS> {
                 .expect("snapshot is inserted atomically with settlement info"),
         )
         .map_err(anyhow::Error::from)?;
-        let computation_hash = storage
-            .settlement_info(epoch_number)?
-            .expect("the node settles an epoch locally before disputing it")
-            .computation_hash;
         let anchors = EpochAnchors {
             initial_hash,
-            computation_hash,
             geometry: storage.sling_config()?.geometry,
         };
         let reader_storage = Storage::new(storage.state_dir())?;

@@ -39,9 +39,10 @@ state. Initialization then pins the table and the consensus address in
 a later start against another table or consensus is refused. Table stability
 is a trust assumption of the parameters provider, so before planning any
 action the Hero checks the descriptor of every tournament on its own path
-against the pinned row for its level, and the root commitment it would join
-with against the settled computation hash. Cleanup of other branches takes no
-local commitment and skips these checks.
+against the pinned row for its level, and the root tournament's initial hash
+against the node's epoch-start snapshot. Both are invariant violations and
+panic. Cleanup of other branches takes no local commitment and skips these
+checks.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker
