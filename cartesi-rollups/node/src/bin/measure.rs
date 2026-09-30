@@ -76,8 +76,8 @@ struct Args {
     #[arg(long)]
     out: Option<PathBuf>,
 
-    /// Include the level-1 root replay: a full 2^44-ustep window span,
-    /// potentially minutes of machine time.
+    /// Include the three-level table's level-1 root replay: a 2^44-ustep
+    /// span, potentially minutes of machine time.
     #[arg(long)]
     full: bool,
 
@@ -545,7 +545,7 @@ fn two_input_epoch(
         0,
         Address::ZERO,
         Address::ZERO,
-        &current_geometry()?,
+        &bench_geometry()?,
     )?;
     let rows: Vec<StorageInput> = inputs
         .iter()
@@ -734,19 +734,19 @@ fn fmt_duration(d: Duration) -> String {
 // conservative floor rounding instead of floor+1.
 //
 
-const CURRENT_LOG2STEP: [u64; 3] = [44, 27, 0];
-const CURRENT_HEIGHT: [u64; 3] = [
-    LOG2_EPOCH_RULER_SPAN - CURRENT_LOG2STEP[0],
-    CURRENT_LOG2STEP[0] - CURRENT_LOG2STEP[1],
-    CURRENT_LOG2STEP[1] - CURRENT_LOG2STEP[2],
+const BENCH_LOG2STEP: [u64; 3] = [44, 27, 0];
+const BENCH_HEIGHT: [u64; 3] = [
+    LOG2_EPOCH_RULER_SPAN - BENCH_LOG2STEP[0],
+    BENCH_LOG2STEP[0] - BENCH_LOG2STEP[1],
+    BENCH_LOG2STEP[1] - BENCH_LOG2STEP[2],
 ];
 
-/// The table the span replays pin; they never touch window roots, so
-/// only its validity matters.
-fn current_geometry() -> Result<TournamentGeometry> {
-    let levels = CURRENT_LOG2STEP
+/// The three-level table the span replays pin; they never touch window
+/// roots, so only its validity matters.
+fn bench_geometry() -> Result<TournamentGeometry> {
+    let levels = BENCH_LOG2STEP
         .iter()
-        .zip(CURRENT_HEIGHT)
+        .zip(BENCH_HEIGHT)
         .map(|(&log2_stride, height)| Level {
             log2_stride,
             height,
@@ -1067,10 +1067,8 @@ fn constants_report(
         "| commitment budget | levels | log2step | height | root slowdown |"
     )?;
     writeln!(report, "|---|---|---|---|---:|")?;
-    let mut any_tall_root = false;
     for &budget in &args.commitment_budget_minutes {
         let d = derive(&atoms, args.root_slowdown, budget, args.hardware_slack)?;
-        any_tall_root |= d.height[0] > CURRENT_HEIGHT[0];
         writeln!(
             report,
             "| {} min | {} | {:?} | {:?} | {:.2}x |",
@@ -1081,11 +1079,6 @@ fn constants_report(
             d.root_slowdown,
         )?;
     }
-    writeln!(
-        report,
-        "| (current) | 3 | {:?} | {:?} | - |",
-        CURRENT_LOG2STEP, CURRENT_HEIGHT
-    )?;
     writeln!(report)?;
     writeln!(
         report,
@@ -1093,15 +1086,6 @@ fn constants_report(
          height-unit total is shape-invariant; level count changes only\n\
          the per-level join and nested-tournament overhead."
     )?;
-    if any_tall_root {
-        writeln!(report)?;
-        writeln!(
-            report,
-            "A derived root height exceeds the current {}: verify contract-\n\
-             side assumptions before adopting (tree math, position widths).",
-            CURRENT_HEIGHT[0]
-        )?;
-    }
     writeln!(report)?;
 
     writeln!(report, "## Coordinated-bump checklist")?;
@@ -1110,7 +1094,7 @@ fn constants_report(
         report,
         "Constants changes cross the contract-client compatibility boundary.\n\
          Adopt a bump only with coordinated validation of:\n\
-         ArbitrationConstants.sol (LEVELS, log2step, height);\n\
+         ArbitrationConstants.sol (LEVELS, log2step, height, COMMITMENT_BUDGET);\n\
          docs/computation-hash.md's level table; harness fixtures. The node\n\
          discovers and pins the deployed table, so it carries no stride constant.\n\
          A small test-shape profile would also let e2e disputes run in\n\
