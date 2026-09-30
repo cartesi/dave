@@ -45,11 +45,17 @@ just rollups-tests::test <program> <scenario>
 - `Env.run_epoch(sealed_epoch, patches, next_inputs)` is the main driver:
   compute the honest settlement independently in Lua, spawn a patched
   sybil, drive it until it loses, wait for settlement, assert the honest
-  commitment won. It returns the next sealed epoch and the transitions the
-  dispute's leaf matches sealed on.
+  commitment won. It returns the next sealed epoch and the dispute's sealed
+  leaf matches (tournament, match ID hash, transition). It does not check
+  how they were resolved, since kill and chaos runs may legitimately end a
+  leaf match on a timeout.
+- `Env.assert_leaf_match_proved(tournament, match_id_hash)` requires exactly
+  one `MatchDeleted` for the match, with reason `STEP`. A timeout win leaves
+  the same seal and the same settlement behind, so only this shows that the
+  on-chain state transition resolved the match.
 - `Env.run_steered_epoch(sealed_epoch, transition, next_inputs)` steers the
-  dispute onto one transition (see "Steering disputes") and asserts the
-  leaf match sealed exactly there.
+  dispute onto one transition (see "Steering disputes") and asserts that
+  exactly one leaf match sealed there and a STEP proof resolved it.
 
 ## The self-anchored oracle
 
@@ -172,7 +178,9 @@ image belongs to the Rust measurement workflow, not to an E2E scenario.
 Scenarios (`test/e2e/rollups/scenarios/`):
 
 - `simple` / `simple_no_input`: honest node settles epochs, with and
-  without inputs.
+  without inputs. `simple` also requires its one leaf match to end in a
+  STEP proof, so the per-PR honeypot `simple` and the two-level smoke gate
+  the on-chain state transition.
 - `big_input`: large input payloads.
 - `stf_all`: drives disputes down to on-chain state-transition proofs,
   one transition shape per epoch (see the coverage matrix below).
@@ -208,7 +216,10 @@ Scenarios (`test/e2e/rollups/scenarios/`):
 - `sealed_leaf_timeout_winner` / `sealed_leaf_timeout_both`: construct
   unequal leaf clocks, assert the semantic timeout view at exact boundaries,
   then respawn the Rust node and require either the longer-clock winner or
-  double elimination.
+  double elimination. `sealed_leaf_timeout_winner` is also the STEP check's
+  negative control: its timeout-resolved leaf record must correlate with the
+  fixture's match and be refused. It exercises the helper, not a broken
+  state transition.
 - `deposit_withdrawal` (honeypot): application-level end-to-end flow.
 
 ## Steering disputes: patch chains
@@ -240,10 +251,19 @@ of 27, and epoch 4's `1 << 68` overflowed to 0. A 2026-09-28 run showed
 epochs 2 and 4 sealing on transition 2^28 - 1 (a closing slot while input 0
 still ran), epoch 3 on 2^48 + 2^28 - 1 (an idle closing slot), and
 `stf_revert` on an idle closing slot 162 big cycles past the revert; only
-epoch 1 proved its intended transition.
+epoch 1 sealed on its intended transition.
 
-Coverage matrix (`stf_all`, one dispute driven to the on-chain state
-transition per epoch, each asserted):
+The seal alone does not show that the transition was proved: a timeout win
+leaves the same seal and the same settlement behind, and the node claims a
+timeout before retrying a rejected proof, so a broken on-chain transition
+could end as a timeout win and pass (CF-02 in the
+[2026-09-29 clock refill review](reviews/2026-09-29-prt-clock-refill/REVIEW.md)).
+`Env.run_steered_epoch` therefore also requires the sealed match's
+`MatchDeleted` reason to be `STEP`, correlated through the match ID hash
+that `LeafMatchSealed` indexes.
+
+Coverage matrix (`stf_all`, one dispute per epoch, each asserted to seal on
+the listed transition and to end in a STEP proof):
 
 - Epoch 1, transition 2^44 - 1: closing slot of an idle big cycle
   (final ustep + ureset), reached through idle churn leaves.
@@ -262,8 +282,9 @@ so the oracle reports each input's big-cycle count
 (`settlement.processing_bigs`, captured at the yield before the revert
 reloads the snapshot) and the scenario steers onto the closing slot of
 the big cycle where the reject yielded. `big_input` steers onto
-transition 0, the feed of its 64 KiB input. Not yet pinned: capacity
-boundaries (last input slot, last stride).
+transition 0, the feed of its 64 KiB input. Both go through
+`run_steered_epoch`, so they carry the same seal and STEP checks. Not yet
+pinned: capacity boundaries (last input slot, last stride).
 
 Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suites
 (PRT disputes, structured STF tests and fuzz, and consensus); the workspace job

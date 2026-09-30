@@ -6,7 +6,8 @@ local uint256 = require "utils.bint" (256)
 -- Each epoch pins one on-chain state-transition shape: the dispute is
 -- steered onto a chosen transition (env.steering_patches builds the patch
 -- chain from the deployed level table) and run_steered_epoch asserts the
--- leaf match sealed exactly there. Coverage matrix in docs/test-harness.md.
+-- leaf match sealed exactly there and a STEP proof resolved it. Coverage
+-- matrix in docs/test-harness.md.
 
 -- Main Execution
 env.spawn_blockchain { env.sample_inputs[1] }

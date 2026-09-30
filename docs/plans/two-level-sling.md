@@ -242,8 +242,8 @@ the v0.21.0 CLI seam cases are recorded as exclusions.
    the stride is 27 (since 2025-06), so they likely prove the wrong
    transitions; this is a hand trace, so log the proven transition first. Fix
    the links and make `run_epoch` assert which transition was proven. It
-   asserts the sealed transition; that a proof, not a timeout, resolved it
-   is R18.
+   asserts the sealed transition and, since R18, that a STEP proof resolved
+   it.
 2. (S) Un-ignore the real-image `engine_machine` differentials (about 26 s in
    CI). Move the digest-pinned corpus download (912 KB) into setup and
    un-ignore the corpus tests, failing loudly when the corpus is missing
@@ -569,14 +569,14 @@ preserves the reasoning and evidence.
   outright. Letting `winLeafMatch` settle as the timeout win the classifier
   already selects for the prover would remove it, but was judged not worth
   revising the disjoint proof and timeout verbs.
-- R18 (CF-02, P2; W2.1). `run_steered_epoch` currently checks the sealed
-  transition and correct settlement, which a timeout win can also satisfy.
-  Retain each sealed match ID and require its `MatchDeleted` reason to be
-  `STEP` before counting it as proved. Add timeout-only and proof-success
-  controls. The review's stub transcript proves the assertion gap, not that
-  current real-chain runs use the timeout path. The gap matters because the
-  node retries a rejected proof and checks timeouts first, so a broken
-  on-chain transition can end as a timeout win.
+- R18 (CF-02, P2; W2.1; implemented 2026-09-29). `run_steered_epoch`
+  checked the sealed transition and correct settlement, which a timeout win
+  can also satisfy. Retain each sealed match ID and require its
+  `MatchDeleted` reason to be `STEP` before counting it as proved. Add
+  timeout-only and proof-success controls. The review's stub transcript
+  proves the assertion gap, not that current real-chain runs use the timeout
+  path. The gap matters because the node retries a rejected proof and checks
+  timeouts first, so a broken on-chain transition can end as a timeout win.
 - R19 (assurance; contract testing). Build an independent honest-survival
   model with an identified correct commitment, eager honest strategy, and one
   cumulative `C` across repeated and nested disputes. Cover both orientations,

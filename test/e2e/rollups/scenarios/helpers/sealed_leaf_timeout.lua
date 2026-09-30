@@ -429,6 +429,21 @@ function SealedLeafTimeout.longer_wins_after_midpoint()
     assert(deletion.meta.block_number < fixture.long_deadline,
         "timeout victory landed after the longer clock expired")
 
+    -- Negative control for the STEP gate (CF-02): the sealed-leaf record the
+    -- harness keeps for this timeout-resolved match must correlate with it
+    -- and be refused. This covers the helper and the correlation on a real
+    -- chain; it does not reproduce CF-02 end to end (no transition breaks).
+    local sealed = env.reader:read_sealed_leaf_matches(fixture.leaf_tournament)
+    assert(#sealed == 1, string.format(
+        "expected one sealed leaf match in the fixture, saw %d", #sealed))
+    assert(sealed[1].match_id_hash == fixture.match.match_id_hash,
+        "sealed leaf record does not correlate with the fixture's match")
+    local proved, err = pcall(env.assert_leaf_match_proved,
+        fixture.leaf_tournament, sealed[1].match_id_hash)
+    assert(not proved, "a timeout-resolved leaf match passed the STEP gate")
+    assert(tostring(err):find("not a STEP proof", 1, true),
+        "STEP gate refused the timeout win for another reason: " .. tostring(err))
+
     print(string.format(
         "[sealed_leaf_timeout] longer clock won in block %d after midpoint %d",
         deletion.meta.block_number,

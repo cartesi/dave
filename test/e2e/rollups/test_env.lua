@@ -170,6 +170,22 @@ function Env.assert_match_deleted(tournament_address, match, reason, winner_comm
     return deletion
 end
 
+-- A sealed leaf match counts as proved only if the on-chain state transition
+-- resolved it. A timeout win leaves the same seal and correct settlement
+-- behind, and the node claims a timeout before retrying a rejected proof, so
+-- a broken transition could otherwise pass as proved (CF-02).
+function Env.assert_leaf_match_proved(tournament_address, match_id_hash)
+    local deletions = Env.reader:read_match_deleted(tournament_address, match_id_hash)
+    assert(#deletions == 1, string.format(
+        "expected exactly one MatchDeleted for leaf match %s, saw %d",
+        match_id_hash:hex_string(), #deletions))
+    local deletion = deletions[1]
+    assert(deletion.reason == "step", string.format(
+        "leaf match %s was resolved by %s, not a STEP proof",
+        match_id_hash:hex_string(), deletion.reason))
+    return deletion
+end
+
 -- The oracle: an independent machine lineage anchored at the template.
 -- It replays only chain inputs, epoch after epoch, so node output is
 -- never an input to the oracle, only a subject of comparison.
@@ -413,7 +429,10 @@ end
 
 -- `patches` is a list, or a function of the settlement (for patch
 -- positions only the oracle can compute, like revert slots). Returns the
--- next sealed epoch and the transitions the dispute's leaf matches sealed on.
+-- next sealed epoch and the dispute's sealed leaf matches, as
+-- { tournament, match_id_hash, cycle } records. Sealed is not proved: kill
+-- and chaos runs may legitimately end a leaf on a timeout, so callers that
+-- need the proof check each record with Env.assert_leaf_match_proved.
 function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     next_inputs = next_inputs or {}
     local settlement = Env.epoch_settlement(sealed_epoch)
@@ -456,11 +475,13 @@ function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     assert(outcome == "lost")
     print "Sybil has lost"
 
-    local proven = {}
+    local sealed = {}
     for address in pairs(leaf_tournaments) do
-        for _, cycle in ipairs(Env.reader:read_sealed_leaf_cycles(address)) do
-            table.insert(proven, cycle)
-            print(string.format("[run_epoch] leaf match sealed on transition %s", cycle))
+        for _, match in ipairs(Env.reader:read_sealed_leaf_matches(address)) do
+            match.tournament = address
+            table.insert(sealed, match)
+            print(string.format("[run_epoch] leaf match %s sealed on transition %s",
+                match.match_id_hash:hex_string(), match.cycle))
         end
     end
 
@@ -477,15 +498,15 @@ function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     assert(winner.final == settlement.commitment:last())
     print("Correct claim won for epoch ", sealed_epoch.epoch_number)
 
-    return next_epoch, proven
+    return next_epoch, sealed
 end
 
 -- Runs one epoch whose dispute must be decided on `transition` (a number,
 -- a bint, or a function of the settlement returning one), and asserts that
--- the leaf match sealed exactly there.
+-- the leaf match sealed exactly there and a STEP proof resolved it.
 function Env.run_steered_epoch(sealed_epoch, transition, next_inputs, on_step)
     local target
-    local next_epoch, proven = Env.run_epoch(sealed_epoch, function(settlement)
+    local next_epoch, sealed = Env.run_epoch(sealed_epoch, function(settlement)
         if type(transition) == "function" then
             target = as_uint256(transition(settlement))
         else
@@ -495,9 +516,11 @@ function Env.run_steered_epoch(sealed_epoch, transition, next_inputs, on_step)
         return Env.steering_patches(target)
     end, next_inputs, on_step)
 
-    assert(#proven == 1, string.format("expected one sealed leaf match, saw %d", #proven))
-    assert(proven[1] == target, string.format(
-        "the dispute sealed on transition %s, not the steered %s", proven[1], target))
+    assert(#sealed == 1, string.format("expected one sealed leaf match, saw %d", #sealed))
+    assert(sealed[1].cycle == target, string.format(
+        "the dispute sealed on transition %s, not the steered %s", sealed[1].cycle, target))
+    -- run_epoch returns after settlement, so the leaf's deletion is on chain.
+    Env.assert_leaf_match_proved(sealed[1].tournament, sealed[1].match_id_hash)
     return next_epoch
 end
 

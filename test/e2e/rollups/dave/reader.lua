@@ -241,14 +241,15 @@ function Reader:read_tournament_levels()
     return levels
 end
 
--- The transition each leaf match of `tournament` sealed on: the divergence
--- cycle, read at the LeafMatchSealed block because resolving the match
--- deletes it.
-function Reader:read_sealed_leaf_cycles(tournament)
+-- Each leaf match of `tournament` that sealed: its match ID hash (the
+-- indexed LeafMatchSealed topic, which keys its MatchDeleted) and the
+-- transition it sealed on. The divergence cycle is read at the
+-- LeafMatchSealed block because resolving the match deletes it.
+function Reader:read_sealed_leaf_matches(tournament)
     local logs = self:_read_logs(
         tournament, "LeafMatchSealed(bytes32,uint64)", { false, false, false }, "(uint64)"
     )
-    local cycles = {}
+    local matches = {}
     for _, log in ipairs(logs) do
         local ret = self:_call(
             tournament,
@@ -258,9 +259,12 @@ function Reader:read_sealed_leaf_cycles(tournament)
         )
         local view = plain_numbers(assert(ret[2], "sealedMatch returned no view"))
         local cycle = view:match("^%(0x%x+,%s*%d+,%s*(%d+),")
-        table.insert(cycles, uint256.parse(assert(cycle, "could not decode sealedMatch")))
+        table.insert(matches, {
+            match_id_hash = Hash:from_digest_hex(log.emited_topics[2]),
+            cycle = uint256.parse(assert(cycle, "could not decode sealedMatch")),
+        })
     end
-    return cycles
+    return matches
 end
 
 function Reader:read_epochs_sealed()
