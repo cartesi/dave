@@ -127,14 +127,16 @@ local function eager_drive_until_sealed(player, fixture)
     end
 end
 
-local function install_sender_hooks(sender, fixture)
+local function install_sender_hooks(sender, fixture, levels)
     local joined = {}
     local inner_heights = {}
     local child_join_pending = false
 
     -- Height parity chooses the final responder. Stop the node around each
     -- child creation so the sybil joins the child first and becomes
-    -- commitment one at the odd-height inner and leaf levels.
+    -- commitment one at the odd-height inner and leaf levels. The sybil
+    -- seals an even-height root itself; at an odd-height root the node
+    -- seals, so the node is stopped at the sybil's child join instead.
     function sender:tx_join_tournament(
         tournament,
         final_state,
@@ -143,6 +145,11 @@ local function install_sender_hooks(sender, fixture)
         right
     )
         local root = left:join(right)
+        local node_sealed_parent = not child_join_pending
+            and tournament:lower() ~= fixture.root_tournament
+        if node_sealed_parent then
+            env.dave_node:kill()
+        end
         local ok, result = PlayerSender.tx_join_tournament(
             self,
             tournament,
@@ -153,10 +160,10 @@ local function install_sender_hooks(sender, fixture)
         )
         if ok then
             joined[tournament:lower()] = root
-            if child_join_pending then
-                child_join_pending = false
-                env.dave_node:respawn()
-            end
+        end
+        if (ok and child_join_pending) or node_sealed_parent then
+            child_join_pending = false
+            env.dave_node:respawn()
         end
         return ok, result
     end
@@ -206,12 +213,18 @@ local function install_sender_hooks(sender, fixture)
             env.reader.inner_reader:read_constants(tournament)
         assert(constants.kind == TOURNAMENT_KIND_LEAF,
             "seal hook reached a non-leaf tournament")
-        assert(constants.height == 27,
-            "canonical leaf tournament height changed")
-        assert(#inner_heights == 2
-            and inner_heights[1] == 48
-            and inner_heights[2] == 17,
-            "eager setup did not traverse the canonical 48/17/27 levels")
+        assert(constants.height == levels[#levels].height,
+            "seal hook reached a tournament off the table's leaf level")
+        -- The sybil seals an even-height root and every inner level below.
+        local expected_heights = {}
+        for level = 1, #levels - 1 do
+            if level > 1 or levels[level].height % 2 == 0 then
+                table.insert(expected_heights, levels[level].height)
+            end
+        end
+        assert(table.concat(inner_heights, "/")
+            == table.concat(expected_heights, "/"),
+            "eager setup did not traverse the deployed inner levels")
 
         local sybil_commitment = joined[tournament:lower()]
         assert(sybil_commitment,
@@ -329,6 +342,14 @@ local function setup()
     }
     env.spawn_node()
 
+    -- Joining a child first makes the sybil commitment one there, the
+    -- final responder only at an odd height.
+    local levels = env.reader:read_tournament_levels()
+    for level = 2, #levels do
+        assert(levels[level].height % 2 == 1,
+            "the choreography needs odd heights below the root")
+    end
+
     local sealed_epoch = env.roll_epoch()
     assert(sealed_epoch.epoch_number == 1,
         "timeout scenario expected epoch one")
@@ -353,6 +374,7 @@ local function setup()
     local fixture = {
         transport =
             SemanticReader.CastTransport.new(env.blockchain.endpoint),
+        root_tournament = sealed_epoch.tournament:lower(),
         sealed = false,
     }
     local sender = PlayerSender:new(
@@ -360,7 +382,7 @@ local function setup()
         2,
         env.blockchain.endpoint
     )
-    install_sender_hooks(sender, fixture)
+    install_sender_hooks(sender, fixture, levels)
     local player = start_sybil(
         sybil_builder,
         settlement.machine_path,
