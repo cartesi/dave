@@ -45,6 +45,13 @@ local epoch_log2_span = cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
     + cartesi.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
     + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
 local machine_runtime = { console = { output_destination = "to_null" } }
+-- Leaf builds hash after every ustep over a few dirty pages, where the
+-- emulator's parallel path (taken once they outnumber the host's cores)
+-- costs several times the hashing, so the clients load them serially.
+local leaf_runtime = {
+    console = { output_destination = "to_null" },
+    concurrency = { update_hash_tree = 1 },
+}
 local uarch_halted = cartesi.UARCH_BREAK_REASON_UARCH_HALTED
 local reached_target = cartesi.BREAK_REASON_REACHED_TARGET_MCYCLE
 
@@ -76,8 +83,8 @@ local function release_workload_marker(machine)
     assert_running(machine, "after releasing workload marker")
 end
 
-local function load_workload_machine()
-    local machine = cartesi.machine(machine_path, machine_runtime)
+local function load_workload_machine(runtime)
+    local machine = cartesi.machine(machine_path, runtime or machine_runtime)
     assert_running(machine, "loaded active workload fixture")
     return machine
 end
@@ -169,7 +176,7 @@ local function run_uarch_until_timeout()
     local with_hash_time
     do
         collectgarbage()
-        local machine <close> = load_workload_machine()
+        local machine <close> = load_workload_machine(leaf_runtime)
         start_timer()
         repeat
             uinstructions = uinstructions + run_big_instruction_in_uarch(machine, true)
@@ -184,7 +191,7 @@ local function run_uarch_until_timeout()
     local without_hash_time
     do
         collectgarbage()
-        local machine <close> = load_workload_machine()
+        local machine <close> = load_workload_machine(leaf_runtime)
         start_timer()
         for _ = 1, iterations do
             run_big_instruction_in_uarch(machine, false)

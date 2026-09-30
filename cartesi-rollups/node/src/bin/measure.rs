@@ -774,13 +774,18 @@ struct ActiveMachine {
 }
 
 impl ActiveMachine {
-    fn load(image: &Path, scratch_root: &Path) -> Result<Self> {
+    /// Loaded as the dispute loads the work being priced: per-step for
+    /// leaf pairs, sampled for the hash-cost curve.
+    fn load(image: &Path, scratch_root: &Path, hashing: Hashing) -> Result<Self> {
         let inputs: Vec<Vec<u8>> = (0..16)
             .map(|i| evm_advance_input(i, b"constants"))
             .collect();
-        // Leaf-level pairs, loaded as the dispute loads a leaf build.
-        let stf = MachineStf::load(image, scratch(scratch_root, "constants")?, Hashing::PerStep)?
-            .with_inputs(inputs.clone());
+        let stf = MachineStf::load(
+            image,
+            scratch(scratch_root, &format!("constants-{hashing:?}"))?,
+            hashing,
+        )?
+        .with_inputs(inputs.clone());
         let mut this = Self {
             stf,
             inputs,
@@ -821,7 +826,8 @@ impl ActiveMachine {
     }
 }
 
-fn measure_steady_atoms(machine: &mut ActiveMachine) -> Result<SteadyAtoms> {
+fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms> {
+    let machine = &mut ActiveMachine::load(image, scratch_root, Hashing::PerStep)?;
     // Density and the dense pair rate: the leaf-level workload (hash
     // after every executed ustep and every reset), over whole big
     // cycles mid-computation.
@@ -849,6 +855,7 @@ fn measure_steady_atoms(machine: &mut ActiveMachine) -> Result<SteadyAtoms> {
     // untimed hash, run delta big cycles, then time one root hash
     // over the accumulated dirt. Samples that hit an input boundary
     // are discarded, never timed short.
+    let machine = &mut ActiveMachine::load(image, scratch_root, Hashing::Sampled)?;
     let mut curve = Vec::new();
     for log2_delta in (8..=24u64).step_by(2) {
         let delta = 1u64 << log2_delta;
@@ -991,8 +998,7 @@ fn constants_report(
     image: &Path,
     scratch_root: &Path,
 ) -> Result<()> {
-    let mut machine = ActiveMachine::load(image, scratch_root)?;
-    let atoms = measure_steady_atoms(&mut machine)?;
+    let atoms = measure_steady_atoms(image, scratch_root)?;
 
     writeln!(report, "# Tournament constants derivation")?;
     writeln!(report)?;
