@@ -29,8 +29,12 @@ that goal.
 - D4. Emulator pins. Development may pin unreleased upstream commits; anything
   Dave ships links a tagged release. Upstream is arm's length: nothing on the
   critical path waits for an upstream release.
-- D5. Epochs with more than 2^24 inputs are out of model. The node must fail
-  with a clear error instead of an assert panic or crash loop.
+- D5. Epochs with more than 2^24 inputs are out of model. The bound is
+  economic, not physical: reaching it takes a flood of roughly 5e11 gas of
+  inputs in one epoch. Past it the contracts never feed the tail and every
+  Rust node panics at the first extra input. No guard is built (2026-09-30):
+  a clearer error would still stop the node. Capping the node's two
+  epoch-input-count helpers would match Solidity if parity is ever wanted.
 - D6. The two-level node is a new deployment generation. The system is not
   deployed yet, so there is no legacy to serve and no intermediate release.
   The node discovers the geometry and accepts any valid table: it must run the
@@ -203,9 +207,9 @@ It ends with a node that handles a two-level deployment.
 
 Before the canonical switch (W5.1) lands: the stack above, W4.1 (M1
 confirms the table), and W4.8 (the full e2e matrix fits CI budgets on two
-levels). Before a two-level release is tagged, additionally: W4.2, W4.7, the
-D5 guard (W8), W5.2-W5.4, a tagged emulator (D4), and the open decisions on
-generation contents and audit timing.
+levels). Before a two-level release is tagged, additionally: W4.2, W4.7,
+W5.2-W5.4, a tagged emulator (D4), and the open decisions on generation
+contents and audit timing.
 
 ### W1. Seam 2 fix (standalone, now)
 
@@ -311,9 +315,9 @@ under [44, 27, 0].
    five sites. Tighten `DisputeSource::covered()` to stride == run stride:
    today it serves a wrong tree for any stride strictly above the run stride,
    which CLI checks at strides 39 or 44 would hit once the run stride is 37.
-5. (S) Tripwires: each epoch's tournament descriptors equal the pinned rows,
-   and the hero's root commitment equals the settlement computation hash
-   before joining.
+5. (S) Tripwires: each tournament on the Hero's path matches the pinned row
+   for its level, and the root tournament's initial hash matches the node's
+   epoch-start snapshot. Both are fatal (R8).
 6. (S) Rewrite the drift guard in `engine/constants.rs` to validate the
    ArbitrationConstants table, and parametrize the unit tests over [44, 27, 0]
    and [37, 0].
@@ -355,6 +359,11 @@ under [44, 27, 0].
    margin on the current API without the collect path.
 7. (S) Declare the per-input compute contract implied by stride 37 in
    dimensioning.md (roughly 2^34 big cycles per input), after M1 and M3.
+   The first root response inside an input also replays up to gap - 1
+   earlier inputs from the last kept snapshot (`--snapshot-gap-inputs`,
+   default 64) and stores their boundaries, so 2^34 is worst-case safe only
+   at a gap of 1; at 64 it is about 2^30.5. An overrun is charged to the
+   clock (it draws on `C`), not a lost dispute; heavy apps lower the gap.
 8. (M) E2E cost: dry-run the e2e matrix on a two-level branch before the
    switch, including the W5.2 leaf gate's CLI runs. A dense leaf build costs
    about 15 min per party at height 37, against today's 15-60 min
@@ -382,7 +391,7 @@ under [44, 27, 0].
 Exit: the e2e battery is green on two levels within CI budgets, and the CLI
 gates are green.
 
-### W6. Collection speed (margin, after W5)
+### W6. Collection speed (margin; decide after M2)
 
 1. (M) Safe Rust wrappers for both collect calls, keeping hashes, offsets,
    partial bundles, break reasons and error context; wrapper tests.
@@ -391,10 +400,19 @@ gates are green.
    positioning and proving keep the stepping core in production.
 3. (M) Differential: the new runs against legacy runs, CLI roots and Lua,
    over the W2 corpus. Compare runs, not only roots, so failures localize.
-4. (S) Seam 1 on v0.21.0: detect a rejected yield at imcyclemax from iflags_Y
-   and tohost (the v0.21.0 break reason reports overflow there) and fall back
-   to stepping for that mcycle. Remove the fallback when a tagged release
-   carries c1280ed4.
+4. (S) Classify yields from registers (iflags_Y, and tohost's device, cmd
+   and reason), as the step does, in both clients: the v0.21.0 break reason
+   ranks overflow first, and this also closes R9. Seam 1 on v0.21.0 (the
+   uarch collector skips the revert for a rejection on the budget's last
+   cycle) needs one input to run 2^48 - 1 big cycles, far past the per-input
+   contract, where root responses already overrun `G`; so it is out of model
+   like the 2^20 and 2^24 bounds. Recommended (2026-09-30): no guard, and a
+   test that reaches it is a named exclusion until a tagged release carries
+   c1280ed4. If a guard is wanted, cap each uarch collect call at
+   imcyclemax - 1 and step the last budget cycle; detecting it afterwards
+   cannot work, since the collector has consumed the state by then. Either
+   way the upgrade to a fixed release is a version bump, unless the fix only
+   ships with PR #390 (a new state-hash and proof-format generation).
 5. Known constraints: the uarch collector requires uarch_cycle == 0, so spans
    starting mid big cycle need slicing or stepping; `revert_uarch_tail` is
    required for any start off a fixed point; both collectors stop at
@@ -414,8 +432,6 @@ format change).
 
 ### W8. Hygiene
 
-- More than 2^24 inputs (D5): replace the `Ruler::new_at` assert path with a
-  clear, non-looping error, and document it in dimensioning.md.
 - A terminal final state panics at roll; replace it with an explicit
   dead-app state that keeps serving disputes.
 - Doc drift: the `MachineStf` module doc versus D7, the level-0 location
@@ -478,18 +494,25 @@ Scale and liveness (unmeasured, not wrong).
 
 Correctness and robustness beyond scale.
 
-- R7. D5 (W8): an epoch with more than 2^24 inputs panics the runner into a
-  crash loop; anyone can trigger it.
-- R8. The W3 tripwires (`GeometryMismatch`, `RootCommitmentMismatch`) fail
-  soft: the manager logs a warning and retries forever, so the node stops
-  defending without alarm. They should be loud; `RootCommitmentMismatch` has
-  no test.
+- R7. Past 2^24 inputs in one epoch the contracts drop the tail and every
+  Rust node panics at the same input. The trigger is an economic flood
+  (roughly 5e11 gas); out of model, no guard (D5).
+- R8 (fixed 2026-09-30). The Hero's consistency checks failed soft: the
+  manager logged a warning and retried forever, so the node stopped
+  defending without alarm. `GeometryMismatch` and `RootInitialHashMismatch`
+  now panic. `RootCommitmentMismatch` is gone: it compared two of the node's
+  own folds, whose equality is unit-tested under both tables, the staging
+  assert backstops a win, and it could make the node refuse a dispute it
+  would win.
 - R9. Yield classification goes through `receive_cmio_request`, which reads
   different tohost fields than the step: an oversized data field throws
   (the runner cannot advance), a preset non-manual tohost with iflags_Y set
   is misclassified, and `CmioRequest::new` panics on an unknown command.
-  Classify from registers as `isYieldedManualWith` does. Pre-existing; lead:
-  whether the guest driver bounds a yield's data field.
+  Classify from registers as `isYieldedManualWith` does. Pre-existing, and
+  shared by the Lua client. libcmt sets the data field itself, so no input
+  reaches it on a libcmt app; a guest writing its own malformed yield falls
+  under the trusted-developer assumption (dimensioning.md). Folded into
+  W6.4, which needs register classification anyway.
 - R10. Startup writes the store (ingestion watermark, template clone) before
   the drift checks refuse, and a wrong `--machine-path` is pinned before the
   image is checked against chain. Validate before writing.
@@ -523,13 +546,15 @@ Found while fixing R1 (2026-09-29).
 - R16. Honest action latency. The clock rule assumes every honest action
   lands within `G` and that producing a proof is instant. The Hero polls
   every 30 s and submits one action per tick. A leaf proof calls
-  `prove_transition`, whose `ruler_at` reloads the nearest window boundary
-  and replays to the divergence, so proof time grows with how deep into an
-  input the adversary places it; the same replay slows `prove_last` (R4).
-  Take snapshots so positioning at the disagreement is effectively instant,
-  and keep the tick well inside `G`. Target: a leaf proof, and the fallback
+  `prove_transition`, whose `ruler_at` reloads the disputed input's own
+  boundary (the dispute writes back every boundary it crosses) and replays
+  to the divergence. That replay is bounded by the per-input contract:
+  about 20 to 40 s at 2^34 big cycles, milliseconds for realistic inputs,
+  so no mid-input snapshots are needed (decided 2026-09-30). The write-back
+  is load-bearing: without it every proof would replay up to 63 inputs.
+  Keep the tick well inside `G`. Target: a leaf proof, and the fallback
   timeout claim when the opponent's expiry overtakes it (CF-01), land within
-  one `G` of the seal.
+  one `G` of the seal; about 2 to 2.5 min in the worst case today.
 - R17. The node never propagates a Sybil-versus-Sybil child's winner: GC plans
   only eliminations. Such a winner may linger until its carryover window
   ends, and the refill now leaves it up to `T + 2G` more per child. Bounded,
@@ -547,6 +572,14 @@ Decided 2026-09-29.
   (L2 batch finality can take 20 to 40 minutes or more) must not reuse
   Ethereum's `T` without checking it.
 - The node does not pin or check `T` (R11).
+
+Decided 2026-09-30.
+
+- The canonical switch (W5) is a follow-up PR, synced with others. This PR
+  must leave it as small Solidity changes: `ArbitrationConstants` and the
+  artifacts regenerated from it. Tests, e2e, docs and the node read the
+  deployed table or cover both geometries.
+- D5, R9 and R16 need no code (see each). W6 is decided after M2.
 
 ## Clock refill review follow-up (2026-09-29)
 

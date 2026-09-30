@@ -43,6 +43,10 @@ to the average case.
   executes the worst instruction (the sqrt / TLB-flush class, near
   the 2^20 bound - which is why the span is 2^20). One occurrence,
   ever, breaks soundness, so rarity does not discount anything.
+  The input span differs in kind: no single legitimate event exceeds
+  it, only a flood of roughly 5e11 gas of inputs in one epoch. Past
+  it the contracts never feed the tail, and the Rust node panics
+  instead. It is an economic bound, kept out of model.
 - Clocks (the commitment budget `T`, responseBudget, the root
   slowdown budget, and the strides derived from them): these price
   aggregates - sums of per-step costs over whole gaps. Rare heavy
@@ -92,7 +96,7 @@ adversary will find it.
 |---|---|---|---|
 | uarch span (2^20 usteps)  | single event | any - honest code hits it | worst case |
 | barch span per input (2^48) | single event | app + input | worst case |
-| input span per epoch (2^24) | single event | chain | worst case |
+| input span per epoch (2^24) | input flood | anyone, at roughly 5e11 gas per epoch | out of model (economic) |
 | leaf-level dense build within the commitment budget | aggregate | trusted app | average density |
 | root slowdown (level-0 sampling overhead) | aggregate | trusted app | average |
 | positioning through an input's prefix | aggregate | trusted app (per-input compute is an app design contract) | app profile |

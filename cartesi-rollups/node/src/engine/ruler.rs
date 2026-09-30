@@ -28,11 +28,12 @@
 //!
 //! Invariant, with a tripwire: an input's computation never crosses its
 //! window boundary. The spans (a, b, c) are deliberate overestimates -
-//! far more inputs than a chain can carry (batching makes one input a
-//! whole bundle of transactions) and far more big cycles than gas-bounded
-//! input processing can consume - so a machine still running at a window
-//! start means a broken machine or broken assumptions, and the engine
-//! panics rather than inventing a transition shape for it.
+//! more inputs than any sane epoch holds (2^24 takes a flood of roughly
+//! 5e11 gas, out of model; see dimensioning.md) and far more big cycles
+//! than gas-bounded input processing can consume - so a machine still
+//! running at a window start means a broken machine or broken
+//! assumptions, and the engine panics rather than inventing a transition
+//! shape for it.
 
 use super::dispute::fold_runs;
 use super::stf::Stf;
