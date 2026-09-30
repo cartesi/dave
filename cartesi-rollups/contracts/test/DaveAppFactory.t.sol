@@ -22,6 +22,7 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {ArbitrationConstants} from "prt-contracts/arbitration-config/ArbitrationConstants.sol";
 import {CanonicalTournamentParametersProvider} from "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {CartesiStateTransition} from "prt-contracts/state-transition/CartesiStateTransition.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
@@ -70,14 +71,16 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
     SettlementCallbackReceiver _settlementCallbackReceiver;
 
     // The canonical provider derives block budgets from wall-clock inputs. At
-    // one-minute blocks, 35 minutes of censorship, 5 of inclusion and the
-    // canonical 30-minute commitment budget give a response budget of 5 and
-    // an allowance of 35 + 5 + 2 * (30 + 2 * 5).
+    // one-minute blocks, 35 minutes of censorship and 5 of inclusion give a
+    // response budget of 5 and an allowance of 35 + 5 plus one refill (the
+    // commitment budget plus 2 * 5) per inner level of the checked-in table.
     uint64 constant BLOCK_MILLISECONDS = 60_000;
     uint64 constant CENSORSHIP_SECONDS = 35 minutes;
     uint64 constant INCLUSION_SECONDS = 5 minutes;
     Time.Duration constant RESPONSE_BUDGET = Time.Duration.wrap(5);
-    Time.Duration constant MAX_ALLOWANCE = Time.Duration.wrap(120);
+    uint64 constant COMMITMENT_BLOCKS = ArbitrationConstants.COMMITMENT_BUDGET / 1 minutes;
+    Time.Duration constant MAX_ALLOWANCE =
+        Time.Duration.wrap(35 + 5 + (ArbitrationConstants.LEVELS - 1) * (COMMITMENT_BLOCKS + 10));
     uint256 constant STAGING_GAS_CEILING = 500_000;
 
     function setUp() external {
@@ -1359,7 +1362,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
             assertEq(Time.Instant.unwrap(tournamentArgs.startInstant), vm.getBlockNumber());
             assertEq(Time.Duration.unwrap(tournamentArgs.allowance), Time.Duration.unwrap(MAX_ALLOWANCE));
             assertEq(Time.Duration.unwrap(tournamentArgs.responseBudget), Time.Duration.unwrap(RESPONSE_BUDGET));
-            assertEq(Time.Duration.unwrap(tournamentArgs.commitmentBudget), 30);
+            assertEq(Time.Duration.unwrap(tournamentArgs.commitmentBudget), COMMITMENT_BLOCKS);
             assertEq(address(tournamentArgs.provider), address(daveConsensus));
             assertEq(address(tournamentArgs.stateTransition), address(_stateTransition));
             assertEq(tournamentArgs.tournamentFactory, address(_tournamentFactory));

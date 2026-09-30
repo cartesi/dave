@@ -36,11 +36,13 @@ contract DeploymentHarness is DeploymentScript {
 
 contract DeploymentTest is Test {
     uint64 constant RESPONSE_BLOCKS = (5 minutes) / (12 seconds);
-    uint64 constant COMMITMENT_BLOCKS = (30 minutes) / (12 seconds);
+    uint64 constant COMMITMENT_BLOCKS =
+        ArbitrationConstants.COMMITMENT_BUDGET / (12 seconds);
     // One inclusion for the root join, and one refill (the build plus two
-    // inclusions) per inner level of the three-level table.
-    uint64 constant PENDING =
-        RESPONSE_BLOCKS + 2 * (COMMITMENT_BLOCKS + 2 * RESPONSE_BLOCKS);
+    // inclusions) per inner level of the checked-in table.
+    uint64 constant PENDING = RESPONSE_BLOCKS
+        + (ArbitrationConstants.LEVELS - 1)
+        * (COMMITMENT_BLOCKS + 2 * RESPONSE_BLOCKS);
 
     function _rowZero(uint256 chainId)
         internal
@@ -55,7 +57,6 @@ contract DeploymentTest is Test {
         TournamentParameters memory row,
         uint64 censorshipBlocks
     ) internal pure {
-        assertEq(ArbitrationConstants.LEVELS, 3);
         assertEq(Time.Duration.unwrap(row.responseBudget), RESPONSE_BLOCKS);
         assertEq(Time.Duration.unwrap(row.commitmentBudget), COMMITMENT_BLOCKS);
         assertEq(

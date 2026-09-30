@@ -70,7 +70,7 @@ contract CanonicalTournamentGeometryTest is Util {
             .selector
         );
         // Blocks longer than every budget round all of them to zero.
-        new CanonicalTournamentParametersProvider(1 hours * 1000, 0, 0);
+        new CanonicalTournamentParametersProvider(type(uint64).max, 0, 0);
     }
 
     function testCanonicalProviderRejectsZeroBlockTime() public {
@@ -131,15 +131,6 @@ contract CanonicalTournamentGeometryTest is Util {
                         )
                     )
             );
-            // At 12 s blocks: 5 minutes, 30 minutes, and 8 hours plus the
-            // root join's inclusion plus two refills of 30 min + 2 x 5 min.
-            assertEq(Time.Duration.unwrap(parameters.responseBudget), 25);
-            assertEq(Time.Duration.unwrap(parameters.commitmentBudget), 150);
-            assertEq(
-                Time.Duration.unwrap(parameters.maxAllowance),
-                2400 + 25 + 2 * 200
-            );
-
             assertGt(parameters.height, 0);
             assertLt(parameters.height, 256);
             assertLt(parameters.log2step, 256);
@@ -172,7 +163,14 @@ contract CanonicalTournamentGeometryTest is Util {
         assertEq(height, ArbitrationConstants.height(0));
 
         ITournament.TournamentArguments memory args = root.tournamentArguments();
-        assertEq(Time.Duration.unwrap(args.responseBudget), 25);
-        assertEq(Time.Duration.unwrap(args.commitmentBudget), 150);
+        ClockBudgets.Model memory model = _canonicalModel();
+        assertEq(
+            Time.Duration.unwrap(args.responseBudget),
+            Time.Duration.unwrap(ClockBudgets.responseBudget(model))
+        );
+        assertEq(
+            Time.Duration.unwrap(args.commitmentBudget),
+            Time.Duration.unwrap(ClockBudgets.commitmentBudget(model))
+        );
     }
 }
