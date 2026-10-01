@@ -75,7 +75,9 @@ sybil froze block production while it computed. The canonical battery passes.
    API, which ties the node's per-step hashing to that API before the switch
    (W6). Period 17 is impractical as a golden: the CLI spends about 2 minutes
    on a mostly idle leaf there and more than 13 on a dense one. The release
-   corpus's 18 uarch cases remain to be wired. Gap 5 is done:
+   corpus's uarch cases are wired too: 16 of 18 match, one has no released
+   hash, and `uarch-near-limit-tail` is out of model (a template with
+   custom uarch code; Solidity, the CLI and Dave give three roots). Gap 5 is done:
    `node_proof_vectors_hold` pins commitment proofs and a settlement validity
    proof, and `NodeProofsTest` checks them with the contracts' own verifiers
    against the CLI's outputs Merkle root; the runner test also requires the

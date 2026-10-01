@@ -186,9 +186,14 @@ Initial v0.21.0 CLI exclusions:
   keeps the physical root at the closing reset, with or without later
   inputs. When more inputs follow, the CLI also ends the epoch and pads with
   the revert root. Both are fixed upstream in c1280ed4.
-- Corpus case `uarch-near-limit-tail`: the revert root is captured after
-  collector setup, so the released hash does not follow Solidity (fixed
-  upstream in 22b4431).
+- Corpus case `uarch-near-limit-tail`: out of model, not a seam
+  (2026-10-01). Its template carries custom uarch code, while every
+  implementation assumes the step's pristine uarch at big-cycle boundaries;
+  Solidity, the CLI and Dave give three different roots. The v0.21 collector
+  also resets only dirty uarch words, so the CLI captures the revert root
+  after collector setup. Upstream 22b4431 makes the case error-no-hash
+  rather than Solidity-conformant. The Dave corpus test excludes it and
+  checks the premise.
 - Uarch cycle overflow and a uarch halting exactly at UARCH_CYCLE_MAX: the
   collector throws where Solidity defines an identity step. Non-pristine uarch
   only; no upstream fix yet.

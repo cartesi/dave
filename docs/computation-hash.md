@@ -120,6 +120,16 @@ repeated constant, while uarch-stride commitments carry the pattern
 itself. Padding is what makes the tree geometry fixed while real
 computation lengths vary.
 
+All of this assumes the deployed step's pristine uarch at every big-cycle
+boundary. The closing reset rewrites the uarch region to it, so only the
+template can break the assumption, and the template is the trusted app
+developer's (docs/dimensioning.md). Dave relies on it twice: the big
+machine runs whole cycles without touching the uarch, and one captured idle
+span stands for every later one. The v0.21 CLI and the Lua client rely on
+it too. A template with custom uarch code is outside the model: on the
+release corpus case `uarch-near-limit-tail`, Solidity, the CLI and Dave give
+three different roots. Nothing checks the template's uarch today.
+
 ### Toy picture
 
 Scaled-down epoch: 2 inputs per epoch, 2 big cycles per input, 4 uarch

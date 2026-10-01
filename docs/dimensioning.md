@@ -29,6 +29,8 @@ any realistic timeout. Nothing currently detects these; detection
 mechanisms (requiring emulator support) are future research, far off.
 Until then the assumption is explicit: the app developer is trusted,
 and trusted specifically to keep input-reachable behavior disputable.
+The developer also authors the template machine, which must carry the
+deployed step's pristine uarch (docs/computation-hash.md).
 
 ## The rule
 

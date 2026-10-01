@@ -145,7 +145,8 @@ impl Position {
 
 /// An input window boundary: the position [`Structure::window_start`]
 /// of its index, where the open regime stores machines (yielded at an
-/// input boundary, pristine uarch - asserted at store and resume).
+/// input boundary, with the pristine uarch every closing reset leaves;
+/// the template's own is assumed, not checked).
 /// The snapshot seam speaks boundaries end to end, so the conversion
 /// to a flat ruler position happens in exactly one place (the machine
 /// factory) instead of shift arithmetic at every module seam.

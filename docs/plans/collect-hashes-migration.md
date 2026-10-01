@@ -173,13 +173,19 @@ unless named otherwise:
   adds, such as hashing idle stretches: the CLI spends about 2 minutes on a
   mostly idle period-17 leaf that the node builds in one captured cycle.
 
+- The release corpus: Dave matches all 17 mcycle cases and 16 of the 18
+  uarch cases as stride-0 leaves at period 9 (exception, halt, mcycle
+  overflow, an unexpected manual yield, rejection, bundling). Of the other
+  two, `uarch-overflow-tail` has no released hash and `uarch-near-limit-tail`
+  is out of model: its template carries custom uarch code, which every
+  implementation assumes away (computation-hash.md). The exclusion checks
+  its premise.
+
 Still owed before the switch:
 
-1. Dave against the release corpus's 18 uarch cases (it covers terminal
-   shapes no Dave program reaches). Needs the digest-pinned corpus download.
-2. The wrapper tests and bundle and chunk metamorphics above, written with
+1. The wrapper tests and bundle and chunk metamorphics above, written with
    the collect-backed path.
-3. After the switch, the test-only legacy builder (D7) must also check the
+2. After the switch, the test-only legacy builder (D7) must also check the
    leaf goldens, or a regeneration would compare the collect APIs with
    themselves.
 

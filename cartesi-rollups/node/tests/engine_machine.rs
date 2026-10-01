@@ -239,13 +239,25 @@ fn engine_root_with_inputs(
     log2_stride: u64,
     height: u64,
 ) -> String {
+    engine_level_root(
+        image,
+        inputs,
+        geometry,
+        &LevelCoords::new(0, U256::ZERO, log2_stride, height),
+    )
+}
+
+/// The facade's root for one level, replayed on a fresh store.
+fn engine_level_root(
+    image: &Path,
+    inputs: Vec<Vec<u8>>,
+    geometry: &TournamentGeometry,
+    level: &LevelCoords,
+) -> String {
     let (state_dir, storage) = initialized_storage_under(image, inputs, geometry);
     let work = scratch();
     let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
-    let root = source
-        .node(&Quartet::level_root(0, log2_stride, height))
-        .unwrap()
-        .to_hex();
+    let root = source.node(&level.root()).unwrap().to_hex();
     drop((state_dir, work));
     root
 }
@@ -443,44 +455,103 @@ fn computation_hash_corpus_cli_matches_release_manifest() {
     assert_eq!(uarch_count, 18, "unexpected v0.21 uarch corpus size");
 }
 
-/// Dave currently consumes the corpus's mcycle geometry only. Compare that
-/// supported surface directly with the released answers; the separate CLI
-/// conformance test owns replaying the release frontend and all uarch cases.
+/// The one corpus case outside Dave's model, with the released hash the
+/// exclusion was judged against.
+const UARCH_OUT_OF_MODEL: (&str, &str) = (
+    "uarch-near-limit-tail",
+    "0x8c40a7ed8c6327731bc0444947574e39593c5c1cddcefbeeebdca6461150315b",
+);
+
+/// Whether a stored machine carries the pristine uarch every big-cycle
+/// boundary must carry: a uarch reset then leaves its root unchanged.
+fn uarch_is_pristine(image: &Path) -> bool {
+    use cartesi_machine::{config::runtime::RuntimeConfig, machine::Machine};
+    let mut machine = Machine::load(image, &RuntimeConfig::quiet_console()).unwrap();
+    let before = machine.root_hash().unwrap();
+    machine.reset_uarch().unwrap();
+    machine.root_hash().unwrap() == before
+}
+
+/// Dave against the released answers: every mcycle case as a whole-epoch
+/// root, and every uarch case as a stride-0 leaf of height 29 (period 9,
+/// the big-cycle-root builder). Two uarch cases are not compared:
+/// uarch-overflow-tail has no released hash, and uarch-near-limit-tail is
+/// out of model. Its template carries custom uarch code instead of the
+/// deployed step's pristine uarch, which Dave, the CLI and Lua all assume
+/// at big-cycle boundaries; Solidity, the CLI and Dave give three different
+/// roots there (docs/computation-hash.md). Upstream 22b4431 makes it
+/// error-no-hash; drop the exclusion when the corpus comes from a release
+/// that carries it. The exclusion checks its own premise, so a changed
+/// template or answer forces a revisit.
 #[test]
 #[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
 fn computation_hash_corpus_dave_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
+    let structure = Structure::PRODUCTION;
 
-    let mut checked = 0;
+    let (mut mcycle, mut uarch, mut excluded, mut no_hash) = (0, 0, 0, 0);
     for case in &cases {
-        if case["level"] != "mcycle" {
+        let id = case["id"].as_str().unwrap();
+        let image = corpus.join(case["template"].as_str().unwrap());
+        let expected = case["expected"]["computation_hash"].as_str();
+        if id == UARCH_OUT_OF_MODEL.0 {
+            assert!(
+                !uarch_is_pristine(&image),
+                "{id}: the template's uarch is pristine now; compare the case"
+            );
+            assert_eq!(
+                expected,
+                Some(UARCH_OUT_OF_MODEL.1),
+                "{id}: the released answer changed; revisit the exclusion"
+            );
+            excluded += 1;
             continue;
         }
-        let id = case["id"].as_str().unwrap();
-        let expected = case["expected"]["computation_hash"]
-            .as_str()
-            .unwrap_or_else(|| panic!("{id}: Dave-supported case has no computation hash"));
+        let Some(expected) = expected else {
+            assert_eq!(case["expected"]["category"], "error-no-hash", "{id}");
+            no_hash += 1;
+            continue;
+        };
         let inputs = case["inputs"]
             .as_array()
             .unwrap()
             .iter()
             .map(|path| std::fs::read(corpus.join(path.as_str().unwrap())).unwrap())
             .collect();
-        let log2_mcycle_period = case["geometry"]["log2_mcycle_period"].as_u64().unwrap();
-        let log2_stride = log2_mcycle_period + Structure::PRODUCTION.log2_uarch_span;
-        let height = Structure::PRODUCTION.log2_ruler_span() - log2_stride;
-        let engine_hash = engine_root_with_inputs(
-            &corpus.join(case["template"].as_str().unwrap()),
-            inputs,
-            &three_level(),
-            log2_stride,
-            height,
-        );
+        let geometry = &case["geometry"];
+        let log2_period = geometry["log2_mcycle_period"].as_u64().unwrap();
+        let level = match case["level"].as_str().unwrap() {
+            "mcycle" => {
+                mcycle += 1;
+                let log2_stride = log2_period + structure.log2_uarch_span;
+                LevelCoords::new(
+                    0,
+                    U256::ZERO,
+                    log2_stride,
+                    structure.log2_ruler_span() - log2_stride,
+                )
+            }
+            "uarch" => {
+                uarch += 1;
+                // The CLI numbers periods across the whole epoch.
+                let index = geometry["mcycle_period_index"].as_u64().unwrap();
+                let per_input = structure.log2_barch_span - log2_period;
+                let (input, period) = (index >> per_input, index & ((1 << per_input) - 1));
+                let height = log2_period + structure.log2_uarch_span;
+                let base = structure.window_start(input) + (U256::from(period) << height);
+                LevelCoords::new(0, base, 0, height)
+            }
+            level => panic!("{id}: unexpected corpus level {level}"),
+        };
+        let engine_hash = engine_level_root(&image, inputs, &three_level(), &level);
         assert_eq!(engine_hash, expected, "{id}: Dave vs release manifest");
-        checked += 1;
         println!("{id}: {engine_hash}");
     }
-    assert_eq!(checked, 17, "unexpected v0.21 mcycle corpus size");
+    assert_eq!(
+        (mcycle, uarch, excluded, no_hash),
+        (17, 16, 1, 1),
+        "unexpected v0.21 corpus shape"
+    );
 }
 
 /// Engine vs prototype on identical spans, at three granularities: the
