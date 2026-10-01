@@ -347,6 +347,20 @@ function Env.player_react(player_coroutine)
     return coroutine.status(player_coroutine), log
 end
 
+-- Reacts without mining, for setups that must act before the node can.
+-- Only the player's own transactions advance the chain, and the node acts
+-- on a block only once it is final (two deep), so two players that join
+-- right after a seal both join before the node.
+function Env.react_until(player_coroutine, condition_f)
+    for _ = 1, 100000 do
+        local ret = { condition_f(Env.player_react(player_coroutine)) }
+        if ret[1] then
+            return table.unpack(ret)
+        end
+    end
+    error("player did not reach the expected state without mining")
+end
+
 -- `on_step` (optional) runs between sybil reactions; chaos scenarios
 -- use it to kill and respawn the node mid-dispute.
 function Env.drive_player_until(player_coroutine, condition_f, on_step)

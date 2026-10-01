@@ -21,10 +21,10 @@ assert(first_epoch.input_upper_bound == 0) -- there's no input for epoch 0!
 -- Add 3 inputs to epoch 1
 env.sender:tx_add_inputs { env.sample_inputs[1], env.sample_inputs[1], env.sample_inputs[1] }
 
--- Build the adversarial setup before the node exists: the sybils must join
--- moments after epoch 1 seals, while the node's own commitment build starts
--- from zero, so the two adversarial commitments deterministically pair with
--- each other rather than with the honest claim.
+-- Build the adversarial setup before the node exists, so the sybils can join
+-- right after epoch 1 seals. They join without mining (Env.react_until), and
+-- the node joins only once the seal is final, so the two adversarial
+-- commitments pair with each other rather than with the honest claim.
 local inputs = {}
 for _, v in ipairs(env.reader:read_inputs_added(1)) do
     table.insert(inputs, v.data)
@@ -57,6 +57,16 @@ local player1 = start_sybil(patched_commitment_builder1, env.template_machine, s
 local player2 = start_sybil(patched_commitment_builder2, env.template_machine, second_epoch.tournament,
     inputs)
 
+local function commitment_count(log)
+    local count = 0
+    for _, _ in pairs(log.state.commitments) do
+        count = count + 1
+    end
+    return count
+end
+env.react_until(player1, function(_, log) return commitment_count(log) > 0 end)
+env.react_until(player2, function(_, log) return commitment_count(log) > 1 end)
+
 local delegated_match
 env.drive_player_until(player1, function(_, _)
     local _, log2 = env.player_react(player2)
@@ -79,12 +89,17 @@ assert(delegated_match.commitment_one ~= commitment.root_hash
     and delegated_match.commitment_two ~= commitment.root_hash,
     "the delegated match must contain the two adversarial commitments")
 
--- Both sybils join the child during the reaction that observes delegation.
--- Capture that exact child match before abandoning them.
-local child_commitments = env.reader.inner_reader:read_commitment_joined(
-    delegated_match.child_tournament
-)
-assert(#child_commitments == 2, "expected two adversarial child commitments")
+-- Both sybils join the child, then are abandoned. Under two levels the child
+-- is the leaf, whose commitment a sybil builds over many reactions, so react
+-- (without mining, which would run the child's clocks) until both joined.
+local child_commitments
+env.react_until(player1, function()
+    env.player_react(player2)
+    child_commitments = env.reader.inner_reader:read_commitment_joined(
+        delegated_match.child_tournament
+    )
+    return #child_commitments == 2
+end)
 
 local lazy_child_match
 for _, match in ipairs(env.reader.inner_reader:read_match_created(
