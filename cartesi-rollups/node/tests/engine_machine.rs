@@ -21,6 +21,7 @@ use cartesi_rollups_prt_node::engine::{
     Structure, TournamentGeometry,
 };
 use cartesi_rollups_prt_node::machine_runner::MachineRunner;
+use cartesi_rollups_prt_node::merkle::Digest;
 use cartesi_rollups_prt_node::storage::{Epoch, Input as StorageInput, InputId, Storage};
 use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
@@ -56,7 +57,7 @@ fn fixture_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn read_fixture(path: &Path) -> BTreeMap<String, String> {
+fn read_fixture(path: &Path) -> serde_json::Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|_| {
         panic!(
             "fixture file missing: {}; generate it with UPDATE_FIXTURES=1 \
@@ -69,7 +70,7 @@ fn read_fixture(path: &Path) -> BTreeMap<String, String> {
 
 /// Regeneration (UPDATE_FIXTURES=1) is a conscious, reviewable act;
 /// otherwise the computed values must equal the checked-in ones.
-fn check_fixture(name: &str, computed: BTreeMap<String, String>) {
+fn check_fixture(name: &str, computed: serde_json::Value) {
     let path = fixture_path(name);
     if std::env::var("UPDATE_FIXTURES").is_ok() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -739,7 +740,7 @@ fn golden_fixtures_hold() {
         engine_root(&image, 27, 10),
     );
 
-    check_fixture("engine_echo.json", computed);
+    check_fixture("engine_echo.json", serde_json::json!(computed));
 }
 
 /// The epochs the runner settles. Echo rejects its third input
@@ -840,7 +841,7 @@ fn reference_cli_goldens_hold() {
         }
     }
 
-    check_fixture("reference_cli.json", computed);
+    check_fixture("reference_cli.json", serde_json::json!(computed));
 }
 
 /// One sealed epoch through the production runner (advance, record,
@@ -897,7 +898,8 @@ fn runner_settlement(
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn runner_settles_the_reference_root() {
-    let goldens = read_fixture(&fixture_path("reference_cli.json"));
+    let goldens: BTreeMap<String, String> =
+        serde_json::from_value(read_fixture(&fixture_path("reference_cli.json"))).unwrap();
     for (program, image, inputs) in runner_epochs() {
         assert_eq!(
             template_hash(&image),
@@ -980,6 +982,25 @@ fn prove_transition_matches_prototype_get_logs() {
     }
 }
 
+/// Where yield's first input is rejected, and the pre-feed state the
+/// revert restores: feed window 0 and run the big machine until the
+/// guest yields; the closing slot of that big cycle carries the revert
+/// (mirrors stf_revert's oracle-reported processing_bigs).
+fn yield_revert_closing_slot(image: &Path, inputs: &[Vec<u8>]) -> (Digest, U256) {
+    let work = scratch();
+    let mut stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::Sampled)
+        .unwrap()
+        .with_inputs(inputs.to_vec());
+    let pre_feed = stf.state_hash().unwrap();
+    stf.feed(0).unwrap();
+    let bigs = stf.run_big(u64::MAX).unwrap();
+    assert!(stf.yielded().unwrap(), "the yield program must yield");
+    assert!(bigs > 0, "the guest must run before yielding");
+    let boundary = U256::from(bigs) * U256::from(Structure::PRODUCTION.big_span());
+    assert!(boundary < (U256::ONE << 44), "input overran a level-0 leaf");
+    (pre_feed, boundary - U256::ONE)
+}
+
 /// The revert-carrying closing slot, on the yield machine (which
 /// rejects every input). Three agreements, in dependency order: the
 /// plain path's closing leaf must be the restored checkpoint (the
@@ -994,33 +1015,14 @@ fn revert_closing_slot_restores_the_checkpoint() {
     let image = yield_image();
 
     let structure = Structure::PRODUCTION;
-    let big_span = U256::from(structure.big_span());
     let inputs = yield_inputs();
 
     let (_state_dir, storage) = initialized_storage_with(&image, inputs.clone());
     let work = scratch();
     let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
 
-    // Record what feed checkpoints, then find where the reject lands:
-    // feed window 0 and run the big machine until the guest yields.
-    // The closing slot of that big
-    // cycle carries the revert (mirrors stf_revert's oracle-reported
-    // processing_bigs).
-    let (pre_feed, bigs) = {
-        let work = scratch();
-        let mut stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled)
-            .unwrap()
-            .with_inputs(inputs.clone());
-        let pre_feed = stf.state_hash().unwrap();
-        stf.feed(0).unwrap();
-        let ran = stf.run_big(u64::MAX).unwrap();
-        assert!(stf.yielded().unwrap(), "the yield program must yield");
-        assert!(ran > 0, "the guest must run before yielding");
-        (pre_feed, ran)
-    };
-    let boundary = U256::from(bigs) * big_span;
-    assert!(boundary < (U256::ONE << 44), "input overran a level-0 leaf");
-    let closing = boundary - U256::ONE;
+    let (pre_feed, closing) = yield_revert_closing_slot(&image, &inputs);
+    let boundary = closing + U256::ONE;
 
     // The built leaf, through the plain path.
     let built = {
@@ -1058,7 +1060,106 @@ fn revert_closing_slot_restores_the_checkpoint() {
         "post-transition hash diverges from the prototype at the revert closing slot"
     );
     println!(
-        "revert closing slot at big cycle {bigs}: {} witness bytes agree",
+        "revert closing slot at position {closing}: {} witness bytes agree",
         proof.len()
+    );
+}
+
+/// One transition as the Hero proves it: the pre- and post-states from
+/// a ruler positioned on the template, and the witness bytes from the
+/// dispute facade on a fresh store, which checks both states.
+fn node_witness(
+    program: &str,
+    image: &Path,
+    inputs: &[Vec<u8>],
+    meta_cycle: U256,
+) -> serde_json::Value {
+    let (pre_state, post_state) = {
+        let work = scratch();
+        let stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::Sampled)
+            .unwrap()
+            .with_inputs(inputs.to_vec());
+        let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
+        ruler.advance(meta_cycle).unwrap();
+        let pre_state = ruler.state_hash().unwrap();
+        let (_, post_state) = ruler.prove_transition().unwrap();
+        (pre_state, post_state)
+    };
+    let (state_dir, storage) = initialized_storage_with(image, inputs.to_vec());
+    let work = scratch();
+    let proof = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+        .unwrap()
+        .prove_transition(meta_cycle, pre_state, post_state)
+        .unwrap();
+    drop(state_dir);
+    serde_json::json!({
+        "program": program,
+        "meta_cycle": format!("{meta_cycle:#x}"),
+        "pre_state": pre_state.to_hex(),
+        "post_state": post_state.to_hex(),
+        "proof": format!("0x{}", hex::encode(proof)),
+    })
+}
+
+/// Gap 1 of docs/plans/test-strategy-reset.md: the witness bytes the
+/// node sends, pinned for the Solidity step. NodeWitnesses.t.sol in
+/// cartesi-rollups/contracts runs every vector through the real
+/// CartesiStateTransition, rooting inputs the way DaveConsensus does.
+/// The shapes are the ones prove_transition_matches_prototype_get_logs
+/// and revert_closing_slot_restores_the_checkpoint cover, plus a second
+/// input's opening (a nonzero provider index).
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn node_witness_vectors_hold() {
+    let structure = Structure::PRODUCTION;
+    let programs = BTreeMap::from([
+        ("echo", (echo_image(), echo_inputs())),
+        ("yield", (yield_image(), yield_inputs())),
+    ]);
+    let (yield_image, yield_inputs) = &programs["yield"];
+    let (_, revert_closing) = yield_revert_closing_slot(yield_image, yield_inputs);
+    let cases = [
+        ("echo_fed_window_start", "echo", U256::ZERO),
+        ("echo_plain_ustep", "echo", U256::ONE),
+        (
+            "echo_closing_slot",
+            "echo",
+            U256::from(structure.big_span() - 1),
+        ),
+        (
+            "echo_second_input_opening",
+            "echo",
+            structure.window_start(1),
+        ),
+        (
+            "echo_inputless_window_start",
+            "echo",
+            structure.window_start(2),
+        ),
+        ("yield_revert_closing_slot", "yield", revert_closing),
+    ];
+
+    let mut vectors = serde_json::Map::new();
+    for (name, program, meta_cycle) in cases {
+        let (image, inputs) = &programs[program];
+        vectors.insert(
+            name.into(),
+            node_witness(program, image, inputs, meta_cycle),
+        );
+    }
+    let inputs: serde_json::Map<_, _> = programs
+        .iter()
+        .map(|(program, (_, inputs))| {
+            let encoded: Vec<_> = inputs
+                .iter()
+                .map(|input| format!("0x{}", hex::encode(input)))
+                .collect();
+            (program.to_string(), serde_json::json!(encoded))
+        })
+        .collect();
+
+    check_fixture(
+        "node_witnesses.json",
+        serde_json::json!({ "inputs": inputs, "vectors": vectors }),
     );
 }

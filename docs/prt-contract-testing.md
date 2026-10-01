@@ -213,6 +213,14 @@ Combined
 witness mutations cover exact DA header and payload boundaries, the CMIO-step
 and step-reset seams, before-root and provider-root binding, one representative
 byte in each composed primitive, and replay across adjacent transition shapes.
+
+Those vectors come from the Lua client and bare emulators. The Rust node's
+own witness bytes are pinned on its side by `node_witness_vectors_hold`
+(`cartesi-rollups/node/tests/engine_machine.rs`): window openings with and
+without an input, a second input's opening, a plain ustep, a closing slot, and
+a rejected-input closing slot. `NodeWitnessesTest` (`cartesi-rollups/contracts`)
+replays each through `CartesiStateTransition`, with inputs rooted the way
+`DaveConsensus` roots them, and requires the node's post-state.
 A nonempty DA payload paired with the provider's zero out-of-range root
 intentionally skips CMIO and proves only the following machine step.
 One PRT-side composition test carries a canonical input-opening vector through

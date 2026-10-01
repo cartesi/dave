@@ -62,7 +62,11 @@ sybil froze block production while it computed. The canonical battery passes.
    settled root equals the facade's root from the runner's rows, the
    replay on a fresh store, and `tests/fixtures/reference_cli.json`, which
    `just test-reference-cli-goldens` recomputes with the released CLI in
-   CI's e2e lane.
+   CI's e2e lane. Gap 1 is done with checked-in vectors rather than FFI
+   (Foundry would otherwise build and run the node): `node_witness_vectors_hold`
+   pins the node's witness bytes for six transition shapes, and
+   `NodeWitnessesTest` in `cartesi-rollups/contracts` replays them through
+   the step.
 2. Timing as cost = counts x atoms. Design this properly before building it
    (owner, 2026-10-01: benchmarks are hard); what follows is the starting
    sketch, not the design. Exact work counts at the production
