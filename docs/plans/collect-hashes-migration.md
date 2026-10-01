@@ -152,6 +152,37 @@ one bundle, a terminal fixed point, rejection, and the maximum-cycle tails.
 - Measure commitment construction and dispute-time subtree collection on echo
   and instruction-heavy workloads. Record memory as well as elapsed time.
 
+### Readiness (2026-10-01)
+
+Evidence in place, all in `cartesi-rollups/node/tests/engine_machine.rs`
+unless named otherwise:
+
+- Leaf and root goldens, double-witnessed: `reference_cli.json` holds the
+  release CLI's answers (collect APIs) for nine stride-0 leaves at periods 7
+  and 8 (fed starts, an accepted yield, reverts, a revert crossed while
+  positioning, a padding window) and for whole epochs at both tables' root
+  strides. The legacy per-step path reproduces every one
+  (`leaf_commitments_match_the_reference_cli`,
+  `runner_settles_the_reference_root`), so the two implementations agree
+  on these shapes before any switch.
+- The canonical-transition authority: `NodeWitnessesTest` replays the node's
+  witness bytes through the Solidity step; `NodeProofsTest` checks its
+  commitment and settlement proofs with the contracts' verifiers.
+- Snapshot resume, write-back, gap positioning and half-built-level restart.
+- Work-count tests (`engine/spec.rs`) that fail on any overhead the switch
+  adds, such as hashing idle stretches: the CLI spends about 2 minutes on a
+  mostly idle period-17 leaf that the node builds in one captured cycle.
+
+Still owed before the switch:
+
+1. Dave against the release corpus's 18 uarch cases (it covers terminal
+   shapes no Dave program reaches). Needs the digest-pinned corpus download.
+2. The wrapper tests and bundle and chunk metamorphics above, written with
+   the collect-backed path.
+3. After the switch, the test-only legacy builder (D7) must also check the
+   leaf goldens, or a regeneration would compare the collect APIs with
+   themselves.
+
 ## Implementation sequence
 
 1. Expose narrow safe Rust result types for both collect calls. Preserve
