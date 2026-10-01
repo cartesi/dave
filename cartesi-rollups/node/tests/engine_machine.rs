@@ -3,11 +3,12 @@
 
 //! Increment B differentials: the engine reference collector against the
 //! prototype's commitment builder, on the real echo machine, plus golden
-//! fixtures pinning the roots.
+//! fixtures pinning the roots, and the eager runner against the reference
+//! CLI's answers.
 //!
 //! The image-backed tests are ignored by generic Cargo runs and exercised by
-//! the fail-loud `just test-engine-machine` gate. The fixture file records the
-//! template hash: an emulator or image bump invalidates it loudly, and
+//! the fail-loud `just test-engine-machine` gate. The fixture files record
+//! template hashes: an emulator or image bump invalidates them loudly, and
 //! regeneration (UPDATE_FIXTURES=1) is a conscious, reviewable act.
 
 use alloy::primitives::{Address, U256};
@@ -19,12 +20,14 @@ use cartesi_rollups_prt_node::engine::{
     DisputeSource, Hashing, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf,
     Structure, TournamentGeometry,
 };
-use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
+use cartesi_rollups_prt_node::machine_runner::MachineRunner;
+use cartesi_rollups_prt_node::storage::{Epoch, Input as StorageInput, InputId, Storage};
 use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::Duration;
 
 fn required_image(program: &str) -> PathBuf {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -47,8 +50,39 @@ fn yield_image() -> PathBuf {
     required_image("yield")
 }
 
-fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/engine_echo.json")
+fn fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
+
+fn read_fixture(path: &Path) -> BTreeMap<String, String> {
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|_| {
+        panic!(
+            "fixture file missing: {}; generate it with UPDATE_FIXTURES=1 \
+             and commit it after review",
+            path.display()
+        )
+    }))
+    .unwrap()
+}
+
+/// Regeneration (UPDATE_FIXTURES=1) is a conscious, reviewable act;
+/// otherwise the computed values must equal the checked-in ones.
+fn check_fixture(name: &str, computed: BTreeMap<String, String>) {
+    let path = fixture_path(name);
+    if std::env::var("UPDATE_FIXTURES").is_ok() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_string_pretty(&computed).unwrap()).unwrap();
+        println!("fixtures written to {}", path.display());
+        return;
+    }
+    assert_eq!(
+        computed,
+        read_fixture(&path),
+        "{name} diverged; if the emulator or an image changed \
+         intentionally, regenerate with UPDATE_FIXTURES=1"
+    );
 }
 
 // The canonical input encoding: what InputBox.addInput wraps payloads
@@ -125,6 +159,28 @@ fn prototype_root(image: &Path, level: u64, log2_stride: u64, log2_stride_count:
     commitment.merkle.root_hash().to_hex()
 }
 
+fn geometry(pairs: &[(u64, u64)]) -> TournamentGeometry {
+    TournamentGeometry::new(
+        pairs
+            .iter()
+            .map(|&(log2_stride, height)| Level {
+                log2_stride,
+                height,
+            })
+            .collect(),
+        &Structure::PRODUCTION,
+    )
+    .unwrap()
+}
+
+fn three_level() -> TournamentGeometry {
+    geometry(&[(44, 48), (27, 17), (0, 27)])
+}
+
+fn two_level() -> TournamentGeometry {
+    geometry(&[(37, 55), (0, 37)])
+}
+
 /// A real initialized node database in a temp state dir, the echo
 /// inputs ingested through the production path (payloads live in the
 /// inputs table; feeders read them there). The guard rides along:
@@ -133,30 +189,20 @@ fn initialized_storage(image: &Path) -> (tempfile::TempDir, Storage) {
     initialized_storage_with(image, echo_inputs())
 }
 
+/// These differentials sample the machine path, so the pinned run
+/// stride only needs to be valid.
 fn initialized_storage_with(image: &Path, inputs: Vec<Vec<u8>>) -> (tempfile::TempDir, Storage) {
+    initialized_storage_under(image, inputs, &three_level())
+}
+
+fn initialized_storage_under(
+    image: &Path,
+    inputs: Vec<Vec<u8>>,
+    geometry: &TournamentGeometry,
+) -> (tempfile::TempDir, Storage) {
     let dir = scratch();
-    // A valid three-level table; these differentials sample the machine
-    // path, so the pinned run stride only needs to be valid.
-    let geometry = TournamentGeometry::new(
-        [(44, 48), (27, 17), (0, 27)]
-            .into_iter()
-            .map(|(log2_stride, height)| Level {
-                log2_stride,
-                height,
-            })
-            .collect(),
-        &Structure::PRODUCTION,
-    )
-    .unwrap();
-    let mut storage = Storage::initialize(
-        dir.path(),
-        image,
-        0,
-        Address::ZERO,
-        Address::ZERO,
-        &geometry,
-    )
-    .unwrap();
+    let mut storage =
+        Storage::initialize(dir.path(), image, 0, Address::ZERO, Address::ZERO, geometry).unwrap();
     let rows: Vec<StorageInput> = inputs
         .into_iter()
         .enumerate()
@@ -186,10 +232,11 @@ fn engine_root(image: &Path, log2_stride: u64, height: u64) -> String {
 fn engine_root_with_inputs(
     image: &Path,
     inputs: Vec<Vec<u8>>,
+    geometry: &TournamentGeometry,
     log2_stride: u64,
     height: u64,
 ) -> String {
-    let (state_dir, storage) = initialized_storage_with(image, inputs);
+    let (state_dir, storage) = initialized_storage_under(image, inputs, geometry);
     let work = scratch();
     let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
     let root = source
@@ -422,6 +469,7 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
         let engine_hash = engine_root_with_inputs(
             &corpus.join(case["template"].as_str().unwrap()),
             inputs,
+            &three_level(),
             log2_stride,
             height,
         );
@@ -691,29 +739,196 @@ fn golden_fixtures_hold() {
         engine_root(&image, 27, 10),
     );
 
-    let path = fixture_path();
-    if std::env::var("UPDATE_FIXTURES").is_ok() {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, serde_json::to_string_pretty(&computed).unwrap()).unwrap();
-        println!("fixtures written to {}", path.display());
-        return;
+    check_fixture("engine_echo.json", computed);
+}
+
+/// The epochs the runner settles. Echo rejects its third input
+/// (`--reject=2`), so its epoch takes both record paths; that input
+/// runs about 151k mcycles, so at the two-level period 2^17 one sample
+/// falls inside it and the revert shows in the root. Yield rejects
+/// every input, so its epoch ends on the state it started from.
+fn runner_epochs() -> [(&'static str, PathBuf, Vec<Vec<u8>>); 2] {
+    [
+        (
+            "echo",
+            echo_image(),
+            encode_inputs(&[&b"zero"[..], b"one", b"two", b"three"]),
+        ),
+        (
+            "yield",
+            yield_image(),
+            encode_inputs(&[&b"zero"[..], b"one"]),
+        ),
+    ]
+}
+
+/// The CLI samples mcycles; the root stride also spans the uarch.
+fn reference_cli_period(geometry: &TournamentGeometry) -> u64 {
+    geometry.root_stride() - Structure::PRODUCTION.log2_uarch_span
+}
+
+fn reference_cli_key(program: &str, geometry: &TournamentGeometry) -> String {
+    format!(
+        "{program}/log2_mcycle_period_{}",
+        reference_cli_period(geometry)
+    )
+}
+
+/// The released CLI's computation hash for one epoch from the image.
+/// It runs a clone in stored revert mode (the default fork mode needs
+/// a machine server); outputs are not under test, so only the hash
+/// file is written.
+fn reference_cli_root(
+    cli: &str,
+    image: &Path,
+    inputs: &[Vec<u8>],
+    geometry: &TournamentGeometry,
+) -> String {
+    let dir = scratch();
+    for (index, input) in inputs.iter().enumerate() {
+        std::fs::write(dir.path().join(format!("input-{index}.bin")), input).unwrap();
+    }
+    let hash_path = dir.path().join("computation-hash.bin");
+    let advance = format!(
+        "input:{},input_index_begin:0,input_index_end:{},mcycle_computation_hash:{},\
+         log2_mcycle_computation_hash_period:{},output:,rejected_output:,output_proof:,\
+         report:,outputs_merkle_root:,outputs_merkle_root_proof:,\
+         check_outputs_merkle_root:false",
+        dir.path().join("input-%i.bin").display(),
+        inputs.len(),
+        hash_path.display(),
+        reference_cli_period(geometry),
+    );
+    let output = Command::new(cli)
+        .arg("--revert-mode=stored")
+        .arg(format!(
+            "--load={},clone:{},sharing:all",
+            dir.path().join("machine").display(),
+            image.display()
+        ))
+        .arg(format!("--cmio-advance-state={advance}"))
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run {cli}: {error}"));
+    assert!(
+        output.status.success(),
+        "reference CLI failed; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let hash = std::fs::read(&hash_path).expect("the reference CLI wrote no computation hash");
+    assert_eq!(hash.len(), 32, "malformed reference computation hash");
+    format!("0x{}", hex::encode(hash))
+}
+
+/// The answers behind runner_settles_the_reference_root, computed by
+/// the released CLI rather than Dave code. The template hashes pin the
+/// images they answer for. Outside the engine gate because it needs
+/// that exact CLI; CI runs it where the release package is installed.
+#[test]
+#[ignore = "requires the released cartesi-machine 0.21.0 CLI; run `just test-reference-cli-goldens`"]
+fn reference_cli_goldens_hold() {
+    let cli = corpus_cli();
+    assert_corpus_cli_version(&cli);
+
+    let mut computed = BTreeMap::new();
+    for (program, image, inputs) in runner_epochs() {
+        computed.insert(format!("{program}/template_hash"), template_hash(&image));
+        for geometry in [three_level(), two_level()] {
+            computed.insert(
+                reference_cli_key(program, &geometry),
+                reference_cli_root(&cli, &image, &inputs, &geometry),
+            );
+        }
     }
 
-    let stored: BTreeMap<String, String> =
-        serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_else(|_| {
-            panic!(
-                "fixture file missing: {}; generate it with UPDATE_FIXTURES=1 \
-                 and commit it after review",
-                path.display()
-            )
-        }))
+    check_fixture("reference_cli.json", computed);
+}
+
+/// One sealed epoch through the production runner (advance, record,
+/// commit, roll). Returns the settled root and the root the dispute
+/// facade serves from the runner's own rows, which the Hero joins
+/// with.
+fn runner_settlement(
+    image: &Path,
+    inputs: Vec<Vec<u8>>,
+    geometry: &TournamentGeometry,
+) -> (String, String) {
+    let input_count = inputs.len() as u64;
+    let (state_dir, mut storage) = initialized_storage_under(image, inputs, geometry);
+    let sealed = Epoch {
+        epoch_number: 0,
+        input_index_boundary: input_count,
+        root_tournament: Address::ZERO,
+        block_created_number: 0,
+    };
+    storage
+        .insert_consensus_data(1, std::iter::empty(), [&sealed].into_iter())
+        .unwrap();
+    // Over echo's four inputs, the rejection reloads a transient
+    // checkpoint mid-batch and the last input publishes as the sealed
+    // remainder.
+    storage.set_snapshot_gap_inputs(3);
+    MachineRunner::new(storage, Duration::ZERO)
+        .unwrap()
+        .process_rollup()
         .unwrap();
 
-    assert_eq!(
-        computed, stored,
-        "golden fixtures diverged; if the emulator or the echo image \
-         changed intentionally, regenerate with UPDATE_FIXTURES=1"
-    );
+    let mut storage = Storage::new(state_dir.path()).unwrap();
+    let settled = storage
+        .settlement_info(0)
+        .unwrap()
+        .expect("the runner rolled the sealed epoch")
+        .computation_hash
+        .to_hex();
+    let root = &geometry.levels()[0];
+    let work = scratch();
+    let served = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+        .unwrap()
+        .node(&Quartet::level_root(0, root.log2_stride, root.height))
+        .unwrap()
+        .to_hex();
+    drop(state_dir);
+    (settled, served)
+}
+
+/// Gap 2 of docs/plans/test-strategy-reset.md: the eager runner on a
+/// real machine. Under both tables, the root it settles must be the
+/// reference CLI's, and the dispute facade must serve that same root
+/// both from the runner's rows and by replay on a fresh store.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn runner_settles_the_reference_root() {
+    let goldens = read_fixture(&fixture_path("reference_cli.json"));
+    for (program, image, inputs) in runner_epochs() {
+        assert_eq!(
+            template_hash(&image),
+            goldens[&format!("{program}/template_hash")],
+            "{program}: the goldens answer for another image; regenerate them \
+             with UPDATE_FIXTURES=1 `just test-reference-cli-goldens`"
+        );
+        for geometry in [three_level(), two_level()] {
+            let label = format!("{program} under {geometry}");
+            let (settled, served) = runner_settlement(&image, inputs.clone(), &geometry);
+            let root = &geometry.levels()[0];
+            let fresh = engine_root_with_inputs(
+                &image,
+                inputs.clone(),
+                &geometry,
+                root.log2_stride,
+                root.height,
+            );
+            assert_eq!(
+                settled,
+                goldens[&reference_cli_key(program, &geometry)],
+                "{label}: settled root vs the reference CLI"
+            );
+            assert_eq!(
+                served, settled,
+                "{label}: root served from the runner's rows"
+            );
+            assert_eq!(fresh, settled, "{label}: root replayed on a fresh store");
+            println!("{label}: {settled}");
+        }
+    }
 }
 
 /// The checked proof facade must produce byte-identical chain

@@ -87,7 +87,8 @@ impl MachineRunner {
         }
     }
 
-    fn process_rollup(&mut self) -> Result<()> {
+    /// One tick: publishes every ready batch and roll, then returns.
+    pub fn process_rollup(&mut self) -> Result<()> {
         loop {
             let plan = self.storage.advance_plan()?;
             match plan_action(&plan, self.storage.snapshot_gap_inputs()) {

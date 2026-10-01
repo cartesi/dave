@@ -56,6 +56,13 @@ sybil froze block production while it computed. The canonical battery passes.
    1); the uarch and Dave-owned corpora (gap 3); a dense-leaf and revert
    differential through the big-cycle-root builder (gap 4); checked-in proof
    vectors in Foundry (gap 5); a unit test for resuming a half-built level.
+   Gap 2 is done: `runner_settles_the_reference_root` drives the
+   production runner over an echo epoch (a rejection mid-batch, a sealed
+   remainder) and an all-rejected yield epoch under both tables; the
+   settled root equals the facade's root from the runner's rows, the
+   replay on a fresh store, and `tests/fixtures/reference_cli.json`, which
+   `just test-reference-cli-goldens` recomputes with the released CLI in
+   CI's e2e lane.
 2. Timing as cost = counts x atoms. Design this properly before building it
    (owner, 2026-10-01: benchmarks are hard); what follows is the starting
    sketch, not the design. Exact work counts at the production

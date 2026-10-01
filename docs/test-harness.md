@@ -104,8 +104,12 @@ Rust node, and the CLI is invisible to these checks except where a dispute
 reaches the on-chain state transition. The CLI gate covers root commitments
 only. It samples every 2^(stride - 20) big cycles (2^24 at stride 44, 2^17 at
 stride 37); at 2^24 no test program's rejected input spans a sample point, so
-the revert stays invisible to it, while at 2^17 some may (a lead). Leaf
-commitments are not CLI-checked yet. The sling differential chain (toy spec, reference collector, prototype
+the revert stays invisible to it, while at 2^17 echo's does (its rejected
+input runs about 151k mcycles). Below e2e, `runner_settles_the_reference_root`
+(`cartesi-rollups/node/tests/engine_machine.rs`) checks the production
+runner's settled root against checked-in answers of the same CLI under both
+tables, including that echo revert. Leaf commitments are not CLI-checked
+yet. The sling differential chain (toy spec, reference collector, prototype
 fixtures) mitigates from the other side.
 
 ## Hardened primitives (2026-07-16)

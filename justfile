@@ -198,7 +198,15 @@ test-engine-machine: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
     cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
-      --ignored --skip computation_hash_corpus
+      --ignored --skip computation_hash_corpus --skip reference_cli_goldens_hold
+
+# the released CLI's answers behind the runner goldens (needs cartesi-machine
+# 0.21.0 on PATH; UPDATE_FIXTURES=1 regenerates them)
+test-reference-cli-goldens: bind
+    ./script/machine-image-fingerprint.sh verify echo
+    ./script/machine-image-fingerprint.sh verify yield
+    cargo test -p cartesi-rollups-prt-node --test engine_machine \
+      reference_cli_goldens_hold -- --ignored --exact --nocapture
 
 # download and verify v0.21's released computation-hash corpus
 download-computation-hash-corpus:

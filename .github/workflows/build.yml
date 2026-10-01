@@ -125,6 +125,12 @@ jobs:
         working-directory: ./test/programs/
         run: |
           just build-yield
+      # The Rust lane checks the runner against these goldens; only this
+      # lane has the released CLI that computes them.
+      - name: Test reference CLI goldens
+        timeout-minutes: 10
+        run: |
+          just test-reference-cli-goldens
       - name: Test prt-rollups
         timeout-minutes: 20
         run: |
