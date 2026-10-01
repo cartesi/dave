@@ -180,6 +180,8 @@ impl Storage {
             source_machine_path.display()
         );
 
+        assert_pristine_uarch(source_machine_path)?;
+
         // Hash through a private load (cheap: the image ships valid
         // hash sidecars), then clone the image into the store - no
         // 500 MB re-serialization through machine memory. Cross-
@@ -279,6 +281,29 @@ fn open_reader_connection(db_path: &Path) -> Result<Connection> {
 // State directory layout
 //
 
+/// The template must carry the deployed step's pristine uarch: every
+/// commitment shortcut assumes it at big-cycle boundaries, and every closing
+/// reset restores it, so only the template can break it (custom uarch code,
+/// or an image built by an emulator with another uarch). Commitments over
+/// such a template would be silently wrong, so the node refuses it once, at
+/// import; a reset that changes the root is the test.
+fn assert_pristine_uarch(template: &Path) -> Result<()> {
+    use cartesi_machine::config::runtime::RuntimeConfig;
+    let mut machine = Machine::load(template, &RuntimeConfig::quiet_console())
+        .with_context(|| format!("failed to load template `{}`", template.display()))?;
+    let root = machine.root_hash().map_err(anyhow::Error::from)?;
+    machine.reset_uarch().map_err(anyhow::Error::from)?;
+    if machine.root_hash().map_err(anyhow::Error::from)? != root {
+        return Err(anyhow::anyhow!(
+            "template `{}` does not carry the pristine uarch of this node's emulator \
+             (custom uarch code or another emulator's image); refusing it",
+            template.display()
+        )
+        .into());
+    }
+    Ok(())
+}
+
 pub fn db_path(state_dir: &Path) -> PathBuf {
     state_dir.to_owned().join("db.sqlite3")
 }
@@ -311,4 +336,35 @@ pub(super) fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<Pa
     fs::create_dir_all(&path).with_context(|| format!("creating `{}`", &path.display()))?;
 
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::sql::test_helper::store_template;
+    use cartesi_machine::cartesi_machine_sys::CM_REG_UARCH_PC;
+
+    #[test]
+    fn initialize_refuses_a_template_without_the_pristine_uarch() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        // Any uarch edit a reset would undo; custom uarch code moves the pc.
+        store_template(&template, |machine| {
+            machine.write_reg(CM_REG_UARCH_PC, 0x700000).unwrap();
+        });
+        let error = Storage::initialize(
+            &dir.path().join("state"),
+            &template,
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            &TournamentGeometry::two_level(),
+        )
+        .map(|_| ())
+        .expect_err("a non-pristine uarch must be refused");
+        assert!(
+            format!("{error:#}").contains("pristine uarch"),
+            "unexpected error: {error:#}"
+        );
+    }
 }

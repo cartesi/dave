@@ -462,14 +462,21 @@ const UARCH_OUT_OF_MODEL: (&str, &str) = (
     "0x8c40a7ed8c6327731bc0444947574e39593c5c1cddcefbeeebdca6461150315b",
 );
 
-/// Whether a stored machine carries the pristine uarch every big-cycle
-/// boundary must carry: a uarch reset then leaves its root unchanged.
-fn uarch_is_pristine(image: &Path) -> bool {
-    use cartesi_machine::{config::runtime::RuntimeConfig, machine::Machine};
-    let mut machine = Machine::load(image, &RuntimeConfig::quiet_console()).unwrap();
-    let before = machine.root_hash().unwrap();
-    machine.reset_uarch().unwrap();
-    machine.root_hash().unwrap() == before
+/// Whether the node refuses a template at import for lacking the pristine
+/// uarch every big-cycle boundary must carry.
+fn refused_as_non_pristine(image: &Path) -> bool {
+    let dir = scratch();
+    match Storage::initialize(
+        dir.path(),
+        image,
+        0,
+        Address::ZERO,
+        Address::ZERO,
+        &three_level(),
+    ) {
+        Ok(_) => false,
+        Err(error) => format!("{error:#}").contains("pristine uarch"),
+    }
 }
 
 /// Dave against the released answers: every mcycle case as a whole-epoch
@@ -481,7 +488,8 @@ fn uarch_is_pristine(image: &Path) -> bool {
 /// at big-cycle boundaries; Solidity, the CLI and Dave give three different
 /// roots there (docs/computation-hash.md). Upstream 22b4431 makes it
 /// error-no-hash; drop the exclusion when the corpus comes from a release
-/// that carries it. The exclusion checks its own premise, so a changed
+/// that carries it. The node refuses such a template at import, and the
+/// exclusion asserts that refusal and the released hash, so a changed
 /// template or answer forces a revisit.
 #[test]
 #[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
@@ -496,8 +504,8 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
         let expected = case["expected"]["computation_hash"].as_str();
         if id == UARCH_OUT_OF_MODEL.0 {
             assert!(
-                !uarch_is_pristine(&image),
-                "{id}: the template's uarch is pristine now; compare the case"
+                refused_as_non_pristine(&image),
+                "{id}: the node no longer refuses this template; compare the case"
             );
             assert_eq!(
                 expected,

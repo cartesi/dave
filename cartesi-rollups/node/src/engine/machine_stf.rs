@@ -97,9 +97,9 @@ impl MachineStf {
     /// Loads a template machine (the epoch's initial state). It must be
     /// yielded awaiting the first input, with a pristine uarch.
     pub fn load(template_path: &Path, work_dir: PathBuf, hashing: Hashing) -> Result<Self> {
-        // The pristine uarch is the template's to carry (a trusted-app
-        // bound in docs/computation-hash.md); resume checks only that
-        // the uarch sits at cycle zero.
+        // Storage checks the template's pristine uarch at import
+        // (docs/computation-hash.md); resume checks only that the
+        // uarch sits at cycle zero.
         let mut stf = Self::resume(template_path, work_dir, hashing)?;
         ensure!(
             stf.yielded()?,
