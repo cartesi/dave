@@ -56,7 +56,9 @@ sybil froze block production while it computed. The canonical battery passes.
    1); the uarch and Dave-owned corpora (gap 3); a dense-leaf and revert
    differential through the big-cycle-root builder (gap 4); checked-in proof
    vectors in Foundry (gap 5); a unit test for resuming a half-built level.
-2. Timing as cost = counts x atoms. Exact work counts at the production
+2. Timing as cost = counts x atoms. Design this properly before building it
+   (owner, 2026-10-01: benchmarks are hard); what follows is the starting
+   sketch, not the design. Exact work counts at the production
    geometry are deterministic unit tests on the toy (a counting stf: runner
    collects, leaf builds, descents, `prove_last`, snapshot rows, gap replay).
    Release-build atoms are measured (dense pair rate, stride-37 sampling,
