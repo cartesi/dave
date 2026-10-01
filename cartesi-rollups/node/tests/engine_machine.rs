@@ -1478,3 +1478,58 @@ fn node_proof_vectors_hold() {
         serde_json::json!({ "commitments": commitments, "settlements": settlements }),
     );
 }
+
+/// Crash recovery of a dispute-time build, the unit form of the
+/// kill_commitment_build e2e scenario. A node killed mid-descent leaves the
+/// strata it stored (rows commit per build, all or nothing) and the
+/// boundaries its positioning wrote back; a restarted source over the same
+/// state and work directories must serve the level exactly like a fresh
+/// store. The level is the big-cycle-root builder's active branch inside
+/// window 1.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn restarted_source_resumes_a_half_built_level() {
+    let image = echo_image();
+    let level = LevelCoords::new(0, U256::from(1) << 68, 0, 28);
+    let mid = (U256::ONE << 27) + U256::from(777);
+
+    let (_fresh_guards, mut fresh) = machine_source(&image);
+    let root = fresh.node(&level.root()).unwrap();
+    let last = fresh.prove_last(&level).unwrap();
+    let agree = fresh.prove_leaf(&level, mid).unwrap();
+
+    let (state_dir, storage) = initialized_storage(&image);
+    let work = scratch();
+    {
+        // The killed process: the level's top stratum and one descent
+        // along its left edge, so the stored rows are lopsided.
+        let mut killed = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+        killed.node(&level.root()).unwrap();
+        killed.prove_leaf(&level, U256::ZERO).unwrap();
+    }
+    let mut check = Storage::new(state_dir.path()).unwrap();
+    assert!(
+        check.snapshot_hash(0, 1).unwrap().is_some(),
+        "the killed process wrote back boundary 1"
+    );
+
+    let mut restarted = DisputeSource::on_store(
+        Storage::new(state_dir.path()).unwrap(),
+        0,
+        work.path().to_path_buf(),
+    )
+    .unwrap();
+    assert_eq!(restarted.node(&level.root()).unwrap(), root, "root");
+    let resumed = restarted.prove_last(&level).unwrap();
+    assert_eq!(
+        (resumed.node, resumed.siblings),
+        (last.node, last.siblings),
+        "last leaf proof"
+    );
+    let resumed = restarted.prove_leaf(&level, mid).unwrap();
+    assert_eq!(
+        (resumed.node, resumed.siblings),
+        (agree.node, agree.siblings),
+        "agree proof"
+    );
+}

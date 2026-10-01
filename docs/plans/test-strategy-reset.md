@@ -79,7 +79,10 @@ sybil froze block production while it computed. The canonical battery passes.
    `node_proof_vectors_hold` pins commitment proofs and a settlement validity
    proof, and `NodeProofsTest` checks them with the contracts' own verifiers
    against the CLI's outputs Merkle root; the runner test also requires the
-   CLI's final state.
+   CLI's final state. The resume test is done:
+   `restarted_source_resumes_a_half_built_level` restarts a dispute source
+   over a killed one's stored strata and write-backs and requires a fresh
+   store's root and proofs (the unit form of `kill_commitment_build`).
 2. Timing, as designed with the owner on 2026-10-01. The node's claim is
    that it adds no overhead over the emulator; whether a geometry fits an
    app on given hardware belongs to the machine team, which measures the
