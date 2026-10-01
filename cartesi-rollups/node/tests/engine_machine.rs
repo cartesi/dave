@@ -21,8 +21,10 @@ use cartesi_rollups_prt_node::engine::{
     Structure, TournamentGeometry,
 };
 use cartesi_rollups_prt_node::machine_runner::MachineRunner;
-use cartesi_rollups_prt_node::merkle::Digest;
-use cartesi_rollups_prt_node::storage::{Epoch, Input as StorageInput, InputId, Storage};
+use cartesi_rollups_prt_node::merkle::{Digest, MerkleProof};
+use cartesi_rollups_prt_node::storage::{
+    Epoch, Input as StorageInput, InputId, LeafProof, Storage,
+};
 use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
 use std::collections::BTreeMap;
@@ -775,32 +777,32 @@ fn reference_cli_key(program: &str, geometry: &TournamentGeometry) -> String {
     )
 }
 
-/// One computation hash from the released CLI over the image's epoch:
-/// `hash` names the CLI's output key and `options` its period settings.
-/// It runs a clone in stored revert mode (the default fork mode needs a
-/// machine server); outputs are not under test, so only the hash file
-/// is written.
-fn reference_cli_hash(
+/// Runs the released CLI over the image's epoch with `options` added to
+/// its advance-state settings, returning its output and its scratch
+/// directory (holding `input-<i>.bin`). It runs a clone in stored revert
+/// mode (the default fork mode needs a machine server); outputs, reports
+/// and proofs are off unless `options` names them.
+fn run_reference_cli(
     cli: &str,
     image: &Path,
     inputs: &[Vec<u8>],
-    hash: &str,
     options: &str,
-) -> String {
+    flags: &[&str],
+) -> (Output, tempfile::TempDir) {
     let dir = scratch();
     for (index, input) in inputs.iter().enumerate() {
         std::fs::write(dir.path().join(format!("input-{index}.bin")), input).unwrap();
     }
-    let hash_path = dir.path().join("computation-hash.bin");
     let advance = format!(
-        "input:{},input_index_begin:0,input_index_end:{},{hash}:{},{options},\
-         output:,rejected_output:,output_proof:,report:,outputs_merkle_root:,\
-         outputs_merkle_root_proof:,check_outputs_merkle_root:false",
+        "input:{},input_index_begin:0,input_index_end:{},output:,rejected_output:,\
+         output_proof:,report:,outputs_merkle_root:,outputs_merkle_root_proof:,\
+         check_outputs_merkle_root:false,{options}",
         dir.path().join("input-%i.bin").display(),
         inputs.len(),
-        hash_path.display(),
     );
     let output = Command::new(cli)
+        .current_dir(dir.path())
+        .args(flags)
         .arg("--revert-mode=stored")
         .arg(format!(
             "--load={},clone:{},sharing:all",
@@ -815,9 +817,52 @@ fn reference_cli_hash(
         "reference CLI failed; stderr:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let hash = std::fs::read(&hash_path).expect("the reference CLI wrote no computation hash");
+    (output, dir)
+}
+
+/// One computation hash: `hash` names the CLI's output key and
+/// `options` its period settings.
+fn reference_cli_hash(
+    cli: &str,
+    image: &Path,
+    inputs: &[Vec<u8>],
+    hash: &str,
+    options: &str,
+) -> String {
+    let options = format!("{hash}:computation-hash.bin,{options}");
+    let (_, dir) = run_reference_cli(cli, image, inputs, &options, &[]);
+    let hash = std::fs::read(dir.path().join("computation-hash.bin"))
+        .expect("the reference CLI wrote no computation hash");
     assert_eq!(hash.len(), 32, "malformed reference computation hash");
     format!("0x{}", hex::encode(hash))
+}
+
+/// The epoch's end per the CLI: the final machine state (the last
+/// `<mcycle>: <hash>` line `--final-hash` prints) and the outputs Merkle
+/// root after the last accepted input, if any input was accepted.
+fn reference_cli_epoch_end(
+    cli: &str,
+    image: &Path,
+    inputs: &[Vec<u8>],
+) -> (String, Option<String>) {
+    let options = "outputs_merkle_root:outputs-root-%i.bin,check_outputs_merkle_root:true";
+    let (output, dir) = run_reference_cli(cli, image, inputs, options, &["--final-hash"]);
+    let printed = [output.stdout, output.stderr].concat();
+    let final_state = String::from_utf8_lossy(&printed)
+        .lines()
+        .filter_map(|line| {
+            let (mcycle, hash) = line.split_once(": ")?;
+            (mcycle.parse::<u64>().is_ok() && hash.len() == 66 && hash.starts_with("0x"))
+                .then(|| hash.to_string())
+        })
+        .next_back()
+        .expect("the reference CLI printed no final hash");
+    let outputs_root = (0..inputs.len()).rev().find_map(|index| {
+        std::fs::read(dir.path().join(format!("outputs-root-{index}.bin")))
+            .ok()
+            .map(|root| format!("0x{}", hex::encode(root)))
+    });
+    (final_state, outputs_root)
 }
 
 /// The CLI's epoch root at the table's root stride.
@@ -917,6 +962,11 @@ fn reference_cli_goldens_hold() {
     let mut computed = BTreeMap::new();
     for (program, image, inputs) in runner_epochs() {
         computed.insert(format!("{program}/template_hash"), template_hash(&image));
+        let (final_state, outputs_root) = reference_cli_epoch_end(&cli, &image, &inputs);
+        computed.insert(format!("{program}/final_state"), final_state);
+        if let Some(outputs_root) = outputs_root {
+            computed.insert(format!("{program}/outputs_merkle_root"), outputs_root);
+        }
         for geometry in [three_level(), two_level()] {
             computed.insert(
                 reference_cli_key(program, &geometry),
@@ -961,24 +1011,23 @@ fn run_sealed_epoch(
     state_dir
 }
 
-/// The settled root of one runner epoch, and the root the dispute
-/// facade serves from the runner's own rows, which the Hero joins with.
+/// The settled root and final state of one runner epoch, and the root
+/// the dispute facade serves from the runner's own rows, which the Hero
+/// joins with.
 fn runner_settlement(
     image: &Path,
     inputs: Vec<Vec<u8>>,
     geometry: &TournamentGeometry,
-) -> (String, String) {
+) -> (String, String, String) {
     // Over echo's four inputs, a gap of 3 makes the rejection reload a
     // transient checkpoint mid-batch and the last input publish as the
     // sealed remainder.
     let state_dir = run_sealed_epoch(image, inputs, geometry, 3);
     let mut storage = Storage::new(state_dir.path()).unwrap();
-    let settled = storage
+    let settlement = storage
         .settlement_info(0)
         .unwrap()
-        .expect("the runner rolled the sealed epoch")
-        .computation_hash
-        .to_hex();
+        .expect("the runner rolled the sealed epoch");
     let root = &geometry.levels()[0];
     let work = scratch();
     let served = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
@@ -987,7 +1036,11 @@ fn runner_settlement(
         .unwrap()
         .to_hex();
     drop(state_dir);
-    (settled, served)
+    (
+        settlement.computation_hash.to_hex(),
+        served,
+        format!("0x{}", hex::encode(settlement.final_state)),
+    )
 }
 
 /// Gap 2 of docs/plans/test-strategy-reset.md: the eager runner on a
@@ -1008,7 +1061,8 @@ fn runner_settles_the_reference_root() {
         );
         for geometry in [three_level(), two_level()] {
             let label = format!("{program} under {geometry}");
-            let (settled, served) = runner_settlement(&image, inputs.clone(), &geometry);
+            let (settled, served, final_state) =
+                runner_settlement(&image, inputs.clone(), &geometry);
             let root = &geometry.levels()[0];
             let fresh = engine_root_with_inputs(
                 &image,
@@ -1027,6 +1081,11 @@ fn runner_settles_the_reference_root() {
                 "{label}: root served from the runner's rows"
             );
             assert_eq!(fresh, settled, "{label}: root replayed on a fresh store");
+            assert_eq!(
+                final_state,
+                goldens[&format!("{program}/final_state")],
+                "{label}: final state vs the reference CLI"
+            );
             println!("{label}: {settled}");
         }
     }
@@ -1327,4 +1386,95 @@ fn leaf_commitments_match_the_reference_cli() {
         assert_eq!(leaf, goldens[&case.key()], "{}", case.key());
         println!("{}: {leaf}", case.key());
     }
+}
+
+fn merkle_proof_vector(root: Digest, height: u64, proof: &MerkleProof) -> serde_json::Value {
+    serde_json::json!({
+        "root": root.to_hex(),
+        "height": height,
+        "position": format!("{:#x}", proof.position),
+        "leaf": proof.node.to_hex(),
+        "siblings": proof.siblings.iter().map(Digest::to_hex).collect::<Vec<_>>(),
+    })
+}
+
+fn leaf_proof_vector(proof: &LeafProof) -> serde_json::Value {
+    serde_json::json!({
+        "data_block": format!("0x{}", hex::encode(proof.data_block)),
+        "siblings": proof
+            .siblings
+            .inner()
+            .iter()
+            .map(|sibling| format!("0x{}", hex::encode(sibling)))
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// Gap 5 of docs/plans/test-strategy-reset.md: the node's commitment
+/// proofs and settlement validity proof, pinned for the contracts.
+/// NodeProofs.t.sol in cartesi-rollups/contracts opens each commitment
+/// proof with the tournament's Commitment library and validates the
+/// settlement the way DaveConsensus stages it, requiring the CLI's outputs
+/// Merkle root. The root proofs are the joins of a runner epoch under each
+/// table (served from the runner's rows); the leaf proofs are a seal's
+/// agree-state opening and a join's last leaf at the three-level leaf
+/// height.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn node_proof_vectors_hold() {
+    let goldens: BTreeMap<String, String> =
+        serde_json::from_value(read_fixture(&fixture_path("reference_cli.json"))).unwrap();
+    let image = echo_image();
+    let inputs = runner_epochs()[0].2.clone();
+
+    let mut commitments = serde_json::Map::new();
+    let mut settlement = None;
+    for (name, geometry) in [("three_level", three_level()), ("two_level", two_level())] {
+        let state_dir = run_sealed_epoch(&image, inputs.clone(), &geometry, 3);
+        let mut storage = Storage::new(state_dir.path()).unwrap();
+        settlement.get_or_insert(storage.settlement_info(0).unwrap().unwrap());
+        let root = &geometry.levels()[0];
+        let level = LevelCoords::new(0, U256::ZERO, root.log2_stride, root.height);
+        let work = scratch();
+        let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+        let proof = source.prove_last(&level).unwrap();
+        let root_hash = source.node(&level.root()).unwrap();
+        commitments.insert(
+            format!("echo_root_{name}_last"),
+            merkle_proof_vector(root_hash, root.height, &proof),
+        );
+    }
+
+    let (state_dir, storage) = initialized_storage_with(&image, inputs);
+    let work = scratch();
+    let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+    let level = LevelCoords::new(0, U256::ZERO, 0, 27);
+    let root_hash = source.node(&level.root()).unwrap();
+    let mid = (U256::ONE << 26) + U256::from(12345);
+    for (name, proof) in [
+        ("echo_leaf_agree", source.prove_leaf(&level, mid).unwrap()),
+        ("echo_leaf_last", source.prove_last(&level).unwrap()),
+    ] {
+        commitments.insert(name.into(), merkle_proof_vector(root_hash, 27, &proof));
+    }
+    drop((source, state_dir));
+
+    let settlement = settlement.unwrap();
+    let final_state = format!("0x{}", hex::encode(settlement.final_state));
+    assert_eq!(final_state, goldens["echo/final_state"]);
+    let validity = &settlement.machine_validity_proof;
+    let settlements = serde_json::json!({
+        "echo": {
+            "final_state": final_state,
+            "outputs_merkle_root": goldens["echo/outputs_merkle_root"],
+            "iflags_y": leaf_proof_vector(&validity.iflags_y_proof),
+            "htif_tohost": leaf_proof_vector(&validity.htif_tohost_proof),
+            "tx_buffer": leaf_proof_vector(&validity.tx_buffer_proof),
+        }
+    });
+
+    check_fixture(
+        "node_proofs.json",
+        serde_json::json!({ "commitments": commitments, "settlements": settlements }),
+    );
 }

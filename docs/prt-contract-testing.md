@@ -220,7 +220,12 @@ own witness bytes are pinned on its side by `node_witness_vectors_hold`
 without an input, a second input's opening, a plain ustep, a closing slot, and
 a rejected-input closing slot. `NodeWitnessesTest` (`cartesi-rollups/contracts`)
 replays each through `CartesiStateTransition`, with inputs rooted the way
-`DaveConsensus` roots them, and requires the node's post-state.
+`DaveConsensus` roots them, and requires the node's post-state. Likewise
+`node_proof_vectors_hold` pins the node's commitment proofs (root joins under
+both tables, a leaf agree-state opening, a leaf join) and an epoch's
+settlement validity proof; `NodeProofsTest` opens the former with the
+tournament's `Commitment` library and validates the latter as `DaveConsensus`
+stages it, requiring the reference CLI's outputs Merkle root.
 A nonempty DA payload paired with the provider's zero out-of-range root
 intentionally skips CMIO and proves only the following machine step.
 One PRT-side composition test carries a canonical input-opening vector through
