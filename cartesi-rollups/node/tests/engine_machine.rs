@@ -775,15 +775,17 @@ fn reference_cli_key(program: &str, geometry: &TournamentGeometry) -> String {
     )
 }
 
-/// The released CLI's computation hash for one epoch from the image.
-/// It runs a clone in stored revert mode (the default fork mode needs
-/// a machine server); outputs are not under test, so only the hash
-/// file is written.
-fn reference_cli_root(
+/// One computation hash from the released CLI over the image's epoch:
+/// `hash` names the CLI's output key and `options` its period settings.
+/// It runs a clone in stored revert mode (the default fork mode needs a
+/// machine server); outputs are not under test, so only the hash file
+/// is written.
+fn reference_cli_hash(
     cli: &str,
     image: &Path,
     inputs: &[Vec<u8>],
-    geometry: &TournamentGeometry,
+    hash: &str,
+    options: &str,
 ) -> String {
     let dir = scratch();
     for (index, input) in inputs.iter().enumerate() {
@@ -791,14 +793,12 @@ fn reference_cli_root(
     }
     let hash_path = dir.path().join("computation-hash.bin");
     let advance = format!(
-        "input:{},input_index_begin:0,input_index_end:{},mcycle_computation_hash:{},\
-         log2_mcycle_computation_hash_period:{},output:,rejected_output:,output_proof:,\
-         report:,outputs_merkle_root:,outputs_merkle_root_proof:,\
-         check_outputs_merkle_root:false",
+        "input:{},input_index_begin:0,input_index_end:{},{hash}:{},{options},\
+         output:,rejected_output:,output_proof:,report:,outputs_merkle_root:,\
+         outputs_merkle_root_proof:,check_outputs_merkle_root:false",
         dir.path().join("input-%i.bin").display(),
         inputs.len(),
         hash_path.display(),
-        reference_cli_period(geometry),
     );
     let output = Command::new(cli)
         .arg("--revert-mode=stored")
@@ -820,6 +820,90 @@ fn reference_cli_root(
     format!("0x{}", hex::encode(hash))
 }
 
+/// The CLI's epoch root at the table's root stride.
+fn reference_cli_root(
+    cli: &str,
+    image: &Path,
+    inputs: &[Vec<u8>],
+    geometry: &TournamentGeometry,
+) -> String {
+    let options = format!(
+        "log2_mcycle_computation_hash_period:{}",
+        reference_cli_period(geometry)
+    );
+    reference_cli_hash(cli, image, inputs, "mcycle_computation_hash", &options)
+}
+
+/// A leaf commitment the CLI answers independently: its uarch cycle
+/// computation hash over one mcycle period is Dave's stride-0
+/// commitment under a root leaf at stride `log2_period + 20`.
+#[derive(Clone, Copy)]
+struct LeafCase {
+    program: &'static str,
+    log2_period: u64,
+    input: u64,
+    period: u64,
+}
+
+impl LeafCase {
+    fn key(&self) -> String {
+        format!(
+            "{}/uarch/log2_period_{}/input_{}/period_{}",
+            self.program, self.log2_period, self.input, self.period
+        )
+    }
+
+    /// The CLI numbers periods across the whole epoch.
+    fn epoch_period_index(&self) -> u64 {
+        (self.input << (Structure::PRODUCTION.log2_barch_span - self.log2_period)) | self.period
+    }
+
+    fn level(&self) -> LevelCoords {
+        let structure = Structure::PRODUCTION;
+        let height = self.log2_period + structure.log2_uarch_span;
+        let base = structure.window_start(self.input) + (U256::from(self.period) << height);
+        LevelCoords::new(0, base, 0, height)
+    }
+}
+
+/// Period 8 builds from big-cycle roots (height 28, the path a switch to
+/// the collect API replaces) and period 7 by plain collection (height 27,
+/// the three-level leaf). The periods sit where the leaf semantics
+/// change: a fed window start, an accepted yield (echo's input 0 runs
+/// 2,224,031 mcycles), a rejection's revert (echo's input 2 runs 151,403
+/// and yield's 702,302), a revert crossed while positioning (yield's
+/// input 1), and a padding window. Period 17, the two-level leaf, is the
+/// same builder at a greater height; the CLI spends about 2 minutes on a
+/// mostly idle period-17 leaf and more than 13 on a dense one.
+fn leaf_cases() -> Vec<LeafCase> {
+    let case = |program, log2_period, input, period| LeafCase {
+        program,
+        log2_period,
+        input,
+        period,
+    };
+    vec![
+        case("echo", 8, 0, 0),
+        case("echo", 8, 0, 8687),
+        case("echo", 8, 2, 591),
+        case("echo", 8, 4, 0),
+        case("echo", 7, 0, 0),
+        case("echo", 7, 0, 17375),
+        case("echo", 7, 2, 1182),
+        case("yield", 8, 0, 2743),
+        case("yield", 7, 1, 5486),
+    ]
+}
+
+fn reference_cli_leaf(cli: &str, image: &Path, inputs: &[Vec<u8>], case: LeafCase) -> String {
+    let options = format!(
+        "log2_mcycle_computation_hash_period:{},mcycle_period_index:{}",
+        case.log2_period,
+        case.epoch_period_index()
+    );
+    reference_cli_hash(cli, image, inputs, "uarch_cycle_computation_hash", &options)
+}
+
 /// The answers behind runner_settles_the_reference_root, computed by
 /// the released CLI rather than Dave code. The template hashes pin the
 /// images they answer for. Outside the engine gate because it needs
@@ -838,6 +922,12 @@ fn reference_cli_goldens_hold() {
                 reference_cli_key(program, &geometry),
                 reference_cli_root(&cli, &image, &inputs, &geometry),
             );
+        }
+        for case in leaf_cases()
+            .into_iter()
+            .filter(|case| case.program == program)
+        {
+            computed.insert(case.key(), reference_cli_leaf(&cli, &image, &inputs, case));
         }
     }
 
@@ -1208,4 +1298,33 @@ fn positioning_resumes_from_the_nearest_gap_snapshot() {
         [0, 4, 5, 6, 7, 8],
         "positioning resumed from boundary 4"
     );
+}
+
+/// Gaps 3 and 4 of docs/plans/test-strategy-reset.md: leaf commitments
+/// on a real machine, dense spans and reverts included, against the
+/// released CLI's answers (see leaf_cases). The CLI computes them through
+/// the collect API, so this also ties the node's per-step hashing to that
+/// API's answers before the node switches to it.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn leaf_commitments_match_the_reference_cli() {
+    let goldens: BTreeMap<String, String> =
+        serde_json::from_value(read_fixture(&fixture_path("reference_cli.json"))).unwrap();
+    let epochs: BTreeMap<_, _> = runner_epochs()
+        .into_iter()
+        .map(|(program, image, inputs)| (program, (image, inputs)))
+        .collect();
+    for case in leaf_cases() {
+        let (image, inputs) = &epochs[case.program];
+        let (state_dir, storage) = initialized_storage_with(image, inputs.clone());
+        let work = scratch();
+        let leaf = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+            .unwrap()
+            .node(&case.level().root())
+            .unwrap()
+            .to_hex();
+        drop(state_dir);
+        assert_eq!(leaf, goldens[&case.key()], "{}", case.key());
+        println!("{}: {leaf}", case.key());
+    }
 }

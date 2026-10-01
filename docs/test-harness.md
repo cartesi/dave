@@ -108,9 +108,11 @@ the revert stays invisible to it, while at 2^17 echo's does (its rejected
 input runs about 151k mcycles). Below e2e, `runner_settles_the_reference_root`
 (`cartesi-rollups/node/tests/engine_machine.rs`) checks the production
 runner's settled root against checked-in answers of the same CLI under both
-tables, including that echo revert. Leaf commitments are not CLI-checked
-yet. The sling differential chain (toy spec, reference collector, prototype
-fixtures) mitigates from the other side.
+tables, including that echo revert, and `leaf_commitments_match_the_reference_cli`
+checks stride-0 leaf commitments (dense spans, yields, reverts) against the
+CLI's uarch cycle computation hashes at periods 7 and 8. The sling differential
+chain (toy spec, reference collector, prototype fixtures) mitigates from the
+other side.
 
 ## Hardened primitives (2026-07-16)
 

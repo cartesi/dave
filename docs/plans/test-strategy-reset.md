@@ -66,7 +66,16 @@ sybil froze block production while it computed. The canonical battery passes.
    (Foundry would otherwise build and run the node): `node_witness_vectors_hold`
    pins the node's witness bytes for six transition shapes, and
    `NodeWitnessesTest` in `cartesi-rollups/contracts` replays them through
-   the step.
+   the step. Gaps 3 and 4 are done for Dave-owned cases:
+   `leaf_commitments_match_the_reference_cli` checks nine stride-0 leaves on
+   echo and yield (a fed window start, an accepted yield, two reverts, a
+   revert crossed while positioning, a padding window) against the CLI's
+   uarch cycle computation hash at period 8 (the big-cycle-root builder) and
+   period 7 (plain collection). The CLI computes them through the collect
+   API, which ties the node's per-step hashing to that API before the switch
+   (W6). Period 17 is impractical as a golden: the CLI spends about 2 minutes
+   on a mostly idle leaf there and more than 13 on a dense one. The release
+   corpus's 18 uarch cases remain to be wired.
 2. Timing, as designed with the owner on 2026-10-01. The node's claim is
    that it adds no overhead over the emulator; whether a geometry fits an
    app on given hardware belongs to the machine team, which measures the
