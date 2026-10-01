@@ -844,15 +844,14 @@ fn reference_cli_goldens_hold() {
     check_fixture("reference_cli.json", serde_json::json!(computed));
 }
 
-/// One sealed epoch through the production runner (advance, record,
-/// commit, roll). Returns the settled root and the root the dispute
-/// facade serves from the runner's own rows, which the Hero joins
-/// with.
-fn runner_settlement(
+/// Runs one sealed epoch through the production runner (advance,
+/// record, commit, roll) at the given snapshot gap.
+fn run_sealed_epoch(
     image: &Path,
     inputs: Vec<Vec<u8>>,
     geometry: &TournamentGeometry,
-) -> (String, String) {
+    snapshot_gap: u64,
+) -> tempfile::TempDir {
     let input_count = inputs.len() as u64;
     let (state_dir, mut storage) = initialized_storage_under(image, inputs, geometry);
     let sealed = Epoch {
@@ -864,15 +863,25 @@ fn runner_settlement(
     storage
         .insert_consensus_data(1, std::iter::empty(), [&sealed].into_iter())
         .unwrap();
-    // Over echo's four inputs, the rejection reloads a transient
-    // checkpoint mid-batch and the last input publishes as the sealed
-    // remainder.
-    storage.set_snapshot_gap_inputs(3);
+    storage.set_snapshot_gap_inputs(snapshot_gap);
     MachineRunner::new(storage, Duration::ZERO)
         .unwrap()
         .process_rollup()
         .unwrap();
+    state_dir
+}
 
+/// The settled root of one runner epoch, and the root the dispute
+/// facade serves from the runner's own rows, which the Hero joins with.
+fn runner_settlement(
+    image: &Path,
+    inputs: Vec<Vec<u8>>,
+    geometry: &TournamentGeometry,
+) -> (String, String) {
+    // Over echo's four inputs, a gap of 3 makes the rejection reload a
+    // transient checkpoint mid-batch and the last input publish as the
+    // sealed remainder.
+    let state_dir = run_sealed_epoch(image, inputs, geometry, 3);
     let mut storage = Storage::new(state_dir.path()).unwrap();
     let settled = storage
         .settlement_info(0)
@@ -1161,5 +1170,42 @@ fn node_witness_vectors_hold() {
     check_fixture(
         "node_witnesses.json",
         serde_json::json!({ "inputs": inputs, "vectors": vectors }),
+    );
+}
+
+/// The work-count bound the toy cannot show (engine::spec counts the
+/// rest): production positioning resumes from the nearest snapshot the
+/// runner kept, so it replays at most gap - 1 inputs. A query in window
+/// 7 at gap 4 starts from boundary 4 and writes back 5 to 7; boundaries
+/// 1 to 3 never reappear.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn positioning_resumes_from_the_nearest_gap_snapshot() {
+    let image = echo_image();
+    let payloads: Vec<Vec<u8>> = (0..8u8).map(|i| vec![i]).collect();
+    let payloads: Vec<&[u8]> = payloads.iter().map(Vec::as_slice).collect();
+    let state_dir = run_sealed_epoch(&image, encode_inputs(&payloads), &three_level(), 4);
+
+    let stored = || -> Vec<u64> {
+        let mut storage = Storage::new(state_dir.path()).unwrap();
+        (0..=8)
+            .filter(|&input| storage.snapshot_hash(0, input).unwrap().is_some())
+            .collect()
+    };
+    assert_eq!(stored(), [0, 4, 8], "the runner keeps the gap boundaries");
+
+    let work = scratch();
+    let mut source = DisputeSource::on_store(
+        Storage::new(state_dir.path()).unwrap(),
+        0,
+        work.path().to_path_buf(),
+    )
+    .unwrap();
+    let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(7), 0, 20);
+    source.node(&level.root()).unwrap();
+    assert_eq!(
+        stored(),
+        [0, 4, 5, 6, 7, 8],
+        "positioning resumed from boundary 4"
     );
 }

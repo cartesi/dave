@@ -1185,3 +1185,234 @@ fn collision_fails_loudly() {
     };
     let _ = get_or_compute(&mut cache, &structure, &mut factory_b, &root);
 }
+
+// Work counts: the node must add no overhead over the emulator, so these
+// tests count machine verbs, exactly and at the production structure,
+// against the work the emulator cannot avoid. Times, memory and disk
+// depend on hardware and workload and are not gated anywhere
+// (docs/plans/test-strategy-reset.md, item 2).
+
+/// Machine work, verb by verb. Hashes are the expensive atom (a root-hash
+/// recomputation on the real machine); big cycles run natively.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Work {
+    trips: u64,
+    feeds: u64,
+    big_cycles: u64,
+    usteps: u64,
+    uresets: u64,
+    hashes: u64,
+}
+
+/// A toy that tallies its verbs into a tally shared across rulers.
+/// Proving verbs are not metered.
+struct Metered {
+    toy: ToyStf,
+    work: std::rc::Rc<std::cell::Cell<Work>>,
+}
+
+impl Metered {
+    fn tally(&self, count: impl FnOnce(&mut Work)) {
+        let mut work = self.work.get();
+        count(&mut work);
+        self.work.set(work);
+    }
+}
+
+impl super::stf::Stf for Metered {
+    fn state_hash(&mut self) -> Result<Digest> {
+        self.tally(|w| w.hashes += 1);
+        self.toy.state_hash()
+    }
+    fn yielded(&mut self) -> Result<bool> {
+        self.toy.yielded()
+    }
+    fn terminal(&mut self) -> Result<bool> {
+        self.toy.terminal()
+    }
+    fn uarch_halted(&mut self) -> Result<bool> {
+        self.toy.uarch_halted()
+    }
+    fn feed(&mut self, window: u64) -> Result<()> {
+        self.tally(|w| w.feeds += 1);
+        self.toy.feed(window)
+    }
+    fn ustep(&mut self) -> Result<()> {
+        self.tally(|w| w.usteps += 1);
+        self.toy.ustep()
+    }
+    fn ureset(&mut self) -> Result<()> {
+        self.tally(|w| w.uresets += 1);
+        self.toy.ureset()
+    }
+    fn run_big(&mut self, big_cycles: u64) -> Result<u64> {
+        let ran = self.toy.run_big(big_cycles)?;
+        self.tally(|w| w.big_cycles += ran);
+        Ok(ran)
+    }
+    fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {
+        self.toy.log_feed(window)
+    }
+    fn log_ustep(&mut self) -> Result<Vec<u8>> {
+        self.toy.log_ustep()
+    }
+    fn log_ureset(&mut self) -> Result<Vec<u8>> {
+        self.toy.log_ureset()
+    }
+}
+
+/// Positions like [`ToyFactory`], from the epoch start, so a trip's
+/// replay is its whole prefix; production resumes from the nearest
+/// stored window boundary, which is the same inside window 0.
+struct MeteredFactory {
+    structure: Structure,
+    script: Vec<ToyInput>,
+    work: std::rc::Rc<std::cell::Cell<Work>>,
+}
+
+impl MeteredFactory {
+    fn new(structure: Structure, script: Vec<ToyInput>) -> Self {
+        MeteredFactory {
+            structure,
+            script,
+            work: Default::default(),
+        }
+    }
+
+    fn stf(&self) -> Metered {
+        Metered {
+            toy: ToyStf::new(self.structure, self.script.clone()),
+            work: self.work.clone(),
+        }
+    }
+
+    /// Work since the last call.
+    fn take(&self) -> Work {
+        self.work.take()
+    }
+}
+
+impl RulerFactory for MeteredFactory {
+    type S = Metered;
+    fn ruler_at(
+        &mut self,
+        position: U256,
+        _hashing: Hashing,
+    ) -> Result<super::ruler::Ruler<Metered>> {
+        let stf = self.stf();
+        stf.tally(|w| w.trips += 1);
+        let mut ruler = super::ruler::Ruler::new(stf, self.structure, self.script.len() as u64);
+        ruler.advance(position)?;
+        Ok(ruler)
+    }
+}
+
+/// `n` active big cycles of `usteps` each, accepted.
+fn dense(n: usize, usteps: u64) -> ToyInput {
+    accept(&vec![usteps; n])
+}
+
+#[test]
+fn eager_window_runs_its_cycles_once_and_hashes_once_per_sample() {
+    // The runner's collect at the two-level root stride: every big cycle
+    // runs once on the big machine, nothing steps the uarch, and each
+    // sample costs one hash, plus one for the idle tail.
+    let structure = Structure::PRODUCTION;
+    let log2_stride = 37;
+    let spacing = 1usize << (log2_stride - structure.log2_uarch_span);
+    for cycles in [1, 2 * spacing, 2 * spacing + 5] {
+        let factory = MeteredFactory::new(structure, vec![dense(cycles, 2)]);
+        let mut ruler = super::ruler::Ruler::new(factory.stf(), structure, 1);
+        ruler
+            .collect(structure.window_start(1), log2_stride)
+            .unwrap();
+        assert_eq!(
+            factory.take(),
+            Work {
+                feeds: 1,
+                big_cycles: cycles as u64,
+                hashes: cycles.div_ceil(spacing) as u64 + 1,
+                ..Work::default()
+            },
+            "{cycles} cycles"
+        );
+    }
+}
+
+#[test]
+fn dense_leaf_hashes_each_distinct_leaf_once() {
+    // A two-level leaf (stride 0, 2^37 transitions) built from big-cycle
+    // roots. A big cycle with d active usteps has d + 2 distinct leaves
+    // (each active post-state, the halted run, the closing reset), which
+    // is all the hashing the commitment needs; the idle rest of the leaf
+    // costs one captured span however long it is.
+    let structure = Structure::PRODUCTION;
+    let usteps = [3u64, 1, 5, 2, 7];
+    let factory = MeteredFactory::new(structure, vec![accept(&usteps)]);
+    let mut ruler = super::ruler::Ruler::new(factory.stf(), structure, 1);
+    ruler.collect_big_cycle_roots(U256::from(1) << 37).unwrap();
+
+    let active: u64 = usteps.iter().sum();
+    let cycles = usteps.len() as u64;
+    assert_eq!(
+        factory.take(),
+        Work {
+            feeds: 1,
+            usteps: active + cycles + IDLE_CHURN_TICKS + 1,
+            uresets: cycles + 1,
+            hashes: active + 2 * cycles + IDLE_CHURN_TICKS + 2,
+            ..Work::default()
+        }
+    );
+}
+
+#[test]
+fn positioning_runs_the_prefix_once_and_hashes_nothing() {
+    // Whole big cycles run natively, a sub-cycle remainder steps the
+    // uarch, and no state is hashed on the way.
+    let structure = Structure::PRODUCTION;
+    let mut factory = MeteredFactory::new(structure, vec![dense(10, 2), dense(20, 2)]);
+    let position =
+        structure.window_start(1) + (U256::from(7) << structure.log2_uarch_span) + U256::ONE;
+    factory.ruler_at(position, Hashing::Sampled).unwrap();
+    assert_eq!(
+        factory.take(),
+        Work {
+            trips: 1,
+            feeds: 2,
+            big_cycles: 10 + 7,
+            usteps: 1,
+            ..Work::default()
+        }
+    );
+}
+
+#[test]
+fn join_descent_replays_the_prefix_once_per_stratum() {
+    // R4 (docs/plans/two-level-sling.md), pinned: a join builds the
+    // two-level leaf (one trip) and proves its last leaf, which descends
+    // four fanout strata (heights 29, 21, 13 and 5), each a trip that
+    // re-runs the input's prefix from the window boundary. The prefix
+    // replay is native and unhashed, but for a leaf deep inside a long
+    // input it is paid five times; fixing R4 lowers these counts.
+    let structure = Structure::PRODUCTION;
+    let leaf_cycles = 1usize << (37 - structure.log2_uarch_span);
+    // The input runs through the first leaf and 50 cycles into the
+    // second, which is the one disputed.
+    let cycles = leaf_cycles + 50;
+    let factory = MeteredFactory::new(structure, vec![dense(cycles, 2)]);
+    let mut source = DisputeSource::new(toy_storage(structure), factory, 0, 37).unwrap();
+    let level = LevelCoords::new(0, U256::from(1) << 37, 0, 37);
+
+    source.node(&level.root()).unwrap();
+    let build = source.factory().take();
+    assert_eq!((build.trips, build.big_cycles), (1, leaf_cycles as u64));
+
+    source.prove_last(&level).unwrap();
+    let descent = source.factory().take();
+    assert_eq!(
+        (descent.trips, descent.big_cycles),
+        (4, 4 * cycles as u64),
+        "each stratum trip re-runs the whole input"
+    );
+}

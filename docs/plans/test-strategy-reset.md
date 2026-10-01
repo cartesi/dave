@@ -67,19 +67,39 @@ sybil froze block production while it computed. The canonical battery passes.
    pins the node's witness bytes for six transition shapes, and
    `NodeWitnessesTest` in `cartesi-rollups/contracts` replays them through
    the step.
-2. Timing as cost = counts x atoms. Design this properly before building it
-   (owner, 2026-10-01: benchmarks are hard); what follows is the starting
-   sketch, not the design. Exact work counts at the production
-   geometry are deterministic unit tests on the toy (a counting stf: runner
-   collects, leaf builds, descents, `prove_last`, snapshot rows, gap replay).
-   Release-build atoms are measured (dense pair rate, stride-37 sampling,
-   plain runs, store time and physical bytes, deep proofs). A per-PR
-   arithmetic gate checks atoms x counts x slack against `G`, `T + 2G` and the
-   roll, so a change to the gap, the precompute strata, the geometry or the
-   per-input contract fails loudly. A pre-release runbook on the reference
-   machine (M2, constants, a write-TLB-heavy leaf, gap-1 replay, disk, RSS)
-   checks the extrapolation. Prerequisite: a stress guest whose payload sets
-   cycles, density and pages touched.
+2. Timing, as designed with the owner on 2026-10-01. The node's claim is
+   that it adds no overhead over the emulator; whether a geometry fits an
+   app on given hardware belongs to the machine team, which measures the
+   geometry and timeouts with the emulator, and to the operator. Average
+   apps, operators and machines: a byzantine or fp-heavy app that forces
+   the worst case is out of scope (a future emulator-assisted eager check
+   could drop such an app before a dispute). So:
+   - CI gates work counts only: deterministic, hardware-free, and stated
+     against the emulator's irreducible work (a leaf build runs each ustep
+     once, an idle stretch costs one cycle, positioning replays an input at
+     most once per action, folded spans cost no machine work). A
+     regression is an algorithm bug and fails the PR. Nothing in CI times
+     anything, and no counts x atoms arithmetic gate is built.
+   - The runbook (before releases or hot-path changes) reports the node's
+     time over the emulator's on the same span and host, plus RSS and disk.
+     The ratio is what lets the machine team's numbers apply to the node
+     (the OpenMP cliff would have read about 7x). A `measure.rs` recipe,
+     when it is next touched.
+   - At runtime the node logs each expensive dispute action's duration
+     next to the clock time left and warns when one used more than half;
+     it never refuses to run for performance.
+   - Disk: a CoW filesystem (APFS, btrfs, XFS with reflink) is a documented
+     requirement, not a check. `clone_stored` falls back to sparse copies,
+     so correctness is the same everywhere, and CI stays on ext4.
+
+   Done: the work-count tests in `engine/spec.rs` (a metered toy at the
+   production structure: the eager window, the dense leaf, positioning, and
+   the join descent, which pins R4's four extra prefix replays) and
+   `positioning_resumes_from_the_nearest_gap_snapshot` on echo; the Hero
+   logs each prepared action's duration; the README states the CoW
+   requirement. Not built: the clock-time-left comparison. The Hero's domain
+   omits clocks by design, so it would need a `commitmentStanding` read per
+   action (and the join window for joins); open for the owner.
 3. An anvil harness inside the crate: drive the epoch manager and the Hero
    against deployed contracts with mined blocks, with the node's own engine
    plus a test patch layer as the adversary. It covers the sender, the

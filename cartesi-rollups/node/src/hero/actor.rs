@@ -1,7 +1,7 @@
 //! Production Hero orchestration: observe, project, plan, prepare, and
 //! yield the tick's wave contribution for the epoch manager to submit.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use ::log::{debug, error, info};
 
@@ -161,8 +161,17 @@ impl<AS: ArenaSender> Hero<AS> {
         let mut wave = Vec::new();
         match decision {
             HeroDecision::Act(intent) => {
+                // The node's share of a response's time: machine work
+                // (commitment builds, proofs) between the observed head and
+                // submission. Operators compare it with the deployed budgets.
+                let started = Instant::now();
                 let action = super::machine_work(|| prepare(intent, &context, &mut self.source))
                     .map_err(anyhow::Error::from)?;
+                info!(
+                    "prepared {intent:?} in {:.1?}, observed at block {}",
+                    started.elapsed(),
+                    action_head.number
+                );
                 wave.push(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
             }
             HeroDecision::Wait(reason) => {
