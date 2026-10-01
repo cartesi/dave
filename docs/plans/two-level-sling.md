@@ -379,8 +379,14 @@ under [44, 27, 0].
    In part 2026-09-30: on the two-level devnet, honeypot `stf_all` (20 min
    of a 60 min step), yield `stf_revert` (16 of 30) and the batched
    catch-up kill pass, each steered leaf ending in a STEP proof. Their
-   active leaves are small enough that no lever is needed; the full battery
-   remains.
+   active leaves are small. On 2026-10-01 the rest of the battery passed on
+   two levels (with the GC scenarios' pairing made deterministic), except
+   yield `stf_all` (epoch 2, transition 2) and yield `big_input`
+   (transition 0): yield's input processing is dense, so their leaves are
+   about 2^17 active big cycles, and the Lua sybil's leaf-by-leaf build
+   (`increment_uarch` plus a Lua Merkle builder per ustep) ran past the
+   3,600 s scenario deadline (over 3 hours) without finishing. A lever is
+   needed for these two.
 
 ### W5. The switch (new deployment generation)
 
@@ -544,9 +550,11 @@ Scale and liveness (unmeasured, not wrong).
 - R6. The devnet cannot host a dense leaf dispute: its clock allows about 375
   blocks, while test inputs run 10^5 to 10^6 big cycles. Dense two-level e2e
   needs a devnet profile with a larger allowance, and the e2e node is a debug
-  build (dense leaves about 2.4x slower than release). Not needed
-  (2026-09-30): the steered scenarios' active leaves fit (W4.8), and dense
-  leaf performance is M2's (W4.2), a benchmark rather than an e2e run.
+  build (dense leaves about 2.4x slower than release). Not needed for the
+  scenarios with light leaves (2026-09-30), and dense leaf performance is
+  M2's (W4.2). Open again for yield's dense leaves (W4.8): once the Lua
+  sybil builds them fast, whether the debug node's build fits the devnet
+  clock is unmeasured.
 
 Correctness and robustness beyond scale.
 
