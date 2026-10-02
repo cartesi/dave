@@ -66,8 +66,8 @@ Everything lives under `--state-dir`:
 state_dir/
   db.sqlite3          main database (WAL mode, busy_timeout 10s)
   snapshots/0x<hash>/ machine snapshots, named by machine root hash
+                      (the runner's boundaries and the disputes')
   <epoch_number>/     per-epoch dispute scratch dir
-    0x<hash>/         dispute-time machine snapshots
     engine/           engine machine work dirs
 ```
 
@@ -99,8 +99,10 @@ closes it, verifies that its root matches the content-addressed key, syncs the
 stored machine, renames it without replacement, and then registers the
 boundary together with every window root in one database transaction. A crash
 can therefore orphan a durable directory but cannot leave a row pointing at
-an undurable machine; it may replay at most one full batch. Dispute-time
-snapshot densification is the deliberate exception to the normal gap cadence.
+an undurable machine; it may replay at most one full batch. Dispute
+positioning is the other publisher: it crosses whole windows from the nearest
+boundary on the same clone chain and publishes only the disputed input's
+boundary, which every later action of that dispute resumes from.
 
 The runner's newest registered boundary - its durable cursor - is strict state,
 not a best-effort cache. If its path has vanished or cannot be inspected as a
@@ -182,8 +184,9 @@ One schema note to know about:
 - The dispute tables (`sling_config`, `sling_nodes`) live in the main
   database. The quartet cache is restartable state, and `Hero` opens its own
   connection to the same file (shared file, disjoint tables, private
-  connections). The per-epoch directory holds only scratch: dispute-time
-  machine snapshots stored by root hash and engine machine work directories.
+  connections). The per-epoch directory holds only scratch, the engine's
+  machine work directories; dispute positioning publishes boundaries into
+  the shared content-addressed store.
   Hero construction materializes nothing: `DisputeSource::on_store` reads the
   input count, the window-root quartet rows prepaid by the machine runner, and
   the final boundary hash. Below window granularity, disputes replay the

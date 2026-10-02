@@ -411,12 +411,7 @@ impl Storage {
         runs: &[Run],
     ) -> Result<()> {
         assert!(!runs.is_empty());
-        assert_eq!(machine.epoch(), batch.epoch);
         let processed = machine.next_input_index_in_epoch() - 1;
-        assert_eq!(
-            processed, batch.boundary_input,
-            "records must be contiguous"
-        );
         let window_root = fold_window_root(runs, batch.log2_run_stride);
 
         // The hash first brings the clone's on-disk sidecars exact.
@@ -426,6 +421,33 @@ impl Storage {
             runs.last().expect("nonempty by the assert above").hash,
             Digest::new(hash),
             "the window's final run must carry the machine's boundary state"
+        );
+        self.rotate_accepted(batch, machine, hash)?;
+
+        batch.records.push(AdvanceRecord {
+            input_number: processed,
+            window_root,
+        });
+        Ok(())
+    }
+
+    /// The accepted half of the clone swap, shared by the runner and
+    /// dispute crossing: the mutated working clone, at `hash` (its
+    /// sidecars made exact by hashing it), becomes the transient
+    /// rollback checkpoint, and the machine continues on a fresh
+    /// SHARING_ALL clone of it.
+    pub(crate) fn rotate_accepted(
+        &self,
+        batch: &mut AdvanceBatch,
+        machine: &mut RollupsMachine,
+        hash: Hash,
+    ) -> Result<()> {
+        assert_eq!(machine.epoch(), batch.epoch);
+        let next_input = machine.next_input_index_in_epoch();
+        assert_eq!(
+            next_input - 1,
+            batch.boundary_input,
+            "records must be contiguous"
         );
         machine.close();
 
@@ -450,13 +472,8 @@ impl Storage {
             );
         }
 
-        batch.records.push(AdvanceRecord {
-            input_number: processed,
-            window_root,
-        });
-        batch.boundary_input = processed + 1;
+        batch.boundary_input = next_input;
         batch.boundary_hash = hash;
-
         Ok(())
     }
 
@@ -471,13 +488,7 @@ impl Storage {
         runs: &[Run],
     ) -> Result<()> {
         assert!(!runs.is_empty());
-        assert_eq!(machine.epoch(), batch.epoch);
-        let next_input = machine.next_input_index_in_epoch();
-        let processed = next_input - 1;
-        assert_eq!(
-            processed, batch.boundary_input,
-            "records must be contiguous"
-        );
+        let processed = machine.next_input_index_in_epoch() - 1;
         let window_root = fold_window_root(runs, batch.log2_run_stride);
         // A reverted window pads with the restored pre-input state:
         // exactly the boundary this record reuses.
@@ -486,7 +497,31 @@ impl Storage {
             Digest::new(batch.boundary_hash),
             "a reverted window's final run must carry the restored boundary state"
         );
+        self.rotate_reverted(batch, machine)?;
 
+        batch.records.push(AdvanceRecord {
+            input_number: processed,
+            window_root,
+        });
+        Ok(())
+    }
+
+    /// The rejected half of the clone swap, shared by the runner and
+    /// dispute crossing: the working clone holds the poisoned
+    /// post-input state, so it is discarded and the machine continues
+    /// on a fresh clone of the checkpoint, the canonical pre-input state.
+    pub(crate) fn rotate_reverted(
+        &self,
+        batch: &mut AdvanceBatch,
+        machine: &mut RollupsMachine,
+    ) -> Result<()> {
+        assert_eq!(machine.epoch(), batch.epoch);
+        let next_input = machine.next_input_index_in_epoch();
+        assert_eq!(
+            next_input - 1,
+            batch.boundary_input,
+            "records must be contiguous"
+        );
         machine.close();
         self.discard_clone(&batch.working)
             .map_err(anyhow::Error::from)?;
@@ -498,13 +533,7 @@ impl Storage {
             return Err(anyhow::Error::from(error).into());
         }
         batch.working = next_working;
-
-        batch.records.push(AdvanceRecord {
-            input_number: processed,
-            window_root,
-        });
         batch.boundary_input = next_input;
-
         Ok(())
     }
 
@@ -521,14 +550,7 @@ impl Storage {
         if batch.records.is_empty() {
             return Ok(());
         }
-
-        if batch.boundary_ownership == CheckpointOwnership::Transient {
-            let dest = self
-                .commit_clone(batch.boundary_path.clone(), &batch.boundary_hash)
-                .map_err(anyhow::Error::from)?;
-            batch.boundary_path = dest;
-            batch.boundary_ownership = CheckpointOwnership::Durable;
-        }
+        self.publish_checkpoint(&mut batch)?;
 
         let window_roots: Vec<_> = batch
             .records
@@ -560,6 +582,48 @@ impl Storage {
         remove_orphan_dirs(&orphans);
 
         Ok(())
+    }
+
+    /// Durably publishes a transient checkpoint, after which the batch no
+    /// longer owns it: a failed database write leaves the CAS artifact
+    /// for retry.
+    fn publish_checkpoint(&self, batch: &mut AdvanceBatch) -> Result<()> {
+        if batch.boundary_ownership == CheckpointOwnership::Transient {
+            let dest = self
+                .commit_clone(batch.boundary_path.clone(), &batch.boundary_hash)
+                .map_err(anyhow::Error::from)?;
+            batch.boundary_path = dest;
+            batch.boundary_ownership = CheckpointOwnership::Durable;
+        }
+        Ok(())
+    }
+
+    /// Dispute positioning's crossing: the runner's clone chain from a
+    /// verified stored boundary, whole windows at a time, rotated with
+    /// [`Storage::rotate_accepted`] and [`Storage::rotate_reverted`] and
+    /// recording no window roots.
+    pub(crate) fn begin_crossing(
+        &self,
+        path: PathBuf,
+        epoch: u64,
+        input: u64,
+        hash: Hash,
+    ) -> Result<(RollupsMachine, AdvanceBatch)> {
+        self.begin_advances_at(path, epoch, input, hash)
+    }
+
+    /// Publishes and registers a crossing's final boundary, the only one
+    /// later dispute actions resume from. No window roots and no gap GC:
+    /// the epoch is settled, and its rows are the dispute's.
+    pub(crate) fn publish_crossing(&mut self, mut batch: AdvanceBatch) -> Result<()> {
+        assert!(batch.records.is_empty(), "a crossing records no windows");
+        self.publish_checkpoint(&mut batch)?;
+        self.insert_boundary(
+            batch.epoch,
+            batch.boundary_input,
+            &batch.boundary_hash,
+            &batch.boundary_path,
+        )
     }
 
     /// Closes an exactly sealed and fully published epoch. The hard
@@ -1193,6 +1257,78 @@ mod tests {
             .unwrap(),
             3
         );
+    }
+
+    fn staging_leftovers(s: &Storage) -> Vec<String> {
+        std::fs::read_dir(snapshots_path(s.state_dir()))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.starts_with(".work-") || name.starts_with(".part-"))
+            .collect()
+    }
+
+    /// Dispute crossing: accepted, accepted, rejected, then published.
+    /// Only the final boundary joins the store, at the state after the
+    /// last accepted input, with no clone left behind.
+    #[test]
+    fn crossing_registers_only_its_final_boundary() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs(&mut s, 0, 3);
+        let floor = s.snapshot_dir(0, 0).unwrap().unwrap();
+        let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
+
+        let (mut machine, mut batch) = s.begin_crossing(floor, 0, 0, hash).unwrap();
+        let mut accepted = Digest::new(hash);
+        for offset in 0..2 {
+            accepted = mutate(&mut machine, offset, 0x40 + offset as u8);
+            machine.increment_input();
+            s.rotate_accepted(&mut batch, &mut machine, accepted.into())
+                .unwrap();
+        }
+        let _poisoned = mutate(&mut machine, 2, 0x80);
+        machine.increment_input();
+        s.rotate_reverted(&mut batch, &mut machine).unwrap();
+        drop(machine);
+        s.publish_crossing(batch).unwrap();
+
+        let snapshots = s.epoch_snapshots(0).unwrap();
+        let rows: Vec<u64> = snapshots.iter().map(|(boundary, _)| boundary.0).collect();
+        assert_eq!(rows, [0, 3]);
+        assert_eq!(s.snapshot_hash(0, 3).unwrap(), Some(accepted.into()));
+        assert!(
+            snapshots[1]
+                .1
+                .ends_with(format!("0x{}", hex::encode(<[u8; 32]>::from(accepted))))
+        );
+        assert_eq!(staging_leftovers(&s), Vec::<String>::new());
+    }
+
+    /// A crossing that fails before publication leaves no clone, row or
+    /// content-addressed directory.
+    #[test]
+    fn abandoned_crossing_leaves_no_trace() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs(&mut s, 0, 2);
+        let floor = s.snapshot_dir(0, 0).unwrap().unwrap();
+        let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
+        let listing = |s: &Storage| -> std::collections::BTreeSet<_> {
+            std::fs::read_dir(snapshots_path(s.state_dir()))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect()
+        };
+        let before = listing(&s);
+
+        let (mut machine, mut batch) = s.begin_crossing(floor, 0, 0, hash).unwrap();
+        let accepted = mutate(&mut machine, 0, 0x40);
+        machine.increment_input();
+        s.rotate_accepted(&mut batch, &mut machine, accepted.into())
+            .unwrap();
+        drop(machine);
+        drop(batch);
+
+        assert_eq!(listing(&s), before);
+        assert_eq!(s.epoch_snapshots(0).unwrap().len(), 1);
     }
 
     #[test]

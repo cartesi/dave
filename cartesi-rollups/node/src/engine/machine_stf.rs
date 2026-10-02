@@ -41,14 +41,14 @@ use std::path::{Path, PathBuf};
 /// vectors and per-ruler checkpoint dirs (the storage-less
 /// harnesses: measure, the differential tests). Store is the dispute
 /// path's mode: payloads come from the inputs table and the pre-feed
-/// snapshot commits into the boundary store, where it doubles as
-/// dispute densification and the row insert as a cross-regime
-/// nondeterminism tripwire. Advance is the machine runner's mode:
-/// one window, its payload handed in (the runner already read the
-/// inputs table to schedule it), and the pre-feed snapshot is the
-/// batch's closed checkpoint. It may be transient until the batch's
-/// final boundary is published; a revert only needs it to be
-/// immutable for the current window.
+/// snapshot commits into the boundary store; positioning has usually
+/// published it already (Positioner::cross), so the commit adopts it,
+/// and the row insert is a cross-regime nondeterminism tripwire.
+/// Advance is the mode of the machine runner and of positioning's
+/// crossed windows: one window, its payload handed in, and the
+/// pre-feed snapshot is the batch's closed checkpoint. It may be
+/// transient until the batch's final boundary is published; a revert
+/// only needs it to be immutable for the current window.
 enum Feeder {
     Scratch {
         fed: usize,
@@ -91,7 +91,8 @@ pub struct MachineStf {
     ucycle: u64,
     /// Scratch-mode checkpoints live here; one at a time.
     work_dir: PathBuf,
-    checkpoint: Option<PathBuf>,
+    /// The last feed's pre-input snapshot and the revert root it holds.
+    checkpoint: Option<(PathBuf, Hash)>,
     feeder: Feeder,
 }
 
@@ -264,12 +265,21 @@ impl MachineStf {
         if self.manual_yield_reason()? != Some(RX_REJECTED) {
             return Ok(false);
         }
-        let checkpoint = self
+        let (checkpoint, revert_root) = self
             .checkpoint
             .clone()
             .expect("revert requires a fed checkpoint");
         self.machine = Machine::load(&checkpoint, &runtime_config(self.hashing))
             .context("reload checkpoint")?;
+        // Publication verifies a content-addressed snapshot, but a feed
+        // adopts an existing directory without rehashing it, so a torn
+        // one would otherwise become a wrong post-state silently.
+        assert_eq!(
+            self.machine.root_hash()?,
+            revert_root,
+            "revert checkpoint `{}` does not hash to the input's revert root: corrupt snapshot",
+            checkpoint.display()
+        );
         self.ucycle = 0;
         if let Feeder::Advance { reverted, .. } = &mut self.feeder {
             *reverted = true;
@@ -315,7 +325,7 @@ impl Stf for MachineStf {
                 let path = self.work_dir.join(format!("checkpoint-{fed}"));
                 *fed += 1;
                 self.machine.store(&path).context("store checkpoint")?;
-                if let Some(old) = self.checkpoint.take() {
+                if let Some((old, _)) = self.checkpoint.take() {
                     std::fs::remove_dir_all(old).ok();
                 }
                 let payload = inputs
@@ -366,7 +376,7 @@ impl Stf for MachineStf {
                 (boundary.clone(), payload)
             }
         };
-        self.checkpoint = Some(checkpoint);
+        self.checkpoint = Some((checkpoint, root));
 
         if self.collector == Collector::Bulk {
             // Collected while awaiting input, the idle period ends with
@@ -577,13 +587,13 @@ impl MachineStf {
 
 /// The engine's positioning residue: a work dir, a spawn counter,
 /// and the store handle they serve. Positions rulers by resuming
-/// from the boundary store's nearest stored machine and advancing
-/// the remainder. The store is live: boundaries recorded by any
-/// writer (the open regime's gap fill, a future dispute write-back)
-/// shorten the next positioning. On a freshly initialized store only
-/// the epoch start exists, which is the full-replay behavior the
-/// prototype had. Constructed only by [`DisputeSource::on_store`];
-/// the type is public for signatures alone.
+/// from the boundary store's nearest stored machine, crossing whole
+/// windows on the runner's clone chain, and advancing the remainder.
+/// The store is live: boundaries recorded by any writer (the open
+/// regime's gap fill, an earlier crossing) shorten the next
+/// positioning. On a freshly initialized store only the epoch start
+/// exists. Constructed only by [`DisputeSource::on_store`]; the type
+/// is public for signatures alone.
 pub struct Positioner {
     structure: Structure,
     work_dir: PathBuf,
@@ -644,6 +654,52 @@ impl DisputeSource<Positioner> {
     }
 }
 
+impl Positioner {
+    /// Crosses whole windows from the verified stored boundary `floor`
+    /// to `to` on the runner's clone chain: each input runs on a
+    /// copy-on-write clone, which costs its dirty pages, a rejection
+    /// resumes from the pre-input clone, and only boundary `to` is
+    /// published and registered. Every later action of a dispute stays
+    /// inside one input, so that boundary is the one they resume from;
+    /// a full store of each crossed boundary (about 410 MiB on the
+    /// stress image) bought nothing more.
+    fn cross(&mut self, floor: u64, path: PathBuf, hash: Hash, to: u64) -> Result<()> {
+        let (mut machine, mut batch) = self.store.begin_crossing(path, self.epoch, floor, hash)?;
+        for window in floor..to {
+            let payload = self
+                .store
+                .input(&InputId {
+                    epoch_number: self.epoch,
+                    input_index_in_epoch: window,
+                })?
+                .expect("crossed windows lie in the ingested contiguous prefix")
+                .data;
+            let stf = MachineStf::over_advancing(
+                machine.take_machine(),
+                window,
+                payload,
+                batch.boundary_path().to_path_buf(),
+            );
+            let start = self.structure.window_start(window);
+            let mut ruler = Ruler::new_at(stf, self.structure, window + 1, start);
+            ruler.advance(self.structure.window_start(window + 1))?;
+            let stf = ruler.into_stf();
+            let reverted = stf.took_revert();
+            machine.put_machine(stf.into_machine());
+            machine.increment_input();
+            if reverted {
+                self.store.rotate_reverted(&mut batch, &mut machine)?;
+            } else {
+                let hash = machine.state_hash()?;
+                self.store.rotate_accepted(&mut batch, &mut machine, hash)?;
+            }
+        }
+        drop(machine);
+        self.store.publish_crossing(batch)?;
+        Ok(())
+    }
+}
+
 impl RulerFactory for Positioner {
     type S = MachineStf;
 
@@ -670,12 +726,20 @@ impl RulerFactory for Positioner {
             // loaded machine must reproduce its row's hash (nearly
             // free - committed boundaries carry exact sidecars). A
             // torn snapshot is skipped, not fatal: any earlier
-            // boundary only lengthens the replay.
+            // boundary only lengthens the replay. A later feed still
+            // adopts its directory as a revert checkpoint, which
+            // restore_rejected checks.
             let expected = self
                 .store
                 .snapshot_hash(self.epoch, boundary.0)?
                 .expect("nearest answered from an existing row");
             if stf.state_hash()? == Digest::from_digest(&expected)? {
+                let to = target.min(self.fed_windows);
+                if boundary.0 < to {
+                    drop(stf);
+                    self.cross(boundary.0, path, expected, to)?;
+                    continue;
+                }
                 break (boundary, stf);
             }
             log::error!(
@@ -692,9 +756,9 @@ impl RulerFactory for Positioner {
         let at = boundary.position(&self.structure);
         assert!(at <= position, "boundary store answered past the target");
 
-        // Positioning densifies: every window boundary crossed on the
-        // way to `position` commits through the store, so the next
-        // ruler resumes at most one window away.
+        // Left to cross: padding windows past the inputs, or, when a torn
+        // snapshot lowered the target, the windows above it, whose feeds
+        // commit their boundaries through the store.
         let stf = stf.with_write_back(
             Storage::new(self.store.state_dir())?,
             self.epoch,
@@ -1075,7 +1139,7 @@ mod tests {
             collector: Collector::Stepped,
             revert_tail: None,
             work_dir: work.path().to_path_buf(),
-            checkpoint: Some(checkpoint),
+            checkpoint: Some((checkpoint, revert_root)),
             feeder: Feeder::Scratch {
                 fed: 1,
                 inputs: vec![payload.clone()],
@@ -1173,7 +1237,7 @@ mod tests {
         };
 
         let work = tempfile::tempdir()?;
-        let (machine, _, checkpoint, tail) = delivered(work.path())?;
+        let (machine, revert_root, checkpoint, tail) = delivered(work.path())?;
         let mut stf = MachineStf {
             machine,
             hashing: Hashing::PerStep,
@@ -1181,7 +1245,7 @@ mod tests {
             revert_tail: Some(tail),
             ucycle: 0,
             work_dir: work.path().to_path_buf(),
-            checkpoint: Some(checkpoint),
+            checkpoint: Some((checkpoint, revert_root)),
             feeder: Feeder::Scratch {
                 fed: 1,
                 inputs: vec![payload.clone()],

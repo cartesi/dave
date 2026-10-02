@@ -755,11 +755,10 @@ fn snapshot_resumed_source_matches_template_replay() {
     assert_eq!(a.siblings, b.siblings, "mid proof");
 }
 
-/// Step-5 write-back: positioning that crosses a window boundary
-/// commits it into the boundary store, so the next ruler resumes at
-/// most one window away - and a boundary regime 1 already recorded
-/// absorbs identically (the cross-regime tripwire staying silent on
-/// agreement).
+/// Positioning into a later window registers that window's boundary,
+/// so the next ruler resumes there - and a boundary regime 1 already
+/// recorded absorbs identically (the cross-regime tripwire staying
+/// silent on agreement).
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn positioning_writes_back_crossed_boundaries() {
@@ -1438,8 +1437,9 @@ fn node_witness_vectors_hold() {
 /// The work-count bound the toy cannot show (engine::spec counts the
 /// rest): production positioning resumes from the nearest snapshot the
 /// runner kept, so it replays at most gap - 1 inputs. A query in window
-/// 7 at gap 4 starts from boundary 4 and writes back 5 to 7; boundaries
-/// 1 to 3 never reappear.
+/// 7 at gap 4 starts from boundary 4, crosses 4 to 6 on clones, and
+/// registers boundary 7 alone. The epoch start is hidden, so a replay
+/// from below boundary 4 fails.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn positioning_resumes_from_the_nearest_gap_snapshot() {
@@ -1455,6 +1455,12 @@ fn positioning_resumes_from_the_nearest_gap_snapshot() {
             .collect()
     };
     assert_eq!(stored(), [0, 4, 8], "the runner keeps the gap boundaries");
+    let start = Storage::new(state_dir.path())
+        .unwrap()
+        .snapshot_dir(0, 0)
+        .unwrap()
+        .unwrap();
+    std::fs::rename(&start, state_dir.path().join("start-aside")).unwrap();
 
     let work = scratch();
     let mut source = DisputeSource::on_store(
@@ -1467,9 +1473,139 @@ fn positioning_resumes_from_the_nearest_gap_snapshot() {
     source.node(&level.root()).unwrap();
     assert_eq!(
         stored(),
-        [0, 4, 5, 6, 7, 8],
+        [0, 4, 7, 8],
         "positioning resumed from boundary 4"
     );
+}
+
+/// A stride-0 quartet's root replayed from the template on the scratch
+/// feeder: no storage, no crossing.
+fn scratch_quartet_root(image: &Path, inputs: &[Vec<u8>], level: &LevelCoords) -> Digest {
+    let work = scratch();
+    let stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::PerStep)
+        .unwrap()
+        .with_inputs(inputs.to_vec());
+    let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
+    ruler.advance(level.base_cycle).unwrap();
+    let end = level.base_cycle + (U256::from(1) << level.height);
+    let mut builder = cartesi_rollups_prt_node::merkle::MerkleBuilder::default();
+    for run in ruler.collect(end, 0).unwrap() {
+        builder.append_repeated(run.hash, run.repetitions);
+    }
+    builder.build().root_hash()
+}
+
+/// Read-only files of a stored machine, by name, with their inodes: a
+/// clone hard-links them, a full store writes new ones.
+fn read_only_inodes(dir: &Path) -> BTreeMap<String, u64> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(Result::unwrap)
+        .filter(|entry| entry.metadata().unwrap().permissions().readonly())
+        .map(|entry| {
+            let name = entry.file_name().into_string().unwrap();
+            (name, entry.metadata().unwrap().ino())
+        })
+        .collect()
+}
+
+fn staging_leftovers(state_dir: &Path) -> Vec<String> {
+    std::fs::read_dir(state_dir.join("snapshots"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| name.starts_with(".work-") || name.starts_with(".part-"))
+        .collect()
+}
+
+/// Positioning crosses whole windows on the runner's clone chain: from
+/// the epoch start to window 3 of echo's four inputs (input 2 rejected),
+/// it registers boundary 3 alone, as clones of the start, leaves no
+/// working clone behind, and serves the scratch replay's root.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn positioning_crosses_windows_on_clones() {
+    let image = echo_image();
+    let inputs = encode_inputs(&[&b"zero"[..], b"one", b"two", b"three"]);
+    let state_dir = run_sealed_epoch(&image, inputs.clone(), &three_level(), 4);
+    let mut storage = Storage::new(state_dir.path()).unwrap();
+    let rows = |storage: &mut Storage| -> Vec<u64> {
+        let snapshots = storage.epoch_snapshots(0).unwrap();
+        snapshots.iter().map(|(boundary, _)| boundary.0).collect()
+    };
+    assert_eq!(rows(&mut storage), [0, 4]);
+
+    let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(3), 0, 20);
+    let work = scratch();
+    let root = DisputeSource::on_store(
+        Storage::new(state_dir.path()).unwrap(),
+        0,
+        work.path().to_path_buf(),
+    )
+    .unwrap()
+    .node(&level.root())
+    .unwrap();
+    assert_eq!(root, scratch_quartet_root(&image, &inputs, &level));
+
+    assert_eq!(rows(&mut storage), [0, 3, 4]);
+    let start = read_only_inodes(&storage.snapshot_dir(0, 0).unwrap().unwrap());
+    let crossed = read_only_inodes(&storage.snapshot_dir(0, 3).unwrap().unwrap());
+    assert!(!start.is_empty(), "a stored machine has read-only files");
+    assert_eq!(crossed, start, "boundary 3 is a clone, not a store");
+    assert_eq!(staging_leftovers(state_dir.path()), Vec::<String>::new());
+}
+
+/// A torn snapshot the fallback skips must not come back as a revert
+/// checkpoint: the feed that crosses it adopts its content-addressed
+/// directory, so the rejection's reload checks the root and fails
+/// loudly instead of serving a wrong post-state. Echo at gap 2 keeps
+/// boundaries 0, 2 and 4, and rejects input 2.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+#[should_panic(expected = "does not hash to the input's revert root")]
+fn a_torn_revert_checkpoint_fails_loudly() {
+    let image = echo_image();
+    let inputs = encode_inputs(&[&b"zero"[..], b"one", b"two", b"three"]);
+    let state_dir = run_sealed_epoch(&image, inputs, &three_level(), 2);
+    let mut storage = Storage::new(state_dir.path()).unwrap();
+    let start = storage.snapshot_dir(0, 0).unwrap().unwrap();
+    let torn = storage.snapshot_dir(0, 2).unwrap().unwrap();
+    std::fs::remove_dir_all(&torn).unwrap();
+    Machine::clone_stored(&start, &torn).unwrap();
+
+    let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(3), 0, 20);
+    let work = scratch();
+    let _ = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+        .unwrap()
+        .node(&level.root());
+}
+
+/// A crossing whose every input is rejected ends on the state it began
+/// from, so the target's row reuses the floor's directory.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn positioning_over_rejected_inputs_keeps_the_floor() {
+    let image = yield_image();
+    let inputs = encode_inputs(&[&b"zero"[..], b"one"]);
+    let (state_dir, storage) = initialized_storage_with(&image, inputs.clone());
+    let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(2), 0, 20);
+    let work = scratch();
+    let root = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+        .unwrap()
+        .node(&level.root())
+        .unwrap();
+    assert_eq!(root, scratch_quartet_root(&image, &inputs, &level));
+
+    let mut storage = Storage::new(state_dir.path()).unwrap();
+    assert_eq!(
+        storage.snapshot_hash(0, 2).unwrap(),
+        storage.snapshot_hash(0, 0).unwrap()
+    );
+    assert_eq!(
+        storage.snapshot_dir(0, 2).unwrap(),
+        storage.snapshot_dir(0, 0).unwrap()
+    );
+    assert_eq!(staging_leftovers(state_dir.path()), Vec::<String>::new());
 }
 
 /// Gaps 3 and 4 of docs/plans/test-strategy-reset.md: leaf commitments

@@ -633,11 +633,14 @@ Found while fixing R1 (2026-09-29).
   lands within `G` and that producing a proof is instant. The Hero polls
   every 30 s and submits one action per tick. A leaf proof calls
   `prove_transition`, whose `ruler_at` reloads the disputed input's own
-  boundary (the dispute writes back every boundary it crosses) and replays
+  boundary (published when positioning first crosses to it) and replays
   to the divergence. That replay is bounded by the per-input contract:
   about 20 to 40 s at 2^34 big cycles, milliseconds for realistic inputs,
-  so no mid-input snapshots are needed (decided 2026-09-30). The write-back
+  so no mid-input snapshots are needed (decided 2026-09-30). That boundary
   is load-bearing: without it every proof would replay up to 63 inputs.
+  The boundaries crossed on the way were not, and since 2026-10-02 they are
+  crossed on copy-on-write clones and not registered; storing each in full
+  had cost about 410 MiB of disk apiece on the stress image.
   Keep the tick well inside `G`. Target: a leaf proof, and the fallback
   timeout claim when the opponent's expiry overtakes it (CF-01), land within
   one `G` of the seal; about 2 to 2.5 min in the worst case today.

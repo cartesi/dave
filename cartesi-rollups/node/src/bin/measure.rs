@@ -1168,7 +1168,7 @@ fn constants_report(
 ///   cm_collect_uarch_cycle_root_hashes, one bundle per big cycle. The two
 ///   roots must agree.
 /// - Deep proof: the closing slot at the end of that leaf, from the input
-///   boundary the join wrote back. The emulator loads the same snapshot,
+///   boundary the join published. The emulator loads the same snapshot,
 ///   runs to the slot, and logs the step and the reset.
 ///
 /// Each row runs in its own process, so its peak RSS is its own. Disk is
@@ -1317,10 +1317,10 @@ mod versus {
             report,
             "Cold join: leaf {leaf}, three quarters into input {input}, the gap's last,\n\
              positioned from the epoch start, so {input} inputs replay first. The\n\
-             node's time covers opening the store, positioning with write-back, the\n\
-             commitment, its children and the last-leaf proof. The emulator\n\
-             positioned in {} and collected in {}; {} of the leaf's {} big cycles\n\
-             ran active.",
+             node's time covers opening the store, positioning (whole inputs on\n\
+             copy-on-write clones), the commitment, its children and the last-leaf\n\
+             proof. The emulator positioned in {} and collected in {}.\n\
+             {} of the leaf's {} big cycles ran active.",
             fmt_duration(Duration::from_secs_f64(
                 emulator_join["position_seconds"]
                     .as_f64()
@@ -1338,7 +1338,7 @@ mod versus {
         writeln!(
             report,
             "Deep proof: the closing slot that ends that leaf, positioned from input\n\
-             {input}'s boundary, which the join wrote back."
+             {input}'s boundary, which the join published."
         )?;
         Ok(())
     }
