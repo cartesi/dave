@@ -15,6 +15,7 @@ use crate::{
         BreakReason, Hash, LogType, Register, SharingMode, UArchBreakReason,
         access_proof::AccessLog,
         cmio::{CmioRequest, CmioResponseReason},
+        collect::{McycleRootHashes, PartialBundle, UarchCycleRootHashes},
         memory_proof::Proof,
         memory_range::MemoryRangeDescriptions,
     },
@@ -564,6 +565,79 @@ impl Machine {
         Ok(())
     }
 
+    /// Collects state root hashes every 2^`log2_mcycle_period` mcycles until
+    /// `mcycle_end` or a fixed point (`cm_collect_mcycle_root_hashes`, whose
+    /// documentation is the contract). `mcycle_phase` and
+    /// `previous_partial_bundle` continue a previous call's sampling and
+    /// bundling; a call also stops at automatic yields, so callers loop.
+    pub fn collect_mcycle_root_hashes(
+        &mut self,
+        mcycle_end: u64,
+        log2_mcycle_period: u64,
+        mcycle_phase: u64,
+        log2_bundle_mcycle_count: u32,
+        previous_partial_bundle: Option<&PartialBundle>,
+    ) -> Result<McycleRootHashes> {
+        let bundle = previous_partial_bundle
+            .map(|bundle| CString::new(bundle.as_json()).expect("serde_json escapes NUL"));
+        let mut result_ptr: *const c_char = ptr::null();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_collect_mcycle_root_hashes(
+                self.machine,
+                mcycle_end,
+                log2_mcycle_period,
+                mcycle_phase,
+                log2_count(log2_bundle_mcycle_count)?,
+                bundle
+                    .as_ref()
+                    .map_or(ptr::null(), |bundle| bundle.as_ptr()),
+                &mut result_ptr,
+            )
+        };
+        check_err!(err_code)?;
+
+        // Parsed before any other API call can reuse the result buffer.
+        let json = unsafe { CStr::from_ptr(result_ptr) }.to_string_lossy();
+        Ok(McycleRootHashes::from_json(&json).expect("malformed mcycle collection result"))
+    }
+
+    /// Collects state root hashes after every uarch cycle until `mcycle_end`
+    /// or a fixed point, resetting the uarch between mcycles
+    /// (`cm_collect_uarch_cycle_root_hashes`, whose documentation is the
+    /// contract). The uarch must sit at cycle zero. `revert_uarch_tail` is the
+    /// unbundled period collected on the machine whose root is the recorded
+    /// revert root; the emulator requires it whenever the call may execute,
+    /// and refuses the call before executing anything when it is missing.
+    pub fn collect_uarch_cycle_root_hashes(
+        &mut self,
+        mcycle_end: u64,
+        log2_bundle_uarch_cycle_count: u32,
+        revert_uarch_tail: Option<&[Hash]>,
+    ) -> Result<UarchCycleRootHashes> {
+        let tail = revert_uarch_tail.map(|tail| {
+            let encoded: Vec<String> = tail
+                .iter()
+                .map(|hash| base64::Engine::encode(&base64::prelude::BASE64_STANDARD, hash))
+                .collect();
+            serialize_to_json!(&encoded)
+        });
+        let mut result_ptr: *const c_char = ptr::null();
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_collect_uarch_cycle_root_hashes(
+                self.machine,
+                mcycle_end,
+                log2_count(log2_bundle_uarch_cycle_count)?,
+                tail.as_ref().map_or(ptr::null(), |tail| tail.as_ptr()),
+                &mut result_ptr,
+            )
+        };
+        check_err!(err_code)?;
+
+        // Parsed before any other API call can reuse the result buffer.
+        let json = unsafe { CStr::from_ptr(result_ptr) }.to_string_lossy();
+        Ok(UarchCycleRootHashes::from_json(&json).expect("malformed uarch collection result"))
+    }
+
     /// Receives a cmio request.
     pub fn receive_cmio_request(&mut self) -> Result<CmioRequest> {
         let mut cmd: u8 = 0;
@@ -808,6 +882,14 @@ impl Machine {
 
 fn optional_hash_ptr(hash: Option<&Hash>) -> *const Hash {
     hash.map_or(ptr::null(), |hash| hash as *const Hash)
+}
+
+/// The C API takes bundle sizes as int32_t.
+fn log2_count(log2: u32) -> Result<i32> {
+    i32::try_from(log2).map_err(|_| MachineError {
+        code: constants::error_code::INVALID_ARGUMENT,
+        message: format!("log2 bundle count {log2} exceeds int32 range"),
+    })
 }
 
 impl Machine {
@@ -1394,6 +1476,278 @@ mod tests {
         Machine::remove_stored(&after)?;
         assert!(!after.exists());
 
+        Ok(())
+    }
+
+    const YIELD_IMAGE: &str = "../../../test/programs/yield/machine-image";
+
+    /// The yield program awaiting its first input. It rejects every input
+    /// after about a million big cycles of shell work, reverting to this
+    /// state. Hashes serially: the collectors and the stepping references
+    /// hash a few dirty words per uarch cycle.
+    fn yield_machine() -> Result<Machine> {
+        let mut runtime = RuntimeConfig::quiet_console();
+        runtime.concurrency.update_hash_tree = 1;
+        Machine::load(Path::new(YIELD_IMAGE), &runtime)
+    }
+
+    /// Delivers an input, recording the pre-input root (returned) as the
+    /// revert root.
+    fn feed(machine: &mut Machine) -> Result<Hash> {
+        let root = machine.root_hash()?;
+        machine.send_cmio_response(CmioResponseReason::Advance, b"collect", Some(&root))?;
+        Ok(root)
+    }
+
+    /// Runs the big machine to `mcycle` exactly; the yield program produces
+    /// no automatic yields before its rejection.
+    fn run_to(machine: &mut Machine, mcycle: u64) -> Result<()> {
+        assert_eq!(
+            machine.run(mcycle)?,
+            constants::break_reason::REACHED_TARGET_MCYCLE
+        );
+        Ok(())
+    }
+
+    /// The mcycle at which the fed input is rejected.
+    fn rejection_mcycle() -> Result<u64> {
+        let mut machine = yield_machine()?;
+        feed(&mut machine)?;
+        assert_eq!(
+            machine.run(u64::MAX)?,
+            constants::break_reason::YIELDED_MANUALLY
+        );
+        assert_eq!(
+            machine.receive_cmio_request()?.reason(),
+            constants::cmio::tohost::manual::RX_REJECTED
+        );
+        machine.mcycle()
+    }
+
+    /// One mcycle by hand: the root after each uarch cycle up to and
+    /// including the one that halts the uarch, then the root after the
+    /// reset. The collectors' unbundled period layout.
+    fn stepped_period(machine: &mut Machine) -> Result<Vec<Hash>> {
+        let mut hashes = vec![];
+        loop {
+            let ucycle = machine.ucycle()?;
+            machine.run_uarch(ucycle + 1)?;
+            hashes.push(machine.root_hash()?);
+            if machine.uarch_halt_flag()? {
+                break;
+            }
+        }
+        machine.reset_uarch()?;
+        hashes.push(machine.root_hash()?);
+        Ok(hashes)
+    }
+
+    /// The machine's idle period while awaiting input: the revert tail
+    /// every later collection over an input needs.
+    fn revert_tail(machine: &mut Machine) -> Result<Vec<Hash>> {
+        let mcycle = machine.mcycle()?;
+        let root = machine.root_hash()?;
+        let tail = machine.collect_uarch_cycle_root_hashes(mcycle, 0, None)?;
+        assert_eq!(tail.break_reason, constants::break_reason::YIELDED_MANUALLY);
+        assert_eq!(tail.periods().count(), 1);
+        assert_eq!(tail.hashes.last(), Some(&root), "an idle period restores");
+        assert_eq!((machine.mcycle()?, machine.root_hash()?), (mcycle, root));
+        Ok(tail.hashes)
+    }
+
+    fn concat_uarch(parts: &[UarchCycleRootHashes]) -> Vec<Vec<Hash>> {
+        parts
+            .iter()
+            .flat_map(|part| part.periods().map(<[Hash]>::to_vec))
+            .collect()
+    }
+
+    #[test]
+    fn mcycle_collection_samples_the_big_machine_and_continues_across_calls() -> Result<()> {
+        const LOG2_PERIOD: u64 = 12;
+        let end = rejection_mcycle()?;
+
+        let mut reference = yield_machine()?;
+        let revert_root = feed(&mut reference)?;
+        let start = reference.mcycle()?;
+        let mut expected = vec![];
+        let mut sample = start + (1 << LOG2_PERIOD);
+        while sample < end {
+            run_to(&mut reference, sample)?;
+            expected.push(reference.root_hash()?);
+            sample += 1 << LOG2_PERIOD;
+        }
+        // The rejection is a fixed point; it contributes the revert root.
+        expected.push(revert_root);
+
+        let mut machine = yield_machine()?;
+        feed(&mut machine)?;
+        let one_shot = machine.collect_mcycle_root_hashes(u64::MAX, LOG2_PERIOD, 0, 0, None)?;
+        assert_eq!(one_shot.hashes, expected);
+        assert_eq!(
+            one_shot.break_reason,
+            constants::break_reason::YIELDED_MANUALLY
+        );
+        assert_eq!(one_shot.partial_bundle, None);
+        let final_root = machine.root_hash()?;
+
+        // Unbundled and bundled, calls split off the sampling grid continue
+        // with the returned phase and partial bundle.
+        for log2_bundle in [0, 3] {
+            let mut machine = yield_machine()?;
+            feed(&mut machine)?;
+            let one_shot =
+                machine.collect_mcycle_root_hashes(u64::MAX, LOG2_PERIOD, 0, log2_bundle, None)?;
+
+            let mut machine = yield_machine()?;
+            feed(&mut machine)?;
+            let (mut hashes, mut phase, mut bundle) = (vec![], 0, None);
+            for split in [start + 5_000, start + 300_001, u64::MAX] {
+                let part = machine.collect_mcycle_root_hashes(
+                    split,
+                    LOG2_PERIOD,
+                    phase,
+                    log2_bundle,
+                    bundle.as_ref(),
+                )?;
+                hashes.extend(part.hashes);
+                (phase, bundle) = (part.mcycle_phase, part.partial_bundle);
+            }
+            assert_eq!(hashes, one_shot.hashes, "bundle 2^{log2_bundle}");
+            assert_eq!(machine.root_hash()?, final_root);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn uarch_collection_matches_stepping_and_continues_across_calls() -> Result<()> {
+        const MCYCLES: u64 = 48;
+
+        let mut reference = yield_machine()?;
+        let idle = stepped_period(&mut reference)?;
+        let tail = revert_tail(&mut yield_machine()?)?;
+        assert_eq!(tail, idle);
+
+        feed(&mut reference)?;
+        let start = reference.mcycle()?;
+        let expected = (0..MCYCLES)
+            .map(|_| stepped_period(&mut reference))
+            .collect::<Result<Vec<_>>>()?;
+
+        let mut machine = yield_machine()?;
+        feed(&mut machine)?;
+        let one_shot = machine.collect_uarch_cycle_root_hashes(start + MCYCLES, 0, Some(&tail))?;
+        assert_eq!(
+            one_shot.break_reason,
+            constants::break_reason::REACHED_TARGET_MCYCLE
+        );
+        assert_eq!(concat_uarch(&[one_shot]), expected);
+        assert_eq!(machine.root_hash()?, reference.root_hash()?);
+
+        for log2_bundle in [0, 3] {
+            let mut machine = yield_machine()?;
+            feed(&mut machine)?;
+            let one_shot = machine.collect_uarch_cycle_root_hashes(
+                start + MCYCLES,
+                log2_bundle,
+                Some(&tail),
+            )?;
+
+            let mut machine = yield_machine()?;
+            feed(&mut machine)?;
+            let parts = [7, 30, MCYCLES]
+                .into_iter()
+                .map(|end| {
+                    machine.collect_uarch_cycle_root_hashes(start + end, log2_bundle, Some(&tail))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            assert_eq!(
+                concat_uarch(&parts),
+                concat_uarch(&[one_shot]),
+                "bundle 2^{log2_bundle}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn uarch_collection_substitutes_the_revert_root_at_a_rejection() -> Result<()> {
+        let end = rejection_mcycle()?;
+        let tail = revert_tail(&mut yield_machine()?)?;
+
+        let mut reference = yield_machine()?;
+        let revert_root = feed(&mut reference)?;
+        run_to(&mut reference, end - 2)?;
+        let before = stepped_period(&mut reference)?;
+        let rejecting = stepped_period(&mut reference)?;
+
+        let mut machine = yield_machine()?;
+        feed(&mut machine)?;
+        run_to(&mut machine, end - 2)?;
+        let collected = machine.collect_uarch_cycle_root_hashes(u64::MAX, 0, Some(&tail))?;
+        assert_eq!(
+            collected.break_reason,
+            constants::break_reason::YIELDED_MANUALLY
+        );
+        let periods: Vec<&[Hash]> = collected.periods().collect();
+        assert_eq!(periods.len(), 3, "two executed mcycles, then the tail");
+        assert_eq!(periods[0], before);
+        // The physical reset keeps the rejected state; the collector
+        // reports the canonical revert root instead.
+        let (last, executed) = periods[1].split_last().unwrap();
+        assert_eq!(executed, &rejecting[..rejecting.len() - 1]);
+        assert_eq!(*last, revert_root);
+        assert_ne!(rejecting.last(), Some(&revert_root));
+        assert_eq!(periods[2], tail);
+
+        // Starting at the rejection, the call returns the reverted period
+        // alone, and needs the tail to do so.
+        assert!(
+            machine
+                .collect_uarch_cycle_root_hashes(end, 0, None)
+                .is_err()
+        );
+        let again = machine.collect_uarch_cycle_root_hashes(end, 0, Some(&tail))?;
+        assert_eq!(concat_uarch(&[again]), vec![tail]);
+        Ok(())
+    }
+
+    #[test]
+    fn uarch_collection_refuses_to_execute_without_the_revert_tail() -> Result<()> {
+        let mut machine = yield_machine()?;
+        feed(&mut machine)?;
+        let (mcycle, root) = (machine.mcycle()?, machine.root_hash()?);
+
+        let error = machine
+            .collect_uarch_cycle_root_hashes(mcycle + 1, 0, None)
+            .unwrap_err();
+        assert!(error.message.contains("revert uarch tail"), "{error:?}");
+        let error = machine
+            .collect_uarch_cycle_root_hashes(mcycle + 1, 0, Some(&[root, [7; 32]]))
+            .unwrap_err();
+        assert!(error.message.contains("revert root hash"), "{error:?}");
+        assert_eq!((machine.mcycle()?, machine.root_hash()?), (mcycle, root));
+        Ok(())
+    }
+
+    #[test]
+    fn collections_ending_at_the_current_mcycle_off_a_fixed_point_are_empty() -> Result<()> {
+        let mut machine = yield_machine()?;
+        feed(&mut machine)?;
+        let mcycle = machine.mcycle()?;
+
+        let uarch = machine.collect_uarch_cycle_root_hashes(mcycle, 3, None)?;
+        assert!(uarch.hashes.is_empty());
+        assert_eq!(uarch.mcycle_hash_offsets, vec![0]);
+        assert_eq!(
+            uarch.break_reason,
+            constants::break_reason::REACHED_TARGET_MCYCLE
+        );
+
+        let big = machine.collect_mcycle_root_hashes(mcycle, 10, 0, 3, None)?;
+        assert!(big.hashes.is_empty());
+        assert_eq!(big.partial_bundle, None);
+        assert_eq!(machine.mcycle()?, mcycle);
         Ok(())
     }
 }
