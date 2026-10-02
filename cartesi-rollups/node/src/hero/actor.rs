@@ -137,9 +137,8 @@ impl<AS: ArenaSender> Hero<AS> {
             initial_hash,
             geometry: storage.sling_config()?.geometry,
         };
-        let reader_storage = Storage::new(storage.state_dir())?;
         let source = DisputeSource::on_store(storage, epoch_number, engine_dir)?;
-        let reader = StateReader::new(chain, block_created_number, reader_storage)?;
+        let reader = StateReader::new(chain, block_created_number);
 
         Ok(Self {
             arena_sender,

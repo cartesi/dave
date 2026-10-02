@@ -835,23 +835,6 @@ fn gc_old_epochs_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<PathBuf>> {
     )
     .map_err(anyhow::Error::from)?;
 
-    // The settled disputes' event logs (fold phase 2): keyed by root
-    // tournament, joined through the epochs table's hex encoding.
-    tx.execute(
-        "DELETE FROM tournament_events WHERE root_tournament IN (
-            SELECT root_tournament FROM epochs WHERE epoch_number <= ?1
-        )",
-        params![u64_to_i64(max_epoch)],
-    )
-    .map_err(anyhow::Error::from)?;
-    tx.execute(
-        "DELETE FROM tournament_events_watermark WHERE root_tournament IN (
-            SELECT root_tournament FROM epochs WHERE epoch_number <= ?1
-        )",
-        params![u64_to_i64(max_epoch)],
-    )
-    .map_err(anyhow::Error::from)?;
-
     sweep_unreferenced_snapshots_in(tx)
 }
 

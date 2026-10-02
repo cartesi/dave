@@ -149,11 +149,6 @@ Main schema (`storage/sql/schema.sql`):
 - `machine_state_snapshots(state_hash, file_path)` + `epoch_snapshot_info`
   (which (epoch, input) has which snapshot) + `template_machine` (pins the
   genesis snapshot)
-- `tournament_events(root_tournament, block_number, log_index, raw_log)` +
-  `tournament_events_watermark` - the dispute reader's persisted finalized
-  prefix: prunable derived store (chain-refetchable, deleted with the
-  completed epoch); rows are final once written and never outrun the
-  per-dispute finalized watermark
 
 Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
@@ -213,11 +208,13 @@ a log missing from the tail of an already ingested range surfaces only at the
 next input and stops ingestion until the state directory is rebuilt.
 
 The deadline-sensitive tournament reader holds one recursive, event-derived
-`Dispute` through finalized `F`. On cold start it reconstructs that Solid value
-from the persisted raw events. Each tick recursively extends every tournament's
-local event stream through `F`, validates the completed tree, persists the
-recognized logs and watermark atomically, and only then replaces the in-memory
-Solid value.
+`Dispute` through finalized `F`, in memory only. Each tick recursively extends
+every tournament's local event stream through `F`, validates the completed
+tree, and only then replaces the Solid value. A new reader folds from the root
+tournament's creation block, so a restart is a cold start: it refetches each
+tournament's full finalized range once, which costs response-clock time on a
+long dispute, and a bad finalized prefix (a provider fault or a mixed fork)
+does not survive it.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest
@@ -225,8 +222,8 @@ quantum foam is used once and dropped. It is never promoted, reverse-applied,
 compared with the previous tick, or checked for ancestry against `H`. A reorg
 or mixed tail may reject the working tree, delay one action, or propose a stale
 mutation. Contract mutators revalidate every transition, and the next tick
-starts again from Solid. No unfinalized event becomes durable. Oversized ranges
-use the same binary range partitioning as other log ingestion.
+starts again from Solid. Oversized ranges use the same binary range
+partitioning as other log ingestion.
 
 Events own tournament structure, commitment placement, match lifecycle, and
 the inclusive block at which a clock-bearing match can be eliminated. Point
@@ -355,8 +352,9 @@ Structure:
 
 Design assumptions:
 
-10. Finalized-only persistence. The tournament reader additionally acts on a
-    disposable number-range tail and point views at one sampled hash. It does
+10. Finalized-only Solid. The tournament reader keeps only its finalized fold
+    between ticks, and additionally acts on a disposable number-range tail and
+    point views at one sampled hash. It does
     not prove the tail belongs to that hash's ancestry; stale work is safe
     because mutators revalidate it, and the next tick rebuilds the tail.
 11. One node instance per state dir; SQLite WAL is the only cross-thread

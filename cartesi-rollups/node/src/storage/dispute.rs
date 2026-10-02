@@ -1,9 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The dispute hero's role: the engine quartet cache, the finalized
-//! tournament event log (fold phase 2), and the closed-epoch views
-//! it fights tournaments with.
+//! The dispute hero's role: the engine quartet cache and the
+//! closed-epoch views it fights tournaments with.
 //!
 //! The quartet cache's primary key is the coordinate and the hash is
 //! the value, so a row, once written, is final - which is what makes
@@ -15,11 +14,7 @@ use super::error::{Result, StorageError};
 use crate::engine::Quartet;
 
 use crate::merkle::Digest;
-use alloy::{
-    hex::ToHexExt,
-    primitives::{Address, U256},
-    rpc::types::Log,
-};
+use alloy::primitives::U256;
 use rusqlite::{OptionalExtension, params};
 
 impl Storage {
@@ -151,105 +146,6 @@ impl Storage {
                 blob_to_digest(hash)
             })
             .collect()
-    }
-
-    /// The dispute's persisted event stream, in chain order (block,
-    /// then log index) - the exact order the tournament fold expects.
-    /// Only finalized events live here (fold phase 2); the tail past
-    /// the watermark is refetched live each tick.
-    pub fn tournament_events(&mut self, root_tournament: Address) -> Result<Vec<Log>> {
-        self.read(|tx| {
-            let mut stmt = tx
-                .prepare_cached(
-                    "SELECT raw_log FROM tournament_events
-                     WHERE root_tournament = ?1
-                     ORDER BY block_number ASC, log_index ASC",
-                )
-                .map_err(anyhow::Error::from)?;
-            let rows = stmt
-                .query_map([root_tournament.encode_hex()], |row| {
-                    row.get::<_, Vec<u8>>(0)
-                })
-                .map_err(anyhow::Error::from)?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(anyhow::Error::from)?
-                .into_iter()
-                .map(|blob| Ok(serde_json::from_slice(&blob).map_err(anyhow::Error::from)?))
-                .collect()
-        })
-    }
-
-    /// The highest finalized block whose events are fully persisted
-    /// for this dispute; None before the first tick persists.
-    pub fn tournament_events_watermark(&mut self, root_tournament: Address) -> Result<Option<u64>> {
-        let block = self
-            .connection
-            .query_row(
-                "SELECT finalized_block FROM tournament_events_watermark
-                 WHERE root_tournament = ?1",
-                [root_tournament.encode_hex()],
-                |row| row.get::<_, i64>(0),
-            )
-            .optional()
-            .map_err(anyhow::Error::from)?;
-        Ok(block.map(i64_to_u64))
-    }
-
-    /// One tick's finalized harvest: advance the watermark to
-    /// `finalized_block` and append the events at or below it, in one
-    /// transaction. The watermark moves first so the schema trigger
-    /// (events must not outrun it) sees the new bound; it advances
-    /// even on an empty harvest, keeping the live tail refetch
-    /// bounded. Replayed ticks are absorbed: identical rows are
-    /// ignored, and the monotone trigger rejects a rewind.
-    pub fn append_tournament_events(
-        &mut self,
-        root_tournament: Address,
-        finalized_block: u64,
-        events: &[&Log],
-    ) -> Result<()> {
-        let rows = events
-            .iter()
-            .map(|log| {
-                let block = log
-                    .block_number
-                    .ok_or_else(|| anyhow::anyhow!("chain log without a block number"))?;
-                let index = log
-                    .log_index
-                    .ok_or_else(|| anyhow::anyhow!("chain log without a log index"))?;
-                anyhow::ensure!(
-                    block <= finalized_block,
-                    "unfinalized event offered for persistence (block {block} > finalized {finalized_block})"
-                );
-                let blob = serde_json::to_vec(log).map_err(anyhow::Error::from)?;
-                Ok((block, index, blob))
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-
-        self.write(|tx| {
-            tx.execute(
-                "INSERT INTO tournament_events_watermark VALUES (?1, ?2)
-                 ON CONFLICT (root_tournament)
-                 DO UPDATE SET finalized_block = MAX(finalized_block, excluded.finalized_block)",
-                params![root_tournament.encode_hex(), u64_to_i64(finalized_block)],
-            )
-            .map_err(anyhow::Error::from)?;
-
-            for (block, index, blob) in &rows {
-                tx.execute(
-                    "INSERT INTO tournament_events VALUES (?1, ?2, ?3, ?4)
-                     ON CONFLICT DO NOTHING",
-                    params![
-                        root_tournament.encode_hex(),
-                        u64_to_i64(*block),
-                        u64_to_i64(*index),
-                        blob,
-                    ],
-                )
-                .map_err(anyhow::Error::from)?;
-            }
-            Ok(())
-        })
     }
 }
 

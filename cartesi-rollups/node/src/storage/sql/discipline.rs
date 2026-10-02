@@ -321,76 +321,6 @@ fn cas_rows_pin_their_path() {
     );
 }
 
-//
-// tournament_events: prunable derived store, gated by its watermark
-// (fold phase 2)
-//
-
-#[test]
-fn tournament_events_stay_behind_the_watermark_and_final() {
-    let (_dir, conn) = initialized_conn();
-    let insert = "INSERT INTO tournament_events VALUES ('aa', ?1, 0, x'00')";
-
-    // No watermark row yet: nothing is finalized, nothing may land.
-    expect_abort(
-        conn.execute(insert, params![5]),
-        "outrun the finalized watermark",
-    );
-
-    conn.execute(
-        "INSERT INTO tournament_events_watermark VALUES ('aa', 10)",
-        [],
-    )
-    .unwrap();
-    conn.execute(insert, params![5]).unwrap();
-    conn.execute(insert, params![10]).unwrap();
-    expect_abort(
-        conn.execute(insert, params![11]),
-        "outrun the finalized watermark",
-    );
-
-    expect_abort(
-        conn.execute("UPDATE tournament_events SET raw_log = x'01'", []),
-        "final",
-    );
-    // Prunable derived store: the settled-epoch GC deletes freely.
-    conn.execute(
-        "DELETE FROM tournament_events WHERE root_tournament = 'aa'",
-        [],
-    )
-    .unwrap();
-}
-
-#[test]
-fn tournament_events_watermark_only_rises() {
-    let (_dir, conn) = initialized_conn();
-    conn.execute(
-        "INSERT INTO tournament_events_watermark VALUES ('aa', 10)",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "UPDATE tournament_events_watermark SET finalized_block = 12
-         WHERE root_tournament = 'aa'",
-        [],
-    )
-    .unwrap();
-    expect_abort(
-        conn.execute(
-            "UPDATE tournament_events_watermark SET finalized_block = 11
-             WHERE root_tournament = 'aa'",
-            [],
-        ),
-        "only rises",
-    );
-    // Pruned with its dispute.
-    conn.execute(
-        "DELETE FROM tournament_events_watermark WHERE root_tournament = 'aa'",
-        [],
-    )
-    .unwrap();
-}
-
 /// The grep-level half of the taxonomy check (the plan accepts it as
 /// such): across the storage module's Rust sources, the only SQL
 /// UPDATEs advance watermarks and the completion cursor; DELETEs are the
@@ -427,20 +357,19 @@ fn mutation_taxonomy_holds_at_source_level() {
         update_hits,
         vec![
             ("completion.rs".to_string(), 2),
-            ("dispute.rs".to_string(), 1),
             ("ingest.rs".to_string(), 1)
         ],
-        "only claimant pinning, completion, and the two watermarks write in place"
+        "only claimant pinning, completion, and the ingestion watermark write in place"
     );
     assert_eq!(
         delete_hits,
         vec![
-            ("advance.rs".to_string(), 4),
+            ("advance.rs".to_string(), 2),
             ("snapshots.rs".to_string(), 2)
         ],
-        "the GC paths are the only DELETEs: the old-epoch boundary, \
-         sling_nodes, and tournament-event prunes in advance.rs; the gap \
-         prune and the unreferenced-snapshot sweep in the boundary store"
+        "the GC paths are the only DELETEs: the old-epoch boundary and \
+         sling_nodes prunes in advance.rs; the gap prune and the \
+         unreferenced-snapshot sweep in the boundary store"
     );
 }
 

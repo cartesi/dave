@@ -125,31 +125,6 @@ CREATE TABLE sling_nodes (
     PRIMARY KEY (epoch, log2_stride, height, shift)
 ) WITHOUT ROWID;
 
--- The dispute event log: raw chain logs of
--- every tournament the dispute discovered, persisted once FINALIZED,
--- keyed for replay in chain order (block, then log index). The tail
--- past the watermark is never stored - it is scratch, refetched each
--- tick; persisted events are final by definition, which is the whole
--- reorg stance. Raw logs (JSON) rather than decoded events keep the
--- current contract ABI as the decode authority and let the fused reader
--- reconstruct its recursive model after restart. Prunable derived store:
--- refetchable from the chain, deleted with the settled epoch.
-CREATE TABLE tournament_events (
-    root_tournament TEXT NOT NULL,  -- encode_hex, as epochs stores it
-    block_number INTEGER NOT NULL,
-    log_index INTEGER NOT NULL,
-    raw_log BLOB NOT NULL,
-    PRIMARY KEY (root_tournament, block_number, log_index)
-) WITHOUT ROWID;
-
--- Monotonic watermark: the highest finalized block whose events are
--- fully persisted for this dispute. Advances every tick, events or
--- not, so the live tail refetch stays bounded.
-CREATE TABLE tournament_events_watermark (
-    root_tournament TEXT NOT NULL PRIMARY KEY,
-    finalized_block INTEGER NOT NULL
-) WITHOUT ROWID;
-
 -- The invariant layer.
 --
 -- Every write belongs to one of four classes: append-only log,
@@ -405,36 +380,4 @@ CREATE TRIGGER trg_snapshots_no_update
 BEFORE UPDATE ON machine_state_snapshots
 BEGIN
     SELECT RAISE(ABORT, 'machine_state_snapshots rows are write-once (prune-only)');
-END;
-
--- tournament_events: prunable derived store (chain-refetchable,
--- deleted with the settled epoch); rows are final once written, and
--- nothing past a dispute's watermark may be stored - the tail is
--- scratch by design.
-
-CREATE TRIGGER trg_tournament_events_no_update
-BEFORE UPDATE ON tournament_events
-BEGIN
-    SELECT RAISE(ABORT, 'tournament_events rows are final (prune-only)');
-END;
-
-CREATE TRIGGER trg_tournament_events_finalized_only
-BEFORE INSERT ON tournament_events
-FOR EACH ROW
-WHEN NEW.block_number > COALESCE((
-    SELECT finalized_block FROM tournament_events_watermark
-    WHERE root_tournament = NEW.root_tournament
-), -1)
-BEGIN
-    SELECT RAISE(ABORT, 'tournament_events must not outrun the finalized watermark');
-END;
-
--- tournament_events_watermark: monotonic; pruned with its dispute.
-
-CREATE TRIGGER trg_tournament_events_watermark_monotone
-BEFORE UPDATE OF finalized_block ON tournament_events_watermark
-FOR EACH ROW
-WHEN NEW.finalized_block < OLD.finalized_block
-BEGIN
-    SELECT RAISE(ABORT, 'tournament_events_watermark only rises');
 END;

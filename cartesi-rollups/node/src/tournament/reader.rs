@@ -3,9 +3,11 @@
 
 //! A fused recursive reader for the event-derived dispute tree.
 //!
-//! Finalized state is the sole durable prefix. It is extended, validated, and
-//! persisted before Latest is sampled. Latest is then rebuilt from a clone of
-//! that prefix and discarded by the caller after the tick.
+//! Finalized state is an in-memory prefix, extended and validated before Latest
+//! is sampled. Latest is then rebuilt from a clone of that prefix and discarded
+//! by the caller after the tick. Nothing is persisted: a new reader refolds the
+//! finalized history from the root's creation block, so a restart runs the cold
+//! path and cannot inherit a bad prefix from disk.
 
 use std::collections::{HashMap, HashSet};
 
@@ -21,7 +23,6 @@ use cartesi_prt_contracts::tournament as bindings;
 use crate::{
     chain::{Chain, ChainHead},
     merkle::Digest,
-    storage::Storage,
     tournament::{
         MatchID,
         dispute::{
@@ -42,18 +43,16 @@ struct Solid {
 pub struct StateReader {
     chain: Chain,
     block_created_number: u64,
-    storage: Storage,
     solid: Option<Solid>,
 }
 
 impl StateReader {
-    pub fn new(chain: Chain, block_created_number: u64, storage: Storage) -> Result<Self> {
-        Ok(Self {
+    pub const fn new(chain: Chain, block_created_number: u64) -> Self {
+        Self {
             chain,
             block_created_number,
-            storage,
             solid: None,
-        })
+        }
     }
 
     pub const fn chain(&self) -> &Chain {
@@ -67,7 +66,7 @@ impl StateReader {
             .map(|solid| (solid.head, &solid.dispute))
     }
 
-    /// Returns one disposable Latest observation after durably advancing Solid.
+    /// Returns one disposable Latest observation after advancing Solid.
     pub async fn fetch_from_root(&mut self, root: Address) -> Result<(ChainHead, Dispute)> {
         let finalized = self.chain.finalized_head().await?;
         self.advance_solid(root, finalized).await?;
@@ -98,132 +97,63 @@ impl StateReader {
             .ok_or_else(|| anyhow!("finalized Solid block cannot be advanced"))?;
         let phase = ReadPhase::try_new(from, latest.number, latest, None)?;
         let mut validation = HarvestValidation::new(phase);
-        let loaded = extend_tournament(
+        let tournament = extend_tournament(
             &self.chain,
             solid.dispute.clone().into_root(),
             &mut validation,
         )
         .await?;
-        let dispute = Dispute::from_root(loaded.tournament)?;
-        Ok((latest, dispute))
+        Ok((latest, Dispute::from_root(tournament)?))
     }
 
+    /// Without a Solid, the fold starts at the root's creation block.
     async fn advance_solid(&mut self, root: Address, finalized: ChainHead) -> Result<()> {
-        let Some(solid) = self.solid.as_ref() else {
-            let initialized = self.initialize_solid(root, finalized).await?;
-            self.solid = Some(initialized);
-            return Ok(());
+        let (base, from) = match self.solid.as_ref() {
+            None => {
+                let descriptor = observer::read_descriptor(&self.chain, root, finalized).await?;
+                (Dispute::try_new(descriptor)?, self.block_created_number)
+            }
+            Some(solid) => {
+                ensure!(
+                    solid.root == root,
+                    "StateReader is bound to root {}, not {root}",
+                    solid.root
+                );
+                ensure!(
+                    finalized.number >= solid.head.number,
+                    "finalized head {} is behind Solid {}",
+                    finalized.number,
+                    solid.head.number
+                );
+                if finalized.number == solid.head.number {
+                    ensure!(
+                        finalized.hash == solid.head.hash,
+                        "finalized block {} changed hash from {} to {}",
+                        finalized.number,
+                        solid.head.hash,
+                        finalized.hash
+                    );
+                    return Ok(());
+                }
+                let from = solid
+                    .head
+                    .number
+                    .checked_add(1)
+                    .ok_or_else(|| anyhow!("finalized Solid block cannot be advanced"))?;
+                (solid.dispute.clone(), from)
+            }
         };
 
-        ensure!(
-            solid.root == root,
-            "StateReader is bound to root {}, not {root}",
-            solid.root
-        );
-        ensure!(
-            finalized.number >= solid.head.number,
-            "finalized head {} is behind Solid {}",
-            finalized.number,
-            solid.head.number
-        );
-        if finalized.number == solid.head.number {
-            ensure!(
-                finalized.hash == solid.head.hash,
-                "finalized block {} changed hash from {} to {}",
-                finalized.number,
-                solid.head.hash,
-                finalized.hash
-            );
-            return Ok(());
-        }
-
-        let base = solid.dispute.clone();
-        let from = solid
-            .head
-            .number
-            .checked_add(1)
-            .ok_or_else(|| anyhow!("finalized Solid block cannot be advanced"))?;
         let phase = ReadPhase::try_new(from, finalized.number, finalized, Some(finalized))?;
         let mut validation = HarvestValidation::new(phase);
-        let mut loaded = extend_tournament(&self.chain, base.into_root(), &mut validation).await?;
-        sort_logs(&mut loaded.recognized_logs);
-        let dispute = Dispute::from_root(loaded.tournament)?;
-        self.persist(root, finalized.number, &loaded.recognized_logs)?;
+        let tournament = extend_tournament(&self.chain, base.into_root(), &mut validation).await?;
         self.solid = Some(Solid {
             root,
             head: finalized,
-            dispute,
+            dispute: Dispute::from_root(tournament)?,
         });
         Ok(())
     }
-
-    async fn initialize_solid(&mut self, root: Address, finalized: ChainHead) -> Result<Solid> {
-        let watermark = self.storage.tournament_events_watermark(root)?;
-        if let Some(watermark) = watermark {
-            ensure!(
-                watermark <= finalized.number,
-                "tournament event watermark {watermark} is ahead of finalized head {}",
-                finalized.number
-            );
-        }
-        let stored_logs = self.storage.tournament_events(root)?;
-        ensure!(
-            watermark.is_some() || stored_logs.is_empty(),
-            "stored tournament events exist without a finalized watermark"
-        );
-
-        let root_descriptor = observer::read_descriptor(&self.chain, root, finalized).await?;
-        let mut dispute = Dispute::try_new(root_descriptor)?;
-        if let Some(watermark) = watermark {
-            let boundary = (watermark == finalized.number).then_some(finalized);
-            let phase =
-                ReadPhase::try_new(self.block_created_number, watermark, finalized, boundary)?;
-            dispute = reconstruct_stored(&self.chain, dispute, stored_logs, phase).await?;
-        }
-
-        let from = watermark
-            .map(|block| {
-                block
-                    .checked_add(1)
-                    .ok_or_else(|| anyhow!("tournament event watermark cannot be advanced"))
-            })
-            .transpose()?
-            .unwrap_or(self.block_created_number)
-            .max(self.block_created_number);
-
-        let mut recognized_logs = Vec::new();
-        if from <= finalized.number {
-            let phase = ReadPhase::try_new(from, finalized.number, finalized, Some(finalized))?;
-            let mut validation = HarvestValidation::new(phase);
-            let loaded =
-                extend_tournament(&self.chain, dispute.into_root(), &mut validation).await?;
-            dispute = Dispute::from_root(loaded.tournament)?;
-            recognized_logs = loaded.recognized_logs;
-            sort_logs(&mut recognized_logs);
-        }
-
-        if watermark != Some(finalized.number) {
-            self.persist(root, finalized.number, &recognized_logs)?;
-        }
-        Ok(Solid {
-            root,
-            head: finalized,
-            dispute,
-        })
-    }
-
-    fn persist(&mut self, root: Address, finalized: u64, logs: &[Log]) -> Result<()> {
-        let references = logs.iter().collect::<Vec<_>>();
-        self.storage
-            .append_tournament_events(root, finalized, &references)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct LoadedTournament {
-    tournament: Tournament,
-    recognized_logs: Vec<Log>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,7 +161,7 @@ struct ReadPhase {
     from: u64,
     to: u64,
     head: ChainHead,
-    durable_boundary: Option<ChainHead>,
+    finalized_boundary: Option<ChainHead>,
 }
 
 impl ReadPhase {
@@ -239,24 +169,24 @@ impl ReadPhase {
         from: u64,
         to: u64,
         head: ChainHead,
-        durable_boundary: Option<ChainHead>,
+        finalized_boundary: Option<ChainHead>,
     ) -> Result<Self> {
-        if let Some(boundary) = durable_boundary {
+        if let Some(boundary) = finalized_boundary {
             ensure!(
                 boundary.number == to,
-                "durable boundary {} does not end requested range [{from}, {to}]",
+                "finalized boundary {} does not end requested range [{from}, {to}]",
                 boundary.number
             );
             ensure!(
                 boundary == head,
-                "durable boundary must be the phase's pinned head"
+                "finalized boundary must be the phase's pinned head"
             );
         }
         Ok(Self {
             from,
             to,
             head,
-            durable_boundary,
+            finalized_boundary,
         })
     }
 }
@@ -266,13 +196,10 @@ async fn extend_tournament(
     chain: &Chain,
     tournament: Tournament,
     validation: &mut HarvestValidation,
-) -> Result<LoadedTournament> {
+) -> Result<Tournament> {
     let phase = validation.phase;
     if phase.from > phase.to {
-        return Ok(LoadedTournament {
-            tournament,
-            recognized_logs: Vec::new(),
-        });
+        return Ok(tournament);
     }
 
     let address = tournament.address();
@@ -287,8 +214,7 @@ async fn extend_tournament(
         .map(|match_| match_.id_hash())
         .collect::<HashSet<_>>();
     let logs = chain.raw_logs(address, phase.from, phase.to).await?;
-    let (mut tournament, mut recognized_logs) =
-        fold_local_logs(chain, tournament, logs, validation).await?;
+    let mut tournament = fold_local_logs(chain, tournament, logs, validation).await?;
 
     let children = tournament.take_historical_children();
     for (match_id_hash, child) in children {
@@ -297,56 +223,7 @@ async fn extend_tournament(
             drop(displaced);
             continue;
         }
-        let mut loaded = extend_tournament(chain, *child, validation).await?;
-        let displaced = tournament.restore_child(match_id_hash, Box::new(loaded.tournament))?;
-        drop(displaced);
-        recognized_logs.append(&mut loaded.recognized_logs);
-    }
-    tournament.validate()?;
-    Ok(LoadedTournament {
-        tournament,
-        recognized_logs,
-    })
-}
-
-async fn reconstruct_stored(
-    chain: &Chain,
-    dispute: Dispute,
-    logs: Vec<Log>,
-    phase: ReadPhase,
-) -> Result<Dispute> {
-    let mut streams = HashMap::<Address, Vec<Log>>::new();
-    for log in logs {
-        streams.entry(log.address()).or_default().push(log);
-    }
-    let mut validation = HarvestValidation::new(phase);
-    let root =
-        replay_stored_tournament(chain, dispute.into_root(), &mut streams, &mut validation).await?;
-
-    if !streams.is_empty() {
-        let mut addresses = streams.keys().copied().collect::<Vec<_>>();
-        addresses.sort_unstable();
-        bail!(
-            "stored tournament event streams are not reachable from the trusted root: {addresses:?}"
-        );
-    }
-    Dispute::from_root(root).map_err(Into::into)
-}
-
-#[async_recursion]
-async fn replay_stored_tournament(
-    chain: &Chain,
-    tournament: Tournament,
-    streams: &mut HashMap<Address, Vec<Log>>,
-    validation: &mut HarvestValidation,
-) -> Result<Tournament> {
-    let address = tournament.address();
-    let logs = streams.remove(&address).unwrap_or_default();
-    let (mut tournament, _) = fold_local_logs(chain, tournament, logs, validation).await?;
-
-    let children = tournament.take_historical_children();
-    for (match_id_hash, child) in children {
-        let child = replay_stored_tournament(chain, *child, streams, validation).await?;
+        let child = extend_tournament(chain, *child, validation).await?;
         let displaced = tournament.restore_child(match_id_hash, Box::new(child))?;
         drop(displaced);
     }
@@ -359,7 +236,7 @@ async fn fold_local_logs(
     mut tournament: Tournament,
     mut logs: Vec<Log>,
     validation: &mut HarvestValidation,
-) -> Result<(Tournament, Vec<Log>)> {
+) -> Result<Tournament> {
     let address = tournament.address();
     for log in &logs {
         validation.observe(log, address)?;
@@ -367,7 +244,6 @@ async fn fold_local_logs(
     sort_logs(&mut logs);
 
     let mut structural = Vec::<(u64, Event)>::new();
-    let mut recognized_logs = Vec::new();
     for log in logs {
         let block = log.block_number.expect("harvest metadata was validated");
         match decode_log(chain, &log, validation.phase.head).await? {
@@ -382,7 +258,6 @@ async fn fold_local_logs(
                     )?;
                 }
                 structural.push((block, event));
-                recognized_logs.push(log);
             }
             DecodedLog::IgnoredAccounting => {}
         }
@@ -407,7 +282,7 @@ async fn fold_local_logs(
         start = end;
     }
 
-    Ok((tournament, recognized_logs))
+    Ok(tournament)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -439,7 +314,7 @@ impl HarvestValidation {
         let ReadPhase {
             from,
             to,
-            durable_boundary,
+            finalized_boundary,
             ..
         } = self.phase;
         ensure!(
@@ -477,7 +352,7 @@ impl HarvestValidation {
                 "block {block} has conflicting hashes {previous} and {block_hash} across tournament addresses"
             );
         }
-        if let Some(boundary) = durable_boundary
+        if let Some(boundary) = finalized_boundary
             && block == boundary.number
         {
             ensure!(
@@ -952,15 +827,6 @@ mod tests {
         (Chain::new(provider, Vec::new()), asserter, requests)
     }
 
-    fn initialized_storage() -> (tempfile::TempDir, Storage) {
-        let directory = tempfile::tempdir().unwrap();
-        let connection = rusqlite::Connection::open(directory.path().join("db.sqlite3")).unwrap();
-        crate::storage::sql::schema::initialize(&connection).unwrap();
-        drop(connection);
-        let storage = Storage::new(directory.path()).unwrap();
-        (directory, storage)
-    }
-
     #[test]
     fn harvest_validation_is_global_but_needs_no_transaction_metadata() {
         let range_head = head(12, 0x12);
@@ -1092,10 +958,9 @@ mod tests {
         let loaded = extend_tournament(&chain, root, &mut validation)
             .await
             .unwrap();
-        let dispute = Dispute::from_root(loaded.tournament).unwrap();
+        let dispute = Dispute::from_root(loaded).unwrap();
         let child_tournament = dispute.tournament(&child).unwrap();
         assert!(child_tournament.commitment(&child_commitment).is_some());
-        assert_eq!(loaded.recognized_logs.len(), 5);
         assert!(matches!(
             dispute
                 .root()
@@ -1156,7 +1021,7 @@ mod tests {
         let loaded = extend_tournament(&chain, fixture.dispute.into_root(), &mut validation)
             .await
             .unwrap();
-        let dispute = Dispute::from_root(loaded.tournament).unwrap();
+        let dispute = Dispute::from_root(loaded).unwrap();
         let parent = dispute
             .root()
             .match_by_id_hash(&fixture.parent_match.hash())
@@ -1174,7 +1039,6 @@ mod tests {
                 .status(),
             MatchStatus::Resolved { .. }
         ));
-        assert_eq!(loaded.recognized_logs.len(), 2);
         assert!(asserter.read_q().is_empty());
         assert_eq!(
             requests
@@ -1186,138 +1050,6 @@ mod tests {
             2,
             "the newly resolved child must receive its final range fetch"
         );
-    }
-
-    #[tokio::test]
-    async fn newly_resolved_child_is_persisted_once_then_frozen_and_cold_replayed() {
-        let fixture = active_recursive_dispute();
-        let root = fixture.root;
-        let child = fixture.child;
-        let parent_match = fixture.parent_match;
-        let child_match = fixture.child_match;
-        let created = head(10, 0x10);
-        let resolved = head(20, 0x20);
-        let after_resolution = head(21, 0x21);
-        let (chain, asserter, requests) = recording_chain();
-        let (_directory, storage) = initialized_storage();
-        let state_dir = storage.state_dir().to_path_buf();
-        let mut reader = StateReader::new(chain.clone(), created.number, storage).unwrap();
-        let log_request_count = || {
-            requests
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|request| request["method"] == "eth_getLogs")
-                .count()
-        };
-
-        asserter.push_success(&Some(block(created, B256::repeat_byte(9))));
-        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
-            &asserter,
-            &descriptor_response(0, TournamentKind::NonLeaf),
-        );
-        asserter.push_success(&vec![
-            join_log(root, created, 0, parent_match.commitment_one),
-            join_log(root, created, 1, parent_match.commitment_two),
-            match_created_log(root, created, 2, parent_match, 30),
-            new_inner_log(root, created, 3, parent_match.hash(), child),
-        ]);
-        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
-            &asserter,
-            &descriptor_response(1, TournamentKind::Leaf),
-        );
-        asserter.push_success(&vec![
-            join_log(child, created, 4, child_match.commitment_one),
-            join_log(child, created, 5, child_match.commitment_two),
-            match_created_log(child, created, 6, child_match, 30),
-        ]);
-        asserter.push_success(&Some(block(created, B256::repeat_byte(9))));
-        reader.fetch_from_root(root).await.unwrap();
-        assert_eq!(log_request_count(), 2);
-
-        asserter.push_success(&Some(block(resolved, created.hash)));
-        asserter.push_success(&vec![match_deleted_log(
-            root,
-            resolved,
-            8,
-            parent_match,
-            MatchDeletionReason::ChildTournament,
-            WinnerCommitment::One,
-        )]);
-        asserter.push_success(&vec![match_deleted_log(
-            child,
-            resolved,
-            7,
-            child_match,
-            MatchDeletionReason::Timeout,
-            WinnerCommitment::One,
-        )]);
-        asserter.push_success(&Some(block(resolved, created.hash)));
-        reader.fetch_from_root(root).await.unwrap();
-        assert_eq!(log_request_count(), 4);
-
-        let persisted = reader.storage.tournament_events(root).unwrap();
-        assert_eq!(persisted.len(), 9);
-        assert_eq!(
-            persisted
-                .iter()
-                .filter(|log| {
-                    log.address() == child && log.block_number == Some(resolved.number)
-                })
-                .count(),
-            1,
-            "the child's final structural event is persisted exactly once"
-        );
-
-        asserter.push_success(&Some(block(after_resolution, resolved.hash)));
-        asserter.push_success(&Vec::<Log>::new());
-        asserter.push_success(&Some(block(after_resolution, resolved.hash)));
-        reader.fetch_from_root(root).await.unwrap();
-        assert_eq!(
-            log_request_count(),
-            5,
-            "the range after resolution extends only the root stream"
-        );
-        assert_eq!(
-            reader.storage.tournament_events_watermark(root).unwrap(),
-            Some(after_resolution.number)
-        );
-        assert_eq!(reader.storage.tournament_events(root).unwrap().len(), 9);
-
-        let cold_storage = Storage::new(&state_dir).unwrap();
-        let mut cold_reader = StateReader::new(chain, created.number, cold_storage).unwrap();
-        asserter.push_success(&Some(block(after_resolution, resolved.hash)));
-        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
-            &asserter,
-            &descriptor_response(0, TournamentKind::NonLeaf),
-        );
-        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
-            &asserter,
-            &descriptor_response(1, TournamentKind::Leaf),
-        );
-        asserter.push_success(&Some(block(after_resolution, resolved.hash)));
-        let (_, cold) = cold_reader.fetch_from_root(root).await.unwrap();
-        assert_eq!(
-            log_request_count(),
-            5,
-            "cold replay at the watermark does not refetch any stream"
-        );
-        assert_eq!(cold.historical_tournaments().len(), 2);
-        let parent = cold.root().match_by_id_hash(&parent_match.hash()).unwrap();
-        let MatchStatus::Resolved {
-            child: Some(child), ..
-        } = parent.status()
-        else {
-            panic!("cold replay lost the resolved historical child");
-        };
-        assert!(matches!(
-            child
-                .match_by_id_hash(&child_match.hash())
-                .unwrap()
-                .status(),
-            MatchStatus::Resolved { .. }
-        ));
-        assert!(asserter.read_q().is_empty());
     }
 
     #[tokio::test]
@@ -1401,7 +1133,7 @@ mod tests {
         let loaded = extend_tournament(&chain, dispute.into_root(), &mut validation)
             .await
             .unwrap();
-        let dispute = Dispute::from_root(loaded.tournament).unwrap();
+        let dispute = Dispute::from_root(loaded).unwrap();
 
         assert_eq!(dispute.historical_tournaments().len(), 2);
         assert!(asserter.read_q().is_empty());
@@ -1422,8 +1154,7 @@ mod tests {
         let finalized = head(41, 0x41);
         let commitment = digest(10);
         let (chain, asserter, _) = recording_chain();
-        let (_directory, storage) = initialized_storage();
-        let mut reader = StateReader::new(chain, 40, storage).unwrap();
+        let mut reader = StateReader::new(chain, 40);
 
         asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
@@ -1435,11 +1166,6 @@ mod tests {
 
         let error = reader.fetch_from_root(root).await.unwrap_err();
         assert!(error.to_string().contains("latest unavailable"));
-        assert_eq!(
-            reader.storage.tournament_events_watermark(root).unwrap(),
-            Some(finalized.number)
-        );
-        assert_eq!(reader.storage.tournament_events(root).unwrap().len(), 1);
         let (head, solid) = reader.solid().unwrap();
         assert_eq!(head, finalized);
         assert!(matches!(
@@ -1475,8 +1201,7 @@ mod tests {
             match_created_log(root, second_latest, 1, second_id, 51),
         ];
         let (chain, asserter, requests) = recording_chain();
-        let (_directory, storage) = initialized_storage();
-        let mut reader = StateReader::new(chain, 40, storage).unwrap();
+        let mut reader = StateReader::new(chain, 40);
 
         asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
@@ -1502,7 +1227,6 @@ mod tests {
         assert!(second.root().match_by_id_hash(&second_id.hash()).is_some());
         assert!(second.root().match_by_id_hash(&first_id.hash()).is_none());
         assert!(second.root().commitment(&two).is_none());
-        assert_eq!(reader.storage.tournament_events(root).unwrap().len(), 1);
         assert_eq!(reader.solid().unwrap().0, finalized);
         assert!(asserter.read_q().is_empty());
 
@@ -1529,8 +1253,7 @@ mod tests {
             commitment_two: two,
         };
         let (chain, asserter, requests) = recording_chain();
-        let (_directory, storage) = initialized_storage();
-        let mut reader = StateReader::new(chain, 40, storage).unwrap();
+        let mut reader = StateReader::new(chain, 40);
 
         asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
@@ -1561,19 +1284,6 @@ mod tests {
                 .match_by_id_hash(&id.hash())
                 .is_some()
         );
-        assert_eq!(
-            reader.storage.tournament_events_watermark(root).unwrap(),
-            Some(second_finalized.number)
-        );
-        let persisted = reader.storage.tournament_events(root).unwrap();
-        assert_eq!(persisted.len(), 3);
-        assert_eq!(
-            persisted
-                .iter()
-                .map(|log| log.block_number.unwrap())
-                .collect::<Vec<_>>(),
-            vec![41, 43, 43]
-        );
         assert!(asserter.read_q().is_empty());
 
         let requests = requests.lock().unwrap();
@@ -1601,118 +1311,111 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cold_start_reconstructs_a_recursive_dispute() {
+    async fn a_cold_reader_folds_the_same_solid_as_a_warm_one() {
         let root = address(1);
         let child = address(2);
-        let joined_at = head(10, 0x10);
-        let finalized = head(11, 0x11);
-        let one = digest(10);
-        let two = digest(20);
-        let child_commitment = digest(30);
+        let first_finalized = head(41, 0x41);
+        let discovered = head(42, 0x42);
+        let second_finalized = head(43, 0x43);
         let id = MatchID {
-            commitment_one: one,
-            commitment_two: two,
+            commitment_one: digest(10),
+            commitment_two: digest(20),
         };
-        let root_logs = [
-            join_log(root, joined_at, 0, one),
-            join_log(root, joined_at, 1, two),
-            match_created_log(root, joined_at, 2, id, 30),
-            new_inner_log(root, finalized, 3, id.hash(), child),
+        let first_root_logs = vec![
+            join_log(root, first_finalized, 0, id.commitment_one),
+            join_log(root, first_finalized, 1, id.commitment_two),
+            match_created_log(root, first_finalized, 2, id, 60),
         ];
-        let child_log = join_log(child, finalized, 4, child_commitment);
+        let second_root_logs = vec![new_inner_log(root, discovered, 0, id.hash(), child)];
+        let child_logs = vec![join_log(child, second_finalized, 0, digest(30))];
+        let log_ranges = |requests: &Arc<Mutex<Vec<serde_json::Value>>>| {
+            requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|request| request["method"] == "eth_getLogs")
+                .map(|request| {
+                    (
+                        request["params"][0]["fromBlock"].clone(),
+                        request["params"][0]["toBlock"].clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
 
-        let (chain, asserter, requests) = recording_chain();
-        let (_directory, mut storage) = initialized_storage();
-        let stored = root_logs.iter().chain([&child_log]).collect::<Vec<_>>();
-        storage
-            .append_tournament_events(root, finalized.number, &stored)
-            .unwrap();
-        let mut reader = StateReader::new(chain, 10, storage).unwrap();
-
-        asserter.push_success(&Some(block(finalized, joined_at.hash)));
+        let (chain, asserter, warm_requests) = recording_chain();
+        let mut warm = StateReader::new(chain, 40);
+        asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
             &asserter,
             &descriptor_response(0, TournamentKind::NonLeaf),
         );
+        asserter.push_success(&first_root_logs);
+        asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
+        warm.fetch_from_root(root).await.unwrap();
+        asserter.push_success(&Some(block(second_finalized, discovered.hash)));
+        asserter.push_success(&second_root_logs);
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
             &asserter,
             &descriptor_response(1, TournamentKind::Leaf),
         );
-        asserter.push_success(&Some(block(finalized, joined_at.hash)));
-
-        let (observed_head, dispute) = reader.fetch_from_root(root).await.unwrap();
-        assert_eq!(observed_head, finalized);
-        assert_eq!(reader.solid().unwrap().0, finalized);
-        assert!(
-            dispute
-                .tournament(&child)
-                .unwrap()
-                .commitment(&child_commitment)
-                .is_some()
-        );
-        assert!(matches!(
-            dispute
-                .root()
-                .match_by_id_hash(&id.hash())
-                .unwrap()
-                .status(),
-            MatchStatus::Inner { .. }
-        ));
+        asserter.push_success(&child_logs);
+        asserter.push_success(&Some(block(second_finalized, discovered.hash)));
+        warm.fetch_from_root(root).await.unwrap();
         assert!(asserter.read_q().is_empty());
 
-        let requests = requests.lock().unwrap();
-        assert_eq!(
-            requests
-                .iter()
-                .filter(|request| request["method"] == "eth_getLogs")
-                .count(),
-            0
-        );
-        assert_eq!(
-            requests
-                .iter()
-                .filter(|request| request["method"] == "eth_call")
-                .count(),
-            2
-        );
-    }
-
-    #[tokio::test]
-    async fn cold_start_rejects_unreachable_stored_streams() {
-        let root = address(1);
-        let orphan = address(2);
-        let finalized = head(10, 0x10);
-        let (chain, asserter, _) = recording_chain();
-        let (_directory, mut storage) = initialized_storage();
-        let root_log = join_log(root, finalized, 0, digest(10));
-        let orphan_log = join_log(orphan, finalized, 1, digest(20));
-        storage
-            .append_tournament_events(root, finalized.number, &[&root_log, &orphan_log])
-            .unwrap();
-        let mut reader = StateReader::new(chain, 10, storage).unwrap();
-
-        asserter.push_success(&Some(block(finalized, B256::repeat_byte(9))));
+        let (chain, asserter, cold_requests) = recording_chain();
+        let mut cold = StateReader::new(chain, 40);
+        asserter.push_success(&Some(block(second_finalized, discovered.hash)));
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
             &asserter,
-            &descriptor_response(0, TournamentKind::Leaf),
+            &descriptor_response(0, TournamentKind::NonLeaf),
         );
-        let error = reader.fetch_from_root(root).await.unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("not reachable from the trusted root")
+        asserter.push_success(&[first_root_logs, second_root_logs].concat());
+        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
+            &asserter,
+            &descriptor_response(1, TournamentKind::Leaf),
         );
-        assert!(reader.solid().is_none());
+        asserter.push_success(&child_logs);
+        asserter.push_success(&Some(block(second_finalized, discovered.hash)));
+        cold.fetch_from_root(root).await.unwrap();
         assert!(asserter.read_q().is_empty());
+
+        let (warm_head, warm_solid) = warm.solid().unwrap();
+        let (cold_head, cold_solid) = cold.solid().unwrap();
+        assert_eq!(warm_head, cold_head);
+        assert_eq!(warm_solid, cold_solid);
+        assert!(
+            cold_solid
+                .tournament(&child)
+                .unwrap()
+                .commitment(&digest(30))
+                .is_some()
+        );
+        assert_eq!(
+            log_ranges(&warm_requests),
+            vec![
+                (serde_json::json!("0x28"), serde_json::json!("0x29")),
+                (serde_json::json!("0x2a"), serde_json::json!("0x2b")),
+                (serde_json::json!("0x2a"), serde_json::json!("0x2b")),
+            ]
+        );
+        assert_eq!(
+            log_ranges(&cold_requests),
+            vec![
+                (serde_json::json!("0x28"), serde_json::json!("0x2b")),
+                (serde_json::json!("0x28"), serde_json::json!("0x2b")),
+            ],
+            "a restart refolds every stream from the root's creation block"
+        );
     }
 
     #[tokio::test]
-    async fn finalized_same_height_hash_change_is_fatal() {
+    async fn finalized_same_height_hash_change_retries() {
         let root = address(1);
         let finalized = head(41, 0x41);
         let (chain, asserter, _) = recording_chain();
-        let (_directory, storage) = initialized_storage();
-        let mut reader = StateReader::new(chain, 40, storage).unwrap();
+        let mut reader = StateReader::new(chain, 40);
 
         asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(

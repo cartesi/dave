@@ -69,7 +69,6 @@ mod tests {
     use super::*;
     use crate::storage::Epoch;
     use crate::storage::queries::setup_settlement_storage;
-    use alloy::hex::ToHexExt;
 
     fn epochs(count: u64) -> Vec<Epoch> {
         (0..count)
@@ -152,20 +151,6 @@ mod tests {
                     [u64_to_i64(epoch)],
                 )
                 .unwrap();
-            storage
-                .connection
-                .execute(
-                    "INSERT INTO tournament_events_watermark VALUES (?1, 1)",
-                    [epochs[epoch as usize].root_tournament.encode_hex()],
-                )
-                .unwrap();
-            storage
-                .connection
-                .execute(
-                    "INSERT INTO tournament_events VALUES (?1, 1, 0, x'00')",
-                    [epochs[epoch as usize].root_tournament.encode_hex()],
-                )
-                .unwrap();
         }
 
         // Both ingestion and execution are ahead of the manager. Neither
@@ -204,17 +189,6 @@ mod tests {
                 )
                 .unwrap();
             assert_eq!(nodes, i64::from(retained));
-            for table in ["tournament_events", "tournament_events_watermark"] {
-                let count: i64 = storage
-                    .connection
-                    .query_row(
-                        &format!("SELECT COUNT(*) FROM {table} WHERE root_tournament = ?1"),
-                        [epochs[epoch as usize].root_tournament.encode_hex()],
-                        |row| row.get(0),
-                    )
-                    .unwrap();
-                assert_eq!(count, i64::from(retained));
-            }
         }
 
         storage

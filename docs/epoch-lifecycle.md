@@ -154,8 +154,8 @@ could succeed and cannot be repaired by a later retry.
 
 `cartesi-rollups/node/src/hero`. Once per polling iteration (a tick):
 
-1. Advance one finalized, event-derived recursive `Dispute`, persist it, then
-   clone and extend it over the disposable latest tail. Events supply
+1. Advance one finalized, event-derived recursive `Dispute`, then clone and
+   extend it over the disposable latest tail. Events supply
    tournaments, commitments, matches, child links, and match-elimination
    schedules. The tournament reader fetches these logs directly from the
    chain, while the narrow observer reads only the pinned standing and live
@@ -184,10 +184,9 @@ could succeed and cannot be repaired by a later retry.
    tournament is reported (and should page a human: it means our
    commitment is wrong or we were censored beyond the protocol's bound).
 
-The reader retains one in-memory Solid dispute between iterations. Its raw
-recognized events and finalized watermark are persisted in the main database;
-on restart the node reconstructs Solid from chain and disk. Latest Foam never
-survives a tick. The main quartet cache (`sling_nodes`) and machine snapshots
+The reader retains one in-memory Solid dispute between iterations and persists
+none of it; on restart the node refolds Solid from the chain, starting at the
+root tournament's creation block. Latest Foam never survives a tick. The main quartet cache (`sling_nodes`) and machine snapshots
 remain the computation cache.
 
 ## Settlement invariant
