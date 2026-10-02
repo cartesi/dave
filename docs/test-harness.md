@@ -450,14 +450,14 @@ section are frozen in
 [`reviews/2026-07-09-e2e-suite-economics/`](reviews/2026-07-09-e2e-suite-economics/README.md);
 what follows is the living summary.
 
-The baseline to beat (2026-07-10, retry-fixed binary, caffeinated):
-all-green battery, ~42 min of scenario time, ~11 min wall at 5 lanes,
-no leaked processes. The run to repeat before any handoff:
-`LANES=5 test/e2e/rollups/battery.sh`. Sweep the instance dirs once
-results are read (`just rollups-tests::sweep`): each retained scenario
-instance can leave ~5 GB of forensic state. A nearly-full disk quietly
-slows every machine store; `just doctor-e2e` warns when the litter passes
-10 GB.
+The baseline (2026-10-02, Apple M5 Max, caffeinated): the five-scenario smoke
+all green in about 14.5 min wall, serial; `stf_all` takes 7 of them, simple and
+chaos about 2 each, `stf_revert` 2.5 and the batched kill under 1. The run to
+repeat before any handoff: `just e2e-smoke`. The smoke keeps one scenario's
+state at a time; other runs leave their own. Sweep once results are read
+(`just rollups-tests::sweep`): each retained scenario instance can leave ~5 GB
+of forensic state. A nearly-full disk quietly slows every machine store;
+`just doctor-e2e` warns when the litter passes 10 GB.
 
 Where the wall time goes, by class, largest first: (1) protocol-timeout
 fast-forwarding throttled by the harness poll loop (dominates gc_*,
