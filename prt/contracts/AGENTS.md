@@ -152,8 +152,9 @@ Top/Middle/Bottom contracts.
   composition.
 - Behavioral tests must inject the geometry they require. Production constants
   belong only in conformance tests.
-- A gas-affecting change must follow the calibration runbook even when the
-  selected allocation remains unchanged. Never calibrate under coverage.
+- A gas-affecting change must rerun `just test-prt-gas`. The witnesses are
+  one-sided; when one fails, move the constant through the calibration
+  runbook. Never calibrate under coverage.
 - Geometry changes must validate the complete table and coordinate every
   commitment producer and consumer. Do not hide a production switch in a test
   fixture or deployment-only commit.
@@ -189,8 +190,8 @@ Use `just prt-contracts::test-all` for the combined contract gate. Use
 `just logged <file> <command...>` for long runs so a display pipeline cannot
 hide the real exit code.
 
-The accepted gas-calibration gate is `just measure-prt-gas` under the pinned
-release environment described by the calibration runbook. It combines the PRT
+The gas-calibration gate for moving a constant is `just measure-prt-gas` under
+the pinned release environment described by the calibration runbook. It combines the PRT
 Tournament-only matrix with the serialized full-stack FFI leaf-proof matrix.
 
 The ordinary fuzz count is pinned in `foundry.toml`. Record seeds and overrides

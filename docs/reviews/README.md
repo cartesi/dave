@@ -52,3 +52,6 @@ Do not use a dated review directory as a hidden backlog.
 - [`2026-09-29-prt-clock-refill/REVIEW.md`](2026-09-29-prt-clock-refill/REVIEW.md)
   - child-return refill and terminal-win discount review, accepted inclusion
     handover limitation, STF evidence-gate finding, and remaining assurance work.
+- [`2026-10-02-prt-calldata-refund-calibration/`](2026-10-02-prt-calldata-refund-calibration/)
+  - calldata counted in refunded units, every allocation remeasured, one-sided
+    witnesses, and the re-pinned alpha-10 leaf-gate dependency digest.

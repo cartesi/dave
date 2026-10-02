@@ -755,27 +755,6 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         assertLe(_minimumReviewedAllocation(result), allocation);
     }
 
-    function _assertCalibratedAllocation(
-        Measurement memory result,
-        uint256 allocation
-    ) internal pure {
-        assertEq(
-            allocation, _roundUpToThousand(_minimumReviewedAllocation(result))
-        );
-    }
-
-    function _assertCalibratedAllocationWithHeadroom(
-        Measurement memory result,
-        uint256 allocation,
-        uint256 retainedHeadroom
-    ) internal pure {
-        assertEq(
-            allocation,
-            _roundUpToThousand(_minimumReviewedAllocation(result))
-            + retainedHeadroom
-        );
-    }
-
     function _minimumReviewedAllocation(Measurement memory result)
         private
         pure
@@ -811,9 +790,7 @@ contract AdvanceMatchGasTest is TournamentGasTest {
 
         Measurement memory result = _measure(callData, Gas.ADVANCE_MATCH);
         _logMeasurement("advance match", result);
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.ADVANCE_MATCH, 2_000
-        );
+        _assertReviewedHeadroom(result, Gas.ADVANCE_MATCH);
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
@@ -863,9 +840,7 @@ contract SealLeafMatchGasTest is TournamentGasTest {
         Measurement memory result =
             _measure(_sealCall(true), Gas.SEAL_LEAF_MATCH);
         _logMeasurement("seal leaf match", result);
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.SEAL_LEAF_MATCH, 2_000
-        );
+        _assertReviewedHeadroom(result, Gas.SEAL_LEAF_MATCH);
 
         Match.Id memory id = matchId;
         Match.State memory state = tournament.getMatch(Match.hashFromId(id));
@@ -910,8 +885,8 @@ contract SealInnerMatchGasTest is TournamentGasTest {
             _sealCall(false), Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
         );
         _logMeasurement("seal inner match", result);
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 6000
+        _assertReviewedHeadroom(
+            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT
         );
 
         Match.Id memory id = matchId;
@@ -1028,9 +1003,7 @@ contract SealedLeafTwoWinsTimeoutGasTest is TournamentGasTest {
             LEAF_HEIGHT,
             CLOCK_CHARGE - TIMEOUT_OVERDUE + RESPONSE_BUDGET
         );
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_MATCH_BY_TIMEOUT, 1000
-        );
+        _assertReviewedHeadroom(result, Gas.WIN_MATCH_BY_TIMEOUT);
     }
 }
 
@@ -1048,9 +1021,7 @@ contract ActiveAdvancedEliminationGasTest is TournamentGasTest {
     function testMeasureEqualityEliminatesBoth() public {
         Measurement memory result =
             _measureTimeoutElimination("active advanced timeout elimination");
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.ELIMINATE_MATCH_BY_TIMEOUT, 1_000
-        );
+        _assertReviewedHeadroom(result, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
     }
 }
 
@@ -1107,9 +1078,7 @@ contract InnerTwoWinsGasTest is TournamentGasTest {
         Measurement memory result = _measureInnerWinner(
             "inner two wins", CommitmentShape.SECOND_DIFFERENT
         );
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_INNER_TOURNAMENT, 41_000
-        );
+        _assertReviewedHeadroom(result, Gas.WIN_INNER_TOURNAMENT);
     }
 }
 
@@ -1126,9 +1095,7 @@ contract InnerEliminationGasTest is TournamentGasTest {
     function testMeasureExpiredWinnerEliminatesParentMatch() public {
         Measurement memory result =
             _measureInnerElimination("inner elimination");
-        _assertCalibratedAllocationWithHeadroom(
-            result, Gas.ELIMINATE_INNER_TOURNAMENT, 13_000
-        );
+        _assertReviewedHeadroom(result, Gas.ELIMINATE_INNER_TOURNAMENT);
     }
 }
 

@@ -194,6 +194,25 @@ contract RefundFormulaTest is Test {
         }
     }
 
+    function testCalldataIsRefundedPerByte() public {
+        vm.roll(START_BLOCK + MAX_ALLOWANCE);
+        uint256 padding = 1000;
+        Observation memory control =
+            _execute(controls[0], address(this), 0, 1, 2 * _actionCap(), "");
+        Observation memory padded = _execute(
+            targets[0],
+            address(this),
+            0,
+            1,
+            2 * _actionCap(),
+            new bytes(padding)
+        );
+
+        _assertSuccessfulTransfer(control, control.value);
+        _assertSuccessfulTransfer(padded, padded.value);
+        assertEq(padded.value - control.value, Gas.CALLDATA_BYTE * padding);
+    }
+
     function _runKink(Kink kind, bool repairsMatch) private {
         vm.fee(0);
         vm.txGasPrice(0);
@@ -348,6 +367,22 @@ contract RefundFormulaTest is Test {
         uint256 gasPrice,
         uint256 tournamentBalance
     ) private returns (Observation memory observed) {
+        return
+            _execute(
+                fixture, recipient, baseFee, gasPrice, tournamentBalance, ""
+            );
+    }
+
+    /// @dev Trailing `padding` is ignored by ABI decoding but still counts as
+    /// calldata.
+    function _execute(
+        Fixture memory fixture,
+        address recipient,
+        uint256 baseFee,
+        uint256 gasPrice,
+        uint256 tournamentBalance,
+        bytes memory padding
+    ) private returns (Observation memory observed) {
         vm.fee(baseFee);
         vm.txGasPrice(gasPrice);
         vm.deal(address(fixture.tournament), tournamentBalance);
@@ -357,10 +392,21 @@ contract RefundFormulaTest is Test {
 
         vm.recordLogs();
         vm.prank(recipient);
-        fixture.tournament
-            .winMatchByTimeout(
-                fixture.matchId, fixture.winnerLeft, fixture.winnerRight
+        (bool success,) = address(fixture.tournament)
+            .call(
+                abi.encodePacked(
+                    abi.encodeCall(
+                        ITournament.winMatchByTimeout,
+                        (
+                            fixture.matchId,
+                            fixture.winnerLeft,
+                            fixture.winnerRight
+                        )
+                    ),
+                    padding
+                )
             );
+        assertTrue(success);
         Vm.Gas memory callGas = vm.lastCallGas();
         observed.reportedGasRefund = int256(callGas.gasRefunded);
 

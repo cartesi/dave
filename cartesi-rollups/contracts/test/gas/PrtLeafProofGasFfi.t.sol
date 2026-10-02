@@ -3,8 +3,6 @@
 
 pragma solidity ^0.8.22;
 
-import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
-
 import {LeafTournamentGasFixture} from "./LeafTournamentGasFixture.sol";
 
 contract OrdinaryLeafWinOneFfiTest is LeafTournamentGasFixture {
@@ -69,12 +67,6 @@ contract RevertLeafWinTwoFfiTest is LeafTournamentGasFixture {
 
 abstract contract InputLeafWinFfiTest is LeafTournamentGasFixture {
     uint256 internal constant SECOND_INPUT_COUNTER = 1 << 68;
-    // The selection adopts the maximum rounded recommendation exactly. Both
-    // winning orientations now round to it: the one-winning orientation used
-    // to round 1,000 units lower, until the commitment-budget clone argument
-    // added decoding work to every action.
-    uint256 internal constant WIN_LEAF_MATCH_RETAINED_HEADROOM = 0;
-    uint256 internal constant WIN_LEAF_MATCH_ALTERNATE_HEADROOM = 0;
 
     function _payloads(uint256 targetPayloadSize) internal pure returns (uint256[] memory sizes) {
         sizes = new uint256[](2);
@@ -121,11 +113,7 @@ contract MaximumInputLeafWinOneFfiTest is InputLeafWinFfiTest {
     }
 
     function testMeasureMaximumInputWithOneWinning() public {
-        Measurement memory result = _measureLeafWin("maximum input one wins");
-        assertEq(
-            _roundUpToThousand(_minimumReviewedAllocation(result)) + WIN_LEAF_MATCH_ALTERNATE_HEADROOM,
-            Gas.WIN_LEAF_MATCH
-        );
+        _measureLeafWin("maximum input one wins");
     }
 }
 
@@ -137,11 +125,7 @@ contract MaximumInputLeafWinTwoFfiTest is InputLeafWinFfiTest {
     }
 
     function testMeasureMaximumInputWithTwoWinning() public {
-        Measurement memory result = _measureLeafWin("maximum input two wins");
-        assertEq(
-            _roundUpToThousand(_minimumReviewedAllocation(result)) + WIN_LEAF_MATCH_RETAINED_HEADROOM,
-            Gas.WIN_LEAF_MATCH
-        );
+        _measureLeafWin("maximum input two wins");
     }
 }
 

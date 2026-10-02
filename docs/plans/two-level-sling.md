@@ -405,8 +405,9 @@ everything else already reads the deployed table or covers both.
    factory compatibility hashes hold; the provider's initcode changes the
    deployment addresses. Regenerate the untracked artifacts (bindings,
    devnet bundle). The gas witnesses inject their own tables, so the switch
-   moves no gas; the accepted calibration owed since 2c502f63 and 935dc133
-   is its own item, through the gas-calibration runbook.
+   moves no gas. The calibration owed since 2c502f63 and 935dc133 was done
+   with the calldata refund change (2026-10-02 record), pending its
+   release-Forge acceptance run.
 2. (M) Leaf CLI gate: in leaf-reaching scenarios, the leaf commitment equals
    the CLI uarch hash for the disputed period. The root gate (W2.11) moves to
    period 17 on its own. Exclusions apply; full-period leaf checks may run

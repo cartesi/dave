@@ -622,7 +622,7 @@ Each progress function uses a fixed `gasAllocation`. After the action body, the
 `refundable` modifier computes:
 
 ```text
-units = Gas.TX + gasBefore - gasAfter
+units = Gas.TX + Gas.CALLDATA_BYTE * msg.data.length + gasBefore - gasAfter
 effectivePrice = min(tx.gasprice, block.basefee + Bond.REFUND_PRIORITY_FEE_CAP)
 requestedRefund = min(
     tournament balance before the callback,
@@ -635,10 +635,13 @@ It then attempts to transfer `requestedRefund` to the caller. The balance term,
 the action-allocation term, and the measured-work term are independent caps.
 
 This is a bounded partial refund, not a guarantee of full transaction cost or
-profit. The measured delta is gross EVM work plus a fixed overhead, not exact
-receipt gas; transaction-intrinsic calldata, storage-refund credits, and
-chain-specific data or security fees are outside the promise. Proof forwarding
-and copying after the snapshot remain inside the measured delta. Priority fee
+profit. The units are gross EVM work plus a fixed overhead plus calldata at 16
+units per byte (the EIP-2028 nonzero-byte rate), not exact receipt gas;
+EIP-7623 floor pricing, storage-refund credits, and chain-specific data or
+security fees are outside the promise. Proof forwarding and copying after the
+snapshot remain inside the measured delta. Padding calldata can lift a refund
+toward its action cap but not past it, which the reserve argument already
+assumes. Priority fee
 above 10 gwei is also excluded. The action cap is the action allocation times
 50 gwei. When real work exceeds that allocation, its effective reimbursed price
 ceiling is below 50 gwei.
@@ -649,20 +652,18 @@ incentive. Seven action allocations have retained measured ceilings;
 largest canonical InputBox reference witness. That full-stack witness covers
 the production provider and state transition, but it is not a universal
 proof-class or whole-transaction ceiling: future state-transition proof shapes
-and transaction-intrinsic calldata remain outside the claim. Broader
+remain outside the claim. Broader
 proof-class calibration is optional. PRT-003 records the review decision and
 known limitations;
 [`prt-refund-accounting.md`](prt-refund-accounting.md) derives the living
 reserve and conservation boundary.
 
-The accepted 2026-08-17 STF composition calibration measured a 5,564,753-unit
-whole-transaction diagnostic for the maximum retained canonical input. That
-was 33.168513% of Ethereum's 16,777,216-unit per-transaction cap and 9.274588%
-of the 60,000,000-unit block gas limit observed for the dated reference block.
-This establishes material admission headroom for that retained witness, not a
-permanent limit over future forks, proof encodings, or state-transition
-behavior. The
-[`STF composition gas calibration`](reviews/2026-08-17-prt-stf-composition-gas-calibration/)
+The 2026-10-02 calldata-refund calibration measured a 5,079,603-unit
+whole-transaction diagnostic for the maximum retained canonical input, 30.28%
+of Ethereum's 16,777,216-unit per-transaction cap. This establishes material
+admission headroom for that retained witness, not a permanent limit over
+future forks, proof encodings, or state-transition behavior. The
+[`calldata-refund calibration`](reviews/2026-10-02-prt-calldata-refund-calibration/)
 records the comparison, and the runbook requires it to be repeated.
 
 The refund callback occurs after `gasAfter` is sampled, so accepting, rejecting,

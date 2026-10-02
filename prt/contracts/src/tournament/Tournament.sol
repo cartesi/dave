@@ -121,9 +121,10 @@ contract Tournament is ITournament, ERC165 {
     /// @notice Computes and attempts a bounded gross-EVM work subsidy.
     /// @dev The requested value is capped by the current balance, this action's
     /// configured refund cap, and measured work plus a fixed overhead at the
-    /// capped price. The event records that request even if the recipient call
-    /// fails and transfers nothing. Dynamic calldata, receipt-exact cost,
-    /// chain-specific fees, and caller profit are not guaranteed.
+    /// capped price. Work counts the call's calldata at `Gas.CALLDATA_BYTE`
+    /// per byte. The event records that request even if the recipient call
+    /// fails and transfers nothing. Receipt-exact cost, chain-specific fees,
+    /// and caller profit are not guaranteed.
     /// Also acquires the lock beforehand and releases it afterward.
     /// @param gasEstimate The configured allocation for the modified function
     /// forge-lint: disable-next-line(unwrapped-modifier-logic)
@@ -1223,11 +1224,13 @@ contract Tournament is ITournament, ERC165 {
 
     function _refundableAfter(uint256 gasBefore, uint256 gasEstimate) private {
         uint256 gasAfter = gasleft();
+        uint256 units =
+            Gas.TX + Gas.CALLDATA_BYTE * msg.data.length + gasBefore - gasAfter;
 
         uint256 refundValue = _min(
             address(this).balance,
             Bond.actionRefundCap(gasEstimate),
-            (Gas.TX + gasBefore - gasAfter)
+            units
                 * tx.gasprice.min(block.basefee + Bond.REFUND_PRIORITY_FEE_CAP)
         );
 

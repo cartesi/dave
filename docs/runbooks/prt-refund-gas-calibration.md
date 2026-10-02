@@ -45,20 +45,27 @@ without adding an upward dependency from PRT.
 
 The `refundable` modifier snapshots `gasleft()` after dispatch, ABI decoding,
 and lock acquisition, then samples it again before refund calculation and the
-recipient callback. For one witness:
+recipient callback. The refunded units add a fixed allowance and a per-byte
+calldata charge to that delta:
 
 ```text
 delta = gasBefore - gasAfter
-measuredAllocation = Gas.TX + delta
-margin = max(10,000, ceil(delta / 10))
-reviewedMinimum = measuredAllocation + margin
+calldata = Gas.CALLDATA_BYTE * msg.data.length
+units = Gas.TX + calldata + delta
+```
+
+A witness reads `units` from the production event at a gas price of one and
+derives:
+
+```text
+margin = max(10,000, ceil((units - Gas.TX) / 10))
+reviewedMinimum = units + margin
 recommendation = roundUpTo1000(reviewedMinimum)
 ```
 
 The production refund request is:
 
 ```text
-units = Gas.TX + delta
 effectivePrice = min(tx.gasprice, block.basefee + REFUND_PRIORITY_FEE_CAP)
 requestedRefund = min(
     tournament balance before the callback,
@@ -68,11 +75,15 @@ requestedRefund = min(
 ```
 
 `Gas.TX` is a fixed policy allowance for work outside the snapshots. It is not
-measured transaction-intrinsic gas. The measurement excludes dispatch and
-decoding before the snapshot, dynamic calldata cost, exact storage-refund
-reconciliation, and chain-specific fees. Proof forwarding, copying, memory
-expansion, nested proof work, events, and production counter writes after the
-snapshot remain in the measured delta.
+measured transaction-intrinsic gas. `Gas.CALLDATA_BYTE` prices every calldata
+byte at the EIP-2028 nonzero-byte rate, an upper bound under standard pricing;
+it is what keeps the leaf proof, whose calldata grows with the input, inside
+the subsidy. A calldata-dominated transaction priced by the EIP-7623 floor
+pays more per byte; the retained leaf witnesses stay execution-dominated. The
+measurement excludes dispatch and decoding before the snapshot, exact
+storage-refund reconciliation, and chain-specific fees. Proof forwarding,
+copying, memory expansion, nested proof work, events, and production counter
+writes after the snapshot remain in the measured delta.
 
 Recipient behavior occurs after `gasAfter` and cannot change the request.
 Complete-call gas printed by a witness is diagnostic only.
@@ -182,20 +193,18 @@ direnv exec . just measure-prt-gas
 direnv exec . just test-prt-gas
 ```
 
-The verbose report prints the measured allocation, reviewed minimum, rounded
+The verbose report prints the measured units, reviewed minimum, rounded
 recommendation, and diagnostic complete-call gas. The retained tests must prove:
 
 - one refund event per successful action;
-- fixtures whose balance and action caps do not hide measured work;
-- the complete reviewed margin for every retained branch; and
-- an exact, recorded relationship between each configured allocation and the
-  selected maximum.
+- fixtures whose balance and action caps do not hide measured work; and
+- the complete reviewed margin for every retained branch.
 
-The ordinary selection is the maximum rounded recommendation. A higher existing
-allocation may be retained to avoid production and deployment churn for a small
-downward measurement shift. Record and assert the exact retained headroom; do
-not let a generic upper-bound assertion hide a stale or arbitrarily oversized
-selection.
+The witnesses are one-sided: each asserts that its reviewed minimum fits the
+configured allocation, so a failing witness is the signal to recalibrate. The
+selection is the maximum rounded recommendation over the family's witnesses.
+An allocation left above it after a change makes an action cheaper is safe
+but raises join bonds; lower it when the bytecode is changing anyway.
 
 ### Check network admission headroom
 
@@ -213,31 +222,26 @@ Ethereum's values are permanent or that an L2 inherits them. A transaction can
 be insufficiently refundable yet executable, or fully subsidized yet too large
 for network admission; neither conclusion follows from the other.
 
-As of the 2026-07-23 calibration, Ethereum Mainnet's
+As of the 2026-10-02 calibration, Ethereum Mainnet's
 [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825) transaction cap was
-16,777,216 units and its observed block gas limit was 60,000,000 units. The
-retained 5,359,940-unit maximum canonical-input diagnostic occupied 31.95% of
-the transaction cap and 8.93% of the block limit. Treat that as dated evidence,
-not a permanent constant.
+16,777,216 units. The retained 5,079,603-unit maximum canonical-input
+diagnostic occupied 30.28% of it. Treat that as dated evidence, not a
+permanent constant.
 
 ## 5. Change an allocation
 
 For one action family:
 
 1. take the maximum rounded recommendation over retained witnesses;
-2. either adopt that recommendation or explicitly retain a higher existing
-   allocation and quantify the headroom;
-3. update only the corresponding `Gas.sol` constant if the selection changes;
-4. make the selected witness assert the exact recommendation plus any recorded
-   headroom, while alternates retain their full margin;
-5. rerun the report on the candidate;
-6. recompute every legal terminal sequence and each role-specific maximum;
-7. recompute work reserves and join bonds for supported heights; and
-8. record the accepted environment, measurements, derived values, tests, and
+2. update the corresponding `Gas.sol` constant;
+3. rerun the report on the candidate;
+4. recompute every legal terminal sequence and each role-specific maximum,
+   and update the policy checkpoint in `RefundReserve.t.sol`;
+5. recompute work reserves and join bonds for supported heights; and
+6. record the environment, measurements, derived values, tests, and
    deployment-artifact status.
 
-Never select less than the maximum rounded recommendation. Retained headroom is
-a deliberate stability choice, not permission to skip remeasurement.
+Never select less than the maximum rounded recommendation.
 
 Do not change `WORK_PRICE_CAP`, `REFUND_PRIORITY_FEE_CAP`, or
 `PAYMENT_CALLBACK_GAS_LIMIT` merely because a witness changed. They are policy
@@ -289,9 +293,10 @@ Do not modify the off-chain node in a gas-calibration commit. A proof-format or
 geometry change that requires client coordination belongs in its own review
 sequence.
 
-## 8. Record an accepted calibration
+## 8. Record a constant change
 
-Record:
+Record only when a `Gas.sol` constant changes. A run whose witnesses pass
+needs no record. Record:
 
 - candidate revision and clean state;
 - toolchain, compiler settings, lockfile, dependencies, submodules, OS, and
@@ -309,8 +314,8 @@ Record:
 - ABI compatibility plus storage and bytecode impact; and
 - deployment-artifact regeneration status.
 
-Create a new dated review or calibration record. Do not rewrite an older
-accepted result to make history appear continuous.
+Create a new dated record. Do not rewrite an older one to make history
+appear continuous.
 
 ## Recalibration triggers
 
@@ -326,8 +331,8 @@ Repeat the complete procedure after changes to:
 - target-chain transaction or block gas limits and calldata repricing; or
 - the set of supported successful branches.
 
-A small diff is not an exemption. An unchanged recommendation is still a result
-that must be reproduced and recorded.
+A small diff is not an exemption: rerun `just test-prt-gas`. The one-sided
+witnesses decide whether a constant must move.
 
 ## Leaf proofs and InputBox changes
 
@@ -382,8 +387,8 @@ If pre-Merkleization enters scope:
 2. replace the old input-boundary witnesses rather than mixing representations;
 3. rerun every full `winLeafMatch` witness;
 4. recompute terminal allocations, reserves, and bonds;
-5. record calldata length, byte composition, and intrinsic calldata cost even
-   though the current refund formula excludes it; and
+5. record calldata length and byte composition, which the refund now counts
+   per byte; and
 6. compare aggregate cost paid for every input with the rare-dispute saving.
 
 That makes the InputBox change an explicit protocol tradeoff rather than an
