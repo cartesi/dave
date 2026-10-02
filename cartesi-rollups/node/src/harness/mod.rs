@@ -135,6 +135,15 @@ impl World {
         self.geometry.levels().len()
     }
 
+    /// The deployed tournament's heights, root first.
+    pub fn geometry_heights(&self) -> Vec<u64> {
+        self.geometry
+            .levels()
+            .iter()
+            .map(|level| level.height)
+            .collect()
+    }
+
     pub fn address(&self, key: usize) -> Address {
         self.anvil.addresses()[key]
     }
@@ -306,6 +315,49 @@ impl World {
             .collect())
     }
 
+    /// The deepest tournament below `tournament`, following the last child
+    /// created at each level.
+    pub async fn deepest(&self, tournament: Address) -> Result<Address> {
+        let mut deepest = tournament;
+        while let Some(child) = self.inner_tournaments(deepest).await?.last() {
+            deepest = child.childTournament;
+        }
+        Ok(deepest)
+    }
+
+    pub async fn standing(
+        &self,
+        tournament: Address,
+        commitment: FixedBytes<32>,
+    ) -> Result<cartesi_prt_contracts::tournament::ITournament::CommitmentStandingView> {
+        Ok(self
+            .tournament(tournament)
+            .commitmentStanding(commitment)
+            .call()
+            .await?)
+    }
+
+    /// The timeout outcome the contract classifies for a match at `block`
+    /// (ITournament's MatchTimeoutOutcome, as its byte).
+    pub async fn timeout_outcome_at(
+        &self,
+        tournament: Address,
+        created: &Tournament::MatchCreated,
+        block: u64,
+    ) -> Result<u8> {
+        let id = cartesi_prt_contracts::tournament::Match::Id {
+            commitmentOne: created.one,
+            commitmentTwo: created.two,
+        };
+        let classified = self
+            .tournament(tournament)
+            .classifyMatchTimeout(id)
+            .block(BlockId::number(block))
+            .call()
+            .await?;
+        Ok(classified.outcome)
+    }
+
     pub async fn balance(&self, address: Address) -> Result<alloy::primitives::U256> {
         Ok(self.provider.get_balance(address).await?)
     }
@@ -424,6 +476,7 @@ impl World {
             lane: self.lane(key),
             policy,
             stopped: false,
+            held: None,
             _engine_dir: engine_dir,
             errors: vec![],
         })
@@ -563,6 +616,9 @@ pub(crate) enum Policy {
     Rational,
     /// Waves through the first request with this label, then nothing.
     StopAfter(&'static str),
+    /// Every wave until one carries this label; that wave is held for the
+    /// test to release, and nothing follows it.
+    Hold(&'static str),
 }
 
 /// The production Hero over a test-only tail overlay, on its own key. It
@@ -573,6 +629,7 @@ pub(crate) struct Adversary {
     lane: TransactionLane,
     policy: Policy,
     stopped: bool,
+    held: Option<Vec<crate::provider::LaneRequest>>,
     _engine_dir: TempDir,
     /// Its Hero's errors. A patched leaf cannot be proven, so a rational
     /// adversary errors whenever it tries.
@@ -580,6 +637,18 @@ pub(crate) struct Adversary {
 }
 
 impl Adversary {
+    /// Whether a Hold policy is holding its wave.
+    pub fn holding(&self) -> bool {
+        self.held.is_some()
+    }
+
+    /// Submits the held wave and mines it into its own block.
+    pub async fn release(&mut self, world: &mut World) -> Result<()> {
+        let wave = self.held.take().context("nothing held")?;
+        self.lane.submit_wave(wave).await?;
+        world.mine(1).await
+    }
+
     /// Abandons the dispute: no further ticks.
     pub fn stop(&mut self) {
         self.stopped = true;
@@ -603,6 +672,13 @@ impl Adversary {
         {
             wave.truncate(at + 1);
             self.stopped = true;
+        }
+        if let Policy::Hold(label) = self.policy
+            && wave.iter().any(|(request, _)| request == label)
+        {
+            self.held = Some(wave);
+            self.stopped = true;
+            return Ok(());
         }
         if wave.is_empty() {
             return Ok(());

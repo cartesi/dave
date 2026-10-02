@@ -155,6 +155,14 @@ sybil froze block production while it computed. The canonical battery passes.
      own process, because the v0.21 emulator flocks the files it creates
      without close-on-exec (two-level-sling.md, W7). The maximum-size input's
      witness vector landed with the seam vectors.
+   - Step 2 is done: the tail adversary (with a guard test that it never
+     writes) and eleven dispute tests replacing `bad_commitment`, `simple`'s
+     dispute, `gc_match`, `gc_tournament`, `kill_join` and `kill_mid_match`
+     (each with the action lost and mined), `multi_sybil`, and both
+     sealed-leaf timeouts, which now engineer the deadline gap by holding
+     the adversary's seal instead of killing the node around it. The suite
+     (15 tests) runs in about two minutes. Step 3 (steered D) stays
+     optional; item 4 can now delete the moved scenarios.
 4. A small black-box e2e on a test-shape profile (for example
    `[63/29, 42/21, 21/21, 0/21]`, which caps leaves at 2^21 usteps and keeps
    middle levels exercised) plus a canonical smoke: honeypot simple, echo

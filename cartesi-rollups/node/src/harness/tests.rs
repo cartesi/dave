@@ -16,7 +16,8 @@ use cartesi_dave_contracts::dave_consensus::DaveConsensus::{
 };
 use cartesi_prt_contracts::tournament::Tournament::{
     MatchCreated, advanceMatchCall, eliminateInnerTournamentCall, eliminateMatchByTimeoutCall,
-    joinTournamentCall, winInnerTournamentCall, winLeafMatchCall, winMatchByTimeoutCall,
+    joinTournamentCall, sealInnerMatchAndCreateInnerTournamentCall, winInnerTournamentCall,
+    winLeafMatchCall, winMatchByTimeoutCall,
 };
 
 /// The largest payload whose EvmAdvance-encoded input fits the InputBox's
@@ -38,10 +39,15 @@ const WIN_INNER: FixedBytes<4> = FixedBytes(winInnerTournamentCall::SELECTOR);
 const ELIMINATE_MATCH: FixedBytes<4> = FixedBytes(eliminateMatchByTimeoutCall::SELECTOR);
 const ELIMINATE_INNER: FixedBytes<4> = FixedBytes(eliminateInnerTournamentCall::SELECTOR);
 
-// ITournament's MatchDeletionReason and WinnerCommitment, as event bytes.
+// ITournament's MatchDeletionReason, WinnerCommitment and
+// MatchTimeoutOutcome, as event and view bytes.
 const TIMEOUT: u8 = 1;
 const CHILD_TOURNAMENT: u8 = 2;
 const NO_WINNER: u8 = 0;
+const TWO_WON: u8 = 2;
+const OUTCOME_NONE: u8 = 0;
+const TWO_WINS: u8 = 2;
+const ELIMINATE_BOTH: u8 = 3;
 
 /// A bound on the rounds of a whole dispute: about 92 bisections, the
 /// joins and seals between levels, and the root's allowance.
@@ -501,6 +507,191 @@ async fn three_sybils_lose_and_the_node_recovers_its_bond_first() -> Result<()> 
         world.balance(root).await?,
         U256::ZERO,
         "the root's balance drained"
+    );
+    Ok(())
+}
+
+/// A sealed leaf match whose clocks end at different blocks, the honest
+/// node's the longer one, with the node offline from the seal on.
+struct SealedLeaf {
+    world: World,
+    node: Node,
+    leaf: Address,
+    created: MatchCreated,
+    seal: u64,
+    short: u64,
+    long: u64,
+}
+
+/// Plays simple's dispute down to the leaf seal. The adversary joins each
+/// child before the node (the node sits out the rounds in between), so it
+/// is commitment one at every odd-height level below the root and the
+/// leaf's final responder. It holds its seal until three blocks before its
+/// own clock expires: the seal charges its overdue time, so its reserve
+/// after the seal falls well below the node's, which was paused.
+async fn sealed_leaf() -> Result<SealedLeaf> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    for level in &world.geometry_heights()[1..] {
+        assert_eq!(
+            level % 2,
+            1,
+            "the choreography needs odd heights below the root"
+        );
+    }
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Hold("sealLeafMatch"))?;
+
+    let seal_inner = FixedBytes(sealInnerMatchAndCreateInnerTournamentCall::SELECTOR);
+    for _ in 0..DISPUTE_ROUNDS {
+        if adversary.holding() {
+            break;
+        }
+        let seals = world
+            .mined
+            .iter()
+            .filter(|mined| mined.selector == Some(seal_inner))
+            .count();
+        if world.calls(1, JOIN).len() > seals {
+            node.turn(&mut world).await?;
+        } else {
+            world.mine(1).await?;
+        }
+        adversary.turn(&mut world).await?;
+    }
+    assert!(
+        adversary.holding(),
+        "the adversary never reached its leaf seal"
+    );
+
+    let root = world.sealed_epochs().await?[0].tournament;
+    let leaf = world.deepest(root).await?;
+    let matches = world.matches_created(leaf).await?;
+    assert_eq!(matches.len(), 1);
+    let created = matches[0].clone();
+    let honest_joins: Vec<_> = world
+        .commitments_joined(leaf)
+        .await?
+        .into_iter()
+        .filter(|(join, _)| join.submitter == world.address(HONEST))
+        .collect();
+    assert_eq!(honest_joins.len(), 1);
+    assert_eq!(
+        honest_joins[0].0.commitment, created.two,
+        "the node is commitment two"
+    );
+    let one = world.standing(leaf, created.one).await?;
+    let two = world.standing(leaf, created.two).await?;
+    assert!(
+        one.clockRunning && !two.clockRunning,
+        "one responds, two waits"
+    );
+
+    world.mine_to(one.clockDeadline - 3 - 1).await?;
+    adversary.release(&mut world).await?;
+    let seal = world.latest().await?;
+    let (short, long) = (
+        world.standing(leaf, created.one).await?.clockDeadline,
+        world.standing(leaf, created.two).await?.clockDeadline,
+    );
+    assert!(
+        short + 80 <= long,
+        "deadlines {short} and {long} are too close"
+    );
+    Ok(SealedLeaf {
+        world,
+        node,
+        leaf,
+        created,
+        seal,
+        short,
+        long,
+    })
+}
+
+/// The longer clock wins (sealed_leaf_timeout_winner): the outcome turns
+/// from none to two-wins exactly at the short deadline and stays so past
+/// the midpoint where a retired classifier used to flip; the node, back
+/// online there, claims the timeout in the very next block, before the
+/// long deadline. The match is deleted by timeout, not by a proof.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn the_longer_clock_wins_a_sealed_leaf_by_timeout() -> Result<()> {
+    let SealedLeaf {
+        mut world,
+        mut node,
+        leaf,
+        created,
+        seal,
+        short,
+        long,
+    } = sealed_leaf().await?;
+    world.mine_to(short).await?;
+    assert_eq!(
+        world.timeout_outcome_at(leaf, &created, short - 1).await?,
+        OUTCOME_NONE
+    );
+    assert_eq!(
+        world.timeout_outcome_at(leaf, &created, short).await?,
+        TWO_WINS
+    );
+
+    let midpoint = seal + (short - seal + long - seal).div_ceil(2);
+    let observation = midpoint + 1;
+    assert!(observation + 1 < long);
+    world.mine_to(observation).await?;
+    assert_eq!(
+        world
+            .timeout_outcome_at(leaf, &created, observation)
+            .await?,
+        TWO_WINS
+    );
+
+    node.turn(&mut world).await?;
+    assert_deleted(&world, leaf, &created, TIMEOUT, TWO_WON).await?;
+    let claims = world.honest_calls(WIN_TIMEOUT);
+    assert_eq!(claims.len(), 1);
+    assert_eq!(
+        claims[0].block,
+        observation + 1,
+        "claimed in the first block after observation"
+    );
+    Ok(())
+}
+
+/// Both clocks expire (sealed_leaf_timeout_both): the outcome turns from
+/// two-wins to eliminate-both exactly at the long deadline, and the node,
+/// back online there, deletes the match in the very next block with no
+/// winner.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn both_clocks_expire_on_a_sealed_leaf() -> Result<()> {
+    let SealedLeaf {
+        mut world,
+        mut node,
+        leaf,
+        created,
+        long,
+        ..
+    } = sealed_leaf().await?;
+    world.mine_to(long).await?;
+    assert_eq!(
+        world.timeout_outcome_at(leaf, &created, long - 1).await?,
+        TWO_WINS
+    );
+    assert_eq!(
+        world.timeout_outcome_at(leaf, &created, long).await?,
+        ELIMINATE_BOTH
+    );
+
+    node.turn(&mut world).await?;
+    assert_deleted(&world, leaf, &created, TIMEOUT, NO_WINNER).await?;
+    let eliminations = world.honest_calls(ELIMINATE_MATCH);
+    assert_eq!(eliminations.len(), 1);
+    assert_eq!(
+        eliminations[0].block,
+        long + 1,
+        "eliminated right after the exact boundary"
     );
     Ok(())
 }
