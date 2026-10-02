@@ -122,7 +122,32 @@ sybil froze block production while it computed. The canonical battery passes.
    against deployed contracts with mined blocks, with the node's own engine
    plus a test patch layer as the adversary. It covers the sender, the
    lifecycle and the timeouts deterministically (the sealed-leaf timeouts
-   move here).
+   move here). Designed 2026-10-01 (workflow wf_ad5ec6df-6d0; the full
+   output is kept outside the repo) and accepted by the owner:
+   - Shape: a cfg(test) `harness` module; the honest node's real reader,
+     runner and epoch manager on key 0 over the devnet bundle, adversaries
+     on other keys. Nothing free-runs: a round ticks the node, then each
+     adversary in a fixed order, and every wave mines into its own block;
+     receipts are checked after each mine; block timestamps are pinned
+     (InputBox stamps them into inputs); deadlines are read from the
+     contracts and mined to.
+   - Adversary: the production Hero over a test-only tail overlay (every
+     leaf from meta-cycle D on is Z) behind two cfg(test) hooks in
+     `DisputeSource`, never written to storage (a guard test pins it). It
+     cannot prove a leaf, so it loses by STEP or timeout. Policies are data
+     (silent, stop after a verb); sybils are distinct (D, Z) pairs.
+   - Accepted: the self-play blind spot (commitment correctness is owned by
+     the L1 goldens, the corpus and the Foundry replays); idle D only until
+     a cheap geometry exists for active spans; tests ignored by default and
+     run by `just test-node-harness` in CI's Rust job.
+   - Delivery: (1) the harness and lifecycle tests (`kill_settle`, the
+     lifecycle half of `simple_no_input`, a second sentry, large-input
+     ingestion); (2) the adversary and dispute tests (`bad_commitment`,
+     `simple`'s dispute, `gc_match`, `gc_tournament`, `multi_sybil`,
+     `kill_join`, `kill_mid_match`, both sealed-leaf timeouts); (3,
+     optional) steered D. `big_input` becomes a large-input witness vector
+     plus the ingestion test. E2E keeps honeypot `simple`, `chaos` at a
+     fixed seed, `kill_catchup_batched`, `stf_all` and `stf_revert`.
 4. A small black-box e2e on a test-shape profile (for example
    `[63/29, 42/21, 21/21, 0/21]`, which caps leaves at 2^21 usteps and keeps
    middle levels exercised) plus a canonical smoke: honeypot simple, echo
