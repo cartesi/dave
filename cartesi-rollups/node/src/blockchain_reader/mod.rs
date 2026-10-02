@@ -281,6 +281,10 @@ impl BlockchainReader {
             .collect();
 
         let last_input = self.storage.last_input()?;
+        // Inputs are numbered here, so a log the provider leaves out of a
+        // finalized range would silently shift every later input and
+        // commitment. Each event carries its own index; check them.
+        let mut next_index = self.storage.total_input_count()?;
 
         let (mut next_input_index_in_epoch, mut last_input_epoch_number) = {
             match last_input {
@@ -298,70 +302,139 @@ impl BlockchainReader {
                 continue;
             }
             // iterate through newly sealed epochs, fill in the inputs accordingly
-            let inputs_of_epoch = self.construct_input_ids(
+            let inputs_of_epoch = construct_input_ids(
                 epoch.epoch_number,
                 epoch.input_index_boundary,
                 &mut next_input_index_in_epoch,
+                &mut next_index,
                 &mut input_events_peekable,
-            );
+            )?;
 
             inputs.extend(inputs_of_epoch);
             last_input_epoch_number = epoch.epoch_number + 1;
         }
 
         // all remaining inputs belong to an epoch that's not sealed yet
-        let inputs_of_epoch = self.construct_input_ids(
+        let inputs_of_epoch = construct_input_ids(
             last_input_epoch_number,
             u64::MAX,
             &mut next_input_index_in_epoch,
+            &mut next_index,
             &mut input_events_peekable,
-        );
+        )?;
 
         inputs.extend(inputs_of_epoch);
 
         Ok(inputs)
     }
-
-    fn construct_input_ids<'a>(
-        &self,
-        epoch_number: u64,
-        input_index_boundary: u64,
-        next_input_index_in_epoch: &mut u64,
-        input_events_peekable: &mut Peekable<impl Iterator<Item = &'a InputAdded>>,
-    ) -> Vec<Input> {
-        let input_index_boundary = U256::from(input_index_boundary);
-        let mut inputs = vec![];
-
-        while let Some(input_added) = input_events_peekable.peek() {
-            if input_added.index >= U256::from(input_index_boundary) {
-                break;
-            }
-            let input = Input {
-                id: InputId {
-                    epoch_number,
-                    input_index_in_epoch: *next_input_index_in_epoch,
-                },
-                data: input_added.input.to_vec(),
-            };
-            info!(
-                "input received: epoch_number {}, input_index {}",
-                input.id.epoch_number, input.id.input_index_in_epoch,
-            );
-            trace!("input data 0x{}", input.data.encode_hex());
-
-            input_events_peekable.next();
-            *next_input_index_in_epoch += 1;
-            inputs.push(input);
-        }
-        // input index in epoch should be reset when a new epoch starts
-        *next_input_index_in_epoch = 0;
-
-        inputs
-    }
 }
 
 #[cfg(test)]
 pub(crate) mod test_utils;
+
+/// Numbers the events of one epoch, up to its input upper bound
+/// (`u64::MAX` while open), checking each event's own index against the
+/// next expected one and a sealed epoch's end against its bound: a
+/// provider that drops a log fails the tick before anything is stored.
+fn construct_input_ids<'a>(
+    epoch_number: u64,
+    input_index_boundary: u64,
+    next_input_index_in_epoch: &mut u64,
+    next_index: &mut u64,
+    input_events_peekable: &mut Peekable<impl Iterator<Item = &'a InputAdded>>,
+) -> Result<Vec<Input>> {
+    let mut inputs = vec![];
+
+    while let Some(input_added) = input_events_peekable.peek() {
+        if input_added.index >= U256::from(input_index_boundary) {
+            break;
+        }
+        anyhow::ensure!(
+            input_added.index == U256::from(*next_index),
+            "InputAdded index {} where {} was expected: incomplete logs from the provider",
+            input_added.index,
+            next_index
+        );
+        let input = Input {
+            id: InputId {
+                epoch_number,
+                input_index_in_epoch: *next_input_index_in_epoch,
+            },
+            data: input_added.input.to_vec(),
+        };
+        info!(
+            "input received: epoch_number {}, input_index {}",
+            input.id.epoch_number, input.id.input_index_in_epoch,
+        );
+        trace!("input data 0x{}", input.data.encode_hex());
+
+        input_events_peekable.next();
+        *next_input_index_in_epoch += 1;
+        *next_index += 1;
+        inputs.push(input);
+    }
+    if input_index_boundary != u64::MAX {
+        anyhow::ensure!(
+            *next_index == input_index_boundary,
+            "epoch {epoch_number} seals at input {input_index_boundary}, but only {next_index} \
+             inputs arrived: incomplete logs from the provider"
+        );
+    }
+    // input index in epoch should be reset when a new epoch starts
+    *next_input_index_in_epoch = 0;
+
+    Ok(inputs)
+}
+
+#[cfg(test)]
+mod input_numbering_tests {
+    use super::*;
+
+    fn events(indices: &[u64]) -> Vec<InputAdded> {
+        indices
+            .iter()
+            .map(|&index| InputAdded {
+                appContract: Address::ZERO,
+                index: U256::from(index),
+                input: vec![index as u8].into(),
+            })
+            .collect()
+    }
+
+    /// Numbers `indices` as one sealed epoch (bound `Some`) or the open
+    /// one, starting from global input `first`.
+    fn number(indices: &[u64], first: u64, bound: Option<u64>) -> Result<Vec<Input>> {
+        let events = events(indices);
+        let (mut in_epoch, mut next) = (0, first);
+        construct_input_ids(
+            3,
+            bound.unwrap_or(u64::MAX),
+            &mut in_epoch,
+            &mut next,
+            &mut events.iter().peekable(),
+        )
+    }
+
+    #[test]
+    fn contiguous_inputs_are_numbered_within_their_epoch() {
+        let inputs = number(&[5, 6, 7], 5, Some(8)).unwrap();
+        let ids: Vec<u64> = inputs.iter().map(|i| i.id.input_index_in_epoch).collect();
+        assert_eq!(ids, [0, 1, 2]);
+        assert!(inputs.iter().all(|i| i.id.epoch_number == 3));
+        assert_eq!(number(&[5, 6], 5, None).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_missing_log_fails_instead_of_shifting_later_inputs() {
+        assert!(number(&[5, 7], 5, None).is_err(), "an interior gap");
+        assert!(number(&[6, 7], 5, None).is_err(), "a gap before the first");
+        assert!(number(&[5, 5], 5, None).is_err(), "a duplicate");
+        assert!(
+            number(&[5, 6], 5, Some(8)).is_err(),
+            "a sealed epoch missing its last input"
+        );
+    }
+}
 
 #[cfg(test)]
 mod blockchain_reader_tests {

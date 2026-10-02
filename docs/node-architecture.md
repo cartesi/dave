@@ -201,7 +201,13 @@ rolled back. Oversized `eth_getLogs` ranges are handled by binary range
 partitioning, triggered by provider-specific error codes passed in as
 configuration (`--long-block-range-error-codes`). A successful response is
 trusted to contain every matching log in its requested range; the node does not
-cross-check it against a second provider or an on-chain event count.
+cross-check it against a second provider or an on-chain event count. Input
+logs are the exception, because the node numbers inputs itself and a missing
+one would silently shift every later commitment: each `InputAdded` must carry
+the next expected index, and a sealed epoch must end at its upper bound, or the
+tick fails before anything is stored. A gap inside the fetched range retries;
+a log missing from the tail of an already ingested range surfaces only at the
+next input and stops ingestion until the state directory is rebuilt.
 
 The deadline-sensitive tournament reader holds one recursive, event-derived
 `Dispute` through finalized `F`. On cold start it reconstructs that Solid value

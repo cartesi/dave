@@ -121,6 +121,17 @@ impl Storage {
         self.read(last_input_in)
     }
 
+    /// How many inputs the application has: inputs are stored
+    /// contiguously from its first, so this is the next input's index.
+    pub fn total_input_count(&mut self) -> Result<u64> {
+        self.read(|tx| {
+            let count: i64 = tx
+                .query_row("SELECT COUNT(*) FROM inputs", [], |row| row.get(0))
+                .map_err(anyhow::Error::from)?;
+            Ok(i64_to_u64(count))
+        })
+    }
+
     /// How many inputs an epoch holds: the fed-window count the
     /// geometry needs, without materializing any payload.
     pub fn input_count(&mut self, epoch_number: u64) -> Result<u64> {
