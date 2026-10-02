@@ -12,10 +12,17 @@ discharges the one owed since 2c502f63 and 935dc133.
 
 ## Environment
 
-- Candidate: the commit that adds this record, on top of 4b72c0ea.
-- Forge: nixpkgs `1.5.1-dev` from the development flake. The measurement
-  guard pins the official `1.5.1-v1.5.1` release, so these runs are
-  diagnostic (see Acceptance).
+- Candidate: the commit that adds this record, on top of 4b72c0ea. The
+  accepted run is at 6d5caebb, whose contracts, `machine/step` and
+  dependencies are unchanged since that commit.
+- Forge: the measurements were first taken with a nixpkgs `1.5.1-dev`
+  source build, which the guard treats as diagnostic. The accepted run used
+  the official `1.5.1-v1.5.1` release (commit b0a9dd9c, maxperf), now what
+  the development flake provides: archive sha256
+  `b3bf1752be066e0877911721e0624058171c88fc5616e228937fe4620b41c40d`, forge
+  binary sha256
+  `051dc63dd492b3eb85a8d4fecafd4b0701ad9b2b2ece92237e9ceee3f589ad5c`, both
+  equal to the 2026-08-16 record's.
 - Effective config: solc 0.8.30, via-ir, optimizer 200 runs, Prague EVM
   (both projects).
 - PRT dependencies sha256
@@ -111,7 +118,7 @@ block gas limit was not re-queried.
 
 ## Acceptance
 
-Pending: rerun `just measure-prt-gas` on the clean candidate under the
-official Forge 1.5.1 release, or in CI once the leaf witnesses run there.
-The one-sided witnesses decide the result; if one fails under the release
-Forge, raise its constant and amend this record.
+Accepted: `just measure-prt-gas` on the clean tree at 6d5caebb under the
+release Forge, with no diagnostic override, exits 0 with no warning; all 30
+witnesses pass. Every one of its 186 reported values, including the
+complete-call diagnostics, equals the source build's.
