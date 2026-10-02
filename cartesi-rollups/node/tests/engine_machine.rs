@@ -1344,13 +1344,21 @@ fn node_witness(
 /// CartesiStateTransition, rooting inputs the way DaveConsensus does.
 /// The shapes are the ones prove_transition_matches_prototype_get_logs
 /// and revert_closing_slot_restores_the_checkpoint cover, plus a second
-/// input's opening (a nonzero provider index).
+/// input's opening (a nonzero provider index) and the opening of a
+/// maximum-size input.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn node_witness_vectors_hold() {
     let structure = Structure::PRODUCTION;
+    // The largest payload whose EvmAdvance encoding fits the InputBox's
+    // 2^16-byte input limit, as the big_input e2e scenario sent it.
+    let big_payload = [0xab; (1 << 16) - 32 * 13];
     let programs = BTreeMap::from([
         ("echo", (echo_image(), echo_inputs())),
+        (
+            "echo_big",
+            (echo_image(), encode_inputs(&[&big_payload[..]])),
+        ),
         ("yield", (yield_image(), yield_inputs())),
     ]);
     let (yield_image, yield_inputs) = &programs["yield"];
@@ -1373,6 +1381,7 @@ fn node_witness_vectors_hold() {
             "echo",
             structure.window_start(2),
         ),
+        ("echo_big_input_opening", "echo_big", U256::ZERO),
         ("yield_revert_closing_slot", "yield", revert_closing),
     ];
 

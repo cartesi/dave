@@ -217,8 +217,12 @@ byte in each composed primitive, and replay across adjacent transition shapes.
 Those vectors come from the Lua client and bare emulators. The Rust node's
 own witness bytes are pinned on its side by `node_witness_vectors_hold`
 (`cartesi-rollups/node/tests/engine_machine.rs`): window openings with and
-without an input, a second input's opening, a plain ustep, a closing slot, and
-a rejected-input closing slot. `NodeWitnessesTest` (`cartesi-rollups/contracts`)
+without an input, a second input's opening, a maximum-size input's opening, a
+plain ustep, a closing slot, and a rejected-input closing slot.
+`seam_witness_vectors_hold` (`engine/machine_stf.rs`) adds the node's bytes at
+the input budget's seams, where the v0.21 CLI departs from the step: accepted
+openings on the budget's last cycle and on a halted machine, and a rejected
+closing on the budget's last cycle. `NodeWitnessesTest` (`cartesi-rollups/contracts`)
 replays each through `CartesiStateTransition`, with inputs rooted the way
 `DaveConsensus` roots them, and requires the node's post-state. Likewise
 `node_proof_vectors_hold` pins the node's commitment proofs (root joins under
