@@ -163,7 +163,15 @@ sybil froze block production while it computed. The canonical battery passes.
      the adversary's seal instead of killing the node around it. The suite
      (15 tests) runs in about two minutes. Step 3 (steered D) stays
      optional; item 4 can now delete the moved scenarios.
-4. A small black-box e2e on a test-shape profile (for example
+4. Done in part on 2026-10-01: the moved scenarios, the sealed-leaf helper
+   and its clock probe, two dead sybil helpers, their recipes and battery
+   entries, and the e2e CLI gate are gone; the battery is the smoke set
+   (echo `simple`, `chaos`, `kill_catchup_batched`, honeypot `simple` and
+   `stf_all`, yield `stf_revert`). Kept on purpose: the Lua oracle lineage,
+   whose epoch snapshots the remaining sybils build from. The test-shape
+   profile is still open and is only needed if `stf_all` and `stf_revert`
+   move to two-level leaves. The original item follows.
+   A small black-box e2e on a test-shape profile (for example
    `[63/29, 42/21, 21/21, 0/21]`, which caps leaves at 2^21 usteps and keeps
    middle levels exercised) plus a canonical smoke: honeypot simple, echo
    `stf_all`, yield `stf_revert`, chaos at a fixed seed, `multi_sybil` and one

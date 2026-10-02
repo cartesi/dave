@@ -36,7 +36,7 @@ migration passes.
 Before that node follow-up is accepted, recovery candidates must still derive
 from one coherent finalized view, submission must remain bounded, maintenance
 must not delay clock-bearing or settlement work, and older recoverable bonds
-must eventually receive service. Keep `multi_sybil`'s root-balance and
+must eventually receive service. Keep the multi-sybil harness test's root-balance and
 recovery-plan assertions, add the scheduler composition tests specified in the
 living node architecture, and rerun the settlement/crash scenarios plus the
 full battery.

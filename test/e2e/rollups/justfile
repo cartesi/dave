@@ -46,24 +46,6 @@ test-echo: \
 test-chaos: \
         (test "echo" "chaos")
 
-# run the targeted crash scenarios (SIGKILL at protocol points)
-test-kill-all: \
-        (test "echo" "kill_catchup") \
-        (test "echo" "kill_catchup_batched") \
-        (test "echo" "kill_settle") \
-        (test "echo" "kill_commitment_build") \
-        (test "echo" "kill_mid_match") \
-        (test "echo" "kill_join")
-
-# multi-match scenario: four commitments, two concurrent matches, a real timeout elimination
-test-multi-sybil: \
-        (test "echo" "multi_sybil")
-
-# exact sealed-leaf clock-boundary scenarios
-test-sealed-leaf-timeouts: \
-        (test "echo" "sealed_leaf_timeout_winner") \
-        (test "echo" "sealed_leaf_timeout_both")
-
 # the CI crash slice: cheap (no dispute), plus the multi-record advance batch end to end
 test-kill-ci: \
         (test "echo" "kill_catchup_batched")
@@ -72,25 +54,14 @@ test-kill-ci: \
 test-honeypot-stf: \
         (test "honeypot" "stf_all")
 
-# run PRT rollups honeypot test
+# run the honeypot suite
 test-honeypot-all: \
-        (test "honeypot" "deposit_withdrawal") \
-        (test "honeypot" "simple_no_input") \
-        (test "honeypot" "stf_all") \
-        (test "honeypot" "big_input") \
-        (test "honeypot" "gc_match") \
-        (test "honeypot" "gc_tournament") \
-        (test "honeypot" "bad_commitment")
+        (test "honeypot" "simple") \
+        (test "honeypot" "stf_all")
 
 # run the yield suite (stf_revert is yield's unique net: the full revert restore)
 test-yield-all: \
-        (test "yield" "simple_no_input") \
-        (test "yield" "stf_all") \
-        (test "yield" "stf_revert") \
-        (test "yield" "big_input") \
-        (test "yield" "gc_match") \
-        (test "yield" "gc_tournament") \
-        (test "yield" "bad_commitment")
+        (test "yield" "stf_revert")
 
 test-honeypot-ci: \
         (test "honeypot" "simple")

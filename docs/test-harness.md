@@ -74,14 +74,11 @@ oracle-owned epoch snapshots. Node output is never an input to the
 oracle, only a subject of comparison. Keep this property through any
 rewrite; it is what makes the e2e suite fit to judge one.
 
-The oracle's own commitment is gated by the reference implementation: the
-released v0.21.0 `cartesi-machine` CLI (it must be on `PATH`) recomputes
-every epoch from the oracle's snapshot and chain inputs, as its mcycle
-computation hash at period `root stride - 20` read from chain, and the two
-must agree. On a mismatch, `_oracle/cli-epoch-<n>/` keeps the inputs, the
-CLI log, and `repro.sh` (run it from `test/e2e/rollups`). The CLI's named
-exclusions (docs/plans/two-level-sling.md) need inputs of 2^48 cycles, so
-no scenario reaches them.
+The reference implementation, the released v0.21.0 `cartesi-machine` CLI,
+no longer gates every e2e epoch: its answers are checked below e2e, where the
+node's runner, leaves and the release corpus are compared with it
+(`cartesi-rollups/node/tests/engine_machine.rs`, `just
+test-reference-cli-goldens`).
 
 ## Trust bases of the assertions
 
@@ -92,8 +89,8 @@ test, never a source):
 - Epoch inputs: chain events; node database inputs are cross-checked.
 - Epoch initial state: oracle lineage, anchored to the EpochSealed
   event; the node's snapshot is loaded and cross-checked against it.
-- Epoch commitment: oracle lineage, gated by the reference CLI; the
-  node's commitment (read from its database) is cross-checked against it.
+- Epoch commitment: oracle lineage; the node's commitment (read from its
+  database) is cross-checked against it.
 - Sybil machine material: oracle epoch snapshots.
 - Tournament winners and settlement: chain state, compared against the
   oracle commitment.
@@ -103,20 +100,17 @@ test, never a source):
 - Node reads (`dave/node.lua`) serve synchronization (wait until the
   node has progressed) and produce the cross-check subjects.
 
-Residual risk, by design: a conceptual bug shared by the Lua oracle, the
-Rust node, and the CLI is invisible to these checks except where a dispute
-reaches the on-chain state transition. The CLI gate covers root commitments
-only. It samples every 2^(stride - 20) big cycles (2^24 at stride 44, 2^17 at
-stride 37); at 2^24 no test program's rejected input spans a sample point, so
-the revert stays invisible to it, while at 2^17 echo's does (its rejected
-input runs about 151k mcycles). Below e2e, `runner_settles_the_reference_root`
+Residual risk, by design: a conceptual bug shared by the Lua oracle and the
+Rust node is invisible to these checks except where a dispute reaches the
+on-chain state transition. Below e2e, `runner_settles_the_reference_root`
 (`cartesi-rollups/node/tests/engine_machine.rs`) checks the production
-runner's settled root against checked-in answers of the same CLI under both
-tables, including that echo revert, and `leaf_commitments_match_the_reference_cli`
-checks stride-0 leaf commitments (dense spans, yields, reverts) against the
-CLI's uarch cycle computation hashes at periods 7 and 8. The sling differential
-chain (toy spec, reference collector, prototype fixtures) mitigates from the
-other side.
+runner's settled root against checked-in answers of the release CLI under
+both tables (the root samples every 2^(stride - 20) big cycles; at 2^17 a
+sample falls inside echo's rejected input, so the revert shows), and
+`leaf_commitments_match_the_reference_cli` checks stride-0 leaf commitments
+(dense spans, yields, reverts) against the CLI's uarch cycle computation
+hashes at periods 7 and 8. The sling differential chain (toy spec, reference
+collector, prototype fixtures) mitigates from the other side.
 
 ## Hardened primitives (2026-07-16)
 
@@ -162,22 +156,11 @@ blocks until the log matches; `Dave:find_log(pattern, offset)` is the
 non-blocking probe for use inside the sybil drive loop. Kill points are
 protocol events, not sleeps, so the patterns scenarios rely on are a
 stable-marker contract between the node's logging and the harness.
-The contract today (a change to any of these lines must update the
-scenario that kills on it):
-
-- `processing input <epoch>:<index>` (machine-runner): kill_catchup.
-- `computing quartet` (sling cache, dispute-time machine work only,
-  since level 0 is served from the frontier fold):
-  kill_commitment_build.
-- `advance match` (Hero dispatch): kill_mid_match, and the log
-  line the suites grep to observe dispute progress.
-- `settle epoch` (epoch-manager, logged before the accept
-  transaction - the settlement-finalizing step of the staged
-  protocol): kill_settle. Staging and sentry claims happen in
-  earlier ticks; a kill-at-stage scenario is an open lead.
-- `join tournament` (hero, logged as it decides to join): kill_join -
-  the join transaction may or may not have landed when the kill hits,
-  and the respawn must end up joined exactly once.
+The contract today (a change to this line must update the scenario that
+kills on it): `processing input <epoch>:<index>` (machine-runner):
+kill_catchup_batched. The other targeted kills (at the join, mid-bisection,
+mid-build and around acceptance) moved to the node's in-crate harness,
+which restarts the workers deterministically instead of signalling.
 
 ## Scenario inventory
 
@@ -186,13 +169,12 @@ Machine programs (`test/programs/`): `echo` (accepts and rejects inputs),
 `RX_REJECTED`), and `honeypot` (real application). The explicit `stress`
 image belongs to the Rust measurement workflow, not to an E2E scenario.
 
-Scenarios (`test/e2e/rollups/scenarios/`):
+Scenarios (`test/e2e/rollups/scenarios/`), the black-box smoke left after
+the 2026-10-01 cut (docs/plans/test-strategy-reset.md, item 4):
 
-- `simple` / `simple_no_input`: honest node settles epochs, with and
-  without inputs. `simple` also requires its one leaf match to end in a
-  STEP proof, so the per-PR honeypot `simple` and the two-level smoke gate
-  the on-chain state transition.
-- `big_input`: large input payloads.
+- `simple`: the honest node settles a disputed epoch. Its one leaf match
+  must end in a STEP proof, so the per-PR honeypot `simple` and the
+  two-level smoke gate the on-chain state transition.
 - `stf_all`: drives disputes down to on-chain state-transition proofs,
   one transition shape per epoch (see the coverage matrix below).
 - `stf_revert`: the full revert restore, the one shape whose position
@@ -203,35 +185,17 @@ Scenarios (`test/e2e/rollups/scenarios/`):
   `just test-rollups-chaos`. Qualified 2026-07-02 with five
   consecutive green runs (seeds 1-5, 6-8 kills each); runs in CI with
   a fixed seed.
-- `kill_catchup` / `kill_commitment_build` / `kill_mid_match` /
-  `kill_settle`: the targeted crash scenarios, each SIGKILLing the node at one
-  log-marked moment: mid-input-processing (resume must settle identically to the
-  oracle), mid-quartet-computation during a dispute, mid-bisection
-  with ten sybil reactions of downtime, and at the settle
-  transaction (exactly-once settlement). Run via
-  `just rollups-tests::test-kill-all`.
 - `kill_catchup_batched`: B2 at snapshot gap 3 - the SIGKILL lands mid
   advance batch, the uncommitted records drop whole, and the resumed
-  run must re-execute the batch to the oracle's settlement. This is the
-  focused gap-3 case; other scenarios default to gap 2.
-- `bad_commitment`: adversary joins with a hand-built garbage commitment.
-- `gc_match` / `gc_tournament`: elimination and bond garbage-collection
-  paths.
-- `multi_sybil`: the permissionless shape - honest plus three sybils, two
-  matches live at once, two active sybils (one pairing may be sybil-vs-sybil),
-  one silent sybil whose match dies by a real on-chain timeout. It also
-  restarts the node around settlement, requires the root bond to drain, and
-  checks that its `BondRecovered` event precedes the node's next-root join.
-- `kill_join`: SIGKILL at the hero's join decision (see the marker
-  contract above).
-- `sealed_leaf_timeout_winner` / `sealed_leaf_timeout_both`: construct
-  unequal leaf clocks, assert the semantic timeout view at exact boundaries,
-  then respawn the Rust node and require either the longer-clock winner or
-  double elimination. `sealed_leaf_timeout_winner` is also the STEP check's
-  negative control: its timeout-resolved leaf record must correlate with the
-  fixture's match and be refused. It exercises the helper, not a broken
-  state transition.
-- `deposit_withdrawal` (honeypot): application-level end-to-end flow.
+  run must re-execute the batch to the oracle's settlement. It is the one
+  real-signal kill of the runner partway through an input.
+
+Lifecycle, dispute, garbage-collection, restart, multi-sybil and
+sealed-leaf timeout scenarios run in the node's in-crate harness
+(`cartesi-rollups/node/src/harness/`, `just test-node-harness`), where the
+test owns the chain's clock; large inputs and the node's witnesses at every
+transition shape are checked against the contracts in Foundry
+(`NodeWitnessesTest`, `NodeProofsTest`).
 
 ## Steering disputes: patch chains
 
@@ -292,10 +256,11 @@ which rejects every input): its position is program-timing-dependent,
 so the oracle reports each input's big-cycle count
 (`settlement.processing_bigs`, captured at the yield before the revert
 reloads the snapshot) and the scenario steers onto the closing slot of
-the big cycle where the reject yielded. `big_input` steers onto
-transition 0, the feed of its 64 KiB input. Both go through
-`run_steered_epoch`, so they carry the same seal and STEP checks. Not yet
-pinned: capacity boundaries (last input slot, last stride).
+the big cycle where the reject yielded. It goes through
+`run_steered_epoch`, so it carries the same seal and STEP checks. (A
+maximum-size input's feed is now a node witness vector replayed in
+Foundry.) Not yet pinned: capacity boundaries (last input slot, last
+stride).
 
 Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suites
 (PRT disputes, structured STF tests and fuzz, and consensus); the workspace job
@@ -307,16 +272,10 @@ honeypot `stf_all`, and yield `stf_revert`, then rebuilds the devnet with
 (`just test-rollups-two-level-smoke`). The node, the oracle, and the steering
 helper read the level table from chain. Unsteered scenarios patch at
 `1 << 44`, an idle leaf under either table. On the two-level devnet, honeypot
-`stf_all`, yield `stf_revert`, the batched catch-up kill and
-`sealed_leaf_timeout_*` have also passed (2026-09-30). `sealed_leaf_timeout_*`
-reads the level table and follows each level's height parity: the sybil seals
-an even-height root itself, the node seals an odd one, and the node is stopped
-around each child creation so the sybil joins the child first. Everything
-else - the
-rest of echo, the full kill battery, chaos seed sweeps, honeypot-all, and the
-duplicated yield scenarios - stays out of the pull-request critical path. The
-manual `.github/workflows/full-e2e.yml` workflow runs the complete battery
-and then explores chaos seeds 2 and 3; the battery itself retains seed 1. Its
+`stf_all`, yield `stf_revert` and the batched catch-up kill have also passed
+(2026-09-30). The manual `.github/workflows/full-e2e.yml` workflow runs the
+battery (the same smoke set) and then explores chaos seeds 2 and 3; the
+battery itself retains seed 1. Its
 cost and scheduling promotion criteria live in `docs/build-system.md`.
 
 There is also a legacy Sepolia smoke setup (`test/e2e/rollups/sepolia/`).
@@ -336,12 +295,13 @@ unverified claims - check before relying on them:
 - Epochs at capacity boundaries (max inputs, input at the last stride).
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
 - Multiple honest nodes defending the same epoch concurrently.
-- (closed 2026-07-25) Sealed-leaf timeout boundaries from the node's side:
-  `sealed_leaf_timeout_winner` observes the longer clock winning after the
-  retired midpoint and before its own deadline; `sealed_leaf_timeout_both`
-  observes double elimination at exact equality. The maintained contract phase
-  table lives in [`dispute-game.md`](dispute-game.md); these scenarios retain
-  the executable client boundary evidence.
+- (closed 2026-07-25, moved 2026-10-01) Sealed-leaf timeout boundaries from
+  the node's side: the harness tests
+  `the_longer_clock_wins_a_sealed_leaf_by_timeout` and
+  `both_clocks_expire_on_a_sealed_leaf` observe the longer clock winning after
+  the retired midpoint and before its own deadline, and double elimination at
+  exact equality. The maintained contract phase table lives in
+  [`dispute-game.md`](dispute-game.md).
 - (closed 2026-07-09) Port hygiene: the free-port assert (2026-07-02)
   plus TEST_INSTANCE isolation - set it to a free port and the run
   gets its own anvil port and suffixed working-dir singletons

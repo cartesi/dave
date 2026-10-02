@@ -331,9 +331,6 @@ test-rollups-kill-ci: build-rust-workspace
 test-rollups-two-level-smoke: build-rust-workspace
     DEVNET_GEOMETRY=two-level just rollups-tests::test echo simple
 
-test-prt-timeout-boundaries: build-rust-workspace
-    just rollups-tests::test-sealed-leaf-timeouts
-
 test-rollups-honeypot-case CASE: build-rust-workspace
     just rollups-tests::test-honeypot-case "$1"
 

@@ -36,35 +36,15 @@ if command -v pmset > /dev/null; then
     esac
 fi
 
+# The black-box smoke the in-crate harness (just test-node-harness) leaves
+# to e2e: the node as a process against Lua sybils, under real signals.
 SCENARIOS=(
     "echo simple"
-    "echo multi_sybil"
     "echo chaos"
-    "echo kill_catchup"
     "echo kill_catchup_batched"
-    "echo kill_settle"
-    "echo kill_commitment_build"
-    "echo kill_mid_match"
-    "echo kill_join"
-    # Retained timeout-alignment boundary evidence. These scenarios
-    # drive block numbers through the sender, so parallel lanes cannot
-    # disturb them; measured ~2 min each (2026-07-25).
-    "echo sealed_leaf_timeout_winner"
-    "echo sealed_leaf_timeout_both"
-    "honeypot deposit_withdrawal"
-    "honeypot simple_no_input"
+    "honeypot simple"
     "honeypot stf_all"
-    "honeypot big_input"
-    "honeypot gc_match"
-    "honeypot gc_tournament"
-    "honeypot bad_commitment"
-    "yield simple_no_input"
-    "yield stf_all"
     "yield stf_revert"
-    "yield big_input"
-    "yield gc_match"
-    "yield gc_tournament"
-    "yield bad_commitment"
 )
 
 # Every scenarios/*.lua must be wired into SCENARIOS under some

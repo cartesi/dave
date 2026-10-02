@@ -22,7 +22,7 @@ From the repository root:
 ```bash
 just test-rollups-echo             # echo program, simple scenario
 just test-rollups-honeypot        # full honeypot scenario suite
-just test-rollups-honeypot-case gc_match   # one scenario
+just test-rollups-honeypot-case stf_all    # one scenario
 just view-rollups-logs             # tail the node's dave.log
 ```
 
