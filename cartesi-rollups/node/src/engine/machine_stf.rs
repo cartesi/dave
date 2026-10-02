@@ -899,6 +899,103 @@ mod tests {
         assert_opening_delivers(halted_yield_machine)
     }
 
+    /// The input budget's seams as chain witnesses for the Solidity step,
+    /// which NodeWitnessesTest (cartesi-rollups/contracts) replays: RX_ACCEPTED
+    /// openings on the budget's last cycle and on a halted machine (seam 2),
+    /// and an RX_REJECTED closing on the budget's last cycle (seam 1), the
+    /// boundaries where the v0.21 CLI departs from the step. No input can
+    /// reach seam 1 by execution (it would run 2^48 - 1 cycles), so, as in
+    /// the Lua vectors, the budget shrinks after a physical delivery.
+    /// UPDATE_FIXTURES=1 regenerates tests/fixtures/node_seam_witnesses.json.
+    #[test]
+    fn seam_witness_vectors_hold() -> Result<()> {
+        use cartesi_machine::cartesi_machine_sys::{
+            CM_REG_IMCYCLEMAX, CM_REG_UARCH_CYCLE, CM_REG_X20,
+        };
+        use cartesi_machine::constants::uarch_break_reason::UARCH_HALTED;
+
+        let payload = b"seam".to_vec();
+        let vector = |position: U256, pre: Digest, post: Digest, proof: &[u8]| {
+            serde_json::json!({
+                "program": "seam",
+                "meta_cycle": format!("{position:#x}"),
+                "pre_state": pre.to_hex(),
+                "post_state": post.to_hex(),
+                "proof": format!("0x{}", hex::encode(proof)),
+            })
+        };
+        let mut vectors = serde_json::Map::new();
+
+        for (name, machine) in [
+            ("budget_seam_accepted_opening", budget_seam_machine()?),
+            ("halted_accepted_opening", halted_yield_machine()?),
+        ] {
+            let mut machine = machine;
+            let pre: Digest = machine.root_hash()?.into();
+            let work = tempfile::tempdir()?;
+            let stf = scratch_stf(machine, work.path().to_path_buf(), vec![payload.clone()]);
+            let (proof, post) = Ruler::new(stf, Structure::PRODUCTION, 1).prove_transition()?;
+            vectors.insert(name.into(), vector(U256::ZERO, pre, post, &proof));
+        }
+
+        let work = tempfile::tempdir()?;
+        let mut machine = seam_guest(3, RX_ACCEPTED)?;
+        machine.write_reg(CM_REG_X20, manual_yield(RX_REJECTED))?;
+        let revert_root = machine.root_hash()?;
+        let checkpoint = work.path().join("checkpoint-0");
+        machine.store(&checkpoint)?;
+        machine.send_cmio_response(CmioResponseReason::Advance, &payload, Some(&revert_root))?;
+        // Delivery renewed the budget; shrink it so the x20 rejection
+        // executes on its last cycle.
+        let mcycle = machine.mcycle()?;
+        machine.write_reg(CM_REG_IMCYCLEMAX, mcycle + 1)?;
+        let closing = Structure::PRODUCTION.big_span() - 1;
+        assert_eq!(machine.run_uarch(closing)?, UARCH_HALTED);
+        assert_eq!(machine.receive_cmio_request()?.reason(), RX_REJECTED);
+        assert_eq!(machine.mcycle()?, machine.imcyclemax()?);
+        let pre: Digest = machine.root_hash()?.into();
+        let stf = MachineStf {
+            ucycle: machine.read_reg(CM_REG_UARCH_CYCLE)?,
+            machine,
+            hashing: Hashing::Sampled,
+            work_dir: work.path().to_path_buf(),
+            checkpoint: Some(checkpoint),
+            feeder: Feeder::Scratch {
+                fed: 1,
+                inputs: vec![payload.clone()],
+            },
+        };
+        let position = U256::from(closing);
+        let (proof, post) =
+            Ruler::new_at(stf, Structure::PRODUCTION, 1, position).prove_transition()?;
+        assert_eq!(
+            post,
+            Digest::from(revert_root),
+            "the reset substitutes the revert root"
+        );
+        vectors.insert(
+            "budget_seam_rejected_closing".into(),
+            vector(position, pre, post, &proof),
+        );
+
+        let computed = serde_json::json!({
+            "inputs": { "seam": [format!("0x{}", hex::encode(&payload))] },
+            "vectors": vectors,
+        });
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/node_seam_witnesses.json");
+        if std::env::var("UPDATE_FIXTURES").is_ok() {
+            std::fs::write(&path, serde_json::to_string_pretty(&computed)?)?;
+            return Ok(());
+        }
+        let stored: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+        assert_eq!(
+            computed, stored,
+            "seam witnesses diverged; regenerate with UPDATE_FIXTURES=1 after review"
+        );
+        Ok(())
+    }
+
     /// Big-stride sampling (the runner and root levels) and uarch stepping
     /// (the leaf level) both land on the delivered input's x20 yield.
     #[test]

@@ -43,13 +43,24 @@ contract EpochInputs is IDataProvider {
 }
 
 /// The step must accept the witness bytes the Rust node sends. The vectors
-/// are pinned on the node side by node_witness_vectors_hold
-/// (cartesi-rollups/node/tests/engine_machine.rs), which regenerates them.
+/// are pinned on the node side, which regenerates them: node_witnesses.json by
+/// node_witness_vectors_hold (cartesi-rollups/node/tests/engine_machine.rs),
+/// and node_seam_witnesses.json, the input budget's seams, by
+/// seam_witness_vectors_hold (cartesi-rollups/node/src/engine/machine_stf.rs).
 contract NodeWitnessesTest is Test {
     string constant VECTORS = "../node/tests/fixtures/node_witnesses.json";
+    string constant SEAM_VECTORS = "../node/tests/fixtures/node_seam_witnesses.json";
 
     function testNodeWitnessesReachTheirPostStates() public {
-        string memory json = vm.readFile(VECTORS);
+        _replay(VECTORS);
+    }
+
+    function testNodeSeamWitnessesReachTheirPostStates() public {
+        _replay(SEAM_VECTORS);
+    }
+
+    function _replay(string memory path) private {
+        string memory json = vm.readFile(path);
         CartesiStateTransition stateTransition = new CartesiStateTransition();
 
         string[] memory names = vm.parseJsonKeys(json, ".vectors");
