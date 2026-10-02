@@ -28,36 +28,6 @@ test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
   INPUT_BOX=`cat {{DEPLOYMENTS_DIR}}/InputBox.txt` \
   lua5.4 "scenarios/$2.lua"
 
-# run PRT rollups echo test
-test-echo: \
-        (test "echo" "simple")
-
-# dispute under SIGKILL/respawn fire; reproduce a run with CHAOS_SEED=<seed>
-test-chaos: \
-        (test "echo" "chaos")
-
-# the CI crash slice: cheap (no dispute), plus the multi-record advance batch end to end
-test-kill-ci: \
-        (test "echo" "kill_catchup_batched")
-
-# the state-transition coverage suite alone (CI runs it on honeypot, whose image it already builds)
-test-honeypot-stf: \
-        (test "honeypot" "stf_all")
-
-# run the honeypot suite
-test-honeypot-all: \
-        (test "honeypot" "simple") \
-        (test "honeypot" "stf_all")
-
-test-honeypot-ci: \
-        (test "honeypot" "simple")
-
-test-honeypot-case CASE: \
-        (test "honeypot" CASE)
-
-test-yield-case CASE: \
-        (test "yield" CASE)
-
 # The black-box smoke the in-crate harness (just test-node-harness) leaves to
 # e2e: the node as a process against Lua sybils, under real signals. CI runs
 # this list. Serial on one instance: Dave:new resets the state dir, so disk
@@ -96,7 +66,7 @@ smoke:
     cat _smoke/results.txt
     exit "$failures"
 
-# read logs from PRT Rollups node, run in separate terminal after `test-echo`
+# follow the node log of a running or finished scenario
 read-node-logs:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -106,8 +76,7 @@ read-node-logs:
       exit 2
     fi
     log="dave${instance:+-$instance}.log"
-    cat "$log"
-    tail -f "$log"
+    tail -n +1 -f "$log"
 
 # Kept for forensics, but at ~5 GB per retained scenario the litter can
 # quietly fill the disk, which slows every machine store system-wide.

@@ -17,7 +17,8 @@ e2e suite shrinks (docs/plans/test-strategy-reset.md, item 3).
 ## Anatomy of a test run
 
 ```
-just rollups-tests::test <program> <scenario>
+just e2e <program> <scenario>              (builds the node first)
+  -> just rollups-tests::test <program> <scenario>   (preflight)
   -> lua5.4 scenarios/<scenario>.lua       (env vars select machine image,
                                              deployment addresses, keys)
 ```
@@ -187,8 +188,8 @@ the 2026-10-01 cut (docs/plans/test-strategy-reset.md, item 4):
   must be computed from the oracle at runtime (matrix below).
 - `chaos`: the `simple` dispute with the node SIGKILLed and respawned
   on a seeded random cadence throughout.
-  Reproduce a run with `CHAOS_SEED=<seed>`; run it via
-  `just test-rollups-chaos`. Qualified 2026-07-02 with five
+  Reproduce or explore a seed with `CHAOS_SEED=<seed> just e2e echo
+  chaos`. Qualified 2026-07-02 with five
   consecutive green runs (seeds 1-5, 6-8 kills each); runs in CI with
   a fixed seed.
 - `kill_catchup_batched`: B2 at snapshot gap 3 - the SIGKILL lands mid
@@ -508,8 +509,6 @@ record):
    hand-rolled sybils when it does not matter where it lands. Take strides and
    heights from `env.reader:read_tournament_levels()`, never literals, so the
    scenario runs on either table.
-3. Wire a justfile alias if it should run in a suite
-   (`test/e2e/rollups/justfile`).
-4. Add `<program> <name>` to the `smoke` recipe's list in
+3. Add `<program> <name>` to the `smoke` recipe's list in
    `test/e2e/rollups/justfile`; per-PR CI runs that list, and the smoke
    warns about any scenario file missing from it.

@@ -318,38 +318,22 @@ clean: clean-contracts clean-rust-workspace
 # End-to-end tests (see docs/test-harness.md)
 # ------------------------------------------------------------------
 
+# run one e2e scenario, e.g. just e2e echo simple (chaos takes CHAOS_SEED=<n>)
+e2e PROGRAM SCENARIO: build-rust-workspace
+    just rollups-tests::test "$1" "$2"
+
 # run the e2e smoke CI runs (list in test/e2e/rollups/justfile); exit status = failures
 e2e-smoke: build-rust-workspace
     just rollups-tests::smoke
 
-test-rollups-echo: build-rust-workspace
-    just rollups-tests::test-echo
-
-test-rollups-chaos: build-rust-workspace
-    just rollups-tests::test-chaos
-
-test-rollups-honeypot: build-rust-workspace
-    just rollups-tests::test-honeypot-all
-
-test-rollups-honeypot-ci: build-rust-workspace
-    just rollups-tests::test-honeypot-ci
-
-test-rollups-honeypot-stf: build-rust-workspace
-    just rollups-tests::test-honeypot-stf
-
-test-rollups-kill-ci: build-rust-workspace
-    just rollups-tests::test-kill-ci
+# follow an e2e node log (TEST_INSTANCE=<id> picks that instance's)
+e2e-logs:
+    just rollups-tests::read-node-logs
 
 # echo simple on two levels: needs a devnet built with
 # DEVNET_GEOMETRY=two-level (the preflight refuses any other bundle)
 test-rollups-two-level-smoke: build-rust-workspace
     DEVNET_GEOMETRY=two-level just rollups-tests::test echo simple
-
-test-rollups-honeypot-case CASE: build-rust-workspace
-    just rollups-tests::test-honeypot-case "$1"
-
-view-rollups-logs:
-    just rollups-tests::read-node-logs
 
 # ------------------------------------------------------------------
 # Docker environment

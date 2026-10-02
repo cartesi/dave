@@ -113,8 +113,8 @@ just build            # contracts + bindings + rust workspace
 just check            # THE pre-commit gate: fmt, lints, clippy, unit tests
 just test-rust-workspace       # rust unit tests
 just test-smart-contracts      # forge test suites (consensus + prt)
-just test-rollups-echo         # e2e: honest node, echo machine
-just test-rollups-honeypot     # e2e: full honeypot scenario suite
+just e2e-smoke                 # e2e: the scenario list CI runs
+just e2e echo simple           # e2e: one scenario, here the honest echo node
 ```
 
 When a build or check fails mysteriously, run `just doctor` before debugging.

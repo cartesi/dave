@@ -20,10 +20,10 @@ machine image requires docker.
 From the repository root:
 
 ```bash
-just test-rollups-echo             # echo program, simple scenario
-just test-rollups-honeypot        # full honeypot scenario suite
-just test-rollups-honeypot-case stf_all    # one scenario
-just view-rollups-logs             # tail the node's dave.log
+just e2e-smoke                     # the smoke CI runs; node logs in _smoke/
+just e2e echo simple               # one scenario: just e2e <program> <scenario>
+CHAOS_SEED=5 just e2e echo chaos   # chaos at another seed (the smoke keeps 1)
+just e2e-logs                      # follow the node's dave.log
 ```
 
 Machine programs live in [test/programs](../../../test/programs/); the
