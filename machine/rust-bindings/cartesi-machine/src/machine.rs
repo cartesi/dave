@@ -587,7 +587,7 @@ impl Machine {
                 mcycle_end,
                 log2_mcycle_period,
                 mcycle_phase,
-                log2_count(log2_bundle_mcycle_count)?,
+                bundle_log2(log2_bundle_mcycle_count, 63)?,
                 bundle
                     .as_ref()
                     .map_or(ptr::null(), |bundle| bundle.as_ptr()),
@@ -626,7 +626,10 @@ impl Machine {
             cartesi_machine_sys::cm_collect_uarch_cycle_root_hashes(
                 self.machine,
                 mcycle_end,
-                log2_count(log2_bundle_uarch_cycle_count)?,
+                bundle_log2(
+                    log2_bundle_uarch_cycle_count,
+                    constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE as u32,
+                )?,
                 tail.as_ref().map_or(ptr::null(), |tail| tail.as_ptr()),
                 &mut result_ptr,
             )
@@ -884,12 +887,17 @@ fn optional_hash_ptr(hash: Option<&Hash>) -> *const Hash {
     hash.map_or(ptr::null(), |hash| hash as *const Hash)
 }
 
-/// The C API takes bundle sizes as int32_t.
-fn log2_count(log2: u32) -> Result<i32> {
-    i32::try_from(log2).map_err(|_| MachineError {
-        code: constants::error_code::INVALID_ARGUMENT,
-        message: format!("log2 bundle count {log2} exceeds int32 range"),
-    })
+/// The C API takes bundle sizes as int32_t, and v0.21.0 computes with them
+/// before validating (a uarch bundle above 2^20 makes a negative shift, which
+/// is undefined behavior), so sizes past `max` are refused before the call.
+fn bundle_log2(log2: u32, max: u32) -> Result<i32> {
+    if log2 > max {
+        return Err(MachineError {
+            code: constants::error_code::INVALID_ARGUMENT,
+            message: format!("log2 bundle count {log2} exceeds {max}"),
+        });
+    }
+    Ok(log2 as i32)
 }
 
 impl Machine {
@@ -1727,6 +1735,30 @@ mod tests {
             .unwrap_err();
         assert!(error.message.contains("revert root hash"), "{error:?}");
         assert_eq!((machine.mcycle()?, machine.root_hash()?), (mcycle, root));
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_bundles_are_refused_before_the_call() -> Result<()> {
+        let mut machine = yield_machine()?;
+        let tail = revert_tail(&mut machine)?;
+        feed(&mut machine)?;
+        let (mcycle, root) = (machine.mcycle()?, machine.root_hash()?);
+
+        let uarch = machine.collect_uarch_cycle_root_hashes(mcycle + 1, 21, Some(&tail));
+        assert_eq!(
+            uarch.unwrap_err().code,
+            constants::error_code::INVALID_ARGUMENT
+        );
+        let big = machine.collect_mcycle_root_hashes(mcycle + 1, 0, 0, 64, None);
+        assert_eq!(
+            big.unwrap_err().code,
+            constants::error_code::INVALID_ARGUMENT
+        );
+        assert_eq!((machine.mcycle()?, machine.root_hash()?), (mcycle, root));
+
+        // The largest sizes are accepted.
+        machine.collect_uarch_cycle_root_hashes(mcycle + 1, 20, Some(&tail))?;
         Ok(())
     }
 
