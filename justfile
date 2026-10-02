@@ -3,14 +3,12 @@
 # Subsystem recipes live in their own justfiles, exposed here as modules:
 # run `just <module>::<recipe>`, e.g. `just prt-contracts::test-disputes`.
 # `just --list` shows root recipes; `just --list <module>` shows a module's.
-# Modules are declared optional (mod?) so partial checkouts, like docker
-# build stages, can still parse this file.
 
-mod? prt-contracts 'prt/contracts'
-mod? rollups-contracts 'cartesi-rollups/contracts'
-mod? rollups-tests 'test/e2e/rollups'
-mod? programs 'test/programs'
-mod? machine 'machine'
+mod prt-contracts 'prt/contracts'
+mod rollups-contracts 'cartesi-rollups/contracts'
+mod rollups-tests 'test/e2e/rollups'
+mod programs 'test/programs'
+mod machine 'machine'
 
 # Recipe lines with pipes fail honestly instead of reporting the
 # last stage's status (no recipe here pipes to head/tail, where
@@ -62,8 +60,8 @@ setup:
     just programs::download-deps
     just programs::build-programs
 
-# Setup plus everything the e2e smoke needs. The honeypot image is opt-in:
-# just programs::build-honeypot (requires docker).
+# The honeypot image is opt-in: just programs::build-honeypot (needs docker).
+# setup plus everything the e2e smoke needs
 setup-local: setup
     just rollups-contracts::build-devnet
 
