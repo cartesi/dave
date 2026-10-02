@@ -546,19 +546,11 @@ mod tests {
         .apply_block([
             Event {
                 tournament: ROOT,
-                kind: EventKind::CommitmentJoined {
-                    root: opponent,
-                    final_state: digest(5),
-                    submitter: Address::new([0x31; 20]),
-                },
+                kind: EventKind::CommitmentJoined { root: opponent },
             },
             Event {
                 tournament: ROOT,
-                kind: EventKind::CommitmentJoined {
-                    root: local,
-                    final_state: digest(6),
-                    submitter: Address::new([0x32; 20]),
-                },
+                kind: EventKind::CommitmentJoined { root: local },
             },
             Event {
                 tournament: ROOT,

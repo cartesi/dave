@@ -62,8 +62,6 @@ pub struct Event {
 pub enum EventKind {
     CommitmentJoined {
         root: Digest,
-        final_state: Digest,
-        submitter: Address,
     },
     MatchCreated {
         id: MatchID,
@@ -96,26 +94,12 @@ pub enum EventKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Commitment {
     root: Digest,
-    final_state: Digest,
-    submitter: Address,
     latest_match: Option<Digest>,
 }
 
 impl Commitment {
     pub const fn root(&self) -> Digest {
         self.root
-    }
-
-    pub const fn final_state(&self) -> Digest {
-        self.final_state
-    }
-
-    pub const fn submitter(&self) -> Address {
-        self.submitter
-    }
-
-    pub const fn latest_match_id_hash(&self) -> Option<Digest> {
-        self.latest_match
     }
 }
 
@@ -169,15 +153,6 @@ impl Match {
         !matches!(&self.status, MatchStatus::Resolved { .. })
     }
 
-    fn active_child(&self) -> Option<&Tournament> {
-        match &self.status {
-            MatchStatus::Inner { child } => Some(child),
-            MatchStatus::Clocked { .. }
-            | MatchStatus::Leaf { .. }
-            | MatchStatus::Resolved { .. } => None,
-        }
-    }
-
     fn historical_child(&self) -> Option<&Tournament> {
         match &self.status {
             MatchStatus::Inner { child } => Some(child),
@@ -222,14 +197,6 @@ pub enum CommitmentPosition<'a> {
     },
 }
 
-/// The information needed to eliminate one match without another state read.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct EliminableMatch {
-    pub tournament: Address,
-    pub id: MatchID,
-    pub eliminable_at: u64,
-}
-
 /// One tournament and every child tournament it has ever created.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tournament {
@@ -258,16 +225,8 @@ impl Tournament {
         self.descriptor.address()
     }
 
-    pub const fn candidate(&self) -> Option<Digest> {
-        self.candidate
-    }
-
     pub fn commitment(&self, root: &Digest) -> Option<&Commitment> {
         self.commitments.get(root)
-    }
-
-    pub fn commitments(&self) -> impl Iterator<Item = &Commitment> {
-        self.commitments.values()
     }
 
     pub fn matches(&self) -> impl Iterator<Item = &Match> {
@@ -340,21 +299,8 @@ impl Tournament {
 
     /// Checks local invariants, child depth, and recursive address identity.
     pub fn validate(&self) -> Result<(), DisputeError> {
-        self.validate_unique_addresses()?;
+        self.collect_unique_addresses(&mut HashSet::new())?;
         self.validate_contents()
-    }
-
-    /// Ensures that every owned tournament address occurs exactly once.
-    pub fn validate_unique_addresses(&self) -> Result<(), DisputeError> {
-        let mut addresses = HashSet::new();
-        self.collect_unique_addresses(&mut addresses)
-    }
-
-    /// Returns this tournament and every child behind a live parent match.
-    pub fn reachable_tournaments(&self) -> Vec<&Tournament> {
-        let mut tournaments = Vec::new();
-        self.collect_reachable(&mut tournaments);
-        tournaments
     }
 
     /// Returns this tournament and all children retained in its history.
@@ -380,11 +326,7 @@ impl Tournament {
 
     fn apply_local(&mut self, event: EventKind) -> Result<(), DisputeError> {
         match event {
-            EventKind::CommitmentJoined {
-                root,
-                final_state,
-                submitter,
-            } => {
+            EventKind::CommitmentJoined { root } => {
                 if self.commitments.contains_key(&root) {
                     return Err(DisputeError::DuplicateCommitment {
                         tournament: self.address(),
@@ -396,8 +338,6 @@ impl Tournament {
                     root,
                     Commitment {
                         root,
-                        final_state,
-                        submitter,
                         latest_match: None,
                     },
                 );
@@ -652,38 +592,6 @@ impl Tournament {
             }
         }
         None
-    }
-
-    fn collect_eliminable_matches(&self, at: u64, matches: &mut Vec<EliminableMatch>) {
-        for match_ in &self.matches {
-            match &match_.status {
-                MatchStatus::Clocked { eliminable_at } if at >= *eliminable_at => {
-                    matches.push(EliminableMatch {
-                        tournament: self.address(),
-                        id: match_.id,
-                        eliminable_at: *eliminable_at,
-                    });
-                }
-                MatchStatus::Leaf { eliminable_at } if at >= *eliminable_at => {
-                    matches.push(EliminableMatch {
-                        tournament: self.address(),
-                        id: match_.id,
-                        eliminable_at: *eliminable_at,
-                    });
-                }
-                MatchStatus::Inner { child } => child.collect_eliminable_matches(at, matches),
-                MatchStatus::Clocked { .. }
-                | MatchStatus::Leaf { .. }
-                | MatchStatus::Resolved { .. } => {}
-            }
-        }
-    }
-
-    fn collect_reachable<'a>(&'a self, tournaments: &mut Vec<&'a Tournament>) {
-        tournaments.push(self);
-        for child in self.matches.iter().filter_map(Match::active_child) {
-            child.collect_reachable(tournaments);
-        }
     }
 
     fn collect_historical<'a>(&'a self, tournaments: &mut Vec<&'a Tournament>) {
@@ -944,11 +852,13 @@ impl Dispute {
     }
 
     /// Finds a tournament, including children retained only for recovery.
+    #[cfg(test)]
     pub fn tournament(&self, address: &Address) -> Option<&Tournament> {
         self.root.tournament(address)
     }
 
-    /// Folds one complete block without exposing its log prefixes.
+    /// Folds one complete block, as the reader does, for test fixtures.
+    #[cfg(test)]
     pub fn apply_block(
         self,
         events: impl IntoIterator<Item = Event>,
@@ -957,21 +867,6 @@ impl Dispute {
         let dispute = Self { root };
         dispute.validate()?;
         Ok(dispute)
-    }
-
-    /// Returns matches whose inclusive elimination boundary has elapsed.
-    ///
-    /// Resolved child subtrees are intentionally excluded: they remain owned
-    /// for recovery, but are no longer reachable dispute work.
-    pub fn eliminable_matches(&self, at: u64) -> Vec<EliminableMatch> {
-        let mut matches = Vec::new();
-        self.root.collect_eliminable_matches(at, &mut matches);
-        matches
-    }
-
-    /// Returns the root and every child behind a currently live parent match.
-    pub fn reachable_tournaments(&self) -> Vec<&Tournament> {
-        self.root.reachable_tournaments()
     }
 
     /// Returns every tournament, including children retained for recovery.
@@ -986,10 +881,6 @@ impl Dispute {
             ));
         }
         self.root.validate()
-    }
-
-    pub fn validate_unique_addresses(&self) -> Result<(), DisputeError> {
-        self.root.validate_unique_addresses()
     }
 }
 
@@ -1095,14 +986,7 @@ mod tests {
     }
 
     fn join(tournament: Address, root: Digest) -> Event {
-        event(
-            tournament,
-            EventKind::CommitmentJoined {
-                root,
-                final_state: digest(root.data()[0].wrapping_add(100)),
-                submitter: address(root.data()[0]),
-            },
-        )
+        event(tournament, EventKind::CommitmentJoined { root })
     }
 
     fn create(tournament: Address, id: MatchID, eliminable_at: u64) -> Event {
@@ -1166,24 +1050,25 @@ mod tests {
             dispute.root().match_for(&digest(10)).unwrap().id(),
             root_match
         );
-        assert_eq!(
-            dispute
-                .reachable_tournaments()
-                .into_iter()
-                .map(Tournament::address)
-                .collect::<Vec<_>>(),
-            vec![root_address, child_address]
-        );
-        dispute.validate_unique_addresses().unwrap();
+    }
+
+    fn status(dispute: &Dispute, id: MatchID) -> &MatchStatus {
+        dispute
+            .root()
+            .match_by_id_hash(&id.hash())
+            .unwrap()
+            .status()
     }
 
     #[test]
-    fn deadlines_are_replaced_inclusively_and_inner_cancels_local_timing() {
+    fn deadlines_are_replaced_and_inner_cancels_local_timing() {
         let leaf_descriptor = descriptor(1, 0, TournamentKind::Leaf);
         let leaf_address = leaf_descriptor.address();
         let (dispute, id) = paired_dispute(leaf_descriptor, digest(10), digest(20), 10);
-        assert!(dispute.eliminable_matches(9).is_empty());
-        assert_eq!(dispute.eliminable_matches(10)[0].eliminable_at, 10);
+        assert_eq!(
+            status(&dispute, id),
+            &MatchStatus::Clocked { eliminable_at: 10 }
+        );
 
         let dispute = dispute
             .apply_block([event(
@@ -1194,8 +1079,10 @@ mod tests {
                 },
             )])
             .unwrap();
-        assert!(dispute.eliminable_matches(10).is_empty());
-        assert_eq!(dispute.eliminable_matches(20)[0].eliminable_at, 20);
+        assert_eq!(
+            status(&dispute, id),
+            &MatchStatus::Clocked { eliminable_at: 20 }
+        );
         assert!(
             dispute
                 .clone()
@@ -1220,16 +1107,10 @@ mod tests {
                 },
             )])
             .unwrap();
-        assert!(dispute.eliminable_matches(29).is_empty());
-        assert_eq!(dispute.eliminable_matches(30)[0].eliminable_at, 30);
-        assert!(matches!(
-            dispute
-                .root()
-                .match_by_id_hash(&id.hash())
-                .unwrap()
-                .status(),
-            MatchStatus::Leaf { eliminable_at: 30 }
-        ));
+        assert_eq!(
+            status(&dispute, id),
+            &MatchStatus::Leaf { eliminable_at: 30 }
+        );
         assert!(
             dispute
                 .clone()
@@ -1311,7 +1192,7 @@ mod tests {
                 },
             )])
             .unwrap();
-        assert!(dispute.eliminable_matches(u64::MAX).is_empty());
+        assert!(matches!(status(&dispute, id), MatchStatus::Inner { .. }));
     }
 
     #[test]
@@ -1387,8 +1268,6 @@ mod tests {
             panic!("resolved inner match did not retain its child");
         };
         assert_eq!(child.match_for(&digest(30)).unwrap().id(), child_match);
-        assert!(dispute.eliminable_matches(5).is_empty());
-        assert_eq!(dispute.reachable_tournaments().len(), 1);
         assert_eq!(dispute.historical_tournaments().len(), 2);
 
         let mut root = dispute.root.clone();
@@ -1397,13 +1276,12 @@ mod tests {
         assert!(
             root.tournament(&child_address)
                 .unwrap()
-                .commitments()
-                .next()
+                .commitment(&digest(30))
                 .is_none()
         );
         let (match_id_hash, child) = children.pop().unwrap();
         let displaced = root.restore_child(match_id_hash, child).unwrap();
-        assert!(displaced.commitments().next().is_none());
+        assert!(displaced.commitment(&digest(30)).is_none());
         assert!(
             root.tournament(&child_address)
                 .unwrap()
@@ -1492,12 +1370,18 @@ mod tests {
             ])
             .unwrap();
 
-        assert_eq!(dispute.root().candidate(), None);
         assert_eq!(dispute.root().match_for(&one).unwrap().id(), replacement);
         assert_eq!(
             dispute.root().match_for(&candidate).unwrap().id(),
             replacement
         );
+        assert!(matches!(
+            dispute.root().position(&candidate),
+            CommitmentPosition::Engaged {
+                side: MatchSide::One,
+                ..
+            }
+        ));
         assert!(matches!(
             dispute.root().position(&one),
             CommitmentPosition::Engaged {

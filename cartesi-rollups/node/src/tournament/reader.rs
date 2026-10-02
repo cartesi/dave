@@ -547,8 +547,6 @@ async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Decoded
         (
             EventKind::CommitmentJoined {
                 root: event.commitment.into(),
-                final_state: event.finalStateHash.into(),
-                submitter: event.submitter,
             },
             None,
         )
@@ -890,22 +888,13 @@ mod tests {
             commitment_two: child_two,
         };
         let event = |tournament, kind| Event { tournament, kind };
-        let join = |tournament, root, final_state, submitter| {
-            event(
-                tournament,
-                EventKind::CommitmentJoined {
-                    root,
-                    final_state,
-                    submitter,
-                },
-            )
-        };
+        let join = |tournament, root| event(tournament, EventKind::CommitmentJoined { root });
         let dispute = Dispute::try_new(descriptor(root, 0, TournamentKind::NonLeaf))
             .unwrap()
-            .apply_block([join(root, one, digest(110), address(10))])
+            .apply_block([join(root, one)])
             .unwrap()
             .apply_block([
-                join(root, two, digest(120), address(20)),
+                join(root, two),
                 event(
                     root,
                     EventKind::MatchCreated {
@@ -923,10 +912,10 @@ mod tests {
                 },
             )])
             .unwrap()
-            .apply_block([join(child, child_one, digest(130), address(30))])
+            .apply_block([join(child, child_one)])
             .unwrap()
             .apply_block([
-                join(child, child_two, digest(140), address(40)),
+                join(child, child_two),
                 event(
                     child,
                     EventKind::MatchCreated {
@@ -1003,7 +992,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn decoder_is_strict_and_preserves_submitter() {
+    async fn decoder_is_strict() {
         let root = address(1);
         let at = head(10, 0x10);
         let (chain, asserter, _) = recording_chain();
@@ -1012,14 +1001,7 @@ mod tests {
         else {
             panic!("join was ignored");
         };
-        assert_eq!(
-            event.kind,
-            EventKind::CommitmentJoined {
-                root: digest(10),
-                final_state: digest(110),
-                submitter: address(10),
-            }
-        );
+        assert_eq!(event.kind, EventKind::CommitmentJoined { root: digest(10) });
 
         let id = MatchID {
             commitment_one: digest(10),
@@ -1320,7 +1302,6 @@ mod tests {
             5,
             "cold replay at the watermark does not refetch any stream"
         );
-        assert_eq!(cold.reachable_tournaments().len(), 1);
         assert_eq!(cold.historical_tournaments().len(), 2);
         let parent = cold.root().match_by_id_hash(&parent_match.hash()).unwrap();
         let MatchStatus::Resolved {
@@ -1356,22 +1337,13 @@ mod tests {
             commitment_two: child_two,
         };
         let event = |tournament, kind| Event { tournament, kind };
-        let join = |tournament, root, final_state, submitter| {
-            event(
-                tournament,
-                EventKind::CommitmentJoined {
-                    root,
-                    final_state,
-                    submitter,
-                },
-            )
-        };
+        let join = |tournament, root| event(tournament, EventKind::CommitmentJoined { root });
         let dispute = Dispute::try_new(descriptor(root, 0, TournamentKind::NonLeaf))
             .unwrap()
-            .apply_block([join(root, one, digest(110), address(10))])
+            .apply_block([join(root, one)])
             .unwrap()
             .apply_block([
-                join(root, two, digest(120), address(20)),
+                join(root, two),
                 event(
                     root,
                     EventKind::MatchCreated {
@@ -1389,10 +1361,10 @@ mod tests {
                 },
             )])
             .unwrap()
-            .apply_block([join(child, child_one, digest(130), address(30))])
+            .apply_block([join(child, child_one)])
             .unwrap()
             .apply_block([
-                join(child, child_two, digest(140), address(40)),
+                join(child, child_two),
                 event(
                     child,
                     EventKind::MatchCreated {

@@ -159,14 +159,7 @@ mod tests {
     }
 
     fn join(tournament: Address, root: Digest) -> Event {
-        event(
-            tournament,
-            EventKind::CommitmentJoined {
-                root,
-                final_state: digest(root.data()[0].wrapping_add(100)),
-                submitter: address(root.data()[0]),
-            },
-        )
+        event(tournament, EventKind::CommitmentJoined { root })
     }
 
     fn pair(tournament: Address, one: Digest, two: Digest, at: u64) -> [Event; 2] {
