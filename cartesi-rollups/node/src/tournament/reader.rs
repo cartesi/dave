@@ -25,10 +25,7 @@ use crate::{
     merkle::Digest,
     tournament::{
         MatchID,
-        dispute::{
-            Dispute, Event, EventKind, MatchDeletionReason, MatchStatus, Tournament,
-            WinnerCommitment,
-        },
+        dispute::{Dispute, Event, EventKind, MatchDeletionReason, Tournament, WinnerCommitment},
         observer,
     },
 };
@@ -203,29 +200,14 @@ async fn extend_tournament(
     }
 
     let address = tournament.address();
-    let frozen_children = tournament
-        .matches()
-        .filter(|match_| {
-            matches!(
-                match_.status(),
-                MatchStatus::Resolved { child: Some(_), .. }
-            )
-        })
-        .map(|match_| match_.id_hash())
-        .collect::<HashSet<_>>();
     let logs = chain.raw_logs(address, phase.from, phase.to).await?;
     let mut tournament = fold_local_logs(chain, tournament, logs, validation).await?;
 
-    let children = tournament.take_historical_children();
-    for (match_id_hash, child) in children {
-        if frozen_children.contains(&match_id_hash) {
-            let displaced = tournament.restore_child(match_id_hash, child)?;
-            drop(displaced);
-            continue;
-        }
+    // A child resolved within the range was dropped with its match, so its
+    // stream is never fetched.
+    for (match_id_hash, child) in tournament.take_children() {
         let child = extend_tournament(chain, *child, validation).await?;
-        let displaced = tournament.restore_child(match_id_hash, Box::new(child))?;
-        drop(displaced);
+        drop(tournament.restore_child(match_id_hash, Box::new(child)));
     }
     tournament.validate()?;
     Ok(tournament)
@@ -743,7 +725,6 @@ mod tests {
         root: Address,
         child: Address,
         parent_match: MatchID,
-        child_match: MatchID,
         dispute: Dispute,
     }
 
@@ -805,7 +786,6 @@ mod tests {
             root,
             child,
             parent_match,
-            child_match,
             dispute,
         }
     }
@@ -992,27 +972,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn same_block_child_resolution_completes_parent_first_loading() {
+    async fn a_child_resolved_in_range_is_never_fetched() {
         let fixture = active_recursive_dispute();
         let at = head(20, 0x20);
         let (chain, asserter, requests) = recording_chain();
 
-        // The parent is fetched first even though its deletion is later in the
-        // block than the child's final deletion.
+        // The parent's resolution drops the child before its stream is due,
+        // even when the child's own final deletion is earlier in the block.
         asserter.push_success(&vec![match_deleted_log(
             fixture.root,
             at,
             8,
             fixture.parent_match,
             MatchDeletionReason::ChildTournament,
-            WinnerCommitment::One,
-        )]);
-        asserter.push_success(&vec![match_deleted_log(
-            fixture.child,
-            at,
-            7,
-            fixture.child_match,
-            MatchDeletionReason::Timeout,
             WinnerCommitment::One,
         )]);
 
@@ -1022,23 +994,18 @@ mod tests {
             .await
             .unwrap();
         let dispute = Dispute::from_root(loaded).unwrap();
-        let parent = dispute
-            .root()
-            .match_by_id_hash(&fixture.parent_match.hash())
-            .unwrap();
-        let MatchStatus::Resolved {
-            child: Some(child), ..
-        } = parent.status()
-        else {
-            panic!("parent match did not retain its resolved child");
-        };
-        assert!(matches!(
-            child
-                .match_by_id_hash(&fixture.child_match.hash())
+        assert_eq!(
+            dispute
+                .root()
+                .match_by_id_hash(&fixture.parent_match.hash())
                 .unwrap()
                 .status(),
-            MatchStatus::Resolved { .. }
-        ));
+            &MatchStatus::Resolved {
+                reason: MatchDeletionReason::ChildTournament,
+                winner: WinnerCommitment::One,
+            }
+        );
+        assert!(dispute.tournament(&fixture.child).is_none());
         assert!(asserter.read_q().is_empty());
         assert_eq!(
             requests
@@ -1047,104 +1014,7 @@ mod tests {
                 .iter()
                 .filter(|request| request["method"] == "eth_getLogs")
                 .count(),
-            2,
-            "the newly resolved child must receive its final range fetch"
-        );
-    }
-
-    #[tokio::test]
-    async fn resolved_historical_children_are_not_refetched() {
-        let root = address(1);
-        let child = address(2);
-        let one = digest(10);
-        let two = digest(20);
-        let child_one = digest(30);
-        let child_two = digest(40);
-        let parent_match = MatchID {
-            commitment_one: one,
-            commitment_two: two,
-        };
-        let child_match = MatchID {
-            commitment_one: child_one,
-            commitment_two: child_two,
-        };
-        let event = |tournament, kind| Event { tournament, kind };
-        let join = |tournament, root| event(tournament, EventKind::CommitmentJoined { root });
-        let dispute = Dispute::try_new(descriptor(root, 0, TournamentKind::NonLeaf))
-            .unwrap()
-            .apply_block([join(root, one)])
-            .unwrap()
-            .apply_block([
-                join(root, two),
-                event(
-                    root,
-                    EventKind::MatchCreated {
-                        id: parent_match,
-                        eliminable_at: 20,
-                    },
-                ),
-            ])
-            .unwrap()
-            .apply_block([event(
-                root,
-                EventKind::NewInnerTournament {
-                    match_id_hash: parent_match.hash(),
-                    child: descriptor(child, 1, TournamentKind::Leaf),
-                },
-            )])
-            .unwrap()
-            .apply_block([join(child, child_one)])
-            .unwrap()
-            .apply_block([
-                join(child, child_two),
-                event(
-                    child,
-                    EventKind::MatchCreated {
-                        id: child_match,
-                        eliminable_at: 20,
-                    },
-                ),
-            ])
-            .unwrap()
-            .apply_block([event(
-                child,
-                EventKind::MatchDeleted {
-                    match_id_hash: child_match.hash(),
-                    reason: MatchDeletionReason::Timeout,
-                    winner: WinnerCommitment::One,
-                },
-            )])
-            .unwrap()
-            .apply_block([event(
-                root,
-                EventKind::MatchDeleted {
-                    match_id_hash: parent_match.hash(),
-                    reason: MatchDeletionReason::ChildTournament,
-                    winner: WinnerCommitment::One,
-                },
-            )])
-            .unwrap();
-
-        let at = head(21, 0x21);
-        let (chain, asserter, requests) = recording_chain();
-        asserter.push_success(&Vec::<Log>::new());
-        let phase = ReadPhase::try_new(21, 21, at, None).unwrap();
-        let mut validation = HarvestValidation::new(phase);
-        let loaded = extend_tournament(&chain, dispute.into_root(), &mut validation)
-            .await
-            .unwrap();
-        let dispute = Dispute::from_root(loaded).unwrap();
-
-        assert_eq!(dispute.historical_tournaments().len(), 2);
-        assert!(asserter.read_q().is_empty());
-        let requests = requests.lock().unwrap();
-        assert_eq!(
-            requests
-                .iter()
-                .filter(|request| request["method"] == "eth_getLogs")
-                .count(),
-            1,
-            "only the still-active root stream is extended"
+            1
         );
     }
 

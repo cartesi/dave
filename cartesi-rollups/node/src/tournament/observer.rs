@@ -1106,7 +1106,7 @@ mod tests {
             .unwrap();
         let mut requests = Vec::new();
         collect_standing_requests(dispute.root(), None, &mut requests);
-        assert_eq!(requests.len(), 1, "resolved children are recovery history");
+        assert_eq!(requests.len(), 1, "a resolution drops its child");
         assert_eq!(requests[0].descriptor.address(), root);
         assert_eq!(requests[0].parent_match, None);
     }
@@ -1227,7 +1227,6 @@ mod tests {
         let resolved = MatchStatus::Resolved {
             reason: MatchDeletionReason::Timeout,
             winner: WinnerCommitment::Neither,
-            child: None,
         };
         assert_eq!(
             validate_event_phase(match_id_hash, &resolved, MatchPhase::Absent),

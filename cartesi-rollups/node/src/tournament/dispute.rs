@@ -117,11 +117,11 @@ pub enum MatchStatus {
     Inner {
         child: Box<Tournament>,
     },
+    /// A resolution drops any child: nothing reads a resolved subtree, and
+    /// bond recovery walks the tournaments through its own logs.
     Resolved {
         reason: MatchDeletionReason,
         winner: WinnerCommitment,
-        /// A resolved child remains owned for later bond recovery.
-        child: Option<Box<Tournament>>,
     },
 }
 
@@ -153,27 +153,21 @@ impl Match {
         !matches!(&self.status, MatchStatus::Resolved { .. })
     }
 
-    fn historical_child(&self) -> Option<&Tournament> {
+    fn child(&self) -> Option<&Tournament> {
         match &self.status {
             MatchStatus::Inner { child } => Some(child),
-            MatchStatus::Resolved {
-                child: Some(child), ..
-            } => Some(child),
             MatchStatus::Clocked { .. }
             | MatchStatus::Leaf { .. }
-            | MatchStatus::Resolved { child: None, .. } => None,
+            | MatchStatus::Resolved { .. } => None,
         }
     }
 
-    fn historical_child_mut(&mut self) -> Option<&mut Box<Tournament>> {
+    fn child_mut(&mut self) -> Option<&mut Box<Tournament>> {
         match &mut self.status {
             MatchStatus::Inner { child } => Some(child),
-            MatchStatus::Resolved {
-                child: Some(child), ..
-            } => Some(child),
             MatchStatus::Clocked { .. }
             | MatchStatus::Leaf { .. }
-            | MatchStatus::Resolved { child: None, .. } => None,
+            | MatchStatus::Resolved { .. } => None,
         }
     }
 }
@@ -197,7 +191,7 @@ pub enum CommitmentPosition<'a> {
     },
 }
 
-/// One tournament and every child tournament it has ever created.
+/// One tournament and the child tournaments of its live matches.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tournament {
     descriptor: TournamentDescriptor,
@@ -301,13 +295,6 @@ impl Tournament {
     pub fn validate(&self) -> Result<(), DisputeError> {
         self.collect_unique_addresses(&mut HashSet::new())?;
         self.validate_contents()
-    }
-
-    /// Returns this tournament and all children retained in its history.
-    pub fn historical_tournaments(&self) -> Vec<&Tournament> {
-        let mut tournaments = Vec::new();
-        self.collect_historical(&mut tournaments);
-        tournaments
     }
 
     fn apply_event(&mut self, event: Event) -> Result<(), DisputeError> {
@@ -470,34 +457,16 @@ impl Tournament {
                 tournament: self.address(),
                 match_id_hash,
             })?;
-        let mut match_ = self.matches.remove(index);
-
-        let child = match (reason, winner, match_.status) {
-            (MatchDeletionReason::ChildTournament, _, MatchStatus::Inner { child }) => Some(child),
-            (
-                MatchDeletionReason::Step,
-                WinnerCommitment::One | WinnerCommitment::Two,
-                MatchStatus::Leaf { .. },
-            )
-            | (
-                MatchDeletionReason::Timeout,
-                _,
-                MatchStatus::Clocked { .. } | MatchStatus::Leaf { .. },
-            ) => None,
-            (_, _, MatchStatus::Resolved { .. }) => {
-                return Err(DisputeError::MatchAlreadyResolved {
-                    tournament: self.address(),
-                    match_id_hash,
-                });
-            }
-            _ => {
-                return Err(DisputeError::DeletionReasonMismatch {
-                    tournament: self.address(),
-                    match_id_hash,
-                    reason,
-                });
-            }
-        };
+        // Accept any reason for any live match: the contract owns which
+        // deletions are legal, and a stricter fold could only stall on one
+        // it did not foresee.
+        let match_ = &self.matches[index];
+        if !match_.is_live() {
+            return Err(DisputeError::MatchAlreadyResolved {
+                tournament: self.address(),
+                match_id_hash,
+            });
+        }
 
         if let Some(winner_root) = winner.winner(match_.id) {
             let latest_match = self
@@ -515,12 +484,7 @@ impl Tournament {
             }
         }
 
-        match_.status = MatchStatus::Resolved {
-            reason,
-            winner,
-            child,
-        };
-        self.matches.insert(index, match_);
+        self.matches[index].status = MatchStatus::Resolved { reason, winner };
         Ok(())
     }
 
@@ -576,7 +540,7 @@ impl Tournament {
         }
         self.matches
             .iter()
-            .filter_map(Match::historical_child)
+            .filter_map(Match::child)
             .find_map(|child| child.tournament(address))
     }
 
@@ -585,20 +549,13 @@ impl Tournament {
             return Some(self);
         }
         for match_ in &mut self.matches {
-            if let Some(child) = match_.historical_child_mut()
+            if let Some(child) = match_.child_mut()
                 && let Some(tournament) = child.tournament_mut(address)
             {
                 return Some(tournament);
             }
         }
         None
-    }
-
-    fn collect_historical<'a>(&'a self, tournaments: &mut Vec<&'a Tournament>) {
-        tournaments.push(self);
-        for child in self.matches.iter().filter_map(Match::historical_child) {
-            child.collect_historical(tournaments);
-        }
     }
 
     fn collect_unique_addresses(
@@ -608,7 +565,7 @@ impl Tournament {
         if !addresses.insert(self.address()) {
             return Err(DisputeError::DuplicateTournament(self.address()));
         }
-        for child in self.matches.iter().filter_map(Match::historical_child) {
+        for child in self.matches.iter().filter_map(Match::child) {
             child.collect_unique_addresses(addresses)?;
         }
         Ok(())
@@ -616,28 +573,7 @@ impl Tournament {
 
     fn validate_contents(&self) -> Result<(), DisputeError> {
         self.validate_local_contents()?;
-
-        for match_ in &self.matches {
-            let Some(child) = match_.historical_child() else {
-                continue;
-            };
-            if matches!(&match_.status, MatchStatus::Resolved { .. })
-                && child.matches.iter().any(Match::is_live)
-            {
-                return Err(
-                    self.invariant("a resolved parent match retained a child with live matches")
-                );
-            }
-            if matches!(
-                &match_.status,
-                MatchStatus::Resolved {
-                    winner: WinnerCommitment::One | WinnerCommitment::Two,
-                    ..
-                }
-            ) && child.candidate.is_none()
-            {
-                return Err(self.invariant("a child-tournament winner requires a child candidate"));
-            }
+        for child in self.matches.iter().filter_map(Match::child) {
             child.validate_contents()?;
         }
         Ok(())
@@ -695,16 +631,6 @@ impl Tournament {
                     return Err(self.invariant("a leaf tournament contains an inner tournament"));
                 }
                 MatchStatus::Resolved {
-                    reason: MatchDeletionReason::ChildTournament,
-                    child: None,
-                    ..
-                }
-                | MatchStatus::Resolved {
-                    reason: MatchDeletionReason::Step | MatchDeletionReason::Timeout,
-                    child: Some(_),
-                    ..
-                } => return Err(self.invariant("a resolved match has an invalid child")),
-                MatchStatus::Resolved {
                     reason: MatchDeletionReason::Step,
                     winner: WinnerCommitment::Neither,
                     ..
@@ -715,7 +641,7 @@ impl Tournament {
                 | MatchStatus::Resolved { .. } => {}
             }
 
-            if let Some(child) = match_.historical_child() {
+            if let Some(child) = match_.child() {
                 let expected_level = self.descriptor.level().checked_add(1).ok_or_else(|| {
                     self.invariant("the parent tournament level cannot be incremented")
                 })?;
@@ -783,11 +709,11 @@ impl Tournament {
     ///
     /// This is crate-visible so the fused loader can move each child through
     /// recursive extension, then restore it before publishing the tree.
-    pub(crate) fn take_historical_children(&mut self) -> Vec<(Digest, Box<Tournament>)> {
+    pub(crate) fn take_children(&mut self) -> Vec<(Digest, Box<Tournament>)> {
         let mut children = Vec::new();
         for match_ in &mut self.matches {
             let id_hash = match_.id_hash();
-            let Some(child) = match_.historical_child_mut() else {
+            let Some(child) = match_.child_mut() else {
                 continue;
             };
             let placeholder = Box::new(Self::new(child.descriptor));
@@ -796,28 +722,23 @@ impl Tournament {
         children
     }
 
-    /// Restores one live or resolved child and returns the displaced shell.
+    /// Restores one child taken by [`Self::take_children`] and returns the
+    /// displaced shell. Only the child's own stream folds in between, so its
+    /// parent match is still live.
     pub(crate) fn restore_child(
         &mut self,
         match_id_hash: Digest,
         mut child: Box<Tournament>,
-    ) -> Result<Box<Tournament>, DisputeError> {
-        let tournament = self.address();
-        let match_ = self.match_by_id_hash_mut(&match_id_hash)?;
-        let slot = match_
-            .historical_child_mut()
-            .ok_or(DisputeError::MatchHasNoChild {
-                tournament,
-                match_id_hash,
-            })?;
-        if slot.descriptor != child.descriptor {
-            return Err(DisputeError::ChildDescriptorMismatch {
-                tournament,
-                match_id_hash,
-            });
-        }
+    ) -> Box<Tournament> {
+        let slot = self
+            .matches
+            .iter_mut()
+            .find(|match_| match_.id_hash() == match_id_hash)
+            .and_then(Match::child_mut)
+            .expect("a taken child returns to its live parent match");
+        debug_assert_eq!(slot.descriptor, child.descriptor);
         std::mem::swap(slot, &mut child);
-        Ok(child)
+        child
     }
 }
 
@@ -851,7 +772,7 @@ impl Dispute {
         Ok(dispute)
     }
 
-    /// Finds a tournament, including children retained only for recovery.
+    /// Finds this tournament or one behind a live match.
     #[cfg(test)]
     pub fn tournament(&self, address: &Address) -> Option<&Tournament> {
         self.root.tournament(address)
@@ -867,11 +788,6 @@ impl Dispute {
         let dispute = Self { root };
         dispute.validate()?;
         Ok(dispute)
-    }
-
-    /// Returns every tournament, including children retained for recovery.
-    pub fn historical_tournaments(&self) -> Vec<&Tournament> {
-        self.root.historical_tournaments()
     }
 
     pub fn validate(&self) -> Result<(), DisputeError> {
@@ -922,12 +838,6 @@ pub enum DisputeError {
         tournament: Address,
         match_id_hash: Digest,
     },
-    #[error("match {match_id_hash} in tournament {tournament} cannot be deleted for {reason:?}")]
-    DeletionReasonMismatch {
-        tournament: Address,
-        match_id_hash: Digest,
-        reason: MatchDeletionReason,
-    },
     #[error(
         "match creation in tournament {tournament} expected candidate {expected:?}, got {actual}"
     )]
@@ -942,18 +852,6 @@ pub enum DisputeError {
         child: Address,
         expected: u64,
         actual: u64,
-    },
-    #[error("match {match_id_hash} in tournament {tournament} has no child")]
-    MatchHasNoChild {
-        tournament: Address,
-        match_id_hash: Digest,
-    },
-    #[error(
-        "replacement child for match {match_id_hash} in tournament {tournament} has another descriptor"
-    )]
-    ChildDescriptorMismatch {
-        tournament: Address,
-        match_id_hash: Digest,
     },
     #[error("invalid state in tournament {tournament}: {detail}")]
     InvariantViolation {
@@ -1083,21 +981,6 @@ mod tests {
             status(&dispute, id),
             &MatchStatus::Clocked { eliminable_at: 20 }
         );
-        assert!(
-            dispute
-                .clone()
-                .apply_block([event(
-                    leaf_address,
-                    EventKind::MatchDeleted {
-                        match_id_hash: id.hash(),
-                        reason: MatchDeletionReason::Step,
-                        winner: WinnerCommitment::One,
-                    },
-                )])
-                .is_err(),
-            "a bisection match cannot resolve by step before its leaf seal"
-        );
-
         let dispute = dispute
             .apply_block([event(
                 leaf_address,
@@ -1195,13 +1078,16 @@ mod tests {
         assert!(matches!(status(&dispute, id), MatchStatus::Inner { .. }));
     }
 
-    #[test]
-    fn resolved_matches_retain_children_only_for_history_and_recovery() {
+    fn delegated_dispute() -> (Dispute, MatchID, Address) {
         let root_descriptor = descriptor(1, 0, TournamentKind::NonLeaf);
         let child_descriptor = descriptor(2, 1, TournamentKind::Leaf);
         let root_address = root_descriptor.address();
         let child_address = child_descriptor.address();
         let (dispute, root_match) = paired_dispute(root_descriptor, digest(10), digest(20), 10);
+        let child_match = MatchID {
+            commitment_one: digest(30),
+            commitment_two: digest(40),
+        };
         let dispute = dispute
             .apply_block([event(
                 root_address,
@@ -1210,12 +1096,7 @@ mod tests {
                     child: child_descriptor,
                 },
             )])
-            .unwrap();
-        let child_match = MatchID {
-            commitment_one: digest(30),
-            commitment_two: digest(40),
-        };
-        let dispute = dispute
+            .unwrap()
             .apply_block([join(child_address, digest(30))])
             .unwrap()
             .apply_block([
@@ -1223,55 +1104,15 @@ mod tests {
                 create(child_address, child_match, 5),
             ])
             .unwrap();
-        assert!(
-            dispute
-                .clone()
-                .apply_block([event(
-                    root_address,
-                    EventKind::MatchDeleted {
-                        match_id_hash: root_match.hash(),
-                        reason: MatchDeletionReason::ChildTournament,
-                        winner: WinnerCommitment::One,
-                    },
-                )])
-                .is_err(),
-            "a parent cannot resolve while its child still has a live match"
-        );
-        let dispute = dispute
-            .apply_block([event(
-                child_address,
-                EventKind::MatchDeleted {
-                    match_id_hash: child_match.hash(),
-                    reason: MatchDeletionReason::Timeout,
-                    winner: WinnerCommitment::One,
-                },
-            )])
-            .unwrap()
-            .apply_block([event(
-                root_address,
-                EventKind::MatchDeleted {
-                    match_id_hash: root_match.hash(),
-                    reason: MatchDeletionReason::ChildTournament,
-                    winner: WinnerCommitment::One,
-                },
-            )])
-            .unwrap();
+        (dispute, root_match, child_address)
+    }
 
-        let MatchStatus::Resolved {
-            child: Some(child), ..
-        } = dispute
-            .root()
-            .match_by_id_hash(&root_match.hash())
-            .unwrap()
-            .status()
-        else {
-            panic!("resolved inner match did not retain its child");
-        };
-        assert_eq!(child.match_for(&digest(30)).unwrap().id(), child_match);
-        assert_eq!(dispute.historical_tournaments().len(), 2);
+    #[test]
+    fn children_move_through_extension_and_drop_on_resolution() {
+        let (dispute, root_match, child_address) = delegated_dispute();
 
         let mut root = dispute.root.clone();
-        let mut children = root.take_historical_children();
+        let mut children = root.take_children();
         assert_eq!(children.len(), 1);
         assert!(
             root.tournament(&child_address)
@@ -1280,15 +1121,55 @@ mod tests {
                 .is_none()
         );
         let (match_id_hash, child) = children.pop().unwrap();
-        let displaced = root.restore_child(match_id_hash, child).unwrap();
+        let displaced = root.restore_child(match_id_hash, child);
         assert!(displaced.commitment(&digest(30)).is_none());
-        assert!(
-            root.tournament(&child_address)
-                .unwrap()
-                .commitment(&digest(30))
-                .is_some()
+        assert_eq!(root, dispute.root);
+
+        let dispute = dispute
+            .apply_block([event(
+                address(1),
+                EventKind::MatchDeleted {
+                    match_id_hash: root_match.hash(),
+                    reason: MatchDeletionReason::ChildTournament,
+                    winner: WinnerCommitment::One,
+                },
+            )])
+            .unwrap();
+        assert_eq!(
+            status(&dispute, root_match),
+            &MatchStatus::Resolved {
+                reason: MatchDeletionReason::ChildTournament,
+                winner: WinnerCommitment::One,
+            }
         );
-        root.validate().unwrap();
+        assert!(dispute.tournament(&child_address).is_none());
+    }
+
+    #[test]
+    fn a_delegated_match_deleted_by_timeout_folds() {
+        let (dispute, root_match, child_address) = delegated_dispute();
+        let dispute = dispute
+            .apply_block([event(
+                address(1),
+                EventKind::MatchDeleted {
+                    match_id_hash: root_match.hash(),
+                    reason: MatchDeletionReason::Timeout,
+                    winner: WinnerCommitment::One,
+                },
+            )])
+            .unwrap();
+        assert!(dispute.tournament(&child_address).is_none());
+        assert!(matches!(
+            dispute.root().position(&digest(10)),
+            CommitmentPosition::Candidate { .. }
+        ));
+        assert!(matches!(
+            dispute.root().position(&digest(20)),
+            CommitmentPosition::Eliminated {
+                reason: MatchDeletionReason::Timeout,
+                ..
+            }
+        ));
     }
 
     #[test]

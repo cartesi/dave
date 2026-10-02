@@ -230,8 +230,10 @@ the inclusive block at which a clock-bearing match can be eliminated. Point
 reads add only facts events do not carry: one immutable descriptor when a
 tournament is discovered, one current standing per reachable tournament, and
 the phase payload for each engaged match on the Hero's one recursive path.
-When a parent resolution becomes Solid, its retained child subtree is frozen:
-it remains available to recovery but no longer causes structural log fetches.
+A match resolution drops its child subtree, so the reader stops fetching the
+child's stream, even for the range in which the parent resolved: nothing reads
+a resolved child, and bond recovery walks the tournaments through its own
+`NewInnerTournament` logs.
 Standing calls use bounded concurrency. A clock-bearing Hero match needs a
 timeout classification and one phase projection; a delegated parent needs only
 its sealed projection. These reads are pinned to `H`. The observer narrows ABI
