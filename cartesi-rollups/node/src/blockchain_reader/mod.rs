@@ -161,7 +161,7 @@ impl BlockchainReader {
             // the first transient error - the exact failure class the
             // epoch manager's 2026-07-10 fix addressed.
             if let Err(e) = self.tick(&chain).await {
-                log::warn!("blockchain read failed, retrying next tick: {e}");
+                log::warn!("blockchain read failed, retrying next tick: {e:#}");
             }
 
             tokio::select! { biased;

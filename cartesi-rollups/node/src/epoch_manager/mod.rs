@@ -67,7 +67,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 // Catch up completed historical epochs without a polling sleep.
                 Ok(true) => continue,
                 Ok(false) => {}
-                Err(e) => log::warn!("epoch tick failed, retrying next tick: {e}"),
+                Err(e) => log::warn!("epoch tick failed, retrying next tick: {e:#}"),
             }
             tokio::select! { biased;
                 _ = shutdown.requested() => break,
@@ -128,12 +128,12 @@ impl<AS: ArenaSender> EpochManager<AS> {
                             match self.plan_settlement(&consensus, epoch.epoch_number).await {
                                 Ok(step) => wave.extend(step),
                                 Err(e) => log::warn!(
-                                    "settlement planning failed, retrying next tick: {e}"
+                                    "settlement planning failed, retrying next tick: {e:#}"
                                 ),
                             }
                         }
                     }
-                    Err(e) => log::warn!("dispute planning failed, retrying next tick: {e}"),
+                    Err(e) => log::warn!("dispute planning failed, retrying next tick: {e:#}"),
                 }
             } else {
                 debug!(
@@ -152,7 +152,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     recovery.complete
                 }
                 Err(e) => {
-                    log::warn!("bond recovery planning failed, retrying next tick: {e}");
+                    log::warn!("bond recovery planning failed, retrying next tick: {e:#}");
                     false
                 }
             };

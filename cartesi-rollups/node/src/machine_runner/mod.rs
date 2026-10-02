@@ -76,7 +76,7 @@ impl MachineRunner {
             // the validator. Invariant violations are asserts and
             // stay fatal through the panic path.
             if let Err(e) = self.process_rollup() {
-                log::warn!("machine advance failed, retrying next tick: {e}");
+                log::warn!("machine advance failed, retrying next tick: {e:#}");
             }
 
             // No publishable batch is ready. An open tail shorter
