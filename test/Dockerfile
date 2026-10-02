@@ -158,10 +158,10 @@ RUN \
   --mount=type=cache,target=prt/contracts/out,sharing=locked \
   --mount=type=cache,target=prt/contracts/cache,sharing=locked \
   just build-rust-workspace; \
-  cp target/debug/cartesi-rollups-prt-node .
+  cp target/debug/cartesi-sling-node .
 
 # because of `--mount`, we need to do this.
-RUN mkdir -p target/debug && mv cartesi-rollups-prt-node target/debug/
+RUN mkdir -p target/debug && mv cartesi-sling-node target/debug/
 
 # The build context omits Git metadata; retain the exact pin used by the image
 # fingerprints so runtime doctor and verification use the same provenance.
