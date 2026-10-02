@@ -534,6 +534,7 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
     async fn test_input_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let inputbox = IInputBox::new(address_book.input_box, &provider);
@@ -575,6 +576,7 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
     async fn test_epoch_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let daveconsensus = DaveConsensus::new(address_book.consensus, &provider);
@@ -594,6 +596,7 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
     async fn test_blockchain_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
 

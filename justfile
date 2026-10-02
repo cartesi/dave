@@ -201,12 +201,15 @@ test-engine-machine: bind
       --ignored --skip computation_hash_corpus --skip reference_cli_goldens_hold
 
 # the node's workers against a deterministic anvil, serially (see
-# cartesi-rollups/node/src/harness/mod.rs; needs the devnet bundle)
+# cartesi-rollups/node/src/harness/mod.rs; needs the devnet bundle), with
+# every other test that spawns anvil: the emulator flocks machine files
+# without O_CLOEXEC, so an anvil spawned while another test stores a
+# machine keeps that machine locked
 test-node-harness: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/devnet-fingerprint.sh verify
-    cargo test -p cartesi-rollups-prt-node --lib harness:: -- \
-      --ignored --test-threads 1
+    cargo test -p cartesi-rollups-prt-node --lib -- --ignored --test-threads 1 \
+      harness:: blockchain_reader:: provider:: args::
 
 # the released CLI's answers behind the runner goldens (needs cartesi-machine
 # 0.21.0 on PATH; UPDATE_FIXTURES=1 regenerates them)
