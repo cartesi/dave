@@ -280,7 +280,11 @@ stretch steps one captured span and repeats its root. The tree is the one
 stepping every span would build. The stepped path stays as the reference
 (plans/two-level-sling.md, D7) and covers one cycle the v0.21 collector gets
 wrong: a rejection on the input budget's last cycle keeps the physical root
-instead of the revert root, so that cycle is stepped. Memory is one
+instead of the revert root, so that cycle is stepped. That fallback cannot
+cover an input whose first cycle is its budget's last, which takes a delivery
+at mcycle 2^64 - 2, where the budget saturates: a template preset there, or
+centuries of machine time. It is out of model, and the node stops with an
+assert where stepping would proceed. Memory is one
 collection call's roots plus a tree over one root per active big cycle, and
 an idle stretch costs one span however long it is.
 
