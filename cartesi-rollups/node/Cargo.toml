@@ -1,5 +1,5 @@
 [package]
-name = "cartesi-rollups-prt-node"
+name = "cartesi-sling-node"
 version = { workspace = true }
 
 authors = { workspace = true }

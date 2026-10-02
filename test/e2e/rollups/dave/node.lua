@@ -31,8 +31,8 @@ local function start_dave_node(machine_path, app_address, db_path, sleep_duratio
     -- cadence instead (one commit per gap of inputs).
     local cmd = string.format(
         [[echo $$ ; exec env MACHINE_PATH='%s' APP_ADDRESS='%s' STATE_DIR='%s' \
-        RUST_BACKTRACE='%s' RUST_LOG='info',cartesi_rollups_prt_node='%s' \
-        ../../../target/debug/cartesi-rollups-prt-node --sleep-duration-seconds %s \
+        RUST_BACKTRACE='%s' RUST_LOG='info',cartesi_sling_node='%s' \
+        ../../../target/debug/cartesi-sling-node --sleep-duration-seconds %s \
         --snapshot-gap-inputs %d --web3-rpc-url %s pk --web3-private-key %s >> %s 2>&1]],
         machine_path, app_address, db_path, trace_level, verbosity, sleep_duration, snapshot_gap,
         ENDPOINT, ANVIL_KEY_7, DAVE_LOG

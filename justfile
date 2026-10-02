@@ -197,7 +197,7 @@ test-rust-workspace: bind
 test-engine-machine: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
-    cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
+    cargo test -p cartesi-sling-node --test engine_machine -- \
       --ignored --skip computation_hash_corpus
 
 # download and verify v0.21's released computation-hash corpus
@@ -220,20 +220,20 @@ test-computation-hash-corpus: \
 # regenerate the measurement baselines (docs/measurements/)
 measure *ARGS: bind
     ./script/machine-image-fingerprint.sh verify echo
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/echo/machine-image \
       --out docs/measurements/measurements.md --profile echo "$@"
 
 measure-stress *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/stress/machine-image \
       --out docs/measurements/measurements-stress.md --profile stress "$@"
 
 # derive tournament level constants (docs/measurements/constants.md)
 measure-constants *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/stress/machine-image --constants \
       --out docs/measurements/constants.md --profile stress "$@"
 
