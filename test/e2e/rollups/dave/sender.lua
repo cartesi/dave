@@ -55,7 +55,6 @@ function Sender:new(input_box_address, dave_app_factory_address, app_contract_ad
         input_box_address = input_box_address,
         dave_app_factory_address = dave_app_factory_address,
         app_contract_address = app_contract_address,
-        tx_count = 0,
     }
 
     setmetatable(sender, self)
@@ -91,8 +90,6 @@ function Sender:_send_tx(destination, sig, args, value)
         handle:close()
         error(string.format("Send transaction `%s` reverted:\n%s", sig, ret))
     end
-
-    self.tx_count = self.tx_count + 1
     handle:close()
 end
 
@@ -126,68 +123,8 @@ function Sender:tx_new_dave_app(template_hash, sentries, salt)
     )
 end
 
-function Sender:tx_join_tournament(tournament_address, final_state, proof, left_child, right_child)
-    local sig = [[joinTournament(bytes32,bytes32[],bytes32,bytes32)]]
-
-    -- Get bond value by calling the view function
-    local bondValueCmd = string.format(
-        [[cast call --rpc-url "%s" "%s" "bondValue()(uint256)" 2>&1]],
-        self.endpoint,
-        tournament_address
-    )
-
-    local handle = io.popen(bondValueCmd)
-    assert(handle)
-    local bondValueResult = handle:read("*a")
-    handle:close()
-
-    if bondValueResult:find("Error") then
-        error(string.format("Failed to get bond value: %s", bondValueResult))
-    end
-
-    -- Extract the decimal bond value directly from the result
-    local bondValueDecimalStr = bondValueResult:match("(%d+)")
-    if not bondValueDecimalStr then
-        error("Failed to parse decimal bond value from result: " .. bondValueResult)
-    end
-
-    return pcall(
-        self._send_tx,
-        self,
-        tournament_address,
-        sig,
-        { final_state, proof, left_child, right_child },
-        bondValueDecimalStr
-    )
-end
-
 function Sender:advance_blocks(blocks)
     blockchain_utils.advance_time(blocks, self.endpoint)
-end
-
-function Sender:wallet_address()
-    local cmd = string.format([[cast wallet address -- "%s"]], self.pk)
-
-    local handle = io.popen(cmd)
-    assert(handle)
-
-    local ret = handle:read()
-
-    if ret:find "Error" then
-        local err_str = ret .. handle:read "*a"
-        handle:close()
-        error(
-            string.format(
-                "Could not derive wallet address from private key %s:\n%s",
-                self.pk,
-                err_str
-            )
-        )
-    end
-
-    handle:close()
-
-    return ret
 end
 
 return Sender

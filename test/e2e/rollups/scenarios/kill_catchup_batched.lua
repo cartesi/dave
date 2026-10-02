@@ -2,8 +2,8 @@ require "setup_path"
 
 local env = require "test_env"
 
--- The batched sibling of kill_catchup: with a snapshot gap above 1,
--- the machine-runner commits one batch of inputs per transaction, so a
+-- With a snapshot gap above 1, the machine-runner commits one batch
+-- of inputs per transaction, so a
 -- SIGKILL mid-batch drops the uncommitted records entirely and the
 -- resumed run re-executes the whole batch. The oracle comparison
 -- proves the replay reproduces identical rows - the e2e counterpart

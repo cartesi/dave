@@ -25,12 +25,11 @@ local INPUT_BOX_ADDRESS = assert(os.getenv("INPUT_BOX"))
 local SALT = "0x" .. string.rep("00", 32)
 
 local SLEEP_TIME = 1
--- Blocks advanced per wait_until_epoch poll (4s cadence). Timeout
--- waits dominate the timeout-heavy scenarios' wall clock (suite
--- economics, docs/test-harness.md): devnet allowances are ~400 blocks
--- (no censorship budget, only the honest path's inclusions and builds)
--- and eliminations need as many again past expiry, so 16 meant minutes of
--- throttled ticking per expiry. 128 keeps a few polls of granularity
+-- Blocks advanced per wait_until_epoch poll (4s cadence). Settlement
+-- waits on protocol time: devnet allowances are ~400 blocks (no
+-- censorship budget, only the honest path's inclusions and builds)
+-- and eliminations need as many again past expiry, so 16 meant minutes
+-- of throttled ticking per expiry. 128 keeps a few polls of granularity
 -- per allowance; overshooting an expiry is harmless (elimination
 -- WANTS overshoot). Env-overridable for tuning.
 local FAST_FORWARD_TIME = tonumber(os.getenv("FAST_FORWARD_TIME")) or 128

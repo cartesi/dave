@@ -1,23 +1,5 @@
 local Hash = require "cryptography.hash"
 local eth_abi = require "utils.eth_abi"
-local bint = require "utils.bint" (256)
-
-local MAX_U64 = (bint.one() << 64) - 1
-local MAX_U64_DECIMAL = "18446744073709551615"
-
-local function decoded_uint64(value, name)
-    assert(type(value) == "string" and value:match("^%d+$"),
-        name .. " is not an unsigned integer")
-    local normalized = value:gsub("^0+", "")
-    assert(#normalized < #MAX_U64_DECIMAL
-        or #normalized == #MAX_U64_DECIMAL
-        and normalized <= MAX_U64_DECIMAL,
-        name .. " exceeds uint64")
-    local parsed = bint(value)
-    assert(bint.ule(parsed, MAX_U64), name .. " exceeds uint64")
-    return parsed
-end
-
 local function parse_topics(json)
     local _, _, topics = json:find(
         [==["topics":%[([^%]]*)%]]==]
@@ -178,61 +160,6 @@ function Reader:_call(address, sig, args)
     return ret
 end
 
-function Reader:read_match_created(tournament_address)
-    local sig = "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64)"
-    local data_sig = "(bytes32,uint64)"
-
-    local logs = self:_read_logs(tournament_address, sig, { false, false, false }, data_sig)
-
-    local ret = {}
-    for k, v in ipairs(logs) do
-        local log = {}
-        log.tournament_address = tournament_address
-        log.meta = v.meta
-
-        log.match_id_hash = Hash:from_digest_hex(v.emited_topics[2])
-        log.commitment_one = Hash:from_digest_hex(v.emited_topics[3])
-        log.commitment_two = Hash:from_digest_hex(v.emited_topics[4])
-        log.left_hash = Hash:from_digest_hex(v.decoded_data[1])
-        log.eliminable_at = decoded_uint64(
-            v.decoded_data[2],
-            "MatchCreated.eliminableAt"
-        )
-
-        ret[k] = log
-    end
-
-    return ret
-end
-
-function Reader:read_leaf_match_sealed(tournament_address, match_id_hash)
-    local sig = "LeafMatchSealed(bytes32,uint64)"
-    local data_sig = "(uint64)"
-    local match_topic = match_id_hash and
-        match_id_hash:hex_string() or false
-    local logs = self:_read_logs(
-        tournament_address,
-        sig,
-        { match_topic, false, false },
-        data_sig
-    )
-
-    local ret = {}
-    for index, value in ipairs(logs) do
-        ret[index] = {
-            tournament_address = tournament_address,
-            meta = value.meta,
-            match_id_hash =
-                Hash:from_digest_hex(value.emited_topics[2]),
-            eliminable_at = decoded_uint64(
-                value.decoded_data[1],
-                "LeafMatchSealed.eliminableAt"
-            ),
-        }
-    end
-    return ret
-end
-
 function Reader:read_commitment_joined(tournament_address)
     local sig = "CommitmentJoined(bytes32,bytes32,address)"
     local data_sig = "(bytes32)"
@@ -248,26 +175,6 @@ function Reader:read_commitment_joined(tournament_address)
 
         ret[k] = log
     end
-
-    return ret
-end
-
-function Reader:read_tournament_created(tournament_address, match_id_hash)
-    local sig = "NewInnerTournament(bytes32,address)"
-    local data_sig = "()"
-
-    local logs = self:_read_logs(tournament_address, sig, { match_id_hash:hex_string(), false, false }, data_sig)
-    assert(#logs <= 1)
-
-    if #logs == 0 then return false end
-    local log = logs[1]
-
-    local child_addr = "0x" .. string.sub(log.emited_topics[3], 27)
-
-    local ret = {
-        parent_match = match_id_hash,
-        new_tournament = child_addr,
-    }
 
     return ret
 end
@@ -296,47 +203,6 @@ function Reader:read_constants(tournament_address)
     }
 
     return constants
-end
-
--- The ABI-encoded TournamentArguments ride the ERC-1167 clone as immutable
--- arguments after the 45-byte proxy runtime; `decode_sig` names the shape.
-function Reader:read_clone_args(address, decode_sig)
-    local code_cmd = string.format(
-        'cast code --rpc-url "%s" "%s" 2>&1', self.endpoint, address
-    )
-    local handle = io.popen(code_cmd)
-    assert(handle)
-    local code = handle:read "*a"
-    handle:close()
-    if code:find "Error" or code:find "error" then
-        error(string.format("Code read for `%s` failed:\n%s", address, code))
-    end
-    code = assert(code:match("(0x%x+)"), "clone has no code")
-    assert(#code > 2 + 45 * 2, "clone code carries no immutable arguments")
-    local args = "0x" .. code:sub(3 + 45 * 2)
-
-    local decode_cmd = string.format(
-        'cast abi-decode "%s" "%s" 2>&1', decode_sig, args
-    )
-    handle = io.popen(decode_cmd)
-    assert(handle)
-
-    local ret = {}
-    local str = handle:read()
-    while str do
-        if str:find "Error" or str:find "error" then
-            local err_str = handle:read "*a"
-            handle:close()
-            error(string.format(
-                "Clone args decode `%s` failed:\n%s%s", decode_sig, str, err_str
-            ))
-        end
-        table.insert(ret, str)
-        str = handle:read()
-    end
-    handle:close()
-
-    return ret
 end
 
 function Reader:root_tournament_winner(address)

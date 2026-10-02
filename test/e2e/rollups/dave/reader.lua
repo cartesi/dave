@@ -365,24 +365,6 @@ function Reader:root_tournament_winner(address)
     return self.inner_reader:root_tournament_winner(address)
 end
 
-function Reader:read_bond_recovered(tournament_address)
-    local logs = self.inner_reader:_read_logs(
-        tournament_address,
-        "BondRecovered(bytes32,address,uint256,uint256)",
-        { false, false, false },
-        "(uint256,uint256)"
-    )
-    local recovered = {}
-    for index, log in ipairs(logs) do
-        recovered[index] = {
-            meta = log.meta,
-            commitment = Hash:from_digest_hex(log.emited_topics[2]),
-            claimer = "0x" .. log.emited_topics[3]:sub(-40),
-        }
-    end
-    return recovered
-end
-
 function Reader:commitment_exists(tournament, commitment)
     local commitments = self.inner_reader:read_commitment_joined(tournament)
 
@@ -393,22 +375,6 @@ function Reader:commitment_exists(tournament, commitment)
     end
 
     return false
-end
-
-function Reader:balance(address)
-    local cmd = string.format("cast balance %s --rpc-url %s", address, self.endpoint)
-    local handle = io.popen(cmd)
-    assert(handle)
-
-    local balance = handle:read()
-    local tail = handle:read "*a"
-    if balance:find "Error" or tail:find "error" then
-        handle:close()
-        error(string.format("Call `%s` failed:\n%s%s", cmd, balance, tail))
-    end
-    handle:close()
-
-    return uint256.new(balance)
 end
 
 function Reader:calculate_dave_app_address(template_hash, sentries, salt)

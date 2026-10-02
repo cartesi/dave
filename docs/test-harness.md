@@ -133,9 +133,9 @@ harness itself. Each rule below closes a reproduced harness failure:
   `drive_player_until`; big jumps are safe only when no match awaits
   the node's move (`wait_until_epoch`'s settlement polling).
 - Sybils auto-allocate distinct signing accounts (from 2 up;
-  account 1 is the honest node's and is refused): two sybils sending
-  concurrently on the old shared default wedged on nonces, and every
-  serial scenario had silently gotten away with it.
+  account 1 is the harness sender's and is refused): two senders on
+  one account wedge on nonces. The node signs with account 8, so a
+  scenario must not start a seventh sybil.
 - `battery.sh` takes LANES as its first argument (`./battery.sh 5` -
   no `direnv exec . env LANES=5` incantation), warns at start when on
   battery power, and records power provenance in _battery/power.txt

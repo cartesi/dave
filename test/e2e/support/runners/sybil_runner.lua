@@ -19,11 +19,11 @@ local function sybil_player(actor)
 end
 
 -- Sybils sign with their own accounts, auto-allocated from 2 up:
--- account 1 is the honest node's, and the old shared default wedged
--- on nonces the moment two sybils sent concurrently (found building
--- multi_sybil; every serial scenario had silently gotten away with
--- it). Pass player_id or config.pk to override deliberately - but
--- never the node's own account.
+-- account 1 is the harness sender's (test_env), and two senders on one
+-- account wedge on nonces. The node signs with account 8
+-- (dave/node.lua) and nothing here refuses it: a seventh sybil in one
+-- scenario would sign as the node. Pass player_id or config.pk to
+-- override deliberately.
 local next_player_id = 2
 
 local function sybil_runner(commitment_builder, machine_path, root_tournament, inputs, player_id, config)
@@ -34,7 +34,7 @@ local function sybil_runner(commitment_builder, machine_path, root_tournament, i
     end
     assert(
         config.pk or player_id ~= 1,
-        "player_id 1 is the honest node's account; sybils sign with their own"
+        "player_id 1 is the harness sender's account; sybils sign with their own"
     )
     assert(blockchain_consts.pks[player_id], "no test account for player_id " .. player_id)
     local pk = config.pk or blockchain_consts.pks[player_id]
