@@ -9,8 +9,7 @@ local Machine = require "computation.machine"
 local helper = require "utils.helper"
 local time = require "utils.time"
 
-local ANVIL_ADDRESS_7 = "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
-local ANVIL_KEY_7 = "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
+local blockchain_constants = require "blockchain.constants"
 
 -- TEST_INSTANCE isolates parallel runs (see blockchain.constants):
 -- every working-directory singleton this file owns gets the suffix,
@@ -19,7 +18,6 @@ local INSTANCE = os.getenv("TEST_INSTANCE")
 local SUFFIX = INSTANCE and ("-" .. INSTANCE) or ""
 local DAVE_LOG = "dave" .. SUFFIX .. ".log"
 local STATE_DIR = "_state" .. SUFFIX
-local ENDPOINT = require("blockchain.constants").endpoint
 
 local function start_dave_node(machine_path, app_address, db_path, sleep_duration, snapshot_gap,
                                verbosity, trace_level)
@@ -35,7 +33,7 @@ local function start_dave_node(machine_path, app_address, db_path, sleep_duratio
         ../../../target/debug/cartesi-rollups-prt-node --sleep-duration-seconds %s \
         --snapshot-gap-inputs %d --web3-rpc-url %s pk --web3-private-key %s >> %s 2>&1]],
         machine_path, app_address, db_path, trace_level, verbosity, sleep_duration, snapshot_gap,
-        ENDPOINT, ANVIL_KEY_7, DAVE_LOG
+        blockchain_constants.endpoint, blockchain_constants.node_pk, DAVE_LOG
     )
 
     local reader = io.popen(cmd)
@@ -58,7 +56,7 @@ end
 
 local Dave = {}
 Dave.__index = Dave
-Dave.wallet_address = ANVIL_ADDRESS_7
+Dave.wallet_address = blockchain_constants.node_address
 
 function Dave:new(machine_path, app_address, sender, sleep_duration, snapshot_gap, verbosity,
                   trace_level)

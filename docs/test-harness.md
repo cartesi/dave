@@ -133,10 +133,10 @@ harness itself. Each rule below closes a reproduced harness failure:
   dispute at 128 blocks per idle poll). Advance through
   `drive_player_until`; big jumps are safe only when no match awaits
   the node's move (`wait_until_epoch`'s settlement polling).
-- Sybils auto-allocate distinct signing accounts (from 2 up;
-  account 1 is the harness sender's and is refused): two senders on
-  one account wedge on nonces. The node signs with account 8, so a
-  scenario must not start a seventh sybil.
+- Sybils auto-allocate distinct signing accounts from 2 up, skipping the
+  node's (`node_pk` in `test/e2e/support/blockchain/constants.lua`);
+  account 1 is the harness sender's. Two senders on one account wedge on
+  nonces.
 - `just test-kms` preflights docker (script/ensure-docker.sh): the kms
   testcontainers fail confusingly under a sleeping Docker Desktop,
   which the preflight wakes on macOS and names elsewhere. They are the only

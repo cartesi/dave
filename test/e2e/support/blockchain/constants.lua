@@ -52,4 +52,10 @@ local constants = {
     },
 }
 
+-- Two signers on one account wedge on nonces, so each owns one: the
+-- harness sender signs with pks[1], the node with node_pk, and the
+-- sybils (runners.sybil_runner) with the others.
+constants.node_pk = constants.pks[8]
+constants.node_address = "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
+
 return constants
