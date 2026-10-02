@@ -66,9 +66,6 @@ test-yield-all: \
 test-honeypot-ci: \
         (test "honeypot" "simple")
 
-test-yield-ci: \
-        (test "yield" "simple")
-
 test-honeypot-case CASE: \
         (test "honeypot" CASE)
 

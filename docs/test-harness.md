@@ -288,11 +288,6 @@ battery (the same smoke set) and then explores chaos seeds 2 and 3; the
 battery itself retains seed 1. Its
 cost and scheduling promotion criteria live in `docs/build-system.md`.
 
-There is also a legacy Sepolia smoke setup (`test/e2e/rollups/sepolia/`).
-It is retained only as a historical lead: it is not part of current CI, has
-not been revalidated by this harness maintenance, and has no runnable Just
-entry point. Restoring it requires revalidating the scripts, contracts, and
-snapshot together, then adding checksum-pinned staged snapshot acquisition.
 
 ## Known coverage gaps
 

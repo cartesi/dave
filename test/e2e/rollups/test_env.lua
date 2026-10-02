@@ -1,9 +1,7 @@
 local Blockchain = require "blockchain.node"
-local Adapter = require "player.adapter"
 local Dave = require "dave.node"
 local Hash = require "cryptography.hash"
 local Machine = require "computation.machine"
-local SemanticReader = require "player.semantic_reader"
 local time = require "utils.time"
 local Reader = require "dave.reader"
 local Sender = require "dave.sender"
@@ -45,7 +43,6 @@ local FAST_FORWARD_TIME = tonumber(os.getenv("FAST_FORWARD_TIME")) or 128
 local ORACLE_DIR = "_oracle" .. (os.getenv("TEST_INSTANCE") and ("-" .. os.getenv("TEST_INSTANCE")) or "")
 
 local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
-local MATCH_PHASE_UNINITIALIZED = 0
 
 local Env = {
     anvil_load_path = ANVIL_LOAD_PATH,
@@ -129,43 +126,6 @@ function Env.wait_until_epoch(target_epoch, ff)
         end
     end, 4)
     return assert(epochs[total_epochs])
-end
-
-function Env.assert_match_uninitialized(tournament_address, match)
-    local transport = SemanticReader.CastTransport.new(
-        Env.blockchain.endpoint
-    )
-    local head = transport:get_head("latest")
-    local timeout = transport:observer_call(
-        tournament_address,
-        Adapter.View.TIMEOUT,
-        match,
-        head
-    )
-    assert(timeout.actual_phase == MATCH_PHASE_UNINITIALIZED,
-        "deleted match remains initialized in the tournament view")
-end
-
--- Assert the durable cleanup evidence, not merely the eventual tournament
--- winner. MatchDeleted preserves the reason and participants; the semantic
--- phase confirms that the parent consumed the match.
-function Env.assert_match_deleted(tournament_address, match, reason, winner_commitment)
-    local deletions = Env.reader:read_match_deleted(tournament_address, match.match_id_hash)
-    assert(#deletions == 1, "expected exactly one MatchDeleted event for the match")
-
-    local deletion = deletions[1]
-    assert(deletion.commitment_one == match.commitment_one,
-        "MatchDeleted commitment one differs from MatchCreated")
-    assert(deletion.commitment_two == match.commitment_two,
-        "MatchDeleted commitment two differs from MatchCreated")
-    assert(deletion.reason == reason,
-        string.format("unexpected MatchDeleted reason: %s", deletion.reason))
-    assert(deletion.winner_commitment == winner_commitment,
-        string.format("unexpected MatchDeleted winner: %s", deletion.winner_commitment))
-
-    Env.assert_match_uninitialized(tournament_address, match)
-
-    return deletion
 end
 
 -- A sealed leaf match counts as proved only if the on-chain state transition
@@ -282,19 +242,6 @@ function Env.player_react(player_coroutine)
 end
 
 -- Reacts without mining, for setups that must act before the node can.
--- Only the player's own transactions advance the chain, and the node acts
--- on a block only once it is final (two deep), so two players that join
--- right after a seal both join before the node.
-function Env.react_until(player_coroutine, condition_f)
-    for _ = 1, 100000 do
-        local ret = { condition_f(Env.player_react(player_coroutine)) }
-        if ret[1] then
-            return table.unpack(ret)
-        end
-    end
-    error("player did not reach the expected state without mining")
-end
-
 -- `on_step` (optional) runs between sybil reactions; chaos scenarios
 -- use it to kill and respawn the node mid-dispute.
 function Env.drive_player_until(player_coroutine, condition_f, on_step)
@@ -313,34 +260,10 @@ function Env.drive_player_until(player_coroutine, condition_f, on_step)
         -- needs finalized progress, while an active tournament also
         -- consumes a disposable latest tail. One block per second is
         -- the natural cadence - it cannot starve the node's turn the
-        -- way bulk fast-forwards can (see Env.fast_forward).
+        -- way bulk fast-forwards can.
         Env.sender:advance_blocks(1)
         time.sleep(Env.sleep_time)
     end
-end
-
--- The clock-safe fast-forward for scenario code: sleep FIRST, so the
--- node's pending move (it ticks every second) lands before the jump,
--- then advance. Bulk advances between the node's ticks burn its
--- block-denominated chess clock while it is on turn - observed as an
--- honest node timing out of its own dispute at 128 blocks per idle
--- poll. Callers fast-forwarding while a dispute is LIVE must keep
--- `blocks` small (a few blocks); big jumps are safe only when
--- no match awaits the node's move (wait_until_epoch's settlement
--- polling).
-function Env.fast_forward(blocks)
-    time.sleep(1)
-    Env.sender:advance_blocks(blocks)
-end
-
-function Env.drive_player(player_coroutine, on_step)
-    return Env.drive_player_until(player_coroutine, function(status, log)
-        if log.has_lost then
-            return "lost"
-        elseif status == "dead" then
-            return "dead"
-        end
-    end, on_step)
 end
 
 local function as_uint256(value)
