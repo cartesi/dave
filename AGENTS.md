@@ -100,10 +100,9 @@ docs/                The knowledge base. Start at docs/README.md.
 
 ## Build and test
 
-Requires: git, just, GNU make, foundry, and for native runs a C++ toolchain,
-Lua 5.4, Rust, and the Cartesi Machine. Docker is needed only for
-`just test-kms`, the honeypot image and the dockered setup. See the root
-`README.md` and `docs/build-system.md`.
+Requires: git, just, GNU make, foundry, a C++ toolchain, Lua 5.4, Rust, and
+the Cartesi Machine. Docker is needed only for `just test-kms` and the
+honeypot image. See the root `README.md` and `docs/build-system.md`.
 
 ```bash
 just doctor           # diagnose build/check readiness

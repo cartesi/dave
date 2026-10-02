@@ -73,44 +73,14 @@ We've published our initial research [here](https://arxiv.org/abs/2411.05463), a
 
 ## Running Dave
 
-This repository offers two development setups for Dave: one running inside a Docker container and one running natively (outside Docker).
-Choose the setup that best fits your workflow.
-
-### Docker Environment
+Dave builds and runs natively.
 
 **Dependencies:**
 
 - git
-- Docker
 - just
 - curl
 - sha256sum
-
-**Setup Steps:**
-
-1. **Clone the Repository:**
-   Ensure you have cloned the repository to your local machine.
-
-2. **Initialize the Docker Environment:**
-   Run the following command to prepare the pinned emulator sources and build
-   the Docker environment (it will take a while). This does not first build an
-   unused emulator library on the host.
-   ```bash
-   just setup-docker
-   ```
-
-3. **Execute Commands Inside Docker:**
-   To run any command within the Docker container, prefix your command as follows:
-   ```bash
-   just run-dockered <command>
-   ```
-
-### Local Environment
-
-If you prefer running Dave natively on your machine, you'll need additional dependencies.
-
-**Additional Dependencies:**
-
 - A C++ compiler
 - GNU make
 - [foundry](https://github.com/foundry-rs/foundry)
@@ -118,11 +88,13 @@ If you prefer running Dave natively on your machine, you'll need additional depe
   building and running test programs
 - Lua 5.4
 - Rust
+- Docker, only for the KMS tests (`just test-kms`) and the honeypot machine
+  image
 - [`xgenext2fs`](https://github.com/cartesi/genext2fs), only to build the
   honeypot machine image (the honeypot project generates its rootfs from
   a tarball with it)
 
-The lists above are the big pieces; the doctor commands below check the
+The list above has the big pieces; the doctor commands below check the
 smaller build and test prerequisites as well.
 
 **Setup Steps:**
@@ -130,7 +102,7 @@ smaller build and test prerequisites as well.
 1. **Clone the Repository:**
    Make sure the repository is cloned locally.
 
-2. **Initialize the Local Environment:**
+2. **Initialize the Environment:**
    Choose the Cartesi Machine library provider, then run the setup command:
 
    - A Nix or packaged provider sets `LIBCARTESI_PATH` to the absolute directory

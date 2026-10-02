@@ -62,13 +62,10 @@ setup:
     just programs::download-deps
     just programs::build-programs
 
-# Setup plus everything the e2e smoke needs, running natively. The honeypot
-# image is opt-in: just programs::build-honeypot (requires docker).
+# Setup plus everything the e2e smoke needs. The honeypot image is opt-in:
+# just programs::build-honeypot (requires docker).
 setup-local: setup
     just rollups-contracts::build-devnet
-
-# Setup the Docker build context without first building an unused host archive.
-setup-docker: build-docker-image
 
 # diagnose build/check readiness
 [script]
@@ -334,20 +331,3 @@ e2e-logs:
 # DEVNET_GEOMETRY=two-level (the preflight refuses any other bundle)
 test-rollups-two-level-smoke: build-rust-workspace
     DEVNET_GEOMETRY=two-level just rollups-tests::test echo simple
-
-# ------------------------------------------------------------------
-# Docker environment
-# ------------------------------------------------------------------
-
-[private]
-prepare-docker-context:
-    git submodule update --init machine/step machine/emulator
-    just machine::prepare-release
-
-build-docker-image TAG="dave:dev": prepare-docker-context
-    docker build \
-      --build-arg "DAVE_EMULATOR_GITLINK=$(git rev-parse :machine/emulator)" \
-      -f test/Dockerfile -t "$1" .
-
-run-dockered +CMD: build-docker-image
-    docker run -it --rm --name dave-node dave:dev "$@"

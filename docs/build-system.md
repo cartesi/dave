@@ -218,9 +218,7 @@ source-build requirement.
 
 CI mirrors the policy. Package-backed jobs export `/usr/lib` and
 `/usr/include/cartesi-machine`; source-fallback jobs prepare the checkout
-explicitly before Cargo; and the Docker image builds the emulator once, then
-uses its installed archive as the final-stage external provider. Docker setup
-prepares its build context without first building an unused host archive.
+explicitly before Cargo.
 
 Release acquisition and image-generation pins remain distributed across the
 external devshell flake, the machine preparation script, CI, and
