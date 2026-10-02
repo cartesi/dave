@@ -173,15 +173,9 @@ pub async fn read_standings(
         }
     }))
     .buffered(POINT_READ_CONCURRENCY)
-    .try_collect::<Vec<_>>()
+    .try_collect::<HashMap<_, _>>()
     .await?;
-
-    let mut standings = HashMap::with_capacity(decoded.len());
-    for (address, standing) in decoded {
-        let previous = standings.insert(address, standing);
-        debug_assert!(previous.is_none(), "Dispute guarantees unique addresses");
-    }
-    Ok(standings)
+    Ok(decoded)
 }
 
 /// Observe the one event-selected live match needed for a Hero decision.

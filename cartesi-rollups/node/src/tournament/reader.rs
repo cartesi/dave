@@ -3,9 +3,9 @@
 
 //! A fused recursive reader for the event-derived dispute tree.
 //!
-//! Finalized state is an in-memory prefix, extended and validated before Latest
-//! is sampled. Latest is then rebuilt from a clone of that prefix and discarded
-//! by the caller after the tick. Nothing is persisted: a new reader refolds the
+//! Finalized state is an in-memory prefix, extended before Latest is sampled.
+//! Latest is then rebuilt from a clone of that prefix and discarded by the
+//! caller after the tick. Nothing is persisted: a new reader refolds the
 //! finalized history from the root's creation block, so a restart runs the cold
 //! path and cannot inherit a bad prefix from disk.
 
@@ -22,10 +22,9 @@ use cartesi_prt_contracts::tournament as bindings;
 
 use crate::{
     chain::{Chain, ChainHead},
-    merkle::Digest,
     tournament::{
         MatchID,
-        dispute::{Dispute, Event, EventKind, MatchDeletionReason, Tournament, WinnerCommitment},
+        dispute::{Dispute, EventKind, MatchDeletionReason, Tournament, WinnerCommitment},
         observer,
     },
 };
@@ -100,7 +99,7 @@ impl StateReader {
             &mut validation,
         )
         .await?;
-        Ok((latest, Dispute::from_root(tournament)?))
+        Ok((latest, Dispute::from_root(tournament)))
     }
 
     /// Without a Solid, the fold starts at the root's creation block.
@@ -147,7 +146,7 @@ impl StateReader {
         self.solid = Some(Solid {
             root,
             head: finalized,
-            dispute: Dispute::from_root(tournament)?,
+            dispute: Dispute::from_root(tournament),
         });
         Ok(())
     }
@@ -209,7 +208,6 @@ async fn extend_tournament(
         let child = extend_tournament(chain, *child, validation).await?;
         drop(tournament.restore_child(match_id_hash, Box::new(child)));
     }
-    tournament.validate()?;
     Ok(tournament)
 }
 
@@ -225,45 +223,18 @@ async fn fold_local_logs(
     }
     sort_logs(&mut logs);
 
-    let mut structural = Vec::<(u64, Event)>::new();
     for log in logs {
-        let block = log.block_number.expect("harvest metadata was validated");
-        match decode_log(chain, &log, validation.phase.head).await? {
-            DecodedLog::Structural { event, new_child } => {
-                if let Some(child) = new_child {
-                    validation.register_child(
-                        child,
-                        LogPosition {
-                            block,
-                            index: log.log_index.expect("harvest metadata was validated"),
-                        },
-                    )?;
-                }
-                structural.push((block, event));
-            }
-            DecodedLog::IgnoredAccounting => {}
-        }
-    }
-
-    let mut start = 0;
-    while start < structural.len() {
-        let block = structural[start].0;
-        let mut end = start + 1;
-        while end < structural.len() && structural[end].0 == block {
-            end += 1;
-        }
-        let events = structural[start..end]
-            .iter()
-            .map(|(_, event)| event.clone())
-            .collect::<Vec<_>>();
-        tournament = tournament.apply_block(events).with_context(|| {
+        let Some(event) = decode_log(chain, &log, validation.phase.head).await? else {
+            continue;
+        };
+        tournament.apply(event).with_context(|| {
             format!(
-                "events for tournament {address} at block {block} do not fold under the current ABI; deploy contracts and node across a coordinated version boundary"
+                "tournament {address} log {} at block {} does not fold",
+                log.log_index.expect("harvest metadata was validated"),
+                log.block_number.expect("harvest metadata was validated")
             )
         })?;
-        start = end;
     }
-
     Ok(tournament)
 }
 
@@ -277,8 +248,6 @@ struct HarvestValidation {
     phase: ReadPhase,
     block_hashes: HashMap<u64, B256>,
     positions: HashSet<LogPosition>,
-    first_by_address: HashMap<Address, LogPosition>,
-    discoveries: HashMap<Address, LogPosition>,
 }
 
 impl HarvestValidation {
@@ -287,8 +256,6 @@ impl HarvestValidation {
             phase,
             block_hashes: HashMap::new(),
             positions: HashSet::new(),
-            first_by_address: HashMap::new(),
-            discoveries: HashMap::new(),
         }
     }
 
@@ -343,30 +310,6 @@ impl HarvestValidation {
                 boundary.hash
             );
         }
-        if let Some(discovered_at) = self.discoveries.get(&expected_address) {
-            ensure!(
-                position > *discovered_at,
-                "child tournament {expected_address} emitted at {position:?} before its discovery at {discovered_at:?}"
-            );
-        }
-        self.first_by_address
-            .entry(expected_address)
-            .and_modify(|first| *first = (*first).min(position))
-            .or_insert(position);
-        Ok(())
-    }
-
-    fn register_child(&mut self, child: Address, discovered_at: LogPosition) -> Result<()> {
-        ensure!(
-            self.discoveries.insert(child, discovered_at).is_none(),
-            "child tournament {child} was discovered more than once in one harvest"
-        );
-        if let Some(first) = self.first_by_address.get(&child) {
-            ensure!(
-                *first > discovered_at,
-                "child tournament {child} emitted at {first:?} before its discovery at {discovered_at:?}"
-            );
-        }
         Ok(())
     }
 }
@@ -380,16 +323,8 @@ fn sort_logs(logs: &mut [Log]) {
     });
 }
 
-#[derive(Debug)]
-enum DecodedLog {
-    Structural {
-        event: Event,
-        new_child: Option<Address>,
-    },
-    IgnoredAccounting,
-}
-
-async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<DecodedLog> {
+/// Decodes one structural event; accounting events decode to `None`.
+async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Option<EventKind>> {
     let tournament = log.address();
     let topic = log
         .inner
@@ -398,72 +333,43 @@ async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Decoded
         .copied()
         .ok_or_else(|| anyhow!("tournament {tournament} emitted a log without a topic"))?;
 
-    let (kind, new_child) = if topic == bindings::Tournament::CommitmentJoined::SIGNATURE_HASH {
+    let kind = if topic == bindings::Tournament::CommitmentJoined::SIGNATURE_HASH {
         let event = bindings::Tournament::CommitmentJoined::decode_log(&log.inner)
             .context("malformed CommitmentJoined event")?;
-        (
-            EventKind::CommitmentJoined {
-                root: event.commitment.into(),
-            },
-            None,
-        )
+        EventKind::CommitmentJoined {
+            root: event.commitment.into(),
+        }
     } else if topic == bindings::Tournament::MatchCreated::SIGNATURE_HASH {
         let event = bindings::Tournament::MatchCreated::decode_log(&log.inner)
             .context("malformed MatchCreated event")?;
-        let id = MatchID {
-            commitment_one: event.one.into(),
-            commitment_two: event.two.into(),
-        };
-        let emitted: Digest = event.matchIdHash.into();
-        ensure!(
-            emitted == id.hash(),
-            "MatchCreated hash {emitted} disagrees with commitments ({}, {})",
-            id.commitment_one,
-            id.commitment_two
-        );
-        (
-            EventKind::MatchCreated {
-                id,
-                eliminable_at: event.eliminableAt,
+        EventKind::MatchCreated {
+            id: MatchID {
+                commitment_one: event.one.into(),
+                commitment_two: event.two.into(),
             },
-            None,
-        )
+            eliminable_at: event.eliminableAt,
+        }
     } else if topic == bindings::Tournament::MatchAdvanced::SIGNATURE_HASH {
         let event = bindings::Tournament::MatchAdvanced::decode_log(&log.inner)
             .context("malformed MatchAdvanced event")?;
-        (
-            EventKind::MatchAdvanced {
-                match_id_hash: event.matchIdHash.into(),
-                eliminable_at: event.eliminableAt,
-            },
-            None,
-        )
+        EventKind::MatchAdvanced {
+            match_id_hash: event.matchIdHash.into(),
+            eliminable_at: event.eliminableAt,
+        }
     } else if topic == bindings::Tournament::LeafMatchSealed::SIGNATURE_HASH {
         let event = bindings::Tournament::LeafMatchSealed::decode_log(&log.inner)
             .context("malformed LeafMatchSealed event")?;
-        (
-            EventKind::LeafMatchSealed {
-                match_id_hash: event.matchIdHash.into(),
-                eliminable_at: event.eliminableAt,
-            },
-            None,
-        )
+        EventKind::LeafMatchSealed {
+            match_id_hash: event.matchIdHash.into(),
+            eliminable_at: event.eliminableAt,
+        }
     } else if topic == bindings::Tournament::NewInnerTournament::SIGNATURE_HASH {
         let event = bindings::Tournament::NewInnerTournament::decode_log(&log.inner)
             .context("malformed NewInnerTournament event")?;
-        let child = event.childTournament;
-        ensure!(
-            child != Address::ZERO,
-            "NewInnerTournament names the zero address"
-        );
-        let descriptor = observer::read_descriptor(chain, child, head).await?;
-        (
-            EventKind::NewInnerTournament {
-                match_id_hash: event.matchIdHash.into(),
-                child: descriptor,
-            },
-            Some(child),
-        )
+        EventKind::NewInnerTournament {
+            match_id_hash: event.matchIdHash.into(),
+            child: observer::read_descriptor(chain, event.childTournament, head).await?,
+        }
     } else if topic == bindings::Tournament::MatchDeleted::SIGNATURE_HASH {
         let event = bindings::Tournament::MatchDeleted::decode_log(&log.inner)
             .context("malformed MatchDeleted event")?;
@@ -471,13 +377,6 @@ async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Decoded
             commitment_one: event.one.into(),
             commitment_two: event.two.into(),
         };
-        let emitted: Digest = event.matchIdHash.into();
-        ensure!(
-            emitted == id.hash(),
-            "MatchDeleted hash {emitted} disagrees with commitments ({}, {})",
-            id.commitment_one,
-            id.commitment_two
-        );
         let reason = match event.reason {
             0 => MatchDeletionReason::Step,
             1 => MatchDeletionReason::Timeout,
@@ -490,32 +389,25 @@ async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Decoded
             2 => WinnerCommitment::Two,
             other => bail!("unknown winner commitment {other}"),
         };
-        (
-            EventKind::MatchDeleted {
-                match_id_hash: emitted,
-                reason,
-                winner,
-            },
-            None,
-        )
+        EventKind::MatchDeleted {
+            match_id_hash: id.hash(),
+            reason,
+            winner,
+        }
     } else if topic == bindings::Tournament::PartialBondRefund::SIGNATURE_HASH {
         bindings::Tournament::PartialBondRefund::decode_log(&log.inner)
             .context("malformed PartialBondRefund event")?;
-        return Ok(DecodedLog::IgnoredAccounting);
+        return Ok(None);
     } else if topic == bindings::Tournament::BondRecovered::SIGNATURE_HASH {
         bindings::Tournament::BondRecovered::decode_log(&log.inner)
             .context("malformed BondRecovered event")?;
-        return Ok(DecodedLog::IgnoredAccounting);
+        return Ok(None);
     } else {
         bail!(
             "tournament {tournament} emitted unknown event topic {topic}; current tournament event ABI required, deploy contracts and node across a coordinated version boundary"
         );
     };
-
-    Ok(DecodedLog::Structural {
-        event: Event { tournament, kind },
-        new_child,
-    })
+    Ok(Some(kind))
 }
 
 #[cfg(test)]
@@ -542,9 +434,12 @@ mod tests {
     use tower::Service;
 
     use super::*;
-    use crate::tournament::{
-        dispute::{CommitmentPosition, MatchStatus},
-        domain::{TournamentDescriptor, TournamentKind},
+    use crate::{
+        merkle::Digest,
+        tournament::{
+            dispute::{CommitmentPosition, Event, MatchStatus},
+            domain::{TournamentDescriptor, TournamentKind},
+        },
     };
 
     #[derive(Clone, Debug)]
@@ -843,29 +738,10 @@ mod tests {
         let at = head(10, 0x10);
         let (chain, asserter, _) = recording_chain();
         let joined = join_log(root, at, 0, digest(10));
-        let DecodedLog::Structural { event, .. } = decode_log(&chain, &joined, at).await.unwrap()
-        else {
-            panic!("join was ignored");
-        };
-        assert_eq!(event.kind, EventKind::CommitmentJoined { root: digest(10) });
-
-        let id = MatchID {
-            commitment_one: digest(10),
-            commitment_two: digest(20),
-        };
-        let mut bad_hash = match_created_log(root, at, 1, id, 30);
-        bad_hash.inner = PrimitiveLog {
-            address: root,
-            data: bindings::Tournament::MatchCreated {
-                matchIdHash: digest(99).into(),
-                one: id.commitment_one.into(),
-                two: id.commitment_two.into(),
-                leftOfTwo: digest(90).into(),
-                eliminableAt: 30,
-            }
-            .encode_log_data(),
-        };
-        assert!(decode_log(&chain, &bad_hash, at).await.is_err());
+        assert_eq!(
+            decode_log(&chain, &joined, at).await.unwrap(),
+            Some(EventKind::CommitmentJoined { root: digest(10) })
+        );
 
         let mut unknown = log_at(root, at, 2);
         unknown.inner =
@@ -882,10 +758,7 @@ mod tests {
                 success: true,
             },
         );
-        assert!(matches!(
-            decode_log(&chain, &refund, at).await.unwrap(),
-            DecodedLog::IgnoredAccounting
-        ));
+        assert_eq!(decode_log(&chain, &refund, at).await.unwrap(), None);
         assert!(asserter.read_q().is_empty());
     }
 
@@ -938,7 +811,7 @@ mod tests {
         let loaded = extend_tournament(&chain, root, &mut validation)
             .await
             .unwrap();
-        let dispute = Dispute::from_root(loaded).unwrap();
+        let dispute = Dispute::from_root(loaded);
         let child_tournament = dispute.tournament(&child).unwrap();
         assert!(child_tournament.commitment(&child_commitment).is_some());
         assert!(matches!(
@@ -993,7 +866,7 @@ mod tests {
         let loaded = extend_tournament(&chain, fixture.dispute.into_root(), &mut validation)
             .await
             .unwrap();
-        let dispute = Dispute::from_root(loaded).unwrap();
+        let dispute = Dispute::from_root(loaded);
         assert_eq!(
             dispute
                 .root()

@@ -183,8 +183,7 @@ impl HeroContext {
                 }
             };
 
-            let replaced = levels.insert(address, material);
-            debug_assert!(replaced.is_none(), "Dispute guarantees unique addresses");
+            levels.insert(address, material);
             path.push(PathLevel {
                 descriptor,
                 standing,

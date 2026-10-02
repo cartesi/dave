@@ -209,12 +209,17 @@ next input and stops ingestion until the state directory is rebuilt.
 
 The deadline-sensitive tournament reader holds one recursive, event-derived
 `Dispute` through finalized `F`, in memory only. Each tick recursively extends
-every tournament's local event stream through `F`, validates the completed
-tree, and only then replaces the Solid value. A new reader folds from the root
-tournament's creation block, so a restart is a cold start: it refetches each
-tournament's full finalized range once, which costs response-clock time on a
-long dispute, and a bad finalized prefix (a provider fault or a mixed fork)
-does not survive it.
+every tournament's local event stream through `F`, applying events one at a
+time in log order, and only then replaces the Solid value. The fold does not
+re-prove what the contracts guarantee, so it cannot stall on a sequence they
+can emit: it rejects only an event it cannot apply without guessing (an
+unknown match or commitment, a second join, a seal, advance or delegation of
+a match that is no longer clocked, a second deletion). A commitment's standing
+is derived from its latest match rather than tracked. A new reader folds from
+the root tournament's creation block, so a restart is a cold start: it
+refetches each tournament's full finalized range once, which costs
+response-clock time on a long dispute, and a bad finalized prefix (a provider
+fault or a mixed fork) does not survive it.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest
