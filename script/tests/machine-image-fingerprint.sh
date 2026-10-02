@@ -37,9 +37,13 @@ chmod +x "${fake_bin}/cartesi-machine" "${fake_bin}/cartesi-machine-stored-hash"
 
 checker="${fixture_repo}/script/machine-image-fingerprint.sh"
 export PATH="${fake_bin}:${PATH}"
-export DAVE_EMULATOR_GITLINK=0123456789abcdef0123456789abcdef01234567
 
 CDPATH= cd -- "$fixture_repo"
+# The checker reads the emulator pin from the Git index; a gitlink entry
+# needs no submodule checkout behind it.
+git init -q
+git update-index --add \
+    --cacheinfo 160000,0123456789abcdef0123456789abcdef01234567,machine/emulator
 
 echo_inputs_before="$("$checker" inputs echo)"
 printf '# unrelated producer edit\n' >> test/programs/script/build-honeypot.sh

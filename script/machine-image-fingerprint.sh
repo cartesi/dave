@@ -62,8 +62,8 @@ deployment_address() {
 
 inputs_digest() {
     local program=$1
-    local machine_version machine_path machine_hash emulator_pin git_emulator_pin
-    local provided_emulator_pin producer producer_hash
+    local machine_version machine_path machine_hash emulator_pin
+    local producer producer_hash
     local generator_hash honeypot_pin portal_address token_address
     local linux_hash rootfs_hash
 
@@ -89,27 +89,12 @@ inputs_digest() {
     machine_version="${machine_version%%$'\n'*}"
     machine_path=$(command -v cartesi-machine)
     machine_hash=$(sha256_file "$machine_path") || return $?
-    provided_emulator_pin=${DAVE_EMULATOR_GITLINK:-}
-    if [ -n "$provided_emulator_pin" ] \
-        && [[ ! "$provided_emulator_pin" =~ ^[0-9a-f]{40}$ ]]; then
-        echo "error: invalid DAVE_EMULATOR_GITLINK: $provided_emulator_pin" >&2
+    if ! emulator_pin=$(git rev-parse :machine/emulator 2>/dev/null); then
+        echo "error: cannot read the emulator gitlink from the Git index" >&2
         return 2
     fi
-    if git_emulator_pin=$(git rev-parse :machine/emulator 2>/dev/null); then
-        if [[ ! "$git_emulator_pin" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "error: invalid emulator gitlink in the Git index: $git_emulator_pin" >&2
-            return 2
-        fi
-        if [ -n "$provided_emulator_pin" ] \
-            && [ "$provided_emulator_pin" != "$git_emulator_pin" ]; then
-            echo "error: DAVE_EMULATOR_GITLINK does not match the Git index" >&2
-            return 2
-        fi
-        emulator_pin=$git_emulator_pin
-    elif [ -n "$provided_emulator_pin" ]; then
-        emulator_pin=$provided_emulator_pin
-    else
-        echo "error: cannot resolve the emulator gitlink from Git or the environment" >&2
+    if [[ ! "$emulator_pin" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "error: invalid emulator gitlink in the Git index: $emulator_pin" >&2
         return 2
     fi
     producer=$(producer_script "$program") || {
