@@ -160,6 +160,15 @@ expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
 printf '{"src":"src","script":"script","remappings":[],"gas_price":42}\n' \
     >"${fixture}/prt/contracts/.fake-forge-config.json"
 expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
+
+# The whole configuration counts, including keys no list anticipated, but
+# key order does not.
+printf '{"src":"src","script":"script","remappings":[],"fuzz":{"runs":1}}\n' \
+    >"${fixture}/prt/contracts/.fake-forge-config.json"
+expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
+printf '{"remappings":[],"script":"script","src":"src"}\n' \
+    >"${fixture}/prt/contracts/.fake-forge-config.json"
+expect_status 0 verify "${fixture}/cartesi-rollups/contracts"
 printf '{"src":"src","script":"script","remappings":[]}\n' \
     >"${fixture}/prt/contracts/.fake-forge-config.json"
 

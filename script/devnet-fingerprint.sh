@@ -18,7 +18,7 @@ CDPATH= cd -- "$repo_root" || {
 }
 
 readonly base_contracts="cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-alpha.10"
-readonly input_format="devnet-inputs-v6"
+readonly input_format="devnet-inputs-v7"
 readonly manifest_format="v5"
 
 # The tournament geometry the bundle deploys: the checked-in canonical table,
@@ -117,64 +117,10 @@ effective_forge_config() {
         checker_error "cannot read the effective Forge configuration for ${root}: ${raw##*$'\n'}"
         return 2
     fi
-    if ! canonical="$(
-        printf '%s\n' "$raw" | jq -cS '
-            {
-                additional_compiler_profiles,
-                allow_paths,
-                always_use_create_2_factory,
-                auto_detect_remappings,
-                auto_detect_solc,
-                block_base_fee_per_gas,
-                block_coinbase,
-                block_difficulty,
-                block_gas_limit,
-                block_number,
-                block_prevrandao,
-                block_timestamp,
-                bytecode_hash,
-                cbor_metadata,
-                cache_path,
-                celo,
-                chain_id,
-                compilation_restrictions,
-                create2_deployer,
-                create2_library_salt,
-                dependencies,
-                dynamic_test_linking,
-                evm_version,
-                extra_args,
-                extra_output,
-                extra_output_files,
-                ffi,
-                fs_permissions,
-                gas_limit,
-                gas_price,
-                include_paths,
-                libraries,
-                libs,
-                offline,
-                optimizer,
-                optimizer_details,
-                optimizer_runs,
-                out,
-                remappings,
-                revert_strings,
-                script,
-                script_execution_protection,
-                sender,
-                skip,
-                solc,
-                soldeer,
-                sparse_mode,
-                src,
-                test,
-                tx_origin,
-                use_literal_content,
-                via_ir
-            }
-        ' 2>&1
-    )"; then
+    # The whole configuration, key order aside: an allowlist silently misses
+    # a new setting that reaches the deployment; a needless rebuild only
+    # costs time.
+    if ! canonical="$(printf '%s\n' "$raw" | jq -cS . 2>&1)"; then
         checker_error "cannot canonicalize the Forge configuration for ${root}: ${canonical##*$'\n'}"
         return 2
     fi

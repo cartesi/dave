@@ -102,7 +102,7 @@ ordinary development without constructing the expensive E2E fixtures.
 The devnet receipt is deliberately narrower than the contract worktrees. Its
 input digest covers production and deployment Solidity, installed production
 dependency Solidity and lockfiles, the production `machine/step` sources,
-effective Forge compiler and deployment configuration, the build and deploy
+each project's whole effective Forge configuration, the build and deploy
 drivers, the selected geometry and its devnet-only provider and script, and
 the Forge and Anvil versions. It excludes documentation, other tests,
 measurements, compiler output, broadcasts, and prior deployments. Those files
