@@ -1769,7 +1769,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cartesi-rollups-prt-node"
+name = "cartesi-sling-node"
 version = "2.0.0"
 dependencies = [
  "alloy",

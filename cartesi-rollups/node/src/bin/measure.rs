@@ -16,11 +16,11 @@ use std::time::{Duration, Instant};
 use alloy::primitives::{Address, U256};
 use alloy::sol_types::SolCall;
 use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
-use cartesi_rollups_prt_node::engine::{
+use cartesi_sling_node::engine::{
     DisputeSource, MachineStf, Quartet, Stf, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
 };
-use cartesi_rollups_prt_node::merkle::Digest;
-use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
+use cartesi_sling_node::merkle::Digest;
+use cartesi_sling_node::storage::{Input as StorageInput, InputId, Storage};
 
 /// Five minutes of clock per tree height unit: the deployment's
 /// responseBudget formula (prt/contracts/script/Deployment.s.sol,

@@ -328,7 +328,7 @@ mod tests {
 
     fn args_with_snapshot_gap(gap: &str) -> Vec<&str> {
         vec![
-            "cartesi-rollups-prt-node",
+            "cartesi-sling-node",
             "--app-address",
             "0x0000000000000000000000000000000000000000",
             "--machine-path",

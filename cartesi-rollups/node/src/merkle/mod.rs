@@ -4,7 +4,7 @@
 //!
 //! # Examples
 //! ```rust
-//! use cartesi_rollups_prt_node::merkle::{Digest, MerkleBuilder};
+//! use cartesi_sling_node::merkle::{Digest, MerkleBuilder};
 //!
 //! let mut builder = MerkleBuilder::default();
 //! builder.append(Digest::ZERO);

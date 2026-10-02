@@ -15,10 +15,10 @@ use alloy::sol_types::SolCall;
 mod common;
 use common::prototype::{MachineCommitment, MachineCommitmentBuilder};
 
-use cartesi_rollups_prt_node::engine::{
+use cartesi_sling_node::engine::{
     DisputeSource, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf, Structure,
 };
-use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
+use cartesi_sling_node::storage::{Input as StorageInput, InputId, Storage};
 use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
 use std::collections::BTreeMap;
