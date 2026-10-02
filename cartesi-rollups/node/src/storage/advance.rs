@@ -1446,6 +1446,35 @@ mod tests {
         }
     }
 
+    /// A terminal app still rolls: the node needs the epoch's settlement
+    /// row to defend its true state in the dispute (W8), and only staging
+    /// refuses a state that cannot settle.
+    #[test]
+    fn a_terminal_epoch_rolls_without_settling() {
+        use cartesi_machine::cartesi_machine_sys::{CM_REG_IFLAGS_H, CM_REG_IFLAGS_Y};
+        let state_dir = tempfile::tempdir().unwrap();
+        let template = state_dir.path().join("_halted_template");
+        super::super::sql::test_helper::store_template(&template, |machine| {
+            machine.write_reg(CM_REG_IFLAGS_Y, 0).unwrap();
+            machine.write_reg(CM_REG_IFLAGS_H, 1).unwrap();
+        });
+        let mut s = Storage::initialize(
+            state_dir.path(),
+            &template,
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            &TournamentGeometry::two_level(),
+        )
+        .unwrap();
+        seal_epoch_zero(&mut s);
+
+        s.roll_epoch().unwrap();
+
+        let settlement = s.settlement_info(0).unwrap().unwrap();
+        assert!(!settlement.machine_validity_proof.settles());
+    }
+
     #[test]
     fn rolling_ahead_does_not_release_the_managers_unfinished_epoch() {
         let (_handle, mut storage) = setup_storage();

@@ -61,6 +61,13 @@ application layer's deposit-refund path keys on, while withdrawals fall
 back to the last finalized state. The freeze is an intended terminal
 state, not a stranded-value bug.
 
+A terminal application (halted, or yielded with an exception, on any
+input) ends its epoch in a state no machine validity proof accepts, so that
+epoch can never be staged. The node still defends that true state in the
+root tournament: an undefended root would let a fabricated, stageable claim
+win by timeout. Having won, the node holds the epoch with an error log, like
+a no-winner result, and foreclosure is how the application moves on.
+
 Settlement never touches the tournament's bond path: staging and
 acceptance move no value, and nothing on the consensus path calls
 `tryRecoveringBond`. No recipient code runs inside a settlement transaction.

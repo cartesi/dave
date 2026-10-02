@@ -323,6 +323,17 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     can_stage.winnerPostEpochMachineStateHash,
                     "Winner final state mismatch, notify all users!"
                 );
+                // The node defended a terminal app's true state, which no
+                // validity proof accepts. Like a no-winner result, hold
+                // the epoch for the consensus's operators.
+                if !settlement.machine_validity_proof.settles() {
+                    log::error!(
+                        "epoch {} ended with the application in a terminal state; \
+                         it won the dispute but cannot settle, notify all users!",
+                        can_stage.epochNumber
+                    );
+                    return Ok(None);
+                }
                 info!(
                     "stage tournament result of epoch {} with claim {}",
                     can_stage.epochNumber,

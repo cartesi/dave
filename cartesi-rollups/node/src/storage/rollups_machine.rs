@@ -77,8 +77,10 @@ fn validate_leaf_root(
     Ok(())
 }
 
-/// Verifies exactly the proof and terminal-state predicates enforced by
-/// LibMachineValidityProof. The HTIF data field is intentionally ignored.
+/// Verifies that the proof's leaves reconstruct the final state, the Merkle
+/// half of LibMachineValidityProof: a corruption tripwire wherever a proof
+/// is captured, stored or read. Whether the state can settle is
+/// [`MachineValidityProof::settles`].
 pub(super) fn validate_machine_validity_proof(
     final_state: Hash,
     proof: &MachineValidityProof,
@@ -104,23 +106,26 @@ pub(super) fn validate_machine_validity_proof(
         &proof.tx_buffer_proof,
     )?;
 
-    ensure!(
-        data_block_word(&proof.iflags_y_proof.data_block, iflags_y_address) != 0,
-        "post-epoch machine is not yielded"
-    );
-
-    let htif_tohost = data_block_word(&proof.htif_tohost_proof.data_block, htif_tohost_address);
-    let device = (htif_tohost & CM_HTIF_DEV_MASK) >> CM_HTIF_DEV_SHIFT;
-    let command = (htif_tohost & CM_HTIF_CMD_MASK) >> CM_HTIF_CMD_SHIFT;
-    let reason = (htif_tohost & CM_HTIF_REASON_MASK) >> CM_HTIF_REASON_SHIFT;
-    ensure!(
-        device == u64::from(CM_HTIF_DEV_YIELD)
-            && command == u64::from(CM_HTIF_YIELD_CMD_MANUAL)
-            && reason == u64::from(CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED),
-        "post-epoch machine is not yielded manually with RX_ACCEPTED"
-    );
-
     Ok(())
+}
+
+impl MachineValidityProof {
+    /// Whether the proven state can settle: the state predicate of
+    /// LibMachineValidityProof, a manual RX_ACCEPTED yield. A terminal app
+    /// (halted, or yielded with an exception) ends its epoch in a state the
+    /// node must still defend in the dispute but can never stage. The HTIF
+    /// data field is intentionally ignored.
+    pub fn settles(&self) -> bool {
+        let (iflags_y_address, htif_tohost_address) = validity_register_addresses();
+        let htif_tohost = data_block_word(&self.htif_tohost_proof.data_block, htif_tohost_address);
+        let device = (htif_tohost & CM_HTIF_DEV_MASK) >> CM_HTIF_DEV_SHIFT;
+        let command = (htif_tohost & CM_HTIF_CMD_MASK) >> CM_HTIF_CMD_SHIFT;
+        let reason = (htif_tohost & CM_HTIF_REASON_MASK) >> CM_HTIF_REASON_SHIFT;
+        data_block_word(&self.iflags_y_proof.data_block, iflags_y_address) != 0
+            && device == u64::from(CM_HTIF_DEV_YIELD)
+            && command == u64::from(CM_HTIF_YIELD_CMD_MANUAL)
+            && reason == u64::from(CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED)
+    }
 }
 
 fn validate_machine_memory_proof(
@@ -489,11 +494,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "post-epoch machine is not yielded")]
-    fn capture_refuses_a_real_machine_before_it_yields() {
-        let mut machine = machine_after_advance("echo").unwrap();
+    fn a_real_machine_before_it_yields_does_not_settle() -> MachineResult<()> {
+        let mut machine = machine_after_advance("echo")?;
 
-        let _ = machine_validity_proof_for(&mut machine);
+        let (_, proof) = machine_validity_proof_for(&mut machine)?;
+        assert!(!proof.settles());
+        Ok(())
     }
 
     #[test]
@@ -510,6 +516,7 @@ mod tests {
         let (root, proof) = machine_validity_proof_for(&mut machine)?;
 
         assert_eq!(root, expected_root);
+        assert!(proof.settles());
         assert_eq!(
             proof.outputs_merkle_root().as_slice(),
             output_hashes_root_hash.as_slice()
@@ -518,16 +525,29 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "not yielded manually with RX_ACCEPTED")]
-    fn capture_refuses_a_real_rx_rejected_yield() {
-        let mut machine = machine_after_advance("yield").unwrap();
-        let request = run_to_manual_yield(&mut machine).unwrap();
+    fn a_real_rx_rejected_yield_does_not_settle() -> MachineResult<()> {
+        let mut machine = machine_after_advance("yield")?;
+        let request = run_to_manual_yield(&mut machine)?;
         assert!(
             matches!(request, CmioRequest::Manual(ManualReason::RxRejected)),
             "yield machine must reject the input"
         );
 
-        let _ = machine_validity_proof_for(&mut machine);
+        let (_, proof) = machine_validity_proof_for(&mut machine)?;
+        assert!(!proof.settles());
+        Ok(())
+    }
+
+    #[test]
+    fn a_halted_machine_does_not_settle() -> MachineResult<()> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.iflags.h = 1;
+        let mut machine = Machine::create(&config, &RuntimeConfig::quiet_console())?;
+
+        let (_, proof) = machine_validity_proof_for(&mut machine)?;
+        assert!(!proof.settles());
+        Ok(())
     }
 
     #[test]
@@ -552,6 +572,7 @@ mod tests {
             ),
             htif_tohost
         );
+        assert!(proof.settles());
         Ok(())
     }
 

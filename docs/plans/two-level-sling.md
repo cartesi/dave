@@ -503,8 +503,12 @@ format change).
 
 ### W8. Hygiene
 
-- A terminal final state panics at roll; replace it with an explicit
-  dead-app state that keeps serving disputes.
+- Done 2026-10-02, and a safety item rather than hygiene: a terminal
+  final state used to panic at roll, so no node defended that epoch and a
+  fabricated RX_ACCEPTED claim could win uncontested. The roll now records
+  the settlement whatever the state, the Hero defends it, and staging holds
+  with an error when the state cannot settle ("defend, never stage";
+  epoch-lifecycle.md).
 - Doc drift: the level-0 location in computation-hash.md, the future tense
   in the `RulerFactory` doc, and the closed bond-recovery item in
   collect-hashes-migration.md.
