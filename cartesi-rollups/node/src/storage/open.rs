@@ -281,12 +281,13 @@ fn open_reader_connection(db_path: &Path) -> Result<Connection> {
 // State directory layout
 //
 
-/// The template must carry the deployed step's pristine uarch: every
+/// The template must carry the pristine uarch of the linked emulator, which
+/// is assumed to be the deployed step's (the provenance gate's concern): every
 /// commitment shortcut assumes it at big-cycle boundaries, and every closing
-/// reset restores it, so only the template can break it (custom uarch code,
-/// or an image built by an emulator with another uarch). Commitments over
-/// such a template would be silently wrong, so the node refuses it once, at
-/// import; a reset that changes the root is the test.
+/// reset restores it, so within the node only the template can break it
+/// (custom uarch code, or an image built by an emulator with another uarch).
+/// Commitments over such a template would be silently wrong, so the node
+/// refuses it once, at import; a reset that changes the root is the test.
 fn assert_pristine_uarch(template: &Path) -> Result<()> {
     use cartesi_machine::config::runtime::RuntimeConfig;
     let mut machine = Machine::load(template, &RuntimeConfig::quiet_console())

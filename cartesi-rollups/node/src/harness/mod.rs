@@ -89,7 +89,13 @@ impl World {
             .erased();
         // Reproducible blocks: one second apart from the bundle's last
         // timestamp, so inputs (InputBox stamps them) and every hash
-        // derived from them repeat across runs.
+        // derived from them repeat across runs. Without the reset, the
+        // first block after loading the state takes the wall clock.
+        let head = provider
+            .get_block(BlockId::latest())
+            .await?
+            .context("anvil has no head")?;
+        provider.anvil_set_time(head.header.timestamp).await?;
         provider.anvil_set_block_timestamp_interval(1).await?;
         // Every node call carries a fixed 15M gas limit; let a whole wave
         // fit one block.
@@ -453,14 +459,27 @@ impl World {
         tail: Tail,
         policy: Policy,
     ) -> Result<Adversary> {
-        let mut storage = Storage::new(node.state_dir.path())?;
+        // A private copy of the node's store, as an independent sybil would
+        // have: the adversary reads the node's rolled material, but its
+        // event cache, quartet rows and write-backs stay out of the node's
+        // store, so the node computes and harvests everything itself.
+        // Snapshot rows keep pointing at the node's immutable snapshots.
+        let state_dir = tempfile::tempdir()?;
+        std::fs::create_dir(state_dir.path().join("snapshots"))?;
+        rusqlite::Connection::open(crate::storage::open::db_path(node.state_dir.path()))?.execute(
+            "VACUUM INTO ?1",
+            [crate::storage::open::db_path(state_dir.path())
+                .to_string_lossy()
+                .into_owned()],
+        )?;
+        let mut storage = Storage::new(state_dir.path())?;
         let epoch = storage.unfinished_epoch()?.context("no epoch to dispute")?;
         ensure!(
             storage.settlement_info(epoch.epoch_number)?.is_some(),
             "the node has not rolled epoch {}",
             epoch.epoch_number
         );
-        let engine_dir = tempfile::tempdir()?;
+        let engine_dir = state_dir.path().join("engine");
         let hero = Hero::with_tail(
             Arc::new(EthArenaSender::new(self.provider.clone())),
             self.chain.clone(),
@@ -468,7 +487,7 @@ impl World {
             epoch.block_created_number,
             storage,
             epoch.epoch_number,
-            engine_dir.path().to_path_buf(),
+            engine_dir,
             tail,
         )?;
         Ok(Adversary {
@@ -477,7 +496,7 @@ impl World {
             policy,
             stopped: false,
             held: None,
-            _engine_dir: engine_dir,
+            _state_dir: state_dir,
             errors: vec![],
         })
     }
@@ -623,14 +642,14 @@ pub(crate) enum Policy {
 
 /// The production Hero over a test-only tail overlay, on its own key. It
 /// has no reader, runner or manager: it disputes the honest node's epoch
-/// from the honest node's store.
+/// from a copy of the honest node's store.
 pub(crate) struct Adversary {
     hero: Hero<EthArenaSender>,
     lane: TransactionLane,
     policy: Policy,
     stopped: bool,
     held: Option<Vec<crate::provider::LaneRequest>>,
-    _engine_dir: TempDir,
+    _state_dir: TempDir,
     /// Its Hero's errors. A patched leaf cannot be proven, so a rational
     /// adversary errors whenever it tries.
     pub errors: Vec<String>,

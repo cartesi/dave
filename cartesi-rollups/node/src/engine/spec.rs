@@ -1428,8 +1428,17 @@ fn tail_overlay_diverges_at_its_position_and_never_writes() -> Result<()> {
     let honest_leaves = oracle_digests(&structure, &script);
     let z = Digest::from_digest(&[0xee; 32])?;
 
-    for from in [0u64, 1, 7, 8, 37, 127] {
-        let shared = toy_storage(structure);
+    for (from, recorded) in [0u64, 1, 7, 8, 37, 127]
+        .into_iter()
+        .flat_map(|from| [(from, false), (from, true)])
+    {
+        let mut shared = toy_storage(structure);
+        // With the runner's window roots recorded, root-stride quartets at
+        // window granularity and above come from the frontier fold, which
+        // the overlay must also override.
+        if recorded {
+            record_toy_material(&mut shared, &structure, &script, structure.log2_uarch_span)?;
+        }
         let state_dir = shared.state_dir().to_path_buf();
         let mut adversary = toy_source_over(shared, structure, &script, structure.log2_uarch_span);
         adversary.set_tail(super::dispute::Tail {

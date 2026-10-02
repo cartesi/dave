@@ -16,8 +16,8 @@ use cartesi_dave_contracts::dave_consensus::DaveConsensus::{
 };
 use cartesi_prt_contracts::tournament::Tournament::{
     MatchCreated, advanceMatchCall, eliminateInnerTournamentCall, eliminateMatchByTimeoutCall,
-    joinTournamentCall, sealInnerMatchAndCreateInnerTournamentCall, winInnerTournamentCall,
-    winLeafMatchCall, winMatchByTimeoutCall,
+    joinTournamentCall, sealInnerMatchAndCreateInnerTournamentCall, tryRecoveringBondCall,
+    winInnerTournamentCall, winLeafMatchCall, winMatchByTimeoutCall,
 };
 
 /// The largest payload whose EvmAdvance-encoded input fits the InputBox's
@@ -103,6 +103,17 @@ async fn consecutive_epochs_settle_including_a_maximum_size_input() -> Result<()
         "epoch 1 settled the state after the input"
     );
     assert_eq!(world.honest_calls(ACCEPT).len(), 2);
+
+    // The bytes the node ingested and executed are the InputBox's input,
+    // the hash DaveConsensus checks when the step asks for its root.
+    let stored = Storage::new(node.state_dir.path())?.inputs(1)?;
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].len(), 65_412, "the EvmAdvance-encoded maximum");
+    let input_hash = IInputBox::new(world.book.input_box, world.chain.provider().clone())
+        .getInputHash(world.book.app, U256::ZERO)
+        .call()
+        .await?;
+    assert_eq!(alloy::primitives::keccak256(&stored[0]), input_hash);
     Ok(())
 }
 
@@ -239,17 +250,23 @@ async fn a_silent_joiner_loses_by_timeout() -> Result<()> {
 }
 
 /// A rational adversary disputes down to the leaf, where only the node
-/// can prove the divergent transition (simple): the node wins the leaf
-/// match by STEP, each inner tournament in turn, and settles. (The node
-/// moves first in a round, so it proves before the adversary can try;
-/// the overlay's own tests show the adversary cannot.)
+/// can prove the divergent transition, a closing slot (simple): the node
+/// wins the leaf match by STEP, each inner tournament in turn, and
+/// settles. (The node moves first in a round, so it proves before the
+/// adversary can try; the overlay's own tests show the adversary cannot.)
 #[tokio::test]
 #[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
 async fn the_node_wins_by_proving_the_divergent_transition() -> Result<()> {
     let mut world = World::spawn(&[HONEST], 1000).await?;
     let mut node = world.honest_node().await?;
     node.roll(&mut world, 0).await?;
-    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+    // The last transition of the first root leaf: a closing slot, so the
+    // node's proof carries a ustep and the uarch reset.
+    let closing_slot = Tail {
+        from: (U256::ONE << 44) - U256::ONE,
+        ..idle_tail()
+    };
+    let mut adversary = world.adversary(&node, 1, closing_slot, Policy::Rational)?;
 
     node.run_with(
         &mut world,
@@ -434,11 +451,14 @@ async fn restart_after_a_mined_advance_wins_the_dispute() -> Result<()> {
     restart_mid_dispute(advanced, ADVANCE, true).await
 }
 
-/// Three sybils (multi_sybil): two play, one joins and goes silent, so the
-/// root holds two concurrent matches, one of them sybil against sybil. The
-/// silent sybil is deleted by timeout without winning; the node wins the
-/// root, restarts after settlement, and recovers exactly one bond, paid to
-/// itself, before it joins the next root, which drains the root's balance.
+/// Three sybils (multi_sybil): join order pairs the node with the first
+/// while the second pairs with the third, who joins and goes silent, so the
+/// root holds two concurrent matches. The node beats the first by STEP; the
+/// second outlasts the silent sybil (deleted by timeout without winning),
+/// meets the node and loses by STEP too. The node restarts once its bond
+/// recovery has begun, before the epoch completes, and recovers exactly one
+/// bond on the root, paid to itself, before it joins the next root; the
+/// root's balance drains.
 #[tokio::test]
 #[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
 async fn three_sybils_lose_and_the_node_recovers_its_bond_first() -> Result<()> {
@@ -449,11 +469,30 @@ async fn three_sybils_lose_and_the_node_recovers_its_bond_first() -> Result<()> 
     let mut two = world.adversary(&node, 2, tail(2, 0xb2), Policy::Rational)?;
     let mut silent =
         world.adversary(&node, 3, tail(3, 0xc3), Policy::StopAfter("joinTournament"))?;
-    for adversary in [&mut one, &mut two, &mut silent] {
-        adversary.turn(&mut world).await?;
-    }
+    one.turn(&mut world).await?;
+    node.turn(&mut world).await?;
+    two.turn(&mut world).await?;
+    silent.turn(&mut world).await?;
     let root = world.sealed_epochs().await?[0].tournament;
+    assert_eq!(
+        world.matches_created(root).await?.len(),
+        2,
+        "two concurrent matches"
+    );
 
+    let recover = FixedBytes(tryRecoveringBondCall::SELECTOR);
+    node.run_with(
+        &mut world,
+        &mut [&mut one, &mut two, &mut silent],
+        DISPUTE_ROUNDS,
+        |world, _| Ok(!world.honest_calls(recover).is_empty()),
+    )
+    .await?;
+    assert!(
+        !completed(&mut Storage::new(node.state_dir.path())?, 0)?,
+        "the restart lands before the epoch completes"
+    );
+    let mut node = node.restart(&world)?;
     node.run_with(
         &mut world,
         &mut [&mut one, &mut two, &mut silent],
@@ -461,12 +500,18 @@ async fn three_sybils_lose_and_the_node_recovers_its_bond_first() -> Result<()> 
         |_, storage| completed(storage, 0),
     )
     .await?;
-    let mut node = node.restart(&world)?;
-    let next_root = world.sealed_epochs().await?[1].tournament;
+    // Epoch 1 is empty and undisputed: the node's next join is its root.
+    let joins = world.honest_calls(JOIN).len();
     node.run_until(&mut world, ROUNDS, |world, _| {
-        Ok(world.honest_calls(JOIN).len() > world.levels())
+        Ok(world.honest_calls(JOIN).len() > joins)
     })
     .await?;
+    let next_root = world.sealed_epochs().await?[1].tournament;
+    assert_eq!(
+        world.honest_calls(WIN_LEAF).len(),
+        2,
+        "two leaf wins by STEP"
+    );
 
     let joined = world.commitments_joined(root).await?;
     assert_eq!(joined.len(), 4, "the node and three sybils joined the root");
@@ -611,15 +656,15 @@ async fn sealed_leaf() -> Result<SealedLeaf> {
 
 /// The longer clock wins (sealed_leaf_timeout_winner): the outcome turns
 /// from none to two-wins exactly at the short deadline and stays so past
-/// the midpoint where a retired classifier used to flip; the node, back
-/// online there, claims the timeout in the very next block, before the
+/// the midpoint where a retired classifier used to flip; the node,
+/// restarted there, claims the timeout in the very next block, before the
 /// long deadline. The match is deleted by timeout, not by a proof.
 #[tokio::test]
 #[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
 async fn the_longer_clock_wins_a_sealed_leaf_by_timeout() -> Result<()> {
     let SealedLeaf {
         mut world,
-        mut node,
+        node,
         leaf,
         created,
         seal,
@@ -647,6 +692,8 @@ async fn the_longer_clock_wins_a_sealed_leaf_by_timeout() -> Result<()> {
         TWO_WINS
     );
 
+    // Back online as a fresh process, as the Lua scenario respawned it.
+    let mut node = node.restart(&world)?;
     node.turn(&mut world).await?;
     assert_deleted(&world, leaf, &created, TIMEOUT, TWO_WON).await?;
     let claims = world.honest_calls(WIN_TIMEOUT);
@@ -661,14 +708,14 @@ async fn the_longer_clock_wins_a_sealed_leaf_by_timeout() -> Result<()> {
 
 /// Both clocks expire (sealed_leaf_timeout_both): the outcome turns from
 /// two-wins to eliminate-both exactly at the long deadline, and the node,
-/// back online there, deletes the match in the very next block with no
+/// restarted there, deletes the match in the very next block with no
 /// winner.
 #[tokio::test]
 #[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
 async fn both_clocks_expire_on_a_sealed_leaf() -> Result<()> {
     let SealedLeaf {
         mut world,
-        mut node,
+        node,
         leaf,
         created,
         long,
@@ -684,6 +731,8 @@ async fn both_clocks_expire_on_a_sealed_leaf() -> Result<()> {
         ELIMINATE_BOTH
     );
 
+    // Back online as a fresh process, as the Lua scenario respawned it.
+    let mut node = node.restart(&world)?;
     node.turn(&mut world).await?;
     assert_deleted(&world, leaf, &created, TIMEOUT, NO_WINNER).await?;
     let eliminations = world.honest_calls(ELIMINATE_MATCH);
