@@ -40,7 +40,10 @@ export PATH="${fake_bin}:${PATH}"
 
 CDPATH= cd -- "$fixture_repo"
 # The checker reads the emulator pin from the Git index; a gitlink entry
-# needs no submodule checkout behind it.
+# needs no submodule checkout behind it. Git hooks export GIT_DIR (in linked
+# worktrees) and an absolute GIT_INDEX_FILE (under commit -a), which would aim
+# update-index at the caller's real index and stage the fake pin there.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 git init -q
 git update-index --add \
     --cacheinfo 160000,0123456789abcdef0123456789abcdef01234567,machine/emulator
