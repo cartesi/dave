@@ -1,7 +1,10 @@
 # Dave Rollups Node
 
-The prototype PRT validator node, one crate: it follows an application's
-inputs, recomputes its state, and defends the correct result in disputes.
+The PRT validator node (the sling node), one crate: it follows an
+application's inputs, recomputes its state, settles epochs, and defends the
+correct result in disputes. It is a focused validator and stays one: it
+keeps no outputs and serves no output or voucher proofs, and any reader
+feature belongs in a separate executable.
 Architecture and known debts: [docs/node-architecture.md](../../docs/node-architecture.md).
 How epochs and disputes flow: [docs/epoch-lifecycle.md](../../docs/epoch-lifecycle.md).
 
