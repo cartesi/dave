@@ -37,6 +37,9 @@ test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
 smoke:
     #!/usr/bin/env bash
     set -uo pipefail
+    # just exits 130 on SIGINT instead of dying of it, so bash would read
+    # Ctrl-C as one failed scenario and start the next.
+    trap 'exit 130' INT TERM
     scenarios=(
         "echo simple"
         "echo chaos"
@@ -56,6 +59,9 @@ smoke:
     for entry in "${scenarios[@]}"; do
         read -r program scenario <<< "$entry"
         start=$SECONDS
+        # A scenario that dies before the node starts must not inherit the
+        # previous scenario's log.
+        rm -f "$log"
         CHAOS_SEED=${CHAOS_SEED:-1} just test "$program" "$scenario"
         rc=$?
         cp "$log" "_smoke/$program-$scenario.log" 2>/dev/null
