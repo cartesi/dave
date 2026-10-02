@@ -10,6 +10,7 @@ local Sender = require "dave.sender"
 local start_sybil = require "runners.sybil_runner"
 local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local CommitmentBuilder = require "computation.commitment"
+local uint256 = require "utils.bint" (256)
 
 -- anvil deployment state dump; the dump is opt-in (see the justfile:
 -- its flag pair makes anvil retain all historical states in memory)
@@ -31,8 +32,9 @@ local SALT = "0x" .. string.rep("00", 32)
 local SLEEP_TIME = 1
 -- Blocks advanced per wait_until_epoch poll (4s cadence). Timeout
 -- waits dominate the timeout-heavy scenarios' wall clock (suite
--- economics, docs/test-harness.md): clock allowances are ~300 blocks
--- and eliminations need ~300 more past expiry, so 16 meant minutes of
+-- economics, docs/test-harness.md): devnet allowances are ~400 blocks
+-- (no censorship budget, only the honest path's inclusions and builds)
+-- and eliminations need as many again past expiry, so 16 meant minutes of
 -- throttled ticking per expiry. 128 keeps a few polls of granularity
 -- per allowance; overshooting an expiry is harmless (elimination
 -- WANTS overshoot). Env-overridable for tuning.
@@ -166,6 +168,22 @@ function Env.assert_match_deleted(tournament_address, match, reason, winner_comm
     return deletion
 end
 
+-- A sealed leaf match counts as proved only if the on-chain state transition
+-- resolved it. A timeout win leaves the same seal and correct settlement
+-- behind, and the node claims a timeout before retrying a rejected proof, so
+-- a broken transition could otherwise pass as proved (CF-02).
+function Env.assert_leaf_match_proved(tournament_address, match_id_hash)
+    local deletions = Env.reader:read_match_deleted(tournament_address, match_id_hash)
+    assert(#deletions == 1, string.format(
+        "expected exactly one MatchDeleted for leaf match %s, saw %d",
+        match_id_hash:hex_string(), #deletions))
+    local deletion = deletions[1]
+    assert(deletion.reason == "step", string.format(
+        "leaf match %s was resolved by %s, not a STEP proof",
+        match_id_hash:hex_string(), deletion.reason))
+    return deletion
+end
+
 -- The oracle: an independent machine lineage anchored at the template.
 -- It replays only chain inputs, epoch after epoch, so node output is
 -- never an input to the oracle, only a subject of comparison.
@@ -204,8 +222,9 @@ local function oracle_advance(sealed_epoch, inputs)
     local snapshot_path = ORACLE_DIR .. "/epoch-" .. sealed_epoch.epoch_number
     oracle.machine:store_to(snapshot_path)
 
-    -- 44 is the initial log2_stride currently configured in the smart contracts.
-    local _, commitment, processing_bigs = oracle.machine:rollup_commitment(44, inputs)
+    -- The root stride of the deployed table, like the node's pinned one.
+    local root_stride = Env.reader:read_tournament_levels()[1].log2_stride
+    local _, commitment, processing_bigs = oracle.machine:rollup_commitment(root_stride, inputs)
     oracle.epoch = oracle.epoch + 1
 
     return initial_state, commitment, snapshot_path, processing_bigs
@@ -262,6 +281,20 @@ function Env.player_react(player_coroutine)
     return coroutine.status(player_coroutine), log
 end
 
+-- Reacts without mining, for setups that must act before the node can.
+-- Only the player's own transactions advance the chain, and the node acts
+-- on a block only once it is final (two deep), so two players that join
+-- right after a seal both join before the node.
+function Env.react_until(player_coroutine, condition_f)
+    for _ = 1, 100000 do
+        local ret = { condition_f(Env.player_react(player_coroutine)) }
+        if ret[1] then
+            return table.unpack(ret)
+        end
+    end
+    error("player did not reach the expected state without mining")
+end
+
 -- `on_step` (optional) runs between sybil reactions; chaos scenarios
 -- use it to kill and respawn the node mid-dispute.
 function Env.drive_player_until(player_coroutine, condition_f, on_step)
@@ -292,7 +325,7 @@ end
 -- block-denominated chess clock while it is on turn - observed as an
 -- honest node timing out of its own dispute at 128 blocks per idle
 -- poll. Callers fast-forwarding while a dispute is LIVE must keep
--- `blocks` small (multi_sybil uses 4); big jumps are safe only when
+-- `blocks` small (a few blocks); big jumps are safe only when
 -- no match awaits the node's move (wait_until_epoch's settlement
 -- polling).
 function Env.fast_forward(blocks)
@@ -310,8 +343,44 @@ function Env.drive_player(player_coroutine, on_step)
     end, on_step)
 end
 
+local function as_uint256(value)
+    if uint256.isbint(value) then
+        return value
+    end
+    return uint256.fromuinteger(value)
+end
+
+-- Patches that steer a dispute onto `transition`. A patch at meta-cycle M
+-- garbles the leaf whose post-state sits at M, i.e. transition M - 1, but a
+-- level only sees patches aligned to its stride, and the descent follows
+-- each level's EARLIEST divergent leaf. So every non-leaf level gets M
+-- rounded up to its stride (the leaf enclosing M) and the leaf level gets M
+-- itself; each rounded patch is also the last leaf of the level below. The
+-- strides come from the deployed table, so the chain holds for any geometry.
+function Env.steering_patches(transition)
+    local target = as_uint256(transition) + 1
+    local metas = { [tostring(target)] = target }
+    for _, level in ipairs(Env.reader:read_tournament_levels()) do
+        if level.log2_stride > 0 then
+            local rounded = ((target + (uint256.one() << level.log2_stride) - 1)
+                >> level.log2_stride) << level.log2_stride
+            metas[tostring(rounded)] = rounded
+        end
+    end
+
+    local patches = {}
+    for _, meta in pairs(metas) do
+        table.insert(patches, { hash = Hash.zero, meta_cycle = meta })
+    end
+    return patches
+end
+
 -- `patches` is a list, or a function of the settlement (for patch
--- positions only the oracle can compute, like revert slots).
+-- positions only the oracle can compute, like revert slots). Returns the
+-- next sealed epoch and the dispute's sealed leaf matches, as
+-- { tournament, match_id_hash, cycle } records. Sealed is not proved: kill
+-- and chaos runs may legitimately end a leaf on a timeout, so callers that
+-- need the proof check each record with Env.assert_leaf_match_proved.
 function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     next_inputs = next_inputs or {}
     local settlement = Env.epoch_settlement(sealed_epoch)
@@ -328,10 +397,41 @@ function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     local player = start_sybil(patched_commitment_builder, settlement.machine_path, sealed_epoch.tournament,
         settlement.inputs)
 
-    -- Run player till completion
+    -- Run player till completion, noting the leaf tournaments it reached.
     print("Run Sybil")
-    assert(Env.drive_player(player, on_step) == "lost")
+    local leaf_tournaments = {}
+    local function note_leaf_tournaments(state)
+        if state.log2_stride == 0 then
+            leaf_tournaments[state.address] = true
+        end
+        for _, match in pairs(state.matches) do
+            if match and match.inner_tournament then
+                note_leaf_tournaments(match.inner_tournament)
+            end
+        end
+    end
+    local outcome = Env.drive_player_until(player, function(status, log)
+        if log and log.state then
+            note_leaf_tournaments(log.state)
+        end
+        if log and log.has_lost then
+            return "lost"
+        elseif status == "dead" then
+            return "dead"
+        end
+    end, on_step)
+    assert(outcome == "lost")
     print "Sybil has lost"
+
+    local sealed = {}
+    for address in pairs(leaf_tournaments) do
+        for _, match in ipairs(Env.reader:read_sealed_leaf_matches(address)) do
+            match.tournament = address
+            table.insert(sealed, match)
+            print(string.format("[run_epoch] leaf match %s sealed on transition %s",
+                match.match_id_hash:hex_string(), match.cycle))
+        end
+    end
 
     -- add inputs for next epoch (in case it happens!)
     Env.sender:tx_add_inputs(next_inputs)
@@ -346,6 +446,29 @@ function Env.run_epoch(sealed_epoch, patches, next_inputs, on_step)
     assert(winner.final == settlement.commitment:last())
     print("Correct claim won for epoch ", sealed_epoch.epoch_number)
 
+    return next_epoch, sealed
+end
+
+-- Runs one epoch whose dispute must be decided on `transition` (a number,
+-- a bint, or a function of the settlement returning one), and asserts that
+-- the leaf match sealed exactly there and a STEP proof resolved it.
+function Env.run_steered_epoch(sealed_epoch, transition, next_inputs, on_step)
+    local target
+    local next_epoch, sealed = Env.run_epoch(sealed_epoch, function(settlement)
+        if type(transition) == "function" then
+            target = as_uint256(transition(settlement))
+        else
+            target = as_uint256(transition)
+        end
+        print(string.format("[run_steered_epoch] steering onto transition %s", target))
+        return Env.steering_patches(target)
+    end, next_inputs, on_step)
+
+    assert(#sealed == 1, string.format("expected one sealed leaf match, saw %d", #sealed))
+    assert(sealed[1].cycle == target, string.format(
+        "the dispute sealed on transition %s, not the steered %s", sealed[1].cycle, target))
+    -- run_epoch returns after settlement, so the leaf's deletion is on chain.
+    Env.assert_leaf_match_proved(sealed[1].tournament, sealed[1].match_id_hash)
     return next_epoch
 end
 

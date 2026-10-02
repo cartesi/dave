@@ -38,6 +38,12 @@ modules (`just <module>::<recipe>`, see `just --list`).
    production and deployment inputs that produced them. `build-devnet`
    produces the complete bundle and the e2e harness refuses an incomplete,
    stale, or mixed one. Release archives preserve the same three-part unit.
+   `DEVNET_GEOMETRY` selects the tournament table the bundle deploys: the
+   checked-in canonical one (default) or `two-level`, which serves the
+   selected two-level table through a test-only provider and a devnet-only
+   PRT script, leaving production scripts untouched. The marker records the
+   geometry, and every consumer verifies against the `DEVNET_GEOMETRY` it
+   runs with, so a bundle of one geometry never passes for another.
 
 Consequence of (1) and (4): raw Cargo works after the gitignored Solidity
 bindings exist and either a valid external machine provider is selected or the
@@ -96,7 +102,8 @@ The devnet receipt is deliberately narrower than the contract worktrees. Its
 input digest covers production and deployment Solidity, installed production
 dependency Solidity and lockfiles, the production `machine/step` sources,
 effective Forge compiler and deployment configuration, the build and deploy
-drivers, and the Forge and Anvil versions. It excludes documentation, tests,
+drivers, the selected geometry and its devnet-only provider and script, and
+the Forge and Anvil versions. It excludes documentation, other tests,
 measurements, compiler output, broadcasts, and prior deployments. Those files
 cannot change the deployed bundle, and treating them as inputs made doctor
 report false staleness. The receipt separately hashes `state.json` and every
@@ -130,9 +137,11 @@ regenerated together.
 
 The node database follows the same clean-slate policy: `storage/sql/schema.sql`
 is the only schema definition and has no upgrade steps. An empty database is
-created from that file and atomically stamped with the node package version and
-the Keccak hash of the exact schema bytes. An existing database is never given
-DDL at startup; its two identity values must match the running binary. A
+created from that file and atomically stamped with the node package version,
+the Keccak hash of the exact schema bytes, and the commitment semantics version
+(`COMMITMENT_SEMANTICS` in `storage/sql/schema.rs`). An existing database is
+never given DDL at startup; all three identity values must match the running
+binary. A
 mismatch requires deleting the state directory and rebuilding it from the
 chain and machine image.
 
@@ -218,10 +227,10 @@ rather than treating the acquisition list as exhaustive.
 `just test-computation-hash-corpus` is the explicit emulator release gate. It
 downloads the pinned v0.21 corpus and checks its SHA-256. One test replays the
 complete mcycle and uarch manifest through the release CLI; a separate test
-compares every mcycle case that Dave supports directly with the published
-answer. The split keeps CLI packaging conformance distinct from Dave's
-collector conformance. Acquisition stays outside both `setup` and `just check`,
-and this gate does not opt the node into the new bulk collection API.
+compares every case that Dave supports directly with the published answer,
+building each dense leaf with both the bulk collector and the stepped
+reference. The split keeps CLI packaging conformance distinct from Dave's
+collector conformance. Acquisition stays outside both `setup` and `just check`.
 
 ## macOS + nix devshell note
 

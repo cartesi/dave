@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::blockchain_reader::AddressBook;
-use crate::engine::Structure;
-use crate::storage::rollups_machine::LOG2_STRIDE;
+use crate::engine::{Level, Structure, TournamentGeometry};
 use crate::storage::{Storage, StorageError};
 use alloy::{
     network::EthereumWallet,
@@ -12,7 +11,7 @@ use alloy::{
     transports::http::reqwest::Url,
 };
 use alloy_chains::NamedChain;
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Context, Result, ensure};
 use cartesi_prt_contracts::{
     cartesi_state_transition::CartesiStateTransition,
     multi_level_tournament_factory::MultiLevelTournamentFactory,
@@ -26,23 +25,33 @@ const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const SLEEP_DURATION: u64 = 30;
 
-fn validate_root_tournament_geometry(log2step: u64, height: u64) -> Result<()> {
-    let deployed_span = log2step
-        .checked_add(height)
-        .ok_or_else(|| anyhow!("root tournament span overflows u64: {log2step} + {height}"))?;
+/// The deepest leaf level the measured dense rate builds within the
+/// selected commitment budget (docs/measurements/constants.md). A deeper one
+/// may not be defensible in time, so the node says so at startup.
+const MEASURED_LEAF_HEIGHT_CAPACITY: u64 = 37;
 
-    ensure!(
-        log2step == LOG2_STRIDE,
-        "incompatible root tournament stride: deployed log2step {log2step}, node requires {LOG2_STRIDE}"
-    );
+/// One `tournamentParameters(level)` row: (levels, log2step, height).
+type TableRow = (u64, u64, u64);
 
-    let expected_span = Structure::PRODUCTION.log2_ruler_span();
-    ensure!(
-        deployed_span == expected_span,
-        "incompatible root tournament span: deployed log2step + height is {deployed_span}, node requires {expected_span}"
-    );
-
-    Ok(())
+/// The factory's table, as the node will pin and run it. Every row
+/// repeats the level count; a row disagreeing with the count is a
+/// broken provider, not a geometry.
+fn tournament_geometry_from_rows(
+    level_count: u64,
+    rows: &[TableRow],
+) -> Result<TournamentGeometry> {
+    let mut levels = Vec::with_capacity(rows.len());
+    for (level, &(row_levels, log2_stride, height)) in rows.iter().enumerate() {
+        ensure!(
+            row_levels == level_count,
+            "level {level} reports {row_levels} levels, but the factory reports {level_count}"
+        );
+        levels.push(Level {
+            log2_stride,
+            height,
+        });
+    }
+    TournamentGeometry::new(levels, &Structure::PRODUCTION)
 }
 
 fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
@@ -54,21 +63,49 @@ fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
     Ok(())
 }
 
-async fn validate_deployed_tournament_configuration(
+/// Discovers the deployed tournament geometry from the factory the
+/// consensus instantiates every epoch's tournament with, and checks the
+/// factory's state transition against the linked machine.
+pub(crate) async fn discover_deployed_tournament(
     tournament_factory: Address,
     provider: &impl Provider,
-) -> Result<()> {
+) -> Result<TournamentGeometry> {
     let factory = MultiLevelTournamentFactory::new(tournament_factory, provider);
-    let parameters = factory
-        .tournamentParameters(0)
+    let level_count = factory
+        .tournamentLevelCount()
         .call()
         .await
         .with_context(|| {
-            format!("failed to query root parameters from tournament factory {tournament_factory}")
+            format!("failed to query the level count of tournament factory {tournament_factory}")
         })?;
-
-    validate_root_tournament_geometry(parameters.log2step, parameters.height)
+    // Levels tile the ruler with nonzero heights, so a larger count
+    // cannot validate; refuse it before issuing that many calls.
+    ensure!(
+        (1..=Structure::PRODUCTION.log2_ruler_span()).contains(&level_count),
+        "tournament factory {tournament_factory} reports {level_count} levels"
+    );
+    let mut rows = Vec::new();
+    for level in 0..level_count {
+        let parameters = factory
+            .tournamentParameters(level)
+            .call()
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to query level {level} parameters from tournament factory {tournament_factory}"
+                )
+            })?;
+        rows.push((parameters.levels, parameters.log2step, parameters.height));
+    }
+    let geometry = tournament_geometry_from_rows(level_count, &rows)
         .with_context(|| format!("tournament factory {tournament_factory} is incompatible"))?;
+    if geometry.leaf_height() > MEASURED_LEAF_HEIGHT_CAPACITY {
+        log::warn!(
+            "leaf level height {} exceeds the measured capacity {MEASURED_LEAF_HEIGHT_CAPACITY}: \
+             leaf commitments may not build within the commitment budget",
+            geometry.leaf_height()
+        );
+    }
 
     let state_transition = factory.stateTransition().call().await.with_context(|| {
         format!("failed to query state transition from tournament factory {tournament_factory}")
@@ -87,7 +124,8 @@ async fn validate_deployed_tournament_configuration(
         format!(
             "state transition {state_transition} configured by tournament factory {tournament_factory} is incompatible"
         )
-    })
+    })?;
+    Ok(geometry)
 }
 
 #[derive(Clone, Parser)]
@@ -275,8 +313,9 @@ impl NodeConfig {
         let provider = create_rpc_provider(&args.web3_rpc_url, chain_id).await;
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await;
         let address_book = AddressBook::new(args.app_address, &provider).await;
-        validate_deployed_tournament_configuration(address_book.tournament_factory, &provider)
-            .await?;
+        let geometry =
+            discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
+        log::info!("deployed tournament geometry (stride/height, top first): {geometry}");
         let ethereum_submit_gateway = args
             .web3_submit_rpc_url
             .unwrap_or_else(|| args.web3_rpc_url.clone());
@@ -286,6 +325,8 @@ impl NodeConfig {
             &args.machine_path,
             address_book.genesis_block_number,
             address_book.app,
+            address_book.consensus,
+            &geometry,
         )
         .context("could not create `storage`")?;
 
@@ -357,26 +398,25 @@ mod tests {
     }
 
     #[test]
-    fn accepts_canonical_root_tournament_geometry() {
-        validate_root_tournament_geometry(44, 48).unwrap();
+    fn accepts_any_valid_factory_table() {
+        let three_level = tournament_geometry_from_rows(3, &[(3, 44, 48), (3, 27, 17), (3, 0, 27)]);
+        assert_eq!(three_level.unwrap(), TournamentGeometry::three_level());
+        let two_level = tournament_geometry_from_rows(2, &[(2, 37, 55), (2, 0, 37)]);
+        assert_eq!(two_level.unwrap(), TournamentGeometry::two_level());
     }
 
     #[test]
-    fn rejects_wrong_root_tournament_stride() {
-        let error = validate_root_tournament_geometry(43, 49).unwrap_err();
-        assert!(error.to_string().contains("deployed log2step 43"));
+    fn rejects_rows_disagreeing_with_the_level_count() {
+        let error =
+            tournament_geometry_from_rows(3, &[(3, 44, 48), (2, 27, 17), (3, 0, 27)]).unwrap_err();
+        assert!(error.to_string().contains("level 1 reports 2 levels"));
     }
 
     #[test]
-    fn rejects_wrong_root_tournament_span() {
-        let error = validate_root_tournament_geometry(44, 47).unwrap_err();
-        assert!(error.to_string().contains("log2step + height is 91"));
-    }
-
-    #[test]
-    fn rejects_root_tournament_span_overflow() {
-        let error = validate_root_tournament_geometry(u64::MAX, 1).unwrap_err();
-        assert!(error.to_string().contains("span overflows u64"));
+    fn rejects_an_invalid_factory_table() {
+        let error =
+            tournament_geometry_from_rows(3, &[(3, 44, 47), (3, 27, 17), (3, 0, 27)]).unwrap_err();
+        assert!(error.to_string().contains("an epoch spans"));
     }
 
     #[test]
@@ -401,7 +441,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepts_deployed_factory_state_transition_and_machine() {
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
+    async fn discovers_the_deployed_tournament_geometry() {
         let state = anvil_state_path();
         let anvil = Anvil::default()
             .args(["--load-state", state.to_str().unwrap()])
@@ -409,11 +450,21 @@ mod tests {
         let provider =
             ProviderBuilder::new().connect_client(rpc_client_with_timeout(anvil.endpoint_url()));
 
-        validate_deployed_tournament_configuration(
+        let geometry = discover_deployed_tournament(
             deployment_address("MultiLevelTournamentFactory"),
             &provider,
         )
         .await
         .unwrap();
+        // The devnet bundle serves the table of the geometry profile it was
+        // built with (DEVNET_GEOMETRY, canonical by default).
+        let expected = match std::env::var("DEVNET_GEOMETRY").as_deref() {
+            Ok("two-level") => TournamentGeometry::two_level(),
+            _ => TournamentGeometry::checked_in(),
+        };
+        assert_eq!(
+            geometry, expected,
+            "the devnet bundle serves another geometry than DEVNET_GEOMETRY selects"
+        );
     }
 }

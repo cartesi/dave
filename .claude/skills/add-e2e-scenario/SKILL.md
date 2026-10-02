@@ -12,10 +12,14 @@ patch chains, kill markers). The wiring checklist, complete:
    justfile). Existing: echo, yield, honeypot; `compute` builds but is
    not yet wired into any scenario.
 2. Write `test/e2e/rollups/scenarios/<name>.lua`: require `test_env`,
-   spawn blockchain and node, drive epochs with `run_epoch` or
-   hand-rolled sybils with patch lists. Copy the shape of a sibling
-   scenario (`simple.lua` for honest runs, `kill_*.lua` for kill points,
-   `multi_sybil.lua` for concurrent matches).
+   spawn blockchain and node, drive epochs with `run_steered_epoch` when
+   the dispute must reach a specific transition, and with `run_epoch` or
+   hand-rolled sybils with patch lists otherwise. Take strides and heights
+   from `env.reader:read_tournament_levels()`, never literals, so the
+   scenario runs on either devnet geometry. Copy the shape of a sibling
+   scenario (`simple.lua` for honest runs, `stf_all.lua` for steered
+   disputes, `kill_*.lua` for kill points, `multi_sybil.lua` for concurrent
+   matches).
 3. Wire a justfile alias if it should run in a suite
    (`test/e2e/rollups/justfile`). Give the recipe a self-contained
    final comment line - `just --list` shows only that line.

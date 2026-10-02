@@ -55,8 +55,15 @@ assurance reports. The completed 2026-07 PRT campaign is archived at
 
 Plans: [plans/](plans/) is for active work, not completed campaign history.
 The upgrade ledger is [plans/stf-upgrade.md](plans/stf-upgrade.md); the
-follow-up bulk-collector qualification is
+two-level campaign that now orders its remaining phases is
+[plans/two-level-sling.md](plans/two-level-sling.md); the bulk-collector
+qualification evidence is
 [plans/collect-hashes-migration.md](plans/collect-hashes-migration.md).
+[plans/tooling-footguns.md](plans/tooling-footguns.md) is a backlog of
+observed tooling friction.
+[plans/test-strategy-reset.md](plans/test-strategy-reset.md) restates what
+each test layer must establish and orders the move from e2e toward unit
+tests, benchmarks and an anvil harness.
 [plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md) is the one
 temporary exception while its implementation is under preliminary Rust review;
 its stable invariants will move into node-architecture.md before it is deleted.
@@ -65,7 +72,10 @@ and pull-request history preserve the exploration.
 
 Measurements: generated baselines live in [measurements/](measurements/) -
 `measurements.md` and `measurements-stress.md` (`just measure`,
-`just measure-stress --full`) and `constants.md` (`just measure-constants`).
+`just measure-stress --full`), `constants.md` (`just measure-constants`),
+`two-level-leaf.md` (`just measure-two-level-leaf`), and
+`node-vs-emulator.md` (`just measure-node-vs-emulator`, the runbook check
+that the node adds no overhead over the emulator).
 Regenerate on the machine that matters and commit the diff; each file
 carries its own caveats and density labels.
 

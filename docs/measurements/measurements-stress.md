@@ -52,8 +52,9 @@ per epoch (logged node-side at roll).
 ## Clock budget
 
 matchEffort grants five minutes of clock per height unit
-(Deployment.s.sol), so a bisection move budgets ~300 s.
-Total allowances: devnet 1 h, testnet 9 h, mainnet 1 week + 1 h.
+(ClockBudgets), so a bisection move budgets ~300 s.
+Total allowances, C + G + (L - 1)(T + 2G) at T = 30 min: devnet 85 min,
+testnet 9 h 25 min, mainnet 1 week + 85 min.
 Level 0 never replays (seed-served); levels 1 and 2 pay their
 root-shape replay on the first cold descent.
 

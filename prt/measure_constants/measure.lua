@@ -35,8 +35,8 @@ end
 
 local root_tournament_slowdown = positive_number_from_env("DAVE_ROOT_SLOWDOWN", 10)
 assert(root_tournament_slowdown > 1, "DAVE_ROOT_SLOWDOWN must be greater than 1")
-local inner_tournament_timeout_minutes =
-    positive_number_from_env("DAVE_INNER_TIMEOUT_MINUTES", 30)
+local commitment_budget_minutes =
+    positive_number_from_env("DAVE_COMMITMENT_BUDGET_MINUTES", 30)
 local sample_seconds = positive_number_from_env("DAVE_SAMPLE_SECONDS", 120)
 
 local default_log2_big_machine_span = 26
@@ -45,6 +45,13 @@ local epoch_log2_span = cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
     + cartesi.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
     + cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE
 local machine_runtime = { console = { output_destination = "to_null" } }
+-- Leaf builds hash after every ustep over a few dirty pages, where the
+-- emulator's parallel path (taken once they outnumber the host's cores)
+-- costs several times the hashing, so the clients load them serially.
+local leaf_runtime = {
+    console = { output_destination = "to_null" },
+    concurrency = { update_hash_tree = 1 },
+}
 local uarch_halted = cartesi.UARCH_BREAK_REASON_UARCH_HALTED
 local reached_target = cartesi.BREAK_REASON_REACHED_TARGET_MCYCLE
 
@@ -76,8 +83,8 @@ local function release_workload_marker(machine)
     assert_running(machine, "after releasing workload marker")
 end
 
-local function load_workload_machine()
-    local machine = cartesi.machine(machine_path, machine_runtime)
+local function load_workload_machine(runtime)
+    local machine = cartesi.machine(machine_path, runtime or machine_runtime)
     assert_running(machine, "loaded active workload fixture")
     return machine
 end
@@ -169,7 +176,7 @@ local function run_uarch_until_timeout()
     local with_hash_time
     do
         collectgarbage()
-        local machine <close> = load_workload_machine()
+        local machine <close> = load_workload_machine(leaf_runtime)
         start_timer()
         repeat
             uinstructions = uinstructions + run_big_instruction_in_uarch(machine, true)
@@ -178,13 +185,13 @@ local function run_uarch_until_timeout()
         with_hash_time = stop_timer()
     end
 
-    local extrapolated = iterations * inner_tournament_timeout_minutes * 60 / with_hash_time
+    local extrapolated = iterations * commitment_budget_minutes * 60 / with_hash_time
     local log2_iterations = floor_log2_capacity(extrapolated, "leaf commitment")
 
     local without_hash_time
     do
         collectgarbage()
-        local machine <close> = load_workload_machine()
+        local machine <close> = load_workload_machine(leaf_runtime)
         start_timer()
         for _ = 1, iterations do
             run_big_instruction_in_uarch(machine, false)
@@ -249,7 +256,7 @@ local function run_big_machine_until_timeout(log2_stride)
         with_hash_time = stop_timer()
     end
 
-    local extrapolated = iterations * inner_tournament_timeout_minutes * 60 / with_hash_time
+    local extrapolated = iterations * commitment_budget_minutes * 60 / with_hash_time
     local log2_iterations = floor_log2_capacity(extrapolated, "big-machine commitment")
 
     local without_hash_time
@@ -276,8 +283,8 @@ Starting emulator constants benchmark for stress-ng --%s...
 Linux boot, process startup, and the fixed warmup are excluded from timing.
 Sample duration is %.1f seconds per timed phase.
 Target root slowdown is %.1fx.
-Inner commitment budget is %.1f minutes.
-]], workload, sample_seconds, root_tournament_slowdown, inner_tournament_timeout_minutes))
+Commitment budget is %.1f minutes.
+]], workload, sample_seconds, root_tournament_slowdown, commitment_budget_minutes))
 
 local levels = 0
 local log2_strides = {}

@@ -519,6 +519,7 @@ mod tests {
     /// nonce is reusable with no lane-side reconciliation - there is
     /// no lane state to reconcile.
     #[tokio::test]
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
     async fn stateless_wave_defers_to_the_pool() -> Result<()> {
         let (_anvil, provider, mut lane, signer) = spawn_lane().await?;
         let before_submissions = provider.anvil_snapshot().await?;
@@ -577,6 +578,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
     async fn rebuilding_a_wave_fills_a_dropped_prefix_and_resumes_partial_inclusion() -> Result<()>
     {
         let (_anvil, provider, mut lane, signer) = spawn_lane().await?;
@@ -620,6 +622,7 @@ mod tests {
     /// state to lose, so resubmission deduplicates and a changed
     /// intent waits exactly as it would have without the restart.
     #[tokio::test]
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
     async fn restart_is_invisible_to_the_pool() -> Result<()> {
         let (anvil, provider, mut lane, signer) = spawn_lane().await?;
 

@@ -7,6 +7,37 @@ local uint256 = require "utils.bint" (256)
 
 local root_hash = string.rep("\x5a", cartesi.HASH_SIZE)
 
+-- Clears fromhost, yields x19, then yields x20 each time it resumes. With
+-- imcyclemax = 3 the x19 yield executes on the input budget's last cycle.
+local budget_seam_program = string.pack(
+    "<I4I4I4I4I4",
+    0x400082b7, -- lui t0, 0x40008 (HTIF base)
+    0x0002b423, -- sd zero, 8(t0) (fromhost)
+    0x0132b023, -- sd x19, 0(t0) (tohost)
+    0x0142b023, -- sd x20, 0(t0) (tohost)
+    0xffdff06f  -- j -4
+)
+
+local function budget_seam_machine()
+    local accepted = (cartesi.HTIF_DEV_YIELD << cartesi.HTIF_DEV_SHIFT)
+        | (cartesi.HTIF_YIELD_CMD_MANUAL << cartesi.HTIF_CMD_SHIFT)
+        | (cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED << cartesi.HTIF_REASON_SHIFT)
+    local physical = cartesi.machine({
+        processor = {
+            registers = { pc = cartesi.AR_RAM_START, imcyclemax = 3 },
+        },
+        ram = { length = 4096 },
+    }, {})
+    physical:write_reg("x19", accepted)
+    physical:write_reg("x20", accepted)
+    physical:write_memory(cartesi.AR_RAM_START, budget_seam_program)
+    physical:run(arithmetic.max_uint64)
+    assert(physical:read_reg("iflags_Y") ~= 0)
+    assert(physical:read_reg("mcycle") == 3)
+    assert(physical:read_reg("imcyclemax") == 3)
+    return physical
+end
+
 local function wrapped_machine(options)
     options = options or {}
     local registers = {
@@ -135,7 +166,7 @@ return {
         Test.equal(physical.sent.revert_root_hash, root_hash)
     end),
 
-    Test.case("terminal state classification follows v0.21 precedence", function()
+    Test.case("terminal state classification follows the step's precedence", function()
         local accepted = wrapped_machine {
             yield_reason = cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED,
         }
@@ -177,6 +208,38 @@ return {
         local overflow_state = overflow:state()
         Test.equal(overflow_state.terminal, true)
         Test.equal(overflow_state.mcycle_overflow, true)
+
+        -- A pending yield outranks the exhausted budget and halt.
+        local accepted_at_overflow = wrapped_machine {
+            yield_reason = cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED,
+            mcycle = 100,
+            imcyclemax = 100,
+        }
+        local accepted_at_overflow_state = accepted_at_overflow:state()
+        Test.equal(accepted_at_overflow_state.mcycle_overflow, true)
+        Test.equal(accepted_at_overflow_state.awaiting_input, true)
+        Test.equal(accepted_at_overflow_state.terminal, false)
+
+        local rejected_at_overflow = wrapped_machine {
+            yield_reason = cartesi.HTIF_YIELD_MANUAL_REASON_RX_REJECTED,
+            mcycle = 100,
+            imcyclemax = 100,
+        }
+        Test.equal(rejected_at_overflow:state().terminal, false)
+
+        local accepted_while_halted = wrapped_machine {
+            halted = true,
+            yield_reason = cartesi.HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED,
+        }
+        Test.equal(accepted_while_halted:state().terminal, false)
+        Test.equal(accepted_while_halted:state().awaiting_input, true)
+
+        local exception_at_overflow = wrapped_machine {
+            yield_reason = cartesi.HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION,
+            mcycle = 100,
+            imcyclemax = 100,
+        }
+        Test.equal(exception_at_overflow:state().terminal, true)
 
         local uarch_halted = wrapped_machine { uarch_halted = true }
         Test.equal(uarch_halted:is_uarch_halted(), true)
@@ -241,6 +304,37 @@ return {
         Test.equal(machine:restore_rejected(), false)
         Test.equal(machine.machine, physical)
         Test.equal(machine:state().terminal, true)
+    end),
+
+    Test.case("an input yield on the last budget cycle takes the next input", function()
+        local physical <close> = budget_seam_machine()
+        local scratch = os.tmpname()
+        os.remove(scratch)
+        assert(os.execute("mkdir -p " .. scratch))
+        local machine = setmetatable({
+            machine = physical,
+            input_count = 0,
+            cycle = 0,
+            ucycle = 0,
+            snapshot_dir = scratch,
+        }, Machine)
+
+        local ok, failure = xpcall(function()
+            local state = machine:state()
+            Test.equal(state.mcycle_overflow, true)
+            Test.equal(state.awaiting_input, true)
+            Test.equal(state.terminal, false)
+
+            local initial_hash, commitment = machine:rollup_commitment(44, { "0x01" })
+            local height = Constants.log2_ruler_span - 44
+
+            -- The input ran the x20 yield: the epoch is not one fixed point.
+            Test.equal(machine:physical_cycle(), 4)
+            Test.equal(machine:state().awaiting_input, true)
+            Test.truthy(commitment.root_hash ~= initial_hash:iterated_merkle(height))
+        end, debug.traceback)
+        os.execute("rm -rf " .. scratch)
+        assert(ok, failure)
     end),
 
     Test.case("a terminal epoch is one fixed point", function()

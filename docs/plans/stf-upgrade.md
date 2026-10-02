@@ -2,6 +2,12 @@
 
 Status: ACTIVE (updated 2026-08-17). The original phase ledger remains below;
 the execution checkpoint records what changed after the stable releases.
+Phases 3 and 4 are superseded by [two-level-sling.md](two-level-sling.md)
+(2026-09-28), which re-orders them: two levels on the current machine API
+first, bulk collection afterwards. That plan also supersedes the corpus
+harness rule below (the corpus moves into setup, tests run un-ignored; D9)
+and the verification doctrine's deletion of the existing collector (it stays
+as a test-only oracle; D7).
 
 ## Goal
 
@@ -34,7 +40,9 @@ mcycle overflow, uarch limits, padding, and bundling.
   boundary is now one send-CMIO log carrying the pre-input revert root. The
   closing boundary is step plus reset; rejected-input substitution lives
   inside reset. Halt, exception, unexpected manual yield, and mcycle overflow
-  now have total terminal behavior.
+  now have total terminal behavior. Correction (2026-09-28): halt and
+  overflow are terminal only with no manual yield pending; an input yield on
+  the budget's last cycle still takes the next input (two-level-sling.md, W1).
 - Hash comparisons are same-version only. v0.20 and v0.21 machine roots are
   expected to differ. The release gate compares Dave's existing collector and
   the v0.21 CLI on identical v0.21 templates and inputs before regenerating
@@ -433,7 +441,7 @@ forward-looking work.
 
 4. Two levels. Re-run the constants pipeline ON v0.21 and on
    validator hardware (the previous numbers - log2step [37,0],
-   heights [55,37] at a 60-min inner timeout - were measured on
+   heights [55,37] at a 60-min commitment budget - were measured on
    0.20 and are stale the moment the machine changes); walk the
    adoption gates of docs/measurements/constants.md. Level-0
    stride moving 44 -> 37 moves the window-root quartet

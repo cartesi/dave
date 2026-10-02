@@ -151,16 +151,26 @@ library Clock {
         _setPaused(state, state.allowance.checkedSub(chargedElapsed));
     }
 
-    /// @notice Charge a clock's live remaining time and pause it.
-    /// @dev The clock may start paused or running. The result must stay
-    /// positive because zero allowance denotes an uninitialized clock.
-    function chargeAndPauseAt(
+    /// @notice Pause a winning clock, charging its live elapsed time plus a
+    /// deferred charge, less one `budget`: a win (a leaf proof or a timeout
+    /// claim) is an honest action and earns one inclusion, like a response.
+    /// @dev The clock may be paused or running. The result never exceeds the
+    /// stored balance, and must stay positive because zero allowance denotes
+    /// an uninitialized clock; the caller's timeout classification guarantees
+    /// the winner outlives its cost.
+    function pauseWinnerAt(
         State storage state,
-        Time.Duration charge,
+        Time.Duration deferredCharge,
+        Time.Duration budget,
         Time.Instant current
     ) internal {
-        Time.Duration remaining = state.remainingAt(current).checkedSub(charge);
-        _setPaused(state, remaining);
+        Time.Duration cost = deferredCharge;
+        if (state.isRunning()) {
+            cost = cost.add(current.timeSpan(state.startInstant));
+        }
+        _setPaused(
+            state, state.allowance.checkedSub(cost.saturatingSub(budget))
+        );
     }
 
     /// @notice Replace an initialized paused clock's allowance.

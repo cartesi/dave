@@ -46,8 +46,9 @@ seals are immediate, allowances are equal, and cleanup occurs promptly at exact
 deadlines.
 
 On successful propagation, the returned child-winner clock replaces the
-corresponding parent clock after post-finish deduction; it is not added to the
-parent balance. The maximum is a shared pair envelope, not side-specific
+corresponding parent clock: its carried remainder after post-finish deduction,
+refilled by up to `T + 2G` for building the child commitment, joining, and
+propagating, and capped by the pair's `max(r1, r2)`. It is not added to the parent balance. The maximum is a shared pair envelope, not side-specific
 carryover. If the child winner maps to the side with the smaller post-discount
 snapshot, that side may return with more than its own `r_i`. The other parent is
 eliminated, and the returned survivor still satisfies
@@ -67,8 +68,9 @@ The fixed-budget, fixed-metric qualification and its non-claims are documented
 in [`dimensioning.md`](dimensioning.md).
 Thus recursive propagation may transfer live clock mass within the sealed pair,
 but does not create live pair-level clock mass. The eliminated side's historical
-clock storage may remain. Ordinary same-tournament settlement and pairing never
-grant time.
+clock storage may remain. Pairing never grants time, and ordinary
+same-tournament settlement forgives at most one `G` of the winner's own cost
+without raising its stored balance.
 
 That active-pair invariant, rather than the visual shape of the asynchronous
 bracket, gives a structural population reduction. It does not say that one
@@ -143,20 +145,25 @@ same-block ordering. For heights two and three, its finite maxima match
 ```text
 N = 1: A
 N >= 2: 2A - 1 + (H - 1)g
-          + (ceil(N / 2) - 1) * (A + (H - 1)g)
+          + (ceil(N / 2) - 1) * (A + (H - 1)g + max(g - 1, 0))
 where g = min(G, A - 1)
 ```
+
+The last term appears because a win earns one `G`: an earlier pair can reach
+its leaf and end with a proof inside one `G`, so its survivor re-pairs with a
+full clock later than a timeout path would allow.
 
 Height one has a distinct leaf-race table. The model deliberately lets either
 side be provable independently at each leaf, forgetting cross-match correctness
 correlation, and it does not impose an honest-validator strategy. Its values are
 therefore a conservative clock-only envelope for that finite box, not the
 general adversarial theorem. The executable maximum witness for
-`N = 3, A = 4, G = 2, H = 3` completes at relative block 19 and is replayed
-against `Tournament`.
+`N = 3, A = 4, G = 2, H = 3` completes at relative block 20, through exactly
+such a proof, and is replayed against `Tournament`.
 
 Progressively late joins have their initial clocks reduced by their lateness,
-and ordinary re-pairing never refills a survivor. Still, the asynchronous
+and ordinary re-pairing never refills a survivor; only a child return refills
+its winner, by at most `T + 2G` and within the sealed pair's envelope. Still, the asynchronous
 bracket can look like a list and a same-time dangling claim can retain a full
 paused clock.
 Only one unmatched commitment per tournament can wait without an opposing
@@ -165,7 +172,7 @@ corresponding live claim reservoir, but that structural fact must not be
 substituted for a finite wall-time proof. The timeout argument also depends on
 charging each elapsed interval at most once: a paused bisection winner inherits
 the responder's overdue interval, while a running leaf winner has already paid
-for it through its live remainder.
+for it through its live remainder. The win then forgives at most one `G` of it.
 
 For the intended two-level deployment, let `A_i` denote the allowance-scale
 term available at level `i`. An attack with `R` root claims and `S` claims in

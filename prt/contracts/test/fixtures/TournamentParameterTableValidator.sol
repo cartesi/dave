@@ -29,6 +29,11 @@ library TournamentParameterTableValidator {
         uint64 parentRow, uint64 parentLog2step, uint256 childExtent
     );
     error LeafLog2StepMustBeZero(uint64 log2step);
+    error BudgetsNotUniform(uint64 row);
+    error RefillExceedsDuration(uint256 refill);
+    error RootAllowanceBelowPendingDelegations(
+        uint256 allowance, uint256 pending
+    );
 
     /// @return levels Number of validated rows.
     /// @return totalLog2Span Validated root height plus root stride.
@@ -50,6 +55,7 @@ library TournamentParameterTableValidator {
         if (Time.Duration.unwrap(table[0].maxAllowance) == 0) {
             revert RootMaxAllowanceCannotBeZero();
         }
+        _validateBudgets(table, levels);
 
         uint256[] memory extents = new uint256[](levels);
         for (uint64 row; row < levels; ++row) {
@@ -86,6 +92,37 @@ library TournamentParameterTableValidator {
         uint64 leafLog2step = table[levels - 1].log2step;
         if (leafLog2step != 0) {
             revert LeafLog2StepMustBeZero(leafLog2step);
+        }
+    }
+
+    /// @dev Budgets belong to the clock model, not to a level: each parent
+    /// refills a returning winner from its own row, so every row must serve
+    /// the same budgets for the root allowance to hold the root join plus one
+    /// refill per inner level. Inner rows' maxAllowance is never read.
+    function _validateBudgets(
+        TournamentParameters[] memory table,
+        uint64 levels
+    ) private pure {
+        uint64 inclusion = Time.Duration.unwrap(table[0].responseBudget);
+        uint64 commitment = Time.Duration.unwrap(table[0].commitmentBudget);
+        for (uint64 row = 1; row < levels; ++row) {
+            if (
+                Time.Duration.unwrap(table[row].responseBudget) != inclusion
+                    || Time.Duration.unwrap(table[row].commitmentBudget)
+                        != commitment
+            ) {
+                revert BudgetsNotUniform(row);
+            }
+        }
+
+        uint256 refill = uint256(commitment) + 2 * uint256(inclusion);
+        if (refill > type(uint64).max) {
+            revert RefillExceedsDuration(refill);
+        }
+        uint256 pending = inclusion + (levels - 1) * refill;
+        uint256 allowance = Time.Duration.unwrap(table[0].maxAllowance);
+        if (allowance < pending) {
+            revert RootAllowanceBelowPendingDelegations(allowance, pending);
         }
     }
 }

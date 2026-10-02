@@ -194,19 +194,32 @@ pub struct Epoch {
 
 #[cfg(test)]
 mod tests {
-    use super::sql::test_helper::setup_storage;
+    use super::sql::test_helper::setup_storage_with;
     use super::*;
+    use crate::engine::TournamentGeometry;
     use crate::merkle::MerkleBuilder;
 
     /// The whole advance lifecycle through the public surface:
     /// consensus ingest, a committed advance batch with an accepted
-    /// and a reverted input, and the epoch roll's settlement.
+    /// and a reverted input, and the epoch roll's settlement, under
+    /// either pinned table.
     #[test]
     fn test_state_access() -> Result<()> {
+        for geometry in [
+            TournamentGeometry::three_level(),
+            TournamentGeometry::two_level(),
+        ] {
+            state_access_under(&geometry)?;
+        }
+        Ok(())
+    }
+
+    fn state_access_under(geometry: &TournamentGeometry) -> Result<()> {
         let input_0_bytes = b"hello";
         let input_1_bytes = b"world";
+        let stride = geometry.root_stride();
 
-        let (_handle, mut access) = setup_storage();
+        let (_handle, mut access) = setup_storage_with(geometry);
 
         access.insert_consensus_data(
             20,
@@ -332,13 +345,15 @@ mod tests {
             crate::engine::Run {
                 hash: machine_hash,
                 repetitions: alloy::primitives::U256::from(
-                    rollups_machine::STRIDE_COUNT_IN_INPUT - 7,
+                    (1u64 << rollups_machine::window_height(stride)) - 7,
                 ),
             },
         ];
         let window_1 = vec![crate::engine::Run {
             hash: machine_hash,
-            repetitions: alloy::primitives::U256::from(rollups_machine::STRIDE_COUNT_IN_INPUT),
+            repetitions: alloy::primitives::U256::from(
+                1u64 << rollups_machine::window_height(stride),
+            ),
         }];
 
         machine.increment_input();
@@ -360,12 +375,7 @@ mod tests {
         access.commit_advances(batch)?;
 
         assert_eq!(
-            access.window_root_count(
-                0,
-                rollups_machine::LOG2_STRIDE,
-                rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
-                3
-            )?,
+            access.window_root_count(0, stride, rollups_machine::window_height(stride), 3)?,
             3,
             "all windows landed their root rows"
         );
@@ -389,12 +399,15 @@ mod tests {
         assert_eq!(access.latest_snapshot()?.epoch(), 1);
 
         // The independent expectation is the naive flat fold of the
-        // whole epoch (every run, tail-padded to 2^48 leaves) - the
+        // whole epoch (every run, tail-padded to 2^(92 - stride) leaves) - the
         // roll's window-root composition must equal it exactly.
         let expected_root = {
             let mut builder = MerkleBuilder::default();
             builder.append_repeated(Digest::new([1; 32]), 7u64);
-            builder.append_repeated(machine_hash, rollups_machine::STRIDE_COUNT_IN_EPOCH - 7);
+            builder.append_repeated(
+                machine_hash,
+                (1u64 << (crate::engine::constants::LOG2_EPOCH_RULER_SPAN - stride)) - 7,
+            );
             builder.build().root_hash()
         };
         assert_eq!(
@@ -406,6 +419,24 @@ mod tests {
             },
             "settlement info of epoch 0 should match"
         );
+
+        // The dispute facade serves the same root from the runner's rows at
+        // the pinned stride: the Hero joins with one, staging asserts the
+        // other.
+        let state_dir = access.state_dir().to_owned();
+        let mut source = crate::engine::DisputeSource::on_store(
+            Storage::new(&state_dir)?,
+            0,
+            state_dir.join("facade-check"),
+        )?;
+        let root = crate::engine::LevelCoords::new(
+            0,
+            alloy::primitives::U256::ZERO,
+            stride,
+            crate::engine::constants::LOG2_EPOCH_RULER_SPAN - stride,
+        )
+        .root();
+        assert_eq!(source.node(&root)?, expected_root);
 
         Ok(())
     }

@@ -3,6 +3,7 @@
 
 pub mod access_proof;
 pub mod cmio;
+pub mod collect;
 pub mod memory_proof;
 pub mod memory_range;
 

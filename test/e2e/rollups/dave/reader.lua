@@ -166,10 +166,11 @@ function Reader:_read_logs(contract_address, sig, topics, data_sig)
 end
 
 local cast_call_template = [==[
-cast call --rpc-url "%s" "%s" "%s" %s 2>&1
+cast call --rpc-url "%s" %s "%s" "%s" %s 2>&1
 ]==]
 
-function Reader:_call(address, sig, args)
+-- `block` (optional) pins the call to that block's state.
+function Reader:_call(address, sig, args, block)
     local quoted_args = {}
     for _, v in ipairs(args) do
         table.insert(quoted_args, '"' .. v .. '"')
@@ -179,6 +180,7 @@ function Reader:_call(address, sig, args)
     local cmd = string.format(
         cast_call_template,
         self.endpoint,
+        block and string.format("--block %d", block) or "",
         address,
         sig,
         args_str
@@ -202,6 +204,67 @@ function Reader:_call(address, sig, args)
     handle:close()
 
     return ret
+end
+
+-- cast annotates large numbers ("123 [1.23e2]"); keep the exact digits.
+local function plain_numbers(s)
+    return (s:gsub("%s*%[[^%]]*%]", ""))
+end
+
+-- The deployment's tournament levels, top first, from the factory the
+-- consensus instantiates every epoch's tournament with.
+function Reader:read_tournament_levels()
+    local factory = self:_call(
+        self.consensus_address, "getTournamentFactory()(address)", {}
+    )[1]
+    local count = assert(tonumber(plain_numbers(
+        self:_call(factory, "tournamentLevelCount()(uint64)", {})[1]
+    )))
+
+    local levels = {}
+    for level = 0, count - 1 do
+        local row = plain_numbers(self:_call(
+            factory,
+            "tournamentParameters(uint64)((uint64,uint64,uint64,uint64,uint64,uint64))",
+            { tostring(level) }
+        )[1])
+        -- (levels, log2step, height, responseBudget, commitmentBudget,
+        -- maxAllowance)
+        local rows, log2step, height =
+            row:match("^%((%d+),%s*(%d+),%s*(%d+),")
+        assert(tonumber(rows) == count, "inconsistent tournament level count")
+        levels[level + 1] = {
+            log2_stride = tonumber(log2step),
+            height = tonumber(height),
+        }
+    end
+    return levels
+end
+
+-- Each leaf match of `tournament` that sealed: its match ID hash (the
+-- indexed LeafMatchSealed topic, which keys its MatchDeleted) and the
+-- transition it sealed on. The divergence cycle is read at the
+-- LeafMatchSealed block because resolving the match deletes it.
+function Reader:read_sealed_leaf_matches(tournament)
+    local logs = self:_read_logs(
+        tournament, "LeafMatchSealed(bytes32,uint64)", { false, false, false }, "(uint64)"
+    )
+    local matches = {}
+    for _, log in ipairs(logs) do
+        local ret = self:_call(
+            tournament,
+            "sealedMatch(bytes32)(uint8,(bytes32,uint256,uint256,bytes32,bytes32))",
+            { log.emited_topics[2] },
+            log.meta.block_number
+        )
+        local view = plain_numbers(assert(ret[2], "sealedMatch returned no view"))
+        local cycle = view:match("^%(0x%x+,%s*%d+,%s*(%d+),")
+        table.insert(matches, {
+            match_id_hash = Hash:from_digest_hex(log.emited_topics[2]),
+            cycle = uint256.parse(assert(cycle, "could not decode sealedMatch")),
+        })
+    end
+    return matches
 end
 
 function Reader:read_epochs_sealed()

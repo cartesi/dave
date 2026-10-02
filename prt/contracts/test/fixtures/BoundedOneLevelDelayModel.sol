@@ -394,19 +394,17 @@ contract BoundedOneLevelDelayModel {
         uint16 match_ = _matchAt(state, matchIndex);
         assert(_isTimedOut(match_, current));
 
+        // The survivor's cost is the paused survivor's deferred overdue or
+        // the running survivor's elapsed time. It must be live, and the win
+        // charges only the cost beyond one response budget.
         uint8 survivorAllowance;
         uint8 elapsed = current - _startInstant(match_);
-        uint8 allowanceOne = _allowanceOne(match_);
         uint8 allowanceTwo = _allowanceTwo(match_);
-        if (_responsesRemaining(match_) != 0) {
-            uint8 overdue = elapsed - allowanceOne;
-            if (allowanceTwo > overdue) {
-                survivorAllowance = allowanceTwo - overdue;
-            }
-        } else {
-            uint8 remainingTwo =
-                allowanceTwo > elapsed ? allowanceTwo - elapsed : 0;
-            survivorAllowance = remainingTwo;
+        uint8 cost = _responsesRemaining(match_) != 0
+            ? elapsed - _allowanceOne(match_)
+            : elapsed;
+        if (allowanceTwo > cost) {
+            survivorAllowance = _chargeWinner(allowanceTwo, cost, configId);
         }
 
         return
@@ -428,14 +426,24 @@ contract BoundedOneLevelDelayModel {
 
         uint8 winningAllowance =
             highWins ? _allowanceTwo(match_) : _allowanceOne(match_);
+        uint8 elapsed = current - _startInstant(match_);
+        assert(winningAllowance > elapsed);
         uint8 survivorAllowance =
-            winningAllowance - (current - _startInstant(match_));
-        assert(survivorAllowance != 0);
+            _chargeWinner(winningAllowance, elapsed, configId);
 
         return
             _settleMatch(
                 state, configId, matchIndex, survivorAllowance, current
             );
+    }
+
+    function _chargeWinner(uint8 allowance, uint8 cost, uint16 configId)
+        private
+        pure
+        returns (uint8)
+    {
+        uint8 responseBudget = _configuredResponseBudget(configId);
+        return allowance - (cost > responseBudget ? cost - responseBudget : 0);
     }
 
     function _settleMatch(

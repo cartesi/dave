@@ -240,7 +240,7 @@ contract TournamentLifecycleHandler is Test {
             _proofWitness(ghost, winner);
         TOURNAMENT.winLeafMatch(_id(ghost), left, right, proof);
 
-        _chargeAndPause(_commitments[winner].clock, 0, _current());
+        _pauseWinner(_commitments[winner].clock, 0, _current());
         _settleWithWinner(matchIndex, winner, _current());
     }
 
@@ -266,7 +266,7 @@ contract TournamentLifecycleHandler is Test {
         (Tree.Node left, Tree.Node right) = winnerTree.children(HEIGHT, 0);
         TOURNAMENT.winMatchByTimeout(id, left, right);
 
-        _chargeAndPause(
+        _pauseWinner(
             _commitments[winner].clock, timeout.deferredCharge, _current()
         );
         _settleWithWinner(matchIndex, winner, _current());
@@ -869,15 +869,18 @@ contract TournamentLifecycleHandler is Test {
         assertGt(clock.allowance, 0);
     }
 
-    function _chargeAndPause(
+    function _pauseWinner(
         GhostClock storage clock,
         uint64 charge,
         uint64 current
     ) private {
         uint64 previous = clock.allowance;
-        uint64 remaining = _remaining(clock, current);
-        assertGt(remaining, charge);
-        clock.allowance = remaining - charge;
+        assertGt(_remaining(clock, current), charge);
+        // A win is an honest action: only its cost beyond one response
+        // budget is charged.
+        uint64 cost = charge;
+        if (clock.startInstant != 0) cost += current - clock.startInstant;
+        clock.allowance -= cost > RESPONSE_BUDGET ? cost - RESPONSE_BUDGET : 0;
         clock.startInstant = 0;
         assertLe(clock.allowance, previous);
     }

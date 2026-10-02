@@ -8,7 +8,11 @@ the implementation level.
 
 This is distinct from the Solidity and Foundry test architecture under
 `prt/contracts`, documented in
-[`prt-contract-testing.md`](prt-contract-testing.md).
+[`prt-contract-testing.md`](prt-contract-testing.md), and from the node's
+in-crate harness (`cartesi-rollups/node/src/harness/`, `just
+test-node-harness`), which drives the node's own workers tick by tick against
+a deterministic anvil and is where lifecycle and dispute scenarios move as the
+e2e suite shrinks (docs/plans/test-strategy-reset.md, item 3).
 
 ## Anatomy of a test run
 
@@ -45,7 +49,17 @@ just rollups-tests::test <program> <scenario>
 - `Env.run_epoch(sealed_epoch, patches, next_inputs)` is the main driver:
   compute the honest settlement independently in Lua, spawn a patched
   sybil, drive it until it loses, wait for settlement, assert the honest
-  commitment won.
+  commitment won. It returns the next sealed epoch and the dispute's sealed
+  leaf matches (tournament, match ID hash, transition). It does not check
+  how they were resolved, since kill and chaos runs may legitimately end a
+  leaf match on a timeout.
+- `Env.assert_leaf_match_proved(tournament, match_id_hash)` requires exactly
+  one `MatchDeleted` for the match, with reason `STEP`. A timeout win leaves
+  the same seal and the same settlement behind, so only this shows that the
+  on-chain state transition resolved the match.
+- `Env.run_steered_epoch(sealed_epoch, transition, next_inputs)` steers the
+  dispute onto one transition (see "Steering disputes") and asserts that
+  exactly one leaf match sealed there and a STEP proof resolved it.
 
 ## The self-anchored oracle
 
@@ -60,6 +74,12 @@ oracle-owned epoch snapshots. Node output is never an input to the
 oracle, only a subject of comparison. Keep this property through any
 rewrite; it is what makes the e2e suite fit to judge one.
 
+The reference implementation, the released v0.21.0 `cartesi-machine` CLI,
+no longer gates every e2e epoch: its answers are checked below e2e, where the
+node's runner, leaves and the release corpus are compared with it
+(`cartesi-rollups/node/tests/engine_machine.rs`, `just
+test-reference-cli-goldens`).
+
 ## Trust bases of the assertions
 
 What each assertion family ultimately trusts (chain = anvil events and
@@ -69,8 +89,8 @@ test, never a source):
 - Epoch inputs: chain events; node database inputs are cross-checked.
 - Epoch initial state: oracle lineage, anchored to the EpochSealed
   event; the node's snapshot is loaded and cross-checked against it.
-- Epoch commitment: oracle lineage; the node's commitment (read from
-  its database) is cross-checked against it.
+- Epoch commitment: oracle lineage; the node's commitment (read from its
+  database) is cross-checked against it.
 - Sybil machine material: oracle epoch snapshots.
 - Tournament winners and settlement: chain state, compared against the
   oracle commitment.
@@ -80,11 +100,22 @@ test, never a source):
 - Node reads (`dave/node.lua`) serve synchronization (wait until the
   node has progressed) and produce the cross-check subjects.
 
-Residual risk, by design: a conceptual bug shared by the Lua oracle and
-the Rust node is invisible to these checks except where a dispute
-reaches the on-chain state transition. The sling differential chain
-(toy spec, reference collector, prototype fixtures) mitigates from the
-other side.
+Residual risk, by design: a conceptual bug shared by the Lua oracle and the
+Rust node is invisible to these checks except where a dispute reaches the
+on-chain state transition. Below e2e, `runner_settles_the_reference_root`
+(`cartesi-rollups/node/tests/engine_machine.rs`) checks the production
+runner's settled root against checked-in answers of the release CLI under
+both tables (the root samples every 2^(stride - 20) big cycles; at 2^17 a
+sample falls inside echo's rejected input, so the revert shows), and
+`leaf_commitments_match_the_reference_cli` checks stride-0 leaf commitments
+(dense spans, yields, reverts) against the CLI's uarch cycle computation
+hashes at periods 7 and 8. The node builds dense leaves with the emulator's
+collector, as the CLI does, so those leaves and the corpus's are also built
+with the node's stepped reference, `bulk_and_stepped_leaf_runs_agree`
+compares the two per big cycle, and `uarch_bundles_reduce_to_the_unbundled_leaves`
+ties the collector's bundling to the node's Merkle assembly. The sling
+differential chain (toy spec, reference collector, prototype fixtures)
+mitigates from the other side.
 
 ## Hardened primitives (2026-07-16)
 
@@ -130,22 +161,11 @@ blocks until the log matches; `Dave:find_log(pattern, offset)` is the
 non-blocking probe for use inside the sybil drive loop. Kill points are
 protocol events, not sleeps, so the patterns scenarios rely on are a
 stable-marker contract between the node's logging and the harness.
-The contract today (a change to any of these lines must update the
-scenario that kills on it):
-
-- `processing input <epoch>:<index>` (machine-runner): kill_catchup.
-- `computing quartet` (sling cache, dispute-time machine work only,
-  since level 0 is served from the frontier fold):
-  kill_commitment_build.
-- `advance match` (Hero dispatch): kill_mid_match, and the log
-  line the suites grep to observe dispute progress.
-- `settle epoch` (epoch-manager, logged before the accept
-  transaction - the settlement-finalizing step of the staged
-  protocol): kill_settle. Staging and sentry claims happen in
-  earlier ticks; a kill-at-stage scenario is an open lead.
-- `join tournament` (hero, logged as it decides to join): kill_join -
-  the join transaction may or may not have landed when the kill hits,
-  and the respawn must end up joined exactly once.
+The contract today (a change to this line must update the scenario that
+kills on it): `processing input <epoch>:<index>` (machine-runner):
+kill_catchup_batched. The other targeted kills (at the join, mid-bisection,
+mid-build and around acceptance) moved to the node's in-crate harness,
+which restarts the workers deterministically instead of signalling.
 
 ## Scenario inventory
 
@@ -154,11 +174,16 @@ Machine programs (`test/programs/`): `echo` (accepts and rejects inputs),
 `RX_REJECTED`), and `honeypot` (real application). The explicit `stress`
 image belongs to the Rust measurement workflow, not to an E2E scenario.
 
-Scenarios (`test/e2e/rollups/scenarios/`):
+Scenarios (`test/e2e/rollups/scenarios/`), the black-box smoke left after
+the 2026-10-01 cut (docs/plans/test-strategy-reset.md, item 4):
 
-- `simple` / `simple_no_input`: honest node settles epochs, with and
-  without inputs.
-- `big_input`: large input payloads.
+- `simple`: the honest node settles a disputed epoch. Its one leaf match
+  must end in a STEP proof (`Env.assert_leaf_match_proved`), so the per-PR
+  honeypot `simple` and the two-level smoke gate the on-chain state
+  transition. The gate's negative control (a timeout-resolved leaf refused)
+  left with the sealed-leaf scenarios; the per-PR STEP evidence no longer
+  rests on it alone: the node harness requires the node's `winLeafMatch` at
+  a closing slot to mine, and `NodeWitnessesTest` replays the node's bytes.
 - `stf_all`: drives disputes down to on-chain state-transition proofs,
   one transition shape per epoch (see the coverage matrix below).
 - `stf_revert`: the full revert restore, the one shape whose position
@@ -169,32 +194,17 @@ Scenarios (`test/e2e/rollups/scenarios/`):
   `just test-rollups-chaos`. Qualified 2026-07-02 with five
   consecutive green runs (seeds 1-5, 6-8 kills each); runs in CI with
   a fixed seed.
-- `kill_catchup` / `kill_commitment_build` / `kill_mid_match` /
-  `kill_settle`: the targeted crash scenarios, each SIGKILLing the node at one
-  log-marked moment: mid-input-processing (resume must settle identically to the
-  oracle), mid-quartet-computation during a dispute, mid-bisection
-  with ten sybil reactions of downtime, and at the settle
-  transaction (exactly-once settlement). Run via
-  `just rollups-tests::test-kill-all`.
 - `kill_catchup_batched`: B2 at snapshot gap 3 - the SIGKILL lands mid
   advance batch, the uncommitted records drop whole, and the resumed
-  run must re-execute the batch to the oracle's settlement. This is the
-  focused gap-3 case; other scenarios default to gap 2.
-- `bad_commitment`: adversary joins with a hand-built garbage commitment.
-- `gc_match` / `gc_tournament`: elimination and bond garbage-collection
-  paths.
-- `multi_sybil`: the permissionless shape - honest plus three sybils, two
-  matches live at once, two active sybils (one pairing may be sybil-vs-sybil),
-  one silent sybil whose match dies by a real on-chain timeout. It also
-  restarts the node around settlement, requires the root bond to drain, and
-  checks that its `BondRecovered` event precedes the node's next-root join.
-- `kill_join`: SIGKILL at the hero's join decision (see the marker
-  contract above).
-- `sealed_leaf_timeout_winner` / `sealed_leaf_timeout_both`: construct
-  unequal leaf clocks, assert the semantic timeout view at exact boundaries,
-  then respawn the Rust node and require either the longer-clock winner or
-  double elimination.
-- `deposit_withdrawal` (honeypot): application-level end-to-end flow.
+  run must re-execute the batch to the oracle's settlement. It is the one
+  real-signal kill of the runner partway through an input.
+
+Lifecycle, dispute, garbage-collection, restart, multi-sybil and
+sealed-leaf timeout scenarios run in the node's in-crate harness
+(`cartesi-rollups/node/src/harness/`, `just test-node-harness`), where the
+test owns the chain's clock; large inputs and the node's witnesses at every
+transition shape are checked against the contracts in Foundry
+(`NodeWitnessesTest`, `NodeProofsTest`).
 
 ## Steering disputes: patch chains
 
@@ -208,40 +218,57 @@ Two rules govern where it bites (`patched_commitment.lua`):
   level, so only the smallest effective patch of each level's span
   shapes the descent.
 
-Steering a dispute onto transition M - 1 therefore takes a chain of
-three patches: the enclosing level-0 leaf boundary, the enclosing
-level-1 leaf boundary, and M itself. The rules make chains
-self-consistent: each boundary patch is also the last leaf of the
-level below, so the sybil's levels stay mutually coherent. A boundary
-M is its own (degenerate) chain. Beware the historical trap this
-paragraph replaces: pre-rewrite `stf_all` carried unaligned extra
-patches that never applied, so all its epochs actually verified the
-same closing-slot shape in window 0 - which is how both increment-C
-bugs (idle churn, window-1 counter overflow) stayed invisible to e2e.
+Steering a dispute onto a transition therefore takes a chain: every
+non-leaf level gets M rounded up to its stride (the leaf enclosing M) and
+the leaf level gets M itself. Each rounded patch is also the last leaf of
+the level below, so the sybil's levels stay mutually coherent.
+`Env.steering_patches` builds the chain from the deployed level table, in
+256-bit arithmetic (window 1 alone starts at 2^68, past a Lua integer),
+and `Env.run_steered_epoch` asserts that the dispute's leaf match sealed
+on exactly the steered transition: it reads each leaf match's divergence
+cycle from `sealedMatch`, pinned at its `LeafMatchSealed` block.
 
-Coverage matrix (`stf_all`, one dispute driven to the on-chain state
-transition per epoch):
+That assertion exists because hand-written chains drifted twice without
+a trace. Pre-rewrite `stf_all` carried unaligned patches that never
+applied. Then the 2026-07 chains used 2^28 links against a level-1 stride
+of 27, and epoch 4's `1 << 68` overflowed to 0. A 2026-09-28 run showed
+epochs 2 and 4 sealing on transition 2^28 - 1 (a closing slot while input 0
+still ran), epoch 3 on 2^48 + 2^28 - 1 (an idle closing slot), and
+`stf_revert` on an idle closing slot 162 big cycles past the revert; only
+epoch 1 sealed on its intended transition.
 
-- Epoch 1, chain {2^44}: closing slot of an idle big cycle (final
-  ustep + ureset), reached through idle churn leaves.
-- Epoch 2, chain {2^44, 2^28, 3}: plain active ustep (transition 2 of
-  input 0), with an interior agree-leaf seal proof.
-- Epoch 3, chain {2^48 + 2^44, 2^48 + 2^28, 2^48 + 1}: idle churn
-  ustep (the interpreter noticing the machine is yielded), plus the
-  divergence-at-position-zero seal (agree state = the level's initial
-  hash).
-- Epoch 4, chain {2^68 + 2^44, 2^68 + 2^28, 2^68 + 1}: the fused feed
-  of input 1 (input delivery with revert root + first ustep) - the
-  only dispute past window 0, so replays cross a fed input boundary.
+The seal alone does not show that the transition was proved: a timeout win
+leaves the same seal and the same settlement behind, and the node claims a
+timeout before retrying a rejected proof, so a broken on-chain transition
+could end as a timeout win and pass (CF-02 in the
+[2026-09-29 clock refill review](reviews/2026-09-29-prt-clock-refill/REVIEW.md)).
+`Env.run_steered_epoch` therefore also requires the sealed match's
+`MatchDeleted` reason to be `STEP`, correlated through the match ID hash
+that `LeafMatchSealed` indexes.
+
+Coverage matrix (`stf_all`, one dispute per epoch, each asserted to seal on
+the listed transition and to end in a STEP proof):
+
+- Epoch 1, transition 2^44 - 1: closing slot of an idle big cycle
+  (final ustep + ureset), reached through idle churn leaves.
+- Epoch 2, transition 2: plain active ustep of input 0, with an
+  interior agree-leaf seal proof.
+- Epoch 3, transition 2^48: idle churn ustep (the interpreter noticing
+  the machine is yielded), plus the divergence-at-position-zero seal
+  (agree state = the level's initial hash).
+- Epoch 4, transition 2^68: the fused feed of input 1 (input delivery
+  with revert root + first ustep) - the only dispute past window 0, so
+  replays cross a fed input boundary.
 
 The full revert restore is pinned by `stf_revert` (yield program,
 which rejects every input): its position is program-timing-dependent,
 so the oracle reports each input's big-cycle count
 (`settlement.processing_bigs`, captured at the yield before the revert
-reloads the snapshot) and the scenario computes the chain at runtime,
-aiming at the closing slot of the big cycle where the reject yielded.
-`run_epoch` accepts a function in place of a patch list for exactly
-this. Not yet pinned: capacity boundaries (last input slot, last
+reloads the snapshot) and the scenario steers onto the closing slot of
+the big cycle where the reject yielded. It goes through
+`run_steered_epoch`, so it carries the same seal and STEP checks. (A
+maximum-size input's feed is now a node witness vector replayed in
+Foundry.) Not yet pinned: capacity boundaries (last input slot, last
 stride).
 
 Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suites
@@ -249,11 +276,15 @@ Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suit
 runs Rust fmt and check, Clippy, Lua lint and client unit tests, the Rust build
 and unit tests, and the explicit image-backed engine differentials; the e2e job
 runs honeypot `simple`, the batched catch-up kill, chaos at a fixed seed,
-honeypot `stf_all`, and yield `stf_revert`. Everything else - echo, the full
-kill battery, chaos seed sweeps, honeypot-all, and the duplicated yield
-scenarios - stays out of the pull-request critical path. The manual
-`.github/workflows/full-e2e.yml` workflow runs the complete battery
-and then explores chaos seeds 2 and 3; the battery itself retains seed 1. Its
+honeypot `stf_all`, and yield `stf_revert`, then rebuilds the devnet with
+`DEVNET_GEOMETRY=two-level` and runs echo `simple` against it
+(`just test-rollups-two-level-smoke`). The node, the oracle, and the steering
+helper read the level table from chain. Unsteered scenarios patch at
+`1 << 44`, an idle leaf under either table. On the two-level devnet, honeypot
+`stf_all`, yield `stf_revert` and the batched catch-up kill have also passed
+(2026-09-30). The manual `.github/workflows/full-e2e.yml` workflow runs the
+battery (the same smoke set) and then explores chaos seeds 2 and 3; the
+battery itself retains seed 1. Its
 cost and scheduling promotion criteria live in `docs/build-system.md`.
 
 There is also a legacy Sepolia smoke setup (`test/e2e/rollups/sepolia/`).
@@ -273,12 +304,13 @@ unverified claims - check before relying on them:
 - Epochs at capacity boundaries (max inputs, input at the last stride).
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
 - Multiple honest nodes defending the same epoch concurrently.
-- (closed 2026-07-25) Sealed-leaf timeout boundaries from the node's side:
-  `sealed_leaf_timeout_winner` observes the longer clock winning after the
-  retired midpoint and before its own deadline; `sealed_leaf_timeout_both`
-  observes double elimination at exact equality. The maintained contract phase
-  table lives in [`dispute-game.md`](dispute-game.md); these scenarios retain
-  the executable client boundary evidence.
+- (closed 2026-07-25, moved 2026-10-01) Sealed-leaf timeout boundaries from
+  the node's side: the harness tests
+  `the_longer_clock_wins_a_sealed_leaf_by_timeout` and
+  `both_clocks_expire_on_a_sealed_leaf` observe the longer clock winning after
+  the retired midpoint and before its own deadline, and double elimination at
+  exact equality. The maintained contract phase table lives in
+  [`dispute-game.md`](dispute-game.md).
 - (closed 2026-07-09) Port hygiene: the free-port assert (2026-07-02)
   plus TEST_INSTANCE isolation - set it to a free port and the run
   gets its own anvil port and suffixed working-dir singletons
@@ -480,8 +512,11 @@ record):
 1. Pick or build a machine program under `test/programs/` (see its
    justfile; images are built with the `cartesi-machine` CLI).
 2. Write `test/e2e/rollups/scenarios/<name>.lua`: require `test_env`,
-   spawn blockchain and node, drive epochs with `run_epoch` or hand-rolled
-   sybils with patch lists.
+   spawn blockchain and node, drive epochs with `run_steered_epoch` when the
+   dispute must reach a specific transition, and with `run_epoch` or
+   hand-rolled sybils when it does not matter where it lands. Take strides and
+   heights from `env.reader:read_tournament_levels()`, never literals, so the
+   scenario runs on either table.
 3. Wire a justfile alias if it should run in a suite
    (`test/e2e/rollups/justfile`).
 4. Add it to `battery.sh`'s `SCENARIOS` array if it should run in the

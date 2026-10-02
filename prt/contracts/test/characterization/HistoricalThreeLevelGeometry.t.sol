@@ -45,7 +45,7 @@ contract HistoricalThreeLevelGeometryTest is Test {
         Time.Duration responseBudget = Time.Duration.wrap(25);
         Time.Duration maxAllowance = Time.Duration.wrap(3600);
         HistoricalThreeLevelParametersProvider provider = new HistoricalThreeLevelParametersProvider(
-            responseBudget, maxAllowance
+            responseBudget, Time.ZERO_DURATION, maxAllowance
         );
 
         for (

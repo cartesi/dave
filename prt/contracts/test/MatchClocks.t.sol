@@ -79,6 +79,13 @@ contract MatchClocksHarness {
     {
         return MatchClocks.pauseForInnerAt(one, two, responseBudget, current);
     }
+
+    function childReturnAllowance(
+        Time.Duration carried,
+        Time.Duration joinBudget
+    ) external view returns (Time.Duration) {
+        return MatchClocks.childReturnAllowance(one, two, carried, joinBudget);
+    }
 }
 
 contract MatchClocksTest is Test {
@@ -432,6 +439,89 @@ contract MatchClocksTest is Test {
         assertFalse(one.isRunning());
         assertFalse(two.isRunning());
         assertEq(_unwrap(maximum), _max(expectedOne, expectedTwo));
+    }
+
+    /// @dev The returned allowance refills the carried remainder by up to the
+    /// join budget and never exceeds the sealed pair's envelope, whichever
+    /// side holds the larger clock.
+    function testFuzzChildReturnRefillsWithinThePairEnvelope(
+        uint64 rawAllowanceOne,
+        uint64 rawAllowanceTwo,
+        uint64 rawCarried,
+        uint64 rawJoinBudget
+    ) public {
+        uint64 allowanceOne = _boundPure(rawAllowanceOne, 1, MAX_FUZZ_DURATION);
+        uint64 allowanceTwo = _boundPure(rawAllowanceTwo, 1, MAX_FUZZ_DURATION);
+        uint64 envelope =
+            allowanceOne > allowanceTwo ? allowanceOne : allowanceTwo;
+        uint64 carried = _boundPure(rawCarried, 1, envelope);
+        uint64 joinBudget = _boundPure(rawJoinBudget, 0, MAX_FUZZ_DURATION);
+        _initializePaused(allowanceOne, allowanceTwo);
+
+        uint64 returned = Time.Duration
+            .unwrap(
+                harness.childReturnAllowance(
+                    Time.Duration.wrap(carried), Time.Duration.wrap(joinBudget)
+                )
+            );
+
+        uint64 refilled = carried + joinBudget;
+        assertEq(returned, refilled < envelope ? refilled : envelope);
+        assertGe(returned, carried);
+        assertLe(returned, envelope);
+    }
+
+    function testChildReturnWithoutBudgetCarriesTheRemainder() public {
+        _initializePaused(40, 90);
+        assertEq(_childReturn(35, 0), 35);
+    }
+
+    function testChildReturnRefillsBelowTheEnvelope() public {
+        _initializePaused(40, 90);
+        assertEq(_childReturn(35, 20), 55);
+    }
+
+    function testChildReturnStopsAtTheEnvelope() public {
+        _initializePaused(90, 40);
+        assertEq(_childReturn(80, 20), 90);
+        assertEq(_childReturn(90, 20), 90);
+    }
+
+    function testChildReturnRequiresTheSealedInnerShape() public {
+        _initializePaused(40, 90);
+        harness.startOneAt(Time.Instant.wrap(10));
+        vm.expectRevert(stdError.assertionError);
+        harness.childReturnAllowance(
+            Time.Duration.wrap(35), Time.Duration.wrap(20)
+        );
+    }
+
+    function _initializePaused(uint64 allowanceOne, uint64 allowanceTwo)
+        internal
+    {
+        harness.initializeOne(
+            Time.Instant.wrap(1),
+            Time.Duration.wrap(allowanceOne),
+            Time.Instant.wrap(1)
+        );
+        harness.initializeTwo(
+            Time.Instant.wrap(1),
+            Time.Duration.wrap(allowanceTwo),
+            Time.Instant.wrap(1)
+        );
+    }
+
+    function _childReturn(uint64 carried, uint64 joinBudget)
+        internal
+        view
+        returns (uint64)
+    {
+        return Time.Duration
+            .unwrap(
+                harness.childReturnAllowance(
+                    Time.Duration.wrap(carried), Time.Duration.wrap(joinBudget)
+                )
+            );
     }
 
     function testStartBisectionRequiresBothClocksInitialized() public {

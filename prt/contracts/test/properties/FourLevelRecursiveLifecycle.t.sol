@@ -40,10 +40,17 @@ contract FourLevelRecursiveLifecycleTest is Test {
 
     uint64 internal constant START_BLOCK = 100;
     uint64 internal constant RESPONSE_BUDGET = 1;
+    // Small enough that the leaf's return stays below the envelope, large
+    // enough that the next level's refill reaches it.
+    uint64 internal constant COMMITMENT_BUDGET = 2;
     uint64 internal constant MAX_ALLOWANCE = 100;
-    uint64 internal constant LEAF_PROOF_DELAY = 5;
+    uint64 internal constant LEAF_PROOF_DELAY = 6;
+    // The leaf proof is an honest action and earns one response budget.
     uint64 internal constant CARRIED_ALLOWANCE =
-        MAX_ALLOWANCE - LEAF_PROOF_DELAY;
+        MAX_ALLOWANCE - (LEAF_PROOF_DELAY - RESPONSE_BUDGET);
+    // What each parent refills, at most, when its child returns the winner:
+    // the build plus one inclusion each for the join and the propagation.
+    uint64 internal constant REFILL = COMMITMENT_BUDGET + 2 * RESPONSE_BUDGET;
 
     address internal constant CLAIMER_ONE = address(0xa11ce);
     address internal constant CLAIMER_TWO = address(0xb0b);
@@ -60,6 +67,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
     constructor() {
         FACTORY = new SmallFourLevelTournamentFactory(
             Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(COMMITMENT_BUDGET),
             Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
@@ -85,6 +93,11 @@ contract FourLevelRecursiveLifecycleTest is Test {
     }
 
     function testFourLevelWinnerPropagatesToRoot() public {
+        // The first refill must stay below the envelope, or the trace cannot
+        // tell the refill from an envelope restore; the next one reaches it.
+        assertLt(_carried(SmallFourLevelGeometry.LEVELS - 2), MAX_ALLOWANCE);
+        assertEq(_carried(SmallFourLevelGeometry.LEVELS - 3), MAX_ALLOWANCE);
+
         _assertRootArguments();
         _joinPair(0);
 
@@ -123,6 +136,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
         assertEq(Time.Instant.unwrap(args.startInstant), START_BLOCK);
         assertEq(Time.Duration.unwrap(args.allowance), MAX_ALLOWANCE);
         assertEq(Time.Duration.unwrap(args.responseBudget), RESPONSE_BUDGET);
+        assertEq(Time.Duration.unwrap(args.commitmentBudget), COMMITMENT_BUDGET);
         assertEq(address(args.provider), PROVIDER_ADDRESS);
         assertEq(address(args.stateTransition), expectedStateTransition);
         assertGt(expectedStateTransition.code.length, 0);
@@ -280,6 +294,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
         assertEq(Time.Instant.unwrap(args.startInstant), START_BLOCK);
         assertEq(Time.Duration.unwrap(args.allowance), MAX_ALLOWANCE);
         assertEq(Time.Duration.unwrap(args.responseBudget), RESPONSE_BUDGET);
+        assertEq(Time.Duration.unwrap(args.commitmentBudget), COMMITMENT_BUDGET);
         assertEq(address(args.provider), PROVIDER_ADDRESS);
         assertEq(address(args.stateTransition), expectedStateTransition);
         assertEq(args.tournamentFactory, address(FACTORY));
@@ -403,7 +418,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
         _assertNodeEq(childWinner, rootsOne[childLevel]);
         assertFalse(carriedClock.isRunning());
         assertEq(
-            Time.Duration.unwrap(carriedClock.allowance), CARRIED_ALLOWANCE
+            Time.Duration.unwrap(carriedClock.allowance), _carried(childLevel)
         );
 
         Match.State memory sealedState = parent.getMatch(parentMatchHash);
@@ -451,8 +466,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
         assertFalse(propagated.isRunning());
         assertFalse(loser.isRunning());
         assertEq(
-            Time.Duration.unwrap(propagated.allowance),
-            Time.Duration.unwrap(carriedClock.allowance)
+            Time.Duration.unwrap(propagated.allowance), _carried(parentLevel)
         );
         assertEq(Time.Duration.unwrap(loser.allowance), MAX_ALLOWANCE);
         assertEq(parent.observedClaimer(rootsOne[parentLevel]), CLAIMER_ONE);
@@ -489,7 +503,20 @@ contract FourLevelRecursiveLifecycleTest is Test {
         assertEq(root.observedClaimer(rootsTwo[0]), address(0));
         (Clock.State memory winnerClock,) = root.getCommitment(rootsOne[0]);
         assertFalse(winnerClock.isRunning());
-        assertEq(Time.Duration.unwrap(winnerClock.allowance), CARRIED_ALLOWANCE);
+        assertEq(Time.Duration.unwrap(winnerClock.allowance), _carried(0));
+    }
+
+    /// @dev The winner's clock at `level` after every child below it returned
+    /// in the same block: the leaf's carried remainder, refilled by one join
+    /// budget per parent, within each full envelope.
+    function _carried(uint64 level) private pure returns (uint64 carried) {
+        carried = CARRIED_ALLOWANCE;
+        for (uint64 l = SmallFourLevelGeometry.LEVELS - 1; l > level; --l) {
+            carried += REFILL;
+            if (carried > MAX_ALLOWANCE) {
+                carried = MAX_ALLOWANCE;
+            }
+        }
     }
 
     function _assertCoordinateCoherence(

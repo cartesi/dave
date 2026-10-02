@@ -96,14 +96,20 @@ paused, exactly one running, and two running. Each transition needs both
 orientations and a rejection matrix. The shared timeout classifier must remain
 exhaustive and disjoint, with equality assigned explicitly. Its independent
 oracle must distinguish a paused winner's deferred overdue charge from a running
-winner's zero deferred charge. Tournament tests own the strict verb partition:
+winner's zero deferred charge. Winner tests must show that survival is decided
+on the full cost while the stored clock forgives at most one response budget
+of it (`min(cost, G)`). Tournament tests own the strict verb partition:
 a leaf proof is valid only under `NONE`, single-winner statuses select timeout
 victory, and `ELIMINATE_BOTH` selects elimination. Response-budget tests must
 prove that a successful response discounts elapsed time once without increasing
-the prior balance; pairing and ordinary same-tournament survivor re-entry must
-not grant time. Recursive integration separately owns the shared pair envelope:
+the prior balance; pairing must not grant time, and same-tournament survivor
+re-entry must not raise the stored balance or forgive more than one response
+budget. Recursive integration separately owns the shared pair envelope:
 a child return may exceed the selected side's snapshotted remainder, but not
-`max(r1, r2)` or the post-discount live pair mass.
+`max(r1, r2)` or the post-discount live pair mass, and it owns the refill
+property: a commitment joining each child within `T + G` and propagating
+within `G` returns with its pre-seal clock, delegation after delegation, from
+either side of the pair envelope.
 
 Tournament integration owns the structural distinctions that pair clocks alone
 cannot infer, including ready-to-bisect versus sealed-inner states when both
@@ -197,10 +203,33 @@ guest reaches zero and nonzero halt, TX exception, unexpected manual yield,
 and mcycle overflow.
 Opening vectors cover both halt values and every terminal class; representative
 closing vectors establish reset without rejected-input substitution. Separate
-vectors own rejected-input restoration and uarch-cycle overflow. Combined
+vectors own rejected-input restoration and uarch-cycle overflow. Pending-yield
+vectors, logged from a bare emulator so client terminal classification cannot
+shape them, own a manual yield that outranks halt and the input budget: an
+RX_ACCEPTED opening on the budget's last cycle (also at the maximum mcycle) or
+on a preset halted machine takes the input, unlike the idle opening, and an
+RX_REJECTED closing on the budget's last cycle still restores the revert root.
+Combined
 witness mutations cover exact DA header and payload boundaries, the CMIO-step
 and step-reset seams, before-root and provider-root binding, one representative
 byte in each composed primitive, and replay across adjacent transition shapes.
+
+Those vectors come from the Lua client and bare emulators. The Rust node's
+own witness bytes are pinned on its side by `node_witness_vectors_hold`
+(`cartesi-rollups/node/tests/engine_machine.rs`): window openings with and
+without an input, a second input's opening, a maximum-size input's opening, a
+plain ustep, a closing slot, and a rejected-input closing slot.
+`seam_witness_vectors_hold` (`engine/machine_stf.rs`) adds the node's bytes at
+the input budget's seams, where the v0.21 CLI departs from the step: accepted
+openings on the budget's last cycle and on a halted machine, and a rejected
+closing on the budget's last cycle. `NodeWitnessesTest` (`cartesi-rollups/contracts`)
+replays each through `CartesiStateTransition`, with inputs rooted the way
+`DaveConsensus` roots them, and requires the node's post-state. Likewise
+`node_proof_vectors_hold` pins the node's commitment proofs (root joins under
+both tables, a leaf agree-state opening, a leaf join) and an epoch's
+settlement validity proof; `NodeProofsTest` opens the former with the
+tournament's `Commitment` library and validates the latter as `DaveConsensus`
+stages it, requiring the reference CLI's outputs Merkle root.
 A nonempty DA payload paired with the provider's zero out-of-range root
 intentionally skips CMIO and proves only the following machine step.
 One PRT-side composition test carries a canonical input-opening vector through

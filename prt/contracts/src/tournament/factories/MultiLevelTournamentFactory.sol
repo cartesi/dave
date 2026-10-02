@@ -112,6 +112,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
                 startInstant: Time.currentTime(),
                 allowance: params.maxAllowance,
                 responseBudget: params.responseBudget,
+                commitmentBudget: params.commitmentBudget,
                 provider: _provider,
                 nestedDispute: ITournament.NestedDispute({
                     contestedCommitmentOne: Tree.ZERO_NODE,
@@ -161,6 +162,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
                 startInstant: Time.currentTime(),
                 allowance: _allowance,
                 responseBudget: params.responseBudget,
+                commitmentBudget: params.commitmentBudget,
                 provider: _provider,
                 nestedDispute: ITournament.NestedDispute({
                     contestedCommitmentOne: _contestedCommitmentOne,

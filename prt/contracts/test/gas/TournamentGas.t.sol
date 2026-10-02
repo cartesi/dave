@@ -54,6 +54,7 @@ contract GasParametersProvider is ITournamentParametersProvider {
                 ? GasTestGeometry.ROOT_HEIGHT
                 : GasTestGeometry.LEAF_HEIGHT,
             responseBudget: Time.Duration.wrap(GasTestGeometry.RESPONSE_BUDGET),
+            commitmentBudget: Time.ZERO_DURATION,
             maxAllowance: Time.Duration.wrap(GasTestGeometry.MAX_ALLOWANCE)
         });
     }
@@ -111,6 +112,8 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
     uint256 internal childFundedBalance;
     uint256 internal resolutionBlock;
     uint256 internal childEliminationBlock;
+    // The child's carryover, and the clock the parent returns it with.
+    uint256 internal expectedCarriedAllowance;
     uint256 internal expectedParentWinnerAllowance;
 
     constructor() {
@@ -291,9 +294,24 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         ) + Time.Duration.unwrap(childArgs.allowance);
         childEliminationBlock = childFinished + MAX_ALLOWANCE;
         resolutionBlock = childFinished + TIMEOUT_OVERDUE;
-        expectedParentWinnerAllowance = MAX_ALLOWANCE - TIMEOUT_OVERDUE;
+        expectedCarriedAllowance = MAX_ALLOWANCE - TIMEOUT_OVERDUE;
+        expectedParentWinnerAllowance =
+            _returnedFromChild(expectedCarriedAllowance, childArgs.allowance);
         vm.roll(resolutionBlock);
         _assertChildWinnerReady(childWinnerRoot, parentWinner);
+    }
+
+    /// @dev The parent refills the carried remainder by up to two inclusions
+    /// (this geometry grants no commitment budget), within the child's
+    /// allowance, which is the sealed pair's envelope.
+    function _returnedFromChild(uint256 carried, Time.Duration envelope)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 refilled = carried + 2 * RESPONSE_BUDGET;
+        uint256 cap = Time.Duration.unwrap(envelope);
+        return refilled < cap ? refilled : cap;
     }
 
     function _initializeResolvedInnerWinnerFixture(
@@ -330,9 +348,9 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         (Clock.State memory storedWinnerClock,) =
             childTournament.getCommitment(childWinnerRoot);
         assertFalse(Clock.isRunning(storedWinnerClock));
+        // The claim earns one response budget, which covers the overdue block.
         assertEq(
-            Time.Duration.unwrap(storedWinnerClock.allowance),
-            MAX_ALLOWANCE - TIMEOUT_OVERDUE
+            Time.Duration.unwrap(storedWinnerClock.allowance), MAX_ALLOWANCE
         );
 
         (bool finished, Time.Instant childFinished) =
@@ -342,7 +360,11 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         childEliminationBlock = uint256(Time.Instant.unwrap(childFinished))
             + Time.Duration.unwrap(storedWinnerClock.allowance);
         resolutionBlock = childEliminationBlock - TIMEOUT_OVERDUE;
-        expectedParentWinnerAllowance = TIMEOUT_OVERDUE;
+        expectedCarriedAllowance = TIMEOUT_OVERDUE;
+        expectedParentWinnerAllowance = _returnedFromChild(
+            expectedCarriedAllowance,
+            childTournament.tournamentArguments().allowance
+        );
         vm.roll(resolutionBlock);
         _assertChildWinnerReady(childWinnerRoot, parentWinner);
     }
@@ -365,7 +387,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         assertFalse(Clock.isRunning(returnedClock));
         assertEq(
             Time.Duration.unwrap(returnedClock.allowance),
-            expectedParentWinnerAllowance
+            expectedCarriedAllowance
         );
     }
 
@@ -889,7 +911,7 @@ contract SealInnerMatchGasTest is TournamentGasTest {
         );
         _logMeasurement("seal inner match", result);
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 14_000
+            result, Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 6000
         );
 
         Match.Id memory id = matchId;
@@ -945,7 +967,7 @@ contract ActiveOneWinsTimeoutGasTest is TournamentGasTest {
             "active one wins timeout",
             CommitmentShape.SAME,
             ROOT_HEIGHT,
-            MAX_ALLOWANCE - TIMEOUT_OVERDUE
+            MAX_ALLOWANCE
         );
     }
 }
@@ -971,7 +993,7 @@ contract ActiveTwoWinsTimeoutGasTest is TournamentGasTest {
             "active two wins timeout",
             CommitmentShape.RIGHTMOST_DIFFERENT,
             ROOT_HEIGHT,
-            MAX_ALLOWANCE - TIMEOUT_OVERDUE
+            MAX_ALLOWANCE
         );
     }
 }
@@ -988,7 +1010,7 @@ contract SealedLeafOneWinsTimeoutGasTest is TournamentGasTest {
             "sealed leaf one wins timeout",
             CommitmentShape.SAME,
             LEAF_HEIGHT,
-            CLOCK_CHARGE - TIMEOUT_OVERDUE
+            CLOCK_CHARGE - TIMEOUT_OVERDUE + RESPONSE_BUDGET
         );
     }
 }
@@ -1004,10 +1026,10 @@ contract SealedLeafTwoWinsTimeoutGasTest is TournamentGasTest {
             "sealed leaf two wins timeout",
             CommitmentShape.SECOND_DIFFERENT,
             LEAF_HEIGHT,
-            CLOCK_CHARGE - TIMEOUT_OVERDUE
+            CLOCK_CHARGE - TIMEOUT_OVERDUE + RESPONSE_BUDGET
         );
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_MATCH_BY_TIMEOUT, 2_000
+            result, Gas.WIN_MATCH_BY_TIMEOUT, 1000
         );
     }
 }
@@ -1086,7 +1108,7 @@ contract InnerTwoWinsGasTest is TournamentGasTest {
             "inner two wins", CommitmentShape.SECOND_DIFFERENT
         );
         _assertCalibratedAllocationWithHeadroom(
-            result, Gas.WIN_INNER_TOURNAMENT, 46_000
+            result, Gas.WIN_INNER_TOURNAMENT, 41_000
         );
     }
 }

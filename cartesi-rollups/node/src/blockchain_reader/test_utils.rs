@@ -80,10 +80,10 @@ pub async fn mine_blocks(provider: &impl Provider, count: u64) -> Result<()> {
     Ok(())
 }
 
-pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, AddressBook)> {
-    let program_path = program_path();
-
-    let anvil = Anvil::default()
+/// Anvil over the devnet bundle's state: historical states for pinned
+/// reads, and finality two blocks behind latest.
+pub fn spawn_anvil() -> AnvilInstance {
+    Anvil::default()
         .args([
             "--preserve-historical-states",
             "--slots-in-an-epoch",
@@ -93,16 +93,15 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
             "--block-base-fee-per-gas",
             "0",
         ])
-        .spawn();
+        .spawn()
+}
 
-    let mut signer: PrivateKeySigner = anvil.keys()[0].clone().into();
-
+/// A provider that signs with anvil key `index`.
+pub fn wallet_provider(anvil: &AnvilInstance, index: usize) -> DynProvider {
+    let mut signer: PrivateKeySigner = anvil.keys()[index].clone().into();
     signer.set_chain_id(Some(anvil.chain_id()));
-    let signer_address = signer.address();
-    let wallet = EthereumWallet::from(signer);
-
     let provider = ProviderBuilder::new()
-        .wallet(wallet)
+        .wallet(EthereumWallet::from(signer))
         .connect_client(rpc_client_with_timeout(anvil.endpoint_url()))
         .erased();
     // Automine confirms instantly; the default 250ms receipt poll
@@ -110,7 +109,20 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
     provider
         .client()
         .set_poll_interval(std::time::Duration::from_millis(10));
+    provider
+}
 
+/// One Dave app over the echo template.
+pub struct Deploy {
+    pub sentries: Vec<Address>,
+    pub claim_staging_period: u64,
+}
+
+/// Deploys the app through the bundle's DaveAppFactory, sending from
+/// `provider`'s signer with automine on. Epoch 0 is sealed, empty, by
+/// the consensus constructor.
+pub async fn deploy_app(provider: &DynProvider, deploy: &Deploy) -> Result<AddressBook> {
+    let program_path = program_path();
     let input_box = deployment_address("InputBox");
     let dave_app_factory = deployment_address("DaveAppFactory");
     let tournament_factory = deployment_address("MultiLevelTournamentFactory");
@@ -130,12 +142,8 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
             .expect("failed to read machine root hash")
     };
 
-    let claim_staging_period = U256::from(1000);
-
+    let claim_staging_period = U256::from(deploy.claim_staging_period);
     let sentry_manager = Address::ZERO;
-
-    let sentries = vec![signer_address];
-
     let withdrawal_config = WithdrawalConfig {
         guardian: Default::default(),
         log2LeavesPerAccount: Default::default(),
@@ -143,16 +151,15 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         accountsDriveStartIndex: Default::default(),
         withdrawalOutputBuilder: Default::default(),
     };
-
     let salt = FixedBytes::default();
 
-    let dave_app_factory_contract = IDaveAppFactory::new(dave_app_factory, &provider);
+    let dave_app_factory_contract = IDaveAppFactory::new(dave_app_factory, provider);
     let (app, consensus) = dave_app_factory_contract
         .calculateDaveAppAddress(
             initial_hash.into(),
             claim_staging_period,
             sentry_manager,
-            sentries.clone(),
+            deploy.sentries.clone(),
             withdrawal_config.clone(),
             salt,
         )
@@ -166,8 +173,8 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
             initial_hash.into(),
             claim_staging_period,
             sentry_manager,
-            sentries.clone(),
-            withdrawal_config.clone(),
+            deploy.sentries.clone(),
+            withdrawal_config,
             salt,
         )
         .send()
@@ -175,23 +182,37 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         .watch()
         .await?;
 
-    IInputBox::new(input_box, &provider)
-        .addInput(app, "Hello, world!".into())
+    Ok(AddressBook {
+        app,
+        consensus,
+        tournament_factory,
+        input_box,
+        genesis_block_number: 0,
+        initial_hash,
+    })
+}
+
+/// The reader tests' fixture: key 0 deploys and is the only sentry, and
+/// one input lands in epoch 1.
+pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, AddressBook)> {
+    let anvil = spawn_anvil();
+    let provider = wallet_provider(&anvil, 0);
+    let signer_address = anvil.addresses()[0];
+    let address_book = deploy_app(
+        &provider,
+        &Deploy {
+            sentries: vec![signer_address],
+            claim_staging_period: 1000,
+        },
+    )
+    .await?;
+
+    IInputBox::new(address_book.input_box, &provider)
+        .addInput(address_book.app, "Hello, world!".into())
         .send()
         .await?
         .watch()
         .await?;
 
-    Ok((
-        anvil,
-        provider,
-        AddressBook {
-            app,
-            consensus,
-            tournament_factory,
-            input_box,
-            genesis_block_number: 0,
-            initial_hash,
-        },
-    ))
+    Ok((anvil, provider, address_book))
 }

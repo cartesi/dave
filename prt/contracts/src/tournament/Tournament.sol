@@ -273,23 +273,24 @@ contract Tournament is ITournament, ERC165 {
     /// @dev
     /// - Behavior is identical for root and inner tournaments; level only affects
     ///   how the winner is later interpreted by parent tournaments.
-    /// - A paused winner is charged the loser's overdue time. A running winner
+    /// - A paused winner's cost is the loser's overdue time. A running winner
     ///   has already paid for the same interval through its live remaining time,
-    ///   so no additional charge applies.
-    /// - The winner must retain positive time after any deferred charge;
-    ///   otherwise both commitments must be eliminated through
-    ///   `eliminateMatchByTimeout`.
+    ///   so it carries no deferred charge.
+    /// - The winner must retain positive time after that cost; otherwise both
+    ///   commitments must be eliminated through `eliminateMatchByTimeout`.
+    /// - The claim is an honest action: the stored clock is charged only the
+    ///   cost beyond one response budget.
     /// - The call fails when the shared classifier selects no individual winner.
     function winMatchByTimeout(
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    )
-        external
-        override
-        refundable(Gas.WIN_MATCH_BY_TIMEOUT)
-        tournamentNotFinished
-    {
+    ) external override refundable(Gas.WIN_MATCH_BY_TIMEOUT) {
+        // The not-finished check inline: the winner's budget needs the same
+        // arguments, and decoding them once keeps the refunded path cheap.
+        TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
+
         // The legal clock configuration encodes the match phase, so an
         // existing match needs no separate structural decode here.
         matches[_matchId.hashFromId()].requireExists();
@@ -306,7 +307,9 @@ contract Tournament is ITournament, ERC165 {
                 WrongChildren(1, _matchId.commitmentOne, _leftNode, _rightNode)
             );
 
-            _clockOne.chargeAndPauseAt(timeout.deferredCharge, current);
+            _clockOne.pauseWinnerAt(
+                timeout.deferredCharge, args.responseBudget, current
+            );
             pairCommitment(
                 _matchId.commitmentOne,
                 _clockOne,
@@ -324,7 +327,9 @@ contract Tournament is ITournament, ERC165 {
                 WrongChildren(2, _matchId.commitmentTwo, _leftNode, _rightNode)
             );
 
-            _clockTwo.chargeAndPauseAt(timeout.deferredCharge, current);
+            _clockTwo.pauseWinnerAt(
+                timeout.deferredCharge, args.responseBudget, current
+            );
             pairCommitment(
                 _matchId.commitmentTwo,
                 _clockTwo,
@@ -577,7 +582,9 @@ contract Tournament is ITournament, ERC165 {
                 WrongFinalState(1, _finalState, divergence.finalStateOne)
             );
 
-            _clockOne.chargeAndPauseAt(Time.ZERO_DURATION, current);
+            _clockOne.pauseWinnerAt(
+                Time.ZERO_DURATION, args.responseBudget, current
+            );
             pairCommitment(
                 _matchId.commitmentOne,
                 _clockOne,
@@ -595,7 +602,9 @@ contract Tournament is ITournament, ERC165 {
                 WrongFinalState(2, _finalState, divergence.finalStateTwo)
             );
 
-            _clockTwo.chargeAndPauseAt(Time.ZERO_DURATION, current);
+            _clockTwo.pauseWinnerAt(
+                Time.ZERO_DURATION, args.responseBudget, current
+            );
             pairCommitment(
                 _matchId.commitmentTwo,
                 _clockTwo,
@@ -724,10 +733,17 @@ contract Tournament is ITournament, ERC165 {
 
         Clock.State storage _clock = clocks[_commitmentRoot];
         _clock.assertInitialized();
-        // A child carries the sealed pair's shared maximum. It may therefore
-        // exceed this selected side's snapshot, but never the pair maximum or
-        // the sealed pair's post-discount live clock mass.
-        _clock.replaceWithPaused(result.pausedAllowance);
+        _clock.replaceWithPaused(
+            MatchClocks.childReturnAllowance(
+                clocks[_matchId.commitmentOne],
+                clocks[_matchId.commitmentTwo],
+                result.pausedAllowance,
+                // The child's build, one inclusion for the join, and one for
+                // this propagation.
+                args.commitmentBudget.add(args.responseBudget)
+                    .add(args.responseBudget)
+            )
+        );
 
         pairCommitment(
             _commitmentRoot, _clock, _leftNode, _rightNode, Time.currentTime()

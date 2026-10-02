@@ -10,6 +10,9 @@
 //! fallible: machine errors propagate as errors, while geometry
 //! violations (a feed on a running machine, a ureset off-boundary)
 //! remain panics - those are engine bugs, not machine conditions.
+//!
+//! Changing what these verbs produce changes stored commitments: bump
+//! `COMMITMENT_SEMANTICS` (storage/sql/schema.rs).
 
 use crate::merkle::Digest;
 use anyhow::Result;
@@ -22,8 +25,10 @@ pub trait Stf {
     /// Machine yielded with RX_ACCEPTED and is awaiting input.
     fn yielded(&mut self) -> Result<bool>;
 
-    /// A terminal fixed point: halt, exception, unexpected manual yield,
-    /// or mcycle overflow. No later input can resume execution.
+    /// A terminal fixed point: an exception or unexpected manual yield, or
+    /// halt or mcycle overflow with no manual yield pending. No later input
+    /// can resume execution. A pending input yield is never terminal: the
+    /// step delivers the next input even on the budget's last cycle.
     fn terminal(&mut self) -> Result<bool>;
 
     /// The uarch finished emulating the current big instruction; usteps
@@ -63,6 +68,22 @@ pub trait Stf {
     /// does not advance while yielded or halted (idle uarch spans are
     /// state-preserving, so skipping them is exact at big boundaries).
     fn run_big(&mut self, big_cycles: u64) -> Result<u64>;
+
+    /// Whether [`Stf::big_cycle_roots`] is available. Dense leaf builds
+    /// then leave active big cycles to it; otherwise the ruler steps them.
+    fn collects_big_cycle_roots(&self) -> bool {
+        false
+    }
+
+    /// Bulk collection from a big-cycle boundary of a running machine:
+    /// up to `big_cycles` whole cycles, each reduced to the root of its
+    /// transition leaves (the ruler's leaf layout), ending early after the
+    /// cycle that reaches a fixed point, with a rejection already restored.
+    /// It may decline the next cycle by returning no roots; the ruler then
+    /// steps that cycle.
+    fn big_cycle_roots(&mut self, big_cycles: u64) -> Result<Vec<Digest>> {
+        unreachable!("asked {big_cycles} big-cycle roots of a stepping-only stf")
+    }
 
     // Logged operations apply the same transitions and emit the witness
     // encoding consumed by the on-chain state transition. Machine

@@ -33,7 +33,7 @@ measured-throughput stand-in for a reference machine).
 
 ## Derivations
 
-| inner timeout | levels | log2step | height | root slowdown |
+| commitment budget | levels | log2step | height | root slowdown |
 |---|---|---|---|---:|
 | 60 min | 2 | [37, 0] | [55, 37] | 1.81x |
 | 30 min | 3 | [56, 36, 0] | [36, 20, 36] | 1.01x |
@@ -51,8 +51,8 @@ side assumptions before adopting (tree math, position widths).
 Constants changes cross the contract-client compatibility boundary.
 Adopt a bump only with coordinated validation of:
 ArbitrationConstants.sol (LEVELS, log2step, height);
-rollups_machine::LOG2_STRIDE (= log2step(0));
-docs/computation-hash.md's level table; harness fixtures.
+docs/computation-hash.md's level table; harness fixtures. The node
+discovers and pins the deployed table, so it carries no stride constant.
 A small test-shape profile would also let e2e disputes run in seconds.
 
 ## Caveats

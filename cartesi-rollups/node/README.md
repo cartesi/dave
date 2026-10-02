@@ -66,8 +66,20 @@ winning bond recoveries before participating in the next epoch. It resumes the
 same unfinished epoch after restart. Other participants may advance meanwhile;
 the operating timing assumption allows a modest delay while refunds finish.
 The completion cursor is bound to one claimant, so changing signer requires a
-fresh state directory. A changed node version or schema also requires a fresh
-directory under the node's rebuild policy.
+fresh state directory. A changed node version, schema, or commitment semantics
+also requires a fresh directory under the node's rebuild policy.
+
+Put `--state-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
+`reflink=1`). Every input clones a stored machine; a reflinked clone shares
+unchanged extents, while elsewhere (ext4) the emulator falls back to sparse
+copies, which stay correct but cost disk and clone time in proportion to the
+machine. Performance is the operator's to size. The node aims to add no work
+over the emulator's own (work-count tests guard the algorithms; a comparison
+against the emulator on the same host is a release measurement), and the Hero
+logs how long each action took from reading the chain through commitment
+builds and proving (`prepared ... in ...`), plus any slow tick that built
+without acting, for comparison with the deployed response and commitment
+budgets.
 
 Fund the whole pending batch. With the default `GAS_LIMIT=15_000_000`, a pool
 may require each transaction's full gas limit at its max fee, plus its call

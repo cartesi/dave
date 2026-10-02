@@ -191,6 +191,29 @@ export DAVE_TEST_FORGE_FAIL=yes
 expect_status 2 verify "${fixture}/cartesi-rollups/contracts"
 unset DAVE_TEST_FORGE_FAIL
 
+# A geometry profile is its own bundle: its inputs differ, and a bundle
+# never verifies against another geometry, in either direction.
+mkdir -p "${fixture}/prt/contracts/test/devnet" "${fixture}/prt/contracts/test/fixtures"
+printf 'contract DevnetGeometryDeploymentScript {}\n' \
+    >"${fixture}/prt/contracts/test/devnet/DevnetGeometryDeployment.s.sol"
+printf 'contract TableTournamentParametersProvider {}\n' \
+    >"${fixture}/prt/contracts/test/fixtures/TableTournamentParametersProvider.sol"
+printf 'library TournamentParameterTableValidator {}\n' \
+    >"${fixture}/prt/contracts/test/fixtures/TournamentParameterTableValidator.sol"
+two_level_digest="$(DEVNET_GEOMETRY=two-level run_checker inputs)"
+[[ "$two_level_digest" != "$digest" ]]
+DEVNET_GEOMETRY=two-level expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
+grep -q "build-devnet" "$stderr"
+DEVNET_GEOMETRY=two-level run_checker write "$two_level_digest" \
+    "${fixture}/cartesi-rollups/contracts" >/dev/null
+DEVNET_GEOMETRY=two-level expect_status 0 verify "${fixture}/cartesi-rollups/contracts"
+expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
+printf 'contract ChangedProvider {}\n' \
+    >"${fixture}/prt/contracts/test/fixtures/TableTournamentParametersProvider.sol"
+DEVNET_GEOMETRY=two-level expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
+[[ "$(run_checker inputs)" == "$digest" ]]
+DEVNET_GEOMETRY=no-such-geometry expect_status 2 inputs
+
 printf 'not a fingerprint\n' \
     >"${fixture}/cartesi-rollups/contracts/state.fingerprint"
 expect_status 1 verify "${fixture}/cartesi-rollups/contracts"

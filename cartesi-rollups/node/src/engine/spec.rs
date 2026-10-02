@@ -11,9 +11,9 @@
 use super::cache::{PRECOMPUTE_LEVELS, get_or_compute};
 use super::config::EngineConfig;
 use super::dispute::{DisputeSource, LevelCoords, fold_runs};
-use super::ruler::{RulerFactory, Run};
+use super::ruler::{Hashing, Ruler, RulerFactory, Run};
 use super::structure::{Quartet, Structure};
-use super::toy::{IDLE_CHURN_TICKS, ToyFactory, ToyInput, ToyOutcome, ToyStf};
+use super::toy::{IDLE_CHURN_TICKS, ToyBulk, ToyFactory, ToyInput, ToyOutcome, ToyStf};
 use crate::merkle::{Digest, MerkleBuilder, MerkleTree};
 use crate::storage::Storage;
 use alloy::primitives::U256;
@@ -39,6 +39,14 @@ const S_MEDIUM: Structure = Structure {
     log2_barch_span: 3,
     log2_uarch_span: 4,
 }; // 512 positions
+
+// Tall enough that stride-0 quartets take the cache's big-cycle-root path
+// (height >= c + PRECOMPUTE_LEVELS), at the root and one level below it.
+const S_TALL: Structure = Structure {
+    log2_input_span: 2,
+    log2_barch_span: 7,
+    log2_uarch_span: 2,
+}; // 2048 positions
 
 fn accept(big_cycles: &[u64]) -> ToyInput {
     ToyInput {
@@ -176,11 +184,29 @@ fn expand(runs: &[Run]) -> Vec<Digest> {
 }
 
 pub(crate) fn toy_storage(structure: Structure) -> Storage {
+    // Toy tests hand DisputeSource their run stride; the pin only has
+    // to be a valid table for the structure.
+    let geometry = super::TournamentGeometry::new(
+        vec![
+            super::Level {
+                log2_stride: structure.log2_uarch_span,
+                height: structure.log2_ruler_span() - structure.log2_uarch_span,
+            },
+            super::Level {
+                log2_stride: 0,
+                height: structure.log2_uarch_span,
+            },
+        ],
+        &structure,
+    )
+    .unwrap();
     let config = EngineConfig {
         structure,
         app: vec![0xda; 20],
+        consensus: vec![0xdc; 20],
         template_hash: ToyStf::hash_of(0),
         emulator_version: "toy".into(),
+        geometry,
     };
     let dir = tempfile::tempdir().unwrap().keep();
     let connection = Connection::open(dir.join("db.sqlite3")).unwrap();
@@ -198,7 +224,7 @@ fn full_ruler_matches_oracle() {
                 structure,
                 script: script.clone(),
             };
-            let mut ruler = factory.ruler_at(U256::ZERO).unwrap();
+            let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled).unwrap();
             let runs = ruler.collect(structure.ruler_span(), 0).unwrap();
             assert_eq!(expand(&runs), expected, "script {name} on {structure:?}");
         }
@@ -223,7 +249,7 @@ fn stride_sampling_matches_oracle() {
                     structure,
                     script: script.clone(),
                 };
-                let mut ruler = factory.ruler_at(U256::ZERO).unwrap();
+                let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled).unwrap();
                 let runs = ruler.collect(structure.ruler_span(), log2_stride).unwrap();
                 assert_eq!(
                     expand(&runs),
@@ -260,7 +286,9 @@ fn positioning_at_each_slot_matches_oracle() {
             script: script.clone(),
         };
         for start in 0..oracle.len() {
-            let mut ruler = factory.ruler_at(U256::from(start)).unwrap();
+            let mut ruler = factory
+                .ruler_at(U256::from(start), Hashing::Sampled)
+                .unwrap();
             let expected = if start == 0 {
                 ToyStf::hash_of(0)
             } else {
@@ -386,6 +414,170 @@ fn coarse_root_equals_sampled_oracle_tree() -> Result<()> {
 }
 
 #[test]
+fn big_cycle_roots_fold_to_the_transition_tree() {
+    // Every big-aligned span, from a fresh or a resumed ruler: the
+    // per-cycle roots, folded c levels up, give the tree over the
+    // transitions themselves.
+    for structure in [S_DIAGRAM, S_SMALL, S_MEDIUM, S_TALL] {
+        let c = structure.log2_uarch_span;
+        let total = structure.log2_ruler_span();
+        for (name, script) in scripts_for(&structure) {
+            let oracle = oracle_digests(&structure, &script);
+            for height in c..=total {
+                let span = 1usize << height;
+                for start in (0..oracle.len()).step_by(span) {
+                    let mut expected = MerkleBuilder::default();
+                    for digest in &oracle[start..start + span] {
+                        expected.append(*digest);
+                    }
+
+                    let expected = expected.build().root_hash();
+
+                    // Stepped, then through bulk collectors of every shape:
+                    // one cycle a call, chunks with declines the ruler
+                    // steps, and unbounded calls declining every other time.
+                    let collectors = [
+                        None,
+                        Some(ToyBulk {
+                            per_call: 1,
+                            decline_every: 0,
+                        }),
+                        Some(ToyBulk {
+                            per_call: 2,
+                            decline_every: 3,
+                        }),
+                        Some(ToyBulk {
+                            per_call: u64::MAX,
+                            decline_every: 2,
+                        }),
+                    ];
+                    for bulk in collectors {
+                        let mut stf = ToyStf::new(structure, script.clone());
+                        if let Some(bulk) = bulk {
+                            stf = stf.with_bulk(bulk);
+                        }
+                        let mut ruler = Ruler::new(stf, structure, script.len() as u64);
+                        ruler.advance(U256::from(start)).unwrap();
+                        let end = U256::from(start + span);
+                        let roots = ruler.collect_big_cycle_roots(end).unwrap();
+                        assert_eq!(ruler.position(), end);
+                        let mut folded = MerkleBuilder::default();
+                        for run in &roots {
+                            folded.append_repeated(run.hash, run.repetitions);
+                        }
+                        let folded = folded.build();
+                        let context = format!(
+                            "script {name}, [{start}, +2^{height}) on {structure:?}, {bulk:?}"
+                        );
+                        assert_eq!(u64::from(folded.height()), height - c, "{context}");
+                        assert_eq!(folded.root_hash(), expected, "{context}");
+                        if name == "empty" {
+                            // An idle stretch is one root, however long.
+                            assert_eq!(roots.len(), 1, "{context}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn tall_leaf_quartets_build_from_big_cycle_roots() -> Result<()> {
+    // The cache path for tall stride-0 quartets: every stored fanout row,
+    // and every node the descent computes below that stratum, matches the
+    // transition-level tree.
+    let structure = S_TALL;
+    let total = structure.log2_ruler_span();
+    assert!(total > structure.log2_uarch_span + PRECOMPUTE_LEVELS);
+    for (name, script) in scripts_for(&structure) {
+        let mut reference = MerkleBuilder::default();
+        for digest in oracle_digests(&structure, &script) {
+            reference.append(digest);
+        }
+        let reference = reference.build();
+
+        let mut cache = toy_storage(structure);
+        let mut factory = Counting {
+            inner: ToyFactory {
+                structure,
+                script: script.clone(),
+            },
+            calls: 0,
+        };
+        // Every row one build stored, `depth` levels below the level root.
+        let assert_fanout = |cache: &Storage, top: &Quartet, depth: u64| -> Result<()> {
+            let mut stratum = vec![(top.clone(), depth)];
+            while let Some((quartet, depth)) = stratum.pop() {
+                let expected = reference_node(&reference, depth, quartet.shift).root_hash();
+                assert_eq!(
+                    cache.quartet_node(&quartet)?,
+                    Some(expected),
+                    "script {name}, stored row {quartet:?}"
+                );
+                if quartet.height > top.height - PRECOMPUTE_LEVELS {
+                    let (left, right) = quartet.children().unwrap();
+                    stratum.push((left, depth + 1));
+                    stratum.push((right, depth + 1));
+                }
+            }
+            Ok(())
+        };
+
+        let root = Quartet::level_root(0, 0, total);
+        get_or_compute(&mut cache, &structure, &mut factory, &root)?;
+        assert_eq!(factory.calls, 1);
+        assert_fanout(&cache, &root, 0)?;
+        assert_eq!(factory.calls, 1, "the fanout rows came from one build");
+
+        // Below the stratum, down both edges to single transitions.
+        for rightmost in [false, true] {
+            let mut quartet = root.clone();
+            let mut depth = 0;
+            while let Some((left, right)) = quartet.children() {
+                quartet = if rightmost { right } else { left };
+                depth += 1;
+                let expected = reference_node(&reference, depth, quartet.shift).root_hash();
+                assert_eq!(
+                    get_or_compute(&mut cache, &structure, &mut factory, &quartet)?,
+                    expected,
+                    "script {name}, descent at {quartet:?}"
+                );
+            }
+        }
+
+        // A quartet away from the epoch's start, exactly at the threshold
+        // height: its fanout reaches the reduced tree's leaves.
+        let (_, right) = root.children().unwrap();
+        assert_eq!(right.height, structure.log2_uarch_span + PRECOMPUTE_LEVELS);
+        let mut fresh = toy_storage(structure);
+        get_or_compute(&mut fresh, &structure, &mut factory, &right)?;
+        assert_fanout(&fresh, &right, 1)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn idle_stretches_cost_one_captured_cycle() {
+    // An idle stretch steps one big cycle however long it is; replaying
+    // every idle cycle would fold to the same roots, so only the step
+    // count tells the two apart.
+    let structure = S_TALL;
+    for (name, script, stepped) in [
+        ("empty", vec![], 1),
+        // One active cycle, then idle to the epoch's end.
+        ("one_short", vec![accept(&[1])], 2),
+    ] {
+        let mut factory = ToyFactory { structure, script };
+        let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled).unwrap();
+        ruler
+            .collect_big_cycle_roots(structure.ruler_span())
+            .unwrap();
+        assert_eq!(ruler.into_stf().uresets(), stepped, "script {name}");
+    }
+}
+
+#[test]
 fn children_join_to_parent() -> Result<()> {
     let structure = S_SMALL;
     let (_, script) = scripts_for(&structure).remove(3); // mixed
@@ -412,9 +604,13 @@ struct Counting {
 
 impl RulerFactory for Counting {
     type S = ToyStf;
-    fn ruler_at(&mut self, position: U256) -> Result<super::ruler::Ruler<ToyStf>> {
+    fn ruler_at(
+        &mut self,
+        position: U256,
+        hashing: Hashing,
+    ) -> Result<super::ruler::Ruler<ToyStf>> {
         self.calls += 1;
-        self.inner.ruler_at(position)
+        self.inner.ruler_at(position, hashing)
     }
 }
 
@@ -528,7 +724,9 @@ fn reference_tree(
         structure,
         script: script.to_vec(),
     };
-    let mut ruler = factory.ruler_at(level.base_cycle).unwrap();
+    let mut ruler = factory
+        .ruler_at(level.base_cycle, Hashing::Sampled)
+        .unwrap();
     let span = U256::from(1) << (level.log2_stride + level.height);
     let runs = ruler
         .collect(level.base_cycle + span, level.log2_stride)
@@ -617,7 +815,7 @@ fn record_toy_material(
         structure: *structure,
         script: script.to_vec(),
     };
-    let mut ruler = factory.ruler_at(U256::ZERO)?;
+    let mut ruler = factory.ruler_at(U256::ZERO, Hashing::Sampled)?;
     for window in 0..count {
         let runs = ruler.collect(structure.window_start(window + 1), log2_stride)?;
         let root = fold_runs(
@@ -872,6 +1070,50 @@ fn full_capacity_frontier_serves_without_padding() -> Result<()> {
 }
 
 #[test]
+fn coarser_strides_bypass_the_frontier_fold() -> Result<()> {
+    // The fold's leaves are run-stride samples; a coarser tree over the
+    // same span samples other states, so it is the machine's at every
+    // height (a `>=` dispatch would serve fold nodes there instead).
+    let structure = S_MEDIUM;
+    let script = vec![accept(&[2, 1]), reject(&[1]), accept(&[3]), accept(&[1, 1])];
+    let run_stride = structure.log2_uarch_span;
+    let coarse = run_stride + 1;
+    assert!(coarse <= structure.log2_window_span());
+    let level = LevelCoords::new(0, U256::ZERO, coarse, structure.log2_ruler_span() - coarse);
+
+    let mut storage = toy_storage(structure);
+    record_toy_material(&mut storage, &structure, &script, run_stride)?;
+    let reference = reference_tree(structure, &script, &level);
+    let mut counting = DisputeSource::new(
+        storage,
+        Counting {
+            inner: ToyFactory {
+                structure,
+                script: script.clone(),
+            },
+            calls: 0,
+        },
+        0,
+        run_stride,
+    )?;
+
+    for height in (0..=level.height).rev() {
+        let quartet = level.node(height, U256::ZERO);
+        let expected = reference_node(&reference, level.height - height, U256::ZERO);
+        assert_eq!(
+            counting.node(&quartet)?,
+            expected.root_hash(),
+            "height {height}"
+        );
+    }
+    assert!(
+        counting.factory().calls > 0,
+        "the machine served the coarser tree"
+    );
+    Ok(())
+}
+
+#[test]
 #[should_panic(expected = "corruption or version drift")]
 fn missing_window_root_fails_loudly() {
     // Strict rows: a recorded epoch whose window-root row is absent
@@ -961,4 +1203,317 @@ fn collision_fails_loudly() {
         script: vec![accept(&[2, 2])],
     };
     let _ = get_or_compute(&mut cache, &structure, &mut factory_b, &root);
+}
+
+// Work counts: the node must add no overhead over the emulator, so these
+// tests count machine verbs, exactly and at the production structure,
+// against the work the emulator cannot avoid. Times, memory and disk
+// depend on hardware and workload and are not gated anywhere
+// (docs/plans/test-strategy-reset.md, item 2).
+
+/// Machine work, verb by verb. Hashes are the expensive atom (a root-hash
+/// recomputation on the real machine); big cycles run natively.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Work {
+    trips: u64,
+    feeds: u64,
+    big_cycles: u64,
+    usteps: u64,
+    uresets: u64,
+    hashes: u64,
+}
+
+/// A toy that tallies its verbs into a tally shared across rulers.
+/// Proving verbs are not metered.
+struct Metered {
+    toy: ToyStf,
+    work: std::rc::Rc<std::cell::Cell<Work>>,
+}
+
+impl Metered {
+    fn tally(&self, count: impl FnOnce(&mut Work)) {
+        let mut work = self.work.get();
+        count(&mut work);
+        self.work.set(work);
+    }
+}
+
+impl super::stf::Stf for Metered {
+    fn state_hash(&mut self) -> Result<Digest> {
+        self.tally(|w| w.hashes += 1);
+        self.toy.state_hash()
+    }
+    fn yielded(&mut self) -> Result<bool> {
+        self.toy.yielded()
+    }
+    fn terminal(&mut self) -> Result<bool> {
+        self.toy.terminal()
+    }
+    fn uarch_halted(&mut self) -> Result<bool> {
+        self.toy.uarch_halted()
+    }
+    fn feed(&mut self, window: u64) -> Result<()> {
+        self.tally(|w| w.feeds += 1);
+        self.toy.feed(window)
+    }
+    fn ustep(&mut self) -> Result<()> {
+        self.tally(|w| w.usteps += 1);
+        self.toy.ustep()
+    }
+    fn ureset(&mut self) -> Result<()> {
+        self.tally(|w| w.uresets += 1);
+        self.toy.ureset()
+    }
+    fn run_big(&mut self, big_cycles: u64) -> Result<u64> {
+        let ran = self.toy.run_big(big_cycles)?;
+        self.tally(|w| w.big_cycles += ran);
+        Ok(ran)
+    }
+    fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {
+        self.toy.log_feed(window)
+    }
+    fn log_ustep(&mut self) -> Result<Vec<u8>> {
+        self.toy.log_ustep()
+    }
+    fn log_ureset(&mut self) -> Result<Vec<u8>> {
+        self.toy.log_ureset()
+    }
+}
+
+/// Positions like [`ToyFactory`], from the epoch start, so a trip's
+/// replay is its whole prefix; production resumes from the nearest
+/// stored window boundary, which is the same inside window 0.
+struct MeteredFactory {
+    structure: Structure,
+    script: Vec<ToyInput>,
+    work: std::rc::Rc<std::cell::Cell<Work>>,
+}
+
+impl MeteredFactory {
+    fn new(structure: Structure, script: Vec<ToyInput>) -> Self {
+        MeteredFactory {
+            structure,
+            script,
+            work: Default::default(),
+        }
+    }
+
+    fn stf(&self) -> Metered {
+        Metered {
+            toy: ToyStf::new(self.structure, self.script.clone()),
+            work: self.work.clone(),
+        }
+    }
+
+    /// Work since the last call.
+    fn take(&self) -> Work {
+        self.work.take()
+    }
+}
+
+impl RulerFactory for MeteredFactory {
+    type S = Metered;
+    fn ruler_at(
+        &mut self,
+        position: U256,
+        _hashing: Hashing,
+    ) -> Result<super::ruler::Ruler<Metered>> {
+        let stf = self.stf();
+        stf.tally(|w| w.trips += 1);
+        let mut ruler = super::ruler::Ruler::new(stf, self.structure, self.script.len() as u64);
+        ruler.advance(position)?;
+        Ok(ruler)
+    }
+}
+
+/// `n` active big cycles of `usteps` each, accepted.
+fn dense(n: usize, usteps: u64) -> ToyInput {
+    accept(&vec![usteps; n])
+}
+
+#[test]
+fn eager_window_runs_its_cycles_once_and_hashes_once_per_sample() {
+    // The runner's collect at the two-level root stride: every big cycle
+    // runs once on the big machine, nothing steps the uarch, and each
+    // sample costs one hash, plus one for the idle tail.
+    let structure = Structure::PRODUCTION;
+    let log2_stride = 37;
+    let spacing = 1usize << (log2_stride - structure.log2_uarch_span);
+    for cycles in [1, 2 * spacing, 2 * spacing + 5] {
+        let factory = MeteredFactory::new(structure, vec![dense(cycles, 2)]);
+        let mut ruler = super::ruler::Ruler::new(factory.stf(), structure, 1);
+        ruler
+            .collect(structure.window_start(1), log2_stride)
+            .unwrap();
+        assert_eq!(
+            factory.take(),
+            Work {
+                feeds: 1,
+                big_cycles: cycles as u64,
+                hashes: cycles.div_ceil(spacing) as u64 + 1,
+                ..Work::default()
+            },
+            "{cycles} cycles"
+        );
+    }
+}
+
+#[test]
+fn dense_leaf_hashes_each_distinct_leaf_once() {
+    // A two-level leaf (stride 0, 2^37 transitions) built from big-cycle
+    // roots. A big cycle with d active usteps has d + 2 distinct leaves
+    // (each active post-state, the halted run, the closing reset), which
+    // is all the hashing the commitment needs; the idle rest of the leaf
+    // costs one captured span however long it is.
+    let structure = Structure::PRODUCTION;
+    let usteps = [3u64, 1, 5, 2, 7];
+    let factory = MeteredFactory::new(structure, vec![accept(&usteps)]);
+    let mut ruler = super::ruler::Ruler::new(factory.stf(), structure, 1);
+    ruler.collect_big_cycle_roots(U256::from(1) << 37).unwrap();
+
+    let active: u64 = usteps.iter().sum();
+    let cycles = usteps.len() as u64;
+    assert_eq!(
+        factory.take(),
+        Work {
+            feeds: 1,
+            usteps: active + cycles + IDLE_CHURN_TICKS + 1,
+            uresets: cycles + 1,
+            hashes: active + 2 * cycles + IDLE_CHURN_TICKS + 2,
+            ..Work::default()
+        }
+    );
+}
+
+#[test]
+fn positioning_runs_the_prefix_once_and_hashes_nothing() {
+    // Whole big cycles run natively, a sub-cycle remainder steps the
+    // uarch, and no state is hashed on the way.
+    let structure = Structure::PRODUCTION;
+    let mut factory = MeteredFactory::new(structure, vec![dense(10, 2), dense(20, 2)]);
+    let position =
+        structure.window_start(1) + (U256::from(7) << structure.log2_uarch_span) + U256::ONE;
+    factory.ruler_at(position, Hashing::Sampled).unwrap();
+    assert_eq!(
+        factory.take(),
+        Work {
+            trips: 1,
+            feeds: 2,
+            big_cycles: 10 + 7,
+            usteps: 1,
+            ..Work::default()
+        }
+    );
+}
+
+#[test]
+fn join_descent_replays_the_prefix_once_per_stratum() {
+    // R4 (docs/plans/two-level-sling.md), pinned: a join builds the
+    // two-level leaf (one trip) and proves its last leaf, which descends
+    // four fanout strata (heights 29, 21, 13 and 5), each a trip that
+    // re-runs the input's prefix from the window boundary. The prefix
+    // replay is native and unhashed, but for a leaf deep inside a long
+    // input it is paid five times; fixing R4 lowers these counts.
+    let structure = Structure::PRODUCTION;
+    let leaf_cycles = 1usize << (37 - structure.log2_uarch_span);
+    // The input runs through the first leaf and 50 cycles into the
+    // second, which is the one disputed.
+    let cycles = leaf_cycles + 50;
+    let factory = MeteredFactory::new(structure, vec![dense(cycles, 2)]);
+    let mut source = DisputeSource::new(toy_storage(structure), factory, 0, 37).unwrap();
+    let level = LevelCoords::new(0, U256::from(1) << 37, 0, 37);
+
+    source.node(&level.root()).unwrap();
+    let build = source.factory().take();
+    assert_eq!((build.trips, build.big_cycles), (1, leaf_cycles as u64));
+
+    source.prove_last(&level).unwrap();
+    let descent = source.factory().take();
+    assert_eq!(
+        (descent.trips, descent.big_cycles),
+        (4, 4 * cycles as u64),
+        "each stratum trip re-runs the whole input"
+    );
+}
+
+#[test]
+fn tail_overlay_diverges_at_its_position_and_never_writes() -> Result<()> {
+    // The harness adversary: every ruler leaf at or past `from` reads as
+    // Z, on every stride, with proofs that open the patched roots; and the
+    // store it shares keeps only honest rows.
+    let structure = S_SMALL;
+    let (_, script) = scripts_for(&structure).remove(3); // mixed
+    let total = structure.log2_ruler_span();
+    let honest_leaves = oracle_digests(&structure, &script);
+    let z = Digest::from_digest(&[0xee; 32])?;
+
+    for (from, recorded) in [0u64, 1, 7, 8, 37, 127]
+        .into_iter()
+        .flat_map(|from| [(from, false), (from, true)])
+    {
+        let mut shared = toy_storage(structure);
+        // With the runner's window roots recorded, root-stride quartets at
+        // window granularity and above come from the frontier fold, which
+        // the overlay must also override.
+        if recorded {
+            record_toy_material(&mut shared, &structure, &script, structure.log2_uarch_span)?;
+        }
+        let state_dir = shared.state_dir().to_path_buf();
+        let mut adversary = toy_source_over(shared, structure, &script, structure.log2_uarch_span);
+        adversary.set_tail(super::dispute::Tail {
+            from: U256::from(from),
+            value: z,
+        });
+
+        for log2_stride in [0, structure.log2_uarch_span] {
+            let height = total - log2_stride;
+            let level = LevelCoords::new(0, U256::ZERO, log2_stride, height);
+            let root = adversary.node(&level.root())?;
+            for j in 0..1u64 << height {
+                let position = (j + 1) * (1 << log2_stride) - 1;
+                let expected = if position >= from {
+                    z
+                } else {
+                    honest_leaves[position as usize]
+                };
+                let proof = adversary.prove_leaf(&level, U256::from(j))?;
+                assert_eq!(
+                    proof.node, expected,
+                    "from {from}, stride {log2_stride}, leaf {j}"
+                );
+                assert!(
+                    proof.verify_root(root),
+                    "from {from}, stride {log2_stride}, leaf {j}"
+                );
+            }
+        }
+
+        // Every quartet, from an honest source over the shared store and
+        // from a fresh one: a stored patched row would show here.
+        let mut over_shared = toy_source_over(
+            Storage::new(&state_dir)?,
+            structure,
+            &script,
+            structure.log2_uarch_span,
+        );
+        let mut fresh = toy_source(structure, &script);
+        for log2_stride in 0..=total {
+            for height in 0..=total - log2_stride {
+                for shift in 0..1u64 << (total - log2_stride - height) {
+                    let quartet = Quartet {
+                        epoch: 0,
+                        log2_stride,
+                        height,
+                        shift: U256::from(shift),
+                    };
+                    assert_eq!(
+                        over_shared.node(&quartet)?,
+                        fresh.node(&quartet)?,
+                        "from {from}: {quartet:?}"
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
 }

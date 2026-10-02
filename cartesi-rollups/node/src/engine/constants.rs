@@ -35,7 +35,7 @@ pub use cartesi_machine::constants::ar::SHADOW_REVERT_ROOT_HASH_START as CHECKPO
 
 #[cfg(test)]
 mod tests {
-    use super::{CHECKPOINT_ADDRESS, LOG2_EPOCH_RULER_SPAN};
+    use super::CHECKPOINT_ADDRESS;
     use cartesi_machine::{
         Machine,
         cartesi_machine_sys::{
@@ -178,41 +178,17 @@ mod tests {
         digits.parse().expect("digits parse as u64")
     }
 
-    /// Guardrail: the node's run stride and the emulator's meta-cycle field widths
-    /// must match the arbitration contracts and solidity-step. A
-    /// drift would make the frontier fold serve level-0 nodes at a
-    /// stride the deployed tournament does not use - wrongness with
-    /// no loud error, since the fold bypasses the machine-replay
-    /// collision checks. (The tournament heights and deeper strides
-    /// are read live from chain; the emulator bindings remain static.)
+    /// Guardrail: the checked-in arbitration table must pass the node's
+    /// geometry validator (the node discovers the deployed table at
+    /// startup and refuses one it cannot run), and the emulator's
+    /// meta-cycle field widths must match solidity-step.
     #[test]
     fn node_geometry_matches_arbitration_contracts() {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let root = manifest_dir.join("../..");
 
-        let arbitration = std::fs::read_to_string(
-            root.join("prt/contracts/src/arbitration-config/ArbitrationConstants.sol"),
-        )
-        .expect("read ArbitrationConstants.sol");
-        // log2step's array literal: the first element is level 0.
-        let log2step_fn = arbitration
-            .find("function log2step")
-            .expect("log2step in ArbitrationConstants.sol");
-        let log2step_0 = first_number_after(&arbitration[log2step_fn..], "[uint64(");
-        assert_eq!(
-            crate::storage::rollups_machine::LOG2_STRIDE,
-            log2step_0,
-            "rollups LOG2_STRIDE does not match ArbitrationConstants.log2step(0)"
-        );
-        let height_fn = arbitration
-            .find("function height")
-            .expect("height in ArbitrationConstants.sol");
-        let height_0 = first_number_after(&arbitration[height_fn..], "[uint64(");
-        assert_eq!(
-            LOG2_EPOCH_RULER_SPAN,
-            log2step_0 + height_0,
-            "the ruler span does not match the root tournament's span"
-        );
+        // Parsing builds the table through the validator.
+        crate::engine::TournamentGeometry::checked_in();
 
         let transition =
             std::fs::read_to_string(root.join("machine/step/src/EmulatorConstants.sol"))

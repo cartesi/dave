@@ -1,7 +1,7 @@
 //! Production Hero orchestration: observe, project, plan, prepare, and
 //! yield the tick's wave contribution for the epoch manager to submit.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use ::log::{debug, error, info};
 
@@ -10,7 +10,7 @@ use crate::{
     engine::{DisputeSource, Positioner},
     hero::{
         action::{PreparedArenaAction, prepare},
-        context::HeroContext,
+        context::{EpochAnchors, HeroContext},
         error::Result,
         gc_planner::plan_gc,
         planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, plan_hero},
@@ -64,7 +64,7 @@ pub struct Hero<AS: ArenaSender> {
     arena_sender: Arc<AS>,
     source: DisputeSource<Positioner>,
     epoch: u64,
-    epoch_initial_hash: Digest,
+    anchors: EpochAnchors,
     root_tournament: Address,
     reader: StateReader,
 }
@@ -78,28 +78,85 @@ impl<AS: ArenaSender> Hero<AS> {
         mut storage: Storage,
         epoch_number: u64,
     ) -> Result<Self> {
-        let work_dir = storage.epoch_directory(epoch_number)?;
-        let epoch_initial_hash = Digest::from_digest(
+        let engine_dir = storage.epoch_directory(epoch_number)?.join("engine");
+        Self::build(
+            arena_sender,
+            chain,
+            root_tournament,
+            block_created_number,
+            storage,
+            epoch_number,
+            engine_dir,
+        )
+    }
+
+    /// The harness adversary: this actor over a test-only tail overlay.
+    /// It needs its own engine directory, since a source's positioner
+    /// clears the work directories it numbers.
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn with_tail(
+        arena_sender: Arc<AS>,
+        chain: Chain,
+        root_tournament: Address,
+        block_created_number: u64,
+        storage: Storage,
+        epoch_number: u64,
+        engine_dir: std::path::PathBuf,
+        tail: crate::engine::Tail,
+    ) -> Result<Self> {
+        let mut hero = Self::build(
+            arena_sender,
+            chain,
+            root_tournament,
+            block_created_number,
+            storage,
+            epoch_number,
+            engine_dir,
+        )?;
+        hero.source.set_tail(tail);
+        Ok(hero)
+    }
+
+    fn build(
+        arena_sender: Arc<AS>,
+        chain: Chain,
+        root_tournament: Address,
+        block_created_number: u64,
+        mut storage: Storage,
+        epoch_number: u64,
+        engine_dir: std::path::PathBuf,
+    ) -> Result<Self> {
+        let initial_hash = Digest::from_digest(
             &storage
                 .snapshot_hash(epoch_number, 0)?
                 .expect("snapshot is inserted atomically with settlement info"),
         )
         .map_err(anyhow::Error::from)?;
+        let anchors = EpochAnchors {
+            initial_hash,
+            geometry: storage.sling_config()?.geometry,
+        };
         let reader_storage = Storage::new(storage.state_dir())?;
-        let source = DisputeSource::on_store(storage, epoch_number, work_dir.join("engine"))?;
+        let source = DisputeSource::on_store(storage, epoch_number, engine_dir)?;
         let reader = StateReader::new(chain, block_created_number, reader_storage)?;
 
         Ok(Self {
             arena_sender,
             source,
             epoch: epoch_number,
-            epoch_initial_hash,
+            anchors,
             root_tournament,
             reader,
         })
     }
 
     pub async fn tick(&mut self) -> Result<HeroTick> {
+        // The node's share of a response's time runs from reading the chain
+        // through commitment builds (context assembly builds the local
+        // material) and proving to submission; operators compare it with
+        // the deployed budgets.
+        let started = Instant::now();
         let (latest_head, foam) = self.reader.fetch_from_root(self.root_tournament).await?;
         let chain = self.reader.chain().clone();
         let foam_standings = read_standings(&chain, &foam, latest_head).await?;
@@ -107,7 +164,7 @@ impl<AS: ArenaSender> Hero<AS> {
             &chain,
             latest_head,
             self.epoch,
-            self.epoch_initial_hash,
+            &self.anchors,
             &foam,
             &foam_standings,
             &mut self.source,
@@ -132,7 +189,7 @@ impl<AS: ArenaSender> Hero<AS> {
                 &chain,
                 solid_head,
                 self.epoch,
-                self.epoch_initial_hash,
+                &self.anchors,
                 solid,
                 &solid_standings,
                 &mut self.source,
@@ -146,6 +203,7 @@ impl<AS: ArenaSender> Hero<AS> {
                 debug!(
                     "latest proposed {foam_join:?}, which Solid does not support exactly; retry next tick"
                 );
+                report_slow_tick(started, "the join waits for finality");
                 return Ok(HeroTick::new(TournamentResult::Running, Vec::new()));
             }
             (solid_context, solid_decision, solid_head)
@@ -157,12 +215,18 @@ impl<AS: ArenaSender> Hero<AS> {
         let mut wave = Vec::new();
         match decision {
             HeroDecision::Act(intent) => {
-                let action =
-                    prepare(intent, &context, &mut self.source).map_err(anyhow::Error::from)?;
+                let action = super::machine_work(|| prepare(intent, &context, &mut self.source))
+                    .map_err(anyhow::Error::from)?;
+                info!(
+                    "prepared {intent:?} in {:.1?} (reads, builds and proving), observed at block {}",
+                    started.elapsed(),
+                    action_head.number
+                );
                 wave.push(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
             }
             HeroDecision::Wait(reason) => {
                 debug!("Hero waits: {reason:?}");
+                report_slow_tick(started, format!("{reason:?}"));
             }
             HeroDecision::Terminal(terminal) => {
                 result = match terminal {
@@ -216,6 +280,16 @@ impl<AS: ArenaSender> Hero<AS> {
                 .arena_sender
                 .eliminate_inner_tournament(parent_tournament, child_tournament),
         }))
+    }
+}
+
+/// A tick that does local work without acting still spends the node's
+/// time, most often a commitment build ahead of a join that waits for
+/// finality; report it when it is not instant.
+fn report_slow_tick(started: Instant, outcome: impl std::fmt::Display) {
+    let elapsed = started.elapsed();
+    if elapsed >= std::time::Duration::from_secs(1) {
+        info!("Hero tick took {elapsed:.1?} without acting: {outcome}");
     }
 }
 

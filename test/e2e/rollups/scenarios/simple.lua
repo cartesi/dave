@@ -19,7 +19,12 @@ env.spawn_node()
 local sealed_epoch = env.roll_epoch()
 
 -- run epoch 1
-env.run_epoch(sealed_epoch, {
+local _, sealed = env.run_epoch(sealed_epoch, {
     -- ustep + reset
     { hash = Hash.zero, meta_cycle = 1 << 44 }
 }, { env.sample_inputs[1], env.sample_inputs[1], env.sample_inputs[1] })
+
+-- With no kills, the eager sybil takes the dispute to its one leaf match,
+-- so this smoke also gates that a STEP proof, not a timeout, resolved it.
+assert(#sealed == 1, string.format("expected one sealed leaf match, saw %d", #sealed))
+env.assert_leaf_match_proved(sealed[1].tournament, sealed[1].match_id_hash)

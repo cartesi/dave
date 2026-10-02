@@ -29,6 +29,8 @@ any realistic timeout. Nothing currently detects these; detection
 mechanisms (requiring emulator support) are future research, far off.
 Until then the assumption is explicit: the app developer is trusted,
 and trusted specifically to keep input-reachable behavior disputable.
+The developer also authors the template machine, which must carry the
+deployed step's pristine uarch (docs/computation-hash.md).
 
 ## The rule
 
@@ -43,7 +45,11 @@ to the average case.
   executes the worst instruction (the sqrt / TLB-flush class, near
   the 2^20 bound - which is why the span is 2^20). One occurrence,
   ever, breaks soundness, so rarity does not discount anything.
-- Clocks (the inner tournament timeout, responseBudget, the root
+  The input span differs in kind: no single legitimate event exceeds
+  it, only a flood of roughly 5e11 gas of inputs in one epoch. Past
+  it the contracts never feed the tail, and the Rust node panics
+  instead. It is an economic bound, kept out of model.
+- Clocks (the commitment budget `T`, responseBudget, the root
   slowdown budget, and the strides derived from them): these price
   aggregates - sums of per-step costs over whole gaps. Rare heavy
   instructions vanish into a sum of millions of terms. The honest
@@ -92,20 +98,25 @@ adversary will find it.
 |---|---|---|---|
 | uarch span (2^20 usteps)  | single event | any - honest code hits it | worst case |
 | barch span per input (2^48) | single event | app + input | worst case |
-| input span per epoch (2^24) | single event | chain | worst case |
-| leaf-level dense build within the inner timeout | aggregate | trusted app | average density |
+| input span per epoch (2^24) | input flood | anyone, at roughly 5e11 gas per epoch | out of model (economic) |
+| leaf-level dense build within the commitment budget | aggregate | trusted app | average density |
 | root slowdown (level-0 sampling overhead) | aggregate | trusted app | average |
 | positioning through an input's prefix | aggregate | trusted app (per-input compute is an app design contract) | app profile |
 | which gap / which leaf gets disputed | - | dispute adversary | worst location |
 
 The halt/exception protocol gap found on 2026-07-15 is closed by the
 v0.21 emulator and v0.15 solidity-step boundary. SendCmioResponse is total:
-an advance response to a machine that is halted, at mcycle overflow, or at a
-manual yield other than RX_ACCEPTED is a provable no-op. Halt, exception,
-unexpected manual yield, and mcycle overflow are terminal fixed points at big
-cycle boundaries, so later input windows remain claimable. Rejection is the
-one nonterminal manual outcome: the closing uarch reset substitutes the
-recorded pre-input root, after which the next input can be fed normally.
+an advance response to a machine that is not waiting on an RX_ACCEPTED manual
+yield is a provable no-op. The step reads only the pending yield, never the
+halt flag or the input budget, so exception and unexpected manual yields are
+terminal fixed points at big cycle boundaries, and so are halt and mcycle
+overflow when no manual yield is pending; later input windows remain
+claimable. An RX_ACCEPTED yield takes the next input even on the budget's last
+cycle (mcycle == imcyclemax), which renews the budget unless it is already
+saturated at 2^64 - 1, where the fed machine is an overflow fixed point at
+once. Rejection is the one nonterminal manual outcome: the closing uarch reset
+substitutes the recorded pre-input root, even on the budget's last cycle,
+after which the next input can be fed normally.
 
 At uarch granularity, terminal fixed points still have the usual idle-churn
 span followed by reset; they are constant only at big-cycle boundaries and
@@ -167,7 +178,9 @@ Keep three wall-clock quantities separate:
 - `C`: the global cumulative censorship budget across one root dispute and its
   linked descendants.
 - `T`: the supported time to construct the commitment needed for one inner
-  tournament.
+  tournament, the same at every inner level. It belongs with the geometry
+  (`ArbitrationConstants.COMMITMENT_BUDGET`): a generated geometry is only
+  valid for the `T` it was generated against.
 - `G`: the small per-response inclusion and execution budget for a tournament
   transaction.
 
@@ -178,15 +191,25 @@ below the configured duration. Timeout resolution becomes eligible at equality.
 If a wall-clock policy states an inclusive maximum, its conversion must add
 boundary slack rather than map equality to equality.
 
-For `L` tournament levels, the intended root allowance and structural clock
-bound are
+For `L` tournament levels, the root allowance and structural clock bound are
 
 ```text
-maxAllowance = C + (L - 1) * T
+maxAllowance = C + G + (L - 1) * (T + 2G)
 ```
 
-The root claim starts with the censorship budget and may later have to construct
-one new commitment at each inner level. A child tournament does not necessarily
+The rule behind it: every honest action gets one inclusion `G`, and joining a
+child also gets the build `T`. Responses are discounted by `G` as they land. A
+delegation costs the build and the join, charged at the join as lateness, and
+the propagation back, deducted from the carried remainder; when the child
+returns its winner, the parent refills it by up to `T + 2G`, within the sealed
+pair's envelope, so each delegation is paid back. The root allowance holds the
+censorship budget, one inclusion for the root join, and one refill per inner
+level: the delegations a correct commitment may have pending on its path.
+`ClockBudgets` derives it, `responseBudget = G` and `commitmentBudget = T` from
+the wall-clock inputs and the deployment's block time. The number of children
+a correct commitment passes through is chosen by the adversary, one Sybil bond
+each; without the refill, `C + (L - 1) * T` covered only one build per level
+and a few Sybils could exhaust it once `C` was spent. A child tournament does not necessarily
 receive this maximum: sealing delegates the greater live remainder of the two
 parent clocks as a shared pair envelope, and that value becomes the child's
 tournament allowance. On return, the selected parent side may therefore receive
@@ -212,15 +235,13 @@ balances, but would not remove the preserved-clock strategy that
 or a formal recursive delay theorem. Any corresponding leniency toward a
 correct participant is incidental, not the security rationale.
 
-The checked-in mainnet value, one week plus one hour, is consistent with the
-historical three-level model at `T = 30 minutes` - consistent in total
-allowance only, not per-level shape: a fresh `T = 30` derivation produces a
-different geometry (docs/measurements/constants.md), and the checked-in table
-predates the current measurement tooling. The selected two-level
-replacement uses `T = 60 minutes`, `log2step = [37, 0]`, and
-`height = [55, 37]`, reaching the same numerical allowance. It remains planned
-and must land with the separate node branch rather than changing the contract
-constants in isolation.
+The three-level table predates the current measurement tooling and is not a
+`T = 30` derivation (a fresh one produces a different geometry,
+docs/measurements/constants.md); `T = 30 minutes` is the conservative policy
+value it runs with, and on Ethereum it gives one week plus 85 minutes. The
+two-level table uses `T = 60 minutes`, `log2step = [37, 0]`, and
+`height = [55, 37]`, and gives one week plus 75 minutes. `ArbitrationConstants`
+holds the deployed table together with its `T`.
 
 Before adopting any generated table, run the test-only whole-table validator
 under `prt/contracts/test/config/`. It checks the declared level count, positive
@@ -231,15 +252,18 @@ does not fit the clients' 256-bit coordinate type. Then run a production-path
 recursive trace for the intended level count; the four-level miniature proves
 that the generic contract path can cross three child seams. These checks catch
 malformed Solidity geometry, but cannot prove cross-implementation agreement.
-The node's commitment strides and the complete contract table must still be
-compared as a release gate. Node startup additionally checks the deployed root
-row against its compiled level-zero sampling stride and 92-bit ruler span;
-deeper rows remain lazy, descriptor-driven geometry.
+The node compiles in no tournament geometry: startup reads the whole deployed
+table, validates it (the root spans the 92-bit ruler, rows tile, the leaf
+stride is zero, and the root stride lies between one big cycle and one input
+window), and pins it; the Hero checks each tournament descriptor on its path
+against the pinned row for its level. Cross-implementation commitment
+agreement at the deployed strides remains a release gate.
 
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the `responseBudget` field. A
-height-`H` match earns at most `H` discounts: one for each of its `H - 1`
-successful advances and one for its final leaf or inner seal. If a response
+height-`H` match earns at most `H + 1` discounts: one for each of its `H - 1`
+successful advances, one for its final leaf or inner seal, and one for a
+winning leaf proof or timeout claim. If a response
 starts with balance `b` and arrives after elapsed time `e`, it requires `e < b`
 and leaves
 
@@ -248,12 +272,14 @@ b' = b - max(e - G, 0)
 ```
 
 The response never increases its starting balance, pairing earns no time, and
-an expired clock cannot be revived. Joining, proof resolution, timeout cleanup,
-child propagation, elimination, and bond recovery are not eligible responses.
-Across `q` responses, the total elapsed time plus the remaining clock mass is
-bounded by the starting mass plus `q * G`. One root-to-leaf descent with one
-match at each level spans 92 heights and may therefore earn at most 7 hours
-40 minutes, but only action by action. Re-pairing creates a new match with new
+an expired clock cannot be revived. A win is charged the same way on its live
+cost (time run plus any deferred charge). Joining, eliminating both sides,
+child propagation, and bond recovery earn no discount. Across `q` responses,
+`w` wins, and `j` child returns, the total elapsed time plus the remaining
+clock mass is bounded by the starting mass plus `(q + w) * G + j * (T + 2G)`;
+each child return stays within its pair's envelope. One root-to-leaf descent with one
+match at each level spans 92 heights and ends in one leaf win, so it may earn at
+most 7 hours 45 minutes, but only action by action. Re-pairing creates a new match with new
 response discounts. The configured scalar remains five minutes, or 25 blocks
 on Ethereum.
 
@@ -277,8 +303,11 @@ completion time `A` for `N = 1`; for `N >= 2`, with
 
 ```text
 2A - 1 + (H - 1)g
-    + (ceil(N / 2) - 1) * (A + (H - 1)g)
+    + (ceil(N / 2) - 1) * (A + (H - 1)g + max(g - 1, 0))
 ```
+
+The last term is the winner's discount: an earlier pair can reach its leaf and
+end with a proof inside one `G`, so its survivor re-pairs with a full clock.
 
 Height one has a different two-running-clock leaf-race table. These are finite
 results, not an induction step. The model independently permits either side to
@@ -287,8 +316,10 @@ clock-only upper envelope. A general attacker-versus-honest upper bound still
 needs an unbounded proof or counterexample.
 
 For the two-level target heights `[55, 37]`, a root match can earn at most 275
-minutes of discounts and a leaf match at most 185 minutes. One descent through
-one match at each level totals 460 minutes. These are per-match cumulative
+minutes of discounts (a timeout win replaces its seal, since a sealed inner
+match resolves through its child) and a leaf match at most 190 minutes,
+including its win. One descent through one match at each level totals 465
+minutes. These are per-match cumulative
 ceilings, not values deposited into a clock or a whole-tournament maximum.
 
 The independent `prt/measure_constants` emulator harness and the Rust
@@ -352,7 +383,7 @@ protocol worst case or a representative application distribution.
   ever cheapen a nested join - lives in computation-hash.md with its
   trap diagnosis. Read it before reasoning about dispute costs.
 - The level constants chain from two free knobs. The leaf-level dense build
-  fitting the inner timeout at average density determines
+  fitting the commitment budget at average density determines
   `height[L - 1]`, with `log2step[L - 1] = 0`. Parent strides follow
   recursively from
   `log2step[i] = log2step[i + 1] + height[i + 1]`; the root slowdown budget

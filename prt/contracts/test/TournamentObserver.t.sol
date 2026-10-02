@@ -1031,6 +1031,7 @@ contract TournamentObserverTest is Test {
                 startInstant: _instant(100),
                 allowance: _duration(20),
                 responseBudget: _duration(3),
+                commitmentBudget: _duration(7),
                 provider: IDataProvider(address(0x1001)),
                 nestedDispute: nestedDispute,
                 stateTransition: IStateTransition(address(0x1002)),

@@ -1,6 +1,5 @@
 require "setup_path"
 
-local Hash = require "cryptography.hash"
 local env = require "test_env"
 
 -- The last state-transition shape stf_all cannot pin statically: the
@@ -25,25 +24,13 @@ env.spawn_node()
 -- advance such that epoch 0 is finished
 local sealed_epoch = env.roll_epoch()
 
--- Steer the dispute onto input 0's revert: the reject yield happened
--- in big cycle (bigs - 1) of window 0, so the revert lands at the
--- closing slot ending at meta-cycle bigs * 2^20. The chain encloses
--- it at each level's leaf boundary (see docs/test-harness.md).
-env.run_epoch(sealed_epoch, function(settlement)
+-- Steer the dispute onto input 0's revert: the reject yield happened in
+-- big cycle (bigs - 1) of window 0, so the revert is the closing slot
+-- ending at meta-cycle bigs * 2^20, i.e. transition bigs * 2^20 - 1.
+env.run_steered_epoch(sealed_epoch, function(settlement)
     local bigs = assert(settlement.processing_bigs[1], "no input processed")
-    local target = bigs << 20
-    assert(target < (1 << 44), "input overran a level-0 leaf")
-
-    local metas = { [target] = true }
-    metas[((target + (1 << 28) - 1) >> 28) << 28] = true
-    metas[1 << 44] = true
-
-    local patches = {}
-    for meta in pairs(metas) do
-        table.insert(patches, { hash = Hash.zero, meta_cycle = meta })
-    end
     print(string.format("[stf_revert] revert slot ends at big cycle %d", bigs))
-    return patches
+    return (bigs << 20) - 1
 end, {})
 
 print "[stf_revert] dispute over the revert transition won"

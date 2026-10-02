@@ -198,7 +198,26 @@ test-engine-machine: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
     cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
-      --ignored --skip computation_hash_corpus
+      --ignored --skip computation_hash_corpus --skip reference_cli_goldens_hold
+
+# the node's workers against a deterministic anvil, serially (see
+# cartesi-rollups/node/src/harness/mod.rs; needs the devnet bundle), with
+# every other test that spawns anvil: the emulator flocks machine files
+# without O_CLOEXEC, so an anvil spawned while another test stores a
+# machine keeps that machine locked
+test-node-harness: bind
+    ./script/machine-image-fingerprint.sh verify echo
+    ./script/devnet-fingerprint.sh verify
+    cargo test -p cartesi-rollups-prt-node --lib -- --ignored --test-threads 1 \
+      harness:: blockchain_reader:: provider:: args::
+
+# the released CLI's answers behind the runner goldens (needs cartesi-machine
+# 0.21.0 on PATH; UPDATE_FIXTURES=1 regenerates them)
+test-reference-cli-goldens: bind
+    ./script/machine-image-fingerprint.sh verify echo
+    ./script/machine-image-fingerprint.sh verify yield
+    cargo test -p cartesi-rollups-prt-node --test engine_machine \
+      reference_cli_goldens_hold -- --ignored --exact --nocapture
 
 # download and verify v0.21's released computation-hash corpus
 download-computation-hash-corpus:
@@ -229,6 +248,21 @@ measure-stress *ARGS: bind
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/stress/machine-image \
       --out docs/measurements/measurements-stress.md --profile stress "$@"
+
+# time the dense two-level leaf build and its peak RSS (M2)
+measure-two-level-leaf *ARGS: bind
+    ./script/machine-image-fingerprint.sh verify stress
+    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+      --machine test/programs/stress/machine-image --two-level-leaf \
+      --out docs/measurements/two-level-leaf.md "$@"
+
+# time a cold leaf join and a deep proof against the emulator (runbook;
+# about an hour at the defaults, and TMPDIR should be the node's filesystem)
+measure-node-vs-emulator *ARGS: bind
+    ./script/machine-image-fingerprint.sh verify stress
+    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+      --machine test/programs/stress/machine-image --node-vs-emulator \
+      --out docs/measurements/node-vs-emulator.md "$@"
 
 # derive tournament level constants (docs/measurements/constants.md)
 measure-constants *ARGS: bind
@@ -304,8 +338,10 @@ test-rollups-honeypot-stf: build-rust-workspace
 test-rollups-kill-ci: build-rust-workspace
     just rollups-tests::test-kill-ci
 
-test-prt-timeout-boundaries: build-rust-workspace
-    just rollups-tests::test-sealed-leaf-timeouts
+# echo simple on two levels: needs a devnet built with
+# DEVNET_GEOMETRY=two-level (the preflight refuses any other bundle)
+test-rollups-two-level-smoke: build-rust-workspace
+    DEVNET_GEOMETRY=two-level just rollups-tests::test echo simple
 
 test-rollups-honeypot-case CASE: build-rust-workspace
     just rollups-tests::test-honeypot-case "$1"

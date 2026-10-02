@@ -9,7 +9,7 @@
 use super::error::Result;
 use super::rollups_machine::RollupsMachine;
 use super::sql::schema;
-use crate::engine::{EngineConfig, Structure, config as sling_config};
+use crate::engine::{EngineConfig, Structure, TournamentGeometry, config as sling_config};
 use crate::merkle::Digest;
 use alloy::primitives::Address;
 use anyhow::Context;
@@ -45,13 +45,15 @@ impl Storage {
     /// Process setup: creates the state directory, initializes the
     /// schema, seeds the genesis watermark, stores and registers
     /// the template machine, and pins the engine configuration (which
-    /// fails loudly on app or emulator drift against an existing
-    /// state dir).
+    /// fails loudly on app, consensus, geometry, or emulator drift
+    /// against an existing state dir).
     pub fn initialize(
         state_dir: &Path,
         initial_machine_path: &Path,
         genesis_block_number: u64,
         app_address: Address,
+        consensus_address: Address,
+        geometry: &TournamentGeometry,
     ) -> Result<Self> {
         create_directory_structure(state_dir)?;
         let state_dir = state_dir.canonicalize().map_err(anyhow::Error::from)?;
@@ -73,10 +75,13 @@ impl Storage {
             &EngineConfig {
                 structure: Structure::PRODUCTION,
                 app: app_address.as_slice().to_vec(),
+                consensus: consensus_address.as_slice().to_vec(),
                 template_hash: Digest::from_digest(&template_hash).map_err(anyhow::Error::from)?,
                 emulator_version: format_emulator_version(Machine::version()),
+                geometry: geometry.clone(),
             },
-        )?;
+        )
+        .map_err(|error| anyhow::anyhow!("{error:#}; {}", schema::WIPE_GUIDANCE))?;
 
         Ok(storage)
     }
@@ -174,6 +179,8 @@ impl Storage {
             "machine path `{}` must be an existing directory",
             source_machine_path.display()
         );
+
+        assert_pristine_uarch(source_machine_path)?;
 
         // Hash through a private load (cheap: the image ships valid
         // hash sidecars), then clone the image into the store - no
@@ -274,6 +281,30 @@ fn open_reader_connection(db_path: &Path) -> Result<Connection> {
 // State directory layout
 //
 
+/// The template must carry the pristine uarch of the linked emulator, which
+/// is assumed to be the deployed step's (the provenance gate's concern): every
+/// commitment shortcut assumes it at big-cycle boundaries, and every closing
+/// reset restores it, so within the node only the template can break it
+/// (custom uarch code, or an image built by an emulator with another uarch).
+/// Commitments over such a template would be silently wrong, so the node
+/// refuses it once, at import; a reset that changes the root is the test.
+fn assert_pristine_uarch(template: &Path) -> Result<()> {
+    use cartesi_machine::config::runtime::RuntimeConfig;
+    let mut machine = Machine::load(template, &RuntimeConfig::quiet_console())
+        .with_context(|| format!("failed to load template `{}`", template.display()))?;
+    let root = machine.root_hash().map_err(anyhow::Error::from)?;
+    machine.reset_uarch().map_err(anyhow::Error::from)?;
+    if machine.root_hash().map_err(anyhow::Error::from)? != root {
+        return Err(anyhow::anyhow!(
+            "template `{}` does not carry the pristine uarch of this node's emulator \
+             (custom uarch code or another emulator's image); refusing it",
+            template.display()
+        )
+        .into());
+    }
+    Ok(())
+}
+
 pub fn db_path(state_dir: &Path) -> PathBuf {
     state_dir.to_owned().join("db.sqlite3")
 }
@@ -306,4 +337,35 @@ pub(super) fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<Pa
     fs::create_dir_all(&path).with_context(|| format!("creating `{}`", &path.display()))?;
 
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::sql::test_helper::store_template;
+    use cartesi_machine::cartesi_machine_sys::CM_REG_UARCH_PC;
+
+    #[test]
+    fn initialize_refuses_a_template_without_the_pristine_uarch() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        // Any uarch edit a reset would undo; custom uarch code moves the pc.
+        store_template(&template, |machine| {
+            machine.write_reg(CM_REG_UARCH_PC, 0x700000).unwrap();
+        });
+        let error = Storage::initialize(
+            &dir.path().join("state"),
+            &template,
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            &TournamentGeometry::two_level(),
+        )
+        .map(|_| ())
+        .expect_err("a non-pristine uarch must be refused");
+        assert!(
+            format!("{error:#}").contains("pristine uarch"),
+            "unexpected error: {error:#}"
+        );
+    }
 }

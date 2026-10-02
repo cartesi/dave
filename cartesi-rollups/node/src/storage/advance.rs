@@ -66,6 +66,8 @@ pub struct AdvanceBatch {
     boundary_ownership: CheckpointOwnership,
     /// The unique SHARING_ALL clone the machine mutates in place.
     working: PathBuf,
+    /// The pinned root stride the runner samples each window at.
+    log2_run_stride: u64,
     records: Vec<AdvanceRecord>,
 }
 
@@ -106,7 +108,7 @@ struct AdvanceRecord {
 /// One window's runs folded into its root row's value. Tiling is the
 /// engine's geometry contract, so a violation is a panic, not an
 /// error.
-fn fold_window_root(runs: &[Run]) -> Digest {
+fn fold_window_root(runs: &[Run], log2_run_stride: u64) -> Digest {
     crate::engine::fold_runs(
         runs.iter().map(|run| {
             (
@@ -114,7 +116,7 @@ fn fold_window_root(runs: &[Run]) -> Digest {
                 u64::try_from(run.repetitions).expect("window runs fit u64"),
             )
         }),
-        rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
+        rollups_machine::window_height(log2_run_stride),
     )
     .expect("recorded runs tile their window (the collect pads the tail)")
     .root_hash()
@@ -159,7 +161,16 @@ fn epoch_is_sealed_in(tx: &Transaction, epoch: u64) -> Result<bool> {
         .is_some())
 }
 
+/// The pinned root stride, read inside the caller's transaction.
+fn run_stride_in(tx: &Transaction) -> Result<u64> {
+    Ok(crate::engine::config::stored(tx)?
+        .expect("initialization pins the engine config")
+        .geometry
+        .root_stride())
+}
+
 fn assert_complete_window_prefix_in(tx: &Transaction, epoch: u64, input_count: u64) -> Result<()> {
+    let log2_run_stride = run_stride_in(tx)?;
     let mut stmt = tx
         .prepare_cached(
             "SELECT shift FROM sling_nodes
@@ -171,8 +182,8 @@ fn assert_complete_window_prefix_in(tx: &Transaction, epoch: u64, input_count: u
         .query_map(
             params![
                 u64_to_i64(epoch),
-                u64_to_i64(rollups_machine::LOG2_STRIDE),
-                u64_to_i64(rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT),
+                u64_to_i64(log2_run_stride),
+                u64_to_i64(rollups_machine::window_height(log2_run_stride)),
                 U256::from(input_count).to_be_bytes::<32>()
             ],
             |row| row.get::<_, Vec<u8>>(0),
@@ -352,6 +363,9 @@ impl Storage {
         hash: Hash,
     ) -> Result<(RollupsMachine, AdvanceBatch)> {
         super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
+        // Read before the checkout: nothing fallible may sit between the
+        // clone and its cleanup guard.
+        let log2_run_stride = self.sling_config()?.geometry.root_stride();
         let working = match self.checkout(&path) {
             Ok(working) => working,
             Err(error) => {
@@ -371,6 +385,7 @@ impl Storage {
             boundary_path: path.clone(),
             boundary_ownership: CheckpointOwnership::Durable,
             working,
+            log2_run_stride,
             records: Vec::new(),
         };
         let mut machine = match RollupsMachine::load_shared(&batch.working, epoch, input) {
@@ -396,13 +411,8 @@ impl Storage {
         runs: &[Run],
     ) -> Result<()> {
         assert!(!runs.is_empty());
-        assert_eq!(machine.epoch(), batch.epoch);
         let processed = machine.next_input_index_in_epoch() - 1;
-        assert_eq!(
-            processed, batch.boundary_input,
-            "records must be contiguous"
-        );
-        let window_root = fold_window_root(runs);
+        let window_root = fold_window_root(runs, batch.log2_run_stride);
 
         // The hash first brings the clone's on-disk sidecars exact.
         // The final run must carry the same fixed point.
@@ -411,6 +421,33 @@ impl Storage {
             runs.last().expect("nonempty by the assert above").hash,
             Digest::new(hash),
             "the window's final run must carry the machine's boundary state"
+        );
+        self.rotate_accepted(batch, machine, hash)?;
+
+        batch.records.push(AdvanceRecord {
+            input_number: processed,
+            window_root,
+        });
+        Ok(())
+    }
+
+    /// The accepted half of the clone swap, shared by the runner and
+    /// dispute crossing: the mutated working clone, at `hash` (its
+    /// sidecars made exact by hashing it), becomes the transient
+    /// rollback checkpoint, and the machine continues on a fresh
+    /// SHARING_ALL clone of it.
+    pub(crate) fn rotate_accepted(
+        &self,
+        batch: &mut AdvanceBatch,
+        machine: &mut RollupsMachine,
+        hash: Hash,
+    ) -> Result<()> {
+        assert_eq!(machine.epoch(), batch.epoch);
+        let next_input = machine.next_input_index_in_epoch();
+        assert_eq!(
+            next_input - 1,
+            batch.boundary_input,
+            "records must be contiguous"
         );
         machine.close();
 
@@ -435,13 +472,8 @@ impl Storage {
             );
         }
 
-        batch.records.push(AdvanceRecord {
-            input_number: processed,
-            window_root,
-        });
-        batch.boundary_input = processed + 1;
+        batch.boundary_input = next_input;
         batch.boundary_hash = hash;
-
         Ok(())
     }
 
@@ -456,14 +488,8 @@ impl Storage {
         runs: &[Run],
     ) -> Result<()> {
         assert!(!runs.is_empty());
-        assert_eq!(machine.epoch(), batch.epoch);
-        let next_input = machine.next_input_index_in_epoch();
-        let processed = next_input - 1;
-        assert_eq!(
-            processed, batch.boundary_input,
-            "records must be contiguous"
-        );
-        let window_root = fold_window_root(runs);
+        let processed = machine.next_input_index_in_epoch() - 1;
+        let window_root = fold_window_root(runs, batch.log2_run_stride);
         // A reverted window pads with the restored pre-input state:
         // exactly the boundary this record reuses.
         assert_eq!(
@@ -471,7 +497,31 @@ impl Storage {
             Digest::new(batch.boundary_hash),
             "a reverted window's final run must carry the restored boundary state"
         );
+        self.rotate_reverted(batch, machine)?;
 
+        batch.records.push(AdvanceRecord {
+            input_number: processed,
+            window_root,
+        });
+        Ok(())
+    }
+
+    /// The rejected half of the clone swap, shared by the runner and
+    /// dispute crossing: the working clone holds the poisoned
+    /// post-input state, so it is discarded and the machine continues
+    /// on a fresh clone of the checkpoint, the canonical pre-input state.
+    pub(crate) fn rotate_reverted(
+        &self,
+        batch: &mut AdvanceBatch,
+        machine: &mut RollupsMachine,
+    ) -> Result<()> {
+        assert_eq!(machine.epoch(), batch.epoch);
+        let next_input = machine.next_input_index_in_epoch();
+        assert_eq!(
+            next_input - 1,
+            batch.boundary_input,
+            "records must be contiguous"
+        );
         machine.close();
         self.discard_clone(&batch.working)
             .map_err(anyhow::Error::from)?;
@@ -483,13 +533,7 @@ impl Storage {
             return Err(anyhow::Error::from(error).into());
         }
         batch.working = next_working;
-
-        batch.records.push(AdvanceRecord {
-            input_number: processed,
-            window_root,
-        });
         batch.boundary_input = next_input;
-
         Ok(())
     }
 
@@ -506,21 +550,18 @@ impl Storage {
         if batch.records.is_empty() {
             return Ok(());
         }
-
-        if batch.boundary_ownership == CheckpointOwnership::Transient {
-            let dest = self
-                .commit_clone(batch.boundary_path.clone(), &batch.boundary_hash)
-                .map_err(anyhow::Error::from)?;
-            batch.boundary_path = dest;
-            batch.boundary_ownership = CheckpointOwnership::Durable;
-        }
+        self.publish_checkpoint(&mut batch)?;
 
         let window_roots: Vec<_> = batch
             .records
             .iter()
             .map(|record| {
                 (
-                    rollups_machine::window_root_quartet(batch.epoch, record.input_number),
+                    rollups_machine::window_root_quartet(
+                        batch.log2_run_stride,
+                        batch.epoch,
+                        record.input_number,
+                    ),
                     record.window_root,
                 )
             })
@@ -541,6 +582,48 @@ impl Storage {
         remove_orphan_dirs(&orphans);
 
         Ok(())
+    }
+
+    /// Durably publishes a transient checkpoint, after which the batch no
+    /// longer owns it: a failed database write leaves the CAS artifact
+    /// for retry.
+    fn publish_checkpoint(&self, batch: &mut AdvanceBatch) -> Result<()> {
+        if batch.boundary_ownership == CheckpointOwnership::Transient {
+            let dest = self
+                .commit_clone(batch.boundary_path.clone(), &batch.boundary_hash)
+                .map_err(anyhow::Error::from)?;
+            batch.boundary_path = dest;
+            batch.boundary_ownership = CheckpointOwnership::Durable;
+        }
+        Ok(())
+    }
+
+    /// Dispute positioning's crossing: the runner's clone chain from a
+    /// verified stored boundary, whole windows at a time, rotated with
+    /// [`Storage::rotate_accepted`] and [`Storage::rotate_reverted`] and
+    /// recording no window roots.
+    pub(crate) fn begin_crossing(
+        &self,
+        path: PathBuf,
+        epoch: u64,
+        input: u64,
+        hash: Hash,
+    ) -> Result<(RollupsMachine, AdvanceBatch)> {
+        self.begin_advances_at(path, epoch, input, hash)
+    }
+
+    /// Publishes and registers a crossing's final boundary, the only one
+    /// later dispute actions resume from. No window roots and no gap GC:
+    /// the epoch is settled, and its rows are the dispute's.
+    pub(crate) fn publish_crossing(&mut self, mut batch: AdvanceBatch) -> Result<()> {
+        assert!(batch.records.is_empty(), "a crossing records no windows");
+        self.publish_checkpoint(&mut batch)?;
+        self.insert_boundary(
+            batch.epoch,
+            batch.boundary_input,
+            &batch.boundary_hash,
+            &batch.boundary_path,
+        )
     }
 
     /// Closes an exactly sealed and fully published epoch. The hard
@@ -632,23 +715,18 @@ impl Storage {
             );
         }
 
+        let log2_run_stride = self.sling_config()?.geometry.root_stride();
+        let window_height = rollups_machine::window_height(log2_run_stride);
         let mut roots: Vec<(Digest, u64)> = self
-            .window_root_range(
-                epoch,
-                rollups_machine::LOG2_STRIDE,
-                rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
-                recorded,
-            )?
+            .window_root_range(epoch, log2_run_stride, window_height, recorded)?
             .into_iter()
             .map(|root| (root, 1))
             .collect();
         let max_windows = 1u64 << LOG2_MAX_ADVANCE_STATES_PER_EPOCH;
         if recorded < max_windows {
-            let pad_root = crate::engine::fold_runs(
-                [(boundary, rollups_machine::STRIDE_COUNT_IN_INPUT)],
-                rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
-            )?
-            .root_hash();
+            let pad_root =
+                crate::engine::fold_runs([(boundary, 1u64 << window_height)], window_height)?
+                    .root_hash();
             roots.push((pad_root, max_windows - recorded));
         }
         Ok(crate::engine::fold_runs(roots, LOG2_MAX_ADVANCE_STATES_PER_EPOCH)?.root_hash())
@@ -799,8 +877,9 @@ fn dir_size(path: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::super::queries::{setup_settlement_storage, test_settlement};
-    use super::super::sql::test_helper::setup_storage;
+    use super::super::sql::test_helper::{setup_storage, setup_storage_with};
     use super::*;
+    use crate::engine::TournamentGeometry;
     use crate::merkle::MerkleBuilder;
     use crate::storage::Epoch;
     use alloy::primitives::Address;
@@ -809,6 +888,10 @@ mod tests {
     /// the machine's boundary state (the record contract), tiling the
     /// window exactly.
     fn window_runs(interior: [u8; 32], boundary: Digest) -> Vec<Run> {
+        window_runs_at(rollups_machine::test_run_stride(), interior, boundary)
+    }
+
+    fn window_runs_at(log2_run_stride: u64, interior: [u8; 32], boundary: Digest) -> Vec<Run> {
         vec![
             Run {
                 hash: Digest::new(interior),
@@ -817,7 +900,7 @@ mod tests {
             Run {
                 hash: boundary,
                 repetitions: alloy::primitives::U256::from(
-                    rollups_machine::STRIDE_COUNT_IN_INPUT - 5,
+                    (1u64 << rollups_machine::window_height(log2_run_stride)) - 5,
                 ),
             },
         ]
@@ -831,7 +914,9 @@ mod tests {
     fn flat_window(boundary: Digest) -> Vec<Run> {
         vec![Run {
             hash: boundary,
-            repetitions: U256::from(rollups_machine::STRIDE_COUNT_IN_INPUT),
+            repetitions: U256::from(
+                1u64 << rollups_machine::window_height(rollups_machine::test_run_stride()),
+            ),
         }]
     }
 
@@ -885,7 +970,7 @@ mod tests {
     fn sparse_window_roots(s: &mut Storage) {
         let rows = [0u64, 2].map(|w| {
             (
-                rollups_machine::window_root_quartet(9, w),
+                rollups_machine::window_root_quartet(rollups_machine::test_run_stride(), 9, w),
                 Digest::new([7; 32]),
             )
         });
@@ -974,8 +1059,8 @@ mod tests {
         sparse_window_roots(&mut s);
         let _ = s.window_root_range(
             9,
-            rollups_machine::LOG2_STRIDE,
-            rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
+            rollups_machine::test_run_stride(),
+            rollups_machine::window_height(rollups_machine::test_run_stride()),
             3,
         );
     }
@@ -988,8 +1073,8 @@ mod tests {
         // The right count with a hole in the prefix is loud too.
         let _ = s.window_root_range(
             9,
-            rollups_machine::LOG2_STRIDE,
-            rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
+            rollups_machine::test_run_stride(),
+            rollups_machine::window_height(rollups_machine::test_run_stride()),
             2,
         );
     }
@@ -1165,13 +1250,85 @@ mod tests {
         assert_eq!(
             s.window_root_count(
                 0,
-                rollups_machine::LOG2_STRIDE,
-                rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
+                rollups_machine::test_run_stride(),
+                rollups_machine::window_height(rollups_machine::test_run_stride()),
                 3
             )
             .unwrap(),
             3
         );
+    }
+
+    fn staging_leftovers(s: &Storage) -> Vec<String> {
+        std::fs::read_dir(snapshots_path(s.state_dir()))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.starts_with(".work-") || name.starts_with(".part-"))
+            .collect()
+    }
+
+    /// Dispute crossing: accepted, accepted, rejected, then published.
+    /// Only the final boundary joins the store, at the state after the
+    /// last accepted input, with no clone left behind.
+    #[test]
+    fn crossing_registers_only_its_final_boundary() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs(&mut s, 0, 3);
+        let floor = s.snapshot_dir(0, 0).unwrap().unwrap();
+        let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
+
+        let (mut machine, mut batch) = s.begin_crossing(floor, 0, 0, hash).unwrap();
+        let mut accepted = Digest::new(hash);
+        for offset in 0..2 {
+            accepted = mutate(&mut machine, offset, 0x40 + offset as u8);
+            machine.increment_input();
+            s.rotate_accepted(&mut batch, &mut machine, accepted.into())
+                .unwrap();
+        }
+        let _poisoned = mutate(&mut machine, 2, 0x80);
+        machine.increment_input();
+        s.rotate_reverted(&mut batch, &mut machine).unwrap();
+        drop(machine);
+        s.publish_crossing(batch).unwrap();
+
+        let snapshots = s.epoch_snapshots(0).unwrap();
+        let rows: Vec<u64> = snapshots.iter().map(|(boundary, _)| boundary.0).collect();
+        assert_eq!(rows, [0, 3]);
+        assert_eq!(s.snapshot_hash(0, 3).unwrap(), Some(accepted.into()));
+        assert!(
+            snapshots[1]
+                .1
+                .ends_with(format!("0x{}", hex::encode(<[u8; 32]>::from(accepted))))
+        );
+        assert_eq!(staging_leftovers(&s), Vec::<String>::new());
+    }
+
+    /// A crossing that fails before publication leaves no clone, row or
+    /// content-addressed directory.
+    #[test]
+    fn abandoned_crossing_leaves_no_trace() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs(&mut s, 0, 2);
+        let floor = s.snapshot_dir(0, 0).unwrap().unwrap();
+        let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
+        let listing = |s: &Storage| -> std::collections::BTreeSet<_> {
+            std::fs::read_dir(snapshots_path(s.state_dir()))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect()
+        };
+        let before = listing(&s);
+
+        let (mut machine, mut batch) = s.begin_crossing(floor, 0, 0, hash).unwrap();
+        let accepted = mutate(&mut machine, 0, 0x40);
+        machine.increment_input();
+        s.rotate_accepted(&mut batch, &mut machine, accepted.into())
+            .unwrap();
+        drop(machine);
+        drop(batch);
+
+        assert_eq!(listing(&s), before);
+        assert_eq!(s.epoch_snapshots(0).unwrap().len(), 1);
     }
 
     #[test]
@@ -1221,37 +1378,38 @@ mod tests {
     /// batch. A replayed batch absorbs identically (determinism).
     #[test]
     fn commit_advances_writes_final_window_roots() {
-        let (_handle, mut s) = setup_storage();
-        let runs = window_runs([7; 32], boundary_hash(&mut s));
+        for geometry in [
+            TournamentGeometry::three_level(),
+            TournamentGeometry::two_level(),
+        ] {
+            let stride = geometry.root_stride();
+            let (_handle, mut s) = setup_storage_with(&geometry);
+            let runs = window_runs_at(stride, [7; 32], boundary_hash(&mut s));
 
-        let (mut machine, mut batch) = s.begin_advances().unwrap();
-        machine.increment_input();
-        s.record_accepted(&mut batch, &mut machine, &runs).unwrap();
-        s.commit_advances(batch).unwrap();
+            let (mut machine, mut batch) = s.begin_advances().unwrap();
+            machine.increment_input();
+            s.record_accepted(&mut batch, &mut machine, &runs).unwrap();
+            s.commit_advances(batch).unwrap();
 
-        let expected = crate::engine::fold_runs(
-            runs.iter().map(|run| {
-                (
-                    run.hash,
-                    u64::try_from(run.repetitions).expect("window-sized"),
-                )
-            }),
-            rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
-        )
-        .unwrap()
-        .root_hash();
-        let quartet = rollups_machine::window_root_quartet(0, 0);
-        assert_eq!(s.quartet_node(&quartet).unwrap(), Some(expected));
-        assert_eq!(
-            s.window_root_count(
-                0,
-                rollups_machine::LOG2_STRIDE,
-                rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
-                1
+            let expected = crate::engine::fold_runs(
+                runs.iter().map(|run| {
+                    (
+                        run.hash,
+                        u64::try_from(run.repetitions).expect("window-sized"),
+                    )
+                }),
+                rollups_machine::window_height(stride),
             )
-            .unwrap(),
-            1
-        );
+            .unwrap()
+            .root_hash();
+            let quartet = rollups_machine::window_root_quartet(stride, 0, 0);
+            assert_eq!(s.quartet_node(&quartet).unwrap(), Some(expected));
+            assert_eq!(
+                s.window_root_count(0, stride, rollups_machine::window_height(stride), 1)
+                    .unwrap(),
+                1
+            );
+        }
     }
 
     /// An empty epoch settles on its initial state: the settlement
@@ -1260,23 +1418,32 @@ mod tests {
     /// against an independent flat fold.
     #[test]
     fn roll_of_an_empty_epoch_settles_on_the_initial_state() {
-        let (_handle, mut s) = setup_storage();
-        seal_epoch_zero(&mut s);
-        let hash = {
-            let mut machine = s.latest_snapshot().unwrap();
-            Digest::new(machine.state_hash().unwrap())
-        };
-        s.roll_epoch().unwrap();
+        for geometry in [
+            TournamentGeometry::three_level(),
+            TournamentGeometry::two_level(),
+        ] {
+            let (_handle, mut s) = setup_storage_with(&geometry);
+            seal_epoch_zero(&mut s);
+            let hash = {
+                let mut machine = s.latest_snapshot().unwrap();
+                Digest::new(machine.state_hash().unwrap())
+            };
+            s.roll_epoch().unwrap();
 
-        let expected = {
-            let mut builder = MerkleBuilder::default();
-            builder.append_repeated(hash, rollups_machine::STRIDE_COUNT_IN_EPOCH);
-            builder.build().root_hash()
-        };
-        assert_eq!(
-            s.settlement_info(0).unwrap().unwrap().computation_hash,
-            expected
-        );
+            let expected = {
+                let mut builder = MerkleBuilder::default();
+                builder.append_repeated(
+                    hash,
+                    1u64 << (crate::engine::constants::LOG2_EPOCH_RULER_SPAN
+                        - geometry.root_stride()),
+                );
+                builder.build().root_hash()
+            };
+            assert_eq!(
+                s.settlement_info(0).unwrap().unwrap().computation_hash,
+                expected
+            );
+        }
     }
 
     #[test]
@@ -1403,8 +1570,8 @@ mod tests {
         assert_eq!(
             s.window_root_count(
                 0,
-                rollups_machine::LOG2_STRIDE,
-                rollups_machine::LOG2_STRIDE_COUNT_IN_INPUT,
+                rollups_machine::test_run_stride(),
+                rollups_machine::window_height(rollups_machine::test_run_stride()),
                 3
             )
             .unwrap(),

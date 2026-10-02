@@ -593,7 +593,9 @@ contract TournamentTest is Util {
         );
     }
 
-    function testActiveTimeoutChargesPausedWinnerForOverdueInterval() public {
+    function testActiveTimeoutChargesPausedWinnerBeyondOneResponseBudget()
+        public
+    {
         ITournament tournament =
             Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
         uint256 opponent = 1;
@@ -607,7 +609,8 @@ contract TournamentTest is Util {
             tournament.getCommitment(playerNodes[1][height]);
         assertTrue(pausedWinnerBefore.startInstant.isZero());
 
-        uint256 overdue = 17;
+        // The claim earns one response budget; only the rest is charged.
+        uint256 overdue = Time.Duration.unwrap(RESPONSE_BUDGET) + 17;
         vm.roll(
             Time.Instant
                 .unwrap(runningLoser.startInstant.add(runningLoser.allowance))
@@ -627,7 +630,75 @@ contract TournamentTest is Util {
         assertTrue(pausedWinnerAfter.startInstant.isZero());
         assertEq(
             Time.Duration.unwrap(pausedWinnerAfter.allowance),
-            Time.Duration.unwrap(pausedWinnerBefore.allowance) - overdue
+            Time.Duration.unwrap(pausedWinnerBefore.allowance) - 17
+        );
+    }
+
+    function testActiveTimeoutWithinOneResponseBudgetCostsNothing() public {
+        ITournament tournament =
+            Util.initializePlayer0Tournament(SINGLE_LEVEL_FACTORY);
+        uint256 opponent = 1;
+        Util.joinTournament(tournament, opponent);
+
+        uint64 height = HistoricalGeometry.height(0);
+        Match.Id memory matchId = Util.historicalMatchId(opponent, 0);
+        (Clock.State memory runningLoser,) =
+            tournament.getCommitment(playerNodes[0][height]);
+        (Clock.State memory pausedWinnerBefore,) =
+            tournament.getCommitment(playerNodes[1][height]);
+
+        vm.roll(
+            Time.Instant
+                .unwrap(runningLoser.startInstant.add(runningLoser.allowance))
+            + Time.Duration.unwrap(RESPONSE_BUDGET)
+        );
+        Util.winMatchByTimeout(
+            tournament,
+            matchId,
+            playerNodes[1][height - 1],
+            playerNodes[1][height - 1]
+        );
+
+        (Clock.State memory pausedWinnerAfter,) =
+            tournament.getCommitment(playerNodes[1][height]);
+        assertEq(
+            Time.Duration.unwrap(pausedWinnerAfter.allowance),
+            Time.Duration.unwrap(pausedWinnerBefore.allowance)
+        );
+    }
+
+    /// @dev A proof is an honest action: the prover pays for the time since
+    /// the seal beyond one response budget, and never gains above its
+    /// seal-time clock.
+    function testFuzzLeafProofEarnsOneResponseBudget(
+        bool proverIsOne,
+        uint64 elapsed
+    ) public {
+        SealedLeafFixture memory fixture = _createAsymmetricSealedLeaf(true, 10);
+        uint64 shortAllowance = Time.Duration.unwrap(fixture.clockOne.allowance);
+        elapsed = uint64(bound(elapsed, 0, shortAllowance - 1));
+        vm.roll(Time.Instant.unwrap(fixture.clockOne.startInstant) + elapsed);
+
+        Clock.State memory proverBefore =
+            proverIsOne ? fixture.clockOne : fixture.clockTwo;
+        Tree.Node proverChild =
+            _commitmentChild(fixture.tournament, proverIsOne);
+        _mockLeafWinner(fixture.tournament, proverIsOne);
+        fixture.tournament
+            .winLeafMatch(
+                fixture.matchId, proverChild, proverChild, new bytes(0)
+            );
+
+        (Clock.State memory proverAfter,) = fixture.tournament
+            .getCommitment(
+                proverIsOne
+                    ? fixture.matchId.commitmentOne
+                    : fixture.matchId.commitmentTwo
+            );
+        assertTrue(proverAfter.startInstant.isZero());
+        assertEq(
+            Time.Duration.unwrap(proverAfter.allowance),
+            _afterWin(Time.Duration.unwrap(proverBefore.allowance), elapsed)
         );
     }
 
@@ -786,8 +857,9 @@ contract TournamentTest is Util {
                 + resolutionElapsed
         );
 
-        uint64 winnerRemaining = Time.Duration
-            .unwrap(fixture.clockTwo.allowance) - resolutionElapsed;
+        uint64 winnerRemaining = _afterWin(
+            Time.Duration.unwrap(fixture.clockTwo.allowance), resolutionElapsed
+        );
         Tree.Node winnerChild = _winnerChild(fixture.tournament, true);
 
         vm.expectRevert(ITournament.MatchCannotBeEliminatedByTimeout.selector);
@@ -882,7 +954,7 @@ contract TournamentTest is Util {
         Tree.Node winnerCommitment = winnerIsOne
             ? fixture.matchId.commitmentOne
             : fixture.matchId.commitmentTwo;
-        uint64 winnerRemaining = longAllowance - resolutionElapsed;
+        uint64 winnerRemaining = _afterWin(longAllowance, resolutionElapsed);
         MatchClocks.TimeoutStatus memory timeout = MatchClocks.classifyTimeoutAt(
             fixture.clockOne, fixture.clockTwo, current
         );
@@ -959,15 +1031,17 @@ contract TournamentTest is Util {
                 + resolutionElapsed
         );
 
-        uint64 winnerRemaining = longAllowance - resolutionElapsed;
+        // Eligibility follows the live clock; the stored result earns one
+        // response budget.
+        uint64 liveRemaining = longAllowance - resolutionElapsed;
         Tree.Node winnerChild =
             _winnerChild(fixture.tournament, commitmentOneIsShorter);
         assertEq(
             fixture.tournament.canWinMatchByTimeout(fixture.matchId),
-            winnerRemaining > 0
+            liveRemaining > 0
         );
 
-        if (winnerRemaining > 0) {
+        if (liveRemaining > 0) {
             vm.expectRevert(
                 ITournament.MatchCannotBeEliminatedByTimeout.selector
             );
@@ -984,7 +1058,8 @@ contract TournamentTest is Util {
                 fixture.tournament.getCommitment(winnerCommitment);
             assertTrue(winnerClock.startInstant.isZero());
             assertEq(
-                Time.Duration.unwrap(winnerClock.allowance), winnerRemaining
+                Time.Duration.unwrap(winnerClock.allowance),
+                _afterWin(longAllowance, resolutionElapsed)
             );
         } else {
             vm.expectRevert(ITournament.MatchCannotBeWonByTimeout.selector);
@@ -1064,11 +1139,13 @@ contract TournamentTest is Util {
             tournament, secondMatch, honestChild, honestChild
         );
 
+        // The first win, in the leaf race, earns one response budget; the
+        // second lands exactly at the attacker's deadline and costs nothing.
         _assertResolvedWinner(
             tournament,
             secondMatch,
             secondMatch.commitmentTwo,
-            maximumAllowance - oldDoubleEliminationBoundary
+            _afterWin(maximumAllowance, oldDoubleEliminationBoundary)
         );
     }
 
@@ -1181,6 +1258,16 @@ contract TournamentTest is Util {
             abi.encode(IStateTransition.transitionState.selector),
             abi.encode(Machine.Hash.unwrap(finalState))
         );
+    }
+
+    /// @dev A winner keeps its clock less its cost beyond one response budget.
+    function _afterWin(uint64 allowance, uint64 cost)
+        private
+        pure
+        returns (uint64)
+    {
+        uint64 budget = Time.Duration.unwrap(RESPONSE_BUDGET);
+        return allowance - (cost > budget ? cost - budget : 0);
     }
 
     function _assertResolvedWinner(

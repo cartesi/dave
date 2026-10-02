@@ -40,6 +40,7 @@ contract SmallSingleLevelParametersProvider is ITournamentParametersProvider {
             log2step: SmallSingleLevelGeometry.LOG2_STEP,
             height: SmallSingleLevelGeometry.HEIGHT,
             responseBudget: RESPONSE_BUDGET,
+            commitmentBudget: Time.ZERO_DURATION,
             maxAllowance: MAX_ALLOWANCE
         });
     }

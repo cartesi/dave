@@ -42,6 +42,11 @@ contract RecursiveTournamentLifecycleTest is Test {
 
     uint64 internal constant START_BLOCK = 100;
     uint64 internal constant RESPONSE_BUDGET = 5;
+    uint64 internal constant COMMITMENT_BUDGET = 20;
+    // A delegation's honest costs: build and join within JOIN_BUDGET, then
+    // propagate within one inclusion. The parent refills up to their sum.
+    uint64 internal constant JOIN_BUDGET = COMMITMENT_BUDGET + RESPONSE_BUDGET;
+    uint64 internal constant REFILL = JOIN_BUDGET + RESPONSE_BUDGET;
     uint64 internal constant MAX_ALLOWANCE = 200;
     uint256 internal constant CONTESTED_SEGMENT = 2;
 
@@ -65,6 +70,7 @@ contract RecursiveTournamentLifecycleTest is Test {
     constructor() {
         FACTORY = new SmallTwoLevelTournamentFactory(
             Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(COMMITMENT_BUDGET),
             Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }
@@ -246,7 +252,7 @@ contract RecursiveTournamentLifecycleTest is Test {
         assertEq(Time.Duration.unwrap(carried.allowance), MAX_ALLOWANCE);
     }
 
-    function testFuzzLateSingleChildEntrantCarriesRemainingAllowance(uint64 late)
+    function testFuzzLateSingleChildEntrantReturnsRefilledRemainder(uint64 late)
         public
     {
         late = uint64(bound(uint256(late), 1, MAX_ALLOWANCE - 1));
@@ -278,15 +284,116 @@ contract RecursiveTournamentLifecycleTest is Test {
             SmallTwoLevelClaims.CLAIM_ONE, winningChild, remaining
         );
 
+        uint64 returned = _refilled(remaining, MAX_ALLOWANCE);
         Match.Id memory finalMatch =
-            _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, remaining);
+            _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, returned);
         (Clock.State memory propagated,) = parent.getCommitment(parentOne);
         assertFalse(propagated.isRunning());
-        assertEq(Time.Duration.unwrap(propagated.allowance), remaining);
+        assertEq(Time.Duration.unwrap(propagated.allowance), returned);
         assertTrue(
             finalMatch.commitmentOne.eq(parentDangling)
                 && finalMatch.commitmentTwo.eq(parentOne)
         );
+    }
+
+    /// @dev A correct commitment must build its child commitment before it
+    /// can join, and a late join costs its clock; so does a late propagation.
+    /// Joining within the join budget and propagating within one inclusion, it
+    /// returns to the parent with its pre-seal clock.
+    function testFuzzJoinWithinBudgetReturnsWithPreSealClock(
+        uint64 late,
+        uint64 propagationDelay
+    ) public {
+        late = uint64(bound(uint256(late), 1, JOIN_BUDGET));
+        propagationDelay =
+            uint64(bound(uint256(propagationDelay), 0, RESPONSE_BUDGET));
+        _sealParent();
+        (Clock.State memory preSeal,) = parent.getCommitment(parentOne);
+
+        _winChildAloneAfter(late, CONTESTED_SEGMENT);
+        vm.roll(block.number + propagationDelay);
+        _propagateChildWinner(
+            SmallTwoLevelClaims.CLAIM_ONE,
+            Time.Duration.unwrap(preSeal.allowance)
+        );
+    }
+
+    /// @dev The envelope is the larger of the two parent clocks. When the
+    /// winner holds it, the opponent's slower seal must not lower its return.
+    function testFuzzWinnerWithTheLargerClockReturnsIt(
+        uint64 sealDelay,
+        uint64 late
+    ) public {
+        sealDelay = uint64(bound(uint256(sealDelay), RESPONSE_BUDGET + 1, 150));
+        late = uint64(bound(uint256(late), 1, JOIN_BUDGET));
+        _advanceParent();
+        vm.roll(START_BLOCK + sealDelay);
+        _sealParentAfterAdvance();
+
+        (Clock.State memory one,) = parent.getCommitment(parentOne);
+        (Clock.State memory two,) = parent.getCommitment(parentTwo);
+        assertEq(Time.Duration.unwrap(one.allowance), MAX_ALLOWANCE);
+        assertLt(Time.Duration.unwrap(two.allowance), MAX_ALLOWANCE);
+
+        _winChildAloneAfter(late, CONTESTED_SEGMENT);
+        _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, MAX_ALLOWANCE);
+    }
+
+    /// @dev When the winner holds the smaller parent clock, it returns within
+    /// the larger one: the shared envelope, not its own snapshot.
+    function testFuzzWinnerWithTheSmallerClockReturnsTheEnvelope(uint64 late)
+        public
+    {
+        late = uint64(bound(uint256(late), 1, JOIN_BUDGET));
+        vm.roll(120);
+        _advanceParent();
+        vm.roll(130);
+        _sealParentAfterAdvance();
+
+        (Clock.State memory one,) = parent.getCommitment(parentOne);
+        (Clock.State memory two,) = parent.getCommitment(parentTwo);
+        uint64 smaller = Time.Duration.unwrap(one.allowance);
+        uint64 larger = Time.Duration.unwrap(two.allowance);
+        assertLt(smaller, larger);
+
+        _winChildAloneAfter(late, CONTESTED_SEGMENT);
+        _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, larger);
+    }
+
+    /// @dev Delegation after delegation, a commitment that joins each child
+    /// within the join budget keeps its clock, however the opponent spends
+    /// its own time before the next seal.
+    function testFuzzRepeatedDelegationsWithinBudgetDoNotDrain(
+        uint64 late,
+        uint64 propagationDelay,
+        uint64 opponentDelay
+    ) public {
+        late = uint64(bound(uint256(late), 1, JOIN_BUDGET));
+        propagationDelay =
+            uint64(bound(uint256(propagationDelay), 0, RESPONSE_BUDGET));
+        opponentDelay =
+            uint64(bound(uint256(opponentDelay), 0, MAX_ALLOWANCE - 1));
+        _sealParent();
+
+        _winChildAloneAfter(late, CONTESTED_SEGMENT);
+        vm.roll(block.number + propagationDelay);
+        Match.Id memory secondParentMatch =
+            _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, MAX_ALLOWANCE);
+
+        vm.roll(block.number + opponentDelay);
+        child = _sealSecondParentMatchAtOpponentPace(secondParentMatch);
+        _winChildAloneAfter(late, 0);
+        vm.roll(block.number + propagationDelay);
+
+        SmallFullTree.Data memory winner =
+            _parentTree(SmallTwoLevelClaims.CLAIM_ONE);
+        (Tree.Node left, Tree.Node right) =
+            winner.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
+        parent.winInnerTournament(child, left, right);
+
+        (Clock.State memory returned,) = parent.getCommitment(parentOne);
+        assertFalse(returned.isRunning());
+        assertEq(Time.Duration.unwrap(returned.allowance), MAX_ALLOWANCE);
     }
 
     function testFuzzActiveChildCanResolveAfterGlobalClose(
@@ -353,9 +460,15 @@ contract RecursiveTournamentLifecycleTest is Test {
             _childTree(SmallTwoLevelClaims.CLAIM_ONE);
         (Tree.Node left, Tree.Node right) =
             winner.children(SmallTwoLevelGeometry.LEAF_HEIGHT, 0);
+        // The sealed leaf's survivor is running: the win charges its elapsed
+        // time beyond one response budget.
+        assertTrue(clockOne.isRunning());
+        uint64 cost =
+            uint64(block.number) - Time.Instant.unwrap(clockOne.startInstant);
+        uint64 carried = Time.Duration.unwrap(clockOne.allowance)
+            - (cost > RESPONSE_BUDGET ? cost - RESPONSE_BUDGET : 0);
         child.winMatchByTimeout(childMatch, left, right);
         Tree.Node winningChild = winner.root();
-        uint64 carried = joinLate - resolveLate;
         assertTrue(child.isFinished());
         assertFalse(child.canBeEliminated());
         (bool timeKnown, Time.Instant finishedAt) = child.timeFinished();
@@ -363,10 +476,11 @@ contract RecursiveTournamentLifecycleTest is Test {
         assertEq(Time.Instant.unwrap(finishedAt), block.number);
         _assertInnerWinner(SmallTwoLevelClaims.CLAIM_ONE, winningChild, carried);
 
-        _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, carried);
+        uint64 returned = _refilled(carried, MAX_ALLOWANCE);
+        _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, returned);
         (Clock.State memory propagated,) = parent.getCommitment(parentOne);
         assertFalse(propagated.isRunning());
-        assertEq(Time.Duration.unwrap(propagated.allowance), carried);
+        assertEq(Time.Duration.unwrap(propagated.allowance), returned);
     }
 
     function testTwoSequentialChildrenPropagateAcrossDifferentSegments()
@@ -406,7 +520,7 @@ contract RecursiveTournamentLifecycleTest is Test {
         _assertSequentialChildrenResult(secondParentMatch, winningParent);
     }
 
-    function testLastLegalPropagationCarriesOneBlock() public {
+    function testLastLegalPropagationRefillsOneCarriedBlock() public {
         _sealParent();
         Tree.Node winningChild = _resolveChild(SmallTwoLevelClaims.CLAIM_ONE);
         uint256 finishedAt = _closeChildWithWinner(
@@ -420,13 +534,17 @@ contract RecursiveTournamentLifecycleTest is Test {
         parent.eliminateInnerTournament(child);
 
         uint256 childBalance = address(child).balance;
-        Match.Id memory finalMatch =
-            _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, 1);
+        Match.Id memory finalMatch = _propagateChildWinner(
+            SmallTwoLevelClaims.CLAIM_ONE, _refilled(1, MAX_ALLOWANCE)
+        );
         assertEq(address(child).balance, childBalance);
 
         (Clock.State memory propagated,) = parent.getCommitment(parentOne);
         assertFalse(propagated.isRunning());
-        assertEq(Time.Duration.unwrap(propagated.allowance), 1);
+        assertEq(
+            Time.Duration.unwrap(propagated.allowance),
+            _refilled(1, MAX_ALLOWANCE)
+        );
         assertTrue(
             finalMatch.commitmentOne.eq(parentDangling)
                 && finalMatch.commitmentTwo.eq(parentOne)
@@ -827,6 +945,68 @@ contract RecursiveTournamentLifecycleTest is Test {
         assertEq(child.getMatchCreatedCount(), 1);
         assertEq(child.getMatchAdvancedCount(), 1);
         assertEq(child.getMatchDeletedCount(), 1);
+    }
+
+    /// @dev The second parent match seals after the opponent, commitment one,
+    /// answered its turn at whatever pace it chose.
+    function _sealSecondParentMatchAtOpponentPace(Match.Id memory secondMatch)
+        private
+        returns (InspectableTournament secondChild)
+    {
+        SmallFullTree.Data memory one =
+            _parentTree(SmallTwoLevelClaims.DANGLING_CLAIM);
+        SmallFullTree.Data memory two =
+            _parentTree(SmallTwoLevelClaims.CLAIM_ONE);
+
+        (Tree.Node left, Tree.Node right) =
+            one.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
+        (Tree.Node nextLeft, Tree.Node nextRight) = one.children(1, 0);
+        parent.advanceMatch(secondMatch, left, right, nextLeft, nextRight);
+
+        (left, right) = two.children(1, 0);
+        vm.recordLogs();
+        parent.sealInnerMatchAndCreateInnerTournament(
+            secondMatch,
+            left,
+            right,
+            SmallTwoLevelClaims.initialState(),
+            new bytes32[](0)
+        );
+        secondChild = _recordedChild(secondMatch);
+    }
+
+    /// @dev CLAIM_ONE's representative joins the current child `late` blocks
+    /// after it starts and wins it alone at closure.
+    function _winChildAloneAfter(uint64 late, uint256 contestedSegment)
+        private
+    {
+        ITournament.TournamentArguments memory args =
+            child.tournamentArguments();
+        vm.roll(Time.Instant.unwrap(args.startInstant) + late);
+        Tree.Node winningChild = _join(
+            child,
+            _childTreeAt(SmallTwoLevelClaims.CLAIM_ONE, contestedSegment),
+            CLAIMER_ONE
+        );
+
+        vm.roll(_deadline(args.startInstant, args.allowance));
+        assertTrue(child.isFinished());
+        _assertInnerWinner(
+            SmallTwoLevelClaims.CLAIM_ONE,
+            winningChild,
+            Time.Duration.unwrap(args.allowance) - late
+        );
+    }
+
+    /// @dev The parent's return rule: the carried remainder refilled by up to
+    /// the join budget, within the sealed pair's envelope.
+    function _refilled(uint64 carried, uint64 envelope)
+        private
+        pure
+        returns (uint64)
+    {
+        uint64 refilled = carried + REFILL;
+        return refilled < envelope ? refilled : envelope;
     }
 
     function _sealChild() private {

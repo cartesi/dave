@@ -125,6 +125,12 @@ jobs:
         working-directory: ./test/programs/
         run: |
           just build-yield
+      # The Rust lane checks the runner against these goldens; only this
+      # lane has the released CLI that computes them.
+      - name: Test reference CLI goldens
+        timeout-minutes: 10
+        run: |
+          just test-reference-cli-goldens
       - name: Test prt-rollups
         timeout-minutes: 20
         run: |
@@ -161,6 +167,18 @@ jobs:
         timeout-minutes: 30
         run: |
           just rollups-tests::test-yield-case stf_revert
+      # The same node against a devnet whose factory serves the two-level
+      # table (DEVNET_GEOMETRY=two-level). Runs last: it replaces the bundle.
+      - name: Build two-level devnet
+        working-directory: ./cartesi-rollups/contracts
+        env:
+          DEVNET_GEOMETRY: two-level
+        run: |
+          just build-devnet
+      - name: Test two-level smoke
+        timeout-minutes: 20
+        run: |
+          just test-rollups-two-level-smoke
       - name: Show failing log
         if: failure()
         run: |
@@ -270,6 +288,10 @@ jobs:
       - name: Engine machine integration tests
         run: |
           just test-engine-machine
+
+      - name: Node harness tests
+        run: |
+          just test-node-harness
 
   build-release-node:
     strategy:

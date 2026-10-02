@@ -16,6 +16,7 @@ import {IDataProvider} from "src/IDataProvider.sol";
 import {ITournament} from "src/ITournament.sol";
 import {ArbitrationConstants} from "src/arbitration-config/ArbitrationConstants.sol";
 import {CanonicalTournamentParametersProvider} from "src/arbitration-config/CanonicalTournamentParametersProvider.sol";
+import {ClockBudgets} from "src/arbitration-config/ClockBudgets.sol";
 import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
@@ -32,7 +33,9 @@ contract CanonicalTournamentGeometryTest is Util {
 
     constructor() {
         PROVIDER = new CanonicalTournamentParametersProvider(
-            RESPONSE_BUDGET, MAX_ALLOWANCE
+            CANONICAL_BLOCK_MILLISECONDS,
+            CANONICAL_CENSORSHIP_SECONDS,
+            CANONICAL_INCLUSION_SECONDS
         );
         (FACTORY,) = Util.instantiateCanonicalTournamentFactory();
     }
@@ -45,6 +48,20 @@ contract CanonicalTournamentGeometryTest is Util {
         assertEq(ArbitrationConstants.height(1), 17);
         assertEq(ArbitrationConstants.log2step(2), 0);
         assertEq(ArbitrationConstants.height(2), 27);
+        assertEq(ArbitrationConstants.COMMITMENT_BUDGET, 30 minutes);
+    }
+
+    function _canonicalModel()
+        internal
+        pure
+        returns (ClockBudgets.Model memory)
+    {
+        return ClockBudgets.Model({
+            blockMilliseconds: CANONICAL_BLOCK_MILLISECONDS,
+            censorshipSeconds: CANONICAL_CENSORSHIP_SECONDS,
+            inclusionSeconds: CANONICAL_INCLUSION_SECONDS,
+            commitmentSeconds: ArbitrationConstants.COMMITMENT_BUDGET
+        });
     }
 
     function testCanonicalProviderRejectsZeroMaxAllowance() public {
@@ -52,22 +69,35 @@ contract CanonicalTournamentGeometryTest is Util {
             CanonicalTournamentParametersProvider.MaxAllowanceCannotBeZero
             .selector
         );
+        // Blocks longer than every budget round all of them to zero.
+        new CanonicalTournamentParametersProvider(type(uint64).max, 0, 0);
+    }
+
+    function testCanonicalProviderRejectsZeroBlockTime() public {
+        vm.expectRevert(ClockBudgets.BlockTimeCannotBeZero.selector);
         new CanonicalTournamentParametersProvider(
-            RESPONSE_BUDGET, Time.ZERO_DURATION
+            0, CANONICAL_CENSORSHIP_SECONDS, CANONICAL_INCLUSION_SECONDS
         );
     }
 
     function testCanonicalProviderAcceptsZeroResponseBudget() public {
         CanonicalTournamentParametersProvider provider = new CanonicalTournamentParametersProvider(
-            Time.ZERO_DURATION, MAX_ALLOWANCE
+            CANONICAL_BLOCK_MILLISECONDS, CANONICAL_CENSORSHIP_SECONDS, 0
         );
         TournamentParameters memory parameters =
             provider.tournamentParameters(0);
 
+        ClockBudgets.Model memory model = _canonicalModel();
+        model.inclusionSeconds = 0;
         assertEq(Time.Duration.unwrap(parameters.responseBudget), 0);
         assertEq(
             Time.Duration.unwrap(parameters.maxAllowance),
-            Time.Duration.unwrap(MAX_ALLOWANCE)
+            Time.Duration
+                .unwrap(
+                    ClockBudgets.maxAllowance(
+                        model, ArbitrationConstants.LEVELS
+                    )
+                )
         );
     }
 
@@ -83,15 +113,24 @@ contract CanonicalTournamentGeometryTest is Util {
             assertEq(parameters.levels, levels);
             assertEq(parameters.log2step, ArbitrationConstants.log2step(level));
             assertEq(parameters.height, ArbitrationConstants.height(level));
+            ClockBudgets.Model memory model = _canonicalModel();
             assertEq(
                 Time.Duration.unwrap(parameters.responseBudget),
-                Time.Duration.unwrap(RESPONSE_BUDGET)
+                Time.Duration.unwrap(ClockBudgets.responseBudget(model))
+            );
+            assertEq(
+                Time.Duration.unwrap(parameters.commitmentBudget),
+                Time.Duration.unwrap(ClockBudgets.commitmentBudget(model))
             );
             assertEq(
                 Time.Duration.unwrap(parameters.maxAllowance),
-                Time.Duration.unwrap(MAX_ALLOWANCE)
+                Time.Duration
+                    .unwrap(
+                        ClockBudgets.maxAllowance(
+                            model, ArbitrationConstants.LEVELS
+                        )
+                    )
             );
-
             assertGt(parameters.height, 0);
             assertLt(parameters.height, 256);
             assertLt(parameters.log2step, 256);
@@ -122,5 +161,16 @@ contract CanonicalTournamentGeometryTest is Util {
         assertEq(level, 0);
         assertEq(log2step, ArbitrationConstants.log2step(0));
         assertEq(height, ArbitrationConstants.height(0));
+
+        ITournament.TournamentArguments memory args = root.tournamentArguments();
+        ClockBudgets.Model memory model = _canonicalModel();
+        assertEq(
+            Time.Duration.unwrap(args.responseBudget),
+            Time.Duration.unwrap(ClockBudgets.responseBudget(model))
+        );
+        assertEq(
+            Time.Duration.unwrap(args.commitmentBudget),
+            Time.Duration.unwrap(ClockBudgets.commitmentBudget(model))
+        );
     }
 }

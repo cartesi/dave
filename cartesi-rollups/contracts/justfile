@@ -65,5 +65,7 @@ bind:
 
 bind-force: clean-bindings bind
 
+# DEVNET_GEOMETRY=two-level deploys the devnet-only two-level table instead
+# of the canonical one; bundle consumers verify against the same variable.
 build-devnet:
     ./script/build-devnet.sh

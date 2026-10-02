@@ -28,12 +28,14 @@
 //!
 //! Invariant, with a tripwire: an input's computation never crosses its
 //! window boundary. The spans (a, b, c) are deliberate overestimates -
-//! far more inputs than a chain can carry (batching makes one input a
-//! whole bundle of transactions) and far more big cycles than gas-bounded
-//! input processing can consume - so a machine still running at a window
-//! start means a broken machine or broken assumptions, and the engine
-//! panics rather than inventing a transition shape for it.
+//! more inputs than any sane epoch holds (2^24 takes a flood of roughly
+//! 5e11 gas, out of model; see dimensioning.md) and far more big cycles
+//! than gas-bounded input processing can consume - so a machine still
+//! running at a window start means a broken machine or broken
+//! assumptions, and the engine panics rather than inventing a transition
+//! shape for it.
 
+use super::dispute::fold_runs;
 use super::stf::Stf;
 use super::structure::Structure;
 use crate::merkle::Digest;
@@ -178,17 +180,7 @@ impl<S: Stf> Ruler<S> {
                     // Idle until the next fed window (never, when
                     // terminal). Whole cycles replay one captured span; a
                     // trailing partial cycle steps plainly below.
-                    let idle_end = if terminal {
-                        to
-                    } else {
-                        let next_window = p.input + 1;
-                        let next_feed = if next_window < self.fed_windows {
-                            self.structure.window_start(next_window)
-                        } else {
-                            to
-                        };
-                        next_feed.min(to)
-                    };
+                    let idle_end = self.idle_end(p.input, terminal, to);
                     let cycles = (idle_end - self.position) / big_span;
                     if !cycles.is_zero() {
                         self.replay_idle_cycles(cycles, emit)?;
@@ -231,6 +223,111 @@ impl<S: Stf> Ruler<S> {
             }
         }
         Ok(())
+    }
+
+    /// Where an idle stretch starting in window `input` ends: never
+    /// before `to` when terminal, else at the next fed window.
+    fn idle_end(&self, input: u64, terminal: bool, to: U256) -> U256 {
+        if terminal {
+            return to;
+        }
+        let next_window = input + 1;
+        let next_feed = if next_window < self.fed_windows {
+            self.structure.window_start(next_window)
+        } else {
+            to
+        };
+        next_feed.min(to)
+    }
+
+    /// Advances to `to`, folding each big cycle's transitions into the
+    /// root of its subtree: runs of equal consecutive roots, which are the
+    /// leaves of the same tree `2^c` levels up. Position and `to` must be
+    /// big-cycle aligned. An idle stretch folds one captured cycle and
+    /// repeats its root, so its cost does not grow with its length, and an
+    /// active cycle's leaves are dropped once folded, so memory stays one
+    /// cycle's runs however long the span. An stf that collects big-cycle
+    /// roots in bulk supplies the active cycles' roots instead; the idle
+    /// stretches stay here either way.
+    pub fn collect_big_cycle_roots(&mut self, to: U256) -> Result<Vec<Run>> {
+        let big_span = U256::from(self.structure.big_span());
+        let c = self.structure.log2_uarch_span;
+        assert!((self.position % big_span).is_zero(), "unaligned start");
+        assert!((to % big_span).is_zero(), "unaligned end");
+        assert!(to <= self.structure.ruler_span(), "past the epoch's end");
+
+        fn push(roots: &mut Vec<Run>, hash: Digest, cycles: U256) {
+            match roots.last_mut() {
+                Some(last) if last.hash == hash => last.repetitions += cycles,
+                _ => roots.push(Run {
+                    hash,
+                    repetitions: cycles,
+                }),
+            }
+        }
+        let fold = |runs: &[Run]| -> Result<Digest> {
+            Ok(fold_runs(
+                runs.iter().map(|run| {
+                    let count = u64::try_from(run.repetitions).expect("one cycle fits u64");
+                    (run.hash, count)
+                }),
+                c,
+            )?
+            .root_hash())
+        };
+
+        let mut roots = vec![];
+        while self.position < to {
+            let p = self.structure.decompose(self.position);
+            let feeds_now = p.is_window_start() && p.input < self.fed_windows;
+            let terminal = self.stf.terminal()?;
+            if terminal || (self.stf.yielded()? && !feeds_now) {
+                // Aligned by construction: both ends are big boundaries.
+                let cycles = (self.idle_end(p.input, terminal, to) - self.position) / big_span;
+                let root = fold(&self.collect_idle_span()?)?;
+                push(&mut roots, root, cycles);
+                self.position += cycles * big_span;
+                continue;
+            }
+            if self.stf.collects_big_cycle_roots() {
+                if p.is_window_start() {
+                    assert!(
+                        self.stf.yielded()?,
+                        "input overran its window at position {}; \
+                         transition shape undefined (see module doc)",
+                        self.position
+                    );
+                    // The fused transition: the collector's first entry is
+                    // its ustep.
+                    self.stf.feed(p.input)?;
+                }
+                let window_end = self.structure.window_start(p.input + 1).min(to);
+                let budget = u64::try_from((window_end - self.position) / big_span)
+                    .expect("a window's big cycles fit u64");
+                let collected = self.stf.big_cycle_roots(budget)?;
+                if !collected.is_empty() {
+                    let cycles = U256::from(collected.len());
+                    for root in collected {
+                        push(&mut roots, root, U256::from(1));
+                    }
+                    self.position += cycles * big_span;
+                    continue;
+                }
+                // Only an input fed at mcycle 2^64 - 2, whose budget saturates
+                // so its last cycle is its first, gets here: out of model
+                // (docs/computation-hash.md).
+                assert!(
+                    !p.is_window_start(),
+                    "the collector declined a fed input's first cycle: the input \
+                     was fed one cycle before the mcycle counter saturates"
+                );
+            }
+            let mut sampler = StrideSampler::new(self.position, 0);
+            let cycle_end = self.position + big_span;
+            self.step_until(cycle_end, &mut |leaf, count| sampler.feed(leaf, count))?;
+            push(&mut roots, fold(&sampler.finish())?, U256::from(1));
+        }
+        Ok(roots)
     }
 
     /// Emits `cycles` whole idle big cycles from a big-aligned
@@ -454,10 +551,29 @@ impl StrideSampler {
     }
 }
 
+/// How a positioned ruler will hash: after every ustep (a leaf-level
+/// build) or at sampled boundaries. Machine rulers derive the emulator's
+/// hash-tree concurrency from it; others ignore it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hashing {
+    PerStep,
+    Sampled,
+}
+
+impl Hashing {
+    pub fn for_stride(log2_stride: u64) -> Self {
+        if log2_stride == 0 {
+            Self::PerStep
+        } else {
+            Self::Sampled
+        }
+    }
+}
+
 /// Provides rulers positioned anywhere on the epoch. Implementations
 /// own the positioning strategy: the toy replays from the start, the
-/// machine implementation will resume from the nearest snapshot.
+/// machine implementation resumes from the nearest snapshot.
 pub trait RulerFactory {
     type S: Stf;
-    fn ruler_at(&mut self, position: U256) -> Result<Ruler<Self::S>>;
+    fn ruler_at(&mut self, position: U256, hashing: Hashing) -> Result<Ruler<Self::S>>;
 }

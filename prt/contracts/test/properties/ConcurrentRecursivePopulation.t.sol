@@ -42,6 +42,7 @@ contract ConcurrentRecursivePopulationTest is Test {
 
     uint64 internal constant START_BLOCK = 100;
     uint64 internal constant RESPONSE_BUDGET = 5;
+    uint64 internal constant COMMITMENT_BUDGET = 0;
     uint64 internal constant MAX_ALLOWANCE = 200;
     uint256 internal constant CONTESTED_SEGMENT = 2;
 
@@ -66,6 +67,7 @@ contract ConcurrentRecursivePopulationTest is Test {
     constructor() {
         FACTORY = new SmallTwoLevelTournamentFactory(
             Time.Duration.wrap(RESPONSE_BUDGET),
+            Time.Duration.wrap(COMMITMENT_BUDGET),
             Time.Duration.wrap(MAX_ALLOWANCE)
         );
     }

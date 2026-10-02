@@ -24,18 +24,25 @@ runtime (`lib.rs run()`), each owning its own SQLite connection:
   reactions
 
 Before opening or initializing the database, startup resolves the tournament
-factory from Dave consensus and reads its level-zero parameters plus its
-configured state transition. The binary refuses to start unless the deployed
-root stride equals the node's compiled window-root sampling stride, the root
-row spans the compiled 92-bit machine coordinate, and the concrete
+factory from Dave consensus, reads its whole level table
+(`tournamentLevelCount()` and every `tournamentParameters(level)` row) and its
+configured state transition. The node compiles in no tournament geometry: it
+accepts any table that passes `engine::TournamentGeometry`'s validator (the
+root spans the 92-bit machine coordinate, each level tiles one leaf of its
+parent, the leaf level steps single transitions, and the root stride lies
+between one big cycle and one input window), and it refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
-linked Cartesi Machine library. These checks all run before database
-initialization,
-so an incompatible deployment cannot create or alter local state. This is a
-deployment-compatibility assertion over trusted factory configuration, not
-runtime validation of every tournament row. Deeper geometry continues to come
-from each tournament's immutable descriptor as the recursive dispute is
-discovered.
+linked Cartesi Machine library. These checks run before database
+initialization, so an incompatible deployment cannot create or alter local
+state. Initialization then pins the table and the consensus address in
+`sling_config`; the runner samples each window at the pinned root stride, and
+a later start against another table or consensus is refused. Table stability
+is a trust assumption of the parameters provider, so before planning any
+action the Hero checks the descriptor of every tournament on its own path
+against the pinned row for its level, and the root tournament's initial hash
+against the node's epoch-start snapshot. Both are invariant violations and
+panic. Cleanup of other branches takes no local commitment and skips these
+checks.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker
@@ -59,8 +66,8 @@ Everything lives under `--state-dir`:
 state_dir/
   db.sqlite3          main database (WAL mode, busy_timeout 10s)
   snapshots/0x<hash>/ machine snapshots, named by machine root hash
+                      (the runner's boundaries and the disputes')
   <epoch_number>/     per-epoch dispute scratch dir
-    0x<hash>/         dispute-time machine snapshots
     engine/           engine machine work dirs
 ```
 
@@ -92,8 +99,10 @@ closes it, verifies that its root matches the content-addressed key, syncs the
 stored machine, renames it without replacement, and then registers the
 boundary together with every window root in one database transaction. A crash
 can therefore orphan a durable directory but cannot leave a row pointing at
-an undurable machine; it may replay at most one full batch. Dispute-time
-snapshot densification is the deliberate exception to the normal gap cadence.
+an undurable machine; it may replay at most one full batch. Dispute
+positioning is the other publisher: it crosses whole windows from the nearest
+boundary on the same clone chain and publishes only the disputed input's
+boundary, which every later action of that dispute resumes from.
 
 The runner's newest registered boundary - its durable cursor - is strict state,
 not a best-effort cache. If its path has vanished or cannot be inspected as a
@@ -108,11 +117,13 @@ within the epoch.
 
 Schema initialization owns one create-only `storage/sql/schema.sql`; there are
 no migrations or ordered schema versions. On an empty database, startup applies
-that file once and atomically records the node package version plus the Keccak
-hash of the exact schema file. On later launches it executes no DDL: both stored
-values must match the running binary, or startup refuses the state directory
-before applying schema changes. The raw file fingerprint catches schema changes
-between builds that share a package version. It attests which schema created
+that file once and atomically records the node package version, the Keccak
+hash of the exact schema file, and the commitment semantics version. On later
+launches it executes no DDL: all three stored values must match the running
+binary, or startup refuses the state directory before applying schema changes.
+The raw file fingerprint catches schema changes between builds that share a
+package version; the semantics version catches commitment changes that alter
+neither. It attests which schema created
 this node-owned cache; manual database mutation remains unsupported rather than
 continuously audited.
 
@@ -120,11 +131,14 @@ The epoch-completion cursor is bound to one claimant address. A different
 configured signer requires a fresh state directory: epochs completed for one
 claimant may still hold another claimant's bonds. Incompatible schema or node
 versions also require rebuilding a fresh state directory from the chain and
-template machine.
+template machine, as does a change of commitment semantics: a change to leaf
+values or transition shapes bumps `COMMITMENT_SEMANTICS` in
+`storage/sql/schema.rs`, because the frozen crate version would not.
 
 Main schema (`storage/sql/schema.sql`):
 
-- `node_metadata(node_version, schema_fingerprint)` - immutable cache identity
+- `node_metadata(node_version, schema_fingerprint, commitment_semantics)` -
+  immutable cache identity
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`
 - `inputs(epoch_number, input_index_in_epoch, input)`
 - `latest_processed(block)` - singleton; last finalized block ingested
@@ -170,8 +184,9 @@ One schema note to know about:
 - The dispute tables (`sling_config`, `sling_nodes`) live in the main
   database. The quartet cache is restartable state, and `Hero` opens its own
   connection to the same file (shared file, disjoint tables, private
-  connections). The per-epoch directory holds only scratch: dispute-time
-  machine snapshots stored by root hash and engine machine work directories.
+  connections). The per-epoch directory holds only scratch, the engine's
+  machine work directories; dispute positioning publishes boundaries into
+  the shared content-addressed store.
   Hero construction materializes nothing: `DisputeSource::on_store` reads the
   input count, the window-root quartet rows prepaid by the machine runner, and
   the final boundary hash. Below window granularity, disputes replay the
@@ -314,10 +329,16 @@ Error handling and observability:
 
 Structure:
 
-7. The reader uses async recursion for dynamic tournament discovery, and the
-   Hero's dispute loop runs inside the epoch manager task. Local machine and
-   proof preparation can therefore pin a runtime worker. Moving local dispute
-   work to the blocking lane remains open.
+7. The reader uses async recursion for dynamic tournament discovery. The
+   Hero's machine work (commitment builds, proofs) runs inside the epoch
+   manager task. It hands its runtime worker off first, so the other tasks
+   keep running, but the manager itself waits: a long leaf build delays that
+   epoch's refund and cleanup planning, wave submission (the only path that
+   resubmits or reprices pending transactions), and shutdown (debt 9). The
+   action that follows rests on an observation as old as the build; that a
+   stale action can only revert is a lead resting on the contracts' state
+   checks, not a verified claim. A background builder the Hero polls would
+   remove both; it remains open.
 8. Commented-out code blocks kept as reference (the test-scaffolding
    `instance.rs` snapshot logic) and disabled/empty tests.
 9. No graceful-shutdown story for in-flight work: a mid-epoch machine run

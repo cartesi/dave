@@ -65,8 +65,9 @@ library MatchClocks {
     /// charged the expired side's overdue duration, which represents the
     /// deferred interval in which timeout cleanup could be censored. A winner
     /// must retain positive time after any deferred charge; equality eliminates
-    /// both. Leaf transitions establish the common start instant expected when
-    /// both clocks are running.
+    /// both. Survival is decided on this full cost; `Clock.pauseWinnerAt` then
+    /// forgives at most one response budget of it. Leaf transitions establish the
+    /// common start instant expected when both clocks are running.
     function classifyTimeoutAt(
         Clock.State memory one,
         Clock.State memory two,
@@ -144,6 +145,26 @@ library MatchClocks {
     ) internal returns (Time.Duration) {
         _pauseResponderAt(one, two, responseBudget, current);
         return one.pausedAllowance().max(two.pausedAllowance());
+    }
+
+    /// @notice The allowance a child winner returns to its sealed parent pair
+    /// with: its carried remainder, refilled by up to `refill`, within the
+    /// pair's envelope `max(r1, r2)`.
+    /// @dev The refill restores what the delegation cost the winner (building
+    /// the child commitment, joining, and propagating back), so repeated
+    /// delegations do not drain a correct commitment's clock. The cap is the
+    /// child's own allowance, so no clock mass is created. Both parent clocks
+    /// stay paused at their post-seal remainders while the child runs, which
+    /// makes the envelope exact here.
+    function childReturnAllowance(
+        Clock.State storage one,
+        Clock.State storage two,
+        Time.Duration carried,
+        Time.Duration refill
+    ) internal view returns (Time.Duration) {
+        Time.Duration envelope = one.pausedAllowance()
+            .max(two.pausedAllowance());
+        return carried.add(refill.min(envelope.saturatingSub(carried)));
     }
 
     /// @notice Pause the running responder, discounting its response.

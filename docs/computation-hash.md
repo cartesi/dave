@@ -120,6 +120,19 @@ repeated constant, while uarch-stride commitments carry the pattern
 itself. Padding is what makes the tree geometry fixed while real
 computation lengths vary.
 
+All of this assumes the deployed step's pristine uarch at every big-cycle
+boundary. The closing reset rewrites the uarch region to it, so only the
+template can break the assumption, and the template is the trusted app
+developer's (docs/dimensioning.md). Dave relies on it twice: the big
+machine runs whole cycles without touching the uarch, and one captured idle
+span stands for every later one. The v0.21 CLI and the Lua client rely on
+it too. A template with custom uarch code is outside the model: on the
+release corpus case `uarch-near-limit-tail`, Solidity, the CLI and Dave give
+three different roots. The node refuses such a template when it imports it:
+a uarch reset must leave the template's root unchanged. That compares with the
+linked emulator's pristine uarch; that it is the deployed step's is the
+provenance gate's concern.
+
 ### Toy picture
 
 Scaled-down epoch: 2 inputs per epoch, 2 big cycles per input, 4 uarch
@@ -156,9 +169,14 @@ the trick:
   uarch reset reads the recorded hash and replaces the entire machine root
   with it. State restored, provably, inside the reset log. An EXCEPTION or
   unexpected manual yield keeps its terminal state; halt and mcycle overflow
-  are terminal as well. Sending a later advance response to any of those
-  states is a provable no-op, so every window-opening transition remains
-  defined.
+  with no manual yield pending are terminal as well. Sending a later advance
+  response to any of those states is a provable no-op, so every
+  window-opening transition remains defined. The step reads only the pending
+  yield, never the halt flag or the input budget: an RX_ACCEPTED yield on the
+  budget's last cycle (mcycle == imcyclemax), or on a template preset halted,
+  is not terminal - the next advance response is delivered - and an
+  RX_REJECTED one still reverts. Delivery renews the budget unless it is
+  saturated at 2^64 - 1, where the fed machine is an overflow fixed point.
 
   The logged reset returns the canonical substituted root but leaves the
   physical emulator with only its uarch reset. Both off-chain clients reload
@@ -176,25 +194,33 @@ The Solidity side reads the slot address from step's auto-generated
 guards the two against drifting apart across emulator/step bumps.
 
 Off-chain, `MachineStf` mirrors this with a pre-feed snapshot per fed input;
-its reset, logged-reset, and big-run paths all apply the conditional physical
-reload.
+its reset, logged-reset, big-run and bulk-collection paths all apply the
+conditional physical reload. The bulk collector reports a rejection itself
+from a revert tail, the idle period the node collects from the pre-feed
+machine.
 
 ## Tournament levels and strides
 
-Nobody can build (or store) 2^92 leaves. The dispute is split into levels
-(`prt/contracts/src/arbitration-config/ArbitrationConstants.sol`, currently
-L = 3):
+Nobody can build (or store) 2^92 leaves. The dispute is split into levels;
+`prt/contracts/src/arbitration-config/ArbitrationConstants.sol` holds the
+deployed table. The two tables in use are three levels and two:
 
 ```
+three levels
 level  log2step  height   leaf =                       tree covers
 0      44        48       one hash per 2^44 usteps     whole epoch (2^92)
 1      27        17       one hash per 2^27 usteps     one level-0 stride
 2      0         27       one hash per ustep           one level-1 stride
+
+two levels
+level  log2step  height   leaf =                       tree covers
+0      37        55       one hash per 2^37 usteps     whole epoch (2^92)
+1      0         37       one hash per ustep           one level-0 stride
 ```
 
 Invariants: `log2step[i] == log2step[i+1] + height[i+1]`, and
 `log2step[0] + height[0] == 92`. A level's tree refines exactly one leaf
-stride of its parent. Only level 2 (the leaf level) reaches individual
+stride of its parent. Only the leaf level (stride 0) reaches individual
 uarch steps, where the on-chain state transition can verify one transition.
 
 ## Nested leaves are novel
@@ -245,8 +271,27 @@ and survives as a differential test oracle):
   state as the span's last leaf. Rejected-input substitution is already part
   of that reset state.
 
+A stride-0 quartet tall enough that its 8 stored levels stay above big-cycle
+granularity (a two-level leaf commitment is 2^37 transitions) is built from
+one root per big cycle. The node takes the active cycles' roots from the
+emulator's uarch collector (`cm_collect_uarch_cycle_root_hashes` bundled at
+2^20, so each mcycle's entries end with its cycle's root), and an idle
+stretch steps one captured span and repeats its root. The tree is the one
+stepping every span would build. The stepped path stays as the reference
+(plans/two-level-sling.md, D7) and covers one cycle the v0.21 collector gets
+wrong: a rejection on the input budget's last cycle keeps the physical root
+instead of the revert root, so that cycle is stepped. That fallback cannot
+cover an input whose first cycle is its budget's last, which takes a delivery
+at mcycle 2^64 - 2, where the budget saturates: a template preset there, or
+centuries of machine time. It is out of model, and the node stops with an
+assert where stepping would proceed. Memory is one
+collection call's roots plus a tree over one root per active big cycle, and
+an idle stretch costs one span however long it is.
+
 The rollups node computes level-0 leaves eagerly while processing
-inputs (`LOG2_STRIDE = 44`, so one leaf per 2^24 big cycles) and
+inputs, at the root stride of the deployed tournament table (pinned at
+initialization; 2^44 under three levels, one leaf per 2^24 big cycles, and
+2^37 under two, one per 2^17) and
 folds each closed window's runs into its window-root quartet row as
 it commits - the unfolded runs are never persisted. At dispute time
 the facade serves level 0 at or above window granularity from those
@@ -255,11 +300,13 @@ granularity - and every deeper level - is computed lazily by
 re-running the machine, and cached as merkle nodes in the quartet
 cache (`sling_nodes`, keyed by epoch, stride, height, and shift).
 
-Before opening its database, the node reads row zero from the deployed
-tournament factory and refuses to start unless that row uses the compiled
-sampling stride and spans this 92-bit ruler. Deeper tournament geometry is
-read from each clone's immutable descriptor when the recursive dispute reaches
-it.
+Before opening its database, the node reads the deployed tournament
+factory's whole level table and refuses to start unless it passes the
+geometry validator (the root spans this 92-bit ruler, levels tile, the leaf
+stride is zero); it compiles in no stride. Initialization pins the table, and
+level-0 sampling uses the pinned root stride. Each clone's immutable
+descriptor is checked against its pinned row when the recursive dispute
+reaches it (docs/node-architecture.md has the startup detail).
 
 One subtlety (the ruler's fused feed transition): a machine snapshot taken at
 an input boundary sits awaiting input. That boundary state is the implicit
@@ -271,7 +318,9 @@ input before executing the first ustep.
 The same leaf sequence is computed independently by:
 
 1. the Rust node (`rollups_machine.rs` for level 0, `cartesi-rollups/node` for
-   dispute levels),
+   dispute levels; its dense leaves come from the emulator's collector, the
+   lineage the CLI shares, and its stepped path, kept as a test reference, is
+   what stays independent of it),
 2. the Lua client (`prt/client-lua/computation/`), and
 3. implicitly, the on-chain state transition (one leaf transition at a
    time).
@@ -281,6 +330,11 @@ dispute it should have won. The e2e tests cross-check (1) against (2)
 every epoch (`test/e2e/rollups/test_env.lua`, `epoch_settlement`), and
 the stf test cases exercise (3) against both. Preserve these cross-checks
 when refactoring; they are the executable specification of this document.
+
+A change to leaf values or transition shapes (terminal rule, feed and revert,
+sampling, strides) must bump `COMMITMENT_SEMANTICS` in
+`cartesi-rollups/node/src/storage/sql/schema.rs`, so stores built under the
+old rules are refused instead of reused.
 
 The ruler's unit tests use a small scripted machine to enumerate complete
 epochs. A literal window/cycle/slot oracle checks stepping and sampling;

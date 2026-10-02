@@ -1,0 +1,20 @@
+{
+  "echo/final_state": "0x3688f44929be0e6c462280b352a78167b8ea6c17daaad5648f24248fea2f1f16",
+  "echo/log2_mcycle_period_17": "0xd071e8d90e9063e18690db842afc0c61920032b153b7ad0f12fbc08ed8a209ed",
+  "echo/log2_mcycle_period_24": "0xe799f8f2617da6c13ee2d62404b7b243831c03f04424f8b591a8951fbd9d3651",
+  "echo/outputs_merkle_root": "0x80ddf82108449e10243489ca2585e1557e60c5d98fe4773d0c74c45569665950",
+  "echo/template_hash": "0xc8217d7fa39a7a4ba65e5efacb1cfca9996dd76ceea945299fea9f4f2786f3b2",
+  "echo/uarch/log2_period_7/input_0/period_0": "0x2fd3db2418c89acc8082f86d9f99a5f11d81ecf693579cc89f5db44088e2cdec",
+  "echo/uarch/log2_period_7/input_0/period_17375": "0xfdbf18b3d681403afcecd727578ff33d232b1d6936bebae11464c52adbf13da5",
+  "echo/uarch/log2_period_7/input_2/period_1182": "0xbf280faa6c94d48700bbf8c845610260a6077b05d3bb6830c837e61349ddb7d0",
+  "echo/uarch/log2_period_8/input_0/period_0": "0xfb99d9aef9ca1f474e79697dfa648366dd880902bbcc930061b20fb2f9e98ca0",
+  "echo/uarch/log2_period_8/input_0/period_8687": "0x93c68a2aeff7fde347f2b93a285995d02c80603985ec1daa806d49f250c25492",
+  "echo/uarch/log2_period_8/input_2/period_591": "0x4defd25299fe228616ca5cbc242def7bbc3f1655d19aa2c9e0327212544b20fa",
+  "echo/uarch/log2_period_8/input_4/period_0": "0x3d8d47c9806094e961154848c709c5ee47d6ed42ec3a713163a4fe891c722550",
+  "yield/final_state": "0x9b358eac8ebd2aa2c7ab4c00d098da7fd90906dc571ec83ec16e889fd220e0fb",
+  "yield/log2_mcycle_period_17": "0x20c85e33b80aab17538c78031a62f749c2ac77739d7aa1c4dae10fa803db0845",
+  "yield/log2_mcycle_period_24": "0xabb921976c6f6e710ea1b2221b2c8371ad27363565247f238781bd7e434caf0e",
+  "yield/template_hash": "0x9b358eac8ebd2aa2c7ab4c00d098da7fd90906dc571ec83ec16e889fd220e0fb",
+  "yield/uarch/log2_period_7/input_1/period_5486": "0x07cdd2346a06bb743f1c9a3d67dba7293bc41f73f17fbb3dab969d2e2ce1a24a",
+  "yield/uarch/log2_period_8/input_0/period_2743": "0x0d5dc5e36de5ca17d9bb2aed134e246fd0f04c2056a0c46e15a17b7387454223"
+}

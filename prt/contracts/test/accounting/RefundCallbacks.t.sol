@@ -35,6 +35,7 @@ contract CallbackParametersProvider is ITournamentParametersProvider {
             log2step: 0,
             height: 1,
             responseBudget: Time.Duration.wrap(0),
+            commitmentBudget: Time.ZERO_DURATION,
             maxAllowance: Time.Duration.wrap(1)
         });
     }

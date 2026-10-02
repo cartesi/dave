@@ -76,10 +76,12 @@ contract ClockHarness {
         clock.pauseAfterResponseAt(responseBudget, current);
     }
 
-    function chargeAndPauseAt(Time.Duration charge, Time.Instant current)
-        external
-    {
-        clock.chargeAndPauseAt(charge, current);
+    function pauseWinnerAt(
+        Time.Duration charge,
+        Time.Duration budget,
+        Time.Instant current
+    ) external {
+        clock.pauseWinnerAt(charge, budget, current);
     }
 
     function replaceFromSource() external {
@@ -286,8 +288,10 @@ contract ClockTest is Test {
 
         harness.initialize(_instant(10), _duration(allowance), _instant(10));
         if (running) harness.startAt(_instant(11));
-        harness.chargeAndPauseAt(
-            _duration(charge), _instant(running ? 11 + elapsed : 100)
+        harness.pauseWinnerAt(
+            _duration(charge),
+            Time.ZERO_DURATION,
+            _instant(running ? 11 + elapsed : 100)
         );
 
         Clock.State memory state = harness.state();
@@ -295,12 +299,59 @@ contract ClockTest is Test {
         assertFalse(state.isRunning());
     }
 
+    /// @dev A winner is charged its live cost (elapsed time while running,
+    /// plus any deferred charge) beyond one budget: never more than without
+    /// the budget, never above its stored balance.
+    function testFuzzWinnerEarnsOneBudget(
+        bool running,
+        uint64 rawAllowance,
+        uint64 rawElapsed,
+        uint64 rawCharge,
+        uint64 rawBudget
+    ) public {
+        uint64 allowance = _boundU64(rawAllowance, 1, MAX_FUZZ_DURATION);
+        uint64 elapsed = running ? _boundU64(rawElapsed, 0, allowance - 1) : 0;
+        uint64 charge = _boundU64(rawCharge, 0, allowance - elapsed - 1);
+        uint64 budget = _boundU64(rawBudget, 0, MAX_FUZZ_DURATION);
+
+        harness.initialize(_instant(10), _duration(allowance), _instant(10));
+        if (running) harness.startAt(_instant(11));
+        harness.pauseWinnerAt(
+            _duration(charge),
+            _duration(budget),
+            _instant(running ? 11 + elapsed : 100)
+        );
+
+        uint64 cost = elapsed + charge;
+        uint64 expected = allowance - (cost > budget ? cost - budget : 0);
+        Clock.State memory state = harness.state();
+        assertEq(_unwrap(state.allowance), expected);
+        assertGe(_unwrap(state.allowance), allowance - cost);
+        assertLe(_unwrap(state.allowance), allowance);
+        assertFalse(state.isRunning());
+    }
+
+    function testWinnerWithinItsBudgetKeepsItsBalance() public {
+        harness.initialize(_instant(10), _duration(20), _instant(10));
+        harness.startAt(_instant(11));
+        harness.pauseWinnerAt(Time.ZERO_DURATION, _duration(5), _instant(16));
+        assertEq(_unwrap(harness.state().allowance), 20);
+    }
+
+    function testWinnerPaysOnlyBeyondItsBudget() public {
+        // Running for 8 with a deferred charge of 3 costs 11; budget 5.
+        harness.initialize(_instant(10), _duration(20), _instant(10));
+        harness.startAt(_instant(11));
+        harness.pauseWinnerAt(_duration(3), _duration(5), _instant(19));
+        assertEq(_unwrap(harness.state().allowance), 14);
+    }
+
     function testChargeRejectsAZeroRemainder() public {
         harness.initialize(_instant(10), _duration(20), _instant(10));
         harness.startAt(_instant(11));
 
         vm.expectRevert(stdError.assertionError);
-        harness.chargeAndPauseAt(_duration(15), _instant(16));
+        harness.pauseWinnerAt(_duration(15), Time.ZERO_DURATION, _instant(16));
     }
 
     function testChargeRejectsAnOvercharge() public {
@@ -308,7 +359,7 @@ contract ClockTest is Test {
         harness.startAt(_instant(11));
 
         vm.expectRevert(stdError.arithmeticError);
-        harness.chargeAndPauseAt(_duration(16), _instant(16));
+        harness.pauseWinnerAt(_duration(16), Time.ZERO_DURATION, _instant(16));
     }
 
     function testFuzzPausedCarryoverPreservesTheChargedRemainder(uint64 rawCharge)

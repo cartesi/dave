@@ -21,7 +21,7 @@
 //! descent).
 
 use super::cache::{compute_and_store, get_or_compute};
-use super::ruler::RulerFactory;
+use super::ruler::{Hashing, RulerFactory};
 use super::structure::{Quartet, Structure};
 use crate::merkle::{Digest, MerkleBuilder, MerkleProof, MerkleTree};
 use crate::storage::Storage;
@@ -149,6 +149,43 @@ struct Frontier {
     top: Option<Arc<MerkleTree>>,
 }
 
+/// A test-only rewrite of a source's commitments: every ruler leaf at or
+/// past position `from` reads as `value`, so the source diverges from the
+/// honest one at exactly transition `from` on every level. The anvil
+/// harness turns the production Hero into an adversary with it. Patched
+/// nodes are computed on the fly and never stored, and prove_transition
+/// is untouched, so a patched transition cannot be proven.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Tail {
+    pub from: U256,
+    pub value: Digest,
+}
+
+#[cfg(test)]
+#[derive(PartialEq)]
+enum Patch {
+    None,
+    Full,
+    Straddle,
+}
+
+#[cfg(test)]
+impl Tail {
+    /// A quartet's sampled leaf j is the ruler leaf at span_start +
+    /// (j + 1) * 2^stride - 1 (see Quartet).
+    fn patch(&self, quartet: &Quartet) -> Patch {
+        let first = quartet.span_start() + (U256::ONE << quartet.log2_stride) - U256::ONE;
+        if first >= self.from {
+            Patch::Full
+        } else if quartet.span_end() <= self.from {
+            Patch::None
+        } else {
+            Patch::Straddle
+        }
+    }
+}
+
 /// One epoch's node source. The cache spans epochs; the level-0
 /// material and the factory (its inputs) do not, so neither does the
 /// source.
@@ -157,12 +194,14 @@ pub struct DisputeSource<F: RulerFactory> {
     structure: Structure,
     factory: F,
     epoch: u64,
-    /// The stride the level-0 window roots were recorded at
-    /// (production: the rollups LOG2_STRIDE). The frontier fold
-    /// serves quartets at or above window granularity on it; below
-    /// that is the machine's domain.
+    /// The stride the level-0 window roots were recorded at (the
+    /// pinned root stride). The frontier fold serves quartets at or
+    /// above window granularity on it; below that is the machine's
+    /// domain.
     log2_run_stride: u64,
     frontier: Frontier,
+    #[cfg(test)]
+    tail: Option<Tail>,
 }
 
 impl<F: RulerFactory> DisputeSource<F> {
@@ -228,12 +267,40 @@ impl<F: RulerFactory> DisputeSource<F> {
                 padding,
                 top: None,
             },
+            #[cfg(test)]
+            tail: None,
         })
     }
 
     #[cfg(test)]
     pub(crate) fn factory(&self) -> &F {
         &self.factory
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_tail(&mut self, tail: Tail) {
+        self.tail = Some(tail);
+    }
+
+    /// The overlay's answer for a patched quartet; None leaves the
+    /// honest path to answer.
+    #[cfg(test)]
+    fn patched_node(&mut self, quartet: &Quartet) -> Result<Option<Digest>> {
+        let Some(tail) = self.tail else {
+            return Ok(None);
+        };
+        match tail.patch(quartet) {
+            Patch::None => Ok(None),
+            Patch::Full => Ok(Some(
+                MerkleTree::leaf(tail.value)
+                    .iterated(quartet.height as usize)
+                    .root_hash(),
+            )),
+            Patch::Straddle => {
+                let (left, right) = self.children(quartet)?;
+                Ok(Some(left.join(&right)))
+            }
+        }
     }
 
     /// A transition witness is usable only if replay reaches the agreed
@@ -245,7 +312,7 @@ impl<F: RulerFactory> DisputeSource<F> {
         expected_pre_state: Digest,
         expected_post_state: Digest,
     ) -> Result<Vec<u8>> {
-        let mut ruler = self.factory.ruler_at(position)?;
+        let mut ruler = self.factory.ruler_at(position, Hashing::Sampled)?;
         let pre_state = ruler.state_hash()?;
         ensure!(
             pre_state == expected_pre_state,
@@ -261,31 +328,23 @@ impl<F: RulerFactory> DisputeSource<F> {
         Ok(proof)
     }
 
-    /// Frontier coverage: the quartet sits at or above window
-    /// granularity on the run stride, and the epoch recorded material
-    /// to serve it from. Below window granularity every quartet -
-    /// real or padding window alike - is the machine's domain, like
-    /// any nested level (a padding-window replay is one snapshot load
-    /// plus idle arithmetic).
-    ///
-    /// Coverage caveat (inherited from the SeedTree, unreachable
-    /// today): a covered height-0 quartet at a stride strictly above
-    /// the run stride names one sampled state, which is not the fold
-    /// this serves; the two agree only when the leaf stride equals
-    /// the run stride. No reachable geometry asks for one (production
-    /// level strides are 44/27/0 and levels never coarsen), but
-    /// revisit this dispatch if a level stride ever lands strictly
-    /// above the run stride.
+    /// Frontier coverage: the quartet sits on the run stride at or above
+    /// window granularity, and the epoch recorded material to serve it
+    /// from. Below window granularity every quartet - real or padding
+    /// window alike - is the machine's domain, like any nested level (a
+    /// padding-window replay is one snapshot load plus idle arithmetic).
+    /// So is any other stride: the fold's leaves are samples at the run
+    /// stride, and a coarser tree samples different states, so serving
+    /// it from the fold would be wrong at every height.
     fn covered(&self, quartet: &Quartet) -> bool {
         assert_eq!(quartet.epoch, self.epoch, "quartet from another epoch");
         self.frontier.recorded > 0
-            && quartet.log2_stride >= self.log2_run_stride
-            && quartet.height + (quartet.log2_stride - self.log2_run_stride)
-                >= self.interior_height()
+            && quartet.log2_stride == self.log2_run_stride
+            && quartet.height >= self.interior_height()
     }
 
     /// Leaves of one window's level-0 subtree: log2_window_span less
-    /// the run stride (production: height 24 over stride 44).
+    /// the run stride (height 24 over stride 44, 31 over stride 37).
     fn interior_height(&self) -> u64 {
         self.structure.log2_window_span() - self.log2_run_stride
     }
@@ -324,13 +383,16 @@ impl<F: RulerFactory> DisputeSource<F> {
     /// tree. Covered quartets consume exactly their shift bits.
     fn level0_subtree(&mut self, quartet: &Quartet) -> Result<Arc<MerkleTree>> {
         debug_assert!(self.covered(quartet));
-        let height_in_level0 = quartet.height + (quartet.log2_stride - self.log2_run_stride);
-        let depth = self.structure.log2_input_span - (height_in_level0 - self.interior_height());
+        let depth = self.structure.log2_input_span - (quartet.height - self.interior_height());
         Ok(descend(self.top_tree()?, depth, quartet.shift))
     }
 
     /// The hash of any quartet.
     pub fn node(&mut self, quartet: &Quartet) -> Result<Digest> {
+        #[cfg(test)]
+        if let Some(patched) = self.patched_node(quartet)? {
+            return Ok(patched);
+        }
         if self.covered(quartet) {
             return Ok(self.level0_subtree(quartet)?.root_hash());
         }
@@ -348,6 +410,15 @@ impl<F: RulerFactory> DisputeSource<F> {
     /// the parent row collision-checks the recomputation.
     pub fn children(&mut self, parent: &Quartet) -> Result<(Digest, Digest)> {
         let (left, right) = parent.children().expect("children of a leaf quartet");
+        // Under a patched parent each child answers for itself: honest,
+        // folded, or split again; honest ones take the normal path.
+        #[cfg(test)]
+        if self
+            .tail
+            .is_some_and(|tail| tail.patch(parent) != Patch::None)
+        {
+            return Ok((self.node(&left)?, self.node(&right)?));
+        }
         if self.covered(&left) {
             // Both children (hence the parent) sit at or above window
             // granularity: the frontier fold serves them.

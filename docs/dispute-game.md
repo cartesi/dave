@@ -120,12 +120,12 @@ geometry. The acting clients do not copy the total count into every recursive
 tournament. They discover children from events and use each child's immutable
 descriptor when that child exists.
 
-The checked-in canonical provider configures the historical three-level table
-`log2step = [44, 27, 0]`, `height = [48, 17, 27]`. The selected deployment
-layout is the two-level table `log2step = [37, 0]`, `height = [55, 37]`.
-That switch is not live. Generic and historical Solidity tests now inject their
-own geometry, leaving the coordinated node change from root stride 44 to 37 as
-an integration gate. The factory selects the immutable tournament kind from
+The canonical provider configures the table in `ArbitrationConstants`: the
+three-level `log2step = [44, 27, 0]`, `height = [48, 17, 27]` or the two-level
+`log2step = [37, 0]`, `height = [55, 37]`. Generic and historical Solidity
+tests inject their own geometry, and the node compiles in no tournament
+geometry: it discovers, validates, and pins whatever table the factory serves.
+The factory selects the immutable tournament kind from
 the configured row; runtime leaf behavior does not infer the kind again from
 the stride or height.
 
@@ -138,8 +138,8 @@ must span the expected coordinate width, and the leaf stride must be zero. It
 also rejects a zero root allowance while deliberately accepting a zero response
 budget. This is deployment evidence, not runtime validation. In particular, a
 well-formed Solidity table does not prove that an off-chain node constructs the
-same commitments. The selected two-level table therefore remains gated on
-contract, node, and documentation conformance.
+same commitments. Adopting a table therefore needs node and Lua conformance
+at its strides.
 
 The generic recursion path is also exercised with a strict test-owned
 four-level table
@@ -231,9 +231,15 @@ b' = b - max(e - G, 0)
 ```
 
 Thus a valid response discounts at most `G` of that action's elapsed time but
-never increases the balance or revives an expired clock. Joining, pairing,
-proof resolution, timeout cleanup, child propagation, elimination, and bond
-recovery do not earn this discount.
+never increases the balance or revives an expired clock. A win (a leaf proof or
+a winning timeout claim) is an honest action too and earns the same discount:
+the winner is charged its live cost, the time it ran plus any deferred charge,
+beyond one `G`. Joining, pairing, eliminating both sides, child propagation,
+and bond recovery earn no discount. The one other time grant is the child
+return: a parent refills the winner its child returns by up to `T + 2G`
+(`commitmentBudget` plus two `responseBudget`s) for building the child's
+commitment, joining, and propagating back, within the sealed pair's envelope (see the delay invariants
+below).
 
 Important invariants:
 
@@ -267,11 +273,17 @@ adversarial traces, and the finite-state model are recorded in
   linked child carrying the bounded resolution obligation.
 - Recursive propagation may transfer live clock mass within the sealed
   pair but never creates it: the returned child winner replaces the
-  selected parent clock after post-finish deduction, with
+  selected parent clock with its carried remainder (after post-finish
+  deduction) refilled by up to `T + 2G`, capped by the pair envelope,
+  `returned = min(carried + T + 2G, max(r1, r2))`, so
   `0 < returned <= max(r1, r2) <= r1 + r2` and
-  `returned <= maxAllowance`. The shared maximum is a worst-case pair
-  envelope, not side-specific conservation. Ordinary same-tournament
-  settlement and pairing never grant time.
+  `returned <= maxAllowance`. The refill pays back the build, the join, and
+  the propagation, so the number of delegations a correct commitment faces
+  does not drain its clock as long as each takes at most `T + G` to join and
+  `G` to propagate. The shared maximum is a worst-case pair
+  envelope, not side-specific conservation. Pairing never grants time, and
+  ordinary same-tournament settlement forgives at most one `G` of the
+  winner's own cost without raising its stored balance.
 - From any observation instant, a match with live balances `b1` and `b2`
   and `h` eligible responses left reaches resolution (leaf) or local
   seal or timeout deletion (non-leaf) within
@@ -287,7 +299,7 @@ adversarial traces, and the finite-state model are recorded in
 - The timeout argument charges each elapsed interval at most once: a
   paused bisection winner inherits the responder's overdue interval,
   while a running leaf winner has already paid for it through its live
-  remainder.
+  remainder. The win then forgives at most one `G` of that cost.
 
 The executable
 [`ConcurrentRecursivePopulation.t.sol`](../prt/contracts/test/properties/ConcurrentRecursivePopulation.t.sol)
@@ -315,8 +327,9 @@ The status of the delay claims is:
 Clock-induced delay and transaction work are different properties. A skewed
 arrival schedule can force a correct survivor through a linear number of
 matches, with work proportional to the number of claims times the commitment
-height. Clock conservation prevents arbitrary refill, but does not make that
-work logarithmic. Finite blockspace can turn the linear transaction workload
+height. Clock conservation prevents arbitrary refill (a child return refills
+at most `T + 2G`, within its pair's envelope), but does not make that work
+logarithmic. Finite blockspace can turn the linear transaction workload
 into additional wall-clock delay. Bond dimensioning and operational capacity
 must cover this resource attack separately from the chess-clock bound.
 
@@ -354,8 +367,8 @@ is an intentional change to the sealed tuple's semantics.
 
 A leaf proof is available only while neither clock has expired. `winLeafMatch`
 checks that timeout status before invoking the state-transition contract. A
-successful proof snapshots and pauses the proven side's live remainder, then
-returns it to asynchronous pairing. Once either clock expires, proof resolution
+successful proof pauses the proven side, charging its leaf-race time beyond one
+`G`, then returns it to asynchronous pairing. Once either clock expires, proof resolution
 reverts with `CannotAdvanceTimedOutClock`; callers must use the timeout verb
 selected by the shared classifier.
 
@@ -386,7 +399,9 @@ deferred interval in which timeout cleanup could itself have been censored. The
 paused winner survives only when its stored remainder is strictly greater than
 that charge; equality eliminates both commitments. During a sealed leaf both
 clocks are already running, so the survivor's live remainder has paid for the
-elapsed interval and the deferred charge is zero. When the allowances differ,
+elapsed interval and the deferred charge is zero. Survival is decided on this
+full cost; the survivor's stored clock is then charged only the cost beyond one
+`G`, since the claim is an honest action. When the allowances differ,
 the shorter clock's deadline begins a single-winner window that lasts through
 the block before the longer clock's deadline; at the longer deadline both are
 eliminated.
@@ -516,17 +531,22 @@ Required clock invariants:
 - A sealed leaf has two running clocks with the same start instant.
 - A sealed inner match has two paused clocks.
 - A dangling commitment and a surviving winner are paused.
-- Pausing snapshots live remaining time.
-- Charging a clock starts from live remaining time, never stale stored
-  allowance.
+- A pause charges the time the clock ran plus any deferred charge; a
+  response or a win forgives at most one `G` of that cost. No other pause
+  forgives time, and none raises a clock above its stored balance.
 - Timeout accounting subtracts one elapsed interval from a correct
   commitment's clock at most once.
 - A running timeout winner is assigned no deferred charge because its live
-  remainder already reflects elapsed time. A paused timeout winner is charged
-  the expired responder's overdue duration.
-- Pairing and ordinary same-tournament winner re-entry never grant time.
+  remainder already reflects elapsed time. A paused timeout winner carries
+  the expired responder's overdue duration as its deferred charge.
+- A winner survives only if it outlives its full cost. Its stored clock is then
+  charged the cost beyond one `G`, never raised above its prior stored
+  balance.
+- Pairing never grants time; winner re-entry grants nothing beyond the win's
+  discount.
 - Recursive child return may increase the selected side only within the shared
-  sealed-pair envelope; it remains bounded by `max(r1, r2)` and by the pair's
+  sealed-pair envelope, by at most `T + 2G` over the carried remainder; it
+  remains bounded by `max(r1, r2)` and by the pair's
   post-discount live clock mass.
 - A response discount applies only before the responder's original deadline
   and never increases its starting balance.
@@ -536,12 +556,12 @@ The principal time intervals are accounted for as follows:
 
 | Interval | Clock accounting |
 | --- | --- |
-| Tournament creation to join | Deducted during initialization |
+| Tournament creation to join | Deducted during initialization; for an inner join, refunded by the refill when the child returns the winner |
 | Active turn to successful response | Charged to the responder except for at most `G` |
-| Responder deadline to active-match cleanup | Deferred to the paused survivor |
-| Leaf seal to proof or timeout | Reflected in both live remainders |
+| Responder deadline to active-match cleanup | Deferred to the paused survivor; survival uses the full interval, and the win forgives at most `G` of it |
+| Leaf seal to proof or timeout | Reflected in both live remainders; the win forgives at most `G` of the winner's |
 | Parent seal through child resolution | Parent clocks pause; the child owns the shared bounded obligation |
-| Child finish to parent propagation | Deducted from the returned child winner |
+| Child finish to parent propagation | Deducted from the carried remainder, then refunded by the refill (up to `T + 2G` for the whole delegation) |
 | Dangling wait | Clock remains paused; closure stops new joins, but existing matches and children may delay finish; one slot bounds only the unpaired population |
 
 The canonical parameters provider rejects `maxAllowance == 0` at deployment.
@@ -552,30 +572,35 @@ no discount. A generic parameters provider is not validated on every factory
 read; supported deployments must validate its complete table before use and
 must treat it as stable for the lifetime of its factory.
 
-The intended mainnet allowance is dimensioned from two distinct budgets
-(derivation in [`dimensioning.md`](dimensioning.md)):
+The allowance is derived, never configured directly (derivation in
+[`dimensioning.md`](dimensioning.md)):
 
 ```text
-maxAllowance = censorshipBudget + (levels - 1) * innerCommitmentBudget
+maxAllowance = C + G + (levels - 1) * (T + 2G)
 ```
 
-For the selected two-level table (not yet enabled; see
-[Tournament roles and configuration](#tournament-roles-and-configuration))
-this is one week of censorship tolerance
-plus one inner-tournament commitment budget, currently one hour. The
-independent `prt/measure_constants` emulator benchmark and the Rust
-`just measure-constants` generator show how root slowdown and the maximum
-inner commitment-building time determine tournament strides and heights.
-These measured computation budgets are distinct from the
-per-response budget `G`. The deployment stores `G = 5 minutes` in the
-`responseBudget` field; on Ethereum that is 25 blocks. One
+Every honest action gets one inclusion `G`, and joining a child also gets the
+build `T`. `ClockBudgets` computes the allowance, with `responseBudget = G` and
+`commitmentBudget = T`, from wall-clock inputs: the deployment's block time and
+censorship budget `C`, `G = 5 minutes`, and `T`, which belongs with the
+tournament geometry (`ArbitrationConstants.COMMITMENT_BUDGET`: 30 minutes for
+the three-level table, 60 for the two-level one), since a generated geometry is
+only valid for the `T` it was generated against. The root allowance holds the root join's inclusion and
+one delegation per inner level on a correct commitment's active path; each
+child return refunds its delegation. On Ethereum mainnet the three-level table
+gives one week plus 85 minutes and the two-level table one week plus 75
+minutes. The independent
+`prt/measure_constants` emulator benchmark and the Rust `just measure-constants`
+generator show how root slowdown and the commitment budget determine
+tournament strides and heights. On Ethereum `G` is 25 blocks. One
 root-to-leaf descent with one match at each level spans 92 tree heights and can
-earn at most 7 hours 40 minutes of discounts, one at each successful response.
+earn at most 7 hours 45 minutes of discounts, one at each successful response
+plus one for the leaf match's win.
 Repeated matches receive their own bounded response discounts.
 
 `Clock.pauseAfterResponseAt()` implements the non-bankable response formula.
-`Clock.chargeAndPauseAt()` snapshots live remaining time before subtracting a
-caller-supplied deferred charge and pausing the winner. Single-clock operations
+`Clock.pauseWinnerAt()` charges a winner its live elapsed time plus a
+caller-supplied deferred charge, less one response budget, and pauses it. Single-clock operations
 that observe elapsed time take an explicit instant, and `MatchClocks` owns the
 legal bisection, leaf-race, and inner-seal phase transitions plus the shared
 timeout classification. PRT-002 records the original sealed-leaf restoration
