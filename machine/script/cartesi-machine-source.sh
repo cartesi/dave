@@ -33,7 +33,7 @@ readonly generated_files=(
     "uarch/uarch-pristine-ram.c"
 )
 
-temporary_paths=()
+work_dir=""
 
 die() {
     printf 'error: %s\n' "$*" >&2
@@ -44,37 +44,26 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "required tool '$1' is not on PATH"
 }
 
-remember_temporary_path() {
-    temporary_paths+=("$1")
-}
-
-cleanup_temporary_paths() {
-    local path
-    if (( ${#temporary_paths[@]} == 0 )); then
-        return
+cleanup() {
+    if [[ -n "$work_dir" ]]; then
+        rm -rf -- "$work_dir"
     fi
-    for path in "${temporary_paths[@]}"; do
-        case "$path" in
-            "${cache_root}"/*)
-                if [[ -e "$path" || -L "$path" ]]; then
-                    rm -rf -- "$path"
-                fi
-                ;;
-        esac
-    done
 }
 
-trap cleanup_temporary_paths EXIT
+trap cleanup EXIT
+
+# Scratch space sits under the cache, on the checkout's filesystem, so moving
+# prepared files into the checkout is a rename.
+make_work_dir() {
+    if [[ -z "$work_dir" ]]; then
+        mkdir -p -- "$cache_root"
+        work_dir="$(mktemp -d "${cache_root}/.work.XXXXXX")"
+    fi
+}
 
 sha256_of() {
     [[ -f "$1" ]] || return 1
     sha256sum "$1" | awk '{print $1}'
-}
-
-require_emulator() {
-    require_emulator_sources
-    [[ -e "${emulator_dir}/.git" ]] ||
-        die "machine/emulator is not initialized; run 'just machine::setup'"
 }
 
 require_emulator_sources() {
@@ -82,7 +71,12 @@ require_emulator_sources() {
         die "machine/emulator source tree is unavailable"
 }
 
+# Generated files are keyed to the checkout's HEAD, so it must be an
+# initialized submodule without tracked changes.
 require_clean_emulator() {
+    require_emulator_sources
+    [[ -e "${emulator_dir}/.git" ]] ||
+        die "machine/emulator is not initialized; run 'just machine::setup'"
     git -C "$emulator_dir" diff --quiet -- ||
         die "machine/emulator has tracked worktree changes"
     git -C "$emulator_dir" diff --cached --quiet -- ||
@@ -94,81 +88,61 @@ emulator_head() {
 }
 
 lua54_command() {
-    local candidate version
+    local candidate
 
     for candidate in lua5.4 lua; do
-        if command -v "$candidate" >/dev/null 2>&1; then
-            version="$("$candidate" -v 2>&1)"
-            case "$version" in
-                "Lua 5.4"*)
-                    command -v "$candidate"
-                    return
-                    ;;
-            esac
+        if command -v "$candidate" >/dev/null 2>&1 &&
+            [[ "$("$candidate" -v 2>&1)" == "Lua 5.4"* ]]; then
+            command -v "$candidate"
+            return
         fi
     done
     die "Lua 5.4 is required to generate Cartesi Machine sources"
 }
 
+# Applied to an empty index, a generated-files patch must add exactly the four
+# generated files, as regular nonempty files.
 extract_generated_patch() {
-    local patch="$1"
-    local destination="$2"
-    local actual_status
-    local expected_status
-    local count=0
-    local mode object stage path
+    local patch="$1" destination="$2" expected actual path
 
     mkdir -p -- "$destination"
     git -C "$destination" init -q
     git -C "$destination" apply --index "$patch"
-
-    expected_status=$'A\tsrc/cm-version.h\nA\tsrc/interpret-jump-table.hpp\nA\tuarch/uarch-pristine-hash.c\nA\tuarch/uarch-pristine-ram.c'
-    actual_status="$(git -C "$destination" diff --cached --name-status)"
-    [[ "$actual_status" == "$expected_status" ]] || {
-        printf 'unexpected generated-files patch contents:\n%s\n' "$actual_status" >&2
-        die "generated-files patch must add exactly the four expected files"
-    }
-
-    while read -r mode object stage path; do
-        [[ "$mode" == "100644" && "$stage" == "0" ]] ||
-            die "generated-files patch has an unexpected mode for $path"
-        [[ -s "${destination}/${path}" && ! -L "${destination}/${path}" ]] ||
-            die "generated-files patch did not produce a regular nonempty file: $path"
-        count=$((count + 1))
-    done < <(git -C "$destination" ls-files --stage)
-    [[ "$count" -eq 4 ]] || die "generated-files patch produced $count files, expected 4"
+    expected="$(printf '100644 0 %s\n' "${generated_files[@]}")"
+    actual="$(git -C "$destination" ls-files --stage | awk '{print $1, $3, $4}')"
+    if [[ "$actual" != "$expected" ]]; then
+        printf 'unexpected generated-files patch contents:\n%s\n' "$actual" >&2
+        die "generated-files patch must add exactly the four expected regular files"
+    fi
+    for path in "${generated_files[@]}"; do
+        [[ -s "${destination}/${path}" ]] ||
+            die "generated-files patch produced an empty file: $path"
+    done
 }
 
-publish_generated_sources() {
-    local extracted="$1"
-    local provider="$2"
-    local head="$3"
-    local path target temporary_state
+# check-ignore also fails for tracked paths, so publishing or cleaning the
+# generated paths never touches an upstream source.
+require_generated_paths_ignored() {
+    local path
 
     for path in "${generated_files[@]}"; do
         git -C "$emulator_dir" check-ignore -q -- "$path" ||
-            die "refusing to replace a generated path that is not ignored: $path"
-        if git -C "$emulator_dir" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
-            die "refusing to replace a tracked generated path: $path"
-        fi
-        target="${emulator_dir}/${path}"
-        if [[ -e "$target" && ! -f "$target" ]] || [[ -L "$target" ]]; then
-            die "refusing to replace a non-regular generated path: $path"
-        fi
+            die "refusing to touch a generated path that is tracked or not ignored: $path"
     done
+}
 
-    # Every source is extracted and validated before the checkout is mutated.
-    # The staging tree and checkout share a filesystem, so each rename is atomic.
+# The files are validated before the checkout changes, and the state that
+# vouches for them is renamed in last.
+publish_generated_sources() {
+    local extracted="$1" provider="$2" head="$3" path
+
+    require_generated_paths_ignored
     for path in "${generated_files[@]}"; do
         chmod 0644 "${extracted}/${path}"
         mv -f -- "${extracted}/${path}" "${emulator_dir}/${path}"
     done
-
-    temporary_state="$(mktemp "${cache_root}/.prepared-generated-sources.XXXXXX")"
-    remember_temporary_path "$temporary_state"
-    render_state "$provider" "$head" >"$temporary_state"
-    chmod 0644 "$temporary_state"
-    mv -f -- "$temporary_state" "$source_state"
+    render_state "$provider" "$head" >"${work_dir}/state"
+    mv -f -- "${work_dir}/state" "$source_state"
 }
 
 # build.rs parses this exact seven-line format: the provider, the emulator
@@ -189,11 +163,10 @@ generated_sources_match() {
 }
 
 prepare_release() {
-    local head patch extraction
+    local head patch
 
     need git
     need sha256sum
-    require_emulator
     require_clean_emulator
 
     head="$(emulator_head)"
@@ -208,10 +181,9 @@ prepare_release() {
     patch="${cache_root}/release/${release_tag}-${release_patch_sha256}/add-generated-files.diff"
     "${repo_root}/script/fetch.sh" "$release_patch_url" "$release_patch_sha256" "$patch"
 
-    extraction="$(mktemp -d "${cache_root}/.release-generated.XXXXXX")"
-    remember_temporary_path "$extraction"
-    extract_generated_patch "$patch" "$extraction"
-    publish_generated_sources "$extraction" "release:${release_tag}" "$head"
+    make_work_dir
+    extract_generated_patch "$patch" "${work_dir}/release"
+    publish_generated_sources "${work_dir}/release" "release:${release_tag}" "$head"
     printf 'prepared Cartesi Machine %s generated sources\n' "$release_tag"
 }
 
@@ -224,7 +196,7 @@ boost_is_prepared() {
 # The archive is pinned by SHA-256, so its contents are trusted as published
 # and tar's own member-name rules suffice.
 prepare_boost() {
-    local archive extraction extracted_boost
+    local archive extracted
 
     require_emulator_sources
 
@@ -239,29 +211,27 @@ prepare_boost() {
     archive="${cache_root}/dependency/boost-${boost_version}-${boost_archive_sha256}/${boost_archive_name}"
     "${repo_root}/script/fetch.sh" "$boost_archive_url" "$boost_archive_sha256" "$archive"
 
-    extraction="$(mktemp -d "${cache_root}/.boost-extract.XXXXXX")"
-    remember_temporary_path "$extraction"
-    tar -xzf "$archive" -C "$extraction" boost_1_83_0/boost
-    extracted_boost="${extraction}/boost_1_83_0/boost"
-    grep -Eq '^#define BOOST_VERSION +108300$' "${extracted_boost}/version.hpp" ||
+    make_work_dir
+    tar -xzf "$archive" -C "$work_dir" boost_1_83_0/boost
+    extracted="${work_dir}/boost_1_83_0/boost"
+    grep -Eq '^#define BOOST_VERSION +108300$' "${extracted}/version.hpp" ||
         die "Boost extraction has an unexpected version"
-    printf '%s\n' "$boost_archive_sha256" >"${extracted_boost}/.dave-archive-sha256"
+    printf '%s\n' "$boost_archive_sha256" >"${extracted}/.dave-archive-sha256"
 
     # Unstamp first: a replacement cut short leaves no stamp, so the next run
     # starts over instead of trusting a partial tree.
     rm -f -- "$boost_stamp"
     rm -rf -- "$boost_dir"
     mkdir -p -- "$(dirname "$boost_dir")"
-    mv -- "$extracted_boost" "$boost_dir"
+    mv -- "$extracted" "$boost_dir"
     printf 'prepared Boost %s headers\n' "$boost_version"
 }
 
 generate_sources() {
-    local head generation clone patch extraction path lua_bin
+    local head clone patch path lua_bin
 
     need git
     need make
-    require_emulator
     require_clean_emulator
     head="$(emulator_head)"
 
@@ -270,9 +240,8 @@ generate_sources() {
         return
     fi
 
-    generation="$(mktemp -d "${cache_root}/.source-generation.XXXXXX")"
-    remember_temporary_path "$generation"
-    clone="${generation}/emulator"
+    make_work_dir
+    clone="${work_dir}/emulator"
     git clone --quiet --no-hardlinks --no-checkout "$emulator_dir" "$clone"
     git -C "$clone" checkout --quiet --detach "$head"
 
@@ -290,13 +259,12 @@ generate_sources() {
     patch="${clone}/add-generated-files.diff"
     [[ -f "$patch" ]] || die "upstream generator did not produce add-generated-files.diff"
 
-    extraction="${generation}/validated"
-    extract_generated_patch "$patch" "$extraction"
+    extract_generated_patch "$patch" "${work_dir}/validated"
     for path in "${generated_files[@]}"; do
-        cmp -s "${clone}/${path}" "${extraction}/${path}" ||
+        cmp -s "${clone}/${path}" "${work_dir}/validated/${path}" ||
             die "generated source does not match its patch: $path"
     done
-    publish_generated_sources "$extraction" "generated" "$head"
+    publish_generated_sources "${work_dir}/validated" "generated" "$head"
     printf 'generated Cartesi Machine sources for %s\n' "$head"
 }
 
@@ -324,16 +292,15 @@ external_provider_selected() {
 }
 
 validate_external_provider() {
-    local lib_dir include_dir
+    local include_dir
 
     [[ -n "${LIBCARTESI_PATH}" ]] || die "LIBCARTESI_PATH is set but empty"
     [[ "${LIBCARTESI_PATH}" == /* ]] ||
         die "LIBCARTESI_PATH must be absolute: ${LIBCARTESI_PATH}"
     [[ -d "${LIBCARTESI_PATH}" ]] ||
         die "LIBCARTESI_PATH is not a directory: ${LIBCARTESI_PATH}"
-    lib_dir="${LIBCARTESI_PATH}"
-    [[ -f "${lib_dir}/libcartesi.a" ]] ||
-        die "external provider lacks ${lib_dir}/libcartesi.a"
+    [[ -f "${LIBCARTESI_PATH}/libcartesi.a" ]] ||
+        die "external provider lacks ${LIBCARTESI_PATH}/libcartesi.a"
 
     if [[ "${INCLUDECARTESI_PATH+x}" == "x" ]]; then
         [[ -n "${INCLUDECARTESI_PATH}" ]] || die "INCLUDECARTESI_PATH is set but empty"
@@ -341,14 +308,21 @@ validate_external_provider() {
             die "INCLUDECARTESI_PATH must be absolute: ${INCLUDECARTESI_PATH}"
         include_dir="${INCLUDECARTESI_PATH}"
     else
-        include_dir="$(dirname "$lib_dir")/include/cartesi-machine"
+        include_dir="$(dirname "$LIBCARTESI_PATH")/include/cartesi-machine"
     fi
     [[ -f "${include_dir}/cm.h" ]] ||
         die "external provider lacks ${include_dir}/cm.h"
     [[ -f "${include_dir}/cm-version.h" ]] ||
         die "external provider lacks ${include_dir}/cm-version.h"
     printf 'using external Cartesi Machine provider:\n  library: %s\n  headers: %s\n' \
-        "$lib_dir" "$include_dir"
+        "$LIBCARTESI_PATH" "$include_dir"
+}
+
+require_prepared_source() {
+    require_clean_emulator
+    validate_generated_sources
+    boost_is_prepared ||
+        die "Boost headers are not prepared; run 'just machine::prepare-boost'"
 }
 
 build_source() {
@@ -360,21 +334,9 @@ build_source() {
     fi
 
     need make
-    require_emulator
-    require_clean_emulator
-    validate_generated_sources
-    boost_is_prepared ||
-        die "Boost headers are not prepared; run 'just machine::prepare-boost'"
-
-    jobs="${DAVE_MACHINE_BUILD_JOBS:-}"
-    if [[ -z "$jobs" ]] && command -v getconf >/dev/null 2>&1; then
-        jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
-    fi
-    if [[ -z "$jobs" ]] && command -v sysctl >/dev/null 2>&1; then
-        jobs="$(sysctl -n hw.ncpu 2>/dev/null || true)"
-    fi
+    require_prepared_source
+    jobs="${DAVE_MACHINE_BUILD_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
     [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || jobs=1
-
     make -C "${emulator_dir}/src" -j"$jobs" \
         release=yes slirp=no libcartesi.a libcartesi_jsonrpc.a
 }
@@ -394,67 +356,38 @@ setup_provider() {
 }
 
 check_provider() {
+    local lib
+
     if external_provider_selected; then
         validate_external_provider
         printf 'external Cartesi Machine provider is ready\n'
         return
     fi
 
-    require_emulator
-    require_clean_emulator
-    validate_generated_sources
-    boost_is_prepared || die "prepared Boost headers are missing or invalid"
-    [[ -f "${emulator_dir}/src/libcartesi.a" ]] ||
-        die "source provider has not built libcartesi.a"
-    [[ -f "${emulator_dir}/src/libcartesi_jsonrpc.a" ]] ||
-        die "source provider has not built libcartesi_jsonrpc.a"
+    require_prepared_source
+    for lib in libcartesi.a libcartesi_jsonrpc.a; do
+        [[ -f "${emulator_dir}/src/${lib}" ]] || die "source provider has not built ${lib}"
+    done
     printf 'Cartesi Machine source provider is ready\n'
 }
 
 clean_source() {
-    local path target git_checkout=0
+    local dir path
 
-    if git -C "$emulator_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        git_checkout=1
+    # Without its own .git the tree cannot say which paths it ignores.
+    if [[ -e "${emulator_dir}/.git" ]]; then
+        require_generated_paths_ignored
     fi
-    for path in "${generated_files[@]}"; do
-        target="${emulator_dir}/${path}"
-        if [[ "$git_checkout" == "1" ]] &&
-            git -C "$emulator_dir" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
-            die "refusing to clean a tracked generated path: $path"
-        fi
-        if [[ "$git_checkout" == "1" ]] &&
-            ! git -C "$emulator_dir" check-ignore -q -- "$path"; then
-            die "refusing to clean a generated path that is not ignored: $path"
-        fi
-        if [[ -L "$target" ]] || [[ -e "$target" && ! -f "$target" ]]; then
-            die "refusing to clean a non-regular generated path: $path"
+    for dir in src uarch; do
+        if [[ -f "${emulator_dir}/${dir}/Makefile" ]]; then
+            make -C "${emulator_dir}/${dir}" clean
         fi
     done
-
-    if [[ -f "${emulator_dir}/src/Makefile" ]]; then
-        make -C "${emulator_dir}/src" clean
-    fi
-    if [[ -f "${emulator_dir}/uarch/Makefile" ]]; then
-        make -C "${emulator_dir}/uarch" clean
-    fi
     for path in "${generated_files[@]}"; do
-        target="${emulator_dir}/${path}"
-        if [[ -e "$target" ]]; then
-            rm -f -- "$target"
-        fi
+        rm -f -- "${emulator_dir}/${path}"
     done
-    case "$boost_dir" in
-        "${emulator_dir}/third-party/downloads/boost")
-            if [[ -e "$boost_dir" || -L "$boost_dir" ]]; then
-                rm -rf -- "$boost_dir"
-            fi
-            ;;
-        *) die "internal error: unsafe Boost clean target" ;;
-    esac
-    if [[ -f "$source_state" ]]; then
-        rm -f -- "$source_state"
-    fi
+    rm -rf -- "$boost_dir"
+    rm -f -- "$source_state"
     printf 'removed Cartesi Machine source-provider outputs; download caches retained\n'
 }
 
