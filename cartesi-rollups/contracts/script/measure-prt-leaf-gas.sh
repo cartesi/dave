@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly EXPECTED_FOUNDRY_VERSION="1.5.1-v1.5.1"
-readonly EXPECTED_DEPENDENCIES_SHA256="0390394d7559329a94913a96b298a798c16fb03446600ca746760d5942ae6f4d"
+readonly EXPECTED_DEPENDENCIES_SHA256="5908c611e27574eacfc14cf431a0c77ab096f3b60d9b874ff2306bff08943d90"
 readonly EXPECTED_MACHINE_HASH="9b358eac8ebd2aa2c7ab4c00d098da7fd90906dc571ec83ec16e889fd220e0fb"
 readonly EXPECTED_FOUNDRY_CONFIG='{"solc":"0.8.30","via_ir":true,"optimizer":true,"optimizer_runs":200,"evm_version":"prague"}'
 
