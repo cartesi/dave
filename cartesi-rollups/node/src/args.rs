@@ -170,7 +170,9 @@ pub struct PRTArgs {
     )]
     pub snapshot_gap_inputs: u64,
 
-    #[arg(long, env, default_value_os_t = std::env::temp_dir())]
+    /// node state (database, snapshots, dispute scratch); keep it across
+    /// restarts, on a filesystem with reflinks
+    #[arg(long, env)]
     pub state_dir: PathBuf,
 
     /// error codes to retry `get_logs` with shorter block range
@@ -374,6 +376,8 @@ mod tests {
             "0x0000000000000000000000000000000000000000",
             "--machine-path",
             "/tmp/machine",
+            "--state-dir",
+            "/tmp/state",
             "--snapshot-gap-inputs",
             gap,
             "pk",

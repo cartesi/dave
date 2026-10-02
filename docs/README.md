@@ -64,9 +64,6 @@ observed tooling friction.
 [plans/test-strategy-reset.md](plans/test-strategy-reset.md) restates what
 each test layer must establish and orders the move from e2e toward unit
 tests, benchmarks and an anvil harness.
-[plans/recursive-dispute-reader.md](plans/recursive-dispute-reader.md) is the one
-temporary exception while its implementation is under preliminary Rust review;
-its stable invariants will move into node-architecture.md before it is deleted.
 Completed plans are deleted after stable invariants move into living docs; Git
 and pull-request history preserve the exploration.
 

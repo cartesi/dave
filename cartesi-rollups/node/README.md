@@ -91,7 +91,7 @@ Here are its arguments:
 ```
 Arguments of Cartesi PRT
 
-Usage: cartesi-rollups-prt-node [OPTIONS] --app-address <APP_ADDRESS> --machine-path <MACHINE_PATH> <COMMAND>
+Usage: cartesi-rollups-prt-node [OPTIONS] --app-address <APP_ADDRESS> --machine-path <MACHINE_PATH> --state-dir <STATE_DIR> <COMMAND>
 
 Commands:
   pk       private-key signer
@@ -114,7 +114,7 @@ Options:
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
           execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: SNAPSHOT_GAP_INPUTS=] [default: 64]
       --state-dir <STATE_DIR>
-          [env: STATE_DIR=] [default: /var/folders/kf/1rg78mtx0c7f81_n7t6x6c6r0000gn/T/]
+          node state (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: STATE_DIR=]
       --long-block-range-error-codes <LONG_BLOCK_RANGE_ERROR_CODES>
           error codes to retry `get_logs` with shorter block range [env: LONG_BLOCK_RANGE_ERROR_CODES=] [default: -32005 -32600 -32602 -32616]
   -h, --help
