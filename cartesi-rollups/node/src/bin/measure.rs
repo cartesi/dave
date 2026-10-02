@@ -21,7 +21,9 @@ use cartesi_rollups_prt_node::engine::{
     TournamentGeometry, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
 };
 use cartesi_rollups_prt_node::merkle::Digest;
-use cartesi_rollups_prt_node::storage::{Input as StorageInput, InputId, Storage};
+use cartesi_rollups_prt_node::storage::{
+    DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Storage,
+};
 
 /// Five minutes of clock per tree height unit: the inclusion budget each
 /// response is discounted by (ClockBudgets; Deployment.s.sol
@@ -108,10 +110,35 @@ struct Args {
     /// that figure the build's rather than the other benches'.
     #[arg(long)]
     two_level_leaf: bool,
+
+    /// Time a cold leaf join and a deep proof against the emulator doing
+    /// the same work in process: the runbook recipe for the node's
+    /// no-overhead claim (docs/plans/test-strategy-reset.md).
+    #[arg(long)]
+    node_vs_emulator: bool,
+
+    /// Snapshot gap for --node-vs-emulator. The join targets the gap's
+    /// last input, so positioning replays the whole gap.
+    #[arg(long, default_value_t = DEFAULT_SNAPSHOT_GAP_INPUTS)]
+    gap_inputs: u64,
+
+    /// Leaf-tournament height for --node-vs-emulator: 37 is the
+    /// two-level table's; lower it for a quick run.
+    #[arg(long, default_value_t = 37)]
+    leaf_height: u64,
+
+    /// Internal: runs one --node-vs-emulator row in this process, so its
+    /// peak RSS is its own.
+    #[arg(long, hide = true)]
+    row: Option<String>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if let Some(row) = &args.row {
+        println!("{}", versus::run_row(row)?);
+        return Ok(());
+    }
     let image = args.machine.canonicalize()?;
     let scratch_root = std::env::temp_dir().join(format!("dave-measure-{}", std::process::id()));
     fs::create_dir_all(&scratch_root)?;
@@ -119,6 +146,13 @@ fn main() -> Result<()> {
     if args.constants {
         let mut report = String::new();
         constants_report(&mut report, &args, &image, &scratch_root)?;
+        let _ = fs::remove_dir_all(&scratch_root);
+        return emit(&report, args.out.as_deref());
+    }
+
+    if args.node_vs_emulator {
+        let mut report = String::new();
+        versus::report(&mut report, &args, &image, &scratch_root)?;
         let _ = fs::remove_dir_all(&scratch_root);
         return emit(&report, args.out.as_deref());
     }
@@ -1120,6 +1154,428 @@ fn constants_report(
          anything."
     )?;
     Ok(())
+}
+
+/// The runbook recipe behind the node's claim that it adds no overhead
+/// over the emulator (docs/plans/test-strategy-reset.md, item 2): two
+/// dispute actions at the heaviest placement the snapshot gap allows, each
+/// timed against the emulator doing the same work in process.
+///
+/// - Cold join: the leaf commitment over the last dense leaf of the gap's
+///   last input, on a fresh store, so the whole gap replays first, plus the
+///   children and last-leaf proof the join posts. The emulator replays the
+///   same inputs with cm_run and collects the span with
+///   cm_collect_uarch_cycle_root_hashes, one bundle per big cycle. The two
+///   roots must agree.
+/// - Deep proof: the closing slot at the end of that leaf, from the input
+///   boundary the join wrote back. The emulator loads the same snapshot,
+///   runs to the slot, and logs the step and the reset.
+///
+/// Each row runs in its own process, so its peak RSS is its own. Disk is
+/// the row's free-space delta on the scratch filesystem (TMPDIR), which
+/// should be the node's.
+mod versus {
+    use super::*;
+    use anyhow::{bail, ensure};
+    use cartesi_machine::config::runtime::RuntimeConfig;
+    use cartesi_machine::constants::break_reason;
+    use cartesi_machine::machine::Machine;
+    use cartesi_machine::types::{LogType, cmio::CmioResponseReason};
+    use cartesi_machine::{EXPECTED_EMULATOR_VERSION, format_emulator_version};
+    use cartesi_rollups_prt_node::engine::LevelCoords;
+    use serde_json::{Value, json};
+
+    const EPOCH: u64 = 0;
+    /// Mcycles per emulator collection call: bounds the result's size.
+    const COLLECT_CHUNK: u64 = 4096;
+
+    pub fn report(
+        report: &mut String,
+        args: &Args,
+        image: &Path,
+        scratch_root: &Path,
+    ) -> Result<()> {
+        let structure = Structure::PRODUCTION;
+        let c = structure.log2_uarch_span;
+        let height = args.leaf_height;
+        ensure!(height > c, "the leaf must span whole big cycles");
+        ensure!(args.gap_inputs >= 1, "the gap needs an input");
+        let input = args.gap_inputs - 1;
+
+        let state = scratch(scratch_root, "state")?;
+        let geometry = TournamentGeometry::new(
+            vec![
+                Level {
+                    log2_stride: height,
+                    height: structure.log2_ruler_span() - height,
+                },
+                Level {
+                    log2_stride: 0,
+                    height,
+                },
+            ],
+            &structure,
+        )?;
+        let mut storage =
+            Storage::initialize(&state, image, 0, Address::ZERO, Address::ZERO, &geometry)?;
+        let rows: Vec<StorageInput> = (0..args.gap_inputs)
+            .map(|i| StorageInput {
+                id: InputId {
+                    epoch_number: EPOCH,
+                    input_index_in_epoch: i,
+                },
+                data: evm_advance_input(i, b"versus"),
+            })
+            .collect();
+        storage.insert_consensus_data(EPOCH, rows.iter(), std::iter::empty())?;
+        drop(storage);
+
+        // A leaf three quarters into the input: deep, and safely inside
+        // its computation, since inputs of the same workload vary in
+        // length (the stress image's by more than a height-27 leaf).
+        let active = input_big_cycles(image)?;
+        let leaf_cycles = 1u64 << (height - c);
+        let leaf = active / 4 * 3 / leaf_cycles;
+        ensure!(
+            leaf > 0,
+            "an input runs {active} big cycles, too few to fill a height-{height} \
+             leaf deep inside it; use the stress image"
+        );
+        let window_start = U256::from(input) << structure.log2_window_span();
+        let base = window_start + (U256::from(leaf) << height);
+        let last = base + (U256::from(1) << height) - U256::from(1);
+
+        let state_arg = state.to_string_lossy();
+        let emulator_join = spawn(&json!({
+            "row": "emulator-join", "state": state_arg, "input": input,
+            "base": base.to_string(), "height": height,
+        }))?;
+        let node_join = spawn(&json!({
+            "row": "node-join", "state": state_arg, "base": base.to_string(), "height": height,
+        }))?;
+        ensure!(
+            node_join["root"] == emulator_join["root"],
+            "the node's leaf commitment {} differs from the emulator's {}",
+            node_join["root"],
+            emulator_join["root"]
+        );
+        let emulator_proof = spawn(&json!({
+            "row": "emulator-proof", "state": state_arg, "input": input,
+            "position": last.to_string(),
+        }))?;
+        let node_proof = spawn(&json!({
+            "row": "node-proof", "state": state_arg, "position": last.to_string(),
+            "pre": emulator_proof["pre"], "post": emulator_proof["post"],
+        }))?;
+
+        writeln!(report, "# Node versus emulator")?;
+        writeln!(report)?;
+        writeln!(
+            report,
+            "Generated by `just measure-node-vs-emulator` (measure.rs --node-vs-emulator).\n\
+             One sample per row, each in its own process. Workload `{}`; snapshot\n\
+             gap {} inputs; leaf height {height}; {} {} with {} threads; emulator {}.",
+            args.machine.display(),
+            args.gap_inputs,
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            std::thread::available_parallelism().map_or(0, |n| n.get()),
+            format_emulator_version(EXPECTED_EMULATOR_VERSION),
+        )?;
+        writeln!(report)?;
+        writeln!(
+            report,
+            "The emulator rows are the baseline: the library in process, cm_run to\n\
+             the position, then cm_collect_uarch_cycle_root_hashes bundled per big\n\
+             cycle over the leaf (the join) or cm_log_step_uarch and\n\
+             cm_log_reset_uarch (the proof). Disk is the row's free-space delta."
+        )?;
+        writeln!(report)?;
+        writeln!(
+            report,
+            "| action | node | emulator | node / emulator | node peak RSS | emulator peak RSS | node disk |"
+        )?;
+        writeln!(report, "|---|---:|---:|---:|---:|---:|---:|")?;
+        for (action, node, emulator) in [
+            ("cold join", &node_join, &emulator_join),
+            ("deep proof", &node_proof, &emulator_proof),
+        ] {
+            let (n, e) = (seconds(node), seconds(emulator));
+            writeln!(
+                report,
+                "| {action} | {} | {} | {:.2}x | {:.0} MiB | {:.0} MiB | {:.1} MiB |",
+                fmt_duration(Duration::from_secs_f64(n)),
+                fmt_duration(Duration::from_secs_f64(e)),
+                n / e,
+                node["peak_rss_mib"].as_f64().unwrap_or(f64::NAN),
+                emulator["peak_rss_mib"].as_f64().unwrap_or(f64::NAN),
+                node["disk_mib"].as_f64().unwrap_or(f64::NAN),
+            )?;
+        }
+        writeln!(report)?;
+        writeln!(
+            report,
+            "Cold join: leaf {leaf}, three quarters into input {input}, the gap's last,\n\
+             positioned from the epoch start, so {input} inputs replay first. The\n\
+             node's time covers opening the store, positioning with write-back, the\n\
+             commitment, its children and the last-leaf proof. The emulator\n\
+             positioned in {} and collected in {}; {} of the leaf's {} big cycles\n\
+             ran active.",
+            fmt_duration(Duration::from_secs_f64(
+                emulator_join["position_seconds"]
+                    .as_f64()
+                    .unwrap_or(f64::NAN)
+            )),
+            fmt_duration(Duration::from_secs_f64(
+                emulator_join["collect_seconds"]
+                    .as_f64()
+                    .unwrap_or(f64::NAN)
+            )),
+            emulator_join["active_cycles"],
+            emulator_join["span_cycles"],
+        )?;
+        writeln!(report)?;
+        writeln!(
+            report,
+            "Deep proof: the closing slot that ends that leaf, positioned from input\n\
+             {input}'s boundary, which the join wrote back."
+        )?;
+        Ok(())
+    }
+
+    /// Runs one row in a child process and returns its JSON line.
+    fn spawn(spec: &Value) -> Result<Value> {
+        let output = std::process::Command::new(std::env::current_exe()?)
+            .arg("--row")
+            .arg(spec.to_string())
+            .stderr(std::process::Stdio::inherit())
+            .output()?;
+        ensure!(output.status.success(), "row {} failed", spec["row"]);
+        let stdout = String::from_utf8(output.stdout)?;
+        let line = stdout.lines().last().unwrap_or_default();
+        Ok(serde_json::from_str(line)?)
+    }
+
+    pub fn run_row(spec: &str) -> Result<String> {
+        let spec: Value = serde_json::from_str(spec)?;
+        let state = PathBuf::from(field(&spec, "state")?.into_owned());
+        let u64_of = |key: &str| -> Result<u64> { Ok(field(&spec, key)?.parse()?) };
+        let u256_of = |key: &str| -> Result<U256> { Ok(field(&spec, key)?.parse()?) };
+        let digest_of =
+            |key: &str| -> Result<Digest> { Ok(Digest::from_digest_hex(&field(&spec, key)?)?) };
+
+        let free_before = free_space_kb(&state)?;
+        let started = Instant::now();
+        let mut out = match field(&spec, "row")?.as_ref() {
+            "emulator-join" => emulator_join(
+                &state,
+                u64_of("input")?,
+                u256_of("base")?,
+                u64_of("height")?,
+            )?,
+            "node-join" => node_join(&state, u256_of("base")?, u64_of("height")?)?,
+            "emulator-proof" => emulator_proof(&state, u64_of("input")?, u256_of("position")?)?,
+            "node-proof" => node_proof(
+                &state,
+                u256_of("position")?,
+                digest_of("pre")?,
+                digest_of("post")?,
+            )?,
+            other => bail!("unknown row {other}"),
+        };
+        out["seconds"] = json!(started.elapsed().as_secs_f64());
+        out["peak_rss_mib"] = json!(peak_rss_bytes() as f64 / (1u64 << 20) as f64);
+        out["disk_mib"] = json!((free_before as f64 - free_space_kb(&state)? as f64) / 1024.0);
+        Ok(out.to_string())
+    }
+
+    /// A spec field as a string; numbers are accepted in either form.
+    fn field<'a>(spec: &'a Value, key: &str) -> Result<std::borrow::Cow<'a, str>> {
+        match &spec[key] {
+            Value::String(text) => Ok(text.as_str().into()),
+            Value::Number(number) => Ok(number.to_string().into()),
+            _ => bail!("row spec lacks {key}"),
+        }
+    }
+
+    fn seconds(row: &Value) -> f64 {
+        row["seconds"].as_f64().unwrap_or(f64::NAN)
+    }
+
+    fn load(path: &Path) -> Result<Machine> {
+        Ok(Machine::load(path, &RuntimeConfig::quiet_console())?)
+    }
+
+    fn payload(storage: &mut Storage, input: u64) -> Result<Vec<u8>> {
+        let id = InputId {
+            epoch_number: EPOCH,
+            input_index_in_epoch: input,
+        };
+        Ok(storage
+            .input(&id)?
+            .ok_or_else(|| anyhow::anyhow!("input {input} missing"))?
+            .data)
+    }
+
+    /// Delivers an input, recording the pre-input root as its revert root.
+    fn feed(machine: &mut Machine, payload: &[u8]) -> Result<()> {
+        let root = machine.root_hash()?;
+        machine.send_cmio_response(CmioResponseReason::Advance, payload, Some(&root))?;
+        Ok(())
+    }
+
+    /// Runs the big machine to `mcycle` through automatic yields; a manual
+    /// yield or halt short of it is an error.
+    fn run_to(machine: &mut Machine, mcycle: u64) -> Result<()> {
+        loop {
+            match machine.run(mcycle)? {
+                break_reason::REACHED_TARGET_MCYCLE => return Ok(()),
+                break_reason::YIELDED_AUTOMATICALLY | break_reason::YIELDED_SOFTLY => {}
+                reason => bail!("stopped with break reason {reason} short of mcycle {mcycle}"),
+            }
+        }
+    }
+
+    /// Big cycles the workload spends on one input.
+    fn input_big_cycles(image: &Path) -> Result<u64> {
+        let mut machine = load(image)?;
+        let start = machine.mcycle()?;
+        advance_one_input(&mut machine, &evm_advance_input(0, b"versus"))?;
+        Ok(machine.mcycle()? - start)
+    }
+
+    fn emulator_join(state: &Path, input: u64, base: U256, height: u64) -> Result<Value> {
+        let structure = Structure::PRODUCTION;
+        let c = structure.log2_uarch_span;
+        let mut storage = Storage::new(state)?;
+        let (_, template) = storage.nearest_boundary_at_or_before(EPOCH, 0)?;
+        let payloads = (0..=input)
+            .map(|i| payload(&mut storage, i))
+            .collect::<Result<Vec<_>>>()?;
+        drop(storage);
+
+        let started = Instant::now();
+        let mut machine = load(&template)?;
+        for payload in &payloads[..input as usize] {
+            advance_one_input(&mut machine, payload)?;
+        }
+        // The idle period of the machine awaiting the input: the revert
+        // tail the collector needs.
+        let mcycle = machine.mcycle()?;
+        let tail = machine
+            .collect_uarch_cycle_root_hashes(mcycle, 0, None)?
+            .hashes;
+        feed(&mut machine, &payloads[input as usize])?;
+        let window_start = U256::from(input) << structure.log2_window_span();
+        let offset = u64::try_from((base - window_start) >> c)?;
+        let first = machine.mcycle()? + offset;
+        run_to(&mut machine, first)?;
+        let positioned = started.elapsed();
+
+        let cycles = 1u64 << (height - c);
+        let end = first + cycles;
+        let mut roots: Vec<(Digest, u64)> = vec![];
+        let mut push = |root: Digest, count: u64| match roots.last_mut() {
+            Some((last, repetitions)) if *last == root => *repetitions += count,
+            _ => roots.push((root, count)),
+        };
+        let mut active = 0u64;
+        while active < cycles {
+            let before = machine.mcycle()?;
+            let part = machine.collect_uarch_cycle_root_hashes(
+                end.min(before + COLLECT_CHUNK),
+                c as u32,
+                Some(&tail),
+            )?;
+            let ran = machine.mcycle()? - before;
+            // Bundled per big cycle, each period's last entry is the big
+            // cycle's root.
+            let mut periods = part.periods();
+            for period in periods.by_ref().take(ran as usize) {
+                push(Digest::from(*period.last().expect("a period")), 1);
+            }
+            active += ran;
+            if matches!(
+                part.break_reason,
+                break_reason::YIELDED_MANUALLY
+                    | break_reason::HALTED
+                    | break_reason::MCYCLE_OVERFLOW
+            ) {
+                // A fixed point repeats its period for the rest of the leaf.
+                let idle = periods.next().expect("a fixed point reports its period");
+                push(
+                    Digest::from(*idle.last().expect("a period")),
+                    cycles - active,
+                );
+                break;
+            }
+            ensure!(ran > 0, "the collector made no progress");
+        }
+        let collected = started.elapsed() - positioned;
+        let root = fold_runs(roots, height - c)?.root_hash();
+        Ok(json!({
+            "root": root.to_hex(),
+            "position_seconds": positioned.as_secs_f64(),
+            "collect_seconds": collected.as_secs_f64(),
+            "active_cycles": active,
+            "span_cycles": cycles,
+        }))
+    }
+
+    fn node_join(state: &Path, base: U256, height: u64) -> Result<Value> {
+        let mut source = DisputeSource::on_store(
+            Storage::new(state)?,
+            EPOCH,
+            state.with_file_name("node-work"),
+        )?;
+        let level = LevelCoords::new(EPOCH, base, 0, height);
+        let root = source.node(&level.root())?;
+        source.children(&level.root())?;
+        source.prove_last(&level)?;
+        Ok(json!({ "root": root.to_hex() }))
+    }
+
+    fn emulator_proof(state: &Path, input: u64, position: U256) -> Result<Value> {
+        let structure = Structure::PRODUCTION;
+        let c = structure.log2_uarch_span;
+        let mut storage = Storage::new(state)?;
+        let (boundary, snapshot) = storage.nearest_boundary_at_or_before(EPOCH, input)?;
+        ensure!(
+            boundary.0 == input,
+            "the join should have written input {input}'s boundary back"
+        );
+        let payload = payload(&mut storage, input)?;
+        drop(storage);
+
+        let mut machine = load(&snapshot)?;
+        feed(&mut machine, &payload)?;
+        let offset = position - (U256::from(input) << structure.log2_window_span());
+        let slot = u64::try_from(offset & U256::from(structure.big_span() - 1))?;
+        ensure!(
+            slot == structure.big_span() - 1,
+            "the recipe proves a closing slot"
+        );
+        let first = machine.mcycle()? + u64::try_from(offset >> c)?;
+        run_to(&mut machine, first)?;
+        // Up to the closing slot the uarch runs to its halt; the slot's
+        // ustep is then the identity and the reset closes the cycle.
+        machine.run_uarch(u64::MAX)?;
+        let pre = Digest::from(machine.root_hash()?);
+        machine.log_step_uarch(LogType::default())?;
+        machine.log_reset_uarch(LogType::default())?;
+        let post = Digest::from(machine.root_hash()?);
+        Ok(json!({ "pre": pre.to_hex(), "post": post.to_hex() }))
+    }
+
+    fn node_proof(state: &Path, position: U256, pre: Digest, post: Digest) -> Result<Value> {
+        let mut source = DisputeSource::on_store(
+            Storage::new(state)?,
+            EPOCH,
+            state.with_file_name("node-work"),
+        )?;
+        let proof = source.prove_transition(position, pre, post)?;
+        Ok(json!({ "proof_bytes": proof.len() }))
+    }
 }
 
 #[cfg(test)]

@@ -253,6 +253,14 @@ measure-two-level-leaf *ARGS: bind
       --machine test/programs/stress/machine-image --two-level-leaf \
       --out docs/measurements/two-level-leaf.md "$@"
 
+# time a cold leaf join and a deep proof against the emulator (runbook;
+# about an hour at the defaults, and TMPDIR should be the node's filesystem)
+measure-node-vs-emulator *ARGS: bind
+    ./script/machine-image-fingerprint.sh verify stress
+    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+      --machine test/programs/stress/machine-image --node-vs-emulator \
+      --out docs/measurements/node-vs-emulator.md "$@"
+
 # derive tournament level constants (docs/measurements/constants.md)
 measure-constants *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
