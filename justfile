@@ -204,6 +204,7 @@ test-engine-machine: bind
 # cartesi-rollups/node/src/harness/mod.rs; needs the devnet bundle)
 test-node-harness: bind
     ./script/machine-image-fingerprint.sh verify echo
+    ./script/devnet-fingerprint.sh verify
     cargo test -p cartesi-rollups-prt-node --lib harness:: -- \
       --ignored --test-threads 1
 

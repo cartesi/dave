@@ -83,8 +83,11 @@ sybil froze block production while it computed. The canonical battery passes.
    against the CLI's outputs Merkle root; the runner test also requires the
    CLI's final state. The resume test is done:
    `restarted_source_resumes_a_half_built_level` restarts a dispute source
-   over a killed one's stored strata and write-backs and requires a fresh
-   store's root and proofs (the unit form of `kill_commitment_build`).
+   over a dropped one's stored strata and write-backs and requires a fresh
+   store's root and proofs. It shows recovery from partially populated,
+   committed cache state, not an interruption inside a build or a
+   publication (storage atomicity tests and the retained process-kill
+   scenarios cover those).
 2. Timing, as designed with the owner on 2026-10-01. The node's claim is
    that it adds no overhead over the emulator; whether a geometry fits an
    app on given hardware belongs to the machine team, which measures the
@@ -101,11 +104,18 @@ sybil froze block production while it computed. The canonical battery passes.
    - The runbook (before releases or hot-path changes) reports the node's
      time over the emulator's on the same span and host, plus RSS and disk.
      The ratio is what lets the machine team's numbers apply to the node
-     (the OpenMP cliff would have read about 7x). A `measure.rs` recipe,
-     when it is next touched.
-   - At runtime the node logs each expensive dispute action's duration
-     next to the clock time left and warns when one used more than half;
-     it never refuses to run for performance.
+     (the OpenMP cliff would have read about 7x), and work counts alone
+     cannot stand in for it: they miss configuration cliffs like that one
+     and deliberately keep R4's prefix replays. A `measure.rs` recipe, not
+     a framework: a complete cold join and a deep proof against a named
+     emulator baseline, at nonzero positions and with the snapshot gap in
+     play, at the heaviest gap an adversary can select within the declared
+     app profile, reporting time, peak RSS and physical disk (external
+     review, 2026-10-02).
+   - At runtime the node logs how long each dispute action took, from
+     reading the chain through commitment builds and proving, and any tick
+     slower than a second that built without acting (a join waiting for
+     finality); it never refuses to run for performance.
    - Disk: a CoW filesystem (APFS, btrfs, XFS with reflink) is a documented
      requirement, not a check. `clone_stored` falls back to sparse copies,
      so correctness is the same everywhere, and CI stays on ext4.
@@ -113,11 +123,11 @@ sybil froze block production while it computed. The canonical battery passes.
    Done: the work-count tests in `engine/spec.rs` (a metered toy at the
    production structure: the eager window, the dense leaf, positioning, and
    the join descent, which pins R4's four extra prefix replays) and
-   `positioning_resumes_from_the_nearest_gap_snapshot` on echo; the Hero
-   logs each prepared action's duration; the README states the CoW
-   requirement. Not built: the clock-time-left comparison. The Hero's domain
-   omits clocks by design, so it would need a `commitmentStanding` read per
-   action (and the join window for joins); open for the owner.
+   `positioning_resumes_from_the_nearest_gap_snapshot` on echo; the Hero's
+   duration log (whole ticks since 2026-10-02: the first version timed only
+   proving and missed the builds in context assembly); the README states
+   the CoW requirement. Not built, by the owner's decision: a comparison
+   with the clock time left. Open: the runbook recipe above.
 3. An anvil harness inside the crate: drive the epoch manager and the Hero
    against deployed contracts with mined blocks, with the node's own engine
    plus a test patch layer as the adversary. It covers the sender, the

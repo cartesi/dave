@@ -21,8 +21,9 @@ use cartesi_prt_contracts::tournament::Tournament::{
 };
 
 /// The largest payload whose EvmAdvance-encoded input fits the InputBox's
-/// 2^16-byte limit (what the big_input e2e scenario sent).
-const MAX_PAYLOAD: usize = (1 << 16) - 32 * 13;
+/// 2^16-byte limit: a 4-byte selector and nine head words, then the payload
+/// padded to a word. One byte more pads past the limit.
+const MAX_PAYLOAD: usize = ((1 << 16) - 4 - 9 * 32) / 32 * 32;
 
 /// A generous bound on the rounds any one lifecycle phase takes; a phase
 /// that needs more is stuck, and run_until reports where.
@@ -85,6 +86,11 @@ async fn settle(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
 #[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
 async fn consecutive_epochs_settle_including_a_maximum_size_input() -> Result<()> {
     let mut world = World::spawn(&[HONEST], 1000).await?;
+    assert!(world.accepts_input(vec![0xab; MAX_PAYLOAD]).await);
+    assert!(
+        !world.accepts_input(vec![0xab; MAX_PAYLOAD + 1]).await,
+        "the InputBox must refuse one byte past the maximum"
+    );
     world.add_input(vec![0xab; MAX_PAYLOAD]).await?;
     let mut node = world.honest_node().await?;
 
@@ -108,7 +114,7 @@ async fn consecutive_epochs_settle_including_a_maximum_size_input() -> Result<()
     // the hash DaveConsensus checks when the step asks for its root.
     let stored = Storage::new(node.state_dir.path())?.inputs(1)?;
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].len(), 65_412, "the EvmAdvance-encoded maximum");
+    assert_eq!(stored[0].len(), 4 + 9 * 32 + MAX_PAYLOAD);
     let input_hash = IInputBox::new(world.book.input_box, world.chain.provider().clone())
         .getInputHash(world.book.app, U256::ZERO)
         .call()

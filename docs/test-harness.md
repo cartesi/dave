@@ -173,8 +173,12 @@ Scenarios (`test/e2e/rollups/scenarios/`), the black-box smoke left after
 the 2026-10-01 cut (docs/plans/test-strategy-reset.md, item 4):
 
 - `simple`: the honest node settles a disputed epoch. Its one leaf match
-  must end in a STEP proof, so the per-PR honeypot `simple` and the
-  two-level smoke gate the on-chain state transition.
+  must end in a STEP proof (`Env.assert_leaf_match_proved`), so the per-PR
+  honeypot `simple` and the two-level smoke gate the on-chain state
+  transition. The gate's negative control (a timeout-resolved leaf refused)
+  left with the sealed-leaf scenarios; the per-PR STEP evidence no longer
+  rests on it alone: the node harness requires the node's `winLeafMatch` at
+  a closing slot to mine, and `NodeWitnessesTest` replays the node's bytes.
 - `stf_all`: drives disputes down to on-chain state-transition proofs,
   one transition shape per epoch (see the coverage matrix below).
 - `stf_revert`: the full revert restore, the one shape whose position

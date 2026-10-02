@@ -382,6 +382,15 @@ impl World {
             .collect())
     }
 
+    /// Whether the InputBox would take this payload, simulated as a call.
+    pub async fn accepts_input(&self, payload: Vec<u8>) -> bool {
+        IInputBox::new(self.book.input_box, &self.operator)
+            .addInput(self.book.app, payload.into())
+            .call()
+            .await
+            .is_ok()
+    }
+
     /// Adds an input from the operator key and mines it.
     pub async fn add_input(&mut self, payload: Vec<u8>) -> Result<()> {
         let pending = IInputBox::new(self.book.input_box, &self.operator)

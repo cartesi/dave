@@ -1351,8 +1351,9 @@ fn node_witness(
 fn node_witness_vectors_hold() {
     let structure = Structure::PRODUCTION;
     // The largest payload whose EvmAdvance encoding fits the InputBox's
-    // 2^16-byte input limit, as the big_input e2e scenario sent it.
-    let big_payload = [0xab; (1 << 16) - 32 * 13];
+    // 2^16-byte input limit: a 4-byte selector and nine head words, then
+    // the payload padded to a word (the node harness pins the boundary).
+    let big_payload = [0xab; ((1 << 16) - 4 - 9 * 32) / 32 * 32];
     let programs = BTreeMap::from([
         ("echo", (echo_image(), echo_inputs())),
         (
@@ -1567,13 +1568,15 @@ fn node_proof_vectors_hold() {
     );
 }
 
-/// Crash recovery of a dispute-time build, the unit form of the
-/// kill_commitment_build e2e scenario. A node killed mid-descent leaves the
-/// strata it stored (rows commit per build, all or nothing) and the
-/// boundaries its positioning wrote back; a restarted source over the same
-/// state and work directories must serve the level exactly like a fresh
-/// store. The level is the big-cycle-root builder's active branch inside
-/// window 1.
+/// Recovery from a partially built level: a source that stored part of a
+/// level (rows commit per build, all or nothing) and wrote back the
+/// boundaries its positioning crossed is dropped between operations; a
+/// restarted source over the same state and work directories must serve
+/// the level exactly like a fresh store. It does not interrupt a build or a
+/// publication midway: atomicity under injected failure is pinned by the
+/// storage tests, and process kills by the retained chaos and
+/// kill_catchup_batched e2e scenarios. The level is the big-cycle-root
+/// builder's active branch inside window 1.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn restarted_source_resumes_a_half_built_level() {
