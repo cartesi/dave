@@ -190,7 +190,10 @@ Evidence, in `cartesi-rollups/node` unless named otherwise:
   disputes. The node uses local machines only, so remote parity does not
   apply.
 - Performance: `just measure-node-vs-emulator` times a cold join and a deep
-  proof against the emulator doing the same work.
+  proof against the emulator doing the same work. On the stress image at a
+  64-input gap, the join went from 1.18x the emulator's time (943 s against
+  801 s) to 1.03x; docs/measurements/node-vs-emulator.md holds the latest
+  run.
 
 Left: the upstream fix for the seam (W7), which retires the guard. The
 stepped dense path stays selectable (`DisputeSource::on_store_with`) as the

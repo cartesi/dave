@@ -431,7 +431,9 @@ reason, and takes the guard after all: bulk collection declines the budget's
 last cycle, which the ruler steps. It costs one comparison and keeps the
 node's leaves the step's at seam 1, so only the CLI carries the exclusion. A
 control test pins the v0.21.0 collector's answer there and fails once an
-emulator fixes it. Item 6: `just measure-node-vs-emulator`.
+emulator fixes it. Item 6: `just measure-node-vs-emulator` (2026-10-02):
+a cold height-37 join at a 64-input gap went from 1.18x the emulator's
+time to 1.03x, the margin banked under [55, 37] at T = 60.
 
 Decided 2026-09-30, after M2. The legacy per-step path (`get_root_hash` after
 every uarch step) is sufficient for what was measured: with serial hash-tree

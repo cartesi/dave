@@ -127,7 +127,17 @@ sybil froze block production while it computed. The canonical battery passes.
    duration log (whole ticks since 2026-10-02: the first version timed only
    proving and missed the builds in context assembly); the README states
    the CoW requirement. Not built, by the owner's decision: a comparison
-   with the clock time left. Open: the runbook recipe above.
+   with the clock time left. The runbook recipe is `just
+   measure-node-vs-emulator` (2026-10-02; the latest run is
+   docs/measurements/node-vs-emulator.md). At a 64-input gap on the stress
+   image, a cold height-37 join took 1.18x the emulator's time with the
+   per-step leaf builder, 1.03x after the switch to the bulk collector,
+   and 1.03x again after positioning moved onto copy-on-write clones; the
+   last change took the join's disk from 25 GiB to 27 MiB and its peak RSS
+   from 606 MiB to 116 MiB, against the emulator's 111. A deep proof stays
+   within noise of the emulator throughout. The recipe found what the work
+   counts could not: each crossed input boundary had been written back as a
+   full machine store.
 3. An anvil harness inside the crate: drive the epoch manager and the Hero
    against deployed contracts with mined blocks, with the node's own engine
    plus a test patch layer as the adversary. It covers the sender, the
