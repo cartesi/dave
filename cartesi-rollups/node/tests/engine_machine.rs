@@ -1507,7 +1507,9 @@ fn leaf_commitments_match_the_reference_cli() {
 
 /// The bulk collector against the stepped reference at run granularity,
 /// so a disagreement names its big cycle: every leaf case's span,
-/// positioned by replay from the template.
+/// positioned by replay from the template, and a period-10 leaf around
+/// echo's first automatic yield, whose 1,024 cycles cross the bulk
+/// collector's chunks and re-enter it after the yield.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn bulk_and_stepped_leaf_runs_agree() {
@@ -1515,7 +1517,21 @@ fn bulk_and_stepped_leaf_runs_agree() {
         .into_iter()
         .map(|(program, image, inputs)| (program, (image, inputs)))
         .collect();
-    for case in leaf_cases() {
+    let (echo, echo_inputs) = &epochs["echo"];
+    let (mut probe, _) = awaiting_input(echo, echo_inputs, 0);
+    deliver(&mut probe, &echo_inputs[0]);
+    let opened = probe.mcycle().unwrap();
+    assert_eq!(
+        probe.run(u64::MAX).unwrap(),
+        break_reason::YIELDED_AUTOMATICALLY
+    );
+    let output = LeafCase {
+        program: "echo",
+        log2_period: 10,
+        input: 0,
+        period: (probe.mcycle().unwrap() - opened) >> 10,
+    };
+    for case in leaf_cases().into_iter().chain([output]) {
         let (image, inputs) = &epochs[case.program];
         let level = case.level();
         let end = level.base_cycle + (U256::from(1) << level.height);

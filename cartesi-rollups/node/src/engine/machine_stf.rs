@@ -75,8 +75,9 @@ pub enum Collector {
     Stepped,
 }
 
-/// Big cycles per bulk collection call, bounding the result's size.
-const BULK_CHUNK: u64 = 1 << 12;
+/// Big cycles per bulk collection call, bounding the result's size; a
+/// call's overhead is small next to even an idle cycle's uarch work.
+const BULK_CHUNK: u64 = 1 << 8;
 
 pub struct MachineStf {
     machine: Machine,
@@ -450,15 +451,27 @@ impl Stf for MachineStf {
                 Some(tail),
             )?;
             let reached = self.machine.mcycle()?;
-            ensure!(reached > mcycle, "the uarch collector made no progress");
             // Bundled per big cycle, each period's last entry is the cycle's
             // root. At a fixed point one more period follows, the idle one,
             // which the ruler derives itself.
+            let root =
+                |period: &[Hash]| Digest::from(*period.last().expect("a period ends at reset"));
+            if reached == mcycle {
+                // Fed into a fixed point (a template preset halted with an
+                // input yield pending): the opening cycle is that fixed
+                // point's period, and the machine stays put.
+                ensure!(
+                    self.fixed()? && collected.periods().count() == 1,
+                    "the uarch collector made no progress"
+                );
+                roots.extend(collected.periods().map(root));
+                break;
+            }
             roots.extend(
                 collected
                     .periods()
                     .take((reached - mcycle) as usize)
-                    .map(|period| Digest::from(*period.last().expect("a period ends at reset"))),
+                    .map(root),
             );
             mcycle = reached;
             if self.restore_rejected()? || self.fixed()? {
@@ -1096,6 +1109,34 @@ mod tests {
             computed, stored,
             "seam witnesses diverged; regenerate with UPDATE_FIXTURES=1 after review"
         );
+        Ok(())
+    }
+
+    /// Dense leaves through the ruler, bulk against stepped, on the seam
+    /// openings: on the budget's last cycle (the delivery renews the
+    /// budget and the guest yields within the first chunk), and on a
+    /// halted machine with a yield pending, which the delivery leaves at a
+    /// fixed point.
+    #[test]
+    fn bulk_and_stepped_dense_leaves_agree_at_the_seam_openings() -> Result<()> {
+        let structure = Structure::PRODUCTION;
+        let to = U256::from(4) << structure.log2_uarch_span;
+        let openings: [fn() -> Result<Machine>; 2] = [budget_seam_machine, halted_yield_machine];
+        for make in openings {
+            let [bulk, stepped] = [Collector::Bulk, Collector::Stepped].map(|collector| {
+                let work = tempfile::tempdir().unwrap();
+                let stf = scratch_stf(
+                    make().unwrap(),
+                    work.path().to_path_buf(),
+                    vec![b"seam".to_vec()],
+                )
+                .with_collector(collector);
+                Ruler::new(stf, structure, 1)
+                    .collect_big_cycle_roots(to)
+                    .unwrap()
+            });
+            assert_eq!(bulk, stepped);
+        }
         Ok(())
     }
 
