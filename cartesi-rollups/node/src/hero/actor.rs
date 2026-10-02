@@ -78,7 +78,55 @@ impl<AS: ArenaSender> Hero<AS> {
         mut storage: Storage,
         epoch_number: u64,
     ) -> Result<Self> {
-        let work_dir = storage.epoch_directory(epoch_number)?;
+        let engine_dir = storage.epoch_directory(epoch_number)?.join("engine");
+        Self::build(
+            arena_sender,
+            chain,
+            root_tournament,
+            block_created_number,
+            storage,
+            epoch_number,
+            engine_dir,
+        )
+    }
+
+    /// The harness adversary: this actor over a test-only tail overlay.
+    /// It needs its own engine directory, since a source's positioner
+    /// clears the work directories it numbers.
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn with_tail(
+        arena_sender: Arc<AS>,
+        chain: Chain,
+        root_tournament: Address,
+        block_created_number: u64,
+        storage: Storage,
+        epoch_number: u64,
+        engine_dir: std::path::PathBuf,
+        tail: crate::engine::Tail,
+    ) -> Result<Self> {
+        let mut hero = Self::build(
+            arena_sender,
+            chain,
+            root_tournament,
+            block_created_number,
+            storage,
+            epoch_number,
+            engine_dir,
+        )?;
+        hero.source.set_tail(tail);
+        Ok(hero)
+    }
+
+    fn build(
+        arena_sender: Arc<AS>,
+        chain: Chain,
+        root_tournament: Address,
+        block_created_number: u64,
+        mut storage: Storage,
+        epoch_number: u64,
+        engine_dir: std::path::PathBuf,
+    ) -> Result<Self> {
         let initial_hash = Digest::from_digest(
             &storage
                 .snapshot_hash(epoch_number, 0)?
@@ -90,7 +138,7 @@ impl<AS: ArenaSender> Hero<AS> {
             geometry: storage.sling_config()?.geometry,
         };
         let reader_storage = Storage::new(storage.state_dir())?;
-        let source = DisputeSource::on_store(storage, epoch_number, work_dir.join("engine"))?;
+        let source = DisputeSource::on_store(storage, epoch_number, engine_dir)?;
         let reader = StateReader::new(chain, block_created_number, reader_storage)?;
 
         Ok(Self {

@@ -1416,3 +1416,76 @@ fn join_descent_replays_the_prefix_once_per_stratum() {
         "each stratum trip re-runs the whole input"
     );
 }
+
+#[test]
+fn tail_overlay_diverges_at_its_position_and_never_writes() -> Result<()> {
+    // The harness adversary: every ruler leaf at or past `from` reads as
+    // Z, on every stride, with proofs that open the patched roots; and the
+    // store it shares keeps only honest rows.
+    let structure = S_SMALL;
+    let (_, script) = scripts_for(&structure).remove(3); // mixed
+    let total = structure.log2_ruler_span();
+    let honest_leaves = oracle_digests(&structure, &script);
+    let z = Digest::from_digest(&[0xee; 32])?;
+
+    for from in [0u64, 1, 7, 8, 37, 127] {
+        let shared = toy_storage(structure);
+        let state_dir = shared.state_dir().to_path_buf();
+        let mut adversary = toy_source_over(shared, structure, &script, structure.log2_uarch_span);
+        adversary.set_tail(super::dispute::Tail {
+            from: U256::from(from),
+            value: z,
+        });
+
+        for log2_stride in [0, structure.log2_uarch_span] {
+            let height = total - log2_stride;
+            let level = LevelCoords::new(0, U256::ZERO, log2_stride, height);
+            let root = adversary.node(&level.root())?;
+            for j in 0..1u64 << height {
+                let position = (j + 1) * (1 << log2_stride) - 1;
+                let expected = if position >= from {
+                    z
+                } else {
+                    honest_leaves[position as usize]
+                };
+                let proof = adversary.prove_leaf(&level, U256::from(j))?;
+                assert_eq!(
+                    proof.node, expected,
+                    "from {from}, stride {log2_stride}, leaf {j}"
+                );
+                assert!(
+                    proof.verify_root(root),
+                    "from {from}, stride {log2_stride}, leaf {j}"
+                );
+            }
+        }
+
+        // Every quartet, from an honest source over the shared store and
+        // from a fresh one: a stored patched row would show here.
+        let mut over_shared = toy_source_over(
+            Storage::new(&state_dir)?,
+            structure,
+            &script,
+            structure.log2_uarch_span,
+        );
+        let mut fresh = toy_source(structure, &script);
+        for log2_stride in 0..=total {
+            for height in 0..=total - log2_stride {
+                for shift in 0..1u64 << (total - log2_stride - height) {
+                    let quartet = Quartet {
+                        epoch: 0,
+                        log2_stride,
+                        height,
+                        shift: U256::from(shift),
+                    };
+                    assert_eq!(
+                        over_shared.node(&quartet)?,
+                        fresh.node(&quartet)?,
+                        "from {from}: {quartet:?}"
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}

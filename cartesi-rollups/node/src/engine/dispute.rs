@@ -149,6 +149,43 @@ struct Frontier {
     top: Option<Arc<MerkleTree>>,
 }
 
+/// A test-only rewrite of a source's commitments: every ruler leaf at or
+/// past position `from` reads as `value`, so the source diverges from the
+/// honest one at exactly transition `from` on every level. The anvil
+/// harness turns the production Hero into an adversary with it. Patched
+/// nodes are computed on the fly and never stored, and prove_transition
+/// is untouched, so a patched transition cannot be proven.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Tail {
+    pub from: U256,
+    pub value: Digest,
+}
+
+#[cfg(test)]
+#[derive(PartialEq)]
+enum Patch {
+    None,
+    Full,
+    Straddle,
+}
+
+#[cfg(test)]
+impl Tail {
+    /// A quartet's sampled leaf j is the ruler leaf at span_start +
+    /// (j + 1) * 2^stride - 1 (see Quartet).
+    fn patch(&self, quartet: &Quartet) -> Patch {
+        let first = quartet.span_start() + (U256::ONE << quartet.log2_stride) - U256::ONE;
+        if first >= self.from {
+            Patch::Full
+        } else if quartet.span_end() <= self.from {
+            Patch::None
+        } else {
+            Patch::Straddle
+        }
+    }
+}
+
 /// One epoch's node source. The cache spans epochs; the level-0
 /// material and the factory (its inputs) do not, so neither does the
 /// source.
@@ -163,6 +200,8 @@ pub struct DisputeSource<F: RulerFactory> {
     /// domain.
     log2_run_stride: u64,
     frontier: Frontier,
+    #[cfg(test)]
+    tail: Option<Tail>,
 }
 
 impl<F: RulerFactory> DisputeSource<F> {
@@ -228,12 +267,40 @@ impl<F: RulerFactory> DisputeSource<F> {
                 padding,
                 top: None,
             },
+            #[cfg(test)]
+            tail: None,
         })
     }
 
     #[cfg(test)]
     pub(crate) fn factory(&self) -> &F {
         &self.factory
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_tail(&mut self, tail: Tail) {
+        self.tail = Some(tail);
+    }
+
+    /// The overlay's answer for a patched quartet; None leaves the
+    /// honest path to answer.
+    #[cfg(test)]
+    fn patched_node(&mut self, quartet: &Quartet) -> Result<Option<Digest>> {
+        let Some(tail) = self.tail else {
+            return Ok(None);
+        };
+        match tail.patch(quartet) {
+            Patch::None => Ok(None),
+            Patch::Full => Ok(Some(
+                MerkleTree::leaf(tail.value)
+                    .iterated(quartet.height as usize)
+                    .root_hash(),
+            )),
+            Patch::Straddle => {
+                let (left, right) = self.children(quartet)?;
+                Ok(Some(left.join(&right)))
+            }
+        }
     }
 
     /// A transition witness is usable only if replay reaches the agreed
@@ -322,6 +389,10 @@ impl<F: RulerFactory> DisputeSource<F> {
 
     /// The hash of any quartet.
     pub fn node(&mut self, quartet: &Quartet) -> Result<Digest> {
+        #[cfg(test)]
+        if let Some(patched) = self.patched_node(quartet)? {
+            return Ok(patched);
+        }
         if self.covered(quartet) {
             return Ok(self.level0_subtree(quartet)?.root_hash());
         }
@@ -339,6 +410,15 @@ impl<F: RulerFactory> DisputeSource<F> {
     /// the parent row collision-checks the recomputation.
     pub fn children(&mut self, parent: &Quartet) -> Result<(Digest, Digest)> {
         let (left, right) = parent.children().expect("children of a leaf quartet");
+        // Under a patched parent each child answers for itself: honest,
+        // folded, or split again; honest ones take the normal path.
+        #[cfg(test)]
+        if self
+            .tail
+            .is_some_and(|tail| tail.patch(parent) != Patch::None)
+        {
+            return Ok((self.node(&left)?, self.node(&right)?));
+        }
         if self.covered(&left) {
             // Both children (hence the parent) sit at or above window
             // granularity: the frontier fold serves them.

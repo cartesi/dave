@@ -42,8 +42,9 @@ use crate::{
         test_utils::{Deploy, deploy_app, program_path, spawn_anvil, wallet_provider},
     },
     chain::Chain,
-    engine::TournamentGeometry,
+    engine::{Tail, TournamentGeometry},
     epoch_manager::EpochManager,
+    hero::Hero,
     machine_runner::MachineRunner,
     provider::TransactionLane,
     storage::Storage,
@@ -127,6 +128,11 @@ impl World {
             "anvil's finalized head is not latest - 2"
         );
         Ok(world)
+    }
+
+    /// The deployed tournament's level count.
+    pub fn levels(&self) -> usize {
+        self.geometry.levels().len()
     }
 
     pub fn address(&self, key: usize) -> Address {
@@ -256,6 +262,45 @@ impl World {
         Node::start(self, state_dir)
     }
 
+    /// An adversary on anvil key `key` for the honest node's current
+    /// epoch, which the node's runner must have rolled: the production
+    /// Hero over the node's store, diverging from transition `tail.from`
+    /// on (see Tail).
+    pub fn adversary(
+        &self,
+        node: &Node,
+        key: usize,
+        tail: Tail,
+        policy: Policy,
+    ) -> Result<Adversary> {
+        let mut storage = Storage::new(node.state_dir.path())?;
+        let epoch = storage.unfinished_epoch()?.context("no epoch to dispute")?;
+        ensure!(
+            storage.settlement_info(epoch.epoch_number)?.is_some(),
+            "the node has not rolled epoch {}",
+            epoch.epoch_number
+        );
+        let engine_dir = tempfile::tempdir()?;
+        let hero = Hero::with_tail(
+            Arc::new(EthArenaSender::new(self.provider.clone())),
+            self.chain.clone(),
+            epoch.root_tournament,
+            epoch.block_created_number,
+            storage,
+            epoch.epoch_number,
+            engine_dir.path().to_path_buf(),
+            tail,
+        )?;
+        Ok(Adversary {
+            hero,
+            lane: self.lane(key),
+            policy,
+            stopped: false,
+            _engine_dir: engine_dir,
+            errors: vec![],
+        })
+    }
+
     fn lane(&self, key: usize) -> TransactionLane {
         let mut signer: PrivateKeySigner = self.anvil.keys()[key].clone().into();
         signer.set_chain_id(Some(self.anvil.chain_id()));
@@ -323,6 +368,18 @@ impl Node {
         &mut self,
         world: &mut World,
         rounds: usize,
+        done: impl FnMut(&World, &mut Storage) -> Result<bool>,
+    ) -> Result<()> {
+        self.run_with(world, &mut [], rounds, done).await
+    }
+
+    /// Rounds until `done` holds, at most `rounds` of them: the node's
+    /// turn, then each adversary's in order.
+    pub async fn run_with(
+        &mut self,
+        world: &mut World,
+        adversaries: &mut [&mut Adversary],
+        rounds: usize,
         mut done: impl FnMut(&World, &mut Storage) -> Result<bool>,
     ) -> Result<()> {
         let mut storage = Storage::new(self.state_dir.path())?;
@@ -331,6 +388,9 @@ impl Node {
                 return Ok(());
             }
             self.turn(world).await?;
+            for adversary in adversaries.iter_mut() {
+                adversary.turn(world).await?;
+            }
         }
         ensure!(
             done(world, &mut storage)?,
@@ -349,5 +409,56 @@ impl Node {
     pub fn restart(self, world: &World) -> Result<Self> {
         let Node { state_dir, .. } = self;
         Node::start(world, state_dir)
+    }
+}
+
+/// What an adversary submits of the waves its Hero plans.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Policy {
+    /// Every wave.
+    Rational,
+    /// Waves through the first request with this label, then nothing.
+    StopAfter(&'static str),
+}
+
+/// The production Hero over a test-only tail overlay, on its own key. It
+/// has no reader, runner or manager: it disputes the honest node's epoch
+/// from the honest node's store.
+pub(crate) struct Adversary {
+    hero: Hero<EthArenaSender>,
+    lane: TransactionLane,
+    policy: Policy,
+    stopped: bool,
+    _engine_dir: TempDir,
+    /// Its Hero's errors. A patched leaf cannot be proven, so a rational
+    /// adversary errors whenever it tries.
+    pub errors: Vec<String>,
+}
+
+impl Adversary {
+    /// One Hero tick under the policy; a submitted wave mines into its
+    /// own block.
+    pub async fn turn(&mut self, world: &mut World) -> Result<()> {
+        if self.stopped {
+            return Ok(());
+        }
+        let mut wave = match self.hero.tick().await {
+            Ok(tick) => tick.into_wave(),
+            Err(error) => {
+                self.errors.push(format!("{error:#}"));
+                return Ok(());
+            }
+        };
+        if let Policy::StopAfter(label) = self.policy
+            && let Some(at) = wave.iter().position(|(request, _)| request == label)
+        {
+            wave.truncate(at + 1);
+            self.stopped = true;
+        }
+        if wave.is_empty() {
+            return Ok(());
+        }
+        self.lane.submit_wave(wave).await?;
+        world.mine(1).await
     }
 }

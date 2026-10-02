@@ -1,10 +1,12 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! Lifecycle scenarios with the honest node alone: every root tournament
-//! has one claimer, so it closes after its allowance and settles.
+//! Lifecycle scenarios with the honest node alone (every root tournament
+//! has one claimer, so it closes after its allowance and settles), then
+//! disputes against adversaries.
 
 use super::*;
+use crate::merkle::Digest;
 use alloy::{
     primitives::{FixedBytes, U256},
     sol_types::SolCall,
@@ -12,7 +14,9 @@ use alloy::{
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{
     acceptStagedTournamentResultCall, stageTournamentResultCall, submitSentryClaimCall,
 };
-use cartesi_prt_contracts::tournament::Tournament::joinTournamentCall;
+use cartesi_prt_contracts::tournament::Tournament::{
+    joinTournamentCall, winInnerTournamentCall, winLeafMatchCall, winMatchByTimeoutCall,
+};
 
 /// The largest payload whose EvmAdvance-encoded input fits the InputBox's
 /// 2^16-byte limit (what the big_input e2e scenario sent).
@@ -26,6 +30,13 @@ const JOIN: FixedBytes<4> = FixedBytes(joinTournamentCall::SELECTOR);
 const CLAIM: FixedBytes<4> = FixedBytes(submitSentryClaimCall::SELECTOR);
 const STAGE: FixedBytes<4> = FixedBytes(stageTournamentResultCall::SELECTOR);
 const ACCEPT: FixedBytes<4> = FixedBytes(acceptStagedTournamentResultCall::SELECTOR);
+const WIN_TIMEOUT: FixedBytes<4> = FixedBytes(winMatchByTimeoutCall::SELECTOR);
+const WIN_LEAF: FixedBytes<4> = FixedBytes(winLeafMatchCall::SELECTOR);
+const WIN_INNER: FixedBytes<4> = FixedBytes(winInnerTournamentCall::SELECTOR);
+
+/// A bound on the rounds of a whole dispute: about 92 bisections, the
+/// joins and seals between levels, and the root's allowance.
+const DISPUTE_ROUNDS: usize = 1000;
 
 /// Whether the node completed `epoch`: settled, with its bonds finalized.
 fn completed(storage: &mut Storage, epoch: u64) -> Result<bool> {
@@ -146,5 +157,79 @@ async fn acceptance_waits_out_the_staging_period_without_unanimity() -> Result<(
         accepted[0].block,
         staged[0].block
     );
+    Ok(())
+}
+
+// Disputes. Epoch 0 is empty, so every transition past the deployment is
+// idle and every build is one captured cycle; the adversaries diverge at
+// the first transition of the second root leaf.
+
+fn idle_tail() -> Tail {
+    Tail {
+        from: U256::ONE << 44,
+        value: Digest::from_digest(&[0xee; 32]).unwrap(),
+    }
+}
+
+/// Turns until the node's runner has rolled `epoch`: its root and
+/// settlement material exist, so an adversary can dispute it.
+async fn rolled(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
+    node.run_until(world, ROUNDS, |_, storage| {
+        Ok(storage.settlement_info(epoch)?.is_some())
+    })
+    .await
+}
+
+/// A joiner that goes silent (bad_commitment) loses its root match by
+/// timeout to the node, which then settles the epoch.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_silent_joiner_loses_by_timeout() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    rolled(&mut node, &mut world, 0).await?;
+    let mut adversary =
+        world.adversary(&node, 1, idle_tail(), Policy::StopAfter("joinTournament"))?;
+
+    node.run_with(
+        &mut world,
+        &mut [&mut adversary],
+        DISPUTE_ROUNDS,
+        |_, storage| completed(storage, 0),
+    )
+    .await?;
+    assert_eq!(world.honest_calls(WIN_TIMEOUT).len(), 1);
+    assert!(world.honest_calls(WIN_LEAF).is_empty());
+    assert_eq!(world.sealed_epochs().await?.len(), 2);
+    Ok(())
+}
+
+/// A rational adversary disputes down to the leaf, where only the node
+/// can prove the divergent transition (simple): the node wins the leaf
+/// match by STEP, each inner tournament in turn, and settles. (The node
+/// moves first in a round, so it proves before the adversary can try;
+/// the overlay's own tests show the adversary cannot.)
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn the_node_wins_by_proving_the_divergent_transition() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    rolled(&mut node, &mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+
+    node.run_with(
+        &mut world,
+        &mut [&mut adversary],
+        DISPUTE_ROUNDS,
+        |_, storage| completed(storage, 0),
+    )
+    .await?;
+    assert_eq!(world.honest_calls(WIN_LEAF).len(), 1);
+    assert_eq!(
+        world.honest_calls(WIN_INNER).len(),
+        world.levels() - 1,
+        "the node won every inner tournament on its way back to the root"
+    );
+    assert_eq!(world.sealed_epochs().await?.len(), 2);
     Ok(())
 }
