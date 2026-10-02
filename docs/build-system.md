@@ -260,18 +260,22 @@ the flake.
 ## Fresh worktree bootstrap
 
 A new git worktree starts without the gitignored artifacts. Run
-`just bootstrap-worktree [SOURCE]`: it runs the provider-aware machine setup,
-installs soldeer deps in both contract dirs, regenerates bindings,
-optionally copies machine images and devnet state from SOURCE (a green
-sibling worktree), and ends with `just doctor-all` when SOURCE was supplied or
-the base `just doctor` otherwise. A copied
-machine image is accepted only when its sidecar proves that the current
-inputs match and that the stored machine root is unchanged. Devnet state,
-deployments, and `state.fingerprint` move as one bundle; the marker binds
-the production contract and deployment sources, installed production
-dependencies, effective compiler configuration and tool versions, state dump,
-and deployment files. Any mismatch forces a rebuild. Without a SOURCE, rebuild
-the artifacts with `just setup-local`.
+`just bootstrap-worktree [SOURCE]`. Without SOURCE it runs `just setup` and
+`just bind` and ends with the base `just doctor`; build the devnet with
+`just setup-local`. With SOURCE (a green sibling worktree) it runs the same
+setup minus the image builds, then copies the devnet bundle and the echo,
+yield, and honeypot images from SOURCE and verifies each copy with its
+fingerprint checker, ending with `just doctor-all`. The checkers are the only
+guard, so a copy is kept only when it verifies against this checkout:
+
+- A machine image verifies when its sidecar proves that the current inputs
+  match and that the stored machine root is unchanged.
+- Devnet state, deployments, and `state.fingerprint` move as one bundle; the
+  marker binds the production contract and deployment sources, installed
+  production dependencies, effective compiler configuration and tool
+  versions, state dump, and deployment files.
+- A copy that does not verify is deleted. The devnet, echo, and yield are
+  then rebuilt; the opt-in honeypot is only reported.
 
 These checks prevent the 2026-07-14 failure mode: a devnet deployed from
 older contract sources fails e2e with a misleading consensus assert.
