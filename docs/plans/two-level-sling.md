@@ -424,6 +424,15 @@ gates are green.
 
 ### W6. Collection speed (not needed for the switch; recommended before release)
 
+Status 2026-10-02: items 1, 3 and 5 are done, and item 2 in its narrow form
+(dense leaves only; collect-hashes-migration.md has the evidence). Item 4:
+the bulk path reads yields from registers, never from the collector's break
+reason, and takes the guard after all: bulk collection declines the budget's
+last cycle, which the ruler steps. It costs one comparison and keeps the
+node's leaves the step's at seam 1, so only the CLI carries the exclusion. A
+control test pins the v0.21.0 collector's answer there and fails once an
+emulator fixes it. Item 6: `just measure-node-vs-emulator`.
+
 Decided 2026-09-30, after M2. The legacy per-step path (`get_root_hash` after
 every uarch step) is sufficient for what was measured: with serial hash-tree
 updates it builds the dense height-37 leaf in 18 min. The collect API is
@@ -494,9 +503,9 @@ format change).
 
 - A terminal final state panics at roll; replace it with an explicit
   dead-app state that keeps serving disputes.
-- Doc drift: the `MachineStf` module doc versus D7, the level-0 location
-  in computation-hash.md, the future tense in the `RulerFactory` doc, and the
-  closed bond-recovery item in collect-hashes-migration.md.
+- Doc drift: the level-0 location in computation-hash.md, the future tense
+  in the `RulerFactory` doc, and the closed bond-recovery item in
+  collect-hashes-migration.md.
 
 ## Robustness review (2026-09-28)
 

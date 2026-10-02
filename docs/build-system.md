@@ -227,10 +227,10 @@ rather than treating the acquisition list as exhaustive.
 `just test-computation-hash-corpus` is the explicit emulator release gate. It
 downloads the pinned v0.21 corpus and checks its SHA-256. One test replays the
 complete mcycle and uarch manifest through the release CLI; a separate test
-compares every mcycle case that Dave supports directly with the published
-answer. The split keeps CLI packaging conformance distinct from Dave's
-collector conformance. Acquisition stays outside both `setup` and `just check`,
-and this gate does not opt the node into the new bulk collection API.
+compares every case that Dave supports directly with the published answer,
+building each dense leaf with both the bulk collector and the stepped
+reference. The split keeps CLI packaging conformance distinct from Dave's
+collector conformance. Acquisition stays outside both `setup` and `just check`.
 
 ## macOS + nix devshell note
 

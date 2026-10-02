@@ -194,8 +194,10 @@ The Solidity side reads the slot address from step's auto-generated
 guards the two against drifting apart across emulator/step bumps.
 
 Off-chain, `MachineStf` mirrors this with a pre-feed snapshot per fed input;
-its reset, logged-reset, and big-run paths all apply the conditional physical
-reload.
+its reset, logged-reset, big-run and bulk-collection paths all apply the
+conditional physical reload. The bulk collector reports a rejection itself
+from a revert tail, the idle period the node collects from the pre-feed
+machine.
 
 ## Tournament levels and strides
 
@@ -270,12 +272,17 @@ and survives as a differential test oracle):
   of that reset state.
 
 A stride-0 quartet tall enough that its 8 stored levels stay above big-cycle
-granularity (a two-level leaf commitment is 2^37 transitions) folds each
-uarch span into its subtree root as the span completes, and an idle stretch
-steps one captured span and repeats its root. The tree is the same. Memory
-is one span's runs and their fold (up to 2^20 leaves, briefly) plus a tree
-over one root per active big cycle, and an idle stretch costs one span
-however long it is.
+granularity (a two-level leaf commitment is 2^37 transitions) is built from
+one root per big cycle. The node takes the active cycles' roots from the
+emulator's uarch collector (`cm_collect_uarch_cycle_root_hashes` bundled at
+2^20, so each mcycle's entries end with its cycle's root), and an idle
+stretch steps one captured span and repeats its root. The tree is the one
+stepping every span would build. The stepped path stays as the reference
+(plans/two-level-sling.md, D7) and covers one cycle the v0.21 collector gets
+wrong: a rejection on the input budget's last cycle keeps the physical root
+instead of the revert root, so that cycle is stepped. Memory is one
+collection call's roots plus a tree over one root per active big cycle, and
+an idle stretch costs one span however long it is.
 
 The rollups node computes level-0 leaves eagerly while processing
 inputs, at the root stride of the deployed tournament table (pinned at
@@ -307,7 +314,9 @@ input before executing the first ustep.
 The same leaf sequence is computed independently by:
 
 1. the Rust node (`rollups_machine.rs` for level 0, `cartesi-rollups/node` for
-   dispute levels),
+   dispute levels; its dense leaves come from the emulator's collector, the
+   lineage the CLI shares, and its stepped path, kept as a test reference, is
+   what stays independent of it),
 2. the Lua client (`prt/client-lua/computation/`), and
 3. implicitly, the on-chain state transition (one leaf transition at a
    time).
