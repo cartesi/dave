@@ -77,7 +77,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
         Ok(())
     }
 
-    async fn tick(&mut self, chain: &Chain) -> Result<bool> {
+    pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<bool> {
         let Some(tick) = self.plan_tick(chain).await? else {
             return Ok(false);
         };

@@ -289,6 +289,10 @@ jobs:
         run: |
           just test-engine-machine
 
+      - name: Node harness tests
+        run: |
+          just test-node-harness
+
   build-release-node:
     strategy:
       matrix:

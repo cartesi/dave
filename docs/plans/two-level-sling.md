@@ -481,7 +481,11 @@ vectors at both seams with later
 inputs; a collector assert (or full reset) for a pristine uarch; a hash-tree
 parallelism threshold based on work rather than the core count (v0.21.0 goes
 parallel once a batch exceeds the cores, and fork and join then dominate the
-few-page hashes a leaf build takes per ustep); and
+few-page hashes a leaf build takes per ustep); close-on-exec on the files
+os-filesystem.cpp opens and flocks (create, copy, clone, read): without it a
+process spawned while a machine is being stored inherits the exclusive lock,
+and later loads of that file fail (the node's test_blockchain_reader flake;
+os-mapped-memory.cpp already sets it); and
 reconciliation of the cmio length width between `feature/prt` and PR #390.
 Track PR #390 as its own coordinated upgrade (every state hash and the proof
 format change).

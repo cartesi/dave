@@ -66,7 +66,7 @@ fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
 /// Discovers the deployed tournament geometry from the factory the
 /// consensus instantiates every epoch's tournament with, and checks the
 /// factory's state transition against the linked machine.
-async fn discover_deployed_tournament(
+pub(crate) async fn discover_deployed_tournament(
     tournament_factory: Address,
     provider: &impl Provider,
 ) -> Result<TournamentGeometry> {

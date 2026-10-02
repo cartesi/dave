@@ -148,6 +148,13 @@ sybil froze block production while it computed. The canonical battery passes.
      optional) steered D. `big_input` becomes a large-input witness vector
      plus the ingestion test. E2E keeps honeypot `simple`, `chaos` at a
      fixed seed, `kill_catchup_batched`, `stf_all` and `stf_revert`.
+   - Step 1 is done: `src/harness/` and four lifecycle tests (two epochs
+     settling with a maximum-size input, restarts around a lost and a mined
+     acceptance, acceptance waiting out the staging period), about a
+     second each, run serially by `just test-node-harness`. Serial, in their
+     own process, because the v0.21 emulator flocks the files it creates
+     without close-on-exec (two-level-sling.md, W7). The maximum-size input's
+     witness vector landed with the seam vectors.
 4. A small black-box e2e on a test-shape profile (for example
    `[63/29, 42/21, 21/21, 0/21]`, which caps leaves at 2^21 usteps and keeps
    middle levels exercised) plus a canonical smoke: honeypot simple, echo

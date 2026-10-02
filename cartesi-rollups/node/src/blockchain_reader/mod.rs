@@ -171,7 +171,7 @@ impl BlockchainReader {
         }
     }
 
-    async fn tick(&mut self, chain: &Chain) -> Result<()> {
+    pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<()> {
         let current_block = chain.finalized_block_number().await?;
         let prev_block = self.storage.latest_processed_block()?;
 

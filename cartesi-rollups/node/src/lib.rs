@@ -23,6 +23,9 @@ pub mod engine;
 pub mod hero;
 pub mod tournament;
 
+#[cfg(test)]
+mod harness;
+
 use args::NodeConfig;
 
 use anyhow::{Result, anyhow};

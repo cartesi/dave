@@ -8,7 +8,11 @@ the implementation level.
 
 This is distinct from the Solidity and Foundry test architecture under
 `prt/contracts`, documented in
-[`prt-contract-testing.md`](prt-contract-testing.md).
+[`prt-contract-testing.md`](prt-contract-testing.md), and from the node's
+in-crate harness (`cartesi-rollups/node/src/harness/`, `just
+test-node-harness`), which drives the node's own workers tick by tick against
+a deterministic anvil and is where lifecycle and dispute scenarios move as the
+e2e suite shrinks (docs/plans/test-strategy-reset.md, item 3).
 
 ## Anatomy of a test run
 

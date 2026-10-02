@@ -200,6 +200,13 @@ test-engine-machine: bind
     cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
       --ignored --skip computation_hash_corpus --skip reference_cli_goldens_hold
 
+# the node's workers against a deterministic anvil, serially (see
+# cartesi-rollups/node/src/harness/mod.rs; needs the devnet bundle)
+test-node-harness: bind
+    ./script/machine-image-fingerprint.sh verify echo
+    cargo test -p cartesi-rollups-prt-node --lib harness:: -- \
+      --ignored --test-threads 1
+
 # the released CLI's answers behind the runner goldens (needs cartesi-machine
 # 0.21.0 on PATH; UPDATE_FIXTURES=1 regenerates them)
 test-reference-cli-goldens: bind
