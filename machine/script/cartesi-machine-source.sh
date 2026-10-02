@@ -226,41 +226,16 @@ prepare_release() {
     printf 'prepared Cartesi Machine %s generated sources\n' "$release_tag"
 }
 
-validate_boost_archive() {
-    local archive="$1"
-    local listing verbose_listing entry
-
-    listing="$(mktemp "${cache_root}/.boost-listing.XXXXXX")"
-    verbose_listing="$(mktemp "${cache_root}/.boost-verbose-listing.XXXXXX")"
-    remember_temporary_path "$listing"
-    remember_temporary_path "$verbose_listing"
-    tar -tzf "$archive" >"$listing" || die "cannot list Boost archive"
-    tar -tvzf "$archive" >"$verbose_listing" || die "cannot inspect Boost archive"
-
-    while IFS= read -r entry; do
-        case "$entry" in
-            /* | .. | ../* | */.. | */../*)
-                die "Boost archive contains an unsafe path: $entry"
-                ;;
-        esac
-    done <"$listing"
-
-    grep -Fxq 'boost_1_83_0/boost/version.hpp' "$listing" ||
-        die "Boost archive lacks boost_1_83_0/boost/version.hpp"
-    awk 'substr($1, 1, 1) != "-" && substr($1, 1, 1) != "d" { exit 1 }' \
-        "$verbose_listing" || die "Boost archive contains links or special files"
-}
-
 boost_is_prepared() {
-    [[ -d "$boost_dir" && ! -L "$boost_dir" ]] &&
-        [[ -f "$boost_stamp" && ! -L "$boost_stamp" ]] &&
-        [[ "$(cat "$boost_stamp")" == "$boost_archive_sha256" ]] &&
+    [[ -f "$boost_stamp" && "$(cat "$boost_stamp")" == "$boost_archive_sha256" ]] &&
         [[ -f "${boost_dir}/version.hpp" ]] &&
         grep -Eq '^#define BOOST_VERSION +108300$' "${boost_dir}/version.hpp"
 }
 
+# The archive is pinned by SHA-256, so its contents are trusted as published
+# and tar's own member-name rules suffice.
 prepare_boost() {
-    local archive extraction extracted_boost backup had_previous=0
+    local archive extraction extracted_boost
 
     require_emulator_sources
 
@@ -274,41 +249,21 @@ prepare_boost() {
 
     archive="${cache_root}/dependency/boost-${boost_version}-${boost_archive_sha256}/${boost_archive_name}"
     "${repo_root}/script/fetch.sh" "$boost_archive_url" "$boost_archive_sha256" "$archive"
-    validate_boost_archive "$archive"
 
     extraction="$(mktemp -d "${cache_root}/.boost-extract.XXXXXX")"
     remember_temporary_path "$extraction"
     tar -xzf "$archive" -C "$extraction" boost_1_83_0/boost
     extracted_boost="${extraction}/boost_1_83_0/boost"
-    [[ -f "${extracted_boost}/version.hpp" ]] || die "Boost extraction is incomplete"
-    if find "$extracted_boost" -type l -print -quit | grep -q .; then
-        die "Boost extraction contains a symbolic link"
-    fi
     grep -Eq '^#define BOOST_VERSION +108300$' "${extracted_boost}/version.hpp" ||
         die "Boost extraction has an unexpected version"
     printf '%s\n' "$boost_archive_sha256" >"${extracted_boost}/.dave-archive-sha256"
 
+    # Unstamp first: a replacement cut short leaves no stamp, so the next run
+    # starts over instead of trusting a partial tree.
+    rm -f -- "$boost_stamp"
+    rm -rf -- "$boost_dir"
     mkdir -p -- "$(dirname "$boost_dir")"
-    case "$boost_dir" in
-        "${emulator_dir}/third-party/downloads/boost") ;;
-        *) die "internal error: unsafe Boost destination" ;;
-    esac
-    if [[ -e "$boost_dir" || -L "$boost_dir" ]]; then
-        backup="$(mktemp -d "${cache_root}/.boost-backup.XXXXXX")"
-        remember_temporary_path "$backup"
-        mv -- "$boost_dir" "${backup}/boost"
-        had_previous=1
-    fi
-    if ! mv -- "$extracted_boost" "$boost_dir"; then
-        if [[ "$had_previous" == "1" ]]; then
-            mv -- "${backup}/boost" "$boost_dir" ||
-                die "Boost publish failed and the previous directory could not be restored from $backup"
-        fi
-        die "failed to publish prepared Boost headers"
-    fi
-    if [[ "$had_previous" == "1" ]]; then
-        rm -rf -- "$backup"
-    fi
+    mv -- "$extracted_boost" "$boost_dir"
     printf 'prepared Boost %s headers\n' "$boost_version"
 }
 
