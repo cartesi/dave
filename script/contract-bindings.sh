@@ -33,14 +33,22 @@ readonly bindings=bindings-rs/src/contract stamp=bindings-rs/src/.bind-stamp
 # that build to the production sources.
 export FOUNDRY_TEST=.no-binding-tests FOUNDRY_SCRIPT=.no-binding-scripts
 
-# Both modules hash every production source root either one imports.
+# Both modules hash every production source root either one imports. A
+# missing root (machine/step before just machine::setup) is a setup gap, so
+# it reads as stale rather than as a checker failure.
+roots=(prt/contracts/src cartesi-rollups/contracts/src machine/step/src)
+for root in "${roots[@]}"; do
+    if [[ ! -d "${repo_root}/${root}" ]]; then
+        printf 'error: binding source root %s is missing\n' "$root" >&2
+        exit 1
+    fi
+done
 inputs() {
     cat -- "$self" "${repo_root}"/{prt,cartesi-rollups}/contracts/soldeer.lock &&
         forge --version &&
         forge config --json &&
-        (cd "$repo_root" &&
-            find prt/contracts/src cartesi-rollups/contracts/src machine/step/src \
-                -type f -name '*.sol' -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
+        (cd "$repo_root" && find "${roots[@]}" -type f -name '*.sol' -print0 |
+            LC_ALL=C sort -z | xargs -0 sha256sum)
 }
 
 current="$(inputs | sha256sum)" || {

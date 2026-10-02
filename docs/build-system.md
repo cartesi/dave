@@ -88,8 +88,9 @@ One script, `script/doctor.sh`, diagnoses every scope. The checkers it calls
 the machine provider) share one exit contract: `0` means healthy, `1` means a
 missing or stale setup artifact was diagnosed, and `2` means the checker could
 not determine the result. The doctor reports each verdict with its fix and
-exits with the worst one. It calls the checkers directly, never through Just,
-so it stays usable when Just itself is the suspected failure.
+exits with the worst one. It calls the checkers directly rather than through
+Just, so it stays usable when Just itself is the suspected failure; only the
+Forge pin comparison asks Just, and it degrades to a warning.
 
 `just doctor` covers build and pre-commit-check readiness, including the echo
 and yield images consumed by the standard Rust suite. The devnet bundle,

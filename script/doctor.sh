@@ -2,7 +2,8 @@
 # Diagnose a checkout without changing it. Each checker it calls exits 0 when
 # healthy, 1 when an artifact is missing or stale (a fix applies), and 2 when
 # it cannot decide; the doctor exits with the worst of those. Not set -e:
-# every check runs. It never needs Just, which may be what is broken.
+# every check runs. Only the forge pin comparison asks Just, which may be what
+# is broken, and it falls back to a warning.
 set -u
 
 repo_root="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)" || exit 2
