@@ -17,7 +17,7 @@ use alloy::{
 use alloy_chains::NamedChain;
 use alloy_transport::{TransportError, layers::RetryBackoffLayer};
 use anyhow::{Context, Result, ensure};
-use log::{debug, error, trace};
+use log::{debug, error, trace, warn};
 use std::{fs, str::FromStr, time::Duration};
 
 pub(crate) async fn create_signer(
@@ -137,14 +137,21 @@ pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> DynProv
     provider.erased()
 }
 
-/// A labeled, fully specified request bound for the lane; the label
-/// names the on-chain verb for logs and reports.
+/// A labeled request bound for the lane; the label names the on-chain verb
+/// for logs and reports. The lane fills nonce, fees and, unless the request
+/// pins one, the gas limit.
 pub type LaneRequest = (String, TransactionRequest);
+
+/// Gas limit when estimation fails for a reason other than a revert. It
+/// covers every action's measured cost (the largest, a maximum-input leaf
+/// proof, is about 5.1M) and stays below the EIP-7825 transaction cap.
+const FALLBACK_GAS_LIMIT: u64 = 15_000_000;
 
 /// The node signer's stateless transaction lane.
 ///
 /// Nonces come from the account's mined count at the `latest` block,
-/// fees are the fresh market quote at every submission, and the
+/// fees are the fresh market quote at every submission, gas limits come
+/// from an estimate at `latest`, and the
 /// mempool (or block builder) stays the sole authority on duplicates
 /// and replacements: "already known" and "replacement underpriced"
 /// are benign verdicts, and a stale nonce means inclusion advanced
@@ -203,12 +210,12 @@ impl TransactionLane {
         Ok(report)
     }
 
-    /// Sign and submit an ordered wave of fully specified calls at
-    /// consecutive nonces from the mined count at latest. Position is
-    /// priority: nonce order means the head includes first or nothing
-    /// does. Pool verdicts are per transaction and never abort the
-    /// tail; the outer error covers only failing to observe the chain
-    /// or to sign.
+    /// Sign and submit an ordered wave of calls at consecutive nonces
+    /// from the mined count at latest. Position is priority: nonce order
+    /// means the head includes first or nothing does. A call that reverts
+    /// at latest is not sent and takes no nonce. Pool verdicts are per
+    /// transaction and never abort the tail; the outer error covers only
+    /// failing to observe the chain or to sign.
     pub async fn submit_wave(&mut self, wave: Vec<LaneRequest>) -> Result<Vec<SendReport>> {
         for (label, request) in &wave {
             self.validate(label, request)?;
@@ -222,8 +229,20 @@ impl TransactionLane {
         );
 
         let mut reports = Vec::with_capacity(wave.len());
-        for (offset, (label, request)) in wave.into_iter().enumerate() {
-            let nonce = base + offset as u64;
+        let mut nonce = base;
+        for (label, mut request) in wave {
+            if request.gas.is_none() {
+                let Some(gas) = self.gas_limit(&label, &request).await else {
+                    reports.push(SendReport {
+                        label,
+                        nonce,
+                        tx_hash: B256::ZERO,
+                        verdict: SendVerdict::Reverts,
+                    });
+                    continue;
+                };
+                request.set_gas_limit(gas);
+            }
             let (raw, tx_hash) = self
                 .sign(request, nonce, fees)
                 .await
@@ -274,15 +293,35 @@ impl TransactionLane {
                 tx_hash,
                 verdict,
             });
+            nonce += 1;
         }
         Ok(reports)
     }
 
+    /// The estimate at latest with half again as headroom, or `None` when
+    /// the call reverts there. State can move before inclusion (a dangling
+    /// commitment to re-pair, a refund that was zero), and unused gas is
+    /// not charged. Any other estimation failure falls back to the flat
+    /// limit: a flaky endpoint must not hold back a dispute action, and a
+    /// real problem such as an underfunded signer still fails loudly at
+    /// submission.
+    async fn gas_limit(&self, label: &str, request: &TransactionRequest) -> Option<u64> {
+        let mut probe = request.clone();
+        probe.set_from(self.signer_address);
+        match self.read_provider.estimate_gas(probe).latest().await {
+            Ok(estimate) => Some(estimate.saturating_add(estimate / 2)),
+            Err(error) if is_revert(&error) => {
+                warn!("{label} is not sent: it reverts at latest: {error}");
+                None
+            }
+            Err(error) => {
+                warn!("{label} gas estimation failed, using {FALLBACK_GAS_LIMIT}: {error}");
+                Some(FALLBACK_GAS_LIMIT)
+            }
+        }
+    }
+
     fn validate(&self, label: &str, request: &TransactionRequest) -> Result<()> {
-        ensure!(
-            request.gas.is_some(),
-            "{label} transaction has no explicit gas limit"
-        );
         ensure!(
             request.nonce.is_none(),
             "{label} transaction must leave nonce ownership to the transaction lane"
@@ -358,6 +397,9 @@ pub enum SendVerdict {
     AlreadyKnown,
     Underpriced,
     Stale,
+    /// Not sent: the call reverts at latest. The report has a zero hash,
+    /// and its nonce went to the next request.
+    Reverts,
     Failed,
 }
 
@@ -372,6 +414,12 @@ enum SubmissionErrorKind {
 fn normalize_fees(mut fees: Eip1559Estimation) -> Eip1559Estimation {
     fees.max_fee_per_gas = fees.max_fee_per_gas.max(fees.max_priority_fee_per_gas);
     fees
+}
+
+fn is_revert(error: &TransportError) -> bool {
+    error
+        .as_error_resp()
+        .is_some_and(|payload| payload.message.to_ascii_lowercase().contains("revert"))
 }
 
 fn classify_submission_error(error: &TransportError) -> SubmissionErrorKind {
@@ -407,8 +455,10 @@ fn classify_submission_error(error: &TransportError) -> SubmissionErrorKind {
 mod tests {
     use super::*;
     use alloy::{
+        consensus::Transaction,
         network::TransactionBuilder,
         node_bindings::Anvil,
+        primitives::Bytes,
         providers::{ProviderBuilder, ext::AnvilApi},
         rpc::json_rpc::ErrorPayload,
         rpc::types::TransactionRequest,
@@ -615,6 +665,42 @@ mod tests {
         assert_ne!(remainder[0].verdict, SendVerdict::Failed);
         provider.anvil_mine(Some(1), None).await?;
         assert_eq!(nonces(&provider, signer).await?, (2, 2));
+        Ok(())
+    }
+
+    /// An unpinned request is sized from an estimate at latest; a call that
+    /// reverts there is reported, not sent, and leaves its nonce to the
+    /// next request.
+    #[tokio::test]
+    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
+    async fn estimates_gas_and_skips_reverting_calls() -> Result<()> {
+        let (_anvil, provider, mut lane, signer) = spawn_lane().await?;
+        let reverter = Address::repeat_byte(0xee);
+        // PUSH1 0, PUSH1 0, REVERT
+        provider
+            .anvil_set_code(
+                reverter,
+                Bytes::from_static(&[0x60, 0x00, 0x60, 0x00, 0xfd]),
+            )
+            .await?;
+        let unpinned = |to| TransactionRequest::default().with_to(to);
+
+        let reports = lane
+            .submit_wave(vec![
+                ("reverts".to_string(), unpinned(reverter)),
+                ("pays".to_string(), unpinned(Address::repeat_byte(0x11))),
+            ])
+            .await?;
+        assert_eq!(
+            verdicts(&reports),
+            vec![(0, SendVerdict::Reverts), (0, SendVerdict::Submitted)]
+        );
+        assert_eq!(nonces(&provider, signer).await?, (0, 1));
+        let sent = provider
+            .get_transaction_by_hash(reports[1].tx_hash)
+            .await?
+            .context("the payment is pending")?;
+        assert_eq!(sent.gas_limit(), 21_000 + 21_000 / 2);
         Ok(())
     }
 

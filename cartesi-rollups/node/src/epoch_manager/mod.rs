@@ -12,7 +12,7 @@ use log::{debug, info, trace};
 use std::{sync::Arc, time::Duration};
 
 use crate::chain::Chain;
-use crate::provider::{LaneRequest, TransactionLane};
+use crate::provider::{LaneRequest, SendReport, TransactionLane};
 use crate::storage::{
     Epoch, LeafProof as StoredLeafProof, MachineValidityProof as StoredMachineValidityProof,
     Storage,
@@ -20,7 +20,7 @@ use crate::storage::{
 use crate::sync::ShutdownSignal;
 use crate::{
     hero::{Hero, HeroTick, TournamentResult},
-    tournament::{ArenaSender, gas_limit},
+    tournament::ArenaSender,
 };
 use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 
@@ -38,6 +38,17 @@ struct EpochTick {
     epoch: u64,
     wave: Vec<LaneRequest>,
     done: bool,
+}
+
+/// One tick's result: whether it completed an epoch, and the lane's report
+/// on each request it sent.
+pub(crate) struct Ticked {
+    pub done: bool,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the harness asserts no honest call reverts")
+    )]
+    pub reports: Vec<SendReport>,
 }
 
 impl<AS: ArenaSender> EpochManager<AS> {
@@ -65,8 +76,8 @@ impl<AS: ArenaSender> EpochManager<AS> {
         while !shutdown.is_requested() {
             match self.tick(&chain).await {
                 // Catch up completed historical epochs without a polling sleep.
-                Ok(true) => continue,
-                Ok(false) => {}
+                Ok(Ticked { done: true, .. }) => continue,
+                Ok(_) => {}
                 Err(e) => log::warn!("epoch tick failed, retrying next tick: {e:#}"),
             }
             tokio::select! { biased;
@@ -77,10 +88,14 @@ impl<AS: ArenaSender> EpochManager<AS> {
         Ok(())
     }
 
-    pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<bool> {
+    pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<Ticked> {
         let Some(tick) = self.plan_tick(chain).await? else {
-            return Ok(false);
+            return Ok(Ticked {
+                done: false,
+                reports: Vec::new(),
+            });
         };
+        let mut reports = Vec::new();
         if tick.done {
             assert!(
                 tick.wave.is_empty(),
@@ -94,12 +109,16 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 tick.epoch
             );
         } else if !tick.wave.is_empty() {
-            self.transaction_lane
+            reports = self
+                .transaction_lane
                 .submit_wave(tick.wave)
                 .await
                 .map_err(crate::hero::error::ReactError::from)?;
         }
-        Ok(tick.done)
+        Ok(Ticked {
+            done: tick.done,
+            reports,
+        })
     }
 
     async fn plan_tick(&mut self, chain: &Chain) -> Result<Option<EpochTick>> {
@@ -265,7 +284,6 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 info!("submit sentry claim {} for epoch {}", claim, epoch_number);
                 let request = dave_consensus
                     .submitSentryClaim(epoch_number, claim)
-                    .gas(gas_limit())
                     .into_transaction_request();
                 return Ok(Some(("submitSentryClaim".to_string(), request)));
             }
@@ -344,7 +362,6 @@ impl<AS: ArenaSender> EpochManager<AS> {
                         can_stage.epochNumber,
                         to_machine_validity_proof(settlement.machine_validity_proof),
                     )
-                    .gas(gas_limit())
                     .into_transaction_request();
                 return Ok(Some(("stageTournamentResult".to_string(), request)));
             }
@@ -400,7 +417,6 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     );
                     let request = dave_consensus
                         .acceptStagedTournamentResult(can_accept.epochNumber)
-                        .gas(gas_limit())
                         .into_transaction_request();
                     return Ok(Some(("acceptStagedTournamentResult".to_string(), request)));
                 }
@@ -653,7 +669,7 @@ mod tests {
         push_refund_tick(&rpc, 30, 2, us);
         push_head(&rpc, 31);
         push_bond(&rpc, 3, Address::ZERO);
-        assert!(!restarted.tick(&chain).await.unwrap());
+        assert!(!restarted.tick(&chain).await.unwrap().done);
         assert_eq!(
             restarted
                 .storage
@@ -666,7 +682,7 @@ mod tests {
 
         // Once the payment is final the real tick advances the durable cursor.
         push_refund_tick(&rpc, 32, 3, Address::ZERO);
-        assert!(restarted.tick(&chain).await.unwrap());
+        assert!(restarted.tick(&chain).await.unwrap().done);
         drop(restarted);
         let (mut next, chain, rpc) = manager(dir.path());
         assert_eq!(
@@ -691,7 +707,7 @@ mod tests {
         // Ingestion can be ahead of the head sampled by this tick. Even a final
         // refund cannot retire the epoch before this observation sees settlement.
         push_refund_tick(&rpc, 19, 3, Address::ZERO);
-        assert!(!manager.tick(&chain).await.unwrap());
+        assert!(!manager.tick(&chain).await.unwrap().done);
         assert_eq!(
             manager
                 .storage
@@ -702,7 +718,7 @@ mod tests {
             0
         );
         push_refund_tick(&rpc, 20, 3, Address::ZERO);
-        assert!(manager.tick(&chain).await.unwrap());
+        assert!(manager.tick(&chain).await.unwrap().done);
         assert_eq!(
             manager
                 .storage

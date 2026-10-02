@@ -25,7 +25,6 @@ use log::{info, trace};
 use crate::chain::{Chain, ChainHead};
 use crate::provider::LaneRequest;
 use crate::storage::Epoch;
-use crate::tournament::gas_limit;
 use cartesi_prt_contracts::tournament;
 
 /// ITournament.BondDisposition, by declaration order.
@@ -108,10 +107,7 @@ pub async fn plan_recovery(
         }
 
         info!("plan bond recovery for tournament {tournament}");
-        let request = contract
-            .tryRecoveringBond()
-            .gas(gas_limit())
-            .into_transaction_request();
+        let request = contract.tryRecoveringBond().into_transaction_request();
         tick.wave.push(("tryRecoveringBond".to_string(), request));
     }
 

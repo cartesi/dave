@@ -7,7 +7,8 @@
 //! mined only here. A round ticks the honest node's reader, runner and
 //! epoch manager in lib.rs order and mines its wave into its own block.
 //! Every mined block's receipts are checked, so an honest transaction that
-//! reverts fails the test even though the node never estimates gas.
+//! reverts fails the test, and so does one the lane declines to send
+//! because it already reverts at latest.
 //!
 //! The manager logs and drops dispute, settlement and refund planning
 //! errors, so honest correctness is asserted through outcomes on chain,
@@ -46,7 +47,7 @@ use crate::{
     epoch_manager::EpochManager,
     hero::Hero,
     machine_runner::MachineRunner,
-    provider::TransactionLane,
+    provider::{SendVerdict, TransactionLane},
     storage::Storage,
     tournament::EthArenaSender,
 };
@@ -97,8 +98,8 @@ impl World {
             .context("anvil has no head")?;
         provider.anvil_set_time(head.header.timestamp).await?;
         provider.anvil_set_block_timestamp_interval(1).await?;
-        // Every node call carries a fixed 15M gas limit; let a whole wave
-        // fit one block.
+        // Gas limits are half again their estimates, 15M on fallback; let a
+        // whole wave fit one block.
         provider.anvil_set_block_gas_limit(1_000_000_000).await?;
 
         let operator = wallet_provider(&anvil, OPERATOR);
@@ -562,7 +563,17 @@ impl Node {
     pub async fn tick(&mut self, world: &World) -> Result<()> {
         self.reader.tick(&world.chain).await?;
         self.runner.process_rollup()?;
-        self.manager.tick(&world.chain).await?;
+        let ticked = self.manager.tick(&world.chain).await?;
+        let reverting: Vec<_> = ticked
+            .reports
+            .iter()
+            .filter(|report| report.verdict == SendVerdict::Reverts)
+            .map(|report| report.label.as_str())
+            .collect();
+        ensure!(
+            reverting.is_empty(),
+            "honest actions revert at latest: {reverting:?}"
+        );
         Ok(())
     }
 

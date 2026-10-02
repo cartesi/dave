@@ -20,18 +20,6 @@ pub type MachineProof = Vec<u8>;
 use crate::merkle::{Digest, MerkleProof};
 use cartesi_prt_contracts::tournament;
 
-/// Default gas limit for refundable tournament calls (body + refund modifier overhead;
-/// sealInnerMatchAndCreateInnerTournament also creates a contract and needs more).
-/// Override with `GAS_LIMIT` env var if needed.
-const DEFAULT_GAS_LIMIT: u64 = 15_000_000;
-
-pub(crate) fn gas_limit() -> u64 {
-    std::env::var("GAS_LIMIT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_GAS_LIMIT)
-}
-
 #[derive(Clone, Debug)]
 pub struct EthArenaSender {
     read_provider: DynProvider,
@@ -156,7 +144,6 @@ impl ArenaSender for EthArenaSender {
                 right_child.into(),
             )
             .value(bond_value)
-            .gas(gas_limit())
             .into_transaction_request();
         ("joinTournament".to_string(), request)
     }
@@ -179,7 +166,6 @@ impl ArenaSender for EthArenaSender {
                 new_left_node.into(),
                 new_right_node.into(),
             )
-            .gas(gas_limit())
             .into_transaction_request();
         ("advanceMatch".to_string(), request)
     }
@@ -206,7 +192,6 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_proof.node.into(),
                 initial_hash_siblings,
             )
-            .gas(gas_limit())
             .into_transaction_request();
         (
             "sealInnerMatchAndCreateInnerTournament".to_string(),
@@ -224,7 +209,6 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .winInnerTournament(child_tournament, left_node.into(), right_node.into())
-            .gas(gas_limit())
             .into_transaction_request();
         ("winInnerTournament".to_string(), request)
     }
@@ -239,7 +223,6 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .winMatchByTimeout(match_id.into(), left_node.into(), right_node.into())
-            .gas(gas_limit())
             .into_transaction_request();
         ("winMatchByTimeout".to_string(), request)
     }
@@ -266,7 +249,6 @@ impl ArenaSender for EthArenaSender {
                 initial_hash_proof.node.into(),
                 initial_hash_siblings,
             )
-            .gas(gas_limit())
             .into_transaction_request();
         ("sealLeafMatch".to_string(), request)
     }
@@ -287,7 +269,6 @@ impl ArenaSender for EthArenaSender {
                 right_node.into(),
                 Bytes::from(proofs),
             )
-            .gas(gas_limit())
             .into_transaction_request();
         ("winLeafMatch".to_string(), request)
     }
@@ -296,7 +277,6 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .eliminateMatchByTimeout(match_id.into())
-            .gas(gas_limit())
             .into_transaction_request();
         ("eliminateMatchByTimeout".to_string(), request)
     }
@@ -309,7 +289,6 @@ impl ArenaSender for EthArenaSender {
         let tournament = tournament::Tournament::new(tournament, &self.read_provider);
         let request = tournament
             .eliminateInnerTournament(inner_tournament)
-            .gas(gas_limit())
             .into_transaction_request();
         ("eliminateInnerTournament".to_string(), request)
     }

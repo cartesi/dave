@@ -318,23 +318,23 @@ Error handling and observability:
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
 4. Logging is unstructured and inconsistent between crates.
-5. Every tournament and settlement request carries the configurable
-   `15_000_000` gas default. A pool may require balance for
-   `gas_limit * max_fee_per_gas + value`, not expected gas use; join value is
-   therefore additional to the fee envelope. A batch needs enough balance for
-   its cumulative fee envelopes and values, including nested join bonds.
-   Per-verb limits and a calibrated operating funding floor remain pre-mainnet
-   work.
-6. The lane does not observe receipts or mined revert reasons. Revert protection
-   at the submission endpoint may reject stale or racing transactions before
-   inclusion, but the node neither requires that service nor detects a
-   deterministic self-authored revert. Because reverted state remains
-   unchanged, the same intent may be rebuilt and paid for again each tick.
+5. The lane sets each gas limit at half again its estimate at latest, or 15M
+   when estimation fails other than by a revert. A pool may require balance
+   for `gas_limit * max_fee_per_gas + value`, not expected gas use; join value
+   is therefore additional to the fee envelope. A batch needs enough balance
+   for its cumulative fee envelopes and values, including nested join bonds.
+   A calibrated operating funding floor remains pre-mainnet work.
+6. The lane does not observe receipts or mined revert reasons. Its estimate
+   runs the call at latest first, so a call that already reverts there is not
+   sent: a deterministic self-authored revert costs nothing, is logged each
+   tick, and fails the node harness. A call that passes the estimate and
+   then loses a race before inclusion is still paid for; revert protection at
+   the submission endpoint may catch that, but the node does not require it.
    The lane also does not remember a pending transaction's fees: a
    later, different intent at the same mined nonce may wait until the earlier
    transaction mines, drops, or becomes replaceable at the fresh market quote.
    Operation assumes that this happens within the dispute clock budget.
-   Preflight or repeated-intent escalation remains pre-mainnet work.
+   Repeated-intent escalation remains pre-mainnet work.
 
 Structure:
 
