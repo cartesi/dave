@@ -1,98 +1,18 @@
-local Hash = require "cryptography.hash"
-local MerkleTree = require "cryptography.merkle_tree"
-local blockchain_constants = require "blockchain.constants"
+local PlayerSender = require "player.sender"
 local blockchain_utils = require "blockchain.utils"
-local bint = require 'utils.bint' (256) -- use 256-bit unsigned integers
 
-local function quote_args(args, not_quote)
-    local quoted_args = {}
-    for _, v in ipairs(args) do
-        if type(v) == "table" and (getmetatable(v) == Hash or getmetatable(v) == MerkleTree) then
-            if not_quote then
-                table.insert(quoted_args, v:hex_string())
-            else
-                table.insert(quoted_args, '"' .. v:hex_string() .. '"')
-            end
-        elseif type(v) == "table" and getmetatable(v) == bint then
-            if not_quote then
-                table.insert(quoted_args, tostring(v))
-            else
-                table.insert(quoted_args, '"' .. tostring(v) .. '"')
-            end
-        elseif type(v) == "table" then
-            if v._tag == "tuple" then
-                local qa = quote_args(v, true)
-                local ca = table.concat(qa, ",")
-                local sb = "'(" .. ca .. ")'"
-                table.insert(quoted_args, sb)
-            else
-                local qa = quote_args(v, true)
-                local ca = table.concat(qa, ",")
-                local sb = "'[" .. ca .. "]'"
-                table.insert(quoted_args, sb)
-            end
-        elseif not_quote then
-            table.insert(quoted_args, tostring(v))
-        else
-            table.insert(quoted_args, '"' .. v .. '"')
-        end
-    end
-
-    return quoted_args
-end
-
-
-local Sender = {}
+-- The harness's own account: it deploys the app, adds inputs, and mines,
+-- sending through the sybil's cast transport.
+local Sender = setmetatable({}, { __index = PlayerSender })
 Sender.__index = Sender
 
 function Sender:new(input_box_address, dave_app_factory_address, app_contract_address, pk, endpoint)
-    pk = pk or blockchain_constants.pks[1]
-    endpoint = endpoint or blockchain_constants.endpoint
-    local sender = {
-        pk = pk,
-        endpoint = endpoint,
-
-        input_box_address = input_box_address,
-        dave_app_factory_address = dave_app_factory_address,
-        app_contract_address = app_contract_address,
-    }
-
-    setmetatable(sender, self)
+    local sender = PlayerSender.new(self, assert(pk), nil, assert(endpoint))
+    sender.input_box_address = input_box_address
+    sender.dave_app_factory_address = dave_app_factory_address
+    sender.app_contract_address = app_contract_address
     return sender
 end
-
-
-local cast_send_template = [[
-cast send --private-key "%s" --rpc-url "%s" --value "%s" "%s" "%s" %s 2>&1
-]]
-
-function Sender:_send_tx(destination, sig, args, value)
-    value = value or bint.zero()
-
-    local quoted_args = quote_args(args)
-    local args_str = table.concat(quoted_args, " ")
-
-    local cmd = string.format(
-        cast_send_template,
-        self.pk,
-        self.endpoint,
-        value,
-        destination,
-        sig,
-        args_str
-    )
-
-    local handle = io.popen(cmd)
-    assert(handle)
-
-    local ret = handle:read "*a"
-    if ret:find "Error" then
-        handle:close()
-        error(string.format("Send transaction `%s` reverted:\n%s", sig, ret))
-    end
-    handle:close()
-end
-
 
 function Sender:tx_add_input(payload)
     local sig = "addInput(address,bytes)"
