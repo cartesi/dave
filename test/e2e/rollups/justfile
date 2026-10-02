@@ -1,8 +1,6 @@
 ANVIL_LOAD_PATH := "../../../cartesi-rollups/contracts/state.json"
 DEPLOYMENTS_DIR := "../../../cartesi-rollups/contracts/deployments/31337"
 
-WEB3_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-
 set positional-arguments
 
 # diagnose shared integration inputs and retained E2E forensic state
@@ -21,21 +19,13 @@ preflight PROGRAM SCENARIO:
 # isolated parallel run (own anvil port, _state-<id>, dave-<id>.log,
 # anvil-<id>.log, _oracle-<id>); Dave:new resets the instance's own
 # state dir, so no recipe-level rm - it would race a parallel sibling.
-# Set ANVIL_DUMP_PATH to capture a state dump; it is opt-in because
-# the flag pair it enables (--dump-state --preserve-historical-states)
-# makes anvil retain every historical state in memory, which under
-# tens of thousands of fast-forwarded blocks ballooned five parallel
-# lanes into swap (the 2026-07-10 battery freezes).
 # run one PRT rollups scenario: just test <program> <scenario>
 test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
-  WEB3_PRIVATE_KEY={{WEB3_PRIVATE_KEY}} \
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
   TEMPLATE_MACHINE=`realpath "../../../test/programs/$1/machine-image"` \
   TEMPLATE_MACHINE_HASH=`cartesi-machine-stored-hash "../../../test/programs/$1/machine-image"` \
   DAVE_APP_FACTORY=`cat {{DEPLOYMENTS_DIR}}/DaveAppFactory.txt` \
   INPUT_BOX=`cat {{DEPLOYMENTS_DIR}}/InputBox.txt` \
-  ERC20_PORTAL=`cat {{DEPLOYMENTS_DIR}}/Erc20Portal.txt` \
-  ERC20_TOKEN=`cat {{DEPLOYMENTS_DIR}}/TestFungibleToken.txt` \
   lua5.4 "scenarios/$2.lua"
 
 # run PRT rollups echo test

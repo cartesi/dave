@@ -21,7 +21,7 @@ local function assert_port_free(port)
 end
 
 -- spawn an anvil node with 40 accounts, auto-mine, and finalize block at height N-2
-local function start_blockchain(anvil_load_path, anvil_dump_path)
+local function start_blockchain(anvil_load_path)
     assert_port_free(blockchain_data.port)
     print(string.format("Starting blockchain with %d accounts...", default_account_number))
 
@@ -37,12 +37,6 @@ local function start_blockchain(anvil_load_path, anvil_dump_path)
     if anvil_load_path then
         table.insert(anvil_args, "--load-state")
         table.insert(anvil_args, anvil_load_path)
-    end
-
-    if anvil_dump_path then
-        table.insert(anvil_args, "--dump-state")
-        table.insert(anvil_args, anvil_dump_path)
-        table.insert(anvil_args, "--preserve-historical-states")
     end
 
     local cmd = string.format(
@@ -74,10 +68,10 @@ end
 local Blockchain = {}
 Blockchain.__index = Blockchain
 
-function Blockchain.new(anvil_load_path, anvil_dump_path)
+function Blockchain.new(anvil_load_path)
     local blockchain = {}
 
-    local handle = start_blockchain(anvil_load_path, anvil_dump_path)
+    local handle = start_blockchain(anvil_load_path)
     blockchain.pks, blockchain.endpoint = capture_blockchain_data()
 
     blockchain._handle = handle

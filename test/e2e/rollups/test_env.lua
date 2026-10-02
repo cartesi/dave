@@ -10,11 +10,8 @@ local PatchedCommitmentBuilder = require "runners.helpers.patched_commitment"
 local CommitmentBuilder = require "computation.commitment"
 local uint256 = require "utils.bint" (256)
 
--- anvil deployment state dump; the dump is opt-in (see the justfile:
--- its flag pair makes anvil retain all historical states in memory)
+-- the devnet state anvil starts from
 local ANVIL_LOAD_PATH = assert(os.getenv("ANVIL_LOAD_PATH"))
-local ANVIL_DUMP_PATH = os.getenv("ANVIL_DUMP_PATH")
-if ANVIL_DUMP_PATH == "" then ANVIL_DUMP_PATH = nil end
 
 -- machine template hash
 local TEMPLATE_MACHINE = assert(os.getenv("TEMPLATE_MACHINE"))
@@ -46,7 +43,6 @@ local ECHO_MSG = "0x48656c6c6f2076726f6d204461766521"
 
 local Env = {
     anvil_load_path = ANVIL_LOAD_PATH,
-    anvil_dump_path = ANVIL_DUMP_PATH,
 
     input_box_address = INPUT_BOX_ADDRESS,
     dave_app_factory_address = DAVE_APP_FACTORY_ADDRESS,
@@ -76,7 +72,7 @@ function Env.spawn_blockchain(inputs)
     -- leave a partial store the exists() gate would adopt).
     os.execute("rm -rf " .. Machine.default_snapshot_scratch)
 
-    local blockchain = Blockchain.new(ANVIL_LOAD_PATH, ANVIL_DUMP_PATH)
+    local blockchain = Blockchain.new(ANVIL_LOAD_PATH)
     Env.blockchain = blockchain
     Env.sentries = { Dave.wallet_address }
     Env.reader = Reader:new(INPUT_BOX_ADDRESS, DAVE_APP_FACTORY_ADDRESS, TEMPLATE_MACHINE_HASH, Env.sentries, SALT,
