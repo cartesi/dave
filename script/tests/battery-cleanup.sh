@@ -36,7 +36,11 @@ if find "$fixture/e2e" -maxdepth 1 \
     exit 1
 fi
 
-[[ "$(wc -l <"$fixture/e2e/_battery/results.txt" | tr -d ' ')" -eq 25 ]]
-[[ "$(find "$fixture/e2e" -maxdepth 1 -name 'dave-*.log' | wc -l | tr -d ' ')" -eq 25 ]]
+# One result and one node log per battery scenario, counted from the
+# battery itself so a cut or an addition cannot leave this check stale.
+scenarios="$(awk '/^SCENARIOS=\(/ { listed = 1; next } listed && /^\)/ { exit } listed && /"/ { n++ } END { print n + 0 }' "$repo_root/test/e2e/rollups/battery.sh")"
+[[ "$scenarios" -gt 0 ]]
+[[ "$(wc -l <"$fixture/e2e/_battery/results.txt" | tr -d ' ')" -eq "$scenarios" ]]
+[[ "$(find "$fixture/e2e" -maxdepth 1 -name 'dave-*.log' | wc -l | tr -d ' ')" -eq "$scenarios" ]]
 
 echo "battery cleanup tests: passed"
