@@ -62,20 +62,19 @@ as a dependency of
 every cargo recipe, which forced binding-crate rebuilds on every build and
 made pure-Rust iteration needlessly slow; do not reintroduce that.
 
-One shared generator owns both modules' filters and stamp contract. The digest
-binds the generator and exact `forge bind` arguments, the Forge executable and
-version, relevant effective compiler configuration, the module's Soldeer lock,
-its local sources, configured dependency roots, and imported PRT and step
-source roots where applicable. It deliberately excludes Just orchestration,
-build caches, compiler output, and the generated bindings themselves.
+One shared generator (`script/contract-bindings.sh`) owns both modules'
+filters and stamp. The stamp hashes the generator itself (so the exact
+`forge bind` arguments), the Forge version, the whole effective Forge
+configuration, both Soldeer locks, and every Solidity file under the PRT,
+Rollups, and step production source roots. It is broad on purpose: stale
+bindings fail loudly at compile or test time, so the stamp only spares an
+unchanged `forge bind`, and a needless regeneration costs seconds. It excludes
+Just orchestration, build caches, compiler output, and the generated bindings
+themselves.
 
-Binding generation disables the Foundry test and script roots explicitly, so
-an unrelated fixture or deployment-script edit neither recompiles contracts nor
-invalidates Rust bindings. The digest hashes the local production source root
-and imported production content, but retains every effective remapping string:
-even an unused remapping changes the metadata bytecode embedded by Forge. The
-Rollups-only `prt-contracts-test` target content is therefore excluded while
-its remapping remains part of the effective configuration.
+Binding generation points the Foundry test and script roots at nothing, so a
+fixture or deployment-script edit neither recompiles contracts nor invalidates
+Rust bindings.
 
 The filters expose only production contract types: `CartesiStateTransition`,
 `Tournament`, and `MultiLevelTournamentFactory` for PRT, and the concrete and
