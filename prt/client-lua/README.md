@@ -28,9 +28,6 @@ Layout:
   the single transaction dispatch seam.
 - `player/actor.lua` - the orchestration loop: observe, assemble, plan,
   fulfill, and dispatch at most one mutation per tick.
-- `player/reader.lua` - the structural log reader; production reads go
-  through `semantic_reader.lua`, this one feeds the e2e harness's
-  introspection seam (`test/e2e/rollups/dave/reader.lua`).
 - `player/sender.lua` - transaction transport.
 - `cryptography/` - keccak hashing and incremental merkle builders.
 - `utils/` - process and time helpers used by the test harness.

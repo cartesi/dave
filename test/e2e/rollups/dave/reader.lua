@@ -1,9 +1,7 @@
 local eth_abi = require "utils.eth_abi"
 local blockchain_constants = require "blockchain.constants"
 local Hash = require "cryptography.hash"
-local InnerReader = require "player.reader"
 local uint256 = require "utils.bint" (256)
-local time = require "utils.time"
 
 local function parse_topics(json)
     local _, _, topics = json:find(
@@ -65,15 +63,12 @@ end
 local Reader = {}
 Reader.__index = Reader
 
-function Reader:new(input_box_address, dave_app_factory_address, template_hash, sentries, salt, endpoint, genesis)
-    genesis = genesis or 0
+function Reader:new(input_box_address, dave_app_factory_address, template_hash, sentries, salt, endpoint)
     endpoint = endpoint or blockchain_constants.endpoint
     local reader = {
         input_box_address = input_box_address,
         dave_app_factory_address = dave_app_factory_address,
         endpoint = assert(endpoint),
-        inner_reader = InnerReader:new(endpoint),
-        genesis = genesis,
     }
 
     setmetatable(reader, self)
@@ -84,9 +79,10 @@ function Reader:new(input_box_address, dave_app_factory_address, template_hash, 
     return reader
 end
 
+-- Anvil answers for the whole chain at once, so there is no range paging.
 local cast_logs_template = [==[
 cast rpc -r "%s" eth_getLogs \
-    '[{"fromBlock":"0x%x", "toBlock":"0x%x", "address": "%s", "topics": [%s]}]' -w  2>&1
+    '[{"fromBlock": "earliest", "toBlock": "latest", "address": "%s", "topics": [%s]}]' -w  2>&1
 ]==]
 
 function Reader:_read_logs(contract_address, sig, topics, data_sig)
@@ -107,62 +103,23 @@ function Reader:_read_logs(contract_address, sig, topics, data_sig)
     end
     local topic_str = table.concat(topics_strs, ", ")
 
-    local latest
-    do
-        local cmd = string.format("cast block-number --rpc-url %s", self.endpoint)
-        local handle = io.popen(cmd)
-        assert(handle)
-        latest = handle:read()
-        local tail = handle:read "*a"
-        if latest:find "Error" or tail:find "error" then
-            handle:close()
-            error(string.format("Call `%s` failed:\n%s%s", cmd, latest, tail))
-        end
-        handle:close()
-        latest = tonumber(latest)
+    local cmd = string.format(
+        cast_logs_template,
+        self.endpoint,
+        contract_address,
+        topic_str
+    )
+
+    local handle = io.popen(cmd)
+    assert(handle)
+    local logs = handle:read "*a"
+    handle:close()
+
+    if logs:find "Error" then
+        error(string.format("Read logs `%s` failed:\n%s", sig, logs))
     end
 
-    local function call(from, to)
-        local cmd = string.format(
-            cast_logs_template,
-            self.endpoint,
-            from,
-            to,
-            contract_address,
-            topic_str
-        )
-
-        local handle = io.popen(cmd)
-        assert(handle)
-        local logs = handle:read "*a"
-        handle:close()
-
-        if logs:find "Error" then
-            error(string.format("Read logs `%s` failed:\n%s", sig, logs))
-        end
-
-        local ret = parse_logs(logs, data_sig)
-        return ret
-    end
-
-    local ret = {}
-    local from = self.genesis
-    while true do
-        local to = math.min(from + 1000, latest)
-        local r = call(from, to)
-        for _, value in ipairs(r) do
-            table.insert(ret, value)
-        end
-
-        if to == latest then
-            break
-        end
-
-        from = to + 1
-        time.sleep_ms(500)
-    end
-
-    return ret
+    return parse_logs(logs, data_sig)
 end
 
 local cast_call_template = [==[
@@ -330,7 +287,7 @@ function Reader:read_match_deleted(tournament_address, match_id_hash)
     local sig = "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)"
     local data_sig = "(uint8,uint8)"
     local match_topic = match_id_hash and match_id_hash:hex_string() or false
-    local logs = self.inner_reader:_read_logs(
+    local logs = self:_read_logs(
         tournament_address,
         sig,
         { match_topic, false, false },
@@ -362,19 +319,32 @@ function Reader:read_match_deleted(tournament_address, match_id_hash)
 end
 
 function Reader:root_tournament_winner(address)
-    return self.inner_reader:root_tournament_winner(address)
+    local row = assert(self:_call(address,
+        "tournamentStanding()((uint8,bool,bool,bytes32,bytes32,bytes32,uint64,uint64))", {})[1],
+        "tournamentStanding returned nothing")
+    local standing, candidate, final_state = (plain_numbers(row):gsub("%s+", "")):match(
+        "^%((%d+),%a+,%a+,(0x%x+),(0x%x+),0x%x+,%d+,%d+%)$"
+    )
+    assert(standing, "could not decode tournamentStanding")
+    standing = tonumber(standing)
+    -- A finished root without a winner is a scenario failure, not a result.
+    assert(standing ~= 3, "root tournament failed with no winner")
+
+    return {
+        has_winner = standing == 2,
+        commitment = Hash:from_digest_hex(candidate),
+        final = Hash:from_digest_hex(final_state),
+    }
 end
 
 function Reader:commitment_exists(tournament, commitment)
-    local commitments = self.inner_reader:read_commitment_joined(tournament)
-
-    for _, log in ipairs(commitments) do
-        if log.root == commitment then
-            return true
-        end
-    end
-
-    return false
+    local joined = self:_read_logs(
+        tournament,
+        "CommitmentJoined(bytes32,bytes32,address)",
+        { commitment:hex_string(), false, false },
+        "(bytes32)"
+    )
+    return #joined > 0
 end
 
 function Reader:calculate_dave_app_address(template_hash, sentries, salt)

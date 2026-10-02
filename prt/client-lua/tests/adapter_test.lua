@@ -1,7 +1,6 @@
 local Adapter = require "player.adapter"
 local Domain = require "player.domain"
 local Fold = require "player.fold"
-local Reader = require "player.reader"
 local Hash = require "cryptography.hash"
 local Test = require "tests.testlib"
 
@@ -378,36 +377,6 @@ return {
         end)
     end),
 
-    Test.case("compatibility reader decodes authoritative kind", function()
-        local reader = Reader:new("unused")
-        function reader._call(_reader, _address, signature, arguments)
-            Test.equal(
-                signature,
-                "tournamentDescriptor()"
-                    .. "((bytes32,uint256,uint64,uint64,uint64,uint8,uint64,uint64))"
-            )
-            Test.equal(#arguments, 0)
-            return {
-                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,1,7,900)",
-            }
-        end
-
-        local constants = reader:read_constants(address(1))
-        Test.equal(constants.level, 2)
-        Test.equal(constants.kind, 1)
-        Test.equal(constants.log2_stride, 44)
-        Test.equal(constants.height, 48)
-
-        function reader._call()
-            return {
-                "(0x" .. string.rep("01", 32) .. ",3,44,48,2,9,7,900)",
-            }
-        end
-        Test.error_like("unknown tournament kind", function()
-            reader:read_constants(address(1))
-        end)
-    end),
-
     Test.case("ABI descriptor rejects height or extent 256", function()
         local root = address(1)
         local base_words = {
@@ -500,34 +469,6 @@ return {
         Test.error_like("standing 3 requires nonzero finishedAt", function()
             Adapter.observe_fold(transport, Fold.new(root), head())
         end)
-    end),
-
-    Test.case("legacy winner reader accepts the eight-field standing", function()
-        local candidate = digest(90)
-        local final_state = digest(91)
-        local reader = Reader:new("unused")
-        function reader._call(_reader, _address, signature, arguments)
-            Test.equal(
-                signature,
-                "tournamentStanding()"
-                    .. "((uint8,bool,bool,bytes32,bytes32,bytes32,uint64,uint64))"
-            )
-            Test.equal(#arguments, 0)
-            return {
-                string.format(
-                    "(2, false, true, %s, %s, %s, 42, 0)",
-                    candidate:hex_string(),
-                    final_state:hex_string(),
-                    Hash.zero:hex_string()
-                ),
-            }
-        end
-
-        local winner = reader:root_tournament_winner(address(1))
-        Test.equal(winner.has_winner, true)
-        Test.equal(winner.commitment, candidate)
-        Test.equal(winner.final, final_state)
-        Test.equal(winner.finished_at, nil)
     end),
 
     Test.case("phase and tournament-kind cross-product constructs domain variants", function()
