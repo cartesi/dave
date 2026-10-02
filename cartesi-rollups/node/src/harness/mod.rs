@@ -276,6 +276,40 @@ impl World {
             .collect())
     }
 
+    /// Joins, with the block each mined in.
+    pub async fn commitments_joined(
+        &self,
+        tournament: Address,
+    ) -> Result<Vec<(Tournament::CommitmentJoined, u64)>> {
+        let instance = self.tournament(tournament);
+        let filter = instance.CommitmentJoined_filter().from_block(0);
+        Ok(filter
+            .query()
+            .await?
+            .into_iter()
+            .map(|(event, log)| (event, log.block_number.unwrap_or_default()))
+            .collect())
+    }
+
+    /// Bond recoveries, with the block each mined in.
+    pub async fn bonds_recovered(
+        &self,
+        tournament: Address,
+    ) -> Result<Vec<(Tournament::BondRecovered, u64)>> {
+        let instance = self.tournament(tournament);
+        let filter = instance.BondRecovered_filter().from_block(0);
+        Ok(filter
+            .query()
+            .await?
+            .into_iter()
+            .map(|(event, log)| (event, log.block_number.unwrap_or_default()))
+            .collect())
+    }
+
+    pub async fn balance(&self, address: Address) -> Result<alloy::primitives::U256> {
+        Ok(self.provider.get_balance(address).await?)
+    }
+
     pub async fn inner_tournaments(
         &self,
         tournament: Address,

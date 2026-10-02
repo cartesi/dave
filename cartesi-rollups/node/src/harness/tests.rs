@@ -15,8 +15,8 @@ use cartesi_dave_contracts::dave_consensus::DaveConsensus::{
     acceptStagedTournamentResultCall, stageTournamentResultCall, submitSentryClaimCall,
 };
 use cartesi_prt_contracts::tournament::Tournament::{
-    MatchCreated, eliminateInnerTournamentCall, eliminateMatchByTimeoutCall, joinTournamentCall,
-    winInnerTournamentCall, winLeafMatchCall, winMatchByTimeoutCall,
+    MatchCreated, advanceMatchCall, eliminateInnerTournamentCall, eliminateMatchByTimeoutCall,
+    joinTournamentCall, winInnerTournamentCall, winLeafMatchCall, winMatchByTimeoutCall,
 };
 
 /// The largest payload whose EvmAdvance-encoded input fits the InputBox's
@@ -32,6 +32,7 @@ const CLAIM: FixedBytes<4> = FixedBytes(submitSentryClaimCall::SELECTOR);
 const STAGE: FixedBytes<4> = FixedBytes(stageTournamentResultCall::SELECTOR);
 const ACCEPT: FixedBytes<4> = FixedBytes(acceptStagedTournamentResultCall::SELECTOR);
 const WIN_TIMEOUT: FixedBytes<4> = FixedBytes(winMatchByTimeoutCall::SELECTOR);
+const ADVANCE: FixedBytes<4> = FixedBytes(advanceMatchCall::SELECTOR);
 const WIN_LEAF: FixedBytes<4> = FixedBytes(winLeafMatchCall::SELECTOR);
 const WIN_INNER: FixedBytes<4> = FixedBytes(winInnerTournamentCall::SELECTOR);
 const ELIMINATE_MATCH: FixedBytes<4> = FixedBytes(eliminateMatchByTimeoutCall::SELECTOR);
@@ -335,5 +336,171 @@ async fn the_node_collects_an_abandoned_child_tournament() -> Result<()> {
     assert_eq!(world.honest_calls(ELIMINATE_MATCH).len(), 1);
     assert_eq!(world.honest_calls(ELIMINATE_INNER).len(), 1);
     assert_eq!(world.sealed_epochs().await?.len(), 2);
+    Ok(())
+}
+
+/// The node is down for `blocks` blocks while the adversaries play on.
+async fn downtime(
+    world: &mut World,
+    adversaries: &mut [&mut Adversary],
+    blocks: usize,
+) -> Result<()> {
+    for _ in 0..blocks {
+        for adversary in adversaries.iter_mut() {
+            adversary.turn(world).await?;
+        }
+        world.mine(1).await?;
+    }
+    Ok(())
+}
+
+/// A restart in the middle of `simple`'s dispute (kill_join,
+/// kill_mid_match): once `ready` holds, the node plans its next action
+/// and dies; the action is lost with it, or mined just before. The node
+/// stays down for ten blocks while the adversary plays on, restarts over
+/// the same state, and still wins and settles; a repeated action would
+/// revert and fail the run.
+async fn restart_mid_dispute(
+    ready: impl FnMut(&World, &mut Storage) -> Result<bool>,
+    action: FixedBytes<4>,
+    mined_before_restart: bool,
+) -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+    node.run_with(&mut world, &mut [&mut adversary], DISPUTE_ROUNDS, ready)
+        .await?;
+
+    let before = world.honest_calls(action).len();
+    node.tick(&world).await?;
+    if mined_before_restart {
+        world.mine(1).await?;
+        assert_eq!(
+            world.honest_calls(action).len(),
+            before + 1,
+            "the action mined"
+        );
+    } else {
+        world.drop_pending().await?;
+    }
+    let mut node = node.restart(&world)?;
+    downtime(&mut world, &mut [&mut adversary], 10).await?;
+
+    node.run_with(
+        &mut world,
+        &mut [&mut adversary],
+        DISPUTE_ROUNDS,
+        |_, storage| completed(storage, 0),
+    )
+    .await?;
+    assert_eq!(world.honest_calls(WIN_LEAF).len(), 1);
+    assert_eq!(world.sealed_epochs().await?.len(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn restart_after_a_lost_join_wins_the_dispute() -> Result<()> {
+    restart_mid_dispute(|_, _| Ok(true), JOIN, false).await
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn restart_after_a_mined_join_wins_the_dispute() -> Result<()> {
+    restart_mid_dispute(|_, _| Ok(true), JOIN, true).await
+}
+
+/// After the node's first advance, its next tick advances again.
+fn advanced(world: &World, _: &mut Storage) -> Result<bool> {
+    Ok(!world.honest_calls(ADVANCE).is_empty())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn restart_after_a_lost_advance_wins_the_dispute() -> Result<()> {
+    restart_mid_dispute(advanced, ADVANCE, false).await
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn restart_after_a_mined_advance_wins_the_dispute() -> Result<()> {
+    restart_mid_dispute(advanced, ADVANCE, true).await
+}
+
+/// Three sybils (multi_sybil): two play, one joins and goes silent, so the
+/// root holds two concurrent matches, one of them sybil against sybil. The
+/// silent sybil is deleted by timeout without winning; the node wins the
+/// root, restarts after settlement, and recovers exactly one bond, paid to
+/// itself, before it joins the next root, which drains the root's balance.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn three_sybils_lose_and_the_node_recovers_its_bond_first() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut one = world.adversary(&node, 1, tail(1, 0xa1), Policy::Rational)?;
+    let mut two = world.adversary(&node, 2, tail(2, 0xb2), Policy::Rational)?;
+    let mut silent =
+        world.adversary(&node, 3, tail(3, 0xc3), Policy::StopAfter("joinTournament"))?;
+    for adversary in [&mut one, &mut two, &mut silent] {
+        adversary.turn(&mut world).await?;
+    }
+    let root = world.sealed_epochs().await?[0].tournament;
+
+    node.run_with(
+        &mut world,
+        &mut [&mut one, &mut two, &mut silent],
+        DISPUTE_ROUNDS,
+        |_, storage| completed(storage, 0),
+    )
+    .await?;
+    let mut node = node.restart(&world)?;
+    let next_root = world.sealed_epochs().await?[1].tournament;
+    node.run_until(&mut world, ROUNDS, |world, _| {
+        Ok(world.honest_calls(JOIN).len() > world.levels())
+    })
+    .await?;
+
+    let joined = world.commitments_joined(root).await?;
+    assert_eq!(joined.len(), 4, "the node and three sybils joined the root");
+    let commitment_of = |key: usize| {
+        joined
+            .iter()
+            .find(|(join, _)| join.submitter == world.address(key))
+            .map(|(join, _)| join.commitment)
+            .unwrap()
+    };
+    let (silent_commitment, honest_commitment) = (commitment_of(3), commitment_of(HONEST));
+    let silent_timeouts: Vec<_> = world
+        .matches_deleted(root)
+        .await?
+        .into_iter()
+        .filter(|deleted| {
+            let won = (deleted.one == silent_commitment && deleted.winnerCommitment == 1)
+                || (deleted.two == silent_commitment && deleted.winnerCommitment == 2);
+            (deleted.one == silent_commitment || deleted.two == silent_commitment)
+                && deleted.reason == TIMEOUT
+                && !won
+        })
+        .collect();
+    assert_eq!(silent_timeouts.len(), 1, "the silent sybil timed out once");
+
+    let recoveries = world.bonds_recovered(root).await?;
+    assert_eq!(recoveries.len(), 1, "exactly one bond recovery");
+    let (recovery, recovered_at) = &recoveries[0];
+    assert_eq!(recovery.commitment, honest_commitment);
+    assert_eq!(recovery.claimer, world.address(HONEST));
+    let next_joins = world.commitments_joined(next_root).await?;
+    assert_eq!(next_joins.len(), 1, "the node joined the next root once");
+    assert!(
+        *recovered_at < next_joins[0].1,
+        "recovery precedes the next join"
+    );
+    assert_eq!(
+        world.balance(root).await?,
+        U256::ZERO,
+        "the root's balance drained"
+    );
     Ok(())
 }
