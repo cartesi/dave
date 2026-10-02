@@ -2,9 +2,11 @@
 # Prepares machine/emulator as Cargo's source provider or validates an
 # external one; machine/README.md documents the provider contract.
 #
-# Nothing here takes a lock. The state file and the Boost stamp land only
-# with or after the content they vouch for, so an interrupted or concurrent
-# run fails a later check instead of passing it, and rerunning repairs it.
+# Nothing here takes a lock, so run one preparation per checkout at a time;
+# two concurrent prepare-boost runs can nest one tree inside the other. The
+# state file and the Boost stamp land only with or after the content they
+# vouch for, so an interrupted run fails a later check instead of passing it,
+# and rerunning repairs it.
 set -euo pipefail
 
 readonly release_tag="v0.21.0"
