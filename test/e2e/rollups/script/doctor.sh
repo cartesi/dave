@@ -17,7 +17,6 @@ repo_root="$(CDPATH= cd -- "${e2e_dir}/../../.." && pwd -P)" || {
 readonly script_dir e2e_dir repo_root
 readonly devnet_dir="${repo_root}/cartesi-rollups/contracts"
 readonly fingerprint_checker="${repo_root}/script/devnet-fingerprint.sh"
-readonly legacy_e2e_dir="${repo_root}/prt/tests/rollups"
 
 status=0
 warns=0
@@ -87,7 +86,7 @@ check_default_port() {
 }
 
 check_forensic_litter() {
-    local dir="" pattern="" path="" litter_output="" litter_mb="" detail=""
+    local pattern="" path="" litter_output="" litter_mb="" detail=""
     local -a litter_paths=()
     local -a patterns=(
         '_state*'
@@ -104,13 +103,10 @@ check_forensic_litter() {
     fi
 
     shopt -s nullglob
-    for dir in "$e2e_dir" "$legacy_e2e_dir"; do
-        [[ -d "$dir" ]] || continue
-        for pattern in "${patterns[@]}"; do
-            for path in "$dir"/$pattern; do
-                [[ -e "$path" || -L "$path" ]] || continue
-                litter_paths+=("$path")
-            done
+    for pattern in "${patterns[@]}"; do
+        for path in "$e2e_dir"/$pattern; do
+            [[ -e "$path" || -L "$path" ]] || continue
+            litter_paths+=("$path")
         done
     done
     shopt -u nullglob
@@ -130,7 +126,7 @@ check_forensic_litter() {
         return
     fi
     if ((litter_mb > 10000)); then
-        warn "E2E forensic state holds ${litter_mb} MB (including legacy locations)" \
+        warn "E2E forensic state holds ${litter_mb} MB" \
             "read any retained results, then sweep with: just rollups-tests::sweep"
     fi
 }

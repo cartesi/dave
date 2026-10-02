@@ -153,6 +153,8 @@ remove_regenerables() {
         fi
     fi
 
+    # prt/tests/rollups was the e2e home before 2026-08-10; worktrees on
+    # older branches still keep their litter there.
     for e2e_dir in "$path/test/e2e/rollups" "$path/prt/tests/rollups"; do
         if [ ! -e "$e2e_dir" ] && [ ! -L "$e2e_dir" ]; then
             continue

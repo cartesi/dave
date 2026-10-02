@@ -73,12 +73,6 @@ read-node-logs:
 
 # Kept for forensics, but at ~5 GB per retained scenario the litter can
 # quietly fill the disk, which slows every machine store system-wide.
-# remove current and legacy state dirs, oracle dirs, and logs left by e2e runs
+# remove state dirs, oracle dirs, and logs left by e2e runs
 sweep:
   rm -rf _state* _oracle* _machine_scratch* _battery dave*.log* anvil*.log
-  rm -rf ../../../prt/tests/rollups/_state* \
-    ../../../prt/tests/rollups/_oracle* \
-    ../../../prt/tests/rollups/_machine_scratch* \
-    ../../../prt/tests/rollups/_battery \
-    ../../../prt/tests/rollups/dave*.log* \
-    ../../../prt/tests/rollups/anvil*.log
