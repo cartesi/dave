@@ -157,9 +157,10 @@ render_state() {
 }
 
 # Comparing the recorded state with one rendered from the checkout checks the
-# format, provider, commit, and every digest at once.
+# format, provider, commit, and every digest at once. It uses cmp because
+# command substitution drops trailing blank lines, which build.rs rejects.
 generated_sources_match() {
-    [[ -f "$source_state" ]] && [[ "$(cat "$source_state")" == "$(render_state "$1" "$2")" ]]
+    [[ -f "$source_state" ]] && render_state "$1" "$2" | cmp -s - "$source_state"
 }
 
 prepare_release() {
@@ -284,7 +285,7 @@ validate_generated_sources() {
         *) die "generated-source preparation state names an unknown provider: ${provider}" ;;
     esac
     generated_sources_match "$provider" "$head" ||
-        die "prepared sources do not match emulator HEAD ${head}; rerun 'just machine::prepare-release' or 'just machine::generate-sources'"
+        die "prepared sources or their recorded state do not match emulator HEAD ${head}; rerun 'just machine::prepare-release' or 'just machine::generate-sources'"
 }
 
 external_provider_selected() {
