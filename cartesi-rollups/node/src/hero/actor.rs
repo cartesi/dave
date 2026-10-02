@@ -152,6 +152,11 @@ impl<AS: ArenaSender> Hero<AS> {
     }
 
     pub async fn tick(&mut self) -> Result<HeroTick> {
+        // The node's share of a response's time runs from reading the chain
+        // through commitment builds (context assembly builds the local
+        // material) and proving to submission; operators compare it with
+        // the deployed budgets.
+        let started = Instant::now();
         let (latest_head, foam) = self.reader.fetch_from_root(self.root_tournament).await?;
         let chain = self.reader.chain().clone();
         let foam_standings = read_standings(&chain, &foam, latest_head).await?;
@@ -198,6 +203,7 @@ impl<AS: ArenaSender> Hero<AS> {
                 debug!(
                     "latest proposed {foam_join:?}, which Solid does not support exactly; retry next tick"
                 );
+                report_slow_tick(started, "the join waits for finality");
                 return Ok(HeroTick::new(TournamentResult::Running, Vec::new()));
             }
             (solid_context, solid_decision, solid_head)
@@ -209,14 +215,10 @@ impl<AS: ArenaSender> Hero<AS> {
         let mut wave = Vec::new();
         match decision {
             HeroDecision::Act(intent) => {
-                // The node's share of a response's time: machine work
-                // (commitment builds, proofs) between the observed head and
-                // submission. Operators compare it with the deployed budgets.
-                let started = Instant::now();
                 let action = super::machine_work(|| prepare(intent, &context, &mut self.source))
                     .map_err(anyhow::Error::from)?;
                 info!(
-                    "prepared {intent:?} in {:.1?}, observed at block {}",
+                    "prepared {intent:?} in {:.1?} (reads, builds and proving), observed at block {}",
                     started.elapsed(),
                     action_head.number
                 );
@@ -224,6 +226,7 @@ impl<AS: ArenaSender> Hero<AS> {
             }
             HeroDecision::Wait(reason) => {
                 debug!("Hero waits: {reason:?}");
+                report_slow_tick(started, format!("{reason:?}"));
             }
             HeroDecision::Terminal(terminal) => {
                 result = match terminal {
@@ -277,6 +280,16 @@ impl<AS: ArenaSender> Hero<AS> {
                 .arena_sender
                 .eliminate_inner_tournament(parent_tournament, child_tournament),
         }))
+    }
+}
+
+/// A tick that does local work without acting still spends the node's
+/// time, most often a commitment build ahead of a join that waits for
+/// finality; report it when it is not instant.
+fn report_slow_tick(started: Instant, outcome: impl std::fmt::Display) {
+    let elapsed = started.elapsed();
+    if elapsed >= std::time::Duration::from_secs(1) {
+        info!("Hero tick took {elapsed:.1?} without acting: {outcome}");
     }
 }
 

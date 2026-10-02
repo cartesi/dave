@@ -73,10 +73,13 @@ Put `--state-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
 `reflink=1`). Every input clones a stored machine; a reflinked clone shares
 unchanged extents, while elsewhere (ext4) the emulator falls back to sparse
 copies, which stay correct but cost disk and clone time in proportion to the
-machine. Performance is the operator's to size: the node's dispute work runs
-at the emulator's own cost, and the Hero logs each prepared action's duration
-(`prepared ... in ...`) for comparison with the deployed response and
-commitment budgets.
+machine. Performance is the operator's to size. The node aims to add no work
+over the emulator's own (work-count tests guard the algorithms; a comparison
+against the emulator on the same host is a release measurement), and the Hero
+logs how long each action took from reading the chain through commitment
+builds and proving (`prepared ... in ...`), plus any slow tick that built
+without acting, for comparison with the deployed response and commitment
+budgets.
 
 Fund the whole pending batch. With the default `GAS_LIMIT=15_000_000`, a pool
 may require each transaction's full gas limit at its max fee, plus its call
