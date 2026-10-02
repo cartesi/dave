@@ -136,10 +136,6 @@ harness itself. Each rule below closes a reproduced harness failure:
   account 1 is the harness sender's and is refused): two senders on
   one account wedge on nonces. The node signs with account 8, so a
   scenario must not start a seventh sybil.
-- `battery.sh` takes LANES as its first argument (`./battery.sh 5` -
-  no `direnv exec . env LANES=5` incantation), warns at start when on
-  battery power, and records power provenance in _battery/power.txt
-  alongside the existing mid-run sleep tripwire.
 - `just test-kms` preflights docker (script/ensure-docker.sh): the kms
   testcontainers fail confusingly under a sleeping Docker Desktop,
   which the preflight wakes on macOS and names elsewhere. They are the only
@@ -180,7 +176,7 @@ the 2026-10-01 cut (docs/plans/test-strategy-reset.md, item 4):
 
 - `simple`: the honest node settles a disputed epoch. Its one leaf match
   must end in a STEP proof (`Env.assert_leaf_match_proved`), so the per-PR
-  honeypot `simple` and the two-level smoke gate the on-chain state
+  echo `simple` and the two-level smoke gate the on-chain state
   transition. The gate's negative control (a timeout-resolved leaf refused)
   left with the sealed-leaf scenarios; the per-PR STEP evidence no longer
   rests on it alone: the node harness requires the node's `winLeafMatch` at
@@ -274,19 +270,21 @@ stride).
 
 Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suites
 (PRT disputes, structured STF tests and fuzz, and consensus); the workspace job
-runs Rust fmt and check, Clippy, Lua lint and client unit tests, the Rust build
-and unit tests, and the explicit image-backed engine differentials; the e2e job
-runs honeypot `simple`, the batched catch-up kill, chaos at a fixed seed,
-honeypot `stf_all`, and yield `stf_revert`, then rebuilds the devnet with
+runs Rust fmt, Clippy, Lua lint and client unit tests, the Rust build and unit
+tests, and the explicit image-backed engine differentials; the e2e job runs
+`just e2e-smoke` (echo `simple`, chaos at seed 1, the batched catch-up kill,
+echo `stf_all` and yield `stf_revert`), then rebuilds the devnet with
 `DEVNET_GEOMETRY=two-level` and runs echo `simple` against it
 (`just test-rollups-two-level-smoke`). The node, the oracle, and the steering
 helper read the level table from chain. Unsteered scenarios patch at
 `1 << 44`, an idle leaf under either table. On the two-level devnet, honeypot
 `stf_all`, yield `stf_revert` and the batched catch-up kill have also passed
-(2026-09-30). The manual `.github/workflows/full-e2e.yml` workflow runs the
-battery (the same smoke set) and then explores chaos seeds 2 and 3; the
-battery itself retains seed 1. Its
-cost and scheduling promotion criteria live in `docs/build-system.md`.
+(2026-09-30).
+
+The smoke list lives in the `smoke` recipe of `test/e2e/rollups/justfile`, and
+CI and local runs share it. It runs serially and past failures, keeps each node
+log in `_smoke/`, prints a results table, exits with the failure count, and
+warns about any scenario file the list omits.
 
 
 ## Known coverage gaps
@@ -336,11 +334,10 @@ least-run layer, and suites outside the loop rot. Case study:
 stayed broken until 2026-07-08, because honeypot-all runs in nobody's
 loop. The response was to move the two highest-value uncovered nets
 into CI (stf_all, the batched kill) - but the durable fix is explicit
-tiers: per-PR CI (fast, always), a manually dispatched full battery while its
-cost and signal are calibrated, and manual measurement regeneration. A suite
-not assigned to a tier should be treated as deleted. The full battery should
-be scheduled only after it satisfies the promotion criteria in
-`docs/build-system.md`.
+tiers: per-PR CI (fast, always) and manual measurement regeneration. A suite
+not assigned to a tier should be treated as deleted. Since 2026-10-02 per-PR CI
+runs the whole smoke, and the manually dispatched full battery that once sat
+between the tiers is gone.
 
 Runtime remains the reason not everything belongs in per-PR CI. Parallel
 `TEST_INSTANCE` lanes retired the fixed-port bottleneck after this assessment;
@@ -413,7 +410,7 @@ Known blind spots, by layer:
   same head, reject the whole observation. Retain the raw RPC responses,
   address, arguments, calldata, and pinned head; never retry or normalize the
   two reads into apparent coherence.
-- The e2e battery runs the node at snapshot gap 2 by default (since
+- The e2e scenarios run the node at snapshot gap 2 by default (since
   2026-07-13; it ran gap 1 before). At gap 1 three node paths were
   dark in every scenario: the non-boundary GC's modulo never fired,
   advance batches degenerated to single inputs, and dispute
@@ -474,18 +471,16 @@ shallower trees would shrink protocol-time fast-forwarding at the
 source; contracts-side gap, the engine's Structure is ready) - its
 urgency dropped once the pinned reader landed.
 
-Current tiering, on the available evidence: yield's unique per-PR value is the
-revert shape in `stf_revert`. The other yield scenarios duplicate
-honeypot-all's protocol paths 1:1 minus `deposit_withdrawal`; the manually
-dispatched full battery still runs them so every maintained scenario has one
-complete integration path. That tier also explores additional chaos seeds.
+Current tiering: every maintained scenario is on the smoke list, so per-PR CI
+gives each one complete integration path. Yield's unique value is the revert
+shape in `stf_revert`. CI keeps chaos at seed 1; explore other seeds by hand.
 
 Diagnosis disciplines the incidents taught (details in the frozen
 record):
 
 - When independent processes freeze and resume in lockstep, check
-  `pmset -g log` before blaming software; battery.sh holds the machine
-  awake for exactly this reason.
+  `pmset -g log` before blaming software: an unattended macOS run dies of
+  idle sleep, not bugs. Hold the machine awake (`caffeinate -is`).
 - A stale devnet once surfaced as a misleading consensus assert in a new
   environment. The e2e preflight now verifies the recorded inputs, state,
   and deployments before Lua or the node starts; `just doctor-e2e` reports the
@@ -515,8 +510,6 @@ record):
    scenario runs on either table.
 3. Wire a justfile alias if it should run in a suite
    (`test/e2e/rollups/justfile`).
-4. Add it to `battery.sh`'s `SCENARIOS` array if it should run in the
-   full parallel battery - the array is independent of the justfile
-   aliases and does not inherit from them. If it is deliberately excluded,
-   add its bare script name to `EXCLUDED_SCENARIOS` and put the reason in an
-   adjacent comment.
+4. Add `<program> <name>` to the `smoke` recipe's list in
+   `test/e2e/rollups/justfile`; per-PR CI runs that list, and the smoke
+   warns about any scenario file missing from it.

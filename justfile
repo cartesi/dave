@@ -153,7 +153,6 @@ lint-lua:
 
 # focused state-machine tests for receipt/checker shell code
 test-build-tooling:
-    ./script/tests/battery-cleanup.sh
     ./script/tests/devnet-fingerprint.sh
     ./script/tests/machine-image-fingerprint.sh
 
@@ -318,6 +317,10 @@ clean: clean-contracts clean-rust-workspace
 # ------------------------------------------------------------------
 # End-to-end tests (see docs/test-harness.md)
 # ------------------------------------------------------------------
+
+# run the e2e smoke CI runs (list in test/e2e/rollups/justfile); exit status = failures
+e2e-smoke: build-rust-workspace
+    just rollups-tests::smoke
 
 test-rollups-echo: build-rust-workspace
     just rollups-tests::test-echo

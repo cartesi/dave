@@ -320,55 +320,22 @@ around either. The setup-tools action reads that pin through
 ## CI
 
 The per-PR and tag workflow (`.github/workflows/build.yml`) has jobs for PRT contracts (disputes,
-structured STF tests, and structured STF fuzz), consensus contracts, the
-honeypot e2e smoke (`test-rollups-honeypot-ci`) plus batched-kill, chaos,
-`stf_all`, and yield `stf_revert` scenarios, a Rust workspace job (fmt, check,
-clippy, Lua lint and unit tests, Rust tests, the KMS signer tests, explicit
-image-backed machine differentials, the node's half of the computation-hash
-release corpus, and the serial anvil harness), and the release pipeline (node
-binaries per arch, contract artifacts, deployment simulations, devnet state).
-The e2e lane, which has the released CLI, runs the corpus's CLI half and the
-reference CLI goldens. Actions are pinned by digest.
+structured STF tests, and structured STF fuzz), consensus contracts, the e2e
+smoke (`just e2e-smoke`, one step over the list in `test/e2e/rollups/justfile`)
+plus the two-level smoke, a Rust workspace job (fmt, clippy, Lua lint and unit
+tests, Rust tests, the KMS signer tests, explicit image-backed machine
+differentials, the node's half of the computation-hash release corpus, and the
+serial anvil harness), and the release pipeline (node binaries per arch,
+contract artifacts, deployment simulations, devnet state). The e2e lane, which
+has the released CLI, runs the corpus's CLI half and the reference CLI goldens.
+It needs no docker: the honeypot image is not a CI input. One smoke step keeps
+one scenario list; the Lua scenario deadline turns a hang into a failure, and a
+failed run uploads the per-scenario node logs. Actions are pinned by digest.
 When renaming just recipes, grep the workflow first; CI calls them
 by name. Shared acquisition and provider policy belongs in actions or Just
 targets, not copied shell programs in the workflow. In particular, the
 emulator release commit and artifact digests live in the machine preparation
 script; CI only selects a lane and installs or consumes its result.
-
-The manual `Full E2E Battery` workflow runs the complete E2E matrix plus two
-extra chaos seeds on a deliberately selected ref. Per-PR CI retains the smaller
-deterministic subset above. Its design goals are to exercise every maintained
-scenario in one isolated environment, explore a small reproducible seed set,
-retain useful failure logs, and bound hosted-runner storage by removing each
-scenario's machine state after it finishes. It is not a performance benchmark,
-a required pull-request gate, or currently a scheduled monitor.
-
-GitHub exposes
-[manual dispatch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
-only after the workflow file exists on the repository's default branch. Until
-this new workflow reaches that branch, its hosted dispatch is intentionally
-unavailable; use the per-PR subset or run the full battery locally. Once
-available, a dispatch may select another ref that contains the workflow.
-
-Manual-only is deliberate while its cost and signal have not been measured for
-the current 25-case suite on the selected hosted runner. One invocation also
-builds the devnet, three machine images, and the validator, then runs 25 battery
-scenarios and two additional chaos seeds. The battery is serial during this
-calibration phase: one scenario may use about 5 GB, while GitHub documents only
-14 GB of SSD on a standard `ubuntu-24.04` runner. State is removed after each
-scenario, logs are retained for seven days, and the job has a 150-minute cap.
-The older local 21-case battery measured about 42 aggregate scenario-minutes;
-it is useful context, not a hosted-runner forecast for the current suite.
-
-GitHub permits repeated dispatches of the same commit. The fixed concurrency
-group allows one running and one pending invocation; a newer dispatch replaces
-the older pending one. It prevents overlap but does not deduplicate completed
-runs. Promote the workflow to a schedule only after representative runs record
-wall time and establish a safe disk bound, failures prove actionable rather
-than flaky, an owner exists for triage, and the scheduled form avoids rerunning
-an unchanged default-branch commit. Until then, use it before a release or
-after changes to E2E orchestration, storage/recovery, machine images, or dispute
-wiring.
 
 Machine provider coverage is intentional: package lanes exercise the external
 archive, while release-node builds prepare and execute a wrapper test against

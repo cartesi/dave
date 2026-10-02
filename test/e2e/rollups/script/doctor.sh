@@ -92,7 +92,7 @@ check_forensic_litter() {
         '_state*'
         '_oracle*'
         '_machine_scratch*'
-        '_battery'
+        '_smoke'
         'dave*.log*'
         'anvil*.log*'
     )

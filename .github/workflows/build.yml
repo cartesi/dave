@@ -33,7 +33,7 @@ jobs:
           suffix-version: ""
 
       # This suite needs the PRT dependencies and the real yield image used by
-      # its Lua proof generator. Devnet, echo, and Honeypot are E2E inputs.
+      # its Lua proof generator. Devnet and echo are E2E inputs.
       - name: Prepare PRT state-transition inputs
         run: |
           just prt-contracts::install-deps
@@ -84,8 +84,6 @@ jobs:
           submodules: recursive
       - name: Setup tools
         uses: ./.github/actions/setup-tools
-        with:
-          setup-qemu: true
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
         with:
@@ -114,60 +112,21 @@ jobs:
         timeout-minutes: 10
         run: |
           just test-computation-hash-corpus-cli
-      - name: Build honeypot
-        working-directory: ./test/programs/
+      - name: Build echo and yield
         run: |
-          just build-honeypot-snapshot
-      - name: Build echo
-        working-directory: ./test/programs/
-        run: |
-          just build-echo
-      - name: Build yield
-        working-directory: ./test/programs/
-        run: |
-          just build-yield
+          just programs::build-programs
       # The Rust lane checks the runner against these goldens; only this
       # lane has the released CLI that computes them.
       - name: Test reference CLI goldens
         timeout-minutes: 10
         run: |
           just test-reference-cli-goldens
-      - name: Test prt-rollups
-        timeout-minutes: 20
+      # One step keeps one scenario list (test/e2e/rollups/justfile); the
+      # Lua scenario deadline turns a hang into a failure.
+      - name: Test e2e smoke
+        timeout-minutes: 90
         run: |
-          just test-rollups-honeypot-ci
-      # SIGKILL mid-advance-batch; the resumed run must re-execute the
-      # batch and settle identically to the oracle.
-      # Cheap (no dispute), and the only e2e that puts a full
-      # multi-record batch under the kill (the harness default is
-      # gap 2, small batches).
-      - name: Test batched catch-up kill
-        timeout-minutes: 15
-        run: |
-          just test-rollups-kill-ci
-      # The chaos loop proves the dispute survives SIGKILL/respawn fire.
-      # Fixed seed: CI is the regression
-      # net; seed exploration stays in local runs.
-      - name: Test chaos
-        timeout-minutes: 15
-        env:
-          CHAOS_SEED: "1"
-        run: |
-          just test-rollups-chaos
-      # The state-transition coverage suite: every on-chain STF shape
-      # driven through a real dispute (docs/test-harness.md coverage
-      # matrix). The battery's most valuable net; it rotted once while
-      # living outside CI.
-      - name: Test stf_all
-        timeout-minutes: 60
-        run: |
-          just test-rollups-honeypot-stf
-      # stf_all cannot statically select the program-timing-dependent closing
-      # slot that substitutes the pre-input root after RX_REJECTED.
-      - name: Test rejected-input revert transition
-        timeout-minutes: 30
-        run: |
-          just rollups-tests::test-yield-case stf_revert
+          just e2e-smoke
       # The same node against a devnet whose factory serves the two-level
       # table (DEVNET_GEOMETRY=two-level). Runs last: it replaces the bundle.
       - name: Build two-level devnet
@@ -180,12 +139,17 @@ jobs:
         timeout-minutes: 20
         run: |
           just test-rollups-two-level-smoke
-      - name: Show failing log
+      - name: Upload e2e logs
         if: failure()
-        run: |
-          echo '▼▼▼ failing-step dave.log ▼▼▼'
-          cat ./test/e2e/rollups/dave.log
-          echo '▲▲▲ end log ▲▲▲'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-logs
+          path: |
+            test/e2e/rollups/_smoke/
+            test/e2e/rollups/dave*.log*
+            test/e2e/rollups/anvil*.log*
+          if-no-files-found: warn
+          retention-days: 7
 
 
   build:
@@ -246,7 +210,6 @@ jobs:
           echo "INCLUDECARTESI_PATH=/usr/include/cartesi-machine" >> "$GITHUB_ENV"
 
       # Rust integration tests consume echo, yield, and the devnet bundle.
-      # Honeypot belongs only to the E2E lane above.
       - name: Prepare Rust test inputs
         run: |
           just prt-contracts::install-deps

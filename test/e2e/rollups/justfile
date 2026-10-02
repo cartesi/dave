@@ -58,6 +58,44 @@ test-honeypot-case CASE: \
 test-yield-case CASE: \
         (test "yield" CASE)
 
+# The black-box smoke the in-crate harness (just test-node-harness) leaves to
+# e2e: the node as a process against Lua sybils, under real signals. CI runs
+# this list. Serial on one instance: Dave:new resets the state dir, so disk
+# holds one scenario's state at a time. Chaos keeps seed 1 unless CHAOS_SEED
+# says otherwise.
+# run the e2e smoke; node logs land in _smoke/, exit status = failures
+smoke:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    scenarios=(
+        "echo simple"
+        "echo chaos"
+        "echo kill_catchup_batched"
+        "echo stf_all"
+        "yield stf_revert"
+    )
+    # An unlisted scenario rots in the dark (stf_revert once did).
+    for f in scenarios/*.lua; do
+        name=$(basename "$f" .lua)
+        printf '%s\n' "${scenarios[@]}" | grep -qx ".* $name" \
+            || echo "[smoke] WARNING: scenarios/$name.lua is not on the smoke list"
+    done
+    rm -rf _smoke && mkdir _smoke
+    log="dave${TEST_INSTANCE:+-$TEST_INSTANCE}.log"
+    failures=0
+    for entry in "${scenarios[@]}"; do
+        read -r program scenario <<< "$entry"
+        start=$SECONDS
+        CHAOS_SEED=${CHAOS_SEED:-1} just test "$program" "$scenario"
+        rc=$?
+        cp "$log" "_smoke/$program-$scenario.log" 2>/dev/null
+        [ "$rc" -eq 0 ] || failures=$((failures + 1))
+        echo "$program $scenario rc=$rc $((SECONDS - start))s" >> _smoke/results.txt
+    done
+    echo "[smoke] $failures of ${#scenarios[@]} failed"
+    cat _smoke/results.txt
+    exit "$failures"
+
 # read logs from PRT Rollups node, run in separate terminal after `test-echo`
 read-node-logs:
     #!/usr/bin/env bash
@@ -75,4 +113,4 @@ read-node-logs:
 # quietly fill the disk, which slows every machine store system-wide.
 # remove state dirs, oracle dirs, and logs left by e2e runs
 sweep:
-  rm -rf _state* _oracle* _machine_scratch* _battery dave*.log* anvil*.log
+  rm -rf _state* _oracle* _machine_scratch* _smoke dave*.log* anvil*.log

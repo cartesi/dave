@@ -2,5 +2,5 @@
 *.log.prev
 _state*/
 _oracle*/
-_battery/
+_smoke/
 anvil*.json

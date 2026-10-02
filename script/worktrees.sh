@@ -172,6 +172,8 @@ remove_regenerables() {
             "$e2e_dir"/_state*
             "$e2e_dir"/_oracle*
             "$e2e_dir"/_machine_scratch*
+            "$e2e_dir"/_smoke
+            # battery.sh's output, on branches from before 2026-10-02
             "$e2e_dir"/_battery
             "$e2e_dir"/dave*.log*
             "$e2e_dir"/anvil*.log*
