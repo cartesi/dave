@@ -107,37 +107,6 @@ lua54_command() {
     die "Lua 5.4 is required to generate Cartesi Machine sources"
 }
 
-download_cached() {
-    local url="$1"
-    local expected_sha256="$2"
-    local destination="$3"
-    local temporary
-
-    mkdir -p -- "$(dirname "$destination")"
-    if [[ -L "$destination" ]] || [[ -e "$destination" && ! -f "$destination" ]]; then
-        die "cached artifact path is not a regular file: $destination"
-    fi
-    if verify_sha256 "$destination" "$expected_sha256"; then
-        printf 'using verified cache: %s\n' "$destination"
-        return
-    fi
-
-    need curl
-
-    if [[ -e "$destination" ]]; then
-        printf 'cached artifact failed verification; replacing: %s\n' "$destination" >&2
-    fi
-
-    temporary="$(mktemp "${destination}.download.XXXXXX")"
-    remember_temporary_path "$temporary"
-    curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
-        -o "$temporary" "$url"
-    verify_sha256 "$temporary" "$expected_sha256" ||
-        die "downloaded artifact has the wrong SHA-256: $url"
-    chmod 0644 "$temporary"
-    mv -f -- "$temporary" "$destination"
-}
-
 extract_generated_patch() {
     local patch="$1"
     local destination="$2"
@@ -242,7 +211,7 @@ prepare_release() {
     fi
 
     patch="${cache_root}/release/${release_tag}-${release_patch_sha256}/add-generated-files.diff"
-    download_cached "$release_patch_url" "$release_patch_sha256" "$patch"
+    "${repo_root}/script/fetch.sh" "$release_patch_url" "$release_patch_sha256" "$patch"
 
     mkdir -p -- "${cache_root}/locks"
     lock="${cache_root}/locks/generated-sources"
@@ -323,7 +292,7 @@ prepare_boost() {
     fi
 
     archive="${cache_root}/dependency/boost-${boost_version}-${boost_archive_sha256}/${boost_archive_name}"
-    download_cached "$boost_archive_url" "$boost_archive_sha256" "$archive"
+    "${repo_root}/script/fetch.sh" "$boost_archive_url" "$boost_archive_sha256" "$archive"
     validate_boost_archive "$archive"
 
     extraction="$(mktemp -d "${cache_root}/.boost-extract.XXXXXX")"

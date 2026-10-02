@@ -36,13 +36,13 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-            build-essential curl git wget \
+            build-essential curl git \
             libslirp-dev \
             libclang-dev \
             liblua5.4-dev lua5.4 \
             xxd jq sqlite3 libc6 clang libarchive13
 
-          wget -O xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
+          curl -fsSL -o xgenext2fs.deb https://github.com/cartesi/genext2fs/releases/download/v${XGENEXT2_VERSION}/xgenext2fs_${ARCH}.deb
           echo "${{ inputs.xgenext2fs-sha256 }}  xgenext2fs.deb" | sha256sum --check
           sudo apt-get install -y ./xgenext2fs.deb
           rm ./xgenext2fs.deb

@@ -156,7 +156,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends \
-            build-essential git wget curl \
+            build-essential git curl \
             libslirp-dev \
             libclang-dev \
             liblua5.4-dev lua5.4 lua-check \
@@ -280,7 +280,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-          build-essential git wget curl \
+          build-essential git curl \
           liblua5.4-dev lua5.4 \
           libslirp-dev libboost1.83-dev \
           libclang-dev \

@@ -58,7 +58,7 @@ check_toolchain() {
 echo "toolchain (nix users: 'direnv allow' provides all of these)"
 for tool in git cargo forge lua5.4 luacheck jq sqlite3 \
     cartesi-machine cartesi-machine-stored-hash \
-    wget curl realpath sha256sum sort; do
+    curl realpath sha256sum sort; do
   if command -v "$tool" > /dev/null; then ok "$tool"; else
     miss "$tool not on PATH" "install it (see README.md requirements)"; fi
 done
