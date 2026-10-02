@@ -13,7 +13,7 @@ schema and storage debts are tracked below.
 
 ## Process layout
 
-`cartesi-rollups-prt-node` (binary) runs three workers on one tokio
+`cartesi-sling-node` (binary) runs three workers on one tokio
 runtime (`lib.rs run()`), each owning its own SQLite connection:
 
 - blockchain-reader (async task): chain logs -> db (inputs, epochs,
