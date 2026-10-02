@@ -4,6 +4,7 @@
 //! A scripted machine for geometry and action-preparation unit tests.
 //! Inert proof markers allow preparation without real machine witnesses.
 
+use super::dispute::fold_runs;
 use super::ruler::{Hashing, Ruler, RulerFactory};
 use super::stf::Stf;
 use super::structure::Structure;
@@ -35,6 +36,16 @@ pub struct ToyInput {
 /// before its uarch halts. The real machine spends a few dozen; one
 /// tick keeps toy trees hand-computable while modeling the shape.
 pub const IDLE_CHURN_TICKS: u64 = 1;
+
+/// A bulk collector for the toy, so rulers exercise their bulk branch:
+/// big-cycle roots computed by stepping the toy itself, at most `per_call`
+/// cycles a call, declining every `decline_every`-th call (none when zero)
+/// unless it would open an input.
+#[derive(Debug, Clone, Copy)]
+pub struct ToyBulk {
+    pub per_call: u64,
+    pub decline_every: u64,
+}
 
 /// The toy state-transition function. Its state hash is a counter
 /// encoded as bytes32, incremented on every state-changing transition,
@@ -68,6 +79,10 @@ pub struct ToyStf {
     /// Closing uresets executed: one per big cycle actually stepped, for
     /// cost assertions.
     uresets: u64,
+
+    structure: Structure,
+    bulk: Option<ToyBulk>,
+    bulk_calls: u64,
 }
 
 impl ToyStf {
@@ -106,7 +121,15 @@ impl ToyStf {
             current_big_cycle: 0,
             usteps_in_big_cycle: 0,
             uresets: 0,
+            structure,
+            bulk: None,
+            bulk_calls: 0,
         }
+    }
+
+    pub fn with_bulk(mut self, bulk: ToyBulk) -> Self {
+        self.bulk = Some(bulk);
+        self
     }
 
     pub fn uresets(&self) -> u64 {
@@ -236,6 +259,41 @@ impl Stf for ToyStf {
             executed += 1;
         }
         Ok(executed)
+    }
+
+    fn collects_big_cycle_roots(&self) -> bool {
+        self.bulk.is_some()
+    }
+
+    fn big_cycle_roots(&mut self, big_cycles: u64) -> Result<Vec<Digest>> {
+        let bulk = self.bulk.expect("a bulk toy");
+        self.bulk_calls += 1;
+        let opening = self.current_big_cycle == 0 && self.usteps_in_big_cycle == 0;
+        if bulk.decline_every > 0 && self.bulk_calls.is_multiple_of(bulk.decline_every) && !opening
+        {
+            return Ok(vec![]);
+        }
+        let span = self.structure.big_span();
+        let mut roots = vec![];
+        while (roots.len() as u64) < big_cycles.min(bulk.per_call) && !self.fixed() {
+            // The ruler's leaf layout: a leaf per ustep until the uarch
+            // halts, the halted state repeated, then the closing slot.
+            let mut leaves: Vec<(Digest, u64)> = vec![];
+            let mut slot = 0;
+            while slot < span - 1 && !self.uarch_halted {
+                self.ustep()?;
+                leaves.push((self.state_hash()?, 1));
+                slot += 1;
+            }
+            if slot < span - 1 {
+                leaves.push((self.state_hash()?, span - 1 - slot));
+            }
+            self.ustep()?;
+            self.ureset()?;
+            leaves.push((self.state_hash()?, 1));
+            roots.push(fold_runs(leaves, self.structure.log2_uarch_span)?.root_hash());
+        }
+        Ok(roots)
     }
 
     fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {

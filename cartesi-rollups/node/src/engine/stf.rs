@@ -69,6 +69,22 @@ pub trait Stf {
     /// state-preserving, so skipping them is exact at big boundaries).
     fn run_big(&mut self, big_cycles: u64) -> Result<u64>;
 
+    /// Whether [`Stf::big_cycle_roots`] is available. Dense leaf builds
+    /// then leave active big cycles to it; otherwise the ruler steps them.
+    fn collects_big_cycle_roots(&self) -> bool {
+        false
+    }
+
+    /// Bulk collection from a big-cycle boundary of a running machine:
+    /// up to `big_cycles` whole cycles, each reduced to the root of its
+    /// transition leaves (the ruler's leaf layout), ending early after the
+    /// cycle that reaches a fixed point, with a rejection already restored.
+    /// It may decline the next cycle by returning no roots; the ruler then
+    /// steps that cycle.
+    fn big_cycle_roots(&mut self, big_cycles: u64) -> Result<Vec<Digest>> {
+        unreachable!("asked {big_cycles} big-cycle roots of a stepping-only stf")
+    }
+
     // Logged operations apply the same transitions and emit the witness
     // encoding consumed by the on-chain state transition. Machine
     // differentials and STF e2e tests check that separate contract.

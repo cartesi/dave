@@ -11,9 +11,9 @@
 use super::cache::{PRECOMPUTE_LEVELS, get_or_compute};
 use super::config::EngineConfig;
 use super::dispute::{DisputeSource, LevelCoords, fold_runs};
-use super::ruler::{Hashing, RulerFactory, Run};
+use super::ruler::{Hashing, Ruler, RulerFactory, Run};
 use super::structure::{Quartet, Structure};
-use super::toy::{IDLE_CHURN_TICKS, ToyFactory, ToyInput, ToyOutcome, ToyStf};
+use super::toy::{IDLE_CHURN_TICKS, ToyBulk, ToyFactory, ToyInput, ToyOutcome, ToyStf};
 use crate::merkle::{Digest, MerkleBuilder, MerkleTree};
 use crate::storage::Storage;
 use alloy::primitives::U256;
@@ -431,31 +431,50 @@ fn big_cycle_roots_fold_to_the_transition_tree() {
                         expected.append(*digest);
                     }
 
-                    let mut factory = ToyFactory {
-                        structure,
-                        script: script.clone(),
-                    };
-                    let mut ruler = factory
-                        .ruler_at(U256::from(start), Hashing::Sampled)
-                        .unwrap();
-                    let end = U256::from(start + span);
-                    let roots = ruler.collect_big_cycle_roots(end).unwrap();
-                    assert_eq!(ruler.position(), end);
-                    let mut folded = MerkleBuilder::default();
-                    for run in &roots {
-                        folded.append_repeated(run.hash, run.repetitions);
-                    }
-                    let folded = folded.build();
-                    let context = format!("script {name}, [{start}, +2^{height}) on {structure:?}");
-                    assert_eq!(u64::from(folded.height()), height - c, "{context}");
-                    assert_eq!(
-                        folded.root_hash(),
-                        expected.build().root_hash(),
-                        "{context}"
-                    );
-                    if name == "empty" {
-                        // An idle stretch is one root, however long.
-                        assert_eq!(roots.len(), 1, "{context}");
+                    let expected = expected.build().root_hash();
+
+                    // Stepped, then through bulk collectors of every shape:
+                    // one cycle a call, chunks with declines the ruler
+                    // steps, and unbounded calls declining every other time.
+                    let collectors = [
+                        None,
+                        Some(ToyBulk {
+                            per_call: 1,
+                            decline_every: 0,
+                        }),
+                        Some(ToyBulk {
+                            per_call: 2,
+                            decline_every: 3,
+                        }),
+                        Some(ToyBulk {
+                            per_call: u64::MAX,
+                            decline_every: 2,
+                        }),
+                    ];
+                    for bulk in collectors {
+                        let mut stf = ToyStf::new(structure, script.clone());
+                        if let Some(bulk) = bulk {
+                            stf = stf.with_bulk(bulk);
+                        }
+                        let mut ruler = Ruler::new(stf, structure, script.len() as u64);
+                        ruler.advance(U256::from(start)).unwrap();
+                        let end = U256::from(start + span);
+                        let roots = ruler.collect_big_cycle_roots(end).unwrap();
+                        assert_eq!(ruler.position(), end);
+                        let mut folded = MerkleBuilder::default();
+                        for run in &roots {
+                            folded.append_repeated(run.hash, run.repetitions);
+                        }
+                        let folded = folded.build();
+                        let context = format!(
+                            "script {name}, [{start}, +2^{height}) on {structure:?}, {bulk:?}"
+                        );
+                        assert_eq!(u64::from(folded.height()), height - c, "{context}");
+                        assert_eq!(folded.root_hash(), expected, "{context}");
+                        if name == "empty" {
+                            // An idle stretch is one root, however long.
+                            assert_eq!(roots.len(), 1, "{context}");
+                        }
                     }
                 }
             }

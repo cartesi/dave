@@ -246,7 +246,9 @@ impl<S: Stf> Ruler<S> {
     /// big-cycle aligned. An idle stretch folds one captured cycle and
     /// repeats its root, so its cost does not grow with its length, and an
     /// active cycle's leaves are dropped once folded, so memory stays one
-    /// cycle's runs however long the span.
+    /// cycle's runs however long the span. An stf that collects big-cycle
+    /// roots in bulk supplies the active cycles' roots instead; the idle
+    /// stretches stay here either way.
     pub fn collect_big_cycle_roots(&mut self, to: U256) -> Result<Vec<Run>> {
         let big_span = U256::from(self.structure.big_span());
         let c = self.structure.log2_uarch_span;
@@ -286,6 +288,35 @@ impl<S: Stf> Ruler<S> {
                 push(&mut roots, root, cycles);
                 self.position += cycles * big_span;
                 continue;
+            }
+            if self.stf.collects_big_cycle_roots() {
+                if p.is_window_start() {
+                    assert!(
+                        self.stf.yielded()?,
+                        "input overran its window at position {}; \
+                         transition shape undefined (see module doc)",
+                        self.position
+                    );
+                    // The fused transition: the collector's first entry is
+                    // its ustep.
+                    self.stf.feed(p.input)?;
+                }
+                let window_end = self.structure.window_start(p.input + 1).min(to);
+                let budget = u64::try_from((window_end - self.position) / big_span)
+                    .expect("a window's big cycles fit u64");
+                let collected = self.stf.big_cycle_roots(budget)?;
+                if !collected.is_empty() {
+                    let cycles = U256::from(collected.len());
+                    for root in collected {
+                        push(&mut roots, root, U256::from(1));
+                    }
+                    self.position += cycles * big_span;
+                    continue;
+                }
+                assert!(
+                    !p.is_window_start(),
+                    "the collector declined a fed input's first cycle"
+                );
             }
             let mut sampler = StrideSampler::new(self.position, 0);
             let cycle_end = self.position + big_span;

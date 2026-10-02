@@ -1,14 +1,14 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The reference collector: the [`Stf`] verbs implemented on the real
-//! Cartesi machine through the current API, one step at a time.
-//!
-//! This is deliberately the slow, obviously-correct implementation. It
-//! exists to be validated against the prototype and CLI commitment
-//! builders and to serve, permanently, as the differential reference
-//! for the fast bulk collectors. Machine errors propagate as errors; geometry
-//! violations remain panics (see the stf module doc).
+//! The [`Stf`] verbs on the real Cartesi machine. Dense leaf builds take
+//! their big-cycle roots from the emulator's bulk uarch collector; every
+//! other verb steps the machine through the per-step API. Under
+//! [`Collector::Stepped`] dense leaves are stepped too: the slow,
+//! obviously-correct path, kept permanently as the collector's
+//! differential reference (two-level-sling.md, D7). Machine errors
+//! propagate as errors; geometry violations remain panics (see the stf
+//! module doc).
 
 use super::dispute::DisputeSource;
 use super::ruler::{Hashing, Ruler, RulerFactory};
@@ -24,11 +24,12 @@ use cartesi_machine::{
     constants::{
         break_reason,
         cmio::tohost::manual::{RX_ACCEPTED, RX_REJECTED},
+        rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
     },
     format_emulator_version,
     machine::Machine,
     types::{
-        LogType,
+        Hash, LogType,
         access_proof::{AccessLog, AccessType},
         cmio::CmioResponseReason,
     },
@@ -66,10 +67,25 @@ enum Feeder {
     },
 }
 
+/// How dense leaves are built: the emulator's bulk uarch collector, or
+/// the per-step API one transition at a time (the reference).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Collector {
+    Bulk,
+    Stepped,
+}
+
+/// Big cycles per bulk collection call, bounding the result's size.
+const BULK_CHUNK: u64 = 1 << 12;
+
 pub struct MachineStf {
     machine: Machine,
     /// Reloads (a rejected input's revert) keep the load's concurrency.
     hashing: Hashing,
+    collector: Collector,
+    /// The idle period of the machine the last feed may revert to, which
+    /// the bulk collector needs to report a rejection.
+    revert_tail: Option<Vec<Hash>>,
     /// Uarch cycles since the last reset; run_uarch takes absolutes.
     ucycle: u64,
     /// Scratch-mode checkpoints live here; one at a time.
@@ -122,6 +138,8 @@ impl MachineStf {
         Ok(MachineStf {
             machine,
             hashing,
+            collector: Collector::Bulk,
+            revert_tail: None,
             ucycle: 0,
             work_dir,
             checkpoint: None,
@@ -143,6 +161,12 @@ impl MachineStf {
         self
     }
 
+    /// Selects how dense leaves are built (production collects in bulk).
+    pub fn with_collector(mut self, collector: Collector) -> Self {
+        self.collector = collector;
+        self
+    }
+
     /// The machine runner's stf: wraps the live working-clone machine
     /// the caller owns (SHARING_ALL, mutated in place, sitting at
     /// `window`'s boundary), feeds exactly that window, and restores
@@ -159,6 +183,9 @@ impl MachineStf {
             machine,
             // The runner hashes once per stride sample.
             hashing: Hashing::Sampled,
+            // and builds no dense leaves.
+            collector: Collector::Stepped,
+            revert_tail: None,
             ucycle: 0,
             // Advance mode never writes scratch checkpoints; an empty
             // path fails loudly if a bug ever routes there.
@@ -340,6 +367,16 @@ impl Stf for MachineStf {
         };
         self.checkpoint = Some(checkpoint);
 
+        if self.collector == Collector::Bulk {
+            // Collected while awaiting input, the idle period ends with
+            // this root, the revert root the response records.
+            let mcycle = self.machine.mcycle()?;
+            let idle = self
+                .machine
+                .collect_uarch_cycle_root_hashes(mcycle, 0, None)?;
+            self.revert_tail = Some(idle.hashes);
+        }
+
         self.machine
             .send_cmio_response(CmioResponseReason::Advance, &payload, Some(&root))?;
         Ok(())
@@ -383,6 +420,52 @@ impl Stf for MachineStf {
         let ran = self.machine.mcycle()? - start;
         self.restore_rejected()?;
         Ok(ran)
+    }
+
+    fn collects_big_cycle_roots(&self) -> bool {
+        self.collector == Collector::Bulk
+    }
+
+    fn big_cycle_roots(&mut self, big_cycles: u64) -> Result<Vec<Digest>> {
+        assert_eq!(
+            self.ucycle, 0,
+            "bulk collection starts at a big-cycle boundary"
+        );
+        // Seam 1: v0.21.0's collector keeps the physical root when an input
+        // is rejected on its budget's last cycle, where the step reverts
+        // (two-level-sling.md). Declining that cycle leaves it to stepping.
+        let start = self.machine.mcycle()?;
+        let last_budget_cycle = self.machine.imcyclemax()?.saturating_sub(1);
+        let end = add_and_clamp(start, big_cycles).min(last_budget_cycle);
+        let mut roots = vec![];
+        let mut mcycle = start;
+        while mcycle < end {
+            let tail = self
+                .revert_tail
+                .as_deref()
+                .expect("a fed input carries its revert tail");
+            let collected = self.machine.collect_uarch_cycle_root_hashes(
+                end.min(add_and_clamp(mcycle, BULK_CHUNK)),
+                LOG2_MAX_UARCH_CYCLES_PER_MCYCLE as u32,
+                Some(tail),
+            )?;
+            let reached = self.machine.mcycle()?;
+            ensure!(reached > mcycle, "the uarch collector made no progress");
+            // Bundled per big cycle, each period's last entry is the cycle's
+            // root. At a fixed point one more period follows, the idle one,
+            // which the ruler derives itself.
+            roots.extend(
+                collected
+                    .periods()
+                    .take((reached - mcycle) as usize)
+                    .map(|period| Digest::from(*period.last().expect("a period ends at reset"))),
+            );
+            mcycle = reached;
+            if self.restore_rejected()? || self.fixed()? {
+                break;
+            }
+        }
+        Ok(roots)
     }
 
     fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {
@@ -497,6 +580,7 @@ pub struct Positioner {
     store: Storage,
     epoch: u64,
     spawned: usize,
+    collector: Collector,
 }
 
 /// The production constructor of the facade: one closed epoch's
@@ -505,7 +589,18 @@ pub struct Positioner {
 /// how positioning constructs itself from storage; consumers hold no
 /// engine pieces.
 impl DisputeSource<Positioner> {
-    pub fn on_store(mut storage: Storage, epoch: u64, work_dir: PathBuf) -> Result<Self> {
+    pub fn on_store(storage: Storage, epoch: u64, work_dir: PathBuf) -> Result<Self> {
+        Self::on_store_with(storage, epoch, work_dir, Collector::Bulk)
+    }
+
+    /// [`DisputeSource::on_store`] with a chosen dense-leaf collector:
+    /// differential tests build leaves both ways. Not an operator setting.
+    pub fn on_store_with(
+        mut storage: Storage,
+        epoch: u64,
+        work_dir: PathBuf,
+        collector: Collector,
+    ) -> Result<Self> {
         // Initialization pinned the config; assert engine
         // compatibility before serving any quartet.
         let structure = Structure::PRODUCTION;
@@ -527,6 +622,7 @@ impl DisputeSource<Positioner> {
             store: Storage::new(storage.state_dir())?,
             epoch,
             spawned: 0,
+            collector,
         };
         // The level-0 material was recorded at the pinned root stride;
         // the source reads it (window-root rows, interior runs) from
@@ -554,7 +650,8 @@ impl RulerFactory for Positioner {
                 MachineStf::load(&path, dir, hashing)?
             } else {
                 MachineStf::resume(&path, dir, hashing)?
-            };
+            }
+            .with_collector(self.collector);
 
             // Assert-on-load: the emulator validates nothing, so the
             // loaded machine must reproduce its row's hash (nearly
@@ -681,6 +778,8 @@ mod tests {
         let stf = MachineStf {
             machine,
             hashing: Hashing::Sampled,
+            collector: Collector::Stepped,
+            revert_tail: None,
             ucycle: UARCH_MASK_TO_BARCH,
             work_dir: PathBuf::new(),
             checkpoint: None,
@@ -764,6 +863,8 @@ mod tests {
         MachineStf {
             machine,
             hashing: Hashing::Sampled,
+            collector: Collector::Stepped,
+            revert_tail: None,
             ucycle: 0,
             work_dir,
             checkpoint: None,
@@ -958,6 +1059,8 @@ mod tests {
             ucycle: machine.read_reg(CM_REG_UARCH_CYCLE)?,
             machine,
             hashing: Hashing::Sampled,
+            collector: Collector::Stepped,
+            revert_tail: None,
             work_dir: work.path().to_path_buf(),
             checkpoint: Some(checkpoint),
             feeder: Feeder::Scratch {
@@ -993,6 +1096,69 @@ mod tests {
             computed, stored,
             "seam witnesses diverged; regenerate with UPDATE_FIXTURES=1 after review"
         );
+        Ok(())
+    }
+
+    /// Seam 1 on the bulk path: v0.21.0's collector reports the physical
+    /// root for a rejection on the input budget's last cycle, where the step
+    /// reverts, so bulk collection declines that cycle and the ruler steps
+    /// it (seam_witness_vectors_hold pins the stepped answer). The control
+    /// pins the collector's answer: once an emulator reports the revert
+    /// root there, the guard in big_cycle_roots can go.
+    #[test]
+    fn bulk_collection_leaves_the_budgets_last_cycle_to_stepping() -> Result<()> {
+        use cartesi_machine::cartesi_machine_sys::{CM_REG_IMCYCLEMAX, CM_REG_X20};
+
+        let payload = b"seam".to_vec();
+        // Delivered, with the x20 rejection due on the budget's last cycle.
+        let delivered = |work: &Path| -> Result<(Machine, Hash, PathBuf, Vec<Hash>)> {
+            let mut machine = seam_guest(3, RX_ACCEPTED)?;
+            machine.write_reg(CM_REG_X20, manual_yield(RX_REJECTED))?;
+            let revert_root = machine.root_hash()?;
+            let checkpoint = work.join("checkpoint-0");
+            machine.store(&checkpoint)?;
+            let mcycle = machine.mcycle()?;
+            let tail = machine
+                .collect_uarch_cycle_root_hashes(mcycle, 0, None)?
+                .hashes;
+            machine.send_cmio_response(
+                CmioResponseReason::Advance,
+                &payload,
+                Some(&revert_root),
+            )?;
+            let mcycle = machine.mcycle()?;
+            machine.write_reg(CM_REG_IMCYCLEMAX, mcycle + 1)?;
+            Ok((machine, revert_root, checkpoint, tail))
+        };
+
+        let work = tempfile::tempdir()?;
+        let (machine, _, checkpoint, tail) = delivered(work.path())?;
+        let mut stf = MachineStf {
+            machine,
+            hashing: Hashing::PerStep,
+            collector: Collector::Bulk,
+            revert_tail: Some(tail),
+            ucycle: 0,
+            work_dir: work.path().to_path_buf(),
+            checkpoint: Some(checkpoint),
+            feeder: Feeder::Scratch {
+                fed: 1,
+                inputs: vec![payload.clone()],
+            },
+        };
+        let mcycle = stf.machine.mcycle()?;
+        assert!(stf.big_cycle_roots(4)?.is_empty(), "the cycle is declined");
+        assert_eq!(stf.machine.mcycle()?, mcycle);
+
+        let work = tempfile::tempdir()?;
+        let (mut machine, revert_root, _, tail) = delivered(work.path())?;
+        let collected = machine.collect_uarch_cycle_root_hashes(mcycle + 1, 0, Some(&tail))?;
+        let reset = *collected.periods().next().unwrap().last().unwrap();
+        assert_ne!(
+            reset, revert_root,
+            "the collector now reverts on the budget's last cycle: drop the guard"
+        );
+        assert_eq!(reset, machine.root_hash()?, "the physical root");
         Ok(())
     }
 

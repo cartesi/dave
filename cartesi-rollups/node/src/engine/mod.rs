@@ -50,7 +50,7 @@ pub use config::EngineConfig;
 pub(crate) use dispute::Tail;
 pub use dispute::{DisputeSource, LevelCoords, fold_runs};
 pub use geometry::{Level, TournamentGeometry};
-pub use machine_stf::{MachineStf, Positioner};
+pub use machine_stf::{Collector, MachineStf, Positioner};
 pub use ruler::{Hashing, Ruler, RulerFactory, Run};
 pub use stf::Stf;
 pub use structure::{InputBoundary, Position, Quartet, Structure};

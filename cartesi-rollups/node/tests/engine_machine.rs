@@ -16,9 +16,13 @@ use alloy::sol_types::SolCall;
 mod common;
 use common::prototype::{MachineCommitment, MachineCommitmentBuilder};
 
+use cartesi_machine::config::runtime::RuntimeConfig;
+use cartesi_machine::constants::break_reason;
+use cartesi_machine::machine::Machine;
+use cartesi_machine::types::{Hash, cmio::CmioResponseReason};
 use cartesi_rollups_prt_node::engine::{
-    DisputeSource, Hashing, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler, Stf,
-    Structure, TournamentGeometry,
+    Collector, DisputeSource, Hashing, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler,
+    Stf, Structure, TournamentGeometry, fold_runs,
 };
 use cartesi_rollups_prt_node::machine_runner::MachineRunner;
 use cartesi_rollups_prt_node::merkle::{Digest, MerkleProof};
@@ -247,19 +251,39 @@ fn engine_root_with_inputs(
     )
 }
 
-/// The facade's root for one level, replayed on a fresh store.
+/// The facade's root for one level, replayed on a fresh store. A dense
+/// level builds both ways, with the production bulk collector and the
+/// stepped reference, which must agree: an answer checked here is never
+/// the collect API's alone (two-level-sling.md, D7).
 fn engine_level_root(
     image: &Path,
     inputs: Vec<Vec<u8>>,
     geometry: &TournamentGeometry,
     level: &LevelCoords,
 ) -> String {
-    let (state_dir, storage) = initialized_storage_under(image, inputs, geometry);
-    let work = scratch();
-    let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
-    let root = source.node(&level.root()).unwrap().to_hex();
-    drop((state_dir, work));
-    root
+    let collectors: &[Collector] = if level.log2_stride == 0 {
+        &[Collector::Bulk, Collector::Stepped]
+    } else {
+        &[Collector::Bulk]
+    };
+    let roots: Vec<String> = collectors
+        .iter()
+        .map(|&collector| {
+            let (state_dir, storage) = initialized_storage_under(image, inputs.clone(), geometry);
+            let work = scratch();
+            let mut source =
+                DisputeSource::on_store_with(storage, 0, work.path().to_path_buf(), collector)
+                    .unwrap();
+            let root = source.node(&level.root()).unwrap().to_hex();
+            drop((state_dir, work));
+            root
+        })
+        .collect();
+    assert!(
+        roots.iter().all(|root| *root == roots[0]),
+        "the collectors disagree at {level:?}: {roots:?}"
+    );
+    roots[0].clone()
 }
 
 fn computation_hash_corpus() -> (PathBuf, Vec<serde_json::Value>) {
@@ -1451,8 +1475,9 @@ fn positioning_resumes_from_the_nearest_gap_snapshot() {
 /// Gaps 3 and 4 of docs/plans/test-strategy-reset.md: leaf commitments
 /// on a real machine, dense spans and reverts included, against the
 /// released CLI's answers (see leaf_cases). The CLI computes them through
-/// the collect API, so this also ties the node's per-step hashing to that
-/// API's answers before the node switches to it.
+/// the collect API, as the node's bulk collector does, so the stepped
+/// reference must match them too, or a regeneration would compare the
+/// collect API with itself (two-level-sling.md, D7).
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn leaf_commitments_match_the_reference_cli() {
@@ -1464,16 +1489,194 @@ fn leaf_commitments_match_the_reference_cli() {
         .collect();
     for case in leaf_cases() {
         let (image, inputs) = &epochs[case.program];
-        let (state_dir, storage) = initialized_storage_with(image, inputs.clone());
-        let work = scratch();
-        let leaf = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
-            .unwrap()
-            .node(&case.level().root())
-            .unwrap()
-            .to_hex();
-        drop(state_dir);
-        assert_eq!(leaf, goldens[&case.key()], "{}", case.key());
-        println!("{}: {leaf}", case.key());
+        for collector in [Collector::Bulk, Collector::Stepped] {
+            let (state_dir, storage) = initialized_storage_with(image, inputs.clone());
+            let work = scratch();
+            let leaf =
+                DisputeSource::on_store_with(storage, 0, work.path().to_path_buf(), collector)
+                    .unwrap()
+                    .node(&case.level().root())
+                    .unwrap()
+                    .to_hex();
+            drop(state_dir);
+            assert_eq!(leaf, goldens[&case.key()], "{} {collector:?}", case.key());
+            println!("{} {collector:?}: {leaf}", case.key());
+        }
+    }
+}
+
+/// The bulk collector against the stepped reference at run granularity,
+/// so a disagreement names its big cycle: every leaf case's span,
+/// positioned by replay from the template.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn bulk_and_stepped_leaf_runs_agree() {
+    let epochs: BTreeMap<_, _> = runner_epochs()
+        .into_iter()
+        .map(|(program, image, inputs)| (program, (image, inputs)))
+        .collect();
+    for case in leaf_cases() {
+        let (image, inputs) = &epochs[case.program];
+        let level = case.level();
+        let end = level.base_cycle + (U256::from(1) << level.height);
+        let [bulk, stepped] = [Collector::Bulk, Collector::Stepped].map(|collector| {
+            let work = scratch();
+            let stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::PerStep)
+                .unwrap()
+                .with_inputs(inputs.clone())
+                .with_collector(collector);
+            let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
+            ruler.advance(level.base_cycle).unwrap();
+            ruler.collect_big_cycle_roots(end).unwrap()
+        });
+        if let Some(index) =
+            (0..bulk.len().max(stepped.len())).find(|&i| bulk.get(i) != stepped.get(i))
+        {
+            panic!(
+                "{}: run {index} differs: bulk {:?}, stepped {:?}",
+                case.key(),
+                bulk.get(index),
+                stepped.get(index)
+            );
+        }
+        println!("{}: {} runs agree", case.key(), bulk.len());
+    }
+}
+
+/// A machine awaiting `inputs[feed]`, the previous ones processed (all
+/// accepted), with its idle period: the revert tail for that input.
+fn awaiting_input(image: &Path, inputs: &[Vec<u8>], feed: usize) -> (Machine, Vec<Hash>) {
+    let mut machine = Machine::load(image, &RuntimeConfig::quiet_console()).unwrap();
+    for payload in &inputs[..feed] {
+        deliver(&mut machine, payload);
+        run_to_manual_yield(&mut machine);
+    }
+    let mcycle = machine.mcycle().unwrap();
+    let tail = machine
+        .collect_uarch_cycle_root_hashes(mcycle, 0, None)
+        .unwrap()
+        .hashes;
+    (machine, tail)
+}
+
+fn run_to_manual_yield(machine: &mut Machine) {
+    loop {
+        match machine.run(u64::MAX).unwrap() {
+            break_reason::YIELDED_AUTOMATICALLY => continue,
+            reason => return assert_eq!(reason, break_reason::YIELDED_MANUALLY),
+        }
+    }
+}
+
+fn deliver(machine: &mut Machine, payload: &[u8]) {
+    let root = machine.root_hash().unwrap();
+    machine
+        .send_cmio_response(CmioResponseReason::Advance, payload, Some(&root))
+        .unwrap();
+}
+
+/// Every period from the machine's mcycle to `end` or a fixed point (and
+/// the period after it), through automatic yields.
+fn uarch_periods(
+    machine: &mut Machine,
+    end: u64,
+    log2_bundle: u32,
+    tail: &[Hash],
+) -> Vec<Vec<Hash>> {
+    let mut periods = vec![];
+    loop {
+        let part = machine
+            .collect_uarch_cycle_root_hashes(end, log2_bundle, Some(tail))
+            .unwrap();
+        periods.extend(part.periods().map(<[Hash]>::to_vec));
+        let fixed = matches!(
+            part.break_reason,
+            break_reason::YIELDED_MANUALLY | break_reason::HALTED | break_reason::MCYCLE_OVERFLOW
+        );
+        if fixed || machine.mcycle().unwrap() >= end {
+            return periods;
+        }
+    }
+}
+
+/// The root of one period's 2^c leaves from its entries at a bundle size:
+/// the execution bundles, the halted-only bundle repeated to fill, then the
+/// final bundle, which ends with the reset (unbundled, the entries are the
+/// executed leaves, the halted state and the reset).
+fn period_root(entries: &[Hash], log2_bundle: u64) -> Digest {
+    let c = Structure::PRODUCTION.log2_uarch_span;
+    let (last, rest) = entries.split_last().unwrap();
+    let (halted, executed) = rest.split_last().unwrap();
+    let fill = (1u64 << (c - log2_bundle)) - 1 - executed.len() as u64;
+    let runs = executed
+        .iter()
+        .map(|hash| (Digest::from(*hash), 1))
+        .chain([(Digest::from(*halted), fill), (Digest::from(*last), 1)])
+        .filter(|&(_, count)| count > 0);
+    fold_runs(runs, c - log2_bundle).unwrap().root_hash()
+}
+
+/// The collect API's bundling against Dave's Merkle assembly: at every
+/// bundle size, each period's entries reduce to the root of its unbundled
+/// leaves, the fixed point's padding period included. The spans cover an
+/// input's opening, an automatic yield, and a rejection (echo's input 2).
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn uarch_bundles_reduce_to_the_unbundled_leaves() {
+    let image = echo_image();
+    let inputs = encode_inputs(&[&b"zero"[..], b"one", b"two"]);
+    let c = Structure::PRODUCTION.log2_uarch_span;
+
+    let (mut probe, _) = awaiting_input(&image, &inputs, 0);
+    deliver(&mut probe, &inputs[0]);
+    let opened = probe.mcycle().unwrap();
+    assert_eq!(
+        probe.run(u64::MAX).unwrap(),
+        break_reason::YIELDED_AUTOMATICALLY
+    );
+    let output = probe.mcycle().unwrap();
+    let (mut probe, _) = awaiting_input(&image, &inputs, 2);
+    deliver(&mut probe, &inputs[2]);
+    run_to_manual_yield(&mut probe);
+    let rejected = probe.mcycle().unwrap();
+
+    // (input fed, first mcycle, end mcycle)
+    for (feed, start, end) in [
+        (0, opened, opened + 6),
+        (0, output - 3, output + 3),
+        (2, rejected - 3, u64::MAX),
+    ] {
+        let collect = |log2_bundle: u32| {
+            let (mut machine, tail) = awaiting_input(&image, &inputs, feed);
+            deliver(&mut machine, &inputs[feed]);
+            while machine.mcycle().unwrap() < start {
+                let reason = machine.run(start).unwrap();
+                assert!(
+                    [
+                        break_reason::REACHED_TARGET_MCYCLE,
+                        break_reason::YIELDED_AUTOMATICALLY
+                    ]
+                    .contains(&reason),
+                    "input {feed} stopped with {reason} short of mcycle {start}"
+                );
+            }
+            uarch_periods(&mut machine, end, log2_bundle, &tail)
+        };
+        let leaves: Vec<Digest> = collect(0)
+            .iter()
+            .map(|period| period_root(period, 0))
+            .collect();
+        assert!(leaves.len() >= 4, "input {feed} from mcycle {start}");
+        for log2_bundle in 1..=c {
+            let bundled: Vec<Digest> = collect(log2_bundle as u32)
+                .iter()
+                .map(|period| period_root(period, log2_bundle))
+                .collect();
+            assert_eq!(
+                bundled, leaves,
+                "input {feed} from mcycle {start}, bundle 2^{log2_bundle}"
+            );
+        }
     }
 }
 
