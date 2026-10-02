@@ -67,11 +67,8 @@ cleanup_temporary_paths() {
 trap cleanup_temporary_paths EXIT
 
 sha256_of() {
+    [[ -f "$1" ]] || return 1
     sha256sum "$1" | awk '{print $1}'
-}
-
-verify_sha256() {
-    [[ -f "$1" ]] && [[ "$(sha256_of "$1")" == "$2" ]]
 }
 
 require_emulator() {
@@ -169,34 +166,26 @@ publish_generated_sources() {
 
     temporary_state="$(mktemp "${cache_root}/.prepared-generated-sources.XXXXXX")"
     remember_temporary_path "$temporary_state"
-    {
-        printf 'format 1\n'
-        printf 'provider %s\n' "$provider"
-        printf 'emulator-head %s\n' "$head"
-        for path in "${generated_files[@]}"; do
-            printf 'generated %s %s\n' "$(sha256_of "${emulator_dir}/${path}")" "$path"
-        done
-    } >"$temporary_state"
+    render_state "$provider" "$head" >"$temporary_state"
     chmod 0644 "$temporary_state"
     mv -f -- "$temporary_state" "$source_state"
 }
 
-generated_sources_match() {
-    local expected_provider="$1"
-    local expected_head="$2"
-    local path expected_sha256 matches
+# build.rs parses this exact seven-line format: the provider, the emulator
+# commit, and the digest of each published file in generated_files order.
+render_state() {
+    local path
 
-    [[ -f "$source_state" ]] || return 1
-    [[ "$(wc -l <"$source_state" | tr -d ' ')" == "7" ]] || return 1
-    [[ "$(sed -n '1p' "$source_state")" == "format 1" ]] || return 1
-    [[ "$(sed -n 's/^provider //p' "$source_state")" == "$expected_provider" ]] || return 1
-    [[ "$(sed -n 's/^emulator-head //p' "$source_state")" == "$expected_head" ]] || return 1
+    printf 'format 1\nprovider %s\nemulator-head %s\n' "$1" "$2"
     for path in "${generated_files[@]}"; do
-        matches="$(awk -v path="$path" '$1 == "generated" && $3 == path { count += 1 } END { print count + 0 }' "$source_state")"
-        [[ "$matches" == "1" ]] || return 1
-        expected_sha256="$(awk -v path="$path" '$1 == "generated" && $3 == path { print $2 }' "$source_state")"
-        verify_sha256 "${emulator_dir}/${path}" "$expected_sha256" || return 1
+        printf 'generated %s %s\n' "$(sha256_of "${emulator_dir}/${path}")" "$path"
     done
+}
+
+# Comparing the recorded state with one rendered from the checkout checks the
+# format, provider, commit, and every digest at once.
+generated_sources_match() {
+    [[ -f "$source_state" ]] && [[ "$(cat "$source_state")" == "$(render_state "$1" "$2")" ]]
 }
 
 prepare_release() {
@@ -312,27 +301,22 @@ generate_sources() {
 }
 
 validate_generated_sources() {
-    local head recorded_head recorded_provider
+    local provider head
 
     [[ -f "$source_state" ]] ||
         die "generated sources are not prepared; run 'just machine::prepare-release' or 'just machine::generate-sources'"
-    [[ "$(sed -n '1p' "$source_state")" == "format 1" ]] ||
-        die "generated-source preparation state has an unsupported format"
-    recorded_provider="$(sed -n 's/^provider //p' "$source_state")"
-    recorded_head="$(sed -n 's/^emulator-head //p' "$source_state")"
-    case "$recorded_provider" in
+    provider="$(sed -n 's/^provider //p' "$source_state")"
+    head="$(emulator_head)"
+    case "$provider" in
         "release:${release_tag}")
-            [[ "$recorded_head" == "$release_commit" ]] ||
-                die "release preparation state names the wrong emulator commit"
+            [[ "$head" == "$release_commit" ]] ||
+                die "${release_tag} sources are prepared, but emulator HEAD is ${head}"
             ;;
         generated) ;;
-        *) die "generated-source preparation state has an invalid provider" ;;
+        *) die "generated-source preparation state names an unknown provider: ${provider}" ;;
     esac
-    head="$(emulator_head)"
-    [[ "$recorded_head" == "$head" ]] ||
-        die "prepared sources belong to emulator ${recorded_head}, but HEAD is ${head}"
-    generated_sources_match "$recorded_provider" "$head" ||
-        die "generated-source preparation state or published sources do not match exactly"
+    generated_sources_match "$provider" "$head" ||
+        die "prepared sources do not match emulator HEAD ${head}; rerun 'just machine::prepare-release' or 'just machine::generate-sources'"
 }
 
 external_provider_selected() {
