@@ -274,8 +274,10 @@ guard, so a copy is kept only when it verifies against this checkout:
   marker binds the production contract and deployment sources, installed
   production dependencies, effective compiler configuration and tool
   versions, state dump, and deployment files.
-- A copy that does not verify is deleted. The devnet, echo, and yield are
-  then rebuilt; the opt-in honeypot is only reported.
+- An artifact already in place that verifies is kept. A copy that does not
+  verify is deleted; the devnet, echo, and yield are then rebuilt, and the
+  opt-in honeypot is only reported. A checker error (such as a missing tool)
+  on an artifact already in place stops the run instead of deleting it.
 
 These checks prevent the 2026-07-14 failure mode: a devnet deployed from
 older contract sources fails e2e with a misleading consensus assert.

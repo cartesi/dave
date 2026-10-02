@@ -7,8 +7,8 @@ set -euo pipefail
 
 (($# <= 1)) || { echo "usage: script/bootstrap-worktree.sh [SOURCE]" >&2; exit 2; }
 source_root=
-if [[ -n "${1:-}" ]]; then source_root="$(cd -- "$1" && pwd -P)"; fi
-cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
+if [[ -n "${1:-}" ]]; then source_root="$(CDPATH= cd -- "$1" && pwd -P)"; fi
+CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 if [[ -z "$source_root" ]]; then
     just setup
     just bind
@@ -31,10 +31,14 @@ paths() {
 }
 
 # Keep a verified ARTIFACT, else adopt SOURCE's copy if it verifies here.
-# Fails, leaving nothing unverified behind, when neither does.
+# Fails, leaving nothing unverified behind, when neither does. A checker
+# error (exit 2, such as a missing tool) is no verdict on what is in place,
+# so it stops the run rather than delete a possibly good artifact.
 adopt() {
-    local path
-    if verify "$1" >/dev/null 2>&1; then echo "kept verified $1"; return; fi
+    local path status=0
+    verify "$1" >/dev/null 2>&1 || status=$?
+    if ((status == 0)); then echo "kept verified $1"; return; fi
+    ((status == 1)) || { echo "error: cannot verify $1; run: just doctor-all" >&2; exit 2; }
     for path in $(paths "$1"); do
         rm -rf -- "$path"
         if [[ -e "$source_root/$path" ]]; then cp -R -- "$source_root/$path" "$path"; fi
