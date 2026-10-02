@@ -295,7 +295,6 @@ jobs:
       - name: Setup tools
         uses: ./.github/actions/setup-tools
         with:
-          setup-qemu: false
           setup-rust: false
 
       - name: Contracts
