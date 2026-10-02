@@ -40,13 +40,15 @@ clean-echo: (clean-program "echo")
 # honeypot commit, released or not, can be tested. Its released snapshots
 # (v3.0.1) predate Cartesi Machine v0.21 and do not load; once a compatible
 # release ships, a sha-pinned snapshot download can replace this build and its
-# docker dependency. The image fingerprint does not record REF: rebuild after
-# changing it.
+# docker dependency. The image fingerprint records this pin but not a REF
+# passed at build time: rebuild by hand after building another commit.
 HONEYPOT_REF := "23b31c06f0537cbd33f996f4ecf1ef6bea8363b3" # cartesi/honeypot#37
 
+# Just has no named arguments, so REF=<commit> arrives literally; the
+# prefix is stripped so that spelling works like a bare <commit>.
 # build the honeypot image from a honeypot commit (requires docker)
 build-honeypot REF=HONEYPOT_REF: clean-honeypot-snapshot clean-honeypot-project
-  ./script/build-honeypot.sh "$1"
+  ./script/build-honeypot.sh "${1#REF=}"
 clean-honeypot-snapshot: (clean-program "honeypot")
 clean-honeypot-project:
     rm -rf honeypot/project

@@ -115,9 +115,10 @@ Each persistent test image likewise records the inputs that produced it and
 its semantic stored-machine root. The input digest names one producer script
 for that image rather than the shared programs Justfile. Editing the Honeypot
 producer therefore does not invalidate echo, yield, or stress. The Honeypot
-commit is a build argument (`just programs::build-honeypot [REF]`) that the
-receipt does not record, so a Honeypot image is rebuilt by hand after a change
-of commit. The v2 receipt
+receipt also covers the pinned commit (`HONEYPOT_REF` in the programs
+Justfile), so bumping the pin invalidates it; a commit passed at build time
+(`just programs::build-honeypot <commit>`) is not recorded, so rebuild by hand
+after testing another commit. The v2 receipt
 format intentionally makes the old shared-recipe receipts stale once; rebuild
 the image with the fix printed by the relevant doctor scope.
 

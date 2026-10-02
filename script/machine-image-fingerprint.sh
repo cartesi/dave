@@ -64,7 +64,8 @@ inputs_digest() {
     local program=$1
     local machine_version machine_path machine_hash emulator_pin git_emulator_pin
     local provided_emulator_pin producer producer_hash
-    local generator_hash portal_address token_address linux_hash rootfs_hash
+    local generator_hash honeypot_pin portal_address token_address
+    local linux_hash rootfs_hash
 
     case "$program" in
         echo|yield|stress|honeypot) ;;
@@ -128,6 +129,12 @@ inputs_digest() {
         fi
         generator_hash=$(sha256_file \
             test/programs/honeypot/generate-devnet-honeypot-config.sh) || return $?
+        # The pinned commit lives in the programs justfile, not the producer.
+        # A commit passed at build time is not recorded.
+        honeypot_pin=$(grep -E '^HONEYPOT_REF :=' test/programs/justfile) || {
+            echo "error: no HONEYPOT_REF pin in test/programs/justfile" >&2
+            return 2
+        }
         portal_address=$(deployment_address Erc20Portal) || return 1
         token_address=$(deployment_address TestFungibleToken) || return 1
     else
@@ -152,6 +159,7 @@ inputs_digest() {
 
         if [ "$program" = honeypot ]; then
             printf 'honeypot-config-generator=%s\n' "$generator_hash"
+            printf 'honeypot-pin=%s\n' "$honeypot_pin"
             printf 'erc20-portal=%s\n' "$portal_address"
             printf 'test-fungible-token=%s\n' "$token_address"
         else
