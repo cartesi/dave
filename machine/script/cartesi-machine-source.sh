@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Prepares machine/emulator as Cargo's source provider or validates an
+# external one; machine/README.md documents the provider contract.
+#
+# Nothing here takes a lock. The state file and the Boost stamp land only
+# with or after the content they vouch for, so an interrupted or concurrent
+# run fails a later check instead of passing it, and rerunning repairs it.
 set -euo pipefail
 
 readonly release_tag="v0.21.0"
@@ -194,7 +200,7 @@ generated_sources_match() {
 }
 
 prepare_release() {
-    local head patch extraction lock
+    local head patch extraction
 
     need git
     need sha256sum
@@ -212,17 +218,6 @@ prepare_release() {
 
     patch="${cache_root}/release/${release_tag}-${release_patch_sha256}/add-generated-files.diff"
     "${repo_root}/script/fetch.sh" "$release_patch_url" "$release_patch_sha256" "$patch"
-
-    mkdir -p -- "${cache_root}/locks"
-    lock="${cache_root}/locks/generated-sources"
-    if ! mkdir "$lock" 2>/dev/null; then
-        die "another generated-source preparation is active (remove stale lock: $lock)"
-    fi
-    remember_temporary_path "$lock"
-    if generated_sources_match "release:${release_tag}" "$head"; then
-        printf 'Cartesi Machine %s generated sources already prepared\n' "$release_tag"
-        return
-    fi
 
     extraction="$(mktemp -d "${cache_root}/.release-generated.XXXXXX")"
     remember_temporary_path "$extraction"
@@ -265,7 +260,7 @@ boost_is_prepared() {
 }
 
 prepare_boost() {
-    local archive extraction extracted_boost lock backup had_previous=0
+    local archive extraction extracted_boost backup had_previous=0
 
     require_emulator_sources
 
@@ -276,20 +271,6 @@ prepare_boost() {
 
     need sha256sum
     need tar
-
-    mkdir -p -- "${cache_root}/locks"
-    lock="${cache_root}/locks/prepare-boost"
-    if ! mkdir "$lock" 2>/dev/null; then
-        die "another Boost preparation is active (remove stale lock: $lock)"
-    fi
-    remember_temporary_path "$lock"
-
-    # A concurrent process may have completed between the first check and the
-    # lock acquisition in a caller that retried after observing the lock.
-    if boost_is_prepared; then
-        printf 'Boost %s headers already prepared\n' "$boost_version"
-        return
-    fi
 
     archive="${cache_root}/dependency/boost-${boost_version}-${boost_archive_sha256}/${boost_archive_name}"
     "${repo_root}/script/fetch.sh" "$boost_archive_url" "$boost_archive_sha256" "$archive"
@@ -332,25 +313,13 @@ prepare_boost() {
 }
 
 generate_sources() {
-    local head generation clone patch extraction path lua_bin lock
+    local head generation clone patch extraction path lua_bin
 
     need git
     need make
     require_emulator
     require_clean_emulator
     head="$(emulator_head)"
-
-    if generated_sources_match "generated" "$head"; then
-        printf 'Cartesi Machine sources already generated for %s\n' "$head"
-        return
-    fi
-
-    mkdir -p -- "${cache_root}/locks"
-    lock="${cache_root}/locks/generated-sources"
-    if ! mkdir "$lock" 2>/dev/null; then
-        die "another generated-source preparation is active (remove stale lock: $lock)"
-    fi
-    remember_temporary_path "$lock"
 
     if generated_sources_match "generated" "$head"; then
         printf 'Cartesi Machine sources already generated for %s\n' "$head"
