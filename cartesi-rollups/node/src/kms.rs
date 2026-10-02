@@ -181,6 +181,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "needs docker (LocalStack); run `just test-kms`"]
     async fn signer_works() {
         run_test(|| async {
             let mut kms_signer = new_builder();
@@ -211,6 +212,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "needs docker (LocalStack); run `just test-kms`"]
     async fn wallet_eth() {
         run_test(|| async {
             let chain_id: ChainId = 31337;

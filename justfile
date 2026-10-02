@@ -182,16 +182,21 @@ check-fmt-rust-workspace: bind
 check-rust-workspace: bind
     cargo check
 
-# ensure-docker: the kms tests spin testcontainers, and a sleeping
-# Docker Desktop fails them with noise that reads like a code bug.
-# rust workspace tests (the kms tests spin docker testcontainers; CI and
-# setup prepare the echo/yield images used by ordinary tests;
-# expensive machine differentials and the release corpus stay explicit below)
+# CI and setup prepare the echo/yield images these use; expensive machine
+# differentials, the release corpus and the docker-backed KMS tests stay
+# explicit below.
+# rust workspace tests
 test-rust-workspace: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
-    ./script/ensure-docker.sh
     cargo test
+
+# The one Rust test that needs docker; ensure-docker wakes a sleeping
+# Docker Desktop, whose failures read like code bugs.
+# the AWS KMS signer against LocalStack
+test-kms: bind
+    ./script/ensure-docker.sh
+    cargo test -p cartesi-rollups-prt-node --lib kms:: -- --ignored
 
 # fail-loud real-machine differentials and golden fixtures
 test-engine-machine: bind

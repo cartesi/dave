@@ -285,6 +285,10 @@ jobs:
         run: |
           just test-rust-workspace
 
+      - name: KMS signer tests
+        run: |
+          just test-kms
+
       - name: Engine machine integration tests
         run: |
           just test-engine-machine

@@ -140,9 +140,10 @@ harness itself. Each rule below closes a reproduced harness failure:
   no `direnv exec . env LANES=5` incantation), warns at start when on
   battery power, and records power provenance in _battery/power.txt
   alongside the existing mid-run sleep tripwire.
-- `just check` preflights docker (script/ensure-docker.sh): the kms
+- `just test-kms` preflights docker (script/ensure-docker.sh): the kms
   testcontainers fail confusingly under a sleeping Docker Desktop,
-  which the preflight wakes on macOS and names elsewhere.
+  which the preflight wakes on macOS and names elsewhere. They are the only
+  Rust tests that need docker, so they sit outside `just check`.
 
 ## Node introspection seam
 

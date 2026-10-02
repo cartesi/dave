@@ -81,15 +81,6 @@ if command -v sort >/dev/null; then
       "install GNU coreutils (the nix devshell provides it)" ;;
   esac
 fi
-if command -v docker > /dev/null; then
-  if docker info >/dev/null 2>&1; then
-    ok "docker daemon"
-  else
-    miss "docker daemon is unavailable" "start Docker (Rust KMS tests use it)"
-  fi
-else
-  miss "docker not on PATH" "install and start Docker (Rust KMS tests use it)"
-fi
 # Forge formatter heuristics drift across releases; a local/CI
 # version split fails CI fmt with no local reproduction. Compare
 # against the root pin that CI also consumes.
@@ -115,6 +106,12 @@ for tool in anvil cast cartesi-machine cartesi-machine-stored-hash; do
 done
 if command -v xgenext2fs > /dev/null; then ok "xgenext2fs"; else
   warn "xgenext2fs not on PATH" "needed to rebuild the Docker-heavy Honeypot image"; fi
+if command -v docker > /dev/null && docker info >/dev/null 2>&1; then
+  ok "docker daemon"
+else
+  warn "docker daemon is unavailable" \
+    "needed only to rebuild the Honeypot image and for just test-kms"
+fi
 }
 
 check_rust_build_inputs() {
