@@ -41,15 +41,14 @@ jobs:
           just programs::build-yield
 
       - name: Build, format check and test prt contracts
-        working-directory: ./prt/contracts
         run: |
-          just check-fmt
-          just build-smart-contracts
-          just test-disputes
-          just test-stf
-          just test-stf-fuzzy
+          just prt-contracts::check-fmt
+          just prt-contracts::build-smart-contracts
+          just prt-contracts::test-disputes
+          just prt-contracts::test-stf
+          just prt-contracts::test-stf-fuzzy
 
-  dave-contracts:
+  rollups-contracts:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,23 +59,20 @@ jobs:
         uses: ./.github/actions/setup-tools
 
       - name: Download PRT contracts
-        working-directory: ./prt/contracts
         run: |
-          just install-deps
+          just prt-contracts::install-deps
 
       - name: Download Rollups contracts
-        working-directory: ./cartesi-rollups/contracts
         run: |
-          just install-deps
+          just rollups-contracts::install-deps
 
       - name: Build, format check and test Dave consensus contracts
-        working-directory: ./cartesi-rollups/contracts
         run: |
-          just check-fmt
-          just build-smart-contracts
-          just test
+          just rollups-contracts::check-fmt
+          just rollups-contracts::build-smart-contracts
+          just rollups-contracts::test
 
-  prt-honeypot:
+  e2e:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,21 +85,17 @@ jobs:
         with:
           version: 0.21.0
       - name: Download PRT contracts
-        working-directory: ./prt/contracts
         run: |
-          just install-deps
+          just prt-contracts::install-deps
       - name: Download Rollups contracts
-        working-directory: ./cartesi-rollups/contracts
         run: |
-          just install-deps
+          just rollups-contracts::install-deps
       - name: Build devnet
-        working-directory: ./cartesi-rollups/contracts
         run: |
-          just build-devnet
+          just rollups-contracts::build-devnet
       - name: Download deps
-        working-directory: ./test/programs/
         run: |
-          just download-deps
+          just programs::download-deps
       - name: Rust build
         run: |
           just build-rust-workspace
@@ -130,11 +122,10 @@ jobs:
       # The same node against a devnet whose factory serves the two-level
       # table (DEVNET_GEOMETRY=two-level). Runs last: it replaces the bundle.
       - name: Build two-level devnet
-        working-directory: ./cartesi-rollups/contracts
         env:
           DEVNET_GEOMETRY: two-level
         run: |
-          just build-devnet
+          just rollups-contracts::build-devnet
       - name: Test two-level smoke
         timeout-minutes: 20
         run: |
@@ -309,8 +300,8 @@ jobs:
 
       - name: Contracts
         run: |
-          just -f prt/contracts/justfile install-deps
-          just -f cartesi-rollups/contracts/justfile install-deps
+          just prt-contracts::install-deps
+          just rollups-contracts::install-deps
           just bind
 
       - name: Prepare Cartesi Machine source
@@ -345,7 +336,7 @@ jobs:
           retention-days: 1
 
   release-node:
-    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release-node, release-contracts]
+    needs: [prt-contracts, rollups-contracts, e2e, build, build-release-node, release-contracts]
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -407,17 +398,20 @@ jobs:
         uses: ./.github/actions/setup-tools
         id: setup
 
+      - name: Download contracts
+        run: |
+          just prt-contracts::install-deps
+          just rollups-contracts::install-deps
+
       - name: Build PRT Core contracts
         working-directory: ./prt/contracts
         run: |
-          just install-deps
           forge clean
           forge build src
 
       - name: Build Cartesi Rollups PRT contracts
         working-directory: ./cartesi-rollups/contracts
         run: |
-          just install-deps
           forge clean
           forge build src
 
@@ -438,9 +432,8 @@ jobs:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-deployment-addresses.tar.gz
 
       - name: Build devnet
-        working-directory: ./cartesi-rollups/contracts
         run: |
-          just build-devnet
+          just rollups-contracts::build-devnet
 
       - name: Compress complete devnet bundle
         run: |
@@ -458,7 +451,7 @@ jobs:
           retention-days: 1
 
   publish-contracts:
-    needs: [prt-contracts, dave-contracts, prt-honeypot, build, build-release-node, release-contracts]
+    needs: [prt-contracts, rollups-contracts, e2e, build, build-release-node, release-contracts]
     runs-on: ubuntu-24.04
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
