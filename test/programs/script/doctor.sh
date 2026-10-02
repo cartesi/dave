@@ -114,9 +114,10 @@ if [[ ! -x "$fingerprint_checker" ]]; then
 else
     check_image echo "just programs::build-echo"
     check_image yield "just programs::build-yield"
-    if [[ "$scope" == all ]]; then
+    # Opt-in: an absent honeypot image is fine, a stale one is not.
+    if [[ "$scope" == all && -e "${programs_dir}/honeypot/machine-image" ]]; then
         check_image honeypot \
-            "ensure the devnet is current with just rollups-contracts::build-devnet, then run: just programs::build-honeypot-snapshot"
+            "ensure the devnet is current with just rollups-contracts::build-devnet, then run: just programs::build-honeypot"
     fi
 fi
 printf '\n'

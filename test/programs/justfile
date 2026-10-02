@@ -36,9 +36,17 @@ build-echo: clean-echo
   ./script/build-echo.sh
 clean-echo: (clean-program "echo")
 
-# honeypot/honeypot (requires docker)
-build-honeypot-snapshot: clean-honeypot-snapshot clean-honeypot-project
-  ./script/build-honeypot.sh
+# The honeypot is an opt-in e2e fixture, built from source so that any
+# honeypot commit, released or not, can be tested. Its released snapshots
+# (v3.0.1) predate Cartesi Machine v0.21 and do not load; once a compatible
+# release ships, a sha-pinned snapshot download can replace this build and its
+# docker dependency. The image fingerprint does not record REF: rebuild after
+# changing it.
+HONEYPOT_REF := "23b31c06f0537cbd33f996f4ecf1ef6bea8363b3" # cartesi/honeypot#37
+
+# build the honeypot image from a honeypot commit (requires docker)
+build-honeypot REF=HONEYPOT_REF: clean-honeypot-snapshot clean-honeypot-project
+  ./script/build-honeypot.sh "$1"
 clean-honeypot-snapshot: (clean-program "honeypot")
 clean-honeypot-project:
     rm -rf honeypot/project

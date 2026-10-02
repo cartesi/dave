@@ -12,8 +12,17 @@ see [docs/test-harness.md](../../../docs/test-harness.md).
 
 Clone with `--recurse-submodules`, or run
 `git submodule update --recursive --init` after cloning, then follow the
-setup in the [root README](../../../README.md). Building the honeypot
-machine image requires docker.
+setup in the [root README](../../../README.md).
+
+The honeypot scenarios are opt-in and not in CI. Build the image from the
+pinned honeypot commit, or from any other (unreleased ones included), then run
+a scenario on it; the build needs docker and a current devnet:
+
+```bash
+just programs::build-honeypot            # the commit pinned in test/programs/justfile
+just programs::build-honeypot <commit>   # any other honeypot commit
+just e2e honeypot simple
+```
 
 ## Running
 

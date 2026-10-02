@@ -9,8 +9,8 @@ Full harness context: `docs/test-harness.md` (anatomy, oracle doctrine,
 patch chains, kill markers). The wiring checklist, complete:
 
 1. Pick or build a machine program under `test/programs/` (see its
-   justfile). Existing: echo, yield, honeypot; `compute` builds but is
-   not yet wired into any scenario.
+   justfile). Existing: echo, yield, and the opt-in honeypot, which CI
+   does not build; `stress` serves the Rust measurements only.
 2. Write `test/e2e/rollups/scenarios/<name>.lua`: require `test_env`,
    spawn blockchain and node, drive epochs with `run_steered_epoch` when
    the dispute must reach a specific transition, and with `run_epoch` or

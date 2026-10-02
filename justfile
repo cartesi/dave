@@ -62,10 +62,10 @@ setup:
     just programs::download-deps
     just programs::build-programs
 
-# Setup plus everything the e2e tests need, running natively.
+# Setup plus everything the e2e smoke needs, running natively. The honeypot
+# image is opt-in: just programs::build-honeypot (requires docker).
 setup-local: setup
     just rollups-contracts::build-devnet
-    just programs::build-honeypot-snapshot  # requires docker
 
 # Setup the Docker build context without first building an unused host archive.
 setup-docker: build-docker-image

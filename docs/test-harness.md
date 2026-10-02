@@ -169,8 +169,10 @@ which restarts the workers deterministically instead of signalling.
 
 Machine programs (`test/programs/`): `echo` (accepts and rejects inputs),
 `yield` (awaits each input with `RX_ACCEPTED`, then rejects it with
-`RX_REJECTED`), and `honeypot` (real application). The explicit `stress`
-image belongs to the Rust measurement workflow, not to an E2E scenario.
+`RX_REJECTED`), and `honeypot` (real application; an opt-in image outside
+CI, built from any honeypot commit, see `test/e2e/rollups/README.md`). The
+explicit `stress` image belongs to the Rust measurement workflow, not to an
+E2E scenario.
 
 Scenarios (`test/e2e/rollups/scenarios/`), the black-box smoke left after
 the 2026-10-01 cut (docs/plans/test-strategy-reset.md, item 4):
@@ -335,10 +337,10 @@ least-run layer, and suites outside the loop rot. Case study:
 stayed broken until 2026-07-08, because honeypot-all runs in nobody's
 loop. The response was to move the two highest-value uncovered nets
 into CI (stf_all, the batched kill) - but the durable fix is explicit
-tiers: per-PR CI (fast, always) and manual measurement regeneration. A suite
-not assigned to a tier should be treated as deleted. Since 2026-10-02 per-PR CI
-runs the whole smoke, and the manually dispatched full battery that once sat
-between the tiers is gone.
+tiers: per-PR CI (fast, always) and manual runs (the opt-in honeypot image,
+measurement regeneration). A suite not assigned to a tier should be treated as
+deleted. Since 2026-10-02 per-PR CI runs the whole smoke, and the manually
+dispatched full battery that once sat between the tiers is gone.
 
 Runtime remains the reason not everything belongs in per-PR CI. Parallel
 `TEST_INSTANCE` lanes retired the fixed-port bottleneck after this assessment;

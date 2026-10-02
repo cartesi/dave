@@ -30,8 +30,9 @@ modules (`just <module>::<recipe>`, see `just --list`).
    or the explicit machine preparation lifecycle readies the source fallback
    before Cargo starts.
 6. Test programs (`test/programs`): machine images built with the
-   `cartesi-machine` CLI from downloaded kernel/rootfs artifacts; the
-   honeypot image additionally needs docker.
+   `cartesi-machine` CLI from downloaded kernel/rootfs artifacts; the opt-in
+   honeypot image is built from a honeypot commit and additionally needs
+   docker.
 7. Devnet bundle (`cartesi-rollups/contracts/{state.json,state.fingerprint}`
    plus `deployments/31337`): an anvil state dump with everything deployed,
    its deployment records, and the marker that binds those outputs to the
@@ -94,7 +95,8 @@ identical apart from paths and labels.
 
 `just doctor` covers build and pre-commit-check readiness, including the echo
 and yield images consumed by the standard Rust suite. The devnet bundle,
-Honeypot image, and retained E2E state belong to `just doctor-e2e`;
+a built Honeypot image (an absent one is fine: it is opt-in), and retained E2E
+state belong to `just doctor-e2e`;
 `just doctor-all` runs both scopes. A checkout can therefore be healthy for
 ordinary development without constructing the expensive E2E fixtures.
 
@@ -112,7 +114,10 @@ deployment record, so copying or interrupting a bundle still fails closed.
 Each persistent test image likewise records the inputs that produced it and
 its semantic stored-machine root. The input digest names one producer script
 for that image rather than the shared programs Justfile. Editing the Honeypot
-producer therefore does not invalidate echo, yield, or stress. The v2 receipt
+producer therefore does not invalidate echo, yield, or stress. The Honeypot
+commit is a build argument (`just programs::build-honeypot [REF]`) that the
+receipt does not record, so a Honeypot image is rebuilt by hand after a change
+of commit. The v2 receipt
 format intentionally makes the old shared-recipe receipts stale once; rebuild
 the image with the fix printed by the relevant doctor scope.
 
