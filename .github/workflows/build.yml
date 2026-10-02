@@ -257,10 +257,9 @@ jobs:
 
       # Keep Rust and Lua failures legible here. Contract and build-tooling
       # portions of `just check` have their own jobs or focused scripts.
-      - name: Rust fmt and check
+      - name: Rust fmt
         run: |
           just check-fmt-rust-workspace
-          just check-rust-workspace
 
       - name: Clippy
         run: |

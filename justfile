@@ -176,9 +176,6 @@ fmt-rust-workspace: bind
 check-fmt-rust-workspace: bind
     cargo fmt --check
 
-check-rust-workspace: bind
-    cargo check
-
 # CI and setup prepare the echo/yield images these use; expensive machine
 # differentials, the release corpus and the docker-backed KMS tests stay
 # explicit below.
