@@ -65,9 +65,11 @@ docs/                The knowledge base. Start at docs/README.md.
   forfeit a dispute the honest party should have won: wrong commitments or
   missed deadlines lose tournaments. Treat commitment construction and proof
   generation as correctness-critical, not just liveness-critical.
-- The Lua client and the Solidity state-transition tests double as
-  cross-implementation oracles for the Rust code. Tests compare their outputs;
-  keep all implementations in agreement.
+- The Lua client's commitment construction (`prt/client-lua/computation/`) and
+  the Solidity state-transition tests double as cross-implementation oracles
+  for the Rust code; keep them in agreement. The Lua player is an e2e sybil
+  actor, which needs to agree with the node only well enough to steer e2e
+  disputes.
 
 ## Where knowledge lives
 

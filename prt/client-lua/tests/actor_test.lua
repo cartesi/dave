@@ -86,14 +86,6 @@ local function recording_sender()
             })
             return true
         end,
-        eliminate_match = function(self, ...)
-            self.tx_count = self.tx_count + 1
-            table.insert(self.calls, {
-                name = "eliminate_match",
-                arguments = { ... },
-            })
-            return true
-        end,
     }
 end
 
@@ -121,7 +113,7 @@ local function create_match(fold, root, one, two, block)
 end
 
 return {
-    Test.case("actor dispatches Hero before cleanup from the same observation", function()
+    Test.case("actor dispatches one Hero action per observation", function()
         local root = address(1)
         local initial, local_tree = tree()
         local opponent = digest(30)
@@ -174,7 +166,6 @@ return {
             machine_path = "unused",
             inputs = {},
             sender = sender,
-            gc_enabled = true,
         }
         local log = actor:react()
         Test.equal(#sender.calls, 1)
@@ -182,95 +173,5 @@ return {
         Test.equal(log.decision._tag, Domain.HeroDecision.ACT)
         Test.equal(log.idle, false)
         Test.equal(#log.state.matches, 2)
-    end),
-
-    Test.case("actor submits at most one cleanup only after Hero waits", function()
-        local root = address(1)
-        local initial, local_tree = tree()
-        local gc_one = digest(40)
-        local gc_two = digest(41)
-        local fold = Fold.new(root)
-        join(fold, root, local_tree.root_hash, digest(50))
-        join(fold, root, gc_one, digest(51))
-        join(fold, root, gc_two, digest(52))
-        local gc_match = create_match(fold, root, gc_one, gc_two, 2)
-        local observation = Domain.tournament_observation(
-            descriptor(root, initial),
-            Domain.matches_active(
-                local_tree.root_hash,
-                Domain.JoinDisposition.OPEN
-            ),
-            {
-                Domain.observed_match(
-                    gc_match.id_hash,
-                    gc_match.id,
-                    live(
-                        bisecting(digest(62), digest(63), digest(64)),
-                        Domain.timeout_eliminate_both()
-                    )
-                ),
-            }
-        )
-        local sender = recording_sender()
-        local actor = Actor.new {
-            reader = reader_for(fold, { [root] = observation }),
-            commitment_builder = commitment_builder(local_tree),
-            machine_path = "unused",
-            inputs = {},
-            sender = sender,
-            gc_enabled = true,
-        }
-        local log = actor:react()
-        Test.equal(log.decision._tag, Domain.HeroDecision.WAIT)
-        Test.equal(#sender.calls, 1)
-        Test.equal(sender.calls[1].name, "eliminate_match")
-        Test.equal(sender.calls[1].arguments[1], root)
-        Test.equal(sender.calls[1].arguments[2], gc_one)
-        Test.equal(sender.calls[1].arguments[3], gc_two)
-    end),
-
-    Test.case("actor may submit one same-observation cleanup after winning", function()
-        local root = address(1)
-        local initial, local_tree = tree()
-        local final_state = digest(50)
-        local fold = Fold.new(root)
-        join(fold, root, local_tree.root_hash, final_state)
-        local observation = Domain.tournament_observation(
-            descriptor(root, initial),
-            Domain.root_winner(local_tree.root_hash, final_state),
-            {}
-        )
-        local cleanup_match =
-            Domain.match_id(digest(70), digest(71))
-        local gc_calls = 0
-        local sender = recording_sender()
-        local actor = Actor.new {
-            reader = reader_for(fold, { [root] = observation }),
-            commitment_builder = commitment_builder(local_tree),
-            machine_path = "unused",
-            inputs = {},
-            sender = sender,
-            gc_enabled = true,
-            plan_gc = function(observed_fold, observed, current_block)
-                gc_calls = gc_calls + 1
-                Test.equal(observed_fold, fold)
-                Test.equal(observed[root], observation)
-                Test.equal(current_block, 9)
-                return {
-                    Domain.eliminate_match_intent(
-                        root,
-                        cleanup_match
-                    ),
-                }
-            end,
-        }
-        local log = actor:react()
-        Test.equal(log.decision._tag, Domain.HeroDecision.TERMINAL)
-        Test.equal(log.decision.result, Domain.HeroTerminal.WON)
-        Test.equal(log.finished, true)
-        Test.equal(log.has_lost, false)
-        Test.equal(gc_calls, 1)
-        Test.equal(#sender.calls, 1)
-        Test.equal(sender.calls[1].name, "eliminate_match")
     end),
 }

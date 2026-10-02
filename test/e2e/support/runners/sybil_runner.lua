@@ -53,16 +53,12 @@ local function sybil_runner(commitment_builder, machine_path, root_tournament, i
         inputs = inputs,
         sender = sender,
         root_initial_hash = config.root_initial_hash,
-        gc_enabled = config.gc_enabled == true,
         machine_logs = config.machine_logs,
         -- Patched sybils deliberately claim a wrong post-state. They still
         -- submit the locally valid proof so the contract rejects the move and
         -- the adversarial clock path remains exercised.
         allow_invalid_claims = config.allow_invalid_claims ~= false,
     }
-    if config.gc_enabled == false then
-        actor:disable_gc()
-    end
     return sybil_player(actor)
 end
 

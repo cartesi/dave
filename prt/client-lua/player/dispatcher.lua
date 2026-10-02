@@ -1,7 +1,6 @@
-local Domain = require "player.domain"
 local Fulfiller = require "player.fulfiller"
 
--- The only effectful dispatch seam for semantic Hero/GC plans.
+-- The only effectful dispatch seam for semantic Hero plans.
 --
 -- Each branch performs exactly one Sender mutation. Error handling belongs to
 -- the actor and must never select a second verb from the same observation.
@@ -79,23 +78,6 @@ function Dispatcher.dispatch(action, sender)
         )
     end
     error("unknown prepared Hero action " .. tostring(tag), 2)
-end
-
-function Dispatcher.dispatch_gc(intent, sender)
-    if intent._tag == Domain.GcIntent.ELIMINATE_MATCH then
-        return sender:eliminate_match(
-            intent.tournament,
-            intent.match_id.commitment_one,
-            intent.match_id.commitment_two
-        )
-    end
-    if intent._tag == Domain.GcIntent.ELIMINATE_CHILD then
-        return sender:eliminate_inner_tournament(
-            intent.parent_tournament,
-            intent.child_tournament
-        )
-    end
-    error("unknown GC intent " .. tostring(intent._tag), 2)
 end
 
 return Dispatcher

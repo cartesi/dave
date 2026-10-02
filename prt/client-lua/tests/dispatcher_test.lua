@@ -33,8 +33,6 @@ local function recording_sender()
         "tx_seal_inner_match",
         "tx_win_leaf_match",
         "tx_win_inner_match",
-        "eliminate_match",
-        "eliminate_inner_tournament",
     } do
         record(name)
     end
@@ -196,33 +194,4 @@ return {
         end
     end),
 
-    Test.case("each bounded GC intent dispatches one exact Sender call", function()
-        local tournament = address(1)
-        local child = address(2)
-        local one = digest(1)
-        local two = digest(2)
-        local match_id = Domain.match_id(one, two)
-
-        local match_sender = recording_sender()
-        Test.truthy(Dispatcher.dispatch_gc(
-            Domain.eliminate_match_intent(tournament, match_id),
-            match_sender
-        ))
-        assert_call(
-            match_sender,
-            "eliminate_match",
-            { tournament, one, two }
-        )
-
-        local child_sender = recording_sender()
-        Test.truthy(Dispatcher.dispatch_gc(
-            Domain.eliminate_child_intent(tournament, child),
-            child_sender
-        ))
-        assert_call(
-            child_sender,
-            "eliminate_inner_tournament",
-            { tournament, child }
-        )
-    end),
 }

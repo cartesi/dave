@@ -96,11 +96,6 @@ Domain.HeroIntent = {
     PROPAGATE_CHILD = "propagate_child",
 }
 
-Domain.GcIntent = {
-    ELIMINATE_MATCH = "eliminate_match",
-    ELIMINATE_CHILD = "eliminate_child",
-}
-
 local MAX_U64 = (bint.one() << 64) - 1
 local MAX_U256_DECIMAL =
     "115792089237316195423570985008687907853269984665640564039457584007913129639935"
@@ -983,22 +978,6 @@ function Domain.propagation_intent(args)
         parent_commitment = parent_commitment,
         parent_side = parent_side,
         child_winner = required(args.child_winner, "child winner"),
-    })
-end
-
-function Domain.eliminate_match_intent(tournament, match_id)
-    return intent(Domain.GcIntent.ELIMINATE_MATCH, {
-        tournament = required(tournament, "intent tournament"),
-        match_id = copy_match_id(match_id),
-    })
-end
-
-function Domain.eliminate_child_intent(parent_tournament, child_tournament)
-    return intent(Domain.GcIntent.ELIMINATE_CHILD, {
-        parent_tournament =
-            required(parent_tournament, "parent tournament"),
-        child_tournament =
-            required(child_tournament, "child tournament"),
     })
 end
 

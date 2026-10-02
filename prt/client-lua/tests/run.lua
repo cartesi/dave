@@ -9,7 +9,6 @@ local suites = {
     "tests.adapter_test",
     "tests.semantic_reader_test",
     "tests.planner_test",
-    "tests.gc_planner_test",
     "tests.context_test",
     "tests.fulfiller_test",
     "tests.dispatcher_test",

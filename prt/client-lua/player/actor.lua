@@ -2,7 +2,6 @@ local Context = require "player.context"
 local Dispatcher = require "player.dispatcher"
 local Domain = require "player.domain"
 local Fulfiller = require "player.fulfiller"
-local GcPlanner = require "player.gc_planner"
 local Planner = require "player.planner"
 local helper = require "utils.helper"
 
@@ -135,19 +134,9 @@ function Actor.new(args)
         inputs = required(args.inputs, "machine inputs"),
         sender = required(args.sender, "sender"),
         root_initial_hash = args.root_initial_hash,
-        gc_enabled = args.gc_enabled ~= false,
         machine_logs = args.machine_logs,
         allow_invalid_claims = args.allow_invalid_claims == true,
-        plan_gc = args.plan_gc or GcPlanner.plan,
     }, Actor)
-end
-
-function Actor:disable_gc()
-    self.gc_enabled = false
-end
-
-function Actor:enable_gc()
-    self.gc_enabled = true
 end
 
 local function report_revert(actor, action, error_message)
@@ -155,22 +144,6 @@ local function report_revert(actor, action, error_message)
         actor.sender.index,
         string.format("%s reverted: %s", action, tostring(error_message))
     )
-end
-
-local function dispatch_one_gc(actor, dispute)
-    local intents = actor.plan_gc(
-        dispute.fold,
-        dispute.observations,
-        dispute.head.number
-    )
-    local intent = intents[1]
-    if intent then
-        local ok, error_message =
-            Dispatcher.dispatch_gc(intent, actor.sender)
-        if not ok then
-            report_revert(actor, intent._tag, error_message)
-        end
-    end
 end
 
 function Actor:react()
@@ -208,20 +181,13 @@ function Actor:react()
         if not ok then
             report_revert(self, action._tag, error_message)
         end
-    elseif decision._tag == Domain.HeroDecision.WAIT then
-        if self.gc_enabled then
-            dispatch_one_gc(self, dispute)
-        end
-    else
+    elseif decision._tag ~= Domain.HeroDecision.WAIT then
         assert(decision._tag == Domain.HeroDecision.TERMINAL,
             "unknown Hero decision")
         log.finished = true
         log.has_lost = decision.result ~= Domain.HeroTerminal.WON
         if decision.result == Domain.HeroTerminal.WON then
             helper.log_full(self.sender.index, "TOURNAMENT FINISHED")
-            if self.gc_enabled then
-                dispatch_one_gc(self, dispute)
-            end
         elseif decision.result == Domain.HeroTerminal.LOST then
             helper.log_full(self.sender.index, "player lost tournament")
         else
