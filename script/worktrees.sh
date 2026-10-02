@@ -21,76 +21,12 @@ worktree_name() {
     printf '%s\n' "${path##*/}"
 }
 
-human_size() {
-    local path=$1
-    local output
-    local diagnostic=
-    local value
-
-    # GNU du and BSD du spell exclusions differently. Exclude both
-    # session roots so a checkout that hosts them does not count them twice.
-    if output=$(du -sh --exclude=.codex --exclude=.claude -- "$path" 2>&1); then
-        read -r value _ <<< "$output"
-        if [ -n "$value" ]; then
-            printf '%s\n' "$value"
-            return 0
-        fi
-    else
-        diagnostic=$output
-    fi
-
-    if output=$(du -sh -I .codex -I .claude "$path" 2>&1); then
-        read -r value _ <<< "$output"
-        if [ -n "$value" ]; then
-            printf '%s\n' "$value"
-            return 0
-        fi
-    else
-        diagnostic=$output
-    fi
-
-    printf 'error: cannot measure worktree: %s\n' "$path" >&2
-    [ -z "$diagnostic" ] || printf '  du: %s\n' "$diagnostic" >&2
-    return 1
-}
-
-megabyte_size() {
-    local path=$1
-    local output
-    local value
-
-    if ! output=$(du -sm "$path" 2>&1); then
-        printf 'error: cannot measure worktree: %s\n' "$path" >&2
-        [ -z "$output" ] || printf '  du: %s\n' "$output" >&2
-        return 1
-    fi
-    read -r value _ <<< "$output"
-    case "$value" in
-        ''|*[!0-9]*)
-            printf 'error: du returned an invalid size for worktree: %s\n' "$path" >&2
-            return 1
-            ;;
-    esac
-    printf '%s\n' "$value"
-}
-
-dirty_count() {
-    local path=$1
-    local output
-    local count=0
-
-    if ! output=$(git -C "$path" status --porcelain --ignore-submodules=all); then
-        printf 'error: cannot inspect worktree status: %s\n' "$path" >&2
-        return 1
-    fi
-    while [ -n "$output" ]; do
-        count=$((count + 1))
-        case "$output" in
-            *$'\n'*) output=${output#*$'\n'} ;;
-            *) output= ;;
-        esac
-    done
-    printf '%s\n' "$count"
+# Megabytes under a worktree, leaving out the session roots a primary
+# checkout hosts so that their worktrees are not counted twice. GNU and BSD
+# du spell exclusions differently, so exclude by listing the top level.
+size_mb() {
+    find "$1" -mindepth 1 -maxdepth 1 ! -name .claude ! -name .codex -exec du -sk {} + \
+        | awk '{ kb += $1 } END { printf "%d\n", kb / 1024 }'
 }
 
 report_records() {
@@ -109,11 +45,13 @@ report_records() {
             *) continue ;;
         esac
 
-        if ! size=$(human_size "$path"); then
+        if ! size=$(size_mb "$path"); then
+            printf 'error: cannot measure worktree: %s\n' "$path" >&2
             failed=1
             continue
         fi
-        if ! dirty=$(dirty_count "$path"); then
+        if ! dirty=$(git -C "$path" status --porcelain --ignore-submodules=all | wc -l); then
+            printf 'error: cannot inspect worktree status: %s\n' "$path" >&2
             failed=1
             continue
         fi
@@ -121,13 +59,13 @@ report_records() {
         branch=$(git -C "$path" branch --show-current 2>/dev/null || true)
         name=$(worktree_name "$path")
         printf '%-42s %8s %7s %-16s %s\n' \
-            "$name" "$size" "$dirty" "${last:-unborn}" "${branch:-detached}"
+            "$name" "$size" "$((dirty))" "${last:-unborn}" "${branch:-detached}"
     done
     return "$failed"
 }
 
 report_worktrees() {
-    printf '%-42s %8s %7s %-16s %s\n' WORKTREE SIZE DIRTY LAST_COMMIT BRANCH
+    printf '%-42s %8s %7s %-16s %s\n' WORKTREE SIZE_MB DIRTY LAST_COMMIT BRANCH
     if ! git worktree list --porcelain -z | report_records; then
         echo "error: failed to report every registered worktree" >&2
         return 1
@@ -233,7 +171,8 @@ sweep_records() {
             printf 'skip (dirty): %s\n' "$name"
             continue
         fi
-        if ! before=$(megabyte_size "$path"); then
+        if ! before=$(size_mb "$path"); then
+            printf 'error: cannot measure worktree: %s\n' "$path" >&2
             failed=1
             continue
         fi
@@ -241,7 +180,8 @@ sweep_records() {
             failed=1
             continue
         fi
-        if ! after=$(megabyte_size "$path"); then
+        if ! after=$(size_mb "$path"); then
+            printf 'error: cannot measure worktree: %s\n' "$path" >&2
             failed=1
             continue
         fi
