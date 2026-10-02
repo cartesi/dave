@@ -45,17 +45,11 @@ clean-honeypot-project:
 
 # required lightweight fixtures
 build-programs: build-yield build-echo
-clean-programs: clean-yield clean-echo
 
 # acquire both pinned release inputs without discarding valid cached copies
 [script]
 download-deps:
   ./script/download-deps.sh download
-
-clean-deps:
-  rm -f rootfs.ext2
-  rm -f linux.bin
-  rm -f .linux.bin.tmp.* .rootfs.ext2.tmp.*
 
 # diagnose the downloaded inputs and required test machine images
 [script]

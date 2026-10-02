@@ -54,9 +54,6 @@ logged log +cmd:
 # regenerable artifacts, but setup does not wipe runtime state.
 # ------------------------------------------------------------------
 
-update-submodules:
-    git submodule update --recursive --init
-
 # Everything the Rust workspace needs to compile and run its standard tests.
 setup:
     just machine::setup
@@ -370,6 +367,3 @@ build-docker-image TAG="dave:dev": prepare-docker-context
 
 run-dockered +CMD: build-docker-image
     docker run -it --rm --name dave-node dave:dev "$@"
-
-exec-dockered +CMD:
-    docker exec dave-node "$@"

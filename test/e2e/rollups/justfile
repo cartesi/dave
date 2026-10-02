@@ -59,10 +59,6 @@ test-honeypot-all: \
         (test "honeypot" "simple") \
         (test "honeypot" "stf_all")
 
-# run the yield suite (stf_revert is yield's unique net: the full revert restore)
-test-yield-all: \
-        (test "yield" "stf_revert")
-
 test-honeypot-ci: \
         (test "honeypot" "simple")
 
