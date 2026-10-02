@@ -187,13 +187,107 @@ impl World {
         Ok(())
     }
 
-    /// The honest transactions with this selector that mined.
-    pub fn honest_calls(&self, selector: FixedBytes<4>) -> Vec<&Mined> {
-        let honest = self.address(HONEST);
+    /// Every mined transaction, one line each: block, key, verb and
+    /// whether it reverted. Runs that do not finish print it.
+    pub fn trace(&self) -> String {
+        use alloy::sol_types::SolCall;
+        use cartesi_prt_contracts::tournament::Tournament as T;
+        let verbs = [
+            (T::joinTournamentCall::SELECTOR, "join"),
+            (T::advanceMatchCall::SELECTOR, "advance"),
+            (
+                T::sealInnerMatchAndCreateInnerTournamentCall::SELECTOR,
+                "seal inner",
+            ),
+            (T::sealLeafMatchCall::SELECTOR, "seal leaf"),
+            (T::winLeafMatchCall::SELECTOR, "win leaf"),
+            (T::winMatchByTimeoutCall::SELECTOR, "win by timeout"),
+            (T::winInnerTournamentCall::SELECTOR, "win inner"),
+            (T::eliminateMatchByTimeoutCall::SELECTOR, "eliminate match"),
+            (T::eliminateInnerTournamentCall::SELECTOR, "eliminate inner"),
+            (T::tryRecoveringBondCall::SELECTOR, "recover bond"),
+            (
+                DaveConsensus::submitSentryClaimCall::SELECTOR,
+                "sentry claim",
+            ),
+            (DaveConsensus::stageTournamentResultCall::SELECTOR, "stage"),
+            (
+                DaveConsensus::acceptStagedTournamentResultCall::SELECTOR,
+                "accept",
+            ),
+        ];
         self.mined
             .iter()
-            .filter(|mined| mined.from == honest && mined.selector == Some(selector))
+            .map(|mined| {
+                let key = (0..10).find(|&key| self.address(key) == mined.from);
+                let verb = verbs
+                    .iter()
+                    .find(|(selector, _)| mined.selector == Some(FixedBytes(*selector)))
+                    .map_or("other", |(_, verb)| verb);
+                let reverted = if mined.success { "" } else { " (reverted)" };
+                format!("{} key {key:?} {verb}{reverted}\n", mined.block)
+            })
             .collect()
+    }
+
+    /// The honest transactions with this selector that mined.
+    pub fn honest_calls(&self, selector: FixedBytes<4>) -> Vec<&Mined> {
+        self.calls(HONEST, selector)
+    }
+
+    /// Key `key`'s transactions with this selector that mined.
+    pub fn calls(&self, key: usize, selector: FixedBytes<4>) -> Vec<&Mined> {
+        let from = self.address(key);
+        self.mined
+            .iter()
+            .filter(|mined| mined.from == from && mined.selector == Some(selector))
+            .collect()
+    }
+
+    fn tournament(&self, address: Address) -> Tournament::TournamentInstance<DynProvider> {
+        Tournament::new(address, self.provider.clone())
+    }
+
+    pub async fn matches_created(
+        &self,
+        tournament: Address,
+    ) -> Result<Vec<Tournament::MatchCreated>> {
+        let instance = self.tournament(tournament);
+        let filter = instance.MatchCreated_filter().from_block(0);
+        Ok(filter
+            .query()
+            .await?
+            .into_iter()
+            .map(|(event, _)| event)
+            .collect())
+    }
+
+    pub async fn matches_deleted(
+        &self,
+        tournament: Address,
+    ) -> Result<Vec<Tournament::MatchDeleted>> {
+        let instance = self.tournament(tournament);
+        let filter = instance.MatchDeleted_filter().from_block(0);
+        Ok(filter
+            .query()
+            .await?
+            .into_iter()
+            .map(|(event, _)| event)
+            .collect())
+    }
+
+    pub async fn inner_tournaments(
+        &self,
+        tournament: Address,
+    ) -> Result<Vec<Tournament::NewInnerTournament>> {
+        let instance = self.tournament(tournament);
+        let filter = instance.NewInnerTournament_filter().from_block(0);
+        Ok(filter
+            .query()
+            .await?
+            .into_iter()
+            .map(|(event, _)| event)
+            .collect())
     }
 
     /// Adds an input from the operator key and mines it.
@@ -357,6 +451,22 @@ impl Node {
         Ok(())
     }
 
+    /// Ingests and executes until the runner has rolled `epoch`, without
+    /// the epoch manager: the node takes no action, so adversaries can
+    /// move first.
+    pub async fn roll(&mut self, world: &mut World, epoch: u64) -> Result<()> {
+        let mut storage = Storage::new(self.state_dir.path())?;
+        for _ in 0..16 {
+            self.reader.tick(&world.chain).await?;
+            self.runner.process_rollup()?;
+            if storage.settlement_info(epoch)?.is_some() {
+                return Ok(());
+            }
+            world.mine(1).await?;
+        }
+        anyhow::bail!("the runner did not roll epoch {epoch}")
+    }
+
     /// A tick whose wave mines into its own block.
     pub async fn turn(&mut self, world: &mut World) -> Result<()> {
         self.tick(world).await?;
@@ -395,11 +505,11 @@ impl Node {
         ensure!(
             done(world, &mut storage)?,
             "not done after {rounds} rounds; latest block {}, unfinished epoch {:?}, \
-             sealed epochs {}, last mined {:?}",
+             sealed epochs {}; mined:\n{}",
             world.latest().await?,
             storage.unfinished_epoch()?.map(|epoch| epoch.epoch_number),
             world.sealed_epochs().await?.len(),
-            world.mined.last(),
+            world.trace(),
         );
         Ok(())
     }
@@ -436,6 +546,11 @@ pub(crate) struct Adversary {
 }
 
 impl Adversary {
+    /// Abandons the dispute: no further ticks.
+    pub fn stop(&mut self) {
+        self.stopped = true;
+    }
+
     /// One Hero tick under the policy; a submitted wave mines into its
     /// own block.
     pub async fn turn(&mut self, world: &mut World) -> Result<()> {

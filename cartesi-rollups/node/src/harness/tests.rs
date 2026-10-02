@@ -15,7 +15,8 @@ use cartesi_dave_contracts::dave_consensus::DaveConsensus::{
     acceptStagedTournamentResultCall, stageTournamentResultCall, submitSentryClaimCall,
 };
 use cartesi_prt_contracts::tournament::Tournament::{
-    joinTournamentCall, winInnerTournamentCall, winLeafMatchCall, winMatchByTimeoutCall,
+    MatchCreated, eliminateInnerTournamentCall, eliminateMatchByTimeoutCall, joinTournamentCall,
+    winInnerTournamentCall, winLeafMatchCall, winMatchByTimeoutCall,
 };
 
 /// The largest payload whose EvmAdvance-encoded input fits the InputBox's
@@ -33,6 +34,13 @@ const ACCEPT: FixedBytes<4> = FixedBytes(acceptStagedTournamentResultCall::SELEC
 const WIN_TIMEOUT: FixedBytes<4> = FixedBytes(winMatchByTimeoutCall::SELECTOR);
 const WIN_LEAF: FixedBytes<4> = FixedBytes(winLeafMatchCall::SELECTOR);
 const WIN_INNER: FixedBytes<4> = FixedBytes(winInnerTournamentCall::SELECTOR);
+const ELIMINATE_MATCH: FixedBytes<4> = FixedBytes(eliminateMatchByTimeoutCall::SELECTOR);
+const ELIMINATE_INNER: FixedBytes<4> = FixedBytes(eliminateInnerTournamentCall::SELECTOR);
+
+// ITournament's MatchDeletionReason and WinnerCommitment, as event bytes.
+const TIMEOUT: u8 = 1;
+const CHILD_TOURNAMENT: u8 = 2;
+const NO_WINNER: u8 = 0;
 
 /// A bound on the rounds of a whole dispute: about 92 bisections, the
 /// joins and seals between levels, and the root's allowance.
@@ -165,19 +173,38 @@ async fn acceptance_waits_out_the_staging_period_without_unanimity() -> Result<(
 // the first transition of the second root leaf.
 
 fn idle_tail() -> Tail {
+    tail(1, 0xee)
+}
+
+/// A divergence at the first transition of root leaf `leaf`, an idle
+/// one in epoch 0; distinct `fill`s give distinct commitments.
+fn tail(leaf: u64, fill: u8) -> Tail {
     Tail {
-        from: U256::ONE << 44,
-        value: Digest::from_digest(&[0xee; 32]).unwrap(),
+        from: U256::from(leaf) << 44,
+        value: Digest::from_digest(&[fill; 32]).unwrap(),
     }
 }
 
-/// Turns until the node's runner has rolled `epoch`: its root and
-/// settlement material exist, so an adversary can dispute it.
-async fn rolled(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
-    node.run_until(world, ROUNDS, |_, storage| {
-        Ok(storage.settlement_info(epoch)?.is_some())
-    })
-    .await
+/// Requires exactly one MatchDeleted for `created`, with this reason and
+/// winner.
+async fn assert_deleted(
+    world: &World,
+    tournament: Address,
+    created: &MatchCreated,
+    reason: u8,
+    winner: u8,
+) -> Result<()> {
+    let deletions: Vec<_> = world
+        .matches_deleted(tournament)
+        .await?
+        .into_iter()
+        .filter(|deleted| deleted.matchIdHash == created.matchIdHash)
+        .collect();
+    assert_eq!(deletions.len(), 1, "one deletion of the match");
+    let deleted = &deletions[0];
+    assert_eq!((deleted.one, deleted.two), (created.one, created.two));
+    assert_eq!((deleted.reason, deleted.winnerCommitment), (reason, winner));
+    Ok(())
 }
 
 /// A joiner that goes silent (bad_commitment) loses its root match by
@@ -187,7 +214,7 @@ async fn rolled(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
 async fn a_silent_joiner_loses_by_timeout() -> Result<()> {
     let mut world = World::spawn(&[HONEST], 1000).await?;
     let mut node = world.honest_node().await?;
-    rolled(&mut node, &mut world, 0).await?;
+    node.roll(&mut world, 0).await?;
     let mut adversary =
         world.adversary(&node, 1, idle_tail(), Policy::StopAfter("joinTournament"))?;
 
@@ -214,7 +241,7 @@ async fn a_silent_joiner_loses_by_timeout() -> Result<()> {
 async fn the_node_wins_by_proving_the_divergent_transition() -> Result<()> {
     let mut world = World::spawn(&[HONEST], 1000).await?;
     let mut node = world.honest_node().await?;
-    rolled(&mut node, &mut world, 0).await?;
+    node.roll(&mut world, 0).await?;
     let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
 
     node.run_with(
@@ -230,6 +257,83 @@ async fn the_node_wins_by_proving_the_divergent_transition() -> Result<()> {
         world.levels() - 1,
         "the node won every inner tournament on its way back to the root"
     );
+    assert_eq!(world.sealed_epochs().await?.len(), 2);
+    Ok(())
+}
+
+/// Two adversaries join first, pair with each other and abandon their
+/// match (gc_match): the node joins unpaired, deletes their match by
+/// timeout once it is eliminable, and wins the root alone.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn the_node_collects_an_abandoned_match() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut one = world.adversary(&node, 1, tail(1, 0xa1), Policy::StopAfter("joinTournament"))?;
+    let mut two = world.adversary(&node, 2, tail(2, 0xb2), Policy::StopAfter("joinTournament"))?;
+    one.turn(&mut world).await?;
+    two.turn(&mut world).await?;
+    let root = world.sealed_epochs().await?[0].tournament;
+    let paired = world.matches_created(root).await?;
+    assert_eq!(paired.len(), 1, "the adversaries paired with each other");
+
+    node.run_with(
+        &mut world,
+        &mut [&mut one, &mut two],
+        DISPUTE_ROUNDS,
+        |_, storage| completed(storage, 0),
+    )
+    .await?;
+    assert_deleted(&world, root, &paired[0], TIMEOUT, NO_WINNER).await?;
+    assert_eq!(world.honest_calls(ELIMINATE_MATCH).len(), 1);
+    assert_eq!(world.sealed_epochs().await?.len(), 2);
+    Ok(())
+}
+
+/// Two adversaries pair, take their root match into a child tournament,
+/// join it, and abandon it (gc_tournament): the node deletes the child
+/// match by timeout, then the parent match by its child, and wins the
+/// root alone.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn the_node_collects_an_abandoned_child_tournament() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut one = world.adversary(&node, 1, tail(1, 0xa1), Policy::Rational)?;
+    let mut two = world.adversary(&node, 2, tail(2, 0xb2), Policy::Rational)?;
+    one.turn(&mut world).await?;
+    two.turn(&mut world).await?;
+    let root = world.sealed_epochs().await?[0].tournament;
+    let paired = world.matches_created(root).await?;
+    assert_eq!(paired.len(), 1, "the adversaries paired with each other");
+
+    // Each adversary's second join is into the child.
+    let join = FixedBytes(joinTournamentCall::SELECTOR);
+    node.run_with(
+        &mut world,
+        &mut [&mut one, &mut two],
+        DISPUTE_ROUNDS,
+        |world, _| Ok(world.calls(1, join).len() == 2 && world.calls(2, join).len() == 2),
+    )
+    .await?;
+    one.stop();
+    two.stop();
+    let children = world.inner_tournaments(root).await?;
+    assert_eq!(children.len(), 1);
+    let child = children[0].childTournament;
+    let lazy_child = world.matches_created(child).await?;
+    assert_eq!(lazy_child.len(), 1, "the adversaries paired in the child");
+
+    node.run_until(&mut world, DISPUTE_ROUNDS, |_, storage| {
+        completed(storage, 0)
+    })
+    .await?;
+    assert_deleted(&world, child, &lazy_child[0], TIMEOUT, NO_WINNER).await?;
+    assert_deleted(&world, root, &paired[0], CHILD_TOURNAMENT, NO_WINNER).await?;
+    assert_eq!(world.honest_calls(ELIMINATE_MATCH).len(), 1);
+    assert_eq!(world.honest_calls(ELIMINATE_INNER).len(), 1);
     assert_eq!(world.sealed_epochs().await?.len(), 2);
     Ok(())
 }
