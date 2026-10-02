@@ -465,7 +465,6 @@ impl LiveMatch {
         {
             return Err(DomainError::AwaitingChildHasTimeout);
         }
-        validate_timeout_shape(state, timeout)?;
         Ok(Self { state, timeout })
     }
 
@@ -851,10 +850,6 @@ pub enum DomainError {
     CommitmentNotInMatch { commitment: Digest },
     #[error("an awaiting-child match cannot have a parent-match timeout")]
     AwaitingChildHasTimeout,
-    #[error("an active timeout winner cannot be the running responder")]
-    ActiveTimeoutWinnerIsResponder,
-    #[error("a sealed-leaf timeout winner cannot carry a deferred charge")]
-    SealedLeafDeferredCharge,
     #[error("an elimination record cannot eliminate the recorded survivor")]
     SurvivorMarkedEliminated,
     #[error("a step deletion must record one surviving commitment")]
@@ -949,42 +944,6 @@ fn validate_match_kind(kind: TournamentKind, state: LiveMatchState) -> Result<()
         Ok(())
     } else {
         Err(DomainError::MatchKindMismatch)
-    }
-}
-
-fn validate_timeout_shape(
-    state: LiveMatchState,
-    timeout: TimeoutDisposition,
-) -> Result<(), DomainError> {
-    match (state, timeout) {
-        (LiveMatchState::Bisecting(value), TimeoutDisposition::OneWins { .. })
-            if value.responder() == MatchSide::One =>
-        {
-            Err(DomainError::ActiveTimeoutWinnerIsResponder)
-        }
-        (LiveMatchState::Bisecting(value), TimeoutDisposition::TwoWins { .. })
-            if value.responder() == MatchSide::Two =>
-        {
-            Err(DomainError::ActiveTimeoutWinnerIsResponder)
-        }
-        (
-            LiveMatchState::ReadyToSealLeaf(value) | LiveMatchState::ReadyToDelegate(value),
-            TimeoutDisposition::OneWins { .. },
-        ) if value.responder() == MatchSide::One => {
-            Err(DomainError::ActiveTimeoutWinnerIsResponder)
-        }
-        (
-            LiveMatchState::ReadyToSealLeaf(value) | LiveMatchState::ReadyToDelegate(value),
-            TimeoutDisposition::TwoWins { .. },
-        ) if value.responder() == MatchSide::Two => {
-            Err(DomainError::ActiveTimeoutWinnerIsResponder)
-        }
-        (
-            LiveMatchState::SealedLeaf(_),
-            TimeoutDisposition::OneWins { deferred_charge }
-            | TimeoutDisposition::TwoWins { deferred_charge },
-        ) if deferred_charge != BlockDuration::ZERO => Err(DomainError::SealedLeafDeferredCharge),
-        _ => Ok(()),
     }
 }
 
@@ -1458,53 +1417,47 @@ mod tests {
     }
 
     #[test]
-    fn timeout_shape_rejects_impossible_phase_combinations() {
-        let bisecting = BisectingMatch::try_new(
-            digest(3),
-            WaitingChildren::new(digest(4), digest(5)),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            4,
-            MatchSide::One,
-        )
-        .unwrap();
-        assert_eq!(
-            LiveMatch::try_new(
-                LiveMatchState::Bisecting(bisecting),
+    fn timeout_disposition_is_taken_as_the_contract_reports_it() {
+        let bisecting = LiveMatchState::Bisecting(
+            BisectingMatch::try_new(
+                digest(3),
+                WaitingChildren::new(digest(4), digest(5)),
+                MatchCoordinate::new(U256::ZERO, U256::ZERO),
+                4,
+                MatchSide::One,
+            )
+            .unwrap(),
+        );
+        let sealed = LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence()));
+
+        // A winner that is the running responder, or a sealed-leaf winner
+        // with a deferred charge, is impossible only through how the clock
+        // contracts combine; refusing it would stall every tick.
+        for (state, timeout) in [
+            (
+                bisecting,
                 TimeoutDisposition::OneWins {
                     deferred_charge: BlockDuration::ZERO,
                 },
             ),
-            Err(DomainError::ActiveTimeoutWinnerIsResponder)
-        );
-        assert!(
-            LiveMatch::try_new(
-                LiveMatchState::Bisecting(bisecting),
+            (
+                bisecting,
                 TimeoutDisposition::TwoWins {
                     deferred_charge: BlockDuration::from_blocks(7),
                 },
-            )
-            .is_ok()
-        );
-
-        let sealed = LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence()));
-        assert_eq!(
-            LiveMatch::try_new(
+            ),
+            (
                 sealed,
                 TimeoutDisposition::OneWins {
                     deferred_charge: BlockDuration::from_blocks(1),
                 },
             ),
-            Err(DomainError::SealedLeafDeferredCharge)
-        );
-        assert!(
-            LiveMatch::try_new(
-                sealed,
-                TimeoutDisposition::OneWins {
-                    deferred_charge: BlockDuration::ZERO,
-                },
-            )
-            .is_ok()
-        );
+        ] {
+            assert_eq!(
+                LiveMatch::try_new(state, timeout).map(LiveMatch::timeout),
+                Ok(timeout)
+            );
+        }
     }
 
     #[test]

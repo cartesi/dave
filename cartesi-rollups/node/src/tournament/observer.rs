@@ -96,17 +96,10 @@ pub enum ObserverError {
     ResolvedMatchSelected { match_id_hash: Digest },
     #[error("tournament standing is not legal for this root/inner position")]
     StandingKindMismatch,
-    #[error("standing {standing} has invalid acceptsJoins value {accepts_joins}")]
-    StandingJoinMismatch { standing: u8, accepts_joins: bool },
     #[error("standing {standing} has invalid hasCandidate value {has_candidate}")]
     StandingCandidateShape { standing: u8, has_candidate: bool },
     #[error("standing {standing} has invalid finishedAt value {finished_at}")]
     StandingFinishedAtShape { standing: u8, finished_at: u64 },
-    #[error("standing {standing} has invalid winnerExpiresAt value {winner_expires_at}")]
-    StandingWinnerExpiresAtShape {
-        standing: u8,
-        winner_expires_at: u64,
-    },
     #[error("inner winner does not map to either side of its recursive parent match")]
     InnerWinnerOutsideParentMatch,
     #[error("live match {match_id_hash} carries an impossible child relationship")]
@@ -140,9 +133,11 @@ pub async fn read_descriptor(
 /// event-derived tree supplies root/inner position and the exact parent match
 /// used to interpret an inner winner. It is not reconciled with redundant
 /// match-count, final-state, or topology projections. Nonterminal candidate
-/// payloads, finish instants, and winner-expiry instants are
-/// canonicality-checked and then discarded because events own commitment
-/// placement and Hero acts only on current state.
+/// payloads and finish instants are canonicality-checked and then discarded
+/// because events own commitment placement and Hero acts only on current
+/// state. The winner-expiry instant and a non-active standing's join flag go
+/// unchecked: they agree with the standing only through how the contract's
+/// clock and closure rules combine, and a disagreement must not stall a tick.
 pub async fn read_standings(
     chain: &Chain,
     dispute: &Dispute,
@@ -368,7 +363,6 @@ fn decode_standing(
     let candidate =
         decode_candidate_shape(standing_discriminant, wire.hasCandidate, wire.candidate)?;
     validate_finished_at_shape(standing_discriminant, wire.finishedAt)?;
-    validate_winner_expires_at_shape(standing_discriminant, wire.finishedAt, wire.winnerExpiresAt)?;
 
     let standing = match standing_discriminant {
         0 => {
@@ -387,12 +381,6 @@ fn decode_standing(
             }
         }
         1 => {
-            if !wire.acceptsJoins {
-                return Err(ObserverError::StandingJoinMismatch {
-                    standing: standing_discriminant,
-                    accepts_joins: wire.acceptsJoins,
-                });
-            }
             require_zero_hash("tournamentStanding", "finalState", wire.finalState)?;
             require_zero_hash(
                 "tournamentStanding",
@@ -706,39 +694,11 @@ fn validate_finished_at_shape(standing: u8, finished_at: u64) -> ObserverResult<
     }
 }
 
-fn validate_winner_expires_at_shape(
-    standing: u8,
-    finished_at: u64,
-    winner_expires_at: u64,
-) -> ObserverResult<()> {
-    // The winner clock's allowance is positive, so a canonical expiry
-    // strictly follows the finish instant.
-    let valid = match standing {
-        4 => winner_expires_at != 0 && winner_expires_at > finished_at,
-        0..=3 | 5 | 6 => winner_expires_at == 0,
-        other => return Err(ObserverError::UnknownTournamentStanding(other)),
-    };
-    if valid {
-        Ok(())
-    } else {
-        Err(ObserverError::StandingWinnerExpiresAtShape {
-            standing,
-            winner_expires_at,
-        })
-    }
-}
-
 fn require_terminal_shape(
     standing: u8,
     wire: &AbiTournamentStandingView,
     has_candidate: bool,
 ) -> ObserverResult<()> {
-    if wire.acceptsJoins {
-        return Err(ObserverError::StandingJoinMismatch {
-            standing,
-            accepts_joins: wire.acceptsJoins,
-        });
-    }
     if wire.hasCandidate != has_candidate {
         return Err(ObserverError::StandingCandidateShape {
             standing,
@@ -913,14 +873,6 @@ mod tests {
             })
         );
 
-        assert_eq!(
-            decode_standing(root, None, standing_wire(1, false, Some(digest(1)))),
-            Err(ObserverError::StandingJoinMismatch {
-                standing: 1,
-                accepts_joins: false,
-            })
-        );
-
         let mut winner = standing_wire(2, false, None);
         winner.finalState = hash(11);
         assert_eq!(
@@ -977,27 +929,68 @@ mod tests {
     }
 
     #[test]
-    fn standing_winner_expires_at_shape_matches_inner_winner() {
-        for standing in [0, 1, 2, 3, 5, 6] {
-            assert_eq!(validate_winner_expires_at_shape(standing, 12, 0), Ok(()));
-            assert_eq!(
-                validate_winner_expires_at_shape(standing, 12, 42),
-                Err(ObserverError::StandingWinnerExpiresAtShape {
-                    standing,
-                    winner_expires_at: 42,
-                })
-            );
-        }
-        assert_eq!(validate_winner_expires_at_shape(4, 12, 42), Ok(()));
-        for winner_expires_at in [0, 11, 12] {
-            assert_eq!(
-                validate_winner_expires_at_shape(4, 12, winner_expires_at),
-                Err(ObserverError::StandingWinnerExpiresAtShape {
-                    standing: 4,
-                    winner_expires_at,
-                }),
-                "expiry must strictly follow the finish instant"
-            );
+    fn standing_decode_takes_join_flags_and_winner_expiry_as_reported() {
+        let root = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
+        let child = descriptor(address(2), 1, TournamentKind::Leaf, digest(9), 0);
+        let parent_match = MatchID {
+            commitment_one: digest(1),
+            commitment_two: digest(2),
+        };
+        let inner_winner = |accepts_joins, winner_expires_at| {
+            let mut wire = standing_wire(4, accepts_joins, Some(digest(30)));
+            wire.parentCommitment = hash(2);
+            wire.winnerExpiresAt = winner_expires_at;
+            wire
+        };
+        let mut root_winner = standing_wire(2, true, Some(digest(77)));
+        root_winner.finalState = hash(88);
+
+        let cases = [
+            (
+                child,
+                inner_winner(false, 0),
+                TournamentStanding::InnerWinner(InnerWinner::new(digest(2), digest(30))),
+            ),
+            (
+                root,
+                standing_wire(1, false, None),
+                TournamentStanding::AwaitingClosure,
+            ),
+            (
+                root,
+                root_winner,
+                TournamentStanding::RootWinner(RootWinner::new(digest(77), digest(88))),
+            ),
+            (
+                root,
+                standing_wire(3, true, None),
+                TournamentStanding::RootFailed,
+            ),
+            (
+                child,
+                inner_winner(true, 130),
+                TournamentStanding::InnerWinner(InnerWinner::new(digest(2), digest(30))),
+            ),
+            (
+                child,
+                standing_wire(5, true, None),
+                TournamentStanding::InnerEliminable {
+                    reason: InnerEliminationReason::NoCandidate,
+                },
+            ),
+            (
+                child,
+                standing_wire(6, true, Some(digest(30))),
+                TournamentStanding::InnerEliminable {
+                    reason: InnerEliminationReason::WinnerExpired {
+                        candidate: digest(30),
+                    },
+                },
+            ),
+        ];
+        for (descriptor, wire, expected) in cases {
+            let parent = (!descriptor.is_root()).then_some(parent_match);
+            assert_eq!(decode_standing(descriptor, parent, wire), Ok(expected));
         }
     }
 
