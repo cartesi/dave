@@ -323,11 +323,12 @@ The per-PR and tag workflow (`.github/workflows/build.yml`) has jobs for PRT con
 structured STF tests, and structured STF fuzz), consensus contracts, the
 honeypot e2e smoke (`test-rollups-honeypot-ci`) plus batched-kill, chaos,
 `stf_all`, and yield `stf_revert` scenarios, a Rust workspace job (fmt, check,
-clippy, Lua lint and unit tests, Rust tests, and explicit image-backed machine
-differentials), and the release pipeline (node binaries per arch, contract
-artifacts, deployment simulations, devnet state). The e2e lane also runs both
-halves of the computation-hash release corpus gate. Actions are pinned by
-digest.
+clippy, Lua lint and unit tests, Rust tests, the KMS signer tests, explicit
+image-backed machine differentials, the node's half of the computation-hash
+release corpus, and the serial anvil harness), and the release pipeline (node
+binaries per arch, contract artifacts, deployment simulations, devnet state).
+The e2e lane, which has the released CLI, runs the corpus's CLI half and the
+reference CLI goldens. Actions are pinned by digest.
 When renaming just recipes, grep the workflow first; CI calls them
 by name. Shared acquisition and provider policy belongs in actions or Just
 targets, not copied shell programs in the workflow. In particular, the

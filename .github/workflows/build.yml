@@ -109,10 +109,11 @@ jobs:
       - name: Rust build
         run: |
           just build-rust-workspace
-      - name: Test computation-hash release corpus
+      # The released CLI half; the Rust lane runs the node's half.
+      - name: Test computation-hash release corpus (CLI)
         timeout-minutes: 10
         run: |
-          just test-computation-hash-corpus
+          just test-computation-hash-corpus-cli
       - name: Build honeypot
         working-directory: ./test/programs/
         run: |
@@ -292,6 +293,11 @@ jobs:
       - name: Engine machine integration tests
         run: |
           just test-engine-machine
+
+      - name: Computation-hash release corpus (node)
+        timeout-minutes: 15
+        run: |
+          just test-computation-hash-corpus-dave
 
       - name: Node harness tests
         run: |
