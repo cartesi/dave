@@ -172,10 +172,13 @@ progress nor manager catch-up can delete the runner's newest durable boundary;
 startup scratch cleanup uses the same bound.
 
 The runner captures all three settlement leaves from one final machine root,
-checks their emulator proof metadata, Keccak openings, nonzero `iflags_Y`, and
-manual `RX_ACCEPTED` HTIF reason, and verifies that root again when publishing
-the next epoch's initial boundary. It intentionally does not interpret the
-HTIF response-length field. The boundary row and complete settlement row then
+checks their emulator proof metadata and Keccak openings, and verifies that
+root again when publishing the next epoch's initial boundary. Capture does not
+judge the machine state: a terminal app's epoch is still recorded and
+defended. Only staging asks whether the state settles (a nonzero `iflags_Y`
+and a manual `RX_ACCEPTED` HTIF reason, ignoring the response-length field),
+and holds the epoch when it does not (epoch-lifecycle.md). The boundary row
+and complete settlement row then
 commit in the same SQLite transaction. Reads revalidate every persisted proof
 against its final state so corruption fails before transaction staging.
 

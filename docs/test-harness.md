@@ -126,12 +126,12 @@ harness itself. Each rule below closes a reproduced harness failure:
   progresses through finalized ingestion; once an epoch is discovered, its
   tournament reader also acts on a disposable latest tail. One block per
   second is the natural cadence and cannot starve the node's turn.
-- `Env.fast_forward(blocks)` is the clock-safe scenario
-  fast-forward: it sleeps first so the node's pending move lands,
-  then advances. Bulk advances between the node's one-second ticks
-  burn its block-denominated chess clock while on turn (observed: an
-  honest node timed out of its own dispute at 128 blocks per idle
-  poll). Keep chunks small while a dispute is live.
+- Never bulk-advance blocks while a dispute is live: advances between
+  the node's one-second ticks burn its block-denominated chess clock
+  while it is on turn (observed: an honest node timed out of its own
+  dispute at 128 blocks per idle poll). Advance through
+  `drive_player_until`; big jumps are safe only when no match awaits
+  the node's move (`wait_until_epoch`'s settlement polling).
 - Sybils auto-allocate distinct signing accounts (from 2 up;
   account 1 is the honest node's and is refused): two sybils sending
   concurrently on the old shared default wedged on nonces, and every
