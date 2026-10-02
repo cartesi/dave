@@ -850,8 +850,8 @@ mod tests {
         let at = head(20, 0x20);
         let (chain, asserter, requests) = recording_chain();
 
-        // The parent's resolution drops the child before its stream is due,
-        // even when the child's own final deletion is earlier in the block.
+        // The parent's resolution drops the child before its stream is due:
+        // the mock serves one getLogs, so any child fetch fails the test.
         asserter.push_success(&vec![match_deleted_log(
             fixture.root,
             at,

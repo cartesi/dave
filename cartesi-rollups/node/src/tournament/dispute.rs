@@ -920,6 +920,45 @@ mod tests {
         }
     }
 
+    /// The fold's only rejections: events it cannot apply without guessing.
+    /// The contract never emits them; each guards a silent overwrite or a
+    /// lookup the fold would otherwise have to invent.
+    #[test]
+    fn the_fold_rejects_only_what_it_cannot_apply() {
+        let descriptor = descriptor(1, 0, TournamentKind::Leaf);
+        let t = descriptor.address();
+        let [one, two, stranger] = [10, 20, 30].map(digest);
+        let (dispute, id) = paired_dispute(descriptor, one, two, 10);
+        let rejects = |events: Vec<Event>| dispute.clone().apply_block(events).unwrap_err();
+
+        assert!(matches!(
+            rejects(vec![join(t, one)]),
+            DisputeError::DuplicateCommitment { commitment, .. } if commitment == one
+        ));
+        let unknown = MatchID {
+            commitment_one: one,
+            commitment_two: stranger,
+        };
+        assert!(matches!(
+            rejects(vec![create(t, unknown, 20)]),
+            DisputeError::UnknownCommitment { commitment, .. } if commitment == stranger
+        ));
+        assert!(matches!(
+            rejects(vec![delete(
+                t,
+                unknown,
+                MatchDeletionReason::Timeout,
+                WinnerCommitment::One
+            )]),
+            DisputeError::UnknownMatch { match_id_hash, .. } if match_id_hash == unknown.hash()
+        ));
+        let deleted = delete(t, id, MatchDeletionReason::Step, WinnerCommitment::One);
+        assert!(matches!(
+            rejects(vec![deleted.clone(), deleted]),
+            DisputeError::MatchAlreadyResolved { match_id_hash, .. } if match_id_hash == id.hash()
+        ));
+    }
+
     #[test]
     fn a_pairing_folds_before_its_old_match_is_deleted() {
         let descriptor = descriptor(1, 0, TournamentKind::Leaf);
@@ -942,8 +981,8 @@ mod tests {
             .apply_block([join(t, dangling)])
             .unwrap();
 
-        // The contract pairs and deletes in one call; the fold must not
-        // depend on both landing in the same block.
+        // The contract pairs and deletes in one call, so they share a block;
+        // every prefix of that block's logs must still fold and classify.
         let dispute = dispute.apply_block([create(t, replacement, 20)]).unwrap();
         assert_eq!(standing(&dispute, one), Standing::Engaged(MatchSide::Two));
         assert_eq!(standing(&dispute, two), Standing::Engaged(MatchSide::Two));

@@ -90,7 +90,7 @@ Three worker threads share one SQLite database (see
   epoch-manager  <-------- settlement data ---------  SQLite
      |                                                  ^
      +-- Hero <--- tournament logs + pinned views --- Ethereum
-     |       \--- Solid events + quartet queries ----> SQLite
+     |       \--- quartet queries ------------------> SQLite
      |
      +-- settlement + recoveries + completion cursor
 
@@ -186,8 +186,9 @@ could succeed and cannot be repaired by a later retry.
 
 The reader retains one in-memory Solid dispute between iterations and persists
 none of it; on restart the node refolds Solid from the chain, starting at the
-root tournament's creation block. Latest Foam never survives a tick. The main quartet cache (`sling_nodes`) and machine snapshots
-remain the computation cache.
+root tournament's creation block. Latest Foam never survives a tick. The
+main quartet cache (`sling_nodes`) and machine snapshots remain the
+computation cache.
 
 ## Settlement invariant
 

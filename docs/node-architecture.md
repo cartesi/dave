@@ -217,9 +217,10 @@ unknown match or commitment, a second join, a seal, advance or delegation of
 a match that is no longer clocked, a second deletion). A commitment's standing
 is derived from its latest match rather than tracked. A new reader folds from
 the root tournament's creation block, so a restart is a cold start: it
-refetches each tournament's full finalized range once, which costs
-response-clock time on a long dispute, and a bad finalized prefix (a provider
-fault or a mixed fork) does not survive it.
+refetches the full finalized range of every tournament still live at the
+finalized head once (a child resolved before it costs only its descriptor
+read), which costs response-clock time on a long dispute, and a bad finalized
+prefix (a provider fault or a mixed fork) does not survive it.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest
