@@ -60,8 +60,3 @@ build-programs: build-yield build-echo
 [script]
 download-deps:
   ./script/download-deps.sh download
-
-# diagnose the downloaded inputs and required test machine images
-[script]
-doctor:
-  ./script/doctor.sh

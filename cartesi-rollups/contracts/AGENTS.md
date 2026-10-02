@@ -92,8 +92,8 @@ truth.
   task explicitly authorizes a compatibility break.
 - Production bytecode changes require regenerated deployment artifacts
   and CREATE2-derived addresses, and a rebuilt devnet state for e2e
-  (`just rollups-contracts::build-devnet`; `just doctor` fingerprints a
-  stale one).
+  (`just rollups-contracts::build-devnet`; `just doctor-e2e` fingerprints
+  a stale one).
 - The outputs-proof position and the data-provider seam tie this contract
   to `machine/step` constants and off-chain commitment construction;
   changes there require coordinated node, Lua-client, and documentation

@@ -102,11 +102,6 @@ compatibility-hashes:
 install-deps:
     forge soldeer install
 
-# diagnose the PRT contract inputs prepared by this module
-[script]
-doctor:
-    "{{ source_directory() / "../../script/contracts-doctor.sh" }}" prt
-
 clean-bindings:
     rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}
 

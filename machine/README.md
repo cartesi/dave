@@ -50,10 +50,9 @@ The `machine` Just module owns source preparation and build:
   with `prepare-boost` and `build` when testing an intermediary commit.
 - `just machine::build` validates the selected provider and incrementally
   builds an already prepared source checkout when needed.
-- `just machine::doctor` checks that the step checkout matches its pinned
-  gitlink and diagnoses the selected provider without changing either one.
 - `just machine::check` validates the selected external provider or prepared
-  source inputs without changing the checkout.
+  source inputs without changing the checkout. The root `just doctor` runs it
+  and also checks that `machine/step` matches its pinned commit.
 - `just machine::clean` removes source-provider outputs while retaining the
   verified download cache.
 

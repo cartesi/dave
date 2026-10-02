@@ -3,11 +3,6 @@ DEPLOYMENTS_DIR := "../../../cartesi-rollups/contracts/deployments/31337"
 
 set positional-arguments
 
-# diagnose shared integration inputs and retained E2E forensic state
-[script]
-doctor:
-    "{{ source_directory() / "script/doctor.sh" }}"
-
 # Fail fast with a pointer instead of a cryptic jq/lua error when the
 # checkout is missing an e2e prerequisite; `just doctor-e2e` at the repo
 # root diagnoses everything at once.

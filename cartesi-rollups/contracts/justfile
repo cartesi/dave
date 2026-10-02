@@ -20,11 +20,6 @@ check-fmt:
 install-deps:
     forge soldeer install
 
-# diagnose the Rollups contract inputs prepared by this module
-[script]
-doctor:
-    "{{ source_directory() / "../../script/contracts-doctor.sh" }}" rollups
-
 # compile smart contracts
 build-smart-contracts:
     forge build

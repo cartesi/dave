@@ -83,14 +83,13 @@ contracts and fixture factories are not part of the generated Rust API.
 
 ## Doctor and artifact receipts
 
-Component doctors use one exit contract: `0` means healthy, `1` means a
+One script, `script/doctor.sh`, diagnoses every scope. The checkers it calls
+(the two fingerprint scripts, the bindings stamp, the test-program pins, and
+the machine provider) share one exit contract: `0` means healthy, `1` means a
 missing or stale setup artifact was diagnosed, and `2` means the checker could
-not determine the result. The root doctor invokes the component scripts
-directly and aggregates their statuses without parsing their output. This keeps
-`script/doctor.sh` usable even when Just itself is the suspected failure; the
-module recipes are discoverable aliases. The two contract modules share one
-parameterized dependency-and-binding checker because their checks are
-identical apart from paths and labels.
+not determine the result. The doctor reports each verdict with its fix and
+exits with the worst one. It calls the checkers directly, never through Just,
+so it stays usable when Just itself is the suspected failure.
 
 `just doctor` covers build and pre-commit-check readiness, including the echo
 and yield images consumed by the standard Rust suite. The devnet bundle,
@@ -198,8 +197,7 @@ Release preparation refuses a checkout other than the exact pinned emulator
 commit. Downloads are SHA-256 checked and cached under `target/machine-source`;
 generated files are validated before publication. `just machine::clean`
 removes source-provider outputs but retains that verified cache.
-`just machine::doctor` checks the pinned step checkout and selected provider;
-the root `just doctor` aggregates that result with the other subsystems.
+`just doctor` checks the pinned step checkout and the selected provider.
 
 `cartesi-machine-sys/build.rs` selects the provider, generates bindings, runs
 incremental Make for an already prepared source checkout, stages archives, and
