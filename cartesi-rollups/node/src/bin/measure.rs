@@ -1282,6 +1282,12 @@ mod versus {
             std::thread::available_parallelism().map_or(0, |n| n.get()),
             format_emulator_version(EXPECTED_EMULATOR_VERSION),
         )?;
+        let (source, fingerprint) = provenance(image);
+        writeln!(report)?;
+        writeln!(
+            report,
+            "Source `{source}`; workload fingerprint `{fingerprint}`."
+        )?;
         writeln!(report)?;
         writeln!(
             report,
@@ -1341,6 +1347,22 @@ mod versus {
              {input}'s boundary, which the join published."
         )?;
         Ok(())
+    }
+
+    /// The source revision (dirty when uncommitted) and the workload's
+    /// fingerprint line, so runs can be compared.
+    fn provenance(image: &Path) -> (String, String) {
+        let source = std::process::Command::new("git")
+            .args(["describe", "--always", "--dirty", "--abbrev=8"])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .unwrap_or_else(|| "unknown".into());
+        let fingerprint = fs::read_to_string(image.with_extension("fingerprint"))
+            .map(|text| text.trim().to_string())
+            .unwrap_or_else(|_| "unknown".into());
+        (source, fingerprint)
     }
 
     /// Runs one row in a child process and returns its JSON line.
