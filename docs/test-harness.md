@@ -330,8 +330,8 @@ unverified claims - check before relying on them:
 - (closed 2026-07) Revert transitions at leaf level: `stf_revert`.
 - Epochs at capacity boundaries (max inputs, input at the last stride).
 - A terminal application against the real contracts: no test image turns
-  terminal on an input, and the engine refuses a template that is terminal
-  at genesis, so the won-and-held epoch is pinned only by the epoch
+  terminal on an input, and startup refuses a template that is terminal at
+  genesis, so the won-and-held epoch is pinned only by the epoch
   manager's tests against mocked views.
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
 - Multiple honest nodes defending the same epoch concurrently.

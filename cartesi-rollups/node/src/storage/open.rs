@@ -91,6 +91,7 @@ pub struct Storage {
 pub struct Template {
     path: PathBuf,
     hash: Hash,
+    awaits_input: bool,
 }
 
 impl Template {
@@ -118,9 +119,11 @@ impl Template {
              (custom uarch code or another emulator's image); refusing it",
             path.display()
         );
+        let awaits_input = crate::engine::machine_stf::awaits_input(&mut machine)?;
         Ok(Self {
             path: path.to_owned(),
             hash,
+            awaits_input,
         })
     }
 
@@ -130,6 +133,12 @@ impl Template {
 
     pub fn hash(&self) -> &Hash {
         &self.hash
+    }
+
+    /// Whether an epoch can start from the template. Only startup refuses
+    /// one that cannot; tests seed such templates to reach terminal states.
+    pub fn awaits_input(&self) -> bool {
+        self.awaits_input
     }
 }
 
@@ -439,7 +448,7 @@ pub(super) fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<Pa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::sql::test_helper::store_template;
+    use crate::storage::sql::test_helper::{store_template, yield_exception};
     use cartesi_machine::cartesi_machine_sys::CM_REG_UARCH_PC;
 
     #[test]
@@ -470,6 +479,24 @@ mod tests {
             format!("{error:#}").contains("pristine uarch"),
             "unexpected error: {error:#}"
         );
+    }
+
+    #[test]
+    fn template_inspection_records_whether_an_epoch_can_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let inspect = |name: &str, adjust: &dyn Fn(&mut Machine)| {
+            let path = dir.path().join(name);
+            store_template(&path, adjust);
+            Template::inspect(&path).unwrap().awaits_input()
+        };
+
+        assert!(inspect("accepted", &|_| {}));
+        assert!(!inspect("exception", &yield_exception));
+        assert!(!inspect("running", &|machine| {
+            machine
+                .write_reg(cartesi_machine::cartesi_machine_sys::CM_REG_IFLAGS_Y, 0)
+                .unwrap();
+        }));
     }
 
     #[test]

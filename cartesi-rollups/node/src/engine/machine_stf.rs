@@ -112,6 +112,19 @@ fn runtime_config(hashing: Hashing) -> RuntimeConfig {
     config
 }
 
+fn manual_yield_reason(machine: &mut Machine) -> Result<Option<u16>> {
+    if !machine.iflags_y()? {
+        return Ok(None);
+    }
+    Ok(Some(machine.receive_cmio_request()?.reason()))
+}
+
+/// Whether `machine` awaits an input: a manual RX_ACCEPTED yield, the only
+/// state an epoch can start from (and settle in).
+pub fn awaits_input(machine: &mut Machine) -> Result<bool> {
+    Ok(manual_yield_reason(machine)? == Some(RX_ACCEPTED))
+}
+
 impl MachineStf {
     /// Loads a template machine (the epoch's initial state). It must be
     /// yielded awaiting the first input, with a pristine uarch.
@@ -236,10 +249,7 @@ impl MachineStf {
     }
 
     fn manual_yield_reason(&mut self) -> Result<Option<u16>> {
-        if !self.machine.iflags_y()? {
-            return Ok(None);
-        }
-        Ok(Some(self.machine.receive_cmio_request()?.reason()))
+        manual_yield_reason(&mut self.machine)
     }
 
     fn mcycle_overflow(&mut self) -> Result<bool> {
@@ -299,7 +309,7 @@ impl Stf for MachineStf {
     }
 
     fn yielded(&mut self) -> Result<bool> {
-        Ok(self.manual_yield_reason()? == Some(RX_ACCEPTED))
+        awaits_input(&mut self.machine)
     }
 
     fn terminal(&mut self) -> Result<bool> {

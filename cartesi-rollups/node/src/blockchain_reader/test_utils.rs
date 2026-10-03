@@ -122,18 +122,13 @@ pub struct Deploy {
 /// `provider`'s signer with automine on. Epoch 0 is sealed, empty, by
 /// the consensus constructor.
 pub async fn deploy_app(provider: &DynProvider, deploy: &Deploy) -> Result<AddressBook> {
-    let program_path = program_path();
-    let input_box = deployment_address("InputBox");
-    let dave_app_factory = deployment_address("DaveAppFactory");
-    let tournament_factory = deployment_address("MultiLevelTournamentFactory");
-
     // Load the stored machine through the emulator and ask it for the root
     // hash, rather than reading the internal `hash_tree.sht` file directly.
     // The file layout is an emulator implementation detail; going through
     // `cm_load_new` + `cm_get_root_hash` is the only stable API.
     let initial_hash: [u8; 32] = {
         let mut machine = Machine::load(
-            &program_path.join("machine-image"),
+            &program_path().join("machine-image"),
             &RuntimeConfig::quiet_console(),
         )
         .expect("failed to load stored machine");
@@ -141,6 +136,18 @@ pub async fn deploy_app(provider: &DynProvider, deploy: &Deploy) -> Result<Addre
             .root_hash()
             .expect("failed to read machine root hash")
     };
+    deploy_app_from(provider, deploy, initial_hash).await
+}
+
+/// [`deploy_app`] over the template with hash `initial_hash`.
+pub async fn deploy_app_from(
+    provider: &DynProvider,
+    deploy: &Deploy,
+    initial_hash: [u8; 32],
+) -> Result<AddressBook> {
+    let input_box = deployment_address("InputBox");
+    let dave_app_factory = deployment_address("DaveAppFactory");
+    let tournament_factory = deployment_address("MultiLevelTournamentFactory");
 
     let claim_staging_period = U256::from(deploy.claim_staging_period);
     let sentry_manager = Address::ZERO;

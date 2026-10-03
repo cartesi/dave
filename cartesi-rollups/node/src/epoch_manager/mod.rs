@@ -1051,16 +1051,7 @@ mod tests {
     /// A rolled epoch 0 whose template is yielded with an exception, the
     /// ordinary terminal application.
     fn rolled_terminal_epoch_zero() -> (tempfile::TempDir, Storage) {
-        use cartesi_machine::cartesi_machine_sys::{
-            CM_HTIF_CMD_SHIFT, CM_HTIF_DEV_SHIFT, CM_HTIF_DEV_YIELD, CM_HTIF_REASON_SHIFT,
-            CM_HTIF_YIELD_CMD_MANUAL, CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION, CM_REG_HTIF_TOHOST,
-        };
-        rolled_epoch_zero(|machine| {
-            let tohost = (u64::from(CM_HTIF_DEV_YIELD) << CM_HTIF_DEV_SHIFT)
-                | (u64::from(CM_HTIF_YIELD_CMD_MANUAL) << CM_HTIF_CMD_SHIFT)
-                | (u64::from(CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION) << CM_HTIF_REASON_SHIFT);
-            machine.write_reg(CM_REG_HTIF_TOHOST, tohost).unwrap();
-        })
+        rolled_epoch_zero(crate::storage::sql::test_helper::yield_exception)
     }
 
     #[tokio::test]

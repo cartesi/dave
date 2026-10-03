@@ -75,7 +75,9 @@ fresh state directory. A changed node version, schema, or commitment semantics
 also requires a fresh directory under the node's rebuild policy. The first
 start pins a directory to its application, chain and template, and every start
 checks the `--machine-path` image against the application's on-chain initial
-hash; a mismatch is refused before anything is written.
+hash; a mismatch is refused before anything is written, and so is a matching
+image that is not paused at a manual accepted yield, from which no epoch can
+start.
 
 One node process owns a state directory: startup locks its `node.lock` and
 refuses a directory another process holds, or one on a filesystem without

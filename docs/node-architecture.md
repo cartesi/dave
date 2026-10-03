@@ -34,9 +34,12 @@ table can be built in time (one warning for a leaf taller than its measured
 capacity) and does not pin or check `T`. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
 linked Cartesi Machine library. It then inspects the `--machine-path` template
-(one private load: its root hash and the pristine-uarch check) and requires
-that hash to equal the consensus's initial hash, and only then takes the
-state-directory lock and opens the directory. A seeded directory is compared
+(one private load: its root hash, the pristine-uarch check, and whether it is
+paused at a manual accepted yield) and requires that hash to equal the
+consensus's initial hash. A matching template paused elsewhere is the deployed
+application's own and still refused: the engine starts every epoch from a
+state awaiting input, so the node could not defend any of its epochs. Only
+then does it take the state-directory lock and open the directory. A seeded directory is compared
 with its `sling_config` pins (app, chain, consensus, template, emulator and
 table) before anything is written, and the claimant is pinned before any
 worker starts. A mismatch names the flag to fix (`--app-address`,

@@ -346,6 +346,15 @@ impl NodeConfig {
             address_book.app,
             alloy::hex::encode_prefixed(address_book.initial_hash),
         );
+        // The engine loads every epoch's initial state as a template awaiting
+        // input; from any other one the Hero would only warn every tick.
+        ensure!(
+            template.awaits_input(),
+            "--machine-path matches application {}'s template, but the template is not paused \
+             at a manual accepted yield (awaiting input), so no epoch can start from it: the \
+             deployed application's template is unusable for the node",
+            address_book.app,
+        );
         let ethereum_submit_gateway = args
             .web3_submit_rpc_url
             .unwrap_or_else(|| args.web3_rpc_url.clone());
@@ -390,10 +399,10 @@ impl NodeConfig {
 mod tests {
     use super::*;
     use crate::blockchain_reader::test_utils::{
-        anvil_state_path, deployment_address, program_path, rpc_client_with_timeout,
-        spawn_anvil_and_provider,
+        Deploy, anvil_state_path, deploy_app_from, deployment_address, program_path,
+        rpc_client_with_timeout, spawn_anvil_and_provider, wallet_provider,
     };
-    use crate::storage::sql::test_helper::store_template;
+    use crate::storage::sql::test_helper::{store_template, yield_exception};
     use alloy::{node_bindings::Anvil, providers::ProviderBuilder};
     use std::path::Path;
 
@@ -560,6 +569,29 @@ mod tests {
             .unwrap_err();
         assert!(
             format!("{error:#}").contains("--machine-path"),
+            "unexpected error: {error:#}"
+        );
+        assert!(!state_dir.exists(), "a refused start must not write");
+
+        // The deployed application's own template, but no epoch can start
+        // from it: refused before anything is written.
+        let terminal = dir.path().join("terminal");
+        store_template(&terminal, yield_exception);
+        let terminal_book = deploy_app_from(
+            &wallet_provider(&anvil, 0),
+            &Deploy {
+                sentries: vec![anvil.addresses()[0]],
+                claim_staging_period: 1000,
+            },
+            *Template::inspect(&terminal)?.hash(),
+        )
+        .await?;
+        let error = NodeConfig::setup_with(args_for(terminal_book.app, &terminal, 0))
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("template is unusable for the node"),
             "unexpected error: {error:#}"
         );
         assert!(!state_dir.exists(), "a refused start must not write");

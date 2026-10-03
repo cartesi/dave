@@ -7,8 +7,8 @@ use cartesi_machine::{
     Machine,
     cartesi_machine_sys::{
         CM_HTIF_CMD_SHIFT, CM_HTIF_DEV_SHIFT, CM_HTIF_DEV_YIELD, CM_HTIF_REASON_SHIFT,
-        CM_HTIF_YIELD_CMD_MANUAL, CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED, CM_REG_HTIF_TOHOST,
-        CM_REG_IFLAGS_Y,
+        CM_HTIF_YIELD_CMD_MANUAL, CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED,
+        CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION, CM_REG_HTIF_TOHOST, CM_REG_IFLAGS_Y,
     },
     config::{
         machine::{MachineConfig, RAMConfig},
@@ -44,6 +44,15 @@ pub fn setup_storage_with(geometry: &TournamentGeometry) -> (TempDir, Storage) {
     )
     .unwrap();
     (state_dir_, storage)
+}
+
+/// Presets a manual exception yield: the ordinary terminal state, from
+/// which no epoch can start.
+pub fn yield_exception(machine: &mut Machine) {
+    let htif_tohost = (u64::from(CM_HTIF_DEV_YIELD) << CM_HTIF_DEV_SHIFT)
+        | (u64::from(CM_HTIF_YIELD_CMD_MANUAL) << CM_HTIF_CMD_SHIFT)
+        | (u64::from(CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION) << CM_HTIF_REASON_SHIFT);
+    machine.write_reg(CM_REG_HTIF_TOHOST, htif_tohost).unwrap();
 }
 
 /// Stores the tiny template at `path`, after `adjust` edits the machine.
