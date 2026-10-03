@@ -54,6 +54,12 @@ fn tournament_geometry_from_rows(
     TournamentGeometry::new(levels, &Structure::PRODUCTION)
 }
 
+/// Chain ids the node knows by name; any other is refused.
+fn named_chain(chain_id: u64) -> Result<NamedChain> {
+    NamedChain::try_from(chain_id)
+        .map_err(|_| anyhow::anyhow!("--web3-chain-id {chain_id} is not a chain this node knows"))
+}
+
 fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
     let required_marchid = u64::from(cartesi_machine::cartesi_machine_sys::CM_MARCHID);
     ensure!(
@@ -286,25 +292,22 @@ impl NodeConfig {
         Ok(access)
     }
 
-    pub async fn read_provider(&self) -> DynProvider {
-        create_rpc_provider(&self.ethereum_gateway, self.chain_id).await
+    pub async fn read_provider(&self) -> Result<DynProvider> {
+        create_rpc_provider(&self.ethereum_gateway, self.chain_id)
+            .await
+            .context("--web3-rpc-url")
     }
 
-    pub async fn transaction_lane(&self, read_provider: DynProvider) -> TransactionLane {
-        let submit_provider =
-            create_rpc_provider(&self.ethereum_submit_gateway, self.chain_id).await;
-        let lane = TransactionLane::new(
+    pub async fn transaction_lane(&self, read_provider: DynProvider) -> Result<TransactionLane> {
+        let submit_provider = create_rpc_provider(&self.ethereum_submit_gateway, self.chain_id)
+            .await
+            .context("--web3-submit-rpc-url (defaults to --web3-rpc-url)")?;
+        Ok(TransactionLane::new(
             read_provider,
             submit_provider,
             self.chain_id as u64,
             self.wallet.clone(),
-        );
-        assert_eq!(
-            lane.signer_address(),
-            self.signer_address,
-            "transaction lane signer does not match configured signer"
-        );
-        lane
+        ))
     }
 
     pub async fn setup() -> Result<Self> {
@@ -317,14 +320,20 @@ impl NodeConfig {
     /// claimant. A refusal leaves a new directory uncreated and an existing
     /// one untouched.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
-        let chain_id = args
-            .web3_chain_id
-            .try_into()
-            .expect("fail to convert chain id");
+        let chain_id = named_chain(args.web3_chain_id)?;
 
-        let provider = create_rpc_provider(&args.web3_rpc_url, chain_id).await;
-        let (signer_address, wallet) = create_signer(chain_id, &args.signer).await;
-        let address_book = AddressBook::new(args.app_address, &provider).await;
+        let provider = create_rpc_provider(&args.web3_rpc_url, chain_id)
+            .await
+            .context("--web3-rpc-url")?;
+        let (signer_address, wallet) = create_signer(chain_id, &args.signer).await?;
+        let address_book = AddressBook::new(args.app_address, &provider)
+            .await
+            .with_context(|| {
+                format!(
+                    "--app-address {}: is it a Dave application on chain {}?",
+                    args.app_address, args.web3_chain_id
+                )
+            })?;
         let geometry =
             discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
         log::info!("deployed tournament geometry (stride/height, top first): {geometry}");
@@ -340,6 +349,10 @@ impl NodeConfig {
         let ethereum_submit_gateway = args
             .web3_submit_rpc_url
             .unwrap_or_else(|| args.web3_rpc_url.clone());
+        // Fail a wrong submit endpoint now, not when the manager starts.
+        create_rpc_provider(&ethereum_submit_gateway, chain_id)
+            .await
+            .context("--web3-submit-rpc-url (defaults to --web3-rpc-url)")?;
 
         let state_lock = StateDirLock::acquire(&args.state_dir)?;
         let mut storage = Storage::initialize(
@@ -397,6 +410,16 @@ mod tests {
             "--web3-private-key",
             "unused-by-parser",
         ]
+    }
+
+    #[test]
+    fn an_unknown_chain_id_names_its_flag() {
+        assert_eq!(named_chain(31337).unwrap(), NamedChain::AnvilHardhat);
+        let error = named_chain(0xdead_beef).unwrap_err();
+        assert!(
+            error.to_string().contains("--web3-chain-id"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -495,12 +518,11 @@ mod tests {
         let endpoint = anvil.endpoint();
         let chain_id = anvil.chain_id().to_string();
         let key = alloy::hex::encode(anvil.keys()[0].to_bytes());
-        let app = book.app.to_string();
-        let args = |machine_path: &Path| {
+        let args_for = |app: Address, machine_path: &Path| {
             PRTArgs::try_parse_from([
                 "cartesi-rollups-prt-node",
                 "--app-address",
-                &app,
+                &app.to_string(),
                 "--machine-path",
                 machine_path.to_str().unwrap(),
                 "--web3-rpc-url",
@@ -515,6 +537,18 @@ mod tests {
             ])
             .unwrap()
         };
+        let args = |machine_path: &Path| args_for(book.app, machine_path);
+        let image = program_path().join("machine-image");
+
+        // A contract that is not an application: an error, not a panic.
+        let error = NodeConfig::setup_with(args_for(book.input_box, &image))
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--app-address"),
+            "unexpected error: {error:#}"
+        );
 
         let wrong = dir.path().join("wrong");
         store_template(&wrong, |_| {});
@@ -528,7 +562,6 @@ mod tests {
         );
         assert!(!state_dir.exists(), "a refused start must not write");
 
-        let image = program_path().join("machine-image");
         let config = NodeConfig::setup_with(args(&image)).await?;
         let error = NodeConfig::setup_with(args(&image))
             .await

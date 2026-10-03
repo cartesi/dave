@@ -83,7 +83,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         tokio::spawn(async move {
             let storage = params.storage()?;
             let chain = Chain::new(
-                params.read_provider().await,
+                params.read_provider().await?,
                 params.long_block_range_error_codes.clone(),
             );
             let blockchain_reader =
@@ -98,8 +98,8 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         tokio::spawn(async move {
             // The manager owns the durable epoch-completion cursor.
             let storage = params.storage()?;
-            let read_provider = params.read_provider().await;
-            let transaction_lane = params.transaction_lane(read_provider.clone()).await;
+            let read_provider = params.read_provider().await?;
+            let transaction_lane = params.transaction_lane(read_provider.clone()).await?;
             let chain = Chain::new(
                 read_provider.clone(),
                 params.long_block_range_error_codes.clone(),

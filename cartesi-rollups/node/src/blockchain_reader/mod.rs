@@ -1,12 +1,12 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::chain::Chain;
 use crate::sync::ShutdownSignal;
 use alloy::{
     hex::ToHexExt,
-    primitives::{Address, U256},
+    primitives::{Address, B256, U256},
     providers::Provider,
 };
 use cartesi_machine::types::Hash;
@@ -58,66 +58,72 @@ impl fmt::Display for AddressBook {
 }
 
 impl AddressBook {
-    // fetch other addresses from application
-    pub async fn new(app: Address, provider: &impl Provider) -> Self {
+    /// Fetches the other addresses from the application. The caller names
+    /// the flag: every failure here means `app` is not a Dave application
+    /// on this chain, or the endpoint is failing.
+    pub async fn new(app: Address, provider: &impl Provider) -> Result<Self> {
         let application_contract = IApplication::new(app, provider);
 
         let consensus = application_contract
             .getOutputsMerkleRootValidator()
             .call()
             .await
-            .expect("fail to query consensus address");
+            .context("failed to query the application's consensus")?;
 
-        let input_box = {
-            let consensus_contract = DaveConsensus::new(consensus, provider);
-            consensus_contract
-                .getInputBox()
-                .call()
-                .await
-                .expect("fail to query input box address")
-        };
+        let consensus_contract = DaveConsensus::new(consensus, provider);
+        let input_box = consensus_contract
+            .getInputBox()
+            .call()
+            .await
+            .with_context(|| format!("failed to query the input box of consensus {consensus}"))?;
+        let tournament_factory = consensus_contract
+            .getTournamentFactory()
+            .call()
+            .await
+            .with_context(|| {
+                format!("failed to query the tournament factory of consensus {consensus}")
+            })?;
 
-        let tournament_factory = {
-            let consensus_contract = DaveConsensus::new(consensus, provider);
-            consensus_contract
-                .getTournamentFactory()
-                .call()
-                .await
-                .expect("fail to query tournament factory address")
-        };
+        let initial_hash = Self::initial_hash(consensus, provider).await?;
 
-        let initial_hash = Self::initial_hash(consensus, provider).await;
-
-        let input_box_contract = IInputBox::new(input_box, provider);
-
-        let input_box_created_block: u64 = input_box_contract
+        let input_box_created_block: u64 = IInputBox::new(input_box, provider)
             .getDeploymentBlockNumber()
             .call()
             .await
-            .expect("fail to query input box deployment block number")
+            .with_context(|| {
+                format!("failed to query the deployment block of input box {input_box}")
+            })?
             .try_into()
-            .expect("fail to cast input box deployment block number into u64");
+            .with_context(|| {
+                format!("input box {input_box} reports a deployment block beyond u64")
+            })?;
 
-        Self {
+        Ok(Self {
             app,
             consensus,
             tournament_factory,
             input_box,
             genesis_block_number: input_box_created_block,
             initial_hash,
-        }
+        })
     }
 
-    pub async fn initial_hash(consensus: Address, provider: &impl Provider) -> Hash {
+    /// The initial state from epoch 0's EpochSealed, which the consensus
+    /// emits in its own deployment block.
+    pub async fn initial_hash(consensus: Address, provider: &impl Provider) -> Result<Hash> {
         let consensus_contract = DaveConsensus::new(consensus, provider);
 
         let consensus_created_block: u64 = consensus_contract
             .getDeploymentBlockNumber()
             .call()
             .await
-            .expect("fail to query consensus deployment block number")
+            .with_context(|| {
+                format!("failed to query the deployment block of consensus {consensus}")
+            })?
             .try_into()
-            .expect("fail to cast consensus deployment block number into u64");
+            .with_context(|| {
+                format!("consensus {consensus} reports a deployment block beyond u64")
+            })?;
 
         debug!(
             "consensus created {} at {}",
@@ -127,14 +133,25 @@ impl AddressBook {
         let sealed_epochs = consensus_contract
             .EpochSealed_filter()
             .address(consensus)
+            .topic1(B256::ZERO)
             .from_block(consensus_created_block)
             .to_block(consensus_created_block)
             .query()
             .await
-            .expect("fail to get sealed epoch 0");
-        assert_eq!(sealed_epochs.len(), 1);
+            .context("failed to query the EpochSealed log of epoch 0")?;
+        // The deployment block is `block.number`. Where that is not the log
+        // block coordinate (Arbitrum reports the parent chain's), the query
+        // looks in the wrong block.
+        let (epoch_zero, _) = sealed_epochs.first().with_context(|| {
+            format!(
+                "no EpochSealed for epoch 0 at consensus {consensus}'s deployment block \
+                 {consensus_created_block} (its block.number); on chains whose block.number \
+                 is not the log block coordinate, such as Arbitrum, the node cannot locate \
+                 genesis"
+            )
+        })?;
 
-        sealed_epochs[0].0.initialMachineStateHash.into()
+        Ok(epoch_zero.initialMachineStateHash.into())
     }
 }
 

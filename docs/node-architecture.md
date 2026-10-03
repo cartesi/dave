@@ -47,7 +47,13 @@ directory is seeded
 in one transaction: the genesis watermark, the epoch-0 boundary, the template
 row and the pins. So a deployment or flag these checks reject cannot create or
 alter local state, and a restart never imports the template again. The runner
-samples each window at the pinned root stride. Table
+samples each window at the pinned root stride. Startup failures are errors
+that name the flag to fix; they add no URL or key material, though a transport
+error's own text may carry the endpoint. The initial hash comes from epoch 0's
+`EpochSealed` in the consensus's deployment block, which the consensus records
+as `block.number`: where that is not the log block coordinate (Arbitrum
+reports the parent chain's), the node cannot locate genesis and does not
+start. Table
 stability is a trust assumption of the parameters provider, so before
 planning any action the Hero checks the descriptor of every tournament on its
 own path against the pinned row for its level, and the root tournament's

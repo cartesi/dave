@@ -16,14 +16,16 @@ use alloy::{
 };
 use alloy_chains::NamedChain;
 use alloy_transport::{TransportError, layers::RetryBackoffLayer};
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
 use log::{debug, error, trace, warn};
 use std::{fs, str::FromStr, time::Duration};
 
+/// Errors name the flag and add no key material: a key parse error may
+/// quote the key's characters, so it is dropped.
 pub(crate) async fn create_signer(
     chain_id: NamedChain,
     signer_args: &SignerArgs,
-) -> (Address, EthereumWallet) {
+) -> Result<(Address, EthereumWallet)> {
     let signer: Box<CommonSignature> = match signer_args {
         SignerArgs::Pk {
             web3_private_key,
@@ -31,7 +33,12 @@ pub(crate) async fn create_signer(
         } => {
             let pk = if let Some(file) = web3_private_key_file {
                 fs::read_to_string(file)
-                    .expect("fail to read key from file")
+                    .with_context(|| {
+                        format!(
+                            "failed to read --web3-private-key-file `{}`",
+                            file.display()
+                        )
+                    })?
                     .lines()
                     .next()
                     .unwrap_or("")
@@ -41,8 +48,9 @@ pub(crate) async fn create_signer(
                 web3_private_key.clone().unwrap()
             };
 
-            let local_signer =
-                PrivateKeySigner::from_str(&pk).expect("could not create private key signer");
+            let local_signer = PrivateKeySigner::from_str(&pk).map_err(|_| {
+                anyhow!("--web3-private-key(-file) does not hold a valid private key")
+            })?;
 
             Box::new(local_signer)
         }
@@ -59,7 +67,9 @@ pub(crate) async fn create_signer(
 
             let key_id = if let Some(file) = aws_kms_key_id_file {
                 fs::read_to_string(file)
-                    .expect("fail to read key from kws file")
+                    .with_context(|| {
+                        format!("failed to read --aws-kms-key-id-file `{}`", file.display())
+                    })?
                     .lines()
                     .next()
                     .unwrap_or("")
@@ -74,7 +84,10 @@ pub(crate) async fn create_signer(
                 .with_endpoint(&endpoint_url)
                 .build()
                 .await
-                .expect("could not create Kms signer");
+                .context(
+                    "failed to create the AWS KMS signer (--aws-kms-key-id(-file), \
+                     --aws-endpoint-url, --aws-region)",
+                )?;
 
             Box::new(kms_signer)
         }
@@ -84,7 +97,7 @@ pub(crate) async fn create_signer(
     let wallet_address =
         <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
-    (wallet_address, wallet)
+    Ok((wallet_address, wallet))
 }
 
 async fn create_client(url: &Url) -> RpcClient {
@@ -118,7 +131,9 @@ async fn create_client(url: &Url) -> RpcClient {
 
 /// Build a signerless provider. Transaction filling is intentionally disabled:
 /// every node mutation is fully specified and signed by [`TransactionLane`].
-pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> DynProvider {
+/// Callers name the endpoint's flag; the error adds no URL, which may carry
+/// an API key.
+pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> Result<DynProvider> {
     let client = create_client(url).await;
     let provider = ProviderBuilder::new()
         .disable_recommended_fillers()
@@ -128,13 +143,14 @@ pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> DynProv
     let chain_id = provider
         .get_chain_id()
         .await
-        .expect("failed to get chain_id from provider");
-    assert_eq!(
-        chain_id, arg_chain_id as u64,
-        "provider chain_id does not match args chain_id"
+        .context("failed to query the endpoint's chain id")?;
+    ensure!(
+        chain_id == arg_chain_id as u64,
+        "the endpoint serves chain {chain_id}, not --web3-chain-id {}",
+        arg_chain_id as u64
     );
 
-    provider.erased()
+    Ok(provider.erased())
 }
 
 /// A labeled request bound for the lane; the label names the on-chain verb
