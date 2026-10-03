@@ -179,9 +179,11 @@ protocol events, not sleeps, so the patterns scenarios rely on are a
 stable-marker contract between the node's logging and the harness.
 The contract today (a change to this line must update the scenario that
 kills on it): `processing input <epoch>:<index>` (machine-runner):
-kill_catchup_batched. The other targeted kills (at the join, mid-bisection,
-mid-build and around acceptance) moved to the node's in-crate harness,
-which restarts the workers deterministically instead of signalling.
+kill_catchup_batched. The other targeted kills moved below e2e: at the join,
+mid-bisection and around acceptance to the node's in-crate harness
+(`restart_after_*`), which restarts the workers deterministically instead of
+signalling, and mid-build to the unit test
+`restarted_source_resumes_a_half_built_level` (`tests/engine_machine.rs`).
 
 ## Scenario inventory
 
@@ -313,8 +315,8 @@ warns about any scenario file the list omits.
 Recorded here so the characterization effort has a target list;
 unverified claims - check before relying on them:
 
-- (closed 2026-07) Crash/restart recovery: B1 chaos plus the B2-B5
-  kill scenarios and the batched catch-up kill now cover it.
+- (closed 2026-07) Crash/restart recovery: chaos and the batched catch-up
+  kill in e2e, and the harness's `restart_after_*` tests.
 - (closed 2026-07) Revert transitions at leaf level: `stf_revert`.
 - Epochs at capacity boundaries (max inputs, input at the last stride).
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
@@ -339,98 +341,36 @@ unverified claims - check before relying on them:
   parallel runs of even the same scenario no longer share snapshot
   state.
 
-## State of the nets (assessment, 2026-07-08)
+## Lessons that outlive the deleted suites
 
-Written after running the full battery over the storage v2 reshape;
-opinions, not just inventory. The individual layers are healthy - the
-system-level risks are tiering and runtime.
-
-What to preserve at all costs: the oracle doctrine (the node is the
-subject, never the source; independent lineages compared), seeded
-reproducible chaos, log-marker kill points, and reviewed-regeneration
-fixtures. These caught real consensus-relevant bugs; they are the
-harness's identity.
-
-The structural risk is that correctness weight sits in the slowest,
-least-run layer, and suites outside the loop rot. Case study:
-`big_input` broke when the 3.0 contracts changed epoch sealing and
-stayed broken until 2026-07-08, because honeypot-all runs in nobody's
-loop. The response was to move the two highest-value uncovered nets
-into CI (stf_all, the batched kill) - but the durable fix is explicit
-tiers: per-PR CI (fast, always) and manual runs (the opt-in honeypot image,
-measurement regeneration). A suite not assigned to a tier should be treated as
-deleted. Since 2026-10-02 per-PR CI runs the whole smoke, and the manually
-dispatched full battery that once sat between the tiers is gone.
-
-Runtime remains the reason not everything belongs in per-PR CI. Parallel
-`TEST_INSTANCE` lanes retired the fixed-port bottleneck after this assessment;
-the current baseline, drivers, and remaining levers are in Suite economics
-below.
-
-Flakiness class to design against: since the 3.0 contracts, an epoch's
-input boundary is the InputBox count at the settle transaction's block,
-so any assertion about WHICH epoch an input lands in is coupled to node
-timing. Assert on content, or control input timing relative to
-settlement explicitly (the `big_input` fix chose content-by-
-construction: one input total).
-
-The 2026-08-17 five-lane battery exposed two additional scheduling cases:
-
-- `gc_match` assumes its two adversarial commitments pair with each other, but
-  the honest node can join between them. The `yield` case failed under
-  contention and passed immediately in isolation. Precomputing both
-  commitments does not serialize their transactions. Make this topology
-  independent of arrival order by joining three distinct adversarial
-  commitments. Because the tournament consumes arrivals in consecutive pairs
-  through one dangling slot, three adversarial commitments and one honest
-  commitment force at least one adversary/adversary pair regardless of arrival
-  order. `gc_tournament` uses the same two-adversary assumption and has the
-  same latent race. Its fix must drive all three players round-robin or map the
-  discovered adversary/adversary roots back to their player coroutines; it must
-  not keep assuming players 1 and 2 form the delegated match.
-- `multi_sybil` reproducibly selected the correct winner but failed its final
-  bond-recovery assertion both in the battery and in isolation. At that
-  revision, the recovery veto for a running current tournament stranded older
-  bonds across continuous epoch rotation. The current serial completion
-  lifecycle is described in
-  [node-architecture.md](node-architecture.md#mutation-scheduling-and-transaction-submission);
-  the scenario retains the balance assertion and adds recovery-before-join
-  ordering across restart. The historical battery result does not validate
-  the revised implementation.
+Correctness weight belongs in the fastest layer that can carry it, and a
+suite outside every loop rots (honeypot `big_input` stayed broken from the 3.0
+sealing change until 2026-07-08 because nothing ran it), so every scenario is
+either on the per-PR smoke or deleted. Keep the oracle doctrine (the node is
+the subject, never the source), seeded reproducible chaos, log-marker kill
+points, and fixtures regenerated only after review. An epoch's input boundary
+is the InputBox count at the accept transaction's block, so assert on content,
+never on which epoch an input lands in, unless the test controls input timing
+against settlement.
 
 ## Known blind spots, by layer
 
-- (current 2026-08-09) The Rust tournament reader's focused suite covers the
-  recursively owned `Dispute`, block-grouped local transitions, dynamic child
-  discovery and descriptor enrichment, strict event decoding, finalized Solid
-  plus disposable Foam, and the one-way narrow observer boundary. The retired
-  Campaign 1 chain-recording oracle encoded the old event ABI and was removed
-  with the legacy Rust fold; current event parity belongs to the Solidity, Lua,
-  recursive-reader, and end-to-end suites.
-- (Campaign 1, closed 2026-07-24) The tournament reader had focused tests for
-  durable finalized-prefix plus disposable number-range tail assembly, global
-  log ordering, dynamic child discovery, finalized-boundary validation,
-  watermark discipline, persistence despite latest sampling, live-tail fetch,
-  or semantic failures, and semantic reads pinned to a sampled hash without
-  requiring canonicality.
-  Recorded folds covered `echo_simple`, `multilevel_stf`, and `multi_sybil`
-  (concurrent matches plus a real timeout deletion).
-- (closed 2026-07-24) Hero policy, context assembly, fulfillment, dispatch, and
-  GC are separate unit surfaces. Table-driven planner tests cover terminal,
-  join, timeout, phase, and recursive-child decisions; action tests cover
-  proof/opening preparation; the recording sender proves that each prepared
-  variant invokes exactly one mutation. E2e remains the outer net that checks
-  the contracts agree with those choices.
-- (Campaign 1, closed 2026-07-24) The Lua sybil path used the same semantic
-  observation boundary as the Rust node through an independent implementation.
-  Its provider-free suite covered domain invariants, the structural fold,
-  strict ABI adaptation, exact-head reading, context assembly, pure Hero and GC
-  planning, fulfillment, and one-action dispatch. The focused `gc_match`,
-  `gc_tournament`, and `multi_sybil` scenarios are the cross-process evidence
-  for match cleanup, recursive cleanup, and concurrent live matches.
-- The fail-closed observation rule from that campaign remains applicable: if
-  timeout status and its phase projection disagree despite being pinned to the
-  same head, reject the whole observation. Retain the raw RPC responses,
+- The Rust tournament reader's focused suite covers the recursively owned
+  `Dispute`, log-ordered local transitions, dynamic child discovery and
+  descriptor enrichment, strict event decoding, finalized Solid plus
+  disposable Foam, and the narrow observer boundary; event parity with the
+  contracts rests on the Solidity, Lua, reader and end-to-end suites.
+- Hero policy, context assembly, fulfillment, dispatch, and GC are separate
+  unit surfaces. Table-driven planner tests cover terminal, join, timeout,
+  phase, and recursive-child decisions; action tests cover proof/opening
+  preparation; the recording sender proves that each prepared variant invokes
+  exactly one mutation. Cleanup and concurrent matches run against a chain in
+  the node harness (`the_node_collects_an_abandoned_match`,
+  `the_node_collects_an_abandoned_child_tournament`,
+  `three_sybils_lose_and_the_node_recovers_its_bond_first`).
+- The fail-closed observation rule stays: if timeout status and its phase
+  projection disagree despite being pinned to the same head, reject the whole
+  observation. Retain the raw RPC responses,
   address, arguments, calldata, and pinned head; never retry or normalize the
   two reads into apparent coherence.
 - The e2e scenarios run the node at snapshot gap 2 by default (since
@@ -480,9 +420,9 @@ of forensic state. A nearly-full disk quietly slows every machine store;
 `just doctor-e2e` warns when the litter passes 10 GB.
 
 Where the wall time goes, by class, largest first: (1) protocol-timeout
-fast-forwarding throttled by the harness poll loop (dominates gc_*,
-bad_commitment); (2) per-scenario setup and inter-phase waits (anvil
-spawn, epoch-0 roll, oracle commitment builds, settlement polling).
+fast-forwarding throttled by the harness poll loop; (2) per-scenario setup
+and inter-phase waits (anvil spawn, epoch-0 roll, oracle commitment builds,
+settlement polling).
 Node-side machine work and tick cadence are NOT drivers at current
 constants. Parallel `TEST_INSTANCE` lanes already remove serial
 fixed-port execution from the wall-time model.
