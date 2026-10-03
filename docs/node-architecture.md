@@ -124,16 +124,18 @@ safety, not hygiene:
   clock path. f371381c did this after a terminal application panicked every
   node at the roll, which would have let a fabricated claim win uncontested.
 
-Chain data reaches no panic on the dispute path. Chain-reported coordinates
-reach the engine only through validators that accept everything the contracts
-produce. The observer checks each match against its tournament's descriptor
-(height, position, alignment, cycle) and the Hero's snapshot checks it again;
-a bisecting match must stand above height 1, since advancing opens the
-children of the node below the contested one; a level's base cycle must be
-aligned to its span, and a child's must be its parent's divergence cycle; and
-every level's stride and height must match the pinned table, which tiles the
-machine coordinate. The observer's standing decoders likewise front its own
-`expect`s on candidate and parent-match data. The engine's asserts behind them
+Apart from the two accepted halts below, chain data reaches no panic on the
+dispute path. Chain-reported coordinates reach the engine only through
+validators that accept everything the contracts produce. The observer checks
+each match against its tournament's descriptor (height, position, alignment,
+cycle) and the Hero's snapshot checks it again; a bisecting match must stand
+above height 1, since advancing opens the children of the node below the
+contested one; a level's base cycle must be aligned to its span, and a
+child's must be its parent's divergence cycle; and every level's stride and
+height must match the pinned table, which tiles the machine coordinate.
+Nothing checks that the root's base cycle is 0; the trusted factory sets it.
+The observer's standing decoders likewise front its own `expect`s on
+candidate and parent-match data. The engine's asserts behind them
 (`LevelCoords`, `Quartet`, the ruler) are tripwires for node bugs, so a prune
 must keep these validators or first turn the asserts they front into errors.
 The settle asserts compare the local result with one block's views after the
