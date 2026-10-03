@@ -44,16 +44,47 @@ level. Terms marked (code) appear verbatim in identifiers.
   docs/computation-hash.md.
 - computation hash / commitment: Merkle root over the epoch's leaf
   sequence; what a validator stakes a bond on.
-- leaf: machine root hash after one meta-cycle transition. Stored
-  run-length compressed as (hash, repetitions).
-- repetitions (code): how many consecutive identical leaves a stored row
-  stands for (padding after an input boundary or terminal state).
+- leaf: machine root hash after one meta-cycle transition; builders carry
+  runs of equal leaves as (hash, repetitions) in memory.
+- repetitions (code): how many consecutive identical leaves one run stands
+  for (padding after an input boundary or terminal state).
 - implicit hash (code: implicit_hash): the state before leaf 0; carried
   alongside the tree, not inside it.
 - stride / log2step (configuration code): leaf granularity of a tournament
   level; a level-k leaf covers 2^log2step[k] usteps. The semantic tournament
   descriptor exposes the same quantity as `log2Stride`.
 - height (code): tree height at a level; 2^height leaves per tree.
+- input window (code: `log2_window_span`): the 2^68 meta-cycles one input
+  owns; window k starts where input k is fed. A boundary is the machine at
+  a window start; the runner keeps one every `--snapshot-gap-inputs` inputs
+  (the snapshot gap) and dispute positioning adds the disputed input's.
+- quartet (code): (epoch, stride, height, shift), the identifier of one
+  Merkle node of a commitment tree; the node's quartet cache (`sling_nodes`)
+  is keyed by it. A level root is the quartet of shift 0 at full height.
+- dense (leaf, span): a leaf-level span over executing big cycles, where
+  every uarch step is a distinct leaf, so its build cost scales with
+  executed usteps (the density label in docs/measurements). An idle stretch
+  at a fixed point costs one captured span however long it is.
+- seam 1, seam 2: the input budget's last cycle (mcycle == imcyclemax). At
+  seam 1 an `RX_REJECTED` yield still reverts at the closing reset; at seam
+  2 an `RX_ACCEPTED` yield still takes the next input, because the step
+  reads only the pending yield. Dave follows the step at both; the v0.21.0
+  collector and CLI do not (computation-hash.md).
+- collect API, bulk collector (code: `Collector::Bulk`): the emulator's
+  `cm_collect_uarch_cycle_root_hashes` and `cm_collect_mcycle_root_hashes`,
+  which run a span and return its sampled roots in one call (wrapped in
+  machine/rust-bindings `types/collect.rs`). The node builds dense leaves
+  with the uarch collector, bundled per big cycle; the per-step path
+  (`Collector::Stepped`) stays as the test reference. The release CLI is
+  built on the same collectors, so it is not an independent oracle.
+- seam-1 guard: bulk collection stops before the budget's last cycle and the
+  ruler steps it (`MachineStf::big_cycle_roots`), because the v0.21.0
+  collector keeps the physical root there. A control test
+  (`bulk_collection_leaves_the_budgets_last_cycle_to_stepping`) fails once
+  an emulator fixes it; the guard goes then.
+- per-input compute contract: how many big cycles one input may run, a
+  trusted-developer promise the clocks are priced against
+  (docs/dimensioning.md).
 - span vs mask naming: the primitive field widths come directly from the
   emulator's rollup constants. Dave derives its input-window and ruler widths
   plus the field masks (2^k - 1) from them. The historical trap - masks named
@@ -134,10 +165,47 @@ level. Terms marked (code) appear verbatim in identifiers.
   machine validity proof, then accepting it once every sentry agrees or the
   claim staging period ends; acceptance records the outputs root and seals
   the next epoch.
+- sentry: one of the addresses (zero or more, fixed at deployment and
+  rotatable by the sentry manager) that may claim the post-epoch state it
+  computed; unanimous agreement accepts a staged result early, and a sentry
+  can neither veto nor corrupt it.
+- claim staging period: the wait after staging before anyone may accept
+  without unanimous sentries; the guardian's reaction window.
+- guardian, foreclosure: the application's guardian may call
+  `Application.foreclose()`, which irreversibly freezes epoch progress; the
+  last line for anything the tournament cannot settle or got wrong
+  (epoch-lifecycle.md).
+- settles (code: `MachineValidityProof::settles`): whether a final state can
+  be staged, the contracts' validity predicate: a manual `RX_ACCEPTED` yield.
+- defend, never stage: the node records and defends every epoch's true
+  final state, settling or not; only staging asks `settles`, and an epoch
+  that cannot settle is held with an error (epoch-lifecycle.md).
 - hero / sybil (tests): the honest player under test / a dishonest player
   defending a corrupted commitment. Hero is also the node's name for its
   dispute module (`cartesi-rollups/node/src/hero`, formerly `strategy`
   with its `Player` struct): the paper's term for the honest validator.
+- P1, P2: the node's failure policy (docs/node-architecture.md). P1: an
+  adversary that can halt or stall the honest node deterministically makes N
+  honest nodes protect like zero, so no check may reject what the contracts
+  can produce or the trusted application can process. P2: spend distrust
+  where a lie would be silent, not where it would fail loudly.
+- Solid, Foam (code: `Solid` in `tournament/reader.rs`, `foam` in
+  `hero/actor.rs`): the tournament reader's two views. Solid is the event
+  fold through the finalized block, kept in memory between ticks; Foam is a
+  disposable clone extended to the latest block for one tick's
+  deadline-sensitive actions. Joins take their payload from Solid.
+- CoW crossing (code: `Positioner::cross`): dispute positioning across whole
+  inputs on copy-on-write clones of the runner's chain; a rejection resumes
+  from the pre-input clone, and only the disputed input's boundary is stored
+  and registered, since every later action of that dispute stays inside
+  that input.
+- tail adversary (code: `Tail`, test-only): the anvil harness's adversary,
+  the production Hero over a source whose every leaf from one meta-cycle on
+  is a fixed wrong value, never stored and unprovable, so it loses by STEP
+  or timeout.
+- commitment semantics (code: `COMMITMENT_SEMANTICS`): the version of the
+  leaf rules a store was built under; bumped on any change to leaf values or
+  transition shapes, so an older store is refused, not reused.
 - Storage (code): the SQLite-backed storage layer all node workers
   share. The older name "state manager" survives only in the
   `StateManagerError` error variants.
