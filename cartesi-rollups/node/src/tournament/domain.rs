@@ -246,6 +246,10 @@ impl BisectingMatch {
         remaining_height: u64,
         responder: MatchSide,
     ) -> Result<Self, DomainError> {
+        // The contracts bisect only above height 1. Advancing opens the
+        // children of the node one below the contested one (hero/action.rs,
+        // prepare_advance), so height 1 would reach the `children` expect in
+        // engine/dispute.rs: nonzero is not enough.
         if remaining_height < 2 {
             return Err(DomainError::InvalidBisectingHeight(remaining_height));
         }

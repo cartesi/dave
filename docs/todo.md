@@ -70,13 +70,12 @@ carry no backlog (reviews/README.md).
   finalized log data. A retry loop that should page reuses the epoch
   manager's consecutive-tick rule (`repeated_reverts`: a warning first, an
   error on the next tick). (node-architecture.md, failure policy)
-- After that audit, prune dispute-path validators that re-check what the
-  contracts enforce (P1, bounded by P2: keep the checks whose absence makes a
-  lie silent). Before pruning one that guards an engine assert, make the
-  assert an error, or the prune turns a retry into a common-mode panic. The
-  unmarked cases: `MatchHeightOutOfRange`, which guards `LevelCoords::node`,
-  and the `children` expect in `engine/dispute.rs`. (node-architecture.md,
-  failure policy)
+- Prune dispute-path validators that re-check what the contracts enforce
+  (P1, bounded by P2: keep the checks whose absence makes a lie silent). The
+  coordinate validators front engine asserts: keep each, or make the asserts
+  it fronts errors in the prune's first commit, or the prune turns a retry
+  into a common-mode panic. `InvalidBisectingHeight` must keep its bound of
+  2, not relax to nonzero. (node-architecture.md, failure policy)
 - Structured logging (debt 4). (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
 - Check that the Latest tail descends from Solid's finalized block, by parent
