@@ -72,6 +72,11 @@ The completion cursor is bound to one claimant, so changing signer requires a
 fresh state directory. A changed node version, schema, or commitment semantics
 also requires a fresh directory under the node's rebuild policy.
 
+One node process owns a state directory: startup locks its `node.lock` and
+refuses a directory another process holds, or one on a filesystem without
+file locks. The lock does not cover the signer: nodes on different
+directories must still not share a key.
+
 Put `--state-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
 `reflink=1`). Every input clones a stored machine; a reflinked clone shares
 unchanged extents, while elsewhere (ext4) the emulator falls back to sparse

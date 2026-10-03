@@ -84,8 +84,6 @@ carry no backlog (reviews/README.md).
 - Serialize snapshot GC's directory removal with re-adoption; dispute
   positioning now publishes from the manager's thread too (debt 1).
   (node-architecture.md)
-- Snapshot publication adopts an existing content-addressed destination
-  without rehashing it (debt 2). (node-architecture.md)
 - Structured logging (debt 4). (node-architecture.md)
 - A calibrated operating funding floor (debt 5), and receipt-blind lane
   gaps with escalation of a repeated identical intent (debt 6).
@@ -94,8 +92,6 @@ carry no backlog (reviews/README.md).
   manager (debt 7); graceful shutdown and cancellable leaf builds (debt 9).
   (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
-- Take an exclusive process lock on the state directory before any write,
-  with R10 (debt 11). (node-architecture.md)
 - Check that the Latest tail descends from Solid's finalized block, by parent
   hashes, instead of trusting a number range (debt 10; today the estimate
   pre-check of 8ace5822 is the backstop). (node-architecture.md)

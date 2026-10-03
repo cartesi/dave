@@ -34,6 +34,48 @@ const SYNCHRONOUS_PRAGMA: &str = "NORMAL";
 /// advance-batch size: one commit per gap worth of inputs.
 pub const DEFAULT_SNAPSHOT_GAP_INPUTS: u64 = 64;
 
+/// Non-numeric, so the scratch sweep never takes it for an epoch.
+const LOCK_FILE: &str = "node.lock";
+
+/// One node process owns a state directory: a second one would sweep the
+/// first's working clones and publish into and collect the same snapshot
+/// store. Startup takes this lock before the first write and holds it for the
+/// life of the process; the kernel releases it on any exit, so a crash leaves
+/// nothing stale. It does not make the signer exclusive: two directories may
+/// still share one key.
+#[derive(Debug)]
+pub struct StateDirLock {
+    _file: fs::File,
+}
+
+impl StateDirLock {
+    pub fn acquire(state_dir: &Path) -> Result<Self> {
+        create_empty_state_dir_if_needed(state_dir)?;
+        let path = state_dir.join(LOCK_FILE);
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)
+            .with_context(|| format!("opening `{}`", path.display()))?;
+        match file.try_lock() {
+            Ok(()) => Ok(Self { _file: file }),
+            Err(fs::TryLockError::WouldBlock) => Err(anyhow::anyhow!(
+                "state directory `{}` is in use by another node process",
+                state_dir.display()
+            )
+            .into()),
+            // Refuse rather than run unlocked: the lock is the only guard.
+            Err(fs::TryLockError::Error(error)) => Err(anyhow::Error::from(error)
+                .context(format!(
+                    "cannot lock state directory `{}` (does its filesystem support file locks?)",
+                    state_dir.display()
+                ))
+                .into()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Storage {
     pub(super) connection: Connection,
@@ -344,6 +386,21 @@ mod tests {
     use super::*;
     use crate::storage::sql::test_helper::store_template;
     use cartesi_machine::cartesi_machine_sys::CM_REG_UARCH_PC;
+
+    #[test]
+    fn state_dir_lock_is_exclusive() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_dir = dir.path().join("state");
+        let held = StateDirLock::acquire(&state_dir).unwrap();
+        // flock conflicts between two opens even within one process.
+        let error = StateDirLock::acquire(&state_dir).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("in use by another node process"),
+            "unexpected error: {error:#}"
+        );
+        drop(held);
+        StateDirLock::acquire(&state_dir).unwrap();
+    }
 
     #[test]
     fn initialize_refuses_a_template_without_the_pristine_uarch() {

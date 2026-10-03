@@ -121,6 +121,7 @@ Everything lives under `--state-dir`:
 
 ```
 state_dir/
+  node.lock           held by the one node process using the directory
   db.sqlite3          main database (WAL mode, busy_timeout 10s)
   snapshots/0x<hash>/ machine snapshots, named by machine root hash
                       (the runner's boundaries and the disputes')
@@ -136,8 +137,11 @@ Immediate); writer roles live in per-role files - `ingest.rs`
 `completion.rs` (epoch-manager) - `snapshots.rs` is the boundary store (every
 machine store, load, and clean), and `queries.rs`
 is the role-free read surface. Every public operation is one
-transaction closure. One node process exclusively owns a state directory;
-SQLite coordinates its worker threads, not multiple node processes.
+transaction closure. One node process owns a state directory: startup takes
+an exclusive lock on its `node.lock` before the first write and refuses a
+directory another process holds, or one whose filesystem cannot lock; SQLite
+coordinates the worker threads. The lock does not cover the signer, which
+must be exclusive on its own (transaction submission, below).
 
 Committed snapshots are immutable and load with explicit `SHARING_NONE`,
 which gives them private file-backed mappings and OS copy-on-write behavior.
@@ -171,6 +175,13 @@ failure.
 Dispute positioning remains different: an intermediate boundary only shortens
 replay, so an unavailable one may fall back to an earlier verified boundary
 within the epoch.
+
+Publication adopts an existing content-addressed directory without rehashing
+it. Every directory this process published was root-verified and synced
+before its rename, so a crash-orphaned one is a complete, verified machine;
+the lock excludes another node process, and every load verifies the root
+against its row (the runner stops, dispute positioning skips the boundary).
+External mutation of the store is unsupported, like manual database mutation.
 
 Schema initialization owns one create-only `storage/sql/schema.sql`; there are
 no migrations or ordered schema versions. On an empty database, startup applies
@@ -380,11 +391,6 @@ State and storage:
    relied upon: if a publisher reused the path after GC unreferenced it but
    before post-commit removal, it could register the path before GC deleted the
    directory. Serializing removal with re-adoption is a separate follow-up.
-2. Snapshot publication reuses a pre-existing content-addressed destination
-   without rehashing that destination. The staged candidate is root-verified,
-   synced, and renamed without replacement, but correctness still relies on
-   exclusive state-directory ownership and no external mutation of committed
-   snapshots.
 
 Error handling and observability:
 
@@ -437,9 +443,6 @@ Design assumptions:
     point views at one sampled hash. It does
     not prove the tail belongs to that hash's ancestry; stale work is safe
     because mutators revalidate it, and the next tick rebuilds the tail.
-11. One node instance per state dir; SQLite WAL is the only cross-thread
-    coordination. Shared state-directory operation is unsupported and has no
-    process lock or recovery protocol.
 12. Ingestion holds the application's unprocessed input payloads and epoch
     events in memory, including temporary conversion copies, before committing
     them with the ingestion watermark. RPC range partitioning does not bound

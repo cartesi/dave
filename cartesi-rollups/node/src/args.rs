@@ -3,7 +3,7 @@
 
 use crate::blockchain_reader::AddressBook;
 use crate::engine::{Level, Structure, TournamentGeometry};
-use crate::storage::{Storage, StorageError};
+use crate::storage::{StateDirLock, Storage, StorageError};
 use alloy::{
     network::EthereumWallet,
     primitives::Address,
@@ -17,7 +17,7 @@ use cartesi_prt_contracts::{
     multi_level_tournament_factory::MultiLevelTournamentFactory,
 };
 use clap::{ArgGroup, Parser, Subcommand};
-use std::{fmt, path::PathBuf, time::Duration};
+use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::provider::{TransactionLane, create_rpc_provider, create_signer};
 
@@ -248,6 +248,9 @@ pub struct NodeConfig {
 
     // Private signing capability. Read providers remain signerless.
     wallet: EthereumWallet,
+
+    // Every worker holds a clone, so the lock outlives them all.
+    _state_lock: Arc<StateDirLock>,
 }
 
 impl fmt::Display for NodeConfig {
@@ -304,7 +307,7 @@ impl NodeConfig {
         lane
     }
 
-    pub async fn setup() -> Result<(Self, Storage)> {
+    pub async fn setup() -> Result<Self> {
         let args = PRTArgs::parse();
 
         let chain_id = args
@@ -322,6 +325,7 @@ impl NodeConfig {
             .web3_submit_rpc_url
             .unwrap_or_else(|| args.web3_rpc_url.clone());
 
+        let state_lock = StateDirLock::acquire(&args.state_dir)?;
         let mut storage = Storage::initialize(
             &args.state_dir,
             &args.machine_path,
@@ -342,22 +346,20 @@ impl NodeConfig {
             "local machine initial hash doesn't match on-chain"
         );
 
-        Ok((
-            Self {
-                address_book,
-                state_dir: storage.state_dir().to_owned(),
-                machine_path: args.machine_path,
-                chain_id,
-                signer_address,
-                ethereum_gateway: args.web3_rpc_url,
-                ethereum_submit_gateway,
-                sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
-                wallet,
-                long_block_range_error_codes: args.long_block_range_error_codes,
-                snapshot_gap_inputs: args.snapshot_gap_inputs,
-            },
-            storage,
-        ))
+        Ok(Self {
+            address_book,
+            state_dir: storage.state_dir().to_owned(),
+            machine_path: args.machine_path,
+            chain_id,
+            signer_address,
+            ethereum_gateway: args.web3_rpc_url,
+            ethereum_submit_gateway,
+            sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
+            wallet,
+            long_block_range_error_codes: args.long_block_range_error_codes,
+            snapshot_gap_inputs: args.snapshot_gap_inputs,
+            _state_lock: Arc::new(state_lock),
+        })
     }
 }
 
