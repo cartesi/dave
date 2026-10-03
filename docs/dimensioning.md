@@ -371,10 +371,10 @@ minutes. These are per-match cumulative
 ceilings, not values deposited into a clock or a whole-tournament maximum.
 
 The independent `prt/measure_constants` emulator harness and the Rust
-`just measure-level-constants` generator expose the two inputs that shape the level
-layout: maximum acceptable root slowdown and the time budget for constructing
-an inner commitment. Both derive strides and heights bottom-up; the Rust
-generator owns the current checked-in result and caveats in
+`just measure-level-constants` generator expose the two inputs that shape the
+level layout: maximum acceptable root slowdown and the time budget for
+constructing an inner commitment. Both derive strides and heights bottom-up;
+the Rust generator owns the current checked-in result and caveats in
 `docs/measurements/constants.md`. The emulator harness supplies a second
 measurement method across explicitly selected stress-ng workloads. Generator
 output is evidence for a parameter set, not a permanent constant: workloads,

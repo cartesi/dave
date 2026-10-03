@@ -624,10 +624,9 @@ minutes. The independent
 `prt/measure_constants` emulator benchmark and the Rust
 `just measure-level-constants` generator show how root slowdown and the
 commitment budget determine tournament strides and heights. On Ethereum `G`
-is 25 blocks. One
-root-to-leaf descent with one match at each level spans 92 tree heights and can
-earn at most 7 hours 45 minutes of discounts, one at each successful response
-plus one for the leaf match's win.
+is 25 blocks. One root-to-leaf descent with one match at each level spans 92
+tree heights and can earn at most 7 hours 45 minutes of discounts, one at each
+successful response plus one for the leaf match's win.
 Repeated matches receive their own bounded response discounts.
 
 `Clock.pauseAfterResponseAt()` implements the non-bankable response formula.

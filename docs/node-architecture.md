@@ -182,10 +182,10 @@ batch the signer cannot cover, a call that reverts on consecutive ticks, a
 torn snapshot, a worker exit, or a contract answer the node does not know (an
 unknown bond disposition holds the epoch, and with it the next one). WARN
 means the node carries on: the next tick retries, an action is skipped or
-falls back, or best-effort work failed. INFO is protocol progress. Every line's target is its module path, so
-`RUST_LOG` narrows the output to one subsystem
-(`RUST_LOG=cartesi_rollups_prt_node::hero=debug`). Structured fields are
-declined for lack of a consumer: the level and the target suffice.
+falls back, or best-effort work failed. INFO is protocol progress. Every
+line's target is its module path, so `RUST_LOG` narrows the output to one
+subsystem (`RUST_LOG=cartesi_rollups_prt_node::hero=debug`). Structured fields
+are declined for lack of a consumer: the level and the target suffice.
 
 ## Storage
 
