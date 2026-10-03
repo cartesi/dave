@@ -354,24 +354,29 @@ Epoch and input ingestion consumes logs only up to the chain's finalized block
 (`BlockNumberOrTag::Finalized`). Finality is trusted and those rows are never
 rolled back. Oversized `eth_getLogs` ranges are handled by binary range
 partitioning, triggered by provider-specific error codes passed in as
-configuration (`--long-block-range-error-codes`). A successful response is
-otherwise trusted to contain every matching log in its requested range; the
-node does not cross-check it against a second provider. Input and epoch logs
-are the exception, because the node numbers inputs itself and a missing one
-would silently shift every later commitment. Each `InputAdded` must carry the
-next expected index, and a sealed epoch must end at its upper bound. Each tick
-also reads, by number at the finalized head `F`, the InputBox's input count
-for the application and the consensus's current sealed epoch. When the stored
-totals already equal them, the tick moves the watermark to `F` with no
+configuration (`--long-block-range-error-codes`). Decoded logs are sorted into
+chain order (block, transaction and log index) before use: a response's order
+is not guaranteed, and a reordered one would fail the index checks below on
+every retry. A log without a block number fails the tick as an inconsistent
+response. A successful response is otherwise trusted to contain every matching
+log in its requested range; the node does not cross-check it against a second
+provider. Input and epoch logs are the exception, because the node numbers
+inputs itself and a missing one would silently shift every later commitment.
+Each `InputAdded` must carry the next expected index, and a sealed epoch must
+end at its upper bound.
+
+Each tick also reads, by number at the finalized head `F`, the InputBox's input
+count for the application and the consensus's current sealed epoch. When the
+stored totals already equal them, the tick moves the watermark to `F` with no
 `eth_getLogs`, however far behind it is; otherwise it skips the query whose
-total already matches, and the chunk that reaches `F` must end at exactly
-those totals. A mismatch fails the tick before anything is stored, and the
-next tick retries. Only `F`'s state is read, since an earlier block's would
-need an archive node, so a chunk that ends before `F` during catch-up is
-checked by contiguity alone: a log missing from its tail surfaces only at the
-next input and stops ingestion until the state directory is rebuilt. Until
-`F` reaches the consensus's deployment (an application deployed ahead of its
-consensus), the totals cannot be read and the tick retries.
+total already matches, and the chunk that reaches `F` must end at exactly those
+totals. A mismatch fails the tick before anything is stored, and the next tick
+retries. Only `F`'s state is read, since an earlier block's would need an
+archive node, so a chunk that ends before `F` during catch-up is checked by
+contiguity alone: a log missing from its tail surfaces only at the next input
+and stops ingestion until the state directory is rebuilt. Until `F` reaches the
+consensus's deployment (an application deployed ahead of its consensus), the
+totals cannot be read and the tick retries.
 
 Ingestion starts at genesis, the earlier of the application's and the
 consensus's recorded deployment blocks, so a new application on a long-lived

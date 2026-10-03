@@ -19,7 +19,7 @@ use alloy::{
     sol_types::SolEvent,
     transports::TransportError,
 };
-use anyhow::{Result, anyhow, ensure};
+use anyhow::{Result, anyhow, bail, ensure};
 
 /// A block-number/hash pair that identifies one chain observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -111,7 +111,8 @@ impl Chain {
         Ok(head)
     }
 
-    /// Every log emitted by `address` in `[from, to]`, in chain order.
+    /// Every log emitted by `address` in `[from, to]`, in the provider's
+    /// order: the caller validates and orders them.
     pub async fn raw_logs(&self, address: Address, from: u64, to: u64) -> Result<Vec<Log>> {
         let filter = Filter::new().address(address);
         self.logs_bisecting(&filter, from, to).await
@@ -131,9 +132,22 @@ impl Chain {
             filter = filter.topic1(topic.clone());
         }
 
-        self.logs_bisecting(&filter, from, to)
-            .await?
-            .into_iter()
+        let mut logs = self.logs_bisecting(&filter, from, to).await?;
+        // A response is not guaranteed to be in chain order, and ingestion
+        // checks each input's index against its predecessor's: a reordered
+        // response would fail every retry the same way. Ordering needs the
+        // block number, which every mined log carries.
+        if let Some(log) = logs.iter().find(|log| log.block_number.is_none()) {
+            bail!(
+                "a {} log from {address} has no block number (transaction {:?}): an \
+                 inconsistent response from the provider",
+                E::SIGNATURE,
+                log.transaction_hash
+            );
+        }
+        logs.sort_by_key(|log| (log.block_number, log.transaction_index, log.log_index));
+
+        logs.into_iter()
             .map(|log| {
                 let decoded = E::decode_log(&log.inner)?;
                 Ok((decoded.data, log))
@@ -255,11 +269,13 @@ mod tests {
     use super::{Chain, ChainHead, matches_any_code};
     use alloy::{
         eips::BlockId,
-        primitives::B256,
+        primitives::{Address, B256, Bytes, Log as PrimitiveLog, U256},
         providers::{Provider, ProviderBuilder},
-        rpc::types::Block,
+        rpc::types::{Block, Log},
+        sol_types::SolEvent,
     };
     use alloy_transport::mock::Asserter;
+    use cartesi_rollups_contracts::i_input_box::IInputBox::InputAdded;
 
     fn hash(byte: u8) -> B256 {
         B256::repeat_byte(byte)
@@ -352,6 +368,62 @@ mod tests {
         let (failed_chain, failed_asserter) = mocked_chain();
         failed_asserter.push_failure_msg("latest unavailable");
         assert!(failed_chain.latest_head().await.is_err());
+    }
+
+    fn input_log(index: u64, block: Option<u64>, log_index: u64) -> Log {
+        let event = InputAdded {
+            appContract: Address::ZERO,
+            index: U256::from(index),
+            input: Bytes::new(),
+        };
+        Log {
+            inner: PrimitiveLog {
+                address: Address::ZERO,
+                data: event.encode_log_data(),
+            },
+            block_number: block,
+            transaction_index: Some(log_index),
+            log_index: Some(log_index),
+            ..Default::default()
+        }
+    }
+
+    fn indices(logs: &[(InputAdded, Log)]) -> Vec<u64> {
+        logs.iter()
+            .map(|(event, _)| event.index.to::<u64>())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn decoded_logs_come_back_in_chain_order() {
+        let (chain, asserter) = mocked_chain();
+        asserter.push_success(&vec![
+            input_log(3, Some(9), 0),
+            input_log(1, Some(8), 4),
+            input_log(2, Some(8), 5),
+            input_log(0, Some(8), 1),
+        ]);
+
+        let logs = chain
+            .decoded_logs::<InputAdded>(Address::ZERO, None, 1, 10)
+            .await
+            .unwrap();
+        assert_eq!(indices(&logs), [0, 1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn a_decoded_log_without_block_number_is_an_error() {
+        let (chain, asserter) = mocked_chain();
+        asserter.push_success(&vec![input_log(0, Some(8), 0), input_log(1, None, 1)]);
+
+        let error = chain
+            .decoded_logs::<InputAdded>(Address::ZERO, None, 1, 10)
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("has no block number"),
+            "unexpected error: {error:#}"
+        );
     }
 
     #[tokio::test]

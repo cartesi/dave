@@ -315,7 +315,8 @@ impl BlockchainReader {
         prev_block: u64,
         current_block: u64,
     ) -> Result<Vec<Epoch>> {
-        Ok(chain
+        // Errors, not panics: a panic here would stop every worker.
+        chain
             .decoded_logs::<EpochSealed>(
                 self.address_book.consensus,
                 None,
@@ -327,20 +328,29 @@ impl BlockchainReader {
             .iter()
             .map(|(e, meta)| {
                 let epoch = Epoch {
-                    epoch_number: u64::try_from(e.epochNumber)
-                        .expect("fail to convert epoch number"),
-                    input_index_boundary: u64::try_from(e.inputIndexUpperBound)
-                        .expect("fail to convert epoch boundary"),
+                    epoch_number: u64::try_from(e.epochNumber).with_context(|| {
+                        format!("EpochSealed epoch number {} exceeds u64", e.epochNumber)
+                    })?,
+                    input_index_boundary: u64::try_from(e.inputIndexUpperBound).with_context(
+                        || {
+                            format!(
+                                "EpochSealed input bound {} exceeds u64",
+                                e.inputIndexUpperBound
+                            )
+                        },
+                    )?,
                     root_tournament: e.tournament,
-                    block_created_number: meta.block_number.expect("block number should exist"),
+                    block_created_number: meta
+                        .block_number
+                        .context("EpochSealed log has no block number")?,
                 };
                 info!(
                     "epoch received: epoch_number {}, input_index_boundary {}, root_tournament {}",
                     epoch.epoch_number, epoch.input_index_boundary, epoch.root_tournament
                 );
-                epoch
+                Ok(epoch)
             })
-            .collect())
+            .collect()
     }
 
     async fn collect_input_events(
@@ -836,6 +846,40 @@ mod witness_tests {
         let error = ensure_complete(10, fresh, totals(0, 0)).unwrap_err();
         assert!(error.to_string().contains("ingestion reaches none"));
         ensure_complete(10, totals(3, 2), totals(3, 2)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_reordered_response_is_ingested_in_chain_order() {
+        let mut f = fixture(0, 1_000);
+        f.head(10, 3, 0);
+        f.inputs(&[2, 0, 1]);
+
+        assert!(f.reader.tick(&f.chain).await.unwrap());
+        assert_eq!(f.stored(), (10, totals(3, 0)));
+    }
+
+    /// The contracts cannot emit it, so it is an inconsistent response: an
+    /// error that retries, not a panic that stops the node.
+    #[tokio::test]
+    async fn an_oversized_epoch_number_is_an_error() {
+        let mut f = fixture(0, 1_000);
+        f.head(10, 0, 1);
+        let event = EpochSealed {
+            epochNumber: U256::MAX,
+            inputIndexLowerBound: U256::ZERO,
+            inputIndexUpperBound: U256::ZERO,
+            initialMachineStateHash: B256::ZERO,
+            outputsMerkleRoot: B256::ZERO,
+            tournament: Address::ZERO,
+        };
+        f.rpc.push_success(&vec![log(CONSENSUS, &event, 8, 0)]);
+
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert!(
+            format!("{error:#}").contains("exceeds u64"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(f.stored(), (5, totals(0, 0)), "nothing is committed");
     }
 
     /// A chunk that ends before the head cannot be checked against it: it
