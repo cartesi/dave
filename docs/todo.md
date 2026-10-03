@@ -90,9 +90,6 @@ carry no backlog (reviews/README.md).
 - Check that the Latest tail descends from Solid's finalized block, by parent
   hashes, instead of trusting a number range (debt 10; today the estimate
   pre-check of 8ace5822 is the backstop). (node-architecture.md)
-- Bound each ingestion tick to a block range and commit per chunk, so a cold
-  start never holds the whole backlog in memory (debt 12).
-  (node-architecture.md)
 
 ## Contracts and assurance
 

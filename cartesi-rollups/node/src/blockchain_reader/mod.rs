@@ -155,10 +155,16 @@ impl AddressBook {
     }
 }
 
+/// Finalized blocks ingested and committed per tick: the in-memory bound on
+/// a cold start or a long downtime, and about the `eth_getLogs` range many
+/// providers already cap, so chunking adds few calls.
+const INGEST_CHUNK_BLOCKS: u64 = 10_000;
+
 pub struct BlockchainReader {
     storage: Storage,
     address_book: AddressBook,
     sleep_duration: Duration,
+    chunk_blocks: u64,
 }
 
 impl BlockchainReader {
@@ -167,7 +173,15 @@ impl BlockchainReader {
             storage,
             address_book,
             sleep_duration,
+            chunk_blocks: INGEST_CHUNK_BLOCKS,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_chunk_blocks(mut self, chunk_blocks: u64) -> Self {
+        assert!(chunk_blocks >= 1, "a chunk must cover a block");
+        self.chunk_blocks = chunk_blocks;
+        self
     }
 
     pub async fn execution_loop(mut self, shutdown: ShutdownSignal, chain: Chain) -> Result<()> {
@@ -177,10 +191,16 @@ impl BlockchainReader {
             // costs one polling interval. This worker used to die on
             // the first transient error - the exact failure class the
             // epoch manager's 2026-07-10 fix addressed.
-            if let Err(e) = self.tick(&chain).await {
+            let caught_up = self.tick(&chain).await.unwrap_or_else(|e| {
                 log::warn!("blockchain read failed, retrying next tick: {e:#}");
-            }
+                true
+            });
 
+            // Catch up chunk by chunk without a polling sleep, observing
+            // shutdown between chunks.
+            if !caught_up && !shutdown.is_requested() {
+                continue;
+            }
             tokio::select! { biased;
                 _ = shutdown.requested() => break Ok(()),
                 _ = tokio::time::sleep(self.sleep_duration) => {}
@@ -188,14 +208,20 @@ impl BlockchainReader {
         }
     }
 
-    pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<()> {
-        let current_block = chain.finalized_block_number().await?;
-        let prev_block = self.storage.latest_processed_block()?;
-
-        if current_block > prev_block {
-            self.advance(chain, prev_block, current_block).await?;
+    /// Ingests and commits the next chunk of finalized blocks; true once
+    /// ingestion has reached the finalized head. A chunk end is just another
+    /// cut like the finalized head: the next chunk reseeds its numbering from
+    /// storage, as the next tick does.
+    pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<bool> {
+        let finalized = chain.finalized_block_number().await?;
+        let processed = self.storage.latest_processed_block()?;
+        if finalized <= processed {
+            return Ok(true);
         }
-        Ok(())
+
+        let chunk_end = finalized.min(processed.saturating_add(self.chunk_blocks));
+        self.advance(chain, processed, chunk_end).await?;
+        Ok(chunk_end == finalized)
     }
 
     async fn advance(&mut self, chain: &Chain, prev_block: u64, current_block: u64) -> Result<()> {
@@ -707,11 +733,14 @@ mod blockchain_reader_tests {
         let shutdown_0 = shutdown.clone();
         let reader_chain = Chain::new(provider.clone(), Vec::new());
         let r = thread::spawn(move || {
+            // One block per chunk: inputs and their epoch's seal land in
+            // different commits.
             let blockchain_reader = BlockchainReader::new(
                 Storage::new(handle.path()).unwrap(),
                 address_book,
                 Duration::from_millis(20),
-            );
+            )
+            .with_chunk_blocks(1);
 
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()

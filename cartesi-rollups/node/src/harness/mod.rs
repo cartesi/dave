@@ -562,7 +562,7 @@ impl Node {
 
     /// One pass of every worker; the wave stays in the pool.
     pub async fn tick(&mut self, world: &World) -> Result<()> {
-        self.reader.tick(&world.chain).await?;
+        while !self.reader.tick(&world.chain).await? {}
         self.runner.process_rollup()?;
         let ticked = self.manager.tick(&world.chain).await?;
         let reverting: Vec<_> = ticked
@@ -584,7 +584,7 @@ impl Node {
     pub async fn roll(&mut self, world: &mut World, epoch: u64) -> Result<()> {
         let mut storage = Storage::new(self.state_dir.path())?;
         for _ in 0..16 {
-            self.reader.tick(&world.chain).await?;
+            while !self.reader.tick(&world.chain).await? {}
             self.runner.process_rollup()?;
             if storage.settlement_info(epoch)?.is_some() {
                 return Ok(());

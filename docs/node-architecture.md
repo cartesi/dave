@@ -288,6 +288,16 @@ tick fails before anything is stored. A gap inside the fetched range retries;
 a log missing from the tail of an already ingested range surfaces only at the
 next input and stops ingestion until the state directory is rebuilt.
 
+Ingestion commits at most 10,000 finalized blocks at a time, with their
+watermark, so catch-up holds one chunk's inputs in memory and a restart
+resumes from the last chunk. The bound is in blocks, not bytes: an adversary
+paying for full blocks of inputs can still fill a chunk. Each chunk end is a
+tail like the finalized head, so during catch-up a provider that drops a
+chunk's last input hits the stall above. While catching up, the epoch manager
+may take a settled historical epoch for the current one until its successor's
+seal arrives in a later chunk; the actions it plans for it revert at
+estimation and are skipped with warnings.
+
 The deadline-sensitive tournament reader holds one recursive, event-derived
 `Dispute` through finalized `F`, in memory only. Each tick recursively extends
 every tournament's local event stream through `F`, applying events one at a
@@ -456,10 +466,3 @@ Design assumptions:
     point views at one sampled hash. It does
     not prove the tail belongs to that hash's ancestry; stale work is safe
     because mutators revalidate it, and the next tick rebuilds the tail.
-12. Ingestion holds the application's unprocessed input payloads and epoch
-    events in memory, including temporary conversion copies, before committing
-    them with the ingestion watermark. RPC range partitioning does not bound
-    that total. Operation assumes this backlog fits available RAM and accepts
-    cold-start and retry costs. A same-state restart resumes from the last
-    commit; a fresh state directory ingests the application's history again.
-    Bounded ingestion is warranted only if measured history sizes require it.
